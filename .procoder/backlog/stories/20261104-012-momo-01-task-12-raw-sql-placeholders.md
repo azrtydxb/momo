@@ -1,6 +1,6 @@
 # momo-01 Task 12: Raw SQL placeholders
 
-Status: open
+Status: done 2026-11-04
 Created: 2026-11-04
 Epic: momo-01-foundation
 Sprint: 001-foundation-of-the-query-core-dialects-schema-base-types
@@ -11,8 +11,14 @@ Implements plan momo-01-foundation Task 12: Raw SQL placeholders (`.procoder/pla
 
 ## Acceptance criteria
 
-- [ ] `TestRawPlaceholders` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestRawPlaceholders` exists as written in the plan, fails under a deliberate mutation of `Builder.appendRaw` (the spike's code predates the test), and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- `go test . -run '^TestRawPlaceholders$' -count=1` on the unchanged spike: `ok` (guard PASS).
+- Mutation 1: the `??` literal-question-mark branch of `appendRaw` disabled: FAIL `has more placeholders than the 1 arguments given`; file restored, PASS.
+- Mutation 2: the too-few-arguments guard disabled: FAIL (index out of range panic instead of a build error); file restored.
+- The too-many-arguments check (`n != len(args)`) is not exercised by the plan's test: disabling it leaves the test green. The test is kept as written; noted as a coverage gap.
+- `go build ./... && go vet ./... && go test -race ./...` pass.
 
