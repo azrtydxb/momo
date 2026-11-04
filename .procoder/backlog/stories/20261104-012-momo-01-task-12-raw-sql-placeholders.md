@@ -19,6 +19,6 @@ Implements plan momo-01-foundation Task 12: Raw SQL placeholders (`.procoder/pla
 - `go test . -run '^TestRawPlaceholders$' -count=1` on the unchanged spike: `ok` (guard PASS).
 - Mutation 1: the `??` literal-question-mark branch of `appendRaw` disabled: FAIL `has more placeholders than the 1 arguments given`; file restored, PASS.
 - Mutation 2: the too-few-arguments guard disabled: FAIL (index out of range panic instead of a build error); file restored.
-- The too-many-arguments check (`n != len(args)`) is not exercised by the plan's test: disabling it leaves the test green. The test is kept as written; noted as a coverage gap.
+- The too-many-arguments check (`n != len(args)`) was not exercised by the plan's original test. The lead added a case (`momo.SQL("a = ?", 1, 2)` must fail to build) to raw_test.go and the plan; with the check disabled → `--- FAIL: TestRawPlaceholders` / `more arguments than placeholders must fail to build`; restored → `ok`.
 - `go build ./... && go vet ./... && go test -race ./...` pass.
 

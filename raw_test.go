@@ -27,4 +27,7 @@ func TestRawPlaceholders(t *testing.T) {
 	if _, err := momo.Select[unitDocument](pg).Where(momo.SQL("a = ? AND b = ?", 1)).SQL(); err == nil {
 		t.Fatal("placeholder/argument mismatch must fail to build")
 	}
+	if _, err := momo.Select[unitDocument](pg).Where(momo.SQL("a = ?", 1, 2)).SQL(); err == nil {
+		t.Fatal("more arguments than placeholders must fail to build")
+	}
 }
