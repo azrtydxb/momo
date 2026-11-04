@@ -13,6 +13,8 @@
 - `make test-compilefail`: compile-fail tests for the typed API
 - `make test-integration`: integration tests against real databases
 
+Dialect coverage is expressed as subtests from `testopen.Each`, one per dialect built into this version; integration tests have no name suffix. `make test-integration-<dialect>` sets that dialect's URL variables and runs the whole suite.
+
 ## Commit messages and PR titles
 
 Commit messages and PR titles use Conventional Commits: `feat`, `fix`, `perf`,
