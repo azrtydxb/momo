@@ -205,14 +205,11 @@ func (o Order) NullsFirst() Order { o.Nulls = NullsFirst; return o }
 // NullsLast returns o with explicit NULLS LAST.
 func (o Order) NullsLast() Order { o.Nulls = NullsLast; return o }
 
-func (o Order) appendSQL(b *Builder) { o.appendDir(b, false) }
-
-// appendDir renders the item; explicitAsc writes ASC for ascending items.
-func (o Order) appendDir(b *Builder, explicitAsc bool) {
+func (o Order) appendSQL(b *Builder) {
 	o.Expr.AppendSQL(b)
 	if o.Desc {
 		b.WriteString(" DESC")
-	} else if explicitAsc {
+	} else {
 		b.WriteString(" ASC")
 	}
 	switch o.Nulls {

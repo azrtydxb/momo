@@ -113,7 +113,7 @@ func (sq SelectQuery[T]) addJoin(kind string, src TableSource, on []Predicate) S
 
 // Join adds an INNER JOIN.
 func (sq SelectQuery[T]) Join(src TableSource, on ...Predicate) SelectQuery[T] {
-	return sq.addJoin("JOIN", src, on)
+	return sq.addJoin("INNER JOIN", src, on)
 }
 
 // LeftJoin adds a LEFT JOIN. Columns of src may be NULL in the result:
@@ -407,9 +407,9 @@ func (sq SelectQuery[T]) render(b *Builder) {
 				b.WriteString(", ")
 			}
 			if i < len(s.order) {
-				s.order[i].appendDir(b, true)
+				s.order[i].appendSQL(b)
 			} else {
-				Order{Expr: k.expr, Desc: k.desc}.appendDir(b, true)
+				Order{Expr: k.expr, Desc: k.desc}.appendSQL(b)
 			}
 		}
 	} else if len(s.order) > 0 {
