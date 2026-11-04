@@ -8,3 +8,4 @@ coverage.*
 *.db-wal
 *.db-shm
 /.procoder/state/
+/.claude/
