@@ -7,7 +7,7 @@ Sprint: -
 
 ## Description
 
-Implements plan momo-06-relations Task 5: Eager loading core for belongs-to and has-one, relation hook events (`.procoder/plans/momo-06-relations.md:1538`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-6, S-18. Files: `loader.go`, `load.go`, `relhook.go`, `db.go`, `load_test.go`.
+Implements plan momo-06-relations Task 5: Eager loading core for belongs-to and has-one, relation hook events (`.procoder/plans/momo-06-relations.md:1538`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-6, S-18. Files: `loader.go`, `load.go`, `relhook.go`, `db.go`, `load_test.go`. Contributes to S-18; those criteria are verified in the stories that define their named tests.
 
 ## Acceptance criteria
 
@@ -15,7 +15,6 @@ Implements plan momo-06-relations Task 5: Eager loading core for belongs-to and 
 - [ ] `TestEagerLoadHasOne` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestRelationHookEvents` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-6] `TestEagerLoad*` (one per relation kind incl. composite keys): a counting hook asserts the exact query count, chunking over the bind limit, parent pagination and order preserved without duplicates, NULL-FK parents left empty; fails if loading issues per-parent queries or joins that duplicate parents.
-- [ ] [S-18] `BenchmarkSelectNoHooks` allocations stay within the budget recorded in docs/PERFORMANCE.md; `TestHooks` asserts SQL, duration, rows and errors are reported and args only with WithArgLogging; `TestExplainAnalyzeExplicit` asserts plain Explain never executes the query; fails if disabled hooks allocate.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

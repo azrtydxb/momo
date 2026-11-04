@@ -7,7 +7,7 @@ Sprint: -
 
 ## Description
 
-Implements plan momo-04-migrations Task 13: PostgreSQL render for all change kinds (`.procoder/plans/momo-04-migrations.md:1401`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-12, S-37, S-38, S-39. Files: `migrate/postgres/render.go`.
+Implements plan momo-04-migrations Task 13: PostgreSQL render for all change kinds (`.procoder/plans/momo-04-migrations.md:1401`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-12, S-37, S-38, S-39. Files: `migrate/postgres/render.go`. Contributes to S-37, S-38; those criteria are verified in the stories that define their named tests.
 
 ## Acceptance criteria
 
@@ -15,8 +15,6 @@ Implements plan momo-04-migrations Task 13: PostgreSQL render for all change kin
 - [ ] `TestPostgresConcurrentIndexNoTx` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestManagedFunctionsTriggersPartitions` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-12] `TestPostgresObjects` on real PostgreSQL+pgvector: vector extension, enum, partial index, expression index, HNSW index with opclass and a CONCURRENTLY index apply and round-trip with no diff; fails if CONCURRENTLY runs inside a transaction.
-- [ ] [S-37] `TestViewsAsModels`: a view and a materialized view are created by migrations, queried as read-only models, refreshed by the helper; mutation builders on them do not compile; fails if a view is dropped before its dependents.
-- [ ] [S-38] `TestRowLevelSecurity`: with a policy applied by migration, a transaction scoped to tenant A cannot read tenant B's rows even through raw SQL, and the setting does not persist on the pooled connection; fails if `set_config` is session-scoped.
 - [ ] [S-39] `TestManagedFunctionsTriggersPartitions`: a function, trigger and partitioned table are created by migrations, round-trip with no diff, and a changed function body produces CREATE OR REPLACE; fails if they are reported as unmanaged.
 - [ ] `procoder check` gate is clean and the task's commit is made
 

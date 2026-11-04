@@ -7,14 +7,13 @@ Sprint: -
 
 ## Description
 
-Implements plan momo-05-writes-queries Task 8: Locking, optimizer hints and runtime table override (S-79) (`.procoder/plans/momo-05-writes-queries.md:583`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-79. Files: `integration_locking_test.go`, `select.go`.
+Implements plan momo-05-writes-queries Task 8: Locking, optimizer hints and runtime table override (S-79) (`.procoder/plans/momo-05-writes-queries.md:583`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-79. Files: `integration_locking_test.go`, `select.go`. Contributes to S-79; those criteria are verified in the stories that define their named tests.
 
 ## Acceptance criteria
 
 - [ ] `TestLockingNowaitSkipLocked` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestWithTableNameQuoted` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestHintsByDialect` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-79] `TestCompositionHelpers` asserts each renders correctly or returns ErrUnsupported per dialect and the filter tree rejects unknown columns; fails if an override bypasses identifier quoting.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
