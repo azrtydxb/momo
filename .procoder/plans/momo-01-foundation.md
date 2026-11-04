@@ -1013,7 +1013,7 @@ func TestTableRefSchemaQualified(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `SELECT "id", "tenant_id", "title", "published", "deleted_at" FROM "tenant"."documents" WHERE "deleted_at" IS NULL`; c.SQL != want {
+	if want := `SELECT "documents"."id", "documents"."tenant_id", "documents"."title", "documents"."published", "documents"."deleted_at" FROM "tenant"."documents" WHERE "documents"."deleted_at" IS NULL`; c.SQL != want {
 		t.Fatalf("got %s\nwant %s", c.SQL, want)
 	}
 }

@@ -101,6 +101,9 @@ func (t TableRef) appendFrom(b *Builder) {
 }
 
 // Qualifier returns the name columns of this source are qualified with.
+// An unaliased schema-qualified table ("tenant"."documents") is exposed
+// under its bare name, so its columns render as "documents"."id"; alias
+// one side to join two same-named tables from different schemas.
 func (t TableRef) Qualifier() string {
 	if t.Alias != "" {
 		return t.Alias

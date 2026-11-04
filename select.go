@@ -342,9 +342,6 @@ func (sq SelectQuery[T]) render(b *Builder) {
 // A schema-qualified, unaliased TableRef source renders bare column names;
 // every other source qualifies with its alias or table name.
 func (sq SelectQuery[T]) qualifier() string {
-	if t, ok := sq.s.from.(TableRef); ok && t.Schema != "" && t.Alias == "" {
-		return ""
-	}
 	if t, ok := sq.s.from.(interface{ Qualifier() string }); ok {
 		return t.Qualifier()
 	}
