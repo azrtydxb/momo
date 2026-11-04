@@ -11,7 +11,7 @@ Implements plan momo-01-foundation Task 15: Query immutability under concurrent 
 
 ## Acceptance criteria
 
-- [ ] `TestQueryReuseNoLeak` exists as written in the plan, failed before the implementation, and passes now
+- [ ] `TestQueryReuseNoLeak` exists as written in the plan, fails under a deliberate mutation of the Where append (`slices.Clip` removed; the spike's code predates the test), and passes now
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
