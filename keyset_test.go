@@ -5,6 +5,7 @@ package momo_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -35,5 +36,13 @@ func TestKeysetPagination(t *testing.T) {
 	}
 	if _, err := momo.Select[unitDocument](pg).OrderBy(DocTitle.Asc()).After("a").SQL(); !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("After with too few values = %v, want ErrValidation", err)
+	}
+}
+
+func TestKeysetNullableKeyUnsupported(t *testing.T) {
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	_, err := momo.Select[unitDocument](pg).OrderBy(DocDeletedAt.Asc()).After(time.Unix(0, 0).UTC(), int64(1)).SQL()
+	if !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("After on a nullable ORDER BY key: err = %v, want ErrUnsupported", err)
 	}
 }

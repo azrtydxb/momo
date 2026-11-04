@@ -1322,6 +1322,18 @@ func TestKeysetPagination(t *testing.T) {
 
 - [ ] **Step 4: Run and expect PASS.** `go test . -run '^TestKeysetPagination$' -count=1` prints `ok`.
 
+- [ ] **Step 4b: Nullable-key rule (added in review).** Append to `keyset_test.go` (add `"time"` to its imports) and run `go test -run TestKeysetNullableKeyUnsupported -count=1 .`; disabling the `k.nullable` guard in `select.go` must make it fail with `err = <nil>, want ErrUnsupported`:
+
+```go
+func TestKeysetNullableKeyUnsupported(t *testing.T) {
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	_, err := momo.Select[unitDocument](pg).OrderBy(DocDeletedAt.Asc()).After(time.Unix(0, 0).UTC(), int64(1)).SQL()
+	if !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("After on a nullable ORDER BY key: err = %v, want ErrUnsupported", err)
+	}
+}
+```
+
 - [ ] **Step 5: Commit.** `git add select.go keyset_test.go && git commit -m "feat(momo): keyset pagination with deterministic tie-breaking"`.
 
 ## Task 15: Query immutability under concurrent reuse
