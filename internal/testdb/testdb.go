@@ -1,0 +1,309 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Package testdb returns connection URLs and paths for integration tests. It
+// imports no Momo driver, so driver packages can use it without an import
+// cycle. Every helper isolates its test in its own schema or database, which
+// is dropped when the test finishes.
+package testdb
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v5"
+)
+
+const (
+	envPostgres    = "MOMO_TEST_POSTGRES_URL"
+	envPostgresApp = "MOMO_TEST_POSTGRES_APP_URL"
+	envPgBouncer   = "MOMO_TEST_PGBOUNCER_URL"
+	envMySQL84     = "MOMO_TEST_MYSQL84_URL"
+	envMySQL97     = "MOMO_TEST_MYSQL97_URL"
+	envMariaDB     = "MOMO_TEST_MARIADB_URL"
+
+	envRequire = "MOMO_REQUIRE_INTEGRATION"
+
+	vectorLockID = 7000001
+	roleLockID   = 7000002
+	opTimeout    = 30 * time.Second
+)
+
+var errSkip = errors.New("testdb: integration URL not set")
+
+// resolve returns the value of env, errSkip when it is unset and require is
+// false, and a descriptive error when it is unset and require is true.
+func resolve(env string, lookup func(string) (string, bool), require bool) (string, error) {
+	if v, ok := lookup(env); ok && v != "" {
+		return v, nil
+	}
+	if !require {
+		return "", errSkip
+	}
+	return "", fmt.Errorf("testdb: %s is not set and %s=1", env, envRequire)
+}
+
+// require returns the URL in env, skipping the test when it is unset, or
+// failing it when MOMO_REQUIRE_INTEGRATION=1.
+func require(t testing.TB, env string) string {
+	t.Helper()
+	v, err := resolve(env, os.LookupEnv, os.Getenv(envRequire) == "1")
+	switch {
+	case errors.Is(err, errSkip):
+		t.Skip(err.Error() + ": " + env)
+	case err != nil:
+		t.Fatal(err)
+	}
+	return v
+}
+
+// randomName returns "t_" followed by 16 lowercase hex characters.
+func randomName() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic("testdb: crypto/rand failed: " + err.Error())
+	}
+	return "t_" + hex.EncodeToString(b[:])
+}
+
+var (
+	schemas   sync.Map // testing.TB -> schema name
+	vectorOne sync.Once
+)
+
+// ensureVector creates the vector extension once per process.
+func ensureVector(ctx context.Context, conn *pgx.Conn) error {
+	var err error
+	vectorOne.Do(func() {
+		if _, err = conn.Exec(ctx, "SELECT pg_advisory_lock($1)", int64(vectorLockID)); err != nil {
+			return
+		}
+		_, err = conn.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS vector SCHEMA public")
+		_, uerr := conn.Exec(ctx, "SELECT pg_advisory_unlock($1)", int64(vectorLockID))
+		if err == nil {
+			err = uerr
+		}
+	})
+	return err
+}
+
+// schemaFor creates (once per t) the per-test schema and returns the
+// administrator URL and the schema name.
+func schemaFor(t testing.TB) (admin, name string) {
+	t.Helper()
+	admin = require(t, envPostgres)
+	if v, ok := schemas.Load(t); ok {
+		return admin, v.(string)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, admin)
+	if err != nil {
+		t.Fatalf("testdb: connect %s: %v", envPostgres, err)
+	}
+	defer conn.Close(ctx)
+	if err := ensureVector(ctx, conn); err != nil {
+		t.Fatalf("testdb: create vector extension: %v", err)
+	}
+	name = randomName()
+	if _, err := conn.Exec(ctx, fmt.Sprintf("CREATE SCHEMA %q", name)); err != nil {
+		t.Fatalf("testdb: create schema %s: %v", name, err)
+	}
+	if v, loaded := schemas.LoadOrStore(t, name); loaded {
+		// A concurrent call for the same t won; drop ours.
+		_, _ = conn.Exec(ctx, fmt.Sprintf("DROP SCHEMA IF EXISTS %q CASCADE", name))
+		return admin, v.(string)
+	}
+	t.Cleanup(func() {
+		schemas.Delete(t)
+		cctx, ccancel := context.WithTimeout(context.Background(), opTimeout)
+		defer ccancel()
+		c, err := pgx.Connect(cctx, admin)
+		if err != nil {
+			t.Errorf("testdb: connect to drop schema %s: %v", name, err)
+			return
+		}
+		defer c.Close(cctx)
+		if _, err := c.Exec(cctx, fmt.Sprintf("DROP SCHEMA IF EXISTS %q CASCADE", name)); err != nil {
+			t.Errorf("testdb: drop schema %s: %v", name, err)
+		}
+	})
+	return admin, name
+}
+
+// withSearchPath returns raw with the query parameter search_path=name,public.
+func withSearchPath(raw, name string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	q := u.Query()
+	q.Set("search_path", name+",public")
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// PostgresURL returns a URL for a schema private to t, created on first use
+// and dropped in t.Cleanup. Repeated calls with the same t return the same URL.
+func PostgresURL(t testing.TB) string {
+	t.Helper()
+	admin, name := schemaFor(t)
+	return withSearchPath(admin, name)
+}
+
+// Schema returns the per-test schema name of PostgresURL(t).
+func Schema(t testing.TB) string {
+	t.Helper()
+	_, name := schemaFor(t)
+	return name
+}
+
+// quoteLiteral returns s as a single-quoted SQL literal.
+func quoteLiteral(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// PostgresAppRoleURL returns the URL of PostgresURL(t)'s schema for the
+// non-superuser application role named in MOMO_TEST_POSTGRES_APP_URL. The role
+// can use the schema and read and write tables the administrator creates in
+// it, but cannot create objects.
+func PostgresAppRoleURL(t testing.TB) string {
+	t.Helper()
+	adminURL := PostgresURL(t)
+	appRaw := require(t, envPostgresApp)
+	name := Schema(t)
+	appURL, err := url.Parse(appRaw)
+	if err != nil || appURL.User == nil || appURL.User.Username() == "" {
+		t.Fatalf("testdb: %s must be a URL with a user name", envPostgresApp)
+	}
+	role := appURL.User.Username()
+	password, _ := appURL.User.Password()
+
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, adminURL)
+	if err != nil {
+		t.Fatalf("testdb: connect %s: %v", envPostgres, err)
+	}
+	defer conn.Close(ctx)
+
+	ident := pgx.Identifier{role}.Sanitize()
+	schema := pgx.Identifier{name}.Sanitize()
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", int64(roleLockID)); err != nil {
+		t.Fatalf("testdb: lock: %v", err)
+	}
+	defer func() { _, _ = conn.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", int64(roleLockID)) }()
+	create := fmt.Sprintf(
+		"DO $momo$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = %s) THEN CREATE ROLE %s LOGIN PASSWORD %s; END IF; END $momo$",
+		quoteLiteral(role), ident, quoteLiteral(password))
+	stmts := []string{
+		create,
+		fmt.Sprintf("GRANT CONNECT ON DATABASE %s TO %s", currentDB(ctx, t, conn), ident),
+		fmt.Sprintf("GRANT USAGE ON SCHEMA %s TO %s", schema, ident),
+		fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %s", schema, ident),
+		fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT USAGE, SELECT ON SEQUENCES TO %s", schema, ident),
+	}
+	for _, s := range stmts {
+		if _, err := conn.Exec(ctx, s); err != nil {
+			t.Fatalf("testdb: app role setup: %v", err)
+		}
+	}
+	return withSearchPath(appRaw, name)
+}
+
+func currentDB(ctx context.Context, t testing.TB, conn *pgx.Conn) string {
+	t.Helper()
+	var db string
+	if err := conn.QueryRow(ctx, "SELECT current_database()").Scan(&db); err != nil {
+		t.Fatalf("testdb: current_database: %v", err)
+	}
+	return pgx.Identifier{db}.Sanitize()
+}
+
+// PgBouncerURL returns MOMO_TEST_PGBOUNCER_URL with the schema of
+// PostgresURL(t) in search_path.
+func PgBouncerURL(t testing.TB) string {
+	t.Helper()
+	PostgresURL(t)
+	return withSearchPath(require(t, envPgBouncer), Schema(t))
+}
+
+// SQLitePath returns a database file path inside a directory private to t.
+func SQLitePath(t testing.TB) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), "momo.db")
+}
+
+type mysqlKey struct {
+	t   testing.TB
+	env string
+}
+
+var mysqlDBs sync.Map // mysqlKey -> DSN
+
+// freshMySQL creates (once per t and env) a database private to t on the
+// server named by env and returns its DSN.
+func freshMySQL(t testing.TB, env string) string {
+	t.Helper()
+	raw := require(t, env)
+	key := mysqlKey{t, env}
+	if v, ok := mysqlDBs.Load(key); ok {
+		return v.(string)
+	}
+	cfg, err := mysql.ParseDSN(raw)
+	if err != nil {
+		t.Fatalf("testdb: parse %s: %v", env, err)
+	}
+	cfg.DBName = ""
+	adminDSN := cfg.FormatDSN()
+	name := randomName()
+
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+	db, err := sql.Open("mysql", adminDSN)
+	if err != nil {
+		t.Fatalf("testdb: open %s: %v", env, err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, "CREATE DATABASE `"+name+"`"); err != nil {
+		t.Fatalf("testdb: create database %s: %v", name, err)
+	}
+	t.Cleanup(func() {
+		mysqlDBs.Delete(key)
+		cctx, ccancel := context.WithTimeout(context.Background(), opTimeout)
+		defer ccancel()
+		d, err := sql.Open("mysql", adminDSN)
+		if err != nil {
+			t.Errorf("testdb: open %s to drop %s: %v", env, name, err)
+			return
+		}
+		defer d.Close()
+		if _, err := d.ExecContext(cctx, "DROP DATABASE IF EXISTS `"+name+"`"); err != nil {
+			t.Errorf("testdb: drop database %s: %v", name, err)
+		}
+	})
+	cfg.DBName = name
+	dsn := cfg.FormatDSN()
+	mysqlDBs.Store(key, dsn)
+	return dsn
+}
+
+// MySQL84URL returns a DSN for a database private to t on MySQL 8.4.
+func MySQL84URL(t testing.TB) string { t.Helper(); return freshMySQL(t, envMySQL84) }
+
+// MySQL97URL returns a DSN for a database private to t on MySQL 9.7.
+func MySQL97URL(t testing.TB) string { t.Helper(); return freshMySQL(t, envMySQL97) }
+
+// MariaDBURL returns a DSN for a database private to t on MariaDB 11.8.
+func MariaDBURL(t testing.TB) string { t.Helper(); return freshMySQL(t, envMariaDB) }
