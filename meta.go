@@ -19,6 +19,23 @@ type Model struct{}
 // projections. Its fields are scanned positionally from the select list.
 type Projection struct{}
 
+// Column flags carried by generated column descriptors and ColumnMeta.
+const (
+	FlagPK uint16 = 1 << iota
+	FlagUnique
+	FlagNullable
+	FlagIdentity // generated identity; omitted from inserts
+	FlagReadOnly // DB-generated or computed; never written
+	FlagVersion  // optimistic-lock version column
+	FlagSoftDelete
+	FlagHasDefault
+	FlagCreateOnly
+	FlagImmutable
+	FlagSensitive
+	FlagCreatedAt
+	FlagUpdatedAt
+)
+
 // ColumnMeta describes one mapped field.
 type ColumnMeta struct {
 	Name  string
@@ -30,19 +47,24 @@ type ColumnMeta struct {
 // Meta value; Momo never mutates it.
 type Meta[T any] struct {
 	// Table is empty for projections.
-	Table   string
+	Table string
+	// Schema is the database schema qualifying Table; empty for the default.
+	Schema  string
 	Columns []ColumnMeta
 	// Ptr returns the address of the field for column i, for scanning.
 	Ptr func(m *T, i int) any
 	// Value returns the value of the field for column i, for binding.
 	Value func(m *T, i int) any
-	// Schema is the normalized table definition; nil for projections.
-	Schema *schema.Table
+	// TableSchema is the normalized table definition; nil for projections.
+	TableSchema *schema.Table
 
-	// Derived indexes, filled by generated code (-1 when absent).
+	// Derived column indexes, filled by generated code. -1 means absent for
+	// Identity, Version, SoftDelete, CreatedAt and UpdatedAt.
 	Identity   int
 	Version    int
 	SoftDelete int
+	CreatedAt  int
+	UpdatedAt  int
 	PK         []int
 }
 
@@ -61,11 +83,16 @@ func metaOf[T any, PT Modeler[T]]() *Meta[T] {
 // TableRef names a table source in FROM and JOIN clauses, optionally
 // aliased. Generated per-model packages embed it in their Table type.
 type TableRef struct {
-	Name  string
-	Alias string
+	Name   string
+	Alias  string
+	Schema string
 }
 
 func (t TableRef) appendFrom(b *Builder) {
+	if t.Schema != "" {
+		b.Ident(t.Schema)
+		b.WriteByte('.')
+	}
 	b.Ident(t.Name)
 	if t.Alias != "" && t.Alias != t.Name {
 		b.WriteString(" AS ")

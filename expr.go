@@ -29,18 +29,6 @@ type ColumnRef interface {
 
 // ---------------------------------------------------------------- columns
 
-// Column flags carried by generated column descriptors.
-const (
-	FlagPK uint16 = 1 << iota
-	FlagUnique
-	FlagNullable
-	FlagIdentity // generated identity; omitted from inserts
-	FlagReadOnly // DB-generated or computed; never written
-	FlagVersion  // optimistic-lock version column
-	FlagSoftDelete
-	FlagHasDefault
-)
-
 // Column is a typed column descriptor generated for each model field. T is
 // the column's Go value type with nullability removed (a *string field has
 // a Column[string]-compatible NullColumn[string]).

@@ -68,6 +68,8 @@ var unitDocumentMeta = momo.Meta[unitDocument]{
 	Identity:   0,
 	Version:    -1,
 	SoftDelete: 4,
+	CreatedAt:  -1,
+	UpdatedAt:  -1,
 	PK:         []int{0},
 }
 

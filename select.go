@@ -213,9 +213,6 @@ func (sq SelectQuery[T]) SQL() (Compiled, error) {
 	return compile(sq.q.Dialect(), sq.render)
 }
 
-// SQLFor compiles the query for a dialect without a database handle.
-func (sq SelectQuery[T]) SQLFor(d interface{ Dialect() any }) {}
-
 func (sq SelectQuery[T]) render(b *Builder) {
 	s := &sq.s
 	if s.err != nil {
@@ -296,7 +293,7 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		}
 	}
 	where := s.where
-	if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted && s.cols == nil {
+	if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted {
 		where = append(slices.Clip(where), postfix{qcol{sq.qualifier(), sq.meta.Columns[sq.meta.SoftDelete].Name}, " IS NULL"})
 	}
 	if len(where) > 0 {
@@ -342,7 +339,12 @@ func (sq SelectQuery[T]) render(b *Builder) {
 }
 
 // qualifier is the name the model's own columns are qualified with.
+// A schema-qualified, unaliased TableRef source renders bare column names;
+// every other source qualifies with its alias or table name.
 func (sq SelectQuery[T]) qualifier() string {
+	if t, ok := sq.s.from.(TableRef); ok && t.Schema != "" && t.Alias == "" {
+		return ""
+	}
 	if t, ok := sq.s.from.(interface{ Qualifier() string }); ok {
 		return t.Qualifier()
 	}
