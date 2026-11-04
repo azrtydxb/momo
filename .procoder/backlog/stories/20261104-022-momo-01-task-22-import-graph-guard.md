@@ -1,6 +1,6 @@
 # momo-01 Task 22: Import-graph guard
 
-Status: open
+Status: done 2026-11-04
 Created: 2026-11-04
 Epic: momo-01-foundation
 Sprint: 001-foundation-of-the-query-core-dialects-schema-base-types
@@ -11,7 +11,7 @@ Implements plan momo-01-foundation Task 22: Import-graph guard (`.procoder/plans
 
 ## Acceptance criteria
 
-- [ ] `TestImportGraph` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestImportGraph` exists as written in the plan, fails under a deliberate forbidden import (the task is test-only; the guarded code predates the test), and passes on the restored tree
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
