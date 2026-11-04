@@ -1,6 +1,6 @@
 # momo-01 Task 6: Normalization of types, expressions and schema equality
 
-Status: open
+Status: done 2026-11-04
 Created: 2026-11-04
 Epic: momo-01-foundation
 Sprint: 001-foundation-of-the-query-core-dialects-schema-base-types
@@ -11,11 +11,16 @@ Implements plan momo-01-foundation Task 6: Normalization of types, expressions a
 
 ## Acceptance criteria
 
-- [ ] `TestNormalizeType` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestNormalizeExpr` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestEqualIgnoresOrderAndConcurrently` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `FuzzNormalizeType` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestNormalizeType` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestNormalizeExpr` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestEqualIgnoresOrderAndConcurrently` exists as written in the plan, failed before the implementation, and passes now
+- [x] `FuzzNormalizeType` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- TestNormalizeType: before implementation `go test ./schema/ -run 'Normalize|Equal' -count=1` printed `undefined: NormalizeType`; after, `go test ./schema/ -run 'Normalize|Equal' -count=1 -v` printed `--- PASS: TestNormalizeType`
+- TestNormalizeExpr: same failing run printed `undefined: NormalizeExpr`; after, `--- PASS: TestNormalizeExpr`
+- TestEqualIgnoresOrderAndConcurrently: same failing run printed `undefined: Equal`; after, `--- PASS: TestEqualIgnoresOrderAndConcurrently`
+- FuzzNormalizeType: failing run above (`undefined: NormalizeType`); `go test -run=^$ -fuzz=FuzzNormalizeType -fuzztime=20s ./schema` printed `PASS` / `ok github.com/azrtydxb/momo/schema 21.463s`
+- Gate and commit: `launcher.sh check` printed `procoder gate: 2 clean, 0 unformatted, 0 unchecked, 0 out of scope, 18 hygiene finding(s) (0 blocking)`; `go build ./... && go vet ./... && go test -race ./...` all ok; commit c0db748
