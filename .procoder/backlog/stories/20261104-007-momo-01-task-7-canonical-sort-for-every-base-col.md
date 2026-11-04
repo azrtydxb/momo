@@ -11,8 +11,8 @@ Implements plan momo-01-foundation Task 7: Canonical Sort for every base collect
 
 ## Acceptance criteria
 
-- [ ] `TestSortCoversAllCollections` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `FuzzSchemaSort` exists as written in the plan, failed before the implementation, and passes now
+- [ ] `TestSortCoversAllCollections` exists as written in the plan, fails under a deliberate mutation of `Sort` (the spike's `Sort` predates the test), and passes on the restored code
+- [ ] `FuzzSchemaSort` exists as written in the plan, fails under a deliberate mutation of `Sort` (the spike's `Sort` predates the test), and passes on the restored code
 - [ ] [S-1] `TestSchemaJSONRoundTrip` and `FuzzSchemaSort` (schema package): JSON round-trips losslessly and `Sort` makes equivalent schemas byte-identical; fails if a field is dropped from serialization or Sort is order-sensitive.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
