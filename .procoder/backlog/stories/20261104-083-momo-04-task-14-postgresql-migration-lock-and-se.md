@@ -14,7 +14,7 @@ Implements plan momo-04-migrations Task 14: PostgreSQL migration lock and sessio
 - [ ] `TestLockHolderNamed` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestLockKeyPerSchema` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestLockTimeoutApplied` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-28] `TestMigrateLint` asserts each listed risky operation is reported with severity and an alternative and that `momo migrate lint` exits 1 on errors; `TestLockTimeoutApplied` asserts `SHOW lock_timeout` inside an applying migration equals the configured value; fails if apply runs without timeouts on PostgreSQL.
+- [ ] [S-28, part] `TestLockTimeoutApplied` passes for the part of S-28 this task delivers; the full criterion is verified in story 095.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

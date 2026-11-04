@@ -13,7 +13,7 @@ Implements plan momo-02-generator Task 15: Generated ColumnByName allowlist (S-4
 
 - [ ] `TestColumnByName` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestColumnByNameRuntime` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-43] `TestColumnByName` rejects unknown names and returns the typed column for known ones; `TestEscapeLike` matches literal `%`, `_` and the escape character on both dialects; fails if a name is ever quoted into SQL without the allowlist.
+- [ ] [S-43, part] `TestColumnByName` passes for the part of S-43 this task delivers; the full criterion is verified in story 104.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

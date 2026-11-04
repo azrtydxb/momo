@@ -12,7 +12,7 @@ Implements plan momo-11-adoption Task 10: goose importer (`.procoder/plans/momo-
 ## Acceptance criteria
 
 - [ ] `TestHistoryImporters` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-93] `TestHistoryImporters` imports each fixture history, asserts status shows all versions applied and drift is zero; fails if an applied migration would re-run.
+- [ ] [S-93, part] `TestHistoryImporters` passes for the part of S-93 this task delivers; the full criterion is verified in story 235.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

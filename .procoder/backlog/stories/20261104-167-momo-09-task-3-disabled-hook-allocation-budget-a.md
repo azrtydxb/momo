@@ -14,7 +14,7 @@ Implements plan momo-09-observability-testing Task 3: Disabled-hook allocation b
 - [ ] `BenchmarkSelectNoHooks` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestSelectNoHooksAllocBudget` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestPerformanceDocRecordsBudget` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-18] `BenchmarkSelectNoHooks` allocations stay within the budget recorded in docs/PERFORMANCE.md; `TestHooks` asserts SQL, duration, rows and errors are reported and args only with WithArgLogging; `TestExplainAnalyzeExplicit` asserts plain Explain never executes the query; fails if disabled hooks allocate.
+- [ ] [S-18, part] `BenchmarkSelectNoHooks` passes for the part of S-18 this task delivers; the full criterion is verified in story 169.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

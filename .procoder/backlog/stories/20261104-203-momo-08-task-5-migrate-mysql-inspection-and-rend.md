@@ -13,7 +13,7 @@ Implements plan momo-08-mysql Task 5: migrate/mysql inspection and rendering (`.
 
 - [ ] `TestMySQLNormalizeType` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestMySQLMigrationRoundTrip` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-60] `TestMySQLMigrationRoundTrip` applies the example schema on both servers with a no-change round trip, and `TestMySQLPartialFailure` asserts a mid-file failure records statements_applied; fails if a MySQL migration is reported transactional.
+- [ ] [S-60, part] `TestMySQLMigrationRoundTrip` passes for the part of S-60 this task delivers; the full criterion is verified in story 204.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

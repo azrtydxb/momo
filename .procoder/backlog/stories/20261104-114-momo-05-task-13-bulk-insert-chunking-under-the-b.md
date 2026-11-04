@@ -12,7 +12,7 @@ Implements plan momo-05-writes-queries Task 13: Bulk insert chunking under the b
 ## Acceptance criteria
 
 - [ ] `TestBulkInsertChunking` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-5] [S-9] `TestBulkInsertChunking` inserts more rows than one statement's parameter limit and counts them; `TestCopyInsert` (PostgreSQL) inserts identical data via COPY; fails if chunk size ignores the dialect limit.
+- [ ] [S-5, part] `TestBulkInsertChunking` passes for the part of S-5 this task delivers; the full criterion is verified in story 115.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

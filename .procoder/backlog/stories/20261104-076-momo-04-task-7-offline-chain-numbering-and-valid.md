@@ -13,7 +13,7 @@ Implements plan momo-04-migrations Task 7: Offline chain, numbering and validate
 
 - [ ] `TestMigrationBranchConflict` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestValidateOffline` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-27] `TestMigrationBranchConflict`: two migrations with the same parent snapshot fail `momo migrate validate`; `TestMigrateRebase` regenerates the later one on top of the other and the result applies with a no-change round trip; fails if two heads are accepted.
+- [ ] [S-27, part] `TestMigrationBranchConflict` passes for the part of S-27 this task delivers; the full criterion is verified in story 096.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

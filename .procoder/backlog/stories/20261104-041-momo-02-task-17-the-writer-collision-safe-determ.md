@@ -12,7 +12,7 @@ Implements plan momo-02-generator Task 17: The Writer: collision-safe, determini
 ## Acceptance criteria
 
 - [ ] `TestGenerateRefusesHandwritten` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-3] `TestGenerateCrossPackage`, `TestGenerateRefusesHandwritten` and `TestGenerateNameCollisions` (golden tests): models outside package main build without cycles, a handwritten file at a target path is never overwritten, reserved words and colliding names get distinct identifiers; fails if any golden fixture stops compiling.
+- [ ] [S-3, part] `TestGenerateRefusesHandwritten` passes for the part of S-3 this task delivers; the full criterion is verified in story 043.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

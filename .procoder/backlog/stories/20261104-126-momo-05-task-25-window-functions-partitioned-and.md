@@ -12,7 +12,7 @@ Implements plan momo-05-writes-queries Task 25: Window functions, partitioned an
 ## Acceptance criteria
 
 - [ ] `TestWindowFunctions` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-33] `TestWindowFunctions` asserts ranks per partition; `TestEagerLoadTopNPerParent` asserts at most N children per parent in one query (query-count hook); fails if the strategy falls back to per-parent queries.
+- [ ] [S-33, part] `TestWindowFunctions` passes for the part of S-33 this task delivers; the full criterion is verified in story 149.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

@@ -12,7 +12,7 @@ Implements plan momo-01-foundation Task 21: Release automation and PR title chec
 ## Acceptance criteria
 
 - [ ] `TestReleaseConfig` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-22] `TestReleaseConfig` parses release-please-config.json and asserts the pre-1.0 minor-bump setting and the changelog path; `TestFormatVersions` asserts that a snapshot, checksum file and history table from format N-1 are read by the current version and that a future format version fails with an error naming the required Momo version; fails if a persisted format lacks its version field.
+- [ ] [S-22, part] `TestReleaseConfig` passes for the part of S-22 this task delivers; the full criterion is verified in story 099.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
