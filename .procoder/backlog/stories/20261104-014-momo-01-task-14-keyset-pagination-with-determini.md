@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-01-foundation
-Sprint: -
+Sprint: 001-foundation-of-the-query-core-dialects-schema-base-types
 
 ## Description
 
