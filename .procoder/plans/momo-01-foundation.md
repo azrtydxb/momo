@@ -909,7 +909,7 @@ Interfaces (produced, exact):
 
 - `package fakedriver`: `type Call struct{ SQL string; Args []any }`; `type Driver struct`; `func New(d dialect.Name) *Driver`; `(*Driver) Dialect() *dialect.Dialect`; `(*Driver) Query(ctx, sql, args) (momo.Rows, error)`; `(*Driver) Exec(ctx, sql, args) (int64, error)`; `(*Driver) Begin(ctx, opts momo.TxOptions) (momo.DriverTx, error)`; fields and methods `Calls() []Call`, `SetRows(rows [][]any)`, `Closed() int` (number of Rows.Close calls, race-safe), `Commits() int`, `Rollbacks() int`.
 - `package momo_test` fixtures: a type `unitDocument` with fields `ID` and `TenantID` of Go type int64, `Title` of type string, `Published` of type bool and `DeletedAt` of type `*time.Time`; a method `MomoMeta` on `*unitDocument` that returns a pointer to a package-level value of type `momo.Meta[unitDocument]`. Package-level typed columns: `DocID`, `DocTenantID`, `DocTitle` and `DocPublished` are built with `momo.NewColumn`, and `DocDeletedAt` is built with `momo.NewNullColumn`; all name the table `documents` and the columns id, tenant_id, title, published and deleted_at. `DocID` carries FlagPK and FlagIdentity; `DocDeletedAt` carries FlagNullable and FlagSoftDelete.
-- Meta: `Table "documents"`, `Columns` in the order id, tenant_id, title, published, deleted_at; `SoftDelete: 4`, `Identity: 0`, `Version: -1`, `CreatedAt: -1`, `UpdatedAt: -1`, `PK: []int{0}`.
+- Meta: `Table "documents"`, `Columns` in the order id, tenant_id, title, published, deleted_at; `SoftDelete: 4`, `Identity: 0`, `Version: -1`, `PK: []int{0}`. (`CreatedAt`/`UpdatedAt` do not exist on the spike's `Meta` yet; Task 10 adds them and sets both to `-1` here.)
 
 - [ ] **Step 1: Write the failing test.** Create `internal/fakedriver/fakedriver_test.go`:
 
@@ -1024,7 +1024,7 @@ Note: the `From` argument is a `TableSource`; `TableRef` satisfies it. The bare-
 - [ ] **Step 2: Run and expect FAIL.** `go test . -run 'TestSoftDeleteFilterWithColumns|TestTableRefSchemaQualified' -count=1` fails with the rendered SQL lacking `WHERE "documents"."deleted_at" IS NULL` (first test) and with `undefined` for `Schema` on `TableRef` (second test).
 
 - [ ] **Step 3: Implement.**
-  - `meta.go`: add the flag constants; rename `Schema *schema.Table` to `TableSchema *schema.Table`; add `Schema string`, `CreatedAt int`, `UpdatedAt int`; add comments that `-1` means absent for Identity, Version, SoftDelete, CreatedAt, UpdatedAt.
+  - `meta.go`: add the flag constants; rename `Schema *schema.Table` to `TableSchema *schema.Table`; add `Schema string`, `CreatedAt int`, `UpdatedAt int` (and in the same change set `CreatedAt: -1, UpdatedAt: -1` on `unitDocument`'s Meta in `unit_fixtures_test.go`, because the zero value would mark column 0 as created-at); add comments that `-1` means absent for Identity, Version, SoftDelete, CreatedAt, UpdatedAt.
   - `TableRef`: add `Schema string`; `appendFrom` writes `b.Ident(t.Schema); b.WriteByte('.')` before the table name when Schema is non-empty; `Qualifier()` is unchanged.
   - `select.go`: delete the `SQLFor` method; in `render`, change the soft-delete condition to `if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted` (remove the `&& s.cols == nil` part) so the filter applies whatever the select list is.
 
