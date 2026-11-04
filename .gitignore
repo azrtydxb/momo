@@ -1,0 +1,9 @@
+/bin/
+*.test
+*.out
+coverage.*
+/vendor/
+.DS_Store
+*.db
+*.db-wal
+*.db-shm

@@ -1,0 +1,4 @@
+- [ ] PR title follows Conventional Commits
+- [ ] Tests added or updated
+- [ ] docs/ updated when behaviour changed
+- [ ] make test-race passes locally

@@ -1,0 +1,31 @@
+name: Bug report
+description: Report something that does not work as documented
+body:
+  - type: input
+    id: version
+    attributes:
+      label: version
+    validations:
+      required: true
+  - type: dropdown
+    id: dialect
+    attributes:
+      label: dialect
+      options:
+        - PostgreSQL
+        - SQLite
+        - MySQL
+        - MariaDB
+        - Other
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: what happened
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: minimal reproduction
+    validations:
+      required: true
