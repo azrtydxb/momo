@@ -1,0 +1,21 @@
+# momo-05 Task 11: Fuzzed raw arguments and typed IN and empty results (S-77, S-8)
+
+Status: open
+Created: 2026-11-04
+Epic: momo-05-writes-queries
+Sprint: -
+
+## Description
+
+Implements plan momo-05-writes-queries Task 11: Fuzzed raw arguments and typed IN and empty results (S-77, S-8) (`.procoder/plans/momo-05-writes-queries.md:879`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-8, S-77. Files: `raw_args_fuzz_test.go`, `empty_result_test.go`, `expr.go`.
+
+## Acceptance criteria
+
+- [ ] `FuzzRawArgs` exists as written in the plan, failed before the implementation, and passes now
+- [ ] `TestEmptyResultNotNotFoundIntegration` exists as written in the plan, failed before the implementation, and passes now
+- [ ] [S-8] `TestErrorClassification` (both dialects): each error kind matches errors.Is and the driver error is reachable with errors.As (*pgconn.PgError, sqlite3.Error); `TestEmptyResultNotNotFound` asserts All on zero rows returns nil error; fails if classification loses the cause.
+- [ ] [S-77] `TestRawArgs` and `FuzzRawArgs` assert named and expanded placeholders bind correctly per dialect and identifiers are quoted; fails if an identifier argument is bound as a value or a value is interpolated.
+- [ ] `procoder check` gate is clean and the task's commit is made
+
+## Evidence
+

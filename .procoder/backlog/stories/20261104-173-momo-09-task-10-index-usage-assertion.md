@@ -1,0 +1,20 @@
+# momo-09 Task 10: Index-usage assertion
+
+Status: open
+Created: 2026-11-04
+Epic: momo-09-observability-testing
+Sprint: -
+
+## Description
+
+Implements plan momo-09-observability-testing Task 10: Index-usage assertion (`.procoder/plans/momo-09-observability-testing.md:1775`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-55. Files: `momotest/index.go`, `momotest/index_internal_test.go`, `momotest/index_test.go`.
+
+## Acceptance criteria
+
+- [ ] `TestPlanUsesIndex` exists as written in the plan, failed before the implementation, and passes now
+- [ ] `TestAssertUsesIndex` exists as written in the plan, failed before the implementation, and passes now
+- [ ] [S-55] `TestAssertUsesIndex` passes for an indexed lookup and fails for a sequential scan; fails if the helper ignores the plan.
+- [ ] `procoder check` gate is clean and the task's commit is made
+
+## Evidence
+
