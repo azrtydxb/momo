@@ -209,6 +209,8 @@ func (o Order) appendSQL(b *Builder) {
 	o.Expr.AppendSQL(b)
 	if o.Desc {
 		b.WriteString(" DESC")
+	} else {
+		b.WriteString(" ASC")
 	}
 	switch o.Nulls {
 	case NullsFirst, NullsLast:
