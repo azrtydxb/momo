@@ -16,14 +16,21 @@ package schema
 import (
 	"cmp"
 	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
 )
+
+// FormatVersion is the version of the schema snapshot JSON format. A newer
+// Momo reads every older format; an older Momo refuses a newer one.
+const FormatVersion = 1
 
 // Schema is a set of database objects managed by Momo for one dialect.
 type Schema struct {
-	Dialect    string      `json:"dialect"`
-	Extensions []Extension `json:"extensions,omitempty"`
-	Enums      []Enum      `json:"enums,omitempty"`
-	Tables     []Table     `json:"tables"`
+	FormatVersion int          `json:"format_version"`
+	Dialect       dialect.Name `json:"dialect"`
+	Extensions    []Extension  `json:"extensions,omitempty"`
+	Enums         []Enum       `json:"enums,omitempty"`
+	Tables        []Table      `json:"tables"`
 }
 
 // Extension is a PostgreSQL extension such as "vector".
