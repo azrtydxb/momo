@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/azrtydxb/momo/vector"
 )
 
 // Sentinel error kinds. Errors returned by Momo wrap one of these (match
@@ -38,6 +40,15 @@ var (
 	ErrUnfilteredMutation = errors.New("momo: refusing UPDATE/DELETE without WHERE; call AllRows to confirm")
 	// ErrTxDone: the transaction was already committed or rolled back.
 	ErrTxDone = errors.New("momo: transaction already finished")
+
+	// ErrValidation: a value failed validation before reaching the database.
+	ErrValidation = errors.New("momo: validation failed")
+	// ErrBusy: the database is busy or locked and could not serve the request.
+	ErrBusy = errors.New("momo: database is busy")
+	// ErrLimitExceeded: a configured limit (rows, size, parameters) was exceeded.
+	ErrLimitExceeded = errors.New("momo: limit exceeded")
+	// ErrInvalidVector: a vector value failed validation.
+	ErrInvalidVector = vector.ErrInvalidVector
 )
 
 // Error is a structured Momo error.
@@ -71,6 +82,14 @@ func (e *Error) Error() string {
 		sb.WriteString(e.Err.Error())
 	}
 	return sb.String()
+}
+
+// Detail returns the underlying error text, or "" when there is none.
+func (e *Error) Detail() string {
+	if e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
 }
 
 // Is reports whether target is this error's kind.
