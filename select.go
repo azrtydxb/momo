@@ -43,6 +43,7 @@ type selectCore struct {
 	groupBy     []Expr
 	having      []Predicate
 	order       []Order
+	keyset      []any
 	limit       int64 // -1: none
 	offset      int64
 	lock        string
@@ -160,6 +161,91 @@ func (t typed[T]) order() Order        { return Order{Expr: t} }
 func (t typedFn[T]) order() Order      { return Order{Expr: t} }
 func (c NullColumn[T]) order() Order   { return Order{Expr: c} }
 func (sq SelectQuery[T]) order() Order { return Order{Expr: sq} }
+
+// After restricts the result to rows strictly after the cursor given by
+// values, one per effective ORDER BY key in order. The effective keys are the
+// OrderBy items followed by the primary key ascending when it is not already
+// an item, which makes the order total. Ascending keys compare with >,
+// descending keys with <. After needs OrderBy, a value count equal to the
+// number of effective keys (ErrValidation otherwise), and non-nullable keys
+// (ErrUnsupported otherwise).
+func (sq SelectQuery[T]) After(values ...any) SelectQuery[T] {
+	sq.s.keyset = append(slices.Clip(sq.s.keyset), values...)
+	return sq
+}
+
+// keysetKey is one effective ORDER BY key of a keyset predicate.
+type keysetKey struct {
+	expr     Expr
+	desc     bool
+	nullable bool
+}
+
+func (sq SelectQuery[T]) keysetKeys() []keysetKey {
+	s := &sq.s
+	keys := make([]keysetKey, 0, len(s.order)+len(sq.meta.PK))
+	for _, o := range s.order {
+		k := keysetKey{expr: o.Expr, desc: o.Desc}
+		if f, ok := o.Expr.(interface{ Flags() uint16 }); ok {
+			k.nullable = f.Flags()&FlagNullable != 0
+		}
+		keys = append(keys, k)
+	}
+	q := sq.qualifier()
+	for _, i := range sq.meta.PK {
+		c := sq.meta.Columns[i]
+		present := false
+		for _, o := range s.order {
+			if r, ok := o.Expr.(ColumnRef); ok && r.ColumnName() == c.Name {
+				present = true
+				break
+			}
+		}
+		if !present {
+			keys = append(keys, keysetKey{expr: qcol{q, c.Name}, nullable: c.Flags&FlagNullable != 0})
+		}
+	}
+	return keys
+}
+
+// keysetPredicate builds the lexicographic expansion of the cursor, or nil
+// after recording an error.
+func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
+	s := &sq.s
+	if len(s.order) == 0 {
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("After requires OrderBy")})
+		return nil
+	}
+	keys := sq.keysetKeys()
+	if len(s.keyset) != len(keys) {
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("After got %d values for %d ORDER BY keys (including the primary key tie-breaker)", len(s.keyset), len(keys))})
+		return nil
+	}
+	for _, k := range keys {
+		if k.nullable {
+			b.SetErr(&Error{Kind: ErrUnsupported, Op: "build", Table: sq.meta.Table, Err: errors.New("After with a nullable ORDER BY key is not supported")})
+			return nil
+		}
+	}
+	disjuncts := make([]Predicate, len(keys))
+	for i := range keys {
+		parts := make([]Predicate, 0, i+1)
+		for j := 0; j < i; j++ {
+			parts = append(parts, binOp{keys[j].expr, " = ", argExpr{s.keyset[j]}})
+		}
+		op := " > "
+		if keys[i].desc {
+			op = " < "
+		}
+		parts = append(parts, binOp{keys[i].expr, op, argExpr{s.keyset[i]}})
+		if len(parts) == 1 {
+			disjuncts[i] = parts[0]
+		} else {
+			disjuncts[i] = junction{" AND ", parts}
+		}
+	}
+	return junction{" OR ", disjuncts}
+}
 
 // Limit sets LIMIT.
 func (sq SelectQuery[T]) Limit(n int64) SelectQuery[T] { sq.s.limit = n; return sq }
@@ -293,6 +379,11 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		}
 	}
 	where := s.where
+	if s.keyset != nil {
+		if p := sq.keysetPredicate(b); p != nil {
+			where = append([]Predicate{p}, where...)
+		}
+	}
 	if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted {
 		where = append(slices.Clip(where), postfix{qcol{sq.qualifier(), sq.meta.Columns[sq.meta.SoftDelete].Name}, " IS NULL"})
 	}
@@ -308,7 +399,20 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		b.WriteString(" HAVING ")
 		appendAnd(b, s.having)
 	}
-	if len(s.order) > 0 {
+	if s.keyset != nil && len(s.order) > 0 {
+		// A keyset query orders by the effective keys, directions explicit.
+		b.WriteString(" ORDER BY ")
+		for i, k := range sq.keysetKeys() {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			if i < len(s.order) {
+				s.order[i].appendSQL(b)
+			} else {
+				Order{Expr: k.expr, Desc: k.desc}.appendSQL(b)
+			}
+		}
+	} else if len(s.order) > 0 {
 		b.WriteString(" ORDER BY ")
 		for i, o := range s.order {
 			if i > 0 {
@@ -469,7 +573,13 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 	defer r.Close()
 	sc := scanner[T]{meta: sq.meta}
 	var m T
-	for r.Next() {
+	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("momo: select cancelled: %w", err)
+		}
+		if !r.Next() {
+			break
+		}
 		m = *new(T)
 		if err := sc.scan(r, &m); err != nil {
 			return err
@@ -496,7 +606,14 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 		}
 		defer r.Close()
 		sc := scanner[T]{meta: sq.meta}
-		for r.Next() {
+		for {
+			if err := ctx.Err(); err != nil {
+				yield(zero, fmt.Errorf("momo: select cancelled: %w", err))
+				return
+			}
+			if !r.Next() {
+				break
+			}
 			var m T
 			if err := sc.scan(r, &m); err != nil {
 				yield(zero, err)
