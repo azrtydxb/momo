@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 )
 
@@ -22,7 +23,10 @@ type UpdateQuery[T any] struct {
 	assigns []Assignment
 	where   []Predicate
 	model   *T
-	allRows bool
+	// modelSet records that Model was called, so Model(nil) is an error and
+	// not an unfiltered statement.
+	modelSet bool
+	allRows  bool
 	// count counts the rows of the target table matching ps, soft-deleted
 	// rows included. It is bound at Update, where the Modeler is known.
 	count func(ctx context.Context, q Querier, ps []Predicate) (int64, error)
@@ -57,7 +61,7 @@ func (u UpdateQuery[T]) Where(ps ...Predicate) UpdateQuery[T] {
 // After a successful versioned update m's version field is advanced. The
 // identity, read-only, create-only, immutable, soft-delete, created-at and
 // updated-at columns are not written from m; use Set for explicit writes.
-func (u UpdateQuery[T]) Model(m *T) UpdateQuery[T] { u.model = m; return u }
+func (u UpdateQuery[T]) Model(m *T) UpdateQuery[T] { u.model, u.modelSet = m, true; return u }
 
 // AllRows confirms that an UPDATE without WHERE is intended.
 func (u UpdateQuery[T]) AllRows() UpdateQuery[T] { u.allRows = true; return u }
@@ -109,7 +113,15 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	}
 	var sets []Assignment
 	where := slices.Clone(u.where)
+	if u.modelSet && u.model == nil {
+		return nil, nil, u.fail(ErrValidation, errors.New("Model(nil)"))
+	}
 	if u.model != nil {
+		if u.versioned() {
+			if err := u.checkVersionKind(); err != nil {
+				return nil, nil, err
+			}
+		}
 		for i, c := range u.meta.Columns {
 			if !updModelWritable(c.Flags) {
 				continue
@@ -127,6 +139,12 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 		}
 	}
 	for _, a := range u.assigns {
+		if role := u.reservedRole(a.col); role != "" {
+			// Tasks 18 (soft delete) and 20 (updated-at) own these columns,
+			// and Model owns the key and version; a plain Set must not
+			// bypass them.
+			return nil, nil, u.fail(ErrValidation, fmt.Errorf("column %q is the %s column and cannot be set directly", a.col, role))
+		}
 		for _, c := range u.meta.Columns {
 			if c.Name == a.col && !columnAssignable(writeUpdate, c.Flags) {
 				return nil, nil, u.fail(ErrValidation, fmt.Errorf("column %q cannot be written by UPDATE", c.Name))
@@ -141,7 +159,7 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	if len(sets) == 0 && !u.versioned() {
 		return nil, nil, u.fail(ErrValidation, errors.New("no columns to update"))
 	}
-	if len(where) == 0 && !u.allRows {
+	if !hasEffectiveFilter(where) && !u.allRows {
 		return nil, nil, u.fail(ErrUnfilteredMutation, nil)
 	}
 	return sets, where, nil
@@ -265,14 +283,50 @@ func (u UpdateQuery[T]) zeroRows(ctx context.Context, q Querier) error {
 	return u.fail(ErrOptimisticLock, nil)
 }
 
+// reservedRole names the role of column name when it is the model's primary
+// key, version, soft-delete, created-at or updated-at column.
+func (u UpdateQuery[T]) reservedRole(name string) string {
+	roles := []struct {
+		role string
+		idx  []int
+	}{
+		{"primary key", u.meta.PK},
+		{"version", []int{u.meta.Version}},
+		{"soft-delete", []int{u.meta.SoftDelete}},
+		{"created-at", []int{u.meta.CreatedAt}},
+		{"updated-at", []int{u.meta.UpdatedAt}},
+	}
+	for _, r := range roles {
+		for _, i := range r.idx {
+			if i >= 0 && i < len(u.meta.Columns) && u.meta.Columns[i].Name == name {
+				return r.role
+			}
+		}
+	}
+	return ""
+}
+
+// checkVersionKind refuses, at build time, a version field that is not an
+// integer, since the in-memory increment after the update needs one.
+func (u UpdateQuery[T]) checkVersionKind() error {
+	v := reflect.ValueOf(u.meta.Ptr(u.model, u.meta.Version))
+	if v.Kind() == reflect.Pointer && !v.IsNil() {
+		switch v.Elem().Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			return nil
+		}
+	}
+	return u.fail(ErrValidation, errors.New("version column must be an integer field"))
+}
+
 // advanceVersion mirrors the database's version increment into the model.
 func (u UpdateQuery[T]) advanceVersion() {
-	switch p := u.meta.Ptr(u.model, u.meta.Version).(type) {
-	case *int64:
-		*p++
-	case *int32:
-		*p++
-	case *int:
-		*p++
+	e := reflect.ValueOf(u.meta.Ptr(u.model, u.meta.Version)).Elem()
+	switch e.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		e.SetInt(e.Int() + 1)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		e.SetUint(e.Uint() + 1)
 	}
 }
