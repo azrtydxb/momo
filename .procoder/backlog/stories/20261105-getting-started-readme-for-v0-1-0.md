@@ -1,6 +1,6 @@
 # Getting-started README for v0.1.0
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-05
 Epic: momo-13-docs-release
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
