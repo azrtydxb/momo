@@ -33,9 +33,10 @@ const (
 
 // WithVectorFormat sets the vector wire format. VectorText converts vector
 // arguments to their text form before pgx sees them, so a pool configured with
-// ConfigureVectors still sends text. COPY always uses binary and so needs
-// ConfigureVectors. Batches sent in a non-Exec mode use binary whenever
-// ConfigureVectors is installed.
+// ConfigureVectors still sends text, for Exec, Query, transactions, pinned
+// sessions and batches alike. COPY always uses binary and so needs
+// ConfigureVectors. With VectorBinary, batches sent in a non-Exec mode use
+// binary whenever ConfigureVectors is installed.
 func WithVectorFormat(f VectorFormat) Option {
 	return func(d *driver) { d.vecFormat = f }
 }
@@ -71,7 +72,9 @@ var vectorTypes = []struct {
 // on every new connection (through pg_extension, independent of search_path);
 // when the extension is not installed its types are skipped and no error is
 // raised: vector values then travel as text and the server reports the missing
-// type.
+// type. The lookup runs once per connection, when it is opened: a connection
+// opened before CREATE EXTENSION vector stays on text until the pool recycles
+// it (MaxConnLifetime, MaxConnIdleTime, or pool.Reset).
 func ConfigureVectors(cfg *pgxpool.Config) {
 	prev := cfg.AfterConnect
 	cfg.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
@@ -130,7 +133,8 @@ WHERE e.extname = $1 AND t.typname = $2`
 }
 
 // convertVectorArgs makes VectorText independent of the pool's codecs: vector
-// values become their text form. Values that fail validation are left as they
+// values, and pointers to them, become their text form (nil pointers become
+// NULL). Values that fail validation are left as they
 // are so the error surfaces from the usual path.
 func convertVectorArgs(f VectorFormat, args []any) []any {
 	if f != VectorText {
@@ -138,17 +142,15 @@ func convertVectorArgs(f VectorFormat, args []any) []any {
 	}
 	var out []any
 	for i, a := range args {
-		var v sqldriver.Valuer
-		switch t := a.(type) {
-		case vector.Vector:
-			v = t
-		case vector.HalfVector:
-			v = t
-		case vector.SparseVector:
-			v = t
-		case vector.Bits:
-			v = t
-		default:
+		v, isNull, ok := vectorValuer(a)
+		if !ok {
+			continue
+		}
+		if isNull {
+			if out == nil {
+				out = append([]any(nil), args...)
+			}
+			out[i] = nil
 			continue
 		}
 		s, err := v.Value()
@@ -164,6 +166,42 @@ func convertVectorArgs(f VectorFormat, args []any) []any {
 		return args
 	}
 	return out
+}
+
+// vectorValuer recognises a vector.* value or a pointer to one. isNull
+// reports a nil pointer, which is sent as NULL.
+func vectorValuer(a any) (v sqldriver.Valuer, isNull, ok bool) {
+	switch t := a.(type) {
+	case vector.Vector:
+		return t, false, true
+	case vector.HalfVector:
+		return t, false, true
+	case vector.SparseVector:
+		return t, false, true
+	case vector.Bits:
+		return t, false, true
+	case *vector.Vector:
+		if t == nil {
+			return nil, true, true
+		}
+		return *t, false, true
+	case *vector.HalfVector:
+		if t == nil {
+			return nil, true, true
+		}
+		return *t, false, true
+	case *vector.SparseVector:
+		if t == nil {
+			return nil, true, true
+		}
+		return *t, false, true
+	case *vector.Bits:
+		if t == nil {
+			return nil, true, true
+		}
+		return *t, false, true
+	}
+	return nil, false, false
 }
 
 // vectorCodec implements pgtype.Codec for one pgvector type, in text and
