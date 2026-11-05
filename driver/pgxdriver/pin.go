@@ -43,21 +43,65 @@ func (d *driver) PoolStats() momo.PoolStats {
 }
 
 // pinned is one connection checked out of the pool. Like a pgx connection it
-// runs one statement at a time; only Release may race with itself.
+// runs one statement at a time.
+//
+// Release contract: Release is safe to call concurrently with statements and
+// never touches the connection while pgx is using it. If a Query, Exec or
+// Begin call is running, or Rows from Query are still open (not yet closed or
+// exhausted), Release returns errInUse and does nothing; the connection stays
+// pinned and Release may be called again once the work has finished. A
+// transaction begun on the connection is not tracked: finish it before
+// Release, or the pool discards the session with it.
 type pinned struct {
 	d    *driver
-	mu   sync.Mutex // guards conn
+	mu   sync.Mutex // guards conn and busy
 	conn *pgxpool.Conn
+	busy int // statements and open Rows currently using conn
 }
 
-// live returns the connection, or errReleased once Release has run.
+// errInUse is returned by Release while a statement or Rows is using the
+// connection.
+var errInUse = errors.New("pgxdriver: pinned connection in use by a running statement or open Rows")
+
+// live marks the connection busy and returns it, or errReleased once Release
+// has run. Every successful live must be paired with one idle.
 func (p *pinned) live() (*pgxpool.Conn, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.conn == nil {
 		return nil, errReleased
 	}
+	p.busy++
 	return p.conn, nil
+}
+
+func (p *pinned) idle() {
+	p.mu.Lock()
+	p.busy--
+	p.mu.Unlock()
+}
+
+// pinnedRows keeps the connection busy until the rows are closed or run out.
+type pinnedRows struct {
+	pgxRows
+	p    *pinned
+	once sync.Once
+}
+
+func (r *pinnedRows) finish() { r.once.Do(r.p.idle) }
+
+func (r *pinnedRows) Next() bool {
+	ok := r.pgxRows.Next()
+	if !ok {
+		r.finish() // pgx closed the rows
+	}
+	return ok
+}
+
+func (r *pinnedRows) Close() error {
+	err := r.pgxRows.Close()
+	r.finish()
+	return err
 }
 
 func (p *pinned) Query(ctx context.Context, sql string, args []any) (momo.Rows, error) {
@@ -67,9 +111,10 @@ func (p *pinned) Query(ctx context.Context, sql string, args []any) (momo.Rows, 
 	}
 	rows, err := c.Query(ctx, sql, p.d.withMode(args)...)
 	if err != nil {
+		p.idle()
 		return nil, ClassifyError(err)
 	}
-	return pgxRows{rows}, nil
+	return &pinnedRows{pgxRows: pgxRows{rows}, p: p}, nil
 }
 
 func (p *pinned) Exec(ctx context.Context, sql string, args []any) (int64, error) {
@@ -77,6 +122,7 @@ func (p *pinned) Exec(ctx context.Context, sql string, args []any) (int64, error
 	if err != nil {
 		return 0, err
 	}
+	defer p.idle()
 	tag, err := c.Exec(ctx, sql, p.d.withMode(args)...)
 	if err != nil {
 		return 0, ClassifyError(err)
@@ -92,6 +138,7 @@ func (p *pinned) Begin(ctx context.Context, opts momo.TxOptions) (momo.DriverTx,
 	if err != nil {
 		return nil, err
 	}
+	defer p.idle()
 	to, err := txOptions(opts)
 	if err != nil {
 		return nil, err
@@ -103,18 +150,25 @@ func (p *pinned) Begin(ctx context.Context, opts momo.TxOptions) (momo.DriverTx,
 	return &pgxTx{tx: tx, d: p.d}, nil
 }
 
-// Release returns the connection to the pool exactly once. Later calls do
-// nothing and return nil, so a deferred Release after an explicit one is safe;
-// they never touch a connection the pool has handed to someone else. A
-// transaction left open on the connection is discarded by the pool together
-// with the session.
+// Release returns the connection to the pool exactly once. Later calls after
+// a successful Release do nothing and return nil, so a deferred Release after
+// an explicit one is safe; they never touch a connection the pool has handed
+// to someone else. While a statement or Rows is in flight it returns errInUse
+// and leaves the connection pinned (see pinned). A transaction left open on
+// the connection is discarded by the pool together with the session.
 func (p *pinned) Release() error {
 	p.mu.Lock()
+	if p.conn == nil {
+		p.mu.Unlock()
+		return nil
+	}
+	if p.busy > 0 {
+		p.mu.Unlock()
+		return errInUse
+	}
 	c := p.conn
 	p.conn = nil
 	p.mu.Unlock()
-	if c != nil {
-		c.Release()
-	}
+	c.Release()
 	return nil
 }

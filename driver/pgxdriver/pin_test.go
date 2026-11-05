@@ -326,3 +326,69 @@ func TestPoolStatsReflectPool(t *testing.T) {
 		t.Errorf("EmptyAcquireWaitNS = %d, pool reports %d", st.EmptyAcquireWaitNS, want)
 	}
 }
+
+// Release racing with a running Query or Exec must never touch the connection
+// while pgx is using it. Before the fix live() dropped its lock before the
+// statement ran, so Release called pgxpool.Conn.Release mid-statement. One
+// worker runs statements one at a time, as a pinned connection requires, while
+// the test goroutine calls Release concurrently. Run under -race.
+func TestPinnedReleaseConcurrentWithStatements(t *testing.T) {
+	pool := openPool(t)
+	d := New(pool)
+	ctx := context.Background()
+	for range 20 {
+		p, err := d.(momo.Pinner).Pin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			for range 4 {
+				rows, err := p.Query(ctx, "SELECT pg_sleep(0.005), 1", nil)
+				if err != nil {
+					return // released first
+				}
+				for rows.Next() {
+				}
+				_ = rows.Close()
+				if _, err := p.Exec(ctx, "SELECT pg_sleep(0.005)", nil); err != nil {
+					return
+				}
+			}
+		}()
+		time.Sleep(3 * time.Millisecond) // land inside a statement
+		for {
+			err := p.Release()
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, errInUse) {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		<-done
+	}
+}
+
+// Release fails while Rows are open and succeeds once they are closed.
+func TestPinnedReleaseWhileRowsOpen(t *testing.T) {
+	pool := openPool(t)
+	ctx := context.Background()
+	p, err := New(pool).(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := p.Query(ctx, "SELECT 1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Release(); !errors.Is(err, errInUse) {
+		t.Fatalf("Release with open Rows = %v, want errInUse", err)
+	}
+	_ = rows.Close()
+	if err := p.Release(); err != nil {
+		t.Fatal(err)
+	}
+}
