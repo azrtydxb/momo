@@ -11,8 +11,13 @@ Implements plan momo-03-drivers Task 14: ServerVersion for MERGE gating (`.proco
 
 ## Acceptance criteria
 
-- [ ] `TestServerVersion` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestServerVersion` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Red first: `version_test.go` was written before `version.go`. Run: `go test ./driver/pgxdriver -run TestServerVersion` failed with the panic `interface conversion: *pgxdriver.driver is not momo.ServerVersioner: missing method ServerVersion`.
+- Green: after adding `version.go`, `go test -race -count=1 ./driver/pgxdriver -run TestServerVersion -v` passed `TestServerVersion`, `TestServerVersionSQLDB` and `TestServerVersionSQLDBRejectedArgument` against the running pgvector pg17 container (server_version_num is at least 150000).
+- `ServerVersion` is implemented on the native pgxpool driver (default exec mode, so PgBouncer-safe) and on the `FromSQLDB` adapter, which returns the rejection error for a nil or non-pgx `*sql.DB`. Both carry compile-time `momo.ServerVersioner` assertions.
+- Full run: `go test -tags integration -race -count=1 ./driver/... .` with the integration env passed; `go vet ./...`, `go vet -tags integration ./...` and `gofmt -l .` are clean.
+- `procoder check`: 0 blocking findings (info only: pre-existing CI hints, doc-mention notices and a gocyclo note on the test-only wire parser).
