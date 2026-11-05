@@ -27,6 +27,8 @@ type UpdateQuery[T any] struct {
 	// not an unfiltered statement.
 	modelSet bool
 	allRows  bool
+	// returning is the RETURNING list, read with Rows.
+	returning returningSet
 	// count counts the rows of the target table matching ps, soft-deleted
 	// rows included. It is bound at Update, where the Modeler is known.
 	count func(ctx context.Context, q Querier, ps []Predicate) (int64, error)
@@ -65,6 +67,18 @@ func (u UpdateQuery[T]) Model(m *T) UpdateQuery[T] { u.model, u.modelSet = m, tr
 
 // AllRows confirms that an UPDATE without WHERE is intended.
 func (u UpdateQuery[T]) AllRows() UpdateQuery[T] { u.allRows = true; return u }
+
+// Returning appends a RETURNING list; read the rows with Rows.
+func (u UpdateQuery[T]) Returning(cols ...ColumnRef) UpdateQuery[T] {
+	u.returning = u.returning.with(cols...)
+	return u
+}
+
+// ReturningAll returns every column mapped by T, in metadata order.
+func (u UpdateQuery[T]) ReturningAll() UpdateQuery[T] {
+	u.returning = u.returning.withAll()
+	return u
+}
 
 func (u UpdateQuery[T]) fail(kind error, err error) error {
 	return &Error{Kind: kind, Op: "update", Table: u.meta.Table, Err: err}
@@ -204,6 +218,9 @@ func (u UpdateQuery[T]) SQL() (Compiled, error) {
 				appendAnd(b, where)
 			}
 		})
+		renderReturning(b, u.meta, u.returning, func(col string) error {
+			return u.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, u.meta.Table))
+		})
 	})
 }
 
@@ -265,6 +282,24 @@ func (u UpdateQuery[T]) Exec(ctx context.Context) (Result, error) {
 	}
 	u.advanceVersion()
 	return res, nil
+}
+
+// Rows runs the UPDATE and returns its RETURNING rows. It fails with
+// ErrValidation when no Returning list was set, and for a version-checked
+// Model update, whose stale-row classification needs the affected-row count
+// (use Exec for that).
+func (u UpdateQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
+	if !u.returning.active() {
+		return nil, u.fail(ErrValidation, errors.New("Rows needs a Returning list"))
+	}
+	if u.versioned() {
+		return nil, u.fail(ErrValidation, errors.New("Rows is not supported with a version-checked Model update; use Exec"))
+	}
+	c, err := u.SQL()
+	if err != nil {
+		return nil, err
+	}
+	return runReturning(ctx, u.q, "update", u.meta, u.returning, c)
 }
 
 // zeroRows classifies a versioned update that affected no row.

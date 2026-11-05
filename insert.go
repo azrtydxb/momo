@@ -28,7 +28,7 @@ type insertCore struct {
 	assigns   []Assignment
 	hasValues bool
 	omit      []string
-	returning []ColumnRef
+	returning returningSet
 	target    []string
 	conflict  conflictKind
 	set       []Assignment
@@ -109,7 +109,13 @@ func (q InsertQuery[T]) Omit(cols ...ColumnRef) InsertQuery[T] {
 
 // Returning appends a RETURNING list; read the rows with Rows.
 func (q InsertQuery[T]) Returning(cols ...ColumnRef) InsertQuery[T] {
-	q.i.returning = append(slices.Clip(q.i.returning), cols...)
+	q.i.returning = q.i.returning.with(cols...)
+	return q
+}
+
+// ReturningAll returns every column mapped by T, in metadata order.
+func (q InsertQuery[T]) ReturningAll() InsertQuery[T] {
+	q.i.returning = q.i.returning.withAll()
 	return q
 }
 
@@ -288,19 +294,9 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 		b.writeByte(')')
 	}
 	q.renderConflict(b)
-	if len(q.i.returning) > 0 {
-		if !d.Returning {
-			b.unsupported("RETURNING")
-			return
-		}
-		for _, c := range q.i.returning {
-			if q.column(c.ColumnName()) < 0 {
-				b.SetErr(q.verr(c.ColumnName(), "Returning: column %q is not mapped by %s", c.ColumnName(), q.meta.Table))
-				return
-			}
-		}
-		appendReturning(b, q.i.returning)
-	}
+	renderReturning(b, q.meta, q.i.returning, func(col string) error {
+		return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
+	})
 }
 
 // appendValue renders one assigned value inside VALUES or SET.
@@ -393,20 +389,12 @@ func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
 // Rows runs the statement and returns its RETURNING rows. It fails with
 // ErrValidation when no RETURNING list was set.
 func (q InsertQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
-	if len(q.i.returning) == 0 {
+	if !q.i.returning.active() {
 		return nil, q.verr("", "Rows needs a Returning list")
 	}
 	c, err := q.SQL()
 	if err != nil {
 		return nil, err
 	}
-	idx := make([]int, len(q.i.returning))
-	for i, rc := range q.i.returning {
-		idx[i] = q.column(rc.ColumnName()) // validated by SQL()
-	}
-	r, err := q.q.conn().query(ctx, "insert", q.meta.Table, "", c)
-	if err != nil {
-		return nil, err
-	}
-	return &ModelRows[T]{rows: r, meta: q.meta, idx: idx}, nil
+	return runReturning(ctx, q.q, "insert", q.meta, q.i.returning, c)
 }
