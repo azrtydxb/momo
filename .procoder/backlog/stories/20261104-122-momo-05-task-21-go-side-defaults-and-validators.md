@@ -1,6 +1,6 @@
 # momo-05 Task 21: Go-side defaults and validators before SQL (S-72)
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -13,7 +13,7 @@ Implements plan momo-05-writes-queries Task 21: Go-side defaults and validators 
 
 - [x] `TestDefaultsAndValidators` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-72] `TestDefaultsAndValidators` asserts defaults apply only to omitted fields, validators reject invalid values with a structured validation error before any SQL runs (statement-count hook = 0); fails if validation runs after execution.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
