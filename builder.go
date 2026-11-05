@@ -38,7 +38,19 @@ type qscope struct {
 	refs  map[string]struct{}
 }
 
-// pushScope opens a scope for a SELECT whose sources expose names.
+// withScope renders fn inside a scope whose sources expose names. Every
+// statement builder (SELECT, and UPDATE, DELETE and MERGE with their target
+// table) must render through it, so a column qualified by a table that is
+// not among the sources fails the build with ErrValidation. A qualifier the
+// scope does not provide is passed to the enclosing scope, which is what lets
+// a correlated subquery reference its outer statement's target table.
+func (b *Builder) withScope(names []string, fn func()) {
+	b.pushScope(names)
+	defer b.popScope()
+	fn()
+}
+
+// pushScope opens a scope for a statement whose sources expose names.
 func (b *Builder) pushScope(names []string) {
 	sc := &qscope{names: make(map[string]struct{}, len(names)), refs: map[string]struct{}{}}
 	for _, n := range names {

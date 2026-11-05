@@ -17,6 +17,7 @@ Implements plan momo-05-writes-queries Task 4: Joins, aliases and self-joins (`.
 ## Evidence
 
 - Failing first: `go test -tags integration -run Join .` failed to build with `suite.DocTitle.As("l").AsExpr undefined`; with only AsExpr added, TestJoinColumnFromMissingTableErrors and TestCorrelatedSubqueryReferenceAllowed failed (`err = <nil>, want ErrValidation`).
-- Now: TestJoinsAliasesSelfJoin passes on postgres and sqlite; the full root package passes with -tags integration -race against PostgreSQL. `go build`, `go vet`, `go test -race ./...` and `make staticcheck` are clean.
+- Now: TestJoinsAliasesSelfJoin passes on postgres (SQLite is covered by SQL rendering through fakedriver, not execution); the full root package passes with -tags integration -race against PostgreSQL. `go build`, `go vet`, `go test -race ./...` and `make staticcheck` are clean.
 - Mutation check: making the select scope expose the bare table name instead of the alias fails TestSelfJoinSQLQualifiesEachSide and TestCorrelatedSubqueryReferenceAllowed.
 - Build-time source check: Builder.pushScope/popScope in builder.go and SelectQuery.render in select.go reject a column qualified by a table that is not a FROM or JOIN source (ErrValidation); a correlated reference to an enclosing SELECT is allowed.
+- Review fixes: statement builders render through `Builder.withScope` (documented on the builder); TestMutationScopeAllowsCorrelatedSubquery simulates a mutation target scope.

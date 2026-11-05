@@ -9,6 +9,8 @@ Sprint: -
 
 Implements plan momo-05-writes-queries Task 18: Soft delete variants (S-75) and the soft-delete read filter (S-5) (`.procoder/plans/momo-05-writes-queries.md:1480`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-5, S-75. Files: `softdelete.go`, `softdelete_test.go`. Contributes to S-5; those criteria are verified in the stories that define their named tests.
 
+Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
+
 ## Acceptance criteria
 
 - [ ] `TestSoftDelete` exists as written in the plan, failed before the implementation, and passes now

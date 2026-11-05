@@ -339,8 +339,14 @@ func (sq SelectQuery[T]) render(b *Builder) {
 			names = append(names, q.Qualifier())
 		}
 	}
-	b.pushScope(names)
-	defer b.popScope()
+	// FromSubquery and CTE bodies render inside this scope, so they can see
+	// the sibling FROM names. That is more lenient than SQL, which allows it
+	// only with LATERAL, but it is safe: it never hides a wrong table.
+	b.withScope(names, func() { sq.renderBody(b) })
+}
+
+func (sq SelectQuery[T]) renderBody(b *Builder) {
+	s := &sq.s
 	if len(s.with) > 0 {
 		b.WriteString("WITH ")
 		for _, c := range s.with {
