@@ -26,6 +26,8 @@ var postgresTypes = map[string]string{
 	"double precision": "double precision",
 	"float4":           "real",
 	"real":             "real",
+	"decimal":          "numeric",
+	"char":             "character",
 }
 
 // NormalizeType returns the canonical spelling of a SQL type so that the
@@ -33,6 +35,9 @@ var postgresTypes = map[string]string{
 // idempotent.
 func NormalizeType(d dialect.Name, t string) string {
 	s := strings.Join(strings.Fields(strings.ToLower(t)), " ")
+	if elem, ok := strings.CutSuffix(s, "[]"); ok && d == dialect.Postgres {
+		return NormalizeType(d, elem) + "[]"
+	}
 	base, args, rest := s, "", ""
 	if i := strings.IndexByte(s, '('); i >= 0 {
 		base = strings.TrimSpace(s[:i])
@@ -107,7 +112,6 @@ func postgresTime(base, args, rest string) (string, bool) {
 // redundant enclosing parentheses are removed. Quoted text is kept verbatim.
 // It is idempotent.
 func NormalizeExpr(d dialect.Name, e string) string {
-	_ = d
 	var sb strings.Builder
 	var quote rune
 	space := false
@@ -135,10 +139,63 @@ func NormalizeExpr(d dialect.Name, e string) string {
 		sb.WriteRune(unicode.ToLower(r))
 	}
 	s := strings.TrimSpace(sb.String())
-	for len(s) >= 2 && s[0] == '(' && enclosedByOnePair(s) {
-		s = strings.TrimSpace(s[1 : len(s)-1])
+	for {
+		prev := s
+		for len(s) >= 2 && s[0] == '(' && enclosedByOnePair(s) {
+			s = strings.TrimSpace(s[1 : len(s)-1])
+		}
+		if d == dialect.Postgres {
+			s = postgresRewrite(s)
+		}
+		if s == prev {
+			return s
+		}
+	}
+}
+
+// postgresRewrite undoes spellings PostgreSQL substitutes for what was
+// declared: the ::character varying cast it appends to string literal
+// defaults, the legacy 'now'::text default and CURRENT_TIMESTAMP, both
+// reported as now(). Other casts are kept: dropping them is not always
+// meaning-preserving.
+func postgresRewrite(s string) string {
+	switch s {
+	case "current_timestamp", "'now'::text":
+		return "now()"
+	}
+	const cast = "::character varying"
+	if lit, ok := strings.CutSuffix(s, cast); ok && len(lit) >= 2 && lit[0] == '\'' && lit[len(lit)-1] == '\'' && singleLiteral(lit) {
+		return lit
 	}
 	return s
+}
+
+// singleLiteral reports whether s is exactly one single-quoted literal
+// (” escapes a quote inside it).
+func singleLiteral(s string) bool {
+	in := false
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\'' {
+			if !in {
+				return false
+			}
+			continue
+		}
+		if !in {
+			if i != 0 {
+				return false
+			}
+			in = true
+		} else if i+1 < len(s) && s[i+1] == '\'' {
+			i++
+		} else {
+			in = false
+			if i != len(s)-1 {
+				return false
+			}
+		}
+	}
+	return !in
 }
 
 // enclosedByOnePair reports whether the opening parenthesis at s[0] closes
@@ -185,6 +242,27 @@ func Equal(a, b *Schema) bool {
 }
 
 func canonical(s *Schema) ([]byte, error) {
+	c, err := normalizedCopy(s)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(c)
+}
+
+// Normalized returns a deep copy of s with every type and expression
+// rewritten to its canonical spelling, the Concurrently migration option
+// cleared and the collections sorted. It is idempotent and does not modify s.
+// A schema that cannot be JSON-encoded yields an empty schema; Equal reports
+// such schemas as unequal.
+func Normalized(s *Schema) *Schema {
+	c, err := normalizedCopy(s)
+	if err != nil {
+		return &Schema{}
+	}
+	return c
+}
+
+func normalizedCopy(s *Schema) (*Schema, error) {
 	raw, err := json.Marshal(s)
 	if err != nil {
 		return nil, err
@@ -234,5 +312,5 @@ func canonical(s *Schema) ([]byte, error) {
 		c.Policies[i].Check = NormalizeExpr(d, c.Policies[i].Check)
 	}
 	c.Sort()
-	return json.Marshal(&c)
+	return &c, nil
 }
