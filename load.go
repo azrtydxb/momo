@@ -4,8 +4,10 @@ package momo
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -297,12 +299,33 @@ func scanChild[P, C any](r *Relation[P, C], rows Rows, c *C) error {
 }
 
 // hasNilPart reports whether any key component is NULL. A composite key with a
-// NULL component never matches a row, so it is treated as no key.
+// NULL component never matches a row, so it is treated as no key. NULL follows
+// keyString: an untyped nil, a nil pointer, or a driver.Valuer whose Value is
+// nil (sql.NullInt64{} and friends).
 func hasNilPart(vals []any) bool {
 	for _, v := range vals {
-		if v == nil {
+		if isNullKeyPart(v) {
 			return true
 		}
+	}
+	return false
+}
+
+// isNullKeyPart reports whether v is a NULL key component in keyString's sense.
+func isNullKeyPart(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case driver.Valuer:
+		if rv := reflect.ValueOf(x); rv.Kind() == reflect.Pointer && rv.IsNil() {
+			return true
+		}
+		vv, err := x.Value()
+		return err == nil && vv == nil
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Pointer {
+		return rv.IsNil() || isNullKeyPart(rv.Elem().Interface())
 	}
 	return false
 }

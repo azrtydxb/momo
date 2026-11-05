@@ -68,6 +68,10 @@ func writeKeyPart(sb *strings.Builder, v any) {
 		sb.WriteString(x.UTC().Format(time.RFC3339Nano))
 		return
 	case driver.Valuer:
+		if rv := reflect.ValueOf(x); rv.Kind() == reflect.Pointer && rv.IsNil() {
+			sb.WriteString("n:") // a nil pointer to a value-receiver Valuer would panic in Value
+			return
+		}
 		vv, err := x.Value()
 		if err != nil {
 			sb.WriteString("e:")
