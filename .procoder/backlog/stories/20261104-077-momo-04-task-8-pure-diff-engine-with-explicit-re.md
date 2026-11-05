@@ -11,14 +11,20 @@ Implements plan momo-04-migrations Task 8: Pure diff engine with explicit rename
 
 ## Acceptance criteria
 
-- [ ] `TestNoRenameGuessing` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestDestructiveRequiresFlag` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestStagedChangeDiff` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestFKActions` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestDiffNoChangeEmpty` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestNoRenameGuessing` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestDestructiveRequiresFlag` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestStagedChangeDiff` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestFKActions` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestDiffNoChangeEmpty` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-74] `TestFKActions` asserts each action's effect on every dialect and that the no-constraint option produces no FK in inspection; fails if actions are lost in a round trip.
-- [ ] `procoder check` gate is clean and the task's commit is made
-- [ ] `Column.Collate` and `Column.Comment` are diffed: a change to either yields a column change (momo-02 Task 10 builds them from `collate` and `comment` tags and MomoConfig), with a round-trip test
+- [x] `procoder check` gate is clean and the task's commit is made
+- [x] `Column.Collate` and `Column.Comment` are diffed: a change to either yields a column change (momo-02 Task 10 builds them from `collate` and `comment` tags and MomoConfig), with a round-trip test
 
 ## Evidence
 
+- Tests (plan's literal five plus explicit renames, destructive type change/drop table, normalized types, staged NULL to NOT NULL, collate/comment round trip, FK action change, create/function/view changes): FAIL before (`undefined: Diff`), PASS after.
+- Mutation: removing the OnUpdate comparison in the FK equality made TestFKActions fail (no drop_fk/add_fk); reverted.
+- go build, go vet, make staticcheck, go test -race ./... pass; procoder check: 0 blocking findings.
+- Commit: feat(migrate): pure diff with explicit renames, destructive and staged gating (migrate/diff.go, migrate/diff_test.go, ChangeKind constants in migrate/types.go).
+- Not done here: the S-74 criterion (FK actions on every dialect, no-constraint option absent from inspection) needs the PostgreSQL/SQLite inspect and render tasks; only the diff part is covered. Left unchecked.
+- Deviation: an added NOT NULL column that is a rename candidate (same table and type as a dropped column) does not raise ErrStagedRequired, because the plan's TestNoRenameGuessing expects no error there; the rename hint is always emitted.
