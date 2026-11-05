@@ -254,17 +254,27 @@ func SoftDelete(t *testing.T, db *momo.DB, caps Caps) {
 func SoftDeleteVariants(t *testing.T, db *momo.DB, caps Caps) {
 	CreateDocuments(t, db, caps)
 	id := "integer primary key"
-	if caps.Dialect == dialect.Postgres {
+	switch caps.Dialect {
+	case dialect.Postgres:
 		id = "bigint generated always as identity primary key"
+	case dialect.MySQL:
+		id = "bigint auto_increment primary key"
 	}
 	execAll(t, db,
 		"DROP TABLE IF EXISTS docs_unix",
 		"DROP TABLE IF EXISTS docs_bool",
 		"CREATE TABLE docs_unix (id "+id+", tenant_id integer not null, title text not null, deleted_unix bigint null)",
-		"CREATE TABLE docs_bool (id "+id+", tenant_id integer not null, title text not null, deleted boolean not null default false)",
-		"CREATE UNIQUE INDEX docs_unix_title ON docs_unix (tenant_id, title) WHERE deleted_unix IS NULL",
-		"CREATE UNIQUE INDEX docs_bool_title ON docs_bool (tenant_id, title) WHERE deleted = FALSE",
-		"CREATE UNIQUE INDEX documents_title_live ON documents (tenant_id, title) WHERE deleted_at IS NULL",
+		"CREATE TABLE docs_bool (id "+id+", tenant_id integer not null, title text not null, deleted boolean not null default false)")
+	if caps.PartialIndexes {
+		// The partial unique indexes make the re-create step prove the key is
+		// free again once the old row is soft-deleted. Without partial
+		// indexes the step still runs, with nothing to conflict on.
+		execAll(t, db,
+			"CREATE UNIQUE INDEX docs_unix_title ON docs_unix (tenant_id, title) WHERE deleted_unix IS NULL",
+			"CREATE UNIQUE INDEX docs_bool_title ON docs_bool (tenant_id, title) WHERE deleted = FALSE",
+			"CREATE UNIQUE INDEX documents_title_live ON documents (tenant_id, title) WHERE deleted_at IS NULL")
+	}
+	execAll(t, db,
 		"INSERT INTO documents (tenant_id, title) VALUES (5, 'u')",
 		"INSERT INTO docs_unix (tenant_id, title) VALUES (5, 'u')",
 		"INSERT INTO docs_bool (tenant_id, title) VALUES (5, 'u')")
@@ -324,6 +334,27 @@ func UpsertUpdatesAllColumns(t *testing.T, db *momo.DB, caps Caps) {
 	}
 	if n, err := momo.Select[Document](db).Count(ctx); err != nil || n != 1 {
 		t.Fatalf("rows = %d, %v; want 1", n, err)
+	}
+
+	// An upsert under a later clock advances updated_at and leaves created_at.
+	first := time.Date(2031, 1, 2, 3, 4, 5, 0, time.UTC)
+	later := first.Add(2 * time.Hour)
+	tdb1 := momo.New(db.Driver(), momo.WithClock(func() time.Time { return first }))
+	tdb2 := momo.New(db.Driver(), momo.WithClock(func() time.Time { return later }))
+	ts := Document{ID: 78, TenantID: 1, Title: "ts-first"}
+	if _, err := momo.Upsert[Document](tdb1).Model(&ts).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ts.Title = "ts-second"
+	if _, err := momo.Upsert[Document](tdb2).Model(&ts).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	tg, err := momo.Select[Document](db).Where(DocID.Eq(78)).One(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tg.UpdatedAt.Equal(later) || !tg.CreatedAt.Equal(first) || tg.Title != "ts-second" {
+		t.Fatalf("upsert timestamps = created %v updated %v title %q, want created %v updated %v", tg.CreatedAt, tg.UpdatedAt, tg.Title, first, later)
 	}
 }
 

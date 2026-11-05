@@ -19,6 +19,7 @@ type Caps struct {
 	DefaultInUpdate     bool // UPDATE ... SET col = DEFAULT
 	DefaultInValues     bool // INSERT ... VALUES (DEFAULT)
 	Merge               bool
+	PartialIndexes      bool // CREATE UNIQUE INDEX ... WHERE
 	WindowFunctions     bool
 	JSON                bool // JSONB operators
 	Arrays              bool // array operators
@@ -45,6 +46,7 @@ func CapabilitiesOf(d *dialect.Dialect) Caps {
 		DefaultInUpdate:     d.DefaultInUpdate,
 		DefaultInValues:     d.DefaultInValues,
 		Merge:               d.Merge,
+		PartialIndexes:      d.Name != dialect.MySQL,
 		WindowFunctions:     d.WindowFunctions,
 		JSON:                d.Name == dialect.Postgres,
 		Arrays:              d.Name == dialect.Postgres,

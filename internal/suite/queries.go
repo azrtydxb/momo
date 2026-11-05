@@ -151,6 +151,9 @@ func SubqueriesCTEsRecursive(t *testing.T, db *momo.DB, caps Caps) {
 // dialect with caps.Returning false is momo-08's to add; PostgreSQL and SQLite
 // both support it.
 func ReturningRendersAndScans(t *testing.T, db *momo.DB, caps Caps) {
+	if !caps.Returning {
+		t.Skip("dialect has no RETURNING")
+	}
 	CreateDocuments(t, db, caps)
 	ctx := context.Background()
 	q := momo.Insert[Document](db).
