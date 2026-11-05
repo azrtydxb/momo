@@ -1,6 +1,6 @@
 # momo-06 Task 6: Has-many loading, stable order, parent pagination and NULL-key emptiness
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-06-relations
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
