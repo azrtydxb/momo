@@ -87,6 +87,9 @@ func buildIndex(ctx context.Context, c momo.PinnedConn, x rawIndex) (schema.Inde
 		k, v, _ := strings.Cut(kv, "=")
 		ix.With = append(ix.With, schema.KV{Key: k, Value: v})
 	}
+	// Known gaps: INCLUDE columns (indnkeyatts excludes them, so they are not
+	// read) and NULLS NOT DISTINCT on unique indexes are not inspected, so
+	// the schema model cannot declare them yet.
 	opts := strings.Fields(x.options)
 	err := forEach(ctx, c, qIndexKeys, []any{x.oid}, func(r momo.Rows) error {
 		var (

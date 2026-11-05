@@ -2256,6 +2256,8 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error)
 // Unmanaged: in live DB, not in snapshot, not matching Config.Exclude globs. Never proposed for drop.
 ```
 
+Hard dependency (Task 11): drift must call `postgres.Dialect.InspectWithInvalid`, not plain `Inspect`, and report every returned invalid index name as Changed with Detail "invalid index (failed CONCURRENTLY build)". A plain Inspect hides a failed CONCURRENTLY build.
+
 Object identity for drift: `Kind` (table, column, index, fk, unique, check, view, function, trigger, policy, enum, extension, schema) plus qualified name `schema.table.name`.
 
 Steps:

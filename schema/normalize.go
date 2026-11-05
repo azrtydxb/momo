@@ -322,26 +322,12 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 		for j := range t.Checks {
 			t.Checks[j].Expr = NormalizeExpr(d, t.Checks[j].Expr)
 		}
-		for j := range t.Indexes {
-			ix := &t.Indexes[j]
-			ix.Concurrently = false
-			ix.Where = NormalizeExpr(d, ix.Where)
-			for k := range ix.Parts {
-				ix.Parts[k].Expr = NormalizeExpr(d, ix.Parts[k].Expr)
-			}
-		}
+		normalizeIndexes(d, t.Columns, t.Indexes)
 	}
 	for i := range c.Views {
 		v := &c.Views[i]
 		v.Query = NormalizeExpr(d, v.Query)
-		for j := range v.Indexes {
-			ix := &v.Indexes[j]
-			ix.Concurrently = false
-			ix.Where = NormalizeExpr(d, ix.Where)
-			for k := range ix.Parts {
-				ix.Parts[k].Expr = NormalizeExpr(d, ix.Parts[k].Expr)
-			}
-		}
+		normalizeIndexes(d, nil, v.Indexes)
 	}
 	for i := range c.Functions {
 		c.Functions[i].Body = NormalizeExpr(d, c.Functions[i].Body)
