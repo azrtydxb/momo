@@ -44,6 +44,11 @@ type pending struct {
 // Output is byte-deterministic: emitters iterate slices only and the
 // grouping below sorts every key, so map iteration order never reaches a file.
 func Emit(g *Graph, w *Writer) error {
+	for _, p := range g.Plugins {
+		if err := validatePlugin(p); err != nil {
+			return err
+		}
+	}
 	byPkg := map[string][]*Model{}
 	var keys []string
 	for _, m := range g.Models {
