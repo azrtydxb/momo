@@ -720,6 +720,8 @@ Rules (enforced by ValidateVectorIndex; each is a row in TestVectorIndexRules):
 - `ivfflat` on `bit(N)`: opclass `bit_hamming_ops` only (bit_jaccard_ops on IVFFlat is not documented by pgvector).
 - Index Parts must be exactly one column part (expression parts are rejected for vector indexes).
 - Index `With` keys other than `m`, `ef_construction`, `lists` are rejected.
+- Unsized `vector`, `halfvec` and `sparsevec` columns are rejected (the server requires dimensions); unsized `bit` is valid. `ef_construction` defaults to 64, so `m` above 32 needs an explicit `ef_construction` of at least `2*m`. `ivfflat` without `lists` is rejected by plan choice although the server defaults it to 100.
+- `gen/schema.go` `addIndex` calls `ValidateVectorIndex` for hnsw and ivfflat indexes on PostgreSQL and reports its error as a positioned diagnostic.
 
 - [ ] Step 1. Write `schema/vector_test.go` with a table of cases named by intent:
 
