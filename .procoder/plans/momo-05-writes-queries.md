@@ -726,7 +726,7 @@ type ReturningList struct{ cols []ColumnRef }
 func Returning(cols ...ColumnRef) ReturningList
 ```
 
-`InsertQuery[T].ReturningAll()` etc. are defined in Task 12; this task defines `ReturningList` and `appendReturning(b *Builder, cols []ColumnRef)` (renders `RETURNING "c1", "c2"` unqualified).
+`ReturningAll()` on the Insert and Update builders, and the shared `returningSet`, `renderReturning` (dialect gate, column validation, clause) and `runReturning` helpers the Delete builder (Task 17) calls, are defined in this task (Task 12 only added `Returning(cols...)` and `Rows`); this task defines `ReturningList` and `appendReturningNames(b *Builder, names []string)` (renders `RETURNING "c1", "c2"` unqualified).
 
 - [ ] **Step 1: Write the failing test** `returning_test.go`:
 
@@ -772,7 +772,7 @@ func TestReturningRendersAndScans(t *testing.T) {
 
 - [ ] **Step 2: Run and expect FAIL.** `go test -run TestReturningRendersAndScans .` → `undefined: momo.Insert`.
 
-- [ ] **Step 3: Implement** `returning.go`: `Returning(cols ...ColumnRef) ReturningList`, `appendReturning`, and `ModelRows[T]` wrapping `Rows` with `ScanModel` using `Meta.Ptr`. Insert, Update and Delete builders (Tasks 15, 18, 19) call `appendReturning`.
+- [ ] **Step 3: Implement** `returning.go`: `Returning(cols ...ColumnRef) ReturningList`, `appendReturningNames`, and `ModelRows[T]` wrapping `Rows` with `ScanModel` using `Meta.Ptr`. Insert, Update and Delete builders (Tasks 15, 18, 19) call `appendReturning`.
 
 - [ ] **Step 4: Run and expect PASS** after Task 12 lands: `go test -run TestReturningRendersAndScans -race .` → `ok`.
 
