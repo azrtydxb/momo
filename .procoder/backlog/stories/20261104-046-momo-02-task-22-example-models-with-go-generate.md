@@ -1,6 +1,6 @@
 # momo-02 Task 22: Example models with go:generate, and generated output that builds
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-02-generator
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -13,7 +13,7 @@ Implements plan momo-02-generator Task 22: Example models with go:generate, and 
 
 - [x] `TestGenerateCompanion` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-2] [S-3] `TestGenerateCompanion` (generator golden test): a model package with tags and a MomoConfig companion generates code that `go build` accepts; `TestGenerateDiagnostics` asserts an unsupported companion expression yields file:line:col and writes no files; fails if the generator guesses or emits partial output.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
