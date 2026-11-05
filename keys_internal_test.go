@@ -10,6 +10,10 @@ import (
 
 type testUUIDValuer string
 
+type testUserID string
+
+type testOrderID int64
+
 func (u testUUIDValuer) Value() (driver.Value, error) { return string(u), nil }
 
 func TestKeyStringNormalization(t *testing.T) {
@@ -33,5 +37,11 @@ func TestKeyStringNormalization(t *testing.T) {
 	diff([]any{int64(1)}, []any{"1"})                // type tag keeps 1 and "1" apart
 	diff([]any{"a", "b"}, []any{"as:b"})             // delimiter, not the type tag, is what separates components
 	diff([]any{nil}, []any{""})                      // NULL is distinct from empty string
+	same([]any{testUserID("u-9")}, []any{"u-9"})     // named string field vs driver string
+	same([]any{testOrderID(42)}, []any{int64(42)})   // named int field vs driver int64
+	same([]any{uint64(42)}, []any{int64(42)})        // unsigned field vs signed driver value
+	same([]any{uint32(7)}, []any{7})                 // small unsigned vs int
+	diff([]any{uint64(1 << 63)}, []any{int64(-1 << 63)})
+	diff([]any{"a\x1fs:b"}, []any{"a", "b"}) // a key containing the delimiter byte does not collide
 	same([]any{time.Date(2020, 1, 1, 1, 0, 0, 0, time.FixedZone("x", 3600))}, []any{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)})
 }
