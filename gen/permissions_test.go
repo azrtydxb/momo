@@ -24,8 +24,8 @@ func TestFieldPermissions(t *testing.T) {
 	}
 	want := map[string]string{
 		"readonly_set":      "has no field or method Set",
-		"createonly_update": "InsertAssignment",
-		"immutable_update":  "InsertAssignment",
+		"createonly_update": "value of struct type momo.InsertAssignment) as momo.Assignment value",
+		"immutable_update":  "value of struct type momo.InsertAssignment) as momo.Assignment value",
 	}
 	for fixture, reason := range want {
 		cmd := exec.Command("go", "build", "-o", os.DevNull, "./gen/testdata/permissions/"+fixture)
@@ -93,5 +93,34 @@ func TestFieldPermissionsDiscovery(t *testing.T) {
 		if got[k] != v {
 			t.Errorf("%s access=%v want %v", k, got[k], v)
 		}
+	}
+}
+
+func TestFieldPermissionsConflictDiagnostics(t *testing.T) {
+	dir, err := filepath.Abs("testdata/permissions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, diags, err := Load([]string{"./conflict"}, Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{
+		"conflicting write permissions on Both":                 10,
+		"create_only and immutable fields must not be pointers": 11,
+	}
+	for _, d := range diags {
+		line, ok := want[d.Msg]
+		if !ok {
+			t.Errorf("unexpected diagnostic %s", d)
+			continue
+		}
+		if d.Pos.Line != line || filepath.Base(d.Pos.Filename) != "model.go" {
+			t.Errorf("%q at %s:%d want model.go:%d", d.Msg, d.Pos.Filename, d.Pos.Line, line)
+		}
+		delete(want, d.Msg)
+	}
+	for m := range want {
+		t.Errorf("missing diagnostic %q", m)
 	}
 }

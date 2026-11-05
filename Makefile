@@ -21,6 +21,7 @@ test-race:
 
 test-compilefail:
 	$(GO) test -count=1 -run '^TestCompileFail' .
+	$(GO) test -count=1 -run '^TestFieldPermissions$$' ./gen
 
 test-fuzz:
 	@for t in $(FUZZ_TARGETS); do \

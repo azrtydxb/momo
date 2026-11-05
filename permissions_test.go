@@ -13,6 +13,10 @@ func TestPermissionTypesMirrorColumn(t *testing.T) {
 	if len(want) == 0 {
 		t.Fatal("Column[int64] has no predicate methods")
 	}
+	wantNull := predicateMethods(reflect.TypeOf(NullColumn[int64]{}))
+	if got := predicateMethods(reflect.TypeOf(NullReadOnlyColumn[int64]{})); !reflect.DeepEqual(got, wantNull) {
+		t.Fatalf("NullReadOnlyColumn predicate methods %v want %v", got, wantNull)
+	}
 	for _, typ := range []reflect.Type{
 		reflect.TypeOf(ReadOnlyColumn[int64]{}),
 		reflect.TypeOf(CreateOnlyColumn[int64]{}),
