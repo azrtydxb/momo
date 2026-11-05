@@ -1,6 +1,6 @@
 # What a human decided
 
-Written 2026-11-05 04:51 UTC. procoder reads this
+Written 2026-11-05 04:56 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
 
@@ -129,6 +129,12 @@ Answer: Commit the spec, the 13 plans, ARCHITECTURE and the backlog on branch in
 Key: orm-gaps
 
 Answer: Add all of groups A-F (S-59..S-95), conflicts only in explicit Momo form.
+
+## (no longer asked)
+
+Key: pr-1-merge-strategy
+
+Answer: Merge commit (gh pr merge --merge): all sprint-1 commits stay on main so story evidence hashes stay reachable; sprint-2 merges main with no history rewrite. Supersedes the squash/rebase part of merge-pr-1.
 
 ## (no longer asked)
 
