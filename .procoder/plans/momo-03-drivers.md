@@ -480,7 +480,7 @@ func InstrumentPool(cfg *pgxpool.Config)
 func NewPool(ctx context.Context, url string) (*pgxpool.Pool, error)
 ```
 
-Behaviour (pgxpool v5.11.0 selects an acquire tracer from `ConnConfig.Tracer` when it implements `pgxpool.AcquireTracer`, and passes to `TraceAcquireEnd` the context that `TraceAcquireStart` returned): `TraceAcquireStart` returns the context with the current time stored under an unexported key. `TraceAcquireEnd` reads that time and calls `momo.RecordPoolWait(ctx, time.Since(start))`, so the wait is attributed to the statement whose context is being acquired for. An acquire that finds an idle connection records a near-zero wait.
+Behaviour (pgxpool v5.11.0 selects an acquire tracer from `ConnConfig.Tracer` when it implements `pgxpool.AcquireTracer`, and passes to `TraceAcquireEnd` the context that `TraceAcquireStart` returned): `TraceAcquireStart` returns the context with the current time stored under an unexported key. `TraceAcquireEnd` reads that time and calls `momo.RecordPoolWait(ctx, time.Since(start))`, so the wait is attributed to the statement whose context is being acquired for. An acquire that finds an idle connection records nothing, so `PoolWait == 0` means no wait; the one exception is a concurrent idle hit, which may record its own small, real elapsed time (see the comment in `tracer.go`).
 
 - [ ] **Step 1: Write the failing test** `tracer_test.go`:
 
@@ -1381,6 +1381,8 @@ func NewUnitOfWork(ctx context.Context) context.Context
 // after a write in the same unit of work.
 func AllowStaleReads(ctx context.Context) context.Context
 ```
+
+OnConn copies *DB; the copy must nil the replicas field.
 
 Implementation: `uowState{written atomic.Bool}` is stored under an unexported key by `NewUnitOfWork`; `AllowStaleReads` stores a `staleOK` key. `routingDriver{primary, replica Driver}` implements `Driver`: `Dialect` returns the primary's; `Query` goes to the primary when `uowWritten(ctx) && !staleOK(ctx)` and to the replica otherwise; `Exec` and `Begin` always go to the primary. Every non-select statement executed by `execer.exec` (and therefore by Tx) calls `markWrite(ctx)` first. Replicas do not chain.
 

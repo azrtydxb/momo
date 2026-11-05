@@ -114,7 +114,7 @@ name as written.
 
 ### Root `momo`
 
-- `PinnedConn` interface: `Query`, `Exec` (same signatures as `Driver`), `Begin(ctx, TxOptions) (DriverTx, error)`, `Release() error`; obtained through `Pinner.Pin(ctx)`. `PoolStats` struct (acquired, idle, total, wait count, wait duration). `Capabilities` / `CapabilityReporter`. Exact `Copier` and `Batcher` signatures. [momo-03 Task 1]
+- `PinnedConn` interface: `Query`, `Exec` (same signatures as `Driver`), `Begin(ctx, TxOptions) (DriverTx, error)`, `Release() error`; obtained through `Pinner.Pin(ctx)`. `Release` closes Rows still open, then returns the connection (a repeat after success is a nil no-op); while a Query, Exec or Begin is executing in another goroutine it returns an error matching `ErrPinnedBusy` and releases nothing. `PoolStats` struct (acquired, idle, total, wait count, wait duration). `Capabilities` / `CapabilityReporter`. Exact `Copier` and `Batcher` signatures. [momo-03 Task 1]
 - `func (db *DB) OnConn(pc PinnedConn) *DB`: a DB bound to one pinned connection that keeps db's hooks, classifier and options. Used for non-transactional Go migrations and session-scoped work. [momo-03]
 - `testopen.Each(t, fn, opts ...momo.Option)` passes options to every dialect's DB. [momo-03]
 - `WithMaxParams(n)` lowers the per-statement bind limit for chunking tests and for databases configured with lower limits. [momo-06]

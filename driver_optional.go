@@ -7,6 +7,15 @@ import "context"
 // PinnedConn is one database connection checked out of a driver's pool.
 // Statements on it run on the same session. Begin starts a transaction on that
 // session; Release returns the connection to the pool.
+//
+// Release contract: Release closes any Rows from Query that are still open
+// (a forgotten Rows.Close cannot leak the connection), then returns the
+// connection; those Rows are unusable afterwards. Rows must not be in use by
+// another goroutine at that moment. If a Query, Exec or Begin call is still
+// executing in another goroutine, Release does nothing and returns an error
+// matching ErrPinnedBusy (errors.Is); call it again once that call has
+// returned. Release after a successful Release returns nil. A transaction
+// begun on the connection is not tracked: finish it before Release.
 type PinnedConn interface {
 	Query(ctx context.Context, sql string, args []any) (Rows, error)
 	Exec(ctx context.Context, sql string, args []any) (int64, error)
