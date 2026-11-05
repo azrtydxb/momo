@@ -111,6 +111,9 @@ func (Dialect) InspectWithInvalid(ctx context.Context, c momo.PinnedConn, opts m
 	if err := in.tables(ctx, out); err != nil {
 		return nil, nil, err
 	}
+	if err := (Dialect{}).inspectObjects(ctx, c, out, managed); err != nil {
+		return nil, nil, fmt.Errorf("postgres inspect: %w", err)
+	}
 	out.Sort()
 	return out, in.invalid, nil
 }

@@ -342,6 +342,8 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 	}
 	for i := range c.Functions {
 		c.Functions[i].Body = NormalizeExpr(d, c.Functions[i].Body)
+		c.Functions[i].Args = normalizeFuncArgs(d, c.Functions[i].Args)
+		c.Functions[i].Returns = normalizeFuncResult(d, c.Functions[i].Returns)
 	}
 	for i := range c.Triggers {
 		c.Triggers[i].When = NormalizeExpr(d, c.Triggers[i].When)
