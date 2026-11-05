@@ -25,3 +25,11 @@ Implements plan momo-05-writes-queries Task 22: Codecs and the types package (S-
 - Criterion 2 (S-73 round trip on every dialect) left unchecked: only the codec-level Value/Scan round trip is proven. A live PostgreSQL/SQLite round trip needs `testopen.Each`/pgxdriver, blocked on momo-03 Task 1 and Task 4.
 - Deviation: `TimeOfDay.Value` returns the text 'HH:MM:SS.nnnnnnnnn' (valid for both SQL types) rather than the int64 in the plan's unused `want` field; `Scan` also accepts int64 nanos. `Hstore.PostgresText()` gives the hstore form; `Value()` gives JSON.
 
+### Live PostgreSQL round trip (added after sprint-2 reconcile)
+
+- Criterion 2 stays unticked: it says "every dialect", and only PostgreSQL has a driver in the repo (`testopen.openers` lists postgres only; SQLite and MySQL drivers are later milestones). Not weakened.
+- Done for PostgreSQL: `types/codec_integration_test.go` `TestCodecsRoundTripLive` runs under `testopen.Each`, so it picks up SQLite/MySQL automatically once their openers are registered. For each of JSON, Date, TimeOfDay, UUID and Hstore it creates a table whose column type is the codec's own `SQLType(d)`, inserts through `Value`, reads back through `Scan` and also reads the column as text (date `1969-12-31`, time `23:59:59.999999`, canonical uuid; hstore with quote, backslash, `=>`, empty and NULL values).
+- Red first: the test was written against existing code, so it could not fail on missing symbols. Instead it was mutation-checked (below), which proves it fails when SQL type and encoding disagree.
+- Mutation check, all killed by `TestCodecsRoundTripLive/postgres`: Date SQLType `date`->`int`; UUID `uuid`->`int`; Hstore `hstore`->`jsonb`; TimeOfDay microsecond truncation changed to millisecond. A changed date layout (`2006/01/02`) survived because PostgreSQL accepts and normalises it; the `%06d` -> `%03d` mutant is equivalent.
+- Fuzz targets added in `types/codec_fuzz_test.go`: `FuzzUUIDScan`, `FuzzTimeOfDayScan`, `FuzzDateScan`, `FuzzJSONScan` (15s each, no failures); `FuzzHstore` already existed. No decoder allocates from or narrows a wire integer.
+- Gates: `make fmt-check vet staticcheck gosec tidy-check` exit 0.
