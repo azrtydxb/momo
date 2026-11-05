@@ -11,9 +11,11 @@ Implements plan momo-02-generator Task 17: The Writer: collision-safe, determini
 
 ## Acceptance criteria
 
-- [ ] `TestGenerateRefusesHandwritten` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestGenerateRefusesHandwritten` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-3, part] `TestGenerateRefusesHandwritten` passes for the part of S-3 this task delivers; the full criterion is verified in story 043.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+Failing run before implementation: `go test ./gen -run Writer -count=1` gave `undefined: NewWriter`. After: `go test -race -count=1 ./...` all ok, including TestGenerateRefusesHandwritten, TestWriterIdempotentAndCheck, TestWriterFailedWriteLeavesNothing, TestWriterOrphans, TestWriterCollisionSameBytesOK. Gate clean; commit 9b263e1 feat(gen): collision-safe deterministic writer. The S-3 part criterion stays unchecked: verified in story 043.
 

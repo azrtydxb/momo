@@ -40,9 +40,6 @@ type Plugin interface {
 	Generate(g *Graph, w *Writer) error
 }
 
-// Writer collects generated files. Task 19 completes it.
-type Writer struct{}
-
 // Diagnostic is a positioned problem found while loading or analysing input.
 type Diagnostic struct {
 	Pos token.Position
