@@ -22,8 +22,17 @@ services:
       }
   pgbouncer:
     image: edoburu/pgbouncer:v1.26.1-p0
-    volumes:
-      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
-      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
-    ports: ["127.0.0.1:6432:6432"]
+    # Configured through the image's environment rather than mounted files, so it
+    # works where the Docker host cannot share the checkout's path; CI's service
+    # container sets the same variables.
+    environment:
+      DATABASE_URL: postgres://postgres:momo@postgres17:5432/postgres
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      DEFAULT_POOL_SIZE: "4"
+      MAX_CLIENT_CONN: "200"
+      MAX_PREPARED_STATEMENTS: "0"
+      TRACK_EXTRA_PARAMETERS: search_path
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    ports: ["127.0.0.1:6432:5432"]
     depends_on: { postgres17: { condition: service_healthy } }

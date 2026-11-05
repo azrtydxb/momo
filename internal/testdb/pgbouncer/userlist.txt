@@ -1,2 +1,0 @@
-"postgres" "momo"
-"momo_app" "momo_app"
