@@ -11,8 +11,13 @@ Implements plan momo-04-migrations Task 12: PostgreSQL inspection: views, functi
 
 ## Acceptance criteria
 
-- [ ] `TestPostgresObjectInspection` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestPostgresObjectInspection` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Red: `go test -tags integration ./migrate/postgres/` failed before implementation (TestPostgresObjectInspection: `trigger: []`; details test: `views: []`; UPDATE OF test: err nil). Green: `go test -tags integration -race -count=1 ./migrate/... ./schema/...` ok.
+- Mutation: mapping `i` to STABLE in the volatility map failed TestPostgresObjectInspectionDetails; restored.
+- View.Depends is populated from pg_depend/pg_rewrite; matview indexes via inspectIndexes; trigger WHEN is cut from pg_get_triggerdef (pg_get_expr cannot deparse OLD/NEW); inherited (tgparentid <> 0) triggers and extension-owned functions/views are hidden.
+- Gate: go build, go vet, make staticcheck clean; `procoder check` 0 blocking findings.
 
