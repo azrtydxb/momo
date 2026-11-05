@@ -70,3 +70,58 @@ func TestTupleInPostgres(t *testing.T) {
 		t.Fatalf("budget-sized single-column: %d", n)
 	}
 }
+
+// TestTupleInPostgresCompositeCapAndEmbedding runs a statement with the largest
+// composite list the cap allows, with the tuple predicate embedded between other
+// bound arguments (so the placeholder numbering must continue correctly).
+func TestTupleInPostgresCompositeCapAndEmbedding(t *testing.T) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, testdb.PostgresURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(conn.Release)
+	if _, err := conn.Exec(ctx, `CREATE TEMP TABLE c (a bigint, b text)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, `INSERT INTO c VALUES (1,'x'),(1,'y'),(2,'x'),(3,'z')`); err != nil {
+		t.Fatal(err)
+	}
+	d := dialect.For(dialect.Postgres)
+	n := keysPerStatement(d, 2, 0)
+	if n != 2000 {
+		t.Fatalf("composite budget: %d", n)
+	}
+	keys := make([][]any, n)
+	for i := range keys {
+		keys[i] = []any{int64(1000 + i), "k"}
+	}
+	keys[0] = []any{int64(1), "y"}
+	keys[n-1] = []any{int64(3), "z"}
+	comp, err := compile(d, func(b *Builder) {
+		b.WriteString("SELECT count(*) FROM c WHERE c.a >= ")
+		b.Arg(int64(0))
+		b.WriteString(" AND ")
+		inTuple{table: "c", cols: []string{"a", "b"}, keys: keys}.AppendSQL(b)
+		b.WriteString(" AND c.a < ")
+		b.Arg(int64(100))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comp.Args) != 2*n+2 {
+		t.Fatalf("args: %d", len(comp.Args))
+	}
+	var got int
+	if err := conn.QueryRow(ctx, comp.SQL, comp.Args...).Scan(&got); err != nil {
+		t.Fatalf("composite statement at the cap: %v", err)
+	}
+	if got != 2 {
+		t.Fatalf("matched %d rows, want 2", got)
+	}
+}

@@ -35,8 +35,11 @@ func TestTupleInRendering(t *testing.T) {
 	if empty.SQL != "1 = 0" || len(empty.Args) != 0 {
 		t.Fatalf("empty IN must render always-false: got %q", empty.SQL)
 	}
-	if n := keysPerStatement(dialect.For(dialect.SQLite), 2, 16); n != (32766-16)/2 {
-		t.Fatalf("sqlite budget: got %d", n)
+	if n := keysPerStatement(dialect.For(dialect.SQLite), 1, 16); n != 32766-16 {
+		t.Fatalf("sqlite single-column budget: got %d", n)
+	}
+	if n := keysPerStatement(dialect.For(dialect.SQLite), 2, 16); n != maxCompositeTuplesSQLite {
+		t.Fatalf("sqlite composite budget: got %d", n)
 	}
 	if n := keysPerStatement(dialect.For(dialect.Postgres), 1, 16); n != 65535-16 {
 		t.Fatalf("postgres budget: got %d", n)
