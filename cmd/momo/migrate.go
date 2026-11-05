@@ -668,7 +668,7 @@ func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
 // being replaced, so the user sees what hash is about to accept. A missing or
 // unreadable previous sum has nothing to compare against and prints nothing.
 func (l *cli) reportSumChanges(dir string, next *migrate.Sum) {
-	f, err := os.Open(filepath.Join(dir, migrate.SumFileName)) //nolint:gosec // the configured migration directory
+	f, err := os.Open(filepath.Join(dir, migrate.SumFileName)) // #nosec G304 -- the configured migration directory
 	if err != nil {
 		return
 	}
@@ -939,7 +939,7 @@ func stageTemp(dir string, data []byte) (name string, err error) {
 	if err = tmp.Close(); err != nil {
 		return "", err
 	}
-	if err = os.Chmod(name, 0o644); err != nil { //nolint:gosec // migration files are meant to be committed and read by the team
+	if err = os.Chmod(name, 0o644); err != nil { // #nosec G302 -- migration files are meant to be committed and read by the team
 		return "", err
 	}
 	return name, nil
@@ -956,7 +956,7 @@ func publishNew(tmp, final string, data []byte) error {
 	if errors.Is(err, iofs.ErrExist) {
 		return fmt.Errorf("refusing to overwrite %s: %w", final, iofs.ErrExist)
 	}
-	f, openErr := os.OpenFile(final, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644) //nolint:gosec // migration files are meant to be committed and read by the team
+	f, openErr := os.OpenFile(final, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644) // #nosec G302 G304 -- final is in the user's migration directory; migration files are meant to be committed and read by the team
 	if openErr != nil {
 		if errors.Is(openErr, iofs.ErrExist) {
 			return fmt.Errorf("refusing to overwrite %s: %w", final, iofs.ErrExist)
@@ -978,7 +978,7 @@ func publishNew(tmp, final string, data []byte) error {
 // syncDir fsyncs dir so the renames and links survive a crash. It is best
 // effort: some platforms (Windows) cannot open a directory for syncing.
 func syncDir(dir string) {
-	d, err := os.Open(dir) //nolint:gosec // the migration directory chosen by the user
+	d, err := os.Open(dir) // #nosec G304 -- the migration directory chosen by the user
 	if err != nil {
 		return
 	}
