@@ -31,6 +31,9 @@ type Caps struct {
 // CapabilitiesOf returns the dialect-level capabilities. Driver-level fields (Copy, Batch, Vectors)
 // stay false; CapsOf adds them from the driver.
 //
+// TODO(momo-05 Task 24): replace the name-derived JSON and Arrays below with
+// the dialect flags once that task adds them.
+//
 // JSON and Arrays are PostgreSQL-only (JSONB and array operators). The dialect
 // flags that will carry them arrive with the JSON and array operator task; until
 // then they are derived from the dialect name.

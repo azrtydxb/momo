@@ -9,6 +9,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/schema"
 )
 
 // Document is the shared integration fixture model, the struct the generator emits for it.
@@ -100,12 +101,33 @@ var DocumentMeta = &momo.Meta[Document]{
 		}
 		return nil
 	},
-	Identity:   0,
-	Version:    4,
-	SoftDelete: 5,
-	CreatedAt:  6,
-	UpdatedAt:  7,
-	PK:         []int{0},
+	TableSchema: &documentsTable,
+	Identity:    0,
+	Version:     4,
+	SoftDelete:  5,
+	CreatedAt:   6,
+	UpdatedAt:   7,
+	PK:          []int{0},
+}
+
+// documentsTable is the normalized definition the generator would emit for
+// Document: the model's nine columns in field order. The DDL also creates a
+// status column that the model does not map, so it is absent here, as it would
+// be in generated code.
+var documentsTable = schema.Table{
+	Name: "documents",
+	Columns: []schema.Column{
+		{Name: "id", Type: "bigint", Identity: "always"},
+		{Name: "tenant_id", Type: "bigint"},
+		{Name: "title", Type: "text"},
+		{Name: "body", Type: "text", Nullable: true},
+		{Name: "version", Type: "bigint", Default: "1"},
+		{Name: "deleted_at", Type: "timestamptz", Nullable: true},
+		{Name: "created_at", Type: "timestamptz", Default: "now()"},
+		{Name: "updated_at", Type: "timestamptz", Default: "now()"},
+		{Name: "secret", Type: "text", Default: "''"},
+	},
+	PrimaryKey: []string{"id"},
 }
 
 // MomoMeta returns DocumentMeta.
