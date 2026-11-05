@@ -11,12 +11,15 @@ As a Go developer, or an AI coding agent, adopting Momo in an application on Pos
 
 ## Acceptance criteria
 
-- [ ] `README.md` exists at the repository root with install lines `go get github.com/azrtydxb/momo@v0.1.0` and `go install github.com/azrtydxb/momo/cmd/momo@v0.1.0`
-- [ ] every Go snippet in the README appears verbatim in the compiled example under `examples/quickstart`, enforced by a doc-sync test
-- [ ] every `momo` command and flag in the README is accepted by `momo help` and `momo migrate help`, enforced by the doc-sync test
-- [ ] the README states the PgBouncer-safe default exec mode and recommends a `.gitattributes` rule for generated files
+- [x] `README.md` exists at the repository root with install lines `go get github.com/azrtydxb/momo@v0.1.0` and `go install github.com/azrtydxb/momo/cmd/momo@v0.1.0`
+- [x] every Go snippet in the README appears verbatim in the compiled example under `examples/quickstart`, enforced by a doc-sync test
+- [x] every `momo` command and flag in the README is accepted by `momo help` and `momo migrate help`, enforced by the doc-sync test
+- [x] the README states the PgBouncer-safe default exec mode and recommends a `.gitattributes` rule for generated files
 - [ ] `procoder check` gate is clean and the work is committed
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- `go test -count=1 ./examples/quickstart/...` passes; `go build ./examples/...` passes.
+- Review revision: README now has the import block (doc-synced), a "Changing a model" section with `--rename-column`/`--rename-table`, the forward-only note, pgvector server install, `sslmode=disable` local-only note, distance functions per vector kind, yaml and tag glosses, `hash`, and an import-path rewrite note.
+- readme_test.go now pins the Go floor against the go.mod go line and the no-compatibility-promise sentence. Mutation checks (floor changed to 1.25, promise sentence negated, import line altered) each made the test fail; README restored afterwards.
+- Gate criterion stays open until `procoder check` and the commit are done.

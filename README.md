@@ -26,11 +26,40 @@ Momo expects PostgreSQL with the pgvector extension. The first migration runs
 `CREATE EXTENSION IF NOT EXISTS "vector"` for you, which needs a role that may
 create extensions.
 
+pgvector must be installed on the server itself, not only in your database.
+Use an image that ships it, such as `pgvector/pgvector`, or your distribution's
+pgvector package. If the migration role cannot create extensions, have a
+superuser run `CREATE EXTENSION vector` once in the target database before you
+apply.
+
 ## Worked example
 
 Every Go snippet below is compiled: the full source lives in
 [examples/quickstart](examples/quickstart), and a test fails when this README and
-that code drift apart. Copy the example directory as a starting point.
+that code drift apart. Copy the example directory as a starting point, and
+rewrite its import paths from `github.com/azrtydxb/momo/examples/quickstart`
+to your own module path.
+
+These are the imports of the example. The generated packages are imported as
+`<your module>/models/author`, `<your module>/models/post`, and so on, one
+package per model next to the models package.
+
+```go
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/examples/quickstart/models"
+	"github.com/azrtydxb/momo/examples/quickstart/models/author"
+	"github.com/azrtydxb/momo/examples/quickstart/models/post"
+	"github.com/azrtydxb/momo/vector"
+)
+```
 
 ### 1. Define the models
 
@@ -38,6 +67,14 @@ A model is a struct that embeds `momo.Model`. The tag on that field names the
 table, and each field carries its column rules. A field of type
 `vector.Vector` is a pgvector column, and `dim` sets its dimension. Use the
 output size of your embedding model for `dim`, such as 1536.
+
+Tags used here: `table:<name>` names the table, `pk` marks the primary key,
+`identity` lets the database assign it, `column:<name>` overrides the column
+name, `size:<n>` limits a string, `notnull` and `unique` add constraints,
+`index` adds an index, `default:<sql>` sets the column default, `read_only`
+means Momo never writes the column, `has_many` and `belongs_to` declare a
+relation, and `fk:<Field>` names the foreign-key field. How Go types map to
+column types is in [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md).
 
 ```go
 // Author writes posts.
@@ -77,9 +114,11 @@ func (p *Post) MomoConfig(c *momo.Config) {
 
 ### 2. Configure and generate
 
-Put a `momo.yaml` at the module root. `packages` lists the model packages,
-`migrate.dir` is where migrations are written, and `migrate.url_env` names the
-environment variable that holds the database URL.
+Put a `momo.yaml` at the module root. `version` is the config format version
+(1). `packages` lists the model packages. `naming` picks the convention for
+table and column names you do not set with a tag. `dialects` lists the
+databases to generate for. `migrate.dir` is where migrations are written, and
+`migrate.url_env` names the environment variable that holds the database URL.
 
 ```yaml
 version: 1
@@ -132,10 +171,33 @@ export DATABASE_URL='postgres://user:password@localhost:5432/app?sslmode=disable
 momo migrate apply
 ```
 
+`sslmode=disable` is for local development only. Use `sslmode=verify-full` or
+another TLS mode against any database you do not reach over a trusted local
+connection.
+
+Momo v0.1.0 writes forward migrations only. There is no rollback command, so
+undo a change with a new migration.
+
 Run `momo migrate help` for the other commands: `plan`, `status`, `validate`,
-`drift`, `baseline`, and `resolve`. Run migrations over a direct connection to
+`hash`, `drift`, `baseline`, and `resolve`. Run migrations over a direct connection to
 PostgreSQL, not through a transaction-mode pooler: the migration lock is a
 session advisory lock.
+
+### Changing a model
+
+Edit the struct, then run these in order:
+
+```sh
+momo generate
+momo migrate diff add_subtitle
+momo migrate apply
+```
+
+`diff` compares the structs with the latest snapshot. A renamed field or
+struct looks like a drop plus an add, and `diff` refuses that without
+`--allow-destructive` because it would lose data. Say it is a rename instead
+with `--rename-column table.old=new` or `--rename-table old=new`. Review the
+SQL before you apply it.
 
 ### 4. Open a database
 
@@ -289,8 +351,9 @@ func similarPosts(ctx context.Context, db *momo.DB, query vector.Vector) error {
 }
 ```
 
-The other metrics are `L2Distance`, `InnerProductDistance`, `L1Distance`,
-`HammingDistance`, and `JaccardDistance`. Match the function to the operator
+For dense vectors the functions are `L2Distance`, `InnerProductDistance`,
+`CosineDistance`, and `L1Distance`. For bit vectors they are `HammingDistance`
+and `JaccardDistance`. Match the function to the operator
 class of your index: this example indexes with `vector_cosine_ops`, so it
 searches with `CosineDistance`.
 

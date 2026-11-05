@@ -169,7 +169,18 @@ func TestReadmeStatements(t *testing.T) {
 			t.Errorf("README does not contain %q", want)
 		}
 	}
-	if !strings.Contains(readFile(t, "../../go.mod"), "module "+modulePath+"\n") {
+	goMod := readFile(t, "../../go.mod")
+	m := regexp.MustCompile(`(?m)^go (\d+\.\d+)`).FindStringSubmatch(goMod)
+	if m == nil {
+		t.Fatal("go.mod has no go line")
+	}
+	if !strings.Contains(readme, "Go "+m[1]+" or newer") {
+		t.Errorf("README does not state the go.mod floor %q", "Go "+m[1]+" or newer")
+	}
+	if !strings.Contains(strings.Join(strings.Fields(readme), " "), "no compatibility promise between releases") {
+		t.Error("README does not state that there is no compatibility promise")
+	}
+	if !strings.Contains(goMod, "module "+modulePath+"\n") {
 		t.Errorf("go.mod module is not %s", modulePath)
 	}
 	if _, err := os.Stat("../../cmd/momo/main.go"); err != nil {
