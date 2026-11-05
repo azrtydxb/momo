@@ -11,9 +11,17 @@ Implements plan momo-05-writes-queries Task 13: Bulk insert chunking under the b
 
 ## Acceptance criteria
 
-- [ ] `TestBulkInsertChunking` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-5, part] `TestBulkInsertChunking` passes for the part of S-5 this task delivers; the full criterion is verified in story 115.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestBulkInsertChunking` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-5, part] `TestBulkInsertChunking` passes for the part of S-5 this task delivers; the full criterion is verified in story 115.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Red first: with the unchanged insert.go, the new unit tests failed with `limit exceeded: 55 bind parameters exceed the postgres limit of 50` (limit plus one, two chunks, shared timestamp, upsert identity, RETURNING and early-close tests).
+- Green: `go test -tags integration -race -count=1 .` against the running PostgreSQL passes, including `TestBulkInsertChunking` (40000 rows, 200000 parameters, chunked), RETURNING order across chunks, upsert with identity (OVERRIDING SYSTEM VALUE per chunk), rollback of earlier chunks on a failing chunk, and chunking inside a caller Tx.
+- Unit tests in `bulk_unit_test.go` cover exactly-at-limit, limit plus one, a single row over the limit (ErrLimitExceeded, no statements run), one shared clock read, one transaction per chunked Exec, and a savepoint on a caller Tx.
+- SQLite is not registered in this build, so the SQLite half of `TestBulkInsertChunking` did not run here; the limit comes from the dialect (32766).
+- Decisions: all chunks share one clock read (story 121 semantics); a pinned OnConn connection cannot begin a transaction, so a chunked insert there fails with ErrUnsupported (documented on Exec); a Tx on a dialect without savepoints runs chunks directly in the caller transaction.
+- Review fixes: Exec rolls the scope back and re-panics on a panic during a chunk; Rows runs chunk 1 eagerly so its error comes from Rows, and a later chunk error surfaces from Close with the whole insert rolled back (callers MUST check Close); a chunked insert on a pinned handle returns ErrUnsupported before any statement.
+- Tests in `bulk_review_test.go` kill these mutations: fixed parameters ignored, chunk size plus one, MaxParams guard removed, single-row guard off by one, RowsAffected not summed, pinned refusal removed, panic swallowed, rollback on panic removed.
+- Gate: `go vet ./...`, `go vet -tags integration .`, gofmt, `go test -race ./...` and the PostgreSQL integration suite pass.
