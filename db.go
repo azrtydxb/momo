@@ -29,8 +29,18 @@ type QueryEvent struct {
 	SQL      string
 	// Args is nil unless the DB was opened with WithArgLogging. Treat
 	// parameter values as sensitive.
-	Args  []any
-	Start time.Time
+	Args []any
+	// NumArgs is always set: the number of bound parameters.
+	NumArgs int
+	// InTx reports that the statement ran on a *Tx.
+	InTx bool
+	// PoolWait is the summed RecordPoolWait for this statement.
+	PoolWait time.Duration
+	// Dialect is the dialect of the DB the statement ran on.
+	Dialect *dialect.Dialect
+	// Querier is the *DB or *Tx the statement ran on.
+	Querier Querier
+	Start   time.Time
 	// Duration is filled for AfterQuery. For reads it covers execution
 	// and iteration until the rows are closed.
 	Duration time.Duration
@@ -38,6 +48,22 @@ type QueryEvent struct {
 	// -1 when unknown.
 	Rows int64
 	Err  error
+	pool *poolWaitSlot
+}
+
+type poolWaitKey struct{}
+
+// poolWaitSlot accumulates the pool wait reported for one statement.
+type poolWaitSlot struct{ ns atomic.Int64 }
+
+// RecordPoolWait adds d to the pool wait of the statement whose context is
+// ctx. Drivers call it when a connection acquisition waited (pgxdriver does
+// so from its pgxpool AcquireTracer). It is a no-op when ctx does not belong
+// to a hooked statement, so it costs nothing when no hook is registered.
+func RecordPoolWait(ctx context.Context, d time.Duration) {
+	if s, ok := ctx.Value(poolWaitKey{}).(*poolWaitSlot); ok {
+		s.ns.Add(int64(d))
+	}
 }
 
 // Hook observes statements. BeforeQuery may return a derived context (for
@@ -75,7 +101,7 @@ func New(drv Driver, opts ...Option) *DB {
 	for _, o := range opts {
 		o(db)
 	}
-	db.ex = execer{db: db, q: drv, d: drv.Dialect()}
+	db.ex = execer{db: db, q: drv, d: drv.Dialect(), owner: db}
 	if c, ok := drv.(ErrorClassifier); ok {
 		db.ex.classify = c.ClassifyError
 	}
@@ -112,6 +138,8 @@ type execer struct {
 	q        queryExecer
 	d        *dialect.Dialect
 	classify func(error) error
+	inTx     bool
+	owner    Querier
 }
 
 func (e *execer) wrapErr(op, table string, err error) error {
@@ -140,7 +168,13 @@ func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []
 	if len(e.db.hooks) == 0 {
 		return ctx, nil
 	}
-	ev := &QueryEvent{Op: op, Table: table, Relation: rel, SQL: sql, Start: time.Now(), Rows: -1}
+	slot := &poolWaitSlot{}
+	ctx = context.WithValue(ctx, poolWaitKey{}, slot)
+	ev := &QueryEvent{
+		Op: op, Table: table, Relation: rel, SQL: sql,
+		NumArgs: len(args), InTx: e.inTx, Dialect: e.d, Querier: e.owner,
+		Start: time.Now(), Rows: -1, pool: slot,
+	}
 	if e.db.logArgs {
 		ev.Args = args
 	}
@@ -155,6 +189,7 @@ func (e *execer) after(ctx context.Context, ev *QueryEvent, rows int64, err erro
 		return
 	}
 	ev.Duration = time.Since(ev.Start)
+	ev.PoolWait = time.Duration(ev.pool.ns.Load())
 	ev.Rows = rows
 	ev.Err = err
 	for _, h := range e.db.hooks {
@@ -245,7 +280,7 @@ func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
 		return nil, db.ex.wrapErr("begin", "", err)
 	}
 	tx := &Tx{dtx: dtx, done: new(atomic.Bool)}
-	tx.ex = execer{db: db, q: dtx, d: db.ex.d, classify: db.ex.classify}
+	tx.ex = execer{db: db, q: dtx, d: db.ex.d, classify: db.ex.classify, inTx: true, owner: tx}
 	return tx, nil
 }
 
