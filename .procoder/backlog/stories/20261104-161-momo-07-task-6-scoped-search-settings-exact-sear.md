@@ -1,6 +1,6 @@
 # momo-07 Task 6: Scoped search settings, exact search, and iterative scans
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-07-vectors-pgvector
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
