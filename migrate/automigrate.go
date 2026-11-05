@@ -29,6 +29,24 @@ import (
 // never emits DROP or ALTER ... TYPE. The kept changes run in one transaction
 // when the dialect has transactional DDL and no statement needs to run outside
 // one (CREATE INDEX CONCURRENTLY); otherwise they run one by one.
+//
+// A kept change never depends on a skipped one: an index on a column whose
+// add_column or type change was skipped, a foreign key, policy or row-level
+// security on a table whose creation was skipped, or a column typed by a
+// skipped enum is skipped as well, with the reason "depends on a skipped
+// change: <change>". An add_column that would rewrite or scan the table (a
+// stored generated column, an identity column, or a default that is not a
+// constant literal, NULL, now() or CURRENT_TIMESTAMP) is skipped too.
+//
+// A non-unique index on an existing table is created in the same run. It is
+// built CONCURRENTLY, without blocking writes, only when the schema index sets
+// Concurrently; otherwise CREATE INDEX holds a lock that blocks writes to the
+// table for the duration of the build.
+//
+// AutoMigrate ignores migration history entirely: it neither reads nor checks
+// the history table, so it runs even when the versioned history is dirty or its
+// checksums no longer match. Mixing AutoMigrate with versioned migrations on
+// the same schema is the caller's responsibility.
 func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *AutoReport, err error) {
 	if desired == nil {
 		return nil, errors.New("migrate: AutoMigrate needs a desired schema")
@@ -73,6 +91,7 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 		}
 		kept = append(kept, ch)
 	}
+	kept, rep.Skipped = skipDependents(kept, rep.Skipped)
 	if len(kept) == 0 {
 		return rep, nil
 	}
@@ -106,8 +125,11 @@ func autoSkipReason(ch Change, desired *schema.Schema, created map[string]bool) 
 	case AddColumn:
 		// Diff with Stage turns a NOT NULL column without default into a
 		// nullable add, so the declared column decides.
-		if col := declaredColumn(desired, ch); col != nil && needsStaging(col) {
-			return "NOT NULL column without a default requires a staged migration"
+		if col := declaredColumn(desired, ch); col != nil {
+			if needsStaging(col) {
+				return "NOT NULL column without a default requires a staged migration"
+			}
+			return addColumnRewriteReason(col)
 		}
 		return ""
 	case CreateIndex:
