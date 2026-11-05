@@ -51,7 +51,7 @@ bench-smoke:
 	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...
 
 fmt-check:
-	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "$$out"; exit 1; fi
+	@out=$$(git ls-files -z '*.go' | xargs -0 gofmt -l); if [ -n "$$out" ]; then echo "$$out"; exit 1; fi
 
 vet:
 	$(GO) vet ./...
