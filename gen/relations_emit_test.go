@@ -113,6 +113,8 @@ type A struct {
 const compileSrc = relHeader + `
 type Status string
 
+type Kind string
+
 type Tag struct {
 	momo.Model ` + "`momo:\"table:tags\"`" + `
 	ID   int64 ` + "`momo:\"pk\"`" + `
@@ -130,7 +132,7 @@ type Comment struct {
 	momo.Model ` + "`momo:\"table:comments\"`" + `
 	ID        int64 ` + "`momo:\"pk\"`" + `
 	OwnerID   int64
-	OwnerType string
+	OwnerType Kind
 }
 
 type Doc struct {
@@ -142,6 +144,7 @@ type Doc struct {
 	Tags     []Tag    ` + "`momo:\"many2many,join:doc_tags\"`" + `
 	Profile  *Profile ` + "`momo:\"has_one,fk:DocID\"`" + `
 	Comments []Comment ` + "`momo:\"has_many,fk:OwnerID,polytype:owner_type,polyvalue:doc\"`" + `
+	Cover    *Comment  ` + "`momo:\"has_one,fk:OwnerID,polytype:owner_type,polyvalue:cover\"`" + `
 }
 
 type Reply struct {
@@ -185,5 +188,41 @@ func TestDescriptorsCompile(t *testing.T) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated descriptors must build: %v\n%s", err, out)
+	}
+
+	// Run a program that sets a child through each polymorphic relation and
+	// checks the discriminator value on the child.
+	imp := "github.com/azrtydxb/momo/gen/testdata/" + filepath.Base(dir) + "/models"
+	prog := `package main
+
+import (
+	"fmt"
+	"os"
+
+	models "` + imp + `"
+	doc "` + imp + `/doc"
+)
+
+func main() {
+	var c models.Comment
+	doc.Comments.SetChildKey(&c, []any{int64(7)})
+	var v models.Comment
+	doc.Cover.SetChildKey(&v, []any{int64(9)})
+	if c.OwnerID != 7 || c.OwnerType != "doc" || v.OwnerID != 9 || v.OwnerType != "cover" {
+		fmt.Printf("has_many %+v has_one %+v\n", c, v)
+		os.Exit(1)
+	}
+}
+`
+	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte(prog), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run := exec.Command("go", "run", "./cmd")
+	run.Dir = dir
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Fatalf("polymorphic SetChildKey must set the discriminator: %v\n%s", err, out)
 	}
 }

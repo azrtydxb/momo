@@ -21,6 +21,7 @@ type descEmitter struct {
 	diags []Diagnostic
 	// imports maps an import alias to its path; only used packages appear.
 	imports map[string]string
+	namer   naming.Namer
 }
 
 func (e *descEmitter) diag(msg string) {
@@ -128,10 +129,26 @@ func flagExpr(f *Field) string {
 // typed columns, the alias-aware As constructor and one descriptor per
 // relation. The result is gofmt-formatted and starts with Header().
 func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
-	_ = g
-	e := &descEmitter{m: m, imports: map[string]string{"momo": momoImportPath}}
+	e := &descEmitter{m: m, imports: map[string]string{"momo": momoImportPath}, namer: graphNamer(g)}
+
+	// Register every import alias the output will use before any identifier
+	// is chosen, so a field named like an alias is renamed instead of
+	// redeclaring the import.
+	for _, f := range m.Fields {
+		if _, v := fieldVar(m, f); v != nil {
+			t, _ := derefType(v.Type())
+			e.typeString(t)
+		}
+	}
+	for _, r := range m.Relations {
+		e.emitRelation(&strings.Builder{}, m, r, "_")
+	}
+	e.diags = nil
 
 	used := DescriptorReserved()
+	for alias := range e.imports {
+		used[alias] = true
+	}
 	type col struct {
 		name, typ, ctor, colName, flags string
 	}
@@ -147,7 +164,7 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 		} else {
 			elem = strings.TrimPrefix(f.GoType, "*")
 		}
-		typeName, ctor := DescriptorType(f.Access, f.Nullable)
+		typeName, ctor := DescriptorType(f.Access, f.Nullable || f.Tags.Nullable)
 		cols = append(cols, col{
 			name:    name,
 			typ:     "momo." + typeName + "[" + elem + "]",
@@ -207,7 +224,11 @@ func (e *descEmitter) importBlock() string {
 	var std, other []string
 	for alias, path := range e.imports {
 		line := "\t" + strconv.Quote(path) + "\n"
-		if !strings.Contains(path, ".") {
+		// A first path element without a dot is a standard library package,
+		// the same rule the go command applies. A module path without a dot
+		// would be misfiled, which only changes the grouping, not the build.
+		first, _, _ := strings.Cut(path, "/")
+		if !strings.Contains(first, ".") {
 			if alias != path {
 				line = "\t" + alias + " " + strconv.Quote(path) + "\n"
 			}
@@ -290,7 +311,7 @@ func getter(recv, typ string, kps []keyPart) string {
 	return head + "\nif " + strings.Join(nilChecks, " || ") + " {\nreturn nil, false\n}\n" + ret + "\n}"
 }
 
-func setter(recv, typ string, kps []keyPart) string {
+func setter(recv, typ string, kps []keyPart, extra ...string) string {
 	head := "func(" + recv + " *" + typ + ", k []any) {"
 	var stmts []string
 	simple := true
@@ -307,6 +328,7 @@ func setter(recv, typ string, kps []keyPart) string {
 		}
 		stmts = append(stmts, recv+"."+kp.sel+" = "+val)
 	}
+	stmts = append(stmts, extra...)
 	if simple && len(stmts) == 1 {
 		return head + " " + stmts[0] + " }"
 	}
@@ -385,9 +407,8 @@ func (e *descEmitter) emitRelation(b *strings.Builder, m *Model, r *Relation, na
 	fmt.Fprintf(b, "ParentMeta: (*%s)(nil).MomoMeta(),\nChildMeta: (*%s)(nil).MomoMeta(),\n", pt, ct)
 	fmt.Fprintf(b, "ParentCols: %s,\nChildCols: %s,\nChildPK: %s,\n", stringSlice(parentCols), stringSlice(childCols), stringSlice(columnsOf(childPK)))
 	if r.Kind == ManyToMany {
-		namer := naming.Momo{}
-		jp := namer.ColumnName(m.GoName + parentPK[0].GoName)
-		jc := namer.ColumnName(t.GoName + childPK[0].GoName)
+		jp := joinColumnName(e.namer, m, parentPK[0].Column)
+		jc := joinColumnName(e.namer, t, childPK[0].Column)
 		fmt.Fprintf(b, "Through: &momo.Through{Table: momo.TableRef{Name: %s}, ParentCols: %s, ChildCols: %s},\n",
 			strconv.Quote(r.JoinTable), stringSlice([]string{jp}), stringSlice([]string{jc}))
 	}
@@ -399,7 +420,7 @@ func (e *descEmitter) emitRelation(b *strings.Builder, m *Model, r *Relation, na
 	case BelongsTo:
 		fmt.Fprintf(b, "SetParentKey: %s,\n", setter("p", pt, pk))
 	case HasOne, HasMany:
-		fmt.Fprintf(b, "SetChildKey: %s,\n", setter("c", ct, ck))
+		fmt.Fprintf(b, "SetChildKey: %s,\n", setter("c", ct, ck, e.discriminatorStmts(t, r)...))
 	}
 	if r.Kind == BelongsTo || r.Kind == HasOne {
 		fmt.Fprintf(b, "GetOne: func(p *%s) *%s { return p.%s },\n", pt, ct, r.GoName)
@@ -409,4 +430,36 @@ func (e *descEmitter) emitRelation(b *strings.Builder, m *Model, r *Relation, na
 		fmt.Fprintf(b, "SetMany: func(p *%s, cs []%s) { p.%s = cs },\n", pt, ct, r.GoName)
 	}
 	b.WriteString("}\n")
+}
+
+// discriminatorStmts returns the statements that set the discriminator field
+// of a polymorphic child to the relation's value, converting to the field's
+// named type when it has one. It returns nil for a plain relation.
+func (e *descEmitter) discriminatorStmts(t *Model, r *Relation) []string {
+	if r.PolyType == "" {
+		return nil
+	}
+	var f *Field
+	for _, c := range t.Fields {
+		if c.Column == r.PolyType {
+			f = c
+		}
+	}
+	if f == nil {
+		e.diag("polymorphic column " + r.PolyType + " is not a field of " + t.GoName)
+		return nil
+	}
+	kp := e.keyPart(t, f)
+	if kp.base != "string" {
+		e.diag(fmt.Sprintf("polymorphic column %s of %s must be a string field", r.PolyType, t.GoName))
+		return nil
+	}
+	val := strconv.Quote(r.PolyValue)
+	if kp.named != "" {
+		val = kp.named + "(" + val + ")"
+	}
+	if kp.ptr {
+		return []string{"d := " + val, "c." + kp.sel + " = &d"}
+	}
+	return []string{"c." + kp.sel + " = " + val}
 }

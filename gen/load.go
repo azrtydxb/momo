@@ -52,6 +52,7 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 	if cfg.Naming != nil {
 		namer = cfg.Naming
 	}
+	g.Namer = namer
 	seen := map[string]bool{}
 	for _, p := range pkgs {
 		for _, e := range p.Errors {

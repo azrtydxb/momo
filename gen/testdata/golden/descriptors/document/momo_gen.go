@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo"
+	models "github.com/azrtydxb/momo/gen/testdata/fixtures/models"
 )
 
 // Table is the base table reference.
@@ -45,3 +46,101 @@ var (
 	Note      = base.Note
 	CreatedAt = base.CreatedAt
 )
+
+// Tenant is the belongs_to relation of Document.
+var Tenant = momo.Relation[models.Document, models.Tenant]{
+	Name:         "Tenant",
+	Kind:         momo.BelongsTo,
+	Parent:       momo.TableRef{Name: "documents"},
+	Child:        momo.TableRef{Name: "tenants"},
+	ParentMeta:   (*models.Document)(nil).MomoMeta(),
+	ChildMeta:    (*models.Tenant)(nil).MomoMeta(),
+	ParentCols:   []string{"tenant_id"},
+	ChildCols:    []string{"id"},
+	ChildPK:      []string{"id"},
+	ParentKey:    func(p *models.Document) ([]any, bool) { return []any{p.TenantID}, true },
+	ChildKey:     func(c *models.Tenant) ([]any, bool) { return []any{c.ID}, true },
+	SetParentKey: func(p *models.Document, k []any) { p.TenantID = k[0].(int64) },
+	GetOne:       func(p *models.Document) *models.Tenant { return p.Tenant },
+	SetOne:       func(p *models.Document, c *models.Tenant) { p.Tenant = c },
+}
+
+// Profile is the has_one relation of Document.
+var Profile = momo.Relation[models.Document, models.Profile]{
+	Name:        "Profile",
+	Kind:        momo.HasOne,
+	Parent:      momo.TableRef{Name: "documents"},
+	Child:       momo.TableRef{Name: "profiles"},
+	ParentMeta:  (*models.Document)(nil).MomoMeta(),
+	ChildMeta:   (*models.Profile)(nil).MomoMeta(),
+	ParentCols:  []string{"id"},
+	ChildCols:   []string{"document_id"},
+	ChildPK:     []string{"id"},
+	ParentKey:   func(p *models.Document) ([]any, bool) { return []any{p.ID}, true },
+	ChildKey:    func(c *models.Profile) ([]any, bool) { return []any{c.DocumentID}, true },
+	SetChildKey: func(c *models.Profile, k []any) { c.DocumentID = k[0].(int64) },
+	GetOne:      func(p *models.Document) *models.Profile { return p.Profile },
+	SetOne:      func(p *models.Document, c *models.Profile) { p.Profile = c },
+}
+
+// Comments is the has_many relation of Document.
+var Comments = momo.Relation[models.Document, models.Comment]{
+	Name:          "Comments",
+	Kind:          momo.HasMany,
+	Parent:        momo.TableRef{Name: "documents"},
+	Child:         momo.TableRef{Name: "comments"},
+	ParentMeta:    (*models.Document)(nil).MomoMeta(),
+	ChildMeta:     (*models.Comment)(nil).MomoMeta(),
+	ParentCols:    []string{"id"},
+	ChildCols:     []string{"owner_id"},
+	ChildPK:       []string{"id"},
+	Discriminator: &momo.Discriminator{Column: "owner_type", Value: "document"},
+	ParentKey:     func(p *models.Document) ([]any, bool) { return []any{p.ID}, true },
+	ChildKey:      func(c *models.Comment) ([]any, bool) { return []any{c.OwnerID}, true },
+	SetChildKey: func(c *models.Comment, k []any) {
+		c.OwnerID = k[0].(int64)
+		c.OwnerType = "document"
+	},
+	GetMany: func(p *models.Document) []models.Comment { return p.Comments },
+	SetMany: func(p *models.Document, cs []models.Comment) { p.Comments = cs },
+}
+
+// Cover is the has_one relation of Document.
+var Cover = momo.Relation[models.Document, models.Comment]{
+	Name:          "Cover",
+	Kind:          momo.HasOne,
+	Parent:        momo.TableRef{Name: "documents"},
+	Child:         momo.TableRef{Name: "comments"},
+	ParentMeta:    (*models.Document)(nil).MomoMeta(),
+	ChildMeta:     (*models.Comment)(nil).MomoMeta(),
+	ParentCols:    []string{"id"},
+	ChildCols:     []string{"owner_id"},
+	ChildPK:       []string{"id"},
+	Discriminator: &momo.Discriminator{Column: "owner_type", Value: "cover"},
+	ParentKey:     func(p *models.Document) ([]any, bool) { return []any{p.ID}, true },
+	ChildKey:      func(c *models.Comment) ([]any, bool) { return []any{c.OwnerID}, true },
+	SetChildKey: func(c *models.Comment, k []any) {
+		c.OwnerID = k[0].(int64)
+		c.OwnerType = "cover"
+	},
+	GetOne: func(p *models.Document) *models.Comment { return p.Cover },
+	SetOne: func(p *models.Document, c *models.Comment) { p.Cover = c },
+}
+
+// Tags is the many2many relation of Document.
+var Tags = momo.Relation[models.Document, models.Tag]{
+	Name:       "Tags",
+	Kind:       momo.ManyToMany,
+	Parent:     momo.TableRef{Name: "documents"},
+	Child:      momo.TableRef{Name: "tags"},
+	ParentMeta: (*models.Document)(nil).MomoMeta(),
+	ChildMeta:  (*models.Tag)(nil).MomoMeta(),
+	ParentCols: []string{"id"},
+	ChildCols:  []string{"id"},
+	ChildPK:    []string{"id"},
+	Through:    &momo.Through{Table: momo.TableRef{Name: "document_tags"}, ParentCols: []string{"document_id"}, ChildCols: []string{"tag_id"}},
+	ParentKey:  func(p *models.Document) ([]any, bool) { return []any{p.ID}, true },
+	ChildKey:   func(c *models.Tag) ([]any, bool) { return []any{c.ID}, true },
+	GetMany:    func(p *models.Document) []models.Tag { return p.Tags },
+	SetMany:    func(p *models.Document, cs []models.Tag) { p.Tags = cs },
+}

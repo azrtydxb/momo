@@ -6,8 +6,26 @@ import (
 	"go/token"
 	"go/types"
 
+	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
 )
+
+// graphNamer returns the naming preset a graph was loaded with, defaulting to
+// naming.Momo when the graph is nil or carries none.
+func graphNamer(g *Graph) naming.Namer {
+	if g != nil && g.Namer != nil {
+		return g.Namer
+	}
+	return naming.Momo{}
+}
+
+// joinColumnName is the join table column that references model m's primary
+// key column pkColumn: the model's name as a column, an underscore and the
+// key column. The join table's schema and the relation descriptor both use
+// it, so they always agree.
+func joinColumnName(namer naming.Namer, m *Model, pkColumn string) string {
+	return namer.ColumnName(m.GoName) + "_" + pkColumn
+}
 
 // isRelationTag reports whether a field's tags declare a relation.
 func isRelationTag(t tags.Tags) bool {
