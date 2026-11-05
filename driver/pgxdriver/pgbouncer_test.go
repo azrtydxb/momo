@@ -21,10 +21,8 @@ import (
 
 const pgbWorkers, pgbIters = 8, 25
 
-// pgbItems is the schema-qualified workload table. It is qualified because the
-// pooler may hand a statement a server connection whose search_path is not the
-// per-test schema; the tests must not depend on search_path tracking.
-var pgbItems string
+// sslRequestCode is the protocol code of a Postgres SSLRequest packet.
+const sslRequestCode = 80877103
 
 // openBouncerPool opens a pool on the PgBouncer (transaction mode) port.
 func openBouncerPool(t *testing.T) *pgxpool.Pool {
@@ -37,8 +35,9 @@ func openBouncerPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// runWorkers runs onePass from pgbWorkers goroutines and returns the joined errors.
-func runWorkers(ctx context.Context, d momo.Driver) error {
+// runWorkers runs onePass against the schema-qualified table items from
+// pgbWorkers goroutines and returns the joined errors.
+func runWorkers(ctx context.Context, d momo.Driver, items string) error {
 	errs := make(chan error, pgbWorkers*pgbIters)
 	var wg sync.WaitGroup
 	for w := 0; w < pgbWorkers; w++ {
@@ -46,7 +45,7 @@ func runWorkers(ctx context.Context, d momo.Driver) error {
 		go func(w int) {
 			defer wg.Done()
 			for i := 0; i < pgbIters; i++ {
-				if err := onePass(ctx, d, w, i); err != nil {
+				if err := onePass(ctx, d, items, w, i); err != nil {
 					errs <- fmt.Errorf("worker %d iteration %d: %w", w, i, err)
 					return
 				}
@@ -62,25 +61,30 @@ func runWorkers(ctx context.Context, d momo.Driver) error {
 	return errors.Join(all...)
 }
 
-func setupBouncerItems(ctx context.Context, t *testing.T, d momo.Driver) {
+// setupBouncerItems creates the workload table and returns its schema-qualified
+// name. It is qualified because the pooler may hand a statement a server
+// connection whose search_path is not the per-test schema; the tests must not
+// depend on search_path tracking.
+func setupBouncerItems(ctx context.Context, t *testing.T, d momo.Driver) (items string) {
 	t.Helper()
-	pgbItems = pgx.Identifier{testdb.Schema(t), "pgb_items"}.Sanitize()
-	if _, err := d.Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %[1]s", pgbItems), nil); err != nil {
+	items = pgx.Identifier{testdb.Schema(t), "pgb_items"}.Sanitize()
+	if _, err := d.Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %[1]s", items), nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.Exec(ctx, fmt.Sprintf("CREATE TABLE %[1]s (id bigserial primary key, worker int not null, n int not null)", pgbItems), nil); err != nil {
+	if _, err := d.Exec(ctx, fmt.Sprintf("CREATE TABLE %[1]s (id bigserial primary key, worker int not null, n int not null)", items), nil); err != nil {
 		t.Fatal(err)
 	}
+	return items
 }
 
 func TestPgBouncerTransactionMode(t *testing.T) {
 	ctx := context.Background()
 	d := New(openBouncerPool(t), WithExecMode(pgx.QueryExecModeExec))
-	setupBouncerItems(ctx, t, d)
-	if err := runWorkers(ctx, d); err != nil {
+	items := setupBouncerItems(ctx, t, d)
+	if err := runWorkers(ctx, d, items); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := d.Query(ctx, fmt.Sprintf("SELECT count(*) FROM %[1]s", pgbItems), nil)
+	rows, err := d.Query(ctx, fmt.Sprintf("SELECT count(*) FROM %[1]s", items), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,8 +134,17 @@ func (w *wireCounter) drain() {
 				return
 			}
 			l := int(binary.BigEndian.Uint32(w.buf))
+			if l < 4 { // malformed frame: stop parsing rather than panic
+				w.buf = nil
+				return
+			}
 			if len(w.buf) < l {
 				return
+			}
+			if l >= 8 && binary.BigEndian.Uint32(w.buf[4:8]) == sslRequestCode {
+				// An encrypted stream cannot be parsed, so the detector
+				// would silently count nothing.
+				panic("pgbouncer wire counter: SSLRequest seen; the test needs sslmode=disable")
 			}
 			w.buf, w.started = w.buf[l:], true
 			continue
@@ -140,6 +153,10 @@ func (w *wireCounter) drain() {
 			return
 		}
 		l := int(binary.BigEndian.Uint32(w.buf[1:5]))
+		if l < 4 { // malformed frame: stop parsing rather than panic
+			w.buf = nil
+			return
+		}
 		if len(w.buf) < 1+l {
 			return
 		}
@@ -195,8 +212,8 @@ func TestPgBouncerNoNamedPreparedStatements(t *testing.T) {
 	ctx := context.Background()
 	pool, named, parses := bouncerPoolCounting(t)
 	d := New(pool, WithExecMode(pgx.QueryExecModeExec))
-	setupBouncerItems(ctx, t, d)
-	if err := runWorkers(ctx, d); err != nil {
+	items := setupBouncerItems(ctx, t, d)
+	if err := runWorkers(ctx, d, items); err != nil {
 		t.Fatal(err)
 	}
 	if parses.Load() == 0 {
@@ -214,13 +231,30 @@ func TestPgBouncerNoNamedPreparedStatements(t *testing.T) {
 func TestPgBouncerWireCounterDetectsNamedStatements(t *testing.T) {
 	ctx := context.Background()
 	setup := New(openBouncerPool(t), WithExecMode(pgx.QueryExecModeExec))
-	setupBouncerItems(ctx, t, setup)
+	items := setupBouncerItems(ctx, t, setup)
 	pool, named, _ := bouncerPoolCounting(t)
 	d := New(pool, WithExecMode(pgx.QueryExecModeCacheStatement))
-	err := runWorkers(ctx, d)
+	err := runWorkers(ctx, d, items)
 	if named.Load() == 0 {
 		t.Fatalf("QueryExecModeCacheStatement produced no named statement on the wire (workload err: %v); the counter cannot detect a regression", err)
 	}
+}
+
+// TestWireCounterDrainGuards covers the parser itself: an SSLRequest fails
+// loudly and a frame shorter than its own length field stops parsing.
+func TestWireCounterDrainGuards(t *testing.T) {
+	short := &wireCounter{named: new(atomic.Int64), total: new(atomic.Int64), started: true, buf: []byte{'P', 0, 0, 0, 0}}
+	short.drain() // must not panic
+	if len(short.buf) != 0 {
+		t.Fatalf("malformed frame left %d bytes buffered", len(short.buf))
+	}
+	ssl := &wireCounter{named: new(atomic.Int64), total: new(atomic.Int64), buf: []byte{0, 0, 0, 8, 4, 210, 22, 47}}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("SSLRequest did not fail loudly")
+		}
+	}()
+	ssl.drain()
 }
 
 // TestPgBouncerBatchUsesUnnamedStatements runs batches repeatedly with the
@@ -330,15 +364,15 @@ func txScalar(ctx context.Context, t *testing.T, tx momo.DriverTx, sql string, a
 	return s
 }
 
-func onePass(ctx context.Context, d momo.Driver, w, i int) error {
+func onePass(ctx context.Context, d momo.Driver, items string, w, i int) error {
 	tx, err := d.Begin(ctx, momo.TxOptions{})
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, fmt.Sprintf("INSERT INTO %[1]s (worker, n) VALUES ($1, $2)", pgbItems), []any{w, i}); err != nil {
+	if _, err := tx.Exec(ctx, fmt.Sprintf("INSERT INTO %[1]s (worker, n) VALUES ($1, $2)", items), []any{w, i}); err != nil {
 		return errors.Join(err, tx.Rollback(ctx))
 	}
-	mine, err := countWorker(ctx, tx, w)
+	mine, err := countWorker(ctx, tx, items, w)
 	if err != nil {
 		return errors.Join(err, tx.Rollback(ctx))
 	}
@@ -349,7 +383,7 @@ func onePass(ctx context.Context, d momo.Driver, w, i int) error {
 		return err
 	}
 	rs, err := d.(momo.Batcher).SendBatch(ctx, []momo.Compiled{
-		{SQL: fmt.Sprintf("UPDATE %[1]s SET n = n WHERE worker = $1", pgbItems), Args: []any{w}},
+		{SQL: fmt.Sprintf("UPDATE %[1]s SET n = n WHERE worker = $1", items), Args: []any{w}},
 		{SQL: "SELECT 1", Args: nil},
 	})
 	if err != nil {
@@ -363,8 +397,8 @@ func onePass(ctx context.Context, d momo.Driver, w, i int) error {
 }
 
 // countWorker reads one count inside tx. The rows are closed and their Close error is returned.
-func countWorker(ctx context.Context, tx momo.DriverTx, w int) (n int, err error) {
-	rows, err := tx.Query(ctx, fmt.Sprintf("SELECT count(*) FROM %[1]s WHERE worker = $1", pgbItems), []any{w})
+func countWorker(ctx context.Context, tx momo.DriverTx, items string, w int) (n int, err error) {
+	rows, err := tx.Query(ctx, fmt.Sprintf("SELECT count(*) FROM %[1]s WHERE worker = $1", items), []any{w})
 	if err != nil {
 		return 0, err
 	}
