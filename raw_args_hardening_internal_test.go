@@ -33,6 +33,7 @@ func TestRawScannerRules(t *testing.T) {
 		{"at after identifier byte is text", pg, "SELECT x@y, ?", []any{1}, "SELECT x@y, $1", 1},
 		{"at after identifier byte is text mysql", my, "SELECT x@y, ?", []any{1}, "SELECT x@y, ?", 1},
 		{"dollar inside identifier is not a quote", pg, "SELECT x$a$, ?, y$a$", []any{1}, "SELECT x$a$, $1, y$a$", 1},
+		{"dollar after digit is not a quote", pg, "SELECT 1$a$, ?, 2$a$", []any{1}, "SELECT 1$a$, $1, 2$a$", 1},
 		{"pg contains-operator at-less", pg, "a <@b, ?", []any{1}, "a <@b, $1", 1},
 		{"lt at is a named bind off pg", lite, "x<@b", []any{NamedArg{"b", 1}}, "x<?", 1},
 		{"pg named after space", pg, "x < @b", []any{NamedArg{"b", 1}}, "x < $1", 1},
