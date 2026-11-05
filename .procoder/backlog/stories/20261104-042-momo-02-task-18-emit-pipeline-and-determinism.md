@@ -1,6 +1,6 @@
 # momo-02 Task 18: Emit pipeline and determinism
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-02-generator
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -11,8 +11,12 @@ Implements plan momo-02-generator Task 18: Emit pipeline and determinism (`.proc
 
 ## Acceptance criteria
 
-- [ ] `TestGenerateDeterministic` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestGenerateDeterministic` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- RED: `go test ./gen -run TestGenerateDeterministic` failed to compile: `undefined: Emit`, `undefined: Output`, `w.Outputs undefined`.
+- GREEN: `TestGenerateDeterministic`, `TestGenerateDeterministicAcrossLoads` (fresh Load per run, GOMAXPROCS 1/4/1/8), `TestEmitOutputsSortedAndLayout`, `TestEmitRunsPluginsInOrder`, `TestEmitDiagnosticsWriteNothing` pass.
+- Mutation: removing the sort in `Writer.Outputs` makes TestGenerateDeterministic and TestEmitOutputsSortedAndLayout fail; restored.
+- Note: EmitDescriptors already embeds the EmitLookup output (ColumnByName, ColumnNames) in the subpackage momo_gen.go, so Emit does not call EmitLookup separately (a second write would be an ErrCollision).
