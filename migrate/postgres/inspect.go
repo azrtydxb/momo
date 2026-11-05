@@ -107,6 +107,10 @@ type inspector struct {
 	c       momo.PinnedConn
 	current string
 	managed []string
+	// invalid names the indexes left invalid by a failed CONCURRENTLY build.
+	// The schema model has no field for them; drift reporting (a later task)
+	// reads them from here.
+	invalid []string
 }
 
 // qualify spells an object name relative to the current schema.
@@ -198,6 +202,14 @@ func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 		}
 		if err := in.partitions(ctx, tr, &t); err != nil {
 			return fmt.Errorf("postgres inspect: partitions of %s.%s: %w", tr.ns, tr.name, err)
+		}
+		ixs, invalid, err := Dialect{}.inspectIndexes(ctx, in.c, tr.oid)
+		if err != nil {
+			return fmt.Errorf("postgres inspect: indexes of %s.%s: %w", tr.ns, tr.name, err)
+		}
+		t.Indexes = ixs
+		for _, name := range invalid {
+			in.invalid = append(in.invalid, in.qualify(tr.ns, name))
 		}
 		out.Tables = append(out.Tables, t)
 	}
