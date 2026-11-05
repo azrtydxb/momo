@@ -49,7 +49,22 @@ func (e *descEmitter) typeString(t types.Type) string {
 
 // modelType returns the qualified Go type name of a model.
 func (e *descEmitter) modelType(m *Model) string {
-	return e.use(m.PkgName, m.PkgPath) + "." + m.GoName
+	return e.use(m.PkgName, e.modelImportPath(m)) + "." + m.GoName
+}
+
+// modelImportPath builds the import path of m's package through ImportPath,
+// so it is slash-separated on every OS. A model without module information
+// (built by hand) falls back to its recorded package path.
+func (e *descEmitter) modelImportPath(m *Model) string {
+	if m.ModulePath == "" {
+		return m.PkgPath
+	}
+	p, err := ImportPath(m.ModulePath, m.ModuleDir, m.PkgDir)
+	if err != nil {
+		e.diags = append(e.diags, Diagnostic{Pos: m.Pos, Msg: err.Error()})
+		return m.PkgPath
+	}
+	return p
 }
 
 func (e *descEmitter) tableRef(m *Model) string {

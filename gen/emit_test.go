@@ -170,3 +170,50 @@ func TestEmitDiagnosticsWriteNothing(t *testing.T) {
 		t.Fatalf("%d outputs buffered despite diagnostics", n)
 	}
 }
+
+// TestEmitSubPkgCollision: two models of one package that map to the same
+// subpackage would overwrite each other's momo_gen.go.
+func TestEmitSubPkgCollision(t *testing.T) {
+	dir, err := filepath.Abs("testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, _, err := Load([]string{"./models"}, Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Models) < 2 {
+		t.Fatal("need two models")
+	}
+	var a, b *Model
+	for _, m := range g.Models {
+		if a == nil {
+			a = m
+		} else if b == nil && m.PkgDir == a.PkgDir && m.PkgPath == a.PkgPath {
+			b = m
+		}
+	}
+	if b == nil {
+		t.Fatal("need two models in one package")
+	}
+	b.SubPkg = a.SubPkg
+	w := NewWriter(WriterOptions{ModuleRoot: dir})
+	err = Emit(g, w)
+	var de *ErrDiagnostics
+	if !errors.As(err, &de) {
+		t.Fatalf("want ErrDiagnostics, got %v", err)
+	}
+	found := false
+	for _, d := range de.Diagnostics {
+		if strings.Contains(d.Msg, "subpackage "+a.SubPkg) && strings.Contains(d.Msg, a.GoName) &&
+			strings.Contains(d.Msg, b.GoName) && d.Pos.IsValid() {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no positioned subpackage collision diagnostic: %v", err)
+	}
+	if n := len(w.Outputs()); n != 0 {
+		t.Fatalf("%d outputs buffered", n)
+	}
+}

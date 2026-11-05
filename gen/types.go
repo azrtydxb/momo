@@ -70,16 +70,20 @@ type Graph struct {
 
 // Model is a discovered model type.
 type Model struct {
-	GoName    string
-	PkgPath   string
-	PkgName   string
-	PkgDir    string
-	File      string
-	Pos       token.Position
-	Table     string
-	Schema    string
-	Fields    []*Field
-	Relations []*Relation
+	GoName  string
+	PkgPath string
+	PkgName string
+	PkgDir  string
+	// ModulePath and ModuleDir come from packages.Module; both are empty
+	// when the package belongs to no module.
+	ModulePath string
+	ModuleDir  string
+	File       string
+	Pos        token.Position
+	Table      string
+	Schema     string
+	Fields     []*Field
+	Relations  []*Relation
 	// Indexes are the indexes contributed by tagged fields of embedded
 	// structs and mixins, in declaration order.
 	Indexes []schema.Index
