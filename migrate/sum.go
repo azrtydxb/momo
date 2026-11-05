@@ -41,26 +41,28 @@ var (
 	hexSHA256 = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
-// ComputeSum hashes every file in the top level of fsys except momo.sum.
+// ComputeSum hashes every file in fsys, including nested directories, except
+// the root momo.sum and dotfiles or dot directories (.DS_Store, .git and the
+// .momo-*.tmp files of an interrupted write), which are skipped everywhere in
+// the walk. Entries are slash-separated paths relative to fsys.
 func ComputeSum(fsys fs.FS) (*Sum, error) {
-	entries, err := fs.ReadDir(fsys, ".")
-	if err != nil {
-		return nil, fmt.Errorf("migrate: read migration directory: %w", err)
-	}
 	files := map[string]string{}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || name == SumFileName {
-			continue
-		}
+	err := walkFiles(fsys, func(name string) error {
 		if strings.ContainsAny(name, "\r\n") || name != strings.TrimSpace(name) {
-			return nil, fmt.Errorf("migrate: file name %q cannot be recorded in %s", name, SumFileName)
+			return fmt.Errorf("migrate: file name %q cannot be recorded in %s", name, SumFileName)
 		}
 		h, err := hashFile(fsys, name)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		files[name] = h
+		return nil
+	})
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "migrate: ") || strings.HasPrefix(err.Error(), walkErrPrefix) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("migrate: read migration directory: %w", err)
 	}
 	return &Sum{DirHash: dirHash(files), Files: files}, nil
 }
@@ -152,21 +154,15 @@ func ParseSum(r io.Reader) (*Sum, error) {
 func VerifySum(fsys fs.FS, want *Sum) []string {
 	bad := map[string]bool{}
 	seen := map[string]bool{}
-	entries, err := fs.ReadDir(fsys, ".")
-	if err != nil {
-		entries = nil
-	}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || name == SumFileName {
-			continue
-		}
+	// A directory that cannot be walked yields only what was read before the error.
+	_ = walkFiles(fsys, func(name string) error {
 		seen[name] = true
 		h, err := hashFile(fsys, name)
 		if wantHash, ok := want.Files[name]; err != nil || !ok || h != wantHash {
 			bad[name] = true
 		}
-	}
+		return nil
+	})
 	for name := range want.Files {
 		if !seen[name] {
 			bad[name] = true

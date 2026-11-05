@@ -506,3 +506,45 @@ func TestStatusStates(t *testing.T) {
 		}
 	}
 }
+
+// TestMovingAppliedMigrationIntoArchiveKeepsHistory: history is keyed by version,
+// so moving an applied migration into a nested directory (and refreshing
+// momo.sum) neither makes it pending again nor missing, and the checksum gate
+// still passes because the content did not change.
+func TestMovingAppliedMigrationIntoArchiveKeepsHistory(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	if _, err := sumEngine(t, db, migratetest.WithSum(t, twoVersions())).Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	moved := fstest.MapFS{
+		"archive/2026/20260101000000_a.up.sql": twoVersions()["20260101000000_a.up.sql"],
+		"20260101000001_b.up.sql":              twoVersions()["20260101000001_b.up.sql"],
+	}
+	e := sumEngine(t, db, migratetest.WithSum(t, moved))
+	plan, err := e.Plan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan) != 0 {
+		t.Fatalf("nothing may be pending after the move: %+v", plan)
+	}
+	st, err := e.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st) != 2 {
+		t.Fatalf("status = %+v", st)
+	}
+	for _, s := range st {
+		if s.State != "applied" {
+			t.Errorf("%s: state %q, want applied", s.Version, s.State)
+		}
+	}
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatalf("the checksum gate must pass after the move: %v", err)
+	}
+	if appliedCount(t, db) != 2 {
+		t.Fatal("the move must not apply anything again")
+	}
+}
