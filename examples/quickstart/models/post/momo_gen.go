@@ -20,7 +20,7 @@ type Columns struct {
 	ID        momo.Column[int64]
 	AuthorID  momo.Column[int64]
 	Title     momo.Column[string]
-	Embedding momo.Column[vector.Vector]
+	Embedding momo.VectorColumn[vector.Vector]
 	CreatedAt momo.ReadOnlyColumn[time.Time]
 }
 
@@ -34,7 +34,7 @@ func As(alias string) Columns {
 		ID:        momo.NewColumn[int64](q, "id", momo.FlagPK|momo.FlagIdentity),
 		AuthorID:  momo.NewColumn[int64](q, "author_id", 0),
 		Title:     momo.NewColumn[string](q, "title", 0),
-		Embedding: momo.NewColumn[vector.Vector](q, "embedding", 0),
+		Embedding: momo.NewVectorColumn[vector.Vector](q, "embedding", 3, 0),
 		CreatedAt: momo.NewReadOnlyColumn[time.Time](q, "created_at", momo.FlagReadOnly|momo.FlagHasDefault),
 	}
 }

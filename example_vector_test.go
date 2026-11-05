@@ -13,16 +13,12 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/internal/testmodels/example"
+	"github.com/azrtydxb/momo/internal/testmodels/example/document"
 	"github.com/azrtydxb/momo/migrate"
 	migratepg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
 	"github.com/azrtydxb/momo/vector"
 )
-
-// docEmbedding is the typed descriptor of documents.embedding. Generated
-// code emits a plain momo.Column for a vector field, so the descriptor that
-// carries the dimension is built by hand with NewVectorColumn.
-var docEmbedding = momo.NewVectorColumn[vector.Vector]("documents", "embedding", 1536, 0)
 
 // A nearest-neighbour query orders by a typed distance expression. The query
 // vector is bound as an argument and checked against the column dimension
@@ -34,7 +30,7 @@ func ExampleCosineDistance() {
 	query[0] = 1
 
 	c, err := momo.Select[example.Document, *example.Document](db).
-		OrderBy(momo.CosineDistance(docEmbedding, query).Asc()).
+		OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
 		Limit(5).
 		SQL()
 	if err != nil {
@@ -51,7 +47,7 @@ func ExampleL2Distance() {
 	db := momo.New(pgxdriver.New(nil))
 
 	_, err := momo.Select[example.Document, *example.Document](db).
-		OrderBy(momo.L2Distance(docEmbedding, vector.Vector{1, 2, 3}).Asc()).
+		OrderBy(momo.L2Distance(document.Embedding, vector.Vector{1, 2, 3}).Asc()).
 		SQL()
 	fmt.Println(err != nil)
 	// Output:
@@ -101,7 +97,7 @@ func ExampleDB_WithSearch() {
 	}
 	err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
 		_, err := momo.Select[example.Document, *example.Document](tx).
-			OrderBy(momo.CosineDistance(docEmbedding, make(vector.Vector, 1536)).Asc()).
+			OrderBy(momo.CosineDistance(document.Embedding, make(vector.Vector, 1536)).Asc()).
 			Limit(10).
 			All(ctx)
 		return err
@@ -133,7 +129,7 @@ func ExampleSelectQuery_Explain() {
 	ctx := context.Background()
 
 	plan, err := momo.Select[example.Document, *example.Document](db).
-		OrderBy(momo.L2Distance(docEmbedding, make(vector.Vector, 1536)).Asc()).
+		OrderBy(momo.L2Distance(document.Embedding, make(vector.Vector, 1536)).Asc()).
 		Limit(10).
 		Explain(ctx)
 	if err != nil {

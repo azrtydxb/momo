@@ -74,12 +74,12 @@ errors.Is(v.Validate(4), vector.ErrInvalidVector) // true
 ## Columns and distances
 
 A `momo.VectorColumn[V]` is a typed column descriptor that carries the
-declared dimension. Generated code emits a plain `momo.Column` for a vector
-field, so build the vector descriptor by hand once, next to the model:
-
-```go
-var docEmbedding = momo.NewVectorColumn[vector.Vector]("documents", "embedding", 1536, 0)
-```
+declared dimension. Generated code emits one for every field of a `vector`
+package type, with the dimension from the `dim` tag, so `document.Embedding`
+passes straight to a distance builder. Build one by hand with
+`momo.NewVectorColumn` only for a table the generator does not cover. A
+vector field tagged `read_only`, `create_only` or `immutable` still gets the
+plain permission column.
 
 The distance builders take a column and a query vector of the same type.
 Each returns a `DistanceExpr`, an `Expression[float64]` that works in the
@@ -118,7 +118,7 @@ A nearest-neighbour query (`ExampleCosineDistance`):
 
 ```go
 c, err := momo.Select[example.Document, *example.Document](db).
-	OrderBy(momo.CosineDistance(docEmbedding, query).Asc()).
+	OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
 	Limit(5).
 	SQL()
 // ... ORDER BY ("documents"."embedding" <=> $1) ASC LIMIT $2
@@ -221,7 +221,7 @@ settings := momo.SearchSettings{
 }
 err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
 	_, err := momo.Select[example.Document, *example.Document](tx).
-		OrderBy(momo.CosineDistance(docEmbedding, query).Asc()).
+		OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
 		Limit(10).
 		All(ctx)
 	return err
@@ -264,7 +264,7 @@ it inside the transaction whose settings you want to see
 
 ```go
 plan, err := momo.Select[example.Document, *example.Document](db).
-	OrderBy(momo.L2Distance(docEmbedding, query).Asc()).
+	OrderBy(momo.L2Distance(document.Embedding, query).Asc()).
 	Limit(10).
 	Explain(ctx)
 // look for "Index Scan using documents_embedding_hnsw"
