@@ -129,7 +129,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (*Report, error) {
 		return nil, fmt.Errorf("migrate: apply id: %w", err)
 	}
 	rep := &Report{ApplyID: e.opts.clock().UTC().Format("20060102150405") + "-" + hex.EncodeToString(b[:])}
-	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock}
+	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin}
 	for _, p := range pending {
 		if o.To != "" && p.Version > o.To {
 			break

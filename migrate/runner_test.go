@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
+
+	"github.com/azrtydxb/momo"
 
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
@@ -108,5 +111,143 @@ func TestNewEngineRequiresDialect(t *testing.T) {
 	_, err := migrate.NewEngine(nil, fstest.MapFS{})
 	if err == nil || !strings.Contains(err.Error(), "migrate.WithDialect") {
 		t.Fatalf("want an error naming migrate.WithDialect, got %v", err)
+	}
+}
+
+func runEnv(t *testing.T, c momo.PinnedConn) migrate.RunEnv {
+	t.Helper()
+	return migrate.RunEnv{Conn: c, Dialect: migratetest.Postgres(), Clock: time.Now}
+}
+
+// Without the migration lock, a second engine's failure path must not turn the
+// first engine's applied row back into a pending version.
+func TestFailurePathNeverOverwritesApplied(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	fsys := migratetest.WithSum(t, fstest.MapFS{
+		"20260101000000_t.up.sql": {Data: []byte("CREATE TABLE a (x int);")},
+	})
+	if _, err := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys).Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	c := pinned(t, db)
+	bad := migrate.Pending{Version: "20260101000000", Name: "t", Statements: []migrate.Statement{{SQL: "CREATE TABLE b (x int)"}, {SQL: "INSERT INTO missing VALUES (1)"}}}
+	if _, err := migrate.RunMigration(ctx, runEnv(t, c), bad, "engine-b"); err == nil {
+		t.Fatal("engine B must fail")
+	}
+	row := historyRow(t, db, "20260101000000")
+	if row.Status != migrate.StatusApplied || row.Error != "" || row.ApplyID == "engine-b" {
+		t.Fatalf("engine A's applied row was overwritten: %+v", row)
+	}
+	if tableExists(t, db, "b") {
+		t.Fatal("engine B's DDL must be rolled back")
+	}
+}
+
+func TestCancelledContextStillRecordsFailure(t *testing.T) {
+	for _, tc := range []struct{ name, body, status string }{
+		{"transactional", "SELECT pg_sleep(10);", migrate.StatusRolledBack},
+		{"non-transactional", "-- momo:no-transaction\nSELECT pg_sleep(10);", migrate.StatusFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := testopen.Postgres(t)
+			fsys := migratetest.WithSum(t, fstest.MapFS{"20260101000000_slow.up.sql": {Data: []byte(tc.body)}})
+			e := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys)
+			ctx, cancel := context.WithCancel(context.Background())
+			timer := time.AfterFunc(500*time.Millisecond, cancel)
+			defer timer.Stop()
+			if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
+				t.Fatal("apply must fail when its context is cancelled")
+			}
+			row := historyRow(t, db, "20260101000000")
+			if row.Status != tc.status || row.Error == "" {
+				t.Fatalf("want %s with the error recorded after cancellation, got %+v", tc.status, row)
+			}
+		})
+	}
+}
+
+func TestClass22ErrorIsRedacted(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	fsys := migratetest.WithSum(t, fstest.MapFS{
+		"20260101000000_t.up.sql": {Data: []byte("CREATE TABLE t (intcol int);\nINSERT INTO t(intcol) VALUES ('secret-abc');")},
+	})
+	_, err := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys).Apply(ctx, migrate.ApplyOptions{})
+	if err == nil {
+		t.Fatal("apply must fail")
+	}
+	row := historyRow(t, db, "20260101000000")
+	if strings.Contains(row.Error, "secret-abc") || strings.Contains(err.Error(), "secret-abc") {
+		t.Fatalf("data leaked: recorded %q, returned %q", row.Error, err)
+	}
+	if !strings.Contains(row.Error, "22P02") {
+		t.Fatalf("the SQLSTATE should remain: %q", row.Error)
+	}
+}
+
+func TestLeftoverRunningRowIsDirty(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	c := pinned(t, db)
+	if err := migrate.EnsureHistory(ctx, c, migratetest.Postgres()); err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, c, `INSERT INTO momo_migrations (version, name, checksum, status, applied_at) VALUES ('20250101000000', 'old', 'x', 'running', 'now')`)
+	fsys := migratetest.WithSum(t, fstest.MapFS{"20260101000000_t.up.sql": {Data: []byte("CREATE TABLE a (x int);")}})
+	_, err := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys).Apply(ctx, migrate.ApplyOptions{})
+	if !errors.Is(err, migrate.ErrDirty) {
+		t.Fatalf("want ErrDirty, got %v", err)
+	}
+	if tableExists(t, db, "a") {
+		t.Fatal("nothing may run while dirty")
+	}
+}
+
+func TestMixedNoTxStatementsApplied(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	c := pinned(t, db)
+	if err := migrate.EnsureHistory(ctx, c, migratetest.Postgres()); err != nil {
+		t.Fatal(err)
+	}
+	p := migrate.Pending{Version: "20260101000000", Name: "mixed", Statements: []migrate.Statement{
+		{SQL: "CREATE TABLE m1 (x int)"},
+		{SQL: "CREATE TABLE m2 (x int)", NoTx: true},
+		{SQL: "INSERT INTO missing VALUES (1)"},
+		{SQL: "CREATE TABLE m3 (x int)"},
+	}}
+	if _, err := migrate.RunMigration(ctx, runEnv(t, c), p, "a1"); err == nil {
+		t.Fatal("must fail")
+	}
+	row := historyRow(t, db, "20260101000000")
+	if row.Status != migrate.StatusFailed || row.StatementsApplied != 2 {
+		t.Fatalf("want failed with 2 statements applied, got %+v", row)
+	}
+	if !tableExists(t, db, "m1") || !tableExists(t, db, "m2") || tableExists(t, db, "m3") {
+		t.Fatal("statements before the failure stay applied; later ones do not run")
+	}
+}
+
+func TestRolledBackRowIsRetried(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	bad := migratetest.WithSum(t, fstest.MapFS{"20260101000000_t.up.sql": {Data: []byte("INSERT INTO missing VALUES (1);")}})
+	if _, err := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), bad).Apply(ctx, migrate.ApplyOptions{}); err == nil {
+		t.Fatal("must fail")
+	}
+	if r := historyRow(t, db, "20260101000000"); r.Status != migrate.StatusRolledBack {
+		t.Fatalf("want rolled_back, got %+v", r)
+	}
+	fixed := migratetest.WithSum(t, fstest.MapFS{"20260101000000_t.up.sql": {Data: []byte("-- momo:no-transaction\nCREATE TABLE a (x int);")}})
+	e := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fixed)
+	if plan, err := e.Plan(ctx); err != nil || len(plan) != 1 {
+		t.Fatalf("a rolled_back version is pending: %+v %v", plan, err)
+	}
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if r := historyRow(t, db, "20260101000000"); r.Status != migrate.StatusApplied || r.Error != "" {
+		t.Fatalf("retry must end applied with no error, got %+v", r)
 	}
 }
