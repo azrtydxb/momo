@@ -38,6 +38,9 @@ type pending struct {
 // ColumnNames) in that file, so the lookup is not emitted a second time. If any emitter reports diagnostics they are returned as
 // *ErrDiagnostics and nothing is buffered.
 //
+// After a non-nil error the Writer may hold partial output (files buffered
+// before a plugin failed); callers must not Commit it.
+//
 // Output is byte-deterministic: emitters iterate slices only and the
 // grouping below sorts every key, so map iteration order never reaches a file.
 func Emit(g *Graph, w *Writer) error {
@@ -64,7 +67,15 @@ func Emit(g *Graph, w *Writer) error {
 		if len(d) == 0 {
 			files = append(files, pending{filepath.Join(dir, "momo_gen.go"), src})
 		}
+		subOwner := map[string]*Model{}
 		for _, m := range models {
+			if prev, dup := subOwner[m.SubPkg]; dup {
+				diags = append(diags, Diagnostic{Pos: m.Pos, Msg: fmt.Sprintf(
+					"models %s and %s of package %s share subpackage %s and would overwrite each other's momo_gen.go",
+					prev.GoName, m.GoName, m.PkgName, m.SubPkg)})
+				continue
+			}
+			subOwner[m.SubPkg] = m
 			sub := filepath.Join(dir, m.SubPkg, "momo_gen.go")
 			desc, d := EmitDescriptors(m, g)
 			diags = append(diags, d...)
