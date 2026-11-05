@@ -57,7 +57,6 @@ func TestRawTokenizerLeavesLiteralsAlone(t *testing.T) {
 		{"jsonpath match and contains", pg, "SELECT data @@ '$.a', data @> '{}', ?", []any{1}, "SELECT data @@ '$.a', data @> '{}', $1", 1},
 		{"cast", pg, "SELECT ?::int, a::text", []any{1}, "SELECT $1::int, a::text", 1},
 		{"json arrows", pg, "SELECT data->>'a', data->'b'->>?", []any{"c"}, "SELECT data->>'a', data->'b'->>$1", 1},
-		{"native dollar left alone", pg, "SELECT $1, ?", []any{1}, "SELECT $1, $1", 1},
 		{"mysql user variable", my, "SELECT @v, @@sql_mode, ?", []any{1}, "SELECT @v, @@sql_mode, ?", 1},
 		{"named", pg, "a = @s AND b = @s", []any{NamedArg{"s", 1}}, "a = $1 AND b = $2", 2},
 		{"named and positional", lite, "a = @s AND b = ?", []any{NamedArg{"s", 1}, 2}, "a = ? AND b = ?", 2},

@@ -17,9 +17,22 @@ type NamedArg struct {
 	Value any
 }
 
-// Named binds value to every @name placeholder in a raw fragment. A name with
-// no matching argument is a build error, except on MySQL where an unmatched
-// @name is a user variable and is left verbatim.
+// Named binds value to every @name placeholder in a raw fragment. An @name
+// with no matching argument is a build error, except on MySQL where it is a
+// user variable and is left verbatim. A Named argument that no @name in the
+// fragment references is a build error on every dialect, so a typo cannot
+// run silently.
+//
+// Raw scanner assumptions: MySQL NO_BACKSLASH_ESCAPES and PostgreSQL
+// standard_conforming_strings=off are not supported (MySQL strings always
+// honour backslash escapes, PostgreSQL ones only after E). MySQL /*! ... */
+// executable comments are treated as ordinary comments. On PostgreSQL the
+// operators ?| and ?& are operators, not binds followed by | or &: write
+// "? |" with a space for a bind followed by OR. A "<@" on PostgreSQL is the
+// containment operator, never an @name. A bare native $n placeholder on
+// PostgreSQL is left alone only when the fragment has no ? or @name bind;
+// mixing them is a build error. An unterminated string, quoted identifier,
+// block comment or dollar quote is a build error.
 func Named(name string, value any) NamedArg { return NamedArg{Name: name, Value: value} }
 
 // inArg expands to one bind per element of a slice.
@@ -27,7 +40,9 @@ type inArg struct{ values any }
 
 // In expands a slice argument into a comma-separated list of bind markers,
 // one per element, for a raw placeholder written inside the parentheses of
-// IN (?). An empty slice, or a value that is not a slice, is a build error.
+// IN (?). An empty slice, or a value that is not a slice, is a build error,
+// as is an element that is an Ident, In, Named or Expr argument. A []byte is a
+// slice like any other: In([]byte) expands to one bind per byte.
 func In(values any) any { return inArg{values} }
 
 // identArg renders a quoted identifier.
@@ -65,8 +80,12 @@ func isIdentStart(c byte) bool {
 // inside a string literal, quoted identifier, comment or PostgreSQL
 // dollar-quoted string is text, as are the PostgreSQL operators ?| ?& @? @@
 // and @>. "??" yields a literal '?'.
-func scanRaw(sql string, d *dialect.Dialect) []rawTok {
-	var toks []rawTok
+func scanRaw(sql string, d *dialect.Dialect) (toks []rawTok, native bool, err error) {
+	unterminated := func(what string) {
+		if err == nil {
+			err = rawErr("raw SQL %q has an unterminated %s", sql, what)
+		}
+	}
 	start := 0 // start of the pending verbatim run
 	pg, my := d.Name == dialect.Postgres, d.Name == dialect.MySQL
 	flush := func(end int) {
@@ -76,8 +95,8 @@ func scanRaw(sql string, d *dialect.Dialect) []rawTok {
 	}
 	// skipQuoted returns the index after a quoted run beginning at i (the
 	// opening quote), honouring a doubled quote and, when backslash is set,
-	// backslash escapes. An unterminated run extends to the end of sql.
-	skipQuoted := func(i int, q byte, backslash bool) int {
+	// backslash escapes. An unterminated run is recorded as an error.
+	skipQuoted := func(i int, q byte, backslash bool, what string) int {
 		for j := i + 1; j < len(sql); j++ {
 			switch {
 			case backslash && sql[j] == '\\':
@@ -90,6 +109,7 @@ func scanRaw(sql string, d *dialect.Dialect) []rawTok {
 				return j + 1
 			}
 		}
+		unterminated(what)
 		return len(sql)
 	}
 	i := 0
@@ -98,16 +118,18 @@ func scanRaw(sql string, d *dialect.Dialect) []rawTok {
 		switch {
 		case c == '\'':
 			esc := my || pg && i > 0 && (sql[i-1] == 'e' || sql[i-1] == 'E') && (i < 2 || !isIdentByte(sql[i-2], d))
-			i = skipQuoted(i, '\'', esc)
+			i = skipQuoted(i, '\'', esc, "string literal")
 		case c == '"':
-			i = skipQuoted(i, '"', my)
+			i = skipQuoted(i, '"', my, "quoted identifier")
 		case c == '`' && d.Name != dialect.Postgres:
-			i = skipQuoted(i, '`', false)
+			i = skipQuoted(i, '`', false, "quoted identifier")
 		case c == '[' && d.Name == dialect.SQLite:
 			for i++; i < len(sql) && sql[i] != ']'; i++ {
 			}
 			if i < len(sql) {
 				i++
+			} else {
+				unterminated("quoted identifier")
 			}
 		case c == '-' && i+1 < len(sql) && sql[i+1] == '-' && (!my || i+2 >= len(sql) || sql[i+2] == ' ' || sql[i+2] == '\t' || sql[i+2] == '\n' || sql[i+2] == '\r'),
 			c == '#' && my:
@@ -129,6 +151,9 @@ func scanRaw(sql string, d *dialect.Dialect) []rawTok {
 					i++
 				}
 			}
+			if depth > 0 {
+				unterminated("block comment")
+			}
 		case c == '$' && pg && (i == 0 || !isIdentByte(sql[i-1], d)):
 			j := i + 1
 			if j < len(sql) && isIdentStart(sql[j]) {
@@ -137,12 +162,16 @@ func scanRaw(sql string, d *dialect.Dialect) []rawTok {
 				}
 			}
 			if j >= len(sql) || sql[j] != '$' {
+				if i+1 < len(sql) && sql[i+1] >= '0' && sql[i+1] <= '9' {
+					native = true
+				}
 				i++ // $1 or a lone dollar
 				break
 			}
 			tag := sql[i : j+1]
 			end := indexFrom(sql, tag, j+1)
 			if end < 0 {
+				unterminated("dollar quote")
 				i = len(sql)
 			} else {
 				i = end + len(tag)
@@ -171,7 +200,7 @@ func scanRaw(sql string, d *dialect.Dialect) []rawTok {
 						i++
 					}
 				}
-			case i+1 < len(sql) && isIdentStart(sql[i+1]) && (i == 0 || !isIdentByte(sql[i-1], d)):
+			case i+1 < len(sql) && isIdentStart(sql[i+1]) && (i == 0 || !isIdentByte(sql[i-1], d)) && !(pg && i > 0 && sql[i-1] == '<'):
 				j := i + 1
 				for j < len(sql) && isIdentByte(sql[j], d) {
 					j++
@@ -192,7 +221,7 @@ func scanRaw(sql string, d *dialect.Dialect) []rawTok {
 		}
 	}
 	flush(len(sql))
-	return toks
+	return toks, native, err
 }
 
 func indexFrom(s, sub string, from int) int {
@@ -234,12 +263,22 @@ func (b *Builder) appendRaw(sql string, args []any) {
 		}
 		named[na.Name] = na.Value
 	}
+	toks, native, err := scanRaw(sql, b.d)
+	if err != nil {
+		b.SetErr(err)
+		return
+	}
+	used := map[string]bool{}
 	n := 0
-	for _, tok := range scanRaw(sql, b.d) {
+	for _, tok := range toks {
 		switch tok.kind {
 		case rawText:
 			b.buf = append(b.buf, tok.text...)
 		case rawParam:
+			if native {
+				b.SetErr(rawErr("raw SQL %q mixes native $n placeholders with ? binds", sql))
+				return
+			}
 			if n >= len(pos) {
 				b.SetErr(rawErr("raw SQL %q has more placeholders than the %d arguments given", sql, len(pos)))
 				return
@@ -247,6 +286,11 @@ func (b *Builder) appendRaw(sql string, args []any) {
 			b.appendRawArg(pos[n])
 			n++
 		case rawNamed:
+			if native {
+				b.SetErr(rawErr("raw SQL %q mixes native $n placeholders with @%s binds", sql, tok.text))
+				return
+			}
+			used[tok.text] = true
 			v, ok := named[tok.text]
 			if !ok {
 				if b.d.Name == dialect.MySQL {
@@ -260,6 +304,12 @@ func (b *Builder) appendRaw(sql string, args []any) {
 			b.appendRawArg(v)
 		}
 		if b.err != nil {
+			return
+		}
+	}
+	for _, a := range args {
+		if na, ok := a.(NamedArg); ok && !used[na.Name] {
+			b.SetErr(rawErr("raw SQL %q has Named(%q, ...) but no @%s uses it", sql, na.Name, na.Name))
 			return
 		}
 	}
@@ -305,6 +355,13 @@ func (b *Builder) appendIn(a inArg) {
 	if m := b.d.MaxParams; m > 0 && len(b.args)+rv.Len() > m {
 		b.SetErr(rawErr("%d bind parameters exceed the %s limit of %d", len(b.args)+rv.Len(), b.d.Name, m))
 		return
+	}
+	for i := 0; i < rv.Len(); i++ {
+		switch rv.Index(i).Interface().(type) {
+		case identArg, inArg, NamedArg, Expr:
+			b.SetErr(rawErr("In element %d is a %T; elements must be plain values", i, rv.Index(i).Interface()))
+			return
+		}
 	}
 	for i := 0; i < rv.Len(); i++ {
 		if i > 0 {
