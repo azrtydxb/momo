@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Package typemap maps the Go types the generator understands to SQL column
+// types per dialect. A codec's own SQLType method wins over this table; that
+// lookup is the caller's job.
+package typemap
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/gen/tags"
+)
+
+// nullTypes maps database/sql Null* wrappers to the type they wrap.
+var nullTypes = map[string]string{
+	"sql.NullBool":    "bool",
+	"sql.NullByte":    "int16",
+	"sql.NullFloat64": "float64",
+	"sql.NullInt16":   "int16",
+	"sql.NullInt32":   "int32",
+	"sql.NullInt64":   "int64",
+	"sql.NullString":  "string",
+	"sql.NullTime":    "time.Time",
+}
+
+// Map returns the SQL type for goType on dialect d. Pointer and sql.Null*
+// wrappers map like the type they wrap: nullability is a column property, not
+// a type property. Unknown types, unsupported dialects and unrepresentable
+// combinations return an error wrapping momo.ErrUnsupported; the generator
+// reports it at the field's position.
+func Map(goType string, d dialect.Name, tg tags.Tags) (string, error) {
+	t := strings.TrimPrefix(goType, "*")
+	if w, ok := nullTypes[t]; ok {
+		t = w
+	}
+	var sql string
+	switch d {
+	case dialect.Postgres:
+		sql = postgres(t, tg)
+	case dialect.SQLite:
+		sql = sqlite(t, tg)
+	}
+	if sql == "" {
+		return "", fmt.Errorf("%w: Go type %s has no SQL mapping on %s", momo.ErrUnsupported, goType, d)
+	}
+	return sql, nil
+}
+
+func postgres(t string, tg tags.Tags) string {
+	switch t {
+	case "int8", "int16":
+		return "smallint"
+	case "int32":
+		return "integer"
+	case "int", "int64":
+		return "bigint"
+	case "float32":
+		return "real"
+	case "float64":
+		return "double precision"
+	case "bool":
+		return "boolean"
+	case "string":
+		if tg.Size > 0 {
+			return fmt.Sprintf("varchar(%d)", tg.Size)
+		}
+		return "text"
+	case "[]byte":
+		return "bytea"
+	case "time.Time":
+		return "timestamptz"
+	case "types.UUID":
+		return "uuid"
+	case "types.Date":
+		return "date"
+	case "vector.Vector":
+		return withDim("vector", tg)
+	case "vector.HalfVector":
+		return withDim("halfvec", tg)
+	case "vector.SparseVector":
+		return withDim("sparsevec", tg)
+	case "vector.Bits":
+		return withDim("bit", tg)
+	}
+	if strings.HasPrefix(t, "types.JSON[") && strings.HasSuffix(t, "]") {
+		return "jsonb"
+	}
+	return ""
+}
+
+// sqlite maps to SQLite storage classes. time.Time is stored as RFC3339 text
+// in UTC; JSON, UUID and Date are stored as text. Vector types have no SQLite
+// column type.
+func sqlite(t string, _ tags.Tags) string {
+	switch t {
+	case "int", "int8", "int16", "int32", "int64", "bool":
+		return "INTEGER"
+	case "float32", "float64":
+		return "REAL"
+	case "string", "time.Time", "types.UUID", "types.Date":
+		return "TEXT"
+	case "[]byte":
+		return "BLOB"
+	}
+	if strings.HasPrefix(t, "types.JSON[") && strings.HasSuffix(t, "]") {
+		return "TEXT"
+	}
+	return ""
+}
+
+// withDim renders a dimensioned type; the dim tag is required.
+func withDim(name string, tg tags.Tags) string {
+	if tg.Dim <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s(%d)", name, tg.Dim)
+}
