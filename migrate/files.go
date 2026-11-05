@@ -90,6 +90,10 @@ var (
 	looksLike    = regexp.MustCompile(`^\d+_`)
 )
 
+// walkErrPrefix starts the errors walkFiles itself produces; callers pass
+// errors with this prefix through unwrapped.
+const walkErrPrefix = "migrations: "
+
 // walkFiles calls fn with the slash-separated path of every regular file in
 // fsys, descending into nested directories, except the root momo.sum. Any
 // entry whose name starts with a dot is skipped, and a dot directory is not
@@ -97,6 +101,11 @@ var (
 // in-flight temporary files (.momo-*.tmp) never belong to a migration
 // directory's content. fs.FS paths always use forward slashes, so the paths
 // are never OS-specific.
+//
+// Symlinks: a symlink to a file is followed and read as that file. A symlink
+// to a directory is refused with an error ("migrations: <path> is a symlink to
+// a directory; not supported"), because fs.WalkDir does not descend into it
+// and silently skipping it would leave its files unhashed.
 func walkFiles(fsys fs.FS, fn func(p string) error) error {
 	return fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -110,6 +119,11 @@ func walkFiles(fsys fs.FS, fn func(p string) error) error {
 		}
 		if d.IsDir() || p == SumFileName {
 			return nil
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			if fi, err := fs.Stat(fsys, p); err == nil && fi.IsDir() {
+				return fmt.Errorf("%s%s is a symlink to a directory; not supported", walkErrPrefix, p)
+			}
 		}
 		return fn(p)
 	})
@@ -151,7 +165,7 @@ func Discover(fsys fs.FS) ([]File, error) {
 		return nil
 	})
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "migrate: ") {
+		if strings.HasPrefix(err.Error(), "migrate: ") || strings.HasPrefix(err.Error(), walkErrPrefix) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("migrate: read migration directory: %w", err)

@@ -59,7 +59,7 @@ func ComputeSum(fsys fs.FS) (*Sum, error) {
 		return nil
 	})
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "migrate: ") {
+		if strings.HasPrefix(err.Error(), "migrate: ") || strings.HasPrefix(err.Error(), walkErrPrefix) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("migrate: read migration directory: %w", err)
