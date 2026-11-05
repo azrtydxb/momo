@@ -12,6 +12,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
+	"github.com/azrtydxb/momo/gen/typemap"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -134,18 +135,19 @@ func TestTagEffectsOnColumns(t *testing.T) {
 	if len(tb.PrimaryKey) != 1 || tb.PrimaryKey[0] != "id" {
 		t.Fatalf("pk=%v", tb.PrimaryKey)
 	}
+	pgt := func(g string) string { return mapped(t, g, dialect.Postgres) }
 	cases := []struct {
 		col      string
 		typ      string
 		nullable bool
 	}{
-		{"id", "bigint", false}, {"name", "varchar(40)", false}, {"nick", "text", true},
-		{"bio", "text", true}, {"null_name", "text", true}, {"age", "integer", true},
+		{"id", pgt("int64"), false}, {"name", "varchar(40)", false}, {"nick", pgt("string"), true},
+		{"bio", pgt("string"), true}, {"null_name", pgt("string"), true}, {"age", pgt("int32"), true},
 		{"score", "numeric(10,2)", false}, {"raw", "citext", false},
-		{"status", "thing_status", false}, {"email", "text", false},
+		{"status", "thing_status", false}, {"email", pgt("string"), false},
 		{"emb", "vector(1536)", false}, {"half", "halfvec(8)", false},
 		{"sparse", "sparsevec(9)", false}, {"flags", "bit(16)", false},
-		{"born", "timestamptz", false},
+		{"born", pgt("time.Time"), false},
 	}
 	for _, c := range cases {
 		got := mustCol(t, s, "things", c.col)
@@ -473,7 +475,8 @@ func TestSQLiteTypesAndNoExtensions(t *testing.T) {
 	if s.Dialect != dialect.SQLite || len(s.Extensions) != 0 {
 		t.Fatalf("dialect=%s ext=%v", s.Dialect, s.Extensions)
 	}
-	for col, typ := range map[string]string{"id": "INTEGER", "name": "TEXT", "score": "REAL", "blob": "BLOB", "status": "TEXT"} {
+	lite := func(g string) string { return mapped(t, g, dialect.SQLite) }
+	for col, typ := range map[string]string{"id": lite("int64"), "name": lite("string"), "score": lite("float64"), "blob": lite("[]byte"), "status": lite("string")} {
 		if c := mustCol(t, s, "things", col); c.Type != typ {
 			t.Errorf("%s=%q want %q", col, c.Type, typ)
 		}
@@ -535,8 +538,8 @@ func TestManyToManyJoinTable(t *testing.T) {
 	if !ok {
 		t.Fatalf("join table missing: %+v", s.Tables)
 	}
-	if len(jt.Columns) != 2 || jt.Columns[0].Name != "document_id" || jt.Columns[0].Type != "bigint" ||
-		jt.Columns[1].Name != "tag_id" || jt.Columns[1].Type != "text" {
+	if len(jt.Columns) != 2 || jt.Columns[0].Name != "document_id" || jt.Columns[0].Type != mapped(t, "int64", dialect.Postgres) ||
+		jt.Columns[1].Name != "tag_id" || jt.Columns[1].Type != mapped(t, "string", dialect.Postgres) {
 		t.Fatalf("columns=%+v", jt.Columns)
 	}
 	if got := strings.Join(jt.PrimaryKey, ","); got != "document_id,tag_id" {
@@ -551,6 +554,7 @@ func TestManyToManyJoinTable(t *testing.T) {
 		}
 	}
 	// The inverse declaration must not create a second join table.
+	doc.Relations[0].JoinTable = "documents_tags"
 	tag.Relations = []*Relation{{GoName: "Documents", Kind: ManyToMany, Target: doc, JoinTable: "documents_tags"}}
 	s, diags = build(t, pg(), doc, tag)
 	if len(diags) != 0 || len(s.Tables) != 3 {
@@ -614,7 +618,8 @@ func TestNamedTypesMapLikeTheirUnderlyingType(t *testing.T) {
 	if len(sdiags) != 0 {
 		t.Fatalf("diags: %v", sdiags)
 	}
-	for col, typ := range map[string]string{"id": "bigint", "label": "text", "note": "text", "opt": "text", "created": "timestamptz"} {
+	pgt := func(g string) string { return mapped(t, g, dialect.Postgres) }
+	for col, typ := range map[string]string{"id": pgt("int64"), "label": pgt("string"), "note": pgt("string"), "opt": pgt("string"), "created": pgt("time.Time")} {
 		if c := mustCol(t, s, "items", col); c.Type != typ {
 			t.Errorf("%s=%q want %q", col, c.Type, typ)
 		}
@@ -646,4 +651,86 @@ func TestLoadBuildsGraphSchema(t *testing.T) {
 	if _, ok := g.Schema.Table("docs"); !ok {
 		t.Fatalf("Graph.Schema lacks docs: %+v", g.Schema)
 	}
+}
+
+func TestMixinIndexNamingMatchesDirectFields(t *testing.T) {
+	both := fld("Both", "string", "index,unique")
+	uniq := fld("Uniq", "string", "unique")
+	idx := fld("Idx", "string", "index")
+	m := mdl("Thing", "things", fld("ID", "int64", "pk"), both, uniq, idx)
+	for _, f := range []*Field{both, uniq, idx} {
+		f.Path = []int{1, 0}
+	}
+	got, _ := mixinIndexes(m)
+	want := map[string]bool{
+		"things_both_idx": false, "things_both_key": true, "things_uniq_key": true, "things_idx_idx": false,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("indexes=%+v", got)
+	}
+	for _, ix := range got {
+		u, ok := want[ix.Name]
+		if !ok || u != ix.Unique {
+			t.Errorf("unexpected index %+v", ix)
+		}
+	}
+	// The same tags on direct fields give the same names.
+	d := mdl("Thing", "things", fld("ID", "int64", "pk"), fld("Both", "string", "index,unique"), fld("Uniq", "string", "unique"), fld("Idx", "string", "index"))
+	s, _ := build(t, pg(), d)
+	tb, _ := s.Table("things")
+	for name := range want {
+		if _, ok := tb.Index(name); !ok {
+			t.Errorf("direct field path lacks %s", name)
+		}
+	}
+}
+
+func TestCompanionIndexOnUnknownColumnIsDiagnosed(t *testing.T) {
+	m := mdl("Doc", "docs", fld("ID", "int64", "pk"))
+	m.Config.Indexes = []schema.Index{{Name: "i", Parts: []schema.IndexPart{{Column: "ghost"}, {Expr: "lower(x)"}}}}
+	m.Config.Uniques = []schema.Unique{{Name: "u", Columns: []string{"ghost2"}}}
+	_, diags := build(t, pg(), m)
+	got := sdiagsString(diags)
+	for _, w := range []string{`index "i": column "ghost" is not a column of table docs`, `unique "u": column "ghost2" is not a column of table docs`} {
+		if !strings.Contains(got, w) {
+			t.Errorf("missing %q in %s", w, got)
+		}
+	}
+	if len(diags) != 2 || diags[0].Pos.Line != 3 {
+		t.Fatalf("diags=%v", diags)
+	}
+}
+
+func TestManyToManyJoinNameMismatchIsDiagnosed(t *testing.T) {
+	doc, tag := relModels()
+	doc.Relations = []*Relation{{GoName: "Tags", Kind: ManyToMany, Target: tag, JoinTable: "doc_tags", Pos: token.Position{Filename: "m.go", Line: 50, Column: 2}}}
+	tag.Relations = []*Relation{{GoName: "Documents", Kind: ManyToMany, Target: doc, Pos: token.Position{Filename: "m.go", Line: 60, Column: 2}}}
+	s, diags := build(t, pg(), doc, tag)
+	if !strings.Contains(sdiagsString(diags), "other side of the many2many") {
+		t.Fatalf("diags: %v", diags)
+	}
+	if len(s.Tables) != 3 {
+		t.Fatalf("a second join table was produced: %d tables", len(s.Tables))
+	}
+	// Both sides naming the table, or neither, is fine.
+	tag.Relations[0].JoinTable = "doc_tags"
+	if _, diags = build(t, pg(), doc, tag); len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	doc.Relations[0].JoinTable = ""
+	tag.Relations[0].JoinTable = ""
+	if _, diags = build(t, pg(), doc, tag); len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+}
+
+// mapped is the SQL type the type map gives goType, so tests do not repeat
+// the type spellings.
+func mapped(t *testing.T, goType string, d dialect.Name) string {
+	t.Helper()
+	typ, err := typemap.Map(goType, d, tags.Tags{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return typ
 }

@@ -728,7 +728,7 @@ Interfaces:
 
 - A struct embedded without a `momo:"embedded"` tag and without `momo.Model` is a mixin when it carries persisted fields. Its fields are flattened into the containing model in declaration order, with `Path` extended by the embedded field's index.
 - A struct-typed field tagged `momo:"embedded,prefix:<p>"` (anonymous or named; two fields of one struct type need names) is flattened, and its column names get `<p>` prepended (`prefix + column`). The prefix does not change `GoName`.
-- A mixin's `index` and `unique` tags are copied into the containing model's `Table` with index names prefixed by the containing table name when they are not explicit: `<table>_<column>_idx`.
+- A mixin's `index` and `unique` tags are copied into the containing model's `Table` one entry per `index` or `unique` tag, named when not explicit exactly like the same tags on a direct field (Task 10): `<table>_<column>_idx` for an index and `<table>_<column>_key` for a unique; an explicit name takes the instance prefix so a reused struct does not repeat it.
 - `func Flatten(m *Model, st *types.Struct, path []int, prefix string, seen map[*types.Named]bool) []*Field` returns the field list. A cycle through `seen` is a diagnostic `"embedded cycle through X"`.
 
 - [ ] Step 1: Write `gen/testdata/fixtures/mixins/mixins.go`:

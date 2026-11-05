@@ -18,6 +18,7 @@ Implements plan momo-04-migrations Task 8: Pure diff engine with explicit rename
 - [ ] `TestDiffNoChangeEmpty` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-74] `TestFKActions` asserts each action's effect on every dialect and that the no-constraint option produces no FK in inspection; fails if actions are lost in a round trip.
 - [ ] `procoder check` gate is clean and the task's commit is made
+- [ ] `Column.Collate` and `Column.Comment` are diffed: a change to either yields a column change (momo-02 Task 10 builds them from `collate` and `comment` tags and MomoConfig), with a round-trip test
 
 ## Evidence
 

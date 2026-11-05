@@ -331,6 +331,16 @@ func (b *schemaBuilder) addIndex(t *schema.Table, ix schema.Index, pos token.Pos
 	}
 }
 
+// defaultIndexName is the name of an index or unique index that a tag does
+// not name: <table>_<column>_idx, and <table>_<column>_key for a unique one.
+// Direct fields (schema.go) and mixin fields (embed.go) both use it.
+func defaultIndexName(table, column string, unique bool) string {
+	if unique {
+		return table + "_" + column + "_key"
+	}
+	return table + "_" + column + "_idx"
+}
+
 func (b *schemaBuilder) claimName(name string, pos token.Position, who string) bool {
 	if prev, dup := b.names[name]; dup {
 		b.diag(pos, fmt.Sprintf("index name %q is declared by both %s and %s", name, prev, who))
@@ -369,14 +379,14 @@ func (b *schemaBuilder) applyIndexTags(m *Model, t *schema.Table) {
 		if tg.Index {
 			name := tg.IndexName
 			if name == "" {
-				name = m.Table + "_" + f.Column + "_idx"
+				name = defaultIndexName(m.Table, f.Column, false)
 			}
 			b.addIndex(t, schema.Index{Name: name, Parts: []schema.IndexPart{part}, Method: tg.Method}, f.Pos, who)
 		}
 		if tg.Unique {
 			name := tg.UniqueName
 			if name == "" {
-				name = m.Table + "_" + f.Column + "_key"
+				name = defaultIndexName(m.Table, f.Column, true)
 			}
 			b.addIndex(t, schema.Index{Name: name, Unique: true, Parts: []schema.IndexPart{part}, Method: tg.Method}, f.Pos, who)
 		}
@@ -408,11 +418,31 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 	if c == nil {
 		return
 	}
+	missing := func(kind, name string, cols []string) bool {
+		bad := false
+		for _, col := range cols {
+			if _, ok := t.Column(col); col != "" && !ok {
+				b.diag(m.Pos, fmt.Sprintf("MomoConfig: %s %q: column %q is not a column of table %s", kind, name, col, t.Name))
+				bad = true
+			}
+		}
+		return bad
+	}
 	for _, ix := range c.Indexes {
+		cols := make([]string, len(ix.Parts))
+		for i, p := range ix.Parts {
+			cols[i] = p.Column
+		}
+		if missing("index", ix.Name, cols) {
+			continue
+		}
 		ix.Parts = slices.Clone(ix.Parts)
 		b.addIndex(t, ix, m.Pos, "MomoConfig")
 	}
 	for _, u := range c.Uniques {
+		if missing("unique", u.Name, u.Columns) {
+			continue
+		}
 		if b.claimName(u.Name, m.Pos, "MomoConfig") {
 			t.Uniques = append(t.Uniques, schema.Unique{Name: u.Name, Columns: slices.Clone(u.Columns)})
 		}
@@ -602,6 +632,16 @@ func (b *schemaBuilder) manyToMany(m *Model, r *Relation) {
 	if len(owner.PrimaryKey) == 0 || len(target.PrimaryKey) == 0 {
 		b.diag(r.Pos, fmt.Sprintf("relation %s: both models of a many2many need a primary key", r.GoName))
 		return
+	}
+	for _, rev := range r.Target.Relations {
+		if rev.Kind == ManyToMany && rev.Target == m && (rev.JoinTable == "") != (r.JoinTable == "") {
+			if r.JoinTable == "" {
+				// The side that names the table builds it; this one only reports.
+				b.diag(r.Pos, fmt.Sprintf("relation %s: join: is set on the other side of the many2many (%s.%s) but not here; set it on both sides", r.GoName, r.Target.GoName, rev.GoName))
+				return
+			}
+			break
+		}
 	}
 	name := r.JoinTable
 	if name == "" {

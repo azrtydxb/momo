@@ -13,6 +13,7 @@ Implements plan momo-04-migrations Task 10: PostgreSQL inspection: schemas, exte
 
 - [ ] `TestPostgresInspectColumnsAndConstraints` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `procoder check` gate is clean and the task's commit is made
+- [ ] PostgreSQL inspection reads `Column.Collate` (non-default collation) and `Column.Comment` (`COMMENT ON COLUMN`), so a schema built by momo-02 Task 10 with them is `schema.Equal` to its inspected form (round-trip test; otherwise permanent drift)
 
 ## Evidence
 

@@ -159,27 +159,19 @@ func appendPath(path []int, i int) []int {
 }
 
 // mixinIndexes returns the indexes contributed by the `index` and `unique`
-// tags of flattened fields (those whose path is deeper than one). Names that
-// are not explicit are <table>_<column>_idx.
+// tags of flattened fields (those whose path is deeper than one), one entry
+// per tag, named like the same tags on a direct field (defaultIndexName).
+//
+// An explicit name is the one deliberate difference from direct fields: a
+// struct reused through several prefixes would otherwise declare the same
+// index name in every instance, so an explicit name takes the instance prefix
+// (Field.Base) like the columns do. On a direct field the name is used as
+// written because it can only occur once.
 func mixinIndexes(m *Model) ([]schema.Index, []Diagnostic) {
 	var out []schema.Index
 	var diags []Diagnostic
 	owner := map[string]string{}
-	for _, f := range m.Fields {
-		if len(f.Path) < 2 || (!f.Tags.Index && !f.Tags.Unique) {
-			continue
-		}
-		name := m.Table + "_" + f.Column + "_idx"
-		unique := f.Tags.Unique
-		explicit := f.Tags.IndexName
-		if unique {
-			explicit = f.Tags.UniqueName
-		}
-		if explicit != "" {
-			// An explicit name inside a reused struct would repeat in every
-			// instance, so it takes the instance prefix like the columns do.
-			name = f.Base + explicit
-		}
+	add := func(f *Field, name string, unique bool) {
 		if prev, dup := owner[name]; dup {
 			diags = append(diags, Diagnostic{
 				Pos: f.Pos,
@@ -193,6 +185,25 @@ func mixinIndexes(m *Model) ([]schema.Index, []Diagnostic) {
 			Unique: unique,
 			Parts:  []schema.IndexPart{{Column: f.Column}},
 		})
+	}
+	for _, f := range m.Fields {
+		if len(f.Path) < 2 {
+			continue
+		}
+		for _, unique := range []bool{false, true} {
+			if (unique && !f.Tags.Unique) || (!unique && !f.Tags.Index) {
+				continue
+			}
+			name := defaultIndexName(m.Table, f.Column, unique)
+			explicit := f.Tags.IndexName
+			if unique {
+				explicit = f.Tags.UniqueName
+			}
+			if explicit != "" {
+				name = f.Base + explicit
+			}
+			add(f, name, unique)
+		}
 	}
 	return out, diags
 }
