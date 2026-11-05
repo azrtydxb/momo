@@ -1,6 +1,6 @@
 # momo-05 Task 4: Joins, aliases and self-joins
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -12,7 +12,7 @@ Implements plan momo-05-writes-queries Task 4: Joins, aliases and self-joins (`.
 ## Acceptance criteria
 
 - [x] `TestJoinsAliasesSelfJoin` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
