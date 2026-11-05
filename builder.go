@@ -37,8 +37,13 @@ func (b *Builder) Dialect() *dialect.Dialect { return b.d }
 // WriteString appends trusted SQL text.
 func (b *Builder) WriteString(s string) { b.buf = append(b.buf, s...) }
 
-// WriteByte appends a trusted SQL byte.
+// WriteByte appends a trusted SQL byte. It always returns nil; the error
+// result exists only so Builder satisfies io.ByteWriter.
 func (b *Builder) WriteByte(c byte) error { b.buf = append(b.buf, c); return nil }
+
+// writeByte appends a trusted SQL byte; internal renderers use it so no
+// always-nil error is discarded.
+func (b *Builder) writeByte(c byte) { b.buf = append(b.buf, c) }
 
 // Ident appends a quoted identifier.
 func (b *Builder) Ident(name string) { b.buf = b.d.AppendIdent(b.buf, name) }

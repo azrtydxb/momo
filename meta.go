@@ -91,7 +91,7 @@ type TableRef struct {
 func (t TableRef) appendFrom(b *Builder) {
 	if t.Schema != "" {
 		b.Ident(t.Schema)
-		b.WriteByte('.')
+		b.writeByte('.')
 	}
 	b.Ident(t.Name)
 	if t.Alias != "" && t.Alias != t.Name {
