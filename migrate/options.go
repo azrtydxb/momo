@@ -12,13 +12,6 @@ type options struct {
 	dialect Dialect
 }
 
-func defaultOptions() *options {
-	return &options{
-		clock:  func() time.Time { return time.Now().UTC() },
-		config: Config{LockTimeout: defaultLockTimeout},
-	}
-}
-
 // Option configures an Engine.
 type Option func(*options)
 

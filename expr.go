@@ -167,26 +167,6 @@ type Assignment struct {
 // ColumnName returns the assigned column.
 func (a Assignment) ColumnName() string { return a.col }
 
-func (a Assignment) appendValue(b *Builder, insert bool) {
-	switch a.kind {
-	case setValue:
-		b.Arg(a.val)
-	case setExpr:
-		a.expr.AppendSQL(b)
-	case setNull:
-		b.WriteString("NULL")
-	case setDefault:
-		if (insert && !b.d.DefaultInValues) || (!insert && !b.d.DefaultInUpdate) {
-			b.unsupported("SET column = DEFAULT")
-			return
-		}
-		b.WriteString("DEFAULT")
-	case setExcluded:
-		b.WriteString("excluded.")
-		b.Ident(a.col)
-	}
-}
-
 // ------------------------------------------------------------- ordering
 
 // Nulls placement for ORDER BY.
