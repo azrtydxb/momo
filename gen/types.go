@@ -77,6 +77,9 @@ type Model struct {
 	Schema    string
 	Fields    []*Field
 	Relations []*Relation
+	// Indexes are the indexes contributed by tagged fields of embedded
+	// structs and mixins, in declaration order.
+	Indexes []schema.Index
 	// Config is the companion result, filled in Task 9.
 	Config *CompanionResult
 	// SubPkg is the per-model subpackage name, set in Task 13.

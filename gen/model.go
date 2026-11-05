@@ -28,8 +28,8 @@ func discoverModels(pkg *packages.Package, namer naming.Namer) ([]*Model, []Diag
 	if pkg.TypesInfo == nil || pkg.Types == nil {
 		return nil, nil
 	}
-	var models []*Model
-	var diags []Diagnostic
+	fl := newFlattener(pkg, namer)
+	var all []*discovery
 	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
 			gd, ok := decl.(*ast.GenDecl)
@@ -42,13 +42,24 @@ func discoverModels(pkg *packages.Package, namer naming.Namer) ([]*Model, []Diag
 				if !ok || ts.Assign.IsValid() {
 					continue
 				}
-				d := &discovery{pkg: pkg, namer: namer, ts: ts, st: st}
-				m := d.run()
-				diags = append(diags, d.diags...)
-				if m != nil {
-					models = append(models, m)
-				}
+				d := &discovery{pkg: pkg, namer: namer, ts: ts, st: st, fl: fl}
+				d.model = d.run()
+				all = append(all, d)
 			}
+		}
+	}
+	// A struct without the marker that carries momo tags is only a mistake
+	// when no model flattens it as a mixin or embedded struct, so the check
+	// waits until every model of the package has been built.
+	var models []*Model
+	var diags []Diagnostic
+	for _, d := range all {
+		if d.nonModel != nil && !fl.used[d.nonModel] {
+			d.checkNonModel()
+		}
+		diags = append(diags, d.diags...)
+		if d.model != nil {
+			models = append(models, d.model)
 		}
 	}
 	return models, diags
@@ -59,7 +70,12 @@ type discovery struct {
 	namer naming.Namer
 	ts    *ast.TypeSpec
 	st    *ast.StructType
+	fl    *flattener
 	diags []Diagnostic
+	model *Model
+	// nonModel is set for a struct without the marker, whose momo tags are
+	// checked once mixin use is known.
+	nonModel *types.Named
 }
 
 func (d *discovery) diag(pos token.Pos, msg string) {
@@ -98,7 +114,7 @@ func (d *discovery) run() *Model {
 		idx += n
 	}
 	if marker < 0 {
-		d.checkNonModel()
+		d.nonModel = named
 		return nil
 	}
 	if named.TypeParams().Len() > 0 {
@@ -111,7 +127,7 @@ func (d *discovery) run() *Model {
 	if astFieldCount(d.st) != strct.NumFields() {
 		return nil // redeclared fields: the type checker already reported it
 	}
-	return d.build(obj, strct, marker)
+	return d.build(obj, named, strct, marker)
 }
 
 type markerKindT int
@@ -197,7 +213,7 @@ func fieldLabel(f *ast.Field) string {
 	return "field " + strings.Join(names, ", ")
 }
 
-func (d *discovery) build(obj *types.TypeName, strct *types.Struct, marker int) *Model {
+func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.Struct, marker int) *Model {
 	pos := d.pkg.Fset.Position(obj.Pos())
 	m := &Model{
 		GoName:  obj.Name(),
@@ -215,7 +231,13 @@ func (d *discovery) build(obj *types.TypeName, strct *types.Struct, marker int) 
 			if idx == marker {
 				mt = d.parseTags(f.Tag, "momo.Model marker")
 			}
-			// Other embedded fields are flattened in Task 8.
+			if idx != marker {
+				v := strct.Field(idx)
+				et := d.parseTags(f.Tag, fieldLabel(f))
+				if !et.Skip {
+					fields = append(fields, d.fl.embedField(m, v, et, []int{idx}, "", map[*types.Named]bool{named: true})...)
+				}
+			}
 			idx++
 			continue
 		}
@@ -234,43 +256,23 @@ func (d *discovery) build(obj *types.TypeName, strct *types.Struct, marker int) 
 			if ft.Skip || ft.BelongsTo || ft.HasOne || ft.HasMany || ft.ManyToMany || ft.Rel != "" {
 				continue // skipped, or a relation handled in Task 13
 			}
-			fields = append(fields, d.field(name, i, strct.Field(i).Type(), ft))
+			if ft.Embedded || ft.Prefix != "" {
+				fields = append(fields, d.fl.embedField(m, strct.Field(i), ft, []int{i}, "", map[*types.Named]bool{named: true})...)
+				continue
+			}
+			fields = append(fields, d.fl.newField(strct.Field(i), []int{i}, "", ft))
 		}
 	}
+	d.diags = append(d.diags, d.fl.diags...)
+	d.fl.diags = nil
 	m.Fields = fields
 	m.Schema = mt.Schema
 	m.Table = mt.Table
 	if m.Table == "" {
 		m.Table = d.namer.TableName(m.GoName)
 	}
+	m.Indexes = mixinIndexes(m)
 	return m
-}
-
-func (d *discovery) field(name *ast.Ident, index int, t types.Type, ft tags.Tags) *Field {
-	col := ft.Column
-	if col == "" {
-		col = d.namer.ColumnName(name.Name)
-	}
-	_, nullable := t.Underlying().(*types.Pointer)
-	access := Writable
-	switch {
-	case ft.ReadOnly:
-		access = ReadOnly
-	case ft.CreateOnly:
-		access = CreateOnly
-	case ft.Immutable:
-		access = Immutable
-	}
-	return &Field{
-		GoName:   name.Name,
-		Path:     []int{index},
-		Column:   col,
-		GoType:   types.TypeString(t, func(p *types.Package) string { return p.Name() }),
-		Nullable: nullable,
-		Tags:     ft,
-		Pos:      d.pkg.Fset.Position(name.Pos()),
-		Access:   access,
-	}
 }
 
 func astFieldCount(st *ast.StructType) int {
