@@ -568,7 +568,26 @@ func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Sche
 	s.Tables = slices.DeleteFunc(s.Tables, func(t schema.Table) bool {
 		return t.Name == historyTable && (t.Schema == "" || t.Schema == hs)
 	})
+	invalid = dropExcludedInvalid(s, invalid, e.opts.config.Exclude)
 	return applyExclude(s, e.opts.config.Exclude), invalid, nil
+}
+
+// dropExcludedInvalid removes from invalid the indexes of a table or view that
+// Config.Exclude hides. It must run on the schema before applyExclude strips
+// that table, because the index is located through it.
+func dropExcludedInvalid(s *schema.Schema, invalid []string, globs []string) []string {
+	if len(globs) == 0 || len(invalid) == 0 {
+		return invalid
+	}
+	match, err := excludeMatcher(globs)
+	if err != nil {
+		return invalid
+	}
+	return slices.DeleteFunc(slices.Clone(invalid), func(name string) bool {
+		ref := invalidIndexRef(s, name)
+		i := strings.LastIndexByte(ref.Name, '.')
+		return i >= 0 && match(ref.Schema, ref.Name[:i])
+	})
 }
 
 // migrationName is the form a migration name must have.
