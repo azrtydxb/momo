@@ -173,12 +173,18 @@ type DriftReport struct {
 	// and expressions) Drift compared as declared, because it could not
 	// rewrite it to the form the database reports: the role lacks CREATE on
 	// the database, the session is read-only, or the scratch copy of that
-	// table failed. Such a table can show a phantom difference in text only.
-	// Clean ignores it.
+	// table failed. Skipping can only add false differences (a table shown
+	// in Changed that matches the database), never hide a real one, because
+	// the declared text is then compared against the stored text as it is. So
+	// Clean ignores it, unlike Unverified, whose bodies are not compared at
+	// all and so can hide a real difference.
 	CanonicalizeSkipped []ObjectRef
 }
 
-// Clean reports whether there is no drift.
+// Clean reports whether there is no drift. It ignores Unverified, which lists
+// text that was not compared and so can hide a difference, and
+// CanonicalizeSkipped, which can only add false differences to Changed and
+// never hide a real one.
 func (d *DriftReport) Clean() bool {
 	return len(d.Changed) == 0 && len(d.Missing) == 0 && len(d.Unmanaged) == 0
 }

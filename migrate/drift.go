@@ -469,23 +469,43 @@ func (e *Engine) canonicalSnapshot(ctx context.Context, c momo.PinnedConn, s *sc
 		want.Views, want.Functions, want.Triggers, want.Policies = nil, nil, nil, nil
 		if err = cz.Canonicalize(ctx, c, want); err != nil {
 			for _, t := range s.Tables {
-				skipped = append(skipped, ObjectRef{Kind: "table", Schema: t.Schema, Name: t.Name})
+				if tableHasText(t) {
+					skipped = append(skipped, ObjectRef{Kind: "table", Schema: t.Schema, Name: t.Name})
+				}
 			}
 		}
 		want.Views, want.Functions, want.Triggers, want.Policies = views, funcs, triggers, policies
 	default:
 		return s, nil, nil
 	}
+	slices.SortFunc(skipped, func(x, y ObjectRef) int {
+		return strings.Compare(key(x.Kind, x.Schema, x.Name), key(y.Kind, y.Schema, y.Name))
+	})
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, nil, fmt.Errorf("migrate: canonicalize snapshot: %w", err)
 		}
 		return s, skipped, nil
 	}
-	slices.SortFunc(skipped, func(x, y ObjectRef) int {
-		return strings.Compare(key(x.Kind, x.Schema, x.Name), key(y.Kind, y.Schema, y.Name))
-	})
 	return want, skipped, nil
+}
+
+// tableHasText reports whether t declares text a database rewrites: a check
+// expression, a column default or generation expression, or an index predicate
+// or expression part. It is the rule the dialects use to pick the tables they
+// canonicalize.
+func tableHasText(t schema.Table) bool {
+	if len(t.Checks) > 0 {
+		return true
+	}
+	for _, c := range t.Columns {
+		if c.Default != "" || c.Generated != "" {
+			return true
+		}
+	}
+	return slices.ContainsFunc(t.Indexes, func(ix schema.Index) bool {
+		return ix.Where != "" || slices.ContainsFunc(ix.Parts, func(p schema.IndexPart) bool { return p.Expr != "" })
+	})
 }
 
 // unverifiedBodies lists the views, triggers and policies that exist in both
