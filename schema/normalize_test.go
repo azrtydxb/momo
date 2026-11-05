@@ -38,6 +38,23 @@ func TestNormalizeType(t *testing.T) {
 	}
 }
 
+func TestNormalizeVectorTypes(t *testing.T) {
+	cases := map[string]string{
+		"vector(1536)":    "vector(1536)",
+		"VECTOR(1536)":    "vector(1536)",
+		"vector( 3 )":     "vector(3)",
+		"halfvec(3072)":   "halfvec(3072)",
+		"sparsevec(1000)": "sparsevec(1000)",
+		"bit(8)":          "bit(8)",
+		"BIT(8)":          "bit(8)",
+	}
+	for in, want := range cases {
+		if got := NormalizeType(dialect.Postgres, in); got != want {
+			t.Errorf("NormalizeType(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestNormalizeExpr(t *testing.T) {
 	cases := []struct {
 		d       dialect.Name
