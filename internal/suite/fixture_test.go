@@ -28,7 +28,7 @@ func TestCapabilitiesOfRows(t *testing.T) {
 	want := map[dialect.Name]suite.Caps{
 		dialect.Postgres: {Dialect: dialect.Postgres, Returning: true, Locking: true, DefaultInUpdate: true,
 			DefaultInValues: true, Merge: true, PartialIndexes: true, WindowFunctions: true, JSON: true, Arrays: true, NonDefaultIsolation: true},
-		dialect.SQLite: {Dialect: dialect.SQLite, Returning: true, DefaultInValues: true, PartialIndexes: true, WindowFunctions: true},
+		dialect.SQLite: {Dialect: dialect.SQLite, Returning: true, PartialIndexes: true, WindowFunctions: true},
 		dialect.MySQL: {Dialect: dialect.MySQL, Locking: true, DefaultInUpdate: true, DefaultInValues: true,
 			WindowFunctions: true, NonDefaultIsolation: true},
 	}

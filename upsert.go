@@ -148,12 +148,20 @@ func (q InsertQuery[T]) defaultUpsertSet() []Assignment {
 		}
 		return out
 	}
-	for _, a := range q.i.assigns {
-		ci := q.column(a.col)
-		if ci < 0 || a.kind == setDefault || !upsertUpdatable(q.meta.Columns[ci].Flags) {
-			continue
+	src := q.i.rows
+	if !q.i.hasRows {
+		src = [][]Assignment{q.i.assigns}
+	}
+	seen := map[string]struct{}{}
+	for _, row := range src {
+		for _, a := range row {
+			ci := q.column(a.col)
+			if _, dup := seen[a.col]; dup || ci < 0 || a.kind == setDefault || !upsertUpdatable(q.meta.Columns[ci].Flags) {
+				continue
+			}
+			seen[a.col] = struct{}{}
+			out = append(out, Assignment{col: a.col, kind: setExcluded})
 		}
-		out = append(out, Assignment{col: a.col, kind: setExcluded})
 	}
 	return out
 }
