@@ -21,6 +21,10 @@ type Codec interface {
 	SQLType(d dialect.Name) string
 }
 
+// Scan(nil) on any codec in this package returns an error: they model NOT NULL
+// columns, so a NULL never silently becomes a zero value. For nullable
+// columns scan into a pointer (*Date) or a Null wrapper.
+
 // text returns the textual form of a driver source value. A nil source and
 // any type other than string or []byte are errors: the codecs here model
 // non-null columns, so a NULL must not silently become a zero value.

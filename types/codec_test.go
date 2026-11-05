@@ -162,20 +162,46 @@ func TestDateAndTimeOfDay(t *testing.T) {
 		}
 	}
 	var tod TimeOfDay
-	if err := tod.Scan(int64(3723000000000)); err != nil {
+	if err := tod.Scan(int64(3723000000)); err == nil {
+		t.Error("int64 source must error (drivers disagree on its unit)")
+	}
+	if err := tod.Scan("01:02:03"); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := tod.Value(); v != "01:02:03.000000000" {
+	if v, _ := tod.Value(); v != "01:02:03.000000" {
 		t.Fatalf("got %v", v)
-	}
-	if err := tod.Scan("24:00:00"); err == nil {
-		t.Error("24:00:00 must error")
 	}
 	if err := tod.Scan("01:02"); err == nil {
 		t.Error("short time must error")
 	}
-	if err := tod.Scan(int64(-1)); err == nil {
-		t.Error("negative nanos must error")
+	if err := tod.Scan("24:00:01"); err == nil {
+		t.Error("24:00:01 must error")
+	}
+	if err := tod.Scan("24:00:00.5"); err == nil {
+		t.Error("24:00:00.5 must error")
+	}
+	if err := tod.Scan("24:00:00"); err != nil || tod.Nanos != nanosPerDay-1 {
+		t.Errorf("24:00:00 = %d, %v", tod.Nanos, err)
+	}
+	for digits := 0; digits <= 9; digits++ {
+		in := "00:00:01"
+		if digits > 0 {
+			in += "." + strings.Repeat("5", digits)
+		}
+		if err := tod.Scan(in); err != nil {
+			t.Errorf("Scan(%q): %v", in, err)
+		}
+	}
+	if err := tod.Scan("00:00:01.1234567890"); err == nil {
+		t.Error("10 fraction digits must error")
+	}
+	if err := tod.Scan("00:00:01."); err == nil {
+		t.Error("empty fraction must error")
+	}
+	max := TimeOfDay{Nanos: nanosPerDay - 1}
+	mv, err := max.Value()
+	if err != nil || mv != "23:59:59.999999" {
+		t.Errorf("max Value = %v, %v", mv, err)
 	}
 	if err := tod.Scan("01:02:03"); err != nil || tod.Nanos != 3723000000000 {
 		t.Errorf("no fraction: %v %d", err, tod.Nanos)
@@ -187,7 +213,8 @@ func TestDateAndTimeOfDay(t *testing.T) {
 
 func TestHstoreForms(t *testing.T) {
 	h := Hstore{"a\"b": ptr(`c\d`), "n": nil, "e": ptr("")}
-	txt := h.PostgresText()
+	v, _ := h.Value()
+	txt, _ := v.(string)
 	var back Hstore
 	if err := back.Scan(txt); err != nil {
 		t.Fatalf("scan %q: %v", txt, err)
@@ -198,9 +225,8 @@ func TestHstoreForms(t *testing.T) {
 	if _, ok := back["n"]; !ok {
 		t.Fatal("NULL key lost")
 	}
-	v, _ := h.Value()
 	var fromJSON Hstore
-	if err := fromJSON.Scan(v); err != nil || len(fromJSON) != 3 || fromJSON["n"] != nil {
+	if err := fromJSON.Scan(`{"a\"b":"c\\d","n":null,"e":""}`); err != nil || len(fromJSON) != 3 || fromJSON["n"] != nil {
 		t.Fatalf("json form: %v %#v", err, fromJSON)
 	}
 	var empty Hstore
@@ -214,5 +240,42 @@ func TestHstoreForms(t *testing.T) {
 	}
 	if !strings.Contains(txt, "=>NULL") {
 		t.Errorf("NULL form missing in %q", txt)
+	}
+}
+
+func FuzzHstore(f *testing.F) {
+	f.Add("k", "v", false, "n", `"a"=>"b", "a"=>"c"`)
+	f.Add(`q"\`, "", true, "", `"a"=>NULL`)
+	f.Fuzz(func(t *testing.T, k, v string, null bool, k2, raw string) {
+		h := Hstore{k: &v, k2 + "x": nil}
+		if null {
+			h[k] = nil
+		}
+		txt := h.format()
+		var back Hstore
+		if err := back.Scan(txt); err != nil {
+			t.Fatalf("scan(format) %q: %v", txt, err)
+		}
+		if len(back) != len(h) {
+			t.Fatalf("size %d != %d for %q", len(back), len(h), txt)
+		}
+		for key, want := range h {
+			got, ok := back[key]
+			if !ok || (want == nil) != (got == nil) || (want != nil && *want != *got) {
+				t.Fatalf("key %q lost in %q", key, txt)
+			}
+		}
+		var any Hstore
+		_ = any.Scan(raw) // must not panic
+	})
+}
+
+func TestHstoreDuplicateKeysFirstWins(t *testing.T) {
+	var h Hstore
+	if err := h.Scan(`"a"=>"1", "a"=>"2", "b"=>NULL, "b"=>"x"`); err != nil {
+		t.Fatal(err)
+	}
+	if *h["a"] != "1" || h["b"] != nil {
+		t.Fatalf("got %v %v", *h["a"], h["b"])
 	}
 }

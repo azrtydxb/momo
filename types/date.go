@@ -4,7 +4,9 @@ package types
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -50,7 +52,7 @@ func (d *Date) Scan(src any) error {
 	return nil
 }
 
-// TimeOfDay is a time of day: time on PostgreSQL, TEXT 'HH:MM:SS.nnnnnnnnn'
+// TimeOfDay is a time of day: time on PostgreSQL, TEXT 'HH:MM:SS.uuuuuu'
 // on SQLite.
 type TimeOfDay struct{ Nanos int64 }
 
@@ -64,8 +66,10 @@ func (TimeOfDay) SQLType(d dialect.Name) string {
 	return "TEXT"
 }
 
-// Value encodes the time as 'HH:MM:SS.nnnnnnnnn', which both PostgreSQL time
-// and the SQLite TEXT column accept. Nanos outside one day is an error.
+// Value encodes the time as 'HH:MM:SS.uuuuuu', truncated to microseconds
+// because PostgreSQL time has microsecond precision (rounding would turn the
+// last microsecond of the day into 24:00:00). Nanos outside one day is an
+// error.
 func (t TimeOfDay) Value() (driver.Value, error) {
 	if t.Nanos < 0 || t.Nanos >= nanosPerDay {
 		return nil, fmt.Errorf("types: TimeOfDay %d out of range", t.Nanos)
@@ -75,32 +79,62 @@ func (t TimeOfDay) Value() (driver.Value, error) {
 	n %= int64(time.Hour)
 	m := n / int64(time.Minute)
 	n %= int64(time.Minute)
-	return fmt.Sprintf("%02d:%02d:%02d.%09d", h, m, n/int64(time.Second), n%int64(time.Second)), nil
+	return fmt.Sprintf("%02d:%02d:%02d.%06d", h, m, n/int64(time.Second), n%int64(time.Second)/int64(time.Microsecond)), nil
 }
 
-// Scan accepts 'HH:MM:SS[.fraction]' as string or []byte, or int64
-// nanoseconds since midnight.
+// Scan accepts 'HH:MM:SS' with an optional fraction of 1 to 9 digits (string
+// or []byte). PostgreSQL's 24:00:00 is read as the last nanosecond of the
+// day. Scan(nil) returns an error: use a pointer or a Null wrapper for
+// nullable columns. Integer sources are rejected because drivers disagree on
+// their unit.
 func (t *TimeOfDay) Scan(src any) error {
-	if n, ok := src.(int64); ok {
-		if n < 0 || n >= nanosPerDay {
-			return fmt.Errorf("types: TimeOfDay %d out of range", n)
-		}
-		t.Nanos = n
-		return nil
-	}
 	s, err := text("TimeOfDay", src)
 	if err != nil {
 		return err
 	}
-	layout := "15:04:05"
-	if len(s) > 8 {
-		layout = "15:04:05.999999999"
-	}
-	p, err := time.Parse(layout, s)
+	nanos, err := parseTimeOfDay(s)
 	if err != nil {
 		return fmt.Errorf("types: invalid TimeOfDay %q: %w", s, err)
 	}
-	t.Nanos = int64(p.Hour())*int64(time.Hour) + int64(p.Minute())*int64(time.Minute) +
-		int64(p.Second())*int64(time.Second) + int64(p.Nanosecond())
+	t.Nanos = nanos
 	return nil
+}
+
+func parseTimeOfDay(s string) (int64, error) {
+	clock, frac, hasFrac := strings.Cut(s, ".")
+	if len(clock) != 8 || clock[2] != ':' || clock[5] != ':' {
+		return 0, errors.New("want HH:MM:SS[.fraction]")
+	}
+	var parts [3]int64
+	for i, seg := range []string{clock[0:2], clock[3:5], clock[6:8]} {
+		for _, c := range seg {
+			if c < '0' || c > '9' {
+				return 0, errors.New("non-digit")
+			}
+			parts[i] = parts[i]*10 + int64(c-'0')
+		}
+	}
+	var fracNanos int64
+	if hasFrac {
+		if len(frac) < 1 || len(frac) > 9 {
+			return 0, errors.New("fraction must have 1 to 9 digits")
+		}
+		for i := 0; i < 9; i++ {
+			fracNanos *= 10
+			if i < len(frac) {
+				if frac[i] < '0' || frac[i] > '9' {
+					return 0, errors.New("non-digit in fraction")
+				}
+				fracNanos += int64(frac[i] - '0')
+			}
+		}
+	}
+	h, m, sec := parts[0], parts[1], parts[2]
+	if h == 24 && m == 0 && sec == 0 && fracNanos == 0 {
+		return nanosPerDay - 1, nil
+	}
+	if h > 23 || m > 59 || sec > 59 {
+		return 0, errors.New("out of range")
+	}
+	return h*int64(time.Hour) + m*int64(time.Minute) + sec*int64(time.Second) + fracNanos, nil
 }

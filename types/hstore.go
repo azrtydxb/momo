@@ -25,23 +25,14 @@ func (Hstore) SQLType(d dialect.Name) string {
 	return "TEXT"
 }
 
-// Value returns the JSON text form (the SQLite encoding). On PostgreSQL bind
-// PostgresText instead.
-func (h Hstore) Value() (driver.Value, error) {
-	m := map[string]*string(h)
-	if m == nil {
-		m = map[string]*string{}
-	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("types: encode Hstore: %w", err)
-	}
-	return string(b), nil
-}
+// Value returns the hstore text form, e.g. "k"=>"v", "n"=>NULL, with keys
+// sorted, quotes and backslashes escaped and nil values as NULL. SQLite
+// stores the same text in a TEXT column; a dialect-aware JSON encoding for
+// SQLite is deferred (see the plan, momo-05 Task 22).
+func (h Hstore) Value() (driver.Value, error) { return h.format(), nil }
 
-// PostgresText returns the hstore text form, e.g. "k"=>"v", "n"=>NULL, with
-// keys sorted for a stable result.
-func (h Hstore) PostgresText() string {
+// format encodes h as hstore text.
+func (h Hstore) format() string {
 	keys := make([]string, 0, len(h))
 	for k := range h {
 		keys = append(keys, k)
@@ -74,8 +65,10 @@ func writeHstoreString(sb *strings.Builder, s string) {
 	sb.WriteByte('"')
 }
 
-// Scan accepts the JSON object form or the PostgreSQL hstore text form
-// (string or []byte). NULL is an error.
+// Scan accepts the PostgreSQL hstore text form or a JSON object (string or
+// []byte). Duplicate keys in hstore text resolve first-wins, as PostgreSQL
+// does. Scan(nil) returns an error: Hstore models a NOT NULL column, so use
+// a *Hstore or a Null wrapper for nullable columns.
 func (h *Hstore) Scan(src any) error {
 	s, err := text("Hstore", src)
 	if err != nil {
@@ -143,13 +136,17 @@ func parseHstore(s string) (map[string]*string, error) {
 		skip()
 		if i+4 <= len(s) && strings.EqualFold(s[i:i+4], "NULL") {
 			i += 4
-			m[k] = nil
+			if _, dup := m[k]; !dup {
+				m[k] = nil
+			}
 		} else {
 			v, err := quoted()
 			if err != nil {
 				return nil, err
 			}
-			m[k] = &v
+			if _, dup := m[k]; !dup {
+				m[k] = &v
+			}
 		}
 		skip()
 		if i < len(s) {
