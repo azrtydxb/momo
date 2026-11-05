@@ -12,6 +12,7 @@ Implement Momo's relationship layer: generated `momo.Relation[P, C]` descriptors
 Generated code emits one `momo.Relation[P, C]` value per relation field (a struct of key extractors and getter/setter closures plus table and column names), placed in the owning model's subpackage. The runtime in package `momo` (files `relation.go`, `keys.go`, `in_tuple.go`, `load.go`, `loader.go`, `preload.go`, `pipeline.go`, `joinload.go`, `scan.go`, `relpred.go`, `assoc.go`, `graph.go`, `relhook.go`) turns those descriptors into at most one statement per bind-limit chunk per relation, groups children by normalized key strings, and assigns results without touching the parent slice's order or length.
 
 Contract changes this plan depends on (reported to the lead; ARCHITECTURE.md is NOT edited here):
+
 - `SelectQuery.With` is the CTE method (`select.go:192`; ARCHITECTURE.md line 64 still describes it as relation loading, which must be corrected there). Relation eager loading is exposed as `SelectQuery.Preload(...Loader[T])`, not `With`.
 - `TableRef{Name, Alias, Schema}` (ARCHITECTURE.md) is used as written; the spike's `TableRef` lacks `Schema` until momo-01 adds it.
 - `selectCore` gains `preloads []any` and `joinLoads []any` (set only through `Preload`).
@@ -63,6 +64,7 @@ var Author = momo.Relation[models.Document, models.Author]{
 ```
 
 Rules the emitter must follow:
+
 1. Key closures return base Go values only (`int64`, `string`, `bool`, `float64`, `time.Time`, `[]byte`). Named types are converted (`string(p.Status)`); pointer FK fields return `ok=false` when nil.
 2. `ParentKey` / `ChildKey` return values in the order of `ParentCols` / `ChildCols`. `SetParentKey` / `SetChildKey` assert `k[i].(T)` with the field's base type.
 3. Setters required per kind: BelongsTo: `ParentKey, ChildKey, SetParentKey, GetOne, SetOne`. HasOne: `ParentKey, ChildKey, SetChildKey, GetOne, SetOne`. HasMany: `ParentKey, ChildKey, SetChildKey, GetMany, SetMany`. ManyToMany: `ParentKey, ChildKey, GetMany, SetMany` plus `Through`. `SetChildKey` for HasX sets the child FK fields and, for a polymorphic relation, the discriminator field (`c.OwnerType = "document"`).
@@ -150,10 +152,12 @@ Query-event convention: a relation load's child statements carry `QueryEvent.Rel
 ## Task 1: Normalized key encoding
 
 Files:
+
 - Create `keys.go`
 - Create `keys_internal_test.go`
 
 Interfaces:
+
 - `func keyString(vals []any) string` (package `momo`, internal). Produces a comparable map key; a NULL component is never passed here (callers check `ok` first).
 
 Covers: S-6 ("no parent duplication" depends on key grouping). Acceptance test named here: `TestKeyStringNormalization` (internal).
@@ -285,13 +289,17 @@ func writeKeyPart(sb *strings.Builder, v any) {
 
 ---
 
+Reconciled 2026-11-05 (story 138 review): the shipped `keyString` also reduces named types to their kind (via reflect), encodes an unsigned value that fits int64 with the signed tag, and length-prefixes strings and bytes (`s<len>:`), so named key types match driver values and a key containing 0x1f cannot collide with a composite key. `TestKeyStringNormalization` carries the extra cases.
+
 ## Task 2: Relation descriptor type and validation
 
 Files:
+
 - Create `relation.go` (descriptor types, `Through`, `Discriminator`, `RelationKind`, `validate`)
 - Create `relation_internal_test.go`
 
 Interfaces:
+
 - `type RelationKind uint8` with constants `BelongsTo`, `HasOne`, `HasMany`, `ManyToMany`; `func (k RelationKind) String() string`.
 - `type Through struct{ Table TableRef; ParentCols, ChildCols []string }`; `type Discriminator struct{ Column string; Value any }`.
 - `type Relation[P, C any] struct{...}` exactly as in the Interfaces section.
@@ -477,6 +485,7 @@ func (r *Relation[P, C]) validate() error {
 ## Task 3: Relation fixture models, schema and seed data
 
 Files:
+
 - Create `internal/relfixture/models/model.go`
 - Create `internal/relfixture/models/momo_gen.go`
 - Create `internal/relfixture/author/momo_gen.go`
@@ -490,6 +499,7 @@ Files:
 - Create `internal/relfixture/relfixture_test.go` (package `relfixture_test`)
 
 Interfaces:
+
 - `models.Author{ID int64; Name string; Images []Image}`, `models.Document{ID int64; AuthorID *int64; Title string; Author *Author; Comments []Comment; Tags []Tag; Taggings []Tagging; Images []Image}`, `models.Comment{ID, DocumentID int64; Body string; Approved bool}`, `models.Tag{ID int64; Name string}`, `models.Tagging{DocumentID, TagID, Position int64; Tag *Tag}`, `models.Image{ID int64; OwnerType string; OwnerID int64; URL string}`, `models.Employee{ID int64; ManagerID *int64; Name string; Manager *Employee; Reports []Employee}`, `models.Region{TenantID int64; Code, Name string; Stores []Store}`, `models.Store{ID, TenantID int64; RegionCode *string; Name string; Region *Region}`.
 - Every model's `MomoMeta()` is `func (*T) MomoMeta() *momo.Meta[T]`, returning a package-level pointer.
 - Relation variables (exact names): `author.Images`; `document.Author`, `document.Comments`, `document.Tags`, `document.Taggings`, `document.Images`; `tagging.Tag`; `employee.Manager`, `employee.Reports`; `region.Stores`; `store.Region`.
@@ -1376,10 +1386,12 @@ func PostgresDriver(t testing.TB) momo.Driver {
 ## Task 4: Tuple IN predicate and bind-limit budget
 
 Files:
+
 - Create `in_tuple.go`
 - Create `in_tuple_internal_test.go`
 
 Interfaces:
+
 - `type inTuple struct{ table string; cols []string; keys [][]any }` implementing `Predicate` (`AppendSQL(*Builder)`, `resultType() bool`).
 - `func keysPerStatement(d *dialect.Dialect, ncols, reserved int) int`.
 
@@ -1538,6 +1550,7 @@ func keysPerStatement(d *dialect.Dialect, ncols, reserved int) int {
 ## Task 5: Eager loading core for belongs-to and has-one, relation hook events
 
 Files:
+
 - Create `loader.go` (`Loader[P]`, `pendingLoad`, `LoadOption`, `loadConfig`, `Load`, `LoadAll` sequential, `Relation.Scope`, `Relation.Then`, scoped loader)
 - Create `load.go` (`Relation.prepare`, `pending[P,C]` with `run`, `consume`, `finish`, child query builder for BelongsTo/HasOne/HasMany)
 - Create `relhook.go` (`RelationEvent`, `RelationHook`, `beginRelation`)
@@ -1545,6 +1558,7 @@ Files:
 - Create `load_test.go` (package `momo_test`)
 
 Interfaces:
+
 ```go
 func Load[P, C any](ctx context.Context, q Querier, parents []P, rel Relation[P, C], opts ...LoadOption[C]) error
 func LoadAll[P any](ctx context.Context, q Querier, parents []P, loaders ...Loader[P]) error
@@ -1679,6 +1693,7 @@ var FirstDocument = momo.Relation[models.Author, models.Document]{
 	SetOne: func(p *models.Author, c *models.Document) { p.FirstDocument = c },
 }
 ```
+
 The `FirstDocument` descriptor above is final; `models.Author.FirstDocument` is declared in the Task 3 model file.
 
 - [ ] **Step 4: Implement the loader core** — create `loader.go`:
@@ -2140,6 +2155,7 @@ func beginRelation(ctx context.Context, db *DB, e *RelationEvent) (context.Conte
 	}
 }
 ```
+
 Also: in `pending.run`, the `RelationEvent` has to carry the `Children` count: `consume` increments `pd.children` (add field `children int64` to `pending` and set `e.Children` in `end` by passing a pointer). Implement by building the `*RelationEvent` as `pd.event` stored on the pending struct; `run` passes `pd.event` and `consume` increments `pd.event.Children`. Keep `end` closure reading the same pointer.
 
 Modify `db.go`: in `WithHook`, after appending, also append to `db.relHooks` when `h` implements `RelationHook`; add field `relHooks []RelationHook` to `DB`. If `execer` lacks a `db` back-pointer, add `db *DB` to `execer` and set it in `New` and `Begin`.
@@ -2153,10 +2169,12 @@ Modify `db.go`: in `WithHook`, after appending, also append to `db.relHooks` whe
 ## Task 6: Has-many loading, stable order, parent pagination and NULL-key emptiness
 
 Files:
+
 - Modify `load_test.go` (add tests)
 - Modify `load.go` (no logic change expected; `writeOrder` already adds key then PK tie-breakers)
 
 Interfaces:
+
 - No new exported names. Uses `Load`, `document.Comments`, `employee.Reports`.
 
 Covers: S-6 (parent pagination preserved, stable association, defined NULL behavior, no parent duplication). Acceptance test names: `TestEagerLoadHasMany`, `TestEagerLoadParentOrderAndPagination`, `TestEagerLoadNullFKEmpty`.
@@ -2274,9 +2292,11 @@ func TestEagerLoadReloadClearsStaleChildren(t *testing.T) {
 ## Task 7: Composite keys
 
 Files:
+
 - Modify `load_test.go`
 
 Interfaces:
+
 - Uses `region.Stores` (composite has-many) and `store.Region` (composite belongs-to).
 
 Covers: S-6 composite keys. Acceptance test: `TestEagerLoadComposite`.
@@ -2342,10 +2362,12 @@ Add imports for `store` and `region` subpackages.
 ## Task 8: Bind-limit chunking
 
 Files:
+
 - Create `options_maxparams.go` (`WithMaxParams`)
 - Modify `load_test.go` (add imports `github.com/azrtydxb/momo/dialect` and `github.com/azrtydxb/momo/internal/testdb/testopen`)
 
 Interfaces:
+
 - `func WithMaxParams(n int) Option` — copies the DB's dialect and lowers `MaxParams` to `n`. Requires that `New` sets `db.ex.d` before applying options; if `New` applies options first, move the dialect assignment above the option loop in `db.go`.
 
 Covers: S-6 (bind-limit chunking), S-5 (dialect limit). Acceptance test: `TestEagerLoadChunking`.
@@ -2412,10 +2434,12 @@ Ensure `New` assigns `db.ex.d` from the driver before the option loop (`db.go:70
 ## Task 9: Many-to-many through a join table
 
 Files:
+
 - Modify `load.go` (add ManyToMany branch to `childQueries`; M2M key holders in `consume`)
 - Modify `load_test.go`
 
 Interfaces:
+
 - Extends `childQueries` and `consume`; no new exported names.
 
 Covers: S-6 (many-to-many), S-82 (through a join table). Acceptance test: `TestEagerLoadManyToMany`.
@@ -2540,9 +2564,11 @@ Important: `keyString` normalization (Task 1) is what makes the driver-returned 
 ## Task 10: Polymorphic, self-referencing, back-references and explicit join model
 
 Files:
+
 - Modify `load_test.go`
 
 Interfaces:
+
 - Uses `document.Images` (polymorphic), `author.Images` (polymorphic, other type), `employee.Manager` and `employee.Reports` (self-ref and back-reference), `document.Taggings` followed by `tagging.Tag` (join model with extra columns).
 
 Covers: S-82 (polymorphic has-many, self-reference, back-reference, join model with extra columns). Acceptance test: `TestPolymorphicAndThrough`.
@@ -2614,9 +2640,11 @@ Add import `"github.com/azrtydxb/momo/internal/relfixture/tagging"`.
 ## Task 11: Nested, filtered, ordered eager loading
 
 Files:
+
 - Modify `load_test.go`
 
 Interfaces:
+
 - Uses `document.Comments.Scope(...)`, `document.Taggings.Then(...)`, `LoadWhere`, `LoadOrderBy`, `Then`.
 
 Covers: S-81 (nested, filtered, ordered, limited eager loading). Acceptance test: `TestNestedFilteredEagerLoad`.
@@ -2677,10 +2705,12 @@ Add import `"github.com/azrtydxb/momo/internal/relfixture/comment"`.
 ## Task 12: Top-N per parent with a window function
 
 Files:
+
 - Modify `load.go` (top-N branch in `childQueries`)
 - Modify `load_test.go`
 
 Interfaces:
+
 - Uses the option `LoadPerParentLimit` with a positive count. It is valid for HasMany and ManyToMany only; BelongsTo and HasOne return an `ErrUnsupported` error.
 
 Covers: S-33 (top-N-per-parent via window functions; explicit second strategy). Acceptance test: `TestEagerLoadTopNPerParent`.
@@ -2818,11 +2848,13 @@ Note: the outer `ORDER BY momo_rn` alone yields per-parent order because the con
 ## Task 13: Preload on SelectQuery
 
 Files:
+
 - Create `preload.go` (`Preload`, `runPreloads`)
 - Modify `select.go`: add `preloads []any` to `selectCore`; call `sq.runPreloads(ctx, rows)` at the end of `All` and `One` (after rows are collected, before return).
 - Create `preload_test.go` (package `momo_test`)
 
 Interfaces:
+
 - `func (sq SelectQuery[T]) Preload(loaders ...Loader[T]) SelectQuery[T]`
 - `func (sq SelectQuery[T]) runPreloads(ctx context.Context, rows []T) error`
 
@@ -2873,8 +2905,6 @@ func TestPreloadOnQuery(t *testing.T) {
 }
 ```
 
-
-
 - [ ] **Step 2: Run and expect FAIL** — `go test ./ -run '^TestPreloadOnQuery$' -count=1` fails with `base.Preload undefined`.
 
 - [ ] **Step 3: Implement** — create `preload.go`:
@@ -2923,12 +2953,14 @@ In `select.go`, add the field `preloads []any` to `selectCore` (the struct at `s
 ## Task 14: Pipelined relation loading over pgx batching
 
 Files:
+
 - Modify `pending` in `load.go` (`runBatch` path) and `loader.go` (`LoadAll` chooses the batch path)
 - Modify `exec.go` (create): `execer.batch(ctx, rel string, table string, cs []Compiled) ([]Rows, error)` firing one before/after hook pair per statement
 - Create `internal/relfixture/count.go` (`Counting` driver wrapper)
 - Create `pipeline_test.go` (package `momo_test`, PostgreSQL only)
 
 Interfaces:
+
 - `type Batcher interface { SendBatch(ctx context.Context, qs []Compiled) ([]Rows, error) }` (contract, implemented by `pgxdriver`, momo-03).
 - `func Counting(inner momo.Driver) (momo.Driver, *Counter)` in `internal/relfixture`; `type Counter struct{ Queries, Execs, Batches atomic.Int64 }`. The returned driver implements `Batcher` only when `inner` does.
 
@@ -3227,6 +3259,7 @@ Run the batched path only on PostgreSQL: SQLite and the sequential fallback use 
 ## Task 15: Single-query join loading for to-one relations with NULL-to-nil
 
 Files:
+
 - Create `joinload.go` (`Relation.Joined`, join rewrite, joined scan)
 - Create `scan.go` (`ScanValue`)
 - Create `scan_internal_test.go` (package `momo`) for `ScanValue`
@@ -3235,6 +3268,7 @@ Files:
 - Modify `preload_test.go`
 
 Interfaces:
+
 - `func (r Relation[P, C]) Joined() Loader[P]` (BelongsTo only, because HasOne can match several children per parent and would duplicate parent rows; `ErrUnsupported` otherwise at `Preload` time).
 - `func ScanValue(dst any, src any) error` — assigns a driver value to a field pointer: `*string`, `*int64`, `*int`, `*int32`, `*bool`, `*float64`, `*[]byte`, `*time.Time`, the same types behind `**T` (nil `src` sets the pointer to nil), and any `sql.Scanner`. A nil `src` into a non-pointer destination returns `&Error{Kind: ErrValidation, Op: "scan"}`.
 
@@ -3589,10 +3623,12 @@ if len(sq.s.joinLoads) > 0 {
 ## Task 16: Relation predicates, traversal and count ordering
 
 Files:
+
 - Create `relpred.go`
 - Create `relpred_test.go` (package `momo_test`)
 
 Interfaces:
+
 - `func (r Relation[P, C]) Has(scope ...Predicate) Predicate` — `EXISTS (SELECT 1 FROM child AS "momo_r" WHERE correlation AND scope)`.
 - `func (r Relation[P, C]) HasFrom(parentAlias string, scope ...Predicate) Predicate` — correlates on the given parent alias (required for self-referencing relations).
 - `func (r Relation[P, C]) HasWith(scope ...Predicate) Predicate` — same as `Has`.
@@ -3694,8 +3730,6 @@ func commentIDs(cs []models.Comment) []int64 {
 	return out
 }
 ```
-
-
 
 - [ ] **Step 2: Run and expect FAIL** — `go test ./ -run 'TestRelationPredicates|TestRelationTraverseAndOrder' -count=1` fails with `document.Comments.Has undefined`.
 
@@ -3913,16 +3947,19 @@ Remove the two placeholder `var _` lines in step 3 before running the build; the
 ## Task 17: Association helpers Link, Unlink, Replace and Count
 
 Files:
+
 - Create `assoc.go`
 - Create `assoc_test.go` (package `momo_test`)
 
 Interfaces:
+
 - `func (r Relation[P, C]) Link(ctx context.Context, q Querier, p *P, cs ...*C) error`
 - `func (r Relation[P, C]) Unlink(ctx context.Context, q Querier, p *P, cs ...*C) error`
 - `func (r Relation[P, C]) Replace(ctx context.Context, q Querier, p *P, cs ...*C) error`
 - `func (r Relation[P, C]) Count(ctx context.Context, q Querier, p *P) (int64, error)`
 
 Statement contract (documented in godoc):
+
 - HasOne/HasMany `Link`: one `UPDATE child SET fk = ? WHERE pk IN (...)`.
 - HasOne/HasMany `Unlink`: one `UPDATE child SET fk = NULL WHERE fk = ? AND pk IN (...)`.
 - ManyToMany `Link`: one `INSERT INTO jt (parent cols, child cols) VALUES (...), ... ON CONFLICT DO NOTHING` (MySQL: `ON DUPLICATE KEY UPDATE` with a no-op assignment of the first column to itself).
@@ -4337,11 +4374,13 @@ Run the tests:
 ## Task 18: Graph writes: CreateGraph, FindOrCreate and Upsert
 
 Files:
+
 - Create `graph.go`
 - Create `internal/relfixture/tag/momo_gen.go`
 - Create `graph_test.go` (package `momo_test`)
 
 Interfaces:
+
 - `func (r Relation[P, C]) Include() Association[P]`
 - `type Association[P any] interface{ before(ctx context.Context, tx *Tx, p *P) error; after(ctx context.Context, tx *Tx, p *P) error }`
 - `func CreateGraph[P any, PP Modeler[P]](ctx context.Context, db *DB, p *P, includes ...Association[P]) error`
@@ -4351,6 +4390,7 @@ Interfaces:
 No dependency on momo-05: this task writes its own statements with the internal `Builder`. momo-05's insert builder may later replace `insertRow` without changing its callers.
 
 Semantics:
+
 - `CreateGraph` runs in one transaction (`db.Tx`). Insert the parent with momo-05's `Insert`. For each `Include()`d relation, in listed order: BelongsTo children are inserted first and their key is written into the parent with `SetParentKey`; HasOne/HasMany children get `SetChildKey(child, ParentKey(parent))` and are inserted after the parent; ManyToMany children are inserted, then join rows are linked with `Link`. Relations not listed are never written (the test asserts this).
 - `FindOrCreate` inserts `m` with `OnConflict(key...).DoNothing()`; if `created` is false, `m` is overwritten by selecting the row with the same key values (`Meta.Value` on the key columns found by name). Race-safe because the decision is made by the unique constraint.
 - `Upsert` inserts `m` with `OnConflict(pk...).DoUpdate(SetExcluded for every non-primary-key column that is not read-only, immutable or create-only)`.
@@ -4443,7 +4483,11 @@ func TestUpsertByPK(t *testing.T) {
 }
 ```
 
-Define `tag.ID` only if needed; prefer the generated `tag.ID` descriptor: add `internal/relfixture/tag/momo_gen.go` with `var ID = momo.NewColumn[int64]("tags", "id", momo.FlagPK)` and use `tag.ID.Eq(3)`. Replace the two `tag.ID` uses with `tag.ID` and add the `tag` import.
+Define `tag.ID` only if needed; prefer the generated `tag.ID` descriptor: add `internal/relfixture/tag/momo_gen.go` with this declaration and use `tag.ID.Eq(3)`. Replace the two `tag.ID` uses with `tag.ID` and add the `tag` import.
+
+```go
+var ID = momo.NewColumn[int64]("tags", "id", momo.FlagPK)
+```
 
 - [ ] **Step 2: Run and expect FAIL** — `go test ./ -run 'TestCreateGraphAndFindOrCreate|TestUpsertByPK' -count=1` fails with `undefined: momo.CreateGraph`.
 
