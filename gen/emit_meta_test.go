@@ -117,3 +117,26 @@ func TestEmitMetaRuntime(t *testing.T) {
 		t.Fatal("Value mismatch")
 	}
 }
+
+// TestEmitMetaSoftDeleteKind proves the generator carries the soft_delete
+// tag into Meta.SoftDeleteKind, so unix and bool models filter and write
+// their own marker instead of behaving as timestamps.
+func TestEmitMetaSoftDeleteKind(t *testing.T) {
+	if k := (*models.Account)(nil).MomoMeta().SoftDeleteKind; k != momo.SoftDeleteTimestamp {
+		t.Fatalf("timestamp kind = %v", k)
+	}
+	if k := (*models.UnixDoc)(nil).MomoMeta().SoftDeleteKind; k != momo.SoftDeleteUnix {
+		t.Fatalf("unix kind = %v", k)
+	}
+	if k := (*models.BoolDoc)(nil).MomoMeta().SoftDeleteKind; k != momo.SoftDeleteBool {
+		t.Fatalf("bool kind = %v", k)
+	}
+	q, err := momo.Select[models.BoolDoc](momo.New(fakedriver.New(dialect.Postgres))).SQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `SELECT "bool_docs"."id", "bool_docs"."deleted" FROM "bool_docs" WHERE "bool_docs"."deleted" = FALSE`
+	if q.SQL != want {
+		t.Fatalf("bool filter:\n got %s\nwant %s", q.SQL, want)
+	}
+}

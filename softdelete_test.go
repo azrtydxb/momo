@@ -141,6 +141,12 @@ func TestSoftDeleteSQLGoldens(t *testing.T) {
 		{"pg select only then with deleted", func() (momo.Compiled, error) {
 			return momo.Select[sdBool](pg).OnlyDeleted().WithDeleted().SQL()
 		}, `SELECT "docs_bool"."id", "docs_bool"."tenant_id", "docs_bool"."title", "docs_bool"."deleted" FROM "docs_bool"`, nil},
+		{"pg select with deleted then only deleted", func() (momo.Compiled, error) {
+			return momo.Select[sdBool](pg).WithDeleted().OnlyDeleted().SQL()
+		}, `SELECT "docs_bool"."id", "docs_bool"."tenant_id", "docs_bool"."title", "docs_bool"."deleted" FROM "docs_bool" WHERE "docs_bool"."deleted" = TRUE`, nil},
+		{"pg select with deleted then only deleted timestamp", func() (momo.Compiled, error) {
+			return momo.Select[suite.Document](pg).WithDeleted().OnlyDeleted().SQL()
+		}, `SELECT "documents"."id", "documents"."tenant_id", "documents"."title", "documents"."body", "documents"."version", "documents"."deleted_at", "documents"."created_at", "documents"."updated_at", "documents"."secret" FROM "documents" WHERE "documents"."deleted_at" IS NOT NULL`, nil},
 		{"pg soft delete returning", func() (momo.Compiled, error) {
 			return momo.SoftDelete[sdBool](pg).Where(sdBoolID.Eq(1)).Returning(sdBoolID).SQL()
 		}, `UPDATE "docs_bool" SET "deleted" = $1 WHERE ("docs_bool"."id" = $2) AND ("docs_bool"."deleted" = FALSE) RETURNING "id"`, []any{true, int64(1)}},

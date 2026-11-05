@@ -65,9 +65,10 @@ func softDeleteValue(kind SoftDeleteKind, now time.Time) any {
 
 // SoftDelete returns an UpdateQuery that marks rows deleted instead of
 // removing them. The marker follows the model's soft-delete column: a
-// nullable timestamp (set to the statement time from the DB clock, UTC), a
+// nullable timestamp (set to the statement time from the Go-side clock,
+// WithClock or time.Now, bound as UTC; it is not the database's now()), a
 // Unix integer (seconds) or a boolean (set true). Rows already soft-deleted
-// are not touched.
+// are not touched, and updated_at is not modified.
 //
 // It keeps the mutation guard: without a Where (or Model) that restricts the
 // rows it fails with ErrUnfilteredMutation unless AllRows confirms it. Set is
