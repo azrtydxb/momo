@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -102,7 +103,8 @@ func TestWriterIdempotentAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Mode().Perm() != 0o644 {
+	// Windows has no Unix permission bits; Go reports 0666 there.
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o644 {
 		t.Fatalf("mode too wide: %v", fi.Mode())
 	}
 	old := time.Now().Add(-time.Hour).Truncate(time.Second)
