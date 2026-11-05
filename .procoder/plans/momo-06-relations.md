@@ -1545,6 +1545,8 @@ func keysPerStatement(d *dialect.Dialect, ncols, reserved int) int {
 
 - [ ] **Step 5: Commit** — `git add in_tuple.go in_tuple_internal_test.go && git commit -m "feat(relations): tuple IN predicate and bind-limit budget"`.
 
+Reconciliation note (2026-11-05): the `keysPerStatement` body above is superseded. Composite keys (ncols > 1) are capped per statement, because the raw bind budget is unusable for them: PostgreSQL rejects a long row-value IN list with SQLSTATE 54001 (stack depth limit exceeded) at roughly 10000 two-column tuples, and SQLite rejects the OR-of-ANDs form beyond expression depth 1000. The caps are the named constants `maxCompositeTuples = 2000` (PostgreSQL, MySQL, others) and `maxCompositeTuplesSQLite = 400`; single-column keys keep the raw budget. `inTuple` also records a build error (`Builder.SetErr`) for keys without columns or a key tuple whose length differs from the column count, and its doc comment states that NULL key elements never match.
+
 ---
 
 ## Task 5: Eager loading core for belongs-to and has-one, relation hook events

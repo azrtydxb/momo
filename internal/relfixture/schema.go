@@ -93,7 +93,18 @@ func SeedBasic(t testing.TB, db *momo.DB) {
 // Hook counts statements. Each subtest gets fresh counters. Relation events
 // join it when the relation hook lands (momo-06 relhook).
 type Hook struct {
-	After []string // QueryEvent.Relation of each statement ("" when not a relation load)
+	After  []string // QueryEvent.Relation of each statement ("" when not a relation load)
+	Events []momo.RelationEvent
+}
+
+// BeforeRelation implements momo.RelationHook.
+func (h *Hook) BeforeRelation(ctx context.Context, _ *momo.RelationEvent) context.Context {
+	return ctx
+}
+
+// AfterRelation implements momo.RelationHook; it records a copy of the event.
+func (h *Hook) AfterRelation(_ context.Context, e *momo.RelationEvent) {
+	h.Events = append(h.Events, *e)
 }
 
 // BeforeQuery implements momo.Hook.
@@ -112,7 +123,7 @@ func Each(t *testing.T, fn func(t *testing.T, db *momo.DB, h *Hook)) {
 	h := &Hook{}
 	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
 		CreateSchema(t, db)
-		h.After = nil
+		h.After, h.Events = nil, nil
 		fn(t, db, h)
 	}, momo.WithHook(h))
 }
