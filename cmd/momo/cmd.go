@@ -20,6 +20,7 @@ const usage = `Usage: momo <command> [flags]
 
 Commands:
   generate  generate code for model packages (flags: -c momo.yaml, --check)
+  migrate   manage schema migrations (momo migrate help)
   help      print this help ("momo help generate" for a command)
 
 Plugins: momo generate runs only the plugins built into this binary. For
@@ -29,6 +30,7 @@ Exit codes:
   0  success, or generated code is current
   1  stale generated files, or generator or viz diagnostics
   2  usage, configuration or infrastructure error
+  3  database, lock or execution error (momo migrate)
 `
 
 // command is one subcommand. Further subcommands (for example migrate) are
@@ -41,6 +43,7 @@ type command struct {
 func commands() []command {
 	return []command{
 		{"generate", runGenerate},
+		{"migrate", runMigrateCmd},
 	}
 }
 
