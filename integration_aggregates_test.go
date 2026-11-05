@@ -7,6 +7,7 @@ package momo_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -117,6 +118,83 @@ func TestAggregatesSQL(t *testing.T) {
 		}[d]
 		if c.SQL != want {
 			t.Fatalf("sql = %s\nwant  %s", c.SQL, want)
+		}
+	})
+}
+
+type docRange struct {
+	momo.Projection
+	Lo time.Time
+	Hi time.Time
+}
+
+func (*docRange) MomoMeta() *momo.Meta[docRange] {
+	return &momo.Meta[docRange]{
+		Columns: []momo.ColumnMeta{{Name: "lo"}, {Name: "hi"}},
+		Ptr: func(m *docRange, i int) any {
+			return []any{&m.Lo, &m.Hi}[i]
+		},
+		Value: func(m *docRange, i int) any { return nil },
+	}
+}
+
+// TestAggregatesMinMaxTimestamp scans MIN/MAX over a timestamp column into
+// time.Time.
+func TestAggregatesMinMaxTimestamp(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		suite.CreateDocuments(t, db, suite.CapsOf(db))
+		ctx := context.Background()
+		first := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+		last := time.Date(2024, 6, 7, 8, 9, 10, 0, time.UTC)
+		for _, ts := range []time.Time{last, first} {
+			if _, err := momo.Exec(ctx, db, "INSERT INTO documents (tenant_id, title, created_at) VALUES (1, 'x', ?)", ts); err != nil {
+				t.Fatal(err)
+			}
+		}
+		rows, err := momo.Select[docRange](db).
+			From(momo.TableRef{Name: "documents"}).
+			Columns(momo.Min(suite.DocCreatedAt), momo.Max(suite.DocCreatedAt)).
+			All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 || !rows[0].Lo.Equal(first) || !rows[0].Hi.Equal(last) {
+			t.Fatalf("rows = %+v, want %v..%v", rows, first, last)
+		}
+	})
+}
+
+type nullableSum struct {
+	momo.Projection
+	Total *int64
+}
+
+func (*nullableSum) MomoMeta() *momo.Meta[nullableSum] {
+	return &momo.Meta[nullableSum]{
+		Columns: []momo.ColumnMeta{{Name: "total"}},
+		Ptr:     func(m *nullableSum, i int) any { return &m.Total },
+		Value:   func(m *nullableSum, i int) any { return nil },
+	}
+}
+
+// TestAggregatesSumEmptyGroup scans SUM over zero rows into *int64.
+func TestAggregatesSumEmptyGroup(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		suite.CreateDocuments(t, db, suite.CapsOf(db))
+		ctx := context.Background()
+		if _, err := momo.Exec(ctx, db, "INSERT INTO documents (tenant_id, title, version) VALUES (1, 'x', 7)"); err != nil {
+			t.Fatal(err)
+		}
+		rows, err := momo.Select[nullableSum](db).
+			From(momo.TableRef{Name: "documents"}).
+			Columns(momo.Sum(suite.DocVersion)).
+			Where(suite.DocTenantID.Eq(99)).
+			All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 || rows[0].Total != nil {
+			t.Fatalf("rows = %+v, want one row with nil total", rows)
 		}
 	})
 }
