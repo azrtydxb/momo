@@ -41,8 +41,8 @@ func (r *Relation[P, C]) prepareWith(q Querier, parents []P, cfg *loadConfig, ne
 	for i := range parents {
 		r.clear(&parents[i])
 		vals, ok := r.ParentKey(&parents[i])
-		if !ok {
-			continue
+		if !ok || hasNilPart(vals) {
+			continue // NULL in any component means no key
 		}
 		k := keyString(vals)
 		if _, seen := pd.groups[k]; !seen {
@@ -294,4 +294,15 @@ func scanChild[P, C any](r *Relation[P, C], rows Rows, c *C) error {
 		dest[i] = r.ChildMeta.Ptr(c, i)
 	}
 	return rows.Scan(dest...)
+}
+
+// hasNilPart reports whether any key component is NULL. A composite key with a
+// NULL component never matches a row, so it is treated as no key.
+func hasNilPart(vals []any) bool {
+	for _, v := range vals {
+		if v == nil {
+			return true
+		}
+	}
+	return false
 }

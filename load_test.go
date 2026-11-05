@@ -14,6 +14,8 @@ import (
 	"github.com/azrtydxb/momo/internal/relfixture/document"
 	"github.com/azrtydxb/momo/internal/relfixture/employee"
 	"github.com/azrtydxb/momo/internal/relfixture/models"
+	"github.com/azrtydxb/momo/internal/relfixture/region"
+	"github.com/azrtydxb/momo/internal/relfixture/store"
 )
 
 func allDocs(t *testing.T, db *momo.DB) []models.Document {
@@ -204,6 +206,221 @@ func TestEagerLoadHasManyOrderIndependentOfStorage(t *testing.T) {
 		}
 		if fmt.Sprint(ids) != "[1 2 3]" {
 			t.Fatalf("children not in primary-key order: %v", ids)
+		}
+	})
+}
+
+func TestEagerLoadComposite(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+
+		stores, err := momo.Select[models.Store, *models.Store](db).OrderBy(store.ID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, stores, store.Region); err != nil {
+			t.Fatal(err)
+		}
+		// store 1 -> (1,EU) Europe; store 2 -> (1,US) America; store 3 NULL region_code -> nil; store 4 -> (2,EU) Europe2.
+		want := map[int64]string{1: "Europe", 2: "America", 4: "Europe2"}
+		for _, s := range stores {
+			if name, ok := want[s.ID]; ok {
+				if s.Region == nil || s.Region.Name != name {
+					t.Fatalf("store %d: region %+v want %s", s.ID, s.Region, name)
+				}
+			} else if s.Region != nil {
+				t.Fatalf("store %d with NULL composite component must have nil Region", s.ID)
+			}
+		}
+
+		regions, err := momo.Select[models.Region, *models.Region](db).OrderBy(region.TenantID.Asc(), region.Code.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, regions, region.Stores); err != nil {
+			t.Fatal(err)
+		}
+		if len(regions[0].Stores) != 1 || regions[0].Stores[0].Name != "Paris" {
+			t.Fatalf("region (1,EU) stores: %+v", regions[0].Stores)
+		}
+		if len(regions[1].Stores) != 1 || regions[1].Stores[0].Name != "NYC" {
+			t.Fatalf("region (1,US) stores: %+v", regions[1].Stores)
+		}
+		if len(regions[2].Stores) != 1 || regions[2].Stores[0].Name != "Other" {
+			t.Fatalf("region (2,EU) stores: %+v", regions[2].Stores)
+		}
+	})
+}
+
+func relationStatements(h *relfixture.Hook) int {
+	n := 0
+	for _, r := range h.After {
+		if r != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// Composite keys must keep the tuple semantics of the single-column paths:
+// one statement for many parents, deduplicated parent keys, primary-key child
+// order independent of insertion order, tuple (not per-column) matching, and a
+// partly NULL key loads nothing.
+func TestEagerLoadCompositeSemantics(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		// Two more stores in region (1,EU), inserted out of id order.
+		for _, r := range []struct {
+			id   int64
+			name string
+		}{{6, "Nice"}, {5, "Lyon"}} {
+			if _, err := momo.Exec(ctx, db, "INSERT INTO stores (id, tenant_id, region_code, name) VALUES (?, 1, 'EU', ?)", r.id, r.name); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// Belongs-to: stores 1, 5, 6 share region (1,EU); one statement, all assigned.
+		stores, err := momo.Select[models.Store, *models.Store](db).OrderBy(store.ID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.After = nil
+		if err := momo.Load(ctx, db, stores, store.Region); err != nil {
+			t.Fatal(err)
+		}
+		if n := relationStatements(h); n != 1 {
+			t.Fatalf("belongs-to issued %d relation statements, want 1", n)
+		}
+		for _, s := range stores {
+			switch s.ID {
+			case 1, 5, 6:
+				if s.Region == nil || s.Region.TenantID != 1 || s.Region.Code != "EU" {
+					t.Fatalf("store %d: region %+v want (1,EU)", s.ID, s.Region)
+				}
+			case 4:
+				if s.Region == nil || s.Region.TenantID != 2 || s.Region.Code != "EU" {
+					t.Fatalf("store %d: region %+v want (2,EU), tuple matching crossed columns", s.ID, s.Region)
+				}
+			}
+		}
+		if stores[0].Region == stores[3].Region {
+			t.Fatal("distinct composite keys must not share a child")
+		}
+
+		// Has-many: children in primary-key order, one statement for all regions.
+		regions, err := momo.Select[models.Region, *models.Region](db).OrderBy(region.TenantID.Asc(), region.Code.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A duplicated parent row must not duplicate children or the query keys.
+		regions = append(regions, regions[0])
+		h.After = nil
+		if err := momo.Load(ctx, db, regions, region.Stores); err != nil {
+			t.Fatal(err)
+		}
+		if n := relationStatements(h); n != 1 {
+			t.Fatalf("has-many issued %d relation statements, want 1", n)
+		}
+		ids := func(cs []models.Store) string {
+			out := []int64{}
+			for _, c := range cs {
+				out = append(out, c.ID)
+			}
+			return fmt.Sprint(out)
+		}
+		if got := ids(regions[0].Stores); got != "[1 5 6]" {
+			t.Fatalf("region (1,EU) stores %s, want [1 5 6] in primary-key order", got)
+		}
+		if got := ids(regions[3].Stores); got != "[1 5 6]" {
+			t.Fatalf("duplicate parent row stores %s, want [1 5 6]", got)
+		}
+		if got := ids(regions[2].Stores); got != "[4]" {
+			t.Fatalf("region (2,EU) stores %s, want [4]", got)
+		}
+	})
+}
+
+// A region with no stores gets a nil slice, and reloading with a scope that
+// matches nothing clears previously loaded composite associations.
+func TestEagerLoadCompositeEmptyAndStale(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		if _, err := momo.Exec(ctx, db, "INSERT INTO regions (tenant_id, code, name) VALUES (3, 'ZZ', 'Empty')"); err != nil {
+			t.Fatal(err)
+		}
+		regions, err := momo.Select[models.Region, *models.Region](db).OrderBy(region.TenantID.Asc(), region.Code.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, regions, region.Stores); err != nil {
+			t.Fatal(err)
+		}
+		if last := regions[len(regions)-1]; last.Code != "ZZ" || last.Stores != nil {
+			t.Fatalf("region without stores: %+v, want nil Stores", last)
+		}
+		if regions[0].Stores == nil {
+			t.Fatal("seed region lost its stores")
+		}
+		if err := momo.LoadAll(ctx, db, regions, region.Stores.Scope(momo.LoadWhere[models.Store](store.ID.Eq(999)))); err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range regions {
+			if r.Stores != nil {
+				t.Fatalf("region (%d,%s) kept stale stores after reload", r.TenantID, r.Code)
+			}
+		}
+
+		stores, err := momo.Select[models.Store, *models.Store](db).OrderBy(store.ID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, stores, store.Region); err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.LoadAll(ctx, db, stores, store.Region.Scope(momo.LoadWhere[models.Region](region.Code.Eq("nope")))); err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range stores {
+			if s.Region != nil {
+				t.Fatalf("store %d kept a stale region after reload", s.ID)
+			}
+		}
+	})
+}
+
+// NULL in any key component means no key: a descriptor whose extractor reports
+// a key with a nil element (ok = true) must still not query or assign.
+func TestEagerLoadCompositeNullComponent(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		rel := store.Region
+		rel.ParentKey = func(p *models.Store) ([]any, bool) {
+			var code any
+			if p.RegionCode != nil {
+				code = *p.RegionCode
+			}
+			if p.ID == 3 {
+				return []any{nil, code}, true // NULL first component, non-NULL second
+			}
+			return []any{p.TenantID, code}, true
+		}
+		stores, err := momo.Select[models.Store, *models.Store](db).Where(store.ID.In(3)).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.After = nil
+		if err := momo.Load(ctx, db, stores, rel); err != nil {
+			t.Fatal(err)
+		}
+		if n := relationStatements(h); n != 0 {
+			t.Fatalf("a key with a NULL component issued %d statements, want 0", n)
+		}
+		if stores[0].Region != nil {
+			t.Fatalf("NULL component matched a region: %+v", stores[0].Region)
 		}
 	})
 }
