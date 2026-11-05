@@ -11,9 +11,12 @@ Implements plan momo-06-relations Task 2: Relation descriptor type and validatio
 
 ## Acceptance criteria
 
-- [ ] `TestRelationValidate` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestRelationValidate` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-6, part] this story's tests pass for the part of S-6 this task delivers; the full criterion is verified in story 146.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- `TestRelationValidate` failed first (`undefined: Relation`), then passed after relation.go (`ok github.com/azrtydxb/momo`).
+- `go build ./... && go vet ./... && go test -race -count=1 ./...` all ok; `procoder check`: 0 blocking findings. Commit 6b275cf.
+- [S-6] TestEagerLoad* and [S-82] TestPolymorphicAndThrough depend on later momo-06 tasks (loader, Tasks 5-10); left unchecked.
