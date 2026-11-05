@@ -23,6 +23,10 @@ var (
 	ErrNoDown = errors.New("migrate: migration has no authored down file")
 	// ErrNoSnapshot: no snapshot exists for the requested version.
 	ErrNoSnapshot = errors.New("migrate: no snapshot found for the requested version")
+	// ErrBaselineMismatch: the live database does not match the snapshot a baseline was asked to record.
+	ErrBaselineMismatch = errors.New("migrate: the live database does not match the snapshot")
+	// ErrCanonicalizePrivilege: canonicalizing declared view, function, trigger or policy text needs a privilege the connected role lacks.
+	ErrCanonicalizePrivilege = errors.New("migrate: canonicalizing the snapshot needs a privilege the connected role lacks")
 	// ErrRebuildBlocked: a table rebuild is blocked by an object referencing a dropped column.
 	ErrRebuildBlocked = errors.New("migrate: table rebuild blocked by an object that references a dropped column")
 )

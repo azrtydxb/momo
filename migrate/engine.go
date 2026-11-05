@@ -534,13 +534,32 @@ func (e *Engine) Inspect(ctx context.Context) (*schema.Schema, error) {
 		return nil, err
 	}
 	defer func() { _ = c.Release() }()
+	s, _, err := e.inspectOn(ctx, c)
+	return s, err
+}
+
+// inspectOn is Inspect on a connection the caller holds. It also returns the
+// indexes the dialect reports as invalid (a failed CONCURRENTLY build) when the
+// dialect implements InvalidInspector, and applies Config.Exclude to the result
+// because the dialects do not.
+func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Schema, []string, error) {
+	if _, err := excludeMatcher(e.opts.config.Exclude); err != nil {
+		return nil, nil, err
+	}
 	schemas, err := e.resolveSchemas(ctx, c)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	s, err := e.opts.dialect.Inspect(ctx, c, InspectOptions{Schemas: schemas, Exclude: e.opts.config.Exclude})
+	opts := InspectOptions{Schemas: schemas, Exclude: e.opts.config.Exclude}
+	var s *schema.Schema
+	var invalid []string
+	if ii, ok := e.opts.dialect.(InvalidInspector); ok {
+		s, invalid, err = ii.InspectWithInvalid(ctx, c, opts)
+	} else {
+		s, err = e.opts.dialect.Inspect(ctx, c, opts)
+	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	hs := ""
 	if len(schemas) > 0 {
@@ -549,7 +568,26 @@ func (e *Engine) Inspect(ctx context.Context) (*schema.Schema, error) {
 	s.Tables = slices.DeleteFunc(s.Tables, func(t schema.Table) bool {
 		return t.Name == historyTable && (t.Schema == "" || t.Schema == hs)
 	})
-	return s, nil
+	invalid = dropExcludedInvalid(s, invalid, e.opts.config.Exclude)
+	return applyExclude(s, e.opts.config.Exclude), invalid, nil
+}
+
+// dropExcludedInvalid removes from invalid the indexes of a table or view that
+// Config.Exclude hides. It must run on the schema before applyExclude strips
+// that table, because the index is located through it.
+func dropExcludedInvalid(s *schema.Schema, invalid []string, globs []string) []string {
+	if len(globs) == 0 || len(invalid) == 0 {
+		return invalid
+	}
+	match, err := excludeMatcher(globs)
+	if err != nil {
+		return invalid
+	}
+	return slices.DeleteFunc(slices.Clone(invalid), func(name string) bool {
+		ref := invalidIndexRef(s, name)
+		i := strings.LastIndexByte(ref.Name, '.')
+		return i >= 0 && match(ref.Schema, ref.Name[:i])
+	})
 }
 
 // migrationName is the form a migration name must have.
