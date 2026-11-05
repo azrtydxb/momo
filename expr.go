@@ -3,7 +3,6 @@
 package momo
 
 import (
-	"cmp"
 	"slices"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -497,9 +496,6 @@ func (typedFn[T]) resultType() T { var z T; return z }
 // Number is the constraint of the numeric aggregates SUM.
 type Number interface{ ~int64 | ~float64 }
 
-// Ordered is the constraint of MIN and MAX.
-type Ordered = cmp.Ordered
-
 // Agg is a typed aggregate expression such as COUNT(*) or SUM(col). Besides
 // being an Expression[T] usable in a select list, it carries the comparison
 // methods HAVING needs.
@@ -532,20 +528,23 @@ func CountDistinct(e Expr) Agg[int64] {
 	return Agg[int64]{fn{name: "COUNT", args: []Expr{SQL("DISTINCT ?", e)}}}
 }
 
-// Sum is SUM(expr). The result is NULL over zero rows; scan it into a
-// nullable type or wrap it in Coalesce.
+// Sum is SUM(expr). The result is NULL over zero rows, so scan it into a
+// nullable destination such as *int64 or *float64 (sql.Null types work too), or
+// wrap it in Coalesce. Scanning NULL into a plain int64 returns an error.
 func Sum[T Number](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "SUM", args: []Expr{e}}} }
 
-// Avg is AVG(expr) as float64 (NULL over zero rows).
+// Avg is AVG(expr) as float64. It is NULL over zero rows: scan it into *float64
+// (or sql.NullFloat64), or wrap it in Coalesce.
 func Avg(e Expression[float64]) Agg[float64] {
 	return Agg[float64]{fn{name: "AVG", args: []Expr{e}}}
 }
 
-// Min is MIN(expr) (NULL over zero rows).
-func Min[T Ordered](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "MIN", args: []Expr{e}}} }
+// Min is MIN(expr) (NULL over zero rows). T is any type the database can
+// order, such as time.Time, a decimal, or a string.
+func Min[T any](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "MIN", args: []Expr{e}}} }
 
 // Max is MAX(expr) (NULL over zero rows).
-func Max[T Ordered](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "MAX", args: []Expr{e}}} }
+func Max[T any](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "MAX", args: []Expr{e}}} }
 
 // Coalesce returns the first non-NULL argument.
 func Coalesce[T any](e Expression[T], fallback T) Expression[T] {

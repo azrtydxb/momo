@@ -404,11 +404,11 @@ Interfaces:
 func CountAll() Expression[int64]
 func Sum[T Number](e Expression[T]) Expression[T]     // Number: ~int64 | ~float64 (spec-listed numeric aggregates)
 func Avg(e Expression[float64]) Expression[float64]
-func Min[T Ordered](e Expression[T]) Expression[T]
-func Max[T Ordered](e Expression[T]) Expression[T]
+func Min[T any](e Expression[T]) Expression[T]     // any orderable type: timestamps, dates, decimals
+func Max[T any](e Expression[T]) Expression[T]
 ```
 
-`Ordered` is `cmp.Ordered`. Typed projection row: `tenantCount{TenantID int64; N int64}` with `Projection` marker.
+Min and Max accept any T because SQL orders more than the Go ordered types. Typed projection row: `tenantCount{TenantID int64; N int64}` with `Projection` marker.
 
 - [ ] **Step 1: Write the failing test** `integration_aggregates_test.go`:
 
