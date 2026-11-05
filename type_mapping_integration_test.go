@@ -16,6 +16,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/types"
 	"github.com/azrtydxb/momo/vector"
@@ -139,6 +140,9 @@ func TestTypeMapping(t *testing.T) {
 			t.Skipf("no live round trip for %s: the SQLite driver is not part of this build", d)
 		}
 		ctx := context.Background()
+		// hstore is a database-wide extension that migrate's drift checks
+		// would report as unmanaged: keep it out of the shared database.
+		db = testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_typemap_"))
 		for _, ext := range []string{"vector", "hstore"} {
 			if _, err := momo.Exec(ctx, db, "CREATE EXTENSION IF NOT EXISTS "+ext+" SCHEMA public"); err != nil {
 				t.Fatalf("create extension %s: %v", ext, err)
