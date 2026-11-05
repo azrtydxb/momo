@@ -1,0 +1,352 @@
+# Momo
+
+Momo is a Go ORM that generates code from plain Go structs. You describe a
+table as a struct with a few tags, `momo generate` writes typed column and
+relation descriptors, and queries are built from those descriptors, so a typo
+in a column name or a mismatched value type fails at compile time. SQL stays
+explicit and inspectable. pgvector support is built in: vector columns,
+distance expressions, and search settings are part of the core API. Schema
+migrations are built in as well: `momo migrate diff` compares your structs with
+the last snapshot and writes the SQL.
+
+Status: v0.1.0, pre-v1, with no compatibility promise between releases. This
+release supports PostgreSQL with pgvector. SQLite and MySQL are planned. Momo
+needs Go 1.26 or newer (see `go.mod`).
+
+## Install
+
+Add the library to your module and install the CLI:
+
+```sh
+go get github.com/azrtydxb/momo@v0.1.0
+go install github.com/azrtydxb/momo/cmd/momo@v0.1.0
+```
+
+Momo expects PostgreSQL with the pgvector extension. The first migration runs
+`CREATE EXTENSION IF NOT EXISTS "vector"` for you, which needs a role that may
+create extensions.
+
+## Worked example
+
+Every Go snippet below is compiled: the full source lives in
+[examples/quickstart](examples/quickstart), and a test fails when this README and
+that code drift apart. Copy the example directory as a starting point.
+
+### 1. Define the models
+
+A model is a struct that embeds `momo.Model`. The tag on that field names the
+table, and each field carries its column rules. A field of type
+`vector.Vector` is a pgvector column, and `dim` sets its dimension. Use the
+output size of your embedding model for `dim`, such as 1536.
+
+```go
+// Author writes posts.
+type Author struct {
+	momo.Model `momo:"table:authors"`
+	ID         int64  `momo:"pk,identity"`
+	Name       string `momo:"size:200,notnull,unique"`
+
+	Posts []Post `momo:"has_many,fk:AuthorID"`
+}
+
+// Post is one article with a 3-dimensional embedding. Real embeddings are
+// larger: change dim to the output size of your model, for example 1536.
+type Post struct {
+	momo.Model `momo:"table:posts"`
+	ID         int64         `momo:"pk,identity"`
+	AuthorID   int64         `momo:"column:author_id,notnull,index"`
+	Title      string        `momo:"size:300,notnull"`
+	Embedding  vector.Vector `momo:"dim:3"`
+	CreatedAt  time.Time     `momo:"column:created_at,read_only,default:now()"`
+
+	Author *Author `momo:"belongs_to,fk:AuthorID"`
+}
+```
+
+Tags cannot express everything. pgvector's `hnsw` index method has no default
+operator class, so a `MomoConfig` method names it. The generator reads this
+method statically and never runs it.
+
+```go
+func (p *Post) MomoConfig(c *momo.Config) {
+	c.Index("posts_embedding_hnsw", &p.Embedding).
+		Method("hnsw").
+		Opclass(&p.Embedding, "vector_cosine_ops")
+}
+```
+
+### 2. Configure and generate
+
+Put a `momo.yaml` at the module root. `packages` lists the model packages,
+`migrate.dir` is where migrations are written, and `migrate.url_env` names the
+environment variable that holds the database URL.
+
+```yaml
+version: 1
+packages:
+  - ./models
+naming: gorm
+dialects: [postgres]
+migrate:
+  dir:
+    postgres: migrations
+  url_env:
+    postgres: DATABASE_URL
+```
+
+Generate the typed descriptors:
+
+```sh
+momo generate
+```
+
+This writes a `momo_gen.go` next to the models and one package per model
+(`models/author`, `models/post`) holding its columns, such as `post.Title`
+and `post.AuthorID`, and its relations, such as `author.Posts` and
+`post.Author`. Commit the generated files. `momo generate --check` exits 1
+when they are stale, which makes it a good CI step. You can also add
+`//go:generate momo generate` to a source file.
+
+On Windows, git may convert generated files to CRLF line endings, which makes
+`--check` report them as stale. Add this line to `.gitattributes`:
+
+```text
+*_gen.go text eol=lf
+```
+
+### 3. Create and apply the migration
+
+`momo migrate diff` compares the models with the latest snapshot and writes the
+migration offline, without a database. The first run against an empty
+directory writes the initial schema. Review the generated SQL before you apply
+it.
+
+```sh
+momo migrate diff init
+```
+
+Apply it with the URL in the environment variable that `momo.yaml` names:
+
+```sh
+export DATABASE_URL='postgres://user:password@localhost:5432/app?sslmode=disable'
+momo migrate apply
+```
+
+Run `momo migrate help` for the other commands: `plan`, `status`, `validate`,
+`drift`, `baseline`, and `resolve`. Run migrations over a direct connection to
+PostgreSQL, not through a transaction-mode pooler: the migration lock is a
+session advisory lock.
+
+### 4. Open a database
+
+`pgxdriver.NewPool` opens a pgx pool and `pgxdriver.New` wraps it as a Momo
+driver. The caller owns the pool and closes it.
+
+```go
+func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
+	pool, err := pgxdriver.NewPool(ctx, url)
+	if err != nil {
+		return nil, nil, err
+	}
+	return momo.New(pgxdriver.New(pool)), pool.Close, nil
+}
+```
+
+PgBouncer: the driver's default exec mode sends unnamed statements and binds
+values on the server, so it is safe behind PgBouncer in transaction pooling
+mode without further settings. `pgxdriver.WithExecMode` selects a different
+pgx mode, but not the simple protocol, which interpolates arguments on the
+client and is rejected.
+
+### 5. Insert, select, update, delete
+
+Queries take a `momo.Querier`, which both `*momo.DB` and `*momo.Tx` satisfy.
+Columns come from the generated packages. `Returning` reads database-assigned
+values, such as the identity column, back into the struct.
+
+```go
+func createAuthor(ctx context.Context, q momo.Querier, name string) (models.Author, error) {
+	a := models.Author{Name: name}
+	rows, err := momo.Insert[models.Author](q).Model(&a).Returning(author.ID).Rows(ctx)
+	if err != nil {
+		return a, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		if err := rows.ScanModel(&a); err != nil {
+			return a, err
+		}
+	}
+	return a, rows.Err()
+}
+```
+
+`Models` inserts a slice as one multi-row statement:
+
+```go
+func createPosts(ctx context.Context, q momo.Querier, authorID int64) error {
+	_, err := momo.Insert[models.Post](q).Models([]models.Post{
+		{AuthorID: authorID, Title: "Notes on the engine", Embedding: vector.Vector{1, 0, 0}},
+		{AuthorID: authorID, Title: "Poetical science", Embedding: vector.Vector{0, 1, 0}},
+		{AuthorID: authorID, Title: "Bernoulli numbers", Embedding: vector.Vector{0.9, 0.1, 0}},
+	}).Exec(ctx)
+	return err
+}
+```
+
+Select, update, and delete take typed predicates. An update or delete without
+a `Where` is refused unless you call `AllRows()`, so a forgotten filter cannot
+touch every row.
+
+```go
+func readAndChange(ctx context.Context, q momo.Querier, authorID int64) error {
+	posts, err := momo.Select[models.Post](q).
+		Where(post.AuthorID.Eq(authorID)).
+		OrderBy(post.Title.Asc()).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Println("posts:", len(posts))
+
+	first, err := momo.Select[models.Post](q).Where(post.Title.Eq("Poetical science")).One(ctx)
+	if err != nil {
+		return err
+	}
+
+	if _, err := momo.Update[models.Post](q).
+		Set(post.Title.Set("Poetical science, revised")).
+		Where(post.ID.Eq(first.ID)).
+		Exec(ctx); err != nil {
+		return err
+	}
+	_, err = momo.Delete[models.Post](q).Where(post.ID.Eq(first.ID)).Exec(ctx)
+	return err
+}
+```
+
+`One` returns an error that matches `momo.ErrNotFound` when no row matches.
+
+### 6. Load relations
+
+Relations are loaded eagerly after the parents are fetched, with one query per
+relation instead of one per parent. `momo.Load` loads one relation, and
+`momo.LoadAll` loads several for the same parents. Has-many (`author.Posts`)
+and belongs-to (`post.Author`) work the same way. There is no `Preload` on
+`SelectQuery` in this release; load relations with these functions.
+
+```go
+func loadRelations(ctx context.Context, q momo.Querier, authorID int64) error {
+	authors, err := momo.Select[models.Author](q).Where(author.ID.Eq(authorID)).All(ctx)
+	if err != nil {
+		return err
+	}
+	if err := momo.Load(ctx, q, authors, author.Posts); err != nil {
+		return err
+	}
+	posts := authors[0].Posts
+	if err := momo.Load(ctx, q, posts, post.Author); err != nil {
+		return err
+	}
+	for _, p := range posts {
+		fmt.Println(p.Title, "by", p.Author.Name)
+	}
+	return nil
+}
+```
+
+### 7. Similarity search
+
+Distance expressions take a vector column and a query vector, and the result
+orders a select. In this release the generator emits a plain column for a
+vector field, and the distance functions need a `momo.VectorColumn`, which
+also records the dimension so a wrong-sized query vector is rejected when the
+query is built. Declare it once next to the code that searches.
+
+`WithSearch` runs a function in a transaction with pgvector settings applied,
+here `hnsw.ef_search`. The settings end with the transaction. `SearchSettings`
+also covers iterative scans for filtered searches, IVFFlat probes, and
+`ExactSearch`.
+
+```go
+var postEmbedding = momo.NewVectorColumn[vector.Vector]("posts", "embedding", 3, 0)
+
+func similarPosts(ctx context.Context, db *momo.DB, query vector.Vector) error {
+	settings := momo.SearchSettings{HNSWEfSearch: 100}
+	return db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
+		nearest, err := momo.Select[models.Post](tx).
+			OrderBy(momo.CosineDistance(postEmbedding, query).Asc()).
+			Limit(5).
+			All(ctx)
+		if err != nil {
+			return err
+		}
+		for _, p := range nearest {
+			fmt.Println("near:", p.Title)
+		}
+		return nil
+	})
+}
+```
+
+The other metrics are `L2Distance`, `InnerProductDistance`, `L1Distance`,
+`HammingDistance`, and `JaccardDistance`. Match the function to the operator
+class of your index: this example indexes with `vector_cosine_ops`, so it
+searches with `CosineDistance`.
+
+### 8. Transactions
+
+`db.Tx` begins a transaction, commits when the function returns nil, and rolls
+back when it returns an error or panics. Pass `momo.TxOptions` to set the
+isolation level or read-only mode.
+
+```go
+func renameInTx(ctx context.Context, db *momo.DB, id int64, name string) error {
+	return db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		if _, err := momo.Update[models.Author](tx).
+			Set(author.Name.Set(name)).
+			Where(author.ID.Eq(id)).
+			Exec(ctx); err != nil {
+			return err
+		}
+		n, err := momo.Select[models.Author](tx).Where(author.Name.Eq(name)).Count(ctx)
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return errors.New("rename did not take effect") // rolls the transaction back
+		}
+		return nil
+	})
+}
+```
+
+To run the whole example against a database with the migrations applied:
+
+```sh
+DATABASE_URL='postgres://user:password@localhost:5432/app?sslmode=disable' go run ./examples/quickstart
+```
+
+## Command line
+
+`momo help` lists the commands. The ones used above:
+
+- `momo generate [-c momo.yaml] [--check] [patterns...]` writes the generated
+  code, or with `--check` lists stale files and exits 1.
+- `momo migrate diff <name>` writes a migration for the difference between the
+  models and the latest snapshot. It refuses destructive changes unless you
+  pass `--allow-destructive`.
+- `momo migrate apply [--to N] [--lock-wait 30s]` applies pending migrations.
+- `momo migrate validate` checks the migration directory offline.
+
+Exit codes are 0 for success, 1 for findings such as stale generated files, 2
+for usage or configuration errors, and 3 for database errors.
+
+## More
+
+- [docs/README.md](docs/README.md) is the documentation index.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the layers and
+  contracts.
+- [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build and test Momo.
+- [SECURITY.md](SECURITY.md) explains how to report a vulnerability.
+- [LICENSE](LICENSE) is Apache-2.0.
