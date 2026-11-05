@@ -22,3 +22,4 @@ Implements plan momo-05-writes-queries Task 17: Delete builder and guardrail —
 - TestMutationGuardrails in update_test.go has its Delete assertion again.
 - DELETE renders inside Builder.withScope on the target table.
 
+- Review follow-up: Delete on a soft-delete model returns ErrValidation (documents row survives, integration-tested); tests now use the test-local delNote model. Delete gained Returning, ReturningAll and Rows via renderReturning/runReturning; MySQL gives ErrUnsupported. Model delete ignores the version column (documented). Unit tests cover Where(Or()), nested empty junctions, a composite PK and a correlated EXISTS in WHERE.

@@ -26,7 +26,10 @@ func TestMutationGuardrails(t *testing.T) {
 		if _, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("x")).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
 			t.Fatalf("unfiltered update err = %v", err)
 		}
-		if _, err := momo.Delete[suite.Document](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
+		// documents is a soft-delete model, which Delete refuses outright, so
+		// the unfiltered-DELETE guard is asserted on a model without one.
+		createDelNotes(t, db)
+		if _, err := momo.Delete[delNote](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
 			t.Fatalf("unfiltered delete err = %v", err)
 		}
 		res, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("all")).AllRows().Exec(ctx)

@@ -5,6 +5,7 @@ package momo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 )
 
@@ -24,6 +25,8 @@ type DeleteQuery[T any] struct {
 	// not an unfiltered statement.
 	modelSet bool
 	allRows  bool
+	// returning is the RETURNING list, read with Rows.
+	returning returningSet
 }
 
 // Delete starts a DELETE from T's table.
@@ -37,11 +40,26 @@ func (d DeleteQuery[T]) Where(ps ...Predicate) DeleteQuery[T] {
 	return d
 }
 
-// Model deletes the row identified by m's primary key.
+// Model deletes the row identified by m's primary key. The version column of
+// a versioned model is not checked: unlike a Model update, Model delete
+// removes the row whatever version m carries. Add a Where on the version
+// column for a version-checked delete.
 func (d DeleteQuery[T]) Model(m *T) DeleteQuery[T] { d.model, d.modelSet = m, true; return d }
 
 // AllRows confirms that a DELETE without WHERE is intended.
 func (d DeleteQuery[T]) AllRows() DeleteQuery[T] { d.allRows = true; return d }
+
+// Returning appends a RETURNING list; read the rows with Rows.
+func (d DeleteQuery[T]) Returning(cols ...ColumnRef) DeleteQuery[T] {
+	d.returning = d.returning.with(cols...)
+	return d
+}
+
+// ReturningAll returns every column mapped by T, in metadata order.
+func (d DeleteQuery[T]) ReturningAll() DeleteQuery[T] {
+	d.returning = d.returning.withAll()
+	return d
+}
 
 func (d DeleteQuery[T]) fail(kind error, err error) error {
 	return &Error{Kind: kind, Op: "delete", Table: d.meta.Table, Err: err}
@@ -51,6 +69,9 @@ func (d DeleteQuery[T]) fail(kind error, err error) error {
 func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 	if d.meta.Table == "" {
 		return nil, d.fail(ErrValidation, errors.New("model has no table"))
+	}
+	if d.meta.SoftDelete >= 0 {
+		return nil, d.fail(ErrValidation, errors.New("model has a soft-delete column: use SoftDelete or ForceDelete"))
 	}
 	where := slices.Clone(d.where)
 	if d.modelSet && d.model == nil {
@@ -93,6 +114,9 @@ func (d DeleteQuery[T]) SQL() (Compiled, error) {
 				b.WriteString(" WHERE ")
 				appendAnd(b, where)
 			}
+			renderReturning(b, d.meta, d.returning, func(col string) error {
+				return d.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, d.meta.Table))
+			})
 		})
 	})
 }
@@ -108,4 +132,17 @@ func (d DeleteQuery[T]) Exec(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	return Result{RowsAffected: n}, nil
+}
+
+// Rows runs the DELETE and returns its RETURNING rows. It fails with
+// ErrValidation when no Returning list was set.
+func (d DeleteQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
+	if !d.returning.active() {
+		return nil, d.fail(ErrValidation, errors.New("Rows needs a Returning list"))
+	}
+	c, err := d.SQL()
+	if err != nil {
+		return nil, err
+	}
+	return runReturning(ctx, d.q, "delete", d.meta, d.returning, c)
 }
