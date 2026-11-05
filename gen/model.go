@@ -8,6 +8,7 @@ import (
 	"go/types"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 
@@ -104,6 +105,9 @@ func (d *discovery) run() *Model {
 		d.diag(d.ts.Pos(), "generic type "+d.ts.Name.Name+" cannot be a model")
 		return nil
 	}
+	// Embedding Model twice makes the type checker drop the duplicate field,
+	// so the counts differ and this guard skips the type (the compiler
+	// diagnostic is already reported); it also prevents index panics.
 	if astFieldCount(d.st) != strct.NumFields() {
 		return nil // redeclared fields: the type checker already reported it
 	}
@@ -125,8 +129,9 @@ func (d *discovery) markerKind(e ast.Expr) markerKindT {
 		return markerNone
 	}
 	kind := markerValue
+	t = types.Unalias(t)
 	if p, ok := t.(*types.Pointer); ok {
-		t = p.Elem()
+		t = types.Unalias(p.Elem())
 		kind = markerPointer
 	}
 	n, ok := t.(*types.Named)
@@ -161,16 +166,35 @@ func tagValue(lit *ast.BasicLit) (string, bool) {
 	return reflect.StructTag(s).Lookup("momo")
 }
 
-func (d *discovery) parseTags(lit *ast.BasicLit) tags.Tags {
+// parseTags parses the momo tag of one ast.Field, once, however many names
+// it declares. label names the field in diagnostics.
+func (d *discovery) parseTags(lit *ast.BasicLit, label string) tags.Tags {
 	if lit == nil {
 		return tags.Tags{}
 	}
-	raw, _ := tagValue(lit)
+	raw, ok := tagValue(lit)
+	if !ok {
+		if _, err := strconv.Unquote(lit.Value); err != nil {
+			d.diag(lit.Pos(), label+": malformed struct tag literal")
+		}
+		return tags.Tags{}
+	}
 	t, probs := tags.Parse(raw)
 	for _, p := range probs {
-		d.diag(lit.Pos(), p.Msg)
+		d.diag(lit.Pos(), label+": "+p.Msg)
 	}
 	return t
+}
+
+func fieldLabel(f *ast.Field) string {
+	if len(f.Names) == 0 {
+		return "embedded field"
+	}
+	var names []string
+	for _, n := range f.Names {
+		names = append(names, n.Name)
+	}
+	return "field " + strings.Join(names, ", ")
 }
 
 func (d *discovery) build(obj *types.TypeName, strct *types.Struct, marker int) *Model {
@@ -189,16 +213,16 @@ func (d *discovery) build(obj *types.TypeName, strct *types.Struct, marker int) 
 	for _, f := range d.st.Fields.List {
 		if len(f.Names) == 0 {
 			if idx == marker {
-				mt = d.parseTags(f.Tag)
+				mt = d.parseTags(f.Tag, "momo.Model marker")
 			}
 			// Other embedded fields are flattened in Task 8.
 			idx++
 			continue
 		}
+		ft := d.parseTags(f.Tag, fieldLabel(f))
 		for _, name := range f.Names {
 			i := idx
 			idx++
-			ft := d.parseTags(f.Tag)
 			if !name.IsExported() {
 				if f.Tag != nil {
 					if raw, ok := tagValue(f.Tag); ok && raw != "" && raw != "-" {

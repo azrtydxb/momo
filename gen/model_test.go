@@ -122,6 +122,48 @@ func TestModelDiscoveryDiagnostics(t *testing.T) {
 	}
 }
 
+func TestModelDiscoveryAliasEmbed(t *testing.T) {
+	g, diags, err := Load([]string{"./aliasembed"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]*Model{}
+	for _, m := range g.Models {
+		byName[m.GoName] = m
+	}
+	if m := byName["ViaAlias"]; m == nil || len(m.Fields) != 1 || m.Fields[0].GoName != "ID" || m.Table != "via_aliases" {
+		t.Errorf("ViaAlias must be a model with one column: %+v (models %v)", m, keys(byName))
+	}
+	// X is a defined type distinct from momo.Model, so embedding it is not
+	// the marker: not a model, and no diagnostic.
+	for _, n := range []string{"ViaPtrAlias", "ViaDefined", "X", "M"} {
+		if _, ok := byName[n]; ok {
+			t.Errorf("%s must not be a model", n)
+		}
+	}
+	var ptr, bogus int
+	for _, d := range diags {
+		if strings.Contains(d.Msg, "momo.Model must be embedded by value in ViaPtrAlias") {
+			ptr++
+		}
+		if strings.Contains(d.Msg, "ViaDefined") {
+			t.Errorf("unexpected diagnostic for ViaDefined: %v", d)
+		}
+		if strings.Contains(d.Msg, "bogus_option") {
+			bogus++
+			if !strings.Contains(d.Msg, "field E, F") {
+				t.Errorf("tag diagnostic must name the fields: %v", d)
+			}
+		}
+	}
+	if ptr != 1 {
+		t.Errorf("pointer-to-alias diagnostics=%d want 1: %v", ptr, diags)
+	}
+	if bogus != 1 {
+		t.Errorf("multi-name field tag reported %d times, want once: %v", bogus, diags)
+	}
+}
+
 func countOf(ms []*Model, name string) int {
 	n := 0
 	for _, m := range ms {
