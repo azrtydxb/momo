@@ -6,12 +6,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -68,7 +66,7 @@ func (d *driver) Dialect() *dialect.Dialect { return dialect.For(dialect.Postgre
 func (d *driver) Capabilities() momo.Capabilities { return momo.Capabilities{Vectors: true} }
 
 // ClassifyError implements momo.ErrorClassifier.
-func (d *driver) ClassifyError(err error) error { return wrapErr(err) }
+func (d *driver) ClassifyError(err error) error { return ClassifyError(err) }
 
 // withMode prepends the exec mode, which pgx reads from the first argument.
 func (d *driver) withMode(args []any) []any {
@@ -83,7 +81,7 @@ func (d *driver) Query(ctx context.Context, sql string, args []any) (momo.Rows, 
 	}
 	rows, err := d.pool.Query(ctx, sql, d.withMode(args)...)
 	if err != nil {
-		return nil, wrapErr(err)
+		return nil, ClassifyError(err)
 	}
 	return pgxRows{rows}, nil
 }
@@ -94,7 +92,7 @@ func (d *driver) Exec(ctx context.Context, sql string, args []any) (int64, error
 	}
 	tag, err := d.pool.Exec(ctx, sql, d.withMode(args)...)
 	if err != nil {
-		return 0, wrapErr(err)
+		return 0, ClassifyError(err)
 	}
 	return tag.RowsAffected(), nil
 }
@@ -109,7 +107,7 @@ func (d *driver) Begin(ctx context.Context, opts momo.TxOptions) (momo.DriverTx,
 	}
 	tx, err := d.pool.BeginTx(ctx, to)
 	if err != nil {
-		return nil, wrapErr(err)
+		return nil, ClassifyError(err)
 	}
 	return &pgxTx{tx: tx, d: d}, nil
 }
@@ -136,6 +134,8 @@ func txOptions(o momo.TxOptions) (pgx.TxOptions, error) {
 	}
 	if o.ReadOnly {
 		to.AccessMode = pgx.ReadOnly
+	} else {
+		to.AccessMode = pgx.ReadWrite
 	}
 	return to, nil
 }
@@ -143,8 +143,8 @@ func txOptions(o momo.TxOptions) (pgx.TxOptions, error) {
 // pgxRows adapts pgx.Rows, whose Close has no result, to momo.Rows.
 type pgxRows struct{ pgx.Rows }
 
-func (r pgxRows) Scan(dest ...any) error { return wrapErr(r.Rows.Scan(dest...)) }
-func (r pgxRows) Err() error             { return wrapErr(r.Rows.Err()) }
+func (r pgxRows) Scan(dest ...any) error { return ClassifyError(r.Rows.Scan(dest...)) }
+func (r pgxRows) Err() error             { return ClassifyError(r.Rows.Err()) }
 func (r pgxRows) Close() error           { r.Rows.Close(); return nil }
 
 type pgxTx struct {
@@ -180,26 +180,5 @@ func txErr(op string, err error) error {
 	if errors.Is(err, pgx.ErrTxClosed) {
 		return &momo.Error{Kind: momo.ErrTxDone, Op: op, Err: err}
 	}
-	return wrapErr(err)
-}
-
-// wrapErr classifies err and, for errors ClassifyError leaves alone, keeps the
-// server text out of the message when it can echo a bound value: PostgreSQL
-// data exceptions (SQLSTATE class 22, e.g. 22P02 `invalid input syntax for
-// type integer: "<value>"`) quote the offending argument in Message. The
-// original *pgconn.PgError stays reachable through errors.As.
-func wrapErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	err = ClassifyError(err)
-	var me *momo.Error
-	if errors.As(err, &me) {
-		return err
-	}
-	var pe *pgconn.PgError
-	if errors.As(err, &pe) && strings.HasPrefix(pe.Code, "22") {
-		return driverError{cause: err, msg: "pgx: data exception (SQLSTATE " + pe.Code + ")"}
-	}
-	return err
+	return ClassifyError(err)
 }

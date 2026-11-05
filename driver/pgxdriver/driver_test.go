@@ -24,8 +24,22 @@ func openPool(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(pool.Close)
+	t.Cleanup(func() { closePool(t, pool) })
 	return pool
+}
+
+// closePool closes pool but, unlike pool.Close, cannot hang the test binary
+// when a connection was leaked: it reports the leak and gives up after 5s.
+func closePool(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	acquired := pool.Stat().AcquiredConns()
+	done := make(chan struct{})
+	go func() { pool.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Errorf("pool.Close blocked for 5s: %d connection(s) still acquired (leaked)", acquired)
+	}
 }
 
 func TestExecModeExecIsApplied(t *testing.T) {
@@ -66,6 +80,7 @@ func TestDefaultExecModeNoNamedStatements(t *testing.T) {
 	ctx := context.Background()
 	pn, ok := d.(momo.Pinner)
 	if !ok {
+		// TODO(momo-03 Task 7): remove this skip once Pin lands.
 		t.Skip("Pin lands in momo-03 Task 7")
 	}
 	p, err := pn.Pin(ctx)
@@ -349,7 +364,9 @@ func TestTxCommitRollbackAndDone(t *testing.T) {
 
 func TestConcurrentUse(t *testing.T) {
 	d := New(openPool(t))
-	ctx := context.Background()
+	// Bounded so a leaked connection fails the test instead of hanging it.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	var wg sync.WaitGroup
 	errs := make(chan error, 64)
 	for i := 0; i < 32; i++ {
@@ -380,5 +397,62 @@ func TestConcurrentUse(t *testing.T) {
 	close(errs)
 	for err := range errs {
 		t.Error(err)
+	}
+}
+
+func TestTxOptionsMapping(t *testing.T) {
+	to, err := txOptions(momo.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if to.AccessMode != pgx.ReadWrite {
+		t.Errorf("ReadOnly=false AccessMode = %q, want %q", to.AccessMode, pgx.ReadWrite)
+	}
+	to, err = txOptions(momo.TxOptions{ReadOnly: true, Isolation: sql.LevelSerializable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if to.AccessMode != pgx.ReadOnly || to.IsoLevel != pgx.Serializable {
+		t.Errorf("got %+v", to)
+	}
+}
+
+func TestScanErrorDoesNotLeakValue(t *testing.T) {
+	d := New(openPool(t))
+	secret := "tok-" + "scan-4711"
+	rows, err := d.Query(context.Background(), "SELECT $1::text", []any{secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		t.Fatal("no row")
+	}
+	var n int
+	err = rows.Scan(&n)
+	if err == nil {
+		t.Fatal("expected a scan error")
+	}
+	if strings.Contains(fmt.Sprint(err), secret) || strings.Contains(fmt.Sprintf("%+v", err), secret) {
+		t.Fatalf("scan error leaks value: %v", err)
+	}
+}
+
+func TestRowsErrAfterContextCancel(t *testing.T) {
+	d := New(openPool(t))
+	ctx, cancel := context.WithCancel(context.Background())
+	rows, err := d.Query(ctx, "SELECT g FROM generate_series(1,1000000) g", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		t.Fatal("no row")
+	}
+	cancel()
+	for rows.Next() {
+	}
+	if err := rows.Err(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Rows.Err = %v, want context.Canceled reachable", err)
 	}
 }
