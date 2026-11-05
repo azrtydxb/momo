@@ -22,6 +22,9 @@ func Queries(t *testing.T, db *momo.DB, caps Caps) {
 	t.Run("subqueries", func(t *testing.T) { SubqueriesCTEsRecursive(t, db, caps) })
 	t.Run("returning", func(t *testing.T) { ReturningRendersAndScans(t, db, caps) })
 	t.Run("raw", func(t *testing.T) { RawArgs(t, db, caps) })
+	t.Run("locking", func(t *testing.T) { LockingNowaitSkipLocked(t, db, caps) })
+	t.Run("table-name", func(t *testing.T) { WithTableNameQuoted(t, db, caps) })
+	t.Run("hints", func(t *testing.T) { HintsByDialect(t, db, caps) })
 	t.Run("keyset", func(t *testing.T) {
 		t.Run("mixed-directions", func(t *testing.T) { KeysetPaginationMixedDirections(t, db, caps) })
 		t.Run("nullable-key", func(t *testing.T) { KeysetRejectsNullableKey(t, db, caps) })
