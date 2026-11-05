@@ -21,6 +21,13 @@ func TestNormalizeType(t *testing.T) {
 		{dialect.Postgres, "timestamptz", "timestamp with time zone"},
 		{dialect.Postgres, "vector( 3 )", "vector(3)"},
 		{dialect.Postgres, "  Text  ", "text"},
+		{dialect.Postgres, "timestamptz(3)", "timestamp(3) with time zone"},
+		{dialect.Postgres, "timestamp(3) with time zone", "timestamp(3) with time zone"},
+		{dialect.Postgres, "TIMESTAMP(6) WITHOUT TIME ZONE", "timestamp(6) without time zone"},
+		{dialect.Postgres, "timestamp(3)", "timestamp(3) without time zone"},
+		{dialect.Postgres, "time(2) with time zone", "time(2) with time zone"},
+		{dialect.Postgres, "timetz", "time with time zone"},
+		{dialect.Postgres, "timestamp with time zone", "timestamp with time zone"},
 		{dialect.SQLite, "INTEGER", "integer"},
 		{dialect.SQLite, "varchar(20)", "varchar(20)"},
 	}

@@ -22,8 +22,6 @@ var postgresTypes = map[string]string{
 	"bool":             "boolean",
 	"boolean":          "boolean",
 	"varchar":          "character varying",
-	"timestamptz":      "timestamp with time zone",
-	"timestamp":        "timestamp without time zone",
 	"float8":           "double precision",
 	"double precision": "double precision",
 	"float4":           "real",
@@ -35,13 +33,32 @@ var postgresTypes = map[string]string{
 // idempotent.
 func NormalizeType(d dialect.Name, t string) string {
 	s := strings.Join(strings.Fields(strings.ToLower(t)), " ")
-	base, suffix := s, ""
+	base, args, rest := s, "", ""
 	if i := strings.IndexByte(s, '('); i >= 0 {
-		base, suffix = strings.TrimSpace(s[:i]), s[i:]
+		base = strings.TrimSpace(s[:i])
+		args, rest = splitArgs(s[i:])
 	}
+	if d == dialect.Postgres {
+		if out, ok := postgresTime(base, args, rest); ok {
+			return out
+		}
+		if m, ok := postgresTypes[base]; ok {
+			base = m
+		}
+	}
+	if rest != "" {
+		rest = " " + rest
+	}
+	return base + args + rest
+}
+
+// splitArgs splits "(args) rest" into the parenthesised argument list, with
+// whitespace inside it removed, and the trimmed text after the closing
+// parenthesis. An unbalanced list is returned whole with an empty rest.
+func splitArgs(s string) (args, rest string) {
 	var sb strings.Builder
 	depth := 0
-	for _, r := range suffix {
+	for i, r := range s {
 		switch {
 		case r == '(':
 			depth++
@@ -51,13 +68,38 @@ func NormalizeType(d dialect.Name, t string) string {
 			continue
 		}
 		sb.WriteRune(r)
-	}
-	if d == dialect.Postgres {
-		if m, ok := postgresTypes[base]; ok {
-			base = m
+		if depth == 0 {
+			return sb.String(), strings.TrimSpace(s[i+1:])
 		}
 	}
-	return base + sb.String()
+	return sb.String(), ""
+}
+
+// postgresTime canonicalises the timestamp and time families, whose optional
+// precision sits between the type name and the time zone clause:
+// timestamp(3) with time zone.
+func postgresTime(base, args, rest string) (string, bool) {
+	head, tail, _ := strings.Cut(base, " ")
+	if rest != "" {
+		tail = strings.TrimSpace(tail + " " + rest)
+	}
+	var zone string
+	switch head {
+	case "timestamp", "time":
+		zone = "without time zone"
+	case "timestamptz", "timetz":
+		zone = "with time zone"
+		head = strings.TrimSuffix(head, "tz")
+	default:
+		return "", false
+	}
+	if tail != "" {
+		if tail != "with time zone" && tail != "without time zone" {
+			return "", false
+		}
+		zone = tail
+	}
+	return head + args + " " + zone, true
 }
 
 // NormalizeExpr returns the canonical spelling of a SQL expression: outside
