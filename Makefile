@@ -55,6 +55,7 @@ fmt-check:
 
 vet:
 	$(GO) vet ./...
+	$(GO) vet -tags integration ./...
 
 tidy-check:
 	$(GO) mod tidy -diff
