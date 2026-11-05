@@ -42,6 +42,9 @@ func (d Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.
 	if len(s.Views) == 0 && len(s.Functions) == 0 && len(s.Triggers) == 0 && len(s.Policies) == 0 {
 		return nil
 	}
+	if err := requireCreateOnDatabase(ctx, c); err != nil {
+		return err
+	}
 	mini, err := scratchModel(s)
 	if err != nil {
 		return err
@@ -84,6 +87,22 @@ func (d Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.
 		return fmt.Errorf("postgres canonicalize: read back: %w", err)
 	}
 	return rewriteText(s, read)
+}
+
+// requireCreateOnDatabase fails with an error wrapping
+// migrate.ErrCanonicalizePrivilege when the connected role cannot CREATE a
+// schema in the current database. Skipping canonicalization instead would
+// compare raw declared text with text PostgreSQL rewrote and give false
+// mismatches or false matches.
+func requireCreateOnDatabase(ctx context.Context, c momo.PinnedConn) error {
+	var ok bool
+	if err := queryOne(ctx, c, `SELECT has_database_privilege(current_database(), 'CREATE')`, nil, &ok); err != nil {
+		return fmt.Errorf("postgres canonicalize: check privilege: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("%w: the role needs the CREATE privilege on the database to create the scratch schema that canonicalizes views, functions, triggers and policies (GRANT CREATE ON DATABASE ... or run the baseline with a role that has it)", migrate.ErrCanonicalizePrivilege)
+	}
+	return nil
 }
 
 // scratchModel returns a copy of s that can be created in one schema: no

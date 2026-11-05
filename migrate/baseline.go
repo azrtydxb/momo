@@ -29,6 +29,14 @@ const BaselineApplyID = "baseline"
 // function, policy and trigger text to what the database reports, so declared
 // text that PostgreSQL spells differently does not count as a difference.
 //
+// Canonicalizing creates a scratch schema, which on PostgreSQL needs the CREATE
+// privilege on the database. A role without it gets an error wrapping
+// ErrCanonicalizePrivilege naming that privilege; run the baseline with a role
+// that has it. Canonicalization is never skipped, because raw declared text
+// would give false mismatches or false matches, and force does not bypass this
+// requirement. Only a snapshot without views, functions, triggers and policies
+// needs no canonicalization: then no DDL runs and no privilege is required.
+//
 // For every migration with a version not after version that has no history row
 // (a rolled_back row counts as none) it inserts a row with status applied,
 // statements_applied 0, the checksum of the file and apply_id "baseline", in one

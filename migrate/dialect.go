@@ -40,7 +40,9 @@ type InvalidInspector interface {
 // bodies, and policy and trigger expressions with the text the database itself
 // reports, so that s compares equal to an inspection of the live objects. It
 // leaves nothing behind in the database. Baseline calls it on the snapshot it
-// verifies.
+// verifies. When the connected role lacks a privilege Canonicalize needs, it
+// returns an error wrapping ErrCanonicalizePrivilege that names the privilege;
+// it must not skip the rewrite silently.
 type Canonicalizer interface {
 	Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.Schema) error
 }

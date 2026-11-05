@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -126,5 +127,34 @@ func TestBaselineWithLaterVersionAlreadyApplied(t *testing.T) {
 	}
 	if r := historyRow(t, db, "20260101000000"); r.ApplyID != "baseline" || r.Status != migrate.StatusApplied {
 		t.Fatalf("missing earlier row must be re-recorded: %+v", r)
+	}
+}
+
+// privDialect is the PostgreSQL dialect whose Canonicalize reports the missing
+// database privilege, as it does for a role without CREATE on the database.
+type baseDialect = migrate.Dialect
+
+type privDialect struct{ baseDialect }
+
+func (privDialect) Canonicalize(context.Context, momo.PinnedConn, *schema.Schema) error {
+	return fmt.Errorf("%w: needs CREATE on the database", migrate.ErrCanonicalizePrivilege)
+}
+
+// The privilege error reaches the caller of Baseline, with and without force:
+// force does not bypass canonicalization, and nothing is recorded.
+func TestBaselineSurfacesCanonicalizePrivilegeError(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	e := migratetest.NewEngine(t, privDialect{mpg.New()}, db.Driver(), migratetestFS(t, initVersion))
+	for _, force := range []bool{false, true} {
+		err := e.Baseline(ctx, initVersion, force)
+		if !errors.Is(err, migrate.ErrCanonicalizePrivilege) {
+			t.Fatalf("force=%v: want ErrCanonicalizePrivilege, got %v", force, err)
+		}
+	}
+	rows, err := migrate.ReadHistory(ctx, pinned(t, db))
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("a refused baseline must record nothing: %+v %v", rows, err)
 	}
 }
