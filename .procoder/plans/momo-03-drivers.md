@@ -869,6 +869,8 @@ func BatcherOf(q Querier) (Batcher, bool)
 
 `driver_access.go` implements both with a type switch on `*DB` (`db.ex.q`) and `*Tx` (`tx.dtx`), so that momo-05's COPY insert works inside a transaction.
 
+**Batch buffering and exec mode (review 063).** `SendBatch` buffers every statement result eagerly and without bound before returning (documented in ARCHITECTURE). It honours the driver exec mode: under the default mode it sends unnamed extended-protocol statements through pgconn (no prepared statements, PgBouncer-safe), because `pgx.Batch` always uses the connection default mode.
+
 `CopyFrom` splits `table` on `.` into `pgx.Identifier` parts (schema, table) so schema-qualified tables work. `SendBatch` returns one `momo.Rows` per statement: `pgx.BatchResults.Query()` for each, wrapped in `pgxRows` (Task 4); a statement that returns no rows yields a `Rows` whose `Next` is false and whose `Close` drains the result.
 
 - [ ] **Step 1: Write the failing test** `bulk_test.go`:

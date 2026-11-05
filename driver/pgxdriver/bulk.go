@@ -30,14 +30,21 @@ type batchSender interface {
 // SQL: pgx quotes each identifier part. A dotted table name is split into
 // schema and table.
 func copyFrom(ctx context.Context, s copySender, table string, cols []string, rows [][]any) (int64, error) {
-	n, err := s.CopyFrom(ctx, pgx.Identifier(strings.Split(table, ".")), cols, pgx.CopyFromRows(rows))
+	return copyFromSource(ctx, s, table, cols, pgx.CopyFromRows(rows))
+}
+
+// copyFromSource is copyFrom over a streaming source.
+func copyFromSource(ctx context.Context, s copySender, table string, cols []string, src pgx.CopyFromSource) (int64, error) {
+	n, err := s.CopyFrom(ctx, pgx.Identifier(strings.Split(table, ".")), cols, src)
 	if err != nil {
 		return 0, copyErr(err)
 	}
 	return n, nil
 }
 
-// copyErr classifies a COPY error. pgx encode errors quote the offending value
+// copyErr classifies a COPY error. The redacted error still wraps the raw pgx
+// error as its cause (reachable with errors.As), like ClassifyError does; only
+// its text is withheld. pgx encode errors quote the offending value
 // ("unable to encode ..."), so anything that is neither a server error, a
 // context error nor already a momo error is reported without its text.
 func copyErr(err error) error {
@@ -63,15 +70,28 @@ func copyErr(err error) error {
 // result eagerly, so the connection is free again when it returns. All results
 // are closed on every path. A failing statement is reported by index, without
 // its arguments.
-func sendBatch(ctx context.Context, s batchSender, stmts []momo.Compiled) ([]momo.Rows, error) {
+//
+// The driver's exec mode is honoured. pgx has no per-batch mode (a batch
+// always uses the connection's DefaultQueryExecMode, which prepares statements
+// by default), so for QueryExecModeExec, the driver default, the batch is sent
+// through pgconn's extended protocol with unnamed statements: no prepared
+// statement is created, which keeps it PgBouncer-safe. Any other mode is only
+// accepted when it equals the connection's own default, else ErrUnsupported.
+//
+// Results are buffered eagerly and without bound: every row of every statement
+// is held in memory until the caller closes the Rows.
+func sendBatch(ctx context.Context, s batchSender, mode pgx.QueryExecMode, stmts []momo.Compiled) ([]momo.Rows, error) {
 	if len(stmts) == 0 {
 		return nil, nil
 	}
-	if s.Conn().Config().DefaultQueryExecMode == pgx.QueryExecModeSimpleProtocol {
+	if mode == pgx.QueryExecModeExec {
+		return execBatch(ctx, s.Conn(), stmts)
+	}
+	if s.Conn().Config().DefaultQueryExecMode != mode {
 		return nil, &momo.Error{
 			Kind: momo.ErrUnsupported,
 			Op:   "batch",
-			Err:  errors.New("simple protocol interpolates arguments client-side"),
+			Err:  errors.New("pgx batches use the connection's default exec mode; it differs from the driver's WithExecMode"),
 		}
 	}
 	b := &pgx.Batch{}
@@ -96,6 +116,45 @@ func sendBatch(ctx context.Context, s batchSender, stmts []momo.Compiled) ([]mom
 	}
 	if err := br.Close(); err != nil {
 		return nil, batchErr(-1, err)
+	}
+	return out, nil
+}
+
+// execBatch sends stmts as one pgconn batch of unnamed extended-protocol
+// statements with bound parameters (text format, types inferred by the server).
+func execBatch(ctx context.Context, conn *pgx.Conn, stmts []momo.Compiled) ([]momo.Rows, error) {
+	tm := conn.TypeMap()
+	pb := &pgconn.Batch{}
+	for i, st := range stmts {
+		params := make([][]byte, len(st.Args))
+		formats := make([]int16, len(st.Args))
+		for j, a := range st.Args {
+			if a == nil {
+				continue
+			}
+			v, err := tm.Encode(0, pgtype.TextFormatCode, a, nil)
+			if err != nil {
+				return nil, batchErr(i, errors.New("argument cannot be encoded"))
+			}
+			if v == nil {
+				v = []byte{}
+			}
+			params[j] = v
+		}
+		pb.ExecParams(st.SQL, params, nil, formats, nil)
+	}
+	results, err := conn.PgConn().ExecBatch(ctx, pb).ReadAll()
+	for i, r := range results {
+		if r.Err != nil {
+			return nil, batchErr(i, r.Err)
+		}
+	}
+	if err != nil {
+		return nil, batchErr(len(results), err)
+	}
+	out := make([]momo.Rows, 0, len(results))
+	for _, r := range results {
+		out = append(out, &bufferedRows{fields: r.FieldDescriptions, data: r.Rows, tm: tm})
 	}
 	return out, nil
 }
@@ -192,7 +251,7 @@ func (d *driver) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.R
 		return nil, ClassifyError(err)
 	}
 	defer conn.Release()
-	return sendBatch(ctx, conn, stmts)
+	return sendBatch(ctx, conn, d.mode, stmts)
 }
 
 // CopyFrom implements momo.Copier on the transaction's connection.
@@ -206,7 +265,7 @@ func (t *pgxTx) CopyFrom(ctx context.Context, table string, cols []string, rows 
 
 // SendBatch implements momo.Batcher on the transaction's connection.
 func (t *pgxTx) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.Rows, error) {
-	return sendBatch(ctx, t.tx, stmts)
+	return sendBatch(ctx, t.tx, t.d.mode, stmts)
 }
 
 // CopyFrom implements momo.Copier on the pinned session.
@@ -224,7 +283,7 @@ func (p *pinned) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.R
 	if err != nil {
 		return nil, err
 	}
-	return sendBatch(ctx, c, stmts)
+	return sendBatch(ctx, c, p.d.mode, stmts)
 }
 
 var (
