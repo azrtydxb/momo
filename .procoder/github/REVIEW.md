@@ -25,6 +25,8 @@ Check every hunk for:
   content at runtime, never as a literal.
 - Prose and markdown: code spans unbroken, lists formatted, wording that
   says what the code actually does.
+- Security linters run before review: `make gosec` is clean (CI reports
+  gosec findings only as annotations, so they would otherwise reach the PR).
 
 End with a verdict line: findings counted by severity, or exactly
 "Nothing found — open the PR."

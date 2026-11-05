@@ -83,9 +83,9 @@ func (sq SelectQuery[T]) isSubquery() {}
 
 // AppendSQL renders the query in parentheses, for use as a subquery.
 func (sq SelectQuery[T]) AppendSQL(b *Builder) {
-	b.WriteByte('(')
+	b.writeByte('(')
 	sq.render(b)
-	b.WriteByte(')')
+	b.writeByte(')')
 }
 
 // Where adds predicates combined with AND.
@@ -354,12 +354,12 @@ func (sq SelectQuery[T]) render(b *Builder) {
 					}
 					b.Ident(col)
 				}
-				b.WriteByte(')')
+				b.writeByte(')')
 			}
 			b.WriteString(" AS ")
 			c.q.AppendSQL(b)
 		}
-		b.WriteByte(' ')
+		b.writeByte(' ')
 	}
 	b.WriteString("SELECT ")
 	if s.distinct {
@@ -394,9 +394,9 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		s.from.appendFrom(b)
 	}
 	for _, j := range s.joins {
-		b.WriteByte(' ')
+		b.writeByte(' ')
 		b.WriteString(j.kind)
-		b.WriteByte(' ')
+		b.writeByte(' ')
 		j.src.appendFrom(b)
 		if len(j.on) > 0 {
 			b.WriteString(" ON ")
@@ -462,7 +462,7 @@ func (sq SelectQuery[T]) render(b *Builder) {
 			b.unsupported(s.lock)
 			return
 		}
-		b.WriteByte(' ')
+		b.writeByte(' ')
 		b.WriteString(s.lock)
 	}
 }
@@ -490,9 +490,9 @@ func appendAnd(b *Builder, ps []Predicate) {
 			p.AppendSQL(b)
 			continue
 		}
-		b.WriteByte('(')
+		b.writeByte('(')
 		p.AppendSQL(b)
-		b.WriteByte(')')
+		b.writeByte(')')
 	}
 }
 
@@ -740,7 +740,7 @@ type setOp struct {
 
 func (setOp) isSubquery() {}
 func (s setOp) AppendSQL(b *Builder) {
-	b.WriteByte('(')
+	b.writeByte('(')
 	for i, q := range s.qs {
 		if i > 0 {
 			if s.all {
@@ -757,5 +757,5 @@ func (s setOp) AppendSQL(b *Builder) {
 			q.AppendSQL(b)
 		}
 	}
-	b.WriteByte(')')
+	b.writeByte(')')
 }

@@ -299,7 +299,7 @@ func (d distinctFrom) AppendSQL(b *Builder) {
 		b.WriteString(" <=> ")
 		d.r.AppendSQL(b)
 		if !d.not {
-			b.WriteByte(')')
+			b.writeByte(')')
 		}
 	default:
 		d.l.AppendSQL(b)
@@ -354,7 +354,7 @@ func (x inList[T]) AppendSQL(b *Builder) {
 		}
 		b.Arg(v)
 	}
-	b.WriteByte(')')
+	b.writeByte(')')
 }
 func (inList[T]) resultType() bool { return false }
 
@@ -393,7 +393,7 @@ func (j junction) AppendSQL(b *Builder) {
 		j.parts[0].AppendSQL(b)
 		return
 	}
-	b.WriteByte('(')
+	b.writeByte('(')
 	for i, p := range j.parts {
 		if i > 0 {
 			b.WriteString(j.op)
@@ -401,14 +401,14 @@ func (j junction) AppendSQL(b *Builder) {
 		if r, ok := p.(interface{ isRaw() bool }); ok && r.isRaw() {
 			// Raw SQL may hold a lower-precedence operator; every
 			// structured predicate is self-delimiting.
-			b.WriteByte('(')
+			b.writeByte('(')
 			p.AppendSQL(b)
-			b.WriteByte(')')
+			b.writeByte(')')
 			continue
 		}
 		p.AppendSQL(b)
 	}
-	b.WriteByte(')')
+	b.writeByte(')')
 }
 func (junction) resultType() bool { return false }
 
@@ -429,7 +429,7 @@ func newJunction(op string, ps []Predicate) Predicate {
 
 type not struct{ p Predicate }
 
-func (n not) AppendSQL(b *Builder) { b.WriteString("NOT ("); n.p.AppendSQL(b); b.WriteByte(')') }
+func (n not) AppendSQL(b *Builder) { b.WriteString("NOT ("); n.p.AppendSQL(b); b.writeByte(')') }
 func (not) resultType() bool       { return false }
 
 // Not negates a predicate.
@@ -492,9 +492,9 @@ type fn struct {
 
 func (f fn) AppendSQL(b *Builder) {
 	b.WriteString(f.name)
-	b.WriteByte('(')
+	b.writeByte('(')
 	if f.star {
-		b.WriteByte('*')
+		b.writeByte('*')
 	}
 	for i, a := range f.args {
 		if i > 0 {
@@ -502,7 +502,7 @@ func (f fn) AppendSQL(b *Builder) {
 		}
 		a.AppendSQL(b)
 	}
-	b.WriteByte(')')
+	b.writeByte(')')
 }
 
 type typedFn[T any] struct{ fn }
