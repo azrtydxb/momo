@@ -6,11 +6,9 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/driver/pgxdriver"
-	"github.com/azrtydxb/momo/internal/testdb"
+	"github.com/azrtydxb/momo/internal/testdb/testopen"
 )
 
 type countHook struct{ n int }
@@ -22,31 +20,9 @@ func (c *countHook) BeforeQuery(ctx context.Context, e *momo.QueryEvent) context
 
 func (c *countHook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {}
 
-// openDB builds a *momo.DB on the test Postgres. internal/testdb/testopen
-// (momo-03 Task 1) is not on this branch yet; it replaces this helper.
-func openDB(t *testing.T, opts ...momo.Option) *momo.DB {
-	t.Helper()
-	ctx := context.Background()
-	pool, err := pgxdriver.NewPool(ctx, testdb.PostgresURL(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		// pool.Close blocks on a leaked connection; fail fast instead.
-		done := make(chan struct{})
-		go func() { pool.Close(); close(done) }()
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			t.Errorf("pool.Close blocked for 5s: %d connection(s) leaked", pool.Stat().AcquiredConns())
-		}
-	})
-	return momo.New(pgxdriver.New(pool), opts...)
-}
-
 func TestOnConnSessionAndHooks(t *testing.T) {
 	hook := &countHook{}
-	db := openDB(t, momo.WithHook(hook))
+	db := testopen.Postgres(t, momo.WithHook(hook))
 	ctx := context.Background()
 	pc, err := db.Driver().(momo.Pinner).Pin(ctx)
 	if err != nil {
