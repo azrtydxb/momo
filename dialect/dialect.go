@@ -116,11 +116,7 @@ func (d *Dialect) AppendIdent(b []byte, ident string) []byte {
 		q = '`'
 	}
 	b = append(b, q)
-	if strings.IndexByte(ident, q) < 0 {
-		b = append(b, ident...)
-	} else {
-		b = append(b, strings.ReplaceAll(ident, string(q), string([]byte{q, q}))...)
-	}
+	b = append(b, strings.ReplaceAll(ident, string(q), string([]byte{q, q}))...)
 	return append(b, q)
 }
 
