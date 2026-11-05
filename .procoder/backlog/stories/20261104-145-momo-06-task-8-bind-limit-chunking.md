@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-06-relations
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
@@ -11,9 +11,12 @@ Implements plan momo-06-relations Task 8: Bind-limit chunking (`.procoder/plans/
 
 ## Acceptance criteria
 
-- [ ] `TestEagerLoadChunking` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-6, part] this story's tests pass for the part of S-6 this task delivers; the full criterion is verified in story 146.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestEagerLoadChunking` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-6, part] this story's tests pass for the part of S-6 this task delivers; the full criterion is verified in story 146.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- TestEagerLoadChunking: red first (`undefined: momo.WithMaxParams`), green on Postgres with `-tags integration`; four chunked statements, four comments.
+- Mutations caught: no dialect copy, ignored n, transaction dropping the limit, chunk test fails when the limit is raised.
+- `procoder check` 0 blocking; `make fmt-check vet staticcheck gosec tidy-check` and `go test -race ./...` pass; committed as feat(relations): bind-limit chunking with WithMaxParams.

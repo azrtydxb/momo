@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/relfixture"
 	"github.com/azrtydxb/momo/internal/relfixture/author"
 	"github.com/azrtydxb/momo/internal/relfixture/comment"
@@ -16,6 +17,7 @@ import (
 	"github.com/azrtydxb/momo/internal/relfixture/models"
 	"github.com/azrtydxb/momo/internal/relfixture/region"
 	"github.com/azrtydxb/momo/internal/relfixture/store"
+	"github.com/azrtydxb/momo/internal/testdb/testopen"
 )
 
 func allDocs(t *testing.T, db *momo.DB) []models.Document {
@@ -423,4 +425,31 @@ func TestEagerLoadCompositeNullComponent(t *testing.T) {
 			t.Fatalf("NULL component matched a region: %+v", stores[0].Region)
 		}
 	})
+}
+
+func TestEagerLoadChunking(t *testing.T) {
+	h := &relfixture.Hook{}
+	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+		h.After, h.Events = nil, nil
+		relfixture.CreateSchema(t, db)
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		docs := allDocs(t, db) // 4 documents; keys 1,2,3,4 -> with budget 4-16 < 1, chunk size is 1
+		h.After = nil
+		if err := momo.Load(ctx, db, docs, document.Comments); err != nil {
+			t.Fatal(err)
+		}
+		// keysPerStatement reserves 16 parameters, so with MaxParams 4 each chunk holds one key.
+		// Four distinct keys -> four child statements, all tagged with the relation.
+		if len(h.After) != 4 {
+			t.Fatalf("want 4 chunked child statements, got %d: %v", len(h.After), h.After)
+		}
+		total := 0
+		for _, d := range docs {
+			total += len(d.Comments)
+		}
+		if total != 4 {
+			t.Fatalf("chunked load lost or duplicated comments: total %d", total)
+		}
+	}, momo.WithHook(h), momo.WithMaxParams(4))
 }
