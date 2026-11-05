@@ -301,6 +301,16 @@ func (e *Engine) checkTo(to string) error {
 	return fmt.Errorf("migrate: --to %s: no migration with that version in the directory", to)
 }
 
+// classify lets the dialect turn a driver error into a structured one (for
+// example a missing extension into momo.ErrUnsupported). It returns err when the
+// dialect has no classifier or does not recognize the error.
+func (e *Engine) classify(err error) error {
+	if c, ok := e.opts.dialect.(momo.ErrorClassifier); ok {
+		return c.ClassifyError(err)
+	}
+	return err
+}
+
 // joinErr joins cleanup into err without wrapping err when cleanup is nil.
 func joinErr(err, cleanup error) error {
 	if cleanup == nil {
@@ -392,7 +402,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		}
 		a, err := RunMigration(ctx, env, p, rep.ApplyID)
 		if err != nil {
-			return rep, err
+			return rep, e.classify(err)
 		}
 		rep.Applied = append(rep.Applied, a)
 	}
