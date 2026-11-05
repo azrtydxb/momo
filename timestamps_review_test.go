@@ -125,8 +125,19 @@ func TestClockNormalizesToUTCAndRoundTripsOnPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts, ok := c.Args[1].(time.Time)
-	if !ok || ts.Location() != time.UTC || !ts.Equal(at) {
+	var stamps int
+	for _, a := range c.Args {
+		ts, ok := a.(time.Time)
+		if !ok {
+			continue
+		}
+		stamps++
+		if ts.Location() != time.UTC || !ts.Equal(at) {
+			t.Fatalf("bound timestamp %v (location %v), want %v in UTC", ts, ts.Location(), at)
+		}
+	}
+	if stamps != 2 {
+		t.Fatalf("bound %d timestamps, want created_at and updated_at: %v", stamps, c.Args)
 	}
 }
 
