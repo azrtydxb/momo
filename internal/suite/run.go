@@ -21,6 +21,10 @@ func Queries(t *testing.T, db *momo.DB, caps Caps) {
 	t.Run("aggregates", func(t *testing.T) { AggregatesGroupHaving(t, db, caps) })
 	t.Run("subqueries", func(t *testing.T) { SubqueriesCTEsRecursive(t, db, caps) })
 	t.Run("returning", func(t *testing.T) { ReturningRendersAndScans(t, db, caps) })
+	t.Run("raw", func(t *testing.T) { RawArgs(t, db, caps) })
+	t.Run("locking", func(t *testing.T) { LockingNowaitSkipLocked(t, db, caps) })
+	t.Run("table-name", func(t *testing.T) { WithTableNameQuoted(t, db, caps) })
+	t.Run("hints", func(t *testing.T) { HintsByDialect(t, db, caps) })
 	t.Run("keyset", func(t *testing.T) {
 		t.Run("mixed-directions", func(t *testing.T) { KeysetPaginationMixedDirections(t, db, caps) })
 		t.Run("nullable-key", func(t *testing.T) { KeysetRejectsNullableKey(t, db, caps) })
@@ -30,7 +34,7 @@ func Queries(t *testing.T, db *momo.DB, caps Caps) {
 // Writes runs the write features that exist today as named subtests on the
 // same db: model insert with omit and conflict, update guardrails, optimistic
 // lock, delete, soft delete and its variants, upsert and automatic timestamps.
-// Bulk insert, COPY, write states, defaults and validators, MERGE and bulk
+// Bulk insert, COPY, defaults and validators, MERGE and bulk
 // update are added by their stories.
 func Writes(t *testing.T, db *momo.DB, caps Caps) {
 	t.Run("insert", func(t *testing.T) { InsertModelOmitAndConflict(t, db, caps) })
@@ -41,6 +45,11 @@ func Writes(t *testing.T, db *momo.DB, caps Caps) {
 	t.Run("soft-delete-variants", func(t *testing.T) { SoftDeleteVariants(t, db, caps) })
 	t.Run("upsert", func(t *testing.T) { UpsertUpdatesAllColumns(t, db, caps) })
 	t.Run("timestamps", func(t *testing.T) { AutoTimestamps(t, db, caps) })
+	t.Run("write-states", func(t *testing.T) {
+		t.Run("update", func(t *testing.T) { WriteStates(t, db, caps) })
+		t.Run("insert", func(t *testing.T) { WriteStatesInsert(t, db, caps) })
+		t.Run("multi-row", func(t *testing.T) { WriteStatesMultiRow(t, db, caps) })
+	})
 }
 
 // RunAll runs Transactions, Errors, Queries and Writes in that order on the

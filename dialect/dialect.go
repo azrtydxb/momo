@@ -93,7 +93,7 @@ var sqlite = Dialect{
 	Name: SQLite, MaxParams: 32766,
 	Returning: true, OnConflict: true, NullsOrdering: true,
 	RecursiveCTE: true, RowValues: true, Savepoints: true,
-	TransactionalDDL: true, DefaultInValues: true, WindowFunctions: true,
+	TransactionalDDL: true, WindowFunctions: true, // no DEFAULT inside VALUES
 	// The metric list is the set of scalar distance functions registered by
 	// sqlite-vec v0.1.6 (aFunc[] in cgo/sqlite-vec.c of
 	// github.com/asg017/sqlite-vec-go-bindings/cgo, read 2026-11-04). It has

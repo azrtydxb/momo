@@ -4,6 +4,7 @@ package suite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -407,5 +408,133 @@ func AutoTimestamps(t *testing.T, db *momo.DB, caps Caps) {
 	e, err := momo.Select[Document](db1).Where(DocTitle.Eq("ex")).One(ctx)
 	if err != nil || !e.CreatedAt.Equal(explicit) || !e.UpdatedAt.Equal(fixed) {
 		t.Fatalf("explicit insert = created %v updated %v (%v)", e.CreatedAt, e.UpdatedAt, err)
+	}
+}
+
+// statusOf reads documents.status for one title. Every error is checked.
+func statusOf(t *testing.T, db *momo.DB, title string) sql.NullString {
+	t.Helper()
+	vals, err := momo.Scalars[sql.NullString](context.Background(), db, "SELECT status FROM documents WHERE title = ?", title)
+	if err != nil || len(vals) != 1 {
+		t.Fatalf("status of %q: err=%v rows=%d", title, err, len(vals))
+	}
+	return vals[0]
+}
+
+// WriteStates runs the UPDATE write states: omitted, zero, NULL and DEFAULT.
+func WriteStates(t *testing.T, db *momo.DB, caps Caps) {
+	CreateDocuments(t, db, caps)
+	ctx := context.Background()
+	for _, title := range []string{"u-omit", "u-zero", "u-null", "u-default"} {
+		if _, err := momo.Exec(ctx, db, "INSERT INTO documents (tenant_id, title, status) VALUES (1, ?, 'x')", title); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// omitted: status is not in SET, so 'x' stays
+	if _, err := momo.Update[StatusDocument](db).Set(DocTitle.Set("u-omit")).Where(DocTitle.Eq("u-omit")).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// zero: the empty string is written
+	if _, err := momo.Update[StatusDocument](db).Set(DocStatus.Set("")).Where(DocTitle.Eq("u-zero")).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// NULL
+	if _, err := momo.Update[StatusDocument](db).Set(DocStatus.SetNull()).Where(DocTitle.Eq("u-null")).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// DEFAULT: PostgreSQL stores 'draft'; SQLite rejects it at build time
+	_, err := momo.Update[StatusDocument](db).Set(DocStatus.SetDefault()).Where(DocTitle.Eq("u-default")).Exec(ctx)
+	if !caps.DefaultInUpdate {
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("SET DEFAULT on %s: err = %v, want ErrUnsupported", caps.Dialect, err)
+		}
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	if got := statusOf(t, db, "u-omit"); !got.Valid || got.String != "x" {
+		t.Fatalf("omitted kept %v, want 'x'", got)
+	}
+	if got := statusOf(t, db, "u-zero"); !got.Valid || got.String != "" {
+		t.Fatalf("zero stored %v, want ''", got)
+	}
+	if got := statusOf(t, db, "u-null"); got.Valid {
+		t.Fatalf("NULL stored %v, want NULL", got)
+	}
+	want := "x"
+	if caps.DefaultInUpdate {
+		want = "draft"
+	}
+	if got := statusOf(t, db, "u-default"); !got.Valid || got.String != want {
+		t.Fatalf("DEFAULT stored %v, want %q", got, want)
+	}
+}
+
+// WriteStatesInsert runs the single-row INSERT write states.
+func WriteStatesInsert(t *testing.T, db *momo.DB, caps Caps) {
+	CreateDocuments(t, db, caps)
+	ctx := context.Background()
+	if _, err := momo.Insert[StatusDocument](db).Values(DocTenantID.Set(1), DocTitle.Set("i-omit")).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		title string
+		a     momo.Assignment
+	}{
+		{"i-zero", DocStatus.Set("")},
+		{"i-null", DocStatus.SetNull()},
+		{"i-default", DocStatus.SetDefault()},
+	} {
+		if _, err := momo.Insert[StatusDocument](db).Values(DocTenantID.Set(1), DocTitle.Set(c.title), c.a).Exec(ctx); err != nil {
+			t.Fatalf("insert %s: %v", c.title, err)
+		}
+	}
+	want := map[string]sql.NullString{
+		"i-omit":    {String: "draft", Valid: true},
+		"i-zero":    {String: "", Valid: true},
+		"i-null":    {},
+		"i-default": {String: "draft", Valid: true},
+	}
+	for title, w := range want {
+		if got := statusOf(t, db, title); got != w {
+			t.Fatalf("%s stored %v, want %v", title, got, w)
+		}
+	}
+}
+
+// WriteStatesMultiRow runs the multi-row INSERT write states.
+func WriteStatesMultiRow(t *testing.T, db *momo.DB, caps Caps) {
+	CreateDocuments(t, db, caps)
+	ctx := context.Background()
+	uniform := momo.Insert[StatusDocument](db).ValuesRows(
+		[]momo.Assignment{DocTenantID.Set(1), DocTitle.Set("m1"), DocStatus.SetDefault()},
+		[]momo.Assignment{DocTenantID.Set(1), DocTitle.Set("m2"), DocStatus.SetDefault()},
+	)
+	if _, err := uniform.Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"m1", "m2"} {
+		if got := statusOf(t, db, title); !got.Valid || got.String != "draft" {
+			t.Fatalf("%s = %v, want 'draft'", title, got)
+		}
+	}
+	mixed := momo.Insert[StatusDocument](db).ValuesRows(
+		[]momo.Assignment{DocTenantID.Set(1), DocTitle.Set("n1"), DocStatus.SetDefault()},
+		[]momo.Assignment{DocTenantID.Set(1), DocTitle.Set("n2"), DocStatus.Set("y")},
+	)
+	_, err := mixed.Exec(ctx)
+	if !caps.DefaultInValues {
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("mixed DEFAULT on %s: err = %v, want ErrUnsupported", caps.Dialect, err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n1 := statusOf(t, db, "n1"); !n1.Valid || n1.String != "draft" {
+		t.Fatalf("n1 = %v, want 'draft'", n1)
+	}
+	if n2 := statusOf(t, db, "n2"); !n2.Valid || n2.String != "y" {
+		t.Fatalf("n2 = %v, want 'y'", n2)
 	}
 }

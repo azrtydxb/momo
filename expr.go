@@ -569,6 +569,11 @@ func (rawExpr) isRaw() bool            { return true }
 // Every '?' is replaced by a bound parameter for the next argument (an Expr
 // argument is rendered inline instead). Write "??" for a literal '?'. Never
 // build sql from user input; pass user input as arguments.
+//
+// Raw arguments: In(slice) expands to a bind list (an empty slice is a build
+// error), Ident(name) renders a quoted identifier, and @name binds Named(name,
+// value). A ? or @name inside a string literal, quoted identifier, comment or
+// dollar-quoted string is text, as are the PostgreSQL operators ?| ?& @? @@ @>.
 func SQL(sql string, args ...any) Predicate { return rawExpr{sql, slices.Clone(args)} }
 
 // TypedSQL is SQL with a declared result type, for use in projections and

@@ -133,6 +133,39 @@ var documentsTable = schema.Table{
 // MomoMeta returns DocumentMeta.
 func (*Document) MomoMeta() *momo.Meta[Document] { return DocumentMeta }
 
+// StatusDocument maps the documents columns the write-state tests need,
+// including the status column that Document leaves unmapped. It has no
+// timestamp, version or soft-delete column, so its statements bind only what
+// the caller writes and every other column takes its database default.
+type StatusDocument struct {
+	ID       int64
+	TenantID int64
+	Title    string
+	Status   *string
+}
+
+// StatusDocumentMeta is the Meta for StatusDocument (table documents).
+var StatusDocumentMeta = &momo.Meta[StatusDocument]{
+	Table: "documents",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: DocID.Flags()},
+		{Name: "tenant_id", Flags: DocTenantID.Flags()},
+		{Name: "title", Flags: DocTitle.Flags()},
+		{Name: "status", Flags: DocStatus.Flags()},
+	},
+	Ptr: func(m *StatusDocument, i int) any {
+		return [...]any{&m.ID, &m.TenantID, &m.Title, &m.Status}[i]
+	},
+	Value: func(m *StatusDocument, i int) any {
+		return [...]any{m.ID, m.TenantID, m.Title, m.Status}[i]
+	},
+	Identity: 0, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+	PK: []int{0},
+}
+
+// MomoMeta returns StatusDocumentMeta.
+func (*StatusDocument) MomoMeta() *momo.Meta[StatusDocument] { return StatusDocumentMeta }
+
 const (
 	documentsDDLPostgres = `CREATE TABLE documents (id bigint generated always as identity primary key, tenant_id bigint not null, title text not null, body text, status text default 'draft', version bigint not null default 1, deleted_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now(), secret text not null default '')`
 	documentsDDLSQLite   = `CREATE TABLE documents (id integer primary key, tenant_id integer not null, title text not null, body text, status text default 'draft', version integer not null default 1, deleted_at text, created_at text not null default (strftime('%Y-%m-%d %H:%M:%f','now')), updated_at text not null default (strftime('%Y-%m-%d %H:%M:%f','now')), secret text not null default '')`

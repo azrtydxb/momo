@@ -31,6 +31,9 @@ const (
 type insertCore struct {
 	assigns   []Assignment
 	hasValues bool
+	// rows holds the rows of ValuesRows; hasRows marks that call.
+	rows      [][]Assignment
+	hasRows   bool
 	omit      []string
 	returning returningSet
 	target    []string
@@ -108,7 +111,32 @@ func (q InsertQuery[T]) Values(assigns ...InsertValue) InsertQuery[T] {
 	return q
 }
 
+// ValuesRows adds one row per element to a multi-row VALUES list; each row is
+// a list of assignments, like the argument of Values. The column list is the
+// union of the columns the rows assign, in order of first appearance. A
+// column a row does not assign takes its database default for that row
+// (DEFAULT), and SetDefault renders DEFAULT inline. A dialect that cannot put
+// DEFAULT inside VALUES (SQLite) omits a column that is default in every row
+// and fails with ErrUnsupported when a column is default in some rows and
+// given in others. ValuesRows cannot be combined with Values, Model, Models
+// or Omit, and a statement over the dialect's bind-parameter limit fails with
+// ErrLimitExceeded (DEFAULT and NULL bind no parameter).
+func (q InsertQuery[T]) ValuesRows(rows ...[]Assignment) InsertQuery[T] {
+	if len(rows) == 0 {
+		return q.fail(q.verr("", "ValuesRows: no rows"))
+	}
+	out := slices.Clip(q.i.rows)
+	for _, r := range rows {
+		out = append(out, slices.Clone(r))
+	}
+	q.i.rows = out
+	q.i.hasRows = true
+	return q
+}
+
 // Omit excludes columns from a model insert, leaving their database default.
+// Combined with Values or ValuesRows the query fails with ErrValidation: those
+// already list exactly the columns they write.
 func (q InsertQuery[T]) Omit(cols ...ColumnRef) InsertQuery[T] {
 	names := slices.Clip(q.i.omit)
 	for _, c := range cols {
@@ -204,20 +232,28 @@ func (q InsertQuery[T]) render(b *Builder) {
 func (q InsertQuery[T]) renderStatement(b *Builder) {
 	d := b.Dialect()
 	modelMode := len(q.models) > 0
-	if modelMode == q.i.hasValues {
-		if modelMode {
-			b.SetErr(q.verr("", "Model/Models and Values cannot be combined"))
-		} else {
-			b.SetErr(q.verr("", "nothing to insert: call Model, Models or Values"))
-		}
+	valuesMode := q.i.hasValues || q.i.hasRows
+	switch {
+	case q.i.hasValues && q.i.hasRows:
+		b.SetErr(q.verr("", "Values and ValuesRows cannot be combined"))
+		return
+	case modelMode && valuesMode:
+		b.SetErr(q.verr("", "Model/Models and Values/ValuesRows cannot be combined"))
+		return
+	case !modelMode && !valuesMode:
+		b.SetErr(q.verr("", "nothing to insert: call Model, Models, Values or ValuesRows"))
+		return
+	case valuesMode && len(q.i.omit) > 0:
+		b.SetErr(q.verr("", "Omit cannot be combined with Values or ValuesRows: list only the columns to write"))
 		return
 	}
 	var cols []int
-	var assigns []Assignment
-	now := q.clock // shared by the chunks of a bulk insert
+	var rowAssigns []map[int]Assignment // values mode: the assignment of each column per row
+	now := q.clock                      // shared by the chunks of a bulk insert
 	if now.IsZero() {
 		now = q.q.conn().now() // read once per statement
 	}
+	rows := len(q.models)
 	if modelMode {
 		var err error
 		if cols, err = q.modelCols(); err != nil {
@@ -225,38 +261,12 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 			return
 		}
 	} else {
-		seen := map[int]struct{}{}
-		for _, a := range q.i.assigns {
-			ci := q.column(a.col)
-			if ci < 0 {
-				b.SetErr(q.verr(a.col, "Values: column %q is not mapped by %s", a.col, q.meta.Table))
-				return
-			}
-			if !q.writable(ci) {
-				b.SetErr(q.verr(a.col, "Values: column %q is identity or read-only and is never written", a.col))
-				return
-			}
-			if _, dup := seen[ci]; dup {
-				b.SetErr(q.verr(a.col, "Values: column %q assigned twice", a.col))
-				return
-			}
-			seen[ci] = struct{}{}
-			if a.kind == setExcluded {
-				b.SetErr(q.verr(a.col, "Values: SetExcluded is only valid in DoUpdate"))
-				return
-			}
-			if a.kind == setDefault && !d.DefaultInValues {
-				continue // omitting the column applies the default
-			}
-			cols = append(cols, ci)
-			assigns = append(assigns, a)
-		}
-		tc, ta, err := q.timestampAssigns(seen, now)
-		if err != nil {
+		var err error
+		if cols, rowAssigns, err = q.valueRows(d, now); err != nil {
 			b.SetErr(err)
 			return
 		}
-		cols, assigns = append(cols, tc...), append(assigns, ta...)
+		rows = len(rowAssigns)
 	}
 	for _, ci := range cols {
 		if ci != q.meta.CreatedAt && ci != q.meta.UpdatedAt {
@@ -267,13 +277,9 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 			return
 		}
 	}
-	if len(cols) == 0 {
+	if len(cols) == 0 && rows != 1 {
 		b.SetErr(q.verr("", "no writable columns to insert"))
 		return
-	}
-	rows := 1
-	if modelMode {
-		rows = len(q.models)
 	}
 	if n := rows * len(cols); d.MaxParams > 0 && n > d.MaxParams && modelMode {
 		b.SetErr(&Error{Kind: ErrLimitExceeded, Op: "insert", Table: q.meta.Table,
@@ -287,6 +293,19 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 		b.writeByte('.')
 	}
 	b.Ident(q.meta.Table)
+	if len(cols) == 0 {
+		// No column is written: every column takes its default.
+		if d.Name == dialect.MySQL {
+			b.WriteString(" () VALUES ()")
+		} else {
+			b.WriteString(" DEFAULT VALUES")
+		}
+		q.renderConflict(b)
+		renderReturning(b, q.meta, q.i.returning, func(col string) error {
+			return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
+		})
+		return
+	}
 	b.WriteString(" (")
 	for i, ci := range cols {
 		if i > 0 {
@@ -314,19 +333,108 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 			b.writeByte(')')
 		}
 	} else {
-		b.writeByte('(')
-		for i, a := range assigns {
-			if i > 0 {
+		for r, m := range rowAssigns {
+			if r > 0 {
 				b.WriteString(", ")
 			}
-			q.appendValue(b, a)
+			b.writeByte('(')
+			for i, ci := range cols {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				if a, ok := m[ci]; ok {
+					q.appendValue(b, a)
+				} else {
+					b.WriteString("DEFAULT") // omitted in this row only
+				}
+			}
+			b.writeByte(')')
 		}
-		b.writeByte(')')
 	}
 	q.renderConflict(b)
 	renderReturning(b, q.meta, q.i.returning, func(col string) error {
 		return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
 	})
+	if !modelMode && d.MaxParams > 0 && len(b.args) > d.MaxParams {
+		b.SetErr(&Error{Kind: ErrLimitExceeded, Op: "insert", Table: q.meta.Table,
+			Err: fmt.Errorf("%d bind parameters exceed the %s limit of %d", len(b.args), d.Name, d.MaxParams)})
+	}
+}
+
+// valueRows validates the rows of Values or ValuesRows and returns the INSERT
+// column list (the union of the assigned columns in order of first
+// appearance, automatic timestamps included) and each row's assignment per
+// column. On a dialect without DEFAULT inside VALUES, a column that is
+// default in every row leaves the list, and a column that is default in some
+// rows only fails with ErrUnsupported.
+func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time) ([]int, []map[int]Assignment, error) {
+	src := q.i.rows
+	if !q.i.hasRows {
+		src = [][]Assignment{q.i.assigns}
+	}
+	var order []int
+	inOrder := map[int]struct{}{}
+	add := func(ci int) {
+		if _, ok := inOrder[ci]; !ok {
+			inOrder[ci] = struct{}{}
+			order = append(order, ci)
+		}
+	}
+	rows := make([]map[int]Assignment, len(src))
+	for r, row := range src {
+		m := map[int]Assignment{}
+		for _, a := range row {
+			ci := q.column(a.col)
+			if ci < 0 {
+				return nil, nil, q.verr(a.col, "Values: column %q is not mapped by %s", a.col, q.meta.Table)
+			}
+			if !q.writable(ci) {
+				return nil, nil, q.verr(a.col, "Values: column %q is identity or read-only and is never written", a.col)
+			}
+			if _, dup := m[ci]; dup {
+				return nil, nil, q.verr(a.col, "Values: column %q assigned twice", a.col)
+			}
+			if a.kind == setExcluded {
+				return nil, nil, q.verr(a.col, "Values: SetExcluded is only valid in DoUpdate")
+			}
+			m[ci] = a
+			add(ci)
+		}
+		seen := make(map[int]struct{}, len(m))
+		for ci := range m {
+			seen[ci] = struct{}{}
+		}
+		tc, ta, err := q.timestampAssigns(seen, now)
+		if err != nil {
+			return nil, nil, err
+		}
+		for k, ci := range tc {
+			m[ci] = ta[k]
+			add(ci)
+		}
+		rows[r] = m
+	}
+	if d.DefaultInValues {
+		return order, rows, nil
+	}
+	var cols []int
+	for _, ci := range order {
+		defaults := 0
+		for _, m := range rows {
+			if a, ok := m[ci]; !ok || a.kind == setDefault {
+				defaults++
+			}
+		}
+		switch {
+		case defaults == len(rows):
+			continue // omitting the column applies the default
+		case defaults > 0:
+			return nil, nil, &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table, Column: q.meta.Columns[ci].Name,
+				Err: fmt.Errorf("a per-row DEFAULT in a multi-row VALUES list is not supported by %s", d.Name)}
+		}
+		cols = append(cols, ci)
+	}
+	return cols, rows, nil
 }
 
 // modelCols returns the columns a model insert writes, in metadata order.
