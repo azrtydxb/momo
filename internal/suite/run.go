@@ -47,9 +47,9 @@ func Writes(t *testing.T, db *momo.DB, caps Caps) {
 // same db, each member creating its own tables. Every table is created with an
 // unqualified name, so RunAll needs a connection whose search_path is the same
 // on every server connection that serves it. A transaction-pooled connection
-// qualifies only when the pooler tracks the per-test search_path (PgBouncer
-// with track_extra_parameters = search_path); the PgBouncer test asserts that
-// before calling RunAll.
+// cannot rely on a startup search_path (the PgBouncer image cannot track it),
+// so the PgBouncer test runs RunAll in a per-run scratch database with the
+// default search_path instead.
 func RunAll(t *testing.T, db *momo.DB, caps Caps) {
 	t.Run("transactions", func(t *testing.T) { Transactions(t, db, caps) })
 	t.Run("errors", func(t *testing.T) { Errors(t, db, caps) })

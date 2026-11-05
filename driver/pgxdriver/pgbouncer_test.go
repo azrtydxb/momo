@@ -63,9 +63,9 @@ func runWorkers(ctx context.Context, d momo.Driver, items string) error {
 }
 
 // setupBouncerItems creates the workload table and returns its schema-qualified
-// name. The pooler does not reliably apply the per-test search_path to reused
-// server connections (see requireBouncerSearchPath), so the workload does not
-// depend on it.
+// name. The pooler cannot track search_path, so a startup search_path does not
+// reliably reach reused server connections and the workload does not depend on
+// it.
 func setupBouncerItems(ctx context.Context, t *testing.T, d momo.Driver) (items string) {
 	t.Helper()
 	items = pgx.Identifier{testdb.Schema(t), "pgb_items"}.Sanitize()
@@ -105,152 +105,37 @@ func TestPgBouncerTransactionMode(t *testing.T) {
 	}
 
 	// Phase 2: the shared suite through the pooler.
-	runSuiteThroughBouncer(ctx, t, d)
+	runSuiteThroughBouncer(ctx, t)
 }
 
-// publicTables lists the tables of the public schema, read over the direct
-// connection (not the pooler).
-func publicTables(ctx context.Context, t *testing.T) map[string]bool {
-	t.Helper()
-	conn, err := pgx.Connect(ctx, testdb.PostgresURL(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close(ctx) }()
-	rs, err := conn.Query(ctx, "SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rs.Close()
-	got := map[string]bool{}
-	for rs.Next() {
-		var n string
-		if err := rs.Scan(&n); err != nil {
-			t.Fatal(err)
-		}
-		got[n] = true
-	}
-	if err := rs.Err(); err != nil {
-		t.Fatal(err)
-	}
-	return got
-}
-
-// requireBouncerSearchPath asserts that the pooler applies the per-test
-// search_path: an unqualified CREATE TABLE through the pooler must land in
-// testdb.Schema(t) and not in public, checked over the direct connection. The
-// image's generated ini has no track_extra_parameters line, so the pooler does
-// not track search_path: a server connection opened for this client carries the
-// startup parameter, but a reused one keeps whatever an earlier client opened
-// it with (a dropped schema resolves to public). Whether the probe passes then
-// depends on which backend serves it, so fail loudly instead of letting the
-// suite use public on some statements only.
-func requireBouncerSearchPath(ctx context.Context, t *testing.T, d momo.Driver) {
-	t.Helper()
-	const probe = "pgb_search_path_probe"
-	if _, err := d.Exec(ctx, "CREATE TABLE "+probe+" (id int)", nil); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		conn, err := pgx.Connect(context.Background(), testdb.PostgresURL(t))
-		if err != nil {
-			t.Errorf("connect to drop probe: %v", err)
-			return
-		}
-		defer func() { _ = conn.Close(context.Background()) }()
-		for _, schema := range []string{testdb.Schema(t), "public"} {
-			if _, err := conn.Exec(context.Background(), "DROP TABLE IF EXISTS "+pgx.Identifier{schema, probe}.Sanitize()); err != nil {
-				t.Errorf("drop probe in %s: %v", schema, err)
-			}
-		}
-	})
-	conn, err := pgx.Connect(ctx, testdb.PostgresURL(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close(ctx) }()
-	var inSchema, inPublic bool
-	if err := conn.QueryRow(ctx,
-		"SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = $1 AND tablename = $2), "+
-			"EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = $2)",
-		testdb.Schema(t), probe).Scan(&inSchema, &inPublic); err != nil {
-		t.Fatal(err)
-	}
-	if !inSchema || inPublic {
-		t.Fatalf("PgBouncer does not apply the per-test search_path; set TRACK_EXTRA_PARAMETERS=search_path (probe in %s: %v, in public: %v)", testdb.Schema(t), inSchema, inPublic)
-	}
-}
-
-// requireEveryBouncerBackendUsesSearchPath holds more concurrent transactions
-// than the pooler has server connections (default_pool_size is 4), so every
-// server connection serves one, and asserts each reports the per-test schema
-// first in its search_path. A server connection keeps the search_path it was
-// opened with, so a stale backend left by an earlier client would otherwise
-// make an unqualified table land in public on some statements only.
-func requireEveryBouncerBackendUsesSearchPath(ctx context.Context, t *testing.T) {
-	t.Helper()
-	cfg, err := pgxpool.ParseConfig(testdb.PgBouncerURL(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	want := testdb.Schema(t) + ", public"
-	var wg sync.WaitGroup
-	errs := make(chan error, 12)
-	for i := 0; i < 12; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			tx, err := pool.Begin(ctx)
-			if err != nil {
-				errs <- err
-				return
-			}
-			defer func() { _ = tx.Rollback(ctx) }()
-			var got string
-			if err := tx.QueryRow(ctx, "SELECT current_setting('search_path') FROM pg_sleep(0.3)").Scan(&got); err != nil {
-				errs <- err
-				return
-			}
-			if got != want {
-				errs <- fmt.Errorf("a PgBouncer server connection has search_path %q, want %q", got, want)
-			}
-		}()
-	}
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		t.Errorf("PgBouncer does not apply the per-test search_path on every server connection; set TRACK_EXTRA_PARAMETERS=search_path: %v", err)
-	}
-	if t.Failed() {
-		t.FailNow()
-	}
-}
-
-// runSuiteThroughBouncer runs suite.RunAll on d.
+// runSuiteThroughBouncer runs suite.RunAll through the pooler in its own
+// scratch database.
 //
-// The suite creates and queries its tables by unqualified name. That is sound
-// only if every server connection the pooler hands out resolves them in the
-// per-test schema, so the test first asserts that precondition (a probe table
-// and every backend's search_path), and afterwards asserts that the run added
-// nothing to public.
-func runSuiteThroughBouncer(ctx context.Context, t *testing.T, d momo.Driver) {
+// The suite creates and queries its tables by unqualified name, so every server
+// connection the pooler hands out must resolve them the same way. The image's
+// PgBouncer cannot track search_path (its generated ini has no
+// track_extra_parameters line), so a startup search_path is not reliable
+// through it: a reused backend keeps the value of the client that opened it.
+// The suite therefore gets a database of its own, routed by the pooler's
+// wildcard entry, and uses the default search_path; the database is dropped
+// afterwards, so nothing it creates outlives the run.
+func runSuiteThroughBouncer(ctx context.Context, t *testing.T) {
 	t.Helper()
-	requireBouncerSearchPath(ctx, t, d)
-	requireEveryBouncerBackendUsesSearchPath(ctx, t)
-	before := publicTables(ctx, t)
-	db := momo.New(d)
-	suite.RunAll(t, db, suite.CapsOf(db))
-	for name := range publicTables(ctx, t) {
-		if !before[name] {
-			t.Errorf("suite table public.%s appeared through the pooler; the per-test search_path was not applied", name)
-		}
+	dbname := testdb.ScratchDatabase(t, "momo_bnc_")
+	pool, err := pgxpool.New(ctx, testdb.PgBouncerURLFor(t, dbname))
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(func() { closePool(t, pool) })
+	var got string
+	if err := pool.QueryRow(ctx, "SELECT current_database()").Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != dbname {
+		t.Fatalf("pooled connection is on database %q, want %q", got, dbname)
+	}
+	db := momo.New(New(pool, WithExecMode(pgx.QueryExecModeExec)))
+	suite.RunAll(t, db, suite.CapsOf(db))
 }
 
 // wireCounter wraps a net.Conn and parses the frontend byte stream (pgx to
