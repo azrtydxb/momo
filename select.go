@@ -50,6 +50,7 @@ type selectCore struct {
 	offset      int64
 	lock        string
 	withDeleted bool
+	onlyDeleted bool
 	err         error
 }
 
@@ -301,7 +302,10 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 
 // WithDeleted includes soft-deleted rows for models with a soft-delete
 // column (they are excluded by default).
-func (sq SelectQuery[T]) WithDeleted() SelectQuery[T] { sq.s.withDeleted = true; return sq }
+func (sq SelectQuery[T]) WithDeleted() SelectQuery[T] {
+	sq.s.withDeleted, sq.s.onlyDeleted = true, false
+	return sq
+}
 
 // With adds a common table expression. cols optionally names its columns.
 func (sq SelectQuery[T]) With(name string, q Subquery, cols ...string) SelectQuery[T] {
@@ -427,7 +431,7 @@ func (sq SelectQuery[T]) renderBody(b *Builder) {
 		}
 	}
 	if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted {
-		where = append(slices.Clip(where), postfix{qcol{sq.qualifier(), sq.meta.Columns[sq.meta.SoftDelete].Name}, " IS NULL"})
+		where = append(slices.Clip(where), softDeletePred(sq.meta, sq.qualifier(), s.onlyDeleted))
 	}
 	if len(where) > 0 {
 		b.WriteString(" WHERE ")

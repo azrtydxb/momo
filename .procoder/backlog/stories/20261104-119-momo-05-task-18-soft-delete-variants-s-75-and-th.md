@@ -13,11 +13,19 @@ Scope rule: the builder must render its statement inside a target-table scope vi
 
 ## Acceptance criteria
 
-- [ ] `TestSoftDelete` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestSoftDeleteVariants` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-75] `TestSoftDeleteVariants` asserts each marker kind hides rows by default, OnlyDeleted and ForceDelete behave as documented and a unique index permits re-creating a soft-deleted key; fails if ForceDelete soft-deletes.
-- [ ] plain `Delete` on a soft-delete model fails with ErrValidation (since Task 17); `ForceDelete` is the only hard delete for such models and bypasses that refusal, with a test for both
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestSoftDelete` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestSoftDeleteVariants` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-75] `TestSoftDeleteVariants` asserts each marker kind hides rows by default, OnlyDeleted and ForceDelete behave as documented and a unique index permits re-creating a soft-deleted key; fails if ForceDelete soft-deletes.
+- [x] plain `Delete` on a soft-delete model fails with ErrValidation (since Task 17); `ForceDelete` is the only hard delete for such models and bypasses that refusal, with a test for both
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Red first: before any implementation, `go test -run SoftDelete .` failed to build (`unknown field SoftDeleteKind in struct literal of type momo.Meta[sdUnix]`, `undefined: momo.SoftDeleteUnix`, `undefined: momo.SoftDelete`). After implementation: green.
+- `TestSoftDelete` (softdelete_integration_test.go, Postgres): soft-deletes one of two rows, visible=1, WithDeleted=2, OnlyDeleted=1, a repeat SoftDelete affects 0 rows. Passes with `go test -tags integration -race -count=1 .` (ok).
+- `TestSoftDeleteVariants` (same file): runs for the timestamp (documents), unix (docs_unix) and boolean (docs_bool) markers. Asserts hidden by default, OnlyDeleted=1, re-creating the soft-deleted key under a partial unique index succeeds, WithDeleted=2, ForceDelete removes 2 rows and leaves 0 (it would fail if ForceDelete soft-deleted).
+- `TestSoftDeleteSQLGoldens` (softdelete_test.go, unit): PG, SQLite and MySQL goldens for SoftDelete (timestamp/unix/bool), ForceDelete, OnlyDeleted, default filter, WithDeleted, RETURNING.
+- `TestSoftDeleteGuards` (unit) and `TestPlainDeleteRefusedForceDeleteWorks` (integration): plain Delete on a soft-delete model fails with ErrValidation and the row survives; ForceDelete deletes it. Unfiltered SoftDelete/ForceDelete still fail with ErrUnfilteredMutation (hasEffectiveFilter), Set on SoftDelete is refused, SoftDelete on a model without a marker is ErrValidation.
+- Deviation: plan says the unix/bool variants run through `WithTableName` (Task 8), which does not exist in this tree; they use separate hand-written models `sdUnix` and `sdBool` instead. The plan's `createSoftVariants(t, h)` takes `db` here. Bool marker is set with a bound `true` argument rather than a literal. Statement time is `execer.now()` in UTC; updated_at is not touched by SoftDelete.
+- Commands: `go vet ./...`, `go vet -tags integration .`, `gofmt -l .` clean; `go test ./...` and the integration run green; `procoder check` gate clean (see commit).
 

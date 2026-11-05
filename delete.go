@@ -25,6 +25,8 @@ type DeleteQuery[T any] struct {
 	// not an unfiltered statement.
 	modelSet bool
 	allRows  bool
+	// force is set by ForceDelete: the hard delete of a soft-delete model.
+	force bool
 	// returning is the RETURNING list, read with Rows.
 	returning returningSet
 }
@@ -70,7 +72,7 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 	if d.meta.Table == "" {
 		return nil, d.fail(ErrValidation, errors.New("model has no table"))
 	}
-	if d.meta.SoftDelete >= 0 {
+	if d.meta.SoftDelete >= 0 && !d.force {
 		return nil, d.fail(ErrValidation, errors.New("model has a soft-delete column: use SoftDelete or ForceDelete"))
 	}
 	where := slices.Clone(d.where)
