@@ -21,6 +21,7 @@ func Queries(t *testing.T, db *momo.DB, caps Caps) {
 	t.Run("aggregates", func(t *testing.T) { AggregatesGroupHaving(t, db, caps) })
 	t.Run("subqueries", func(t *testing.T) { SubqueriesCTEsRecursive(t, db, caps) })
 	t.Run("returning", func(t *testing.T) { ReturningRendersAndScans(t, db, caps) })
+	t.Run("raw", func(t *testing.T) { RawArgs(t, db, caps) })
 	t.Run("locking", func(t *testing.T) { LockingNowaitSkipLocked(t, db, caps) })
 	t.Run("table-name", func(t *testing.T) { WithTableNameQuoted(t, db, caps) })
 	t.Run("hints", func(t *testing.T) { HintsByDialect(t, db, caps) })
