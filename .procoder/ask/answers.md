@@ -1,6 +1,6 @@
 # What a human decided
 
-Written 2026-11-05 04:24 UTC. procoder reads this
+Written 2026-11-05 04:51 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
 
@@ -81,6 +81,12 @@ Answer: Go 1.26 minimum; CI on 1.26 and 1.27.
 Key: license
 
 Answer: Apache-2.0.
+
+## (no longer asked)
+
+Key: merge-pr-1
+
+Answer: Merge when green via /procoder:merge (squash into main, delete remote init), then rebase sprint-2 onto main.
 
 ## (no longer asked)
 
