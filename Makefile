@@ -11,6 +11,7 @@ FUZZ_TARGETS += ./migrate:FuzzSplitStatements
 FUZZ_TARGETS += ./schema:FuzzNormalize
 FUZZ_TARGETS += ./vector:FuzzVectorDecode
 FUZZ_TARGETS += ./vector:FuzzSparseDecode
+FUZZ_TARGETS += ./driver/pgxdriver:FuzzVectorBinaryDecode
 FUZZ_TARGETS += ./gen/testdata/golden/descriptors/document:FuzzColumnByName
 FUZZ_TARGETS += .:FuzzEscapeLike
 GOVULNCHECK = go run golang.org/x/vuln/cmd/govulncheck@v1.9.0

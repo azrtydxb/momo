@@ -73,7 +73,7 @@ func TestValidateRules(t *testing.T) {
 		{"halfvec -Inf", HalfVector{float32(math.Inf(-1))}.Validate(1)},
 		{"halfvec -70000", HalfVector{-70000}.Validate(1)},
 		{"sparse zero dim", SparseVector{}.Validate(0)},
-		{"sparse over max", SparseVector{Dim: MaxDim + 1}.Validate(MaxDim + 1)},
+		{"sparse over max", SparseVector{Dim: MaxSparseDim + 1}.Validate(MaxSparseDim + 1)},
 		{"sparse dim mismatch", SparseVector{Dim: 5}.Validate(4)},
 		{"sparse index == dim", SparseVector{Dim: 5, Indices: []int32{5}, Values: []float32{1}}.Validate(5)},
 		{"sparse negative index", SparseVector{Dim: 5, Indices: []int32{-1}, Values: []float32{1}}.Validate(5)},

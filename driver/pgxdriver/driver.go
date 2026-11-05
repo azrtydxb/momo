@@ -45,9 +45,10 @@ func WithExecMode(m pgx.QueryExecMode) Option {
 }
 
 type driver struct {
-	pool    *pgxpool.Pool
-	mode    pgx.QueryExecMode
-	modeErr error
+	pool      *pgxpool.Pool
+	mode      pgx.QueryExecMode
+	modeErr   error
+	vecFormat VectorFormat
 }
 
 // New wraps a pgxpool. The caller owns the pool and closes it.
@@ -74,7 +75,7 @@ func (d *driver) ClassifyError(err error) error { return ClassifyError(err) }
 func (d *driver) withMode(args []any) []any {
 	out := make([]any, 0, len(args)+1)
 	out = append(out, d.mode)
-	return append(out, args...)
+	return append(out, convertVectorArgs(d.vecFormat, args)...)
 }
 
 func (d *driver) Query(ctx context.Context, sql string, args []any) (momo.Rows, error) {

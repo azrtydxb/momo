@@ -78,12 +78,15 @@ func copyErr(err error) error {
 // statement is created, which keeps it PgBouncer-safe. Any other mode is only
 // accepted when it equals the connection's own default, else ErrUnsupported.
 //
+// Vector arguments follow the driver's VectorFormat, as for Query and Exec.
+//
 // Results are buffered eagerly and without bound: every row of every statement
 // is held in memory until the caller closes the Rows.
-func sendBatch(ctx context.Context, s batchSender, mode pgx.QueryExecMode, stmts []momo.Compiled) ([]momo.Rows, error) {
+func sendBatch(ctx context.Context, s batchSender, mode pgx.QueryExecMode, vf VectorFormat, stmts []momo.Compiled) ([]momo.Rows, error) {
 	if len(stmts) == 0 {
 		return nil, nil
 	}
+	stmts = convertVectorStmts(vf, stmts)
 	if mode == pgx.QueryExecModeExec {
 		return execBatch(ctx, s.Conn(), stmts)
 	}
@@ -118,6 +121,26 @@ func sendBatch(ctx context.Context, s batchSender, mode pgx.QueryExecMode, stmts
 		return nil, batchErr(-1, err)
 	}
 	return out, nil
+}
+
+// convertVectorStmts applies convertVectorArgs to every statement, so
+// VectorText means text for batches too. The input slice is not modified.
+func convertVectorStmts(vf VectorFormat, stmts []momo.Compiled) []momo.Compiled {
+	var out []momo.Compiled
+	for i, st := range stmts {
+		args := convertVectorArgs(vf, st.Args)
+		if len(args) == 0 || &args[0] == &st.Args[0] {
+			continue
+		}
+		if out == nil {
+			out = append([]momo.Compiled(nil), stmts...)
+		}
+		out[i].Args = args
+	}
+	if out == nil {
+		return stmts
+	}
+	return out
 }
 
 // execBatch sends stmts as one pgconn batch of unnamed extended-protocol
@@ -251,7 +274,7 @@ func (d *driver) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.R
 		return nil, ClassifyError(err)
 	}
 	defer conn.Release()
-	return sendBatch(ctx, conn, d.mode, stmts)
+	return sendBatch(ctx, conn, d.mode, d.vecFormat, stmts)
 }
 
 // CopyFrom implements momo.Copier on the transaction's connection.
@@ -265,7 +288,7 @@ func (t *pgxTx) CopyFrom(ctx context.Context, table string, cols []string, rows 
 
 // SendBatch implements momo.Batcher on the transaction's connection.
 func (t *pgxTx) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.Rows, error) {
-	return sendBatch(ctx, t.tx, t.d.mode, stmts)
+	return sendBatch(ctx, t.tx, t.d.mode, t.d.vecFormat, stmts)
 }
 
 // CopyFrom implements momo.Copier on the pinned session.
@@ -291,7 +314,7 @@ func (p *pinned) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.R
 		return nil, err
 	}
 	defer p.done()
-	return sendBatch(ctx, c, p.d.mode, stmts)
+	return sendBatch(ctx, c, p.d.mode, p.d.vecFormat, stmts)
 }
 
 var (

@@ -12,15 +12,23 @@ import (
 	"strings"
 )
 
-// MaxDim is the storage limit for vector, halfvec and sparsevec (pgvector
-// README).
+// MaxDim is the storage limit for the dimension of vector and halfvec
+// (pgvector README).
 const MaxDim = 16000
+
+// MaxSparseDim is the largest sparsevec dimension: pgvector accepts up to
+// 1,000,000,000 dimensions, of which at most MaxSparseNNZ are non-zero.
+const MaxSparseDim = 1_000_000_000
+
+// MaxSparseNNZ is the largest number of stored elements in a sparsevec.
+const MaxSparseNNZ = 16000
 
 // MaxBits is PostgreSQL's limit for the length of a bit string.
 const MaxBits = 83886080
 
-// maxHalf is the largest finite float16 magnitude.
-const maxHalf = 65504
+// halfOverflow is the smallest magnitude that rounds to infinity in float16
+// (the midpoint between 65504 and 65536).
+const halfOverflow = 65520
 
 // Vector is a pgvector vector (float32 elements).
 type Vector []float32
@@ -76,7 +84,9 @@ func (v Vector) Validate(dim int) error {
 	return nil
 }
 
-// Validate is Vector.Validate plus the float16 range |x| <= 65504.
+// Validate is Vector.Validate plus the float16 range. Like pgvector, which
+// converts to float16 with round-to-nearest-even, it accepts |x| < 65520
+// (values in (65504, 65520) round down to 65504) and rejects larger ones.
 func (h HalfVector) Validate(dim int) error {
 	if err := checkDim(len(h), dim); err != nil {
 		return err
@@ -85,17 +95,25 @@ func (h HalfVector) Validate(dim int) error {
 		if !finite(x) {
 			return invalid("element %d is not finite", i)
 		}
-		if math.Abs(float64(x)) > maxHalf {
-			return invalid("element %d (%v) exceeds the halfvec range +-%d", i, x, maxHalf)
+		if math.Abs(float64(x)) >= halfOverflow {
+			return invalid("element %d (%v) exceeds the halfvec range", i, x)
 		}
 	}
 	return nil
 }
 
-// Validate reports whether s has dimension dim and well-formed entries.
+// Validate reports whether s has dimension dim and well-formed entries:
+// 1 <= dim <= MaxSparseDim, at most MaxSparseNNZ entries, indices strictly
+// increasing and inside [0, dim).
 func (s SparseVector) Validate(dim int) error {
-	if err := checkDim(s.Dim, dim); err != nil {
-		return err
+	if s.Dim != dim {
+		return invalid("dimension %d, want %d", s.Dim, dim)
+	}
+	if dim < 1 || dim > MaxSparseDim {
+		return invalid("dimension %d outside 1..%d", dim, MaxSparseDim)
+	}
+	if len(s.Indices) > MaxSparseNNZ {
+		return invalid("%d non-zero elements exceed the limit of %d", len(s.Indices), MaxSparseNNZ)
 	}
 	if len(s.Indices) != len(s.Values) {
 		return invalid("%d indices but %d values", len(s.Indices), len(s.Values))
@@ -321,7 +339,11 @@ func parseSparse(text string) (SparseVector, error) {
 	}
 	out := SparseVector{Dim: dim}
 	if inner := strings.TrimSpace(body[1 : len(body)-1]); inner != "" {
-		for _, entry := range strings.Split(inner, ",") {
+		entries := strings.Split(inner, ",")
+		if len(entries) > MaxSparseNNZ {
+			return SparseVector{}, invalid("%d non-zero elements exceed the limit of %d", len(entries), MaxSparseNNZ)
+		}
+		for _, entry := range entries {
 			idxText, valText, ok := strings.Cut(entry, ":")
 			if !ok {
 				return SparseVector{}, invalid("bad entry %q", entry)
