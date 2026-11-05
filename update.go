@@ -173,6 +173,13 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	if len(sets) == 0 && !u.versioned() {
 		return nil, nil, u.fail(ErrValidation, errors.New("no columns to update"))
 	}
+	if ci := u.meta.UpdatedAt; ci >= 0 && columnAssignable(writeUpdate, u.meta.Columns[ci].Flags) {
+		// updated_at rides in the same statement as the change, so an
+		// update that matches no row changes nothing.
+		if v, ok := autoTimestamp(u.meta, ci, u.q.conn().now()); ok {
+			sets = append(sets, Assignment{col: u.meta.Columns[ci].Name, kind: setValue, val: v})
+		}
+	}
 	if !hasEffectiveFilter(where) && !u.allRows {
 		return nil, nil, u.fail(ErrUnfilteredMutation, nil)
 	}

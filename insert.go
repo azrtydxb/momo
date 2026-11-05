@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -209,6 +210,7 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 	}
 	var cols []int
 	var assigns []Assignment
+	now := q.q.conn().now() // read once per statement
 	if modelMode {
 		omit := map[int]struct{}{}
 		for _, n := range q.i.omit {
@@ -251,6 +253,8 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 			cols = append(cols, ci)
 			assigns = append(assigns, a)
 		}
+		tc, ta := q.timestampAssigns(seen, now)
+		cols, assigns = append(cols, tc...), append(assigns, ta...)
 	}
 	if len(cols) == 0 {
 		b.SetErr(q.verr("", "no writable columns to insert"))
@@ -294,7 +298,7 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				b.Arg(q.meta.Value(&q.models[r], ci))
+				b.Arg(q.modelValue(&q.models[r], ci, now))
 			}
 			b.writeByte(')')
 		}
@@ -312,6 +316,35 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 	renderReturning(b, q.meta, q.i.returning, func(col string) error {
 		return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
 	})
+}
+
+// timestampAssigns returns the automatic created-at and updated-at writes of
+// a Values insert for the columns the caller did not assign.
+func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) ([]int, []Assignment) {
+	var cols []int
+	var assigns []Assignment
+	for _, ci := range []int{q.meta.CreatedAt, q.meta.UpdatedAt} {
+		if _, assigned := seen[ci]; assigned || ci < 0 || !q.writable(ci) {
+			continue
+		}
+		if v, ok := autoTimestamp(q.meta, ci, now); ok {
+			cols = append(cols, ci)
+			assigns = append(assigns, Assignment{col: q.meta.Columns[ci].Name, kind: setValue, val: v})
+		}
+	}
+	return cols, assigns
+}
+
+// modelValue is the value a model insert binds for column ci: the field value,
+// except that an unset created-at or updated-at field takes the statement time.
+func (q InsertQuery[T]) modelValue(m *T, ci int, now time.Time) any {
+	v := q.meta.Value(m, ci)
+	if (ci == q.meta.CreatedAt || ci == q.meta.UpdatedAt) && timestampUnset(v) {
+		if t, ok := autoTimestamp(q.meta, ci, now); ok {
+			return t
+		}
+	}
+	return v
 }
 
 // appendValue renders one assigned value inside VALUES or SET.
