@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -184,3 +185,40 @@ func (p *pinned) Release() error {
 	c.Release()
 	return nil
 }
+
+// discardCloseTimeout bounds the close handshake of a discarded connection.
+const discardCloseTimeout = 5 * time.Second
+
+// Discard closes the underlying connection and releases it, so pgxpool
+// destroys it instead of reusing a session whose state could not be restored.
+// It follows the Release rules: open Rows are closed first, a call in flight
+// yields momo.ErrPinnedBusy and leaves the connection pinned, and a second
+// Discard or a Release after a Discard returns nil. See momo.Discarder.
+func (p *pinned) Discard() error {
+	p.mu.Lock()
+	if p.conn == nil {
+		p.mu.Unlock()
+		return nil
+	}
+	if p.calls > 0 {
+		p.mu.Unlock()
+		return errBusy()
+	}
+	for r := range p.rows {
+		r.pgxRows.Rows.Close()
+	}
+	p.rows = nil
+	c := p.conn
+	p.conn = nil
+	p.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), discardCloseTimeout)
+	defer cancel()
+	err := c.Conn().Close(ctx)
+	c.Release() // a closed connection is destroyed, not returned, by pgxpool
+	if err != nil {
+		return ClassifyError(err)
+	}
+	return nil
+}
+
+var _ momo.Discarder = (*pinned)(nil)

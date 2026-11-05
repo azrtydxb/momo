@@ -33,7 +33,9 @@ kind TEXT NOT NULL DEFAULT 'sql'
 // pinned connection; a zero duration leaves that setting untouched. The
 // returned reset restores both to the session defaults (RESET), so nothing
 // leaks into the pool when the connection is released. reset is idempotent and
-// ignores cancellation of ctx. If Setup itself fails part-way, the settings it
+// ignores cancellation of ctx. When RESET fails, reset discards the connection
+// (momo.Discarder) so the timeouts cannot leak into the pool. Run reset before
+// the unlock returned by Lock. If Setup itself fails part-way, the settings it
 // already applied are reset before it returns.
 func (Dialect) Setup(ctx context.Context, c momo.PinnedConn, s migrate.SessionOptions) (reset func() error, err error) {
 	reset = func() error {
@@ -41,7 +43,13 @@ func (Dialect) Setup(ctx context.Context, c momo.PinnedConn, s migrate.SessionOp
 		defer cancel()
 		_, e1 := c.Exec(rctx, `RESET lock_timeout`, nil)
 		_, e2 := c.Exec(rctx, `RESET statement_timeout`, nil)
-		return errors.Join(e1, e2)
+		err := errors.Join(e1, e2)
+		if err != nil {
+			// The session still carries the timeouts; destroy it rather than
+			// return it to the pool.
+			err = errors.Join(err, discard(c))
+		}
+		return err
 	}
 	for _, st := range []struct {
 		name string
@@ -56,4 +64,14 @@ func (Dialect) Setup(ctx context.Context, c momo.PinnedConn, s migrate.SessionOp
 		}
 	}
 	return reset, nil
+}
+
+// discard destroys the pinned connection when its driver supports it, and
+// reports why when it does not.
+func discard(c momo.PinnedConn) error {
+	d, ok := c.(momo.Discarder)
+	if !ok {
+		return errors.New("migrate/postgres: pinned connection cannot be discarded; its session state may leak into the pool")
+	}
+	return d.Discard()
 }

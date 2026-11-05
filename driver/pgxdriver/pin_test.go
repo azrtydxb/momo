@@ -410,3 +410,85 @@ func TestPinnedReleaseClosesOpenRows(t *testing.T) {
 		t.Fatalf("AcquiredConns = %d after closing released Rows, want 0", n)
 	}
 }
+
+// Discard destroys the connection: the backend is gone, the pool holds no
+// connection, a Discard or Release afterwards is a nil no-op, and a call in
+// flight yields ErrPinnedBusy.
+func TestPinnedDiscard(t *testing.T) {
+	pool := openPool(t)
+	ctx := context.Background()
+	p, err := New(pool).(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, ok := p.(momo.Discarder)
+	if !ok {
+		t.Fatal("pinned connection must implement momo.Discarder")
+	}
+	var pid int32
+	scanOne(t, p, "SELECT pg_backend_pid()", &pid)
+	if _, err := p.Query(ctx, "SELECT 1", nil); err != nil { // left open on purpose
+		t.Fatal(err)
+	}
+	if err := d.Discard(); err != nil {
+		t.Fatalf("Discard = %v", err)
+	}
+	if err := d.Discard(); err != nil {
+		t.Fatalf("second Discard = %v, want nil", err)
+	}
+	if err := p.Release(); err != nil {
+		t.Fatalf("Release after Discard = %v, want nil", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for pool.Stat().AcquiredConns() != 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := pool.Stat().AcquiredConns(); n != 0 {
+		t.Fatalf("AcquiredConns = %d after Discard", n)
+	}
+	var alive int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE pid = $1", pid).Scan(&alive); err != nil {
+		t.Fatal(err)
+	}
+	if alive != 0 {
+		t.Fatal("the discarded backend is still connected")
+	}
+}
+
+func TestPinnedDiscardWhileStatementExecuting(t *testing.T) {
+	pool := openPool(t)
+	ctx := context.Background()
+	p, err := New(pool).(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Release() }()
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := p.Exec(ctx, "SELECT pg_sleep(1)", nil)
+		execDone <- err
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		pp := p.(*pinned)
+		pp.mu.Lock()
+		n := pp.calls
+		pp.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Exec never started")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := p.(momo.Discarder).Discard(); !errors.Is(err, momo.ErrPinnedBusy) {
+		t.Fatalf("Discard during a running Exec = %v, want ErrPinnedBusy", err)
+	}
+	if err := <-execDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := p.(momo.Discarder).Discard(); err != nil {
+		t.Fatalf("Discard after the Exec finished: %v", err)
+	}
+}

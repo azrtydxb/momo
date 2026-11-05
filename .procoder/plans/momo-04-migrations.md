@@ -2014,6 +2014,15 @@ Run: `go test ./migrate/ -run TestHistoryFormatVersion -count=1`. Expect PASS.
 
 ## Task 16: Engine Apply, Plan, Status with lock, checksum and dirty gating
 
+Note (Task 14 review): the deferred cleanup in Apply must run the Setup reset BEFORE the Lock unlock, so a small statement timeout cannot cancel the unlock statement. Register the unlock defer first and the reset defer second (defers run last in, first out). Both are safe on every path, and on a failed reset or unlock the PostgreSQL dialect discards the pinned connection (momo.Discarder), so Apply joins the returned errors and does not retry.
+
+```go
+unlock, _, err := d.Lock(ctx, c, key)
+defer func() { err = errors.Join(err, unlock()) }() // registered first, runs second
+reset, err := d.Setup(ctx, c, sess)
+defer func() { err = errors.Join(err, reset()) }() // registered second, runs first
+```
+
 Note (Task 9 review): call `migrate.OrderErr` (or `OrderWithViews`), never `Order`, and surface the returned cycle error; `Order` silently returns its input unchanged on error.
 
 Covers: S-11 (concurrency lock, checksum refusal, apply to version), S-10 (`plan`, `apply [--to N]`, `status` contracts). Acceptance: TestConcurrentApply (SQLite, goroutines), TestChecksumMismatch (apply refuses), TestApplyTo, TestStatusStates.
