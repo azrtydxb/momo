@@ -130,7 +130,7 @@ func TestInsertBulkOverParamLimit(t *testing.T) {
 	ms := make([]suite.Document, 40000)
 	_, err := momo.Insert[suite.Document](unitDB()).Models(ms).SQL()
 	if !errors.Is(err, momo.ErrLimitExceeded) {
-		t.Fatalf("err = %v, want ErrLimitExceeded (chunking is a separate task)", err)
+		t.Fatalf("err = %v, want ErrLimitExceeded (Exec and Rows chunk; one statement cannot)", err)
 	}
 }
 
