@@ -1931,7 +1931,7 @@ Run: `go test ./migrate/ -run TestNonTransactionalFailureRecovery -count=1`. Exp
 
 - [ ] **Step 2: Implement history, runner (non-transactional path), engine and WithDialect**
 
-Implement `EnsureHistory` (DDL from `d.HistoryDDL()`: table `momo_migrations` with columns `version TEXT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, status TEXT NOT NULL, statements_applied INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', applied_at TEXT NOT NULL, execution_ms INTEGER NOT NULL DEFAULT 0, apply_id TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'sql'`). `NewEngine` checks the dialect option first. `Apply` (minimal here: no lock, no checksum gate; Task 16 completes it) and `Plan` (pending list) use `RunMigration`. Run the test: expect PASS.
+Implement `EnsureHistory` (DDL from `d.HistoryDDL()`: table `momo_migrations` with columns `version TEXT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, status TEXT NOT NULL, statements_applied INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', applied_at TEXT NOT NULL, execution_ms BIGINT NOT NULL DEFAULT 0, apply_id TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'sql'`). `NewEngine` checks the dialect option first. `Apply` (minimal here: no lock, no checksum gate; Task 16 completes it) and `Plan` (pending list) use `RunMigration`. Run the test: expect PASS.
 
 - [ ] **Step 3: Failing transactional test**
 

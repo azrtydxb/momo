@@ -92,6 +92,7 @@ type Pending struct {
 	Kind       Kind
 	Statements []Statement
 	NoTx       bool
+	Checksum   string // hex sha256 of the up file, recorded in the history row
 }
 
 // State is the status of one migration version: "pending", "applied", "dirty", "mismatch" or "missing".
@@ -127,6 +128,12 @@ type ApplyOptions struct {
 
 // ResolveState is the state a dirty migration is resolved to: "applied" or "rolled_back".
 type ResolveState string
+
+// Resolve states for Engine.Resolve.
+const (
+	ResolveApplied    ResolveState = "applied"
+	ResolveRolledBack ResolveState = "rolled_back"
+)
 
 // Severity is a lint severity: "error" or "warning".
 type Severity string
