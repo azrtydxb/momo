@@ -2,6 +2,12 @@
 
 package momo
 
+import (
+	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
+)
+
 // Expr is any SQL expression fragment. Implementations must write
 // identifiers through Builder.Ident and values through Builder.Arg.
 type Expr interface {
@@ -90,10 +96,10 @@ func (c Column[T]) Between(lo, hi T) Predicate { return between{c, lo, hi} }
 
 // In matches any of vs. An empty list renders a predicate that is always
 // false (1 = 0) rather than invalid SQL.
-func (c Column[T]) In(vs ...T) Predicate { return inList[T]{c, vs, false} }
+func (c Column[T]) In(vs ...T) Predicate { return inList[T]{c, slices.Clone(vs), false} }
 
 // NotIn is the negation of In; an empty list is always true.
-func (c Column[T]) NotIn(vs ...T) Predicate { return inList[T]{c, vs, true} }
+func (c Column[T]) NotIn(vs ...T) Predicate { return inList[T]{c, slices.Clone(vs), true} }
 
 // InQuery matches the single-column result of a subquery.
 func (c Column[T]) InQuery(q Subquery) Predicate { return inQuery{c, q, false} }
@@ -276,19 +282,34 @@ type distinctFrom struct {
 }
 
 func (d distinctFrom) AppendSQL(b *Builder) {
-	d.l.AppendSQL(b)
-	if b.d.Name == "sqlite" { // SQLite spells it IS / IS NOT
+	switch b.d.Name {
+	case dialect.SQLite: // SQLite spells it IS / IS NOT
+		d.l.AppendSQL(b)
 		if d.not {
 			b.WriteString(" IS ")
 		} else {
 			b.WriteString(" IS NOT ")
 		}
-	} else if d.not {
-		b.WriteString(" IS NOT DISTINCT FROM ")
-	} else {
-		b.WriteString(" IS DISTINCT FROM ")
+		d.r.AppendSQL(b)
+	case dialect.MySQL: // MySQL has the NULL-safe equality operator
+		if !d.not {
+			b.WriteString("NOT (")
+		}
+		d.l.AppendSQL(b)
+		b.WriteString(" <=> ")
+		d.r.AppendSQL(b)
+		if !d.not {
+			b.WriteByte(')')
+		}
+	default:
+		d.l.AppendSQL(b)
+		if d.not {
+			b.WriteString(" IS NOT DISTINCT FROM ")
+		} else {
+			b.WriteString(" IS DISTINCT FROM ")
+		}
+		d.r.AppendSQL(b)
 	}
-	d.r.AppendSQL(b)
 }
 func (distinctFrom) resultType() bool { return false }
 
@@ -403,7 +424,7 @@ func newJunction(op string, ps []Predicate) Predicate {
 	if len(ps) == 1 {
 		return ps[0]
 	}
-	return junction{op, ps}
+	return junction{op, slices.Clone(ps)}
 }
 
 type not struct{ p Predicate }
@@ -537,11 +558,13 @@ func (rawExpr) isRaw() bool            { return true }
 // Every '?' is replaced by a bound parameter for the next argument (an Expr
 // argument is rendered inline instead). Write "??" for a literal '?'. Never
 // build sql from user input; pass user input as arguments.
-func SQL(sql string, args ...any) Predicate { return rawExpr{sql, args} }
+func SQL(sql string, args ...any) Predicate { return rawExpr{sql, slices.Clone(args)} }
 
 // TypedSQL is SQL with a declared result type, for use in projections and
 // typed comparisons. Momo cannot verify that the declaration is truthful.
-func TypedSQL[T any](sql string, args ...any) Expression[T] { return typed[T]{rawExpr{sql, args}} }
+func TypedSQL[T any](sql string, args ...any) Expression[T] {
+	return typed[T]{rawExpr{sql, slices.Clone(args)}}
+}
 
 // Aliased renders "expr AS alias" in a select list.
 type Aliased struct {

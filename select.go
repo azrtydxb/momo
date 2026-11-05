@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"iter"
 	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // Subquery is a query usable as an expression: IN (...), EXISTS (...),
@@ -303,14 +305,14 @@ func (sq SelectQuery[T]) WithDeleted() SelectQuery[T] { sq.s.withDeleted = true;
 
 // With adds a common table expression. cols optionally names its columns.
 func (sq SelectQuery[T]) With(name string, q Subquery, cols ...string) SelectQuery[T] {
-	sq.s.with = append(slices.Clip(sq.s.with), cte{name: name, cols: cols, q: q})
+	sq.s.with = append(slices.Clip(sq.s.with), cte{name: name, cols: slices.Clone(cols), q: q})
 	return sq
 }
 
 // WithRecursive adds a recursive CTE; q is typically a UNION ALL built with
 // SQL or Union.
 func (sq SelectQuery[T]) WithRecursive(name string, q Subquery, cols ...string) SelectQuery[T] {
-	sq.s.with = append(slices.Clip(sq.s.with), cte{name: name, cols: cols, q: q, recursive: true})
+	sq.s.with = append(slices.Clip(sq.s.with), cte{name: name, cols: slices.Clone(cols), q: q, recursive: true})
 	return sq
 }
 
@@ -449,7 +451,7 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		b.Arg(s.limit)
 	}
 	if s.offset > 0 {
-		if s.limit < 0 && b.d.Name == "sqlite" {
+		if s.limit < 0 && b.d.Name == dialect.SQLite {
 			b.WriteString(" LIMIT -1")
 		}
 		b.WriteString(" OFFSET ")
@@ -728,7 +730,7 @@ func ColumnOf[T any](source string, name string) Column[T] {
 
 // Union combines queries with UNION (all=false) or UNION ALL (all=true).
 // The result is a Subquery, usable in WithRecursive, FromSubquery and IN.
-func Union(all bool, qs ...Subquery) Subquery { return setOp{all, qs} }
+func Union(all bool, qs ...Subquery) Subquery { return setOp{all, slices.Clone(qs)} }
 
 type setOp struct {
 	all bool
