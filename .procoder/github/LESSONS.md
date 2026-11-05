@@ -22,3 +22,14 @@ Entry shape (unindented in real entries):
   and REVIEW.md requires it clean before review. gosec v2.29.0 could not
   type-check under Go 1.27 and silently passed, so both pins moved to
   v2.30.0, verified by a probe file that must fail with G104.
+
+## 2026-11-05 Kuvryn Scout — unused code (U1000) and an unchecked type assertion
+
+- Class: mechanical
+- Missed by: linter
+- Adaptation: CI's lint job ran only fmt-check, vet and tidy-check, so
+  staticcheck findings escaped. `make staticcheck` (pinned staticcheck
+  v0.8.2, run through `go run pkg@version` so go.mod is untouched) now
+  runs in the lint job after vet, `TestMakefileTargets` pins the target,
+  and REVIEW.md requires it clean before review. Verified with a probe
+  unused func that fails with U1000. Dependabot gained a 7-day cooldown.
