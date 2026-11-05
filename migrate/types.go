@@ -1,0 +1,166 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package migrate
+
+import (
+	"time"
+
+	"github.com/azrtydxb/momo/schema"
+)
+
+// Kind is the migration kind: "sql" or "go".
+type Kind string
+
+// Statement is one SQL statement of a migration.
+type Statement struct {
+	SQL  string
+	NoTx bool // statement must run outside a transaction (CREATE INDEX CONCURRENTLY)
+	Hint string
+}
+
+// ChangeKind names the kind of a schema change.
+type ChangeKind string
+
+// Change is one schema change in a plan.
+type Change struct {
+	Kind        ChangeKind
+	Schema      string
+	Table       string
+	Name        string // object name, or new name for renames
+	Before      any    // *schema.Column, *schema.Index, *schema.View, ... (kind-specific)
+	After       any
+	Destructive bool
+	Rebuild     bool // SQLite: requires 12-step rebuild
+}
+
+// Migration is one migration version.
+type Migration struct {
+	Version     string // 14-digit UTC timestamp
+	Name        string
+	Kind        Kind
+	Parent      string
+	Up          []Statement
+	Down        []Statement
+	NoTx        bool
+	Destructive bool
+	Changes     []Change
+	Snapshot    *schema.Schema
+	Files       map[string][]byte // relative file name -> content, for the CLI to write
+	Hints       []string
+}
+
+// Pending is a migration that has not been applied yet.
+type Pending struct {
+	Version    string
+	Name       string
+	Kind       Kind
+	Statements []Statement
+	NoTx       bool
+}
+
+// State is the status of one migration version: "pending", "applied", "dirty", "mismatch" or "missing".
+type State string
+
+// VersionStatus reports the state of one migration version.
+type VersionStatus struct {
+	Version, Name string
+	State         State
+	Checksum      string
+	Error         string
+}
+
+// Applied reports one migration applied by an Apply call.
+type Applied struct {
+	Version    string
+	Statements int
+	Duration   time.Duration
+}
+
+// Report is the result of an Apply call.
+type Report struct {
+	Applied []Applied
+	ApplyID string
+}
+
+// ApplyOptions controls Apply.
+type ApplyOptions struct {
+	To          string // empty: all pending
+	ForceUnlock bool
+	LockWait    time.Duration // default 30s
+}
+
+// ResolveState is the state a dirty migration is resolved to: "applied" or "rolled_back".
+type ResolveState string
+
+// Severity is a lint severity: "error" or "warning".
+type Severity string
+
+// Finding is one lint finding.
+type Finding struct {
+	Severity    Severity
+	Rule        string
+	Version     string
+	Statement   int
+	Message     string
+	Alternative string
+}
+
+// ObjectRef names a database object.
+type ObjectRef struct{ Kind, Schema, Name string }
+
+// ObjectDiff describes how one object differs.
+type ObjectDiff struct {
+	Object ObjectRef
+	Detail string
+}
+
+// DriftReport lists the differences between the live database and the expected schema.
+type DriftReport struct {
+	Changed   []ObjectDiff
+	Missing   []ObjectRef
+	Unmanaged []ObjectRef
+}
+
+// Clean reports whether there is no drift.
+func (d *DriftReport) Clean() bool {
+	return len(d.Changed) == 0 && len(d.Missing) == 0 && len(d.Unmanaged) == 0
+}
+
+// Skipped is a change AutoMigrate did not apply, with the reason.
+type Skipped struct {
+	Change Change
+	Reason string
+}
+
+// AutoReport is the result of an automatic migration.
+type AutoReport struct {
+	Applied []Change
+	Skipped []Skipped
+}
+
+// DiffOptions controls Diff.
+type DiffOptions struct {
+	RenameTables     map[string]string // old -> new
+	RenameColumns    map[string]string // "table.old" -> "new"
+	AllowDestructive bool
+	Stage            bool
+	Name             string // not used; name is passed to Diff
+}
+
+// Config is the engine configuration.
+type Config struct {
+	// Schemas lists the PostgreSQL schemas the engine manages. Default (nil or empty): the single schema
+	// returned by `SELECT current_schema()` on the pinned connection, resolved when the engine starts
+	// (Plan/Apply/Status/Diff/Drift/Inspect each resolve it once per call). An app with search_path=app
+	// therefore migrates `app` by default. Schemas[0] hosts the history table and must equal
+	// current_schema(); otherwise the engine returns a configuration error naming both.
+	Schemas          []string
+	LockTimeout      time.Duration // default 5s, PostgreSQL only
+	StatementTimeout time.Duration // default 0 (unset)
+	Exclude          []string      // glob patterns for unmanaged objects (drift)
+}
+
+// SessionOptions are the per-session timeouts a Dialect applies in Setup.
+type SessionOptions struct {
+	LockTimeout, StatementTimeout time.Duration
+}

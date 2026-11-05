@@ -1887,7 +1887,7 @@ func ptr(s string) *string { return &s }
 
 - [ ] **Step 2: Run and expect FAIL.** `go test ./types/ -run TestCodecsRoundTrip` → `undefined: Codec`.
 
-- [ ] **Step 3: Implement** the five files per Interfaces. Date on SQLite stores `2006-01-02` text; `Scan` parses it back. `UUID` stores the canonical 36-char form on SQLite and `uuid` on PostgreSQL; the Value on PostgreSQL is the canonical string. `Hstore` `Value` returns JSON text; PostgreSQL uses the hstore text form `"k"=>"v", "n"=>NULL` produced by the same function.
+- [ ] **Step 3: Implement** the five files per Interfaces. Date on SQLite stores `2006-01-02` text; `Scan` parses it back. `UUID` stores the canonical 36-char form on SQLite and `uuid` on PostgreSQL; the Value on PostgreSQL is the canonical string. `Hstore` `Value` returns the hstore text form `"k"=>"v", "n"=>NULL`; SQLite stores it as TEXT; `Scan` accepts both the hstore and JSON forms. A dialect-aware `ValueFor(dialect.Name)` codec hook, for JSON storage on SQLite, is deferred to M2 and must be added to ARCHITECTURE when designed. `TimeOfDay` `Value` truncates to microseconds (PostgreSQL precision) and `Scan` reads `24:00:00` as end of day.
 
 - [ ] **Step 4: Run and expect PASS.** `go test ./types/ -race` → `ok`.
 

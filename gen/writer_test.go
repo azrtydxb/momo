@@ -214,6 +214,21 @@ func TestWriterRejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestWriterDetectsCRLFHeaderAsGenerated(t *testing.T) {
+	root := t.TempDir()
+	p := filepath.Join(root, "x_gen.go")
+	if err := os.WriteFile(p, []byte(Header()+"\r\n\r\npackage pkg\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if hand, err := isHandwritten(p); err != nil || hand {
+		t.Fatalf("isHandwritten=%v,%v want false,nil", hand, err)
+	}
+	w := NewWriter(WriterOptions{ModuleRoot: root})
+	if err := w.File(p, []byte(testHeader)); err != nil {
+		t.Fatalf("File over CRLF generated file: %v", err)
+	}
+}
+
 func TestWriterRejectsHeaderless(t *testing.T) {
 	root := t.TempDir()
 	p := filepath.Join(root, "x_gen.go")

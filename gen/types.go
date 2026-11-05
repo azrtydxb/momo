@@ -6,6 +6,7 @@ package gen
 
 import (
 	"go/token"
+	"go/types"
 	"strconv"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -83,17 +84,23 @@ type Model struct {
 	// Config is the statically read MomoConfig; never nil for a discovered
 	// model.
 	Config *CompanionResult
-	// SubPkg is the per-model subpackage name, set in Task 13.
+	// SubPkg is the per-model subpackage name.
 	SubPkg string
+
+	named *types.Named
 }
 
 // Field is a persisted model column. Task 8 completes it.
 type Field struct {
 	GoName string
 	// Path is the reflect-style index path from the model struct.
-	Path     []int
-	Column   string
-	GoType   string
+	Path   []int
+	Column string
+	GoType string
+	// BaseType is GoType with named types resolved to their underlying basic
+	// type (type ID int64 is int64); the types the type map knows by name
+	// (time.Time, sql.Null*, vector, types) are kept.
+	BaseType string
 	Nullable bool
 	Tags     tags.Tags
 	Pos      token.Position
@@ -102,8 +109,31 @@ type Field struct {
 	Base string
 }
 
-// Relation is a model relation. Task 10 completes it.
-type Relation struct{}
+// Relation is a model relation field. Relation fields are not columns.
+// Task 13 discovers relations and fills it; Task 10 reads it to build
+// foreign keys and join tables.
+type Relation struct {
+	GoName string
+	Kind   RelKind
+	// Target is the related model; nil until the graph is resolved.
+	Target *Model
+	// FK is the Go name of the foreign-key field: on the declaring model for
+	// belongs-to, on the target model for has-one and has-many.
+	FK        string
+	JoinTable string
+	PolyType  string
+	PolyValue string
+	// OnDelete and OnUpdate are the raw on_delete and on_update tag values.
+	OnDelete, OnUpdate string
+	// NoConstraint is the no_constraint tag: the relation has no database
+	// foreign key.
+	NoConstraint bool
+	Pos          token.Position
+
+	// tags and ftype are kept until resolveRelations has run.
+	tags  tags.Tags
+	ftype types.Type
+}
 
 // Kind classifies a field's storage kind. Task 8 completes it.
 type Kind int
@@ -120,5 +150,13 @@ const (
 	Immutable
 )
 
-// RelKind classifies a relation. Task 10 completes it.
+// RelKind classifies a relation.
 type RelKind int
+
+// Relation kinds.
+const (
+	BelongsTo RelKind = iota + 1
+	HasOne
+	HasMany
+	ManyToMany
+)

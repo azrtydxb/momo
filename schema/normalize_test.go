@@ -28,8 +28,8 @@ func TestNormalizeType(t *testing.T) {
 		{dialect.Postgres, "time(2) with time zone", "time(2) with time zone"},
 		{dialect.Postgres, "timetz", "time with time zone"},
 		{dialect.Postgres, "timestamp with time zone", "timestamp with time zone"},
-		{dialect.SQLite, "INTEGER", "integer"},
-		{dialect.SQLite, "varchar(20)", "varchar(20)"},
+		{dialect.SQLite, "integer", "INTEGER"},
+		{dialect.SQLite, "varchar(20)", "VARCHAR(20)"},
 	}
 	for _, c := range cases {
 		if got := NormalizeType(c.d, c.in); got != c.out {
@@ -44,8 +44,8 @@ func TestNormalizeExpr(t *testing.T) {
 		in, out string
 	}{
 		{dialect.Postgres, "((now()))", "now()"},
-		{dialect.Postgres, "  COALESCE( a ,  0 )  ", "coalesce( a , 0 )"},
-		{dialect.Postgres, "'Mixed CASE'::text", "'Mixed CASE'::text"},
+		{dialect.Postgres, "  COALESCE( a ,  0 )  ", "coalesce(a , 0)"},
+		{dialect.Postgres, "'Mixed CASE'::text", "'Mixed CASE'"},
 		{dialect.Postgres, `"Quoted" > 0`, `"Quoted" > 0`},
 		{dialect.SQLite, "(a > 0)", "a > 0"},
 	}

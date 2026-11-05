@@ -101,8 +101,8 @@ func (w *Writer) File(path string, src []byte) error {
 	if err != nil {
 		return fmt.Errorf("gen: generator bug: formatting %s: %w", path, err)
 	}
-	if !bytes.HasPrefix(formatted, []byte(headerPrefix)) {
-		return fmt.Errorf("gen: generator bug: output for %s lacks the %q header", path, strings.TrimSpace(headerPrefix))
+	if !bytes.HasPrefix(formatted, []byte(HeaderPrefix)) {
+		return fmt.Errorf("gen: generator bug: output for %s lacks the %q header", path, strings.TrimSpace(HeaderPrefix))
 	}
 	if prev, ok := w.files[path]; ok {
 		if !bytes.Equal(prev, formatted) {
@@ -144,7 +144,7 @@ func hasHeader(path string) (header, exists bool, err error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, true, fmt.Errorf("gen: reading %s: %w", path, err)
 	}
-	return strings.HasPrefix(line, headerPrefix), true, nil
+	return strings.HasPrefix(line, HeaderPrefix), true, nil
 }
 
 // Commit writes every buffered file (or, in check mode, reports the ones

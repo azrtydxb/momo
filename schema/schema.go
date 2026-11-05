@@ -169,6 +169,10 @@ type Column struct {
 	// Enum names the enum type when Type refers to one (PostgreSQL) or the
 	// enum whose values constrain this TEXT column (SQLite).
 	Enum string `json:"enum,omitempty"`
+	// Collate is the column collation; empty means the database default.
+	Collate string `json:"collate,omitempty"`
+	// Comment is the column comment (PostgreSQL COMMENT ON COLUMN).
+	Comment string `json:"comment,omitempty"`
 }
 
 // Unique is a named UNIQUE constraint.

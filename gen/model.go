@@ -229,6 +229,8 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 		PkgDir:  dirOf(pos.Filename),
 		File:    pos.Filename,
 		Pos:     pos,
+		SubPkg:  SubPkgName(obj.Name(), d.pkg.Name),
+		named:   named,
 	}
 	mt := tags.Tags{}
 	idx := 0
@@ -260,8 +262,12 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 				}
 				continue
 			}
-			if ft.Skip || ft.BelongsTo || ft.HasOne || ft.HasMany || ft.ManyToMany || ft.Rel != "" {
-				continue // skipped, or a relation handled in Task 13
+			if ft.Skip {
+				continue
+			}
+			if isRelationTag(ft) {
+				m.Relations = append(m.Relations, newRelation(strct.Field(i), ft, d.pkg.Fset))
+				continue
 			}
 			if ft.Embedded || ft.Prefix != "" {
 				fields = append(fields, d.fl.embedField(m, strct.Field(i), ft, []int{i}, "", map[*types.Named]bool{named: true})...)
