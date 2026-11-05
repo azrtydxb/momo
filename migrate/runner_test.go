@@ -12,6 +12,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 
+	testdb "github.com/azrtydxb/momo/internal/testdb"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
@@ -146,17 +147,18 @@ func TestFailurePathNeverOverwritesApplied(t *testing.T) {
 }
 
 func TestCancelledContextStillRecordsFailure(t *testing.T) {
-	for _, tc := range []struct{ name, body, status string }{
-		{"transactional", "SELECT pg_sleep(10);", migrate.StatusRolledBack},
-		{"non-transactional", "-- momo:no-transaction\nSELECT pg_sleep(10);", migrate.StatusFailed},
+	for _, tc := range []struct{ name, prefix, status string }{
+		{"transactional", "", migrate.StatusRolledBack},
+		{"non-transactional", "-- momo:no-transaction\n", migrate.StatusFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := testopen.Postgres(t)
-			fsys := migratetest.WithSum(t, fstest.MapFS{"20260101000000_slow.up.sql": {Data: []byte(tc.body)}})
+			marker := "momo-cancel-" + testdb.Schema(t)
+			body := tc.prefix + "SELECT pg_sleep(10) /* " + marker + " */;"
+			fsys := migratetest.WithSum(t, fstest.MapFS{"20260101000000_slow.up.sql": {Data: []byte(body)}})
 			e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
 			ctx, cancel := context.WithCancel(context.Background())
-			timer := time.AfterFunc(500*time.Millisecond, cancel)
-			defer timer.Stop()
+			cancelWhenRunning(t, db, marker, cancel) // cancel once the slow statement runs, not after a fixed delay
 			if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
 				t.Fatal("apply must fail when its context is cancelled")
 			}
