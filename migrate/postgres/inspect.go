@@ -72,13 +72,25 @@ var partStrategies = map[string]string{"r": "range", "l": "list", "h": "hash"}
 // current schema) into a schema. A table in the current schema has an empty
 // Table.Schema; Schema.Schemas lists only the other managed namespaces.
 // opts.Exclude is a drift-time filter and is not applied here.
-func (Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.InspectOptions) (*schema.Schema, error) {
+func (d Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.InspectOptions) (*schema.Schema, error) {
+	s, _, err := d.InspectWithInvalid(ctx, c, opts)
+	return s, err
+}
+
+// InspectWithInvalid is Inspect plus the qualified names (relative to the
+// current schema: bare, or "schema.index" elsewhere) of the indexes PostgreSQL marks invalid,
+// which a failed CREATE INDEX CONCURRENTLY leaves behind. The schema model
+// has no slot for them and they stay in Table.Indexes, so a plain Inspect
+// hides the failure. Drift detection (momo-04 Task 18) must call this and
+// report each name as Changed with Detail "invalid index (failed CONCURRENTLY
+// build)". Names follow table order, then index name.
+func (Dialect) InspectWithInvalid(ctx context.Context, c momo.PinnedConn, opts migrate.InspectOptions) (*schema.Schema, []string, error) {
 	var cur *string
 	if err := queryOne(ctx, c, qCurrentSchema, nil, &cur); err != nil {
-		return nil, fmt.Errorf("postgres inspect: current schema: %w", err)
+		return nil, nil, fmt.Errorf("postgres inspect: current schema: %w", err)
 	}
 	if cur == nil {
-		return nil, errors.New("postgres inspect: current_schema() is NULL: the search_path names no existing schema")
+		return nil, nil, errors.New("postgres inspect: current_schema() is NULL: the search_path names no existing schema")
 	}
 	current := *cur
 	managed := opts.Schemas
@@ -88,25 +100,28 @@ func (Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.Insp
 	in := &inspector{c: c, current: current, managed: managed}
 	out := &schema.Schema{FormatVersion: schema.FormatVersion, Dialect: dialect.Postgres, Tables: []schema.Table{}}
 	if err := in.namespaces(ctx, out); err != nil {
-		return nil, fmt.Errorf("postgres inspect: schemas: %w", err)
+		return nil, nil, fmt.Errorf("postgres inspect: schemas: %w", err)
 	}
 	if err := in.extensions(ctx, out); err != nil {
-		return nil, fmt.Errorf("postgres inspect: extensions: %w", err)
+		return nil, nil, fmt.Errorf("postgres inspect: extensions: %w", err)
 	}
 	if err := in.enums(ctx, out); err != nil {
-		return nil, fmt.Errorf("postgres inspect: enums: %w", err)
+		return nil, nil, fmt.Errorf("postgres inspect: enums: %w", err)
 	}
 	if err := in.tables(ctx, out); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out.Sort()
-	return out, nil
+	return out, in.invalid, nil
 }
 
 type inspector struct {
 	c       momo.PinnedConn
 	current string
 	managed []string
+	// invalid names the indexes left invalid by a failed CONCURRENTLY build.
+	// The schema model has no field for them; InspectWithInvalid returns them.
+	invalid []string
 }
 
 // qualify spells an object name relative to the current schema.
@@ -198,6 +213,14 @@ func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 		}
 		if err := in.partitions(ctx, tr, &t); err != nil {
 			return fmt.Errorf("postgres inspect: partitions of %s.%s: %w", tr.ns, tr.name, err)
+		}
+		ixs, invalid, err := Dialect{}.inspectIndexes(ctx, in.c, tr.oid)
+		if err != nil {
+			return fmt.Errorf("postgres inspect: indexes of %s.%s: %w", tr.ns, tr.name, err)
+		}
+		t.Indexes = ixs
+		for _, name := range invalid {
+			in.invalid = append(in.invalid, in.qualify(tr.ns, name))
 		}
 		out.Tables = append(out.Tables, t)
 	}
