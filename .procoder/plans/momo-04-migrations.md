@@ -6,6 +6,7 @@ Spec: .procoder/specs/momo.md
 Scope ids: S-10, S-11, S-12, S-13, S-14, S-27, S-28, S-36, S-37, S-38, S-39, S-46, S-47, S-74, S-26 (CLI path separators only: TestWindowsPaths); plus the migration parts of S-22 (snapshot `format_version`, `momo.sum` header, `momo_migrations` metadata row) and the normalization part of S-1 (`schema/normalize.go`, `FuzzNormalize`).
 
 Research cited in this plan (verified against the official pages on 2026-11-04):
+
 - SQLite 12-step table rebuild and supported ALTER TABLE operations: https://www.sqlite.org/lang_altertable.html
 - PostgreSQL CREATE INDEX CONCURRENTLY (no transaction block; failure leaves INVALID index; recovery by drop and retry): https://www.postgresql.org/docs/current/sql-createindex.html
 - PostgreSQL ALTER TYPE ... ADD VALUE (may run in a transaction block; the new value is unusable until commit): https://www.postgresql.org/docs/current/sql-altertype.html
@@ -42,14 +43,14 @@ docs/ARCHITECTURE.md is binding and this plan does not edit it. These additions 
 
 1. `schema.Schema` gets the fields in ARCHITECTURE's list but the spike lacks them. The types are defined in Task 1 (`View`, `Function`, `Trigger`, `Policy`, `Partition`, `PartitionOf`, `RLS`, `SchemaNamespace`), plus `Table.Schema`. `schema.FormatVersion` is set to 1 by Task 1.
 2. `migrate.Dialect` gets three methods in addition to Inspect/Render/Lock: `Dialect() *dialect.Dialect`, `HistoryDDL() []string`, `Setup(ctx, momo.PinnedConn, SessionOptions) (reset func() error, err error)`. Setup applies lock_timeout/statement_timeout (PostgreSQL) or PRAGMA foreign_keys handling (SQLite).
-3. `momo.PinnedConn` is the type the migrate Dialect methods receive. It is defined in plan momo-01 with methods `Exec(ctx, sql string, args ...any) (int64, error)`, `Query(ctx, sql string, args ...any) (momo.Rows, error)`, `Begin(ctx, momo.TxOptions) (momo.DriverTx, error)` and `Close() error`. Plan momo-01 must confirm these names.
+3. `momo.PinnedConn` is the type the migrate Dialect methods receive. ARCHITECTURE defines it and plan momo-03 Task 2 implements it, with exactly these methods: `Query(ctx context.Context, sql string, args []any) (momo.Rows, error)`, `Exec(ctx context.Context, sql string, args []any) (int64, error)`, `Begin(ctx context.Context, opts momo.TxOptions) (momo.DriverTx, error)` and `Release() error`. A connection is obtained with `db.Driver().(momo.Pinner).Pin(ctx)`; `*momo.DB` has no `Pin` method. This plan uses these names and signatures unchanged.
 4. `momo.Driver` exposes `Dialect() *dialect.Dialect`. Plan momo-01 must confirm this.
 5. The history table gets two more columns: `apply_id` (groups migrations applied by one `migrate apply` invocation, used by group rollback in S-94) and `kind` (`sql` or `go`). The ARCHITECTURE column list is extended to `momo_migrations(version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind)`.
 6. CLI additions beyond the table in ARCHITECTURE/spec: `migrate diff --stage`, `migrate apply --force-unlock`, `migrate rollback [--group]`, `migrate new --custom <name>`, `migrate rebase --onto <dir-or-version>` (no git: the user runs git), and `--config <path>` on every command. Exit codes: 0 success, 1 policy findings (drift, validate, lint errors, destructive refusal, staged-change required, generate --check stale), 2 usage or configuration error, 3 database, lock or execution error.
 7. `gen/config.File` (plan momo-02) has the field `Migrate MigrateConfig`; `MigrateConfig` is defined in package `gen/config` by plan momo-02, and this plan owns only its semantics. Field list is in Task 3. The CLI loads `momo.yaml` through `config.Load` (plan momo-02) and uses no other parser. `TestWindowsPaths` (Task 29) also depends on `gen.ImportPath` from plan momo-02.
 8. `internal/testdb` (plan momo-01) provides URLs, paths and the per-test schema name only: `PostgresURL(t)` (memoized per `t`, search_path `t_xxx,public`), `Schema(t)` (returns `t_xxx`), `PostgresAppRoleURL(t)` (same schema; the harness grants the app role USAGE, default DML privileges and no CREATE), `SQLitePath(t)`. `*momo.DB` handles come from `internal/testdb/testopen` (plan momo-03): `testopen.Postgres(t)`, `testopen.SQLite(t)`, `testopen.Each`. Engine-level tests use `testopen.Postgres(t)` first and are wrapped in `testopen.Each` when SQLite lands (M2).
 9. `migrate.WithDialect(d Dialect) Option` replaces any dialect registry. `NewEngine` without it returns an error naming the option. The CLI selects the dialect by a static switch on the configured name.
-10. `func (db *DB) OnConn(pc momo.PinnedConn) *momo.DB` (owned by plan momo-03) is needed so that a non-transactional Go migration receives a `momo.Querier` on the pinned connection; it keeps db's hooks and classifier (plan momo-11 Task 13). Plan momo-01 provides it.
+10. `func (db *DB) OnConn(pc momo.PinnedConn) *momo.DB` (owned by plan momo-03) is needed so that a non-transactional Go migration receives a `momo.Querier` on the pinned connection; it keeps db's hooks and classifier (plan momo-11 Task 13). Plan momo-03 Task 7 provides it.
 11. Views and constraints (Task 32): `momo.View` marker, `WritableModeler[T]`, `Insert/Update/Delete[T, PT WritableModeler[T]]`, `RefreshMaterializedView`, and the MomoConfig methods `c.View`, `c.MaterializedView`, `c.Function`, `c.Trigger`, `c.Policy`, `c.EnableRLS` consumed from plan momo-02.
 12. Statement hints `fk-check` and `dependent:<type>:<name>` (Task 35) and the history semantics of Task 15 (rolled_back is not dirty). `rebase --onto` takes a directory or a version; no git.
 
@@ -70,16 +71,19 @@ docs/ARCHITECTURE.md is binding and this plan does not edit it. These additions 
 - `views.go`, `views_compile_test.go` (root package, Task 32), `internal/compat/viewmodels/` (Task 32), `testdata/compilefail/view_insert/` (Task 32), `migrate/postgres/views_test.go` (Task 32).
 
 Shared test helpers: `migrate/migratetest/migratetest.go` (Task 3) holds `WriteFiles(t, dir, map[string]string)`, `CountingDriver` (wraps momo.Driver and counts statements), and `Schema(t, dsl)` helpers used by later tasks.
+
 ## Task 1: Schema types for snapshots and managed objects
 
 Covers: S-1 (types), S-36 (schema qualification), S-37 (views), S-38 (policies, RLS flags), S-39 (functions, triggers, partitions), S-22 (FormatVersion). Acceptance: TestSchemaJSONRoundTrip (must still pass), TestSchemaFormatVersion.
 
 Files:
+
 - Modify: `schema/schema.go` (spike) to add the fields listed below.
 - Create: `schema/types.go` is NOT created; the new types go in `schema/schema.go` to keep one file for the struct graph.
 - Create: `schema/format_test.go`.
 
 Interfaces (exact):
+
 ```go
 const FormatVersion = 1
 
@@ -162,6 +166,7 @@ Steps:
 - [ ] **Step 1: Write the failing format test**
 
 Create `schema/format_test.go`:
+
 ```go
 package schema
 
@@ -191,11 +196,13 @@ func TestSchemaFormatVersion(t *testing.T) {
     }
 }
 ```
+
 Add `"errors"` to the import list. `Write` is a new method: `func (s *Schema) Write(w io.Writer) error` writes indented JSON with a trailing newline. Run: `go test ./schema/ -run TestSchemaFormatVersion -count=1`. Expect FAIL with `s.Write undefined` or `undefined: FormatVersion`.
 
 - [ ] **Step 2: Implement the types**
 
 Add the fields and types above to `schema/schema.go`. Implement:
+
 ```go
 var ErrNewerFormat = errors.New("schema: snapshot format is newer than this momo; upgrade momo to read it")
 
@@ -221,6 +228,7 @@ func (s *Schema) Write(w io.Writer) error {
     return err
 }
 ```
+
 Keep `Sort()` and extend it to sort `Schemas`, `Views`, `Functions`, `Triggers`, `Policies`, and each view's `Indexes`, each table's `Indexes`, and `Depends` (sorted, deduplicated).
 
 - [ ] **Step 3: Run the format test, expect PASS**
@@ -230,14 +238,17 @@ Run: `go test ./schema/ -count=1`. Expect `ok`. The existing `TestSchemaJSONRoun
 - [ ] **Step 4: Commit**
 
 `git add schema && git commit -m "feat(schema): add managed-object types and format_version to snapshots"`
+
 ## Task 2: Schema normalization and FuzzNormalize
 
 Covers: S-1 (normalization), S-11 (no-change round trip depends on it). Acceptance: TestNormalizeTypes, TestNormalizeExprDBRewrites, TestEqualIgnoresOrder, FuzzNormalize.
 
 Files:
+
 - Create: `schema/normalize.go`, `schema/normalize_test.go`, `schema/normalize_fuzz_test.go`.
 
 Interfaces (exact):
+
 ```go
 func NormalizeType(d dialect.Name, t string) string
 func NormalizeExpr(d dialect.Name, e string) string
@@ -250,6 +261,7 @@ Steps:
 - [ ] **Step 1: Failing table test**
 
 `schema/normalize_test.go`:
+
 ```go
 package schema
 
@@ -304,6 +316,7 @@ func TestEqualIgnoresOrder(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./schema/ -run 'TestNormalize|TestEqual' -count=1`. Expect FAIL with `undefined: NormalizeType`.
 
 - [ ] **Step 2: Implement**
@@ -321,6 +334,7 @@ Run: `go test ./schema/ -run 'TestNormalize|TestEqual' -count=1`. Expect `ok`.
 - [ ] **Step 4: Failing fuzz target**
 
 `schema/normalize_fuzz_test.go`:
+
 ```go
 package schema
 
@@ -351,20 +365,24 @@ func FuzzNormalize(f *testing.F) {
     })
 }
 ```
+
 Run: `go test ./schema/ -run FuzzNormalize -count=1`. Expect FAIL before Step 2 if stubs panic. Then after Step 2 run `go test ./schema/ -run FuzzNormalize -fuzz=FuzzNormalize -fuzztime=30s`. Expect no failing input. Any crashing input is saved under `schema/testdata/fuzz/FuzzNormalize/` and must be fixed in `NormalizeExpr`, then kept as a regression seed.
 
 - [ ] **Step 5: Commit**
 
 `git commit -am "feat(schema): normalize DB-rewritten types and expressions"` (paths: `schema/normalize*.go`, `schema/testdata`).
+
 ## Task 3: Migrate core types, errors, options, Dialect interface, test helpers
 
 Covers: S-10 (Engine API surface), S-8 (migration sentinels). Acceptance: TestCLIContracts depends on these names; compile-level test only here.
 
 Files:
+
 - Create: `migrate/types.go`, `migrate/errors.go`, `migrate/options.go`, `migrate/dialect.go`, `migrate/migratetest/migratetest.go`, `migrate/types_test.go`, `migrate/helpers_test.go`, `migrate/postgres/helpers_test.go`.
 - Consumes (does not edit): `gen/config` from plan momo-02 (`config.File`, `MigrateConfig`, `config.Load`); if momo-02 has not landed it, this task is blocked: see Interfaces.
 
 Interfaces (exact):
+
 ```go
 // migrate/errors.go
 var (
@@ -509,7 +527,8 @@ func FSFromDiff(t *testing.T, db *momo.DB, desired *schema.Schema, name string) 
 func Diff(a, b *schema.Schema) string // JSON difference for failure messages
 ```
 
-Gen config contract (for momo-02): `gen/config.File` has the field `Migrate MigrateConfig \`yaml:"migrate"\``, and `MigrateConfig` is DEFINED in package `gen/config` (plan momo-02 owns the type; plan 04 owns its semantics). The shape, for reference:
+Gen config contract (for momo-02): `gen/config.File` has the field ``Migrate MigrateConfig `yaml:"migrate"` ``, and `MigrateConfig` is DEFINED in package `gen/config` (plan momo-02 owns the type; plan 04 owns its semantics). The shape, for reference:
+
 ```go
 type MigrateConfig struct {
     Dir         map[string]string `yaml:"dir"`          // dialect -> directory, e.g. postgres: migrations/postgres
@@ -520,11 +539,13 @@ type MigrateConfig struct {
     Exclude     []string          `yaml:"exclude"`
 }
 ```
+
 The accepted `momo.yaml` shape is exactly `migrate: {dir: {postgres: ...}, url_env: {postgres: ...}, schemas, lock_timeout, statement_timeout, exclude}`. If momo-02 has not landed `gen/config` when this task runs, this step is blocked and the implementer must not edit momo-02's files; report back.
 
 Steps:
 
 Test helper files, all checking every error with t.Fatal: `migrate/helpers_test.go` (package migrate_test): `pinned(t, *momo.DB) momo.PinnedConn`, `mustExec(t, execer, sql)`, `mustQueryRow(t, querier, sql, dest ...any)`, `historyRow(t, *momo.DB, version) migrate.HistoryRow`, `tableExists(t, *momo.DB, name) bool`, `columnExists(t, *momo.DB, table, col) bool`, `countDDL(t, *momo.DB) int` (through CountingDriver), `migratetestFS(t, version) fs.FS`, `mpg.New() migrate.Dialect`. `migrate/postgres/helpers_test.go` (package postgres_test): the same names for PostgreSQL, plus `tableExistsIn(t, *momo.DB, schema, name) bool`, `openPG(t, dsn) *momo.DB`, `openAppRole(t, testdb.PostgresAppRoleURL(t)) *momo.DB`. The PostgreSQL helpers filter on the per-test schema through `current_schema()`, because tests share one server and each test has its own schema (ARCHITECTURE, Per-test isolation):
+
 ```go
 // tableExists (PostgreSQL):
 //   SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1)
@@ -534,11 +555,13 @@ Test helper files, all checking every error with t.Fatal: `migrate/helpers_test.
 // SQLite equivalents (migrate/sqlite/helpers_test.go, Task 35): SELECT count(*) FROM sqlite_master WHERE type='table' AND name = ?  and  SELECT count(*) FROM pragma_table_info(?) WHERE name = ?.
 // MySQL equivalents (when that dialect lands): table_schema = database() instead of current_schema().
 ```
+
 `mustQueryRow` needs `momo.Rows` with Next, Scan, Close and Err (plan momo-01 contract). `migrate/sqlite/helpers_test.go` is created in Task 35.
 
 - [ ] **Step 1: Failing compile test**
 
 `migrate/types_test.go`:
+
 ```go
 package migrate
 
@@ -562,6 +585,7 @@ func TestSentinelsAreDistinct(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestSentinelsAreDistinct -count=1`. Expect FAIL with `undefined: ErrChecksumMismatch`.
 
 - [ ] **Step 2: Implement the files listed in Interfaces**
@@ -575,14 +599,17 @@ Run: `go test ./migrate/ -run TestSentinelsAreDistinct -count=1` and `go build .
 - [ ] **Step 4: Commit**
 
 `git commit -m "feat(migrate): core types, errors and dialect interface"`
+
 ## Task 4: Migration file discovery, directives, statement splitter
 
 Covers: S-11 (SQL file directives `-- momo:no-transaction`, `-- momo:destructive`, `-- momo:split`, `-- momo:sqlite-foreign-keys-off`), S-94 (statement-split directive). Acceptance: TestSplitStatements, TestDirectives, TestSplitDollarQuotes.
 
 Files:
+
 - Create: `migrate/files.go`, `migrate/split.go`, `migrate/files_test.go`, `migrate/split_test.go`.
 
 Interfaces (exact):
+
 ```go
 type File struct {
     Version string // from file name
@@ -610,6 +637,7 @@ Steps:
 - [ ] **Step 1: Failing splitter test**
 
 `migrate/split_test.go`:
+
 ```go
 package migrate
 
@@ -670,6 +698,7 @@ func TestDirectives(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run 'TestSplit|TestDirectives' -count=1`. Expect FAIL with `undefined: SplitStatements`.
 
 - [ ] **Step 2: Implement the scanner**
@@ -687,6 +716,7 @@ Run: `go test ./migrate/ -run 'TestSplit|TestDirectives' -count=1`. Expect `ok`.
 - [ ] **Step 4: Failing discovery test**
 
 Append to `migrate/files_test.go`:
+
 ```go
 func TestDiscoverRejectsMalformedNames(t *testing.T) {
     fsys := fstest.MapFS{
@@ -699,19 +729,23 @@ func TestDiscoverRejectsMalformedNames(t *testing.T) {
     }
 }
 ```
+
 Imports: `testing/fstest`, `strings`. Run: `go test ./migrate/ -run TestDiscoverRejectsMalformedNames -count=1`. Expect FAIL before Step 2's `Discover` is complete.
 
 - [ ] **Step 5: Commit**
 
 `git commit -m "feat(migrate): migration discovery, directives and statement splitter"`
+
 ## Task 5: momo.sum checksum file
 
 Covers: S-11 (checksums), S-22 (checksum file header format version). Acceptance: TestChecksumMismatch (offline part), TestSumFormatVersion.
 
 Files:
+
 - Create: `migrate/sum.go`, `migrate/sum_test.go`.
 
 Interfaces (exact):
+
 ```go
 const SumFormat = 1
 type Sum struct {
@@ -724,12 +758,15 @@ func (s *Sum) Write(w io.Writer) error
 func VerifySum(fsys fs.FS, want *Sum) []string // names of files whose content differs from want, plus added and removed names
 func AppendSum(existing *Sum, fsys fs.FS, added []string) (*Sum, error) // only adds entries for new files; never changes existing lines
 ```
+
 File format written by `Write`:
+
 ```
 # momo.sum format=1
 h1:<base64 dirhash>
 <hex sha256>  <file name>
 ```
+
 Manifest used for DirHash: for each file in sorted order, the bytes `<name>\n<hex sha256>\n`.
 
 Steps:
@@ -737,6 +774,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/sum_test.go`:
+
 ```go
 package migrate
 
@@ -780,6 +818,7 @@ func TestChecksumMismatch(t *testing.T) {
     }
 }
 ```
+
 Add `"errors"` to imports. Run: `go test ./migrate/ -run 'TestSumFormat|TestChecksumMismatch' -count=1`. Expect FAIL with `undefined: ComputeSum`.
 
 - [ ] **Step 2: Implement**
@@ -789,14 +828,17 @@ Add `"errors"` to imports. Run: `go test ./migrate/ -run 'TestSumFormat|TestChec
 - [ ] **Step 3: Run, expect PASS** with `go test ./migrate/ -run 'TestSumFormat|TestChecksumMismatch' -count=1`.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate): momo.sum with format header and append-only updates"`
+
 ## Task 6: Snapshot wrapper with parent version and format_version
 
 Covers: S-11 (per-migration snapshots recording their parent), S-22 (snapshot format_version). Acceptance: TestSnapshotFormatVersion, TestSnapshotParentRecorded.
 
 Files:
+
 - Create: `migrate/snapshot.go`, `migrate/snapshot_test.go`.
 
 Interfaces (exact):
+
 ```go
 const SnapshotFormat = 1
 type SnapshotFile struct {
@@ -809,6 +851,7 @@ func ReadSnapshot(r io.Reader) (*SnapshotFile, error) // ErrNewerFormat when For
 func WriteSnapshot(w io.Writer, s SnapshotFile) error
 func LatestSnapshot(fsys fs.FS) (*SnapshotFile, error) // nil, ErrNoSnapshot when none
 ```
+
 The snapshot file name is `<version>_<name>.snapshot.json`.
 
 Steps:
@@ -816,6 +859,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/snapshot_test.go`:
+
 ```go
 package migrate
 
@@ -851,6 +895,7 @@ func TestSnapshotFormatVersion(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestSnapshot -count=1`. Expect FAIL with `undefined: SnapshotFile`.
 
 - [ ] **Step 2: Implement** per Interfaces. `ReadSnapshot` decodes with `json.Decoder.DisallowUnknownFields` is NOT used (forward compatibility); it checks `Format` against `SnapshotFormat`, and checks `schema.FormatVersion` in the embedded schema. `LatestSnapshot` picks the greatest version among `.snapshot.json` files and returns an error when two snapshots share a version.
@@ -858,14 +903,17 @@ Run: `go test ./migrate/ -run TestSnapshot -count=1`. Expect FAIL with `undefine
 - [ ] **Step 3: Run, expect PASS** with `go test ./migrate/ -run TestSnapshot -count=1`.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate): snapshot files record parent version and format"`
+
 ## Task 7: Offline chain, numbering and validate
 
 Covers: S-27 (linear snapshot chain, branch-conflict detection), S-11 (validate offline: checksums, numbering, chain), S-10 (validate command contract, offline part). Acceptance: TestMigrationBranchConflict, TestChecksumMismatch (offline validate), TestValidateOffline.
 
 Files:
+
 - Create: `migrate/chain.go`, `migrate/validate.go`, `migrate/chain_test.go`.
 
 Interfaces (exact):
+
 ```go
 type ValidateReport struct{ Problems []string }
 func ValidateOffline(fsys fs.FS) (*ValidateReport, error)
@@ -884,6 +932,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/chain_test.go`:
+
 ```go
 package migrate
 
@@ -924,6 +973,7 @@ func TestValidateOffline(t *testing.T) {
     }
 }
 ```
+
 Add `"strings"` to imports. Run: `go test ./migrate/ -run 'TestMigrationBranchConflict|TestValidateOffline' -count=1`. Expect FAIL with `undefined: Chain`.
 
 - [ ] **Step 2: Implement** `Chain` as: build map parent -> []version; if any parent has more than one child return `fmt.Errorf("%w: %s and %s both have parent %s; run momo migrate rebase", ErrBranchConflict, a, b, parent)` with the two versions sorted. Walk from the empty parent. `ValidateOffline` implements the six checks, collects problems, and returns them; it returns an error only when the directory cannot be read.
@@ -931,17 +981,20 @@ Add `"strings"` to imports. Run: `go test ./migrate/ -run 'TestMigrationBranchCo
 - [ ] **Step 3: Run, expect PASS** with `go test ./migrate/ -run 'TestMigrationBranchConflict|TestValidateOffline' -count=1`.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate): offline validation and branch-conflict detection"`
+
 ## Task 8: Pure diff engine with explicit renames, destructive gating, staged NOT NULL, FK actions
 
 Covers: S-11 (no rename guessing, explicit rename flags, destructive authorization, staged changes), S-74 (ON DELETE/ON UPDATE in diff, no-constraint option), S-10 (`migrate diff` contract). Acceptance: TestNoRenameGuessing, TestDestructiveRequiresFlag, TestStagedChangeDiff (offline part: diff output), TestFKActions (diff part), TestDiffNoChangeEmpty.
 
 Files:
+
 - Create: `migrate/diff.go`, `migrate/diff_test.go`.
 
 Change kinds (exact constants in `migrate/types.go`, `ChangeKind` type):
 `create_schema, create_extension, create_enum, alter_enum_add_value, drop_enum, create_table, drop_table, rename_table, add_column, drop_column, rename_column, alter_column, add_primary_key, drop_primary_key, add_unique, drop_unique, add_check, drop_check, add_fk, drop_fk, create_index, drop_index, set_rls, create_policy, drop_policy, create_view, drop_view, create_function, replace_function, drop_function, create_trigger, drop_trigger`.
 
 Interfaces (exact):
+
 ```go
 // Diff compares the snapshot schema (from) with the desired schema (to). Pure: no I/O.
 func Diff(from, to *schema.Schema, opts DiffOptions) (changes []Change, hints []string, err error)
@@ -949,7 +1002,9 @@ func Diff(from, to *schema.Schema, opts DiffOptions) (changes []Change, hints []
 //         ErrStagedRequired when NOT NULL without default is added to an existing table and opts.Stage is false
 // With opts.Stage true, such a column is emitted as a nullable add_column plus a hint.
 ```
+
 Rules:
+
 - Table or column present in `from` only: drop (destructive). A drop is never paired with an add into a rename unless the caller passed the explicit rename flag; the hint `"possible rename: drop+add of t.a -> t.b; pass --rename-column t.a=b to rename"` is added when a dropped column and an added column share a type on the same table.
 - Rename flags turn the pair into `rename_table` or `rename_column` and produce no drop/add.
 - Column type change: `alter_column`, destructive.
@@ -964,6 +1019,7 @@ Steps:
 - [ ] **Step 1: Failing tests**
 
 `migrate/diff_test.go`:
+
 ```go
 package migrate
 
@@ -1053,6 +1109,7 @@ func TestDiffNoChangeEmpty(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run 'TestNoRename|TestDestructive|TestStaged|TestFKActions|TestDiffNoChange' -count=1`. Expect FAIL with `undefined: Diff`.
 
 - [ ] **Step 2: Implement `Diff`** in `migrate/diff.go` following the rules above. Compare tables by name, columns by name (order changes are not diffed: column order is preserved by SQLite rebuilds only when requested), indexes by name and structure, unique and check constraints by name, FKs by name and structure. `ChangeKind` constants go in `types.go`. The `After` field of an add_column change holds the `*schema.Column`. Each change's `Destructive` is set per the rules. Sort the output by kind order defined in `order.go` (Task 9), and the hints in sorted order.
@@ -1060,14 +1117,17 @@ Run: `go test ./migrate/ -run 'TestNoRename|TestDestructive|TestStaged|TestFKAct
 - [ ] **Step 3: Run, expect PASS** with the same command. Expect `ok`.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate): pure diff with explicit renames, destructive and staged gating"`
+
 ## Task 9: Dependency-aware ordering of managed objects
 
 Covers: S-36 (schema-qualified creation order), S-37 (views dropped after dependents, recreated in dependency order), S-39 (functions before triggers, triggers before dropped functions). Acceptance: TestViewsAsModels (ordering part), TestManagedFunctionsTriggersPartitions (ordering part).
 
 Files:
+
 - Create: `migrate/order.go`, `migrate/order_test.go`.
 
 Interfaces (exact):
+
 ```go
 // Order sorts changes into an executable sequence.
 // Creates: create_schema, create_extension, create_enum, create_table (parents before partitions, referenced tables before referencing via FK, FK-free order otherwise), add_column, alter_column, create_index, create_function, create_view (dependencies first), create_trigger, create_policy, set_rls.
@@ -1081,6 +1141,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/order_test.go`:
+
 ```go
 package migrate
 
@@ -1118,6 +1179,7 @@ func TestCycleIsAnError(t *testing.T) {
     }
 }
 ```
+
 `viewDep` is a test type `type viewDep struct{ Depends []string }` defined in the test file; the production code reads dependencies through an interface `interface{ dependsOn() []string }` that `viewDep` implements in the test file and that `*schema.View` implements in `order.go` via `func (v *schema.View) ...`. Because the schema package is outside migrate, implement the adapter `func depsOf(c Change) []string` with a type switch on `*schema.View`, `schema.View`, and `dependent` (an interface with method `dependsOn() []string`). Add `OrderErr(changes []Change) ([]Change, error)`; `Order` panics never; it calls OrderErr and, on error, returns changes unchanged and the caller (diff) turns the error into a diagnostic. Run: `go test ./migrate/ -run 'TestDrop|TestCreate|TestCycle' -count=1`. Expect FAIL with `undefined: Order`.
 
 - [ ] **Step 2: Implement** a stable topological sort (Kahn's algorithm over names, ties broken by original index) per phase, phases in the order listed in Interfaces. Dependencies are matched by qualified name. Cycle returns `fmt.Errorf("migrate: dependency cycle among %s", names)`.
@@ -1125,14 +1187,17 @@ func TestCycleIsAnError(t *testing.T) {
 - [ ] **Step 3: Run, expect PASS** with the same command.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate): dependency-aware ordering of managed objects"`
+
 ## Task 10: PostgreSQL inspection: schemas, extensions, enums, tables, columns, constraints
 
 Covers: S-12 (extensions, enums, constraints), S-36 (schemas), S-74 (FK actions round trip). Acceptance: TestPostgresObjects (partial), TestFKActions (PostgreSQL), TestPostgresSchemas (inspection part).
 
 Files:
+
 - Create: `migrate/postgres/dialect.go`, `migrate/postgres/inspect.go`, `migrate/postgres/inspect_test.go`.
 
 Interfaces (exact):
+
 ```go
 package postgres
 type Dialect struct{}
@@ -1141,6 +1206,7 @@ func (Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.Insp
 ```
 
 Catalog queries (exact):
+
 - Namespaces: `SELECT nspname FROM pg_namespace WHERE nspname = ANY($1) ORDER BY 1` with $1 = configured schemas (default `{current_schema()}`: when `InspectOptions.Schemas` is empty, Inspect first runs `SELECT current_schema()`). A table whose namespace equals the current schema is returned with `Table.Schema == ""`; a table in any other managed namespace carries its name. `Schemas` in the result lists only the non-current managed namespaces.
 - Extensions: `SELECT extname, extversion FROM pg_extension WHERE extname <> 'plpgsql' ORDER BY 1`.
 - Enums: `SELECT n.nspname, t.typname, e.enumlabel FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace JOIN pg_enum e ON e.enumtypid = t.oid WHERE t.typtype = 'e' AND n.nspname = ANY($1) ORDER BY 1,2,e.enumsortorder`.
@@ -1156,6 +1222,7 @@ Steps:
 - [ ] **Step 1: Failing test (requires PostgreSQL)**
 
 `migrate/postgres/inspect_test.go`:
+
 ```go
 package postgres_test
 
@@ -1223,6 +1290,7 @@ func TestPostgresInspectColumnsAndConstraints(t *testing.T) {
     }
 }
 ```
+
 `testopen.Postgres(t)` requires `MOMO_TEST_POSTGRES_URL` (failing with `MOMO_REQUIRE_INTEGRATION=1` when unset). Run: `MOMO_TEST_POSTGRES_URL=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go test ./migrate/postgres/ -run TestPostgresInspect -count=1`. Expect FAIL with `undefined: mpg.New`.
 
 Note: `col.Default` for an enum default is stored as the dialect text `'draft'::status` (not normalized here; normalization happens in schema.Equal). The assertion above is therefore against the raw inspected text.
@@ -1232,18 +1300,23 @@ Note: `col.Default` for an enum default is stored as the dialect text `'draft'::
 - [ ] **Step 3: Run, expect PASS** with the same command.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate/postgres): inspection of schemas, enums, extensions, columns and constraints"`
+
 ## Task 11: PostgreSQL inspection: indexes (expression, partial, method, opclass, invalid)
 
 Covers: S-12 (expression and partial indexes, index methods and operator classes). Acceptance: TestPostgresObjects (index part), TestPostgresIndexInspection.
 
 Files:
+
 - Create: `migrate/postgres/inspect_index.go`, `migrate/postgres/inspect_index_test.go`.
 
 Interfaces (exact):
+
 ```go
 func (Dialect) inspectIndexes(ctx context.Context, c momo.PinnedConn, relOID uint32) ([]schema.Index, []string /* invalid index names */, error)
 ```
+
 Query (exact):
+
 ```sql
 SELECT ci.relname, am.amname, i.indisunique, i.indisvalid, i.indnkeyatts,
        pg_get_expr(i.indpred, i.indrelid), i.indoption::text, i.indclass::text, ci.reloptions
@@ -1254,6 +1327,7 @@ WHERE i.indrelid = $1 AND NOT i.indisprimary
   AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = i.indexrelid AND c.contype IN ('u','p','x'))
 ORDER BY ci.relname
 ```
+
 Per key column k (1..indnkeyatts): `pg_get_indexdef(indexrelid, k, true)` gives the column name or expression text; `indoption` array element bit 0x1 = DESC, bit 0x2 = NULLS FIRST (default for DESC is NULLS FIRST, so `Nulls` is set only when it differs from the default: DESC with NULLS LAST, or ASC with NULLS FIRST); opclass is the `indclass` element joined to `pg_opclass` and recorded only when `opcdefault = false`. `reloptions` split into KV pairs (`m=16` etc.). Invalid indexes (`indisvalid = false`) are returned as names so drift reports them as Changed with Detail "invalid index (failed CONCURRENTLY build)".
 
 Steps:
@@ -1261,6 +1335,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/postgres/inspect_index_test.go`:
+
 ```go
 package postgres_test
 
@@ -1312,21 +1387,25 @@ func TestPostgresIndexInspection(t *testing.T) {
     }
 }
 ```
+
 Add `"github.com/azrtydxb/momo/schema"` to imports. Run: `MOMO_TEST_POSTGRES_URL=... go test ./migrate/postgres/ -run TestPostgresIndexInspection -count=1`. Expect FAIL with `undefined: ... inspectIndexes` or wrong values.
 
 - [ ] **Step 2: Implement** `inspectIndexes` and call it from Inspect for every table.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate/postgres): index inspection with expressions, predicates, methods and opclasses"`.
+
 ## Task 12: PostgreSQL inspection: views, functions, triggers, policies, RLS, partitions
 
 Covers: S-37 (views and materialized views), S-38 (policies, RLS flags), S-39 (functions, triggers, partitions). Acceptance: TestManagedFunctionsTriggersPartitions (inspection part), TestViewsAsModels (inspection part), TestRowLevelSecurity (inspection part).
 
 Files:
+
 - Create: `migrate/postgres/inspect_objects.go`, `migrate/postgres/inspect_objects_test.go`.
 
 Interfaces (exact): `func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.Schema, schemas []string) error` fills `Views`, `Functions`, `Triggers`, `Policies` and sets `RLS` and `Partition`/`PartitionOf` on tables.
 
 Queries (exact):
+
 - Views and materialized views: `SELECT n.nspname, c.relname, c.relkind, pg_get_viewdef(c.oid, true) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('v','m') AND n.nspname = ANY($1)`; deps with `SELECT DISTINCT CASE WHEN rn.nspname = current_schema() THEN rc.relname ELSE rn.nspname || '.' || rc.relname END FROM pg_depend d JOIN pg_rewrite r ON r.oid = d.objid JOIN pg_class v ON v.oid = r.ev_class JOIN pg_class rc ON rc.oid = d.refobjid JOIN pg_namespace rn ON rn.oid = rc.relnamespace WHERE v.oid = $1 AND rc.oid <> v.oid AND d.refclassid = 'pg_class'::regclass`. Materialized view indexes come from inspectIndexes on the matview's OID.
 - Functions: `SELECT n.nspname, p.proname, pg_get_function_arguments(p.oid), pg_get_function_result(p.oid), l.lanname, p.provolatile, p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace JOIN pg_language l ON l.oid = p.prolang WHERE p.prokind = 'f' AND n.nspname = ANY($1)`. Volatility map: `i` IMMUTABLE, `s` STABLE, `v` VOLATILE.
 - Triggers: the function is read as `p.oid::regprocedure::text`, which yields `name(argtypes)` and prefixes the schema only when the function is not visible on the search_path (so `touch()` for a function in the current schema, `other.touch()` otherwise); `Trigger.Function` stores exactly that text and the renderer emits `EXECUTE FUNCTION <Function>` followed by the argument list only for non-empty `Trigger.Args` (an empty argument list is already the `()` in the stored text). `SELECT n.nspname, c.relname, t.tgname, t.tgtype, pg_get_expr(t.tgqual, t.tgrelid), p.oid::regprocedure::text FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace JOIN pg_proc p ON p.oid = t.tgfoid WHERE NOT t.tgisinternal AND n.nspname = ANY($1)`. Bits: ROW 1, BEFORE 2, INSERT 4, DELETE 8, UPDATE 16, TRUNCATE 32, INSTEAD 64. A trigger with an UPDATE OF column list returns ErrUnsupported naming the trigger.
@@ -1339,6 +1418,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/postgres/inspect_objects_test.go`:
+
 ```go
 package postgres_test
 
@@ -1393,19 +1473,23 @@ func TestPostgresObjectInspection(t *testing.T) {
     }
 }
 ```
+
 Run with the integration URL. Expect FAIL before implementation with `undefined` or assertion failures.
 
 - [ ] **Step 2: Implement** `inspectObjects` and wire it into Inspect after tables and indexes exist.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate/postgres): inspect views, functions, triggers, policies, RLS and partitions"`.
+
 ## Task 13: PostgreSQL render for all change kinds
 
 Covers: S-12 (extensions, enums, constraints, expression and partial indexes, methods and opclasses, CONCURRENTLY outside transactions), S-37, S-38, S-39 (CREATE OR REPLACE FUNCTION, CREATE TRIGGER, partitions). Acceptance: TestPostgresObjects (full round trip with no diff), TestManagedFunctionsTriggersPartitions (CREATE OR REPLACE on body change), TestViewsAsModels (create, replace via drop and recreate in order), TestPostgresConcurrentIndexNoTx.
 
 Files:
+
 - Create: `migrate/postgres/render.go`, `migrate/postgres/render_test.go`, `migrate/postgres/roundtrip_test.go`, `migrate/postgres/managed_objects_test.go`.
 
 Interfaces (exact):
+
 ```go
 func (Dialect) Render(plan []migrate.Change) ([]migrate.Statement, error)
 // Every identifier via dialect.For(dialect.Postgres).QuoteIdent; every table reference is "schema"."table" when Table.Schema is set and just "table" when it is empty (resolved by the connection's search_path, whose first entry is the current schema).
@@ -1427,6 +1511,7 @@ Steps:
 - [ ] **Step 1: Failing round-trip test**
 
 `migrate/postgres/roundtrip_test.go`:
+
 ```go
 package postgres_test
 
@@ -1494,11 +1579,13 @@ func TestPostgresConcurrentIndexNoTx(t *testing.T) {
     }
 }
 ```
+
 Add `"strings"` and schema imports to the render test. `migratetest.Diff(a, b) string` prints the JSON difference. Run: `MOMO_TEST_POSTGRES_URL=... go test ./migrate/postgres/ -run 'TestPostgresObjects|TestPostgresConcurrentIndexNoTx' -count=1`. Expect FAIL with `undefined: mpg.Dialect` or `Render` returning nothing.
 
 - [ ] **Step 1b: Failing S-39 test (functions, triggers, partitions)**
 
 `migrate/postgres/managed_objects_test.go` (`//go:build integration`, package `postgres_test`). It covers the acceptance for S-39: the three object kinds are created by a migration, round-trip with no diff, are not reported as unmanaged, and a changed function body renders `CREATE OR REPLACE FUNCTION`:
+
 ```go
 //go:build integration
 
@@ -1608,6 +1695,7 @@ func TestManagedFunctionsTriggersPartitions(t *testing.T) {
     }
 }
 ```
+
 Run: `MOMO_REQUIRE_INTEGRATION=1 MOMO_TEST_POSTGRES_URL=$URL go test -tags integration ./migrate/postgres/ -run TestManagedFunctionsTriggersPartitions -count=1`. Expect FAIL at the first assertion the not-yet-written render, inspection or diff code does not satisfy (`diff: ...`, `round trip has a diff: ...`, or `body change must render CREATE OR REPLACE FUNCTION`).
 
 - [ ] **Step 2: Implement `Render`** with one renderer function per change kind, each returning exactly one Statement except `create_view` with dependents, which renders in the order given by Order. Use `strings.Builder` and `dialect.AppendIdent` only (no `fmt.Sprintf` of identifiers).
@@ -1617,6 +1705,7 @@ Run: `MOMO_REQUIRE_INTEGRATION=1 MOMO_TEST_POSTGRES_URL=$URL go test -tags integ
 - [ ] **Step 3b: Run the S-39 test, expect PASS.** `MOMO_REQUIRE_INTEGRATION=1 MOMO_TEST_POSTGRES_URL=$URL go test -tags integration ./migrate/postgres/ -run TestManagedFunctionsTriggersPartitions -count=1` → `ok`.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate/postgres): render all managed object kinds with CONCURRENTLY marked no-transaction"`.
+
 ## Task 14: PostgreSQL migration lock and session timeouts
 
 Covers: S-11 (concurrency lock, session-scoped), S-28 (lock_timeout and statement_timeout applied during apply). Acceptance: TestConcurrentApply (PostgreSQL), TestLockTimeoutApplied, TestLockHolderNamed, TestLockKeyPerSchema. Tests that assert lock contention use two connections or engines on the SAME schema (one `testopen.Postgres(t)` handle).
@@ -1624,9 +1713,11 @@ Covers: S-11 (concurrency lock, session-scoped), S-28 (lock_timeout and statemen
 Also implements `HistoryDDL() []string` (the `momo_migrations` DDL, including `apply_id` and `kind`), which the engine core in Task 15 needs.
 
 Files:
+
 - Create: `migrate/postgres/lock.go`, `migrate/postgres/session.go`, `migrate/postgres/lock_test.go`.
 
 Interfaces (exact):
+
 ```go
 // Lock takes a session-level advisory lock on the pinned connection:
 //   SELECT pg_try_advisory_lock($1)  -- $1 = int64 from fnv64a(key)
@@ -1640,6 +1731,7 @@ Interfaces (exact):
 // unlock: SELECT pg_advisory_unlock($1).
 // Setup: SET lock_timeout = <ms>; SET statement_timeout = <ms> (session scope on the pinned connection); reset runs RESET lock_timeout; RESET statement_timeout.
 ```
+
 Note: `SET` (not `SET LOCAL`) is used because the pinned connection stays session-scoped for the whole apply; reset restores the pool connection before release.
 
 Steps:
@@ -1647,6 +1739,7 @@ Steps:
 - [ ] **Step 1: Failing tests**
 
 `migrate/postgres/lock_test.go`:
+
 ```go
 package postgres_test
 
@@ -1712,11 +1805,13 @@ func TestLockTimeoutApplied(t *testing.T) {
     }
 }
 ```
+
 Run: `MOMO_TEST_POSTGRES_URL=... go test ./migrate/postgres/ -run 'TestLockHolderNamed|TestLockTimeoutApplied' -count=1`. Expect FAIL with `undefined` symbols.
 
 - [ ] **Step 2: Implement** per Interfaces. The key hash: `h := fnv.New64a(); h.Write([]byte(key)); k := int64(h.Sum64())`. The Lock function is non-blocking (`pg_try_advisory_lock`); the engine handles the wait loop.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate/postgres): advisory migration lock with named holder and session timeouts"`.
+
 ## Task 15: Runner, history table, failure recovery, resolve
 
 Covers: S-11 (transactional and non-transactional execution, partial-failure recovery, resolve, history with checksums and status), S-8 (ErrDirty), S-22 (history metadata row format_version, apply_id, kind). Acceptance: TestNonTransactionalFailureRecovery, TestTransactionalFailureRolledBack, TestHistoryFormatVersion.
@@ -1724,15 +1819,18 @@ Covers: S-11 (transactional and non-transactional execution, partial-failure rec
 Dialect selection: no global registry. `migrate.NewEngine` requires the explicit option `migrate.WithDialect(d migrate.Dialect)`; without it, NewEngine returns an error whose text names `migrate.WithDialect`. The CLI selects the dialect with a static switch (Task 29).
 
 History semantics (normative):
+
 - Transactional migration (default). One transaction contains: delete any `rolled_back` row for the version; insert a `running` row; run the statements (hints `fk-check` and `dependent:` handled as in Task 35); update the row to `applied` with statements_applied and execution_ms; commit. On any error the whole transaction is rolled back, so no `running` row survives. Then, in autocommit, insert a `rolled_back` row carrying the error text. A `rolled_back` row is NOT dirty.
 - Non-transactional migration (NoTx, or any statement with NoTx). Autocommit: delete any `rolled_back` row; insert `running`; execute each statement autocommitted and update statements_applied after each success; on error update the row to `failed` with the error text and the count so far.
 - Dirty means status `running` or `failed`. Apply refuses with ErrDirty while any dirty row exists.
 
 Files:
+
 - Create: `migrate/history.go`, `migrate/runner.go`, `migrate/engine.go` (Engine type, NewEngine with WithDialect, Resolve), `migrate/runner_test.go`, `migrate/history_test.go`, `migrate/helpers_test.go` (shared helpers, see Task 3).
 - Modify: `migrate/options.go` (add `WithDialect`).
 
 Interfaces (exact):
+
 ```go
 // history.go
 const (
@@ -1776,6 +1874,7 @@ Steps:
 - [ ] **Step 1: Failing non-transactional recovery test**
 
 `migrate/runner_test.go` (package `migrate_test`):
+
 ```go
 package migrate_test
 
@@ -1820,6 +1919,7 @@ func TestNonTransactionalFailureRecovery(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestNonTransactionalFailureRecovery -count=1`. Expect FAIL with `migrate: NewEngine requires migrate.WithDialect` (or `undefined` symbols) before Step 2.
 
 - [ ] **Step 2: Implement history, runner (non-transactional path), engine and WithDialect**
@@ -1829,6 +1929,7 @@ Implement `EnsureHistory` (DDL from `d.HistoryDDL()`: table `momo_migrations` wi
 - [ ] **Step 3: Failing transactional test**
 
 Append to `migrate/runner_test.go`:
+
 ```go
 func TestTransactionalFailureRolledBack(t *testing.T) {
     db := testopen.Postgres(t)
@@ -1859,6 +1960,7 @@ func TestTransactionalFailureRolledBack(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestTransactionalFailureRolledBack -count=1`. Expect FAIL with the old dirty behaviour (apply refuses with ErrDirty) until Step 4.
 
 - [ ] **Step 4: Implement the transactional path**
@@ -1868,6 +1970,7 @@ In `RunMigration`, for a transactional migration: begin the transaction on `env.
 - [ ] **Step 5: History format test**
 
 `migrate/history_test.go`:
+
 ```go
 package migrate_test
 
@@ -1895,25 +1998,30 @@ func TestHistoryFormatVersion(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestHistoryFormatVersion -count=1`. Expect PASS.
 
 - [ ] **Step 6: Commit**
 
 `git commit -m "feat(migrate): history inside the migration transaction, rolled_back is not dirty, explicit dialect option"`
+
 ## Task 16: Engine Apply, Plan, Status with lock, checksum and dirty gating
 
 Covers: S-11 (concurrency lock, checksum refusal, apply to version), S-10 (`plan`, `apply [--to N]`, `status` contracts). Acceptance: TestConcurrentApply (SQLite, goroutines), TestChecksumMismatch (apply refuses), TestApplyTo, TestStatusStates.
 
 Files:
+
 - Modify: `migrate/engine.go`.
 - Create: `migrate/engine_apply_test.go`.
 
 Interfaces (exact):
+
 ```go
 func (e *Engine) Plan(ctx context.Context) ([]Pending, error)
 func (e *Engine) Apply(ctx context.Context, opts ApplyOptions) (*Report, error)
 func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error)
 ```
+
 Apply algorithm (normative): (1) open a pinned connection and resolve the managed schemas with `resolveSchemas` (default `[current_schema()]`; `Schemas[0]` must equal `current_schema()` because the history table is referenced unqualified and so lives there); (2) `EnsureHistory`; (3) acquire the lock via `Dialect.Lock` with key `"momo:" + historySchema + "." + historyTable` (`historySchema` = resolved `Schemas[0]`, `historyTable` = `momo_migrations`; the key is hashed with fnv64a in Task 14, and SQLite ignores it) and `ApplyOptions.LockWait` (default 30s, polling every 200ms; on timeout return ErrLocked with the holder text); (4) `Dialect.Setup` with lock timeouts; (5) read history; if any row is `running` or `failed`, return ErrDirty naming the version; (6) verify `momo.sum` with VerifySum and every applied row's checksum against the file (ErrChecksumMismatch naming the file); (7) for each pending migration up to `opts.To` in version order, call RunMigration with a shared ApplyID (`time.Now().UTC().Format(time.RFC3339Nano)` from the clock); (8) unlock and reset in defer, joining errors.
 
 Status states: `applied` (history applied, checksum matches), `pending`, `dirty` (failed or running), `mismatch` (history checksum differs from file), `missing` (history row without a file).
@@ -1923,6 +2031,7 @@ Steps:
 - [ ] **Step 1: Failing tests**
 
 `migrate/engine_apply_test.go`:
+
 ```go
 package migrate_test
 
@@ -2006,6 +2115,7 @@ func TestApplyTo(t *testing.T) {
     }
 }
 ```
+
 `migrate.WithLockWait(d time.Duration) Option` is added in Task 16 to `options.go`. TestConcurrentApply must run and must not be skipped; both goroutines contend for the same SQLite file, so one of them is refused with ErrLocked and the other applies both versions. Run: `go test ./migrate/ -run 'TestConcurrentApply|TestApplyTo' -race -count=1`. Expect FAIL with `undefined: migrate.WithLockWait`.
 
 - [ ] **Step 2: Implement** per the Apply algorithm. The lock key for SQLite is ignored (single table), for PostgreSQL it is derived from the history table name and hashed (Task 14). `Status` builds the list from Discover, history and VerifySum.
@@ -2013,6 +2123,7 @@ func TestApplyTo(t *testing.T) {
 - [ ] **Step 3: Failing checksum test, then implement**
 
 Add to `migrate/engine_apply_test.go`:
+
 ```go
 func TestChecksumMismatchRefusesApply(t *testing.T) {
     db := testopen.Postgres(t)
@@ -2030,18 +2141,22 @@ func TestChecksumMismatchRefusesApply(t *testing.T) {
     }
 }
 ```
+
 Add `"strings"` import. Run: `go test ./migrate/ -run TestChecksumMismatchRefusesApply -count=1`. Expect PASS after implementation (note: `momo.sum` must exist for the orig fixture; `NewEngine` does not write it; the test must call `migrate.WriteSumForTest(t, orig)`—a helper in `migratetest` that writes momo.sum into the fixture map). Use `migratetest.WithSum(t, orig)` which returns the map plus `momo.sum` entry; apply `orig = migratetest.WithSum(t, orig)` before both engines so that the edited map keeps the old momo.sum (edited map is built from the original sum with the edited body substituted).
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate): apply and plan under lock with checksum and dirty gating"`
+
 ## Task 17: Diff writes files; no-change round trip (PostgreSQL)
 
 Covers: S-10 (`migrate diff` contract), S-11 (no-change round trip), S-27 (snapshot parent). Acceptance: TestMigrationRoundTrip (SQLite), TestNoChangeWritesNothing.
 
 Files:
+
 - Modify: `migrate/engine.go` (Engine.Diff), `migrate/diff.go` (file rendering helpers).
 - Create: `migrate/diff_engine_test.go`.
 
 Interfaces (exact):
+
 ```go
 func (e *Engine) Diff(ctx context.Context, desired *schema.Schema, name string, opts DiffOptions) (*Migration, error)
 // Returns nil, nil when there are no changes (nothing to write).
@@ -2052,6 +2167,7 @@ func (e *Engine) Diff(ctx context.Context, desired *schema.Schema, name string, 
 // The version is the engine clock formatted as 20060102150405 in UTC.
 // name must match ^[a-z][a-z0-9_]*$ (else error).
 ```
+
 The Engine's `Diff` is also the only place that calls `migrate.Diff` for the engine: it loads the latest snapshot (`LatestSnapshot`) as `from` (empty schema for the first migration, Dialect set), and uses the dialect's `Render` for the statements. Rebuild markers are expanded by the sqlite dialect in `RunStatements`, so Diff stores them as `Statement{Hint:"rebuild"}`, and the up file for a rebuild writes a comment line `-- momo:rebuild table=<name>` followed by the statements the sqlite dialect generates with `Rebuild` at render time; because Rebuild needs a live connection, Diff for SQLite requires the Engine to have a connection (Diff is online for SQLite rebuilds, offline otherwise) and this is documented in the function comment.
 
 Steps:
@@ -2059,6 +2175,7 @@ Steps:
 - [ ] **Step 1: Failing round-trip test**
 
 `migrate/diff_engine_test.go`:
+
 ```go
 package migrate_test
 
@@ -2105,6 +2222,7 @@ func TestMigrationRoundTrip(t *testing.T) {
     }
 }
 ```
+
 Helpers `emptyFS(t)` (empty `fstest.MapFS`), `filesFS(map[string][]byte) fs.FS`, and `Engine.Inspect(ctx) (*schema.Schema, error)` (opens a pinned connection and calls the dialect's Inspect with the configured Schemas) are added in this task. Test name `TestNoChangeWritesNothing` is the second half of the same test (kept as a separate function that calls `Diff` twice). Run: `go test ./migrate/ -run TestMigrationRoundTrip -count=1`. Expect FAIL with `m.Diff undefined`.
 
 - [ ] **Step 2: Implement** `Engine.Diff`, `Engine.Inspect`, and the file-rendering helpers, following the Interfaces. Diff is pure with respect to the database except for the snapshot read: the up file is the rendering of the change list through the dialect's `Render`. PostgreSQL needs nothing more. SQLite table rebuilds (Task 35) are rendered by the pure `RebuildStatements`, which takes the old column list and the captured dependents; the SQLite Diff path is enabled in Task 35 and is not needed here.
@@ -2112,14 +2230,17 @@ Helpers `emptyFS(t)` (empty `fstest.MapFS`), `filesFS(map[string][]byte) fs.FS`,
 - [ ] **Step 3: Run, expect PASS** with `go test ./migrate/ -run 'TestMigrationRoundTrip|TestNoChangeWritesNothing' -count=1`.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate): diff writes versioned files with snapshot parent; sqlite round trip"`
+
 ## Task 18: Baseline and drift
 
 Covers: S-11 (baselining, drift detection, unmanaged-object ownership), S-10 (`baseline --version N`, `drift`). Acceptance: TestBaselineAndDrift.
 
 Files:
+
 - Create: `migrate/baseline.go`, `migrate/drift.go`, `migrate/baseline_test.go`.
 
 Interfaces (exact):
+
 ```go
 func (e *Engine) Baseline(ctx context.Context, version string, force bool) error
 // Verifies that Inspect(live) Equals the snapshot of version (ErrNoSnapshot if missing; mismatch error lists the differing object kinds unless force).
@@ -2130,6 +2251,7 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error)
 // Missing: in snapshot, not in live DB.
 // Unmanaged: in live DB, not in snapshot, not matching Config.Exclude globs. Never proposed for drop.
 ```
+
 Object identity for drift: `Kind` (table, column, index, fk, unique, check, view, function, trigger, policy, enum, extension, schema) plus qualified name `schema.table.name`.
 
 Steps:
@@ -2137,6 +2259,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/baseline_test.go`:
+
 ```go
 package migrate_test
 
@@ -2184,6 +2307,7 @@ func TestBaselineAndDrift(t *testing.T) {
     }
 }
 ```
+
 `migratetestFS(t, version)` and `countDDL(t, db)` (counts statements executed through the CountingDriver from migratetest) are helpers in migratetest / the test package. Run: `go test ./migrate/ -run TestBaselineAndDrift -count=1`. Expect FAIL with `e.Baseline undefined`.
 
 - [ ] **Step 2: Implement** Baseline and Drift per the Interfaces. Drift compares by building a map of object identity to normalized JSON for both sides.
@@ -2191,14 +2315,17 @@ func TestBaselineAndDrift(t *testing.T) {
 - [ ] **Step 3: Run, expect PASS** with the same command.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate): baseline without DDL and drift with unmanaged-object reporting"`
+
 ## Task 19: Optional authored down migrations and group rollback
 
 Covers: S-11 (optional authored down migrations), S-94 (group rollback of the last applied group, reverse order; this task OWNS group rollback by apply_id, plan momo-11 Task 13 only consumes it). Acceptance: TestRollbackGroup, TestRollbackNoDown. Go-function downs: for a history row of kind `go`, Rollback looks up the registered `GoMigration` by version in `e.goMigrations` (type and option defined in plan momo-11 Task 13) and calls its Down with the transaction, or with the pinned DB when NoTx.
 
 Files:
+
 - Create: `migrate/rollback.go`, `migrate/rollback_test.go`.
 
 Interfaces (exact):
+
 ```go
 type RollbackOptions struct{ Group bool } // default rolls back the last applied migration only
 func (e *Engine) Rollback(ctx context.Context, opts RollbackOptions) (*Report, error)
@@ -2212,6 +2339,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/rollback_test.go`:
+
 ```go
 package migrate_test
 
@@ -2264,19 +2392,23 @@ func TestRollbackNoDown(t *testing.T) {
     }
 }
 ```
+
 `tableExists` helper in test file. Run: `go test ./migrate/ -run 'TestRollback' -count=1`. Expect FAIL with `e.Rollback undefined`.
 
 - [ ] **Step 2: Implement** Rollback: validate all selected down files exist first; then run each down through RunMigration-like execution with kind "down" recorded in the status update (the row becomes rolled_back in the same transaction as the DDL). Reverse order means descending version.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate): authored down migrations and group rollback"`.
+
 ## Task 20: AutoMigrate additive
 
 Covers: S-14 (additive only, reports skipped changes), S-11 (no DROP or ALTER TYPE from AutoMigrate). Acceptance: TestAutoMigrateAdditive.
 
 Files:
+
 - Create: `migrate/automigrate.go`, `migrate/automigrate_test.go`.
 
 Interfaces (exact):
+
 ```go
 func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (*AutoReport, error)
 // Inspects live DB; Diff(live, desired, AllowDestructive=false, Stage=false) with a filter:
@@ -2290,6 +2422,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/automigrate_test.go`:
+
 ```go
 package migrate_test
 
@@ -2328,16 +2461,19 @@ func TestAutoMigrateAdditive(t *testing.T) {
     }
 }
 ```
+
 `columnExists` helper uses information_schema.columns. Run: `go test ./migrate/ -run TestAutoMigrateAdditive -count=1`. Expect FAIL with `e.AutoMigrate undefined`.
 
 - [ ] **Step 2: Implement** per Interfaces. Skipped entries: the type change on `things.kind` (alter_column) and the removed `old_col` (drop_column is not generated because AutoMigrate's diff is run with the removed column treated as `drop_column` and then filtered out) — the reason strings are `"type change requires a migration"` and `"column removed in models; AutoMigrate never drops"`.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate): additive AutoMigrate with skipped-change report"`.
+
 ## Task 21: Staged changes end to end (PostgreSQL)
 
 Covers: S-11 (staged changes on a populated DB: add nullable, backfill with a data migration, SET NOT NULL). Acceptance: TestStagedChange (full, populated database).
 
 Files:
+
 - Create: `migrate/staged_test.go`.
 - Modify: `migrate/diff.go` (SET NOT NULL emission after backfill).
 
@@ -2350,6 +2486,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/staged_test.go`:
+
 ```go
 package migrate_test
 
@@ -2405,6 +2542,7 @@ func TestStagedChange(t *testing.T) {
     }
 }
 ```
+
 `Engine.NewCustom(ctx, name) (*Migration, error)` and `merge(a, b map[string][]byte) map[string][]byte` are helpers introduced in this task (NewCustom writes a `.up.sql` with header `-- momo:custom` and a snapshot copied from the parent). Run: `go test ./migrate/ -run TestStagedChange -count=1`. Expect FAIL with `e1.NewCustom undefined` or `Diff` returning no error.
 
 - [ ] **Step 2: Implement** `NewCustom`, the `-- momo:guard` directive and runner check, and make Diff's staged logic emit `alter_column` NOT NULL when the snapshot shows a nullable column that the desired schema declares NOT NULL without default (no hint needed beyond the documented guard).
@@ -2414,6 +2552,7 @@ func TestStagedChange(t *testing.T) {
 Task 21 addition (custom SQL decision):
 
 Second test (custom SQL that changes a modeled table; decision: the snapshot written by `migrate diff` is authoritative, a custom migration copies the parent snapshot, and drift reports what the models do not describe). File: `migrate/custom_test.go` (package `migrate_test`):
+
 ```go
 package migrate_test
 
@@ -2486,12 +2625,15 @@ func TestCustomMigrationDriftMismatch(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestCustomMigrationDriftMismatch -count=1`. Expect FAIL with `undefined: migratetest.WithSum` until Task 3 and Task 5 exist, then PASS.
+
 ## Task 22: PostgreSQL schemas and drift across configured schemas
 
 Covers: S-36 (schema-qualified tables, creation of extra schemas, drift across configured schemas). Acceptance: TestPostgresSchemas.
 
 Files:
+
 - Create: `migrate/postgres/schemas_test.go`.
 - Modify: `migrate/postgres/render.go` (create_schema renders `CREATE SCHEMA IF NOT EXISTS "name"`).
 
@@ -2502,6 +2644,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/postgres/schemas_test.go`:
+
 ```go
 package postgres_test
 
@@ -2523,7 +2666,7 @@ func TestPostgresSchemas(t *testing.T) {
     cur := testdb.Schema(t)
     extra := cur + "_billing" // derived from the per-test schema; the harness drops only t_xxx
     t.Cleanup(func() {
-        if _, err := db.Driver().Exec(context.Background(), `DROP SCHEMA IF EXISTS "`+extra+`" CASCADE`); err != nil {
+        if _, err := db.Driver().Exec(context.Background(), `DROP SCHEMA IF EXISTS "`+extra+`" CASCADE`, nil); err != nil {
             t.Errorf("drop extra schema %s: %v", extra, err)
         }
     })
@@ -2558,25 +2701,30 @@ func TestPostgresSchemas(t *testing.T) {
     }
 }
 ```
+
 Run: `MOMO_TEST_POSTGRES_URL=... go test ./migrate/postgres/ -run TestPostgresSchemas -count=1`. Expect FAIL with `tableExistsIn undefined` or missing schema qualification.
 
 - [ ] **Step 2: Implement** the schema-qualified identifiers in render and the `create_schema` renderer; ensure `Drift` sets `ObjectRef.Schema`.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate/postgres): schema-qualified objects and drift across schemas"`.
+
 ## Task 23: Per-transaction row-level-security scope helper
 
 Covers: S-38 (per-transaction set_config helper on momo.Tx; the database-enforced boundary). Acceptance: TestRowLevelSecurity.
 
 Files:
+
 - Create: `tx_scope.go` (root package `momo`), `tx_scope_test.go` in package `momo_test` under `internal/rlstest`? Put the integration test in `migrate/postgres/rls_test.go`, which can import both momo and migrate.
 
 Interfaces (exact):
+
 ```go
 // tx_scope.go, package momo
-// SetLocalSetting sets a transaction-scoped session variable (set_config(name, value, true)).
+// SetLocal sets a transaction-scoped session variable (set_config(name, value, true)).
 // It must be called inside a transaction; outside one it returns ErrUnsupported with a message naming the requirement.
-func (tx *Tx) SetLocalSetting(ctx context.Context, name, value string) error
+func (tx *Tx) SetLocal(ctx context.Context, name, value string) error
 ```
+
 Implementation: `SELECT set_config($1, $2, true)` through the transaction's connection; the dialect check uses the Dialect capability (`Savepoints`-style capability flag is not needed; the method is PostgreSQL-only and returns ErrUnsupported on SQLite).
 
 Steps:
@@ -2584,6 +2732,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/postgres/rls_test.go`:
+
 ```go
 package postgres_test
 
@@ -2623,7 +2772,7 @@ func TestRowLevelSecurity(t *testing.T) {
     appDB := openAppRole(t, testdb.PostgresAppRoleURL(t)) // migratetest helper: a *momo.DB connected as the non-superuser app role from testdb.PostgresAppRole
     var n int
     err = appDB.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
-        if err := tx.SetLocalSetting(ctx, "app.tenant", "a"); err != nil {
+        if err := tx.SetLocal(ctx, "app.tenant", "a"); err != nil {
             return err
         }
         mustQueryRow(t, tx, `SELECT count(*) FROM rows`, &n)
@@ -2640,16 +2789,19 @@ func TestRowLevelSecurity(t *testing.T) {
     }
 }
 ```
-Run with integration URL: `MOMO_TEST_POSTGRES_URL=... go test ./migrate/postgres/ -run TestRowLevelSecurity -count=1`. Expect FAIL with `tx.SetLocalSetting undefined` before Step 2.
+
+Run with integration URL: `MOMO_TEST_POSTGRES_URL=... go test ./migrate/postgres/ -run TestRowLevelSecurity -count=1`. Expect FAIL with `tx.SetLocal undefined` before Step 2.
 
 - [ ] **Step 2: Implement** `tx_scope.go` per Interfaces. The file is added to the root package owned by plan momo-01 (report the addition to the lead).
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat: transaction-scoped set_config helper for row-level security"`.
+
 ## Task 24: Least-privilege roles: DDL refused for the application role
 
 Covers: S-47 (migration role versus application role, integration tests run as non-superuser). Acceptance: TestAppRoleCannotDDL.
 
 Files:
+
 - Create: `migrate/postgres/approle_test.go`.
 
 Interfaces: uses `testdb.PostgresAppRoleURL(t) (dsn string)` (plan momo-01 contract, see Contract changes item 8).
@@ -2659,6 +2811,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/postgres/approle_test.go`:
+
 ```go
 package postgres_test
 
@@ -2691,16 +2844,19 @@ func TestAppRoleCannotDDL(t *testing.T) {
     }
 }
 ```
+
 `openPG(t, dsn)` opens a `*momo.DB` through pgxdriver. Run with integration URL and `MOMO_TEST_APP_ROLE` ... (no extra env; the harness provisions the role). Expect FAIL with `testdb.PostgresAppRoleURL undefined` until plan momo-01 adds it.
 
 - [ ] **Step 2: Implement** only the test; the production behaviour is already the PostgreSQL permission model. Add a CI assertion note in the test file comment that CI must run integration tests with this role (the CI workflow itself belongs to plan momo-01).
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "test(migrate/postgres): application role cannot run DDL"`.
+
 ## Task 25: PostgreSQL end-to-end apply with the history contract
 
 Covers: S-11 (PostgreSQL transactional apply, failure rolled back, non-transactional CONCURRENTLY migration), S-12. Acceptance: TestPostgresApplyRecovery, TestCreateIndexConcurrentlyApply.
 
 Files:
+
 - Create: `migrate/postgres/apply_test.go`.
 
 Steps:
@@ -2708,6 +2864,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/postgres/apply_test.go`:
+
 ```go
 package postgres_test
 
@@ -2756,24 +2913,30 @@ func TestPostgresApplyRecovery(t *testing.T) {
     }
 }
 ```
+
 Run: `MOMO_TEST_POSTGRES_URL=... go test ./migrate/postgres/ -run 'TestCreateIndexConcurrentlyApply|TestPostgresApplyRecovery' -count=1`. Expect FAIL with `undefined: ... postgres dialect not registered` until the engine is constructed with `migrate.WithDialect`.
 
 - [ ] **Step 2: Implement** the TestMain registration and any missing wiring (the runner already runs `Setup` and `Lock` through the dialect). Verify that a CONCURRENTLY migration runs its statement outside a transaction (Statement.NoTx) and that the history row is written as applied.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "test(migrate/postgres): end-to-end apply, rollback and concurrent index"`.
+
 ## Task 26: Migration lint with severities and safer alternatives
 
 Covers: S-28 (lint rules, severity, alternative, exit 1 on errors). Acceptance: TestMigrateLint.
 
 Files:
+
 - Create: `migrate/lint.go`, `migrate/lint_test.go`.
 
 Interfaces (exact):
+
 ```go
 func (e *Engine) Lint(ctx context.Context) ([]Finding, error) // pending migrations only
 func LintSQL(version string, stmts []Statement, parentTables map[string]bool, dialectName string) []Finding
 ```
+
 Rules (SQL-text heuristics on whitespace-collapsed, lowercased statements; each rule documented with its limit):
+
 - R1 `not-null-without-default` (error) when `ALTER TABLE <t> ADD COLUMN <c> ... NOT NULL` without `DEFAULT`, or `ALTER TABLE <t> ALTER COLUMN <c> SET NOT NULL`, and `<t>` is in parentTables. Alternative: "add the column nullable, backfill in a separate migration, then SET NOT NULL with a -- momo:guard"
 - R2 `column-type-change` (error) for `ALTER COLUMN <c> TYPE`, on a table in parentTables. Alternative: "add a new column, dual-write, backfill, switch reads, drop the old column in a later migration"
 - R3 `blocking-index` (error) for `CREATE INDEX` without `CONCURRENTLY` on a table in parentTables (PostgreSQL only). Alternative: "CREATE INDEX CONCURRENTLY in a -- momo:no-transaction migration"
@@ -2787,6 +2950,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/lint_test.go`:
+
 ```go
 package migrate
 
@@ -2819,19 +2983,23 @@ func TestMigrateLint(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestMigrateLint -count=1`. Expect FAIL with `undefined: LintSQL`.
 
 - [ ] **Step 2: Implement** `LintSQL` with the regular expressions for each rule (compiled once as package variables; regexp.MustCompile on literal patterns is acceptable). Implement `Engine.Lint` by loading pending migrations, building parentTables from the parent snapshot's table names, and calling LintSQL. The CLI exit code logic is in Task 29.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate): lint rules for blocking, rewriting and destructive operations"`.
+
 ## Task 27: Rebase onto a target directory or version
 
 Covers: S-27 (`migrate rebase`, no-change round trip after rebase). Acceptance: TestMigrateRebase.
 
 Files:
+
 - Create: `migrate/rebase.go`, `migrate/rebase_test.go`.
 
 Interfaces (exact):
+
 ```go
 // Rebase regenerates this branch's migrations that are absent from the target on top of the target's latest snapshot.
 // target is a version string or a directory of the target branch's migrations (fs.FS).
@@ -2839,6 +3007,7 @@ Interfaces (exact):
 // Returns the removed file names and the new Migration (nil when nothing changes).
 func (e *Engine) Rebase(ctx context.Context, target fs.FS, desired *schema.Schema, name string) (removed []string, mig *Migration, err error)
 ```
+
 The CLI maps `--onto <dir>` to `os.DirFS(dir)` and `--onto <version>` to the snapshot of that version in the current directory (Task 29). There is no git dependency: the user runs git to produce the target directory.
 
 Steps:
@@ -2846,6 +3015,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/rebase_test.go`:
+
 ```go
 package migrate_test
 
@@ -2886,19 +3056,23 @@ func TestMigrateRebase(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestMigrateRebase -count=1`. Expect FAIL with `e.Rebase undefined`.
 
 - [ ] **Step 2: Implement** Rebase: compute the set of versions in the branch absent from target; for each, check the first lines for `-- momo:generated` (refuse otherwise); remove them from the in-memory file set; take the target's latest snapshot as `from`; call `Diff(from, desired)`; write the new Migration with a fresh version from the clock; `removed` lists the file names. The no-change round trip then holds because the regenerated migration's snapshot equals the desired schema.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate): rebase branch migrations onto the target snapshot"`.
+
 ## Task 28: CLI URL redaction and TLS warning
 
 Covers: S-46 (database URLs only from environment or config env indirection; redacted in all CLI output and errors; TLS-disabled warning for remote hosts). Acceptance: TestCLIRedactsURL, TestCLITLSWarning.
 
 Files:
+
 - Create: `cmd/momo/migrate_redact.go`, `cmd/momo/migrate_redact_test.go`.
 
 Interfaces (exact):
+
 ```go
 // RedactURL returns the URL with the password replaced by "xxxxx"; it never returns the input when parsing fails (it returns "<unparseable URL>").
 func RedactURL(raw string) string
@@ -2913,6 +3087,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `cmd/momo/migrate_redact_test.go`:
+
 ```go
 package main
 
@@ -2942,20 +3117,24 @@ func TestCLITLSWarning(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./cmd/momo/ -run 'TestCLIRedactsURL|TestCLITLSWarning' -count=1`. Expect FAIL with `undefined: RedactURL`.
 
 - [ ] **Step 2: Implement** with `net/url`. `RedactURL` uses `u.User = url.UserPassword(u.User.Username(), "xxxxx")` and `u.String()`. Every error path in the CLI (Task 29) passes through RedactURL before printing; the test in Task 29 checks this.
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(cli): redact database URLs and warn on disabled TLS for remote hosts"`.
+
 ## Task 29: CLI wiring for every migrate command and exit codes
 
 Covers: S-10 (every command in the Interfaces table with its contract), S-27 (`rebase --onto`), S-11 (`resolve`, `baseline`, `drift`, `rollback`, `new --custom`), S-28 (`lint`, lock_timeout flags), S-46, S-26 (generated imports and migration paths use forward slashes; plan 04 owns TestWindowsPaths for the CLI package that drives both gen and migrate). Acceptance: TestCLIContracts, TestOfflineCommandsNoDatabase, TestMigrateLint (exit code part), TestWindowsPaths.
 
 Files:
+
 - Create: `cmd/momo/migrate.go`, `cmd/momo/migrate_test.go`, `cmd/momo/paths_test.go`.
 - Modify: `cmd/momo/main.go` (plan momo-02 owns `cmd/momo/main.go` for `generate`; this task adds one `case "migrate":` dispatch line and reports the change to the lead).
 
 Interfaces (exact):
+
 ```go
 // Subcommands and flags (every command accepts --config <path>, default momo.yaml, and --dir <path> overriding the config directory):
 //   migrate diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage]   offline for pure diffs; SQLite rebuilds require --url
@@ -2981,6 +3160,7 @@ Steps:
 - [ ] **Step 1: Failing contract tests**
 
 `cmd/momo/migrate_test.go`:
+
 ```go
 package main
 
@@ -3030,6 +3210,7 @@ func TestCLIExitOneOnDrift(t *testing.T) {
     // Full body is given in Step 3; this test is added to the same file.
 }
 ```
+
 Run: `go test ./cmd/momo/ -run 'TestCLIContracts|TestOfflineCommandsNoDatabase' -count=1`. Expect FAIL with `undefined: runMigrate`.
 
 - [ ] **Step 2: Implement** `runMigrate(out, errOut io.Writer, args []string, env func(string) string) int` in `cmd/momo/migrate.go` with a `flag.FlagSet` per subcommand; the configuration comes from `config.Load(--config)` (plan momo-02) and `File.Migrate` maps to `migrate.Config` (empty `Schemas` stays empty so the engine resolves `current_schema()`); `DatabaseURL` only in commands marked "needs DB"; the dialect is chosen by a static switch on the configured dialect name (`postgres` gives `mpg.New()`, `sqlite` gives `mpg.New()`, anything else exits 2) and passed with `migrate.WithDialect`. The `--lock-wait` flag maps to `migrate.WithLockWait`. The engine's `Apply` maps `ErrLocked` to exit 3, `ErrDirty`/`ErrChecksumMismatch` to exit 3 with the file name, `ErrDestructive`/`ErrStagedRequired` on diff to exit 1.
@@ -3037,6 +3218,7 @@ Run: `go test ./cmd/momo/ -run 'TestCLIContracts|TestOfflineCommandsNoDatabase' 
 - [ ] **Step 3: Add the drift contract test (replaces the empty function from Step 1)**
 
 Replace the empty `TestCLIExitOneOnDrift` function from Step 1 with:
+
 ```go
 func TestCLIExitOneOnDrift(t *testing.T) {
     // testdb.PostgresURL(t) is memoized per t: the stray table and the CLI use the same per-test schema
@@ -3065,11 +3247,13 @@ func TestCLIExitOneOnDrift(t *testing.T) {
     }
 }
 ```
+
 Test helpers `writeFile` and `mkdirAll` live in `cmd/momo/testhelpers_test.go`. `migrate_test.go` gains these imports for the drift test: `context`, `database/sql`, `testdb "github.com/azrtydxb/momo/internal/testdb"` and the blank import `_ "github.com/jackc/pgx/v5/stdlib"` (the `pgx` database/sql driver). The drift test needs PostgreSQL and is not build-tagged: `testdb` skips it when `MOMO_TEST_POSTGRES_URL` is unset and fails it under `MOMO_REQUIRE_INTEGRATION=1`. Run: `MOMO_REQUIRE_INTEGRATION=1 MOMO_TEST_POSTGRES_URL=$URL go test ./cmd/momo/ -run 'TestCLI|TestOffline' -count=1`; expect PASS. The config keys (`migrate.dir.<dialect>`, `migrate.url_env.<dialect>`) are the `MigrateConfig` fields defined in the Task 3 contract block; the CLI loads the file through `config.Load(path)` from plan momo-02 (package `gen/config`, returning `*config.File`, with the settings under `File.Migrate`) and has no YAML parser of its own.
 
 - [ ] **Step 3b: Forward-slash path test (S-26, TestWindowsPaths)**
 
 `cmd/momo/paths_test.go` (no build tag: a unit test that runs on the windows-latest CI job). The first subtest calls the plan-02 function `gen.ImportPath(modulePath, moduleDir, pkgDir string) (string, error)` (it returns `modulePath + "/" + filepath.ToSlash(rel)` where `rel` comes from `filepath.Rel(moduleDir, pkgDir)`, and an error when `pkgDir` is outside `moduleDir`). The second calls the plan-04 `migrate.ComputeSum`, which records `momo.sum` entries, and `(*migrate.Sum).Write`. Paths are built with `filepath.Join`, so on Windows they contain `\`; the assertions check what the plan-02 `gen.ImportPath` returns and what the plan-04 code records and writes (a migration file in the nested directory `archive/2026` must be recorded with forward slashes).
+
 ```go
 package main
 
@@ -3128,9 +3312,11 @@ func TestWindowsPaths(t *testing.T) {
     })
 }
 ```
+
 Run on any host: `go test ./cmd/momo/ -run TestWindowsPaths -count=1 -v`; expect `ok` once plans 02 and 04 have landed (before then, `undefined: gen.ImportPath` or `undefined: migrate.ComputeSum`). Compile check for Windows from macOS or Linux: `GOOS=windows go vet ./cmd/momo/`; expect no output. The real check runs on the windows-latest job (`go test ./cmd/momo/ -run TestWindowsPaths -count=1`).
 
 - [ ] **Step 4: Commit** `git commit -m "feat(cli): migrate subcommands with documented exit codes"`.
+
 ## Task 30: Format-version tests across persisted artifacts
 
 Covers: S-22 (snapshot format_version, momo.sum header, history metadata row; a legacy format 0 is read; a newer format is refused with an actionable error). Acceptance: TestFormatVersions (format 0 read path and future-version refusal), TestHistoryFormat0Upgrade.
@@ -3138,18 +3324,34 @@ Covers: S-22 (snapshot format_version, momo.sum header, history metadata row; a 
 Format 0 is the pre-release layout: a snapshot with no `format_version` field, a `momo.sum` with no header line, and a history table with no metadata row. Format 0 is the only legacy format that exists, so it is committed as a hand-written fixture. Tasks 5 and 6 gain this requirement: `ParseSum` treats a missing header as format 0, and `ReadSnapshot` treats a missing `format_version` as format 0; both read it and both refuse any value above the current constant.
 
 Files:
+
 - Create: `migrate/testdata/format0/20260101000000_init.up.sql`, `migrate/testdata/format0/20260101000000_init.snapshot.json`, `migrate/testdata/format0/momo.sum`, `migrate/format_versions_test.go` (package `migrate`), `migrate/format_history_test.go` (package `migrate_test`).
 
 Fixture contents (hand-written, committed verbatim):
 
 `migrate/testdata/format0/20260101000000_init.up.sql`:
+
 ```sql
 CREATE TABLE t (id INTEGER PRIMARY KEY);
 ```
 
 `migrate/testdata/format0/20260101000000_init.snapshot.json`:
+
 ```json
-{"version":"20260101000000","parent":"","schema":{"dialect":"sqlite","tables":[{"name":"t","columns":[{"name":"id","type":"INTEGER"}],"primary_key":["id"]}]}}
+{
+  "version": "20260101000000",
+  "parent": "",
+  "schema": {
+    "dialect": "sqlite",
+    "tables": [
+      {
+        "name": "t",
+        "columns": [{ "name": "id", "type": "INTEGER" }],
+        "primary_key": ["id"]
+      }
+    ]
+  }
+}
 ```
 
 `migrate/testdata/format0/momo.sum`: the output of `ComputeSum` over the two files above, written once by a throwaway test that calls `ComputeSum(os.DirFS("testdata/format0"))` and `Write`s the result, then pasted verbatim with the header line removed. The committed file must satisfy `VerifySum`.
@@ -3157,6 +3359,7 @@ CREATE TABLE t (id INTEGER PRIMARY KEY);
 - [ ] **Step 1: Failing format test**
 
 `migrate/format_versions_test.go`:
+
 ```go
 package migrate
 
@@ -3205,6 +3408,7 @@ func TestFormatVersions(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestFormatVersions -count=1`. Expect FAIL with `format 0 momo.sum must be read` until Tasks 5 and 6 accept format 0.
 
 - [ ] **Step 2: Accept format 0 in ParseSum and ReadSnapshot**
@@ -3214,6 +3418,7 @@ Implement the format 0 branches described above, then run the test: expect PASS.
 - [ ] **Step 3: Failing history upgrade test**
 
 `migrate/format_history_test.go`:
+
 ```go
 package migrate_test
 
@@ -3254,16 +3459,19 @@ func TestHistoryFormat0Upgrade(t *testing.T) {
     }
 }
 ```
+
 Run: `MOMO_TEST_...` not needed; `go test ./migrate/ -run TestHistoryFormat0Upgrade -count=1`. Expect FAIL until `EnsureHistory` adds missing columns for format 0 (the `apply_id` and `kind` columns are added with `ALTER TABLE ... ADD COLUMN` defaults) and the metadata row. Implement and expect PASS.
 
 - [ ] **Step 4: Commit**
 
 `git commit -m "test(migrate): format 0 fixtures are read and newer formats are refused"`
+
 ## Task 31: Docs for migration safety and recovery
 
 Covers: S-21 (migration safety and recovery guide, indexed in docs/README.md). Acceptance: docs file exists and documents each failure mode from the spec.
 
 Files:
+
 - Create: `docs/migrations.md`.
 - Modify: `docs/README.md` (add one index line; the file is owned by plan momo-01 for the initial index, this task appends one line).
 
@@ -3276,11 +3484,13 @@ Run: `test -f docs/migrations.md && grep -q 'momo migrate resolve' docs/migratio
 - [ ] **Step 2: Write the guide** with sections: Files and formats (`momo.sum`, snapshots, history table, the format versions), Commands and exit codes (copy the Task 29 table), Transactional and non-transactional migrations, Recovering a dirty migration (`momo migrate status`, repair manually, `momo migrate resolve --version N --applied|--rolled-back`), Lock behavior (advisory lock on PostgreSQL, `momo_migration_lock` on SQLite, `--force-unlock` only after confirming no process holds it), Destructive changes and staged NOT NULL, Renames (explicit flags only), Baselining an existing database, Drift and unmanaged objects, Branch conflicts and rebase, Application roles (migration DDL role versus application DML role, S-47), SQLite table rebuilds, CONCURRENTLY indexes. Custom SQL migrations copy the parent snapshot: model-affecting custom SQL must be followed by `momo migrate diff`, and drift reports any object the snapshot does not describe. Views are compared by identity in drift; PostgreSQL rewrites view text. A changed view body made outside migrations is not detected as drift.
 
 - [ ] **Step 3: Run the check, expect PASS**, then commit `git commit -m "docs: migration safety and recovery guide"`.
+
 ## Task 32: Views and materialized views as read-only models
 
 Covers: S-37 (views and materialized views created, replaced and dropped in dependency order by migrations; queried as read-only models; REFRESH helper; mutation builders on them do not compile). Acceptance: TestViewsAsModels, TestViewInsertDoesNotCompile.
 
 Contract (plan momo-02 generates the models; this task consumes them):
+
 - Model marker `momo.View` with tag `momo:"view:<name>[,materialized]"`. The generator emits no `MomoWritable()` method for a view, so the view type does not satisfy `WritableModeler`.
 - `type WritableModeler[T any] interface { Modeler[T]; MomoWritable() }`, generated only for `momo.Model` tables.
 - `func Insert[T any, PT WritableModeler[T]](q Querier) InsertQuery[T]`; `Update` and `Delete` take the same constraint. `Select` keeps `PT Modeler[T]`.
@@ -3289,10 +3499,12 @@ Contract (plan momo-02 generates the models; this task consumes them):
 - Drift rule for views (decision, documented in docs/migrations.md): drift compares views by identity, materialized flag and dependencies. PostgreSQL rewrites view text, so body changes made outside migrations are not detected by drift; migration diffs compare the source text.
 
 Files:
+
 - Create: `internal/compat/viewmodels/viewmodels.go` (models plus the generated `momo_gen.go`), `migrate/postgres/views_test.go`, `testdata/compilefail/view_insert/main.go`, `views_compile_test.go` (root package, package `momo_test`).
 - Create: `views.go` (root package; plan momo-01 owns the root file list, report the addition to the lead).
 
 Interfaces (exact):
+
 ```go
 // views.go, package momo
 func RefreshMaterializedView(ctx context.Context, q Querier, name string, concurrently bool) error
@@ -3303,6 +3515,7 @@ Steps:
 - [ ] **Step 1: The view models and the compile-fail fixture**
 
 `internal/compat/viewmodels/viewmodels.go`:
+
 ```go
 package viewmodels
 
@@ -3330,9 +3543,11 @@ func (*OrderTotal) MomoConfig(c *momo.Config) {
     c.MaterializedView("order_totals", "SELECT status, sum(total) AS total FROM orders GROUP BY status")
 }
 ```
+
 Run `momo generate ./internal/compat/viewmodels` and commit the generated `momo_gen.go`; the generated code must contain `MomoMeta()` for both types and no `MomoWritable()`.
 
 `testdata/compilefail/view_insert/main.go`:
+
 ```go
 //go:build compilefail
 
@@ -3352,6 +3567,7 @@ func main() {
 - [ ] **Step 2: Failing compile-fail test**
 
 `views_compile_test.go`:
+
 ```go
 package momo_test
 
@@ -3373,6 +3589,7 @@ func TestViewInsertDoesNotCompile(t *testing.T) {
     }
 }
 ```
+
 Run: `go test . -run TestViewInsertDoesNotCompile -count=1`. Expect FAIL with `insert on a view model must not compile` before `Insert` has the `WritableModeler` constraint.
 
 - [ ] **Step 3: Implement the constraint and RefreshMaterializedView**
@@ -3382,6 +3599,7 @@ Change `Insert`, `Update` and `Delete` to take `PT WritableModeler[T]`; generate
 - [ ] **Step 4: Failing end-to-end test**
 
 `migrate/postgres/views_test.go`:
+
 ```go
 package postgres_test
 
@@ -3504,6 +3722,7 @@ func TestViewsAsModels(t *testing.T) {
     }
 }
 ```
+
 Helpers `mustExec` and `mustQueryRow` and `pinned` are in `migrate/postgres/helpers_test.go` (Task 3). Run: `MOMO_TEST_POSTGRES_URL=... go test ./migrate/postgres/ -run TestViewsAsModels -count=1`. Expect FAIL with `undefined: migratetest.MergeMaps` or `momo.RefreshMaterializedView` until Step 3 and the earlier tasks are in place.
 
 - [ ] **Step 5: Implement the remaining pieces and run**
@@ -3513,14 +3732,17 @@ Run `MOMO_TEST_POSTGRES_URL=... go test ./migrate/postgres/ -run TestViewsAsMode
 - [ ] **Step 6: Commit**
 
 `git commit -m "feat: read-only view models, writable constraint for mutations, RefreshMaterializedView"`
+
 ## Task 33: SQLite inspection
 
 Covers: S-13 (inspection feeding drift and round-trip), S-39 (triggers on SQLite). Acceptance: TestSQLiteInspectRoundTrip.
 
 Files:
+
 - Create: `migrate/sqlite/inspect.go`, `migrate/sqlite/inspect_test.go`, `migrate/sqlite/dialect.go`.
 
 Interfaces (exact):
+
 ```go
 package sqlite
 type Dialect struct{}
@@ -3529,6 +3751,7 @@ func (Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.Insp
 ```
 
 Catalog queries (exact SQL):
+
 - Tables: `SELECT name, sql FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> 'momo_migrations' AND name <> 'momo_migration_lock' ORDER BY name`. `WITHOUT ROWID` detected by `sql LIKE '%WITHOUT ROWID%'` after the closing parenthesis.
 - Columns: `PRAGMA table_xinfo(?)` (cid, name, type, notnull, dflt_value, pk, hidden). `hidden` 2 or 3 means generated; the generated expression is parsed from the `sql` text between `GENERATED ALWAYS AS (` and the matching `)`. Identity: an `INTEGER` column that is the sole primary key of a rowid table is reported as `Identity: "by_default"`.
 - Enum-constrained TEXT columns: parse `CHECK ("col" IN ('a','b'))` from the table `sql`, set `Column.Enum` to a synthetic name `<table>_<column>` and fill `schema.Enums` with it.
@@ -3545,6 +3768,7 @@ Steps:
 - [ ] **Step 1: Failing round-trip test**
 
 `migrate/sqlite/inspect_test.go`:
+
 ```go
 package sqlite_test
 
@@ -3596,21 +3820,25 @@ func TestSQLiteInspectRoundTrip(t *testing.T) {
     }
 }
 ```
-`pinned(t, db)` is a helper in the test that calls `db.Pin(ctx)` (momo-01 Pinner) and registers Close on cleanup. Run: `go test ./migrate/sqlite/ -run TestSQLiteInspectRoundTrip -count=1`. Expect FAIL with `undefined: msqlite.New`.
+
+`pinned(t, db)` is a helper in the test that calls `db.Driver().(momo.Pinner).Pin(ctx)` (momo-03 Task 2 Pinner) and registers Release on cleanup. Run: `go test ./migrate/sqlite/ -run TestSQLiteInspectRoundTrip -count=1`. Expect FAIL with `undefined: msqlite.New`.
 
 - [ ] **Step 2: Implement** the queries above in `inspect.go`, the `Dialect` value in `dialect.go` (method set: Inspect, Render, HistoryDDL, Setup, Lock; Render and Lock are implemented in Tasks 34 and 36, returning `migrate.ErrUnsupported` stubs until then so the package compiles).
 
 - [ ] **Step 3: Run, expect PASS** with the same command.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate/sqlite): inspection of tables, indexes, FKs, checks and objects"`
+
 ## Task 34: SQLite rendering: native ALTER versus rebuild decision
 
 Covers: S-13 (version-aware ALTER TABLE, rebuild when required). Acceptance: TestSQLiteAlterDecision.
 
 Files:
+
 - Create: `migrate/sqlite/render.go`, `migrate/sqlite/render_test.go`.
 
 Interfaces (exact):
+
 ```go
 func (Dialect) Render(plan []migrate.Change) ([]migrate.Statement, error)
 // Native (no rebuild): rename_table, rename_column, create_index, drop_index, create_trigger, drop_trigger, create_view, drop_view,
@@ -3625,6 +3853,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/sqlite/render_test.go`:
+
 ```go
 package sqlite
 
@@ -3669,6 +3898,7 @@ func TestSQLiteUnsupportedKindsError(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/sqlite/ -run 'TestSQLiteAlterDecision|TestSQLiteUnsupported' -count=1`. Expect FAIL with `Dialect{}.Render undefined` or its stub returning no statements.
 
 - [ ] **Step 2: Implement** `Render`. For a native change, emit exactly one `Statement{SQL: ...}` where SQL uses quoted identifiers via `dialect.For(dialect.SQLite).QuoteIdent`. For rebuild-class changes, emit one `Statement{Hint: "rebuild", SQL: ""}` marker per table so the runner (Task 35) executes the rebuild procedure for that table with the full desired table definition from `Change.After`. Group multiple rebuild changes on the same table into one marker. Drop-column native eligibility is decided with the full set of changes for the table, so `Render` takes the whole plan.
@@ -3676,6 +3906,7 @@ Run: `go test ./migrate/sqlite/ -run 'TestSQLiteAlterDecision|TestSQLiteUnsuppor
 - [ ] **Step 3: Run, expect PASS** with `go test ./migrate/sqlite/ -run 'TestSQLiteAlterDecision|TestSQLiteUnsupported' -count=1`.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate/sqlite): render native ALTER where allowed, mark rebuilds"`
+
 ## Task 35: SQLite 12-step rebuild
 
 Covers: S-13 (12-step rebuild preserving indexes, constraints, triggers, views and data; foreign-key enforcement kept; foreign_key_check). Acceptance: TestSQLiteRebuild, TestSQLiteRebuildFKStillEnforced, TestSQLiteRebuildOrphanRollsBack, TestSQLiteRebuildBlocked.
@@ -3683,9 +3914,11 @@ Covers: S-13 (12-step rebuild preserving indexes, constraints, triggers, views a
 Basis (verified 2026-11-04 against https://www.sqlite.org/lang_altertable.html): DROP TABLE does not drop views, so a view that names the table must be dropped before the DROP or the recreate fails with "view already exists"; triggers on the table are removed by DROP TABLE; since SQLite 3.26, ALTER TABLE RENAME rewrites references in triggers and views and fails when one of them names a missing table, so every view and every trigger that mentions the table must be dropped first and recreated afterwards. Triggers on other tables whose body names the table are included.
 
 Files:
+
 - Create: `migrate/sqlite/rebuild.go`, `migrate/sqlite/rebuild_test.go`, `migrate/sqlite/helpers_test.go`.
 
 Interfaces (exact):
+
 ```go
 type Dependent struct{ Type, Name, Table, SQL string } // Type "view" or "trigger"; Table is the trigger's table (tbl_name)
 // Capture reads, in rowid order, every view and every trigger whose SQL mentions table (case-insensitive whole-word match),
@@ -3697,11 +3930,14 @@ func Rebuild(ctx context.Context, c momo.PinnedConn, table string, desired schem
 // RebuildStatements is pure (no I/O).
 func RebuildStatements(table string, oldColumns []string, desired schema.Table, desiredIndexes []schema.Index, deps []Dependent) []migrate.Statement
 ```
+
 Statement hints consumed by the runner (plan momo-04 Task 15):
+
 - `Hint: "fk-check"` on `PRAGMA foreign_key_check`: the runner executes it inside the transaction and fails when it returns any row; the error names the first violation and the transaction is rolled back.
 - `Hint: "dependent:<type>:<name>"` on each recreated view or trigger: a failure wraps `ErrRebuildBlocked` and names the object.
 
 Statement order (normative):
+
 1. For each dependent in reverse capture order: `DROP VIEW IF EXISTS "<name>"` or `DROP TRIGGER IF EXISTS "<name>"`.
 2. `CREATE TABLE "new_<table>" (...)` from the desired table, rendered by the Task 34 column and constraint renderer.
 3. `INSERT INTO "new_<table>" (<common>) SELECT <common> FROM "<table>"`, where common is the desired columns that exist in oldColumns, in desired order.
@@ -3716,6 +3952,7 @@ Steps:
 - [ ] **Step 1: Write the shared helpers and the failing rebuild test**
 
 `migrate/sqlite/helpers_test.go`:
+
 ```go
 package sqlite_test
 
@@ -3728,30 +3965,34 @@ import (
 )
 
 type execer interface {
-    Exec(ctx context.Context, sql string, args ...any) (int64, error)
+    Exec(ctx context.Context, sql string, args []any) (int64, error)
 }
 
 func mustExec(t *testing.T, x execer, sql string) {
     t.Helper()
-    if _, err := x.Exec(context.Background(), sql); err != nil {
+    if _, err := x.Exec(context.Background(), sql, nil); err != nil {
         t.Fatalf("exec %q: %v", sql, err)
     }
 }
 
 func pinned(t *testing.T, db *momo.DB) momo.PinnedConn {
     t.Helper()
-    c, err := db.Pin(context.Background())
+    pn, ok := db.Driver().(momo.Pinner)
+    if !ok {
+        t.Fatal("driver does not implement momo.Pinner")
+    }
+    c, err := pn.Pin(context.Background())
     if err != nil {
         t.Fatal(err)
     }
-    t.Cleanup(func() { _ = c.Close() }) // Cleanup has no error channel; Close failures do not affect the assertions
+    t.Cleanup(func() { _ = c.Release() }) // Cleanup has no error channel; Release failures do not affect the assertions
     return c
 }
 
 // scanOne runs a query on c, requires one row and scans it into dest.
 func scanOne(t *testing.T, c momo.PinnedConn, sql string, dest ...any) {
     t.Helper()
-    rows, err := c.Query(context.Background(), sql)
+    rows, err := c.Query(context.Background(), sql, nil)
     if err != nil {
         t.Fatalf("query %q: %v", sql, err)
     }
@@ -3786,9 +4027,11 @@ func newRebuildFixture(t *testing.T) momo.PinnedConn {
     return c
 }
 ```
+
 Remove the `testdb` import if `newRebuildFixture` is moved; the helper file keeps it because the fixture opens the database.
 
 `migrate/sqlite/rebuild_test.go` (first test; the other three follow in Step 3):
+
 ```go
 package sqlite_test
 
@@ -3842,6 +4085,7 @@ func TestSQLiteRebuild(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/sqlite/ -run TestSQLiteRebuild$ -count=1`. Expect FAIL with `undefined: msqlite.Rebuild`.
 
 - [ ] **Step 2: Implement Capture, Rebuild and RebuildStatements**
@@ -3851,6 +4095,7 @@ Run: `go test ./migrate/sqlite/ -run TestSQLiteRebuild$ -count=1`. Expect FAIL w
 - [ ] **Step 3: Add the three remaining tests**
 
 Append to `migrate/sqlite/rebuild_test.go`:
+
 ```go
 func TestSQLiteRebuildFKStillEnforced(t *testing.T) {
     ctx := context.Background()
@@ -3869,7 +4114,7 @@ func TestSQLiteRebuildFKStillEnforced(t *testing.T) {
     if err := reset(); err != nil {
         t.Fatal(err)
     }
-    _, err = c.Exec(ctx, `INSERT INTO links (id, item_id) VALUES (99, 404)`)
+    _, err = c.Exec(ctx, `INSERT INTO links (id, item_id) VALUES (99, 404)`, nil)
     if err == nil {
         t.Fatal("orphan insert must fail: the foreign key is not enforced after the rebuild")
     }
@@ -3925,19 +4170,23 @@ func TestSQLiteRebuildBlocked(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/sqlite/ -run TestSQLiteRebuild -count=1`. Expect PASS for all four after Step 2 and the runner from plan momo-04 Task 15 (which implements the `fk-check` and `dependent:` hints).
 
 - [ ] **Step 4: Commit**
 
 `git commit -m "feat(migrate/sqlite): 12-step rebuild that drops and recreates dependent views and triggers, keeps FK enforcement, rolls back on violation"`
+
 ## Task 36: SQLite session setup and migration lock
 
 Covers: S-13 (foreign-key handling), S-11 (concurrency lock), S-57 dependency (busy handling is in the driver). Acceptance: TestSQLiteForeignKeysOffDuringRebuild, TestSQLiteLockTable.
 
 Files:
+
 - Create: `migrate/sqlite/lock.go`, `migrate/sqlite/session.go`, `migrate/sqlite/lock_test.go`.
 
 Interfaces (exact):
+
 ```go
 // Setup: if opts asks for FK off (rebuild needs it) it runs PRAGMA foreign_keys=OFF on the pinned connection and returns a reset that restores the previous value. Must be called outside any transaction.
 func (Dialect) Setup(ctx context.Context, c momo.PinnedConn, s migrate.SessionOptions) (reset func() error, err error)
@@ -3948,6 +4197,7 @@ func (Dialect) Setup(ctx context.Context, c momo.PinnedConn, s migrate.SessionOp
 func (Dialect) Lock(ctx context.Context, c momo.PinnedConn, key string) (unlock func() error, holder func(context.Context) (string, error), err error)
 func ForceUnlock(ctx context.Context, c momo.PinnedConn) (previousHolder string, err error)
 ```
+
 Holder text: `fmt.Sprintf("pid=%d host=%s at=%s", os.Getpid(), host, now)`.
 
 Steps:
@@ -3955,6 +4205,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/sqlite/lock_test.go`:
+
 ```go
 package sqlite_test
 
@@ -4012,6 +4263,7 @@ func TestSQLiteForeignKeysOffDuringRebuild(t *testing.T) {
     }
 }
 ```
+
 `SessionOptions` gains `ForeignKeysOff bool` (update Task 3 Interfaces accordingly; the implementer adds the field in Task 3's file). Run: `go test ./migrate/sqlite/ -run 'TestSQLiteLockTable|TestSQLiteForeignKeysOff' -count=1`. Expect FAIL with `undefined: ...Lock` or `ForeignKeysOff`.
 
 - [ ] **Step 2: Implement** per Interfaces. Lock acquisition: `INSERT INTO momo_migration_lock (id, holder, acquired_at) VALUES (1, ?, ?)`; a `UNIQUE`/PRIMARY KEY violation (sqlite3 constraint code 1555 or 2067) maps to `migrate.ErrLocked`. Unlock: `DELETE FROM momo_migration_lock WHERE id = 1 AND holder = ?`. Setup: read `PRAGMA foreign_keys`, set OFF, reset restores the read value.
@@ -4019,24 +4271,25 @@ func TestSQLiteForeignKeysOffDuringRebuild(t *testing.T) {
 - [ ] **Step 3: Run, expect PASS** with the same command.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate/sqlite): migration lock table and foreign-key session setup"`
+
 ## Coverage check (planning report)
 
-| Scope id | Tasks |
-|---|---|
-| S-10 | 3, 8, 15, 16, 17, 29 |
-| S-11 | 4, 5, 6, 7, 8, 15, 16, 17, 18, 19, 21, 14, 25 |
-| S-12 | 10, 11, 13, 25 |
-| S-13 | 33, 34, 35, 36 |
-| S-14 | 20 |
-| S-27 | 7, 27 |
-| S-28 | 14, 26, 29 |
-| S-36 | 10, 22 |
-| S-37 | 9, 12, 13, 32 |
-| S-38 | 12, 13, 23 |
-| S-39 | 9, 12, 13 |
-| S-46 | 28, 29 |
-| S-47 | 24 |
-| S-74 | 8, 10 |
-| S-1 (normalization) | 1, 2 |
-| S-22 (migration formats) | 1, 5, 6, 15, 30 |
-| S-26 (forward-slash paths, TestWindowsPaths) | 29 |
+| Scope id                                     | Tasks                                         |
+| -------------------------------------------- | --------------------------------------------- |
+| S-10                                         | 3, 8, 15, 16, 17, 29                          |
+| S-11                                         | 4, 5, 6, 7, 8, 15, 16, 17, 18, 19, 21, 14, 25 |
+| S-12                                         | 10, 11, 13, 25                                |
+| S-13                                         | 33, 34, 35, 36                                |
+| S-14                                         | 20                                            |
+| S-27                                         | 7, 27                                         |
+| S-28                                         | 14, 26, 29                                    |
+| S-36                                         | 10, 22                                        |
+| S-37                                         | 9, 12, 13, 32                                 |
+| S-38                                         | 12, 13, 23                                    |
+| S-39                                         | 9, 12, 13                                     |
+| S-46                                         | 28, 29                                        |
+| S-47                                         | 24                                            |
+| S-74                                         | 8, 10                                         |
+| S-1 (normalization)                          | 1, 2                                          |
+| S-22 (migration formats)                     | 1, 5, 6, 15, 30                               |
+| S-26 (forward-slash paths, TestWindowsPaths) | 29                                            |
