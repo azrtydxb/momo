@@ -22,10 +22,7 @@ type sdUnix struct {
 	DeletedUnix *int64
 }
 
-var (
-	sdUnixID    = momo.NewColumn[int64]("docs_unix", "id", momo.FlagPK)
-	sdUnixTitle = momo.NewColumn[string]("docs_unix", "title", 0)
-)
+var sdUnixTitle = momo.NewColumn[string]("docs_unix", "title", 0)
 
 var sdUnixMeta = momo.Meta[sdUnix]{
 	Table: "docs_unix",
