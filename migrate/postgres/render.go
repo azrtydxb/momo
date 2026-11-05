@@ -693,8 +693,15 @@ func createFunction(f schema.Function, replace bool) (string, error) {
 	if replace {
 		head = "CREATE OR REPLACE FUNCTION "
 	}
+	attrs := vol
+	if f.Strict {
+		attrs += " STRICT"
+	}
+	if f.SecurityDefiner {
+		attrs += " SECURITY DEFINER"
+	}
 	return head + tableRef(f.Schema, f.Name) + "(" + f.Args + ") RETURNS " + f.Returns +
-		" LANGUAGE " + ident(f.Language) + " " + vol + " AS " + bodyTag + f.Body + bodyTag, nil
+		" LANGUAGE " + ident(f.Language) + " " + attrs + " AS " + bodyTag + f.Body + bodyTag, nil
 }
 
 func dropFunction(f schema.Function) string {
