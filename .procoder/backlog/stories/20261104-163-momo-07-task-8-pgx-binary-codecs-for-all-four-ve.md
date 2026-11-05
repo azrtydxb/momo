@@ -11,10 +11,17 @@ Implements plan momo-07-vectors Task 8: pgx binary codecs for all four vector ty
 
 ## Acceptance criteria
 
-- [ ] `TestVectorBinaryCodec` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `BenchmarkVectorEncoding` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestVectorBinaryCodec` exists as written in the plan, failed before the implementation, and passes now
+- [x] `BenchmarkVectorEncoding` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-50] `TestVectorBinaryCodec` round-trips all four types in binary mode and matches text-mode results; `BenchmarkVectorEncoding` results recorded under bench/results; fails if binary and text decode differently.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- RED: `go vet ./driver/pgxdriver` before implementation: `undefined: VectorFormat`, `undefined: ConfigureVectors`, `undefined: WithVectorFormat`. GREEN: `go test -tags integration -race -count=1 ./driver/pgxdriver -run Vector` ok; TestVectorBinaryCodec passes in 6 subtests (text and binary x exec, describe, cache statement), all equal to the input and to each other.
+- Wire bytes: TestVectorBinaryWireMatchesPgvector compares the encoder with the live pgvector `vector_send`, `halfvec_send`, `sparsevec_send` and `bit_send`, and decodes those bytes back. TestVectorBinarySQLComparison checks `$1::vector = '[1,2.5,-3]'::vector` (and the other three types) with binary params. TestVectorCopyFrom covers COPY.
+- Mutation: writing sparsevec indices 1-based (`uint32(i)+1`) failed the wire test, the binary round trips, COPY, the SQL comparison and the fuzz seed; reverted.
+- Fuzz: `FuzzVectorBinaryDecode` 20s, 850k execs, no crash; added to Makefile FUZZ_TARGETS.
+- Benchmark (-benchtime=2s, ns/op text vs binary): vector-1536 626M/533M, halfvec-3072 924M/847M, sparsevec-1000 558M/404M, bit-1024 314M/392M (per 1000 inserts). The plan's benchmark uses the default QueryExecModeExec, which always sends text params (pgx Build with no statement description), so "binary" there measures codec-planned text, not binary wire. Real binary needs WithExecMode(DescribeExec/CacheStatement). Results are not written under bench/results: the plan assigns that to momo-12.
+- Gate: `procoder check` 0 blocking; `make staticcheck` clean; `go build ./...` and `go vet ./...` pass. Commit 3e58cbb.
 
