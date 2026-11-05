@@ -5,11 +5,22 @@
 package postgres_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/internal/testdb"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/migrate"
+	"github.com/azrtydxb/momo/migrate/migratetest"
+	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -133,6 +144,139 @@ func TestVectorIndexMatrixRoundTrip(t *testing.T) {
 		// with the normalized declaration (ivfflat on vector, l2).
 		if ix.Method != c.method || ix.Parts[0].OpClass != wt.Indexes[0].Parts[0].OpClass {
 			t.Errorf("%s: got %s/%s, want %s/%s", tbl.Name, ix.Method, ix.Parts[0].OpClass, c.method, wt.Indexes[0].Parts[0].OpClass)
+		}
+	}
+}
+
+// scratchURL returns raw pointed at database name, without the per-test
+// search_path.
+func scratchURL(t *testing.T, raw, name string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Path = "/" + name
+	q := u.Query()
+	q.Del("search_path")
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// TestVectorExtensionMissing applies a migration that declares vector(3) in a
+// scratch database that has no pgvector extension, as a role that may not
+// create it, and requires the clear unsupported-capability error. The shared
+// test database is never touched: dropping the extension there is database
+// wide and would break every concurrent test.
+//
+// The plan connects as the administrator, but an administrator's CREATE
+// EXTENSION installs the extension (the package is on the server), so there
+// is no failure to classify. The application role cannot install pgvector (it
+// is not a trusted extension), which is the real missing-extension failure.
+func TestVectorExtensionMissing(t *testing.T) {
+	ctx := context.Background()
+	adminURL := testdb.PostgresURL(t)
+	appURL := testdb.PostgresAppRoleURL(t)
+	scratch := testdb.Schema(t) + "_noext"
+	admin, err := pgxpool.New(ctx, scratchURL(t, adminURL, "postgres"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(admin.Close)
+	if _, err := admin.Exec(ctx, `CREATE DATABASE "`+scratch+`"`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := admin.Exec(context.Background(), `DROP DATABASE IF EXISTS "`+scratch+`" WITH (FORCE)`); err != nil {
+			t.Error(err)
+		}
+	})
+	role := mustUser(t, appURL)
+	adm, err := pgxpool.New(ctx, scratchURL(t, adminURL, scratch))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(adm.Close)
+	// The role may create tables (the history table) but not extensions.
+	if _, err := adm.Exec(ctx, `GRANT CREATE ON SCHEMA public TO "`+role+`"`); err != nil {
+		t.Fatal(err)
+	}
+	var has bool
+	if err := adm.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')`).Scan(&has); err != nil || has {
+		t.Fatalf("scratch database must have no vector extension: %v %v", has, err)
+	}
+	pool, err := pgxdriver.NewPool(ctx, scratchURL(t, appURL, scratch))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	sch := &schema.Schema{
+		Dialect:    "postgres",
+		Extensions: []schema.Extension{{Name: "vector"}},
+		Tables: []schema.Table{{
+			Name:    "t",
+			Columns: []schema.Column{{Name: "emb", Type: "vector(3)"}},
+		}},
+	}
+	eng := migratetest.NewEngine(t, mpg.New(), pgxdriver.New(pool), migratetest.EmptyFS())
+	m, err := eng.Diff(ctx, sch, "needs_vector", migrate.DiffOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng = migratetest.NewEngine(t, mpg.New(), pgxdriver.New(pool), migratetest.FS(m.Files))
+	_, err = eng.Apply(ctx, migrate.ApplyOptions{})
+	if !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("err = %v, want momo.ErrUnsupported", err)
+	}
+	if !strings.Contains(err.Error(), `extension "vector" is not installed`) {
+		t.Fatalf("err = %v, want the missing-extension message", err)
+	}
+}
+
+func mustUser(t *testing.T, raw string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		t.Fatalf("no user in %q", raw)
+	}
+	return u.User.Username()
+}
+
+// pgErr is a driver error carrying a SQLSTATE.
+type pgErr struct{ state, msg string }
+
+func (e pgErr) Error() string    { return e.msg }
+func (e pgErr) SQLState() string { return e.state }
+
+// TestClassifyMissingExtension: the failures a missing or uninstallable
+// extension produces all become ErrUnsupported naming the extension; other
+// errors pass through unchanged.
+func TestClassifyMissingExtension(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		ext  string // empty: unchanged
+	}{
+		{"not available", pgErr{"58P01", `extension "vector" is not available`}, "vector"},
+		{"permission", pgErr{"42501", `permission denied to create extension "vector"`}, "vector"},
+		{"type missing", pgErr{"42704", `type "halfvec" does not exist`}, "vector"},
+		{"unrelated type", pgErr{"42704", `type "color" does not exist`}, ""},
+		{"unrelated", pgErr{"23505", "duplicate key"}, ""},
+	}
+	var c momo.ErrorClassifier = mpg.New()
+	for _, tc := range cases {
+		got := c.ClassifyError(tc.err)
+		if tc.ext == "" {
+			if got != tc.err {
+				t.Errorf("%s: changed to %v", tc.name, got)
+			}
+			continue
+		}
+		if !errors.Is(got, momo.ErrUnsupported) || !strings.Contains(got.Error(), `extension "`+tc.ext+`" is not installed`) {
+			t.Errorf("%s: got %v", tc.name, got)
+		}
+		if !errors.Is(got, tc.err) {
+			t.Errorf("%s: cause lost: %v", tc.name, got)
 		}
 	}
 }
