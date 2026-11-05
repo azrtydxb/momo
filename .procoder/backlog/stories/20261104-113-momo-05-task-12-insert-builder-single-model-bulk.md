@@ -1,6 +1,6 @@
 # momo-05 Task 12: Insert builder: single, model, bulk and conflict handling — S-5
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
