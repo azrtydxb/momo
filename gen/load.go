@@ -71,6 +71,7 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 		ms, mdiags := discoverModels(p, namer)
 		g.Models = append(g.Models, ms...)
 		diags = append(diags, mdiags...)
+		diags = append(diags, collisionDiagnostics(ms)...)
 	}
 	sort.SliceStable(g.Packages, func(i, j int) bool { return g.Packages[i].Path < g.Packages[j].Path })
 	sort.SliceStable(g.Models, func(i, j int) bool {
@@ -118,4 +119,18 @@ func errorDiagnostic(e packages.Error) Diagnostic {
 		d.Pos.Line = nums[0]
 	}
 	return d
+}
+
+// collisionDiagnostics reports, in declaration order, columns produced by two
+// fields of one model and model names of one package that differ only in case.
+func collisionDiagnostics(models []*Model) []Diagnostic {
+	var diags []Diagnostic
+	for _, m := range models {
+		cols := make([]columnName, 0, len(m.Fields))
+		for _, f := range m.Fields {
+			cols = append(cols, columnName{Field: f.GoName, Column: f.Column, Pos: f.Pos})
+		}
+		diags = append(diags, checkColumnCollisions(cols)...)
+	}
+	return append(diags, checkModelIdentifiers(models)...)
 }

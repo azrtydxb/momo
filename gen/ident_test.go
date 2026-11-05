@@ -28,7 +28,7 @@ func TestGenerateNameCollisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(g.Models) == 0 {
-		t.Skip("model builder not wired yet; story 043 removes this skip")
+		t.Fatal("collide fixture produced no models")
 	}
 	var b strings.Builder
 	for _, d := range diags {
