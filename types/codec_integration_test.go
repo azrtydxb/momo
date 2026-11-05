@@ -12,6 +12,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/types"
 )
@@ -53,6 +54,10 @@ func TestCodecsRoundTripLive(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		ctx := context.Background()
 		if d == dialect.Postgres {
+			// hstore is a database-wide extension and the codec tables are
+			// not schema-qualified: a scratch database keeps both out of the
+			// shared test database, which migrate's drift check inspects.
+			db = testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_codec_"))
 			if _, err := momo.Exec(ctx, db, "CREATE EXTENSION IF NOT EXISTS hstore SCHEMA public"); err != nil {
 				t.Fatalf("create hstore extension: %v", err)
 			}
