@@ -31,7 +31,9 @@ type UpdateQuery[T any] struct {
 	returning returningSet
 	// count counts the rows of the target table matching ps, soft-deleted
 	// rows included. It is bound at Update, where the Modeler is known.
-	count func(ctx context.Context, q Querier, ps []Predicate) (int64, error)
+	// softDelete marks the query as a SoftDelete statement.
+	softDelete bool
+	count      func(ctx context.Context, q Querier, ps []Predicate) (int64, error)
 }
 
 // Update starts an UPDATE of T's table.
@@ -116,7 +118,7 @@ func (u UpdateQuery[T]) pkPredicates(m *T) ([]Predicate, error) {
 
 // versioned reports whether the query is a version-checked Model update.
 func (u UpdateQuery[T]) versioned() bool {
-	return u.model != nil && u.meta.Version >= 0
+	return !u.softDelete && u.model != nil && u.meta.Version >= 0
 }
 
 // plan resolves the SET assignments and WHERE predicates, applying the
@@ -124,6 +126,9 @@ func (u UpdateQuery[T]) versioned() bool {
 func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	if u.meta.Table == "" {
 		return nil, nil, u.fail(ErrValidation, errors.New("model has no table"))
+	}
+	if u.softDelete {
+		return u.planSoftDelete()
 	}
 	var sets []Assignment
 	where := slices.Clone(u.where)
@@ -176,6 +181,9 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	if ci := u.meta.UpdatedAt; ci >= 0 && columnAssignable(writeUpdate, u.meta.Columns[ci].Flags) {
 		// updated_at rides in the same statement as the change, so an
 		// update that matches no row changes nothing.
+		if err := checkTimestampField(u.meta, ci); err != nil {
+			return nil, nil, u.fail(ErrValidation, err)
+		}
 		if v, ok := autoTimestamp(u.meta, ci, u.q.conn().now()); ok {
 			sets = append(sets, Assignment{col: u.meta.Columns[ci].Name, kind: setValue, val: v})
 		}

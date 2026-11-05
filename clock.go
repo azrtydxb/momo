@@ -11,10 +11,13 @@ func WithClock(now func() time.Time) Option {
 	return func(db *DB) { db.clock = now }
 }
 
-// now reads the owning DB's clock, or time.Now when none is configured.
+// now reads the owning DB's clock, or time.Now when none is configured, and
+// normalizes it to UTC so every driver binds the same instant. The value is
+// not truncated: PostgreSQL stores microseconds, so a sub-microsecond clock
+// reads back truncated to the microsecond, while SQLite keeps what it is given.
 func (e *execer) now() time.Time {
 	if e.db != nil && e.db.clock != nil {
-		return e.db.clock()
+		return e.db.clock().UTC()
 	}
-	return time.Now()
+	return time.Now().UTC()
 }
