@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/vector"
 )
 
 // Builder accumulates SQL text and bind arguments for one statement.
@@ -69,6 +70,9 @@ func (b *Builder) Arg(v any) {
 	if dv, ok := v.(DialectValuer); ok {
 		enc, err := dv.DialectValue(b.d.Name)
 		if err != nil {
+			if errors.Is(err, vector.ErrDialect) {
+				err = &Error{Kind: ErrUnsupported, Err: err}
+			}
 			b.SetErr(err)
 			return
 		}
