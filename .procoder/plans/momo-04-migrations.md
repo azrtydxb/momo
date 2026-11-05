@@ -2545,6 +2545,8 @@ func TestStagedChange(t *testing.T) {
 
 `Engine.NewCustom(ctx, name) (*Migration, error)` and `merge(a, b map[string][]byte) map[string][]byte` are helpers introduced in this task (NewCustom writes a `.up.sql` with header `-- momo:custom` and a snapshot copied from the parent). Run: `go test ./migrate/ -run TestStagedChange -count=1`. Expect FAIL with `e1.NewCustom undefined` or `Diff` returning no error.
 
+Note: Task 8's `Diff` returns `ErrStagedRequired` for NULL to NOT NULL without default and `TestStagedNotNullOnExistingColumn` (`migrate/diff_test.go`) asserts it. This task must change that rule in `migrate/diff.go` and that test together.
+
 - [ ] **Step 2: Implement** `NewCustom`, the `-- momo:guard` directive and runner check, and make Diff's staged logic emit `alter_column` NOT NULL when the snapshot shows a nullable column that the desired schema declares NOT NULL without default (no hint needed beyond the documented guard).
 
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate): staged NOT NULL with guarded set-not-null migration"`.
