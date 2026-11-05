@@ -61,6 +61,10 @@ type InsertQuery[T any] struct {
 	// clock, when set, is the statement time shared by every chunk of a
 	// chunked bulk insert; otherwise the DB clock is read per statement.
 	clock time.Time
+	// pre holds the model values plan computed and validated, one row per
+	// model for the planned columns, so chunks bind exactly what was checked
+	// and a Go-side default is evaluated once per row.
+	pre [][]any
 }
 
 // Insert starts an INSERT for model T. Use Model or Models to write whole
@@ -291,21 +295,18 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 		return
 	}
 
-	// Model values are computed once, validated, then bound as computed, so a
-	// validator sees exactly what is written even for a random default.
+	// With field hooks, model values are computed once, validated, then bound
+	// as computed, so a validator sees exactly what is written even for a
+	// random default. plan may already have done that (pre). Without hooks the
+	// values stream straight into the statement.
 	var vals [][]any
-	if modelMode {
-		vals = make([][]any, len(q.models))
-		for r := range q.models {
-			row := make([]any, len(cols))
-			for i, ci := range cols {
-				row[i] = q.modelValue(&q.models[r], ci, now, fp)
+	if modelMode && len(fp.hooks) > 0 {
+		if vals = q.pre; vals == nil {
+			vals = q.modelValues(fp, cols, now)
+			if err := q.validateModelRows(fp, cols, vals); err != nil {
+				b.SetErr(err)
+				return
 			}
-			vals[r] = row
-		}
-		if err := q.validateModelRows(fp, cols, vals); err != nil {
-			b.SetErr(err)
-			return
 		}
 	}
 	if err := q.validateConflictSet(fp); err != nil {
@@ -354,7 +355,11 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				b.Arg(vals[r][i])
+				if vals != nil {
+					b.Arg(vals[r][i])
+				} else {
+					b.Arg(q.modelValue(&q.models[r], cols[i], now, fp))
+				}
 			}
 			b.writeByte(')')
 		}
@@ -744,19 +749,23 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		return one, nil
 	}
 	r.clock = q.q.conn().now()
-	// Validate every row before the first chunk runs, so a bad row late in a
-	// bulk insert executes nothing.
-	for i := range r.models {
-		row := make([]any, len(cols))
-		for j, ci := range cols {
-			row[j] = r.modelValue(&r.models[i], ci, r.clock, fp)
-		}
-		if err := r.validateModelRows(fp, cols, [][]any{row}); err != nil {
+	// Compute and validate every row before the first chunk runs, so a bad
+	// row late in a bulk insert executes nothing. The computed values are
+	// kept and bound by the chunks, so a non-deterministic default cannot
+	// pass here and change afterwards.
+	if len(fp.hooks) > 0 {
+		r.pre = r.modelValues(fp, cols, r.clock)
+		if err := r.validateModelRows(fp, cols, r.pre); err != nil {
 			return nil, err
 		}
+		one[0].pre = r.pre // a fallback to the single statement binds the same values
+		one[0].clock = r.clock
 	}
 	probe := r
 	probe.models = r.models[:1]
+	if r.pre != nil {
+		probe.pre = r.pre[:1]
+	}
 	c1, err := compile(d, probe.render)
 	if err != nil {
 		return one, nil
@@ -773,7 +782,11 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	var out []InsertQuery[T]
 	for lo := 0; lo < len(r.models); lo += per {
 		c := r
-		c.models = r.models[lo:min(lo+per, len(r.models))]
+		hi := min(lo+per, len(r.models))
+		c.models = r.models[lo:hi]
+		if r.pre != nil {
+			c.pre = r.pre[lo:hi]
+		}
 		out = append(out, c)
 	}
 	return out, nil
@@ -923,6 +936,20 @@ func (r *chunkRows[T]) Close() error {
 	}
 	r.finish(r.err)
 	return r.err
+}
+
+// modelValues computes the bound value of every column in cols for every
+// model: row r, column cols[i] is at [r][i].
+func (q InsertQuery[T]) modelValues(fp fieldPlan[T], cols []int, now time.Time) [][]any {
+	vals := make([][]any, len(q.models))
+	for r := range q.models {
+		row := make([]any, len(cols))
+		for i, ci := range cols {
+			row[i] = q.modelValue(&q.models[r], ci, now, fp)
+		}
+		vals[r] = row
+	}
+	return vals
 }
 
 // validateModelRows runs the field validators over the computed values of a

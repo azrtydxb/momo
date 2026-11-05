@@ -405,7 +405,11 @@ func (u UpdateQuery[T]) applyFieldHooks(sets []Assignment) ([]Assignment, error)
 			continue // an explicit Set wins
 		}
 		if role := u.reservedRole(c.Name); role != "" {
-			return nil, fieldError("update", u.meta.Table, c.Name, fmt.Errorf("OnUpdate: column %q is the %s column and cannot be set by a field hook", c.Name, role))
+			hint := ""
+			if role == "updated-at" {
+				hint = "; updated_at is maintained automatically on every update (set the time source with WithClock)"
+			}
+			return nil, fieldError("update", u.meta.Table, c.Name, fmt.Errorf("OnUpdate: column %q is the %s column and cannot be set by a field hook%s", c.Name, role, hint))
 		}
 		if !columnAssignable(writeUpdate, c.Flags) {
 			return nil, fieldError("update", u.meta.Table, c.Name, fmt.Errorf("OnUpdate: column %q cannot be written by UPDATE", c.Name))

@@ -14,14 +14,23 @@ import (
 // with WithFieldHooks. Write builders run them before the statement is built,
 // in this order: Default (insert), OnUpdate (update), Validate. A failing
 // validator makes SQL, Exec and Rows return an *Error of kind ErrValidation
-// before anything reaches the database. Hooks for a column that the statement
-// cannot write (identity, read-only, or, for OnUpdate, create-only and
-// immutable columns) are ignored on insert and refused on update for the
-// reserved key, version, soft-delete and timestamp columns.
+// before anything reaches the database.
 //
-// A Default or OnUpdate function may run more than once per row (the bulk
-// planner validates every row before chunking), so it must be cheap and free
-// of side effects; a fresh random value per call is fine.
+// A hook for a column the statement cannot write is handled per statement:
+//   - Insert: Default is ignored for a column that is not assignable on INSERT
+//     (identity or read-only; see columnAssignable with writeInsert).
+//   - Update: OnUpdate is refused with ErrValidation for the key, version,
+//     soft-delete, created-at and updated-at columns (updated_at is already
+//     maintained automatically; see WithClock) and for a column that is not
+//     assignable on UPDATE (identity, read-only, create-only or immutable).
+//
+// OnUpdate is not a trigger: it adds a value to an update that already sets
+// something. An update with only OnUpdate hooks and no Set still fails with
+// "no columns to update".
+//
+// A Default or OnUpdate function runs once per row and statement: a chunked
+// bulk insert computes and validates every value before the first chunk and
+// binds those same values, so a random default is safe.
 type FieldHook[T any] struct {
 	// Column is the index into Meta.Columns.
 	Column int
@@ -50,7 +59,10 @@ type FieldHook[T any] struct {
 // WithFieldHooks registers Go-side defaults and validators for model T on
 // this DB. They apply in addition to T's Meta.Fields, after them, and are
 // looked up by the Meta pointer, so no reflection or tag inspection runs per
-// query. Several calls for the same T accumulate.
+// query. Several calls for the same T accumulate. Hooks are keyed by the
+// *Meta[T] that T's MomoMeta returns, so MomoMeta must return the same
+// pointer on every call (a package-level variable); a method that builds a
+// fresh Meta each time never matches the registered hooks.
 func WithFieldHooks[T any, PT Modeler[T]](hooks []FieldHook[T]) Option {
 	return func(db *DB) {
 		m := metaOf[T, PT]()
