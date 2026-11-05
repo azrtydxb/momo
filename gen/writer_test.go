@@ -277,3 +277,16 @@ func TestWriterOrphansMissingAndUncleanDirs(t *testing.T) {
 		t.Fatalf("got %v %v", got, err)
 	}
 }
+
+func TestWriterHandwrittenBeforeHeaderless(t *testing.T) {
+	root := t.TempDir()
+	hand := filepath.Join(root, "hand.go")
+	if err := os.WriteFile(hand, []byte("package pkg\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := NewWriter(WriterOptions{ModuleRoot: root})
+	err := w.File(hand, []byte("package pkg\n// headerless output\n"))
+	if !errors.Is(err, ErrHandwritten) {
+		t.Fatalf("want ErrHandwritten for headerless output targeting a handwritten file, got %v", err)
+	}
+}

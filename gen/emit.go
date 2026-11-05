@@ -38,14 +38,16 @@ type pending struct {
 // ColumnNames) in that file, so the lookup is not emitted a second time. If any emitter reports diagnostics they are returned as
 // *ErrDiagnostics and nothing is buffered.
 //
-// After a non-nil error the Writer may hold partial output (files buffered
-// before a plugin failed); callers must not Commit it.
+// Plugins are validated (name, uniqueness, API version) before anything is
+// buffered. After a non-nil error from a plugin the Writer holds partial
+// output (files buffered before it failed); callers must not Commit it.
 //
 // Output is byte-deterministic: emitters iterate slices only and the
 // grouping below sorts every key, so map iteration order never reaches a file.
 func Emit(g *Graph, w *Writer) error {
+	seen := map[string]bool{}
 	for _, p := range g.Plugins {
-		if err := validatePlugin(p); err != nil {
+		if err := validatePlugin(p, seen); err != nil {
 			return err
 		}
 	}
