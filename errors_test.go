@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/suite"
+	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -56,4 +59,8 @@ func TestErrorIsAs(t *testing.T) {
 	if (&momo.Error{Kind: momo.ErrNotFound}).Detail() != "" {
 		t.Error("Detail() must be empty when Err is nil")
 	}
+}
+
+func TestErrorClassification(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) { suite.Errors(t, db, suite.CapsOf(db)) })
 }
