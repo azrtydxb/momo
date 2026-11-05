@@ -14,8 +14,8 @@ Implements plan momo-05-writes-queries Task 2: Transactions, error classificatio
 - [ ] `TestTransactions` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestErrorClassification` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestScalarsRawPlaceholders` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-7] `TestTransactions`: callback commits on nil, rolls back on error and on panic (panic re-raised, row absent afterwards), nested savepoint rollback keeps outer work, isolation reaches PostgreSQL (`SHOW transaction_isolation`) and is ErrUnsupported on SQLite for non-default levels; fails if a panic leaves the transaction open.
-- [ ] [S-8] `TestErrorClassification` (both dialects): each error kind matches errors.Is and the driver error is reachable with errors.As (*pgconn.PgError, sqlite3.Error); `TestEmptyResultNotNotFound` asserts All on zero rows returns nil error; fails if classification loses the cause.
+- [ ] [S-7, part] `TestTransactions` passes for the part of S-7 this task delivers; the full criterion is verified in story 202.
+- [ ] [S-8, part] `TestErrorClassification` passes for the part of S-8 this task delivers; the full criterion is verified in story 200.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

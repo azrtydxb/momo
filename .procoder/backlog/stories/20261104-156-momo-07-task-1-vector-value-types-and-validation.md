@@ -13,7 +13,7 @@ Implements plan momo-07-vectors Task 1: Vector value types and validation (`.pro
 
 - [ ] `TestVectorCodec` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `FuzzVectorDecode` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-15] `TestVectorCodec` + `FuzzVectorDecode`: vector, halfvec, sparsevec and bit round-trip; wrong dimension returns ErrInvalidVector before any SQL runs; `TestVectorDistances` matches independently computed values to 1e-5; `TestVectorIndexUsed` asserts EXPLAIN shows the HNSW/IVFFlat index; `TestSearchSettingsScoped` asserts `hnsw.ef_search` resets after the transaction; fails if settings leak to the p…
+- [ ] [S-15, part] `TestVectorCodec`, `FuzzVectorDecode` pass for the part of S-15 this task delivers; the full criterion is verified in story 162.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

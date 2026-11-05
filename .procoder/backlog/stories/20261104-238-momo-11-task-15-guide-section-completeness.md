@@ -12,7 +12,7 @@ Implements plan momo-11-adoption Task 15: Guide section completeness (`.procoder
 ## Acceptance criteria
 
 - [ ] `TestMigrationGuidesComplete` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-95] `TestDocsCodeBlocks` covers the guide pages and `TestMigrationGuidesComplete` asserts each guide has sections for models, queries, relations, hooks, transactions, migrations and errors; fails if a guide section is missing.
+- [ ] [S-95, part] `TestMigrationGuidesComplete` passes for the part of S-95 this task delivers; the full criterion is verified in story 255.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

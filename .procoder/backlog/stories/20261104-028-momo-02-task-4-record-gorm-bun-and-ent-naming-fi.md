@@ -7,12 +7,11 @@ Sprint: -
 
 ## Description
 
-Implements plan momo-02-generator Task 4: Record GORM, Bun and Ent naming fixtures (`.procoder/plans/momo-02-generator.md:334`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-69. Files: `internal/namingrec/go.mod`, `internal/namingrec/models/models.go`, `internal/namingrec/record_gorm/main.go`, `internal/namingrec/record_bun/main.go`, `internal/namingrec/ent/schema/user_profile.go`, `internal/namingrec/record_ent/main.go` ….
+Implements plan momo-02-generator Task 4: Record GORM, Bun and Ent naming fixtures (`.procoder/plans/momo-02-generator.md:334`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-69. Files: `internal/namingrec/go.mod`, `internal/namingrec/models/models.go`, `internal/namingrec/record_gorm/main.go`, `internal/namingrec/record_bun/main.go`, `internal/namingrec/ent/schema/user_profile.go`, `internal/namingrec/record_ent/main.go` …. Contributes to S-69; those criteria are verified in the stories that define their named tests.
 
 ## Acceptance criteria
 
 - [ ] `TestNamingFixturesRecorded` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-69] `TestNamingPresets` asserts each preset's names for a fixture set match the names those ORMs generate (recorded fixtures); fails if a preset diverges.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

@@ -39,26 +39,26 @@ Contract rules from docs/ARCHITECTURE.md that this plan enforces:
 
 Pinned versions, verified 2026-11-04 (each published at least two weeks earlier):
 
-| Item | Pin |
-|---|---|
-| actions/checkout | `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1` |
-| actions/setup-go | `actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0` |
-| actions/upload-artifact | `actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2` |
-| github/codeql-action (init, analyze, upload-sarif) | `github/codeql-action/<sub>@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1` |
-| securego/gosec | `securego/gosec@deb54465fea23d19a77f037e11e6589021f8501d # v2.29.0` |
-| golang/govulncheck-action | `golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0` |
-| ossf/scorecard-action | `ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0` |
-| googleapis/release-please-action | `googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0` |
-| amannn/action-semantic-pull-request | `amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1` |
-| govulncheck (Makefile) | `golang.org/x/vuln/cmd/govulncheck@v1.9.0` |
-| jackc/pgx/v5 | `v5.11.0` (v5.12.0 was published 2026-10-31 and is excluded) |
-| go-sql-driver/mysql | `v1.10.1` |
-| go.yaml.in/yaml/v3 | `v3.0.6` (test-only, in internal/repocheck) |
-| PostgreSQL + pgvector | `pgvector/pgvector:0.8.7-pg17`, `pgvector/pgvector:0.8.7-pg16` |
-| MySQL 8.4 LTS | `mysql:8.4.13` |
-| MySQL 9.7 LTS | `mysql:9.7.4` |
-| MariaDB 11.8 LTS | `mariadb:11.8.9` |
-| PgBouncer | `edoburu/pgbouncer:v1.26.1-p0` |
+| Item                                               | Pin                                                                                     |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| actions/checkout                                   | `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1`                    |
+| actions/setup-go                                   | `actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0`                    |
+| actions/upload-artifact                            | `actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2`             |
+| github/codeql-action (init, analyze, upload-sarif) | `github/codeql-action/<sub>@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1`         |
+| securego/gosec                                     | `securego/gosec@deb54465fea23d19a77f037e11e6589021f8501d # v2.29.0`                     |
+| golang/govulncheck-action                          | `golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0`           |
+| ossf/scorecard-action                              | `ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0`               |
+| googleapis/release-please-action                   | `googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0`    |
+| amannn/action-semantic-pull-request                | `amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1` |
+| govulncheck (Makefile)                             | `golang.org/x/vuln/cmd/govulncheck@v1.9.0`                                              |
+| jackc/pgx/v5                                       | `v5.11.0` (v5.12.0 was published 2026-10-31 and is excluded)                            |
+| go-sql-driver/mysql                                | `v1.10.1`                                                                               |
+| go.yaml.in/yaml/v3                                 | `v3.0.6` (test-only, in internal/repocheck)                                             |
+| PostgreSQL + pgvector                              | `pgvector/pgvector:0.8.7-pg17`, `pgvector/pgvector:0.8.7-pg16`                          |
+| MySQL 8.4 LTS                                      | `mysql:8.4.13`                                                                          |
+| MySQL 9.7 LTS                                      | `mysql:9.7.4`                                                                           |
+| MariaDB 11.8 LTS                                   | `mariadb:11.8.9`                                                                        |
+| PgBouncer                                          | `edoburu/pgbouncer:v1.26.1-p0`                                                          |
 
 MySQL versions follow the answers recorded in `.procoder/ask/answers.md` (key `mysql-versions`): MySQL 8.4 LTS, MySQL 9.7 LTS and MariaDB 11.8 LTS, with no innovation releases.
 
@@ -67,6 +67,7 @@ MySQL versions follow the answers recorded in `.procoder/ask/answers.md` (key `m
 Delivers: S-24 (`TestRepoFiles`). Also records the SPDX header rule every later Go file follows.
 
 Files:
+
 - Create: `internal/repocheck/repo_test.go` (test helper `repoRoot` and `TestRepoFiles`)
 - Create: `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`
 - Create: `.github/ISSUE_TEMPLATE/bug_report.yml`, `.github/ISSUE_TEMPLATE/feature_request.yml`, `.github/ISSUE_TEMPLATE/config.yml`, `.github/PULL_REQUEST_TEMPLATE.md`
@@ -74,6 +75,7 @@ Files:
 - Modify: every existing `*.go` file in the repository root, `dialect/` and `schema/` (prepend the SPDX header, see step 5)
 
 Interfaces:
+
 - `func repoRoot(t *testing.T) string` in package `repocheck` returns the module root (two directories above the package directory).
 - Every non-generated `.go` file must contain `SPDX-License-Identifier: Apache-2.0` within its first 600 bytes, or start with `// Code generated by momo`.
 
@@ -185,6 +187,7 @@ func TestRepoFiles(t *testing.T) {
 Delivers: S-20 (the local commands CI calls) and S-25 (govulncheck pinned in one place). Milestone M1 (PostgreSQL). SQLite and MySQL targets are added by their milestone plans with the same pattern.
 
 Files:
+
 - Create: `Makefile`
 - Create: `internal/repocheck/makefile_test.go`
 - Modify: `CONTRIBUTING.md` (one paragraph, step 5)
@@ -287,10 +290,12 @@ db-down:
 Delivers: S-4 (capability booleans gate clauses), S-31 (per-dialect placeholders and quoting), contract `dialect` section.
 
 Files:
+
 - Modify: `dialect/dialect.go` (rewrite to the contract)
 - Create: `dialect/dialect_test.go`
 
 Interfaces (produced, exact):
+
 - `type Name string`; `const Postgres Name = "postgres"`, `SQLite Name = "sqlite"`, `MySQL Name = "mysql"`.
 - `type Flavor string`; `const FlavorMySQL Flavor = "mysql"`, `FlavorMariaDB Flavor = "mariadb"`.
 - `type Dialect struct` with fields `Name Name`, `Flavor Flavor`, `MaxParams int`, and boolean fields `Returning, OnConflict, OnDuplicateKey, Locking, NullsOrdering, DefaultInUpdate, DefaultInValues, RecursiveCTE, RowValues, Savepoints, IsolationLevels, TransactionalDDL, ILike, Merge, WindowFunctions bool`.
@@ -383,10 +388,12 @@ func TestPlaceholderStyle(t *testing.T) {
 Delivers: S-1 base types and `FormatVersion`. The managed-object types (`Namespace`, `View`, `Function`, `Trigger`, `Policy`, partitions, RLS flags) and the schema-qualified `Table.Schema` belong to momo-04 Task 1, not to this plan.
 
 Files:
+
 - Modify: `schema/schema.go`
 - Create: `schema/schema_test.go`
 
 Interfaces (produced, exact):
+
 - `const FormatVersion = 1`.
 - `type Schema struct { FormatVersion int \`json:"format_version"\`; Dialect dialect.Name \`json:"dialect"\`; Extensions []Extension \`json:"extensions,omitempty"\`; Enums []Enum \`json:"enums,omitempty"\`; Tables []Table \`json:"tables"\` }`.
 - The spike types `Table`, `Column`, `Unique`, `Index`, `IndexPart`, `KV`, `ForeignKey`, `Check`, `Extension`, `Enum` keep their fields and json tags, with `Table` unchanged (no `Schema` field).
@@ -505,10 +512,12 @@ func TestSchemaFieldSet(t *testing.T) {
 Delivers: S-22 (`TestFormatVersions`, snapshot part). The checksum-file and history-table parts are added by their own plans; this task creates the reader they reuse.
 
 Files:
+
 - Create: `schema/load.go`
 - Create: `schema/load_test.go`
 
 Interfaces (produced, exact):
+
 - `func Load(r io.Reader) (*Schema, error)`.
 - `var ErrNewerFormat = errors.New("schema: snapshot format is newer than this momo")`.
 - `var ErrMissingFormatVersion = errors.New("schema: snapshot has no format_version")`.
@@ -556,7 +565,7 @@ func TestFormatVersions(t *testing.T) {
 
 - [ ] **Step 2: Run and expect FAIL.** `go test ./schema/ -run '^TestFormatVersions$' -count=1` fails with `undefined: Load`.
 
-- [ ] **Step 3: Implement `schema/load.go`.** `Load` reads all bytes with `io.ReadAll`, unmarshals a header `struct{ FormatVersion int \`json:"format_version"\` }`, and returns `ErrMissingFormatVersion` when the value is 0. When the value is greater than `FormatVersion` it returns `fmt.Errorf("%w: format_version %d; this momo reads format_version %d and earlier, upgrade momo to read it", ErrNewerFormat, v, FormatVersion)`. Otherwise it calls `readers[v]`, returning `fmt.Errorf("schema: no reader for format_version %d", v)` when the entry is absent. `decodeV1` unmarshals into `Schema` and calls `s.Sort()`.
+- [ ] **Step 3: Implement `schema/load.go`.** `Load` reads all bytes with `io.ReadAll`, unmarshals a header `struct{ FormatVersion int \`json:"format_version"\` }`, and returns `ErrMissingFormatVersion`when the value is 0. When the value is greater than`FormatVersion`it returns`fmt.Errorf("%w: format_version %d; this momo reads format_version %d and earlier, upgrade momo to read it", ErrNewerFormat, v, FormatVersion)`. Otherwise it calls `readers[v]`, returning `fmt.Errorf("schema: no reader for format_version %d", v)`when the entry is absent.`decodeV1`unmarshals into`Schema`and calls`s.Sort()`.
 
 - [ ] **Step 4: Run and expect PASS.** `go test ./schema/ -count=1` prints `ok`.
 
@@ -567,10 +576,12 @@ func TestFormatVersions(t *testing.T) {
 Delivers: S-1 normalization, including the edge case "normalization of DB-rewritten expressions so round-trip diffs are empty".
 
 Files:
+
 - Create: `schema/normalize.go`
 - Create: `schema/normalize_test.go`
 
 Interfaces (produced, exact):
+
 - `func NormalizeType(d dialect.Name, t string) string`
 - `func NormalizeExpr(d dialect.Name, e string) string`
 - `func Equal(a, b *Schema) bool`
@@ -673,7 +684,8 @@ func FuzzNormalizeType(f *testing.F) {
 Delivers: S-1 (`FuzzSchemaSort`, `TestSortCoversAllCollections`) for the base collections. Sorting of managed-object collections is added with those types in momo-04 Task 1.
 
 Files:
-- Modify: `schema/schema.go` (the `Sort` method)
+
+- Verify (no change expected): `schema/schema.go` (the `Sort` method already landed with the spike in commit 586d784)
 - Create: `schema/sort_test.go`
 
 Interfaces (produced, exact): `func (s *Schema) Sort()` sorts `Extensions` and `Enums` by `Name`, `Tables` by `Name`, and within each table `Uniques`, `Indexes`, `ForeignKeys` and `Checks` by `Name`. Column order is preserved and is not sorted.
@@ -747,25 +759,27 @@ func FuzzSchemaSort(f *testing.F) {
 }
 ```
 
-- [ ] **Step 2: Run and expect FAIL.** `go test ./schema/ -run 'TestSortCoversAllCollections' -count=1` fails with `Sort left a collection unsorted`.
+- [ ] **Step 2: Run, then prove the test can fail (mutation check).** The spike's `Sort` already sorts every collection, so `go test ./schema/ -run 'TestSortCoversAllCollections' -count=1` passes immediately. Prove the test catches a break: delete the `Checks` sort from `Sort`, rerun, and expect FAIL with `Sort left a collection unsorted`; then restore it with `git checkout schema/schema.go`. Repeat once for the table-level sort (`Tables`). Record both FAIL outputs as evidence.
 
-- [ ] **Step 3: Implement.** Extend `Sort` in `schema/schema.go` to sort each collection listed in the Interfaces block with `slices.SortFunc` by `Name`, using `cmp.Compare` for strings.
+- [ ] **Step 3: Implement only what is missing.** If Step 1's test or the fuzz target finds a collection the spike's `Sort` does not order, extend `Sort` with `slices.SortFunc` by `Name`, using `cmp.Compare` for strings. Otherwise `schema/schema.go` stays unchanged.
 
 - [ ] **Step 4: Run and expect PASS.** `go test ./schema/ -count=1` prints `ok`; `go test ./schema/ -run '^$' -fuzz '^FuzzSchemaSort$' -fuzztime=10s` completes without failure.
 
-- [ ] **Step 5: Commit.** `git add schema && git commit -m "feat(schema): canonical sort for the base schema collections"`.
+- [ ] **Step 5: Commit.** `git add schema && git commit -m "test(schema): cover canonical sort for every base collection"`.
 
 ## Task 8: Error sentinels, structured Error and sibling sentinels
 
 Delivers: S-8 (`TestErrorSentinels`, `TestErrorIsAs`, `TestMigrateSentinelMessages`). Driver classification (`TestErrorClassification`) and redaction (`TestErrorRedaction`) belong to the driver plans. `Error()` keeps the spike behaviour of appending the wrapped error text, and `Detail()` returns the same text.
 
 Files:
+
 - Modify: `errors.go`
 - Create: `errors_test.go` (package `momo_test`)
 - Create: `vector/errors.go`, `vector/errors_test.go`
 - Create: `migrate/errors.go`, `migrate/errors_test.go`
 
 Interfaces (produced, exact):
+
 - In `momo` (`errors.go`): sentinels `ErrNotFound`, `ErrTooManyRows`, `ErrUniqueViolation`, `ErrForeignKeyViolation`, `ErrCheckViolation`, `ErrNotNullViolation`, `ErrSerialization`, `ErrOptimisticLock`, `ErrUnsupported`, `ErrUnfilteredMutation`, `ErrTxDone`, `ErrValidation`, `ErrBusy`, `ErrLimitExceeded`, and `ErrInvalidVector = vector.ErrInvalidVector`. `type Error struct{ Kind error; Op, Table, Column, Constraint string; Err error }`; methods `Error() string`, `Is(target error) bool`, `Unwrap() error`, and `Detail() string` (returns `e.Err.Error()`, or `""` when `Err` is nil).
 - In `vector`: `var ErrInvalidVector = errors.New("vector: invalid vector")`.
 - In `migrate`: `ErrChecksumMismatch`, `ErrDirty`, `ErrLocked`, `ErrDestructive`, `ErrBranchConflict`.
@@ -887,13 +901,15 @@ func TestMigrateSentinelMessages(t *testing.T) {
 Delivers: the test double every root test uses (no database), and hand-written fixture models shaped like generated code. The generator plan replaces the fixture model with generated output; the fixture keeps the same names.
 
 Files:
+
 - Create: `internal/fakedriver/fakedriver.go`, `internal/fakedriver/fakedriver_test.go`
 - Create: `unit_fixtures_test.go` (package `momo_test`)
 
 Interfaces (produced, exact):
+
 - `package fakedriver`: `type Call struct{ SQL string; Args []any }`; `type Driver struct`; `func New(d dialect.Name) *Driver`; `(*Driver) Dialect() *dialect.Dialect`; `(*Driver) Query(ctx, sql, args) (momo.Rows, error)`; `(*Driver) Exec(ctx, sql, args) (int64, error)`; `(*Driver) Begin(ctx, opts momo.TxOptions) (momo.DriverTx, error)`; fields and methods `Calls() []Call`, `SetRows(rows [][]any)`, `Closed() int` (number of Rows.Close calls, race-safe), `Commits() int`, `Rollbacks() int`.
 - `package momo_test` fixtures: a type `unitDocument` with fields `ID` and `TenantID` of Go type int64, `Title` of type string, `Published` of type bool and `DeletedAt` of type `*time.Time`; a method `MomoMeta` on `*unitDocument` that returns a pointer to a package-level value of type `momo.Meta[unitDocument]`. Package-level typed columns: `DocID`, `DocTenantID`, `DocTitle` and `DocPublished` are built with `momo.NewColumn`, and `DocDeletedAt` is built with `momo.NewNullColumn`; all name the table `documents` and the columns id, tenant_id, title, published and deleted_at. `DocID` carries FlagPK and FlagIdentity; `DocDeletedAt` carries FlagNullable and FlagSoftDelete.
-- Meta: `Table "documents"`, `Columns` in the order id, tenant_id, title, published, deleted_at; `SoftDelete: 4`, `Identity: 0`, `Version: -1`, `CreatedAt: -1`, `UpdatedAt: -1`, `PK: []int{0}`.
+- Meta: `Table "documents"`, `Columns` in the order id, tenant_id, title, published, deleted_at; `SoftDelete: 4`, `Identity: 0`, `Version: -1`, `PK: []int{0}`. (`CreatedAt`/`UpdatedAt` do not exist on the spike's `Meta` yet; Task 10 adds them and sets both to `-1` here.)
 
 - [ ] **Step 1: Write the failing test.** Create `internal/fakedriver/fakedriver_test.go`:
 
@@ -950,10 +966,12 @@ func TestFakeDriverRecordsAndScripts(t *testing.T) {
 Delivers: contract names in `meta.go` and `TableRef`, and a fix for a spike defect that lets a column-restricted query on a soft-delete model return deleted rows (S-4, S-75 precondition).
 
 Files:
+
 - Modify: `meta.go`, `select.go`
 - Create: `select_repair_test.go` (package `momo_test`), with the shared fixtures in Task 9
 
 Interfaces (produced, exact):
+
 - `const ( FlagPK uint16 = 1 << iota; FlagUnique; FlagNullable; FlagIdentity; FlagReadOnly; FlagVersion; FlagSoftDelete; FlagHasDefault; FlagCreateOnly; FlagImmutable; FlagSensitive; FlagCreatedAt; FlagUpdatedAt )` in `meta.go`.
 - `Meta[T]` fields: `Table, Schema string; Columns []ColumnMeta; Ptr func(*T, int) any; Value func(*T, int) any; TableSchema *schema.Table; Identity, Version, SoftDelete, CreatedAt, UpdatedAt int; PK []int`. `Hooks` is added by the hooks plan (S-85) and is absent here.
 - `TableRef{Name, Alias, Schema string}`; `appendFrom` writes `"schema"."name"` when Schema is set.
@@ -995,7 +1013,7 @@ func TestTableRefSchemaQualified(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `SELECT "id", "tenant_id", "title", "published", "deleted_at" FROM "tenant"."documents" WHERE "deleted_at" IS NULL`; c.SQL != want {
+	if want := `SELECT "documents"."id", "documents"."tenant_id", "documents"."title", "documents"."published", "documents"."deleted_at" FROM "tenant"."documents" WHERE "documents"."deleted_at" IS NULL`; c.SQL != want {
 		t.Fatalf("got %s\nwant %s", c.SQL, want)
 	}
 }
@@ -1006,7 +1024,7 @@ Note: the `From` argument is a `TableSource`; `TableRef` satisfies it. The bare-
 - [ ] **Step 2: Run and expect FAIL.** `go test . -run 'TestSoftDeleteFilterWithColumns|TestTableRefSchemaQualified' -count=1` fails with the rendered SQL lacking `WHERE "documents"."deleted_at" IS NULL` (first test) and with `undefined` for `Schema` on `TableRef` (second test).
 
 - [ ] **Step 3: Implement.**
-  - `meta.go`: add the flag constants; rename `Schema *schema.Table` to `TableSchema *schema.Table`; add `Schema string`, `CreatedAt int`, `UpdatedAt int`; add comments that `-1` means absent for Identity, Version, SoftDelete, CreatedAt, UpdatedAt.
+  - `meta.go`: add the flag constants; rename `Schema *schema.Table` to `TableSchema *schema.Table`; add `Schema string`, `CreatedAt int`, `UpdatedAt int` (and in the same change set `CreatedAt: -1, UpdatedAt: -1` on `unitDocument`'s Meta in `unit_fixtures_test.go`, because the zero value would mark column 0 as created-at); add comments that `-1` means absent for Identity, Version, SoftDelete, CreatedAt, UpdatedAt.
   - `TableRef`: add `Schema string`; `appendFrom` writes `b.Ident(t.Schema); b.WriteByte('.')` before the table name when Schema is non-empty; `Qualifier()` is unchanged.
   - `select.go`: delete the `SQLFor` method; in `render`, change the soft-delete condition to `if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted` (remove the `&& s.cols == nil` part) so the filter applies whatever the select list is.
 
@@ -1019,6 +1037,7 @@ Note: the `From` argument is a `TableSource`; `TableRef` satisfies it. The bare-
 Delivers: S-4 (`TestPlaceholdersAndQuoting`, `FuzzBuilder`) and the security rule that identifiers are quoted and values are bound.
 
 Files:
+
 - Create: `builder_test.go` (package `momo_test`)
 
 Interfaces: uses `momo.Select`, `momo.NewColumn`, `momo.Compiled` and `SelectQuery.SQL()`, and the fixtures of Task 9. No new production names.
@@ -1108,6 +1127,7 @@ func FuzzBuilder(f *testing.F) {
 Delivers: S-4 raw parameterized SQL: `?` positional, `??` as a literal `?`, expression arguments, and a placeholder/argument mismatch as a build error. S-77 extends this later.
 
 Files:
+
 - Create: `raw_test.go` (package `momo_test`)
 
 Interfaces: `momo.SQL(fragment string, args ...any) momo.Predicate` (spike), `momo.Select`, `SelectQuery.Where`, `SelectQuery.SQL`.
@@ -1144,6 +1164,9 @@ func TestRawPlaceholders(t *testing.T) {
 	if _, err := momo.Select[unitDocument](pg).Where(momo.SQL("a = ? AND b = ?", 1)).SQL(); err == nil {
 		t.Fatal("placeholder/argument mismatch must fail to build")
 	}
+	if _, err := momo.Select[unitDocument](pg).Where(momo.SQL("a = ?", 1, 2)).SQL(); err == nil {
+		t.Fatal("more arguments than placeholders must fail to build")
+	}
 }
 ```
 
@@ -1160,6 +1183,7 @@ func TestRawPlaceholders(t *testing.T) {
 Delivers: S-4 unit rendering (joins with aliases and self-joins, projections, aggregates, grouping, CTEs, NULLS placement, locking, limit and offset), capability gating (`ErrUnsupported`).
 
 Files:
+
 - Create: `select_golden_test.go` (package `momo_test`)
 
 Interfaces: `momo.Select`, `SelectQuery` methods `Where, Columns, From, Join, LeftJoin, CrossJoin, GroupBy, Having, OrderBy, Limit, Offset, ForUpdate, ForShare, With, WithRecursive, SQL`; `momo.TableRef`; `momo.As`; `momo.Count`; `Column.Asc/Desc/NullsFirst/NullsLast`.
@@ -1239,10 +1263,12 @@ The expected strings follow `appendAnd` in select.go (a WHERE list with more tha
 Delivers: S-4 keyset pagination with deterministic tie-breaking, and the edge case "keyset pagination with mixed sort directions and non-unique sort keys".
 
 Files:
+
 - Modify: `select.go` (add `After`)
 - Create: `keyset_test.go` (package `momo_test`)
 
 Interfaces (produced, exact):
+
 - `func (sq SelectQuery[T]) After(values ...any) SelectQuery[T]`. The values are the cursor for the effective ORDER BY list, in order. The effective list is the OrderBy items followed by the primary key ascending when the primary key is not already an item. Keys with ascending direction compare with `>`, descending with `<`. The predicate is the lexicographic expansion: disjunct i is equality on the keys before i and the comparison on key i. Each value is bound with `Builder.Arg`.
 - `After` without `OrderBy` makes `SQL()` fail with `ErrValidation`. The number of values must equal the number of effective keys, otherwise `SQL()` fails with `ErrValidation`. `After` with a nullable effective key makes `SQL()` fail with `ErrUnsupported`; the NULL-aware form is outside this plan.
 
@@ -1296,6 +1322,18 @@ func TestKeysetPagination(t *testing.T) {
 
 - [ ] **Step 4: Run and expect PASS.** `go test . -run '^TestKeysetPagination$' -count=1` prints `ok`.
 
+- [ ] **Step 4b: Nullable-key rule (added in review).** Append to `keyset_test.go` (add `"time"` to its imports) and run `go test -run TestKeysetNullableKeyUnsupported -count=1 .`; disabling the `k.nullable` guard in `select.go` must make it fail with `err = <nil>, want ErrUnsupported`:
+
+```go
+func TestKeysetNullableKeyUnsupported(t *testing.T) {
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	_, err := momo.Select[unitDocument](pg).OrderBy(DocDeletedAt.Asc()).After(time.Unix(0, 0).UTC(), int64(1)).SQL()
+	if !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("After on a nullable ORDER BY key: err = %v, want ErrUnsupported", err)
+	}
+}
+```
+
 - [ ] **Step 5: Commit.** `git add select.go keyset_test.go && git commit -m "feat(momo): keyset pagination with deterministic tie-breaking"`.
 
 ## Task 15: Query immutability under concurrent reuse
@@ -1303,6 +1341,7 @@ func TestKeysetPagination(t *testing.T) {
 Delivers: S-4 `TestQueryReuseNoLeak` under `go test -race`.
 
 Files:
+
 - Create: `reuse_test.go` (package `momo_test`)
 
 - [ ] **Step 1: Write the test.** Create `reuse_test.go`:
@@ -1367,6 +1406,7 @@ func TestQueryReuseNoLeak(t *testing.T) {
 Delivers: S-4 `TestIterClosesCursor` (unit form with the fake driver; the pool-statistics form belongs to the PostgreSQL integration plan) and S-8 `TestEmptyResultNotNotFound`.
 
 Files:
+
 - Create: `cursor_test.go` (package `momo_test`)
 
 Interfaces: `SelectQuery.All`, `One`, `Each`, `Iter` (spike); `fakedriver.Driver.SetRows`, `Closed()`.
@@ -1458,6 +1498,7 @@ func TestEmptyResultNotNotFound(t *testing.T) {
 Delivers: S-4 `TestCompileFail` and `TestValidExamplesCompile`. Typed columns reject wrong-typed values at compile time.
 
 Files:
+
 - Create: `testdata/compilefail/wrongtype/main.go`
 - Create: `testdata/compilefail/wrongtype_any/main.go`
 - Create: `testdata/valid/basic/main.go`
@@ -1564,12 +1605,14 @@ func TestValidExamplesCompile(t *testing.T) {
 Delivers: S-20 harness as URL helpers only (docs/ARCHITECTURE.md, round 2), the non-superuser application role for S-47, and the M1 compose services (PostgreSQL 17 and 16, PgBouncer). `testopen` belongs to momo-03. The MySQL and MariaDB compose services are added by momo-08 in M3, and SQLite needs no container.
 
 Files:
+
 - Create: `internal/testdb/testdb.go`, `internal/testdb/testdb_test.go`
 - Create: `internal/testdb/isolation_integration_test.go`
 - Create: `internal/testdb/compose.yaml`
 - Modify: `go.mod`, `go.sum` (adds `github.com/jackc/pgx/v5 v5.11.0` and `github.com/go-sql-driver/mysql v1.10.1`)
 
 Interfaces (produced, exact; no driver package of momo is imported, so driver plans use them without an import cycle):
+
 - `func PostgresURL(t testing.TB) string`: per-test isolation (docs/ARCHITECTURE.md, "Per-test isolation"). Connects to `MOMO_TEST_POSTGRES_URL` with `github.com/jackc/pgx/v5` directly, creates the schema `t_<16 hex chars from crypto/rand>`, and returns the base URL with the query parameter `search_path=t_xxx,public`. The result is memoized per `testing.TB` (a `sync.Map` keyed by `t`), so `testopen.Postgres(t)` and raw `PostgresURL(t)` calls in one test share one schema; a subtest calling it with its own `t` gets its own schema. `t.Cleanup` runs `DROP SCHEMA "t_xxx" CASCADE` and reports an error through `t.Errorf`. Once per process (`sync.Once` plus `pg_advisory_lock(7_000_001)`) it runs `CREATE EXTENSION IF NOT EXISTS vector SCHEMA public`, so the `vector` types resolve through `public`.
 - `func PostgresAppRoleURL(t testing.TB) string`: the same schema as `PostgresURL(t)` for that `t` (the helper calls `PostgresURL(t)` first), plus, run as the administrator, `GRANT USAGE ON SCHEMA "t_xxx" TO <app role>`, `ALTER DEFAULT PRIVILEGES IN SCHEMA "t_xxx" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO <app role>` and `ALTER DEFAULT PRIVILEGES IN SCHEMA "t_xxx" GRANT USAGE, SELECT ON SEQUENCES TO <app role>` (so tables the administrator creates in that schema are covered; the app role has no `CREATE` and cannot run DDL). The role and password come from `MOMO_TEST_POSTGRES_APP_URL` (created when absent), and the returned URL carries that role's credentials with the same `search_path` appended.
 - `func PgBouncerURL(t testing.TB) string`: `MOMO_TEST_PGBOUNCER_URL` with the schema of `PostgresURL(t)` for that `t` (the helper calls `PostgresURL(t)` first) and the same `search_path` parameter appended. The PgBouncer database must be the database named in `MOMO_TEST_POSTGRES_URL`. The PgBouncer configuration must set `track_extra_parameters = search_path` (PgBouncer 1.20 or later); see Task 19 and momo-03 Task 10.
@@ -1767,7 +1810,7 @@ func TestPostgresURLIsolated(t *testing.T) {
   - `withSearchPath(raw, name string) string`: parses `raw` with `net/url`, sets the query parameter `search_path` to `<name>,public`, and returns the URL string.
   - `PostgresURL(t)` is `withSearchPath(admin, name)` from `schemaFor(t)`. `Schema(t)` returns the name from `schemaFor(t)`.
   - `PostgresAppRoleURL(t)` calls `PostgresURL(t)` first, then as the administrator runs a `DO` block that creates the role named in `MOMO_TEST_POSTGRES_APP_URL` with its password when absent, `GRANT CONNECT ON DATABASE <current database> TO <role>`, `GRANT USAGE ON SCHEMA "<name>" TO <role>`, `ALTER DEFAULT PRIVILEGES IN SCHEMA "<name>" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO <role>` and `ALTER DEFAULT PRIVILEGES IN SCHEMA "<name>" GRANT USAGE, SELECT ON SEQUENCES TO <role>` (all run as the administrator; no `CREATE` privilege is granted), and returns `withSearchPath(appURL, name)`.
-  - `freshMySQL(t, env string) string`: memoized per `(t, env)` in a second `sync.Map`; `mysql.ParseDSN` of the administrator DSN (blank import `_ "github.com/go-sql-driver/mysql"`), a connection with `DBName` cleared, `CREATE DATABASE \`<name>\``, cleanup `DROP DATABASE IF EXISTS` (error goes to `t.Errorf`), then `cfg.DBName = name` and `cfg.FormatDSN()`. `MySQL84URL`, `MySQL97URL` and `MariaDBURL` call it with their variables.
+  - `freshMySQL(t, env string) string`: memoized per `(t, env)` in a second `sync.Map`; `mysql.ParseDSN` of the administrator DSN (blank import `_ "github.com/go-sql-driver/mysql"`), a connection with `DBName` cleared, `CREATE DATABASE \`<name>\``, cleanup `DROP DATABASE IF EXISTS`(error goes to`t.Errorf`), then `cfg.DBName = name`and`cfg.FormatDSN()`. `MySQL84URL`, `MySQL97URL`and`MariaDBURL` call it with their variables.
   - `PgBouncerURL(t)` calls `PostgresURL(t)` first, then returns `withSearchPath(require(t, envPgBouncer), Schema(t))`.
   - `SQLitePath(t)` returns `filepath.Join(t.TempDir(), "momo.db")`.
 - Pin the modules: `go get github.com/jackc/pgx/v5@v5.11.0 github.com/go-sql-driver/mysql@v1.10.1`, then `go mod tidy`.
@@ -1781,12 +1824,22 @@ services:
     image: pgvector/pgvector:0.8.7-pg17
     environment: { POSTGRES_PASSWORD: momo, POSTGRES_USER: postgres }
     ports: ["127.0.0.1:5432:5432"]
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 2s, retries: 30 }
+    healthcheck:
+      {
+        test: ["CMD-SHELL", "pg_isready -U postgres"],
+        interval: 2s,
+        retries: 30,
+      }
   postgres16:
     image: pgvector/pgvector:0.8.7-pg16
     environment: { POSTGRES_PASSWORD: momo, POSTGRES_USER: postgres }
     ports: ["127.0.0.1:5433:5432"]
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 2s, retries: 30 }
+    healthcheck:
+      {
+        test: ["CMD-SHELL", "pg_isready -U postgres"],
+        interval: 2s,
+        retries: 30,
+      }
   pgbouncer:
     image: edoburu/pgbouncer:v1.26.1-p0
     environment:
@@ -1809,6 +1862,7 @@ Delivers: S-20 (unit, compile-fail, race, fuzz smoke, PostgreSQL integration on 
 Milestone rule: the single `integration` job has a `dialect` matrix. M1 lists `postgres`. A milestone enables its dialect by adding that dialect to the list (`sqlite` in M2; `mysql84`, `mysql97` and `mariadb` in M3, each with its service block beside the postgres service). No further job is written.
 
 Files:
+
 - Create: `.github/workflows/ci.yml`
 - Create: `internal/repocheck/ci_test.go`
 - Modify: `go.mod`, `go.sum` (adds `go.yaml.in/yaml/v3 v3.0.6`, test-only)
@@ -2015,6 +2069,7 @@ func TestCIWorkflowCoverage(t *testing.T) {
 Delivers: S-25 (pinned third-party actions, least-privilege `permissions:`, Dependabot for Go modules and GitHub Actions, OpenSSF Scorecard), S-49 (CodeQL and gosec on pull requests).
 
 Files:
+
 - Create: `.github/workflows/codeql.yml`, `.github/workflows/gosec.yml`, `.github/workflows/scorecard.yml`
 - Create: `.github/dependabot.yml`
 - Create: `internal/repocheck/workflows_test.go`
@@ -2098,6 +2153,7 @@ func TestCodeQLAndGosecRunOnPullRequests(t *testing.T) {
 Delivers: S-22 (release-please from Conventional Commits, pre-1.0 minor bumps, changelog path, PR-title enforcement), `TestReleaseConfig`.
 
 Files:
+
 - Create: `release-please-config.json`, `.release-please-manifest.json`
 - Create: `.github/workflows/release-please.yml`, `.github/workflows/pr-title.yml`
 - Create: `internal/repocheck/release_test.go`
@@ -2185,6 +2241,7 @@ func stepUses(w workflow) string {
 Delivers: S-20 `TestImportGraph` (rule 1 of the architecture contract), and the statement that the core has no OpenTelemetry, driver, YAML or x/tools dependency.
 
 Files:
+
 - Create: `internal/repocheck/importgraph_test.go`
 
 Interfaces: none produced.
@@ -2256,17 +2313,17 @@ Files: none.
 
 ## Spec traceability
 
-| Spec id | Delivered by | Acceptance test(s) |
-|---|---|---|
-| S-1 | Tasks 4, 6, 7 | TestSchemaJSONRoundTrip, FuzzSchemaSort, TestSchemaEveryFieldSerialized, TestEqualIgnoresOrderAndConcurrently |
-| S-4 (unit) | Tasks 3, 9-17 | TestCompileFail, TestValidExamplesCompile, TestQueryReuseNoLeak, TestPlaceholdersAndQuoting, FuzzBuilder, TestRawPlaceholders, TestSelectGolden, TestKeysetPagination, TestIterClosesCursor |
-| S-8 | Tasks 8, 16 | TestErrorSentinels, TestErrorIsAs, TestMigrateSentinelMessages, TestEmptyResultNotNotFound |
-| S-20 | Tasks 1, 2, 18, 19, 22 | TestCIWorkflowCoverage, TestMakefileTargets, TestImportGraph, TestResolve, TestEnvVarNames |
-| S-22 | Tasks 5, 21 | TestFormatVersions, TestReleaseConfig |
-| S-24 | Task 1 | TestRepoFiles |
-| S-25 | Tasks 2, 19, 20 | TestWorkflowsPinned, TestCIWorkflowCoverage (govulncheck) |
-| S-26 | Task 19 | TestCIWorkflowCoverage (windows job present; TestWindowsPaths is owned by plan 04 (CLI task)) |
-| S-49 | Task 20 | TestCodeQLAndGosecRunOnPullRequests |
+| Spec id    | Delivered by           | Acceptance test(s)                                                                                                                                                                          |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S-1        | Tasks 4, 6, 7          | TestSchemaJSONRoundTrip, FuzzSchemaSort, TestSchemaEveryFieldSerialized, TestEqualIgnoresOrderAndConcurrently                                                                               |
+| S-4 (unit) | Tasks 3, 9-17          | TestCompileFail, TestValidExamplesCompile, TestQueryReuseNoLeak, TestPlaceholdersAndQuoting, FuzzBuilder, TestRawPlaceholders, TestSelectGolden, TestKeysetPagination, TestIterClosesCursor |
+| S-8        | Tasks 8, 16            | TestErrorSentinels, TestErrorIsAs, TestMigrateSentinelMessages, TestEmptyResultNotNotFound                                                                                                  |
+| S-20       | Tasks 1, 2, 18, 19, 22 | TestCIWorkflowCoverage, TestMakefileTargets, TestImportGraph, TestResolve, TestEnvVarNames                                                                                                  |
+| S-22       | Tasks 5, 21            | TestFormatVersions, TestReleaseConfig                                                                                                                                                       |
+| S-24       | Task 1                 | TestRepoFiles                                                                                                                                                                               |
+| S-25       | Tasks 2, 19, 20        | TestWorkflowsPinned, TestCIWorkflowCoverage (govulncheck)                                                                                                                                   |
+| S-26       | Task 19                | TestCIWorkflowCoverage (windows job present; TestWindowsPaths is owned by plan 04 (CLI task))                                                                                               |
+| S-49       | Task 20                | TestCodeQLAndGosecRunOnPullRequests                                                                                                                                                         |
 
 Not covered here, by design: S-41 (driver-error redaction, with driver classification in momo-03), S-75 (soft-delete variants beyond the filter repair in Task 10), S-30 (PgBouncer query suite, momo-03), and the dialect-parameterized forms of the S-4 and S-8 tests, which run through `testopen.Each` once momo-03 lands.
 

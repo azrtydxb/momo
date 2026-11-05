@@ -1,0 +1,13 @@
+/bin/
+*.test
+*.out
+coverage.*
+/vendor/
+.DS_Store
+*.db
+*.db-wal
+*.db-shm
+/.procoder/state/
+/.claude/
+/.procoder/index/
+.lycheecache

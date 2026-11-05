@@ -7,14 +7,11 @@ Sprint: -
 
 ## Description
 
-Implements plan momo-04-migrations Task 17: Diff writes files; no-change round trip (PostgreSQL) (`.procoder/plans/momo-04-migrations.md:2036`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-10, S-11, S-27. Files: `migrate/engine.go`, `migrate/diff_engine_test.go`.
+Implements plan momo-04-migrations Task 17: Diff writes files; no-change round trip (PostgreSQL) (`.procoder/plans/momo-04-migrations.md:2036`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-10, S-11, S-27. Files: `migrate/engine.go`, `migrate/diff_engine_test.go`. Contributes to S-10, S-11, S-27; those criteria are verified in the stories that define their named tests.
 
 ## Acceptance criteria
 
 - [ ] `TestMigrationRoundTrip` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-10] `TestCLIContracts`: each command's exit codes and outputs as documented in Interfaces; offline commands run with no database URL set; fails if an offline command opens a connection.
-- [ ] [S-11] `TestStagedChange` on a populated DB: add nullable column → data migration backfill → SET NOT NULL applies and all rows satisfy the constraint; fails if diff emits NOT NULL directly for a populated table without a default.
-- [ ] [S-27] `TestMigrationBranchConflict`: two migrations with the same parent snapshot fail `momo migrate validate`; `TestMigrateRebase` regenerates the later one on top of the other and the result applies with a no-change round trip; fails if two heads are accepted.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

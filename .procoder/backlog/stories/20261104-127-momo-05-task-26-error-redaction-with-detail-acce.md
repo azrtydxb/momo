@@ -12,7 +12,7 @@ Implements plan momo-05-writes-queries Task 26: Error redaction with Detail acce
 ## Acceptance criteria
 
 - [ ] `TestErrorRedaction` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-41] `TestErrorRedaction`: a unique violation on an email column returns an error whose Error() lacks the email while the detail accessor and errors.As expose it; fails if driver detail is concatenated into the message.
+- [ ] [S-41, part] `TestErrorRedaction` passes for the part of S-41 this task delivers; the full criterion is verified in story 200.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

@@ -12,7 +12,7 @@ Implements plan momo-06-relations Task 11: Nested, filtered, ordered eager loadi
 ## Acceptance criteria
 
 - [ ] `TestNestedFilteredEagerLoad` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-81] `TestNestedFilteredEagerLoad` and `TestJoinLoadToOne` assert query counts and that a missing to-one leaves nil, not a zero struct; fails if join loading duplicates parents.
+- [ ] [S-81, part] `TestNestedFilteredEagerLoad` passes for the part of S-81 this task delivers; the full criterion is verified in story 152.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

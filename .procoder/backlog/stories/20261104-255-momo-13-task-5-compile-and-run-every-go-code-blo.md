@@ -13,7 +13,7 @@ Implements plan momo-13-docs-release Task 5: Compile and run every Go code block
 
 - [ ] `TestDocsCodeBlocks` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestDocsRunnableBlocks` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-23] `TestDocsCodeBlocks` extracts every Go code block from the docs and compiles it against the current module (runnable ones are executed against both databases); `TestLLMsTxt` builds the site and asserts `/llms.txt` lists every nav page, `/llms-full.txt` contains every page's Markdown, and each page has a raw `.md` twin; the docs workflow deploys `/dev/` on push to main and `/vX.Y/` plus `/latest/`…
+- [ ] [S-23, part] `TestDocsCodeBlocks` passes for the part of S-23 this task delivers; the full criterion is verified in story 256.
 - [ ] [S-95] `TestDocsCodeBlocks` covers the guide pages and `TestMigrationGuidesComplete` asserts each guide has sections for models, queries, relations, hooks, transactions, migrations and errors; fails if a guide section is missing.
 - [ ] `procoder check` gate is clean and the task's commit is made
 

@@ -13,7 +13,7 @@ Implements plan momo-11-adoption Task 3: Bun static reader and fixture module (`
 
 - [ ] `TestImportBun` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestReadReportsNullzeroWithPosition` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-91] `TestImportGORM`, `TestImportBun`, `TestImportEnt` convert fixture projects, assert generated Momo models produce the same schema as the source ORM's migration (inspected) with zero diff, and assert the report lists each semantic change; fails if a source field is dropped silently.
+- [ ] [S-91, part] `TestImportBun` passes for the part of S-91 this task delivers; the full criterion is verified in story 227.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

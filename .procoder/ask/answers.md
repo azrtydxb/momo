@@ -1,8 +1,14 @@
 # What a human decided
 
-Written 2026-11-04 19:05 UTC. procoder reads this
+Written 2026-11-05 04:24 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
+
+## (no longer asked)
+
+Key: after-sprint-1
+
+Answer: Push init to azrtydxb/momo and open a PR into main so CI runs; start sprint 2 (plan 09 Task 1 + plan 02 generator) in parallel.
 
 ## (no longer asked)
 
@@ -117,6 +123,12 @@ Answer: Commit the spec, the 13 plans, ARCHITECTURE and the backlog on branch in
 Key: orm-gaps
 
 Answer: Add all of groups A-F (S-59..S-95), conflicts only in explicit Momo form.
+
+## (no longer asked)
+
+Key: public-author-email
+
+Answer: Keep pascal@watteel.com; push the commits as they are.
 
 ## (no longer asked)
 

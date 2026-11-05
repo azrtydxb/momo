@@ -14,7 +14,7 @@ Implements plan momo-05-writes-queries Task 10: Raw SQL arguments: named, expand
 - [ ] `TestRawArgs` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestRawEmptyInIsBuildError` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestRawNonEmptyInBinds` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-77] `TestRawArgs` and `FuzzRawArgs` assert named and expanded placeholders bind correctly per dialect and identifiers are quoted; fails if an identifier argument is bound as a value or a value is interpolated.
+- [ ] [S-77, part] `TestRawArgs` passes for the part of S-77 this task delivers; the full criterion is verified in story 112.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
