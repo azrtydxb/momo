@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package gen
+
+import (
+	"errors"
+	"fmt"
+	"go/token"
+	"sort"
+	"strconv"
+	"strings"
+
+	"golang.org/x/tools/go/packages"
+
+	"github.com/azrtydxb/momo/schema"
+)
+
+const loadMode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
+	packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports |
+	packages.NeedDeps | packages.NeedModule
+
+// Load loads the packages matching patterns with type information. Package
+// errors become positioned diagnostics; only infrastructure failures (for
+// example go list cannot run) are returned as err.
+func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
+	if len(patterns) == 0 {
+		return nil, nil, errors.New("gen: no package patterns given")
+	}
+	for _, p := range patterns {
+		if strings.TrimSpace(p) == "" {
+			return nil, nil, errors.New("gen: empty package pattern")
+		}
+	}
+	pcfg := &packages.Config{Mode: loadMode, Dir: cfg.Dir}
+	if len(cfg.Tags) > 0 {
+		pcfg.BuildFlags = []string{"-tags=" + strings.Join(cfg.Tags, ",")}
+	}
+	pkgs, err := packages.Load(pcfg, patterns...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("gen: load packages: %w", err)
+	}
+
+	g := &Graph{
+		Models:   []*Model{},
+		Schema:   &schema.Schema{},
+		Packages: []*Package{},
+		Plugins:  append([]Plugin(nil), cfg.Plugins...),
+	}
+	var diags []Diagnostic
+	seen := map[string]bool{}
+	for _, p := range pkgs {
+		for _, e := range p.Errors {
+			d := errorDiagnostic(e)
+			key := d.String()
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			diags = append(diags, d)
+		}
+		dir := ""
+		if len(p.GoFiles) > 0 {
+			dir = dirOf(p.GoFiles[0])
+		}
+		g.Packages = append(g.Packages, &Package{Path: p.PkgPath, Name: p.Name, Dir: dir})
+	}
+	sort.SliceStable(g.Packages, func(i, j int) bool { return g.Packages[i].Path < g.Packages[j].Path })
+	sort.SliceStable(g.Models, func(i, j int) bool {
+		a, b := g.Models[i], g.Models[j]
+		if a.PkgPath != b.PkgPath {
+			return a.PkgPath < b.PkgPath
+		}
+		return a.GoName < b.GoName
+	})
+	return g, diags, nil
+}
+
+func dirOf(file string) string {
+	if i := strings.LastIndexAny(file, `/\`); i >= 0 {
+		return file[:i]
+	}
+	return "."
+}
+
+// errorDiagnostic converts a packages.Error. Pos is "file:line:col",
+// "file:line" or "-" / empty; it is parsed from the right so drive-letter
+// colons in Windows paths survive.
+func errorDiagnostic(e packages.Error) Diagnostic {
+	d := Diagnostic{Msg: e.Msg}
+	pos := e.Pos
+	if pos == "" || pos == "-" {
+		d.Pos = token.Position{Filename: "-"}
+		return d
+	}
+	parts := strings.Split(pos, ":")
+	var nums []int
+	for len(parts) > 1 && len(nums) < 2 {
+		n, err := strconv.Atoi(parts[len(parts)-1])
+		if err != nil {
+			break
+		}
+		nums = append([]int{n}, nums...)
+		parts = parts[:len(parts)-1]
+	}
+	d.Pos.Filename = strings.Join(parts, ":")
+	switch len(nums) {
+	case 2:
+		d.Pos.Line, d.Pos.Column = nums[0], nums[1]
+	case 1:
+		d.Pos.Line = nums[0]
+	}
+	return d
+}
