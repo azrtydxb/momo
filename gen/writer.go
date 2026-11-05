@@ -241,3 +241,20 @@ func (w *Writer) Orphans(dirs []string) ([]string, error) {
 	sort.Strings(out)
 	return out, nil
 }
+
+// Output is one buffered generated file.
+type Output struct {
+	Path string
+	Data []byte
+}
+
+// Outputs returns the buffered files sorted by Path. It is available before
+// Commit and returns copies, so callers cannot alter what Commit writes.
+func (w *Writer) Outputs() []Output {
+	out := make([]Output, 0, len(w.files))
+	for p, data := range w.files {
+		out = append(out, Output{Path: p, Data: append([]byte(nil), data...)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}
