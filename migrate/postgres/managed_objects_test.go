@@ -101,3 +101,55 @@ func TestManagedFunctionsTriggersPartitions(t *testing.T) {
 	applyStatements(t, db, stmts)
 	mustExec(t, db.Driver(), `INSERT INTO events (id, tenant, created_at) VALUES (2, 'acme', '2026-03-02')`)
 }
+
+func flagSchema(strict, definer bool) *schema.Schema {
+	return &schema.Schema{FormatVersion: schema.FormatVersion, Dialect: "postgres", Tables: []schema.Table{}, Functions: []schema.Function{{
+		Name: "twice", Args: "x integer", Returns: "integer", Language: "sql", Volatility: "IMMUTABLE",
+		Strict: strict, SecurityDefiner: definer, Body: "SELECT x * 2",
+	}}}
+}
+
+func withExt(s, from *schema.Schema) *schema.Schema {
+	s.Extensions = from.Extensions
+	return s
+}
+
+// TestFunctionStrictSecurityDefinerRoundTrip proves the flags survive render,
+// apply and inspect, that a second diff is empty, and that flipping
+// SecurityDefiner renders a CREATE OR REPLACE the server accepts.
+func TestFunctionStrictSecurityDefinerRoundTrip(t *testing.T) {
+	db := testopen.Postgres(t)
+	desired := flagSchema(true, true)
+	applyStatements(t, db, planStatements(t, &schema.Schema{Dialect: "postgres"}, desired, migrate.DiffOptions{}))
+
+	got := inspectNow(t, db)
+	if len(got.Functions) != 1 || !got.Functions[0].Strict || !got.Functions[0].SecurityDefiner {
+		t.Fatalf("flags not inspected: %+v", got.Functions)
+	}
+	desired.Extensions = got.Extensions // database-wide; testdb installs vector
+	if !schema.Equal(got, desired) {
+		t.Fatalf("round trip differs:\n%s", jsonDiff(got, desired))
+	}
+	if again := planStatements(t, got, desired, migrate.DiffOptions{}); len(again) != 0 {
+		t.Fatalf("second diff not empty: %+v", again)
+	}
+
+	flipped := flagSchema(true, false)
+	flipped.Extensions = got.Extensions
+	stmts := planStatements(t, got, flipped, migrate.DiffOptions{})
+	if len(stmts) != 1 || !strings.HasPrefix(stmts[0].SQL, "CREATE OR REPLACE FUNCTION") || strings.Contains(stmts[0].SQL, "SECURITY") {
+		t.Fatalf("flip must be one CREATE OR REPLACE without SECURITY DEFINER: %+v", stmts)
+	}
+	applyStatements(t, db, stmts)
+	after := inspectNow(t, db)
+	if after.Functions[0].SecurityDefiner || !after.Functions[0].Strict || !schema.Equal(after, flipped) {
+		t.Fatalf("flip not applied: %+v", after.Functions)
+	}
+
+	// Strict flip alone is also a function change.
+	stmts = planStatements(t, after, withExt(flagSchema(false, false), after), migrate.DiffOptions{})
+	if len(stmts) != 1 || !strings.HasPrefix(stmts[0].SQL, "CREATE OR REPLACE FUNCTION") {
+		t.Fatalf("strict flip: %+v", stmts)
+	}
+	applyStatements(t, db, stmts)
+}

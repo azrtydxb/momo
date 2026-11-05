@@ -228,3 +228,29 @@ func TestRenderTriggerFunctionValidated(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderFunctionStrictSecurityDefiner(t *testing.T) {
+	base := schema.Function{Name: "twice", Args: "x integer", Returns: "integer", Language: "sql", Volatility: "IMMUTABLE", Body: "SELECT x * 2"}
+	plain := renderSQL(t, migrate.Change{Kind: migrate.CreateFunction, Name: "twice", After: &base})[0].SQL
+	if strings.Contains(plain, "STRICT") || strings.Contains(plain, "SECURITY") {
+		t.Fatalf("flags unset must emit neither clause: %q", plain)
+	}
+	both := base
+	both.Strict, both.SecurityDefiner = true, true
+	got := renderSQL(t, migrate.Change{Kind: migrate.CreateFunction, Name: "twice", After: &both})[0].SQL
+	if !strings.Contains(got, `IMMUTABLE STRICT SECURITY DEFINER AS $momo$`) {
+		t.Fatalf("create with both flags: %q", got)
+	}
+	strict := base
+	strict.Strict = true
+	got = renderSQL(t, migrate.Change{Kind: migrate.CreateFunction, Name: "twice", After: &strict})[0].SQL
+	if !strings.Contains(got, "STRICT AS") || strings.Contains(got, "SECURITY") {
+		t.Fatalf("strict only: %q", got)
+	}
+	def := base
+	def.SecurityDefiner = true
+	st := renderSQL(t, migrate.Change{Kind: migrate.ReplaceFunction, Name: "twice", Before: &base, After: &def})
+	if len(st) != 1 || !strings.HasPrefix(st[0].SQL, "CREATE OR REPLACE FUNCTION") || !strings.Contains(st[0].SQL, "SECURITY DEFINER AS") || strings.Contains(st[0].SQL, "STRICT") {
+		t.Fatalf("replace with security definer: %+v", st)
+	}
+}
