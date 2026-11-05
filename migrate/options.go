@@ -18,6 +18,7 @@ type options struct {
 	// lockWaitSet distinguishes an explicit zero (do not wait) from unset.
 	lockWait    time.Duration
 	lockWaitSet bool
+	noSum       bool
 }
 
 // Option configures an Engine.
@@ -48,4 +49,12 @@ func WithDialect(d Dialect) Option {
 // non-zero, overrides it for one call; without either the wait is 30s.
 func WithLockWait(d time.Duration) Option {
 	return func(o *options) { o.lockWait, o.lockWaitSet = d, true }
+}
+
+// WithoutSum turns off the momo.sum requirement. Without it Apply and Status
+// refuse a directory that has no momo.sum, because an edited migration file
+// could not be detected. It exists for tests and for tools that check files
+// by other means; production code keeps momo.sum.
+func WithoutSum() Option {
+	return func(o *options) { o.noSum = true }
 }

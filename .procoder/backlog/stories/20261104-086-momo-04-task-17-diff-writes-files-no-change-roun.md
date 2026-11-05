@@ -14,6 +14,7 @@ Implements plan momo-04-migrations Task 17: Diff writes files; no-change round t
 ## Acceptance criteria
 
 - [ ] `TestMigrationRoundTrip` exists as written in the plan, failed before the implementation, and passes now
+- [ ] The no-change round trip ignores the `momo_migrations` history table (the engine Inspect used by Diff excludes it)
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

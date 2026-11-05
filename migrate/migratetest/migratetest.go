@@ -37,10 +37,12 @@ func WithSum(t testing.TB, fsys fstest.MapFS) fs.FS {
 	return out
 }
 
-// NewEngine builds an engine on d, drv and fsys, failing the test on error.
+// NewEngine builds an engine on d, drv and fsys, failing the test on error. It
+// passes migrate.WithoutSum, so a test directory needs no momo.sum; a test of the
+// sum checks builds the engine with migrate.NewEngine.
 func NewEngine(t testing.TB, d migrate.Dialect, drv momo.Driver, fsys fs.FS, opts ...migrate.Option) *migrate.Engine {
 	t.Helper()
-	e, err := migrate.NewEngine(drv, fsys, append([]migrate.Option{migrate.WithDialect(d)}, opts...)...)
+	e, err := migrate.NewEngine(drv, fsys, append([]migrate.Option{migrate.WithDialect(d), migrate.WithoutSum()}, opts...)...)
 	if err != nil {
 		t.Fatalf("migratetest: new engine: %v", err)
 	}

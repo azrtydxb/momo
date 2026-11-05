@@ -82,12 +82,28 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 	return out, nil
 }
 
-// history creates the history table when it is missing and reads it.
+// history creates the history table when it is missing and reads it. Only
+// callers that hold the migration lock may use it.
 func (e *Engine) history(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
 	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
 		return nil, err
 	}
 	return ReadHistory(ctx, c)
+}
+
+// undefinedTable is the SQLSTATE of a query on a table that does not exist.
+const undefinedTable = "42P01"
+
+// readHistory reads the history table without creating it: a database that
+// has none yet has an empty history. Plan and Status use it so they stay
+// read-only and cannot race the first Apply on CREATE TABLE.
+func (e *Engine) readHistory(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
+	hist, err := ReadHistory(ctx, c)
+	var s interface{ SQLState() string }
+	if errors.As(err, &s) && s.SQLState() == undefinedTable {
+		return nil, nil
+	}
+	return hist, err
 }
 
 // dirtyError returns ErrDirty naming the first running or failed row.
@@ -113,11 +129,15 @@ func (e *Engine) pendingFrom(hist []HistoryRow) ([]Pending, error) {
 }
 
 // sumMismatches returns the names of files whose content differs from
-// momo.sum. A directory without momo.sum has nothing to compare and returns nil.
+// momo.sum. A directory without momo.sum is an error, because without it an
+// edited migration cannot be detected; WithoutSum turns the check off.
 func (e *Engine) sumMismatches() ([]string, error) {
+	if e.opts.noSum {
+		return nil, nil
+	}
 	f, err := e.dir.Open(SumFileName)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+		return nil, fmt.Errorf("migrate: %s is missing; run momo migrate hash to create it (it records the checksum of every migration file so edits are detected)", SumFileName)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("migrate: open %s: %w", SumFileName, err)
@@ -164,15 +184,17 @@ func (e *Engine) verifyChecksums(hist []HistoryRow) error {
 	return nil
 }
 
-// Plan lists the migrations that Apply would run. It takes no lock and does
-// not check checksums or dirty state; Status reports those.
+// Plan lists the migrations that Apply would run. It is read-only: it takes no
+// lock, creates nothing (a database without a history table has every
+// migration pending) and does not check checksums or dirty state; Status
+// reports those.
 func (e *Engine) Plan(ctx context.Context) ([]Pending, error) {
 	c, err := e.pin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = c.Release() }()
-	hist, err := e.history(ctx, c)
+	hist, err := e.readHistory(ctx, c)
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +236,13 @@ func (e *Engine) resolveSchemas(ctx context.Context, c momo.PinnedConn) ([]strin
 	}
 	return schemas, nil
 }
+
+// applyIDLayout is RFC 3339 with a fixed nine-digit fraction (RFC3339Nano drops
+// trailing zeros, which breaks string ordering). Report.ApplyID is this UTC time,
+// a dash and 8 random hex digits, so two applies in the same instant stay
+// distinct. Group rollback picks the greatest apply_id, which therefore is the
+// most recent apply; nothing parses the value.
+const applyIDLayout = "2006-01-02T15:04:05.000000000Z"
 
 // lockPoll is how often Apply retries a held migration lock.
 const lockPoll = 200 * time.Millisecond
@@ -277,6 +306,35 @@ func joinErr(err, cleanup error) error {
 	return errors.Join(err, cleanup)
 }
 
+// session resolves the managed schemas, takes the migration lock (waiting up to
+// wait) and applies the session timeouts. The returned end joins its argument
+// with the outcome of the cleanup: it resets the session timeouts first and
+// releases the lock second, so a small statement_timeout cannot cancel the
+// unlock. Both run detached from ctx; the unlock still runs when the reset or
+// the Setup fails.
+func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Duration) (end func(error) error, err error) {
+	schemas, err := e.resolveSchemas(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	hs := ""
+	if len(schemas) > 0 {
+		hs = schemas[0]
+	}
+	unlock, err := e.acquireLock(ctx, c, "momo:"+hs+".momo_migrations", wait)
+	if err != nil {
+		return nil, err
+	}
+	reset, err := e.opts.dialect.Setup(ctx, c, SessionOptions{LockTimeout: e.opts.config.LockTimeout, StatementTimeout: e.opts.config.StatementTimeout})
+	if err != nil {
+		return nil, joinErr(err, unlock())
+	}
+	return func(err error) error {
+		err = joinErr(err, reset()) // runs first
+		return joinErr(err, unlock())
+	}, nil
+}
+
 // Apply runs the pending migrations in version order, each with its own
 // history row, and stops at the first failure.
 //
@@ -297,24 +355,11 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		return nil, err
 	}
 	defer func() { _ = c.Release() }()
-	schemas, err := e.resolveSchemas(ctx, c)
+	end, err := e.session(ctx, c, e.lockWait(o))
 	if err != nil {
 		return nil, err
 	}
-	hs := ""
-	if len(schemas) > 0 {
-		hs = schemas[0]
-	}
-	unlock, err := e.acquireLock(ctx, c, "momo:"+hs+".momo_migrations", e.lockWait(o))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { err = joinErr(err, unlock()) }() // registered first, runs second
-	reset, err := e.opts.dialect.Setup(ctx, c, SessionOptions{LockTimeout: e.opts.config.LockTimeout, StatementTimeout: e.opts.config.StatementTimeout})
-	if err != nil {
-		return nil, err
-	}
-	defer func() { err = joinErr(err, reset()) }() // registered second, runs first
+	defer func() { err = end(err) }()
 
 	// The history table is created under the lock, so two first-time callers
 	// cannot race on CREATE TABLE.
@@ -336,7 +381,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	if _, err := rand.Read(b[:]); err != nil {
 		return nil, fmt.Errorf("migrate: apply id: %w", err)
 	}
-	rep = &Report{ApplyID: e.opts.clock().UTC().Format("20060102150405") + "-" + hex.EncodeToString(b[:])}
+	rep = &Report{ApplyID: e.opts.clock().UTC().Format(applyIDLayout) + "-" + hex.EncodeToString(b[:])}
 	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin}
 	for _, p := range pending {
 		if o.To != "" && p.Version > o.To {
@@ -353,14 +398,15 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 
 // Status reports the state of every migration version: applied, pending, dirty
 // (running or failed), mismatch (the file differs from the recorded checksum or
-// from momo.sum) or missing (a history row without a file). It takes no lock.
+// from momo.sum) or missing (a history row without a file). It is read-only:
+// it takes no lock and creates nothing.
 func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
 	c, err := e.pin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = c.Release() }()
-	hist, err := e.history(ctx, c)
+	hist, err := e.readHistory(ctx, c)
 	if err != nil {
 		return nil, err
 	}
@@ -427,7 +473,7 @@ func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
 // ResolveApplied the failed or running row becomes applied and keeps its
 // statements_applied; with ResolveRolledBack the row is deleted, so the version
 // is pending again. It is an error when the version has no dirty row.
-func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState) error {
+func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState) (err error) {
 	if state != ResolveApplied && state != ResolveRolledBack {
 		return fmt.Errorf("migrate: unknown resolve state %q; use %q or %q", state, ResolveApplied, ResolveRolledBack)
 	}
@@ -436,10 +482,13 @@ func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState
 		return err
 	}
 	defer func() { _ = c.Release() }()
-	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
+	// Resolve writes, so it holds the migration lock like Apply.
+	end, err := e.session(ctx, c, e.lockWait(ApplyOptions{}))
+	if err != nil {
 		return err
 	}
-	hist, err := ReadHistory(ctx, c)
+	defer func() { err = end(err) }()
+	hist, err := e.history(ctx, c)
 	if err != nil {
 		return err
 	}

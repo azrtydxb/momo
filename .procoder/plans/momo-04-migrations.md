@@ -500,6 +500,8 @@ type Option func(*options)
 func WithClock(now func() time.Time) Option
 func WithConfig(c Config) Option
 func WithDialect(d Dialect) Option // required by NewEngine; NewEngine without it returns an error naming migrate.WithDialect
+func WithLockWait(d time.Duration) Option // engine default lock wait; zero means do not wait; ApplyOptions.LockWait overrides it
+func WithoutSum() Option // tests only: Apply and Status otherwise refuse a directory without momo.sum, naming momo migrate hash
 type SessionOptions struct {
     LockTimeout, StatementTimeout time.Duration
 }
@@ -2041,6 +2043,8 @@ func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error)
 ```
 
 Apply algorithm (normative): (1) open a pinned connection and resolve the managed schemas with `resolveSchemas` (default `[current_schema()]`; `Schemas[0]` must equal `current_schema()` because the history table is referenced unqualified and so lives there); (2) `EnsureHistory` (implemented after the lock and Setup, steps 3 and 4, so two first-time callers cannot race on CREATE TABLE); (3) acquire the lock via `Dialect.Lock` with key `"momo:" + historySchema + "." + historyTable` (`historySchema` = resolved `Schemas[0]`, `historyTable` = `momo_migrations`; the key is hashed with fnv64a in Task 14, and SQLite ignores it) and `ApplyOptions.LockWait` (default 30s, polling every 200ms; on timeout return ErrLocked with the holder text); (4) `Dialect.Setup` with lock timeouts; (5) read history; if any row is `running` or `failed`, return ErrDirty naming the version; (6) verify `momo.sum` with VerifySum and every applied row's checksum against the file (ErrChecksumMismatch naming the file); (7) for each pending migration up to `opts.To` in version order, call RunMigration with a shared ApplyID (`time.Now().UTC().Format(time.RFC3339Nano)` from the clock); (8) unlock and reset in defer, joining errors.
+
+Read-only and sum rules (review of Task 16): Plan and Status are read-only. They take no lock and never create the history table (a database without one has every migration pending). Resolve writes, so it takes the lock like Apply. Apply and Status return an error naming `momo migrate hash` when momo.sum is absent, unless `WithoutSum()` was given; `migratetest.NewEngine` passes it. `Report.ApplyID` is the UTC clock time with a fixed nine-digit fraction, a dash and 8 random hex digits, so string order is time order for group rollback and nothing parses it.
 
 Status states: `applied` (history applied, checksum matches), `pending`, `dirty` (failed or running), `mismatch` (history checksum differs from file), `missing` (history row without a file).
 

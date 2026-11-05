@@ -5,6 +5,7 @@ package migrate_test
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"strings"
 	"sync"
 	"testing"
@@ -55,7 +56,7 @@ func TestConcurrentApply(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			e, err := migrate.NewEngine(db.Driver(), fsys, migrate.WithDialect(mpg.New()), migrate.WithLockWait(0))
+			e, err := migrate.NewEngine(db.Driver(), fsys, migrate.WithDialect(mpg.New()), migrate.WithoutSum(), migrate.WithLockWait(0))
 			if err != nil {
 				errs <- err
 				return
@@ -149,13 +150,36 @@ func TestApplyLockWaitTimesOutWithHolder(t *testing.T) {
 func TestApplyWaitsForLockRelease(t *testing.T) {
 	db := testopen.Postgres(t)
 	release := holdLock(t, db)
-	go func() { time.Sleep(500 * time.Millisecond); release() }()
-	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), twoVersions())
+	var mu sync.Mutex
+	var log []string
+	d := recorder{inner: mpg.New(), mu: &mu, log: &log, locked: make(chan struct{}, 1)}
+	go func() { <-d.locked; release() }() // release once Apply has found the lock held
+	e := migratetest.NewEngine(t, d, db.Driver(), twoVersions())
 	if _, err := e.Apply(context.Background(), migrate.ApplyOptions{LockWait: 10 * time.Second}); err != nil {
 		t.Fatal(err)
 	}
 	if appliedCount(t, db) != 2 {
 		t.Fatal("both versions must apply once the lock is released")
+	}
+}
+
+func TestApplyCancelDuringLockWait(t *testing.T) {
+	db := testopen.Postgres(t)
+	release := holdLock(t, db)
+	defer release()
+	var mu sync.Mutex
+	var log []string
+	d := recorder{inner: mpg.New(), mu: &mu, log: &log, locked: make(chan struct{}, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { <-d.locked; cancel() }() // cancel once Apply is waiting for the lock
+	e := migratetest.NewEngine(t, d, db.Driver(), twoVersions())
+	start := time.Now()
+	_, err := e.Apply(ctx, migrate.ApplyOptions{LockWait: time.Minute})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want context.Canceled from the lock wait, got %v", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("cancel took %v to stop the lock wait", time.Since(start))
 	}
 }
 
@@ -199,13 +223,126 @@ func TestSumFileMismatchRefusesApply(t *testing.T) {
 	db := testopen.Postgres(t)
 	fsys := migratetest.WithSum(t, twoVersions()).(fstest.MapFS)
 	fsys["20260101000001_b.up.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE b (x int, evil int);")}
-	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
+	e := sumEngine(t, db, fsys)
 	_, err := e.Apply(context.Background(), migrate.ApplyOptions{})
 	if !errors.Is(err, migrate.ErrChecksumMismatch) || !strings.Contains(err.Error(), "20260101000001_b.up.sql") {
 		t.Fatalf("want ErrChecksumMismatch naming the edited file, got %v", err)
 	}
 	if appliedCount(t, db) != 0 {
 		t.Fatal("nothing may run when momo.sum disagrees with the directory")
+	}
+}
+
+// sumEngine is an engine that enforces momo.sum (migratetest.NewEngine opts out).
+func sumEngine(t *testing.T, db *momo.DB, fsys fs.FS, opts ...migrate.Option) *migrate.Engine {
+	t.Helper()
+	e, err := migrate.NewEngine(db.Driver(), fsys, append([]migrate.Option{migrate.WithDialect(mpg.New())}, opts...)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+func TestMissingSumRefusesApplyAndStatus(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	e := sumEngine(t, db, twoVersions()) // no momo.sum
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil || !strings.Contains(err.Error(), "momo migrate hash") {
+		t.Fatalf("Apply without momo.sum must name momo migrate hash, got %v", err)
+	}
+	if _, err := e.Status(ctx); err == nil || !strings.Contains(err.Error(), "momo migrate hash") {
+		t.Fatalf("Status without momo.sum must name momo migrate hash, got %v", err)
+	}
+	if tableExists(t, db, "a") {
+		t.Fatal("nothing may run without momo.sum")
+	}
+	// The explicit opt-out skips the requirement.
+	opt := sumEngine(t, db, twoVersions(), migrate.WithoutSum())
+	if _, err := opt.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatalf("WithoutSum must skip the momo.sum check: %v", err)
+	}
+	// With a matching momo.sum the checking engine applies nothing new and is happy.
+	ok := sumEngine(t, db, migratetest.WithSum(t, twoVersions()))
+	if _, err := ok.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPlanAndStatusAreReadOnly(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), twoVersions())
+	plan, err := e.Plan(ctx)
+	if err != nil || len(plan) != 2 {
+		t.Fatalf("a fresh database has every migration pending: %v %+v", err, plan)
+	}
+	st, err := e.Status(ctx)
+	if err != nil || len(st) != 2 || st[0].State != "pending" {
+		t.Fatalf("status on a fresh database: %v %+v", err, st)
+	}
+	if tableExists(t, db, "momo_migrations") {
+		t.Fatal("Plan and Status must not create the history table")
+	}
+}
+
+// TestPlanDuringFirstApply: Plan and Status polling while the first Apply creates
+// the history table never fail.
+func TestPlanDuringFirstApply(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), twoVersions())
+	stop := make(chan struct{})
+	errs := make(chan error, 64)
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, err := e.Plan(ctx); err != nil {
+					errs <- err
+					return
+				}
+				if _, err := e.Status(ctx); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}()
+	}
+	_, err := e.Apply(ctx, migrate.ApplyOptions{})
+	close(stop)
+	wg.Wait()
+	close(errs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for err := range errs {
+		t.Fatalf("Plan or Status failed during the first Apply: %v", err)
+	}
+}
+
+func TestResolveTakesTheLock(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	bad := fstest.MapFS{"20260101000000_t.up.sql": {Data: []byte("-- momo:no-transaction\nCREATE TABLE a (x int);\nINSERT INTO missing VALUES (1);")}}
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), bad, migrate.WithLockWait(0))
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
+		t.Fatal("the failing migration must fail Apply")
+	}
+	release := holdLock(t, db)
+	err := e.Resolve(ctx, "20260101000000", migrate.ResolveRolledBack)
+	release()
+	if !errors.Is(err, migrate.ErrLocked) {
+		t.Fatalf("Resolve must take the migration lock, got %v", err)
+	}
+	if err := e.Resolve(ctx, "20260101000000", migrate.ResolveRolledBack); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -232,6 +369,7 @@ type recorder struct {
 	mu       *sync.Mutex
 	log      *[]string
 	resetErr error
+	locked   chan struct{} // receives a value each time the lock was found held
 }
 
 func (r recorder) Dialect() *dialect.Dialect { return r.inner.Dialect() }
@@ -249,6 +387,12 @@ func (r recorder) note(s string) { r.mu.Lock(); *r.log = append(*r.log, s); r.mu
 func (r recorder) Lock(ctx context.Context, c momo.PinnedConn, key string) (func() error, func(context.Context) (string, error), error) {
 	unlock, holder, err := r.inner.Lock(ctx, c, key)
 	if err != nil {
+		if r.locked != nil {
+			select {
+			case r.locked <- struct{}{}:
+			default:
+			}
+		}
 		return unlock, holder, err
 	}
 	return func() error { r.note("unlock"); return unlock() }, holder, nil
@@ -300,7 +444,25 @@ func TestApplyCancelledStillUnlocks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	files := fstest.MapFS{"20260101000000_slow.up.sql": {Data: []byte("SELECT pg_sleep(30);")}}
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), files)
-	go func() { time.Sleep(500 * time.Millisecond); cancel() }()
+	go func() {
+		// Cancel once the slow statement is running on the server.
+		deadline := time.Now().Add(20 * time.Second)
+		for time.Now().Before(deadline) {
+			rows, err := pinned(t, db).Query(context.Background(), `SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND query LIKE '%pg_sleep(30)%' AND pid <> pg_backend_pid()`, nil)
+			if err == nil {
+				n := 0
+				if rows.Next() {
+					_ = rows.Scan(&n)
+				}
+				_ = rows.Close()
+				if n > 0 {
+					break
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		cancel()
+	}()
 	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
 		t.Fatal("a cancelled apply must fail")
 	}
