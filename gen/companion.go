@@ -9,6 +9,7 @@ import (
 	"go/printer"
 	"go/token"
 	"go/types"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -93,6 +94,8 @@ type companionReader struct {
 	recv   types.Object // nil when the receiver is unnamed
 	param  types.Object // nil when the parameter is unnamed
 	byPath map[string]*Field
+	// optSeen holds the options already applied to the index being read.
+	optSeen map[string]bool
 	// indexAt, checkAt and enumAt record where each name comes from: a tag
 	// description for tag-produced names, a file:line for companion names.
 	indexAt, checkAt, enumAt map[string]string
@@ -223,7 +226,18 @@ type call struct {
 	sel  *ast.SelectorExpr
 }
 
+// stmt reads one statement of the method body. The generator must never
+// panic on user input, so an unexpected panic becomes a positioned diagnostic.
 func (r *companionReader) stmt(s ast.Stmt) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.diag(s.Pos(), fmt.Sprintf("internal error reading companion expression %s: %v", r.source(s), rec))
+		}
+	}()
+	r.readStmt(s)
+}
+
+func (r *companionReader) readStmt(s ast.Stmt) {
 	es, ok := s.(*ast.ExprStmt)
 	if !ok {
 		r.unsupported(s)
@@ -331,29 +345,49 @@ func (r *companionReader) field(e ast.Expr) (*Field, bool) {
 		r.unsupported(e)
 		return nil, false
 	}
-	root := sel.X
-	for {
-		inner, ok := root.(*ast.SelectorExpr)
-		if !ok {
-			break
-		}
-		root = inner.X
-	}
-	id, ok := root.(*ast.Ident)
-	if !ok || r.recv == nil || r.pkg.TypesInfo.Uses[id] != r.recv {
+	path, ok := r.selectorPath(sel)
+	if !ok {
 		r.unsupported(e)
 		return nil, false
 	}
-	// Only &<receiver>.<Field> resolves; the selection's index path is
-	// relative to the receiver, so a deeper selector is another struct's field.
-	s := r.pkg.TypesInfo.Selections[sel]
-	if s != nil && s.Kind() == types.FieldVal && sel.X == root {
-		if f := r.byPath[pathKey(s.Index())]; f != nil {
+	if path != nil {
+		if f := r.byPath[pathKey(path)]; f != nil {
 			return f, true
 		}
 	}
 	r.diag(e.Pos(), fmt.Sprintf("field reference %s is not a persisted field of %s", r.source(e), r.m.GoName))
 	return nil, false
+}
+
+// selectorPath walks a selector chain from the receiver and returns the
+// concatenated field index path, so &r.Geo.Lon and the promoted &r.Lon name
+// the same field. ok is false when the chain is not rooted at the receiver;
+// a nil path with ok true means a root is the receiver but a link is not a
+// plain field selection.
+func (r *companionReader) selectorPath(sel *ast.SelectorExpr) (path []int, ok bool) {
+	var inner []int
+	switch x := sel.X.(type) {
+	case *ast.Ident:
+		if r.recv == nil || r.pkg.TypesInfo.Uses[x] != r.recv {
+			return nil, false
+		}
+	case *ast.SelectorExpr:
+		p, ok := r.selectorPath(x)
+		if !ok {
+			return nil, false
+		}
+		if p == nil {
+			return nil, true
+		}
+		inner = p
+	default:
+		return nil, false
+	}
+	s := r.pkg.TypesInfo.Selections[sel]
+	if s == nil || s.Kind() != types.FieldVal {
+		return nil, true
+	}
+	return append(append([]int(nil), inner...), s.Index()...), true
 }
 
 // declare records a name in a namespace and reports a clash.
@@ -367,7 +401,7 @@ func (r *companionReader) declare(at map[string]string, kind string, name string
 		return false
 	}
 	p := r.pkg.Fset.Position(pos)
-	at[name] = p.Filename + ":" + strconv.Itoa(p.Line)
+	at[name] = filepath.Base(p.Filename) + ":" + strconv.Itoa(p.Line)
 	return true
 }
 
@@ -379,6 +413,7 @@ func (r *companionReader) index(calls []call) {
 		return
 	}
 	startDiags := len(r.diags)
+	r.optSeen = map[string]bool{}
 	name, _ := r.str(args[0])
 	ix := schema.Index{Name: name, Unique: first.name == "Unique"}
 	for _, a := range args[1:] {
@@ -434,24 +469,26 @@ func (r *companionReader) indexOption(ix *schema.Index, c call) {
 		}
 		return true
 	}
-	once := func(dst *string, v string) {
-		if *dst != "" {
+	// once tracks which options were set, so an empty value still counts.
+	once := func(key string, dst *string, v string) {
+		if r.optSeen[key] {
 			r.diag(c.expr.Pos(), fmt.Sprintf("duplicate %s on index %q", c.name, ix.Name))
 			return
 		}
+		r.optSeen[key] = true
 		*dst = v
 	}
 	switch c.name {
 	case "Where":
 		if need(1) {
 			if s, ok := r.str(args[0]); ok {
-				once(&ix.Where, s)
+				once("Where", &ix.Where, s)
 			}
 		}
 	case "Method":
 		if need(1) {
 			if s, ok := r.str(args[0]); ok {
-				once(&ix.Method, s)
+				once("Method", &ix.Method, s)
 			}
 		}
 	case "With":
@@ -467,7 +504,7 @@ func (r *companionReader) indexOption(ix *schema.Index, c call) {
 			p := r.part(ix, args[0])
 			s, ok := r.str(args[1])
 			if p != nil && ok {
-				once(&p.OpClass, s)
+				once("Opclass:"+p.Column, &p.OpClass, s)
 			}
 		}
 	case "Desc":
@@ -485,7 +522,7 @@ func (r *companionReader) indexOption(ix *schema.Index, c call) {
 				ok = false
 			}
 			if p != nil && ok {
-				once(&p.Nulls, s)
+				once("Nulls:"+p.Column, &p.Nulls, s)
 			}
 		}
 	case "Concurrently":
@@ -640,10 +677,14 @@ func (r *companionReader) isSchemaType(lit *ast.CompositeLit, name string) bool 
 // literal stores a string literal, a bool literal or a []string literal of
 // string literals into fv.
 func (r *companionReader) literal(fv reflect.Value, e ast.Expr) {
+	if !fv.CanSet() {
+		r.unsupported(e)
+		return
+	}
 	switch fv.Kind() {
 	case reflect.String:
 		if s, ok := r.str(e); ok {
-			fv.SetString(s)
+			fv.Set(reflect.ValueOf(s).Convert(fv.Type()))
 		}
 	case reflect.Bool:
 		if id, ok := e.(*ast.Ident); ok && (id.Name == "true" || id.Name == "false") {
@@ -659,13 +700,18 @@ func (r *companionReader) literal(fv reflect.Value, e ast.Expr) {
 			r.unsupported(e)
 			return
 		}
+		elem := fv.Type().Elem()
+		if !reflect.TypeOf("").ConvertibleTo(elem) {
+			r.unsupported(e)
+			return
+		}
 		out := reflect.MakeSlice(fv.Type(), 0, len(lit.Elts))
 		for _, el := range lit.Elts {
 			s, ok := r.str(el)
 			if !ok {
 				return
 			}
-			out = reflect.Append(out, reflect.ValueOf(s))
+			out = reflect.Append(out, reflect.ValueOf(s).Convert(elem))
 		}
 		fv.Set(out)
 	default:

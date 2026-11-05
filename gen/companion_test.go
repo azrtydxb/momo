@@ -159,3 +159,88 @@ func TestCompanionUnknownMethods(t *testing.T) {
 		t.Fatalf("models=%d", len(g.Models))
 	}
 }
+
+func TestCompanionMixinFieldPaths(t *testing.T) {
+	g, diags, err := Load([]string{"./companionmixin"}, Config{Dir: fixturesDir(t)})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("err=%v diags=%s", err, diagStrings(diags))
+	}
+	byName := map[string]*Model{}
+	for _, m := range g.Models {
+		byName[m.GoName] = m
+	}
+	p := byName["Place"]
+	if p == nil || len(p.Config.Indexes) != 3 {
+		t.Fatalf("place=%+v", p)
+	}
+	// &p.Lon and &p.Coords.Lon are the same field.
+	if a, b := p.Config.Indexes[0].Parts[0].Column, p.Config.Indexes[1].Parts[0].Column; a != "lon" || b != "lon" {
+		t.Fatalf("promoted=%q path=%q", a, b)
+	}
+	if c := p.Config.Indexes[2].Parts[0].Column; c != "home_lat" {
+		t.Fatalf("prefixed mixin column=%q", c)
+	}
+	if p.Config.Defaults["lat"] != "0" {
+		t.Fatalf("defaults=%v", p.Config.Defaults)
+	}
+	// A value receiver is accepted: the plan allows *T or T.
+	v := byName["ByValue"]
+	if v == nil || len(v.Config.Indexes) != 1 {
+		t.Fatalf("by value=%+v", v)
+	}
+}
+
+func TestCompanionMoreShapes(t *testing.T) {
+	_, diags, err := Load([]string{"./companionbad"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := diagStrings(diags)
+	want := []struct{ at, msg string }{
+		{"shapes.go:17:", "unsupported companion expression: f := c.Index"},
+		{"shapes.go:18:", `unsupported companion expression: f("shapes_name_idx", &s.Name)`},
+		{"shapes.go:20:", "unsupported companion expression: v"},
+		{"shapes.go:22:", "duplicate RLS declaration"},
+		{"shapes.go:24:", "duplicate Partition declaration"},
+		{"shapes.go:26:", "duplicate PartitionOf declaration"},
+		{"shapes.go:27:", `duplicate Where on index "shapes_dup_opt_idx"`},
+	}
+	for _, w := range want {
+		found := false
+		for _, line := range strings.Split(joined, "\n") {
+			if strings.Contains(line, w.at) && strings.Contains(line, w.msg) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing diagnostic %s %q in:\n%s", w.at, w.msg, joined)
+		}
+	}
+	for _, bad := range []string{"shapes.go:21:", "shapes.go:23:", "shapes.go:25:"} {
+		if strings.Contains(joined, bad) {
+			t.Errorf("unexpected diagnostic %q in:\n%s", bad, joined)
+		}
+	}
+}
+
+func TestCompanionTypeErrorShapes(t *testing.T) {
+	g, diags, err := Load([]string{"./companiontypeerr"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := diagStrings(diags)
+	for _, w := range []string{
+		"typeerr.go:17:2: unsupported companion expression: c.Index",
+		"typeerr.go:18:9: unsupported companion expression: schema.Policy{}",
+		"typeerr.go:19:",
+		"typeerr.go:20:",
+		"unsupported companion expression: []int{}",
+	} {
+		if !strings.Contains(joined, w) {
+			t.Errorf("missing %q in:\n%s", w, joined)
+		}
+	}
+	if len(g.Models) != 0 {
+		t.Fatalf("models=%d", len(g.Models))
+	}
+}
