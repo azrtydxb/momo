@@ -23,6 +23,19 @@ type PinnedConn interface {
 	Release() error
 }
 
+// Discarder is implemented by pinned connections that can be thrown away
+// instead of returned to the pool. Discard closes the underlying connection
+// and then releases it, so the pool destroys it and no session state (advisory
+// locks, SET values, an open transaction) can reach the next user. Like
+// Release it closes open Rows first, returns an error matching ErrPinnedBusy
+// while a Query, Exec or Begin call is executing (leaving the connection
+// pinned), and returns nil after a successful Release or Discard. Callers that
+// cannot restore a session (for example a failed unlock or RESET) type-assert
+// a PinnedConn to Discarder and call it.
+type Discarder interface {
+	Discard() error
+}
+
 // Pinner is implemented by drivers that can pin one connection.
 type Pinner interface {
 	Pin(ctx context.Context) (PinnedConn, error)
