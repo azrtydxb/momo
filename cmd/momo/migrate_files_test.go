@@ -252,3 +252,60 @@ func TestMigrateStrayArgumentIsRedacted(t *testing.T) {
 		t.Fatalf("exit %d, output %q %q", code, out.String(), errOut.String())
 	}
 }
+
+// hash lists what it is about to accept before it writes momo.sum.
+func TestMigrateHashReportsChanges(t *testing.T) {
+	dir := t.TempDir()
+	mdir := filepath.Join(dir, "m")
+	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(mdir)+"\n")
+	a := filepath.Join(mdir, "20260101000000_a.up.sql")
+	b := filepath.Join(mdir, "20260102000000_b.up.sql")
+	writeFile(t, a, "CREATE TABLE a (id int);\n")
+	writeFile(t, b, "CREATE TABLE b (id int);\n")
+	run := func() string {
+		var out, errOut bytes.Buffer
+		if code := runMigrate(&out, &errOut, []string{"--config", cfg, "hash"}, noEnv); code != 0 {
+			t.Fatalf("hash: exit %d: %s", code, errOut.String())
+		}
+		return out.String()
+	}
+	if got := run(); strings.Contains(got, "changed:") || strings.Contains(got, "added:") {
+		t.Fatalf("first hash has nothing to compare: %s", got)
+	}
+	writeFile(t, a, "CREATE TABLE a (id bigint);\n")
+	writeFile(t, filepath.Join(mdir, "20260103000000_c.up.sql"), "CREATE TABLE c (id int);\n")
+	if err := os.Remove(b); err != nil {
+		t.Fatal(err)
+	}
+	got := run()
+	for _, want := range []string{"changed: 20260101000000_a.up.sql", "added: 20260103000000_c.up.sql", "removed: 20260102000000_b.up.sql"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
+	}
+	if got := run(); strings.Contains(got, "changed:") || strings.Contains(got, "added:") || strings.Contains(got, "removed:") {
+		t.Fatalf("an unchanged directory reports nothing: %s", got)
+	}
+}
+
+// A symlink to a directory in the migration directory is refused with a clear message.
+func TestMigrateValidateRefusesDirectorySymlink(t *testing.T) {
+	dir := t.TempDir()
+	mdir := filepath.Join(dir, "m")
+	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(mdir)+"\n")
+	mkdirAll(t, mdir)
+	mkdirAll(t, filepath.Join(dir, "real"))
+	if err := os.Symlink(filepath.Join(dir, "real"), filepath.Join(mdir, "linkdir")); err != nil {
+		t.Skipf("cannot create symlinks here: %v", err)
+	}
+	const msg = "linkdir is a symlink to a directory; not supported"
+	var out, errOut bytes.Buffer
+	if code := runMigrate(&out, &errOut, []string{"--config", cfg, "validate"}, noEnv); code != 1 || !strings.Contains(out.String(), msg) {
+		t.Fatalf("validate: exit %d: %s%s", code, out.String(), errOut.String())
+	}
+	out.Reset()
+	errOut.Reset()
+	if code := runMigrate(&out, &errOut, []string{"--config", cfg, "hash"}, noEnv); code != 3 || !strings.Contains(errOut.String(), msg) {
+		t.Fatalf("hash: exit %d: %s", code, errOut.String())
+	}
+}

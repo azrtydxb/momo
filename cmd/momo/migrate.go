@@ -44,6 +44,7 @@ Commands:
   status      show the state of every migration (needs a database)
   validate [--db]   check the migration directory (offline; --db also checks the database)
   hash        recompute momo.sum from the files in the directory and write it (offline;
+              first lists the changed, added and removed files it accepts;
               review the files first: this accepts every edit as the new baseline)
   baseline --version N [--force]   record migrations as applied without running them (needs a database)
   drift       compare the live database with the latest applied snapshot (needs a database)
@@ -66,6 +67,10 @@ Exit codes:
      diff refusing to overwrite an existing file
   2  usage or configuration error, including a directory without any snapshot
   3  database, lock or execution error, including an unreadable migration directory
+
+Symlinks inside the directory: a symlink to a file is followed and hashed as that
+file; a symlink to a directory is refused ("migrations: <path> is a symlink to a
+directory; not supported") because its files would otherwise go unhashed.
 
 Files whose name starts with a dot (.DS_Store, .git, the .momo-*.tmp files of an
 interrupted write) are not part of a migration directory and are never hashed.
@@ -643,6 +648,7 @@ func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
 		if err != nil {
 			return l.errf(exitDatabase, "%v", err)
 		}
+		l.reportSumChanges(dir, sum)
 		var buf bytes.Buffer
 		if err := sum.Write(&buf); err != nil {
 			return l.errf(exitDatabase, "%v", err)
@@ -655,6 +661,34 @@ func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
 			l.say("%s", l.rel(p))
 		}
 		return exitOK
+	}
+}
+
+// reportSumChanges prints the files whose hash differs from the momo.sum
+// being replaced, so the user sees what hash is about to accept. A missing or
+// unreadable previous sum has nothing to compare against and prints nothing.
+func (l *cli) reportSumChanges(dir string, next *migrate.Sum) {
+	f, err := os.Open(filepath.Join(dir, migrate.SumFileName)) //nolint:gosec // the configured migration directory
+	if err != nil {
+		return
+	}
+	defer func() { _ = f.Close() }()
+	old, err := migrate.ParseSum(f)
+	if err != nil {
+		l.say("previous %s is unreadable (%v); every file is accepted", migrate.SumFileName, err)
+		return
+	}
+	for _, name := range migrate.VerifySum(os.DirFS(dir), old) {
+		_, inOld := old.Files[name]
+		_, inNew := next.Files[name]
+		switch {
+		case inOld && inNew:
+			l.say("changed: %s", name)
+		case inNew:
+			l.say("added: %s", name)
+		default:
+			l.say("removed: %s", name)
+		}
 	}
 }
 
