@@ -14,6 +14,7 @@ Implements plan momo-03-drivers Task 7: Pinned connections and pool statistics o
 - [ ] `TestPinnedConn` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestOnConnSessionAndHooks` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-90] `TestPinnedConn` asserts session state set on a pinned connection is visible to later statements on it and the pool stats reflect acquisition; fails if statements hop connections.
+- [ ] `TestDefaultExecModeNoNamedStatements` (story 059) runs without a skip once `Pin` lands: remove its `TODO(momo-03 Task 7)` `t.Skip` in `driver/pgxdriver/driver_test.go`
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
