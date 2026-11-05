@@ -45,5 +45,5 @@ type Marker momo.Model
 type NamedDefault struct {
 	momo.Model
 	ID   int64
-	Rels []Defaulted `momo:"has_many"`
+	Rels []Defaulted `momo:"has_many,fk:ID"`
 }
