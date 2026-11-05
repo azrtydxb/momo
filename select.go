@@ -49,6 +49,7 @@ type selectCore struct {
 	limit       int64 // -1: none
 	offset      int64
 	lock        string
+	indexedBy   string
 	withDeleted bool
 	onlyDeleted bool
 	err         error
@@ -300,6 +301,41 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 	return sq
 }
 
+// IndexedBy renders SQLite's INDEXED BY hint after the FROM table. The index
+// name is quoted, never spliced. PostgreSQL and MySQL have no such clause
+// and return ErrUnsupported when the query is built. The FROM source must be
+// a plain table (TableRef).
+func (sq SelectQuery[T]) IndexedBy(index string) SelectQuery[T] {
+	if index == "" {
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("IndexedBy needs an index name")}
+		return sq
+	}
+	sq.s.indexedBy = index
+	return sq
+}
+
+// WithTableName replaces the FROM table name at runtime, for example to run
+// one query shape over several identically shaped tables. The name is
+// quoted; it is never spliced. The replacement is aliased to the model's
+// table name, so the model's column expressions and the soft-delete filter
+// keep resolving. It needs a plain table as the FROM source.
+func (sq SelectQuery[T]) WithTableName(name string) SelectQuery[T] {
+	t, ok := sq.s.from.(TableRef)
+	switch {
+	case name == "":
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("WithTableName needs a table name")}
+	case !ok:
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("WithTableName needs a plain table as the FROM source")}
+	default:
+		if t.Alias == "" {
+			t.Alias = t.Name
+		}
+		t.Name = name
+		sq.s.from = t
+	}
+	return sq
+}
+
 // WithDeleted includes soft-deleted rows for models with a soft-delete
 // column (they are excluded by default).
 func (sq SelectQuery[T]) WithDeleted() SelectQuery[T] {
@@ -413,6 +449,18 @@ func (sq SelectQuery[T]) renderBody(b *Builder) {
 	if s.from != nil {
 		b.WriteString(" FROM ")
 		s.from.appendFrom(b)
+		if s.indexedBy != "" {
+			if _, ok := s.from.(TableRef); !ok {
+				b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("IndexedBy needs a plain table as the FROM source")})
+				return
+			}
+			if b.d.Name != dialect.SQLite {
+				b.unsupported("INDEXED BY")
+				return
+			}
+			b.WriteString(" INDEXED BY ")
+			b.Ident(s.indexedBy)
+		}
 	}
 	for _, j := range s.joins {
 		b.writeByte(' ')

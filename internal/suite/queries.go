@@ -4,9 +4,12 @@ package suite
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // pair is a projection of two aliased title columns.
@@ -175,5 +178,178 @@ func ReturningRendersAndScans(t *testing.T, db *momo.DB, caps Caps) {
 	}
 	if doc.ID == 0 || doc.Title != "r" {
 		t.Fatalf("returned %+v", doc)
+	}
+}
+
+// RawArgs asserts raw SQL arguments end to end: a named argument, an expanded
+// IN list, an identifier argument, a literal ? inside a string literal and a
+// comment (never a placeholder), and the build error for an empty raw IN list.
+func RawArgs(t *testing.T, db *momo.DB, caps Caps) {
+	CreateDocuments(t, db, caps)
+	ctx := context.Background()
+	seedDocs(t, db, [2]any{1, "a"}, [2]any{1, "b"}, [2]any{1, "c"})
+
+	n, err := momo.Exec(ctx, db,
+		"UPDATE documents SET secret = @s WHERE title IN (?)",
+		momo.Named("s", "x"), momo.In([]string{"a", "b"}))
+	if err != nil || n != 2 {
+		t.Fatalf("named + In update n=%d err=%v", n, err)
+	}
+
+	rows, err := momo.Select[Document](db).
+		Where(momo.TypedSQL[bool](`? = ?`, momo.Ident("title"), "a")).
+		All(ctx)
+	if err != nil || len(rows) != 1 || rows[0].Title != "a" {
+		t.Fatalf("Ident compares the column, not a value: rows=%d err=%v", len(rows), err)
+	}
+
+	// A ? inside a string literal and a comment is data, not a placeholder.
+	got, err := momo.Scalars[string](ctx, db,
+		"SELECT 'what?' /* why ? */ FROM documents WHERE title = ? -- ?\n", "c")
+	if err != nil || len(got) != 1 || got[0] != "what?" {
+		t.Fatalf("literal ? = %v, %v", got, err)
+	}
+
+	secrets, err := momo.Scalars[string](ctx, db,
+		"SELECT secret FROM documents WHERE title NOT IN (?) ORDER BY title", momo.In([]string{"a", "b"}))
+	if err != nil || len(secrets) != 1 || secrets[0] != "" {
+		t.Fatalf("NOT IN expansion = %v, %v", secrets, err)
+	}
+
+	_, err = momo.Exec(ctx, db, "DELETE FROM documents WHERE title NOT IN (?)", momo.In([]string{}))
+	var me *momo.Error
+	if !errors.As(err, &me) || me.Kind != momo.ErrValidation {
+		t.Fatalf("empty raw IN err = %v, want a validation build error", err)
+	}
+	cnt, err := momo.Select[Document](db).Count(ctx)
+	if err != nil || cnt != 3 {
+		t.Fatalf("empty IN must not have executed: count=%d err=%v", cnt, err)
+	}
+}
+
+// LockingNowaitSkipLocked asserts row locking: with two transactions, SKIP
+// LOCKED passes over a row the other transaction holds and NOWAIT fails fast
+// with ErrBusy. Without row locks (caps.Locking false) building ForUpdate is
+// ErrUnsupported.
+func LockingNowaitSkipLocked(t *testing.T, db *momo.DB, caps Caps) {
+	CreateDocuments(t, db, caps)
+	ctx := context.Background()
+	seedDocs(t, db, [2]any{1, "a"}, [2]any{1, "b"})
+
+	q := momo.Select[Document](db).Where(DocTenantID.Eq(1)).OrderBy(DocTitle.Asc())
+	if !caps.Locking {
+		if _, err := q.ForUpdate("SKIP LOCKED").SQL(); !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("ForUpdate without row locks: err = %v, want ErrUnsupported", err)
+		}
+		return
+	}
+
+	holder, err := db.Begin(ctx, momo.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Rollback(ctx) }()
+	held, err := momo.Select[Document](holder).Where(DocTitle.Eq("a")).ForUpdate().All(ctx)
+	if err != nil || len(held) != 1 {
+		t.Fatalf("holder lock = %v, %v; want one row", held, err)
+	}
+
+	skipper, err := db.Begin(ctx, momo.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = skipper.Rollback(ctx) }()
+	rows, err := momo.Select[Document](skipper).Where(DocTenantID.Eq(1)).OrderBy(DocTitle.Asc()).ForUpdate("SKIP LOCKED").All(ctx)
+	if err != nil || len(rows) != 1 || rows[0].Title != "b" {
+		t.Fatalf("SKIP LOCKED = %+v, %v; want only the unlocked row b", rows, err)
+	}
+
+	nowait, err := db.Begin(ctx, momo.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = nowait.Rollback(ctx) }()
+	if _, err := momo.Select[Document](nowait).Where(DocTitle.Eq("a")).ForUpdate("NOWAIT").All(ctx); !errors.Is(err, momo.ErrBusy) {
+		t.Fatalf("NOWAIT on a held row: err = %v, want ErrBusy", err)
+	}
+
+	// Once the holder lets go, the row is available again.
+	if err := holder.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	again, err := db.Begin(ctx, momo.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = again.Rollback(ctx) }()
+	rows, err = momo.Select[Document](again).Where(DocTitle.Eq("a")).ForUpdate("NOWAIT").All(ctx)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("NOWAIT after release = %v, %v; want one row", rows, err)
+	}
+}
+
+// WithTableNameQuoted asserts that WithTableName quotes the name (it is never
+// spliced) and that the replacement table is the one that is read.
+func WithTableNameQuoted(t *testing.T, db *momo.DB, caps Caps) {
+	CreateDocuments(t, db, caps)
+	ctx := context.Background()
+	seedDocs(t, db, [2]any{1, "in-documents"})
+
+	for _, name := range []string{`documents"; DROP TABLE documents; --`, `x"y`} {
+		c, err := momo.Select[Document](db).WithTableName(name).SQL()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := strings.ReplaceAll(name, `"`, `""`); !strings.Contains(c.SQL, `"`+want+`"`) {
+			t.Fatalf("table name %q not quoted: %s", name, c.SQL)
+		}
+	}
+
+	if _, err := momo.Exec(ctx, db, `DROP TABLE IF EXISTS docs_alt`); err != nil {
+		t.Fatal(err)
+	}
+	ddl := documentsDDLPostgres
+	if caps.Dialect == dialect.SQLite {
+		ddl = documentsDDLSQLite
+	}
+	if _, err := momo.Exec(ctx, db, strings.Replace(ddl, "CREATE TABLE documents", "CREATE TABLE docs_alt", 1)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := momo.Exec(ctx, db, "INSERT INTO docs_alt (tenant_id, title) VALUES (?, ?)", 1, "in-alt"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := momo.Select[Document](db).Where(DocTenantID.Eq(1)).WithTableName("docs_alt").All(ctx)
+	if err != nil || len(rows) != 1 || rows[0].Title != "in-alt" {
+		t.Fatalf("WithTableName read = %+v, %v; want the docs_alt row", rows, err)
+	}
+	rows, err = momo.Select[Document](db).Where(DocTenantID.Eq(1)).All(ctx)
+	if err != nil || len(rows) != 1 || rows[0].Title != "in-documents" {
+		t.Fatalf("base query = %+v, %v; want the documents row", rows, err)
+	}
+}
+
+// HintsByDialect asserts IndexedBy: SQLite renders and runs INDEXED BY with a
+// quoted name, every other dialect returns ErrUnsupported when building.
+func HintsByDialect(t *testing.T, db *momo.DB, caps Caps) {
+	CreateDocuments(t, db, caps)
+	ctx := context.Background()
+	seedDocs(t, db, [2]any{1, "x"})
+
+	c, err := momo.Select[Document](db).IndexedBy(`idx"x`).SQL()
+	if caps.Dialect != dialect.SQLite {
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("%s IndexedBy err = %v, want ErrUnsupported", caps.Dialect, err)
+		}
+		return
+	}
+	if err != nil || !strings.Contains(c.SQL, `INDEXED BY "idx""x"`) {
+		t.Fatalf("sqlite IndexedBy: %v %s", err, c.SQL)
+	}
+	if _, err := momo.Exec(ctx, db, `CREATE INDEX docs_title_idx ON documents (title)`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := momo.Select[Document](db).IndexedBy("docs_title_idx").Where(DocTitle.Eq("x")).All(ctx)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("INDEXED BY run = %v, %v; want one row", rows, err)
 	}
 }

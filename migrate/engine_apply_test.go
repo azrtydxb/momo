@@ -442,27 +442,10 @@ func TestApplyJoinsResetFailureAndStillUnlocks(t *testing.T) {
 func TestApplyCancelledStillUnlocks(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	files := fstest.MapFS{"20260101000000_slow.up.sql": {Data: []byte("SELECT pg_sleep(30);")}}
+	marker := "momo-cancel-" + testdb.Schema(t)
+	files := fstest.MapFS{"20260101000000_slow.up.sql": {Data: []byte("SELECT pg_sleep(30) /* " + marker + " */;")}}
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), files)
-	go func() {
-		// Cancel once the slow statement is running on the server.
-		deadline := time.Now().Add(20 * time.Second)
-		for time.Now().Before(deadline) {
-			rows, err := pinned(t, db).Query(context.Background(), `SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND query LIKE '%pg_sleep(30)%' AND pid <> pg_backend_pid()`, nil)
-			if err == nil {
-				n := 0
-				if rows.Next() {
-					_ = rows.Scan(&n)
-				}
-				_ = rows.Close()
-				if n > 0 {
-					break
-				}
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-		cancel()
-	}()
+	cancelWhenRunning(t, db, marker, cancel) // cancel once the slow statement runs on the server
 	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
 		t.Fatal("a cancelled apply must fail")
 	}
