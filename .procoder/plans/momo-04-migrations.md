@@ -2766,6 +2766,8 @@ Interfaces (exact):
 func (tx *Tx) SetLocal(ctx context.Context, name, value string) error
 ```
 
+Note: `Tx.SetLocal` already exists in `search.go` (added by momo-07 Task 6, story 161) with the same signature and `set_config(?, ?, true)` behavior, PostgreSQL-only with ErrUnsupported elsewhere. Reuse it: do not add a second definition in `tx_scope.go`; keep a single definition and add only the RLS test (and any outside-a-transaction check) on top of it.
+
 Implementation: `SELECT set_config($1, $2, true)` through the transaction's connection; the dialect check uses the Dialect capability (`Savepoints`-style capability flag is not needed; the method is PostgreSQL-only and returns ErrUnsupported on SQLite).
 
 Steps:

@@ -1018,10 +1018,10 @@ type SearchSettings struct {
 	ExactSearch          bool          // enable_indexscan = off and enable_bitmapscan = off
 	HNSWEfSearch         int           // hnsw.ef_search, 1..1000
 	HNSWIterativeScan    IterativeScan // hnsw.iterative_scan
-	HNSWMaxScanTuples    int           // hnsw.max_scan_tuples, >= 1 (server default 20000)
-	IVFFlatProbes        int           // ivfflat.probes, >= 1
+	HNSWMaxScanTuples    int           // hnsw.max_scan_tuples, 1..2147483647 (server default 20000)
+	IVFFlatProbes        int           // ivfflat.probes, 1..32768
 	IVFFlatIterativeScan IterativeScan // ivfflat.iterative_scan: off or relaxed_order only
-	IVFFlatMaxProbes     int           // ivfflat.max_probes, >= 1
+	IVFFlatMaxProbes     int           // ivfflat.max_probes, 1..32768
 }
 
 func (s SearchSettings) Validate() error // wraps ErrValidation

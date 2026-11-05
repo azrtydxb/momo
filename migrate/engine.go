@@ -3,18 +3,21 @@
 package migrate
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/schema"
 )
 
 // Engine plans and applies the migrations of one directory on one database.
@@ -515,4 +518,182 @@ func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState
 		return fmt.Errorf("migrate: resolve %s: %w", version, err)
 	}
 	return nil
+}
+
+// historyTable is the name of the migration history table. It is engine
+// bookkeeping, not part of the application schema, so Inspect leaves it out.
+const historyTable = "momo_migrations"
+
+// Inspect reads the live database into a schema, using the configured Schemas
+// (default: current_schema()). The momo_migrations history table is removed
+// from the result: it is not declared by any model or snapshot, so reporting
+// it would turn it into drift or a DROP TABLE.
+func (e *Engine) Inspect(ctx context.Context) (*schema.Schema, error) {
+	c, err := e.pin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = c.Release() }()
+	schemas, err := e.resolveSchemas(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	s, err := e.opts.dialect.Inspect(ctx, c, InspectOptions{Schemas: schemas, Exclude: e.opts.config.Exclude})
+	if err != nil {
+		return nil, err
+	}
+	hs := ""
+	if len(schemas) > 0 {
+		hs = schemas[0]
+	}
+	s.Tables = slices.DeleteFunc(s.Tables, func(t schema.Table) bool {
+		return t.Name == historyTable && (t.Schema == "" || t.Schema == hs)
+	})
+	return s, nil
+}
+
+// migrationName is the form a migration name must have.
+var migrationName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// Diff compares desired with the schema of the latest snapshot in the
+// migration directory (the empty schema when there is none) and renders the
+// difference as a new migration. It returns nil, nil when nothing changed.
+// Otherwise Migration.Files holds the new files only, by relative name:
+// <version>_<name>.up.sql, <version>_<name>.snapshot.json (whose parent is the
+// latest snapshot's version) and the updated momo.sum. The version is the
+// engine clock in UTC (NextVersion), moved to the second after the latest
+// existing version when the clock is not already past it, so versions only grow.
+//
+// Diff does not touch the database: it reads the directory and renders through
+// the dialect. It orders the changes with OrderWithViews and returns the
+// ordering error (a dependency cycle) instead of falling back to the unordered
+// list. SQLite table rebuilds need a live connection and are not supported
+// here yet.
+func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, opts DiffOptions) (*Migration, error) {
+	if !migrationName.MatchString(name) {
+		return nil, fmt.Errorf("migrate: migration name %q must match %s", name, migrationName)
+	}
+	if desired == nil {
+		return nil, errors.New("migrate: Diff needs a desired schema")
+	}
+	to := *desired
+	if to.Dialect == "" {
+		to.Dialect = e.opts.dialect.Dialect().Name
+	}
+	from := &schema.Schema{Dialect: to.Dialect}
+	parent := ""
+	snap, err := LatestSnapshot(e.dir)
+	switch {
+	case err == nil:
+		from, parent = snap.Schema, snap.Version
+	case !errors.Is(err, ErrNoSnapshot):
+		return nil, err
+	}
+	version, err := NextVersion(e.opts.clock, e.dir)
+	if err != nil {
+		return nil, err
+	}
+	changes, hints, err := Diff(from, &to, opts)
+	if err != nil {
+		return nil, err
+	}
+	if len(changes) == 0 {
+		return nil, nil
+	}
+	ordered, err := OrderWithViews(changes, from.Views, to.Views)
+	if err != nil {
+		return nil, fmt.Errorf("migrate: order changes: %w", err)
+	}
+	stmts, err := e.opts.dialect.Render(ordered)
+	if err != nil {
+		return nil, err
+	}
+	m := &Migration{Version: version, Name: name, Kind: "sql", Parent: parent, Up: stmts, Changes: ordered, Snapshot: &to, Hints: hints}
+	for _, c := range ordered {
+		m.Destructive = m.Destructive || c.Destructive
+	}
+	for _, s := range stmts {
+		m.NoTx = m.NoTx || s.NoTx
+	}
+	if m.Files, err = e.migrationFiles(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// migrationFiles renders the up file, the snapshot and the extended momo.sum
+// of m, keyed by relative file name.
+func (e *Engine) migrationFiles(m *Migration) (map[string][]byte, error) {
+	upName := m.Version + "_" + m.Name + ".up.sql"
+	snapName := m.Version + "_" + m.Name + ".snapshot.json"
+	var snapBuf bytes.Buffer
+	if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: m.Version, ParentVersion: m.Parent, Schema: m.Snapshot}); err != nil {
+		return nil, err
+	}
+	added := memFS{upName: renderUp(m), snapName: snapBuf.Bytes()}
+	existing, err := e.existingSum()
+	if err != nil {
+		return nil, err
+	}
+	sum, err := AppendSum(existing, added, []string{snapName, upName})
+	if err != nil {
+		return nil, err
+	}
+	var sumBuf bytes.Buffer
+	if err := sum.Write(&sumBuf); err != nil {
+		return nil, err
+	}
+	return map[string][]byte{upName: added[upName], snapName: added[snapName], SumFileName: sumBuf.Bytes()}, nil
+}
+
+// existingSum reads momo.sum from the directory; a directory without one gets
+// a sum computed over its current files, as momo migrate hash would write.
+func (e *Engine) existingSum() (*Sum, error) {
+	f, err := e.dir.Open(SumFileName)
+	if errors.Is(err, fs.ErrNotExist) {
+		return ComputeSum(e.dir)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("migrate: open %s: %w", SumFileName, err)
+	}
+	defer func() { _ = f.Close() }()
+	return ParseSum(f)
+}
+
+// renderUp writes the up file: the directive header, then the statements
+// separated by a blank line, each ended by a semicolon.
+func renderUp(m *Migration) []byte {
+	var b bytes.Buffer
+	b.WriteString("-- momo:generated\n")
+	if m.Destructive {
+		b.WriteString("-- momo:destructive\n")
+	}
+	if m.NoTx {
+		b.WriteString("-- momo:no-transaction\n")
+	}
+	b.WriteString("\n")
+	for i, s := range m.Up {
+		if i > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(strings.TrimRight(strings.TrimSpace(s.SQL), "; \n\t"))
+		b.WriteString(";")
+	}
+	b.WriteString("\n")
+	return b.Bytes()
+}
+
+// memFS holds new files before they are written. AppendSum only reads it
+// through fs.ReadFile, so ReadFile is the one supported operation.
+type memFS map[string][]byte
+
+func (m memFS) ReadFile(name string) ([]byte, error) {
+	if b, ok := m[name]; ok {
+		return b, nil
+	}
+	return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
+}
+
+func (m memFS) Open(name string) (fs.File, error) {
+	return nil, &fs.PathError{Op: "open", Path: name, Err: errors.ErrUnsupported}
 }

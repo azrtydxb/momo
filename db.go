@@ -92,7 +92,8 @@ type DB struct {
 	ex      execer
 	hooks   []Hook
 	logArgs bool
-	pinned  bool // set by OnConn: statements run on one pinned connection
+	clock   func() time.Time // nil means time.Now
+	pinned  bool             // set by OnConn: statements run on one pinned connection
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and

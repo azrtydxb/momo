@@ -20,7 +20,7 @@ func TestReturningRendersPerDialect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `UPDATE "documents" SET "title" = $1 WHERE "documents"."id" = $2 RETURNING "title", "id"`
+	want := `UPDATE "documents" SET "title" = $1, "updated_at" = $2 WHERE "documents"."id" = $3 RETURNING "title", "id"`
 	if c.SQL != want {
 		t.Fatalf("SQL = %s\nwant  %s", c.SQL, want)
 	}
@@ -28,7 +28,7 @@ func TestReturningRendersPerDialect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `INSERT INTO "documents" ("tenant_id") VALUES ($1) RETURNING "id", "tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret"`; all.SQL != want {
+	if want := `INSERT INTO "documents" ("tenant_id", "created_at", "updated_at") VALUES ($1, $2, $3) RETURNING "id", "tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret"`; all.SQL != want {
 		t.Fatalf("SQL = %s\nwant  %s", all.SQL, want)
 	}
 }
