@@ -460,9 +460,12 @@ func (q InsertQuery[T]) renderConflict(b *Builder) {
 // is split into several multi-row statements, run in order, and the rows
 // affected are summed. The chunks are atomic: on a DB they run in one
 // transaction, on a Tx inside a savepoint (when the dialect has them), so a
-// failing chunk undoes the earlier ones. A DB pinned to one connection by
-// OnConn cannot begin a transaction, so chunks there are not atomic. All
-// chunks share one clock read, so every row gets the same automatic
+// failing chunk undoes the earlier ones. A Tx on a dialect without
+// savepoints runs the chunks directly in the caller's transaction, which
+// stays atomic as a whole. A DB pinned to one connection by OnConn cannot
+// begin a transaction, so a chunked insert there fails with ErrUnsupported
+// before any statement runs. A panic during a chunk rolls the scope back and
+// is re-raised. All chunks share one clock read, so every row gets the same automatic
 // timestamp. A single row with more bound columns than the limit fails with
 // ErrLimitExceeded.
 func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
@@ -477,6 +480,12 @@ func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	defer func() {
+		if p := recover(); p != nil {
+			_ = sc.finish(context.WithoutCancel(ctx), fmt.Errorf("momo: panic during chunked insert: %v", p))
+			panic(p)
+		}
+	}()
 	var total int64
 	for _, c := range chunks {
 		c.q = sc.q
@@ -506,8 +515,11 @@ func (q InsertQuery[T]) execOne(ctx context.Context) (Result, error) {
 
 // Rows runs the statement and returns its RETURNING rows. It fails with
 // ErrValidation when no RETURNING list was set. A chunked bulk insert (see
-// Exec) returns the rows of all chunks in insertion order; closing the
-// cursor early still runs the remaining chunks so the insert stays whole.
+// Exec) returns the rows of all chunks in insertion order. The first chunk
+// runs inside Rows, so its errors are returned here; the remaining chunks run
+// as the rows are consumed, and Close runs any that are left so the insert
+// stays whole. The caller MUST check the error from Close (and Err): a later
+// chunk can fail there, which rolls the whole insert back.
 func (q InsertQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if !q.i.returning.active() {
 		return nil, q.verr("", "Rows needs a Returning list")
@@ -527,7 +539,12 @@ func (q InsertQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	for i := range chunks {
 		chunks[i].q = sc.q
 	}
-	return &ModelRows[T]{rows: &chunkRows[T]{ctx: ctx, chunks: chunks, sc: sc}, meta: q.meta, idx: idx}, nil
+	cr := &chunkRows[T]{ctx: ctx, chunks: chunks, sc: sc}
+	if err := cr.open(); err != nil {
+		cr.done = true
+		return nil, sc.finish(context.WithoutCancel(ctx), err)
+	}
+	return &ModelRows[T]{rows: cr, meta: q.meta, idx: idx}, nil
 }
 
 func (q InsertQuery[T]) rowsOne(ctx context.Context) (*ModelRows[T], error) {
@@ -591,14 +608,17 @@ type chunkScope struct {
 	finish func(ctx context.Context, err error) error
 }
 
-// beginScope opens a transaction on a DB, a savepoint on a Tx, or nothing on
-// a pinned connection, and returns the Querier the chunks run on.
+// beginScope opens a transaction on a DB or a savepoint on a Tx, and returns
+// the Querier the chunks run on. On a Tx without savepoints it opens nothing:
+// the caller's transaction is atomic as a whole. A pinned connection cannot
+// begin a transaction, so it fails with ErrUnsupported.
 func (q InsertQuery[T]) beginScope(ctx context.Context) (chunkScope, error) {
 	noop := chunkScope{q: q.q, finish: func(_ context.Context, err error) error { return err }}
 	switch h := q.q.(type) {
 	case *DB:
 		if h.pinned {
-			return noop, nil
+			return chunkScope{}, &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table,
+				Err: errors.New("chunked insert needs a transaction; wrap the call in db.Tx or call on a Tx")}
 		}
 		tx, err := h.Begin(ctx, TxOptions{})
 		if err != nil {
@@ -659,6 +679,17 @@ func (r *chunkRows[T]) finish(err error) {
 	}
 }
 
+// open queries the next chunk and makes it the current cursor.
+func (r *chunkRows[T]) open() error {
+	c := r.chunks[r.next]
+	r.next++
+	cmp, err := c.SQL()
+	if err == nil {
+		r.cur, err = c.q.conn().query(r.ctx, "insert", c.meta.Table, "", cmp)
+	}
+	return err
+}
+
 func (r *chunkRows[T]) Next() bool {
 	for !r.done {
 		if r.cur == nil {
@@ -666,13 +697,7 @@ func (r *chunkRows[T]) Next() bool {
 				r.finish(nil)
 				return false
 			}
-			c := r.chunks[r.next]
-			r.next++
-			cmp, err := c.SQL()
-			if err == nil {
-				r.cur, err = c.q.conn().query(r.ctx, "insert", c.meta.Table, "", cmp)
-			}
-			if err != nil {
+			if err := r.open(); err != nil {
 				r.err = err
 				r.finish(err)
 				return false

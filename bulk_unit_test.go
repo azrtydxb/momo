@@ -28,8 +28,9 @@ func newSmallLimit(max int) smallLimit {
 	return smallLimit{Driver: fakedriver.New(dialect.Postgres), d: &d}
 }
 
-// bulkOmit leaves 3 written columns: tenant_id, title, version, created_at,
-// updated_at, deleted_at minus deleted_at = 5 bound columns per row.
+// bulkQuery builds an insert of n documents that omits body, secret and
+// deleted_at, so each row binds 5 columns: tenant_id, title, version,
+// created_at and updated_at (the identity column is never written).
 func bulkQuery(db *momo.DB, n int) momo.InsertQuery[suite.Document] {
 	ms := make([]suite.Document, n)
 	for i := range ms {
