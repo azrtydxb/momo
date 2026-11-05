@@ -167,7 +167,7 @@ jobs:
         env:
           DATABASE_URL: "postgres://postgres:momo@postgres:5432"
           POOL_MODE: transaction
-          AUTH_TYPE: trust
+          AUTH_TYPE: scram-sha-256
           DEFAULT_POOL_SIZE: "4"
           MAX_CLIENT_CONN: "200"
           MAX_PREPARED_STATEMENTS: "0"

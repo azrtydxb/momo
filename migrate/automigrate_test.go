@@ -24,18 +24,20 @@ func columnExists(t *testing.T, db *momo.DB, table, column string) bool {
 // firstValue returns the first column of the first row as a string.
 func firstValue(t *testing.T, db *momo.DB, q string) string {
 	t.Helper()
-	r, err := pinned(t, db).Query(context.Background(), q, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = r.Close() }()
 	var s string
-	if !r.Next() {
-		t.Fatal("no row")
-	}
-	if err := r.Scan(&s); err != nil {
-		t.Fatal(err)
-	}
+	withPinned(t, db, func(c momo.PinnedConn) {
+		r, err := c.Query(context.Background(), q, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = r.Close() }()
+		if !r.Next() {
+			t.Fatal("no row")
+		}
+		if err := r.Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+	})
 	return s
 }
 
@@ -50,7 +52,7 @@ func autoDesired() *schema.Schema {
 func TestAutoMigrateAdditive(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
-	mustExec(t, pinned(t, db), `CREATE TABLE things (id INTEGER PRIMARY KEY, kind TEXT, old_col TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE things (id INTEGER PRIMARY KEY, kind TEXT, old_col TEXT)`)
 	cd := migratetest.NewCountingDriver(db.Driver())
 	e := migratetest.NewEngine(t, mpg.New(), cd, migratetest.EmptyFS())
 	rep, err := e.AutoMigrate(ctx, autoDesired())
@@ -101,8 +103,8 @@ func TestAutoMigrateAdditive(t *testing.T) {
 func TestAutoMigrateNeverDestroys(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
-	mustExec(t, pinned(t, db), `CREATE TABLE things (id INTEGER PRIMARY KEY, email TEXT)`)
-	mustExec(t, pinned(t, db), `CREATE TABLE legacy (id INTEGER PRIMARY KEY)`)
+	mustExecDB(t, db, `CREATE TABLE things (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE legacy (id INTEGER PRIMARY KEY)`)
 	desired := &schema.Schema{Dialect: "postgres", Extensions: []schema.Extension{{Name: "vector"}}, Tables: []schema.Table{{
 		Name: "things", PrimaryKey: []string{"id"},
 		Columns: []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "email", Type: "TEXT", Nullable: true}, {Name: "must", Type: "TEXT"}, {Name: "ok", Type: "TEXT", Default: "'x'"}},

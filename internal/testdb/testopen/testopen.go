@@ -7,6 +7,7 @@ package testopen
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,12 @@ import (
 )
 
 const connectTimeout = 30 * time.Second
+
+// maxTestConns is the pool size testopen.Postgres gives a pool whose URL sets
+// no pool_max_conns. Three, because the locking tests hold two transactions
+// at once and still query through the pool; below CI's four, so a leak that
+// would exhaust a CI pool exhausts this one first.
+const maxTestConns = 3
 
 // opener opens a fresh database for one dialect.
 type opener struct {
@@ -42,7 +49,19 @@ func Postgres(t *testing.T, opts ...momo.Option) *momo.DB {
 	url := testdb.PostgresURL(t)
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
-	pool, err := pgxdriver.NewPool(ctx, url)
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatalf("testopen: parse postgres URL: %v", err)
+	}
+	if !strings.Contains(url, "pool_max_conns") {
+		// A small pool makes a test that holds a connection past its use (a
+		// pin released only in t.Cleanup, say) block in Acquire on any machine.
+		// pgxpool's default is max(4, NumCPU), so such a leak otherwise shows
+		// only on a CI runner with few cores.
+		cfg.MaxConns = maxTestConns
+	}
+	pgxdriver.InstrumentPool(cfg)
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("testopen: open postgres pool: %v", err)
 	}

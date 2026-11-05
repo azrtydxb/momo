@@ -23,10 +23,10 @@ import (
 // table Config.Exclude hides, next to the clean users table of the snapshot.
 func excludedInvalidSetup(t *testing.T, db *momo.DB) fs.FS {
 	t.Helper()
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
-	mustExec(t, pinned(t, db), `CREATE TABLE tmp_x (id INTEGER, v INTEGER)`)
-	mustExec(t, pinned(t, db), `INSERT INTO tmp_x VALUES (1, 7), (2, 7)`)
-	if _, err := pinned(t, db).Exec(context.Background(), `CREATE UNIQUE INDEX CONCURRENTLY tmp_x_v_uq ON tmp_x (v)`, nil); err == nil {
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE tmp_x (id INTEGER, v INTEGER)`)
+	mustExecDB(t, db, `INSERT INTO tmp_x VALUES (1, 7), (2, 7)`)
+	if err := execDB(t, db, `CREATE UNIQUE INDEX CONCURRENTLY tmp_x_v_uq ON tmp_x (v)`); err == nil {
 		t.Fatal("expected the concurrent build to fail")
 	}
 	return migratetestFS(t, initVersion)
@@ -64,8 +64,8 @@ func TestDriftIgnoresInvalidIndexOfExcludedTable(t *testing.T) {
 		t.Fatalf("an invalid index on an excluded table must not be reported: %+v %v", rep, err)
 	}
 	// An invalid index on a table that is not excluded is still reported.
-	mustExec(t, pinned(t, db), `INSERT INTO users VALUES (1, 'a@x'), (2, 'a@x')`)
-	if _, err := pinned(t, db).Exec(ctx, `CREATE UNIQUE INDEX CONCURRENTLY users_email_uq ON users (email)`, nil); err == nil {
+	mustExecDB(t, db, `INSERT INTO users VALUES (1, 'a@x'), (2, 'a@x')`)
+	if err := execDB(t, db, `CREATE UNIQUE INDEX CONCURRENTLY users_email_uq ON users (email)`); err == nil {
 		t.Fatal("expected the concurrent build to fail")
 	}
 	rep, err = e.Drift(ctx)
@@ -82,7 +82,7 @@ func TestDriftAppliesExcludeToSnapshotSide(t *testing.T) {
 	s := usersSchema()
 	s.Tables = append(s.Tables, schema.Table{Name: "tmp_scratch", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}}})
 	fsys := snapshotFS(t, initVersion, s, "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT);\n")
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Exclude: []string{"tmp_*"}}))
 	if err := e.Baseline(ctx, initVersion, true); err != nil {
 		t.Fatal(err)
@@ -112,16 +112,16 @@ func TestBaselineWithLaterVersionAlreadyApplied(t *testing.T) {
 		"20260101000002_c.up.sql":        {Data: []byte("SELECT 2;")},
 		"20260101000002_c.snapshot.json": {Data: s2.Bytes()},
 	})
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
 	if err := e.Baseline(ctx, "20260101000002", false); err != nil {
 		t.Fatal(err)
 	}
-	mustExec(t, pinned(t, db), `DELETE FROM momo_migrations WHERE version = '20260101000000'`)
+	mustExecDB(t, db, `DELETE FROM momo_migrations WHERE version = '20260101000000'`)
 	if err := e.Baseline(ctx, "20260101000001", false); err != nil {
 		t.Fatalf("baseline below an applied version must succeed: %v", err)
 	}
-	rows, err := migrate.ReadHistory(ctx, pinned(t, db))
+	rows, err := readHistory(ctx, t, db)
 	if err != nil || len(rows) != 3 {
 		t.Fatalf("want rows 0,1,2: %+v %v", rows, err)
 	}
@@ -145,7 +145,7 @@ func (privDialect) Canonicalize(context.Context, momo.PinnedConn, *schema.Schema
 func TestBaselineSurfacesCanonicalizePrivilegeError(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
 	e := migratetest.NewEngine(t, privDialect{mpg.New()}, db.Driver(), migratetestFS(t, initVersion))
 	for _, force := range []bool{false, true} {
 		err := e.Baseline(ctx, initVersion, force)
@@ -153,7 +153,7 @@ func TestBaselineSurfacesCanonicalizePrivilegeError(t *testing.T) {
 			t.Fatalf("force=%v: want ErrCanonicalizePrivilege, got %v", force, err)
 		}
 	}
-	rows, err := migrate.ReadHistory(ctx, pinned(t, db))
+	rows, err := readHistory(ctx, t, db)
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("a refused baseline must record nothing: %+v %v", rows, err)
 	}

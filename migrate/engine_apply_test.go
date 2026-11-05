@@ -31,7 +31,7 @@ func twoVersions() fstest.MapFS {
 
 func appliedCount(t *testing.T, db *momo.DB) int {
 	t.Helper()
-	rows, err := migrate.ReadHistory(context.Background(), pinned(t, db))
+	rows, err := readHistory(context.Background(), t, db)
 	if err != nil {
 		t.Fatal(err)
 	}
