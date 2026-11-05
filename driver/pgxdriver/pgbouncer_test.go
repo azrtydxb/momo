@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -99,8 +100,74 @@ func TestPgBouncerTransactionMode(t *testing.T) {
 	if total != pgbWorkers*pgbIters {
 		t.Fatalf("rows = %d, want %d", total, pgbWorkers*pgbIters)
 	}
-	// Phase 2 of the plan (suite.RunAll through the pooler) needs momo-05
-	// Task 35, which does not exist yet.
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Phase 2: the shared suite through the pooler.
+	runSuiteThroughBouncer(ctx, t, d)
+}
+
+// publicTables lists the tables of the public schema, read over the direct
+// connection (not the pooler).
+func publicTables(ctx context.Context, t *testing.T) map[string]bool {
+	t.Helper()
+	conn, err := pgx.Connect(ctx, testdb.PostgresURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	rs, err := conn.Query(ctx, "SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rs.Close()
+	got := map[string]bool{}
+	for rs.Next() {
+		var n string
+		if err := rs.Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		got[n] = true
+	}
+	if err := rs.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// runSuiteThroughBouncer runs suite.RunAll on d.
+//
+// The suite creates and queries its tables by unqualified name, and the
+// pooler does not apply the per-test search_path to the server connections it
+// hands out (the image has no track_extra_parameters), so every statement
+// resolves its tables in the server's default schema, public, whichever
+// backend serves it. That is stable, so the suite is sound without
+// search_path. It does mean the suite's tables live in public instead of the
+// per-test schema, so the test snapshots public beforehand and drops exactly
+// the tables the run added, over the direct connection.
+func runSuiteThroughBouncer(ctx context.Context, t *testing.T, d momo.Driver) {
+	t.Helper()
+	before := publicTables(ctx, t)
+	t.Cleanup(func() {
+		conn, err := pgx.Connect(context.Background(), testdb.PostgresURL(t))
+		if err != nil {
+			t.Errorf("connect to clean public: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close(context.Background()) }()
+		for name := range publicTables(context.Background(), t) {
+			if before[name] {
+				continue
+			}
+			t.Logf("suite table public.%s created through the pooler; dropping", name)
+			if _, err := conn.Exec(context.Background(), "DROP TABLE IF EXISTS public."+pgx.Identifier{name}.Sanitize()+" CASCADE"); err != nil {
+				t.Errorf("drop public.%s: %v", name, err)
+			}
+		}
+	})
+	db := momo.New(d)
+	suite.RunAll(t, db, suite.CapsOf(db))
 }
 
 // wireCounter wraps a net.Conn and parses the frontend byte stream (pgx to
