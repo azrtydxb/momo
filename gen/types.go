@@ -80,15 +80,12 @@ type Model struct {
 	// Indexes are the indexes contributed by tagged fields of embedded
 	// structs and mixins, in declaration order.
 	Indexes []schema.Index
-	// Config is the companion result, filled in Task 9.
+	// Config is the statically read MomoConfig; never nil for a discovered
+	// model.
 	Config *CompanionResult
 	// SubPkg is the per-model subpackage name, set in Task 13.
 	SubPkg string
 }
-
-// CompanionResult is the statically read MomoConfig of a model. Task 9
-// completes it.
-type CompanionResult struct{}
 
 // Field is a persisted model column. Task 8 completes it.
 type Field struct {
