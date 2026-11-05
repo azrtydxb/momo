@@ -11,8 +11,13 @@ Implements plan momo-05-writes-queries Task 12: Insert builder: single, model, b
 
 ## Acceptance criteria
 
-- [ ] `TestInsertModelOmitAndConflict` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestInsertModelOmitAndConflict` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- FAIL before implementation: `go test -run TestInsert .` -> `undefined: momo.Insert`, `undefined: momo.InsertQuery` (build failed).
+- PASS after: `go test -tags integration -race -count=1 -run TestInsert .` on PostgreSQL -> ok (TestInsertModelOmitAndConflict/postgres, TestInsertReturningPopulatesIdentity/postgres, plus unit rendering and validation tests).
+- Mutation check: removing the FlagIdentity|FlagReadOnly exclusion made TestInsertModelColumnRules, TestInsertBulkAndReturning and TestInsertValidation fail; restored.
+- Files: insert.go, insert_test.go, returning.go (ReturningList, appendReturning, ModelRows, needed by Rows).
+- Bulk: Models renders one multi-row statement and returns ErrLimitExceeded above dialect.MaxParams; chunking is Task 13.
