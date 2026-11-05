@@ -40,6 +40,10 @@ type Person struct {
 	Nick string
 }
 
+// words is the fixed Go-identifier list whose table and column names are
+// recorded under the "words" key.
+var words = []string{"User", "UserIDs", "IDs", "ID", "UserID", "HTTPURL", "APIKey", "JSONData", "UUID", "SQLQuery", "IPAddress", "Address", "Class", "Analysis", "Status", "Bus", "Category", "Box", "Person", "Child", "Mouse", "Wife", "Knife", "Quiz", "Sheep", "Fish", "Series", "Species", "Equipment", "Information", "Money", "Index", "Matrix", "Vertex", "Datum", "OrderItem", "CreatedAt"}
+
 func main() {
 	out := map[string]any{"orm": "gorm", "version": "v1.31.2"}
 	tables := map[string]string{}
@@ -67,6 +71,13 @@ func main() {
 			}
 		}
 	}
+	wt, wc := map[string]string{}, map[string]string{}
+	ns := schema.NamingStrategy{}
+	for _, w := range words {
+		wt[w] = ns.TableName(w)
+		wc[w] = ns.ColumnName("", w)
+	}
+	out["words"] = map[string]any{"tables": wt, "columns": wc}
 	out["tables"], out["columns"], out["join_tables"] = tables, columns, joins
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

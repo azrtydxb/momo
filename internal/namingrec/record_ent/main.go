@@ -14,6 +14,8 @@ import (
 	"go/token"
 	"os"
 	"strconv"
+
+	"entgo.io/ent/entc/gen"
 )
 
 // entities maps a fixture model name to its generated package directory.
@@ -23,6 +25,10 @@ var entities = []struct{ model, dir string }{
 	{"Status", "ent/status"},
 	{"Person", "ent/person"},
 }
+
+// words is the fixed Go-identifier list whose table and column names are
+// recorded under the "words" key.
+var words = []string{"User", "UserIDs", "IDs", "ID", "UserID", "HTTPURL", "APIKey", "JSONData", "UUID", "SQLQuery", "IPAddress", "Address", "Class", "Analysis", "Status", "Bus", "Category", "Box", "Person", "Child", "Mouse", "Wife", "Knife", "Quiz", "Sheep", "Fish", "Series", "Species", "Equipment", "Information", "Money", "Index", "Matrix", "Vertex", "Datum", "OrderItem", "CreatedAt"}
 
 func fail(err error) {
 	fmt.Fprintln(os.Stderr, err)
@@ -93,8 +99,16 @@ func main() {
 			joins[e.model+".Tags"] = v
 		}
 	}
+	// Ent names a table snake(pluralize(type name)) and a column
+	// snake(field name); gen.Type.Table and gen.Field.StorageKey apply them.
+	wt, wc := map[string]string{}, map[string]string{}
+	for _, w := range words {
+		wt[w] = (&gen.Type{Name: w}).Table()
+		wc[w] = gen.Field{Name: w}.StorageKey()
+	}
 	out := map[string]any{
-		"orm": "ent", "version": "v0.14.6",
+		"words": map[string]any{"tables": wt, "columns": wc},
+		"orm":   "ent", "version": "v0.14.6",
 		"tables": tables, "columns": columns, "join_tables": joins,
 	}
 	b, err := json.MarshalIndent(out, "", "  ")

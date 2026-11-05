@@ -14,6 +14,10 @@ type fixture struct {
 	Tables    map[string]string `json:"tables"`
 	Columns   map[string]string `json:"columns"`
 	JoinTable map[string]string `json:"join_tables"`
+	Words     struct {
+		Tables  map[string]string `json:"tables"`
+		Columns map[string]string `json:"columns"`
+	} `json:"words"`
 }
 
 func TestNamingFixturesRecorded(t *testing.T) {

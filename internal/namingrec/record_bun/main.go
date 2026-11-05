@@ -10,7 +10,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/jinzhu/inflection"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
+	"github.com/uptrace/bun/schema"
 )
 
 // UserProfile is a fixture model.
@@ -48,6 +50,18 @@ type Person struct {
 	Nick string
 }
 
+// words is the fixed Go-identifier list whose table and column names are
+// recorded under the "words" key.
+var words = []string{"User", "UserIDs", "IDs", "ID", "UserID", "HTTPURL", "APIKey", "JSONData", "UUID", "SQLQuery", "IPAddress", "Address", "Class", "Analysis", "Status", "Bus", "Category", "Box", "Person", "Child", "Mouse", "Wife", "Knife", "Quiz", "Sheep", "Fish", "Series", "Species", "Equipment", "Information", "Money", "Index", "Matrix", "Vertex", "Datum", "OrderItem", "CreatedAt"}
+
+// wordColumn returns bun's column name for a struct field called name, by
+// letting bun build a table from a one-field struct. Bun's underscore
+// function is internal, so this is the only route to it.
+func wordColumn(tables *schema.Tables, name string) string {
+	typ := reflect.StructOf([]reflect.StructField{{Name: name, Type: reflect.TypeOf("")}})
+	return tables.Get(typ).Fields[0].Name
+}
+
 func main() {
 	tables := sqlitedialect.New().Tables()
 	tables.Register((*UserProfileTag)(nil))
@@ -78,6 +92,15 @@ func main() {
 			joins["UserProfile.Tags"] = r.M2MTable.Name
 		}
 	}
+	// Bun names a table inflection.Plural(underscore(type name)); the
+	// underscore step is the same one it applies to field names.
+	wt, wc := map[string]string{}, map[string]string{}
+	for _, w := range words {
+		c := wordColumn(tables, w)
+		wc[w] = c
+		wt[w] = inflection.Plural(c)
+	}
+	out["words"] = map[string]any{"tables": wt, "columns": wc}
 	out["tables"], out["columns"], out["join_tables"] = tbl, cols, joins
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
