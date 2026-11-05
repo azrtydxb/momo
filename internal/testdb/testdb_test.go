@@ -52,3 +52,18 @@ func TestRandomSuffixIsUniqueAndSafe(t *testing.T) {
 		t.Fatalf("randomName gave %q and %q", a, b)
 	}
 }
+
+func TestSearchPathRejectsNonURL(t *testing.T) {
+	got, err := searchPath("postgres://u:p@h:5432/db?sslmode=disable", "t_ab")
+	if err != nil || !strings.Contains(got, "search_path=t_ab%2Cpublic") || !strings.Contains(got, "sslmode=disable") {
+		t.Fatalf("valid URL: %q, %v", got, err)
+	}
+	if _, err := searchPath("postgresql://h/db", "t_ab"); err != nil {
+		t.Fatalf("postgresql scheme: %v", err)
+	}
+	for _, bad := range []string{"host=localhost user=u dbname=d", "mysql://u@h/db", "%zz", ""} {
+		if _, err := searchPath(bad, "t_ab"); err == nil || !strings.Contains(err.Error(), "postgres://") {
+			t.Errorf("searchPath(%q) err = %v, want an error requiring a postgres:// URL", bad, err)
+		}
+	}
+}
