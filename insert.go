@@ -253,8 +253,21 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 			cols = append(cols, ci)
 			assigns = append(assigns, a)
 		}
-		tc, ta := q.timestampAssigns(seen, now)
+		tc, ta, err := q.timestampAssigns(seen, now)
+		if err != nil {
+			b.SetErr(err)
+			return
+		}
 		cols, assigns = append(cols, tc...), append(assigns, ta...)
+	}
+	for _, ci := range cols {
+		if ci != q.meta.CreatedAt && ci != q.meta.UpdatedAt {
+			continue
+		}
+		if err := checkTimestampField(q.meta, ci); err != nil {
+			b.SetErr(q.verr(q.meta.Columns[ci].Name, "%v", err))
+			return
+		}
 	}
 	if len(cols) == 0 {
 		b.SetErr(q.verr("", "no writable columns to insert"))
@@ -320,19 +333,22 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 
 // timestampAssigns returns the automatic created-at and updated-at writes of
 // a Values insert for the columns the caller did not assign.
-func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) ([]int, []Assignment) {
+func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) ([]int, []Assignment, error) {
 	var cols []int
 	var assigns []Assignment
 	for _, ci := range []int{q.meta.CreatedAt, q.meta.UpdatedAt} {
 		if _, assigned := seen[ci]; assigned || ci < 0 || !q.writable(ci) {
 			continue
 		}
+		if err := checkTimestampField(q.meta, ci); err != nil {
+			return nil, nil, q.verr(q.meta.Columns[ci].Name, "%v", err)
+		}
 		if v, ok := autoTimestamp(q.meta, ci, now); ok {
 			cols = append(cols, ci)
 			assigns = append(assigns, Assignment{col: q.meta.Columns[ci].Name, kind: setValue, val: v})
 		}
 	}
-	return cols, assigns
+	return cols, assigns, nil
 }
 
 // modelValue is the value a model insert binds for column ci: the field value,
