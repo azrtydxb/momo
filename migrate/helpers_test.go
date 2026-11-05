@@ -21,6 +21,42 @@ func pinned(t *testing.T, db *momo.DB) momo.PinnedConn {
 	return pc
 }
 
+// withPinned runs fn on a pinned connection and releases it when fn returns.
+// Use it for one-shot work: pinned holds its connection until t.Cleanup, so a
+// helper that called pinned on every use exhausted the pool (CI's holds four)
+// and blocked the code under test in Acquire.
+func withPinned(t *testing.T, db *momo.DB, fn func(c momo.PinnedConn)) {
+	t.Helper()
+	pc, err := db.Driver().(momo.Pinner).Pin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pc.Release() }()
+	fn(pc)
+}
+
+// mustExecDB executes sql on a connection that is released before it returns.
+func mustExecDB(t *testing.T, db *momo.DB, sql string) {
+	t.Helper()
+	withPinned(t, db, func(c momo.PinnedConn) { mustExec(t, c, sql) })
+}
+
+// execDB executes sql on a connection that is released before it returns and
+// reports the statement's error.
+func execDB(t *testing.T, db *momo.DB, sql string) error {
+	t.Helper()
+	var err error
+	withPinned(t, db, func(c momo.PinnedConn) { _, err = c.Exec(context.Background(), sql, nil) })
+	return err
+}
+
+// readHistory reads the history rows on a connection released before it returns.
+func readHistory(ctx context.Context, t *testing.T, db *momo.DB) (rows []migrate.HistoryRow, err error) {
+	t.Helper()
+	withPinned(t, db, func(c momo.PinnedConn) { rows, err = migrate.ReadHistory(ctx, c) })
+	return rows, err
+}
+
 func mustExec(t *testing.T, c momo.PinnedConn, sql string) {
 	t.Helper()
 	if _, err := c.Exec(context.Background(), sql, nil); err != nil {
@@ -30,8 +66,7 @@ func mustExec(t *testing.T, c momo.PinnedConn, sql string) {
 
 func historyRow(t *testing.T, db *momo.DB, version string) migrate.HistoryRow {
 	t.Helper()
-	c := pinned(t, db)
-	rows, err := migrate.ReadHistory(context.Background(), c)
+	rows, err := readHistory(context.Background(), t, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,19 +81,7 @@ func historyRow(t *testing.T, db *momo.DB, version string) migrate.HistoryRow {
 
 func tableExists(t *testing.T, db *momo.DB, name string) bool {
 	t.Helper()
-	rows, err := pinned(t, db).Query(context.Background(), `SELECT to_regclass($1) IS NOT NULL`, []any{name})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = rows.Close() }()
-	var ok bool
-	if !rows.Next() {
-		t.Fatal("no row")
-	}
-	if err := rows.Scan(&ok); err != nil {
-		t.Fatal(err)
-	}
-	return ok
+	return firstValue(t, db, `SELECT (to_regclass('`+name+`') IS NOT NULL)::text`) == "true"
 }
 
 // cancelWhenRunning calls cancel once a statement containing marker is active
