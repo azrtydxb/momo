@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package migratetest holds helpers shared by the migrate engine tests.
+// Package migratetest holds helpers shared by the migrate engine tests. The
+// engine tests run against the real dialect, migrate/postgres.New(), with its
+// own lock, session setup and history table.
 package migratetest
 
 import (
 	"bytes"
-	"context"
+	"encoding/json"
 	"io/fs"
 	"testing"
 	"testing/fstest"
 
 	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/migrate"
-	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -47,49 +47,23 @@ func NewEngine(t testing.TB, d migrate.Dialect, drv momo.Driver, fsys fs.FS, opt
 	return e
 }
 
-// historyDDL is the PostgreSQL momo_migrations table.
-var historyDDL = []string{`CREATE TABLE IF NOT EXISTS momo_migrations (
-	version TEXT PRIMARY KEY,
-	name TEXT NOT NULL,
-	checksum TEXT NOT NULL,
-	status TEXT NOT NULL,
-	statements_applied INTEGER NOT NULL DEFAULT 0,
-	error TEXT NOT NULL DEFAULT '',
-	applied_at TEXT NOT NULL,
-	execution_ms BIGINT NOT NULL DEFAULT 0,
-	apply_id TEXT NOT NULL DEFAULT '',
-	kind TEXT NOT NULL DEFAULT 'sql'
-)`}
+// EmptyFS is a migration directory without files.
+func EmptyFS() fs.FS { return fstest.MapFS{} }
 
-// PG is the PostgreSQL dialect for engine tests. It supplies the history DDL,
-// session setup and lock that the migration-lock story (task 14) owns in
-// migrate/postgres; once that lands, tests can use migrate/postgres.New()
-// directly and this wrapper goes away.
-type PG struct{ inner mpg.Dialect }
-
-// Dialect describes PostgreSQL.
-func (PG) Dialect() *dialect.Dialect { return dialect.For(dialect.Postgres) }
-
-// Inspect delegates to the PostgreSQL dialect.
-func (p PG) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.InspectOptions) (*schema.Schema, error) {
-	return p.inner.Inspect(ctx, c, opts)
+// FS turns the file map of a generated migration (relative name to content)
+// into a migration directory.
+func FS(files map[string][]byte) fs.FS {
+	out := fstest.MapFS{}
+	for name, data := range files {
+		out[name] = &fstest.MapFile{Data: data}
+	}
+	return out
 }
 
-// Render delegates to the PostgreSQL dialect.
-func (p PG) Render(plan []migrate.Change) ([]migrate.Statement, error) { return p.inner.Render(plan) }
-
-// HistoryDDL returns the momo_migrations DDL.
-func (PG) HistoryDDL() []string { return historyDDL }
-
-// Setup applies no session options.
-func (PG) Setup(context.Context, momo.PinnedConn, migrate.SessionOptions) (func() error, error) {
-	return func() error { return nil }, nil
+// Diff prints the difference between two schemas as their normalized JSON, for
+// a failing schema.Equal.
+func Diff(got, want *schema.Schema) string {
+	x, _ := json.MarshalIndent(schema.Normalized(got), "", " ")
+	y, _ := json.MarshalIndent(schema.Normalized(want), "", " ")
+	return "got:\n" + string(x) + "\nwant:\n" + string(y)
 }
-
-// Lock takes no lock.
-func (PG) Lock(context.Context, momo.PinnedConn, string) (func() error, func(context.Context) (string, error), error) {
-	return func() error { return nil }, func(context.Context) (string, error) { return "", nil }, nil
-}
-
-// Postgres returns the PostgreSQL test dialect.
-func Postgres() migrate.Dialect { return PG{} }
