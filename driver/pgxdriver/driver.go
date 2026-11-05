@@ -63,7 +63,9 @@ func (d *driver) Dialect() *dialect.Dialect { return dialect.For(dialect.Postgre
 
 // Capabilities reports that this driver can execute vector SQL. The pgvector
 // extension itself is checked by the vector package.
-func (d *driver) Capabilities() momo.Capabilities { return momo.Capabilities{Vectors: true} }
+func (d *driver) Capabilities() momo.Capabilities {
+	return momo.Capabilities{Vectors: true, Batch: true, Copy: true}
+}
 
 // ClassifyError implements momo.ErrorClassifier.
 func (d *driver) ClassifyError(err error) error { return ClassifyError(err) }
