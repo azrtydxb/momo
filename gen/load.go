@@ -73,6 +73,17 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 		diags = append(diags, mdiags...)
 		diags = append(diags, collisionDiagnostics(ms)...)
 	}
+	rdiags, bad := resolveRelations(g.Models)
+	diags = append(diags, rdiags...)
+	if len(bad) > 0 { // invalid relations mean no output for their package
+		kept := g.Models[:0]
+		for _, m := range g.Models {
+			if !bad[m.PkgPath] {
+				kept = append(kept, m)
+			}
+		}
+		g.Models = kept
+	}
 	sort.SliceStable(g.Packages, func(i, j int) bool { return g.Packages[i].Path < g.Packages[j].Path })
 	sort.SliceStable(g.Models, func(i, j int) bool {
 		a, b := g.Models[i], g.Models[j]

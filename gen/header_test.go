@@ -23,7 +23,7 @@ func TestGeneratedHeaderRegexp(t *testing.T) {
 // TestHeaderAgreesWithWriterDetection catches the header and the writer's
 // handwritten-file detection drifting apart.
 func TestHeaderAgreesWithWriterDetection(t *testing.T) {
-	if !strings.HasPrefix(Header(), headerPrefix) {
-		t.Fatalf("Header() %q does not start with headerPrefix %q", Header(), headerPrefix)
+	if !strings.HasPrefix(Header(), HeaderPrefix) {
+		t.Fatalf("Header() %q does not start with HeaderPrefix %q", Header(), HeaderPrefix)
 	}
 }
