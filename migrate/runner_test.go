@@ -15,6 +15,7 @@ import (
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
+	mpg "github.com/azrtydxb/momo/migrate/postgres"
 )
 
 func TestNonTransactionalFailureRecovery(t *testing.T) {
@@ -23,7 +24,7 @@ func TestNonTransactionalFailureRecovery(t *testing.T) {
 	fsys := migratetest.WithSum(t, fstest.MapFS{
 		"20260101000000_bad.up.sql": {Data: []byte("-- momo:no-transaction\nCREATE TABLE ok1 (x int);\nCREATE TABLE ok2 (x int);\nINSERT INTO missing VALUES (1);")},
 	})
-	e := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys)
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
 	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
 		t.Fatal("apply must fail")
 	}
@@ -55,7 +56,7 @@ func TestResolveApplied(t *testing.T) {
 	fsys := migratetest.WithSum(t, fstest.MapFS{
 		"20260101000000_bad.up.sql": {Data: []byte("-- momo:no-transaction\nCREATE TABLE ok1 (x int);\nINSERT INTO missing VALUES (1);")},
 	})
-	e := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys)
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
 	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
 		t.Fatal("apply must fail")
 	}
@@ -80,7 +81,7 @@ func TestTransactionalFailureRolledBack(t *testing.T) {
 	bad := migratetest.WithSum(t, fstest.MapFS{
 		"20260101000000_t.up.sql": {Data: []byte("CREATE TABLE a (x int);\nINSERT INTO missing VALUES (1);")},
 	})
-	e := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), bad)
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), bad)
 	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
 		t.Fatal("apply must fail")
 	}
@@ -94,7 +95,7 @@ func TestTransactionalFailureRolledBack(t *testing.T) {
 	fixed := migratetest.WithSum(t, fstest.MapFS{
 		"20260101000000_t.up.sql": {Data: []byte("CREATE TABLE a (x int);")},
 	})
-	e2 := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fixed)
+	e2 := migratetest.NewEngine(t, mpg.New(), db.Driver(), fixed)
 	if _, err := e2.Apply(ctx, migrate.ApplyOptions{}); err != nil {
 		t.Fatalf("a rolled-back transactional migration must apply again without resolve: %v", err)
 	}
@@ -116,7 +117,7 @@ func TestNewEngineRequiresDialect(t *testing.T) {
 
 func runEnv(t *testing.T, c momo.PinnedConn) migrate.RunEnv {
 	t.Helper()
-	return migrate.RunEnv{Conn: c, Dialect: migratetest.Postgres(), Clock: time.Now}
+	return migrate.RunEnv{Conn: c, Dialect: mpg.New(), Clock: time.Now}
 }
 
 // Without the migration lock, a second engine's failure path must not turn the
@@ -127,7 +128,7 @@ func TestFailurePathNeverOverwritesApplied(t *testing.T) {
 	fsys := migratetest.WithSum(t, fstest.MapFS{
 		"20260101000000_t.up.sql": {Data: []byte("CREATE TABLE a (x int);")},
 	})
-	if _, err := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys).Apply(ctx, migrate.ApplyOptions{}); err != nil {
+	if _, err := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys).Apply(ctx, migrate.ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	c := pinned(t, db)
@@ -152,7 +153,7 @@ func TestCancelledContextStillRecordsFailure(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := testopen.Postgres(t)
 			fsys := migratetest.WithSum(t, fstest.MapFS{"20260101000000_slow.up.sql": {Data: []byte(tc.body)}})
-			e := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys)
+			e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
 			ctx, cancel := context.WithCancel(context.Background())
 			timer := time.AfterFunc(500*time.Millisecond, cancel)
 			defer timer.Stop()
@@ -173,7 +174,7 @@ func TestClass22ErrorIsRedacted(t *testing.T) {
 	fsys := migratetest.WithSum(t, fstest.MapFS{
 		"20260101000000_t.up.sql": {Data: []byte("CREATE TABLE t (intcol int);\nINSERT INTO t(intcol) VALUES ('secret-abc');")},
 	})
-	_, err := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys).Apply(ctx, migrate.ApplyOptions{})
+	_, err := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys).Apply(ctx, migrate.ApplyOptions{})
 	if err == nil {
 		t.Fatal("apply must fail")
 	}
@@ -190,12 +191,12 @@ func TestLeftoverRunningRowIsDirty(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	c := pinned(t, db)
-	if err := migrate.EnsureHistory(ctx, c, migratetest.Postgres()); err != nil {
+	if err := migrate.EnsureHistory(ctx, c, mpg.New()); err != nil {
 		t.Fatal(err)
 	}
 	mustExec(t, c, `INSERT INTO momo_migrations (version, name, checksum, status, applied_at) VALUES ('20250101000000', 'old', 'x', 'running', 'now')`)
 	fsys := migratetest.WithSum(t, fstest.MapFS{"20260101000000_t.up.sql": {Data: []byte("CREATE TABLE a (x int);")}})
-	_, err := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fsys).Apply(ctx, migrate.ApplyOptions{})
+	_, err := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys).Apply(ctx, migrate.ApplyOptions{})
 	if !errors.Is(err, migrate.ErrDirty) {
 		t.Fatalf("want ErrDirty, got %v", err)
 	}
@@ -208,7 +209,7 @@ func TestMixedNoTxStatementsApplied(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	c := pinned(t, db)
-	if err := migrate.EnsureHistory(ctx, c, migratetest.Postgres()); err != nil {
+	if err := migrate.EnsureHistory(ctx, c, mpg.New()); err != nil {
 		t.Fatal(err)
 	}
 	p := migrate.Pending{Version: "20260101000000", Name: "mixed", Statements: []migrate.Statement{
@@ -233,14 +234,14 @@ func TestRolledBackRowIsRetried(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	bad := migratetest.WithSum(t, fstest.MapFS{"20260101000000_t.up.sql": {Data: []byte("INSERT INTO missing VALUES (1);")}})
-	if _, err := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), bad).Apply(ctx, migrate.ApplyOptions{}); err == nil {
+	if _, err := migratetest.NewEngine(t, mpg.New(), db.Driver(), bad).Apply(ctx, migrate.ApplyOptions{}); err == nil {
 		t.Fatal("must fail")
 	}
 	if r := historyRow(t, db, "20260101000000"); r.Status != migrate.StatusRolledBack {
 		t.Fatalf("want rolled_back, got %+v", r)
 	}
 	fixed := migratetest.WithSum(t, fstest.MapFS{"20260101000000_t.up.sql": {Data: []byte("-- momo:no-transaction\nCREATE TABLE a (x int);")}})
-	e := migratetest.NewEngine(t, migratetest.Postgres(), db.Driver(), fixed)
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fixed)
 	if plan, err := e.Plan(ctx); err != nil || len(plan) != 1 {
 		t.Fatalf("a rolled_back version is pending: %+v %v", plan, err)
 	}

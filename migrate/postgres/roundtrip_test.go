@@ -5,6 +5,9 @@ package postgres_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io/fs"
+	"slices"
 	"strings"
 	"testing"
 
@@ -12,6 +15,7 @@ import (
 	testdb "github.com/azrtydxb/momo/internal/testdb"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
+	"github.com/azrtydxb/momo/migrate/migratetest"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -53,7 +57,41 @@ func inspectNow(t *testing.T, db *momo.DB) *schema.Schema {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The history table is the engine's own bookkeeping, not a model table;
+	// drift-time Exclude (a later task) filters it, so the tests drop it here.
+	got.Tables = slices.DeleteFunc(got.Tables, func(tb schema.Table) bool { return tb.Name == "momo_migrations" })
 	return got
+}
+
+// engineOn returns an engine on db's per-test schema for the migration directory fsys.
+func engineOn(t *testing.T, db *momo.DB, fsys fs.FS) *migrate.Engine {
+	t.Helper()
+	return migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Schemas: []string{testdb.Schema(t)}}))
+}
+
+// migrationFiles turns rendered statements into migration files, in order.
+// Consecutive statements that agree on NoTx share a file, and a file of NoTx
+// statements carries the no-transaction directive. Versions count up from
+// first in the 2026-01-01 timestamp range.
+func migrationFiles(stmts []migrate.Statement, first int) map[string][]byte {
+	files := map[string][]byte{}
+	for i := 0; i < len(stmts); {
+		j := i
+		for j < len(stmts) && stmts[j].NoTx == stmts[i].NoTx {
+			j++
+		}
+		var b strings.Builder
+		if stmts[i].NoTx {
+			b.WriteString("-- momo:no-transaction\n")
+		}
+		for _, s := range stmts[i:j] {
+			b.WriteString(s.SQL + ";\n")
+		}
+		n := first + len(files)
+		files[fmt.Sprintf("202601010000%02d_step%d.up.sql", n, n)] = []byte(b.String())
+		i = j
+	}
+	return files
 }
 
 func jsonDiff(a, b *schema.Schema) string {
@@ -112,7 +150,32 @@ func TestPostgresObjects(t *testing.T) {
 	if !sawNoTx {
 		t.Fatalf("the CONCURRENTLY index must be a NoTx statement: %+v", stmts)
 	}
-	roundTrip(t, db, desired)
+	// The migration is applied through the engine: the CONCURRENTLY index sits
+	// in its own no-transaction file, and the history records every version.
+	files := migrationFiles(stmts, 0)
+	if len(files) < 2 {
+		t.Fatalf("the CONCURRENTLY index must be split into its own migration file: %v", files)
+	}
+	e := engineOn(t, db, migratetest.FS(files))
+	rep, err := e.Apply(context.Background(), migrate.ApplyOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Applied) != len(files) {
+		t.Fatalf("applied %d of %d files: %+v", len(rep.Applied), len(files), rep)
+	}
+	got := inspectNow(t, db)
+	if !schema.Equal(got, desired) {
+		t.Fatalf("round trip has a diff:\n%s", migratetest.Diff(got, desired))
+	}
+	again, _, err := migrate.Diff(got, desired, migrate.DiffOptions{})
+	if err != nil || len(again) != 0 {
+		t.Fatalf("second diff must be empty: %v %+v", err, again)
+	}
+	plan, err := e.Plan(context.Background())
+	if err != nil || len(plan) != 0 {
+		t.Fatalf("nothing may remain pending: %v %+v", err, plan)
+	}
 }
 
 func TestPostgresRoundTripConstraintsCollateComment(t *testing.T) {
