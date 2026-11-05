@@ -112,7 +112,7 @@ func (b *Builder) appendRaw(sql string, args []any) {
 			continue
 		}
 		if n >= len(args) {
-			b.SetErr(fmt.Errorf("momo: raw SQL %q has more placeholders than the %d arguments given", sql, len(args)))
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("raw SQL %q has more placeholders than the %d arguments given", sql, len(args))})
 			return
 		}
 		if e, ok := args[n].(Expr); ok {
@@ -123,7 +123,7 @@ func (b *Builder) appendRaw(sql string, args []any) {
 		n++
 	}
 	if n != len(args) {
-		b.SetErr(fmt.Errorf("momo: raw SQL %q has %d placeholders but %d arguments were given", sql, n, len(args)))
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("raw SQL %q has %d placeholders but %d arguments were given", sql, n, len(args))})
 	}
 }
 

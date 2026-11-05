@@ -170,6 +170,10 @@ func (sq SelectQuery[T]) order() Order { return Order{Expr: sq} }
 // number of effective keys (ErrValidation otherwise), and non-nullable keys
 // (ErrUnsupported otherwise).
 func (sq SelectQuery[T]) After(values ...any) SelectQuery[T] {
+	if len(values) == 0 {
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("After needs at least one value")}
+		return sq
+	}
 	sq.s.keyset = append(slices.Clip(sq.s.keyset), values...)
 	return sq
 }
@@ -196,10 +200,15 @@ func (sq SelectQuery[T]) keysetKeys() []keysetKey {
 		c := sq.meta.Columns[i]
 		present := false
 		for _, o := range s.order {
-			if r, ok := o.Expr.(ColumnRef); ok && r.ColumnName() == c.Name {
-				present = true
-				break
+			r, ok := o.Expr.(ColumnRef)
+			if !ok || r.ColumnName() != c.Name {
+				continue
 			}
+			if t, ok := o.Expr.(interface{ Table() string }); ok && t.Table() != q {
+				continue // the same column name on another table source
+			}
+			present = true
+			break
 		}
 		if !present {
 			keys = append(keys, keysetKey{expr: qcol{q, c.Name}, nullable: c.Flags&FlagNullable != 0})
@@ -248,10 +257,24 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 }
 
 // Limit sets LIMIT.
-func (sq SelectQuery[T]) Limit(n int64) SelectQuery[T] { sq.s.limit = n; return sq }
+func (sq SelectQuery[T]) Limit(n int64) SelectQuery[T] {
+	if n < 0 {
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("Limit must not be negative, got %d", n)}
+		return sq
+	}
+	sq.s.limit = n
+	return sq
+}
 
 // Offset sets OFFSET. Prefer keyset pagination (After) for deep pages.
-func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] { sq.s.offset = n; return sq }
+func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] {
+	if n < 0 {
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("Offset must not be negative, got %d", n)}
+		return sq
+	}
+	sq.s.offset = n
+	return sq
+}
 
 // ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED".
 func (sq SelectQuery[T]) ForUpdate(opt ...string) SelectQuery[T] {
@@ -267,7 +290,7 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 		case "NOWAIT", "SKIP LOCKED":
 			l += " " + o
 		default:
-			sq.s.err = fmt.Errorf("momo: unknown lock option %q (want NOWAIT or SKIP LOCKED)", o)
+			sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("unknown lock option %q (want NOWAIT or SKIP LOCKED)", o)}
 		}
 	}
 	sq.s.lock = l
@@ -342,7 +365,7 @@ func (sq SelectQuery[T]) render(b *Builder) {
 	}
 	if s.cols == nil {
 		if sq.meta.Table == "" {
-			b.SetErr(errors.New("momo: projection query needs Columns"))
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("projection query needs Columns")})
 			return
 		}
 		q := sq.qualifier()
@@ -354,7 +377,7 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		}
 	} else {
 		if len(s.cols) != len(sq.meta.Columns) {
-			b.SetErr(fmt.Errorf("momo: select list has %d expressions but result type maps %d fields", len(s.cols), len(sq.meta.Columns)))
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("select list has %d expressions but result type maps %d fields", len(s.cols), len(sq.meta.Columns))})
 			return
 		}
 		for i, e := range s.cols {
@@ -640,7 +663,10 @@ func (sq SelectQuery[T]) Count(ctx context.Context) (int64, error) {
 		return 0, errors.New("momo: query has no Querier")
 	}
 	inner := sq
+	// The count covers the whole filtered set: neither the ordering nor the
+	// page cursor applies.
 	inner.s.order = nil
+	inner.s.keyset = nil
 	c, err := compile(sq.q.Dialect(), func(b *Builder) {
 		b.WriteString("SELECT COUNT(*) FROM ")
 		inner.AppendSQL(b)
