@@ -12,6 +12,7 @@ FUZZ_TARGETS += ./schema:FuzzNormalize
 FUZZ_TARGETS += ./vector:FuzzVectorDecode
 FUZZ_TARGETS += ./vector:FuzzSparseDecode
 FUZZ_TARGETS += ./gen/testdata/golden/descriptors/document:FuzzColumnByName
+FUZZ_TARGETS += .:FuzzEscapeLike
 GOVULNCHECK = go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
 # Same gosec release as .github/workflows/gosec.yml. Locally it fails on any
 # finding and on any type-check error, so a toolchain mismatch cannot pass silently.
