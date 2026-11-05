@@ -30,6 +30,14 @@ func Errors(t *testing.T, db *momo.DB, caps Caps) {
 		}
 	}
 
+	t.Cleanup(func() {
+		for _, tbl := range []string{"child", "parent", "checked"} {
+			if _, err := momo.Exec(ctx, db, "DROP TABLE IF EXISTS "+tbl); err != nil {
+				t.Errorf("drop %s: %v", tbl, err)
+			}
+		}
+	})
+
 	check := func(t *testing.T, err error, want error) *momo.Error {
 		t.Helper()
 		if !errors.Is(err, want) {

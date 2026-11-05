@@ -105,6 +105,54 @@ func Transactions(t *testing.T, db *momo.DB, caps Caps) {
 		}
 	})
 
+	t.Run("nested success persists", func(t *testing.T) {
+		err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+			if err := insertDoc(ctx, tx, "nested-outer"); err != nil {
+				return err
+			}
+			return tx.Tx(ctx, func(in *momo.Tx) error { return insertDoc(ctx, in, "nested-inner") })
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, title := range []string{"nested-outer", "nested-inner"} {
+			if n := count(t, db, title); n != 1 {
+				t.Errorf("%s rows = %d, want 1", title, n)
+			}
+		}
+	})
+
+	t.Run("inner panic rolls back to the savepoint and re-raises", func(t *testing.T) {
+		var recovered any
+		err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+			if err := insertDoc(ctx, tx, "panic-outer"); err != nil {
+				return err
+			}
+			func() {
+				defer func() { recovered = recover() }()
+				_ = tx.Tx(ctx, func(in *momo.Tx) error {
+					if err := insertDoc(ctx, in, "panic-inner"); err != nil {
+						return err
+					}
+					panic("inner boom")
+				})
+			}()
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if recovered == nil {
+			t.Fatal("inner panic was swallowed")
+		}
+		if n := count(t, db, "panic-outer"); n != 1 {
+			t.Errorf("panic-outer rows = %d, want 1 (outer recovered and committed)", n)
+		}
+		if n := count(t, db, "panic-inner"); n != 0 {
+			t.Errorf("panic-inner rows = %d, want 0", n)
+		}
+	})
+
 	t.Run("isolation", func(t *testing.T) {
 		if caps.NonDefaultIsolation {
 			err := db.Tx(ctx, momo.TxOptions{Isolation: sql.LevelRepeatableRead}, func(tx *momo.Tx) error {
