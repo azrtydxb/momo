@@ -24,7 +24,7 @@ func TestGenerateRefusesHandwritten(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := NewWriter(WriterOptions{ModuleRoot: root})
-	err := w.File(hand, []byte("package pkg\n"))
+	err := w.File(hand, []byte(testHeader))
 	if !errors.Is(err, ErrHandwritten) {
 		t.Fatalf("want ErrHandwritten, got %v", err)
 	}
@@ -41,17 +41,17 @@ func TestGenerateRefusesHandwritten(t *testing.T) {
 
 	gen := filepath.Join(root, "pkg", "other_gen.go")
 	w = NewWriter(WriterOptions{ModuleRoot: root})
-	if err := w.File(gen, []byte("package pkg\n")); err != nil {
+	if err := w.File(gen, []byte(testHeader)); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.File(gen, []byte("package pkg\nvar x = 1\n")); !errors.Is(err, ErrCollision) {
+	if err := w.File(gen, []byte(testHeader+"var x = 1\n")); !errors.Is(err, ErrCollision) {
 		t.Fatalf("want ErrCollision, got %v", err)
 	}
 	outside := filepath.Join(filepath.Dir(root), "escape_gen.go")
-	if err := w.File(outside, []byte("package x\n")); err == nil {
+	if err := w.File(outside, []byte(testHeader)); err == nil {
 		t.Fatal("write outside the module root accepted")
 	}
-	if err := w.File("relative_gen.go", []byte("package x\n")); err == nil {
+	if err := w.File("relative_gen.go", []byte(testHeader)); err == nil {
 		t.Fatal("relative path accepted")
 	}
 	if err := w.File(filepath.Join(root, "bad_gen.go"), []byte("not go")); err == nil {
@@ -102,7 +102,7 @@ func TestWriterIdempotentAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Mode().Perm()&^0o644 != 0 {
+	if fi.Mode().Perm() != 0o644 {
 		t.Fatalf("mode too wide: %v", fi.Mode())
 	}
 	old := time.Now().Add(-time.Hour).Truncate(time.Second)
@@ -181,5 +181,84 @@ func TestWriterOrphans(t *testing.T) {
 	}
 	if want := []string{filepath.Join(dir, "stale_gen.go")}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("orphans %v want %v", got, want)
+	}
+}
+
+func TestWriterRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	w := NewWriter(WriterOptions{ModuleRoot: root})
+	for _, p := range []string{
+		filepath.Join(root, "link", "x_gen.go"),
+		filepath.Join(root, "link", "newdir", "x_gen.go"),
+	} {
+		if err := w.File(p, []byte(testHeader)); err == nil {
+			t.Fatalf("symlink escape accepted for %s", p)
+		}
+	}
+	ents, err := os.ReadDir(outside)
+	if err != nil || len(ents) != 0 {
+		t.Fatalf("outside dir touched: %v %v", ents, err)
+	}
+	// A symlinked module root itself is fine.
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	w = NewWriter(WriterOptions{ModuleRoot: alias})
+	if err := w.File(filepath.Join(alias, "ok_gen.go"), []byte(testHeader)); err != nil {
+		t.Fatalf("symlinked root rejected: %v", err)
+	}
+}
+
+func TestWriterRejectsHeaderless(t *testing.T) {
+	root := t.TempDir()
+	p := filepath.Join(root, "x_gen.go")
+	w := NewWriter(WriterOptions{ModuleRoot: root})
+	err := w.File(p, []byte("package pkg\n"))
+	if err == nil || !strings.Contains(err.Error(), p) {
+		t.Fatalf("want error naming %s, got %v", p, err)
+	}
+}
+
+func TestWriterCommitRechecksHandwritten(t *testing.T) {
+	root := t.TempDir()
+	p := filepath.Join(root, "x_gen.go")
+	w := NewWriter(WriterOptions{ModuleRoot: root})
+	if err := w.File(p, []byte(testHeader)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("package pkg // mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Commit(); !errors.Is(err, ErrHandwritten) {
+		t.Fatalf("want ErrHandwritten, got %v", err)
+	}
+	b, _ := os.ReadFile(p)
+	if string(b) != "package pkg // mine\n" {
+		t.Fatal("handwritten file clobbered")
+	}
+}
+
+func TestWriterOrphansMissingAndUncleanDirs(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "pkg")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(dir, "keep_gen.go")
+	if err := os.WriteFile(keep, []byte(testHeader), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := NewWriter(WriterOptions{ModuleRoot: root})
+	if err := w.File(keep, []byte(testHeader)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := w.Orphans([]string{filepath.Join(root, "missing"), filepath.Join(root, "x", "..", "pkg")})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("got %v %v", got, err)
 	}
 }

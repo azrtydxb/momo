@@ -35,11 +35,10 @@ type WriterOptions struct {
 }
 
 // Writer buffers generated files and commits them atomically and
-// deterministically.
+// deterministically. It is not safe for concurrent use.
 type Writer struct {
 	options WriterOptions
 	files   map[string][]byte
-	stale   []string
 }
 
 // NewWriter returns a Writer for opts.
@@ -48,19 +47,65 @@ func NewWriter(opts WriterOptions) *Writer {
 	return &Writer{options: opts, files: map[string][]byte{}}
 }
 
+// resolveExisting resolves symlinks in the nearest existing ancestor of path
+// and re-appends the not yet existing remainder.
+func resolveExisting(path string) (string, error) {
+	rest := ""
+	cur := filepath.Clean(path)
+	for {
+		resolved, err := filepath.EvalSymlinks(cur)
+		if err == nil {
+			return filepath.Join(resolved, rest), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return "", err
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+	}
+}
+
+// contained reports whether path, with symlinks resolved, lies under the
+// resolved module root.
+func (w *Writer) contained(path string) (bool, error) {
+	root, err := resolveExisting(w.options.ModuleRoot)
+	if err != nil {
+		return false, err
+	}
+	target, err := resolveExisting(path)
+	if err != nil {
+		return false, err
+	}
+	rel, err := filepath.Rel(root, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false, nil
+	}
+	return true, nil
+}
+
 // File buffers src (formatted with go/format) as the content of path.
 func (w *Writer) File(path string, src []byte) error {
 	if !filepath.IsAbs(path) {
 		return fmt.Errorf("gen: output path %q is not absolute", path)
 	}
 	path = filepath.Clean(path)
-	rel, err := filepath.Rel(w.options.ModuleRoot, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	ok, err := w.contained(path)
+	if err != nil {
+		return fmt.Errorf("gen: resolving %s: %w", path, err)
+	}
+	if !ok {
 		return fmt.Errorf("gen: output path %q is outside the module root %q", path, w.options.ModuleRoot)
 	}
 	formatted, err := format.Source(src)
 	if err != nil {
 		return fmt.Errorf("gen: generator bug: formatting %s: %w", path, err)
+	}
+	if !bytes.HasPrefix(formatted, []byte(generatedPrefix)) {
+		return fmt.Errorf("gen: generator bug: output for %s lacks the %q header", path, strings.TrimSpace(generatedPrefix))
 	}
 	if prev, ok := w.files[path]; ok {
 		if !bytes.Equal(prev, formatted) {
@@ -117,6 +162,11 @@ func (w *Writer) Commit() (changed []string, err error) {
 		if cur, rerr := os.ReadFile(p); rerr == nil && bytes.Equal(cur, w.files[p]) {
 			continue
 		}
+		if hand, herr := isHandwritten(p); herr != nil {
+			return changed, herr
+		} else if hand {
+			return changed, fmt.Errorf("gen: %s: %w", p, ErrHandwritten)
+		}
 		if !w.options.Check {
 			if err := writeAtomic(p, w.files[p]); err != nil {
 				return changed, err
@@ -163,8 +213,12 @@ func writeAtomic(path string, data []byte) (err error) {
 func (w *Writer) Orphans(dirs []string) ([]string, error) {
 	var out []string
 	for _, dir := range dirs {
+		dir = filepath.Clean(dir)
 		err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
+				if p == dir && errors.Is(err, fs.ErrNotExist) {
+					return fs.SkipDir
+				}
 				return err
 			}
 			if d.IsDir() || !strings.HasSuffix(p, ".go") {
@@ -188,6 +242,5 @@ func (w *Writer) Orphans(dirs []string) ([]string, error) {
 		}
 	}
 	sort.Strings(out)
-	w.stale = out
 	return out, nil
 }
