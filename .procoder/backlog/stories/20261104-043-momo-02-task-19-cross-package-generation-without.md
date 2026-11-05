@@ -14,6 +14,7 @@ Implements plan momo-02-generator Task 19: Cross-package generation without impo
 - [ ] `TestImportPath` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestGenerateCrossPackage` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-3] `TestGenerateCrossPackage`, `TestGenerateRefusesHandwritten` and `TestGenerateNameCollisions` (golden tests): models outside package main build without cycles, a handwritten file at a target path is never overwritten, reserved words and colliding names get distinct identifiers; fails if any golden fixture stops compiling.
+- [ ] `TestGenerateNameCollisions` asserts `len(g.Models) > 0`, its skip is removed, and the collision checks are wired from `model.go` and `load.go`
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
