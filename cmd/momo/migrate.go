@@ -190,7 +190,7 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 			_, _ = fmt.Fprint(out, migrateUsage)
 			return exitOK
 		}
-		_, _ = fmt.Fprintf(errOut, "momo: %v\n\n%s", err, migrateUsage)
+		_, _ = fmt.Fprintf(errOut, "momo: %s\n\n%s", redactURL(err.Error()), migrateUsage)
 		return exitUsage
 	}
 	rest := gfs.Args()
@@ -224,8 +224,10 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 		return code
 	}
 	fs := flag.NewFlagSet("migrate "+name, flag.ContinueOnError)
-	fs.SetOutput(errOut)
-	fs.Usage = func() { _, _ = fmt.Fprint(errOut, migrateUsage) }
+	// The flag package echoes bad values verbatim, which may be a pasted URL:
+	// it prints nothing; setup prints the parse error through errf.
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
 	l.c.register(fs)
 	// The command registers its own flags on fs, then parses sub once.
 	return run(fs)(sub)
@@ -236,9 +238,12 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 func (l *cli) setup(fs *flag.FlagSet, args []string) ([]string, *int) {
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
-		code := exitUsage
+		code := exitOK
 		if errors.Is(err, flag.ErrHelp) {
-			code = exitOK
+			_, _ = fmt.Fprint(l.errOut, migrateUsage)
+		} else {
+			code = l.errf(exitUsage, "%v", err)
+			_, _ = fmt.Fprintf(l.errOut, "\n%s", migrateUsage)
 		}
 		return nil, &code
 	}

@@ -46,15 +46,21 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard) // bad values are echoed by the flag package; print them redacted below
 	var cfgPath string
 	var check bool
 	fs.StringVar(&cfgPath, "c", "", "path to momo.yaml")
 	fs.StringVar(&cfgPath, "config", "", "path to momo.yaml")
 	fs.BoolVar(&check, "check", false, "report stale or orphaned generated files without writing")
-	fs.Usage = func() { _, _ = fmt.Fprint(stderr, generateUsage) }
+	fs.Usage = func() {}
 	if err := fs.Parse(args); err != nil {
-		return exitUsage
+		if errors.Is(err, flag.ErrHelp) {
+			_, _ = fmt.Fprint(stdout, generateUsage)
+			return exitOK
+		}
+		code := fail(stderr, err)
+		_, _ = fmt.Fprintf(stderr, "\n%s", generateUsage)
+		return code
 	}
 
 	cwd, err := os.Getwd()
@@ -103,7 +109,7 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	}
 	changed, err := w.Commit()
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "momo: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "momo: %s\n", redactURL(err.Error()))
 		if errors.Is(err, gen.ErrHandwritten) || errors.Is(err, gen.ErrCollision) {
 			return exitFindings
 		}
@@ -130,7 +136,7 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 }
 
 func fail(stderr io.Writer, err error) int {
-	_, _ = fmt.Fprintf(stderr, "momo: %v\n", err)
+	_, _ = fmt.Fprintf(stderr, "momo: %s\n", redactURL(err.Error()))
 	return exitUsage
 }
 
@@ -256,7 +262,7 @@ func relPath(p, cwd string) string {
 func printDiagnostics(w io.Writer, diags []gen.Diagnostic, cwd string) {
 	for _, d := range diags {
 		d.Pos = token.Position{Filename: relPath(d.Pos.Filename, cwd), Line: d.Pos.Line, Column: d.Pos.Column}
-		_, _ = fmt.Fprintln(w, d.String())
+		_, _ = fmt.Fprintln(w, redactURL(d.String()))
 	}
 }
 

@@ -70,7 +70,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 					return c.run([]string{"-h"}, stdout, stderr)
 				}
 			}
-			_, _ = fmt.Fprintf(stderr, "momo: no help for %q\n\n%s", args[1], usage)
+			_, _ = fmt.Fprintf(stderr, "momo: no help for %q\n\n%s", redactURL(args[1]), usage)
 			return exitUsage
 		}
 		_, _ = fmt.Fprint(stdout, usage)
@@ -81,6 +81,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return c.run(args[1:], stdout, stderr)
 		}
 	}
-	_, _ = fmt.Fprintf(stderr, "momo: unknown command %q\n\n%s", args[0], usage)
+	_, _ = fmt.Fprintf(stderr, "momo: unknown command %q\n\n%s", redactURL(args[0]), usage)
 	return exitUsage
 }
