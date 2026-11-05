@@ -14,8 +14,11 @@ import "context"
 // another goroutine at that moment. If a Query, Exec or Begin call is still
 // executing in another goroutine, Release does nothing and returns an error
 // matching ErrPinnedBusy (errors.Is); call it again once that call has
-// returned. Release after a successful Release returns nil. A transaction
-// begun on the connection is not tracked: finish it before Release.
+// returned. Release after a successful Release returns nil. Callers must
+// finish transactions begun on the connection before Release; whether one
+// left open is rolled back or discarded with the session is driver-specific
+// (the database/sql adapter rolls it back; the pgx pool adapter discards the
+// session).
 type PinnedConn interface {
 	Query(ctx context.Context, sql string, args []any) (Rows, error)
 	Exec(ctx context.Context, sql string, args []any) (int64, error)
