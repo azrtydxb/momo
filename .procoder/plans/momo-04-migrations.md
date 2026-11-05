@@ -629,7 +629,7 @@ type Directives struct {
     Generated           bool // -- momo:generated (written by diff)
 }
 func ParseDirectives(body []byte) (Directives, error) // only directives in the leading comment block
-func Discover(fsys fs.FS) ([]File, error)              // deterministic: sorted by path
+func Discover(fsys fs.FS) ([]File, error)              // deterministic: nested directories walked, sorted by version then path
 func SplitStatements(body []byte, dialectName string) ([]string, error)
 ```
 
@@ -712,6 +712,8 @@ Implement `SplitStatements` as a single pass over bytes with states `normal`, `s
 
 `Discover` walks the fs.FS, accepts names matching `^(\d{14})_([a-z][a-z0-9_]*)\.(up|down)\.sql$` and `^(\d{14})_([a-z][a-z0-9_]*)\.snapshot\.json$`, ignores `momo.sum`, and returns an error naming any other file that looks like a migration (starts with 14 digits and an underscore) but does not match the pattern.
 
+Reconciliation (story 098): `Discover`, `ComputeSum`, `VerifySum` and `AppendSum` walk nested directories with `fs.WalkDir` (for example `archive/2026/`). `File.Path` and the `momo.sum` entries are slash-separated paths relative to the migration directory, `momo.sum` is skipped only at the root, and `Discover` orders files by version (then path), not by directory, so an archived old migration still sorts before a newer top-level one. One version spread over two directories, or a version repeated across directories, is an error naming both paths. The history table is keyed by version, so moving an applied migration into a nested directory (and refreshing `momo.sum`) does not make it pending or missing. `Engine.Diff` writes new files at the top level.
+
 - [ ] **Step 3: Run, expect PASS**
 
 Run: `go test ./migrate/ -run 'TestSplit|TestDirectives' -count=1`. Expect `ok`.
@@ -755,7 +757,7 @@ type Sum struct {
     DirHash string            // "h1:" + base64(sha256(manifest))
     Files   map[string]string // file name -> hex sha256
 }
-func ComputeSum(fsys fs.FS) (*Sum, error)      // every file in the directory except momo.sum
+func ComputeSum(fsys fs.FS) (*Sum, error)      // every file in the directory tree except the root momo.sum
 func ParseSum(r io.Reader) (*Sum, error)        // refuses SumFormat above the current constant with ErrNewerFormat
 func (s *Sum) Write(w io.Writer) error
 func VerifySum(fsys fs.FS, want *Sum) []string // names of files whose content differs from want, plus added and removed names
