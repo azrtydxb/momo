@@ -46,3 +46,16 @@ type InvalidInspector interface {
 type Canonicalizer interface {
 	Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.Schema) error
 }
+
+// TableCanonicalizer is implemented by dialects that can canonicalize the table
+// text of a schema (check expressions, column defaults, generation expressions,
+// index predicates and expressions) best effort. CanonicalizeTables rewrites
+// that text in s and leaves every other object as declared. A table it cannot
+// canonicalize keeps its declared text and is returned in skipped. When it
+// fails as a whole it returns the error and, in skipped, every table whose text
+// it would have rewritten; s is then unchanged. Drift uses it in place of
+// Canonicalizer so that a role or session that cannot run the round trip still
+// gets a report.
+type TableCanonicalizer interface {
+	CanonicalizeTables(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (skipped []ObjectRef, err error)
+}

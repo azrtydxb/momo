@@ -44,31 +44,121 @@ import (
 //
 // Foreign keys, indexes without text and the schema qualifiers of the declared
 // objects are not reproduced in the scratch schema, because none of them
-// affects the text read back; two declared objects of one kind and name in different
-// namespaces are therefore refused.
-func (d Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (err error) {
-	if len(s.Views) == 0 && len(s.Functions) == 0 && len(s.Triggers) == 0 && len(s.Policies) == 0 && !hasTableText(s) {
-		return nil
+// affects the text read back. Only the tables that carry text are created (all
+// of them when the schema also declares views, functions, triggers or
+// policies, which may refer to any table). Tables of one name in different
+// schemas are canonicalized in separate scratch schemas, one per round, so none
+// of them is refused; two views or functions of one name in different schemas
+// still are.
+func (d Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.Schema) error {
+	_, err := d.canonicalize(ctx, c, s, false)
+	return err
+}
+
+// CanonicalizeTables is the best-effort form Drift uses: it rewrites only the
+// table text of s (check expressions, defaults, generation expressions, index
+// predicates and expressions) and leaves views, functions, triggers and
+// policies as declared. A table whose scratch copy cannot be created or read
+// back keeps its declared text and is returned in skipped (each creation runs
+// in a savepoint, so one failing table does not abort the others). When the
+// whole round trip fails (no CREATE privilege, a read-only transaction, a
+// failing read-back) it returns the error together with every table that
+// carries text in skipped; s is then left as declared.
+func (d Dialect) CanonicalizeTables(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (skipped []migrate.ObjectRef, err error) {
+	skipped, err = d.canonicalize(ctx, c, s, true)
+	if err != nil {
+		return textTables(s), err
+	}
+	return skipped, nil
+}
+
+// textTables lists the tables of s that carry text PostgreSQL rewrites.
+func textTables(s *schema.Schema) []migrate.ObjectRef {
+	var out []migrate.ObjectRef
+	for _, t := range s.Tables {
+		if tableHasText(t) {
+			out = append(out, migrate.ObjectRef{Kind: "table", Schema: t.Schema, Name: t.Name})
+		}
+	}
+	return out
+}
+
+// canonRound is the part of a schema canonicalized in one scratch schema:
+// sub holds copies of the chosen objects, and the index lists say where each
+// came from in the source schema.
+type canonRound struct {
+	sub                               *schema.Schema
+	tables, views, funcs, trigs, pols []int
+}
+
+func (r *canonRound) empty() bool {
+	return len(r.tables)+len(r.views)+len(r.funcs)+len(r.trigs)+len(r.pols) == 0
+}
+
+// planRounds splits s into the rounds that are created in one scratch schema
+// each. The n-th table of a name goes to round n, so a round never holds two
+// tables of one name; views and functions go to round 0, triggers and policies
+// to the round of their table. With tablesOnly only tables with text are
+// planned.
+func planRounds(s *schema.Schema, tablesOnly bool) []*canonRound {
+	var rounds []*canonRound
+	round := func(i int) *canonRound {
+		for len(rounds) <= i {
+			rounds = append(rounds, &canonRound{sub: &schema.Schema{Dialect: dialect.Postgres, Enums: s.Enums}})
+		}
+		return rounds[i]
+	}
+	needAll := !tablesOnly && len(s.Views)+len(s.Functions)+len(s.Triggers)+len(s.Policies) > 0
+	seen := map[string]int{}
+	where := map[[2]string]int{}
+	for i, t := range s.Tables {
+		n := seen[t.Name]
+		seen[t.Name]++
+		where[[2]string{t.Schema, t.Name}] = n
+		if needAll || tableHasText(t) {
+			r := round(n)
+			r.tables = append(r.tables, i)
+			r.sub.Tables = append(r.sub.Tables, t)
+		}
+	}
+	if !tablesOnly {
+		for i := range s.Views {
+			r := round(0)
+			r.views = append(r.views, i)
+			r.sub.Views = append(r.sub.Views, s.Views[i])
+		}
+		for i := range s.Functions {
+			r := round(0)
+			r.funcs = append(r.funcs, i)
+			r.sub.Functions = append(r.sub.Functions, s.Functions[i])
+		}
+		for i, t := range s.Triggers {
+			r := round(where[[2]string{t.Schema, t.Table}])
+			r.trigs = append(r.trigs, i)
+			r.sub.Triggers = append(r.sub.Triggers, t)
+		}
+		for i, p := range s.Policies {
+			r := round(where[[2]string{p.Schema, p.Table}])
+			r.pols = append(r.pols, i)
+			r.sub.Policies = append(r.sub.Policies, p)
+		}
+	}
+	return slices.DeleteFunc(rounds, func(r *canonRound) bool { return r.empty() })
+}
+
+// savepoint names the savepoint around one scratch table in best-effort mode.
+const savepoint = "momo_canon_sp"
+
+func (d Dialect) canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.Schema, tolerant bool) (skipped []migrate.ObjectRef, err error) {
+	rounds := planRounds(s, tolerant)
+	if len(rounds) == 0 {
+		return nil, nil
 	}
 	if err := requireCreateOnDatabase(ctx, c); err != nil {
-		return err
+		return nil, err
 	}
-	mini, err := scratchModel(s)
-	if err != nil {
-		return err
-	}
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Errorf("postgres canonicalize: scratch name: %w", err)
-	}
-	scratch := "momo_canon_" + hex.EncodeToString(b[:])
-	stmts, err := scratchStatements(d, mini)
-	if err != nil {
-		return err
-	}
-
 	if _, err := c.Exec(ctx, "BEGIN", nil); err != nil {
-		return fmt.Errorf("postgres canonicalize: begin: %w", err)
+		return nil, fmt.Errorf("postgres canonicalize: begin: %w", err)
 	}
 	defer func() {
 		// The rollback runs detached from ctx so a cancelled context cannot
@@ -78,47 +168,175 @@ func (d Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.
 			err = errors.Join(err, fmt.Errorf("postgres canonicalize: rollback: %w", rbErr), discard(c))
 		}
 	}()
+	var path string
+	if err := queryOne(ctx, c, `SELECT current_setting('search_path')`, nil, &path); err != nil {
+		return nil, fmt.Errorf("postgres canonicalize: read search_path: %w", err)
+	}
+	// Rewrite a copy so a failure in a later round leaves s as declared.
+	out := *s
+	out.Tables, out.Views = slices.Clone(s.Tables), slices.Clone(s.Views)
+	out.Functions, out.Triggers, out.Policies = slices.Clone(s.Functions), slices.Clone(s.Triggers), slices.Clone(s.Policies)
+	for _, r := range rounds {
+		sk, err := d.canonicalizeRound(ctx, c, r, path, tolerant)
+		if err != nil {
+			return nil, err
+		}
+		for k, i := range r.tables {
+			if slices.Contains(sk, k) {
+				t := s.Tables[i]
+				skipped = append(skipped, migrate.ObjectRef{Kind: "table", Schema: t.Schema, Name: t.Name})
+				continue
+			}
+			out.Tables[i] = r.sub.Tables[k]
+		}
+		for k, i := range r.views {
+			out.Views[i] = r.sub.Views[k]
+		}
+		for k, i := range r.funcs {
+			out.Functions[i] = r.sub.Functions[k]
+		}
+		for k, i := range r.trigs {
+			out.Triggers[i] = r.sub.Triggers[k]
+		}
+		for k, i := range r.pols {
+			out.Policies[i] = r.sub.Policies[k]
+		}
+	}
+	*s = out
+	return skipped, nil
+}
+
+// canonicalizeRound creates one round in a fresh scratch schema inside the open
+// transaction, reads it back and rewrites r.sub. It returns the positions in
+// r.sub.Tables left as declared (tolerant mode only).
+func (d Dialect) canonicalizeRound(ctx context.Context, c momo.PinnedConn, r *canonRound, path string, tolerant bool) ([]int, error) {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return nil, fmt.Errorf("postgres canonicalize: scratch name: %w", err)
+	}
+	scratch := "momo_canon_" + hex.EncodeToString(b[:])
 	if _, err := c.Exec(ctx, "CREATE SCHEMA "+ident(scratch), nil); err != nil {
-		return fmt.Errorf("postgres canonicalize: create scratch schema: %w", err)
+		return nil, fmt.Errorf("postgres canonicalize: create scratch schema: %w", err)
 	}
-	// is_local: the path reverts at ROLLBACK.
-	if err := execOne(ctx, c, `SELECT set_config('search_path', quote_ident($1) || ', ' || current_setting('search_path'), true)`, scratch); err != nil {
-		return fmt.Errorf("postgres canonicalize: set search_path: %w", err)
+	// is_local: the path reverts at ROLLBACK. The scratch schema leads and the
+	// connection's own path follows, so unqualified names resolve as they do
+	// in the live database.
+	if err := execOne(ctx, c, `SELECT set_config('search_path', quote_ident($1) || ', ' || $2, true)`, scratch, path); err != nil {
+		return nil, fmt.Errorf("postgres canonicalize: set search_path: %w", err)
 	}
-	for _, st := range stmts {
-		if _, err := c.Exec(ctx, st.SQL, nil); err != nil {
-			return fmt.Errorf("postgres canonicalize: create declared objects in scratch schema: %w", err)
+	var failed []int
+	if tolerant {
+		var err error
+		if failed, err = d.createEachTable(ctx, c, r.sub); err != nil {
+			return nil, err
+		}
+	} else {
+		mini, err := scratchModel(r.sub)
+		if err != nil {
+			return nil, err
+		}
+		stmts, err := scratchStatements(d, &schema.Schema{Dialect: dialect.Postgres}, mini)
+		if err != nil {
+			return nil, err
+		}
+		if err := execAll(ctx, c, stmts); err != nil {
+			return nil, fmt.Errorf("postgres canonicalize: create declared objects in scratch schema: %w", err)
 		}
 	}
 	// The scratch schema leads the search_path, so it is the current schema and
 	// its tables are reported unqualified.
 	read, err := d.Inspect(ctx, c, migrate.InspectOptions{Schemas: []string{scratch}})
 	if err != nil {
-		return fmt.Errorf("postgres canonicalize: read back: %w", err)
+		return nil, fmt.Errorf("postgres canonicalize: read back: %w", err)
 	}
-	return rewriteText(s, read)
+	if !tolerant {
+		return nil, rewriteText(r.sub, read)
+	}
+	tables := tablesByName(read)
+	for k := range r.sub.Tables {
+		if slices.Contains(failed, k) {
+			continue
+		}
+		if err := rewriteTable(&r.sub.Tables[k], tables); err != nil {
+			failed = append(failed, k)
+		}
+	}
+	return failed, nil
+}
+
+// createEachTable creates the enums of sub, then each table in a savepoint of
+// its own, and returns the positions of the tables whose creation failed (their
+// savepoint is rolled back, so they leave nothing behind). An error that is not
+// a failure of one table's statements aborts the round.
+func (d Dialect) createEachTable(ctx context.Context, c momo.PinnedConn, sub *schema.Schema) ([]int, error) {
+	empty := &schema.Schema{Dialect: dialect.Postgres}
+	base, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums})
+	if err != nil {
+		return nil, err
+	}
+	stmts, err := scratchStatements(d, empty, base)
+	if err != nil {
+		return nil, err
+	}
+	if err := execAll(ctx, c, stmts); err != nil {
+		return nil, fmt.Errorf("postgres canonicalize: create declared types in scratch schema: %w", err)
+	}
+	var failed []int
+	for k, t := range sub.Tables {
+		one, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums, Tables: []schema.Table{t}})
+		if err != nil {
+			return nil, err
+		}
+		stmts, err := scratchStatements(d, base, one)
+		if err != nil {
+			failed = append(failed, k)
+			continue
+		}
+		if _, err := c.Exec(ctx, "SAVEPOINT "+savepoint, nil); err != nil {
+			return nil, fmt.Errorf("postgres canonicalize: savepoint: %w", err)
+		}
+		if err := execAll(ctx, c, stmts); err != nil {
+			if ctx.Err() != nil {
+				return nil, err
+			}
+			if _, rbErr := c.Exec(ctx, "ROLLBACK TO SAVEPOINT "+savepoint, nil); rbErr != nil {
+				return nil, fmt.Errorf("postgres canonicalize: roll back savepoint: %w", errors.Join(err, rbErr))
+			}
+			failed = append(failed, k)
+		}
+		if _, err := c.Exec(ctx, "RELEASE SAVEPOINT "+savepoint, nil); err != nil {
+			return nil, fmt.Errorf("postgres canonicalize: release savepoint: %w", err)
+		}
+	}
+	return failed, nil
+}
+
+func execAll(ctx context.Context, c momo.PinnedConn, stmts []migrate.Statement) error {
+	for _, st := range stmts {
+		if _, err := c.Exec(ctx, st.SQL, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // hasTableText reports whether s declares table text PostgreSQL rewrites: a
 // check expression, a column default or generation expression, or an index
 // predicate or expression part.
 func hasTableText(s *schema.Schema) bool {
-	for _, t := range s.Tables {
-		if len(t.Checks) > 0 {
+	return slices.ContainsFunc(s.Tables, tableHasText)
+}
+
+func tableHasText(t schema.Table) bool {
+	if len(t.Checks) > 0 {
+		return true
+	}
+	for _, c := range t.Columns {
+		if c.Default != "" || c.Generated != "" {
 			return true
 		}
-		for _, c := range t.Columns {
-			if c.Default != "" || c.Generated != "" {
-				return true
-			}
-		}
-		for _, ix := range t.Indexes {
-			if indexHasText(ix) {
-				return true
-			}
-		}
 	}
-	return false
+	return slices.ContainsFunc(t.Indexes, indexHasText)
 }
 
 // indexHasText reports whether ix has a predicate or an expression part.
@@ -180,9 +398,6 @@ func scratchModel(s *schema.Schema) (*schema.Schema, error) {
 		for j := range t.Indexes {
 			t.Indexes[j].Concurrently = false
 		}
-		if err := dup("table", t.Name); err != nil {
-			return nil, err
-		}
 	}
 	for i := range m.Views {
 		v := &m.Views[i]
@@ -207,10 +422,10 @@ func scratchModel(s *schema.Schema) (*schema.Schema, error) {
 	return &m, nil
 }
 
-// scratchStatements renders the creation of every object of m, in migration order.
-func scratchStatements(d Dialect, m *schema.Schema) ([]migrate.Statement, error) {
-	empty := &schema.Schema{Dialect: dialect.Postgres}
-	changes, _, err := migrate.Diff(empty, m, migrate.DiffOptions{})
+// scratchStatements renders the creation of every object of m that from lacks,
+// in migration order.
+func scratchStatements(d Dialect, from, m *schema.Schema) ([]migrate.Statement, error) {
+	changes, _, err := migrate.Diff(from, m, migrate.DiffOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("postgres canonicalize: plan scratch objects: %w", err)
 	}
@@ -287,59 +502,80 @@ func rewriteText(s, read *schema.Schema) error {
 // generation expressions and index predicates and expressions with those of the
 // table of the same name in read.
 func rewriteTables(s, read *schema.Schema) error {
+	tables := tablesByName(read)
+	for i := range s.Tables {
+		if err := rewriteTable(&s.Tables[i], tables); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func tablesByName(read *schema.Schema) map[string]*schema.Table {
 	tables := map[string]*schema.Table{}
 	for i := range read.Tables {
 		tables[read.Tables[i].Name] = &read.Tables[i]
 	}
-	for i := range s.Tables {
-		t := &s.Tables[i]
-		if !hasTableText(&schema.Schema{Tables: []schema.Table{*t}}) {
-			continue
-		}
-		r, ok := tables[t.Name]
-		if !ok {
-			return fmt.Errorf("postgres canonicalize: table %q was not created in the scratch schema", t.Name)
-		}
-		for j := range t.Columns {
-			c := &t.Columns[j]
-			for _, rc := range r.Columns {
-				if rc.Name != c.Name {
-					continue
-				}
-				if c.Default != "" {
-					c.Default = rc.Default
-				}
-				if c.Generated != "" {
-					c.Generated = rc.Generated
-				}
-			}
-		}
-		for j := range t.Checks {
-			rc, ok := findCheck(r.Checks, t.Checks[j].Name)
-			if !ok {
-				return fmt.Errorf("postgres canonicalize: check %q on %q was not created in the scratch schema", t.Checks[j].Name, t.Name)
-			}
-			t.Checks[j].Expr = rc.Expr
-		}
-		for j := range t.Indexes {
-			ix := &t.Indexes[j]
-			if !indexHasText(*ix) {
+	return tables
+}
+
+// rewriteTable rewrites the text of t from the table of the same name in tables.
+// It changes t only when the whole table could be rewritten.
+func rewriteTable(t *schema.Table, tables map[string]*schema.Table) error {
+	if !tableHasText(*t) {
+		return nil
+	}
+	r, ok := tables[t.Name]
+	if !ok {
+		return fmt.Errorf("postgres canonicalize: table %q was not created in the scratch schema", t.Name)
+	}
+	n := *t
+	n.Columns, n.Checks = slices.Clone(t.Columns), slices.Clone(t.Checks)
+	n.Indexes = slices.Clone(t.Indexes)
+	for j := range n.Columns {
+		c := &n.Columns[j]
+		for _, rc := range r.Columns {
+			if rc.Name != c.Name {
 				continue
 			}
-			ri, ok := findIndex(r.Indexes, ix.Name)
-			if !ok || len(ri.Parts) != len(ix.Parts) {
-				return fmt.Errorf("postgres canonicalize: index %q on %q was not created in the scratch schema", ix.Name, t.Name)
+			if c.Default != "" {
+				c.Default = rc.Default
 			}
-			if ix.Where != "" {
-				ix.Where = ri.Where
-			}
-			for k := range ix.Parts {
-				if ix.Parts[k].Expr != "" {
-					ix.Parts[k].Expr = ri.Parts[k].Expr
-				}
+			if c.Generated != "" {
+				c.Generated = rc.Generated
 			}
 		}
 	}
+	for j := range n.Checks {
+		rc, ok := findCheck(r.Checks, n.Checks[j].Name)
+		if !ok {
+			return fmt.Errorf("postgres canonicalize: check %q on %q was not created in the scratch schema", n.Checks[j].Name, t.Name)
+		}
+		n.Checks[j].Expr = rc.Expr
+	}
+	for j := range n.Indexes {
+		ix := &n.Indexes[j]
+		if !indexHasText(*ix) {
+			continue
+		}
+		ri, ok := findIndex(r.Indexes, ix.Name)
+		if !ok || len(ri.Parts) != len(ix.Parts) {
+			return fmt.Errorf("postgres canonicalize: index %q on %q was not created in the scratch schema", ix.Name, t.Name)
+		}
+		if ix.Where != "" {
+			ix.Where = ri.Where
+		}
+		ix.Parts = slices.Clone(ix.Parts)
+		for k := range ix.Parts {
+			if ix.Parts[k].Expr != "" {
+				// PostgreSQL may store an expression key as a plain column
+				// (v::vector(3) with an operator class on a vector(3)
+				// column), so take the whole part as read back.
+				ix.Parts[k] = ri.Parts[k]
+			}
+		}
+	}
+	*t = n
 	return nil
 }
 
@@ -379,9 +615,9 @@ func matchFunction(declared schema.Function, cands []schema.Function) (schema.Fu
 	return schema.Function{}, fmt.Errorf("postgres canonicalize: function %s(%s) was not created in the scratch schema", declared.Name, declared.Args)
 }
 
-// execOne runs a statement with one text argument and discards the result.
-func execOne(ctx context.Context, c momo.PinnedConn, sql, arg string) error {
-	rows, err := c.Query(ctx, sql, []any{arg})
+// execOne runs a statement with text arguments and discards the result.
+func execOne(ctx context.Context, c momo.PinnedConn, sql string, args ...any) error {
+	rows, err := c.Query(ctx, sql, args)
 	if err != nil {
 		return err
 	}

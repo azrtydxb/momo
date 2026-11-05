@@ -162,4 +162,7 @@ func TestDriftWithoutCanonicalizePrivilegeStillReports(t *testing.T) {
 	if err != nil || !rep.Clean() {
 		t.Fatalf("drift must fall back to the declared text: %+v %v", rep, err)
 	}
+	if got := skippedNames(rep); len(got) != 1 || got[0] != "table:plain" {
+		t.Fatalf("the fallback must be reported, CanonicalizeSkipped = %v", got)
+	}
 }

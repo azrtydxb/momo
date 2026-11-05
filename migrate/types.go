@@ -168,6 +168,14 @@ type DriftReport struct {
 	// outside the migrations does not appear in Changed. An empty list does not
 	// mean those bodies were verified, and Clean ignores it.
 	Unverified []ObjectRef
+	// CanonicalizeSkipped lists the tables whose declared text (check
+	// expressions, column defaults, generation expressions, index predicates
+	// and expressions) Drift compared as declared, because it could not
+	// rewrite it to the form the database reports: the role lacks CREATE on
+	// the database, the session is read-only, or the scratch copy of that
+	// table failed. Such a table can show a phantom difference in text only.
+	// Clean ignores it.
+	CanonicalizeSkipped []ObjectRef
 }
 
 // Clean reports whether there is no drift.

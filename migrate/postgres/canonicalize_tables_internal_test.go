@@ -72,3 +72,41 @@ func TestRewriteTables(t *testing.T) {
 		t.Fatal("a check missing from the scratch schema must be an error")
 	}
 }
+
+// An expression key PostgreSQL stores as a plain column (v::vector(3) with an
+// operator class on a vector(3) column) reads back as a column part. The
+// whole read-back part replaces the declared one, or it would have neither a
+// column nor an expression.
+func TestRewriteTablesTakesTheWholeReadBackPart(t *testing.T) {
+	declared := &schema.Schema{Tables: []schema.Table{{Name: "t", Indexes: []schema.Index{{
+		Name: "i", Method: "hnsw",
+		Parts: []schema.IndexPart{{Expr: "(v::vector(3))", OpClass: "vector_cosine_ops"}},
+	}}}}}
+	read := &schema.Schema{Tables: []schema.Table{{Name: "t", Indexes: []schema.Index{{
+		Name: "i", Method: "hnsw",
+		Parts: []schema.IndexPart{{Column: "v", OpClass: "vector_cosine_ops"}},
+	}}}}}
+	if err := rewriteTables(declared, read); err != nil {
+		t.Fatal(err)
+	}
+	if got := declared.Tables[0].Indexes[0].Parts[0]; got != (schema.IndexPart{Column: "v", OpClass: "vector_cosine_ops"}) {
+		t.Fatalf("part = %+v", got)
+	}
+}
+
+func TestPlanRoundsSeparatesTablesOfOneName(t *testing.T) {
+	text := func(ns string) schema.Table {
+		return schema.Table{Schema: ns, Name: "t", Checks: []schema.Check{{Name: "c", Expr: "true"}}}
+	}
+	plain := schema.Table{Name: "plain", Columns: []schema.Column{{Name: "id", Type: "int"}}}
+	s := &schema.Schema{Tables: []schema.Table{text(""), plain, text("b")}}
+	rounds := planRounds(s, true)
+	if len(rounds) != 2 || len(rounds[0].tables) != 1 || rounds[0].tables[0] != 0 || rounds[1].tables[0] != 2 {
+		t.Fatalf("same-name tables must go to separate rounds, and tables without text to none: %+v", rounds)
+	}
+	s.Views = []schema.View{{Name: "v", Query: "select 1"}}
+	all := planRounds(s, false)
+	if len(all) != 2 || len(all[0].tables) != 2 || len(all[0].views) != 1 {
+		t.Fatalf("with a view every table is created (the view may use any): %+v", all)
+	}
+}

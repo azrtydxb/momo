@@ -5,7 +5,6 @@ package migrate
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"path"
@@ -383,11 +382,15 @@ func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
 //
 // It is read-only: it takes no lock, leaves nothing behind (a database without
 // a history table has an empty history) and changes no application object. A
-// dialect that implements Canonicalizer is asked to rewrite the snapshot's
-// table text (check expressions, column defaults, index predicates) to the form
-// the database reports, which on PostgreSQL creates a scratch schema in a
-// transaction that is rolled back; a role that cannot create one gets the
-// declared text compared as it is. Because PostgreSQL
+// dialect that implements TableCanonicalizer is asked to rewrite a copy of the
+// snapshot's table text (check expressions, column defaults, generation
+// expressions, index predicates and expressions) to the form the database
+// reports. On PostgreSQL that creates a scratch schema in a transaction that is
+// always rolled back, so nothing is committed and no application table is
+// written. When it cannot (a role without CREATE on the database, a read-only
+// session, a table whose scratch copy fails), Drift does not fail: it compares
+// that table's text as declared, which can show a phantom difference in text
+// only, and lists the table in DriftReport.CanonicalizeSkipped. Because PostgreSQL
 // rewrites the text of views and of policy and trigger expressions, drift
 // compares those objects by identity and definition apart from that text; a
 // changed view query, trigger condition or policy expression (a USING or WITH
@@ -419,6 +422,7 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 		return nil, err
 	}
 	from := &schema.Schema{Dialect: live.Dialect}
+	var skipped []ObjectRef
 	if latest != "" {
 		snap, err := snapshotUpTo(e.dir, latest)
 		if err != nil {
@@ -428,47 +432,60 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 			return nil, fmt.Errorf("%w: applied version %s has no snapshot at or before it; run momo migrate diff", ErrNoSnapshot, latest)
 		}
 		from = applyExclude(snap.Schema, e.opts.config.Exclude)
-		if from, err = e.canonicalSnapshot(ctx, c, from); err != nil {
+		if from, skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
 			return nil, err
 		}
 	}
 	rep := compare(from, live, false, invalid)
 	rep.Unverified = unverifiedBodies(from, live)
+	rep.CanonicalizeSkipped = skipped
 	return rep, nil
 }
 
 // canonicalSnapshot returns a copy of the snapshot schema s with the declared
 // table text (check expressions, defaults, index predicates) rewritten to the
-// form the database reports, for a dialect that implements Canonicalizer. The
-// snapshot holds the text as the model declared it, while inspection reports
-// what PostgreSQL stored, so comparing them raw reports a phantom difference
-// for a migration that was just applied. A role without the privilege the
-// rewrite needs (ErrCanonicalizePrivilege) gets s unchanged: drift detection
-// still works for it, but may then report such text as changed.
-func (e *Engine) canonicalSnapshot(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (*schema.Schema, error) {
-	cz, ok := e.opts.dialect.(Canonicalizer)
-	if !ok {
-		return s, nil
-	}
+// form the database reports, for a dialect that implements TableCanonicalizer
+// (or Canonicalizer). The snapshot holds the text as the model declared it,
+// while inspection reports what PostgreSQL stored, so comparing them raw
+// reports a phantom difference for a migration that was just applied. The
+// rewrite is best effort: when the dialect cannot do it for a table, or at all
+// (no CREATE privilege, a read-only session, a failing scratch statement),
+// that table keeps its declared text and is returned in skipped, so the report
+// can say what was compared as declared. Only a cancelled context fails.
+func (e *Engine) canonicalSnapshot(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (_ *schema.Schema, skipped []ObjectRef, _ error) {
 	want, err := cloneSchema(s)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Only table text is rewritten: views, functions, triggers and policies
 	// stay as declared, so a view that selects from an excluded table cannot
 	// make the scratch round trip fail and drift keeps its documented rules for
 	// them.
-	views, funcs, triggers, policies := want.Views, want.Functions, want.Triggers, want.Policies
-	want.Views, want.Functions, want.Triggers, want.Policies = nil, nil, nil, nil
-	err = cz.Canonicalize(ctx, c, want)
-	want.Views, want.Functions, want.Triggers, want.Policies = views, funcs, triggers, policies
-	if err != nil {
-		if errors.Is(err, ErrCanonicalizePrivilege) {
-			return s, nil
+	switch cz := e.opts.dialect.(type) {
+	case TableCanonicalizer:
+		skipped, err = cz.CanonicalizeTables(ctx, c, want)
+	case Canonicalizer:
+		views, funcs, triggers, policies := want.Views, want.Functions, want.Triggers, want.Policies
+		want.Views, want.Functions, want.Triggers, want.Policies = nil, nil, nil, nil
+		if err = cz.Canonicalize(ctx, c, want); err != nil {
+			for _, t := range s.Tables {
+				skipped = append(skipped, ObjectRef{Kind: "table", Schema: t.Schema, Name: t.Name})
+			}
 		}
-		return nil, fmt.Errorf("migrate: canonicalize snapshot: %w", err)
+		want.Views, want.Functions, want.Triggers, want.Policies = views, funcs, triggers, policies
+	default:
+		return s, nil, nil
 	}
-	return want, nil
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, nil, fmt.Errorf("migrate: canonicalize snapshot: %w", err)
+		}
+		return s, skipped, nil
+	}
+	slices.SortFunc(skipped, func(x, y ObjectRef) int {
+		return strings.Compare(key(x.Kind, x.Schema, x.Name), key(y.Kind, y.Schema, y.Name))
+	})
+	return want, skipped, nil
 }
 
 // unverifiedBodies lists the views, triggers and policies that exist in both
