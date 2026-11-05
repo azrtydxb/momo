@@ -21,6 +21,12 @@ func ByName(name string) (Namer, error) {
 	switch name {
 	case "momo":
 		return Momo{}, nil
+	case "gorm":
+		return GORM{}, nil
+	case "bun":
+		return Bun{}, nil
+	case "ent":
+		return Ent{}, nil
 	}
 	return nil, fmt.Errorf("unknown naming preset %q", name)
 }
