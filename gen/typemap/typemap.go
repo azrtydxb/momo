@@ -65,13 +65,13 @@ func postgres(t string, tg tags.Tags) string {
 		return "boolean"
 	case "string":
 		if tg.Size > 0 {
-			return fmt.Sprintf("varchar(%d)", tg.Size)
+			return fmt.Sprintf("character varying(%d)", tg.Size)
 		}
 		return "text"
 	case "[]byte":
 		return "bytea"
 	case "time.Time":
-		return "timestamptz"
+		return "timestamp with time zone"
 	case "types.UUID":
 		return "uuid"
 	case "types.Date":
