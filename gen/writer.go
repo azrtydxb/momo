@@ -132,7 +132,7 @@ func isHandwritten(path string) (bool, error) {
 
 // hasHeader reads only the first line of path.
 func hasHeader(path string) (header, exists bool, err error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- callers pass only paths that File() cleaned and confined to the module root (symlinks resolved)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, false, nil
 	}
@@ -156,7 +156,7 @@ func (w *Writer) Commit() (changed []string, err error) {
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
-		if cur, rerr := os.ReadFile(p); rerr == nil && bytes.Equal(cur, w.files[p]) {
+		if cur, rerr := os.ReadFile(p); rerr == nil && bytes.Equal(cur, w.files[p]) { // #nosec G304 -- p is a key of w.files, each confined to the module root by File()
 			continue
 		}
 		if hand, herr := isHandwritten(p); herr != nil {
@@ -177,7 +177,7 @@ func (w *Writer) Commit() (changed []string, err error) {
 // writeAtomic writes data to a temp file beside path, then renames it.
 func writeAtomic(path string, data []byte) (err error) {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 -- generated source directories are committed, not secret; 0755 like any checked-in directory
 		return fmt.Errorf("gen: %w", err)
 	}
 	tmp, err := os.CreateTemp(dir, ".momo-*.tmp")

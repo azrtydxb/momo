@@ -21,7 +21,7 @@ const unlockTimeout = 5 * time.Second
 func lockID(key string) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(key))
-	return int64(h.Sum64())
+	return int64(h.Sum64()) // #nosec G115 -- intentional wrap: every 64-bit hash is a valid bigint advisory-lock id; only determinism matters
 }
 
 // Lock takes a session-level advisory lock on the pinned connection with the

@@ -42,7 +42,7 @@ type MigrateConfig struct {
 
 // Load reads and validates the momo.yaml at path.
 func Load(path string) (*File, error) {
-	fh, err := os.Open(path) //nolint:gosec // the config path is chosen by the caller
+	fh, err := os.Open(path) // #nosec G304 -- the momo.yaml path is the user's own CLI argument or default: trusted local input
 	if err != nil {
 		return nil, fmt.Errorf("momo.yaml: %w", err)
 	}
