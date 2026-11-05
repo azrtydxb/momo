@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models holds the fixture model set shared by all naming recorders.
+// Package models is the reference fixture model set. Each recorder declares
+// its own tagged copy, because gorm, bun and ent need different tags; keep
+// those copies in step with this file when a model changes.
 package models
 
 import "time"
