@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"go/types"
 	"reflect"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 
@@ -141,7 +142,8 @@ func (fl *flattener) newField(v *types.Var, path []int, prefix string, ft tags.T
 		GoName:   v.Name(),
 		Path:     path,
 		Column:   prefix + col,
-		GoType:   types.TypeString(t, func(p *types.Package) string { return p.Name() }),
+		GoType:   types.TypeString(t, qualifier),
+		BaseType: baseType(t),
 		Nullable: nullable,
 		Tags:     ft,
 		Pos:      fl.fset.Position(v.Pos()),
@@ -157,27 +159,19 @@ func appendPath(path []int, i int) []int {
 }
 
 // mixinIndexes returns the indexes contributed by the `index` and `unique`
-// tags of flattened fields (those whose path is deeper than one). Names that
-// are not explicit are <table>_<column>_idx.
+// tags of flattened fields (those whose path is deeper than one), one entry
+// per tag, named like the same tags on a direct field (defaultIndexName).
+//
+// An explicit name is the one deliberate difference from direct fields: a
+// struct reused through several prefixes would otherwise declare the same
+// index name in every instance, so an explicit name takes the instance prefix
+// (Field.Base) like the columns do. On a direct field the name is used as
+// written because it can only occur once.
 func mixinIndexes(m *Model) ([]schema.Index, []Diagnostic) {
 	var out []schema.Index
 	var diags []Diagnostic
 	owner := map[string]string{}
-	for _, f := range m.Fields {
-		if len(f.Path) < 2 || (!f.Tags.Index && !f.Tags.Unique) {
-			continue
-		}
-		name := m.Table + "_" + f.Column + "_idx"
-		unique := f.Tags.Unique
-		explicit := f.Tags.IndexName
-		if unique {
-			explicit = f.Tags.UniqueName
-		}
-		if explicit != "" {
-			// An explicit name inside a reused struct would repeat in every
-			// instance, so it takes the instance prefix like the columns do.
-			name = f.Base + explicit
-		}
+	add := func(f *Field, name string, unique bool) {
 		if prev, dup := owner[name]; dup {
 			diags = append(diags, Diagnostic{
 				Pos: f.Pos,
@@ -191,6 +185,25 @@ func mixinIndexes(m *Model) ([]schema.Index, []Diagnostic) {
 			Unique: unique,
 			Parts:  []schema.IndexPart{{Column: f.Column}},
 		})
+	}
+	for _, f := range m.Fields {
+		if len(f.Path) < 2 {
+			continue
+		}
+		for _, unique := range []bool{false, true} {
+			if (unique && !f.Tags.Unique) || (!unique && !f.Tags.Index) {
+				continue
+			}
+			name := defaultIndexName(m.Table, f.Column, unique)
+			explicit := f.Tags.IndexName
+			if unique {
+				explicit = f.Tags.UniqueName
+			}
+			if explicit != "" {
+				name = f.Base + explicit
+			}
+			add(f, name, unique)
+		}
 	}
 	return out, diags
 }
@@ -213,4 +226,38 @@ func dedupeDiagnostics(in []Diagnostic) []Diagnostic {
 		out = append(out, d)
 	}
 	return out
+}
+
+func qualifier(p *types.Package) string { return p.Name() }
+
+// baseType spells t for the type map: named types the map knows by name keep
+// their name, any other named type is replaced by its underlying type.
+func baseType(t types.Type) string {
+	t = types.Unalias(t)
+	if p, ok := t.(*types.Pointer); ok {
+		return baseType(p.Elem())
+	}
+	if n, ok := t.(*types.Named); ok {
+		if pkg := n.Obj().Pkg(); pkg != nil && knownNamed(pkg.Path(), n.Obj().Name()) {
+			return types.TypeString(t, qualifier)
+		}
+		return baseType(n.Underlying())
+	}
+	if sl, ok := t.(*types.Slice); ok {
+		if b, ok := sl.Elem().Underlying().(*types.Basic); ok && b.Kind() == types.Byte {
+			return "[]byte"
+		}
+	}
+	return types.TypeString(t, qualifier)
+}
+
+// knownNamed reports whether the type map knows the named type itself.
+func knownNamed(pkgPath, name string) bool {
+	switch {
+	case pkgPath == "time" && name == "Time", pkgPath == "database/sql" && strings.HasPrefix(name, "Null"):
+		return true
+	case strings.HasSuffix(pkgPath, "/vector"), strings.HasSuffix(pkgPath, "/momo/types"):
+		return true
+	}
+	return false
 }

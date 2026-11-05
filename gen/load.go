@@ -92,6 +92,9 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 		}
 		return a.GoName < b.GoName
 	})
+	var sdiags []Diagnostic
+	g.Schema, sdiags = BuildSchema(g.Models, cfg)
+	diags = append(diags, sdiags...)
 	return g, diags, nil
 }
 

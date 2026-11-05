@@ -94,9 +94,13 @@ type Model struct {
 type Field struct {
 	GoName string
 	// Path is the reflect-style index path from the model struct.
-	Path     []int
-	Column   string
-	GoType   string
+	Path   []int
+	Column string
+	GoType string
+	// BaseType is GoType with named types resolved to their underlying basic
+	// type (type ID int64 is int64); the types the type map knows by name
+	// (time.Time, sql.Null*, vector, types) are kept.
+	BaseType string
 	Nullable bool
 	Tags     tags.Tags
 	Pos      token.Position
@@ -106,6 +110,8 @@ type Field struct {
 }
 
 // Relation is a model relation field. Relation fields are not columns.
+// Task 13 discovers relations and fills it; Task 10 reads it to build
+// foreign keys and join tables.
 type Relation struct {
 	GoName string
 	Kind   RelKind
@@ -117,7 +123,12 @@ type Relation struct {
 	JoinTable string
 	PolyType  string
 	PolyValue string
-	Pos       token.Position
+	// OnDelete and OnUpdate are the raw on_delete and on_update tag values.
+	OnDelete, OnUpdate string
+	// NoConstraint is the no_constraint tag: the relation has no database
+	// foreign key.
+	NoConstraint bool
+	Pos          token.Position
 
 	// tags and ftype are kept until resolveRelations has run.
 	tags  tags.Tags

@@ -18,14 +18,17 @@ func isRelationTag(t tags.Tags) bool {
 // wait for resolveRelations, when every model of the load is known.
 func newRelation(v *types.Var, t tags.Tags, fset *token.FileSet) *Relation {
 	return &Relation{
-		GoName:    v.Name(),
-		FK:        t.Fk,
-		JoinTable: t.Join,
-		PolyType:  t.PolyType,
-		PolyValue: t.PolyValue,
-		Pos:       fset.Position(v.Pos()),
-		tags:      t,
-		ftype:     v.Type(),
+		GoName:       v.Name(),
+		FK:           t.Fk,
+		JoinTable:    t.Join,
+		PolyType:     t.PolyType,
+		PolyValue:    t.PolyValue,
+		OnDelete:     t.OnDelete,
+		OnUpdate:     t.OnUpdate,
+		NoConstraint: t.NoConstraint,
+		Pos:          fset.Position(v.Pos()),
+		tags:         t,
+		ftype:        v.Type(),
 	}
 }
 

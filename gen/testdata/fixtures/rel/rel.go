@@ -15,5 +15,5 @@ type Post struct {
 	momo.Model `momo:"table:posts"`
 	ID         int64   `momo:"pk,identity"`
 	AuthorID   int64   `momo:"column:author_id,notnull"`
-	Author     *Author `momo:"belongs_to,fk:AuthorID"`
+	Author     *Author `momo:"belongs_to,fk:AuthorID,on_delete:cascade,on_update:restrict"`
 }

@@ -106,3 +106,34 @@ func TestSchemaFieldSet(t *testing.T) {
 		}
 	}
 }
+
+func TestColumnCollateCommentJSONRoundTrip(t *testing.T) {
+	in := &Schema{FormatVersion: FormatVersion, Dialect: "postgres", Tables: []Table{{
+		Name:    "t",
+		Columns: []Column{{Name: "c", Type: "text", Collate: "C", Comment: "a \"quoted\" note"}},
+	}}}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out Schema
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	c := out.Tables[0].Columns[0]
+	if c.Collate != "C" || c.Comment != "a \"quoted\" note" {
+		t.Fatalf("lost: %+v", c)
+	}
+	if !Equal(in, &out) {
+		t.Fatal("round trip not Equal")
+	}
+	out.Tables[0].Columns[0].Comment = "other"
+	if Equal(in, &out) {
+		t.Fatal("Equal ignores Comment")
+	}
+	out.Tables[0].Columns[0].Comment = in.Tables[0].Columns[0].Comment
+	out.Tables[0].Columns[0].Collate = "POSIX"
+	if Equal(in, &out) {
+		t.Fatal("Equal ignores Collate")
+	}
+}

@@ -35,3 +35,28 @@ func TestRelationMetadata(t *testing.T) {
 		t.Fatalf("post relations: %+v", post.Relations)
 	}
 }
+
+// TestRelationTagsReachSchema loads a model whose belongs-to relation carries
+// on_delete and on_update tags, and checks they reach the schema's foreign
+// key through Load (discovery, relation resolution and schema construction).
+func TestRelationTagsReachSchema(t *testing.T) {
+	dir, err := filepath.Abs("testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, diags, err := Load([]string{"./rel"}, Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	posts, ok := g.Schema.Table("posts")
+	if !ok || len(posts.ForeignKeys) != 1 {
+		t.Fatalf("posts fks: %+v", posts)
+	}
+	fk := posts.ForeignKeys[0]
+	if fk.OnDelete != "CASCADE" || fk.OnUpdate != "RESTRICT" {
+		t.Fatalf("fk actions lost between tags and schema: %+v", fk)
+	}
+}

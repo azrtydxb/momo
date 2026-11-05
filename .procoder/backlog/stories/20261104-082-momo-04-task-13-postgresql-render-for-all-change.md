@@ -17,6 +17,7 @@ Implements plan momo-04-migrations Task 13: PostgreSQL render for all change kin
 - [ ] [S-12] `TestPostgresObjects` on real PostgreSQL+pgvector: vector extension, enum, partial index, expression index, HNSW index with opclass and a CONCURRENTLY index apply and round-trip with no diff; fails if CONCURRENTLY runs inside a transaction.
 - [ ] [S-39] `TestManagedFunctionsTriggersPartitions`: a function, trigger and partitioned table are created by migrations, round-trip with no diff, and a changed function body produces CREATE OR REPLACE; fails if they are reported as unmanaged.
 - [ ] `procoder check` gate is clean and the task's commit is made
+- [ ] PostgreSQL render emits `Column.Collate` (`COLLATE`) and `Column.Comment` (`COMMENT ON COLUMN`) for create and alter, with a round-trip test against inspection
 
 ## Evidence
 
