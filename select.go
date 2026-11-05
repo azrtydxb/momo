@@ -754,6 +754,31 @@ func ColumnOf[T any](source string, name string) Column[T] {
 	return Column[T]{table: source, name: name}
 }
 
+type rawSubquery struct {
+	sql  string
+	args []any
+}
+
+func (rawSubquery) isSubquery() {}
+func (r rawSubquery) AppendSQL(b *Builder) {
+	b.writeByte('(')
+	r.render(b)
+	b.writeByte(')')
+}
+
+// render writes the fragment bare; a set operation renders members this way.
+func (r rawSubquery) render(b *Builder) { b.appendRaw(r.sql, r.args) }
+
+// RawSubquery is an explicit escape hatch: a raw SELECT usable as a Subquery
+// (IN, EXISTS, CTE body, set operation member, FromSubquery source).
+//
+// Safety contract: as for SQL, sql is inserted verbatim and must be a
+// trusted constant; '?' binds the next argument and "??" is a literal '?'.
+// Momo cannot check which tables the fragment references.
+func RawSubquery(sql string, args ...any) Subquery {
+	return rawSubquery{sql, slices.Clone(args)}
+}
+
 // Union combines queries with UNION (all=false) or UNION ALL (all=true).
 // The result is a Subquery, usable in WithRecursive, FromSubquery and IN.
 func Union(all bool, qs ...Subquery) Subquery { return setOp{all, slices.Clone(qs)} }
