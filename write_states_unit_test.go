@@ -182,3 +182,22 @@ func TestInsertDefaultValuesWhenNoColumns(t *testing.T) {
 		t.Error("two empty rows: want an error")
 	}
 }
+
+// TestUpsertValuesRowsDefaultSetUnion pins that the default DO UPDATE list of an
+// upsert over ValuesRows is the union of the columns written in any row: status
+// is DEFAULT in the first row and a value in the second, so it must be updated.
+func TestUpsertValuesRowsDefaultSetUnion(t *testing.T) {
+	c, err := momo.Upsert[suite.StatusDocument](stateDB(dialect.Postgres)).
+		ValuesRows(
+			[]momo.Assignment{suite.DocTenantID.Set(1), suite.DocTitle.Set("u1"), suite.DocStatus.SetDefault()},
+			[]momo.Assignment{suite.DocTenantID.Set(1), suite.DocTitle.Set("u2"), suite.DocStatus.Set("z")},
+		).
+		OnConflict(suite.DocTitle).DoUpdate().
+		SQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(c.SQL, `"status" = EXCLUDED."status"`) {
+		t.Fatalf("upsert over ValuesRows does not update status: %s", c.SQL)
+	}
+}
