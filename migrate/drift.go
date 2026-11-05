@@ -383,7 +383,10 @@ func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
 // history table has an empty history) and executes no DDL. Because PostgreSQL
 // rewrites the text of views and of policy and trigger expressions, drift
 // compares those objects by identity and definition apart from that text; a
-// changed view body made outside migrations is not detected. Function bodies,
+// changed view query, trigger condition or policy expression (a USING or WITH
+// CHECK of a row-level security policy) made outside migrations is NOT
+// detected. DriftReport.Unverified names those objects so a clean report is not
+// read as proof that their bodies match; Clean ignores it. Function bodies,
 // which PostgreSQL stores verbatim, are compared. The history table is left out
 // and Config.Exclude patterns hide matching objects on both sides. An index
 // PostgreSQL marks invalid (a failed CREATE INDEX CONCURRENTLY) is reported as
@@ -419,5 +422,42 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 		}
 		from = applyExclude(snap.Schema, e.opts.config.Exclude)
 	}
-	return compare(from, live, false, invalid), nil
+	rep := compare(from, live, false, invalid)
+	rep.Unverified = unverifiedBodies(from, live)
+	return rep, nil
+}
+
+// unverifiedBodies lists the views, triggers and policies that exist in both
+// schemas and carry text that a non-exact comparison leaves out.
+func unverifiedBodies(from, live *schema.Schema) []ObjectRef {
+	var out []ObjectRef
+	type id struct{ kind, ns, name string }
+	in := map[id]bool{}
+	for _, v := range live.Views {
+		in[id{"view", v.Schema, v.Name}] = true
+	}
+	for _, t := range live.Triggers {
+		in[id{"trigger", t.Schema, t.Table + "." + t.Name}] = true
+	}
+	for _, p := range live.Policies {
+		in[id{"policy", p.Schema, p.Table + "." + p.Name}] = true
+	}
+	add := func(kind, ns, name string, hasText bool) {
+		if hasText && in[id{kind, ns, name}] {
+			out = append(out, ObjectRef{Kind: kind, Schema: ns, Name: name})
+		}
+	}
+	for _, v := range from.Views {
+		add("view", v.Schema, v.Name, v.Query != "")
+	}
+	for _, t := range from.Triggers {
+		add("trigger", t.Schema, t.Table+"."+t.Name, t.When != "")
+	}
+	for _, p := range from.Policies {
+		add("policy", p.Schema, p.Table+"."+p.Name, p.Using != "" || p.Check != "")
+	}
+	slices.SortFunc(out, func(x, y ObjectRef) int {
+		return strings.Compare(key(x.Kind, x.Schema, x.Name), key(y.Kind, y.Schema, y.Name))
+	})
+	return out
 }

@@ -162,6 +162,12 @@ type DriftReport struct {
 	Changed   []ObjectDiff
 	Missing   []ObjectRef
 	Unmanaged []ObjectRef
+	// Unverified lists the views, triggers and policies present on both sides
+	// whose text (view query, trigger condition, policy expressions) Drift did
+	// not compare, because that needs DDL to canonicalize. A body changed
+	// outside the migrations does not appear in Changed. An empty list does not
+	// mean those bodies were verified, and Clean ignores it.
+	Unverified []ObjectRef
 }
 
 // Clean reports whether there is no drift.
