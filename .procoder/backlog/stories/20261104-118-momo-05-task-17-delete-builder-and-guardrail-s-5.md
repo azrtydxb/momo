@@ -12,6 +12,7 @@ Implements plan momo-05-writes-queries Task 17: Delete builder and guardrail —
 ## Acceptance criteria
 
 - [ ] `TestDeleteByModelAndGuard` exists as written in the plan, failed before the implementation, and passes now
+- [ ] the plan's `TestMutationGuardrails` Delete assertion is restored, and Delete uses the shared effective-filter helper (`hasEffectiveFilter`) so `Where(And())` is refused
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

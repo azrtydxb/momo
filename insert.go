@@ -9,9 +9,6 @@ import (
 	"slices"
 )
 
-// Result reports the outcome of a write statement.
-type Result struct{ RowsAffected int64 }
-
 // InsertValue is an explicit column write accepted by Insert.Values: an
 // Assignment, or an InsertAssignment from a create-only or immutable column.
 type InsertValue interface{ insertAssignment() Assignment }
@@ -159,7 +156,7 @@ func (q InsertQuery[T]) column(name string) int {
 
 // writable reports whether the column at i may appear in an INSERT.
 func (q InsertQuery[T]) writable(i int) bool {
-	return q.meta.Columns[i].Flags&(FlagIdentity|FlagReadOnly) == 0
+	return columnAssignable(writeInsert, q.meta.Columns[i].Flags)
 }
 
 // SQL compiles the statement without executing it.
