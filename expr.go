@@ -244,6 +244,10 @@ func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v}} }
 type typed[T any] struct{ Expr }
 
 func (typed[T]) resultType() T { var z T; return z }
+func (t typed[T]) isRaw() bool {
+	r, ok := t.Expr.(interface{ isRaw() bool })
+	return ok && r.isRaw()
+}
 
 type binOp struct {
 	l  Expr
@@ -373,6 +377,14 @@ func (j junction) AppendSQL(b *Builder) {
 		if i > 0 {
 			b.WriteString(j.op)
 		}
+		if r, ok := p.(interface{ isRaw() bool }); ok && r.isRaw() {
+			// Raw SQL may hold a lower-precedence operator; every
+			// structured predicate is self-delimiting.
+			b.WriteByte('(')
+			p.AppendSQL(b)
+			b.WriteByte(')')
+			continue
+		}
 		p.AppendSQL(b)
 	}
 	b.WriteByte(')')
@@ -380,10 +392,19 @@ func (j junction) AppendSQL(b *Builder) {
 func (junction) resultType() bool { return false }
 
 // And joins predicates with AND; an empty And is true.
-func And(ps ...Predicate) Predicate { return junction{" AND ", ps} }
+func And(ps ...Predicate) Predicate { return newJunction(" AND ", ps) }
 
 // Or joins predicates with OR; an empty Or is false.
-func Or(ps ...Predicate) Predicate { return junction{" OR ", ps} }
+func Or(ps ...Predicate) Predicate { return newJunction(" OR ", ps) }
+
+// newJunction returns a lone part as itself so that an enclosing conjunction
+// still groups it.
+func newJunction(op string, ps []Predicate) Predicate {
+	if len(ps) == 1 {
+		return ps[0]
+	}
+	return junction{op, ps}
+}
 
 type not struct{ p Predicate }
 
@@ -507,6 +528,7 @@ type rawExpr struct {
 
 func (r rawExpr) AppendSQL(b *Builder) { b.appendRaw(r.sql, r.args) }
 func (rawExpr) resultType() bool       { return false }
+func (rawExpr) isRaw() bool            { return true }
 
 // SQL is an explicit escape hatch: a raw SQL fragment usable anywhere an
 // expression or predicate is accepted.
