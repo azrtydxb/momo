@@ -145,17 +145,24 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	}
 	e.diags = nil
 
-	used := DescriptorReserved()
+	aliases := map[string]bool{}
 	for alias := range e.imports {
+		aliases[alias] = true
+	}
+	ids := fieldIdents(m, aliases)
+	used := DescriptorReserved()
+	for alias := range aliases {
 		used[alias] = true
+	}
+	for _, id := range ids {
+		used[id] = true
 	}
 	type col struct {
 		name, typ, ctor, colName, flags string
 	}
 	cols := make([]col, 0, len(m.Fields))
-	for _, f := range m.Fields {
-		name := Identifier(f.GoName, used)
-		used[name] = true
+	for i, f := range m.Fields {
+		name := ids[i]
 		_, v := fieldVar(m, f)
 		var elem string
 		if v != nil {
@@ -197,6 +204,10 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 		}
 		w(")\n")
 	}
+	lookup, lds := emitLookup(m, ids)
+	e.diags = append(e.diags, lds...)
+	e.use("fmt", "fmt")
+	body.Write(lookup)
 	for _, r := range m.Relations {
 		name := Identifier(r.GoName, used)
 		used[name] = true
