@@ -56,6 +56,9 @@ type Dialect struct {
 	ILike            bool
 	Merge            bool // MERGE statement
 	WindowFunctions  bool
+
+	// Vector describes vector storage, distance metrics and ANN indexes.
+	Vector VectorCaps
 }
 
 // For returns the built-in dialect description for name.
@@ -77,6 +80,11 @@ var postgres = Dialect{
 	DefaultInUpdate: true, DefaultInValues: true, RecursiveCTE: true,
 	RowValues: true, Savepoints: true, IsolationLevels: true,
 	TransactionalDDL: true, ILike: true, Merge: true, WindowFunctions: true,
+	Vector: VectorCaps{
+		Storage: true,
+		Metrics: []Metric{MetricL2, MetricInnerProduct, MetricCosine, MetricL1, MetricHamming, MetricJaccard},
+		Indexes: []string{"hnsw", "ivfflat"},
+	},
 }
 
 // SQLite capabilities assume SQLite >= 3.35 (RETURNING). Momo's SQLite
@@ -86,6 +94,14 @@ var sqlite = Dialect{
 	Returning: true, OnConflict: true, NullsOrdering: true,
 	RecursiveCTE: true, RowValues: true, Savepoints: true,
 	TransactionalDDL: true, DefaultInValues: true, WindowFunctions: true,
+	// The metric list is the set of scalar distance functions registered by
+	// sqlite-vec v0.1.6 (aFunc[] in cgo/sqlite-vec.c of
+	// github.com/asg017/sqlite-vec-go-bindings/cgo, read 2026-11-04). It has
+	// no inner-product or Jaccard function and no ANN index.
+	Vector: VectorCaps{
+		Storage: true,
+		Metrics: []Metric{MetricL2, MetricL1, MetricCosine, MetricHamming},
+	},
 }
 
 // MySQLFlavor returns the MySQL-family dialect for the given flavour.

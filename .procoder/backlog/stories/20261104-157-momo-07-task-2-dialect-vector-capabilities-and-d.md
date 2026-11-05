@@ -11,9 +11,9 @@ Implements plan momo-07-vectors Task 2: Dialect vector capabilities and dialect-
 
 ## Acceptance criteria
 
-- [ ] `TestSQLiteVectorCaps` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestDialectValues` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestVectorArgBeforeSQL` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestSQLiteVectorCaps` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestDialectValues` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestVectorArgBeforeSQL` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
