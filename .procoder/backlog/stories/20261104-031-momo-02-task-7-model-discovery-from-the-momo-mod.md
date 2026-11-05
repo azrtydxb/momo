@@ -1,6 +1,6 @@
 # momo-02 Task 7: Model discovery from the momo.Model marker
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-02-generator
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -11,8 +11,13 @@ Implements plan momo-02-generator Task 7: Model discovery from the momo.Model ma
 
 ## Acceptance criteria
 
-- [ ] `TestModelDiscovery` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestModelDiscovery` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- RED: `go test ./gen -run TestModelDiscovery$` failed with `models=[]` before gen/model.go existed.
+- GREEN: the same test passes (commit ade3b89), as do TestModelDiscoveryNoModels and TestModelDiscoveryDiagnostics.
+- `go build ./... && go vet ./... && go test -race -count=1 ./...` and `go test ./internal/repocheck -run TestImportGraph` pass.
+- `procoder check` reports 0 blocking findings.
 

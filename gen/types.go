@@ -10,6 +10,7 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -64,21 +65,41 @@ type Graph struct {
 	Plugins  []Plugin
 }
 
-// Model is a discovered model type. Task 7 completes it.
+// Model is a discovered model type.
 type Model struct {
-	GoName  string
-	PkgPath string
-	PkgName string
-	PkgDir  string
-	File    string
-	Pos     token.Position
-	Fields  []*Field
+	GoName    string
+	PkgPath   string
+	PkgName   string
+	PkgDir    string
+	File      string
+	Pos       token.Position
+	Table     string
+	Schema    string
+	Fields    []*Field
+	Relations []*Relation
+	// Config is the companion result, filled in Task 9.
+	Config *CompanionResult
+	// SubPkg is the per-model subpackage name, set in Task 13.
+	SubPkg string
 }
 
-// Field is a model field. Task 8 completes it.
+// CompanionResult is the statically read MomoConfig of a model. Task 9
+// completes it.
+type CompanionResult struct{}
+
+// Field is a persisted model column. Task 8 completes it.
 type Field struct {
 	GoName string
-	Column string
+	// Path is the reflect-style index path from the model struct.
+	Path     []int
+	Column   string
+	GoType   string
+	Nullable bool
+	Tags     tags.Tags
+	Pos      token.Position
+	Access   Access
+	// Base is the embedded-struct prefix of a promoted field, filled in Task 8.
+	Base string
 }
 
 // Relation is a model relation. Task 10 completes it.
@@ -87,8 +108,17 @@ type Relation struct{}
 // Kind classifies a field's storage kind. Task 8 completes it.
 type Kind int
 
-// Access describes how generated code reaches a field. Task 8 completes it.
+// Access describes how generated code reaches a field. Task 12 fills the
+// rules.
 type Access int
+
+// Field access modes.
+const (
+	Writable Access = iota
+	ReadOnly
+	CreateOnly
+	Immutable
+)
 
 // RelKind classifies a relation. Task 10 completes it.
 type RelKind int

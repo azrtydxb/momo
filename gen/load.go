@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
+	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -47,6 +48,10 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 		Plugins:  append([]Plugin(nil), cfg.Plugins...),
 	}
 	var diags []Diagnostic
+	var namer naming.Namer = naming.Momo{}
+	if cfg.Naming != nil {
+		namer = cfg.Naming
+	}
 	seen := map[string]bool{}
 	for _, p := range pkgs {
 		for _, e := range p.Errors {
@@ -63,6 +68,9 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 			dir = dirOf(p.GoFiles[0])
 		}
 		g.Packages = append(g.Packages, &Package{Path: p.PkgPath, Name: p.Name, Dir: dir})
+		ms, mdiags := discoverModels(p, namer)
+		g.Models = append(g.Models, ms...)
+		diags = append(diags, mdiags...)
 	}
 	sort.SliceStable(g.Packages, func(i, j int) bool { return g.Packages[i].Path < g.Packages[j].Path })
 	sort.SliceStable(g.Models, func(i, j int) bool {
