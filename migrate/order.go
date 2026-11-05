@@ -38,8 +38,8 @@ var phases = [][]ChangeKind{
 	{AddColumn},
 	{AlterColumn},
 	{AddPrimaryKey, AddUnique, AddCheck},
-	{AddFK},
 	{CreateIndex},
+	{AddFK},
 	{CreateFunction, ReplaceFunction},
 	{CreateView},
 	{CreateTrigger},
@@ -53,15 +53,19 @@ var phases = [][]ChangeKind{
 //
 // Creates run in the order create_schema, create_extension, create_enum,
 // create_table (parents before partitions, referenced tables before
-// referencing ones), add_column, alter_column, constraints, create_index,
+// referencing ones), add_column, alter_column, constraints, create_index, add_fk,
 // create_function, create_view (dependencies first), create_trigger,
 // create_policy, set_rls. Drops run first: drop_trigger, drop_policy,
 // drop_view (dependents first), drop_fk, drop_index and the other drops of
 // constraints and columns, drop_table (partitions before parents), and, last
 // of all, drop_function and drop_enum. Renames run before everything else.
 //
+// Renames run before every drop, so renaming A to B while dropping a
+// different table B in the same plan would clash; Diff does not produce that.
+//
 // Order never panics and never modifies its argument. If the changes cannot
-// be ordered it returns them unchanged; use OrderErr to receive the error.
+// be ordered it returns them unchanged, silently. Engine code must call
+// OrderErr (or OrderWithViews) and surface the cycle error instead.
 func Order(changes []Change) []Change {
 	out, err := OrderErr(changes)
 	if err != nil {
@@ -75,6 +79,16 @@ func Order(changes []Change) []Change {
 // foreign-key cycle among created tables is broken by creating the tables
 // without those foreign keys and adding them afterwards with add_fk changes.
 func OrderErr(changes []Change) ([]Change, error) {
+	return OrderWithViews(changes, nil, nil)
+}
+
+// OrderWithViews is OrderErr plus view-dependent expansion. from and to are
+// the views of the snapshot and of the desired schema. Every view in from that
+// transitively depends on a view with a drop_view change, and that is not
+// itself dropped, gets a drop_view (from) and a create_view (to) added, so a
+// dependent that is not otherwise in the diff is rebuilt after its base.
+func OrderWithViews(changes []Change, from, to []schema.View) ([]Change, error) {
+	changes = expandViewDependents(changes, from, to)
 	rank := map[ChangeKind]int{}
 	for i, p := range phases {
 		for _, k := range p {
@@ -125,10 +139,14 @@ func OrderErr(changes []Change) ([]Change, error) {
 	if len(deferred) > 0 && len(buckets[rank[AddFK]]) == 0 {
 		// No add_fk phase ran, so the deferred foreign keys were never emitted.
 		// They belong right after the add_fk position, which is after
-		// alter_column and before create_index.
+		// create_index (a unique index may be what the foreign key references).
 		pos := 0
 		for i, c := range out {
-			if rank[c.Kind] < rank[AddFK] {
+			r, ok := rank[c.Kind]
+			if !ok {
+				continue
+			}
+			if r < rank[AddFK] {
 				pos = i + 1
 			}
 		}
@@ -392,4 +410,68 @@ func sortTables(items []Change, create bool) (sorted, addFKs []Change, err error
 		sorted[n] = items[i]
 	}
 	return sorted, addFKs, nil
+}
+
+// expandViewDependents adds drop_view and create_view changes for the
+// transitive dependents of dropped or changed views. The input is not modified.
+func expandViewDependents(changes []Change, from, to []schema.View) []Change {
+	if len(from) == 0 {
+		return changes
+	}
+	keys := make(map[string]int, len(from))
+	for i := range from {
+		keys[qualified(from[i].Schema, "", from[i].Name)] = i
+	}
+	toByKey := map[string]*schema.View{}
+	for i := range to {
+		toByKey[qualified(to[i].Schema, "", to[i].Name)] = &to[i]
+	}
+	dropped, created := map[string]bool{}, map[string]bool{}
+	var queue []int
+	for _, c := range changes {
+		switch c.Kind {
+		case DropView:
+			dropped[objKey(c)] = true
+			if i, ok := keys[objKey(c)]; ok {
+				queue = append(queue, i)
+			}
+		case CreateView:
+			created[objKey(c)] = true
+		}
+	}
+	seen := map[int]bool{}
+	for _, i := range queue {
+		seen[i] = true
+	}
+	out := slices.Clone(changes)
+	for len(queue) > 0 {
+		b := queue[0]
+		queue = queue[1:]
+		for i := range from {
+			if seen[i] {
+				continue
+			}
+			dependsOnB := false
+			for _, d := range from[i].Depends {
+				if j, ok := resolveDep(d, from[i].Schema, keys); ok && j == b {
+					dependsOnB = true
+					break
+				}
+			}
+			if !dependsOnB {
+				continue
+			}
+			seen[i] = true
+			queue = append(queue, i)
+			v := from[i]
+			k := qualified(v.Schema, "", v.Name)
+			if !dropped[k] {
+				out = append(out, Change{Kind: DropView, Schema: v.Schema, Name: v.Name, Before: &from[i]})
+			}
+			if nv, ok := toByKey[k]; ok && !created[k] {
+				out = append(out, Change{Kind: CreateView, Schema: nv.Schema, Name: nv.Name, After: nv})
+			}
+		}
+	}
+	return out
 }

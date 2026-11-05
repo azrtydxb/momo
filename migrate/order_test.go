@@ -205,3 +205,76 @@ func TestOrderUnbreakableCycleReturnsInputUnchanged(t *testing.T) {
 		t.Fatalf("Order returns input on error: %v", names(got))
 	}
 }
+
+func TestOrderWithViewsRebuildsTransitiveDependents(t *testing.T) {
+	from := []schema.View{
+		{Name: "base", Query: "select 1"},
+		{Name: "mid", Query: "select * from base", Depends: []string{"base"}},
+		{Name: "top", Query: "select * from mid", Depends: []string{"mid"}},
+		{Name: "other", Query: "select 2"},
+	}
+	to := slices.Clone(from)
+	to[0].Query = "select 3"
+	in := []Change{
+		{Kind: DropView, Name: "base", Before: &from[0]},
+		{Kind: CreateView, Name: "base", After: &to[0]},
+	}
+	got, err := OrderWithViews(in, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"drop_view:top", "drop_view:mid", "drop_view:base", "create_view:base", "create_view:mid", "create_view:top"}
+	if !slices.Equal(names(got), want) {
+		t.Fatalf("got  %v\nwant %v", names(got), want)
+	}
+	if len(in) != 2 {
+		t.Fatal("input mutated")
+	}
+}
+
+func TestOrderWithViewsDroppedBaseDropsDependentOnce(t *testing.T) {
+	from := []schema.View{{Name: "base"}, {Name: "top", Depends: []string{"base"}}}
+	to := []schema.View{{Name: "top", Depends: []string{"base"}}}
+	got, err := OrderWithViews([]Change{{Kind: DropView, Name: "base", Before: &from[0]}}, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"drop_view:top", "drop_view:base", "create_view:top"}
+	if !slices.Equal(names(got), want) {
+		t.Fatalf("got %v want %v", names(got), want)
+	}
+}
+
+func TestOrderPairwisePhases(t *testing.T) {
+	dt := Change{Kind: DropTable, Name: "t", Before: &schema.Table{Name: "t"}}
+	cycA := ctable("ca", schema.ForeignKey{Name: "ca_cb", RefTable: "cb"})
+	cycB := ctable("cb", schema.ForeignKey{Name: "cb_ca", RefTable: "ca"})
+	cases := []struct {
+		name          string
+		in            []Change
+		before, after string
+	}{
+		{"drop_view before drop_column", []Change{{Kind: DropColumn, Name: "c"}, {Kind: DropView, Name: "v"}}, "drop_view:v", "drop_column:c"},
+		{"drop_fk before drop_table", []Change{dt, {Kind: DropFK, Name: "f"}}, "drop_fk:f", "drop_table:t"},
+		{"drop_policy before drop_view", []Change{{Kind: DropView, Name: "v"}, {Kind: DropPolicy, Name: "p"}}, "drop_policy:p", "drop_view:v"},
+		{"drop_policy before drop_table", []Change{dt, {Kind: DropPolicy, Name: "p"}}, "drop_policy:p", "drop_table:t"},
+		{"rename before add_fk", []Change{{Kind: AddFK, Table: "new", Name: "f"}, {Kind: RenameTable, Table: "old", Name: "new"}}, "rename_table:new", "add_fk:f"},
+		{"add_unique before add_fk", []Change{{Kind: AddFK, Name: "f"}, {Kind: AddUnique, Name: "u"}}, "add_unique:u", "add_fk:f"},
+		{"drop_function after drop_table", []Change{{Kind: DropFunction, Name: "fn"}, dt}, "drop_table:t", "drop_function:fn"},
+		{"drop_enum after drop_table", []Change{{Kind: DropEnum, Name: "e"}, dt}, "drop_table:t", "drop_enum:e"},
+		{"drop_enum after alter_column", []Change{{Kind: DropEnum, Name: "e"}, {Kind: AlterColumn, Name: "c"}}, "alter_column:c", "drop_enum:e"},
+		{"deferred add_fk after create_index", []Change{cycA, cycB, {Kind: CreateIndex, Name: "ix"}}, "create_index:ix", "add_fk:ca_cb"},
+		{"add_fk after create_index", []Change{{Kind: AddFK, Name: "f"}, {Kind: CreateIndex, Name: "ix"}}, "create_index:ix", "add_fk:f"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := OrderErr(tc.in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if idx(t, got, tc.before) >= idx(t, got, tc.after) {
+				t.Fatalf("%s must precede %s: %v", tc.before, tc.after, names(got))
+			}
+		})
+	}
+}
