@@ -5,8 +5,6 @@ package momo
 import (
 	"errors"
 	"strings"
-
-	"github.com/azrtydxb/momo/dialect"
 )
 
 // Allowlist maps external names to typed column descriptors. Unknown names are
@@ -16,10 +14,13 @@ import (
 type Allowlist struct{ m map[string]ColumnRef }
 
 // NewAllowlist builds an allowlist keyed by ColumnName(). A later column with
-// the same name replaces an earlier one.
+// the same name replaces an earlier one. nil entries are skipped.
 func NewAllowlist(cols ...ColumnRef) Allowlist {
 	m := make(map[string]ColumnRef, len(cols))
 	for _, c := range cols {
+		if c == nil {
+			continue
+		}
 		m[c.ColumnName()] = c
 	}
 	return Allowlist{m: m}
@@ -34,18 +35,22 @@ func (a Allowlist) Column(name string) (ColumnRef, error) {
 	return nil, &Error{Kind: ErrValidation, Op: "allowlist", Err: errors.New("unknown column name")}
 }
 
-// EscapeLike escapes %, _ and the escape character \ so the result matches
-// literally inside a LIKE pattern that is rendered with ESCAPE '\'.
+// EscapeLike escapes %, _ and the escape character ! (each is prefixed with !)
+// so the result matches literally inside a LIKE pattern rendered with
+// ESCAPE '!'. The escape character is deliberately not a backslash: the
+// meaning of a backslash in a string literal depends on server settings
+// (MySQL NO_BACKSLASH_ESCAPES, PostgreSQL standard_conforming_strings), that
+// of ! does not.
 func EscapeLike(s string) string {
-	if !strings.ContainsAny(s, `%_\`) {
+	if !strings.ContainsAny(s, "%_!") {
 		return s
 	}
 	var b strings.Builder
 	b.Grow(len(s) + 4)
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
-		case '%', '_', '\\':
-			b.WriteByte('\\')
+		case '%', '_', '!':
+			b.WriteByte('!')
 		}
 		b.WriteByte(s[i])
 	}
@@ -54,9 +59,9 @@ func EscapeLike(s string) string {
 
 // ContainsLiteral matches rows whose string expression contains s literally.
 // s is escaped with EscapeLike, wrapped in % and bound as a parameter; the
-// statement carries an explicit ESCAPE clause rendered for the dialect (MySQL
-// string literals treat backslash as an escape, so it is doubled there; this
-// assumes the default sql_mode, without NO_BACKSLASH_ESCAPES).
+// statement carries ESCAPE '!' on every dialect. Case sensitivity follows the
+// dialect and the column collation (PostgreSQL LIKE is case-sensitive, SQLite
+// LIKE is ASCII case-insensitive, MySQL depends on the collation).
 func ContainsLiteral(e Expression[string], s string) Predicate {
 	return containsLiteral{e, "%" + EscapeLike(s) + "%"}
 }
@@ -70,10 +75,6 @@ func (x containsLiteral) AppendSQL(b *Builder) {
 	x.e.AppendSQL(b)
 	b.WriteString(" LIKE ")
 	b.Arg(x.p)
-	if b.d.Name == dialect.MySQL {
-		b.WriteString(` ESCAPE '\\'`)
-	} else {
-		b.WriteString(` ESCAPE '\'`)
-	}
+	b.WriteString(` ESCAPE '!'`)
 }
 func (containsLiteral) resultType() bool { return false }

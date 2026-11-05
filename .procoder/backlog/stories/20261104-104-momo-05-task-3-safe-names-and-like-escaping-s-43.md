@@ -24,3 +24,4 @@ Implements plan momo-05-writes-queries Task 3: Safe names and LIKE escaping (S-4
 - FuzzEscapeLike (new Makefile FUZZ_TARGETS line) checks round-trip and no unescaped wildcard; 5s run passes.
 - go build, go vet, go test -race ./... and make staticcheck are clean.
 - Deviation: the plan test uses unqualified Document/DocTitle; the DB part uses suite.Document and suite.DocTitle because the root unit fixture has no Document model. Allowlist.Column does not echo the rejected name in its error.
+- Revision after review: escape character changed from backslash to `!` (ESCAPE with `!` on every dialect, immune to MySQL NO_BACKSLASH_ESCAPES and PostgreSQL standard_conforming_strings). A value containing `!` matches literally (TestEscapeLike), NewAllowlist skips nil entries (TestNewAllowlistSkipsNil), dropping `!` from the escaped set fails TestEscapeLike, 10s fuzz run passes. This supersedes the backslash and per-dialect ESCAPE statements above.

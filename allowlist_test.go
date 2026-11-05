@@ -28,19 +28,29 @@ func TestColumnByName(t *testing.T) {
 	}
 }
 
+func TestNewAllowlistSkipsNil(t *testing.T) {
+	al := momo.NewAllowlist(nil, DocTitle, nil)
+	if _, err := al.Column("title"); err != nil {
+		t.Fatalf("known name after nil entries: %v", err)
+	}
+	if _, err := al.Column("tenant_id"); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("unknown name err = %v, want ErrValidation", err)
+	}
+}
+
 func TestEscapeLike(t *testing.T) {
-	if got := momo.EscapeLike(`50%_off\`); got != `50\%\_off\\` {
+	if got := momo.EscapeLike(`50%_off!`); got != `50!%!_off!!` {
 		t.Fatalf("EscapeLike = %q", got)
 	}
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := t.Context()
-		for _, title := range []string{"50%_off", "50 off", `50\off`} {
+		for _, title := range []string{"50%_off", "50 off", "50!off"} {
 			if _, err := momo.Exec(ctx, db, "INSERT INTO documents (tenant_id, title) VALUES (1, ?)", title); err != nil {
 				t.Fatal(err)
 			}
 		}
-		for _, c := range []struct{ in, want string }{{"%_", "50%_off"}, {`\`, `50\off`}} {
+		for _, c := range []struct{ in, want string }{{"%_", "50%_off"}, {"!", "50!off"}} {
 			rows, err := momo.Select[suite.Document](db).Where(momo.ContainsLiteral(suite.DocTitle, c.in)).All(ctx)
 			if err != nil {
 				t.Fatal(err)
@@ -57,9 +67,9 @@ func TestContainsLiteralSQLPerDialect(t *testing.T) {
 		d    dialect.Name
 		want string
 	}{
-		{dialect.Postgres, `"documents"."title" LIKE $1 ESCAPE '\'`},
-		{dialect.SQLite, `"documents"."title" LIKE ? ESCAPE '\'`},
-		{dialect.MySQL, "`documents`.`title` LIKE ? ESCAPE '\\\\'"},
+		{dialect.Postgres, `"documents"."title" LIKE $1 ESCAPE '!'`},
+		{dialect.SQLite, `"documents"."title" LIKE ? ESCAPE '!'`},
+		{dialect.MySQL, "`documents`.`title` LIKE ? ESCAPE '!'"},
 	}
 	for _, c := range cases {
 		db := momo.New(fakedriver.New(c.d))
@@ -70,14 +80,14 @@ func TestContainsLiteralSQLPerDialect(t *testing.T) {
 		if !strings.Contains(got.SQL, c.want) {
 			t.Errorf("%s: SQL %q lacks %q", c.d, got.SQL, c.want)
 		}
-		if len(got.Args) != 1 || got.Args[0] != `%a\%b%` {
+		if len(got.Args) != 1 || got.Args[0] != `%a!%b%` {
 			t.Errorf("%s: args = %v", c.d, got.Args)
 		}
 	}
 }
 
 func FuzzEscapeLike(f *testing.F) {
-	for _, s := range []string{"", "%", "_", `\`, `50%_off\`, `\%`, "ünï%"} {
+	for _, s := range []string{"", "%", "_", "!", `\`, "50%_off!", "!%", "ünï%"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
@@ -87,9 +97,9 @@ func FuzzEscapeLike(f *testing.F) {
 		var back strings.Builder
 		for i := 0; i < len(out); i++ {
 			switch out[i] {
-			case '\\':
+			case '!':
 				i++
-				if i >= len(out) || !strings.ContainsRune(`%_\`, rune(out[i])) {
+				if i >= len(out) || !strings.ContainsRune(`%_!`, rune(out[i])) {
 					t.Fatalf("dangling or useless escape in %q (input %q)", out, s)
 				}
 			case '%', '_':
