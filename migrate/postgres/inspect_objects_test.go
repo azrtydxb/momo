@@ -178,7 +178,9 @@ func TestPostgresInspectPolicyPublicMixedWithRole(t *testing.T) {
 	mustExec(t, d, `ALTER TABLE docs ENABLE ROW LEVEL SECURITY`)
 	mustExec(t, d, `CREATE POLICY mixed ON docs TO PUBLIC, `+role+` USING (true)`)
 	t.Cleanup(func() {
-		_, _ = d.Exec(context.Background(), `DROP POLICY IF EXISTS named ON docs`, nil)
+		// The policy depends on the role, so drop the table first or the
+		// role (cluster-wide) would outlive the test.
+		_, _ = d.Exec(context.Background(), `DROP TABLE IF EXISTS docs`, nil)
 		_, _ = d.Exec(context.Background(), `DROP ROLE IF EXISTS `+role, nil)
 	})
 	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{})

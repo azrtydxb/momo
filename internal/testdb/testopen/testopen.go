@@ -46,7 +46,20 @@ func Postgres(t *testing.T, opts ...momo.Option) *momo.DB {
 	t.Helper()
 	// PostgresURL registers the schema drop first, so the pool's Close below
 	// runs before the schema is dropped (cleanups run last-in first-out).
-	url := testdb.PostgresURL(t)
+	return openPostgres(t, testdb.PostgresURL(t), opts...)
+}
+
+// PostgresIn opens a *momo.DB on the database dbname of the test server, with
+// no per-test schema. dbname comes from testdb.ScratchDatabase, which drops it
+// after the pool is closed; use it for tests that create extensions or other
+// objects that must not reach the shared database.
+func PostgresIn(t *testing.T, dbname string, opts ...momo.Option) *momo.DB {
+	t.Helper()
+	return openPostgres(t, testdb.PostgresURLFor(t, dbname), opts...)
+}
+
+func openPostgres(t *testing.T, url string, opts ...momo.Option) *momo.DB {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
 	cfg, err := pgxpool.ParseConfig(url)
