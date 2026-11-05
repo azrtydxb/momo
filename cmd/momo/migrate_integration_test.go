@@ -120,43 +120,6 @@ func TestMigrateLifecycle(t *testing.T) {
 	}
 }
 
-// TestMigrateDiffRefusesOverwrite checks that diff never replaces a migration file.
-func TestMigrateDiffRefusesOverwrite(t *testing.T) {
-	dsn := testdb.PostgresURL(t)
-	root := copyModule(t, exampleSrc)
-	writeFile(t, filepath.Join(root, "momo.yaml"), "version: 1\nmigrate:\n  dir:\n    postgres: m\n")
-	chdir(t, root)
-	if code, _, errOut := cliRun(t, dsn, "diff", "init"); code != 0 {
-		t.Fatalf("diff: exit %d: %s", code, errOut)
-	}
-	files, _ := filepath.Glob(filepath.Join(root, "m", "*_init.up.sql"))
-	if len(files) != 1 {
-		t.Fatalf("want one up file, got %v", files)
-	}
-	// Remove the snapshot so the next diff produces the same version and name.
-	snaps, _ := filepath.Glob(filepath.Join(root, "m", "*.snapshot.json"))
-	for _, s := range snaps {
-		if err := os.Remove(s); err != nil {
-			t.Fatal(err)
-		}
-	}
-	sumBefore, _ := os.ReadFile(filepath.Join(root, "m", "momo.sum")) //nolint:gosec // test path
-	upBefore, _ := os.ReadFile(files[0])                              //nolint:gosec // test path
-	code, _, errOut := cliRun(t, dsn, "diff", "init")
-	if code == 0 {
-		// The clock moved on, so the new version differs: that is a new file, not an overwrite.
-		return
-	}
-	if code != 1 || !strings.Contains(errOut, "overwrite") {
-		t.Fatalf("exit %d, err %q", code, errOut)
-	}
-	upAfter, _ := os.ReadFile(files[0])                              //nolint:gosec // test path
-	sumAfter, _ := os.ReadFile(filepath.Join(root, "m", "momo.sum")) //nolint:gosec // test path
-	if !bytes.Equal(upBefore, upAfter) || !bytes.Equal(sumBefore, sumAfter) {
-		t.Fatal("a refused diff changed files")
-	}
-}
-
 // TestMigrateBaselineAndResolve covers the exit codes of baseline and resolve.
 func TestMigrateBaselineAndResolve(t *testing.T) {
 	dsn := testdb.PostgresURL(t)

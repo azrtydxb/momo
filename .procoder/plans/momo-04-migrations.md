@@ -3189,6 +3189,7 @@ Interfaces (exact):
 //   migrate apply [--to N] [--force-unlock] [--lock-wait 30s]   (needs DB)
 //   migrate status                  (needs DB)
 //   migrate validate [--db]         (offline; --db needs DB)
+//   migrate hash                    (offline; recomputes and writes momo.sum, the remedy named by the missing-sum messages)
 //   migrate baseline --version N [--force]  (needs DB)
 //   migrate drift                   (needs DB)
 //   migrate rebase [--onto <dir-or-version>]  (offline; no git)

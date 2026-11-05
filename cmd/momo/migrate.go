@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -42,9 +43,15 @@ Commands:
   apply [--to N] [--force-unlock] [--lock-wait 30s]   apply pending migrations (needs a database)
   status      show the state of every migration (needs a database)
   validate [--db]   check the migration directory (offline; --db also checks the database)
+  hash        recompute momo.sum from the files in the directory and write it (offline;
+              review the files first: this accepts every edit as the new baseline)
   baseline --version N [--force]   record migrations as applied without running them (needs a database)
   drift       compare the live database with the latest applied snapshot (needs a database)
   resolve --version N --applied|--rolled-back   settle a dirty migration (needs a database)
+
+--force-unlock takes over a lock row left by a dead process (the SQLite lock table).
+A PostgreSQL advisory lock is released when its holder's connection ends, so a
+held lock there cannot be forced: apply waits for --lock-wait and exits 3.
 
 Not available yet: rebase, lint, rollback, new.
 
@@ -54,9 +61,14 @@ commands never read it. The URL and its password are never printed.
 
 Exit codes:
   0  success
-  1  findings: drift, validate problems, status dirty or mismatch, destructive or staged refusal
-  2  usage or configuration error
-  3  database, lock or execution error
+  1  findings: drift, validate problems, status dirty or mismatch, destructive or staged
+     refusal, baseline mismatch (database differs from the snapshot), branch conflict,
+     diff refusing to overwrite an existing file
+  2  usage or configuration error, including a directory without any snapshot
+  3  database, lock or execution error, including an unreadable migration directory
+
+Files whose name starts with a dot (.DS_Store, .git, the .momo-*.tmp files of an
+interrupted write) are not part of a migration directory and are never hashed.
 `
 
 // notAvailable lists the documented subcommands whose engine support has not
@@ -72,6 +84,10 @@ var notAvailable = map[string]string{
 func runMigrateCmd(args []string, stdout, stderr io.Writer) int {
 	return runMigrate(stdout, stderr, args, os.Getenv)
 }
+
+// migrateClock stamps new migration versions; tests replace it to make the
+// version diff produces predictable.
+var migrateClock = time.Now
 
 // common holds the flags every migrate subcommand accepts.
 type common struct{ config, dir, dialect, url string }
@@ -99,10 +115,13 @@ type cli struct {
 var (
 	urlUserinfo = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://)[^/?#\s]*@`)
 	urlInText   = regexp.MustCompile(`(?i)\b(?:postgres(?:ql)?|mysql|mariadb)://[^\s"']+`)
+	// kvPassword matches a key=value DSN password: password=x, password='a b'.
+	kvPassword = regexp.MustCompile(`(?i)\b(password|passwd|pwd)(\s*=\s*)('[^']*'|"[^"]*"|[^\s'"&]+)`)
 )
 
 // redactURL removes passwords and DSNs from msg: every secret given, the
-// userinfo of any URL, and any URL-looking text that carries a query.
+// userinfo of any URL, any URL-looking text that carries a query, and the
+// value of a password= key in a key=value DSN.
 func redactURL(msg string, secrets ...string) string {
 	for _, s := range secrets {
 		if s != "" {
@@ -110,12 +129,13 @@ func redactURL(msg string, secrets ...string) string {
 		}
 	}
 	msg = urlUserinfo.ReplaceAllString(msg, "${1}***@")
-	return urlInText.ReplaceAllStringFunc(msg, func(m string) string {
+	msg = urlInText.ReplaceAllStringFunc(msg, func(m string) string {
 		if i := strings.IndexAny(m, "?"); i >= 0 {
 			return m[:i] + "?***"
 		}
 		return m
 	})
+	return kvPassword.ReplaceAllString(msg, "${1}${2}***")
 }
 
 func (l *cli) say(format string, args ...any) {
@@ -195,18 +215,20 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 		"baseline": l.baselineCmd,
 		"drift":    l.driftCmd,
 		"resolve":  l.resolveCmd,
+		"hash":     l.hashCmd,
 	}[name]
 	if run == nil {
-		_, _ = fmt.Fprintf(errOut, "momo: unknown migrate command %q\n\n%s", name, migrateUsage)
-		return exitUsage
+		// The word is user input and may be a pasted URL: it goes through errf.
+		code := l.errf(exitUsage, "unknown migrate command %q", name)
+		_, _ = fmt.Fprintf(errOut, "\n%s", migrateUsage)
+		return code
 	}
 	fs := flag.NewFlagSet("migrate "+name, flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	fs.Usage = func() { _, _ = fmt.Fprint(errOut, migrateUsage) }
 	l.c.register(fs)
-	body := run(fs)
-	// body parses its own flags after registering them; see parse below.
-	return body(sub)
+	// The command registers its own flags on fs, then parses sub once.
+	return run(fs)(sub)
 }
 
 // setup parses the subcommand flags and loads the configuration. It returns a
@@ -324,7 +346,7 @@ func (l *cli) engineOptions(d migrate.Dialect, extra ...migrate.Option) ([]migra
 			return nil, err
 		}
 	}
-	return append([]migrate.Option{migrate.WithDialect(d), migrate.WithConfig(cfg)}, extra...), nil
+	return append([]migrate.Option{migrate.WithDialect(d), migrate.WithConfig(cfg), migrate.WithClock(migrateClock)}, extra...), nil
 }
 
 // databaseURL resolves the URL of a command that needs a database.
@@ -381,7 +403,10 @@ func (l *cli) openEngine(ctx context.Context, extra ...migrate.Option) (*migrate
 	return e, pool.Close, -1
 }
 
-// failure maps an engine error to the documented exit code.
+// failure maps an engine error to the documented exit code: refusals and
+// mismatches the user resolves by changing files or the database are findings
+// (1); a directory without a snapshot is a configuration problem (2); anything
+// else is a database, lock or execution error (3).
 func (l *cli) failure(err error) int {
 	switch {
 	case errors.Is(err, migrate.ErrDestructive), errors.Is(err, migrate.ErrStagedRequired),
@@ -398,12 +423,24 @@ func interruptContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt)
 }
 
+// noPositional reports a stray positional argument as a usage error (-1 when
+// there is none). The argument is user input and goes through errf.
+func (l *cli) noPositional(pos []string) int {
+	if len(pos) == 0 {
+		return -1
+	}
+	return l.errf(exitUsage, "unexpected argument %q", pos[0])
+}
+
 // withEngine runs fn with a database engine and maps its error to an exit code.
 func (l *cli) withEngine(fs *flag.FlagSet, extra func() ([]migrate.Option, error), fn func(context.Context, *migrate.Engine, []string) int) func([]string) int {
 	return func(args []string) int {
 		pos, stop := l.setup(fs, args)
 		if stop != nil {
 			return *stop
+		}
+		if code := l.noPositional(pos); code >= 0 {
+			return code
 		}
 		var opts []migrate.Option
 		if extra != nil {
@@ -444,7 +481,7 @@ func (l *cli) applyCmd(fs *flag.FlagSet) func([]string) int {
 	var force bool
 	var wait string
 	fs.StringVar(&to, "to", "", "apply up to and including this version")
-	fs.BoolVar(&force, "force-unlock", false, "take over a lock held by a dead process")
+	fs.BoolVar(&force, "force-unlock", false, "take over a lock row left by a dead process (SQLite); no effect on a PostgreSQL advisory lock")
 	fs.StringVar(&wait, "lock-wait", "", "how long to wait for the migration lock (default 30s)")
 	var waitD time.Duration
 	extra := func() ([]migrate.Option, error) {
@@ -540,23 +577,20 @@ func (l *cli) baselineCmd(fs *flag.FlagSet) func([]string) int {
 	var force bool
 	fs.StringVar(&version, "version", "", "last migration version to record as applied")
 	fs.BoolVar(&force, "force", false, "record even when the database differs from the snapshot")
-	inner := l.withEngine(fs, nil, func(ctx context.Context, e *migrate.Engine, _ []string) int {
+	// The check runs after the single flag parse and before anything touches the database.
+	check := func() ([]migrate.Option, error) {
+		if version == "" {
+			return nil, errors.New("baseline needs --version")
+		}
+		return nil, nil
+	}
+	return l.withEngine(fs, check, func(ctx context.Context, e *migrate.Engine, _ []string) int {
 		if err := e.Baseline(ctx, version, force); err != nil {
 			return l.failure(err)
 		}
 		l.say("baselined through %s", version)
 		return exitOK
 	})
-	return func(args []string) int {
-		// The version is checked before anything touches the database.
-		if _, err := parseInterspersed(fs, args); err != nil {
-			return exitUsage
-		}
-		if version == "" {
-			return l.errf(exitUsage, "baseline needs --version")
-		}
-		return inner(args)
-	}
 }
 
 func (l *cli) resolveCmd(fs *flag.FlagSet) func([]string) int {
@@ -565,7 +599,13 @@ func (l *cli) resolveCmd(fs *flag.FlagSet) func([]string) int {
 	fs.StringVar(&version, "version", "", "the dirty migration version")
 	fs.BoolVar(&applied, "applied", false, "the migration was in fact applied")
 	fs.BoolVar(&rolledBack, "rolled-back", false, "the migration was rolled back")
-	inner := l.withEngine(fs, nil, func(ctx context.Context, e *migrate.Engine, _ []string) int {
+	check := func() ([]migrate.Option, error) {
+		if version == "" || applied == rolledBack {
+			return nil, errors.New("resolve needs --version and exactly one of --applied or --rolled-back")
+		}
+		return nil, nil
+	}
+	return l.withEngine(fs, check, func(ctx context.Context, e *migrate.Engine, _ []string) int {
 		state := migrate.ResolveApplied
 		if rolledBack {
 			state = migrate.ResolveRolledBack
@@ -576,14 +616,40 @@ func (l *cli) resolveCmd(fs *flag.FlagSet) func([]string) int {
 		l.say("resolved %s as %s", version, state)
 		return exitOK
 	})
+}
+
+// hashCmd recomputes momo.sum over the files of the migration directory and
+// writes it atomically. It is the remedy for a missing or stale momo.sum
+// after the files were reviewed.
+func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
 	return func(args []string) int {
-		if _, err := parseInterspersed(fs, args); err != nil {
-			return exitUsage
+		pos, stop := l.setup(fs, args)
+		if stop != nil {
+			return *stop
 		}
-		if version == "" || applied == rolledBack {
-			return l.errf(exitUsage, "resolve needs --version and exactly one of --applied or --rolled-back")
+		if code := l.noPositional(pos); code >= 0 {
+			return code
 		}
-		return inner(args)
+		dir := l.migrationDir()
+		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+			return l.errf(exitUsage, "migration directory %s does not exist", dir)
+		}
+		sum, err := migrate.ComputeSum(os.DirFS(dir))
+		if err != nil {
+			return l.errf(exitDatabase, "%v", err)
+		}
+		var buf bytes.Buffer
+		if err := sum.Write(&buf); err != nil {
+			return l.errf(exitDatabase, "%v", err)
+		}
+		written, err := writeNewFiles(dir, map[string][]byte{migrate.SumFileName: buf.Bytes()})
+		if err != nil {
+			return l.errf(exitDatabase, "%v", err)
+		}
+		for _, p := range written {
+			l.say("%s", l.rel(p))
+		}
+		return exitOK
 	}
 }
 
@@ -591,12 +657,16 @@ func (l *cli) validateCmd(fs *flag.FlagSet) func([]string) int {
 	var withDB bool
 	fs.BoolVar(&withDB, "db", false, "also check the database history against the files")
 	return func(args []string) int {
-		if _, stop := l.setup(fs, args); stop != nil {
+		pos, stop := l.setup(fs, args)
+		if stop != nil {
 			return *stop
+		}
+		if code := l.noPositional(pos); code >= 0 {
+			return code
 		}
 		rep, err := migrate.ValidateOffline(dirFS(l.migrationDir()))
 		if err != nil {
-			return l.errf(exitUsage, "%v", err)
+			return l.errf(exitDatabase, "%v", err) // the directory could not be read
 		}
 		for _, p := range rep.Problems {
 			l.say("problem: %s", p)
@@ -717,19 +787,36 @@ func (l *cli) desiredSchema() (*schema.Schema, int) {
 	return g.Schema, exitOK
 }
 
-// writeNewFiles writes files (keyed by relative name) into dir atomically:
-// each goes to a temporary file in dir and is renamed into place, and no
-// existing file is overwritten except momo.sum, which a migration always
-// replaces. It checks every name before it writes anything. It returns the
-// paths it wrote, in a stable order.
+// writeNewFiles publishes files (keyed by relative file name) into dir with
+// all-or-nothing semantics for the files it creates:
+//
+//  1. Every file is written to a temporary .momo-*.tmp file in dir and
+//     fsynced first. A failure here removes every temporary and leaves dir
+//     as it was.
+//  2. The migration files are published with os.Link, which fails when the
+//     target exists, so an existing file is never replaced even when it
+//     appears after the early check. The temporary is then removed.
+//  3. momo.sum, which a migration always replaces, is renamed into place last.
+//
+// When a publish step fails, the new files published so far are removed (they
+// did not exist before, so removal restores the prior state) and every
+// temporary is cleaned up. It returns the published paths in a stable order,
+// momo.sum last, and none on error.
 func writeNewFiles(dir string, files map[string][]byte) ([]string, error) {
 	names := make([]string, 0, len(files))
 	for n := range files {
 		names = append(names, n)
 	}
-	sort.Strings(names)
+	// momo.sum sorts last: it is published only after every migration file.
+	sort.Slice(names, func(i, j int) bool {
+		si, sj := names[i] == migrate.SumFileName, names[j] == migrate.SumFileName
+		if si != sj {
+			return sj
+		}
+		return names[i] < names[j]
+	})
 	for _, n := range names {
-		if filepath.Base(n) != n || n == "." || n == ".." {
+		if filepath.Base(n) != n || n == "." || n == ".." || strings.HasPrefix(n, ".") {
 			return nil, fmt.Errorf("refusing to write %q outside the migration directory", n)
 		}
 		if n == migrate.SumFileName {
@@ -742,43 +829,120 @@ func writeNewFiles(dir string, files map[string][]byte) ([]string, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, err
 	}
-	var written []string
+	tmps := make(map[string]string, len(names))
+	cleanTmps := func() {
+		for _, t := range tmps {
+			_ = os.Remove(t)
+		}
+	}
+	for _, n := range names {
+		t, err := stageTemp(dir, files[n])
+		if err != nil {
+			cleanTmps()
+			return nil, err
+		}
+		tmps[n] = t
+	}
+	var published []string
+	sumPath := ""
+	rollback := func(cause error) ([]string, error) {
+		for _, p := range published {
+			if rmErr := os.Remove(p); rmErr != nil && !errors.Is(rmErr, iofs.ErrNotExist) {
+				cause = errors.Join(cause, fmt.Errorf("could not remove %s: %w", p, rmErr))
+			}
+		}
+		cleanTmps()
+		return nil, cause
+	}
 	for _, n := range names {
 		final := filepath.Join(dir, n)
-		if err := writeAtomic(dir, final, files[n], n != migrate.SumFileName); err != nil {
-			return written, err
+		if n == migrate.SumFileName {
+			if err := os.Rename(tmps[n], final); err != nil {
+				return rollback(err)
+			}
+			sumPath = final
+		} else {
+			if err := publishNew(tmps[n], final, files[n]); err != nil {
+				return rollback(err)
+			}
+			published = append(published, final)
+			_ = os.Remove(tmps[n])
 		}
-		written = append(written, final)
+		delete(tmps, n)
 	}
-	return written, nil
+	syncDir(dir)
+	if sumPath != "" {
+		return append(published, sumPath), nil
+	}
+	return published, nil
 }
 
-// writeAtomic writes data to final through a temporary file in dir. With
-// exclusive set the file must not exist when it is renamed into place.
-func writeAtomic(dir, final string, data []byte, exclusive bool) (err error) {
+// stageTemp writes data to a new temporary file in dir and fsyncs it.
+func stageTemp(dir string, data []byte) (name string, err error) {
 	tmp, err := os.CreateTemp(dir, ".momo-*.tmp")
 	if err != nil {
-		return err
+		return "", err
 	}
+	name = tmp.Name()
 	defer func() {
 		if err != nil {
-			_ = os.Remove(tmp.Name())
+			_ = os.Remove(name)
 		}
 	}()
 	if _, err = tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		return err
+		return "", err
+	}
+	if err = tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return "", err
 	}
 	if err = tmp.Close(); err != nil {
-		return err
+		return "", err
 	}
-	if err = os.Chmod(tmp.Name(), 0o644); err != nil { //nolint:gosec // migration files are meant to be committed and read by the team
-		return err
+	if err = os.Chmod(name, 0o644); err != nil { //nolint:gosec // migration files are meant to be committed and read by the team
+		return "", err
 	}
-	if exclusive {
-		if _, statErr := os.Lstat(final); statErr == nil {
+	return name, nil
+}
+
+// publishNew makes tmp visible as final without ever replacing final: a hard
+// link fails when final exists. A file system without hard links falls back to
+// an exclusive create of final from data.
+func publishNew(tmp, final string, data []byte) error {
+	err := os.Link(tmp, final)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, iofs.ErrExist) {
+		return fmt.Errorf("refusing to overwrite %s: %w", final, iofs.ErrExist)
+	}
+	f, openErr := os.OpenFile(final, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644) //nolint:gosec // migration files are meant to be committed and read by the team
+	if openErr != nil {
+		if errors.Is(openErr, iofs.ErrExist) {
 			return fmt.Errorf("refusing to overwrite %s: %w", final, iofs.ErrExist)
 		}
+		return err
 	}
-	return os.Rename(tmp.Name(), final)
+	if _, werr := f.Write(data); werr != nil {
+		_ = f.Close()
+		_ = os.Remove(final)
+		return werr
+	}
+	if cerr := f.Close(); cerr != nil {
+		_ = os.Remove(final)
+		return cerr
+	}
+	return nil
+}
+
+// syncDir fsyncs dir so the renames and links survive a crash. It is best
+// effort: some platforms (Windows) cannot open a directory for syncing.
+func syncDir(dir string) {
+	d, err := os.Open(dir) //nolint:gosec // the migration directory chosen by the user
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }
