@@ -92,6 +92,7 @@ type DB struct {
 	ex      execer
 	hooks   []Hook
 	logArgs bool
+	pinned  bool // set by OnConn: statements run on one pinned connection
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and
@@ -272,7 +273,7 @@ func Exec(ctx context.Context, q Querier, sql string, args ...any) (int64, error
 // Begin starts an explicit transaction. The caller must Commit or Rollback;
 // a deferred Rollback after Commit is a harmless no-op returning ErrTxDone.
 func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
-	if _, ok := db.ex.q.(Driver); !ok { // a handle from OnConn
+	if db.pinned { // a handle from OnConn
 		return nil, &Error{Kind: ErrUnsupported, Op: "begin", Err: errors.New("transactions are not available on a pinned connection")}
 	}
 	drv := db.Driver()

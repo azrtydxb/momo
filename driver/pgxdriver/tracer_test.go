@@ -4,6 +4,7 @@ package pgxdriver
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -114,6 +115,119 @@ func TestPoolWaitNotRecordedWhenIdle(t *testing.T) {
 	}
 	if got := hook.maxNS.Load(); got != 0 {
 		t.Fatalf("PoolWait = %v on warm idle acquires, want 0", time.Duration(got))
+	}
+}
+
+// listWaitHook keeps every PoolWait it sees.
+type listWaitHook struct {
+	mu    sync.Mutex
+	waits []time.Duration
+}
+
+func (h *listWaitHook) BeforeQuery(ctx context.Context, e *momo.QueryEvent) context.Context {
+	return ctx
+}
+
+func (h *listWaitHook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
+	h.mu.Lock()
+	h.waits = append(h.waits, e.PoolWait)
+	h.mu.Unlock()
+}
+
+func (h *listWaitHook) take() []time.Duration {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	w := h.waits
+	h.waits = nil
+	return w
+}
+
+// startCountingTracer counts acquires that have started, then delegates.
+type startCountingTracer struct {
+	*poolTracer
+	starts atomic.Int64
+}
+
+func (c *startCountingTracer) TraceAcquireStart(ctx context.Context, pool *pgxpool.Pool, d pgxpool.TraceAcquireStartData) context.Context {
+	c.starts.Add(1)
+	return c.poolTracer.TraceAcquireStart(ctx, pool, d)
+}
+
+// With the only connection held, N concurrent statements all wait: every one
+// must record PoolWait > 0, and none may report more than the real elapsed
+// time. Afterwards idle acquires must not record bogus waits.
+func TestPoolWaitConcurrentAcquires(t *testing.T) {
+	const n = 8
+	ctx := context.Background()
+	tr := &startCountingTracer{poolTracer: &poolTracer{}}
+	cfg, err := pgxpool.ParseConfig(testdb.PostgresURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaxConns = 1
+	cfg.ConnConfig.Tracer = tr
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closePool(t, pool) })
+	hook := &listWaitHook{}
+	db := momo.New(New(pool), momo.WithHook(hook))
+	held, err := New(pool).(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := momo.Exec(ctx, db, "SELECT 1")
+			errs <- err
+		}()
+	}
+	// Wait until every goroutine has started its acquire (pgxpool exposes no
+	// waiter count, so a counting tracer wrapping the real one reports it).
+	deadline := time.Now().Add(10 * time.Second)
+	for tr.starts.Load() < n+1 { // n statements plus the held Pin
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d acquires started, want %d", tr.starts.Load(), n+1)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond) // a measurable wait for every waiter
+	if err := held.Release(); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	elapsed := time.Since(start)
+	waits := hook.take()
+	if len(waits) != n {
+		t.Fatalf("got %d events, want %d", len(waits), n)
+	}
+	for i, w := range waits {
+		if w <= 0 || w > elapsed {
+			t.Fatalf("statement %d: PoolWait = %v, want in (0, %v]", i, w, elapsed)
+		}
+	}
+	// The waiters are done and the connection is idle: nothing to wait for.
+	for range 5 {
+		if _, err := momo.Exec(ctx, db, "SELECT 1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, w := range hook.take() {
+		if w > 40*time.Millisecond { // far below the 50ms+ every blocked waiter saw
+			t.Fatalf("idle acquire %d recorded PoolWait = %v, want none", i, w)
+		}
 	}
 }
 

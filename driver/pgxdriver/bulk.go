@@ -270,11 +270,18 @@ func (t *pgxTx) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.Ro
 
 // CopyFrom implements momo.Copier on the pinned session.
 func (p *pinned) CopyFrom(ctx context.Context, table string, cols []string, rows [][]any) (int64, error) {
+	return p.copyFromSource(ctx, table, cols, pgx.CopyFromRows(rows))
+}
+
+// copyFromSource counts as an executing call, so Release returns
+// momo.ErrPinnedBusy while the copy streams.
+func (p *pinned) copyFromSource(ctx context.Context, table string, cols []string, src pgx.CopyFromSource) (int64, error) {
 	c, err := p.live()
 	if err != nil {
 		return 0, err
 	}
-	return copyFrom(ctx, c, table, cols, rows)
+	defer p.done()
+	return copyFromSource(ctx, c, table, cols, src)
 }
 
 // SendBatch implements momo.Batcher on the pinned session.
@@ -283,6 +290,7 @@ func (p *pinned) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.R
 	if err != nil {
 		return nil, err
 	}
+	defer p.done()
 	return sendBatch(ctx, c, p.d.mode, stmts)
 }
 
