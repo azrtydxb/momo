@@ -1,3 +1,5 @@
+# momo-03 Task 3: Error classification for PostgreSQL (pgx) with value redaction at the source
+
 Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-03-drivers-postgresql
