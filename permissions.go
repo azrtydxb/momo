@@ -23,6 +23,7 @@ func NewReadOnlyColumn[T any](table, name string, flags uint16) ReadOnlyColumn[T
 func (c ReadOnlyColumn[T]) As(alias string) ReadOnlyColumn[T] { c.col = c.col.As(alias); return c }
 
 func (c ReadOnlyColumn[T]) AppendSQL(b *Builder)             { c.col.AppendSQL(b) }
+func (c ReadOnlyColumn[T]) AsExpr() Expression[T]            { return c.col.AsExpr() }
 func (c ReadOnlyColumn[T]) resultType() T                    { return c.col.resultType() }
 func (c ReadOnlyColumn[T]) order() Order                     { return c.col.order() }
 func (c ReadOnlyColumn[T]) ColumnName() string               { return c.col.ColumnName() }
@@ -67,6 +68,7 @@ func (c NullReadOnlyColumn[T]) As(alias string) NullReadOnlyColumn[T] {
 }
 
 func (c NullReadOnlyColumn[T]) AppendSQL(b *Builder)             { c.col.AppendSQL(b) }
+func (c NullReadOnlyColumn[T]) AsExpr() Expression[T]            { return c.col.AsExpr() }
 func (c NullReadOnlyColumn[T]) resultType() T                    { return c.col.resultType() }
 func (c NullReadOnlyColumn[T]) order() Order                     { return c.col.order() }
 func (c NullReadOnlyColumn[T]) ColumnName() string               { return c.col.ColumnName() }
@@ -108,6 +110,7 @@ func NewCreateOnlyColumn[T any](table, name string, flags uint16) CreateOnlyColu
 func (c CreateOnlyColumn[T]) As(alias string) CreateOnlyColumn[T] { c.col = c.col.As(alias); return c }
 
 func (c CreateOnlyColumn[T]) AppendSQL(b *Builder)             { c.col.AppendSQL(b) }
+func (c CreateOnlyColumn[T]) AsExpr() Expression[T]            { return c.col.AsExpr() }
 func (c CreateOnlyColumn[T]) resultType() T                    { return c.col.resultType() }
 func (c CreateOnlyColumn[T]) order() Order                     { return c.col.order() }
 func (c CreateOnlyColumn[T]) ColumnName() string               { return c.col.ColumnName() }
@@ -153,6 +156,7 @@ func NewImmutableColumn[T any](table, name string, flags uint16) ImmutableColumn
 func (c ImmutableColumn[T]) As(alias string) ImmutableColumn[T] { c.col = c.col.As(alias); return c }
 
 func (c ImmutableColumn[T]) AppendSQL(b *Builder)             { c.col.AppendSQL(b) }
+func (c ImmutableColumn[T]) AsExpr() Expression[T]            { return c.col.AsExpr() }
 func (c ImmutableColumn[T]) resultType() T                    { return c.col.resultType() }
 func (c ImmutableColumn[T]) order() Order                     { return c.col.order() }
 func (c ImmutableColumn[T]) ColumnName() string               { return c.col.ColumnName() }

@@ -330,6 +330,23 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		b.SetErr(s.err)
 		return
 	}
+	names := make([]string, 0, 1+len(s.joins)+len(s.with))
+	for _, c := range s.with {
+		names = append(names, c.name)
+	}
+	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
+		if q, ok := src.(interface{ Qualifier() string }); ok {
+			names = append(names, q.Qualifier())
+		}
+	}
+	// FromSubquery and CTE bodies render inside this scope, so they can see
+	// the sibling FROM names. That is more lenient than SQL, which allows it
+	// only with LATERAL, but it is safe: it never hides a wrong table.
+	b.withScope(names, func() { sq.renderBody(b) })
+}
+
+func (sq SelectQuery[T]) renderBody(b *Builder) {
+	s := &sq.s
 	if len(s.with) > 0 {
 		b.WriteString("WITH ")
 		for _, c := range s.with {
@@ -465,6 +482,14 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		b.writeByte(' ')
 		b.WriteString(s.lock)
 	}
+}
+
+func joinSources(js []join) []TableSource {
+	out := make([]TableSource, len(js))
+	for i, j := range js {
+		out[i] = j.src
+	}
+	return out
 }
 
 // qualifier is the name the model's own columns are qualified with.

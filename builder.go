@@ -27,6 +27,56 @@ type Builder struct {
 	// set while rendering SET targets, INSERT column lists, ON CONFLICT
 	// targets and RETURNING lists.
 	unqualified bool
+	// scopes tracks, per SELECT being rendered, which table qualifiers its
+	// FROM and JOIN sources expose and which qualifiers its columns used.
+	scopes []*qscope
+}
+
+// qscope is one SELECT's source names and the qualifiers referenced inside it.
+type qscope struct {
+	names map[string]struct{}
+	refs  map[string]struct{}
+}
+
+// withScope renders fn inside a scope whose sources expose names. Every
+// statement builder (SELECT, and UPDATE, DELETE and MERGE with their target
+// table) must render through it, so a column qualified by a table that is
+// not among the sources fails the build with ErrValidation. A qualifier the
+// scope does not provide is passed to the enclosing scope, which is what lets
+// a correlated subquery reference its outer statement's target table.
+func (b *Builder) withScope(names []string, fn func()) {
+	b.pushScope(names)
+	defer b.popScope()
+	fn()
+}
+
+// pushScope opens a scope for a statement whose sources expose names.
+func (b *Builder) pushScope(names []string) {
+	sc := &qscope{names: make(map[string]struct{}, len(names)), refs: map[string]struct{}{}}
+	for _, n := range names {
+		if n != "" {
+			sc.names[n] = struct{}{}
+		}
+	}
+	b.scopes = append(b.scopes, sc)
+}
+
+// popScope closes the innermost scope. A qualifier it does not provide is
+// handed to the enclosing SELECT (a correlated reference); with no
+// enclosing SELECT it is a column of a table that is not in the query.
+func (b *Builder) popScope() {
+	sc := b.scopes[len(b.scopes)-1]
+	b.scopes = b.scopes[:len(b.scopes)-1]
+	for q := range sc.refs {
+		if _, ok := sc.names[q]; ok {
+			continue
+		}
+		if n := len(b.scopes); n > 0 {
+			b.scopes[n-1].refs[q] = struct{}{}
+			continue
+		}
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("column reference to table %q, which is not in the query's FROM or JOIN sources", q)})
+	}
 }
 
 // NewBuilder returns a builder for the dialect.
@@ -53,6 +103,9 @@ func (b *Builder) Ident(name string) { b.buf = b.d.AppendIdent(b.buf, name) }
 // (or an unqualified context) renders the bare quoted name.
 func (b *Builder) QualifiedIdent(qualifier, name string) {
 	if qualifier != "" && !b.unqualified {
+		if n := len(b.scopes); n > 0 {
+			b.scopes[n-1].refs[qualifier] = struct{}{}
+		}
 		b.Ident(qualifier)
 		b.buf = append(b.buf, '.')
 	}

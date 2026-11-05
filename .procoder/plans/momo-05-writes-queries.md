@@ -1,5 +1,3 @@
-# momo-05-writes-queries — implementation plan
-
 Status: draft
 Spec: .procoder/specs/momo.md
 
@@ -1165,6 +1163,8 @@ func TestCopyInsert(t *testing.T) {
 
 ## Task 15: Update builder, mutation guardrails and optimistic locking — S-5
 
+Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
+
 Files:
 
 - Create: `/Volumes/DATA/Development/momo/update.go`
@@ -1510,6 +1510,8 @@ The code above is the final test.
 
 ## Task 18: Soft delete variants (S-75) and the soft-delete read filter (S-5)
 
+Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
+
 Files:
 
 - Create: `/Volumes/DATA/Development/momo/softdelete.go`
@@ -1616,6 +1618,8 @@ func TestSoftDeleteVariants(t *testing.T) {
 - [ ] **Step 5: Commit.** `feat(core): soft delete with timestamp, unix and boolean markers`
 
 ## Task 19: Upsert by conflict target (S-5)
+
+Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
 
 Files:
 
@@ -2773,6 +2777,8 @@ The last block asserts the SQLite `ErrUnsupported` rule for NOWAIT.
 - [ ] **Step 5: Commit.** `feat(core): scopes, runtime filter trees and typed fragment composition`
 
 ## Task 33: MERGE with a server-version gate, bulk update from VALUES and Truncate (S-80)
+
+Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
 
 Files:
 
