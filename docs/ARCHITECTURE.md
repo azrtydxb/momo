@@ -39,6 +39,7 @@ Dependency rules (enforced by `TestImportGraph`, which runs `go list -deps`):
 ## Packages and core names
 
 ### `dialect`
+
 - `type Name string`; constants `Postgres = "postgres"`, `SQLite = "sqlite"`, `MySQL = "mysql"`.
 - `type Flavor string`; `FlavorMySQL = "mysql"`, `FlavorMariaDB = "mariadb"` (set on MySQL dialects only).
 - `type Dialect struct` with fields `Name`, `Flavor`, `MaxParams`, and capability booleans
@@ -47,47 +48,54 @@ Dependency rules (enforced by `TestImportGraph`, which runs `go list -deps`):
 - Methods: `AppendPlaceholder(b []byte, n int) []byte`, `AppendIdent(b []byte, ident string) []byte` (MySQL uses backticks), `QuoteIdent(string) string`.
 
 ### `schema`
+
 - Types as in `schema/schema.go`: `Schema{FormatVersion, Dialect, Schemas, Extensions, Enums, Tables, Views, Functions, Triggers, Policies}`, `Table`, `Column`, `Unique`, `Index`, `IndexPart`, `KV`, `ForeignKey`, `Check`.
 - `const FormatVersion = 1`. `func Load(r io.Reader) (*Schema, error)` refuses `format_version` > `FormatVersion` with `ErrNewerFormat`.
 - `normalize.go`: `func NormalizeType(d dialect.Name, t string) string`, `func NormalizeExpr(d dialect.Name, e string) string`, `func Equal(a, b *Schema) bool`.
 
 ### `momo` (root runtime)
+
 - Handles: `type DB`, `type Tx`, sealed `type Querier interface{ Dialect() *dialect.Dialect; conn() *execer }`. `func New(drv Driver, opts ...Option) *DB`.
 - Driver contract: `Driver`, `DriverTx`, `Rows`, `TxOptions{Isolation sql.IsolationLevel; ReadOnly bool}`; optional `ErrorClassifier{ClassifyError(error) error}`, `Pinner{Pin(ctx) (PinnedConn, error)}`, `Copier{CopyFrom(ctx, table string, cols []string, rows [][]any) (int64, error)}`, `Batcher{SendBatch(ctx, []Compiled) ([]Rows, error)}`, `PoolStater{PoolStats() PoolStats}`.
 - SQL building: `Builder`, `Compiled{SQL string; Args []any}`, `Expr`, `Expression[T]`, `Predicate = Expression[bool]`, `ColumnRef`, `Orderable`, `Order`, `Nulls`, `Subquery`, `TableSource`, `TableRef{Name, Alias, Schema}`.
-- Columns: `Column[T]`, `NullColumn[T]`, `VectorColumn[V]`, constructors `NewColumn[T](table, name string, flags uint16)`, `NewNullColumn[T]`, `NewVectorColumn[V]`. Flags `FlagPK, FlagUnique, FlagNullable, FlagIdentity, FlagReadOnly, FlagVersion, FlagSoftDelete, FlagHasDefault, FlagCreateOnly, FlagImmutable, FlagSensitive, FlagCreatedAt, FlagUpdatedAt`.
+- Columns: `Column[T]`, `NullColumn[T]`, `VectorColumn[V]`, constructors `NewColumn[T] (table, name string, flags uint16)`, `NewNullColumn[T]`, `NewVectorColumn[V]`. Flags `FlagPK, FlagUnique, FlagNullable, FlagIdentity, FlagReadOnly, FlagVersion, FlagSoftDelete, FlagHasDefault, FlagCreateOnly, FlagImmutable, FlagSensitive, FlagCreatedAt, FlagUpdatedAt`.
 - Writes: `Assignment` (from `Column.Set/SetExpr/SetDefault/SetExcluded`, `NullColumn.SetNull`).
 - Metadata: `Model` and `Projection` markers, `ColumnMeta{Name; Flags uint16}`, `Meta[T]{Table, Schema string; Columns; Ptr func(*T,int) any; Value func(*T,int) any; TableSchema *schema.Table; Identity, Version, SoftDelete, CreatedAt, UpdatedAt int; PK []int; Hooks HookSet[T]}`, `Modeler[T]` (`*T` with `MomoMeta() *Meta[T]`).
-- Queries: `Select[T, PT Modeler[T]](q Querier) SelectQuery[T]`, `Insert[T, PT](q) InsertQuery[T]`, `Update[T, PT](q) UpdateQuery[T]`, `Delete[T, PT](q) DeleteQuery[T]`, `SoftDelete[T, PT](q) UpdateQuery[T]`, `Raw[T, PT](q, sql string, args ...any) RawQuery[T]`, `Exec(ctx, q, sql, args...) (int64, error)`.
+- Queries: `Select[T, PT Modeler[T]] (q Querier) SelectQuery[T]`, `Insert[T, PT] (q) InsertQuery[T]`, `Update[T, PT] (q) UpdateQuery[T]`, `Delete[T, PT] (q) DeleteQuery[T]`, `SoftDelete[T, PT] (q) UpdateQuery[T]`, `Raw[T, PT] (q, sql string, args ...any) RawQuery[T]`, `Exec(ctx, q, sql, args...) (int64, error)`.
   All query values are immutable; methods return modified copies.
 - Terminals on `SelectQuery[T]`: `All, One, First, Each, Iter, Count, Exists, SQL`; on mutations: `Exec(ctx) (Result, error)`, `SQL()`. `type Result struct{ RowsAffected int64 }`.
-- Relations: `Relation[P, C]` descriptors (generated), `Load[P, C](ctx, q, parents []P, rel Relation[P,C], opts ...LoadOption[C]) error` and `SelectQuery.Preload(...)`. `With` stays the CTE method. The exact `Relation[P,C]` shape (fields `Name, Kind, Parent, Child, ParentCols, ChildCols, ChildPK, ParentKey, ChildKey, SetChildKey, GetOne, SetOne, GetMany, SetMany, Through, Discriminator`) is owned by momo-06 Task 2, and the generator (momo-02) emits exactly that shape.
+- Relations: `Relation[P, C]` descriptors (generated), `Load[P, C] (ctx, q, parents []P, rel Relation[P,C], opts ...LoadOption[C]) error` and `SelectQuery.Preload(...)`. `With` stays the CTE method. The exact `Relation[P,C]` shape (fields `Name, Kind, Parent, Child, ParentCols, ChildCols, ChildPK, ParentKey, ChildKey, SetParentKey, SetChildKey, GetOne, SetOne, GetMany, SetMany, Through, Discriminator, ParentMeta, ChildMeta`, as implemented in `relation.go`) is owned by momo-06 Task 2, and the generator (momo-02) emits exactly that shape.
 - Transactions: `DB.Tx(ctx, TxOptions, func(*Tx) error) error`, `DB.Begin`, `Tx.Commit/Rollback/Tx/Savepoint/RollbackTo/Release`.
 - Observability: `Hook{BeforeQuery(ctx,*QueryEvent) context.Context; AfterQuery(ctx,*QueryEvent)}`, `QueryEvent`, options `WithHook`, `WithArgLogging`, `WithClock(func() time.Time)`, `WithInterceptor(Interceptor)`.
 - Errors (`errors.go`): `Error{Kind, Op, Table, Column, Constraint, Err}` plus `Detail() string`; sentinels `ErrNotFound, ErrTooManyRows, ErrUniqueViolation, ErrForeignKeyViolation, ErrCheckViolation, ErrNotNullViolation, ErrSerialization, ErrOptimisticLock, ErrUnsupported, ErrUnfilteredMutation, ErrTxDone, ErrInvalidVector (= vector.ErrInvalidVector), ErrValidation, ErrBusy, ErrLimitExceeded`. Migration sentinels live in `migrate`: `ErrChecksumMismatch, ErrDirty, ErrLocked, ErrDestructive, ErrBranchConflict`.
 - Placeholders in raw SQL: `?` positional, `??` literal `?`, `@name` named (via `momo.Named`), `momo.In(slice)` expands, `momo.Ident(name)` quotes.
 
 ### `vector`
+
 `Vector []float32`, `HalfVector []float32`, `SparseVector{Dim int; Indices []int32; Values []float32}`, `Bits{Len int; Data []byte}`; each implements `sql.Scanner`, `driver.Valuer`, `momo.DialectValuer`, `Validate(dim int) error`. `var ErrInvalidVector`.
 
 Vector fields declare their dimension with the field tag `dim:<n>` (e.g. `momo:"embedding,dim:1536"`). The Go type selects the SQL type: `vector`, `halfvec`, `sparsevec` or `bit`.
 
 ### `types`
+
 `JSON[T]`, `Date`, `TimeOfDay`, `UUID`, `Hstore`; each a codec (`sql.Scanner` + `driver.Valuer` + `SQLType(dialect.Name) string`).
 
 ### Drivers
+
 - `driver/pgxdriver`: `New(pool *pgxpool.Pool, opts ...Option) momo.Driver`; `FromSQLDB(db *sql.DB) momo.Driver` (pgx stdlib); option `WithExecMode(pgx.QueryExecMode)`.
 - `driver/sqlitedriver` (mattn + sqlite-vec, cgo): `Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error)`; `Config` holds WAL/busy_timeout/synchronous defaults (S-57).
 - `driver/sqlitepure` (modernc, no cgo, no vectors): same `Open` signature.
 - `driver/mysqldriver`: `New(db *sql.DB, flavor dialect.Flavor) momo.Driver`.
 
 ### `migrate`
+
 - Directory format: `migrations/<dialect>/<YYYYMMDDHHMMSS>_<name>.up.sql`, optional `.down.sql`, `<version>_<name>.snapshot.json`, `momo.sum`. Directives: `-- momo:no-transaction`, `-- momo:destructive`, `-- momo:split`, `-- momo:sqlite-foreign-keys-off`.
 - Go API: `type Engine struct`; `NewEngine(drv momo.Driver, dir fs.FS, opts ...Option) (*Engine, error)`; methods `Diff(ctx, desired *schema.Schema, name string, opts DiffOptions) (*Migration, error)`, `Plan(ctx) ([]Pending, error)`, `Apply(ctx, ApplyOptions) (*Report, error)`, `Status(ctx)`, `Validate(ctx, online bool)`, `Baseline(ctx, version string, force bool)`, `Drift(ctx) (*DriftReport, error)`, `Lint(ctx) ([]Finding, error)`, `Rebase(ctx, onto string)`, `Resolve(ctx, version string, state ResolveState)`, `AutoMigrate(ctx, desired *schema.Schema) (*AutoReport, error)`.
 - Per-dialect implementations satisfy `migrate.Dialect{Inspect(ctx, PinnedConn, InspectOptions) (*schema.Schema, error); Render(plan []Change) ([]Statement, error); Lock(ctx, PinnedConn) (unlock func() error, err error)}` in `migrate/postgres`, `migrate/sqlite`, `migrate/mysql`.
 - History table `momo_migrations(version, name, checksum, status, statements_applied, error, applied_at, execution_ms)` plus metadata row `format_version`.
 
 ### `gen`
+
 - `gen.Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error)` → `Graph{Models []*Model; Schema *schema.Schema}`; `gen.Emit(g *Graph, w *Writer) error`; `Writer` is the only file writer (refuses non-generated targets, gofmt, deterministic).
 - Plugin interface: `type Plugin interface{ Name() string; Generate(g *Graph, w *Writer) error }`.
 - Generated files start with `// Code generated by momo vX.Y.Z (format 1). DO NOT EDIT.`; per-package `momo_gen.go` in the model package, per-model subpackage `<lowercase model name>/momo_gen.go`.
@@ -95,6 +103,7 @@ Vector fields declare their dimension with the field tag `dim:<n>` (e.g. `momo:"
 - `migrate:` section: type `config.MigrateConfig` owned by momo-02, semantics by momo-04.
 
 ### Other packages
+
 `momotest` (test helpers), `momolog` (slog hook), `momovet` (analyzer) + `cmd/momovet`, `importer/{gorm,bun,ent}`, `gen/{graphql,grpc,openapi,viz}`, `cmd/momo`.
 
 ## Contract additions (round 1, from plan reviews)
@@ -104,6 +113,7 @@ block is the source of truth for its exact signature. Other plans consume the
 name as written.
 
 ### Root `momo`
+
 - `PinnedConn` interface: `Query`, `Exec` (same signatures as `Driver`), `Begin(ctx, TxOptions) (DriverTx, error)`, `Release() error`; obtained through `Pinner.Pin(ctx)`. `PoolStats` struct (acquired, idle, total, wait count, wait duration). `Capabilities` / `CapabilityReporter`. Exact `Copier` and `Batcher` signatures. [momo-03 Task 1]
 - `func (db *DB) OnConn(pc PinnedConn) *DB`: a DB bound to one pinned connection that keeps db's hooks, classifier and options. Used for non-transactional Go migrations and session-scoped work. [momo-03]
 - `testopen.Each(t, fn, opts ...momo.Option)` passes options to every dialect's DB. [momo-03]
@@ -119,22 +129,27 @@ name as written.
 - `Tx.SetLocal(ctx, name, value string) error` (set_config(name, value, true), transaction-scoped) for RLS and search settings. [momo-04 Task 27]
 
 ### `dialect`
+
 Additional capability flags: `JSON`, `Arrays`, `UpdateFrom`, `Merge`, `MergeReturning`. Server-version-dependent capabilities, such as PostgreSQL MERGE (>= 15) and MERGE ... RETURNING (>= 17), are gated at runtime from the driver's `ServerVersion()`. [momo-05]
 
 ### Drivers
+
 - `pgxdriver.WithExecMode` accepts `pgx.QueryExecModeCacheStatement` (default), `QueryExecModeCacheDescribe`, `QueryExecModeDescribeExec` and `QueryExecModeExec`. `QueryExecModeSimpleProtocol` is rejected, because values must always be bound server-side. PgBouncer transaction pooling uses `QueryExecModeExec`. `pgxdriver.FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)`. [momo-03]
 - SQLite read-only transactions use `PRAGMA query_only` on the pinned connection. sqlite-vec is registered once per process inside `Open` (documented). [momo-03]
 
 ### `migrate`
+
 - `migrate.Dialect` adds `Dialect() *dialect.Dialect`, `HistoryDDL() []string`, `Setup(ctx, momo.PinnedConn, SessionOptions) (reset func() error, err error)`. `Lock` also reports the holder. There is no global registry: `NewEngine` requires `migrate.WithDialect(d)`, and the CLI selects the dialect statically. [momo-04]
 - The history table adds `apply_id` (groups for rollback) and `kind` (`sql`, `go`, `custom`). Transactional migrations write their history row inside the migration transaction. Only non-transactional `failed`/`running` rows are dirty. [momo-04]
 - Snapshots are stored as a wrapper `{format_version, parent, schema}`. [momo-04 Task 6]
 - Go migrations: `GoMigration{Version, Name, NoTx, Up, Down func(ctx, momo.Querier) error}` and `WithGoMigrations`. [momo-11]
 
 ### Generator companion (`MomoConfig`) methods
+
 `Table, Index, Unique, Check, Enum, Default` take literals and field references. `View, Function, Trigger, Policy, RLS, Partition, PartitionOf` each take one composite literal of the matching structured schema type owned by momo-04 Task 1 (`schema.View` covers materialized views through its `Materialized` field). momo-02 parses them statically; any other form is a diagnostic.
 
 ### Test harness (`internal/testdb`)
+
 The harness returns connection strings only, so driver packages can use it without import cycles: `PostgresURL(t)`, `PostgresAppRoleURL(t)`, `PgBouncerURL(t)`, `SQLitePath(t)`, `MySQLURL(t)`, `MariaDBURL(t)`, `Schema(t)`. `internal/testdb/testopen` opens them as `*momo.DB` (`testopen.Postgres(t)`, `testopen.SQLite(t)`, ...) for packages above the drivers. In both packages, a missing URL fails the test when `MOMO_REQUIRE_INTEGRATION=1` and skips it otherwise; no test calls `t.Skip` directly. [momo-01]
 
 ## Delivery order (user decision 2026-11-04: PostgreSQL and pgvector first)
