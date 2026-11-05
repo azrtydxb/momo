@@ -11,9 +11,12 @@ Implements plan momo-06-relations Task 1: Normalized key encoding (`.procoder/pl
 
 ## Acceptance criteria
 
-- [ ] `TestKeyStringNormalization` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-6, part] this story's tests pass for the part of S-6 this task delivers; the full criterion is verified in story 146.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestKeyStringNormalization` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-6, part] this story's tests pass for the part of S-6 this task delivers; the full criterion is verified in story 146.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Red first: before keys.go existed, `go test ./ -run '^TestKeyStringNormalization$'` failed with `undefined: keyString` (build failed). After keys.go it prints `ok  github.com/azrtydxb/momo`.
+- Mutation check: removing the 0x1f delimiter initially survived (the type tags alone already separate the plan's composite case), so one case was added to the test, `diff({"a","b"}, {"as:b"})`, and the mutant is now killed (`keys collide: "s:as:b"`). Changing the int64 tag from i: to j: also fails the test. Both mutants restored; test passes.
+- Deviation: the added delimiter case is the only change to the test as written in the plan.
