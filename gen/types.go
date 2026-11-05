@@ -102,8 +102,23 @@ type Field struct {
 	Base string
 }
 
-// Relation is a model relation. Task 10 completes it.
-type Relation struct{}
+// Relation is a model relation. Task 10 reads it to build foreign keys and
+// join tables; Task 13 discovers relations and fills it.
+type Relation struct {
+	GoName    string
+	Kind      RelKind
+	Target    *Model
+	FK        string
+	JoinTable string
+	PolyType  string
+	PolyValue string
+	// OnDelete and OnUpdate are the raw on_delete and on_update tag values.
+	OnDelete, OnUpdate string
+	// NoConstraint is the no_constraint tag: the relation has no database
+	// foreign key.
+	NoConstraint bool
+	Pos          token.Position
+}
 
 // Kind classifies a field's storage kind. Task 8 completes it.
 type Kind int
@@ -120,5 +135,13 @@ const (
 	Immutable
 )
 
-// RelKind classifies a relation. Task 10 completes it.
+// RelKind classifies a relation.
 type RelKind int
+
+// Relation kinds.
+const (
+	BelongsTo RelKind = iota
+	HasOne
+	HasMany
+	ManyToMany
+)
