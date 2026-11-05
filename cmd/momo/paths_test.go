@@ -39,21 +39,8 @@ func TestWindowsPaths(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// NOTE: the plan expects "archive/2026/..." to be recorded, but the engine
-		// (ComputeSum, Discover) deliberately handles only the top level of the
-		// migration directory, so nested files are not recorded at all. This test
-		// pins what the engine does: no entry may contain a path separator.
-		if len(sum.Files) != 0 {
-			t.Fatalf("nested files must not be recorded (top-level only), got %v", sum.Files)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "20260101000000_top.up.sql"), []byte("CREATE TABLE t (id int);\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if sum, err = migrate.ComputeSum(os.DirFS(dir)); err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := sum.Files["20260101000000_top.up.sql"]; !ok {
-			t.Fatalf("top-level file must be recorded by its bare name, got %v", sum.Files)
+		if _, ok := sum.Files["archive/2026/20260101000000_init.up.sql"]; !ok {
+			t.Fatalf("momo.sum entry must use a forward slash, got %v", sum.Files)
 		}
 		for name := range sum.Files {
 			if strings.Contains(name, `\`) {

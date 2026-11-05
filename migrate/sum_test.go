@@ -187,3 +187,39 @@ func TestAppendSum(t *testing.T) {
 		t.Fatal("adding a missing file must fail")
 	}
 }
+
+func TestSumWalksNestedDirectories(t *testing.T) {
+	fsys := fstest.MapFS{
+		"20260301000000_c.up.sql":              {Data: []byte("C")},
+		"archive/2026/20260101000000_a.up.sql": {Data: []byte("A")},
+		"archive/momo.sum":                     {Data: []byte("not the root sum")},
+		"momo.sum":                             {Data: []byte("root")},
+	}
+	s, err := ComputeSum(fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"20260301000000_c.up.sql", "archive/2026/20260101000000_a.up.sql", "archive/momo.sum"} {
+		if _, ok := s.Files[name]; !ok {
+			t.Fatalf("%s must be recorded, got %v", name, s.Files)
+		}
+	}
+	if _, ok := s.Files["momo.sum"]; ok {
+		t.Fatal("the root momo.sum must not be recorded")
+	}
+	if bad := VerifySum(fsys, s); bad != nil {
+		t.Fatalf("clean tree must verify, got %v", bad)
+	}
+	fsys["archive/2026/20260101000000_a.up.sql"] = &fstest.MapFile{Data: []byte("edited")}
+	if bad := VerifySum(fsys, s); len(bad) != 1 || bad[0] != "archive/2026/20260101000000_a.up.sql" {
+		t.Fatalf("edit of a nested file must be reported by its slash path, got %v", bad)
+	}
+	delete(fsys, "archive/2026/20260101000000_a.up.sql")
+	if bad := VerifySum(fsys, s); len(bad) != 1 {
+		t.Fatalf("removal of a nested file must be reported, got %v", bad)
+	}
+	added, err := AppendSum(&Sum{DirHash: dirHash(map[string]string{}), Files: map[string]string{}}, fsys, []string{"archive/momo.sum"})
+	if err != nil || len(added.Files) != 1 {
+		t.Fatalf("AppendSum of a nested path: %v %v", added, err)
+	}
+}
