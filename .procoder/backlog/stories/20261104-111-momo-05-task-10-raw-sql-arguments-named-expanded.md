@@ -1,6 +1,6 @@
 # momo-05 Task 10: Raw SQL arguments: named, expanded IN and identifiers (S-77)
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
