@@ -351,5 +351,5 @@ func HintsByDialect(t *testing.T, db *momo.DB, caps Caps) {
 	rows, err := momo.Select[Document](db).IndexedBy("docs_title_idx").Where(DocTitle.Eq("x")).All(ctx)
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("INDEXED BY run = %v, %v; want one row", rows, err)
-}
+	}
 }
