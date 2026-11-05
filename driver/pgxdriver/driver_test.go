@@ -78,12 +78,7 @@ func TestSimpleProtocolRejected(t *testing.T) {
 func TestDefaultExecModeNoNamedStatements(t *testing.T) {
 	d := New(openPool(t))
 	ctx := context.Background()
-	pn, ok := d.(momo.Pinner)
-	if !ok {
-		// TODO(momo-03 Task 7): remove this skip once Pin lands.
-		t.Skip("Pin lands in momo-03 Task 7")
-	}
-	p, err := pn.Pin(ctx)
+	p, err := d.(momo.Pinner).Pin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

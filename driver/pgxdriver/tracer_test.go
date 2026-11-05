@@ -56,14 +56,14 @@ func blockedQueryWait(t *testing.T, instrument bool) time.Duration {
 	pool := openInstrumentedPool(t, 1, instrument)
 	hook := &poolWaitHook{}
 	db := momo.New(New(pool), momo.WithHook(hook))
-	held, err := pool.Acquire(ctx) // holds the only connection
+	held, err := New(pool).(momo.Pinner).Pin(ctx) // holds the only connection
 	if err != nil {
 		t.Fatal(err)
 	}
 	released := false
 	t.Cleanup(func() {
 		if !released {
-			held.Release()
+			_ = held.Release()
 		}
 	})
 	done := make(chan error, 1)
@@ -72,7 +72,9 @@ func blockedQueryWait(t *testing.T, instrument bool) time.Duration {
 		done <- err
 	}()
 	time.Sleep(100 * time.Millisecond)
-	held.Release()
+	if err := held.Release(); err != nil {
+		t.Fatal(err)
+	}
 	released = true
 	if err := <-done; err != nil {
 		t.Fatal(err)
