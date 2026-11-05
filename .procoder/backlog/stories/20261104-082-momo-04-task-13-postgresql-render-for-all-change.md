@@ -7,6 +7,8 @@ Sprint: -
 
 ## Description
 
+Note (Task 9 review): use `migrate.OrderErr` (or `OrderWithViews`), not `Order`, and surface the cycle error it returns.
+
 Implements plan momo-04-migrations Task 13: PostgreSQL render for all change kinds (`.procoder/plans/momo-04-migrations.md:1401`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-12, S-37, S-38, S-39. Files: `migrate/postgres/render.go`. Contributes to S-37, S-38; those criteria are verified in the stories that define their named tests.
 
 ## Acceptance criteria

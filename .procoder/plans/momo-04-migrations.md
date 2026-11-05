@@ -1011,7 +1011,7 @@ Rules:
 - NULL to NOT NULL on an existing table without default: ErrStagedRequired (or staged emit).
 - NOT NULL to NULL, default change, identity change: `alter_column`, not destructive.
 - Foreign keys: `add_fk` and `drop_fk` compare `OnDelete` and `OnUpdate` as well as columns and referenced table. An action change is a drop_fk followed by add_fk.
-- Views, functions, triggers, policies: changes compare normalized `Query`, `Body`, `Definition` (NormalizeExpr) and structured fields; a changed view is `drop_view` + `create_view`, and every view that depends on it is also dropped and re-created (handled in order.go).
+- Views, functions, triggers, policies: changes compare normalized `Query`, `Body`, `Definition` (NormalizeExpr) and structured fields; a changed view is `drop_view` + `create_view`, and every view that depends on it is also dropped and re-created (handled in order.go by `OrderWithViews`, which takes the from and to view lists).
 - Destructive kinds: drop_table, drop_column, alter_column with a type change, drop_enum, drop_fk? (no: dropping an FK is not destructive), drop_policy? (no), drop_function (no), replace_function (no). Table-level RLS disable is not destructive.
 
 Steps:
@@ -1485,6 +1485,8 @@ Run with the integration URL. Expect FAIL before implementation with `undefined`
 - [ ] **Step 3: Run, expect PASS**, then commit `git commit -m "feat(migrate/postgres): inspect views, functions, triggers, policies, RLS and partitions"`.
 
 ## Task 13: PostgreSQL render for all change kinds
+
+Note (Task 9 review): call `migrate.OrderErr` (or `OrderWithViews`), never `Order`, and surface the returned cycle error; `Order` silently returns its input unchanged on error.
 
 Covers: S-12 (extensions, enums, constraints, expression and partial indexes, methods and opclasses, CONCURRENTLY outside transactions), S-37, S-38, S-39 (CREATE OR REPLACE FUNCTION, CREATE TRIGGER, partitions). Acceptance: TestPostgresObjects (full round trip with no diff), TestManagedFunctionsTriggersPartitions (CREATE OR REPLACE on body change), TestViewsAsModels (create, replace via drop and recreate in order), TestPostgresConcurrentIndexNoTx.
 
@@ -2011,6 +2013,8 @@ Run: `go test ./migrate/ -run TestHistoryFormatVersion -count=1`. Expect PASS.
 
 ## Task 16: Engine Apply, Plan, Status with lock, checksum and dirty gating
 
+Note (Task 9 review): call `migrate.OrderErr` (or `OrderWithViews`), never `Order`, and surface the returned cycle error; `Order` silently returns its input unchanged on error.
+
 Covers: S-11 (concurrency lock, checksum refusal, apply to version), S-10 (`plan`, `apply [--to N]`, `status` contracts). Acceptance: TestConcurrentApply (SQLite, goroutines), TestChecksumMismatch (apply refuses), TestApplyTo, TestStatusStates.
 
 Files:
@@ -2151,6 +2155,8 @@ Add `"strings"` import. Run: `go test ./migrate/ -run TestChecksumMismatchRefuse
 - [ ] **Step 4: Commit** `git commit -m "feat(migrate): apply and plan under lock with checksum and dirty gating"`
 
 ## Task 17: Diff writes files; no-change round trip (PostgreSQL)
+
+Note (Task 9 review): call `migrate.OrderErr` (or `OrderWithViews`), never `Order`, and surface the returned cycle error; `Order` silently returns its input unchanged on error.
 
 Covers: S-10 (`migrate diff` contract), S-11 (no-change round trip), S-27 (snapshot parent). Acceptance: TestMigrationRoundTrip (SQLite), TestNoChangeWritesNothing.
 
