@@ -28,7 +28,7 @@ func (Hstore) SQLType(d dialect.Name) string {
 // Value returns the hstore text form, e.g. "k"=>"v", "n"=>NULL, with keys
 // sorted, quotes and backslashes escaped and nil values as NULL. SQLite
 // stores the same text in a TEXT column; a dialect-aware JSON encoding for
-// SQLite is deferred (see the plan, momo-05 Task 22).
+// SQLite is not implemented yet.
 func (h Hstore) Value() (driver.Value, error) { return h.format(), nil }
 
 // format encodes h as hstore text.
