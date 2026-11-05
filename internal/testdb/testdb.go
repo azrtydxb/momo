@@ -77,24 +77,21 @@ func randomName() string {
 	return "t_" + hex.EncodeToString(b[:])
 }
 
-var (
-	schemas   sync.Map // testing.TB -> schema name
-	vectorOne sync.Once
-)
+var schemas sync.Map // testing.TB -> schema name
 
-// ensureVector creates the vector extension once per process.
-func ensureVector(ctx context.Context, conn *pgx.Conn) error {
-	var err error
-	vectorOne.Do(func() {
-		if _, err = conn.Exec(ctx, "SELECT pg_advisory_lock($1)", int64(vectorLockID)); err != nil {
-			return
-		}
-		_, err = conn.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS vector SCHEMA public")
-		_, uerr := conn.Exec(ctx, "SELECT pg_advisory_unlock($1)", int64(vectorLockID))
-		if err == nil {
+// ensureVector creates the vector extension. The statement is idempotent and
+// runs under an advisory lock so that concurrent test processes do not race
+// on the catalog; every caller gets its own result.
+func ensureVector(ctx context.Context, conn *pgx.Conn) (err error) {
+	if _, err = conn.Exec(ctx, "SELECT pg_advisory_lock($1)", int64(vectorLockID)); err != nil {
+		return err
+	}
+	defer func() {
+		if _, uerr := conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", int64(vectorLockID)); err == nil {
 			err = uerr
 		}
-	})
+	}()
+	_, err = conn.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS vector SCHEMA public")
 	return err
 }
 
@@ -224,16 +221,20 @@ func PostgresAppRoleURL(t testing.TB) string {
 		t.Fatalf("testdb: lock: %v", err)
 	}
 	defer func() { _, _ = conn.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", int64(roleLockID)) }()
-	create := fmt.Sprintf(
-		"DO $momo$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = %s) THEN CREATE ROLE %s LOGIN PASSWORD %s; END IF; END $momo$",
-		quoteLiteral(role), ident, quoteLiteral(password))
-	stmts := []string{
-		create,
+	var exists bool
+	if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT FROM pg_roles WHERE rolname = $1)", role).Scan(&exists); err != nil {
+		t.Fatalf("testdb: look up role %s: %v", role, err)
+	}
+	var stmts []string
+	if !exists {
+		stmts = append(stmts, fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD %s", ident, quoteLiteral(password)))
+	}
+	stmts = append(stmts,
 		fmt.Sprintf("GRANT CONNECT ON DATABASE %s TO %s", currentDB(ctx, t, conn), ident),
 		fmt.Sprintf("GRANT USAGE ON SCHEMA %s TO %s", schema, ident),
 		fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %s", schema, ident),
 		fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT USAGE, SELECT ON SEQUENCES TO %s", schema, ident),
-	}
+	)
 	for _, s := range stmts {
 		if _, err := conn.Exec(ctx, s); err != nil {
 			t.Fatalf("testdb: app role setup: %v", err)
