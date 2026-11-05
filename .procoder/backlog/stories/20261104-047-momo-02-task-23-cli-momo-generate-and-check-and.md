@@ -11,9 +11,14 @@ Implements plan momo-02-generator Task 23: CLI `momo generate` and `--check`, an
 
 ## Acceptance criteria
 
-- [ ] `TestGenerateCheck` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestGoGenerateIntegration` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestGenerateCheck` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestGoGenerateIntegration` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- cmd/momo/{main,cmd,generate}.go: Run dispatcher (subcommand table in commands(), so migrate can be added), `momo generate [-c] [--check] [patterns]`, exit codes 0/1/2, diagnostics as file:line:col on stderr, `stale: <path>` on stdout in check mode (drift and orphans, deduplicated). Emit errors never reach Commit.
+- Before implementation: `go test ./cmd/momo` FAIL (`undefined: Run`). After: ok, also under -race. Extra tests: TestGenerateCheckOrphan, TestGenerateDiagnostics (no output written), TestGenerateConfigErrors.
+- Mutation: `Check: false` in the Writer options made TestGenerateCheck fail ("--check wrote to disk").
+- Deviation: internal/testmodels/example (plan Task 22) does not exist yet, so the tests copy cmd/momo/testdata/example (Tenant, Document with companion, Comment) and generate first, instead of checking committed goldens. Swap the source once Task 22 lands.
+- go build, go vet, staticcheck, procoder check clean.
