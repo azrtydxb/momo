@@ -1,6 +1,6 @@
 # momo-02 Task 14: MomoMeta emission in the model package
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-02-generator
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
