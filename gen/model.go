@@ -232,6 +232,9 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 		SubPkg:  SubPkgName(obj.Name(), d.pkg.Name),
 		named:   named,
 	}
+	if mod := d.pkg.Module; mod != nil {
+		m.ModulePath, m.ModuleDir = mod.Path, mod.Dir
+	}
 	mt := tags.Tags{}
 	idx := 0
 	var fields []*Field
