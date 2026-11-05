@@ -133,14 +133,9 @@ func (fl *flattener) newField(v *types.Var, path []int, prefix string, ft tags.T
 	}
 	t := v.Type()
 	_, nullable := t.Underlying().(*types.Pointer)
-	access := Writable
-	switch {
-	case ft.ReadOnly:
-		access = ReadOnly
-	case ft.CreateOnly:
-		access = CreateOnly
-	case ft.Immutable:
-		access = Immutable
+	access, adiags := AccessFor(ft, v.Name(), nullable)
+	for _, d := range adiags {
+		fl.diag(v.Pos(), d.Msg)
 	}
 	return &Field{
 		GoName:   v.Name(),
