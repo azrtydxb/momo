@@ -14,6 +14,7 @@ Implements plan momo-05-writes-queries Task 35: Shared suite groups, RunAll and 
 - [ ] `TestIntegrationQueries` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestSuiteRunAll` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `procoder check` gate is clean and the task's commit is made
+- [ ] momo-03 Task 9 steps 2b, 2c and 5b (deferred from story 064): `suite.RunAll` runs against the `pgxdriver.FromSQLDB` adapter, and the S-88 acceptance test passes
 
 ## Evidence
 
