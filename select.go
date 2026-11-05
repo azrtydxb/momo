@@ -774,7 +774,11 @@ func (r rawSubquery) render(b *Builder) { b.appendRaw(r.sql, r.args) }
 //
 // Safety contract: as for SQL, sql is inserted verbatim and must be a
 // trusted constant; '?' binds the next argument and "??" is a literal '?'.
-// Momo cannot check which tables the fragment references.
+// Momo cannot check which tables the fragment references. Only '?'
+// placeholders bind; never write native '$1' style placeholders, which would
+// collide with momo's own numbering. For a scalar subquery as a typed
+// comparison operand use TypedSQL[T]("?", sub): the subquery renders its own
+// parentheses.
 func RawSubquery(sql string, args ...any) Subquery {
 	return rawSubquery{sql, slices.Clone(args)}
 }

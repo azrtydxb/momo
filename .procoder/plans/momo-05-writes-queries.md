@@ -488,7 +488,7 @@ Files:
 
 - Create: `/Volumes/DATA/Development/momo/integration_subquery_test.go`
 
-Interfaces (existing): `Column[T].InQuery(q Subquery)`, `SelectQuery.With(name, q, cols...)`, `WithRecursive`, `Union(all, qs...)`, `FromSubquery(q, alias)`.
+Interfaces (existing): `Column[T].InQuery(q Subquery)`, `SelectQuery.With(name, q, cols...)`, `SelectQuery.WithRecursive(name, q, cols...)`, `Union(all, qs...)`, `FromSubquery(q, alias)`.
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -516,9 +516,14 @@ func TestSubqueriesCTEsRecursive(t *testing.T) {
         if err != nil || n != 2 {
             t.Fatalf("IN subquery count = %d, %v; want 2", n, err)
         }
-        seq := momo.Subquery(`SELECT 1 AS n UNION ALL SELECT n + 1 FROM seq WHERE n < 5`)
+        seq := momo.RawSubquery(`SELECT 1 AS n UNION ALL SELECT n + 1 FROM seq WHERE n < 5`)
         var ints []int64 // single-column projection via momo.Scalars
-        ints, err = momo.Scalars[int64](ctx, db, momo.WithRecursive("seq", seq, "n")(`SELECT n FROM seq ORDER BY n`))
+        seqN := momo.ColumnOf[int64]("seq", "n")
+        rec, err := momo.Select[Document](db).WithRecursive("seq", seq, "n").From(momo.CTE("seq")).Columns(seqN).OrderBy(seqN.Asc()).SQL()
+        if err != nil {
+            t.Fatal(err)
+        }
+        ints, err = momo.Scalars[int64](ctx, db, rec.SQL) // no bound args in this query
         if err != nil {
             t.Fatal(err)
         }
@@ -529,9 +534,9 @@ func TestSubqueriesCTEsRecursive(t *testing.T) {
 }
 ```
 
-`momo.Subquery(sql)` is a raw `Subquery` whose `AppendSQL` writes the fragment through `appendRaw`; `momo.WithRecursive(name, q, cols...)` returns a function that prefixes `WITH RECURSIVE name(cols) AS (...)` to the given `SELECT`; `momo.Scalars[T]` (introduced in Task 2) is the scan used by the assertion above.
+`momo.RawSubquery(sql, args...)` is a raw `Subquery` (the name avoids clashing with the `Subquery` interface type) whose fragment is written through `appendRaw`; the `SelectQuery.WithRecursive(name, q, cols...)` method prefixes `WITH RECURSIVE name(cols) AS (...)` to the query; `momo.Scalars[T]` (introduced in Task 2) is the scan used by the assertion above.
 
-- [ ] **Step 2: Run and expect FAIL.** `go test -run TestSubqueriesCTEsRecursive .` → `undefined: momo.Subquery`.
+- [ ] **Step 2: Run and expect FAIL.** `go test -run TestSubqueriesCTEsRecursive .` → `undefined: momo.RawSubquery`.
 
 - [ ] **Step 3: Implement** `Subquery` (a raw `Subquery` whose `AppendSQL` writes the fragment through `appendRaw`), `WithRecursive` as a curried helper, and `Scalars[T]`. Recursive CTE rendering: `WITH RECURSIVE seq(n) AS (...)` on both dialects (`dialect.RecursiveCTE` is true for both).
 
@@ -2883,7 +2888,7 @@ func TestMergeAndBulkUpdate(t *testing.T) {
   v := db.Driver().(momo.ServerVersioner)
   ver, err := v.ServerVersion(ctx)
   // Without RETURNING:
-  Merge[Document](db, momo.Subquery("SELECT 3 AS id, 1 AS tenant_id, 'merged' AS title")).On(DocID.EqExpr(momo.TypedSQL[int64]("src.id"))).WhenNotMatchedInsert([]momo.ColumnRef{DocID, DocTenantID, DocTitle}, momo.TypedSQL[int64]("src.id"), momo.TypedSQL[int64]("src.tenant_id"), momo.TypedSQL[string]("src.title")).Exec(ctx)
+  Merge[Document](db, momo.RawSubquery("SELECT 3 AS id, 1 AS tenant_id, 'merged' AS title")).On(DocID.EqExpr(momo.TypedSQL[int64]("src.id"))).WhenNotMatchedInsert([]momo.ColumnRef{DocID, DocTenantID, DocTitle}, momo.TypedSQL[int64]("src.id"), momo.TypedSQL[int64]("src.tenant_id"), momo.TypedSQL[string]("src.title")).Exec(ctx)
   ```
 - RETURNING path: when `ver >= 170000` the same MERGE with `.Returning(DocID).Rows(ctx)` returns one row whose ID is 4 after inserting `'merged-2'`; when `ver < 170000` it returns `ErrUnsupported`. CI runs `pgvector/pgvector:pg17`, so the RETURNING branch is the path it exercises; older majors in the CI matrix exercise the `ErrUnsupported` branch.
 - Truncate the documents table, then `Count` is 0:
