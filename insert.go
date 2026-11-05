@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -53,6 +54,9 @@ type InsertQuery[T any] struct {
 	meta   *Meta[T]
 	i      insertCore
 	models []T
+	// clock, when set, is the statement time shared by every chunk of a
+	// chunked bulk insert; otherwise the DB clock is read per statement.
+	clock time.Time
 }
 
 // Insert starts an INSERT for model T. Use Model or Models to write whole
@@ -210,21 +214,15 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 	}
 	var cols []int
 	var assigns []Assignment
-	now := q.q.conn().now() // read once per statement
+	now := q.clock // shared by the chunks of a bulk insert
+	if now.IsZero() {
+		now = q.q.conn().now() // read once per statement
+	}
 	if modelMode {
-		omit := map[int]struct{}{}
-		for _, n := range q.i.omit {
-			ci := q.column(n)
-			if ci < 0 {
-				b.SetErr(q.verr(n, "Omit: column %q is not mapped by %s", n, q.meta.Table))
-				return
-			}
-			omit[ci] = struct{}{}
-		}
-		for i := range q.meta.Columns {
-			if _, skip := omit[i]; !skip && (q.writable(i) || q.insertsIdentity(i)) {
-				cols = append(cols, i)
-			}
+		var err error
+		if cols, err = q.modelCols(); err != nil {
+			b.SetErr(err)
+			return
 		}
 	} else {
 		seen := map[int]struct{}{}
@@ -329,6 +327,25 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 	renderReturning(b, q.meta, q.i.returning, func(col string) error {
 		return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
 	})
+}
+
+// modelCols returns the columns a model insert writes, in metadata order.
+func (q InsertQuery[T]) modelCols() ([]int, error) {
+	omit := map[int]struct{}{}
+	for _, n := range q.i.omit {
+		ci := q.column(n)
+		if ci < 0 {
+			return nil, q.verr(n, "Omit: column %q is not mapped by %s", n, q.meta.Table)
+		}
+		omit[ci] = struct{}{}
+	}
+	var cols []int
+	for i := range q.meta.Columns {
+		if _, skip := omit[i]; !skip && (q.writable(i) || q.insertsIdentity(i)) {
+			cols = append(cols, i)
+		}
+	}
+	return cols, nil
 }
 
 // timestampAssigns returns the automatic created-at and updated-at writes of
@@ -438,7 +455,44 @@ func (q InsertQuery[T]) renderConflict(b *Builder) {
 }
 
 // Exec runs the statement and reports the rows it inserted.
+//
+// A Models call whose rows would exceed the dialect's bind-parameter limit
+// is split into several multi-row statements, run in order, and the rows
+// affected are summed. The chunks are atomic: on a DB they run in one
+// transaction, on a Tx inside a savepoint (when the dialect has them), so a
+// failing chunk undoes the earlier ones. A DB pinned to one connection by
+// OnConn cannot begin a transaction, so chunks there are not atomic. All
+// chunks share one clock read, so every row gets the same automatic
+// timestamp. A single row with more bound columns than the limit fails with
+// ErrLimitExceeded.
 func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
+	chunks, err := q.plan()
+	if err != nil {
+		return Result{}, err
+	}
+	if len(chunks) == 1 {
+		return chunks[0].execOne(ctx)
+	}
+	sc, err := q.beginScope(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	var total int64
+	for _, c := range chunks {
+		c.q = sc.q
+		r, err := c.execOne(ctx)
+		if err != nil {
+			return Result{}, sc.finish(ctx, err)
+		}
+		total += r.RowsAffected
+	}
+	if err := sc.finish(ctx, nil); err != nil {
+		return Result{}, err
+	}
+	return Result{RowsAffected: total}, nil
+}
+
+func (q InsertQuery[T]) execOne(ctx context.Context) (Result, error) {
 	c, err := q.SQL()
 	if err != nil {
 		return Result{}, err
@@ -451,14 +505,220 @@ func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
 }
 
 // Rows runs the statement and returns its RETURNING rows. It fails with
-// ErrValidation when no RETURNING list was set.
+// ErrValidation when no RETURNING list was set. A chunked bulk insert (see
+// Exec) returns the rows of all chunks in insertion order; closing the
+// cursor early still runs the remaining chunks so the insert stays whole.
 func (q InsertQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if !q.i.returning.active() {
 		return nil, q.verr("", "Rows needs a Returning list")
 	}
+	chunks, err := q.plan()
+	if err != nil {
+		return nil, err
+	}
+	if len(chunks) == 1 {
+		return chunks[0].rowsOne(ctx)
+	}
+	sc, err := q.beginScope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	idx, _ := returningIndexes(q.meta, q.i.returning)
+	for i := range chunks {
+		chunks[i].q = sc.q
+	}
+	return &ModelRows[T]{rows: &chunkRows[T]{ctx: ctx, chunks: chunks, sc: sc}, meta: q.meta, idx: idx}, nil
+}
+
+func (q InsertQuery[T]) rowsOne(ctx context.Context) (*ModelRows[T], error) {
 	c, err := q.SQL()
 	if err != nil {
 		return nil, err
 	}
 	return runReturning(ctx, q.q, "insert", q.meta, q.i.returning, c)
+}
+
+// plan resolves the query once and splits a bulk model insert into chunks
+// that each stay under the dialect's bind-parameter limit. It returns the
+// query itself when no split is needed (or when rendering will report the
+// error), so validation errors keep their single-statement form.
+func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
+	one := []InsertQuery[T]{q}
+	if q.q == nil || q.i.err != nil || q.meta.Table == "" || len(q.models) < 2 {
+		return one, nil
+	}
+	d := q.q.Dialect()
+	if d.MaxParams <= 0 {
+		return one, nil
+	}
+	r, err := q.resolveUpsert()
+	if err != nil {
+		return nil, err
+	}
+	r.i.upsert = false // resolved: chunks keep target, set and identity decisions
+	cols, err := r.modelCols()
+	if err != nil || len(cols) == 0 {
+		return one, nil
+	}
+	r.clock = q.q.conn().now()
+	probe := r
+	probe.models = r.models[:1]
+	c1, err := compile(d, probe.render)
+	if err != nil {
+		return one, nil
+	}
+	fixed := len(c1.Args) - len(cols) // parameters outside the VALUES rows
+	per := (d.MaxParams - fixed) / len(cols)
+	if per < 1 {
+		return nil, &Error{Kind: ErrLimitExceeded, Op: "insert", Table: q.meta.Table,
+			Err: fmt.Errorf("one row binds %d parameters, over the %s limit of %d", len(cols)+fixed, d.Name, d.MaxParams)}
+	}
+	if len(r.models) <= per {
+		return []InsertQuery[T]{r}, nil
+	}
+	var out []InsertQuery[T]
+	for lo := 0; lo < len(r.models); lo += per {
+		c := r
+		c.models = r.models[lo:min(lo+per, len(r.models))]
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// chunkScope is the atomic scope a chunked insert runs in.
+type chunkScope struct {
+	q      Querier
+	finish func(ctx context.Context, err error) error
+}
+
+// beginScope opens a transaction on a DB, a savepoint on a Tx, or nothing on
+// a pinned connection, and returns the Querier the chunks run on.
+func (q InsertQuery[T]) beginScope(ctx context.Context) (chunkScope, error) {
+	noop := chunkScope{q: q.q, finish: func(_ context.Context, err error) error { return err }}
+	switch h := q.q.(type) {
+	case *DB:
+		if h.pinned {
+			return noop, nil
+		}
+		tx, err := h.Begin(ctx, TxOptions{})
+		if err != nil {
+			return chunkScope{}, err
+		}
+		return chunkScope{q: tx, finish: func(ctx context.Context, err error) error {
+			if err != nil {
+				if rb := tx.Rollback(context.WithoutCancel(ctx)); rb != nil && !errors.Is(rb, ErrTxDone) {
+					return errors.Join(err, rb)
+				}
+				return err
+			}
+			return tx.Commit(ctx)
+		}}, nil
+	case *Tx:
+		if !h.ex.d.Savepoints {
+			return noop, nil
+		}
+		name := "momo_chunk_" + strconv.Itoa(h.depth+1)
+		if err := h.Savepoint(ctx, name); err != nil {
+			return chunkScope{}, err
+		}
+		return chunkScope{q: h, finish: func(ctx context.Context, err error) error {
+			if err != nil {
+				ctx = context.WithoutCancel(ctx)
+				if rb := h.RollbackTo(ctx, name); rb != nil {
+					return errors.Join(err, rb)
+				}
+			}
+			if rel := h.Release(ctx, name); rel != nil && err == nil {
+				return rel
+			}
+			return err
+		}}, nil
+	}
+	return noop, nil
+}
+
+// chunkRows is the Rows of a chunked insert with RETURNING: it queries the
+// chunks one after another and finishes the atomic scope at the end.
+type chunkRows[T any] struct {
+	ctx    context.Context
+	chunks []InsertQuery[T]
+	sc     chunkScope
+	cur    Rows
+	next   int
+	err    error
+	done   bool
+}
+
+func (r *chunkRows[T]) finish(err error) {
+	if r.done {
+		return
+	}
+	r.done = true
+	if err = r.sc.finish(r.ctx, err); err != nil && r.err == nil {
+		r.err = err
+	}
+}
+
+func (r *chunkRows[T]) Next() bool {
+	for !r.done {
+		if r.cur == nil {
+			if r.next >= len(r.chunks) {
+				r.finish(nil)
+				return false
+			}
+			c := r.chunks[r.next]
+			r.next++
+			cmp, err := c.SQL()
+			if err == nil {
+				r.cur, err = c.q.conn().query(r.ctx, "insert", c.meta.Table, "", cmp)
+			}
+			if err != nil {
+				r.err = err
+				r.finish(err)
+				return false
+			}
+		}
+		if r.cur.Next() {
+			return true
+		}
+		err := r.cur.Err()
+		_ = r.cur.Close()
+		r.cur = nil
+		if err != nil {
+			r.err = err
+			r.finish(err)
+			return false
+		}
+	}
+	return false
+}
+
+func (r *chunkRows[T]) Scan(dest ...any) error {
+	if r.cur == nil {
+		return errors.New("momo: Scan without a current row")
+	}
+	return r.cur.Scan(dest...)
+}
+
+func (r *chunkRows[T]) Err() error { return r.err }
+
+// Close runs the chunks that were not read yet, so the insert is whole, and
+// ends the atomic scope.
+func (r *chunkRows[T]) Close() error {
+	if r.done {
+		return r.err
+	}
+	if r.cur != nil {
+		if err := r.cur.Close(); err != nil && r.err == nil {
+			r.err = err
+		}
+		r.cur = nil
+	}
+	for r.err == nil && r.next < len(r.chunks) {
+		c := r.chunks[r.next]
+		r.next++
+		_, r.err = c.execOne(r.ctx)
+	}
+	r.finish(r.err)
+	return r.err
 }
