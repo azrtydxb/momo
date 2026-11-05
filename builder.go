@@ -157,38 +157,6 @@ func (b *Builder) unsupported(feature string) {
 	b.SetErr(&Error{Kind: ErrUnsupported, Op: "build", Err: fmt.Errorf("%s is not supported by %s", feature, b.d.Name)})
 }
 
-// appendRaw renders a raw fragment, replacing each '?' with a bind
-// placeholder for the corresponding argument. "??" renders a literal '?'
-// (for PostgreSQL's jsonb ? operators). Argument count must match.
-func (b *Builder) appendRaw(sql string, args []any) {
-	n := 0
-	for i := 0; i < len(sql); i++ {
-		c := sql[i]
-		if c != '?' {
-			b.buf = append(b.buf, c)
-			continue
-		}
-		if i+1 < len(sql) && sql[i+1] == '?' {
-			b.buf = append(b.buf, '?')
-			i++
-			continue
-		}
-		if n >= len(args) {
-			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("raw SQL %q has more placeholders than the %d arguments given", sql, len(args))})
-			return
-		}
-		if e, ok := args[n].(Expr); ok {
-			e.AppendSQL(b)
-		} else {
-			b.Arg(args[n])
-		}
-		n++
-	}
-	if n != len(args) {
-		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("raw SQL %q has %d placeholders but %d arguments were given", sql, n, len(args))})
-	}
-}
-
 // Compiled is a rendered statement ready for inspection or execution.
 type Compiled struct {
 	SQL  string

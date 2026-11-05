@@ -4,6 +4,7 @@ package suite
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -175,5 +176,51 @@ func ReturningRendersAndScans(t *testing.T, db *momo.DB, caps Caps) {
 	}
 	if doc.ID == 0 || doc.Title != "r" {
 		t.Fatalf("returned %+v", doc)
+	}
+}
+
+// RawArgs asserts raw SQL arguments end to end: a named argument, an expanded
+// IN list, an identifier argument, a literal ? inside a string literal and a
+// comment (never a placeholder), and the build error for an empty raw IN list.
+func RawArgs(t *testing.T, db *momo.DB, caps Caps) {
+	CreateDocuments(t, db, caps)
+	ctx := context.Background()
+	seedDocs(t, db, [2]any{1, "a"}, [2]any{1, "b"}, [2]any{1, "c"})
+
+	n, err := momo.Exec(ctx, db,
+		"UPDATE documents SET secret = @s WHERE title IN (?)",
+		momo.Named("s", "x"), momo.In([]string{"a", "b"}))
+	if err != nil || n != 2 {
+		t.Fatalf("named + In update n=%d err=%v", n, err)
+	}
+
+	rows, err := momo.Select[Document](db).
+		Where(momo.TypedSQL[bool](`? = ?`, momo.Ident("title"), "a")).
+		All(ctx)
+	if err != nil || len(rows) != 1 || rows[0].Title != "a" {
+		t.Fatalf("Ident compares the column, not a value: rows=%d err=%v", len(rows), err)
+	}
+
+	// A ? inside a string literal and a comment is data, not a placeholder.
+	got, err := momo.Scalars[string](ctx, db,
+		"SELECT 'what?' /* why ? */ FROM documents WHERE title = ? -- ?\n", "c")
+	if err != nil || len(got) != 1 || got[0] != "what?" {
+		t.Fatalf("literal ? = %v, %v", got, err)
+	}
+
+	secrets, err := momo.Scalars[string](ctx, db,
+		"SELECT secret FROM documents WHERE title NOT IN (?) ORDER BY title", momo.In([]string{"a", "b"}))
+	if err != nil || len(secrets) != 1 || secrets[0] != "" {
+		t.Fatalf("NOT IN expansion = %v, %v", secrets, err)
+	}
+
+	_, err = momo.Exec(ctx, db, "DELETE FROM documents WHERE title NOT IN (?)", momo.In([]string{}))
+	var me *momo.Error
+	if !errors.As(err, &me) || me.Kind != momo.ErrValidation {
+		t.Fatalf("empty raw IN err = %v, want a validation build error", err)
+	}
+	cnt, err := momo.Select[Document](db).Count(ctx)
+	if err != nil || cnt != 3 {
+		t.Fatalf("empty IN must not have executed: count=%d err=%v", cnt, err)
 	}
 }
