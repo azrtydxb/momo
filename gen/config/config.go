@@ -57,6 +57,12 @@ func Load(path string) (*File, error) {
 		}
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := dec.Decode(new(yaml.Node)); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%s: multiple YAML documents are not supported", path)
+	}
+	if f.Version == 0 {
+		return nil, fmt.Errorf("%s: version is required (want 1)", path)
+	}
 	if f.Version != 1 {
 		return nil, fmt.Errorf("%s: unsupported momo.yaml version %d", path, f.Version)
 	}

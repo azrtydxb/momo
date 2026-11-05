@@ -121,6 +121,9 @@ func TestLoadHostile(t *testing.T) {
 	}{
 		{"empty file", "", "empty"},
 		{"unknown top-level key", "version: 1\nbogus: 1\n", "field bogus not found"},
+		{"second document", "version: 1\n---\nbogus: x\n", "multiple YAML documents are not supported"},
+		{"missing version", "naming: gorm\n", "version is required (want 1)"},
+		{"comment-only file", "# nothing here\n", "empty"},
 		{"version 2", "version: 2\n", "unsupported momo.yaml version 2"},
 		{"unknown preset", "version: 1\nnaming: rails\n", "rails"},
 		{"unknown dialect", "version: 1\ndialects: [oracle9]\n", "oracle9"},
@@ -154,5 +157,45 @@ func TestLoadHostile(t *testing.T) {
 	}
 	if _, ok := cfg.Naming.(naming.Momo); !ok {
 		t.Fatalf("default naming = %T, want naming.Momo", cfg.Naming)
+	}
+}
+
+func TestNamingFromYAML(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "momo.yaml")
+	if err := os.WriteFile(p, []byte("version: 1\nnaming: gorm\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := filepath.Abs("testdata/overrides")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ToConfig(f, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, diags, err := gen.Load([]string{"./"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 0 || len(g.Models) != 1 {
+		t.Fatalf("diags = %v, models = %d", diags, len(g.Models))
+	}
+	m := g.Models[0]
+	if m.Table != "items" {
+		t.Fatalf("table = %q, want the tag override items", m.Table)
+	}
+	cols := map[string]bool{}
+	for _, fl := range m.Fields {
+		cols[fl.Column] = true
+	}
+	if !cols["custom_name"] || cols["name"] {
+		t.Fatalf("column tag override lost; have %v", cols)
+	}
+	if want := (naming.GORM{}).ColumnName("ItemCode"); !cols[want] {
+		t.Fatalf("gorm column %s missing; have %v", want, cols)
 	}
 }
