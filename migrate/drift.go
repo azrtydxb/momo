@@ -5,12 +5,14 @@ package migrate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
 	"slices"
 	"strings"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -379,8 +381,13 @@ func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
 // migration (the empty schema when none is applied, so every live object is
 // unmanaged) and reports what differs. See DriftReport for the three lists.
 //
-// It is read-only: it takes no lock, creates nothing (a database without a
-// history table has an empty history) and executes no DDL. Because PostgreSQL
+// It is read-only: it takes no lock, leaves nothing behind (a database without
+// a history table has an empty history) and changes no application object. A
+// dialect that implements Canonicalizer is asked to rewrite the snapshot's
+// table text (check expressions, column defaults, index predicates) to the form
+// the database reports, which on PostgreSQL creates a scratch schema in a
+// transaction that is rolled back; a role that cannot create one gets the
+// declared text compared as it is. Because PostgreSQL
 // rewrites the text of views and of policy and trigger expressions, drift
 // compares those objects by identity and definition apart from that text; a
 // changed view query, trigger condition or policy expression (a USING or WITH
@@ -421,10 +428,47 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 			return nil, fmt.Errorf("%w: applied version %s has no snapshot at or before it; run momo migrate diff", ErrNoSnapshot, latest)
 		}
 		from = applyExclude(snap.Schema, e.opts.config.Exclude)
+		if from, err = e.canonicalSnapshot(ctx, c, from); err != nil {
+			return nil, err
+		}
 	}
 	rep := compare(from, live, false, invalid)
 	rep.Unverified = unverifiedBodies(from, live)
 	return rep, nil
+}
+
+// canonicalSnapshot returns a copy of the snapshot schema s with the declared
+// table text (check expressions, defaults, index predicates) rewritten to the
+// form the database reports, for a dialect that implements Canonicalizer. The
+// snapshot holds the text as the model declared it, while inspection reports
+// what PostgreSQL stored, so comparing them raw reports a phantom difference
+// for a migration that was just applied. A role without the privilege the
+// rewrite needs (ErrCanonicalizePrivilege) gets s unchanged: drift detection
+// still works for it, but may then report such text as changed.
+func (e *Engine) canonicalSnapshot(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (*schema.Schema, error) {
+	cz, ok := e.opts.dialect.(Canonicalizer)
+	if !ok {
+		return s, nil
+	}
+	want, err := cloneSchema(s)
+	if err != nil {
+		return nil, err
+	}
+	// Only table text is rewritten: views, functions, triggers and policies
+	// stay as declared, so a view that selects from an excluded table cannot
+	// make the scratch round trip fail and drift keeps its documented rules for
+	// them.
+	views, funcs, triggers, policies := want.Views, want.Functions, want.Triggers, want.Policies
+	want.Views, want.Functions, want.Triggers, want.Policies = nil, nil, nil, nil
+	err = cz.Canonicalize(ctx, c, want)
+	want.Views, want.Functions, want.Triggers, want.Policies = views, funcs, triggers, policies
+	if err != nil {
+		if errors.Is(err, ErrCanonicalizePrivilege) {
+			return s, nil
+		}
+		return nil, fmt.Errorf("migrate: canonicalize snapshot: %w", err)
+	}
+	return want, nil
 }
 
 // unverifiedBodies lists the views, triggers and policies that exist in both

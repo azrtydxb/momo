@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -34,12 +35,19 @@ import (
 // declared text resolve as they do in the live database. A schema without
 // views, functions, triggers or policies is left alone and no statement runs.
 //
-// Table indexes, foreign keys and the schema qualifiers of the declared objects
-// are not reproduced in the scratch schema, because none of them affects the
-// text read back; two declared objects of one kind and name in different
+// The same round trip rewrites the text of tables: check expressions, column
+// defaults and generation expressions (pg_get_constraintdef and pg_get_expr add
+// parentheses and casts, turn IN lists into = ANY (ARRAY[...]) and BETWEEN into
+// two comparisons), and the predicate and expression parts of indexes. Without
+// it a freshly applied migration that declares CHECK (length(title) > 0) reads
+// back as ((length((title)::text) > 0)) and drifts at once.
+//
+// Foreign keys, indexes without text and the schema qualifiers of the declared
+// objects are not reproduced in the scratch schema, because none of them
+// affects the text read back; two declared objects of one kind and name in different
 // namespaces are therefore refused.
 func (d Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (err error) {
-	if len(s.Views) == 0 && len(s.Functions) == 0 && len(s.Triggers) == 0 && len(s.Policies) == 0 {
+	if len(s.Views) == 0 && len(s.Functions) == 0 && len(s.Triggers) == 0 && len(s.Policies) == 0 && !hasTableText(s) {
 		return nil
 	}
 	if err := requireCreateOnDatabase(ctx, c); err != nil {
@@ -82,11 +90,48 @@ func (d Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.
 			return fmt.Errorf("postgres canonicalize: create declared objects in scratch schema: %w", err)
 		}
 	}
-	read := &schema.Schema{Dialect: dialect.Postgres}
-	if err := d.inspectObjects(ctx, c, read, []string{scratch}); err != nil {
+	// The scratch schema leads the search_path, so it is the current schema and
+	// its tables are reported unqualified.
+	read, err := d.Inspect(ctx, c, migrate.InspectOptions{Schemas: []string{scratch}})
+	if err != nil {
 		return fmt.Errorf("postgres canonicalize: read back: %w", err)
 	}
 	return rewriteText(s, read)
+}
+
+// hasTableText reports whether s declares table text PostgreSQL rewrites: a
+// check expression, a column default or generation expression, or an index
+// predicate or expression part.
+func hasTableText(s *schema.Schema) bool {
+	for _, t := range s.Tables {
+		if len(t.Checks) > 0 {
+			return true
+		}
+		for _, c := range t.Columns {
+			if c.Default != "" || c.Generated != "" {
+				return true
+			}
+		}
+		for _, ix := range t.Indexes {
+			if indexHasText(ix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// indexHasText reports whether ix has a predicate or an expression part.
+func indexHasText(ix schema.Index) bool {
+	if ix.Where != "" {
+		return true
+	}
+	for _, p := range ix.Parts {
+		if p.Expr != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // requireCreateOnDatabase fails with an error wrapping
@@ -130,7 +175,11 @@ func scratchModel(s *schema.Schema) (*schema.Schema, error) {
 	}
 	for i := range m.Tables {
 		t := &m.Tables[i]
-		t.Schema, t.Indexes, t.ForeignKeys = "", nil, nil
+		t.Schema, t.ForeignKeys = "", nil
+		t.Indexes = slices.DeleteFunc(t.Indexes, func(ix schema.Index) bool { return !indexHasText(ix) })
+		for j := range t.Indexes {
+			t.Indexes[j].Concurrently = false
+		}
 		if err := dup("table", t.Name); err != nil {
 			return nil, err
 		}
@@ -184,6 +233,9 @@ func scratchStatements(d Dialect, m *schema.Schema) ([]migrate.Statement, error)
 // rewriteText replaces, in s, the text of each view, function, trigger and
 // policy with that of the object of the same identity in read.
 func rewriteText(s, read *schema.Schema) error {
+	if err := rewriteTables(s, read); err != nil {
+		return err
+	}
 	views := map[string]schema.View{}
 	for _, v := range read.Views {
 		views[v.Name] = v
@@ -229,6 +281,84 @@ func rewriteText(s, read *schema.Schema) error {
 		s.Policies[i].Using, s.Policies[i].Check = p.Using, p.Check
 	}
 	return nil
+}
+
+// rewriteTables replaces, in s, the check expressions, column defaults,
+// generation expressions and index predicates and expressions with those of the
+// table of the same name in read.
+func rewriteTables(s, read *schema.Schema) error {
+	tables := map[string]*schema.Table{}
+	for i := range read.Tables {
+		tables[read.Tables[i].Name] = &read.Tables[i]
+	}
+	for i := range s.Tables {
+		t := &s.Tables[i]
+		if !hasTableText(&schema.Schema{Tables: []schema.Table{*t}}) {
+			continue
+		}
+		r, ok := tables[t.Name]
+		if !ok {
+			return fmt.Errorf("postgres canonicalize: table %q was not created in the scratch schema", t.Name)
+		}
+		for j := range t.Columns {
+			c := &t.Columns[j]
+			for _, rc := range r.Columns {
+				if rc.Name != c.Name {
+					continue
+				}
+				if c.Default != "" {
+					c.Default = rc.Default
+				}
+				if c.Generated != "" {
+					c.Generated = rc.Generated
+				}
+			}
+		}
+		for j := range t.Checks {
+			rc, ok := findCheck(r.Checks, t.Checks[j].Name)
+			if !ok {
+				return fmt.Errorf("postgres canonicalize: check %q on %q was not created in the scratch schema", t.Checks[j].Name, t.Name)
+			}
+			t.Checks[j].Expr = rc.Expr
+		}
+		for j := range t.Indexes {
+			ix := &t.Indexes[j]
+			if !indexHasText(*ix) {
+				continue
+			}
+			ri, ok := findIndex(r.Indexes, ix.Name)
+			if !ok || len(ri.Parts) != len(ix.Parts) {
+				return fmt.Errorf("postgres canonicalize: index %q on %q was not created in the scratch schema", ix.Name, t.Name)
+			}
+			if ix.Where != "" {
+				ix.Where = ri.Where
+			}
+			for k := range ix.Parts {
+				if ix.Parts[k].Expr != "" {
+					ix.Parts[k].Expr = ri.Parts[k].Expr
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func findCheck(cs []schema.Check, name string) (schema.Check, bool) {
+	for _, c := range cs {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return schema.Check{}, false
+}
+
+func findIndex(ixs []schema.Index, name string) (schema.Index, bool) {
+	for _, ix := range ixs {
+		if ix.Name == name {
+			return ix, true
+		}
+	}
+	return schema.Index{}, false
 }
 
 // matchFunction picks, among the functions of one name read back, the one whose
