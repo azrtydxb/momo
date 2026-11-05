@@ -1,6 +1,6 @@
 # momo-05 Task 13: Bulk insert chunking under the bind-parameter limit — S-5
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
