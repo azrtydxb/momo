@@ -9,9 +9,6 @@ import (
 	"slices"
 )
 
-// Result reports the outcome of a write statement.
-type Result struct{ RowsAffected int64 }
-
 // UpdateQuery builds an UPDATE of one model table. It is a value: every
 // method returns a copy, so a base query can be reused safely.
 //
@@ -69,14 +66,9 @@ func (u UpdateQuery[T]) fail(kind error, err error) error {
 	return &Error{Kind: kind, Op: "update", Table: u.meta.Table, Err: err}
 }
 
-// updAssignable reports whether an UPDATE may write a column with flags f.
-func updAssignable(f uint16) bool {
-	return f&(FlagReadOnly|FlagIdentity|FlagCreateOnly|FlagImmutable) == 0
-}
-
 // updModelWritable reports whether Model writes the column from the struct.
 func updModelWritable(f uint16) bool {
-	return updAssignable(f) && f&(FlagPK|FlagVersion|FlagSoftDelete|FlagCreatedAt|FlagUpdatedAt) == 0
+	return columnAssignable(writeUpdate, f) && f&(FlagPK|FlagVersion|FlagSoftDelete|FlagCreatedAt|FlagUpdatedAt) == 0
 }
 
 // updPKEq is the predicate "qualifier.col = ?" with a bound value.
@@ -136,7 +128,7 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	}
 	for _, a := range u.assigns {
 		for _, c := range u.meta.Columns {
-			if c.Name == a.col && !updAssignable(c.Flags) {
+			if c.Name == a.col && !columnAssignable(writeUpdate, c.Flags) {
 				return nil, nil, u.fail(ErrValidation, fmt.Errorf("column %q cannot be written by UPDATE", c.Name))
 			}
 		}
