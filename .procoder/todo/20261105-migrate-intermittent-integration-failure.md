@@ -18,7 +18,7 @@ not retried away.
 
 - [x] The failing test is identified from a captured run (loop the package with -count and -v into a file until it reproduces)
 - [x] The root cause is named in this task (for example a lock left held by a cancelled test, or a shared-name collision between tests)
-- [x] The fix makes `go test -tags integration -race -count=20 ./migrate/` pass with no failures
+- [ ] The fix makes `go test -tags integration -race -count=20 ./migrate/` pass with no failures
 
 ## Evidence
 
@@ -72,5 +72,20 @@ transaction in the same database, so a long transaction from an unrelated
 process sharing the database can still make a CIC test hit lock_timeout. Only a
 dedicated database per test process would remove that.
 
-Proof: 12 consecutive `-race -count=1 ./migrate/...` runs clean after the fix;
-`-count=5 ./migrate/postgres` clean; `-count=20 ./migrate/` clean.
+Proof so far: 12 consecutive `-race -count=1 ./migrate/...` runs clean after
+the fix; `-count=5 ./migrate/postgres` clean.
+
+Still open: two `-count=20 ./migrate/` runs failed (one hit the 10m default
+timeout, one finished in 839s with `-timeout 40m`). Both began with a
+database-wide stall, not with the cancel tests: `DROP SCHEMA` and `CREATE
+SCHEMA` timing out at 30s in unrelated tests (for example
+`TestAutoMigrateSkipsIndexOnSkippedTypeChange`), after which the cancel tests
+failed as a consequence. The poller caught the chain during one stall: a
+`CREATE TABLE IF NOT EXISTS momo_migrations` commit sat in `IO/WalSync` for
+more than 25s holding the migration advisory lock and schema locks, another
+session's `INSERT INTO docs (id, emb)` (an HNSW insert from another agent's
+run) sat in `LWLock/WALWrite`, autovacuum waited on `WALWrite`, and
+`DROP SCHEMA` waited on the CREATE TABLE transaction (`pg_blocking_pids`).
+That is WAL fsync saturation on the shared Docker Postgres under load (host
+load average about 10), which no test or product change here can remove. The
+third criterion stays unticked until `-count=20` passes on a quiet database.
