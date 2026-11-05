@@ -11,9 +11,15 @@ Implements plan momo-03-drivers Task 10: PgBouncer transaction-mode compatibilit
 
 ## Acceptance criteria
 
-- [ ] `TestPgBouncerTransactionMode` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestPgBouncerTransactionMode` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-30] `TestPgBouncerTransactionMode` runs the query suite through a PgBouncer container in transaction mode with the simple-protocol option; fails if any statement relies on a named prepared statement.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Red first: the first run of `pgbouncer_test.go` failed (relation does not exist through the pooler because search_path is not applied to every server connection, so the workload tables are now schema-qualified), and `TestPgBouncerRejectsNamedStatements` failed with `QueryExecModeCacheStatement through PgBouncer transaction mode succeeded`. That exposed that the running PgBouncer has `max_prepared_statements = 200` and no `track_extra_parameters`, so the plan's mutation check cannot fail through it. That test was replaced by a wire-level detector.
+- Green: `go test -race -count=3 ./driver/pgxdriver -run PgBouncer -v` passed three times: `TestPgBouncerTransactionMode` (8 workers x 25 iterations of transaction, read and batch), `TestPgBouncerNoNamedPreparedStatements`, `TestPgBouncerWireCounterDetectsNamedStatements`, `TestPgBouncerBatchUsesUnnamedStatements`, `TestPgBouncerTransactionScopedState` (`set_config(...,true)` and `pg_advisory_xact_lock` vanish at commit on whichever backend serves next), `TestPgBouncerPinnedTransaction` (advisory lock inside a transaction on a pinned connection).
+- Mutation check: switching `TestPgBouncerNoNamedPreparedStatements` to `QueryExecModeCacheStatement` fails with `864 named prepared-statement messages on the wire`; restored afterwards.
+- S-30 is only partly met: named statements are detected by parsing the pgx frontend byte stream (Parse, Bind, Describe and Close with a non-empty statement name), which holds whatever the pooler is configured to tolerate. The "runs the query suite" part needs `suite.RunAll` (momo-05 Task 35), which does not exist yet, so that criterion stays unticked.
+- Compose: `internal/testdb/pgbouncer/pgbouncer.ini` (`max_prepared_statements = 0`, `track_extra_parameters = search_path`, plain auth) and `userlist.txt` are added and mounted by the `pgbouncer` service in `internal/testdb/compose.yaml`. This was not exercised, because no container may be started or stopped here: the running container still uses the old env-driven config. Recreate it with `docker compose -f internal/testdb/compose.yaml up -d --force-recreate pgbouncer` to apply.
+- `procoder check`: 0 blocking findings (info only: pre-existing CI hints, doc-mention notices and a gocyclo note on the test-only wire parser).

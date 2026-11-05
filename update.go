@@ -181,6 +181,9 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	if ci := u.meta.UpdatedAt; ci >= 0 && columnAssignable(writeUpdate, u.meta.Columns[ci].Flags) {
 		// updated_at rides in the same statement as the change, so an
 		// update that matches no row changes nothing.
+		if err := checkTimestampField(u.meta, ci); err != nil {
+			return nil, nil, u.fail(ErrValidation, err)
+		}
 		if v, ok := autoTimestamp(u.meta, ci, u.q.conn().now()); ok {
 			sets = append(sets, Assignment{col: u.meta.Columns[ci].Name, kind: setValue, val: v})
 		}
