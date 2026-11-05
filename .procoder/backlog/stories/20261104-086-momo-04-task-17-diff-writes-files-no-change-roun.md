@@ -1,6 +1,6 @@
 # momo-04 Task 17: Diff writes files; no-change round trip (PostgreSQL)
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -15,7 +15,7 @@ Implements plan momo-04-migrations Task 17: Diff writes files; no-change round t
 
 - [x] `TestMigrationRoundTrip` exists as written in the plan, failed before the implementation, and passes now
 - [x] The no-change round trip ignores the `momo_migrations` history table (the engine Inspect used by Diff excludes it)
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
@@ -26,3 +26,4 @@ Implements plan momo-04-migrations Task 17: Diff writes files; no-change round t
 - `go vet ./...` clean, `gofmt -l .` empty, `go test ./...` ok.
 - Note: `Engine.Diff` itself reads the snapshot, not the live database, so the history table cannot enter it; the exclusion lives in `Engine.Inspect`, which the round trip and later drift and baseline use.
 - Deviation: the version comes from `NextVersion` (clock, bumped past the latest existing version) instead of the bare clock, and the test schema declares the `vector` extension because the test database has it installed.
+- Gate: `procoder check` 0 blocking on merge into sprint-2; fresh review found 0 Critical/0 Important (4 Minor: shared history-table constant, renderUp trailing-comment handling for future SQLite hints, NoTx whole-file documentation, sum fallback/tamper tests — tracked as a todo).
