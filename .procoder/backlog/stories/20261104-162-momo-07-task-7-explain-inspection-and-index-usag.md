@@ -1,6 +1,6 @@
 # momo-07 Task 7: EXPLAIN inspection and index-usage verification
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-07-vectors-pgvector
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -12,7 +12,7 @@ Implements plan momo-07-vectors Task 7: EXPLAIN inspection and index-usage verif
 ## Acceptance criteria
 
 - [x] `TestVectorIndexUsed` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-15] `TestVectorCodec` + `FuzzVectorDecode`: vector, halfvec, sparsevec and bit round-trip; wrong dimension returns ErrInvalidVector before any SQL runs; `TestVectorDistances` matches independently computed values to 1e-5; `TestVectorIndexUsed` asserts EXPLAIN shows the HNSW/IVFFlat index; `TestSearchSettingsScoped` asserts `hnsw.ef_search` resets after the transaction; fails if settings leak to the p…
+- [x] [S-15] `TestVectorCodec` + `FuzzVectorDecode`: vector, halfvec, sparsevec and bit round-trip; wrong dimension returns ErrInvalidVector before any SQL runs; `TestVectorDistances` matches independently computed values to 1e-5; `TestVectorIndexUsed` asserts EXPLAIN shows the HNSW/IVFFlat index; `TestSearchSettingsScoped` asserts `hnsw.ef_search` resets after the transaction; fails if settings leak to the p…
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
@@ -22,3 +22,5 @@ Implements plan momo-07-vectors Task 7: EXPLAIN inspection and index-usage verif
 - Full suite: `go vet ./...`, `go vet -tags integration ./...`, `gofmt -l .` and `go test ./...` are clean. `go test -tags integration -race -count=1 ./...` passes everywhere. The first run had two timeouts in `./migrate` (shared Postgres under load from parallel agents); a rerun of `./migrate` passed.
 - Explain never runs EXPLAIN ANALYZE; ExplainAnalyze belongs to story 169.
 - The S-15 criterion is NOT ticked: it is a composite that depends on other stories' tests (TestVectorCodec, FuzzVectorDecode, TestSearchSettingsScoped, ...). This story only contributes TestVectorIndexUsed.
+- S-15: fresh review confirmed every named test exists and passes on the merged tree: `TestVectorCodec` and `FuzzVectorDecode` (vector/), `TestVectorDistances` (vector_integration_test.go), `TestSearchSettingsScoped` (search_integration_test.go, asserts no leak after the transaction), `TestVectorIndexUsed` (explain_integration_test.go, HNSW and IVFFlat).
+- Fresh review: Nothing found; arg-binding mutation killed by `TestExplainBindsArgsNeverInterpolates`.
