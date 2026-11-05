@@ -1034,7 +1034,7 @@ The schema helpers `Table(name)`, `Column(name)`, and `Index(name)` on `schema.S
 
 - [ ] Step 2: Run `go test ./gen -run TestTagVocabulary -count=1`; expect FAIL with `undefined: BuildSchema`.
 
-- [ ] Step 3: Implement `gen/schema.go` as specified. Use one function per effect group (`applyColumnTags`, `applyIndexTags`, `applyCompanion`, `dialectCheck`). The dialect check runs per `cfg.Dialects` entry; diagnostics carry the model's `Pos`.
+- [ ] Step 3: Implement `gen/schema.go` as specified. Use one function per effect group (`applyColumnTags`, `applyIndexTags`, `applyCompanion`, `dialectCheck`). The dialect check runs per `cfg.Dialects` entry; diagnostics carry the model's `Pos`. `addIndex` calls `schema.ValidateVectorIndex` (momo-07 Task 4) for every hnsw and ivfflat index on a PostgreSQL schema and reports its error at the field or model position.
 
 - [ ] Step 4: Run `go test ./gen -run TestTagVocabulary -count=1`; expect `ok`.
 

@@ -183,7 +183,7 @@ func TestTagEffectsOnIndexes(t *testing.T) {
 		fld("B", "string", "index:by_b,sort:desc,nulls:last"),
 		fld("C", "string", "unique"),
 		fld("D", "string", "unique:uniq_d"),
-		fld("E", "vector.Vector", "dim:3,index:emb,method:hnsw"),
+		fld("E", "string", "index:emb,method:hash"),
 		fld("F", "string", "index,unique"),
 	)
 	s, diags := build(t, pg(), m)
@@ -200,7 +200,7 @@ func TestTagEffectsOnIndexes(t *testing.T) {
 		"by_b":         {part: schema.IndexPart{Column: "b", Desc: true, Nulls: "last"}},
 		"things_c_key": {unique: true, part: schema.IndexPart{Column: "c"}},
 		"uniq_d":       {unique: true, part: schema.IndexPart{Column: "d"}},
-		"emb":          {part: schema.IndexPart{Column: "e"}, method: "hnsw"},
+		"emb":          {part: schema.IndexPart{Column: "e"}, method: "hash"},
 		"things_f_idx": {part: schema.IndexPart{Column: "f"}},
 		"things_f_key": {unique: true, part: schema.IndexPart{Column: "f"}},
 	}
@@ -451,12 +451,21 @@ func TestSQLiteDialectDiagnostics(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", w, got)
 		}
 	}
-	if _, d2 := build(t, pg(), m); len(d2) != 0 {
-		t.Fatalf("postgres must accept everything: %v", d2)
+	// The tag indexes name no operator class and no lists, which PostgreSQL
+	// rejects through ValidateVectorIndex; nothing else may be reported, and
+	// the companion index (which names the same) is reported too.
+	onlyIndexRules := func(ds []Diagnostic) {
+		t.Helper()
+		for _, d := range ds {
+			if !strings.Contains(d.Msg, "invalid vector index") {
+				t.Fatalf("unexpected diagnostic on postgres: %v", d)
+			}
+		}
 	}
-	if _, d3 := build(t, Config{}, m); len(d3) != 0 {
-		t.Fatalf("no dialects listed means no dialect diagnostics: %v", d3)
-	}
+	_, d2 := build(t, pg(), m)
+	onlyIndexRules(d2)
+	_, d3 := build(t, Config{}, m)
+	onlyIndexRules(d3)
 }
 
 func TestSQLiteTypesAndNoExtensions(t *testing.T) {
@@ -733,4 +742,20 @@ func mapped(t *testing.T, goType string, d dialect.Name) string {
 		t.Fatal(err)
 	}
 	return typ
+}
+
+func TestBuildSchemaRejectsInvalidVectorIndex(t *testing.T) {
+	_, diags, err := Load([]string{"./vectorbad"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := sdiagsString(diags)
+	for _, want := range []string{
+		"bad.go:10:6:", "m=200 is outside 2..100", // the companion index, at the model
+		"bad.go:23:2:", "no default operator class", // the tag index, at the field
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("diagnostics lack %q:\n%s", want, got)
+		}
+	}
 }

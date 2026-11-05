@@ -90,7 +90,15 @@ func TestVectorIndexRulesMore(t *testing.T) {
 		{"not a vector column", pg, "text", Index{Method: "hnsw", Parts: l2}, false},
 		{"unknown column", pg, "vector(3)", Index{Method: "hnsw", Parts: []IndexPart{{Column: "nope", OpClass: "vector_l2_ops"}}}, false},
 		{"non vector method", pg, "vector(3)", Index{Method: "gin", Parts: part("")}, false},
-		{"unsized vector type", pg, "vector", Index{Method: "hnsw", Parts: l2}, true},
+		{"unsized vector type", pg, "vector", Index{Method: "hnsw", Parts: l2}, false},
+		{"unsized halfvec type", pg, "halfvec", Index{Method: "ivfflat", Parts: part("halfvec_l2_ops"), With: []KV{{"lists", "10"}}}, false},
+		{"unsized sparsevec type", pg, "sparsevec", Index{Method: "hnsw", Parts: part("sparsevec_l2_ops")}, false},
+		{"unsized bit hnsw", pg, "bit", Index{Method: "hnsw", Parts: part("bit_hamming_ops")}, true},
+		{"unsized bit ivfflat", pg, "bit", Index{Method: "ivfflat", Parts: part("bit_hamming_ops"), With: []KV{{"lists", "10"}}}, true},
+		{"hnsw m 100 default ef", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "100"}}}, false},
+		{"hnsw m 32 default ef", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "32"}}}, true},
+		{"hnsw m 2 ef 4", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "2"}, {"ef_construction", "4"}}}, true},
+		{"hnsw m 2 default ef", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "2"}}}, true},
 	}
 	for _, c := range cases {
 		err := ValidateVectorIndex(c.d, tbl(c.typ), c.idx)

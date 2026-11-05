@@ -28,6 +28,7 @@ const (
 	maxHNSWM            = 100
 	defaultHNSWM        = 16
 	minHNSWEF           = 4
+	defaultHNSWEF       = 64
 	maxHNSWEF           = 1000
 	maxIVFLists         = 32768
 )
@@ -86,6 +87,9 @@ func ValidateVectorIndex(d dialect.Name, t *Table, idx Index) error {
 	suffixes, ok := opClassSuffixes[idx.Method][kind]
 	if !ok {
 		return bad("%s is not supported on %s columns", idx.Method, kind)
+	}
+	if dims == 0 && kind != "bit" {
+		return bad("%s column %q has no dimensions, pgvector cannot index it", kind, col.Name)
 	}
 	if limit := indexDimLimit(kind); limit > 0 && dims > limit {
 		return bad("%s(%d) exceeds the %d dimension limit of %s indexes", kind, dims, limit, idx.Method)
@@ -180,6 +184,7 @@ func checkWith(idx Index, bad func(string, ...any) error) error {
 		vals[kv.Key] = n
 	}
 	if idx.Method == "ivfflat" {
+		// The server defaults lists to 100; momo requires it to be explicit.
 		lists, ok := vals["lists"]
 		if !ok {
 			return bad("ivfflat requires the lists storage parameter")
@@ -196,13 +201,17 @@ func checkWith(idx Index, bad func(string, ...any) error) error {
 	if !hasM {
 		m = defaultHNSWM
 	}
-	if ef, ok := vals["ef_construction"]; ok {
+	ef, hasEF := vals["ef_construction"]
+	if !hasEF {
+		ef = defaultHNSWEF
+	}
+	if hasEF {
 		if ef < minHNSWEF || ef > maxHNSWEF {
 			return bad("ef_construction=%d is outside %d..%d", ef, minHNSWEF, maxHNSWEF)
 		}
-		if ef < 2*m {
-			return bad("ef_construction=%d must be at least 2*m (%d)", ef, 2*m)
-		}
+	}
+	if ef < 2*m {
+		return bad("ef_construction=%d must be at least 2*m (%d)", ef, 2*m)
 	}
 	return nil
 }

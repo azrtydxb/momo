@@ -328,6 +328,11 @@ func (b *schemaBuilder) addIndex(t *schema.Table, ix schema.Index, pos token.Pos
 	case "hnsw", "ivfflat":
 		b.vector = true
 		b.feats = append(b.feats, feature{ix.Method, pos})
+		if b.primary == dialect.Postgres {
+			if err := schema.ValidateVectorIndex(b.primary, t, ix); err != nil {
+				b.diag(pos, err.Error())
+			}
+		}
 	}
 }
 
