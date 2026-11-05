@@ -91,9 +91,13 @@ type Model struct {
 type Field struct {
 	GoName string
 	// Path is the reflect-style index path from the model struct.
-	Path     []int
-	Column   string
-	GoType   string
+	Path   []int
+	Column string
+	GoType string
+	// BaseType is GoType with named types resolved to their underlying basic
+	// type (type ID int64 is int64); the types the type map knows by name
+	// (time.Time, sql.Null*, vector, types) are kept.
+	BaseType string
 	Nullable bool
 	Tags     tags.Tags
 	Pos      token.Position

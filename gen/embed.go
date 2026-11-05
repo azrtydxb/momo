@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"go/types"
 	"reflect"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 
@@ -141,7 +142,8 @@ func (fl *flattener) newField(v *types.Var, path []int, prefix string, ft tags.T
 		GoName:   v.Name(),
 		Path:     path,
 		Column:   prefix + col,
-		GoType:   types.TypeString(t, func(p *types.Package) string { return p.Name() }),
+		GoType:   types.TypeString(t, qualifier),
+		BaseType: baseType(t),
 		Nullable: nullable,
 		Tags:     ft,
 		Pos:      fl.fset.Position(v.Pos()),
@@ -213,4 +215,38 @@ func dedupeDiagnostics(in []Diagnostic) []Diagnostic {
 		out = append(out, d)
 	}
 	return out
+}
+
+func qualifier(p *types.Package) string { return p.Name() }
+
+// baseType spells t for the type map: named types the map knows by name keep
+// their name, any other named type is replaced by its underlying type.
+func baseType(t types.Type) string {
+	t = types.Unalias(t)
+	if p, ok := t.(*types.Pointer); ok {
+		return baseType(p.Elem())
+	}
+	if n, ok := t.(*types.Named); ok {
+		if pkg := n.Obj().Pkg(); pkg != nil && knownNamed(pkg.Path(), n.Obj().Name()) {
+			return types.TypeString(t, qualifier)
+		}
+		return baseType(n.Underlying())
+	}
+	if sl, ok := t.(*types.Slice); ok {
+		if b, ok := sl.Elem().Underlying().(*types.Basic); ok && b.Kind() == types.Byte {
+			return "[]byte"
+		}
+	}
+	return types.TypeString(t, qualifier)
+}
+
+// knownNamed reports whether the type map knows the named type itself.
+func knownNamed(pkgPath, name string) bool {
+	switch {
+	case pkgPath == "time" && name == "Time", pkgPath == "database/sql" && strings.HasPrefix(name, "Null"):
+		return true
+	case strings.HasSuffix(pkgPath, "/vector"), strings.HasSuffix(pkgPath, "/momo/types"):
+		return true
+	}
+	return false
 }

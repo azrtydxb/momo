@@ -290,7 +290,7 @@ func TestTagMisuseIsDiagnosed(t *testing.T) {
 		{"nulls without index", "string", "nulls:first", "nulls requires index or unique"},
 		{"method without index", "string", "method:gin", "method requires index or unique"},
 		{"size with type", "string", "size:3,type:citext", "size conflicts with type"},
-		{"unknown go type", "Status", "", "no SQL type for Go type Status"},
+		{"unknown go type", "Status", "", "has no SQL mapping"},
 		{"undeclared enum", "string", "enum:nope", `enum "nope" is not declared`},
 	}
 	for _, c := range cases {
@@ -602,6 +602,39 @@ func TestBuildSchemaIsCanonicalAndDeterministic(t *testing.T) {
 	}
 	if a.Tables[0].Columns[0].Name != "id" || a.Tables[0].Columns[2].Name != "z" {
 		t.Fatal("column order must stay declaration order")
+	}
+}
+
+func TestNamedTypesMapLikeTheirUnderlyingType(t *testing.T) {
+	g, diags, err := Load([]string{"./namedtype"}, Config{Dir: fixturesDir(t)})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("load: %v %v", err, diags)
+	}
+	s, sdiags := BuildSchema(g.Models, pg())
+	if len(sdiags) != 0 {
+		t.Fatalf("diags: %v", sdiags)
+	}
+	for col, typ := range map[string]string{"id": "bigint", "label": "text", "note": "text", "opt": "text", "created": "timestamptz"} {
+		if c := mustCol(t, s, "items", col); c.Type != typ {
+			t.Errorf("%s=%q want %q", col, c.Type, typ)
+		}
+	}
+	if !mustCol(t, s, "items", "note").Nullable || !mustCol(t, s, "items", "opt").Nullable {
+		t.Error("pointer and sql.Null columns must be nullable")
+	}
+}
+
+func TestUnsupportedTypeIsPositionedDiagnostic(t *testing.T) {
+	g, diags, err := Load([]string{"./unsupportedtype"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 1 || !strings.Contains(diags[0].Msg, "field Value") || !strings.Contains(diags[0].Msg, "complex128") ||
+		!strings.HasSuffix(diags[0].Pos.Filename, "unsupported.go") || diags[0].Pos.Line != 10 {
+		t.Fatalf("diags: %v", diags)
+	}
+	if g.Schema == nil {
+		t.Fatal("schema must still be returned")
 	}
 }
 

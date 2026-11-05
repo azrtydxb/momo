@@ -12,6 +12,7 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/gen/typemap"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -265,9 +266,15 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		}
 		return fmt.Sprintf("numeric(%d)", tg.Precision)
 	}
-	typ, ok := baseSQLType(b.primary, inner)
-	if !ok {
-		b.diag(f.Pos, fmt.Sprintf("field %s: no SQL type for Go type %s; add a type tag", f.GoName, inner))
+	// BaseType is the Go type with named types resolved; hand-built fields
+	// without it map by their spelled type.
+	goType := f.BaseType
+	if goType == "" {
+		goType = inner
+	}
+	typ, err := typemap.Map(goType, b.primary, tg)
+	if err != nil {
+		b.diag(f.Pos, fmt.Sprintf("field %s: %v; add a type tag", f.GoName, err))
 	}
 	return typ
 }
@@ -308,36 +315,6 @@ func unwrapNull(core string) string {
 		return "time.Time"
 	}
 	return core
-}
-
-var postgresBase = map[string]string{
-	"int": "bigint", "int64": "bigint", "int32": "integer", "int16": "smallint", "int8": "smallint",
-	"uint8": "smallint", "byte": "smallint", "uint16": "integer", "uint32": "bigint",
-	"uint": "numeric(20,0)", "uint64": "numeric(20,0)",
-	"string": "text", "bool": "boolean", "float32": "real", "float64": "double precision",
-	"time.Time": "timestamptz", "[]byte": "bytea", "uuid.UUID": "uuid", "json.RawMessage": "jsonb",
-	"decimal.Decimal": "numeric",
-}
-
-var sqliteBase = map[string]string{
-	"int": "INTEGER", "int64": "INTEGER", "int32": "INTEGER", "int16": "INTEGER", "int8": "INTEGER",
-	"uint8": "INTEGER", "byte": "INTEGER", "uint16": "INTEGER", "uint32": "INTEGER",
-	"uint": "INTEGER", "uint64": "INTEGER",
-	"string": "TEXT", "bool": "INTEGER", "float32": "REAL", "float64": "REAL",
-	"time.Time": "TEXT", "[]byte": "BLOB", "uuid.UUID": "TEXT", "json.RawMessage": "TEXT",
-	"decimal.Decimal": "NUMERIC",
-}
-
-// baseSQLType is the minimal Go-to-SQL map this task needs to give every
-// column a type. The generator type map (Task 11) is the full contract; a
-// type that is not listed here must carry a type tag.
-func baseSQLType(d dialect.Name, goType string) (string, bool) {
-	m := postgresBase
-	if d == dialect.SQLite {
-		m = sqliteBase
-	}
-	t, ok := m[goType]
-	return t, ok
 }
 
 // addIndex appends ix to t unless its name is already taken in the table's
