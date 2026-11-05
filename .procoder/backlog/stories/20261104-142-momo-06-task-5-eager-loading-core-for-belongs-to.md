@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-06-relations
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
@@ -11,11 +11,17 @@ Implements plan momo-06-relations Task 5: Eager loading core for belongs-to and 
 
 ## Acceptance criteria
 
-- [ ] `TestEagerLoadBelongsTo` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestEagerLoadHasOne` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestRelationHookEvents` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-6, part] this story's tests pass for the part of S-6 this task delivers; the full criterion is verified in story 146.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestEagerLoadBelongsTo` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestEagerLoadHasOne` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestRelationHookEvents` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-6, part] this story's tests pass for the part of S-6 this task delivers; the full criterion is verified in story 146.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Red first: before the implementation, `go test . -run 'TestEagerLoad|TestRelationHook'` failed to build with `undefined: momo.Load` and `h.Events undefined`. Now `TestEagerLoadBelongsTo`, `TestEagerLoadHasOne` and `TestRelationHookEvents` pass on PostgreSQL under `go test -tags integration -race -count=1 . ./internal/...`.
+- S-6 part: unit tests in `load_internal_test.go` cover dedupe, NULL keys never queried, first-seen order, stable association for duplicate parents, stale-association clearing, the has-one over-match error, and bind-limit chunking with order preserved and scope args reserved. `TestEagerLoadLargeCompositeKeySet` (integration) loads 20000 composite keys: with the composite cap disabled it failed with SQLSTATE 54001; with the cap from story 141 (2000 tuples per statement) it issues 10 statements and passes.
+- Mutation: always appending keys (no dedupe), widening each chunk by one, and prepending instead of appending children each made a unit test fail; restored and green.
+- `RelationEvent`, `RelationHook` and event recording in `relfixture.Hook` were added (`relhook.go`, `db.go`, `internal/relfixture/schema.go`).
+- `go vet ./...`, `go vet -tags integration ./...`, `gofmt -l .` and `go test ./...` are clean.
 

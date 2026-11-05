@@ -78,7 +78,16 @@ type Hook interface {
 type Option func(*DB)
 
 // WithHook registers an observability hook. Hooks run in registration order.
-func WithHook(h Hook) Option { return func(db *DB) { db.hooks = append(db.hooks, h) } }
+//
+// A hook that also implements RelationHook receives relation load events.
+func WithHook(h Hook) Option {
+	return func(db *DB) {
+		db.hooks = append(db.hooks, h)
+		if rh, ok := h.(RelationHook); ok {
+			db.relHooks = append(db.relHooks, rh)
+		}
+	}
+}
 
 // WithArgLogging includes bind-parameter values in QueryEvent.Args. It is
 // off by default because parameters often contain personal data.
@@ -88,12 +97,13 @@ func WithArgLogging() Option { return func(db *DB) { db.logArgs = true } }
 // no state besides configuration: no background goroutines, no implicit
 // migrations, no caches.
 type DB struct {
-	drv     Driver
-	ex      execer
-	hooks   []Hook
-	logArgs bool
-	clock   func() time.Time // nil means time.Now
-	pinned  bool             // set by OnConn: statements run on one pinned connection
+	drv      Driver
+	ex       execer
+	hooks    []Hook
+	relHooks []RelationHook
+	logArgs  bool
+	clock    func() time.Time // nil means time.Now
+	pinned   bool             // set by OnConn: statements run on one pinned connection
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and
