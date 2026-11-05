@@ -2,7 +2,7 @@
 
 Status: open
 Created: 2026-11-05
-Epic: momo-02
+Epic: momo-02-generator
 Sprint: -
 Type: bug
 Severity: s3
