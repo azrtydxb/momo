@@ -3,6 +3,7 @@
 package gen
 
 import (
+	"fmt"
 	"go/token"
 	"go/types"
 	"reflect"
@@ -163,25 +164,58 @@ func appendPath(path []int, i int) []int {
 // mixinIndexes returns the indexes contributed by the `index` and `unique`
 // tags of flattened fields (those whose path is deeper than one). Names that
 // are not explicit are <table>_<column>_idx.
-func mixinIndexes(m *Model) []schema.Index {
+func mixinIndexes(m *Model) ([]schema.Index, []Diagnostic) {
 	var out []schema.Index
+	var diags []Diagnostic
+	owner := map[string]string{}
 	for _, f := range m.Fields {
 		if len(f.Path) < 2 || (!f.Tags.Index && !f.Tags.Unique) {
 			continue
 		}
 		name := m.Table + "_" + f.Column + "_idx"
 		unique := f.Tags.Unique
-		switch {
-		case unique && f.Tags.UniqueName != "":
-			name = f.Tags.UniqueName
-		case !unique && f.Tags.IndexName != "":
-			name = f.Tags.IndexName
+		explicit := f.Tags.IndexName
+		if unique {
+			explicit = f.Tags.UniqueName
+		}
+		if explicit != "" {
+			// An explicit name inside a reused struct would repeat in every
+			// instance, so it takes the instance prefix like the columns do.
+			name = f.Base + explicit
+		}
+		if prev, dup := owner[name]; dup {
+			diags = append(diags, Diagnostic{
+				Pos: f.Pos,
+				Msg: fmt.Sprintf("index name %q is used by fields %s and %s", name, f.GoName, prev),
+			})
+		} else {
+			owner[name] = f.GoName
 		}
 		out = append(out, schema.Index{
 			Name:   name,
 			Unique: unique,
 			Parts:  []schema.IndexPart{{Column: f.Column}},
 		})
+	}
+	return out, diags
+}
+
+// dedupeDiagnostics drops repeats of one position and message, such as the
+// problem of a mixin shared by several models.
+func dedupeDiagnostics(in []Diagnostic) []Diagnostic {
+	type key struct {
+		pos token.Position
+		msg string
+	}
+	seen := map[key]bool{}
+	out := in[:0:0]
+	for _, d := range in {
+		k := key{d.Pos, d.Msg}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, d)
 	}
 	return out
 }

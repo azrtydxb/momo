@@ -62,7 +62,7 @@ func discoverModels(pkg *packages.Package, namer naming.Namer) ([]*Model, []Diag
 			models = append(models, d.model)
 		}
 	}
-	return models, diags
+	return models, dedupeDiagnostics(diags)
 }
 
 type discovery struct {
@@ -271,7 +271,9 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	if m.Table == "" {
 		m.Table = d.namer.TableName(m.GoName)
 	}
-	m.Indexes = mixinIndexes(m)
+	var idiags []Diagnostic
+	m.Indexes, idiags = mixinIndexes(m)
+	d.diags = append(d.diags, idiags...)
 	return m
 }
 

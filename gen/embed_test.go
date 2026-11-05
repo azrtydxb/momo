@@ -4,8 +4,12 @@ package gen
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/azrtydxb/momo/gen/testdata/fixtures/embedmore"
+	"github.com/azrtydxb/momo/gen/testdata/fixtures/mixins"
 )
 
 func TestEmbeddedNestedAliasAndSkip(t *testing.T) {
@@ -38,10 +42,10 @@ func TestEmbeddedNestedAliasAndSkip(t *testing.T) {
 			t.Fatalf("base/goname: %+v", f)
 		}
 	}
-	if len(m.Indexes) != 2 || !m.Indexes[0].Unique || m.Indexes[0].Name != "geo_lon_u" || m.Indexes[0].Parts[0].Column != "geo_lon" {
+	if len(m.Indexes) != 2 || !m.Indexes[0].Unique || m.Indexes[0].Name != "geo_geo_lon_u" || m.Indexes[0].Parts[0].Column != "geo_lon" {
 		t.Fatalf("indexes=%+v", m.Indexes)
 	}
-	if m.Indexes[1].Name != "geo_lon_u" || m.Indexes[1].Parts[0].Column != "o_geo_lon" {
+	if m.Indexes[1].Name != "o_geo_geo_lon_u" || m.Indexes[1].Parts[0].Column != "o_geo_lon" {
 		t.Fatalf("second index=%+v", m.Indexes[1])
 	}
 }
@@ -71,8 +75,77 @@ func TestEmbeddedDiagnostics(t *testing.T) {
 			t.Errorf("missing diagnostic %q in %q", sub, msgs)
 		}
 	}
-	if len(diags) != 4 {
-		t.Errorf("want 4 diagnostics, got %d: %q", len(diags), msgs)
+	if len(diags) != 6 {
+		t.Errorf("want 6 diagnostics, got %d: %q", len(diags), msgs)
+	}
+}
+
+func TestEmbeddedDuplicateIndexNames(t *testing.T) {
+	_, diags, err := Load([]string{"./embedbad"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range diags {
+		if strings.Contains(d.Msg, `index name "code_u" is used by fields`) {
+			return
+		}
+	}
+	t.Fatalf("no duplicate index name diagnostic in %v", diags)
+}
+
+func TestEmbeddedSharedMixinDiagnosticOnce(t *testing.T) {
+	_, diags, err := Load([]string{"./embedshared"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, d := range diags {
+		if strings.Contains(d.Msg, "bogus_option") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("want the shared mixin problem once, got %d: %v", n, diags)
+	}
+}
+
+func TestEmbeddedShadowedGoName(t *testing.T) {
+	g, diags, err := Load([]string{"./embedshadow"}, Config{Dir: fixturesDir(t)})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("load: err=%v diags=%v", err, diags)
+	}
+	m := g.Models[0]
+	if len(m.Fields) != 3 {
+		t.Fatalf("fields=%d", len(m.Fields))
+	}
+	direct, mixin := m.Fields[1], m.Fields[2]
+	if direct.Column != "name" || len(direct.Path) != 1 || direct.Path[0] != 2 {
+		t.Fatalf("direct=%+v", direct)
+	}
+	if mixin.Column != "label_name" || len(mixin.Path) != 2 || mixin.Path[0] != 3 || mixin.Path[1] != 0 {
+		t.Fatalf("mixin=%+v", mixin)
+	}
+}
+
+func TestEmbeddedPathsResolveByReflection(t *testing.T) {
+	g, diags, err := Load([]string{"./mixins", "./embedmore"}, Config{Dir: fixturesDir(t)})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("load: err=%v diags=%v", err, diags)
+	}
+	rtypes := map[string]reflect.Type{
+		"Article": reflect.TypeOf(mixins.Article{}),
+		"Venue":   reflect.TypeOf(embedmore.Venue{}),
+	}
+	for _, m := range g.Models {
+		rt, ok := rtypes[m.GoName]
+		if !ok {
+			t.Fatalf("no reflect type for %s", m.GoName)
+		}
+		for _, f := range m.Fields {
+			if sf := rt.FieldByIndex(f.Path); sf.Name != f.GoName {
+				t.Errorf("%s.%s: path %v lands on %s", m.GoName, f.Column, f.Path, sf.Name)
+			}
+		}
 	}
 }
 

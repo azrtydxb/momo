@@ -32,3 +32,14 @@ type PrefixOnly struct {
 	ID         int64   `momo:"pk"`
 	Billing    Address `momo:"prefix:b_"`
 }
+
+type Dup struct {
+	Code string `momo:"column:code,unique:code_u"`
+}
+
+type Twice struct {
+	momo.Model `momo:"table:twice"`
+	ID         int64 `momo:"pk"`
+	A          Dup   `momo:"embedded"`
+	B          Dup   `momo:"embedded"`
+}
