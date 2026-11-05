@@ -22,3 +22,4 @@ Implements plan momo-05-writes-queries Task 8: Locking, optimizer hints and runt
 - Green: `go test -tags integration -race -count=1 . ./internal/...` all ok against the running Postgres (including the two-transaction SKIP LOCKED and NOWAIT check, NOWAIT yields ErrBusy); go vet (both tag sets), gofmt and go test ./... clean.
 - Deviation: the plan has no FOR NO KEY UPDATE, KEY SHARE, OF or runtime-settings API in Task 8 (ForUpdate and ForShare already existed; SetLocal exists in search.go), so none were added.
 
+- Fresh review: Nothing found. Plan Task 8 specifies only IndexedBy and WithTableName (locking already existed); dropping the WithTableName alias and swapping NOWAIT/SKIP LOCKED are both killed by tests.
