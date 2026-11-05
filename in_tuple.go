@@ -51,11 +51,11 @@ func (x inTuple) AppendSQL(b *Builder) {
 			}
 			b.Arg(k[0])
 		}
-		b.WriteByte(')')
+		b.WriteString(")")
 		return
 	}
 	if b.Dialect().RowValues && b.Dialect().Name != dialect.SQLite {
-		b.WriteByte('(')
+		b.WriteString("(")
 		for i, c := range x.cols {
 			if i > 0 {
 				b.WriteString(", ")
@@ -67,24 +67,24 @@ func (x inTuple) AppendSQL(b *Builder) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			b.WriteByte('(')
+			b.WriteString("(")
 			for j, v := range k {
 				if j > 0 {
 					b.WriteString(", ")
 				}
 				b.Arg(v)
 			}
-			b.WriteByte(')')
+			b.WriteString(")")
 		}
-		b.WriteByte(')')
+		b.WriteString(")")
 		return
 	}
-	b.WriteByte('(')
+	b.WriteString("(")
 	for i, k := range x.keys {
 		if i > 0 {
 			b.WriteString(" OR ")
 		}
-		b.WriteByte('(')
+		b.WriteString("(")
 		for j, c := range x.cols {
 			if j > 0 {
 				b.WriteString(" AND ")
@@ -93,9 +93,9 @@ func (x inTuple) AppendSQL(b *Builder) {
 			b.WriteString(" = ")
 			b.Arg(k[j])
 		}
-		b.WriteByte(')')
+		b.WriteString(")")
 	}
-	b.WriteByte(')')
+	b.WriteString(")")
 }
 
 func (inTuple) resultType() bool { return false }
