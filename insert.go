@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"time"
@@ -60,6 +61,10 @@ type InsertQuery[T any] struct {
 	// clock, when set, is the statement time shared by every chunk of a
 	// chunked bulk insert; otherwise the DB clock is read per statement.
 	clock time.Time
+	// pre holds the model values plan computed and validated, one row per
+	// model for the planned columns, so chunks bind exactly what was checked
+	// and a Go-side default is evaluated once per row.
+	pre [][]any
 }
 
 // Insert starts an INSERT for model T. Use Model or Models to write whole
@@ -254,15 +259,18 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 		now = q.q.conn().now() // read once per statement
 	}
 	rows := len(q.models)
+	fp, err := newFieldPlan(q.q, q.meta)
+	if err != nil {
+		b.SetErr(err)
+		return
+	}
 	if modelMode {
-		var err error
-		if cols, err = q.modelCols(); err != nil {
+		if cols, err = q.modelCols(fp); err != nil {
 			b.SetErr(err)
 			return
 		}
 	} else {
-		var err error
-		if cols, rowAssigns, err = q.valueRows(d, now); err != nil {
+		if cols, rowAssigns, err = q.valueRows(d, now, fp); err != nil {
 			b.SetErr(err)
 			return
 		}
@@ -284,6 +292,25 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 	if n := rows * len(cols); d.MaxParams > 0 && n > d.MaxParams && modelMode {
 		b.SetErr(&Error{Kind: ErrLimitExceeded, Op: "insert", Table: q.meta.Table,
 			Err: fmt.Errorf("%d bind parameters exceed the %s limit of %d", n, d.Name, d.MaxParams)})
+		return
+	}
+
+	// With field hooks, model values are computed once, validated, then bound
+	// as computed, so a validator sees exactly what is written even for a
+	// random default. plan may already have done that (pre). Without hooks the
+	// values stream straight into the statement.
+	var vals [][]any
+	if modelMode && len(fp.hooks) > 0 {
+		if vals = q.pre; vals == nil {
+			vals = q.modelValues(fp, cols, now)
+			if err := q.validateModelRows(fp, cols, vals); err != nil {
+				b.SetErr(err)
+				return
+			}
+		}
+	}
+	if err := q.validateConflictSet(fp); err != nil {
+		b.SetErr(err)
 		return
 	}
 
@@ -324,11 +351,15 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 				b.WriteString(", ")
 			}
 			b.writeByte('(')
-			for i, ci := range cols {
+			for i := range cols {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				b.Arg(q.modelValue(&q.models[r], ci, now))
+				if vals != nil {
+					b.Arg(vals[r][i])
+				} else {
+					b.Arg(q.modelValue(&q.models[r], cols[i], now, fp))
+				}
 			}
 			b.writeByte(')')
 		}
@@ -367,7 +398,7 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 // column. On a dialect without DEFAULT inside VALUES, a column that is
 // default in every row leaves the list, and a column that is default in some
 // rows only fails with ErrUnsupported.
-func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time) ([]int, []map[int]Assignment, error) {
+func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPlan[T]) ([]int, []map[int]Assignment, error) {
 	src := q.i.rows
 	if !q.i.hasRows {
 		src = [][]Assignment{q.i.assigns}
@@ -400,6 +431,16 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time) ([]int, []m
 			m[ci] = a
 			add(ci)
 		}
+		// Go-side defaults fill the columns this row leaves out; an explicit
+		// assignment, including SetDefault and SetNull, wins.
+		for _, ci := range slices.Sorted(maps.Keys(fp.def)) {
+			if _, assigned := m[ci]; assigned || !q.writable(ci) {
+				continue
+			}
+			var zero T
+			m[ci] = Assignment{col: q.meta.Columns[ci].Name, kind: setValue, val: fp.def[ci](&zero)}
+			add(ci)
+		}
 		seen := make(map[int]struct{}, len(m))
 		for ci := range m {
 			seen[ci] = struct{}{}
@@ -413,6 +454,15 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time) ([]int, []m
 			add(ci)
 		}
 		rows[r] = m
+		err = fp.validate("insert", q.meta, func(ci int) (any, bool) {
+			if a, ok := m[ci]; ok {
+				return assignedValue(a)
+			}
+			return nil, q.writable(ci)
+		})
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	if d.DefaultInValues {
 		return order, rows, nil
@@ -438,7 +488,7 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time) ([]int, []m
 }
 
 // modelCols returns the columns a model insert writes, in metadata order.
-func (q InsertQuery[T]) modelCols() ([]int, error) {
+func (q InsertQuery[T]) modelCols(fp fieldPlan[T]) ([]int, error) {
 	omit := map[int]struct{}{}
 	for _, n := range q.i.omit {
 		ci := q.column(n)
@@ -449,7 +499,12 @@ func (q InsertQuery[T]) modelCols() ([]int, error) {
 	}
 	var cols []int
 	for i := range q.meta.Columns {
-		if _, skip := omit[i]; !skip && (q.writable(i) || q.insertsIdentity(i)) {
+		_, skip := omit[i]
+		_, hasDefault := fp.def[i]
+		switch {
+		case skip && hasDefault && q.writable(i):
+			cols = append(cols, i) // omitted, so the Go-side default is written
+		case !skip && (q.writable(i) || q.insertsIdentity(i)):
 			cols = append(cols, i)
 		}
 	}
@@ -477,8 +532,12 @@ func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) (
 }
 
 // modelValue is the value a model insert binds for column ci: the field value,
-// except that an unset created-at or updated-at field takes the statement time.
-func (q InsertQuery[T]) modelValue(m *T, ci int, now time.Time) any {
+// except that an unset created-at or updated-at field takes the statement time
+// and an omitted column takes its Go-side default.
+func (q InsertQuery[T]) modelValue(m *T, ci int, now time.Time, fp fieldPlan[T]) any {
+	if f, ok := fp.def[ci]; ok && slices.Contains(q.i.omit, q.meta.Columns[ci].Name) {
+		return f(m)
+	}
 	v := q.meta.Value(m, ci)
 	if (ci == q.meta.CreatedAt || ci == q.meta.UpdatedAt) && timestampUnset(v) {
 		if t, ok := autoTimestamp(q.meta, ci, now); ok {
@@ -681,13 +740,32 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		return nil, err
 	}
 	r.i.upsert = false // resolved: chunks keep target, set and identity decisions
-	cols, err := r.modelCols()
+	fp, err := newFieldPlan(q.q, q.meta)
+	if err != nil {
+		return one, nil // rendering reports it
+	}
+	cols, err := r.modelCols(fp)
 	if err != nil || len(cols) == 0 {
 		return one, nil
 	}
 	r.clock = q.q.conn().now()
+	// Compute and validate every row before the first chunk runs, so a bad
+	// row late in a bulk insert executes nothing. The computed values are
+	// kept and bound by the chunks, so a non-deterministic default cannot
+	// pass here and change afterwards.
+	if len(fp.hooks) > 0 {
+		r.pre = r.modelValues(fp, cols, r.clock)
+		if err := r.validateModelRows(fp, cols, r.pre); err != nil {
+			return nil, err
+		}
+		one[0].pre = r.pre // a fallback to the single statement binds the same values
+		one[0].clock = r.clock
+	}
 	probe := r
 	probe.models = r.models[:1]
+	if r.pre != nil {
+		probe.pre = r.pre[:1]
+	}
 	c1, err := compile(d, probe.render)
 	if err != nil {
 		return one, nil
@@ -704,7 +782,11 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	var out []InsertQuery[T]
 	for lo := 0; lo < len(r.models); lo += per {
 		c := r
-		c.models = r.models[lo:min(lo+per, len(r.models))]
+		hi := min(lo+per, len(r.models))
+		c.models = r.models[lo:hi]
+		if r.pre != nil {
+			c.pre = r.pre[lo:hi]
+		}
 		out = append(out, c)
 	}
 	return out, nil
@@ -854,4 +936,55 @@ func (r *chunkRows[T]) Close() error {
 	}
 	r.finish(r.err)
 	return r.err
+}
+
+// modelValues computes the bound value of every column in cols for every
+// model: row r, column cols[i] is at [r][i].
+func (q InsertQuery[T]) modelValues(fp fieldPlan[T], cols []int, now time.Time) [][]any {
+	vals := make([][]any, len(q.models))
+	for r := range q.models {
+		row := make([]any, len(cols))
+		for i, ci := range cols {
+			row[i] = q.modelValue(&q.models[r], ci, now, fp)
+		}
+		vals[r] = row
+	}
+	return vals
+}
+
+// validateModelRows runs the field validators over the computed values of a
+// model insert: vals[r][i] is the value of column cols[i] in row r. A column
+// the statement leaves out validates as nil when it is writable.
+func (q InsertQuery[T]) validateModelRows(fp fieldPlan[T], cols []int, vals [][]any) error {
+	if len(fp.hooks) == 0 {
+		return nil
+	}
+	for _, row := range vals {
+		err := fp.validate("insert", q.meta, func(ci int) (any, bool) {
+			if i := slices.Index(cols, ci); i >= 0 {
+				return row[i], true
+			}
+			return nil, q.writable(ci)
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateConflictSet runs the field validators over the values a DO UPDATE
+// list assigns, since an upsert writes them to the existing row.
+func (q InsertQuery[T]) validateConflictSet(fp fieldPlan[T]) error {
+	if q.i.conflict != conflictUpdate || len(fp.hooks) == 0 {
+		return nil
+	}
+	return fp.validate("insert", q.meta, func(ci int) (any, bool) {
+		for _, a := range q.i.set {
+			if a.col == q.meta.Columns[ci].Name {
+				return assignedValue(a)
+			}
+		}
+		return nil, false
+	})
 }

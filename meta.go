@@ -69,6 +69,10 @@ type Meta[T any] struct {
 	CreatedAt      int
 	UpdatedAt      int
 	PK             []int
+
+	// Fields are Go-side defaults and validators per column, run by the
+	// write builders before SQL is built. See FieldHook.
+	Fields []FieldHook[T]
 }
 
 // Modeler is implemented (by generated code) on pointers to model and
