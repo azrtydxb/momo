@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-09-observability-testing
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
