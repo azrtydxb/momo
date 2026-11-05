@@ -39,6 +39,11 @@ func (p *poolTracer) TraceAcquireEnd(ctx context.Context, pool *pgxpool.Pool, en
 	if !ok {
 		return
 	}
+	// The EmptyAcquireCount gating is one-sided: an acquire that waited always
+	// sees the counter move, so no wait is missed. A concurrent acquire that was
+	// served from an idle connection can also see the counter move (another
+	// goroutine's empty acquire) and then reports its own small, real elapsed
+	// time. Stat() runs twice per acquire (start and end), each a short pool lock.
 	// A failed acquire (timeout, cancellation) is not counted by pgxpool but
 	// did wait until it gave up.
 	if end.Err == nil && pool.Stat().EmptyAcquireCount() == s.emptyCount {
