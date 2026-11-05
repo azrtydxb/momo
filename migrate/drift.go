@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -379,8 +380,17 @@ func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
 // migration (the empty schema when none is applied, so every live object is
 // unmanaged) and reports what differs. See DriftReport for the three lists.
 //
-// It is read-only: it takes no lock, creates nothing (a database without a
-// history table has an empty history) and executes no DDL. Because PostgreSQL
+// It is read-only: it takes no lock, leaves nothing behind (a database without
+// a history table has an empty history) and changes no application object. A
+// dialect that implements TableCanonicalizer is asked to rewrite a copy of the
+// snapshot's table text (check expressions, column defaults, generation
+// expressions, index predicates and expressions) to the form the database
+// reports. On PostgreSQL that creates a scratch schema in a transaction that is
+// always rolled back, so nothing is committed and no application table is
+// written. When it cannot (a role without CREATE on the database, a read-only
+// session, a table whose scratch copy fails), Drift does not fail: it compares
+// that table's text as declared, which can show a phantom difference in text
+// only, and lists the table in DriftReport.CanonicalizeSkipped. Because PostgreSQL
 // rewrites the text of views and of policy and trigger expressions, drift
 // compares those objects by identity and definition apart from that text; a
 // changed view query, trigger condition or policy expression (a USING or WITH
@@ -412,6 +422,7 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 		return nil, err
 	}
 	from := &schema.Schema{Dialect: live.Dialect}
+	var skipped []ObjectRef
 	if latest != "" {
 		snap, err := snapshotUpTo(e.dir, latest)
 		if err != nil {
@@ -421,10 +432,80 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 			return nil, fmt.Errorf("%w: applied version %s has no snapshot at or before it; run momo migrate diff", ErrNoSnapshot, latest)
 		}
 		from = applyExclude(snap.Schema, e.opts.config.Exclude)
+		if from, skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
+			return nil, err
+		}
 	}
 	rep := compare(from, live, false, invalid)
 	rep.Unverified = unverifiedBodies(from, live)
+	rep.CanonicalizeSkipped = skipped
 	return rep, nil
+}
+
+// canonicalSnapshot returns a copy of the snapshot schema s with the declared
+// table text (check expressions, defaults, index predicates) rewritten to the
+// form the database reports, for a dialect that implements TableCanonicalizer
+// (or Canonicalizer). The snapshot holds the text as the model declared it,
+// while inspection reports what PostgreSQL stored, so comparing them raw
+// reports a phantom difference for a migration that was just applied. The
+// rewrite is best effort: when the dialect cannot do it for a table, or at all
+// (no CREATE privilege, a read-only session, a failing scratch statement),
+// that table keeps its declared text and is returned in skipped, so the report
+// can say what was compared as declared. Only a cancelled context fails.
+func (e *Engine) canonicalSnapshot(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (_ *schema.Schema, skipped []ObjectRef, _ error) {
+	want, err := cloneSchema(s)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Only table text is rewritten: views, functions, triggers and policies
+	// stay as declared, so a view that selects from an excluded table cannot
+	// make the scratch round trip fail and drift keeps its documented rules for
+	// them.
+	switch cz := e.opts.dialect.(type) {
+	case TableCanonicalizer:
+		skipped, err = cz.CanonicalizeTables(ctx, c, want)
+	case Canonicalizer:
+		views, funcs, triggers, policies := want.Views, want.Functions, want.Triggers, want.Policies
+		want.Views, want.Functions, want.Triggers, want.Policies = nil, nil, nil, nil
+		if err = cz.Canonicalize(ctx, c, want); err != nil {
+			for _, t := range s.Tables {
+				if tableHasText(t) {
+					skipped = append(skipped, ObjectRef{Kind: "table", Schema: t.Schema, Name: t.Name})
+				}
+			}
+		}
+		want.Views, want.Functions, want.Triggers, want.Policies = views, funcs, triggers, policies
+	default:
+		return s, nil, nil
+	}
+	slices.SortFunc(skipped, func(x, y ObjectRef) int {
+		return strings.Compare(key(x.Kind, x.Schema, x.Name), key(y.Kind, y.Schema, y.Name))
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, nil, fmt.Errorf("migrate: canonicalize snapshot: %w", err)
+		}
+		return s, skipped, nil
+	}
+	return want, skipped, nil
+}
+
+// tableHasText reports whether t declares text a database rewrites: a check
+// expression, a column default or generation expression, or an index predicate
+// or expression part. It is the rule the dialects use to pick the tables they
+// canonicalize.
+func tableHasText(t schema.Table) bool {
+	if len(t.Checks) > 0 {
+		return true
+	}
+	for _, c := range t.Columns {
+		if c.Default != "" || c.Generated != "" {
+			return true
+		}
+	}
+	return slices.ContainsFunc(t.Indexes, func(ix schema.Index) bool {
+		return ix.Where != "" || slices.ContainsFunc(ix.Parts, func(p schema.IndexPart) bool { return p.Expr != "" })
+	})
 }
 
 // unverifiedBodies lists the views, triggers and policies that exist in both
