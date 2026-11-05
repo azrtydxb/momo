@@ -130,10 +130,6 @@ func (r Relation[P, C]) prepare(q Querier, parents []P) (pendingLoad, error) {
 	return r.prepareWith(q, parents, &loadConfig{}, nil)
 }
 
-func (r Relation[P, C]) load(ctx context.Context, q Querier, parents []P) error {
-	return LoadAll(ctx, q, parents, Loader[P](r))
-}
-
 // LoadWithDeleted includes soft-deleted children for child models with a
 // soft-delete column, like SelectQuery.WithDeleted. They are excluded by default.
 func LoadWithDeleted[C any]() LoadOption[C] {

@@ -1818,10 +1818,6 @@ func (r Relation[P, C]) relationName() string { return r.Name }
 func (r Relation[P, C]) prepare(q Querier, parents []P) (pendingLoad, error) {
 	return r.prepareWith(q, parents, &loadConfig{}, nil)
 }
-
-func (r Relation[P, C]) load(ctx context.Context, q Querier, parents []P) error {
-	return LoadAll(ctx, q, parents, Loader[P](r))
-}
 ```
 
 - [ ] **Step 5: Implement prepare/run/consume/finish** — create `load.go`:
