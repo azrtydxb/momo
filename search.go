@@ -39,8 +39,8 @@ const (
 // HNSWIterativeScan, HNSWMaxScanTuples, IVFFlatIterativeScan and
 // IVFFlatMaxProbes need pgvector 0.8.0 or newer. SetSearch checks the
 // installed extension version when any of them is set and returns
-// ErrUnsupported on an older one, because an older server would otherwise
-// accept the unknown setting as a silent no-op placeholder.
+// ErrUnsupported on an older one, because an older server may accept the unknown setting as a
+// placeholder or fail with a generic error instead of a typed one.
 type SearchSettings struct {
 	// ExactSearch disables index scans and bitmap scans for the rest of the
 	// transaction (enable_indexscan = off, enable_bitmapscan = off) so vector
@@ -95,7 +95,7 @@ func (tx *Tx) requireIterativeSupport(ctx context.Context) error {
 		return &Error{Kind: ErrUnsupported, Op: "search settings", Err: err}
 	}
 	if !ok {
-		return &Error{Kind: ErrUnsupported, Op: "search settings", Err: fmt.Errorf("iterative scan, max_scan_tuples and max_probes need pgvector 0.8.0 or newer, found %s", vs[0])}
+		return &Error{Kind: ErrUnsupported, Op: "search settings", Err: fmt.Errorf("iterative scan, max_scan_tuples and max_probes need pgvector 0.8.0 or newer, found %s (after upgrading the package, run ALTER EXTENSION vector UPDATE)", vs[0])}
 	}
 	return nil
 }
