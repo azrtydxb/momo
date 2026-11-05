@@ -327,68 +327,86 @@ func TestPoolStatsReflectPool(t *testing.T) {
 	}
 }
 
-// Release racing with a running Query or Exec must never touch the connection
-// while pgx is using it. Before the fix live() dropped its lock before the
-// statement ran, so Release called pgxpool.Conn.Release mid-statement. One
-// worker runs statements one at a time, as a pinned connection requires, while
-// the test goroutine calls Release concurrently. Run under -race.
-func TestPinnedReleaseConcurrentWithStatements(t *testing.T) {
+// Release called while a statement is executing in another goroutine must not
+// touch the connection (before the fix live() dropped its lock before the
+// statement ran, so Release called pgxpool.Conn.Release mid-statement; run
+// under -race). A second connection holds an advisory lock, so the pinned Exec
+// is deterministically blocked in the database while Release is called.
+func TestPinnedReleaseWhileStatementExecuting(t *testing.T) {
 	pool := openPool(t)
-	d := New(pool)
 	ctx := context.Background()
-	for range 20 {
-		p, err := d.(momo.Pinner).Pin(ctx)
-		if err != nil {
+	const key = 7403117
+	locker, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer locker.Release()
+	if _, err := locker.Exec(ctx, "SELECT pg_advisory_lock($1)", key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := New(pool).(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Release() }()
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := p.Exec(ctx, "SELECT pg_advisory_lock($1)", []any{key})
+		execDone <- err
+	}()
+	// Wait until the Exec is blocked on the lock inside the database.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var waiting int
+		if err := locker.QueryRow(ctx, "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND objid::bigint = $1 AND NOT granted", key).Scan(&waiting); err != nil {
 			t.Fatal(err)
 		}
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			for range 4 {
-				rows, err := p.Query(ctx, "SELECT pg_sleep(0.005), 1", nil)
-				if err != nil {
-					return // released first
-				}
-				for rows.Next() {
-				}
-				_ = rows.Close()
-				if _, err := p.Exec(ctx, "SELECT pg_sleep(0.005)", nil); err != nil {
-					return
-				}
-			}
-		}()
-		time.Sleep(3 * time.Millisecond) // land inside a statement
-		for {
-			err := p.Release()
-			if err == nil {
-				break
-			}
-			if !errors.Is(err, errInUse) {
-				t.Fatal(err)
-			}
-			time.Sleep(time.Millisecond)
+		if waiting > 0 {
+			break
 		}
-		<-done
+		if time.Now().After(deadline) {
+			t.Fatal("pinned Exec never blocked on the advisory lock")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := p.Release(); !errors.Is(err, momo.ErrPinnedBusy) {
+		t.Fatalf("Release during a running Exec = %v, want ErrPinnedBusy", err)
+	}
+	if _, err := locker.Exec(ctx, "SELECT pg_advisory_unlock($1)", key); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-execDone; err != nil {
+		t.Fatalf("Exec after unlock: %v", err)
+	}
+	if err := p.Release(); err != nil {
+		t.Fatalf("Release after the Exec finished: %v", err)
 	}
 }
 
-// Release fails while Rows are open and succeeds once they are closed.
-func TestPinnedReleaseWhileRowsOpen(t *testing.T) {
+// Rows the caller forgot to close are closed by Release, so a deferred Release
+// cannot leak the pooled connection.
+func TestPinnedReleaseClosesOpenRows(t *testing.T) {
 	pool := openPool(t)
 	ctx := context.Background()
 	p, err := New(pool).(momo.Pinner).Pin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := p.Query(ctx, "SELECT 1", nil)
+	rows, err := p.Query(ctx, "SELECT g FROM generate_series(1, 3) g", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Release(); !errors.Is(err, errInUse) {
-		t.Fatalf("Release with open Rows = %v, want errInUse", err)
-	}
-	_ = rows.Close()
 	if err := p.Release(); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Release with open Rows = %v, want nil", err)
+	}
+	if n := pool.Stat().AcquiredConns(); n != 0 {
+		t.Fatalf("AcquiredConns = %d after Release, want 0", n)
+	}
+	if rows.Next() {
+		t.Fatal("Rows still usable after Release")
+	}
+	_ = rows.Close() // must not panic or double-release
+	if n := pool.Stat().AcquiredConns(); n != 0 {
+		t.Fatalf("AcquiredConns = %d after closing released Rows, want 0", n)
 	}
 }

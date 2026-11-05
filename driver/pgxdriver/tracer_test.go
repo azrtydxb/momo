@@ -142,13 +142,35 @@ func (h *listWaitHook) take() []time.Duration {
 	return w
 }
 
+// startCountingTracer counts acquires that have started, then delegates.
+type startCountingTracer struct {
+	*poolTracer
+	starts atomic.Int64
+}
+
+func (c *startCountingTracer) TraceAcquireStart(ctx context.Context, pool *pgxpool.Pool, d pgxpool.TraceAcquireStartData) context.Context {
+	c.starts.Add(1)
+	return c.poolTracer.TraceAcquireStart(ctx, pool, d)
+}
+
 // With the only connection held, N concurrent statements all wait: every one
 // must record PoolWait > 0, and none may report more than the real elapsed
 // time. Afterwards idle acquires must not record bogus waits.
 func TestPoolWaitConcurrentAcquires(t *testing.T) {
 	const n = 8
 	ctx := context.Background()
-	pool := openInstrumentedPool(t, 1, true)
+	tr := &startCountingTracer{poolTracer: &poolTracer{}}
+	cfg, err := pgxpool.ParseConfig(testdb.PostgresURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaxConns = 1
+	cfg.ConnConfig.Tracer = tr
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closePool(t, pool) })
 	hook := &listWaitHook{}
 	db := momo.New(New(pool), momo.WithHook(hook))
 	held, err := New(pool).(momo.Pinner).Pin(ctx)
@@ -166,7 +188,16 @@ func TestPoolWaitConcurrentAcquires(t *testing.T) {
 			errs <- err
 		}()
 	}
-	time.Sleep(150 * time.Millisecond) // let every goroutine block in Acquire
+	// Wait until every goroutine has started its acquire (pgxpool exposes no
+	// waiter count, so a counting tracer wrapping the real one reports it).
+	deadline := time.Now().Add(10 * time.Second)
+	for tr.starts.Load() < n+1 { // n statements plus the held Pin
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d acquires started, want %d", tr.starts.Load(), n+1)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond) // a measurable wait for every waiter
 	if err := held.Release(); err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +225,7 @@ func TestPoolWaitConcurrentAcquires(t *testing.T) {
 		}
 	}
 	for i, w := range hook.take() {
-		if w > 20*time.Millisecond {
+		if w > 40*time.Millisecond { // far below the 50ms+ every blocked waiter saw
 			t.Fatalf("idle acquire %d recorded PoolWait = %v, want none", i, w)
 		}
 	}

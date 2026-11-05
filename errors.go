@@ -45,6 +45,10 @@ var (
 	ErrValidation = errors.New("momo: validation failed")
 	// ErrBusy: the database is busy or locked and could not serve the request.
 	ErrBusy = errors.New("momo: database is busy")
+	// ErrPinnedBusy: PinnedConn.Release was called while a statement was
+	// still executing on the connection from another goroutine. Nothing was
+	// released; call Release again once the statement has finished.
+	ErrPinnedBusy = errors.New("momo: pinned connection is busy")
 	// ErrLimitExceeded: a configured limit (rows, size, parameters) was exceeded.
 	ErrLimitExceeded = errors.New("momo: limit exceeded")
 	// ErrInvalidVector: a vector value failed validation.

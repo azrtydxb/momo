@@ -43,52 +43,52 @@ func (d *driver) PoolStats() momo.PoolStats {
 }
 
 // pinned is one connection checked out of the pool. Like a pgx connection it
-// runs one statement at a time.
-//
-// Release contract: Release is safe to call concurrently with statements and
-// never touches the connection while pgx is using it. If a Query, Exec or
-// Begin call is running, or Rows from Query are still open (not yet closed or
-// exhausted), Release returns errInUse and does nothing; the connection stays
-// pinned and Release may be called again once the work has finished. A
-// transaction begun on the connection is not tracked: finish it before
-// Release, or the pool discards the session with it.
+// runs one statement at a time. See momo.PinnedConn for the Release contract:
+// Release closes Rows left open, and returns momo.ErrPinnedBusy while a
+// Query, Exec or Begin call is executing in another goroutine.
 type pinned struct {
-	d    *driver
-	mu   sync.Mutex // guards conn and busy
-	conn *pgxpool.Conn
-	busy int // statements and open Rows currently using conn
+	d     *driver
+	mu    sync.Mutex // guards conn, calls and rows
+	conn  *pgxpool.Conn
+	calls int                      // Query, Exec and Begin calls executing now
+	rows  map[*pinnedRows]struct{} // Rows not yet closed or exhausted
 }
 
-// errInUse is returned by Release while a statement or Rows is using the
-// connection.
-var errInUse = errors.New("pgxdriver: pinned connection in use by a running statement or open Rows")
+// errBusy is the error Release returns while a call is executing.
+func errBusy() error {
+	return &momo.Error{Kind: momo.ErrPinnedBusy, Op: "release", Err: errors.New("pgxdriver: a statement is executing on the pinned connection")}
+}
 
-// live marks the connection busy and returns it, or errReleased once Release
-// has run. Every successful live must be paired with one idle.
+// live marks a call as executing and returns the connection, or errReleased
+// once Release has run. Every successful live must be paired with one done.
 func (p *pinned) live() (*pgxpool.Conn, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.conn == nil {
 		return nil, errReleased
 	}
-	p.busy++
+	p.calls++
 	return p.conn, nil
 }
 
-func (p *pinned) idle() {
+func (p *pinned) done() {
 	p.mu.Lock()
-	p.busy--
+	p.calls--
 	p.mu.Unlock()
 }
 
-// pinnedRows keeps the connection busy until the rows are closed or run out.
+// pinnedRows is registered on its pinned connection until closed or exhausted,
+// so Release can close Rows the caller forgot.
 type pinnedRows struct {
 	pgxRows
-	p    *pinned
-	once sync.Once
+	p *pinned
 }
 
-func (r *pinnedRows) finish() { r.once.Do(r.p.idle) }
+func (r *pinnedRows) finish() {
+	r.p.mu.Lock()
+	delete(r.p.rows, r)
+	r.p.mu.Unlock()
+}
 
 func (r *pinnedRows) Next() bool {
 	ok := r.pgxRows.Next()
@@ -109,12 +109,19 @@ func (p *pinned) Query(ctx context.Context, sql string, args []any) (momo.Rows, 
 	if err != nil {
 		return nil, err
 	}
+	defer p.done()
 	rows, err := c.Query(ctx, sql, p.d.withMode(args)...)
 	if err != nil {
-		p.idle()
 		return nil, ClassifyError(err)
 	}
-	return &pinnedRows{pgxRows: pgxRows{rows}, p: p}, nil
+	pr := &pinnedRows{pgxRows: pgxRows{rows}, p: p}
+	p.mu.Lock()
+	if p.rows == nil {
+		p.rows = make(map[*pinnedRows]struct{})
+	}
+	p.rows[pr] = struct{}{}
+	p.mu.Unlock()
+	return pr, nil
 }
 
 func (p *pinned) Exec(ctx context.Context, sql string, args []any) (int64, error) {
@@ -122,7 +129,7 @@ func (p *pinned) Exec(ctx context.Context, sql string, args []any) (int64, error
 	if err != nil {
 		return 0, err
 	}
-	defer p.idle()
+	defer p.done()
 	tag, err := c.Exec(ctx, sql, p.d.withMode(args)...)
 	if err != nil {
 		return 0, ClassifyError(err)
@@ -138,7 +145,7 @@ func (p *pinned) Begin(ctx context.Context, opts momo.TxOptions) (momo.DriverTx,
 	if err != nil {
 		return nil, err
 	}
-	defer p.idle()
+	defer p.done()
 	to, err := txOptions(opts)
 	if err != nil {
 		return nil, err
@@ -150,22 +157,27 @@ func (p *pinned) Begin(ctx context.Context, opts momo.TxOptions) (momo.DriverTx,
 	return &pgxTx{tx: tx, d: p.d}, nil
 }
 
-// Release returns the connection to the pool exactly once. Later calls after
-// a successful Release do nothing and return nil, so a deferred Release after
-// an explicit one is safe; they never touch a connection the pool has handed
-// to someone else. While a statement or Rows is in flight it returns errInUse
-// and leaves the connection pinned (see pinned). A transaction left open on
-// the connection is discarded by the pool together with the session.
+// Release closes any Rows still open, then returns the connection to the pool
+// exactly once. Later calls after a successful Release do nothing and return
+// nil, so a deferred Release after an explicit one is safe; they never touch a
+// connection the pool has handed to someone else. While a Query, Exec or Begin
+// is executing in another goroutine it returns an error matching
+// momo.ErrPinnedBusy and leaves the connection pinned. A transaction left open
+// on the connection is discarded by the pool together with the session.
 func (p *pinned) Release() error {
 	p.mu.Lock()
 	if p.conn == nil {
 		p.mu.Unlock()
 		return nil
 	}
-	if p.busy > 0 {
+	if p.calls > 0 {
 		p.mu.Unlock()
-		return errInUse
+		return errBusy()
 	}
+	for r := range p.rows {
+		r.pgxRows.Rows.Close()
+	}
+	p.rows = nil
 	c := p.conn
 	p.conn = nil
 	p.mu.Unlock()
