@@ -53,14 +53,19 @@ func discoverModels(pkg *packages.Package, namer naming.Namer) ([]*Model, []Diag
 	// waits until every model of the package has been built.
 	var models []*Model
 	var diags []Diagnostic
+	companionBad := false
 	for _, d := range all {
 		if d.nonModel != nil && !fl.used[d.nonModel] {
 			d.checkNonModel()
 		}
 		diags = append(diags, d.diags...)
+		companionBad = companionBad || d.companionBad
 		if d.model != nil {
 			models = append(models, d.model)
 		}
+	}
+	if companionBad {
+		models = nil // an invalid companion means no output for the package
 	}
 	return models, dedupeDiagnostics(diags)
 }
@@ -76,6 +81,8 @@ type discovery struct {
 	// nonModel is set for a struct without the marker, whose momo tags are
 	// checked once mixin use is known.
 	nonModel *types.Named
+	// companionBad is set when this model's MomoConfig has diagnostics.
+	companionBad bool
 }
 
 func (d *discovery) diag(pos token.Pos, msg string) {
@@ -274,6 +281,10 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	var idiags []Diagnostic
 	m.Indexes, idiags = mixinIndexes(m)
 	d.diags = append(d.diags, idiags...)
+	var cdiags []Diagnostic
+	m.Config, cdiags = ReadCompanion(d.pkg, m)
+	d.diags = append(d.diags, cdiags...)
+	d.companionBad = d.companionBad || len(cdiags) > 0
 	return m
 }
 
