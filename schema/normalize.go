@@ -214,6 +214,25 @@ func canonical(s *Schema) ([]byte, error) {
 			}
 		}
 	}
+	for i := range c.Views {
+		v := &c.Views[i]
+		v.Query = NormalizeExpr(d, v.Query)
+		for j := range v.Indexes {
+			ix := &v.Indexes[j]
+			ix.Concurrently = false
+			ix.Where = NormalizeExpr(d, ix.Where)
+			for k := range ix.Parts {
+				ix.Parts[k].Expr = NormalizeExpr(d, ix.Parts[k].Expr)
+			}
+		}
+	}
+	for i := range c.Triggers {
+		c.Triggers[i].When = NormalizeExpr(d, c.Triggers[i].When)
+	}
+	for i := range c.Policies {
+		c.Policies[i].Using = NormalizeExpr(d, c.Policies[i].Using)
+		c.Policies[i].Check = NormalizeExpr(d, c.Policies[i].Check)
+	}
 	c.Sort()
 	return json.Marshal(&c)
 }
