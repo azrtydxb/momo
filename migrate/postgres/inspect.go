@@ -22,7 +22,7 @@ const (
 	qNamespaces    = `SELECT nspname FROM pg_namespace WHERE nspname = ANY($1) ORDER BY 1`
 	qExtensions    = `SELECT extname, extversion FROM pg_extension WHERE extname <> 'plpgsql' ORDER BY 1`
 	qEnums         = `SELECT n.nspname, t.typname, e.enumlabel
-FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace JOIN pg_enum e ON e.enumtypid = t.oid
+FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace LEFT JOIN pg_enum e ON e.enumtypid = t.oid
 WHERE t.typtype = 'e' AND n.nspname = ANY($1) ORDER BY 1,2,e.enumsortorder`
 	// Partition children are included (they carry PartitionOf); the plan's
 	// relispartition = false filter would hide them from the result.
@@ -46,7 +46,8 @@ WHERE classid = 'pg_class'::regclass AND objid = to_regclass($1)::oid
 	qConstraints = `SELECT conname, contype::text,
   (SELECT array_agg(a.attname::text ORDER BY k.ord) FROM unnest(conkey) WITH ORDINALITY k(n, ord)
      JOIN pg_attribute a ON a.attrelid = conrelid AND a.attnum = k.n),
-  confrelid::regclass::text,
+  (SELECT n.nspname::text FROM pg_class rc JOIN pg_namespace n ON n.oid = rc.relnamespace WHERE rc.oid = confrelid),
+  (SELECT rc.relname::text FROM pg_class rc WHERE rc.oid = confrelid),
   (SELECT array_agg(a.attname::text ORDER BY k.ord) FROM unnest(confkey) WITH ORDINALITY k(n, ord)
      JOIN pg_attribute a ON a.attrelid = confrelid AND a.attnum = k.n),
   confupdtype::text, confdeltype::text, pg_get_constraintdef(oid)
@@ -72,10 +73,14 @@ var partStrategies = map[string]string{"r": "range", "l": "list", "h": "hash"}
 // Table.Schema; Schema.Schemas lists only the other managed namespaces.
 // opts.Exclude is a drift-time filter and is not applied here.
 func (Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.InspectOptions) (*schema.Schema, error) {
-	var current string
-	if err := queryOne(ctx, c, qCurrentSchema, nil, &current); err != nil {
+	var cur *string
+	if err := queryOne(ctx, c, qCurrentSchema, nil, &cur); err != nil {
 		return nil, fmt.Errorf("postgres inspect: current schema: %w", err)
 	}
+	if cur == nil {
+		return nil, errors.New("postgres inspect: current_schema() is NULL: the search_path names no existing schema")
+	}
+	current := *cur
 	managed := opts.Schemas
 	if len(managed) == 0 {
 		managed = []string{current}
@@ -139,7 +144,8 @@ func (in *inspector) extensions(ctx context.Context, out *schema.Schema) error {
 func (in *inspector) enums(ctx context.Context, out *schema.Schema) error {
 	idx := map[string]int{}
 	return forEach(ctx, in.c, qEnums, []any{in.managed}, func(r momo.Rows) error {
-		var ns, name, label string
+		var ns, name string
+		var label *string
 		if err := r.Scan(&ns, &name, &label); err != nil {
 			return err
 		}
@@ -148,9 +154,11 @@ func (in *inspector) enums(ctx context.Context, out *schema.Schema) error {
 		if !ok {
 			i = len(out.Enums)
 			idx[q] = i
-			out.Enums = append(out.Enums, schema.Enum{Name: q})
+			out.Enums = append(out.Enums, schema.Enum{Name: q, Values: []string{}})
 		}
-		out.Enums[i].Values = append(out.Enums[i].Values, label)
+		if label != nil {
+			out.Enums[i].Values = append(out.Enums[i].Values, *label)
+		}
 		return nil
 	})
 }
@@ -243,8 +251,12 @@ func (in *inspector) column(ctx context.Context, rel uint32, x rawColumn) (schem
 	case "d":
 		col.Identity = "by_default"
 	}
-	if x.gen == "s" {
+	switch x.gen {
+	case "s":
 		col.Generated, def = def, ""
+	case "":
+	default:
+		return col, fmt.Errorf("column %s: generated column kind %q (virtual) is not supported by the schema model", x.name, x.gen)
 	}
 	if def != "" && col.Identity == "" {
 		serial, err := in.ownedSerial(ctx, def, rel, x.attnum)
@@ -286,10 +298,11 @@ func (in *inspector) ownedSerial(ctx context.Context, def string, rel uint32, at
 func (in *inspector) constraints(ctx context.Context, tr tableRow, t *schema.Table) error {
 	return forEach(ctx, in.c, qConstraints, []any{tr.oid}, func(r momo.Rows) error {
 		var (
-			name, typ, ref, upd, del, def string
-			cols, refCols                 []string
+			name, typ, upd, del, def string
+			refNS, refName           *string
+			cols, refCols            []string
 		)
-		if err := r.Scan(&name, &typ, &cols, &ref, &refCols, &upd, &del, &def); err != nil {
+		if err := r.Scan(&name, &typ, &cols, &refNS, &refName, &refCols, &upd, &del, &def); err != nil {
 			return err
 		}
 		switch typ {
@@ -304,6 +317,10 @@ func (in *inspector) constraints(ctx context.Context, tr tableRow, t *schema.Tab
 			}
 			t.Checks = append(t.Checks, schema.Check{Name: name, Expr: expr})
 		case "f":
+			ref := ""
+			if refNS != nil && refName != nil {
+				ref = in.qualify(*refNS, *refName)
+			}
 			t.ForeignKeys = append(t.ForeignKeys, schema.ForeignKey{
 				Name: name, Columns: cols, RefTable: ref, RefColumns: refCols,
 				OnUpdate: fkActions[upd], OnDelete: fkActions[del],

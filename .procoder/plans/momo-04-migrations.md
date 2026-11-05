@@ -1411,7 +1411,7 @@ Queries (exact):
 - Triggers: the function is read as `p.oid::regprocedure::text`, which yields `name(argtypes)` and prefixes the schema only when the function is not visible on the search_path (so `touch()` for a function in the current schema, `other.touch()` otherwise); `Trigger.Function` stores exactly that text and the renderer emits `EXECUTE FUNCTION <Function>` followed by the argument list only for non-empty `Trigger.Args` (an empty argument list is already the `()` in the stored text). `SELECT n.nspname, c.relname, t.tgname, t.tgtype, pg_get_expr(t.tgqual, t.tgrelid), p.oid::regprocedure::text FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace JOIN pg_proc p ON p.oid = t.tgfoid WHERE NOT t.tgisinternal AND n.nspname = ANY($1)`. Bits: ROW 1, BEFORE 2, INSERT 4, DELETE 8, UPDATE 16, TRUNCATE 32, INSTEAD 64. A trigger with an UPDATE OF column list returns ErrUnsupported naming the trigger.
 - Policies: `SELECT n.nspname, c.relname, p.polname, p.polcmd, p.polpermissive, ARRAY(SELECT rolname FROM pg_roles WHERE oid = ANY(p.polroles) ORDER BY rolname), pg_get_expr(p.polqual, p.polrelid), pg_get_expr(p.polwithcheck, p.polrelid) FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = ANY($1)`. Command map: `r` SELECT, `a` INSERT, `w` UPDATE, `d` DELETE, `*` ALL. Roles containing 0 (PUBLIC) are returned as an empty list.
 - RLS flags: from the table query in Task 10 (relrowsecurity, relforcerowsecurity) stored as `RLS` when either is true.
-- Partition info: Task 10 queries.
+- Partition info: Task 10 queries. Partition children are returned as tables carrying `PartitionOf` (Task 10 does not filter `relispartition`); constraints a child merely inherits (`conparentid <> 0`) are hidden.
 
 Steps:
 
@@ -1456,8 +1456,12 @@ func TestPostgresObjectInspection(t *testing.T) {
     if ev.RLS == nil || !ev.RLS.Enabled {
         t.Fatal("RLS flag not inspected")
     }
-    if _, ok := got.Table("events_2026"); ok {
-        t.Fatal("partition children must not appear as independent tables")
+    child, ok := got.Table("events_2026")
+    if !ok || child.PartitionOf == nil || child.PartitionOf.Parent != "events" {
+        t.Fatalf("partition child must appear as a table carrying PartitionOf: %+v", child)
+    }
+    if len(child.PrimaryKey) != 0 {
+        t.Fatalf("constraints inherited from the parent must be hidden on the child: %+v", child.PrimaryKey)
     }
     if len(got.Triggers) != 1 || got.Triggers[0].Timing != "BEFORE" || len(got.Triggers[0].Events) != 2 {
         t.Fatalf("trigger: %+v", got.Triggers)

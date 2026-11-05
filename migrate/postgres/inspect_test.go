@@ -4,6 +4,8 @@ package postgres_test
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -84,6 +86,9 @@ func TestPostgresInspectColumnsAndConstraints(t *testing.T) {
 	}
 	if col.Type != "vector(3)" {
 		t.Fatalf("vector type: %+v", col)
+	}
+	if len(got.Enums) == 1 && !slices.Equal(got.Enums[0].Values, []string{"draft", "live"}) {
+		t.Fatalf("enum values: %+v", got.Enums[0].Values)
 	}
 	if len(got.Enums) != 1 || len(got.Extensions) != 1 {
 		t.Fatalf("enums/extensions: %+v %+v", got.Enums, got.Extensions)
@@ -192,5 +197,47 @@ func TestPostgresInspectOtherSchemaAndPartitions(t *testing.T) {
 	if child == nil || child.PartitionOf == nil || child.PartitionOf.Parent != "ev" ||
 		!strings.HasPrefix(child.PartitionOf.Bound, "FOR VALUES FROM (") {
 		t.Fatalf("child: %+v", child)
+	}
+}
+
+func TestPostgresInspectMixedCaseForeignKeyRoundTrip(t *testing.T) {
+	db := testopen.Postgres(t)
+	cur := testdb.Schema(t)
+	aux := cur + "_aux"
+	mustExec(t, db.Driver(), `CREATE SCHEMA `+aux)
+	t.Cleanup(func() { _, _ = db.Driver().Exec(context.Background(), `DROP SCHEMA `+aux+` CASCADE`, nil) })
+	mustExec(t, db.Driver(), `CREATE TABLE `+aux+`."Orgs" (id bigint PRIMARY KEY)`)
+	mustExec(t, db.Driver(), `CREATE TABLE child (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        org_id bigint CONSTRAINT child_org_fk REFERENCES `+aux+`."Orgs"(id),
+        qty int NOT NULL DEFAULT 5,
+        double_qty int GENERATED ALWAYS AS (qty * 2) STORED
+    )`)
+	got, err := mpg.New().Inspect(context.Background(), pinned(t, db), migrate.InspectOptions{Schemas: []string{cur, aux}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &schema.Schema{
+		FormatVersion: schema.FormatVersion, Dialect: "postgres",
+		Schemas:    []schema.SchemaNamespace{{Name: aux}},
+		Extensions: got.Extensions,
+		Tables: []schema.Table{
+			{Schema: aux, Name: "Orgs", PrimaryKey: []string{"id"},
+				Columns: []schema.Column{{Name: "id", Type: "bigint"}}},
+			{Name: "child", Columns: []schema.Column{
+				{Name: "id", Type: "bigint", Identity: "always"},
+				{Name: "org_id", Type: "bigint", Nullable: true},
+				{Name: "qty", Type: "integer", Default: "5"},
+				{Name: "double_qty", Type: "integer", Nullable: true, Generated: "(qty * 2)"},
+			}, ForeignKeys: []schema.ForeignKey{{
+				Name: "child_org_fk", Columns: []string{"org_id"},
+				RefTable: aux + ".Orgs", RefColumns: []string{"id"},
+			}}},
+		},
+	}
+	if !schema.Equal(got, want) {
+		gj, _ := json.MarshalIndent(schema.Normalized(got), "", " ")
+		wj, _ := json.MarshalIndent(schema.Normalized(want), "", " ")
+		t.Fatalf("not equal:\n got %s\nwant %s", gj, wj)
 	}
 }
