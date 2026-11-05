@@ -2,8 +2,10 @@
 
 package naming
 
-// GORM reproduces gorm's default NamingStrategy: snake_case columns that keep
-// acronyms together (HTTPURL becomes http_url) and plural snake_case tables.
+// GORM reproduces gorm's default NamingStrategy: initialisms are replaced
+// unconditionally before snake-casing (UserIDs becomes user_ids, HTTPURL
+// becomes http_url) and tables are plural by jinzhu/inflection's rules. Both
+// are checked against a recorded word list. Names are assumed ASCII.
 //
 // JoinTableName: gorm has no default many-to-many table name; the recorded
 // fixture value echoes a many2many tag the recorder set explicitly. The rule
@@ -12,12 +14,14 @@ package naming
 type GORM struct{}
 
 // TableName returns the plural snake_case table name.
-func (GORM) TableName(goModel string) string { return Plural(snakeInitialisms(goModel)) }
+func (GORM) TableName(goModel string) string {
+	return inflectionPluralize(snakeInitialisms(goModel))
+}
 
 // ColumnName returns the snake_case column name.
 func (GORM) ColumnName(goField string) string { return snakeInitialisms(goField) }
 
 // JoinTableName returns owner snake_case followed by the plural target.
-func (GORM) JoinTableName(owner, target string) string {
-	return snakeInitialisms(owner) + "_" + Plural(snakeInitialisms(target))
+func (g GORM) JoinTableName(owner, target string) string {
+	return snakeInitialisms(owner) + "_" + g.TableName(target)
 }

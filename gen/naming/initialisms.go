@@ -4,37 +4,77 @@ package naming
 
 import "strings"
 
-// initialisms are the acronyms gorm and ent split off as their own word, so
-// HTTPURL becomes http_url although a plain acronym run is otherwise one word.
-// Longer entries precede their prefixes (HTTPS before HTTP).
-var initialisms = []string{
-	"ASCII", "HTTPS", "HTML", "HTTP", "JSON", "SMTP", "UUID", "GUID", "UTF8",
-	"XSRF", "API", "CPU", "CSS", "DNS", "EOF", "LHS", "QPS", "RAM", "RHS",
-	"RPC", "SLA", "SSH", "TLS", "TTL", "UID", "URI", "URL", "XML", "XSS",
-	"ID", "IP", "UI", "VM",
+// gormInitialisms is the list gorm title-cases before snake-casing, so an
+// initialism becomes its own word (HTTPURL becomes http_url).
+var gormInitialisms = []string{
+	"API", "ASCII", "CPU", "CSS", "DNS", "EOF", "GUID", "HTML", "HTTP", "HTTPS",
+	"ID", "IP", "JSON", "LHS", "QPS", "RAM", "RHS", "RPC", "SLA", "SMTP", "SSH",
+	"TLS", "TTL", "UID", "UI", "UUID", "URI", "URL", "UTF8", "VM", "XML",
+	"XSRF", "XSS",
 }
 
-// snakeInitialisms is ToSnake after title-casing each known initialism that
-// ends at a word boundary, which makes the acronym a separate word.
-func snakeInitialisms(s string) string {
-	var b strings.Builder
-	for i := 0; i < len(s); {
-		matched := false
-		for _, in := range initialisms {
-			end := i + len(in)
-			if strings.HasPrefix(s[i:], in) && (end == len(s) || !isLowerByte(s[end])) {
-				b.WriteString(in[:1] + strings.ToLower(in[1:]))
-				i = end
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			b.WriteByte(s[i])
-			i++
-		}
+// gormReplacer pairs each initialism with its title-cased form. Like gorm's
+// own, it replaces unconditionally and, at one position, prefers the earlier
+// pair (HTTP wins over HTTPS), so UserIDs becomes UserIds.
+var gormReplacer = newInitialismReplacer(gormInitialisms)
+
+func newInitialismReplacer(list []string) *strings.Replacer {
+	pairs := make([]string, 0, 2*len(list))
+	for _, in := range list {
+		pairs = append(pairs, in, titleASCII(in))
 	}
-	return ToSnake(b.String())
+	return strings.NewReplacer(pairs...)
 }
 
-func isLowerByte(c byte) bool { return c >= 'a' && c <= 'z' }
+// titleASCII upper-cases the first byte and lower-cases the rest.
+func titleASCII(s string) string {
+	var b strings.Builder
+	b.WriteString(strings.ToUpper(s[:1]))
+	b.WriteString(strings.ToLower(s[1:]))
+	return b.String()
+}
+
+// snakeInitialisms is gorm's snake_case conversion: initialisms are
+// title-cased first, then a '_' goes before an upper-case letter that starts a
+// word, and digits after an upper-case letter do not split it.
+func snakeInitialisms(name string) string {
+	if name == "" {
+		return ""
+	}
+	value := gormReplacer.Replace(name)
+	var (
+		buf                            strings.Builder
+		lastCase, nextCase, nextNumber bool // upper case == true
+		curCase                        = isUpperByte(value[0])
+	)
+	for i := 0; i < len(value)-1; i++ {
+		v := value[i]
+		nextCase = isUpperByte(value[i+1])
+		nextNumber = value[i+1] >= '0' && value[i+1] <= '9'
+		switch {
+		case !curCase:
+			buf.WriteByte(v)
+		case lastCase && (nextCase || nextNumber):
+			buf.WriteByte(v + 32)
+		default:
+			if i > 0 && value[i-1] != '_' && value[i+1] != '_' {
+				buf.WriteByte('_')
+			}
+			buf.WriteByte(v + 32)
+		}
+		lastCase = curCase
+		curCase = nextCase
+	}
+	last := value[len(value)-1]
+	if curCase {
+		if !lastCase && len(value) > 1 {
+			buf.WriteByte('_')
+		}
+		buf.WriteByte(last + 32)
+	} else {
+		buf.WriteByte(last)
+	}
+	return buf.String()
+}
+
+func isUpperByte(c byte) bool { return c >= 'A' && c <= 'Z' }
