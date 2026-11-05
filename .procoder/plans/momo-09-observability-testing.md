@@ -139,7 +139,6 @@ Files:
 
 - Modify `db.go` (`QueryEvent`, `execer`, `before`, `after`, `Begin`)
 - Create `internal/obstest/obstest.go` (the `Recorder` hook, exercised by every test below)
-- Create `obs_helpers_test.go` (package `momo_test`)
 - Create `obs_poolwait_test.go` (package `momo_test`)
 
 Interfaces:
@@ -149,6 +148,8 @@ func RecordPoolWait(ctx context.Context, d time.Duration)
 type QueryEvent struct { /* fields as in Interfaces above */ }
 type execer struct { /* existing fields */ inTx bool; owner Querier }
 ```
+
+The tests run on `internal/fakedriver` for the postgres and sqlite dialects, because these are root-package behaviours; the live-pool path is covered by momo-03 Task 5 (the pgx pool tracer) and the momo-09 integration tasks.
 
 Covers: S-18 (pool wait, query counts). Acceptance tests named here: `TestQueryEventPoolWait`, `TestRecordPoolWaitWithoutHooks`, `TestQueryEventInTx`.
 
@@ -221,49 +222,7 @@ func (r *Recorder) Reset() {
 }
 ```
 
-- [ ] **Step 2: Write the test helpers** — create `obs_helpers_test.go`:
-
-```go
-package momo_test
-
-import (
-	"context"
-	"testing"
-
-	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/internal/relfixture"
-	"github.com/azrtydxb/momo/internal/relfixture/author"
-	"github.com/azrtydxb/momo/internal/relfixture/document"
-	"github.com/azrtydxb/momo/internal/relfixture/models"
-)
-
-// obsSeed applies the fixture schema and seeds the basic rows.
-func obsSeed(t testing.TB, db *momo.DB) {
-	t.Helper()
-	relfixture.CreateSchema(t, db)
-	relfixture.SeedBasic(t, db)
-}
-
-func obsDocs(t testing.TB, q momo.Querier) []models.Document {
-	t.Helper()
-	docs, err := momo.Select[models.Document, *models.Document](q).OrderBy(document.ID.Asc()).All(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return docs
-}
-
-func obsAuthorCount(t testing.TB, q momo.Querier, id int64) int64 {
-	t.Helper()
-	n, err := momo.Select[models.Author, *models.Author](q).Where(author.ID.Eq(id)).Count(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return n
-}
-```
-
-- [ ] **Step 3: Write the failing tests** — create `obs_poolwait_test.go`:
+- [ ] **Step 2: Write the failing tests** — create `obs_poolwait_test.go`:
 
 ```go
 package momo_test
@@ -277,8 +236,18 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/obstest"
-	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/internal/fakedriver"
 )
+
+// obsEach runs fn once per dialect against a database-free fake driver. The
+// statements are recorded, never executed, which is all these tests need:
+// they check event fields, not results.
+func obsEach(t *testing.T, fn func(t *testing.T, drv momo.Driver, d dialect.Name)) {
+	t.Helper()
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
+		t.Run(string(d), func(t *testing.T) { fn(t, fakedriver.New(d), d) })
+	}
+}
 
 // waitDriver reports a fixed pool wait twice per statement, the way a pool
 // tracer that observes two acquisitions would.
@@ -302,9 +271,9 @@ func (d waitDriver) Exec(ctx context.Context, sql string, args []any) (int64, er
 func TestQueryEventPoolWait(t *testing.T) {
 	ctx := context.Background()
 	rec := &obstest.Recorder{}
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	obsEach(t, func(t *testing.T, drv momo.Driver, d dialect.Name) {
 		rec.Reset()
-		wdb := momo.New(waitDriver{Driver: db.Driver(), wait: 5 * time.Millisecond}, momo.WithHook(rec))
+		wdb := momo.New(waitDriver{Driver: drv, wait: 5 * time.Millisecond}, momo.WithHook(rec))
 		if _, err := momo.Exec(ctx, wdb, `CREATE TABLE pw (x INTEGER)`); err != nil {
 			t.Fatal(err)
 		}
@@ -335,8 +304,8 @@ func TestQueryEventPoolWait(t *testing.T) {
 func TestRecordPoolWaitWithoutHooks(t *testing.T) {
 	ctx := context.Background()
 	momo.RecordPoolWait(ctx, time.Hour) // no slot in the context: must be a no-op
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		wdb := momo.New(waitDriver{Driver: db.Driver(), wait: time.Hour})
+	obsEach(t, func(t *testing.T, drv momo.Driver, d dialect.Name) {
+		wdb := momo.New(waitDriver{Driver: drv, wait: time.Hour})
 		if _, err := momo.Exec(ctx, wdb, `CREATE TABLE pw (x INTEGER)`); err != nil {
 			t.Fatal(err)
 		}
@@ -346,7 +315,8 @@ func TestRecordPoolWaitWithoutHooks(t *testing.T) {
 func TestQueryEventInTx(t *testing.T) {
 	ctx := context.Background()
 	rec := &obstest.Recorder{}
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	obsEach(t, func(t *testing.T, drv momo.Driver, d dialect.Name) {
+		db := momo.New(drv, momo.WithHook(rec))
 		if _, err := momo.Exec(ctx, db, `CREATE TABLE pw (x INTEGER)`); err != nil {
 			t.Fatal(err)
 		}
@@ -374,13 +344,13 @@ func TestQueryEventInTx(t *testing.T) {
 				t.Fatalf("ops %v inTx %v owners %v, want %v %v %v", ops, inTx, owners, wantOps, wantTx, wantOwners)
 			}
 		}
-	}, momo.WithHook(rec))
+	})
 }
 ```
 
-- [ ] **Step 4: Run and expect FAIL** — `go test ./ -run 'TestQueryEventPoolWait|TestRecordPoolWaitWithoutHooks|TestQueryEventInTx' -count=1` fails to compile with `undefined: momo.RecordPoolWait` (also `e.PoolWait undefined (type obstest.Event has no field or method PoolWait)`).
+- [ ] **Step 3: Run and expect FAIL** — `go test ./ -run 'TestQueryEventPoolWait|TestRecordPoolWaitWithoutHooks|TestQueryEventInTx' -count=1` fails to compile with `undefined: momo.RecordPoolWait` (also `e.PoolWait undefined (type obstest.Event has no field or method PoolWait)`).
 
-- [ ] **Step 5: Implement in `db.go`** — replace the `QueryEvent` struct with the version in Interfaces (keep the existing doc comments on each field) and add:
+- [ ] **Step 4: Implement in `db.go`** — replace the `QueryEvent` struct with the version in Interfaces (keep the existing doc comments on each field) and add:
 
 ```go
 type poolWaitKey struct{}
@@ -431,9 +401,9 @@ func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []
 
 and in `after`, before calling the hooks: `ev.PoolWait = time.Duration(ev.pool.ns.Load())`.
 
-- [ ] **Step 6: Run and expect PASS** — `go test ./ -run 'TestQueryEventPoolWait|TestRecordPoolWaitWithoutHooks|TestQueryEventInTx' -count=1` prints `ok`.
+- [ ] **Step 5: Run and expect PASS** — `go test ./ -run 'TestQueryEventPoolWait|TestRecordPoolWaitWithoutHooks|TestQueryEventInTx' -count=1` prints `ok`.
 
-- [ ] **Step 7: Commit** — `git add db.go internal/obstest obs_helpers_test.go obs_poolwait_test.go && git commit -m "feat(hooks): record pool wait and transaction flag on query events"`.
+- [ ] **Step 6: Commit** — `git add db.go internal/obstest obs_poolwait_test.go && git commit -m "feat(hooks): record pool wait and transaction flag on query events"`.
 
 ## Task 2: TestHooks, the hook contract
 
