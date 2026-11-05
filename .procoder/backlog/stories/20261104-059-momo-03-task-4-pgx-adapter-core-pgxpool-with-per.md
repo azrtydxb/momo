@@ -1,6 +1,6 @@
 # momo-03 Task 4: pgx adapter core (pgxpool) with per-call exec mode
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-03-drivers-postgresql
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -13,7 +13,7 @@ Implements plan momo-03-drivers Task 4: pgx adapter core (pgxpool) with per-call
 
 - [x] `TestExecModeExecIsApplied` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestSimpleProtocolRejected` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestDefaultExecModeNoNamedStatements` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestDefaultExecModeNoNamedStatements` exists as written in the plan, failed before the implementation, and passes now
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
@@ -23,3 +23,4 @@ Implements plan momo-03-drivers Task 4: pgx adapter core (pgxpool) with per-call
 - Extra tests: context cancel propagation, Rows.Close releases the pooled connection on early exit, error classification and redaction (incl. SQLSTATE 22 echoing the argument), isolation and read-only mapping, ErrTxDone, concurrent use under -race.
 - Mutation: making pgxRows.Close a no-op leaks the connection and TestRowsCloseReleasesConnection hangs at pool cleanup (detected).
 - `procoder check`: 0 blocking findings.
+- Update (momo-03 Task 7): `Pin` landed, the `t.Skip` was removed and `TestDefaultExecModeNoNamedStatements` now runs and passes (pg_prepared_statements count is 0 on the pinned connection), so the last criterion is met.

@@ -272,6 +272,9 @@ func Exec(ctx context.Context, q Querier, sql string, args ...any) (int64, error
 // Begin starts an explicit transaction. The caller must Commit or Rollback;
 // a deferred Rollback after Commit is a harmless no-op returning ErrTxDone.
 func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
+	if _, ok := db.ex.q.(Driver); !ok { // a handle from OnConn
+		return nil, &Error{Kind: ErrUnsupported, Op: "begin", Err: errors.New("transactions are not available on a pinned connection")}
+	}
 	drv := db.Driver()
 	ctx2, ev := db.ex.before(ctx, "begin", "", "", "BEGIN", nil)
 	dtx, err := drv.Begin(ctx2, opts)
