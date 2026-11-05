@@ -62,6 +62,7 @@ func WithArgLogging() Option { return func(db *DB) { db.logArgs = true } }
 // no state besides configuration: no background goroutines, no implicit
 // migrations, no caches.
 type DB struct {
+	drv     Driver
 	ex      execer
 	hooks   []Hook
 	logArgs bool
@@ -70,7 +71,7 @@ type DB struct {
 // New wraps a driver. The caller keeps ownership of the underlying pool and
 // closes it.
 func New(drv Driver, opts ...Option) *DB {
-	db := &DB{}
+	db := &DB{drv: drv}
 	for _, o := range opts {
 		o(db)
 	}
@@ -85,14 +86,13 @@ func (db *DB) Dialect() *dialect.Dialect { return db.ex.d }
 func (db *DB) conn() *execer             { return &db.ex }
 
 // Driver returns the underlying driver, e.g. to reach native features.
-func (db *DB) Driver() Driver { return db.ex.q.(Driver) }
+func (db *DB) Driver() Driver { return db.drv }
 
 // Tx is an explicit transaction handle. It is not safe for concurrent use:
 // a transaction is bound to one connection, which processes one statement
 // at a time.
 type Tx struct {
 	ex    execer
-	db    *DB
 	dtx   DriverTx
 	done  *atomic.Bool // shared with savepoint scopes of the same transaction
 	depth int          // savepoint nesting depth for Tx.Tx
@@ -244,7 +244,7 @@ func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
 	if err != nil {
 		return nil, db.ex.wrapErr("begin", "", err)
 	}
-	tx := &Tx{db: db, dtx: dtx, done: new(atomic.Bool)}
+	tx := &Tx{dtx: dtx, done: new(atomic.Bool)}
 	tx.ex = execer{db: db, q: dtx, d: db.ex.d, classify: db.ex.classify}
 	return tx, nil
 }
@@ -313,7 +313,7 @@ func (tx *Tx) Tx(ctx context.Context, fn func(tx *Tx) error) error {
 	if err := tx.Savepoint(ctx, name); err != nil {
 		return err
 	}
-	inner := &Tx{db: tx.db, dtx: tx.dtx, done: tx.done, depth: tx.depth + 1}
+	inner := &Tx{dtx: tx.dtx, done: tx.done, depth: tx.depth + 1}
 	inner.ex = tx.ex
 	ok := false
 	defer func() {
@@ -354,7 +354,9 @@ func (tx *Tx) spExec(ctx context.Context, stmt, name string) error {
 	if tx.done.Load() {
 		return ErrTxDone
 	}
-	c, _ := compile(tx.ex.d, func(b *Builder) { b.WriteString(stmt); b.Ident(name) })
-	_, err := tx.ex.exec(ctx, "savepoint", "", c)
+	b := NewBuilder(tx.ex.d)
+	b.WriteString(stmt)
+	b.Ident(name)
+	_, err := tx.ex.exec(ctx, "savepoint", "", Compiled{SQL: b.String()})
 	return err
 }
