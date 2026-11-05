@@ -534,13 +534,32 @@ func (e *Engine) Inspect(ctx context.Context) (*schema.Schema, error) {
 		return nil, err
 	}
 	defer func() { _ = c.Release() }()
+	s, _, err := e.inspectOn(ctx, c)
+	return s, err
+}
+
+// inspectOn is Inspect on a connection the caller holds. It also returns the
+// indexes the dialect reports as invalid (a failed CONCURRENTLY build) when the
+// dialect implements InvalidInspector, and applies Config.Exclude to the result
+// because the dialects do not.
+func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Schema, []string, error) {
+	if _, err := excludeMatcher(e.opts.config.Exclude); err != nil {
+		return nil, nil, err
+	}
 	schemas, err := e.resolveSchemas(ctx, c)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	s, err := e.opts.dialect.Inspect(ctx, c, InspectOptions{Schemas: schemas, Exclude: e.opts.config.Exclude})
+	opts := InspectOptions{Schemas: schemas, Exclude: e.opts.config.Exclude}
+	var s *schema.Schema
+	var invalid []string
+	if ii, ok := e.opts.dialect.(InvalidInspector); ok {
+		s, invalid, err = ii.InspectWithInvalid(ctx, c, opts)
+	} else {
+		s, err = e.opts.dialect.Inspect(ctx, c, opts)
+	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	hs := ""
 	if len(schemas) > 0 {
@@ -549,7 +568,7 @@ func (e *Engine) Inspect(ctx context.Context) (*schema.Schema, error) {
 	s.Tables = slices.DeleteFunc(s.Tables, func(t schema.Table) bool {
 		return t.Name == historyTable && (t.Schema == "" || t.Schema == hs)
 	})
-	return s, nil
+	return applyExclude(s, e.opts.config.Exclude), invalid, nil
 }
 
 // migrationName is the form a migration name must have.
