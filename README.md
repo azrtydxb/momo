@@ -408,6 +408,10 @@ for usage or configuration errors, and 3 for database errors.
 ## More
 
 - [docs/README.md](docs/README.md) is the documentation index.
+- [docs/vectors.md](docs/vectors.md) covers pgvector types, distance
+  metrics, index limits and search settings.
+- [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md) maps every Go type to its
+  column type.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the layers and
   contracts.
 - [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build and test Momo.

@@ -15,7 +15,7 @@ As a Go developer, or an AI coding agent, adopting Momo in an application on Pos
 - [x] every Go snippet in the README appears verbatim in the compiled example under `examples/quickstart`, enforced by a doc-sync test
 - [x] every `momo` command and flag in the README is accepted by `momo help` and `momo migrate help`, enforced by the doc-sync test
 - [x] the README states the PgBouncer-safe default exec mode and recommends a `.gitattributes` rule for generated files
-- [ ] `procoder check` gate is clean and the work is committed
+- [x] `procoder check` gate is clean and the work is committed
 
 ## Evidence
 
