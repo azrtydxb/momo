@@ -4,6 +4,7 @@
 package document
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/azrtydxb/momo"
@@ -45,3 +46,25 @@ var (
 	Note      = base.Note
 	CreatedAt = base.CreatedAt
 )
+
+// ColumnByName returns the typed column for an allowlisted external name.
+// Names are matched exactly against database column names; relation fields and
+// sensitive fields are not in the allowlist.
+func ColumnByName(name string) (momo.ColumnRef, error) {
+	switch name {
+	case "id":
+		return ID, nil
+	case "tenant_id":
+		return TenantID, nil
+	case "title":
+		return Title, nil
+	case "note":
+		return Note, nil
+	case "created_at":
+		return CreatedAt, nil
+	}
+	return nil, fmt.Errorf("%w: column %q is not allowed on %s", momo.ErrValidation, name, "documents")
+}
+
+// ColumnNames lists the allowlisted names in declaration order.
+func ColumnNames() []string { return []string{"id", "tenant_id", "title", "note", "created_at"} }

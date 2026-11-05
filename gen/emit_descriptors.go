@@ -180,6 +180,10 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 		}
 		w(")\n")
 	}
+	lookup, lds := EmitLookup(m, g)
+	e.diags = append(e.diags, lds...)
+	e.use("fmt", "fmt")
+	body.Write(lookup)
 	for _, r := range m.Relations {
 		name := Identifier(r.GoName, used)
 		used[name] = true
