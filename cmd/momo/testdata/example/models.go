@@ -6,6 +6,8 @@ package example
 
 import "github.com/azrtydxb/momo"
 
+//go:generate go run github.com/azrtydxb/momo/cmd/momo generate
+
 // Tenant owns documents.
 type Tenant struct {
 	momo.Model `momo:"table:tenants"`

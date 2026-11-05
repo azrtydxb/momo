@@ -58,9 +58,6 @@ func TestGenerateCheckOrphan(t *testing.T) {
 	if code := Run([]string{"generate", "./..."}, &out, &errb); code != 0 {
 		t.Fatalf("generate: %d %s", code, errb.String())
 	}
-	if r, err := filepath.EvalSymlinks(root); err == nil {
-		root = r
-	}
 	orphan := filepath.Join(root, "gone", "momo_gen.go")
 	if err := os.MkdirAll(filepath.Dir(orphan), 0o750); err != nil {
 		t.Fatal(err)
@@ -73,7 +70,7 @@ func TestGenerateCheckOrphan(t *testing.T) {
 	if code := Run([]string{"generate", "--check", "./..."}, &out, &errb); code != 1 {
 		t.Fatalf("orphan: exit %d want 1", code)
 	}
-	if got := strings.Count(out.String(), "stale: "+orphan+"\n"); got != 1 {
+	if got := strings.Count(out.String(), "stale: gone/momo_gen.go\n"); got != 1 {
 		t.Fatalf("orphan not listed: %s", out.String())
 	}
 }
@@ -88,7 +85,7 @@ func TestGenerateDiagnostics(t *testing.T) {
 	if code := Run([]string{"generate", "./..."}, &out, &errb); code != 1 {
 		t.Fatalf("exit %d want 1\n%s", code, errb.String())
 	}
-	if !strings.Contains(errb.String(), "bad.go:3:") {
+	if want := "bad.go:3:13: cannot use \"s\" (untyped string constant) as int value in variable declaration\n"; errb.String() != want {
 		t.Fatalf("no positioned diagnostic: %q", errb.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, "document", "momo_gen.go")); err == nil {
