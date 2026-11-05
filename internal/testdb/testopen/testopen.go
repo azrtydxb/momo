@@ -42,11 +42,11 @@ func Postgres(t *testing.T, opts ...momo.Option) *momo.DB {
 	url := testdb.PostgresURL(t)
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, url)
+	pool, err := pgxdriver.NewPool(ctx, url)
 	if err != nil {
 		t.Fatalf("testopen: open postgres pool: %v", err)
 	}
-	t.Cleanup(pool.Close)
+	t.Cleanup(func() { closePool(pool, closeTimeout, t.Errorf) })
 	return momo.New(pgxdriver.New(pool), opts...)
 }
 
@@ -59,5 +59,22 @@ func Each(t *testing.T, fn func(t *testing.T, db *momo.DB, d dialect.Name), opts
 		t.Run(string(o.name), func(t *testing.T) {
 			fn(t, o.open(t, opts...), o.name)
 		})
+	}
+}
+
+// closeTimeout bounds how long a test waits for pool.Close.
+const closeTimeout = 5 * time.Second
+
+// closePool closes pool, but unlike pool.Close it cannot hang a test binary on
+// a leaked connection: it closes in a goroutine and, when that takes longer
+// than timeout, reports the acquired-connection count through report.
+func closePool(pool *pgxpool.Pool, timeout time.Duration, report func(format string, args ...any)) {
+	acquired := pool.Stat().AcquiredConns()
+	done := make(chan struct{})
+	go func() { pool.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		report("testopen: pool.Close blocked for %v: %d connection(s) still acquired (leaked)", timeout, acquired)
 	}
 }
