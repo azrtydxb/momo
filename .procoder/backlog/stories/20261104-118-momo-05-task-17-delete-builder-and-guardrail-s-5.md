@@ -1,6 +1,6 @@
 # momo-05 Task 17: Delete builder and guardrail — S-5
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -11,9 +11,15 @@ Implements plan momo-05-writes-queries Task 17: Delete builder and guardrail —
 
 ## Acceptance criteria
 
-- [ ] `TestDeleteByModelAndGuard` exists as written in the plan, failed before the implementation, and passes now
-- [ ] the plan's `TestMutationGuardrails` Delete assertion is restored, and Delete uses the shared effective-filter helper (`hasEffectiveFilter`) so `Where(And())` is refused
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestDeleteByModelAndGuard` exists as written in the plan, failed before the implementation, and passes now
+- [x] the plan's `TestMutationGuardrails` Delete assertion is restored, and Delete uses the shared effective-filter helper (`hasEffectiveFilter`) so `Where(And())` is refused
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- TestDeleteByModelAndGuard: before delete.go the build failed with `undefined: momo.Delete`; now PASS on postgres with -race, plus the full integration suite for package momo.
+- delete.go uses hasEffectiveFilter; the test asserts Where(And()) is refused. Mutation check: replacing the helper with len(where)==0 made the test fail (`Where(And()) delete err = <nil>`); restored.
+- TestMutationGuardrails in update_test.go has its Delete assertion again.
+- DELETE renders inside Builder.withScope on the target table.
+
+- Review follow-up: Delete on a soft-delete model returns ErrValidation (documents row survives, integration-tested); tests now use the test-local delNote model. Delete gained Returning, ReturningAll and Rows via renderReturning/runReturning; MySQL gives ErrUnsupported. Model delete ignores the version column (documented). Unit tests cover Where(Or()), nested empty junctions, a composite PK and a correlated EXISTS in WHERE.

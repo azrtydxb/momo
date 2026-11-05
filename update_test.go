@@ -15,8 +15,7 @@ import (
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 )
 
-// TestMutationGuardrails covers the UPDATE half of the guardrail. The
-// unfiltered DELETE assertion lives with the delete builder.
+// TestMutationGuardrails covers the unfiltered UPDATE and DELETE guardrail.
 func TestMutationGuardrails(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
@@ -26,6 +25,12 @@ func TestMutationGuardrails(t *testing.T) {
 		}
 		if _, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("x")).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
 			t.Fatalf("unfiltered update err = %v", err)
+		}
+		// documents is a soft-delete model, which Delete refuses outright, so
+		// the unfiltered-DELETE guard is asserted on a model without one.
+		createDelNotes(t, db)
+		if _, err := momo.Delete[delNote](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
+			t.Fatalf("unfiltered delete err = %v", err)
 		}
 		res, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("all")).AllRows().Exec(ctx)
 		if err != nil || res.RowsAffected != 1 {

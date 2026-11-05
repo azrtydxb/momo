@@ -16,6 +16,7 @@ Scope rule: the builder must render its statement inside a target-table scope vi
 - [ ] `TestSoftDelete` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestSoftDeleteVariants` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-75] `TestSoftDeleteVariants` asserts each marker kind hides rows by default, OnlyDeleted and ForceDelete behave as documented and a unique index permits re-creating a soft-deleted key; fails if ForceDelete soft-deletes.
+- [ ] plain `Delete` on a soft-delete model fails with ErrValidation (since Task 17); `ForceDelete` is the only hard delete for such models and bypasses that refusal, with a test for both
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

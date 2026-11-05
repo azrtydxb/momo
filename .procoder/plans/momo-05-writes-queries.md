@@ -1170,6 +1170,8 @@ func TestCopyInsert(t *testing.T) {
 
 Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
 
+Hard-delete rule: from Task 17, plain `Delete` refuses a model with a soft-delete column with `ErrValidation`; `SoftDelete` is the soft path and `ForceDelete` the explicit hard delete. `ForceDelete` must therefore bypass that refusal, and a test must show `Delete` on a soft-delete model still fails.
+
 Files:
 
 - Create: `/Volumes/DATA/Development/momo/update.go`
@@ -1212,7 +1214,9 @@ func TestMutationGuardrails(t *testing.T) {
         if _, err := momo.Update[Document](db).Set(DocTitle.Set("x")).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
             t.Fatalf("unfiltered update err = %v", err)
         }
-        if _, err := momo.Delete[Document](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
+        // documents is a soft-delete model, which Delete refuses; assert the guard on delNote.
+        createDelNotes(t, db)
+        if _, err := momo.Delete[delNote](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
             t.Fatalf("unfiltered delete err = %v", err)
         }
         res, err := momo.Update[Document](db).Set(DocTitle.Set("all")).AllRows().Exec(ctx)
@@ -1467,7 +1471,11 @@ Files:
 - Create: `/Volumes/DATA/Development/momo/delete.go`
 - Create: `/Volumes/DATA/Development/momo/delete_test.go`
 
-Interfaces: `func Delete[T any, PT Modeler[T]](q Querier) DeleteQuery[T]`, with `Where`, `Model(*T)` (by primary key), `AllRows`, `Exec(ctx) (Result, error)`, `SQL()`, `Returning` (Task 9). Same guardrail as Task 15.
+Interfaces: `func Delete[T any, PT Modeler[T]](q Querier) DeleteQuery[T]`, with `Where`, `Model(*T)` (by primary key), `AllRows`, `Exec(ctx) (Result, error)`, `SQL()`, `Returning`, `ReturningAll` and `Rows` (through the shared `renderReturning` and `runReturning` of Task 9). Same guardrail as Task 15, using the shared `hasEffectiveFilter` helper so an empty And or Or is not a filter.
+
+Soft-delete rule: Delete on a model whose metadata has a soft-delete column fails with `ErrValidation` ("model has a soft-delete column: use SoftDelete or ForceDelete"), so a plain Delete can never hard-delete soft-deletable data; `SoftDelete` and `ForceDelete` arrive in Task 18. `Model` deletes by primary key and does not check a version column, even on a versioned model.
+
+The tests delete from a test-local model without soft delete, `delNote` (table `del_notes`, hand-written `MomoMeta`, helper `createDelNotes`), because `documents` is a soft-delete fixture.
 
 - [ ] **Step 1: Write the failing test** `delete_test.go`:
 
@@ -1484,30 +1492,26 @@ import (
 
 func TestDeleteByModelAndGuard(t *testing.T) {
     testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-        suite.CreateDocuments(t, db, suite.CapsOf(db))
+        createDelNotes(t, db)
         ctx := context.Background()
-        if _, err := momo.Exec(ctx, db, "INSERT INTO documents (tenant_id, title) VALUES (1, 'd1'), (1, 'd2')"); err != nil {
-            t.Fatal(err)
-        }
-        d, err := momo.Select[Document](db).Where(DocTitle.Eq("d1")).One(ctx)
-        if err != nil {
-            t.Fatal(err)
-        }
-        if res, err := momo.Delete[Document](db).Model(&d).Exec(ctx); err != nil || res.RowsAffected != 1 {
+        if res, err := momo.Delete[delNote](db).Model(&delNote{ID: 1}).Exec(ctx); err != nil || res.RowsAffected != 1 {
             t.Fatalf("delete by model: %+v %v", res, err)
         }
-        if _, err := momo.Delete[Document](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
+        if _, err := momo.Delete[delNote](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
             t.Fatalf("unfiltered delete err = %v", err)
+        }
+        if _, err := momo.Delete[delNote](db).Where(momo.And()).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
+            t.Fatalf("Where(And()) delete err = %v", err)
         }
     })
 }
 ```
 
-The code above is the final test.
+The code above is the final test. Unit tests (no integration tag) in the same package cover empty and nested junctions, a composite primary key, a correlated EXISTS in WHERE, the soft-delete refusal and RETURNING rendering (MySQL gives `ErrUnsupported`).
 
 - [ ] **Step 2: Run and expect FAIL.** `go test -run TestDeleteByModelAndGuard .` → `undefined: momo.Delete`.
 
-- [ ] **Step 3: Implement** `delete.go` per Interfaces: `DELETE FROM t WHERE pk = ?` for `Model`; guardrail as in Task 15.
+- [ ] **Step 3: Implement** `delete.go` per Interfaces: `DELETE FROM t WHERE pk = ?` for `Model`; guardrail as in Task 15, the soft-delete refusal, and RETURNING through `renderReturning` and `runReturning`.
 
 - [ ] **Step 4: Run and expect PASS.** `go test -run TestDeleteByModelAndGuard -race .` → `ok`.
 
