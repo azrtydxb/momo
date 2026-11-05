@@ -7,7 +7,7 @@ Sprint: -
 
 ## Description
 
-Implements plan momo-02-generator Task 25: Plan gate for the generator (`.procoder/plans/momo-02-generator.md:2731`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-2, S-3, S-43, S-62, S-67, S-69, S-70, S-71. Contributes to S-2, S-3, S-43, S-62, S-67, S-69, S-70, S-71; those criteria are verified in the stories that define their named tests.
+Implements plan momo-02-generator Task 25: Plan gate for the generator (`.procoder/plans/momo-02-generator.md:2731`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: S-2, S-3, S-43, S-62, S-67, S-69, S-70, S-71. Contributes to S-2, S-3, S-43, S-62, S-67, S-69, S-70, S-71; those criteria are verified in the stories that define their named tests. Runs last in momo-02, after Tasks 26, 27, 29 and 30 (which wait for momo-05).
 
 ## Acceptance criteria
 

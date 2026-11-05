@@ -7,7 +7,7 @@ Sprint: -
 
 ## Description
 
-Implements plan momo-02-generator Task 27: Companion schema declarations (structured, read statically) (`.procoder/plans/momo-02-generator.md:2876`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: supporting work for the plan. Files: `momo/companion.go`, `momo/companion_test.go`, `gen/companion.go`, `gen/companion_schema.go`, `gen/companion_schema_test.go`, `gen/testdata/fixtures/companionschema/s.go` ….
+Implements plan momo-02-generator Task 27: Companion schema declarations (structured, read statically) (`.procoder/plans/momo-02-generator.md:2876`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: supporting work for the plan. Files: `momo/companion.go`, `momo/companion_test.go`, `gen/companion.go`, `gen/companion_schema.go`, `gen/companion_schema_test.go`, `gen/testdata/fixtures/companionschema/s.go` …. Scheduled after momo-05 and momo-02 Task 26; also needs momo-04 Task 1 (story 070).
 
 ## Acceptance criteria
 

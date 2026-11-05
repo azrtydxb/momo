@@ -42,24 +42,28 @@ Contract additions this plan needs (requested in the report; `docs/ARCHITECTURE.
 - Test helper convention: the golden helper is `internal/golden` (Task 1).
 - Plan checker: each `Files:` line below lists every file the task creates or modifies, and nothing else.
 
+- Cross-plan prerequisites inside M1 (sprint 2 dependency map, 2026-11-05): plan momo-02 needs momo-04 Task 1 (schema managed-object types: Task 1's companion methods and Task 27), momo-06 Task 2 (`Relation` descriptor: Tasks 13 and 28) and momo-09 Task 1. Those three type-only tasks run before or alongside momo-02. momo-02 Tasks 26, 27, 29 and 30 need momo-05's write builders and `HookSet`, so they run after momo-05; the momo-02 gate (Task 25) runs last.
+
 ## Task 1: Companion DSL in the root runtime and the golden helper
 
 Delivers: S-2 (companion declaration surface). Acceptance tests named by this task: `TestCompanionDSLCompiles`, `TestGoldenDiff`.
 
 Files:
-- Create: `momo/companion.go` (contract addition: companion DSL receiver types; every method is a no-op at runtime)
-- Create: `momo/companion_test.go`
+
+- Create: `companion.go` (contract addition: companion DSL receiver types; every method is a no-op at runtime)
+- Create: `companion_test.go`
 - Create: `internal/golden/golden.go`
 - Create: `internal/golden/golden_test.go`
 
 Interfaces:
+
 - Produces (package `momo`): `type Config struct{}`; `func (*Config) Index(name string, cols ...any) *IndexOpts`; `func (*Config) IndexExpr(name string, exprs ...string) *IndexOpts`; `func (*Config) Unique(name string, cols ...any) *IndexOpts`; `func (*Config) Check(name, expr string)`; `func (*Config) Enum(name string, values ...string)`; `func (*Config) Default(field any, expr string)`; `func (*Config) Comment(field any, text string)`; `func (*Config) Collate(field any, collation string)`.
 - Produces (package `momo`): `type IndexOpts struct{}`; `func (o *IndexOpts) Where(pred string) *IndexOpts`; `Method(m string)`; `With(key, value string)`; `Opclass(field any, opclass string)`; `Desc(field any)`; `Nulls(field any, order string)` (`order` is `"first"` or `"last"`); `Concurrently()`. All return `*IndexOpts`.
 - Produces (package `momo`, added for Task 27): structured companion methods `View(schema.View)`, `Function(schema.Function)`, `Trigger(schema.Trigger)`, `Policy(schema.Policy)`, `RLS(schema.RLS)`, `Partition(schema.Partition)`, `PartitionOf(schema.PartitionOf)`. The `schema` types are owned by plan momo-04 Task 1; the generator reads the literal arguments statically and never executes them.
 - Produces (package `golden`): `func Diff(path string, got []byte, update bool) (match bool, err error)`. When `update` is true it writes `got` to `path` (creating parent directories) and returns `true, nil`. When false it reads `path` and returns whether the bytes are equal; a missing file returns `false, nil`.
 - Contract: the field arguments are `&d.Field` pointers taken from the model receiver. Their runtime value is ignored; the generator reads them from the AST (Task 9).
 
-- [ ] Step 1: Write the failing test `momo/companion_test.go` with this literal content:
+- [ ] Step 1: Write the failing test `companion_test.go` with this literal content:
 
 ```go
 package momo
@@ -137,15 +141,15 @@ func TestGoldenDiff(t *testing.T) {
 }
 ```
 
-- [ ] Step 3: Run `go test ./momo -run TestCompanionDSLCompiles -count=1`; expect FAIL with `undefined: Config`.
+- [ ] Step 3: Run `go test . -run TestCompanionDSLCompiles -count=1`; expect FAIL with `undefined: Config`.
 
 - [ ] Step 4: Run `go test ./internal/golden -run TestGoldenDiff -count=1`; expect FAIL with `undefined: Diff`.
 
-- [ ] Step 5: Create `momo/companion.go` with the exact method set from Interfaces. Each method has a doc comment saying it is read statically by the generator and never executed. Bodies are empty except that the methods return the receiver's `IndexOpts` value: for example `func (c *Config) Index(name string, cols ...any) *IndexOpts { return &IndexOpts{} }`. Declare `type Config struct{}` and `type IndexOpts struct{}`. No package-level variables.
+- [ ] Step 5: Create `companion.go` (root package `momo`) with the exact method set from Interfaces. Each method has a doc comment saying it is read statically by the generator and never executed. Bodies are empty except that the methods return the receiver's `IndexOpts` value: for example `func (c *Config) Index(name string, cols ...any) *IndexOpts { return &IndexOpts{} }`. Declare `type Config struct{}` and `type IndexOpts struct{}`. No package-level variables.
 
 - [ ] Step 6: Create `internal/golden/golden.go` with `Diff` as specified: `os.MkdirAll(filepath.Dir(path), 0o755)` and `os.WriteFile(path, got, 0o644)` on update; on compare, `os.ReadFile`, return `errors.Is(err, fs.ErrNotExist)` as `(false, nil)`, otherwise `bytes.Equal`.
 
-- [ ] Step 7: Run `go test ./momo -run TestCompanionDSLCompiles -count=1 && go test ./internal/golden -run TestGoldenDiff -count=1`; expect `ok` for both packages.
+- [ ] Step 7: Run `go test . -run TestCompanionDSLCompiles -count=1 && go test ./internal/golden -run TestGoldenDiff -count=1`; expect `ok` for both packages.
 
 - [ ] Step 8: Run `gofmt -l momo internal/golden`; expect no output.
 
@@ -156,10 +160,12 @@ func TestGoldenDiff(t *testing.T) {
 Delivers: S-70 (tag grammar half; schema effects are Task 10). Acceptance tests: `TestTagGrammar` (the grammar part of the spec's `TestTagVocabulary`; the schema part is Task 10) and `TestParseTags`.
 
 Files:
+
 - Create: `gen/tags/tags.go`
 - Create: `gen/tags/tags_test.go`
 
 Interfaces:
+
 - Produces (package `tags`): `type Problem struct{ Msg string }`; `type Tags struct` with fields `Skip bool` (raw value `-`), `Column, Type, Collate, Default, Check, Comment, Enum, Table, Schema, Prefix, Fk, Join, OnDelete, OnUpdate, SoftDelete, TimeUnit, IndexName, UniqueName, Sort, Nulls, Method, View string`, `Materialized bool`, `Rel, PolyType, PolyValue string`, `Size, Precision, Scale, Dim int` and booleans `PK, NotNull, Nullable, Identity, Version, CreatedAt, UpdatedAt, ReadOnly, CreateOnly, Immutable, Sensitive, Embedded, NoConstraint, BelongsTo, HasOne, HasMany, ManyToMany, Index, Unique`.
 - Produces: `func Parse(raw string) (Tags, []Problem)`.
 - Grammar: the raw value is a comma-separated list of `key` or `key:value`. The value is everything after the first `:` up to the next comma, so a value cannot contain a comma. A stray piece after a comma is reported as an unknown tag option; values that need commas go in the companion (Tasks 9 and 10). Keys are case-sensitive lowercase.
@@ -272,11 +278,13 @@ func TestTagGrammar(t *testing.T) {
 Delivers: S-69 (Momo default preset). Acceptance: `TestNamingMomoPreset`.
 
 Files:
+
 - Create: `gen/naming/naming.go`
 - Create: `gen/naming/momo.go`
 - Create: `gen/naming/naming_test.go`
 
 Interfaces:
+
 - Produces (package `naming`): `type Namer interface { TableName(goModel string) string; ColumnName(goField string) string; JoinTableName(owner, target string) string }`.
 - Produces: `type Momo struct{}` implementing `Namer`; `func ToSnake(s string) string`; `func Plural(s string) string`; `func ByName(name string) (Namer, error)` returning the presets `"momo"` (this task), `"gorm"`, `"bun"`, `"ent"` (Task 5). Unknown names return `fmt.Errorf("unknown naming preset %q", name)`.
 - Rules for `Momo`: `TableName` = `Plural(ToSnake(goModel))`; `ColumnName` = `ToSnake(goField)`; `JoinTableName(owner, target)` = `TableName(owner) + "_" + TableName(target)`.
@@ -336,6 +344,7 @@ func TestNamingMomoPreset(t *testing.T) {
 Delivers: the oracle for S-69. Acceptance: `TestNamingFixturesRecorded` (in package `naming`, checks the committed fixtures parse and name their ORM version).
 
 Files:
+
 - Create: `internal/namingrec/go.mod` (separate module, `module github.com/azrtydxb/momo/internal/namingrec`)
 - Create: `internal/namingrec/models/models.go` (the fixture model set, shared by all three recorders)
 - Create: `internal/namingrec/record_gorm/main.go`
@@ -346,17 +355,31 @@ Files:
 - Create: `gen/naming/fixtures_test.go`
 
 Interfaces:
+
 - Fixture model set (identical for all three ORMs): `UserProfile{ID int64; UserID int64; HTTPURL string; CreatedAt time.Time; Tags []Tag}` (many-to-many with `Tag`), `Tag{ID int64; Name string}`, `Status{ID int64; Label string}`, `Person{ID int64; Nick string}`.
 - Fixture JSON format (all three files):
 
 ```json
-{"orm":"gorm","version":"v1.31.2",
- "tables":{"UserProfile":"...","Tag":"...","Status":"...","Person":"..."},
- "columns":{"UserProfile.UserID":"...","UserProfile.HTTPURL":"...","UserProfile.CreatedAt":"..."},
- "join_tables":{"UserProfile.Tags":"..."}}
+{
+  "orm": "gorm",
+  "version": "v1.31.2",
+  "tables": {
+    "UserProfile": "...",
+    "Tag": "...",
+    "Status": "...",
+    "Person": "..."
+  },
+  "columns": {
+    "UserProfile.UserID": "...",
+    "UserProfile.HTTPURL": "...",
+    "UserProfile.CreatedAt": "..."
+  },
+  "join_tables": { "UserProfile.Tags": "..." }
+}
 ```
 
-  Keys are the Go model name and `Model.Field`; values are what the ORM generates. `version` is the pinned module version.
+Keys are the Go model name and `Model.Field`; values are what the ORM generates. `version` is the pinned module version.
+
 - Pinned versions (verified against the module proxy on 2026-11-04, each at least two weeks old): `gorm.io/gorm v1.31.2`, `github.com/uptrace/bun v1.3.0`, `entgo.io/ent v0.14.6`.
 
 - [ ] Step 1: Write `gen/naming/fixtures_test.go`:
@@ -414,6 +437,7 @@ func TestNamingFixturesRecorded(t *testing.T) {
 Delivers: S-69 (presets). Acceptance: `TestNamingPresets`.
 
 Files:
+
 - Create: `gen/naming/gorm.go`
 - Create: `gen/naming/bun.go`
 - Create: `gen/naming/ent.go`
@@ -421,6 +445,7 @@ Files:
 - Modify: `gen/naming/naming.go` (extend `ByName`)
 
 Interfaces:
+
 - Produces: `type GORM struct{}`, `type Bun struct{}`, `type Ent struct{}`, each implementing `Namer`. `ByName("gorm"|"bun"|"ent")` returns them.
 - Each preset must reproduce every value in its recorded fixture (`gen/naming/testdata/<orm>.json`) for the fixture model set, and the rules must be written from the fixture values and from reading that ORM's pinned source (`go list -m -f '{{.Dir}}' gorm.io/gorm` etc. inside `internal/namingrec`). Re-implement the rules; do not copy ORM source text.
 
@@ -493,12 +518,14 @@ func TestNamingPresets(t *testing.T) {
 Delivers: the input half of S-3 and the S-2 diagnostic format. Acceptance: `TestLoadPackagesDiagnostics`.
 
 Files:
+
 - Create: `gen/types.go` (public types: `Config`, `Graph`, `Model`, `Field`, `Relation`, `Diagnostic`, `Kind`, `Access`, `RelKind`, `Version` const)
 - Create: `gen/load.go`
 - Create: `gen/load_test.go`
 - Create: `gen/testdata/fixtures/brokenpkg/broken.go`
 
 Interfaces:
+
 - Produces (package `gen`): `const Version = "v0.1.0-dev"`; `const FormatVersion = 1`.
 - `type Config struct { Dir string; Naming naming.Namer; Dialects []dialect.Name; Tags []string; Plugins []Plugin }`. `Dir` is the directory patterns resolve against; empty means the current directory. `Naming` nil means `naming.Momo{}`. `Dialects` nil means all three dialects.
 - `type Diagnostic struct { Pos token.Position; Msg string }` with `func (d Diagnostic) String() string` returning `file:line:col: msg` (`Pos.Filename`, `Pos.Line`, `Pos.Column`).
@@ -568,6 +595,7 @@ func TestLoadPackagesDiagnostics(t *testing.T) {
 Delivers: S-2 (model declaration), S-3 (model graph). Acceptance: `TestModelDiscovery`.
 
 Files:
+
 - Create: `gen/model.go`
 - Create: `gen/model_test.go`
 - Create: `gen/testdata/fixtures/models/models.go`
@@ -575,6 +603,7 @@ Files:
 - Modify: `gen/types.go` (complete `Model` and `Field`)
 
 Interfaces:
+
 - A model is a named struct type in a package that embeds `momo.Model` (type `github.com/azrtydxb/momo.Model`) as an anonymous field. The marker's tag `momo:"table:<name>"` sets the table; without it the table is `naming.TableName(GoName)`.
 - `type Model struct { GoName, PkgPath, PkgName, PkgDir, File string; Pos token.Position; Table string; Schema string; Fields []*Field; Relations []*Relation; Config *CompanionResult; SubPkg string }`. `Fields` contain only persisted columns, in declaration order. Task 8 flattens embedded structs into `Fields`. `Relations` are filled in Task 13. `Config` is filled in Task 9. `SubPkg` is set in Task 13.
 - `type Field struct { GoName string; Path []int; Column string; GoType string; Nullable bool; Tags tags.Tags; Pos token.Position; Access Access; Base string }`. `Path` is the reflect-style index path (for example `[1, 0]` for a field promoted from an embedded struct). `GoType` is `types.TypeString(t, qualifier)` where the qualifier returns the package name for the field's package (the import name is recorded in Task 13).
@@ -689,12 +718,14 @@ func equal(a, b []string) bool {
 Delivers: S-67. Acceptance: `TestEmbeddedAndMixins` (generator golden + integration; this task covers the flattening and the mixin contribution of columns and indexes; the companion contribution is Task 9).
 
 Files:
+
 - Create: `gen/embed.go`
 - Create: `gen/embed_test.go`
 - Create: `gen/testdata/fixtures/mixins/mixins.go`
 - Modify: `gen/model.go` (call the embed flattening)
 
 Interfaces:
+
 - A struct embedded without a `momo:"embedded"` tag and without `momo.Model` is a mixin when it carries persisted fields. Its fields are flattened into the containing model in declaration order, with `Path` extended by the embedded field's index.
 - A struct-typed field tagged `momo:"embedded,prefix:<p>"` (anonymous or named; two fields of one struct type need names) is flattened, and its column names get `<p>` prepended (`prefix + column`). The prefix does not change `GoName`.
 - A mixin's `index` and `unique` tags are copied into the containing model's `Table` with index names prefixed by the containing table name when they are not explicit: `<table>_<column>_idx`.
@@ -770,7 +801,7 @@ func TestEmbeddedAndMixins(t *testing.T) {
 }
 ```
 
-  Also define the helpers `hasIndex(m *Model, name string) bool` and `indexNames(m *Model) []string` in this test file, reading `m.Table.Indexes` (the `Table` field of `Model` is typed `schema.Table` after Task 10; for this task declare the helpers over `m.Indexes []schema.Index`, which Task 10 populates; add the `Indexes` field to `Model` in this task).
+Also define the helpers `hasIndex(m *Model, name string) bool` and `indexNames(m *Model) []string` in this test file, reading `m.Table.Indexes` (the `Table` field of `Model` is typed `schema.Table` after Task 10; for this task declare the helpers over `m.Indexes []schema.Index`, which Task 10 populates; add the `Indexes` field to `Model` in this task).
 
 - [ ] Step 3: Run `go test ./gen -run TestEmbeddedAndMixins -count=1`; expect FAIL with `columns=[id updated_at ...]` showing that embedded fields are skipped.
 
@@ -785,6 +816,7 @@ func TestEmbeddedAndMixins(t *testing.T) {
 Delivers: S-2 (companion reader), the diagnostic half of S-2. Acceptance: `TestGenerateDiagnostics`, `TestCompanionReaderAccepts`.
 
 Files:
+
 - Create: `gen/companion.go`
 - Create: `gen/companion_test.go`
 - Create: `gen/testdata/fixtures/companion/ok.go`
@@ -792,6 +824,7 @@ Files:
 - Modify: `gen/model.go` (attach `Config` to `Model`)
 
 Interfaces:
+
 - `type CompanionResult struct { Indexes []schema.Index; Uniques []schema.Unique; Checks []schema.Check; Enums []schema.Enum; Defaults map[string]string; Comments map[string]string; Collates map[string]string }`. Maps are only read by key and written by the reader; `Model` iteration order is always by sorted key (Task 10).
 - `func ReadCompanion(pkg *packages.Package, m *Model) (*CompanionResult, []Diagnostic)`. It finds the method `MomoConfig` whose receiver is `*T` or `T` for the model `T` and whose single parameter is `*momo.Config`. A model without the method has an empty result.
 - Accepted statements: an `ExprStmt` whose expression is a chain of method calls rooted at the parameter identifier (`c.Index(...).Where(...)...`), where:
@@ -909,7 +942,7 @@ func TestGenerateDiagnostics(t *testing.T) {
 }
 ```
 
-  Note that `Load` for the package with a bad companion returns `Graph.Models` empty; the package `companionbad` holds only the bad model, so the empty graph is the observable no-partial-output result. This is the "no partial output" rule.
+Note that `Load` for the package with a bad companion returns `Graph.Models` empty; the package `companionbad` holds only the bad model, so the empty graph is the observable no-partial-output result. This is the "no partial output" rule.
 
 - [ ] Step 4: Run `go test ./gen -run 'TestCompanionReaderAccepts|TestGenerateDiagnostics' -count=1`; expect FAIL with `companion=` showing empty results and missing diagnostics.
 
@@ -924,11 +957,13 @@ func TestGenerateDiagnostics(t *testing.T) {
 Delivers: S-70 (schema half), S-1 consumption. Acceptance: `TestTagVocabulary` (schema half).
 
 Files:
+
 - Create: `gen/schema.go`
 - Create: `gen/schema_test.go`
 - Modify: `gen/load.go` (build `Graph.Schema`)
 
 Interfaces:
+
 - `func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic)`. Output tables sorted by name; columns in declaration order; indexes, uniques, checks and enums sorted by name (`schema.Sort` is applied last).
 - Each many-to-many relation adds a join table named by its `join:` tag (or the naming preset's `JoinTableName`): columns `<owner_singular>_<owner_pk>` and `<target_singular>_<target_pk>` typed like the referenced primary keys, a composite primary key over both, and foreign keys to both tables with `on_delete: cascade`. The join table is part of `Graph.Schema`, so migrations and `momo viz` see it.
 - Mapping per tag (effect on `schema.Column`/`schema.Table`):
@@ -995,7 +1030,7 @@ func sdiagsString(ds []Diagnostic) string {
 }
 ```
 
-  The schema helpers `Table(name)`, `Column(name)`, and `Index(name)` on `schema.Schema`, `schema.Table` already exist in the spike or are added by plan momo-01 (`schema.Table.Index` must be added in Task 10 if plan 01 does not; add it in `schema/lookup.go` only if the method is missing, and record that in the commit message).
+The schema helpers `Table(name)`, `Column(name)`, and `Index(name)` on `schema.Schema`, `schema.Table` already exist in the spike or are added by plan momo-01 (`schema.Table.Index` must be added in Task 10 if plan 01 does not; add it in `schema/lookup.go` only if the method is missing, and record that in the commit message).
 
 - [ ] Step 2: Run `go test ./gen -run TestTagVocabulary -count=1`; expect FAIL with `undefined: BuildSchema`.
 
@@ -1010,11 +1045,13 @@ func sdiagsString(ds []Diagnostic) string {
 Delivers: the type input for S-1 and S-3. Acceptance: `TestGeneratorTypeMap` (per-dialect SQL types for the types the generator emits; S-31's full round-trip suite belongs to the type-mapping plan).
 
 Files:
+
 - Create: `gen/typemap/typemap.go`
 - Create: `gen/typemap/typemap_test.go`
 - Modify: `gen/schema.go` (call `typemap.Map` for column types)
 
 Interfaces:
+
 - `func Map(goType string, d dialect.Name, tg tags.Tags) (sqlType string, err error)`. Supported Go types: `int`, `int8`, `int16`, `int32`, `int64` → `smallint`/`integer`/`bigint` (on SQLite `INTEGER`); `uint*` → unsupported diagnostic; `float32` → `real`, `float64` → `double precision` (SQLite `REAL`); `bool` → `boolean` (SQLite `INTEGER`); `string` → `text` (SQLite `TEXT`, Postgres `varchar(n)` when `size` is set); `[]byte` → `bytea` (SQLite `BLOB`); `time.Time` → `timestamptz` (SQLite `TEXT` in RFC3339 with UTC, documented); `vector.Vector` → `vector(n)` (requires `vector` tag); `vector.HalfVector`, `vector.SparseVector`, `vector.Bits` → matching types; `types.JSON[T]` → `jsonb` (SQLite `TEXT`); `types.UUID` → `uuid` (SQLite `TEXT`); `types.Date` → `date` (SQLite `TEXT`).
 - Unknown types yield `ErrUnsupported` wrapped: `fmt.Errorf("%w: Go type %s has no SQL mapping on %s", momo.ErrUnsupported, goType, d)`. The generator reports it as a diagnostic at the field's position.
 - Codec types are resolved by Task 13 through their `SQLType(dialect.Name) string` method when they implement it (a codec's own mapping wins over this table).
@@ -1073,8 +1110,9 @@ func TestGeneratorTypeMap(t *testing.T) {
 Delivers: S-71. Acceptance: `TestFieldPermissions` (the valid fixture builds, and each forbidden write fails to compile for the stated reason) and `TestPermissionTypesMirrorColumn`.
 
 Files:
-- Create: `momo/permissions.go` (contract addition: write-permission descriptor types)
-- Create: `momo/permissions_test.go`
+
+- Create: `permissions.go` (contract addition: write-permission descriptor types)
+- Create: `permissions_test.go`
 - Create: `gen/permissions.go`
 - Create: `gen/permissions_test.go`
 - Create: `gen/testdata/permissions/model/item.go` (the source model)
@@ -1086,13 +1124,14 @@ Files:
 - Modify: `gen/model.go` (set `Field.Access` from tags)
 
 Interfaces:
+
 - Access rules from tags (one permission tag per field; two is a diagnostic `conflicting write permissions on <field>`):
   - `read_only` gives `ReadOnly`, excluded from every insert and update column list. Non-pointer: `momo.ReadOnlyColumn[T]` built by `momo.NewReadOnlyColumn[T]`. Pointer: `momo.NullReadOnlyColumn[T]` built by `momo.NewNullReadOnlyColumn[T]`. Neither type has a `Set*` method.
   - `create_only` gives `CreateOnly`, writable in `Insert` only. Descriptor `momo.CreateOnlyColumn[T]` built by `momo.NewCreateOnlyColumn[T]`; its `Set(v T) momo.InsertAssignment` is accepted by `Insert.Values` and is not a `momo.Assignment`, so `Update.Set` rejects it at compile time.
   - `immutable` gives `Immutable`, with the same compile-time shape: `momo.ImmutableColumn[T]` built by `momo.NewImmutableColumn[T]`. At runtime the upsert `DoUpdate` and `Update.Model` also omit immutable columns (plans momo-03 and momo-04).
   - `create_only` or `immutable` on a pointer type is a diagnostic `create_only and immutable fields must not be pointers`.
   - Otherwise `Writable`: `momo.Column[T]` (`momo.NewColumn[T]`), or `momo.NullColumn[T]` (`momo.NewNullColumn[T]`) for pointers, with `Set*` methods returning `momo.Assignment`.
-- Contract additions in `momo/permissions.go`: `type ReadOnlyColumn[T any] struct{ col Column[T] }`, `type NullReadOnlyColumn[T any] struct{ col NullColumn[T] }`, `type CreateOnlyColumn[T any] struct{ col Column[T] }`, `type ImmutableColumn[T any] struct{ col Column[T] }`, each with a constructor taking the same parameters as `NewColumn`. The structs do not embed the column (embedding would promote `Set*`). Each forwards every predicate and ordering method of `Column[T]` to `col`. `CreateOnlyColumn[T]` and `ImmutableColumn[T]` add `Set(v T) InsertAssignment`, the only write method. The read-only types have no write methods.
+- Contract additions in `permissions.go`: `type ReadOnlyColumn[T any] struct{ col Column[T] }`, `type NullReadOnlyColumn[T any] struct{ col NullColumn[T] }`, `type CreateOnlyColumn[T any] struct{ col Column[T] }`, `type ImmutableColumn[T any] struct{ col Column[T] }`, each with a constructor taking the same parameters as `NewColumn`. The structs do not embed the column (embedding would promote `Set*`). Each forwards every predicate and ordering method of `Column[T]` to `col`. `CreateOnlyColumn[T]` and `ImmutableColumn[T]` add `Set(v T) InsertAssignment`, the only write method. The read-only types have no write methods.
 - Compile-time guarantee: a forbidden write does not compile. Raw SQL is outside this guarantee, and the generated package doc comment says so.
 
 Steps:
@@ -1114,7 +1153,7 @@ type Item struct {
 }
 ```
 
-  Then write the hand-written fixture `gen/testdata/permissions/item/momo_gen.go` with exactly this content (the shape Task 13 must reproduce, without `As` and `Columns`, which the permission tests do not use):
+Then write the hand-written fixture `gen/testdata/permissions/item/momo_gen.go` with exactly this content (the shape Task 13 must reproduce, without `As` and `Columns`, which the permission tests do not use):
 
 ```go
 // Code generated by momo v0.1.0-dev (format 1). DO NOT EDIT.
@@ -1158,7 +1197,7 @@ func main() {}
   - `gen/testdata/permissions/createonly_update/main.go`: `var _ momo.Assignment = item.Owner.Set("x")`
   - `gen/testdata/permissions/immutable_update/main.go`: `var _ momo.Assignment = item.Serial.Set("x")`
 
-- [ ] Step 4: Write `momo/permissions_test.go`:
+- [ ] Step 4: Write `permissions_test.go`:
 
 ```go
 package momo
@@ -1198,7 +1237,7 @@ func predicateMethods(t reflect.Type) []string {
 }
 ```
 
-  Write `gen/permissions_test.go`:
+Write `gen/permissions_test.go`:
 
 ```go
 package gen
@@ -1239,11 +1278,11 @@ func TestFieldPermissions(t *testing.T) {
 }
 ```
 
-- [ ] Step 5: Run `go test ./momo -run TestPermissionTypesMirrorColumn -count=1`; expect FAIL with `undefined: ReadOnlyColumn`. Run `go test ./gen -run TestFieldPermissions -count=1`; expect FAIL with `valid fixture must build`, because the permission types and the `Predicate` and `Eq` names do not exist yet.
+- [ ] Step 5: Run `go test . -run TestPermissionTypesMirrorColumn -count=1`; expect FAIL with `undefined: ReadOnlyColumn`. Run `go test ./gen -run TestFieldPermissions -count=1`; expect FAIL with `valid fixture must build`, because the permission types and the `Predicate` and `Eq` names do not exist yet.
 
-- [ ] Step 6: Implement `momo/permissions.go`: the four struct types, the four constructors, forwarding methods for every predicate and ordering method of `Column[T]` (and of `NullColumn[T]` for `NullReadOnlyColumn[T]`), and `Set(v T) InsertAssignment` on `CreateOnlyColumn[T]` and `ImmutableColumn[T]`. Implement `gen/permissions.go`: `func AccessFor(t tags.Tags, field string, pointer bool) (Access, []Diagnostic)` applying the rules above, and `func DescriptorType(a Access, pointer bool) (typeName, ctor string)` returning the names in Interfaces. Modify `gen/model.go` to call `AccessFor` for each field.
+- [ ] Step 6: Implement `permissions.go`: the four struct types, the four constructors, forwarding methods for every predicate and ordering method of `Column[T]` (and of `NullColumn[T]` for `NullReadOnlyColumn[T]`), and `Set(v T) InsertAssignment` on `CreateOnlyColumn[T]` and `ImmutableColumn[T]`. Implement `gen/permissions.go`: `func AccessFor(t tags.Tags, field string, pointer bool) (Access, []Diagnostic)` applying the rules above, and `func DescriptorType(a Access, pointer bool) (typeName, ctor string)` returning the names in Interfaces. Modify `gen/model.go` to call `AccessFor` for each field.
 
-- [ ] Step 7: Run `go test ./momo -run TestPermissionTypesMirrorColumn -count=1` and `go test ./gen -run TestFieldPermissions -count=1`; expect `ok` for both.
+- [ ] Step 7: Run `go test . -run TestPermissionTypesMirrorColumn -count=1` and `go test ./gen -run TestFieldPermissions -count=1`; expect `ok` for both.
 
 - [ ] Step 8: Commit with `git add momo/permissions.go momo/permissions_test.go gen`, message `feat(gen): field write permissions with compile-fail fixtures`, and in the body `Contract addition: momo/permissions.go (write-permission descriptor types).`
 
@@ -1252,6 +1291,7 @@ func TestFieldPermissions(t *testing.T) {
 Delivers: S-3 (typed column descriptors, `As(alias)`, relation metadata), the descriptor half of S-43 input. Acceptance: `TestEmitDescriptorsGolden` (descriptor golden part).
 
 Files:
+
 - Create: `gen/emit_descriptors.go`
 - Create: `gen/emit_descriptors_test.go`
 - Create: `gen/relations.go`
@@ -1261,6 +1301,7 @@ Files:
 - Modify: `gen/types.go` (`Relation` complete), `gen/model.go` (`SubPkg`)
 
 Interfaces:
+
 - Subpackage: for model `M` in package directory `D`, the subpackage is `D/<lower(M)>` (lowercase model name; identifier rules in Task 16). Its file `momo_gen.go` has package name = the subpackage identifier.
 - Generated subpackage shape (exact, for model `Document` with fields `ID`, `TenantID`, `Title`, `Note` *string, `CreatedAt` read-only):
 
@@ -1330,7 +1371,8 @@ var Comments = momo.Relation[models.Document, models.Comment]{
 }
 ```
 
-  The `momo.NewReadOnlyColumn` constructor is a contract addition with the same signature as `NewColumn`. The relation descriptor follows plan momo-06 Task 2 exactly (see the bullet below). A belongs-to descriptor (`Post.Author`) uses `Kind: momo.BelongsTo`, `ParentCols: []string{"author_id"}`, `ChildCols: []string{"id"}`, `GetOne`, `SetOne` and `SetParentKey` in place of `GetMany`, `SetMany`. A many-to-many descriptor adds `Through: &momo.Through{Table: momo.TableRef{Name: "document_tags"}, ParentCols: []string{"document_id"}, ChildCols: []string{"tag_id"}}`.
+The `momo.NewReadOnlyColumn` constructor is a contract addition with the same signature as `NewColumn`. The relation descriptor follows plan momo-06 Task 2 exactly (see the bullet below). A belongs-to descriptor (`Post.Author`) uses `Kind: momo.BelongsTo`, `ParentCols: []string{"author_id"}`, `ChildCols: []string{"id"}`, `GetOne`, `SetOne` and `SetParentKey` in place of `GetMany`, `SetMany`. A many-to-many descriptor adds `Through: &momo.Through{Table: momo.TableRef{Name: "document_tags"}, ParentCols: []string{"document_id"}, ChildCols: []string{"tag_id"}}`.
+
 - Relation descriptor fields: exactly the momo-06 Task 2 set, emitted per kind. Common: `Name`, `Kind` (`momo.BelongsTo`, `momo.HasOne`, `momo.HasMany`, `momo.ManyToMany`), `Parent` and `Child` (`TableRef`), `ParentMeta` and `ChildMeta` (`(*P)(nil).MomoMeta()` and `(*C)(nil).MomoMeta()`), `ParentCols`, `ChildCols`, `ChildPK`, `ParentKey func(*P) ([]any, bool)`, `ChildKey func(*C) ([]any, bool)`. Per kind (momo-06 rule 3): belongs-to adds `SetParentKey func(*P, []any)`, `GetOne func(*P) *C`, `SetOne func(*P, *C)`; has-one adds `SetChildKey func(*C, []any)`, `GetOne`, `SetOne`; has-many adds `SetChildKey`, `GetMany func(*P) []C`, `SetMany func(*P, []C)`; many-to-many adds `Through *momo.Through` (`Through{Table TableRef; ParentCols, ChildCols []string}`), `GetMany`, `SetMany`. Polymorphic relations (momo-06 rule 5) add `Discriminator *momo.Discriminator` (`Discriminator{Column string; Value any}`). The emitter writes exactly these fields. The retired names `Assign`, `JoinSpec`, `ParentColumns` and `ChildColumns` are never emitted. Key closures follow momo-06 rules 1 and 2: base Go values only (named types are converted), pointer key fields return `nil, false` when nil and are dereferenced otherwise, and setters assert `k[i].(Base)` and store `&v` into pointer fields. Per-field rules are in Task 28.
 - Relation discovery: fields tagged `belongs_to`, `has_one`, `has_many`, `many2many` are relations, not columns. Belongs-to uses `fk:<LocalField>` (the local key); has-many and has-one use `fk:<ChildField>` (the key on the child); many-to-many uses `join:<table>` and the target type from the field type. A relation whose target model is not in `Graph.Models` is a diagnostic `relation target X is not a momo model`.
 - Polymorphic relations: tag keys `rel:<kind>` (or a bare kind key) with `polytype:<column>` and `polyvalue:<value>` on the relation field. `polytype` and `polyvalue` must come together, else the error `polymorphic relation <Field> needs both polytype and polyvalue`. `polytype` or `polyvalue` on a belongs-to or many-to-many relation is the error `polymorphic is only valid for has_one and has_many`. A polymorphic relation whose child model has no field for the `polytype` column is the error `polymorphic column <col> is not a field of <Child>`. All three are errors at the relation field's position, and the package yields no output (Task 9 rule).
@@ -1446,11 +1488,13 @@ func TestEmitDescriptorsGolden(t *testing.T) {
 Delivers: S-3 (scan/bind functions, schema metadata). Acceptance: `TestEmitMetaGolden` (model-package part, `go build` of the output).
 
 Files:
+
 - Create: `gen/emit_meta.go`
 - Create: `gen/emit_meta_test.go`
 - Create: `gen/testdata/golden/meta/models/momo_gen.go` (golden, reviewed)
 
 Interfaces:
+
 - Model-package file `momo_gen.go` (one per model package), package name equal to the model package name. For each model `M` in the package, sorted by `GoName`:
 
 ```go
@@ -1495,7 +1539,7 @@ var documentMeta = momo.Meta[Document]{
 var documentTable = schema.Table{ /* literal schema.Table: Name, Columns, PrimaryKey, Indexes, Checks, ForeignKeys */ }
 ```
 
-  `Ptr` and `Value` switch on the index of `Columns`; relations are not in `Columns`. Embedded fields use their flattened `Path`: the expression is `&m.Embedded.Inner` built from the path. `Value` returns the field value (for pointer fields, the pointer). `Schema string` is set from `m.Schema` only when non-empty (`Schema: "tenancy",`). The derived indexes (`Identity`, `Version`, `SoftDelete`, `CreatedAt`, `UpdatedAt`, `PK`) are `-1` or the computed index.
+`Ptr` and `Value` switch on the index of `Columns`; relations are not in `Columns`. Embedded fields use their flattened `Path`: the expression is `&m.Embedded.Inner` built from the path. `Value` returns the field value (for pointer fields, the pointer). `Schema string` is set from `m.Schema` only when non-empty (`Schema: "tenancy",`). The derived indexes (`Identity`, `Version`, `SoftDelete`, `CreatedAt`, `UpdatedAt`, `PK`) are `-1` or the computed index.
 
 - [ ] Step 1: Write `gen/emit_meta_test.go`:
 
@@ -1548,7 +1592,7 @@ func TestEmitMetaGolden(t *testing.T) {
 }
 ```
 
-  `update` is the flag variable defined in `gen/emit_descriptors_test.go` (Task 13). Build coverage of the emitted code is in `TestGenerateCompanion` (Task 22).
+`update` is the flag variable defined in `gen/emit_descriptors_test.go` (Task 13). Build coverage of the emitted code is in `TestGenerateCompanion` (Task 22).
 
 - [ ] Step 2: Run `go test ./gen -run TestEmitMetaGolden -count=1`; expect FAIL with `undefined: EmitMeta`.
 
@@ -1563,12 +1607,14 @@ func TestEmitMetaGolden(t *testing.T) {
 Delivers: S-43 (allowlisted lookup). Acceptance: `TestColumnByName`. The LIKE-escaping half, `TestEscapeLike`, is plan momo-05.
 
 Files:
+
 - Create: `gen/emit_lookup.go`
 - Create: `gen/emit_lookup_test.go`
 - Create: `gen/testdata/fixtures/sensitive/s.go` (a model with one sensitive field)
 - Create: `gen/testdata/golden/descriptors/document/lookup_test.go` (runtime test for the generated golden package of Task 13)
 
 Interfaces:
+
 - Each descriptor subpackage gets, in its `momo_gen.go`:
 
 ```go
@@ -1683,7 +1729,7 @@ func TestColumnByNameRuntime(t *testing.T) {
 }
 ```
 
-  Regenerate the Task 13 golden with `go test ./gen -run TestEmitDescriptorsGolden -update` so it includes `ColumnByName`, then run `go test ./gen/testdata/golden/descriptors/document -count=1`; expect `ok`.
+Regenerate the Task 13 golden with `go test ./gen -run TestEmitDescriptorsGolden -update` so it includes `ColumnByName`, then run `go test ./gen/testdata/golden/descriptors/document -count=1`; expect `ok`.
 
 - [ ] Step 7: Commit with `git add gen`, message `feat(gen): generated allowlisted ColumnByName lookup`.
 
@@ -1692,12 +1738,14 @@ func TestColumnByNameRuntime(t *testing.T) {
 Delivers: S-3 collision-safe naming, and the edge cases for reserved words and colliding names. Acceptance: `TestGenerateNameCollisions`.
 
 Files:
+
 - Create: `gen/ident.go`
 - Create: `gen/ident_test.go`
 - Create: `gen/testdata/fixtures/collide/collide.go`
 - Create: `gen/testdata/fixtures/collide/sub/sub.go`
 
 Interfaces:
+
 - `func Identifier(goName string, reserved map[string]bool) string` returns `goName` unless it is in `reserved`; otherwise it appends `_` until the result is not in `reserved`. The caller adds the result to the set it passes on.
 - `func DescriptorReserved() map[string]bool` returns `Table`, `As`, `Columns`, `ColumnByName`, `ColumnNames`, `base`, `fmt`, `momo`, `time`, `vector`, `types`, every Go keyword (the 25 keywords as literals), and every name in `types.Universe.Names()`.
 - `func SubPkgName(model, modelPkgName string) string` returns `strings.ToLower(model)`, with `_` appended when the result is a Go keyword, a predeclared name, or equal to `modelPkgName`.
@@ -1784,10 +1832,12 @@ func TestGenerateNameCollisions(t *testing.T) {
 Delivers: S-3 (writer contract, handwritten refusal, `--check`). Acceptance: `TestGenerateRefusesHandwritten`.
 
 Files:
+
 - Create: `gen/writer.go`
 - Create: `gen/writer_test.go`
 
 Interfaces:
+
 - `var ErrHandwritten = errors.New("refusing to overwrite a handwritten file")`; `var ErrCollision = errors.New("two different outputs for one path")`.
 - `type WriterOptions struct { ModuleRoot string; Check bool }`.
 - `type Writer struct` (unexported fields: options, `files map[string][]byte`, `stale []string`).
@@ -1859,11 +1909,13 @@ func TestGenerateRefusesHandwritten(t *testing.T) {
 Delivers: S-3 determinism and the orchestration of metadata, descriptor and lookup output. Acceptance: `TestGenerateDeterministic`.
 
 Files:
+
 - Create: `gen/emit.go`
 - Create: `gen/emit_test.go`
 - Modify: `gen/writer.go` (add `Outputs`)
 
 Interfaces:
+
 - `func Emit(g *Graph, w *Writer) error` runs, grouped by model package directory (sorted): `EmitMeta` into `<PkgDir>/momo_gen.go`; for each model in that package, `EmitDescriptors` and `EmitLookup` into `<PkgDir>/<SubPkg>/momo_gen.go`; then each plugin of `g.Plugins` in the given order, with the same `*Writer`. Emitter diagnostics are returned as `ErrDiagnostics` (a typed error listing `Diagnostic.String()` lines), and nothing is written.
 - `type Output struct { Path string; Data []byte }` and `func (w *Writer) Outputs() []Output`, sorted by `Path`, available before `Commit`.
 - Byte determinism: every emitter iterates slices only; no map iteration reaches output; no timestamps.
@@ -1930,6 +1982,7 @@ func TestGenerateDeterministic(t *testing.T) {
 Delivers: S-3 cross-package generation. Acceptance: `TestGenerateCrossPackage`, `TestImportPath`.
 
 Files:
+
 - Create: `gen/importpath.go`
 - Create: `gen/importpath_test.go`
 - Create: `gen/crosspkg_test.go`
@@ -1937,6 +1990,7 @@ Files:
 - Create: `gen/testdata/fixtures/crossb/b.go`
 
 Interfaces:
+
 - `crossa` declares model `Owner` and imports nothing from the fixture tree. `crossb` declares model `Item` with belongs-to `Owner *crossa.Owner` and imports `crossa`. The descriptors for `Item` import `crossa`; the descriptors for `Owner` import nothing from `crossb`; model-package metadata files import no subpackage. A has-many declared on `Owner` would make `crossa` import `crossb` and close a cycle, so this fixture declares none.
 - `func ImportPath(modulePath, moduleDir, pkgDir string) (string, error)` in package `gen` (file `gen/importpath.go`): `rel, err := filepath.Rel(moduleDir, pkgDir)`; when `err != nil`, when `rel` starts with `..` (equal to `..` or beginning with `..` plus the path separator), or when `rel` is absolute, it returns the error `gen: %s is outside module %s` (formatted with `pkgDir` and `moduleDir`); it returns `modulePath` when `rel == "."`; otherwise it returns `modulePath + "/" + filepath.ToSlash(rel)`. Every import statement in generated code (descriptor files importing the model packages they reference, the model package metadata files, and the per-model subpackage imports) is built through `ImportPath`, using the module path and directory from `packages.Module` (`NeedModule`) and the package directory, so that the generated import paths are slash-separated on every OS. Plan momo-04 `TestWindowsPaths` calls it.
 - Import alias rule for generated files: the alias is the imported package's name; when two imports share a name, the second in sorted import-path order gets `<name>2`, then `<name>3`, and so on.
@@ -1987,7 +2041,7 @@ func TestImportPath(t *testing.T) {
 }
 ```
 
-  Run `go test ./gen -run TestImportPath -count=1`; expect FAIL with `undefined: ImportPath`, then implement `gen/importpath.go` and expect `ok`.
+Run `go test ./gen -run TestImportPath -count=1`; expect FAIL with `undefined: ImportPath`, then implement `gen/importpath.go` and expect `ok`.
 
 - [ ] Step 1: Write `gen/testdata/fixtures/crossa/a.go`:
 
@@ -2003,7 +2057,7 @@ type Owner struct {
 }
 ```
 
-  and `gen/testdata/fixtures/crossb/b.go`:
+and `gen/testdata/fixtures/crossb/b.go`:
 
 ```go
 package crossb
@@ -2107,6 +2161,7 @@ func copyTree(src, dst string) error {
 Delivers: S-62. Acceptance: `TestGeneratorPlugin` (deterministic output, refusal to overwrite handwritten files, name and API-version checks) and `TestPluginsUseWriter` (no plugin or generator file writes outside `Writer`).
 
 Files:
+
 - Create: `gen/plugin.go`
 - Create: `gen/plugin_test.go` (package `gen_test`)
 - Create: `gen/testdata/plugins/fixture/fixture.go`
@@ -2114,6 +2169,7 @@ Files:
 - Modify: `gen/emit.go` (run `g.Plugins`; wrap plugin errors with `%w`)
 
 Interfaces:
+
 - `const PluginAPIVersion = 1`.
 - `type Plugin interface { Name() string; Generate(g *Graph, w *Writer) error }`.
 - Optional `type VersionedPlugin interface { APIVersion() int }`. A plugin without it is version 1. `Emit` refuses a plugin whose version is not `PluginAPIVersion` with `plugin <name> targets API v<n>; this momo supports v1`.
@@ -2278,6 +2334,7 @@ func TestPluginsUseWriter(t *testing.T) {
 Delivers: S-69 (configurable in momo.yaml, per model and field via tags), the config file of the Constraints (`momo.yaml` parsed with go.yaml.in/yaml/v3). Acceptance: `TestConfigLoad`, `TestConfigMigrateValidation`, `TestNamingOverridesFromConfig`.
 
 Files:
+
 - Create: `gen/config/config.go`
 - Create: `gen/config/config_test.go`
 - Create: `gen/config/testdata/momo.yaml`
@@ -2285,6 +2342,7 @@ Files:
 - Create: `gen/config/testdata/overrides/o.go`
 
 Interfaces:
+
 - `type File struct { Version int \`yaml:"version"\`; Packages []string \`yaml:"packages"\`; Naming string \`yaml:"naming"\`; Dialects []string \`yaml:"dialects"\`; Tags []string \`yaml:"tags"\`; Migrate MigrateConfig \`yaml:"migrate"\`; Plugins map[string]map[string]any \`yaml:"plugins"\` }`.
 - `type MigrateConfig struct` in package `gen/config`, the single schema of the `migrate:` section (semantics are owned by plan momo-04):
 
@@ -2298,6 +2356,7 @@ type MigrateConfig struct {
 	Exclude          []string          `yaml:"exclude"`           // glob patterns for unmanaged objects
 }
 ```
+
 - `func Load(path string) (*File, error)`: decodes with `yaml.NewDecoder` from `go.yaml.in/yaml/v3` with `KnownFields(true)`; rejects `version` other than `1` with `unsupported momo.yaml version N`; rejects an unknown naming preset through `naming.ByName`; validates the `migrate:` shape only: `lock_timeout` and `statement_timeout` must parse with `time.ParseDuration` (error text names the key, for example `migrate.lock_timeout: ...`), and every key of `migrate.dir` and `migrate.url_env` must be a valid dialect name (error text contains the offending key).
 - `func ToConfig(f *File, dir string) (gen.Config, error)` converts to the `gen.Config` (naming resolved, dialects parsed with `dialect.Name` validation, `Plugins` left to the caller).
 - The `migrate:` section is owned by the migrate plan (momo-04) for semantics and parsed here, validated only for shape.
@@ -2326,7 +2385,7 @@ plugins:
     format: mermaid
 ```
 
-  and `gen/config/testdata/bad.yaml` with `version: 1` and an unknown key `pakages: []`.
+and `gen/config/testdata/bad.yaml` with `version: 1` and an unknown key `pakages: []`.
 
 - [ ] Step 2: Write `gen/config/config_test.go`:
 
@@ -2438,7 +2497,7 @@ func TestNamingOverridesFromConfig(t *testing.T) {
 }
 ```
 
-  The fixture `gen/config/testdata/overrides/o.go` (package `overrides`) is written first:
+The fixture `gen/config/testdata/overrides/o.go` (package `overrides`) is written first:
 
 ```go
 package overrides
@@ -2466,12 +2525,14 @@ type Item struct {
 Delivers: the example schema used by every later plan, the `go:generate` integration, and the single `TestGenerateCompanion` acceptance test. The test covers S-2 and S-3 together: tags and a `MomoConfig` companion are read, the generated descriptor and metadata files equal the committed goldens, and the example builds with `go build`.
 
 Files:
+
 - Create: `internal/testmodels/example/models.go`
 - Create: `internal/testmodels/example/generate.go`
 - Create: `internal/testmodels/example/example_test.go`
 - Create: `internal/testmodels/example/momo_gen.go` and `internal/testmodels/example/{document,comment,tag,tenant}/momo_gen.go` (produced by `momo generate` and committed; these are the goldens)
 
 Interfaces:
+
 - Package `example` (path `github.com/azrtydxb/momo/internal/testmodels/example`) with models:
   - `Tenant` (table `tenants`): `ID int64 momo:"pk,identity"`, `Name string momo:"size:200,notnull,unique"`.
   - `Document` (table `documents`): `ID int64 momo:"pk,identity"`; `TenantID int64 momo:"column:tenant_id,notnull,index"`; `Title string momo:"size:300,notnull"`; `Body string momo:"type:text"`; `Embedding vector.Vector momo:"dim:1536"`; `Status string momo:"column:status,enum:document_status,default:'draft'"`; `CreatedAt time.Time momo:"column:created_at,read_only,default:now()"`; `Comments []Comment momo:"has_many,fk:DocumentID"`; `Tags []Tag momo:"many2many,join:document_tags"`; `Tenant *Tenant momo:"belongs_to,fk:TenantID"`.
@@ -2540,7 +2601,7 @@ func TestGenerateCompanion(t *testing.T) {
 }
 ```
 
-  Note: `gen.Load` of `./` in the example directory includes the example's own generated subpackages once they exist; the first run has none, which is correct because the generator reads only the `momo.Model` structs.
+Note: `gen.Load` of `./` in the example directory includes the example's own generated subpackages once they exist; the first run has none, which is correct because the generator reads only the `momo.Model` structs.
 
 - [ ] Step 3: Run `go test ./internal/testmodels/example -run TestGenerateCompanion -count=1`; expect FAIL with `is stale` for the first output path, because the goldens do not exist yet.
 
@@ -2555,6 +2616,7 @@ func TestGenerateCompanion(t *testing.T) {
 Delivers: S-3 `--check`, `go generate` integration, the CLI contract. Acceptance: `TestGenerateCheck`, `TestGoGenerateIntegration`.
 
 Files:
+
 - Create: `cmd/momo/main.go`
 - Create: `cmd/momo/generate.go`
 - Create: `cmd/momo/generate_test.go`
@@ -2562,6 +2624,7 @@ Files:
 - Create: `cmd/momo/helpers_test.go` (`copyModule` and `chdir` test helpers)
 
 Interfaces:
+
 - `func Run(args []string, stdout, stderr io.Writer) int`. `main` calls `os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))`.
 - `momo generate [-c momo.yaml] [--check] [patterns...]`: patterns default to `packages` from `momo.yaml`, then `./...`.
 - Exit codes (documented contract): `0` success or check current; `1` check found stale or orphaned files, or generator diagnostics; `2` usage, configuration or infrastructure error.
@@ -2620,7 +2683,7 @@ func TestGoGenerateIntegration(t *testing.T) {
 }
 ```
 
-  `copyModule(t, src)` copies the directory tree (the example package) into `t.TempDir()` together with the repository's `go.sum` and a `go.mod` that `require`s `github.com/azrtydxb/momo` with a `replace` to the repository root (absolute path computed with `filepath.Abs("../..")`). `chdir(t, dir)` changes the working directory for the test and restores it with `t.Cleanup`. Define both helpers in `cmd/momo/helpers_test.go` in this task.
+`copyModule(t, src)` copies the directory tree (the example package) into `t.TempDir()` together with the repository's `go.sum` and a `go.mod` that `require`s `github.com/azrtydxb/momo` with a `replace` to the repository root (absolute path computed with `filepath.Abs("../..")`). `chdir(t, dir)` changes the working directory for the test and restores it with `t.Cleanup`. Define both helpers in `cmd/momo/helpers_test.go` in this task.
 
 - [ ] Step 2: Run `go test ./cmd/momo -run 'TestGenerateCheck|TestGoGenerateIntegration' -count=1`; expect FAIL with `undefined: Run`.
 
@@ -2637,12 +2700,14 @@ func TestGoGenerateIntegration(t *testing.T) {
 Delivers: the generated-code size and compile-cost half of S-19. Acceptance: `TestGenStatsOutput` (the report is produced and schema-checked; the benchmark machine run is documented in `bench/`).
 
 Files:
+
 - Create: `internal/tools/genstats/main.go`
 - Create: `internal/tools/genstats/genstats_test.go`
 - Create: `bench/generated-code/README.md` (how to reproduce; the report is the only documentation file this task creates)
 - Create: `bench/results/generated-code/.gitkeep`
 
 Interfaces:
+
 - `go run ./internal/tools/genstats -pkgs ./internal/testmodels/example/... -out bench/results/generated-code/<date>.json` writes JSON: `{"generator_version":"v0.1.0-dev","go_version":"...","goos":"...","goarch":"...","files":[{"path":"...","bytes":123,"lines":10}],"total_bytes":123,"generated_bytes":123,"handwritten_bytes":0,"build_seconds_cold":1.23,"build_seconds_warm":0.12}`.
 - Cold build: `go clean -cache` is not used; the cold number is measured with `GOCACHE` set to a new temporary directory and `go build -a` of the example packages. Warm build: the same command run again with the same `GOCACHE`. Timing uses `time.Now` only in the tool, never in the generator output.
 
@@ -2733,13 +2798,14 @@ func TestGenStatsOutput(t *testing.T) {
 Delivers: the acceptance gate for S-2, S-3, S-43, S-62, S-67, S-69, S-70, S-71 as one pass. Acceptance: all named tests pass with `-race`, on Go 1.26 and 1.27, and on windows-latest for the generator suite.
 
 Files:
+
 - Modify: none (verification task; no file changes unless a test fails, in which case the fix is made in the task that owns the failing file).
 
-- [ ] Step 1: Run `go test -race -count=1 ./gen/... ./internal/golden ./internal/testmodels/... ./cmd/momo ./momo`; expect every package `ok`.
+- [ ] Step 1: Run `go test -race -count=1 ./gen/... ./internal/golden ./internal/testmodels/... ./cmd/momo .`; expect every package `ok`.
 
-- [ ] Step 2: Run `go test -count=1 -v ./gen/... ./cmd/momo ./momo ./internal/testmodels/example -run 'TestEmitDescriptorsGolden|TestGenerateDiagnostics|TestGenerateDeterministic|TestGenerateCheck|TestGenerateCrossPackage|TestGenerateRefusesHandwritten|TestGenerateNameCollisions|TestEmbeddedAndMixins|TestNamingPresets|TestColumnByName|TestFieldPermissions|TestGeneratorPlugin|TestTagVocabulary|TestParseTags|TestConfigLoad|TestNamingOverridesFromConfig|TestGoGenerateIntegration|TestCompanionDSLCompiles|TestViewModelsNotWritable|TestCompanionSchemaMethods|TestCompanionSchemaDiagnostics|TestRelationDescriptorShape|TestGeneratorPlugin|TestModelHookEmission|TestZeroHookSet|TestFieldPermissionsRuntime|TestGeneratedHeaderRegexp|TestCLIExitCodes|TestPluginsUseWriter'`; expect each named test to show `--- PASS`.
+- [ ] Step 2: Run `go test -count=1 -v ./gen/... ./cmd/momo . ./internal/testmodels/example -run 'TestEmitDescriptorsGolden|TestGenerateDiagnostics|TestGenerateDeterministic|TestGenerateCheck|TestGenerateCrossPackage|TestGenerateRefusesHandwritten|TestGenerateNameCollisions|TestEmbeddedAndMixins|TestNamingPresets|TestColumnByName|TestFieldPermissions|TestGeneratorPlugin|TestTagVocabulary|TestParseTags|TestConfigLoad|TestNamingOverridesFromConfig|TestGoGenerateIntegration|TestCompanionDSLCompiles|TestViewModelsNotWritable|TestCompanionSchemaMethods|TestCompanionSchemaDiagnostics|TestRelationDescriptorShape|TestGeneratorPlugin|TestModelHookEmission|TestZeroHookSet|TestFieldPermissionsRuntime|TestGeneratedHeaderRegexp|TestCLIExitCodes|TestPluginsUseWriter'`; expect each named test to show `--- PASS`.
 
-- [ ] Step 3: Run `go list -deps ./momo ./dialect ./schema ./vector ./types | grep -E 'golang.org/x/tools|yaml'`; expect no output (dependency rule 1).
+- [ ] Step 3: Run `go list -deps . ./dialect ./schema ./vector ./types | grep -E 'golang.org/x/tools|yaml'`; expect no output (dependency rule 1).
 
 - [ ] Step 4: Run `go vet ./...` and `gofmt -l .`; expect no output.
 
@@ -2750,8 +2816,9 @@ Files:
 Delivers: read-only models backed by views (the `momo.View` marker), and the compile-time rule that only table models are writable. Acceptance: `TestViewModelsNotWritable` (generation half and compile-fail half).
 
 Files:
-- Create: `momo/view.go` (contract addition: `View` marker and `WritableModeler[T]`)
-- Create: `momo/view_test.go`
+
+- Create: `view.go` (contract addition: `View` marker and `WritableModeler[T]`)
+- Create: `view_test.go`
 - Create: `gen/view.go` (view discovery and the `MomoWritable` emission rule)
 - Create: `gen/view_test.go`
 - Create: `gen/testdata/views/model/doc.go` (the source models: one table, one view)
@@ -2763,6 +2830,7 @@ Files:
 - Modify: `gen/model.go` (discovery of the `momo.View` marker)
 
 Interfaces:
+
 - `momo.View` is a zero-size marker struct, used like `momo.Model`. Its tag is `momo:"view:<name>[,materialized]"`; the tag name is the view name. `tags.Tags` gains `View string` and `Materialized bool`.
 - `type WritableModeler[T any] interface { *T; MomoMeta() *Meta[T]; MomoWritable() }`. The root write entry points `Insert`, `Update`, `Delete` and `SoftDelete` constrain their model parameter to `PT WritableModeler[T]`. Plans momo-03 and momo-04 implement the signature; this plan's contract addition is the type.
 - Generator rule: every model gets `MomoMeta()`. Only models whose marker is `momo.Model` get `func (*T) MomoWritable() {}`. A view model is `Model.IsView` with `Model.Materialized` and `Model.ViewName` set, and it is never written to a table.
@@ -2805,7 +2873,7 @@ func main() {
 }
 ```
 
-  `gen/testdata/views/insert_view/main.go` is the same program with `model.DocView` in place of `model.Doc` and the comment `// compile-fail fixture: must not build`.
+`gen/testdata/views/insert_view/main.go` is the same program with `model.DocView` in place of `model.Doc` and the comment `// compile-fail fixture: must not build`.
 
 - [ ] Step 3: Write `gen/view_test.go`:
 
@@ -2867,7 +2935,7 @@ func TestViewModelsNotWritable(t *testing.T) {
 
 - [ ] Step 4: Run `go test ./gen -run TestViewModelsNotWritable -count=1`; expect FAIL with `table model lacks MomoWritable` (or with `no Go files` if the generated file is not yet committed; both mean the view rule is missing).
 
-- [ ] Step 5: Implement. In `momo/view.go` add `type View struct{}` and the `WritableModeler` interface. In `gen/tags/tags.go` add the `view:<name>` key and the bare `materialized` key to the Task 2 `set` switch; add the `View` and `Materialized` fields. In `gen/model.go` detect an embedded `momo.View` marker the same way as `momo.Model`, set `IsView`, `Materialized` and `ViewName` from the marker tag, and reject a view model with a `momo:"table:..."` tag with the diagnostic `view model X cannot declare a table`. In `gen/emit_meta.go` emit `func (*T) MomoWritable() {}` after `MomoMeta` only when `!m.IsView`.
+- [ ] Step 5: Implement. In `view.go` add `type View struct{}` and the `WritableModeler` interface. In `gen/tags/tags.go` add the `view:<name>` key and the bare `materialized` key to the Task 2 `set` switch; add the `View` and `Materialized` fields. In `gen/model.go` detect an embedded `momo.View` marker the same way as `momo.Model`, set `IsView`, `Materialized` and `ViewName` from the marker tag, and reject a view model with a `momo:"table:..."` tag with the diagnostic `view model X cannot declare a table`. In `gen/emit_meta.go` emit `func (*T) MomoWritable() {}` after `MomoMeta` only when `!m.IsView`.
 
 - [ ] Step 6: Generate the committed output with `go run ./cmd/momo generate ./gen/testdata/views/model` (CLI from Task 23), then run `go test ./gen -run TestViewModelsNotWritable -count=1`; expect `ok`. Record the exact compiler message from the failing build in the commit body.
 
@@ -2878,8 +2946,9 @@ func TestViewModelsNotWritable(t *testing.T) {
 Delivers: the companion declarations that migrations need, passed as structured values of the plan momo-04 Task 1 types and read statically into the schema. No raw SQL arguments remain. Acceptance: `TestCompanionSchemaMethods` and `TestCompanionSchemaDiagnostics`.
 
 Files:
-- Modify: `momo/companion.go` (contract addition: the structured companion methods)
-- Modify: `momo/companion_test.go` (compile check of the new methods)
+
+- Modify: `companion.go` (contract addition: the structured companion methods)
+- Modify: `companion_test.go` (compile check of the new methods)
 - Modify: `gen/companion.go` (accept the structured arguments, record them in `CompanionResult`)
 - Create: `gen/companion_schema.go` (apply the results to the schema inside `BuildSchema`)
 - Create: `gen/companion_schema_test.go`
@@ -2887,6 +2956,7 @@ Files:
 - Create: `gen/testdata/fixtures/companionschemabad/bad.go`
 
 Interfaces:
+
 - Companion methods on `*momo.Config`, no-op at runtime and read from the AST. Each takes one structured argument of a type defined by plan momo-04 Task 1 in package `schema` (the type's field names are the ones in that plan's Task 1 Interfaces block):
   - `func (*Config) View(v schema.View)`: fields `Schema`, `Name`, `Materialized`, `Query`, `Depends`, `Indexes`. Replaces the earlier `View` and `MaterializedView` methods; `Materialized: true` selects a materialized view.
   - `func (*Config) Function(f schema.Function)`: fields `Schema`, `Name`, `Args`, `Returns`, `Language`, `Volatility`, `Body`.
@@ -3039,9 +3109,9 @@ func TestCompanionSchemaDiagnostics(t *testing.T) {
 
 - [ ] Step 4: Run `go test ./gen -run TestCompanionSchema -count=1`; expect FAIL with `undefined: ...` on the new `schema` companion types or with `tbl.RLS` not present, and with missing diagnostics.
 
-- [ ] Step 5: Implement. In `momo/companion.go` add the seven methods with the structured parameters above, empty bodies and doc comments; import `github.com/azrtydxb/momo/schema` (allowed by dependency rule 1). Extend `gen/companion.go` (Task 9) with the structured-literal rule: resolve the argument type through `pkg.TypesInfo`, check keyed fields, evaluate string, bool and `[]string` literals, and build the `schema` values. Implement `gen/companion_schema.go` for the view-name check and the append-and-sort into `Schema`. Add the test of Step 5a to `momo/companion_test.go`.
+- [ ] Step 5: Implement. In `companion.go` add the seven methods with the structured parameters above, empty bodies and doc comments; import `github.com/azrtydxb/momo/schema` (allowed by dependency rule 1). Extend `gen/companion.go` (Task 9) with the structured-literal rule: resolve the argument type through `pkg.TypesInfo`, check keyed fields, evaluate string, bool and `[]string` literals, and build the `schema` values. Implement `gen/companion_schema.go` for the view-name check and the append-and-sort into `Schema`. Add the test of Step 5a to `companion_test.go`.
 
-- [ ] Step 5a: Add to `momo/companion_test.go` (package `momo`):
+- [ ] Step 5a: Add to `companion_test.go` (package `momo`):
 
 ```go
 package momo
@@ -3073,7 +3143,7 @@ func TestCompanionSchemaDSLCompiles(t *testing.T) {
 }
 ```
 
-- [ ] Step 6: Run `go test ./gen -run TestCompanionSchema -count=1 && go test ./momo -run 'TestCompanionDSLCompiles|TestCompanionSchemaDSLCompiles' -count=1`; expect `ok`.
+- [ ] Step 6: Run `go test ./gen -run TestCompanionSchema -count=1 && go test . -run 'TestCompanionDSLCompiles|TestCompanionSchemaDSLCompiles' -count=1`; expect `ok`.
 
 - [ ] Step 7: Commit with `git add momo/companion.go momo/companion_test.go gen && git commit -m "feat(gen): structured companion declarations for views, functions, triggers, policies, RLS and partitions"`, and in the body `Uses the schema types owned by momo-04 Task 1; reconcile after its report.`
 
@@ -3082,6 +3152,7 @@ func TestCompanionSchemaDSLCompiles(t *testing.T) {
 Delivers: the full momo-06 descriptor set per relation kind (ParentMeta, ChildMeta, SetParentKey, SetChildKey, GetOne/SetOne, GetMany/SetMany, Through, Discriminator), the polymorphic discriminator with its setter rule, and the relation diagnostics. Acceptance: `TestRelationDescriptorShape`, `TestPolymorphicDescriptorGolden`, `TestPolymorphicDiagnostics`.
 
 Files:
+
 - Create: `gen/relation_shape_test.go`
 - Create: `gen/testdata/fixtures/poly/poly.go` (polymorphic has-many)
 - Create: `gen/testdata/fixtures/polybad/bad.go` (three diagnostic cases)
@@ -3091,6 +3162,7 @@ Files:
 - Modify: `gen/model.go` (set `Field.Base`)
 
 Interfaces:
+
 - `Field` gains `Base string`: the underlying basic Go type name (`string` for `type Status string`; `int64`, `float64`, `bool`; `time.Time` and `[]byte` keep their names). Set in the Task 7 builder from `types.Basic` of the underlying type, after removing one pointer.
 - Descriptor per relation, `EmitDescriptors(m *Model, g *Graph)` (Task 13). Every key closure and setter uses the field's `Base`:
   - Key closures: a value field returns `[]any{p.F}` (wrapped in `Base(...)` when the field's type is named), a pointer field starts with `if p.F == nil { return nil, false }` and returns `[]any{Base(*p.F)}`.
@@ -3140,7 +3212,7 @@ type Image struct {
 }
 ```
 
-  `gen/testdata/fixtures/polybad/bad.go`, each diagnostic on a line that ends with its marker comment:
+`gen/testdata/fixtures/polybad/bad.go`, each diagnostic on a line that ends with its marker comment:
 
 ```go
 package polybad
@@ -3330,7 +3402,7 @@ func TestPolymorphicDiagnostics(t *testing.T) {
 }
 ```
 
-  `findModel` is in `gen/emit_lookup_test.go` (Task 15); `update` is in `gen/emit_descriptors_test.go` (Task 13).
+`findModel` is in `gen/emit_lookup_test.go` (Task 15); `update` is in `gen/emit_descriptors_test.go` (Task 13).
 
 - [ ] Step 3: Run `go test ./gen -run 'TestRelationDescriptorShape|TestPolymorphic' -count=1`; expect FAIL with `appears 0 times, want 1` or with missing diagnostics.
 
@@ -3345,6 +3417,7 @@ func TestPolymorphicDiagnostics(t *testing.T) {
 Delivers: the typed model hooks S-85 requires. The generator detects `BeforeInsert`, `BeforeUpdate`, `BeforeDelete` and `AfterLoad` methods statically through `go/types`, and fills `Meta.Hooks` with method expressions. Nothing is reflected at runtime. Acceptance: `TestModelHookEmission` (golden) and `TestZeroHookSet` (a model without hooks gets no `Hooks` field, so its `Meta.Hooks` is the zero `momo.HookSet[T]`), plus `TestModelHookSignature`.
 
 Files:
+
 - Create: `gen/hooks.go`
 - Create: `gen/hooks_test.go`
 - Create: `gen/testdata/fixtures/hooks/hooks.go`
@@ -3353,6 +3426,7 @@ Files:
 - Modify: `gen/emit_meta.go` (emit the `Hooks:` field)
 
 Interfaces:
+
 - Assumed `momo.HookSet[T]` fields (plan momo-05 owns the final shape; reconcile after its report): `BeforeInsert, BeforeUpdate, BeforeDelete, AfterLoad func(*T, context.Context) error`.
 - Detection: `func DetectHooks(named *types.Named) (map[string]bool, []Diagnostic)`. A method named `BeforeInsert`, `BeforeUpdate`, `BeforeDelete` or `AfterLoad` in the method set of `*T` is a hook only when its signature is exactly one parameter of type `context.Context` and one result of type `error`, with no variadic parameter. A method with the hook name and another signature yields the diagnostic `hook <Name> on <Model> must have signature func(context.Context) error`, positioned at the method.
 - Emitted field when present, placed as the last field of the `momo.Meta[T]` literal: `Hooks: momo.HookSet[Doc]{BeforeInsert: (*Doc).BeforeInsert, AfterLoad: (*Doc).AfterLoad},` with only the detected fields listed, in the fixed order `BeforeInsert, BeforeUpdate, BeforeDelete, AfterLoad`.
@@ -3499,7 +3573,7 @@ func TestModelHookSignature(t *testing.T) {
 }
 ```
 
-  `update` is the flag variable defined in `gen/emit_descriptors_test.go` (Task 13).
+`update` is the flag variable defined in `gen/emit_descriptors_test.go` (Task 13).
 
 - [ ] Step 4: Run `go test ./gen -run 'TestModelHookEmission|TestZeroHookSet|TestModelHookSignature' -count=1`; expect FAIL with `undefined: EmitMeta` or a missing diagnostic.
 
@@ -3514,11 +3588,13 @@ func TestModelHookSignature(t *testing.T) {
 Delivers: the S-71 "build time otherwise" rule for paths the compiler cannot check. Typed `Set` is compile-checked (Task 12). The untyped paths are `ColumnRef.AssignAny`, and the typed `Update.Model` and `Insert.Model` builders, which take a whole struct and must skip columns the table does not accept. Raw SQL stays outside the guarantee and the generated package doc comment says so (Task 12). Acceptance: `TestFieldPermissionsRuntime`.
 
 Files:
-- Create: `momo/permissions_runtime_test.go` (package `momo_test`)
-- Modify: `momo/permissions.go` (add `AssignAny` to the descriptor types and to `ColumnRef`)
+
+- Create: `permissions_runtime_test.go` (package `momo_test`)
+- Modify: `permissions.go` (add `AssignAny` to the descriptor types and to `ColumnRef`)
 - Create: `gen/testdata/permissions/model/momo_gen.go` (generated by `momo generate`; committed)
 
 Interfaces:
+
 - Contract addition: `ColumnRef` gains `AssignAny(v any) (Assignment, error)`. For a writable column it converts `v` to the column's Go type and returns the assignment. For `ReadOnlyColumn`, `NullReadOnlyColumn`, `CreateOnlyColumn` and `ImmutableColumn` it returns `fmt.Errorf("%w: column %s is %s and cannot be set through an untyped path", ErrUnsupported, name, kind)`, where `kind` is `read-only`, `create-only` or `immutable`.
 - `Update.Model(&m)` (plan momo-03) omits read-only, create-only and immutable columns from the SET list. `Insert.Model(&m)` omits read-only columns and keeps create-only and immutable columns. The builders expose their SQL through `SQL() momo.Compiled`, with `Compiled{SQL string; Args []any}` (plan momo-03).
 
@@ -3526,7 +3602,7 @@ Steps:
 
 - [ ] Step 1: Generate the model metadata: `go run ./cmd/momo generate ./gen/testdata/permissions/model`. The `Item` model from Task 12 now has `MomoMeta`, and the generated file is committed.
 
-- [ ] Step 2: Write `momo/permissions_runtime_test.go`:
+- [ ] Step 2: Write `permissions_runtime_test.go`:
 
 ```go
 package momo_test
@@ -3580,11 +3656,11 @@ func TestFieldPermissionsRuntime(t *testing.T) {
 }
 ```
 
-- [ ] Step 3: Run `go test ./momo -run TestFieldPermissionsRuntime -count=1`; expect FAIL with `c.AssignAny undefined` or `undefined: ColumnRef` method.
+- [ ] Step 3: Run `go test . -run TestFieldPermissionsRuntime -count=1`; expect FAIL with `c.AssignAny undefined` or `undefined: ColumnRef` method.
 
-- [ ] Step 4: Implement `AssignAny` on each descriptor type in `momo/permissions.go` (writable types convert with the same parse rules as `ParseEq`; restricted types return the `ErrUnsupported` error above). Add `AssignAny` to the `ColumnRef` interface. The `Update.Model` and `Insert.Model` omissions are implemented in plans momo-03 and momo-04 against the `Permission` method this task adds to `ColumnRef`: `Permission() Access` returns `AccessWritable`, `AccessReadOnly`, `AccessCreateOnly` or `AccessImmutable`. Add those constants to `momo/permissions.go`.
+- [ ] Step 4: Implement `AssignAny` on each descriptor type in `permissions.go` (writable types convert with the same parse rules as `ParseEq`; restricted types return the `ErrUnsupported` error above). Add `AssignAny` to the `ColumnRef` interface. The `Update.Model` and `Insert.Model` omissions are implemented in plans momo-03 and momo-04 against the `Permission` method this task adds to `ColumnRef`: `Permission() Access` returns `AccessWritable`, `AccessReadOnly`, `AccessCreateOnly` or `AccessImmutable`. Add those constants to `permissions.go`.
 
-- [ ] Step 5: Run `go test ./momo -run TestFieldPermissionsRuntime -count=1`; expect `ok`.
+- [ ] Step 5: Run `go test . -run TestFieldPermissionsRuntime -count=1`; expect `ok`.
 
 - [ ] Step 6: Commit with `git add momo gen/testdata/permissions/model && git commit -m "feat(momo): field permissions enforced on untyped and whole-model write paths"`, with the body `Contract additions: ColumnRef.AssignAny, ColumnRef.Permission, Access constants.`
 
@@ -3593,13 +3669,15 @@ func TestFieldPermissionsRuntime(t *testing.T) {
 Delivers: the generated-file header tested against Go's convention (`^// Code generated .* DO NOT EDIT\.$`), and the CLI exit-code contract documented in `momo help` and tested. Acceptance: `TestGeneratedHeaderRegexp` and `TestCLIExitCodes`.
 
 Files:
+
 - Create: `gen/header.go`
 - Create: `gen/header_test.go`
 - Create: `cmd/momo/cli_contract_test.go`
 - Modify: `cmd/momo/cmd.go` (help text lists the exit codes; `help` prints to stdout, unknown commands and bad flags print usage to stderr)
 
 Interfaces:
-- `func Header() string` returns `// Code generated by momo ` + `Version` + ` (format ` + `FormatVersion` + `). DO NOT EDIT.` with `FormatVersion = 1`; all emitters use it.
+
+- `func Header() string` returns `// Code generated by momo ` + `Version` + `(format` + `FormatVersion` + `). DO NOT EDIT.` with `FormatVersion = 1`; all emitters use it.
 - Help text contains the lines `Exit codes:`, `  0  success, or generated code is current`, `  1  stale generated files, or generator or viz diagnostics`, `  2  usage, configuration or infrastructure error`.
 
 Steps:

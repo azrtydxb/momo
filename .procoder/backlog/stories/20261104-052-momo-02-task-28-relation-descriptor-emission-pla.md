@@ -7,7 +7,7 @@ Sprint: -
 
 ## Description
 
-Implements plan momo-02-generator Task 28: Relation descriptor emission (plan momo-06 Task 2 shape, polymorphic) (`.procoder/plans/momo-02-generator.md:3080`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: supporting work for the plan. Files: `gen/relation_shape_test.go`, `gen/testdata/fixtures/poly/poly.go`, `gen/testdata/fixtures/polybad/bad.go`, `gen/testdata/golden/poly/document_descriptors.go`, `gen/emit_descriptors.go`, `gen/relations.go` ….
+Implements plan momo-02-generator Task 28: Relation descriptor emission (plan momo-06 Task 2 shape, polymorphic) (`.procoder/plans/momo-02-generator.md:3080`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: supporting work for the plan. Files: `gen/relation_shape_test.go`, `gen/testdata/fixtures/poly/poly.go`, `gen/testdata/fixtures/polybad/bad.go`, `gen/testdata/golden/poly/document_descriptors.go`, `gen/emit_descriptors.go`, `gen/relations.go` …. Depends on momo-06 Task 2 (story 139): relation descriptors use `momo.Relation`.
 
 ## Acceptance criteria
 
