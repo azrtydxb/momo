@@ -543,9 +543,10 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 	if sq.s.limit > 0 && sq.s.limit <= 1024 {
 		out = make([]T, 0, sq.s.limit)
 	}
+	var zero T
 	sc := scanner[T]{meta: sq.meta}
 	for r.Next() {
-		out = append(out, *new(T))
+		out = append(out, zero)
 		if err := sc.scan(r, &out[len(out)-1]); err != nil {
 			return nil, err
 		}
@@ -597,7 +598,7 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 	}
 	defer r.Close()
 	sc := scanner[T]{meta: sq.meta}
-	var m T
+	var m, zero T
 	for {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("momo: select cancelled: %w", err)
@@ -605,7 +606,7 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 		if !r.Next() {
 			break
 		}
-		m = *new(T)
+		m = zero
 		if err := sc.scan(r, &m); err != nil {
 			return err
 		}
