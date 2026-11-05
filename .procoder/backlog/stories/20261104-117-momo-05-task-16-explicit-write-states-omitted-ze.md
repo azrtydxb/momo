@@ -11,10 +11,15 @@ Implements plan momo-05-writes-queries Task 16: Explicit write states: omitted, 
 
 ## Acceptance criteria
 
-- [ ] `TestWriteStates` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestWriteStatesInsert` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestWriteStatesMultiRow` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestWriteStates` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestWriteStatesInsert` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestWriteStatesMultiRow` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Red first: with the suite bodies and wrappers written before the implementation, `go vet .` failed with `ValuesRows undefined` (type InsertQuery has no such method) at `internal/suite/writes.go:508`. Once it compiled, the unit goldens failed on SQLite (the `DefaultInValues` flag was wrongly true) and on the missing DEFAULT VALUES and Omit-with-Values rules.
+- Green: `go test -tags integration -race -count=1 . ./internal/...` against the running PostgreSQL passes. `-v -run TestWriteStates` shows the postgres subtests of TestWriteStates, TestWriteStatesInsert and TestWriteStatesMultiRow passing. `go test ./...`, `go vet ./...`, `go vet -tags integration ./...` and `gofmt -l .` are clean.
+- Unit goldens for PostgreSQL, SQLite and MySQL are in `write_states_unit_test.go`: single-row and multi-row DEFAULT, per-row DEFAULT on PostgreSQL, ErrUnsupported on SQLite for mixed rows, DEFAULT VALUES, Omit with Values, the ValuesRows bind-parameter limit, and one clock read per statement.
+- Deviation from the plan text: the plan runs the bodies on `Document`, which does not map the `status` column, so Values and Update refuse it. The bodies use a new fixture model `suite.StatusDocument` over the same table instead. The SQLite dialect flag `DefaultInValues` was true and is now false, as the plan's rules require.
 
