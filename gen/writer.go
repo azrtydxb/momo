@@ -101,6 +101,13 @@ func (w *Writer) File(path string, src []byte) error {
 	if err != nil {
 		return fmt.Errorf("gen: generator bug: formatting %s: %w", path, err)
 	}
+	hand, err := isHandwritten(path)
+	if err != nil {
+		return err
+	}
+	if hand {
+		return fmt.Errorf("gen: %s: %w", path, ErrHandwritten)
+	}
 	if !bytes.HasPrefix(formatted, []byte(HeaderPrefix)) {
 		return fmt.Errorf("gen: generator bug: output for %s lacks the %q header", path, strings.TrimSpace(HeaderPrefix))
 	}
@@ -109,13 +116,6 @@ func (w *Writer) File(path string, src []byte) error {
 			return fmt.Errorf("gen: %s: %w", path, ErrCollision)
 		}
 		return nil
-	}
-	hand, err := isHandwritten(path)
-	if err != nil {
-		return err
-	}
-	if hand {
-		return fmt.Errorf("gen: %s: %w", path, ErrHandwritten)
 	}
 	w.files[path] = formatted
 	return nil

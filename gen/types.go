@@ -36,12 +36,6 @@ type Config struct {
 	Plugins []Plugin
 }
 
-// Plugin extends generation. Task 20 completes the plugin contract.
-type Plugin interface {
-	Name() string
-	Generate(g *Graph, w *Writer) error
-}
-
 // Diagnostic is a positioned problem found while loading or analysing input.
 type Diagnostic struct {
 	Pos token.Position
