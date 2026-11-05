@@ -13,7 +13,11 @@ Implements plan momo-02-generator Task 16: Identifier collisions and reserved wo
 
 - [ ] `TestGenerateNameCollisions` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-3, part] `TestGenerateNameCollisions` passes for the part of S-3 this task delivers; the full criterion is verified in story 043.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Commit 42f7b26 feat(gen): identifier collisions and reserved words; go build, vet and test -race ./... pass; procoder check: 0 blocking.
+- Failing first: go test ./gen reported undefined: Identifier before gen/ident.go existed.
+- Passing: TestIdentifierReservedWords, TestIdentifierEdgeCases, TestCheckModelIdentifiers, TestCheckColumnCollisions.
+- TestGenerateNameCollisions: unit part passes; the Load and column-collision part SKIPs until the model builder (task 7) lands and calls CheckColumnCollisions and CheckModelIdentifiers. The first two criteria stay unchecked.
