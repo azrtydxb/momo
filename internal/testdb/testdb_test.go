@@ -41,8 +41,22 @@ func TestEnvVarNames(t *testing.T) {
 }
 
 func TestSQLitePathIsInTempDir(t *testing.T) {
-	if p := SQLitePath(t); filepath.Base(p) != "momo.db" {
+	p := SQLitePath(t)
+	if filepath.Base(p) != "momo.db" {
 		t.Fatalf("SQLitePath = %q, want a momo.db file", p)
+	}
+	// t.TempDir returns a fresh numbered dir under one per-test root, so the
+	// grandparent of the database file must be that root.
+	got, err := filepath.EvalSymlinks(filepath.Dir(filepath.Dir(p)))
+	if err != nil {
+		t.Fatalf("resolve %q: %v", p, err)
+	}
+	want, err := filepath.EvalSymlinks(filepath.Dir(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("SQLitePath = %q, not under the test temp root %q", p, want)
 	}
 }
 

@@ -121,8 +121,16 @@ func TestCIWorkflowCoverage(t *testing.T) {
 			cmd := s.Run
 			if strings.Contains(cmd, "make test-integration-") {
 				var dialects []string
-				for _, d := range j.Strategy.Matrix["dialect"].([]any) {
-					dialects = append(dialects, d.(string))
+				list, ok := j.Strategy.Matrix["dialect"].([]any)
+				if !ok {
+					t.Fatalf("job %q runs make test-integration-* but its matrix has no dialect list", name)
+				}
+				for _, d := range list {
+					ds, ok := d.(string)
+					if !ok {
+						t.Fatalf("job %q: dialect matrix entry %v is %T, want string", name, d, d)
+					}
+					dialects = append(dialects, ds)
 				}
 				for _, d := range dialects {
 					c := exec.Command("make", "-n", "test-integration-"+d)
