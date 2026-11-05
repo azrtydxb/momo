@@ -27,7 +27,7 @@ func skippedReasons(rep *migrate.AutoReport) map[string]string {
 func TestAutoMigrateSkipsDependentOfSkipped(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
-	mustExec(t, pinned(t, db), `CREATE TABLE things (id INTEGER PRIMARY KEY)`)
+	mustExecDB(t, db, `CREATE TABLE things (id INTEGER PRIMARY KEY)`)
 	desired := &schema.Schema{Dialect: "postgres", Extensions: []schema.Extension{{Name: "vector"}}, Tables: []schema.Table{{
 		Name: "things", PrimaryKey: []string{"id"},
 		Columns: []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "must", Type: "TEXT"}, {Name: "fine", Type: "TEXT", Nullable: true}},
@@ -61,7 +61,7 @@ func TestAutoMigrateSkipsDependentOfSkipped(t *testing.T) {
 func TestAutoMigrateSkipsIndexOnSkippedTypeChange(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
-	mustExec(t, pinned(t, db), `CREATE TABLE things (id INTEGER PRIMARY KEY, kind TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE things (id INTEGER PRIMARY KEY, kind TEXT)`)
 	desired := &schema.Schema{Dialect: "postgres", Extensions: []schema.Extension{{Name: "vector"}}, Tables: []schema.Table{{
 		Name: "things", PrimaryKey: []string{"id"},
 		Columns: []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "kind", Type: "INTEGER", Nullable: true}},
@@ -83,7 +83,7 @@ func TestAutoMigrateSkipsIndexOnSkippedTypeChange(t *testing.T) {
 func TestAutoMigrateSkipsRewritingAddColumn(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
-	mustExec(t, pinned(t, db), `CREATE TABLE things (id INTEGER PRIMARY KEY)`)
+	mustExecDB(t, db, `CREATE TABLE things (id INTEGER PRIMARY KEY)`)
 	desired := &schema.Schema{Dialect: "postgres", Extensions: []schema.Extension{{Name: "vector"}}, Tables: []schema.Table{{
 		Name: "things", PrimaryKey: []string{"id"},
 		Columns: []schema.Column{

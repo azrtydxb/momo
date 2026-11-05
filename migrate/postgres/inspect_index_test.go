@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/azrtydxb/momo"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
@@ -22,7 +23,7 @@ func TestPostgresIndexInspection(t *testing.T) {
 	mustExec(t, db.Driver(), `CREATE INDEX d_lower_title ON d (lower(title))`)
 	mustExec(t, db.Driver(), `CREATE INDEX d_live ON d (id) WHERE deleted_at IS NULL`)
 	mustExec(t, db.Driver(), `CREATE INDEX d_emb ON d USING hnsw (emb vector_cosine_ops) WITH (m = 16, ef_construction = 64)`)
-	got, err := mpg.New().Inspect(ctx, pinned(t, db), migrate.InspectOptions{})
+	got, err := inspectOnce(ctx, t, db, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestPostgresIndexInspectionDetails(t *testing.T) {
 	mustExec(t, db.Driver(), `CREATE UNIQUE INDEX "Mixed_Cap_key" ON "Mixed" ("Cap")`)
 	mustExec(t, db.Driver(), `CREATE INDEX mixed_sort ON "Mixed" (a DESC NULLS LAST, b NULLS FIRST, "Cap" DESC)`)
 	mustExec(t, db.Driver(), `CREATE INDEX mixed_l2 ON "Mixed" USING ivfflat (emb vector_l2_ops) WITH (lists = 50)`)
-	got, err := mpg.New().Inspect(ctx, pinned(t, db), migrate.InspectOptions{})
+	got, err := inspectOnce(ctx, t, db, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +109,12 @@ func TestInspectWithInvalidIndexes(t *testing.T) {
 		t.Fatal("expected the unique build to fail")
 	}
 	mustExec(t, db.Driver(), `CREATE INDEX inv_ok ON inv (v)`)
-	s, invalid, err := mpg.New().InspectWithInvalid(ctx, pinned(t, db), migrate.InspectOptions{})
+	pc, err := db.Driver().(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, invalid, err := mpg.New().InspectWithInvalid(ctx, pc, migrate.InspectOptions{})
+	_ = pc.Release()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +137,7 @@ func TestInspectedIndexEqualsModel(t *testing.T) {
 	mustExec(t, db.Driver(), `CREATE INDEX m_emb_hnsw ON m USING hnsw (emb vector_l2_ops) WITH (m = 16, ef_construction = 64)`)
 	mustExec(t, db.Driver(), `CREATE INDEX m_title ON m (title text_ops)`)
 	mustExec(t, db.Driver(), `CREATE INDEX m_tags ON m USING gin (tags array_ops)`)
-	got, err := mpg.New().Inspect(ctx, pinned(t, db), migrate.InspectOptions{})
+	got, err := inspectOnce(ctx, t, db, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

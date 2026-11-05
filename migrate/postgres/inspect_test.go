@@ -38,6 +38,19 @@ func pinned(t *testing.T, db *momo.DB) momo.PinnedConn {
 	return c
 }
 
+// inspectOnce inspects on a connection released before it returns. pinned
+// holds its connection until t.Cleanup, so it is for a test that deliberately
+// keeps one; a one-shot call through it leaks a pool slot per use.
+func inspectOnce(ctx context.Context, t *testing.T, db *momo.DB, opts migrate.InspectOptions) (*schema.Schema, error) {
+	t.Helper()
+	c, err := db.Driver().(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Release() }()
+	return mpg.New().Inspect(ctx, c, opts)
+}
+
 func TestPostgresInspectColumnsAndConstraints(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
@@ -114,7 +127,7 @@ func TestPostgresInspectCollateCommentSerialUnique(t *testing.T) {
     )`)
 	mustExec(t, db.Driver(), `COMMENT ON COLUMN people.name IS 'full name'`)
 	// Empty Schemas resolves to current_schema().
-	got, err := mpg.New().Inspect(context.Background(), pinned(t, db), migrate.InspectOptions{})
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +159,7 @@ func TestPostgresInspectRoundTripCollateComment(t *testing.T) {
 	db := testopen.Postgres(t)
 	mustExec(t, db.Driver(), `CREATE TABLE t (name text COLLATE "C" NOT NULL)`)
 	mustExec(t, db.Driver(), `COMMENT ON COLUMN t.name IS 'n'`)
-	got, err := mpg.New().Inspect(context.Background(), pinned(t, db), migrate.InspectOptions{})
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +183,7 @@ func TestPostgresInspectOtherSchemaAndPartitions(t *testing.T) {
 	mustExec(t, db.Driver(), `CREATE TABLE ev (ts timestamptz NOT NULL) PARTITION BY RANGE (ts)`)
 	mustExec(t, db.Driver(), `CREATE TABLE ev_2026 PARTITION OF ev FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')`)
 	mustExec(t, db.Driver(), `ALTER TABLE ev ENABLE ROW LEVEL SECURITY`)
-	got, err := mpg.New().Inspect(context.Background(), pinned(t, db), migrate.InspectOptions{Schemas: []string{cur, aux}})
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{Schemas: []string{cur, aux}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +226,7 @@ func TestPostgresInspectMixedCaseForeignKeyRoundTrip(t *testing.T) {
         qty int NOT NULL DEFAULT 5,
         double_qty int GENERATED ALWAYS AS (qty * 2) STORED
     )`)
-	got, err := mpg.New().Inspect(context.Background(), pinned(t, db), migrate.InspectOptions{Schemas: []string{cur, aux}})
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{Schemas: []string{cur, aux}})
 	if err != nil {
 		t.Fatal(err)
 	}
