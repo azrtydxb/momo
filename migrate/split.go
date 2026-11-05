@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
@@ -17,8 +18,8 @@ var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 // ends at the END; that closes its body. A `-- momo:split` directive splits at
 // every semicolon outside strings and comments. Statements keep their text,
 // including preceding comments, trimmed of surrounding whitespace; statements
-// holding only whitespace and comments are dropped. A leading UTF-8 BOM is
-// ignored. Offsets in errors count from the start of body.
+// holding only whitespace and comments are dropped. A UTF-8 BOM is treated
+// as whitespace, so a leading one is ignored. Offsets in errors count from the start of body.
 func SplitStatements(body []byte, dialectName string) ([]string, error) {
 	base := 0
 	if bytes.HasPrefix(body, utf8BOM) {
@@ -61,6 +62,17 @@ func isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'
 }
 
+// bomAt reports whether a UTF-8 BOM starts at b[i]. The scanner treats a BOM
+// as whitespace wherever it appears, so the file-start strip and every later
+// pass agree on what is content.
+func bomAt(b []byte, i int) bool {
+	return bytes.HasPrefix(b[i:], utf8BOM)
+}
+
+func trimSpaceBOM(text string) string {
+	return strings.TrimFunc(text, func(r rune) bool { return r == '\uFEFF' || unicode.IsSpace(r) })
+}
+
 func (s *splitter) errAt(what string, i int) error {
 	line := 1 + bytes.Count(s.src[:i], []byte{'\n'})
 	return fmt.Errorf("migrate: unterminated %s at byte %d (line %d)", what, s.base+i, line)
@@ -75,7 +87,7 @@ func (s *splitter) resetStmt(next int) {
 }
 
 func (s *splitter) emit(end int) {
-	text := strings.TrimSpace(string(s.src[s.start:end]))
+	text := trimSpaceBOM(string(s.src[s.start:end]))
 	if text != "" && !s.onlyTrivia(text) {
 		s.out = append(s.out, text)
 	}
@@ -89,6 +101,8 @@ func (s *splitter) onlyTrivia(text string) bool {
 		switch {
 		case isSpace(b[i]):
 			i++
+		case bomAt(b, i):
+			i += len(utf8BOM)
 		case s.lineCommentAt(b, i):
 			i = skipLine(b, i)
 		case b[i] == '/' && i+1 < len(b) && b[i+1] == '*':
@@ -167,6 +181,8 @@ func (s *splitter) run() ([]string, error) {
 		switch {
 		case isSpace(c):
 			i++
+		case bomAt(b, i):
+			i += len(utf8BOM)
 		case s.lineCommentAt(b, i):
 			i = skipLine(b, i)
 		case c == '/' && i+1 < len(b) && b[i+1] == '*':

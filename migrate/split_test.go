@@ -137,6 +137,31 @@ func TestSplitUnterminated(t *testing.T) {
 	}
 }
 
+func TestSplitBOM(t *testing.T) {
+	const bom = "\xef\xbb\xbf"
+	for name, tc := range map[string]struct {
+		body string
+		want []string
+	}{
+		"bom-only":          {bom, nil},
+		"bom-only-twice":    {bom + bom, nil},
+		"bom-semicolon":     {bom + ";", nil},
+		"bom-prefixed":      {bom + "SELECT 1; SELECT 2;", []string{"SELECT 1", "SELECT 2"}},
+		"bom-between":       {"SELECT 1;" + bom + "SELECT 2;", []string{"SELECT 1", "SELECT 2"}},
+		"bom-lone-chunk":    {"SELECT 1;" + bom + ";SELECT 2", []string{"SELECT 1", "SELECT 2"}},
+		"bom-trailing":      {"SELECT 1;" + bom, []string{"SELECT 1"}},
+		"bom-around-stmt":   {"SELECT 1;" + bom + " SELECT 2 " + bom, []string{"SELECT 1", "SELECT 2"}},
+		"bom-after-comment": {"-- c\n" + bom, nil},
+	} {
+		for _, d := range []string{"postgres", "sqlite", "mysql"} {
+			got, err := SplitStatements([]byte(tc.body), d)
+			if err != nil || len(got) != len(tc.want) || len(got) > 0 && !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("%s/%s: got %q (%v), want %q", name, d, got, err, tc.want)
+			}
+		}
+	}
+}
+
 func FuzzSplitStatements(f *testing.F) {
 	for _, s := range []string{
 		"", ";", "SELECT 1;", "SELECT 'a;b'; -- c\nSELECT 2",
