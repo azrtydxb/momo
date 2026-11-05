@@ -11,10 +11,14 @@ Implements plan momo-05-writes-queries Task 8: Locking, optimizer hints and runt
 
 ## Acceptance criteria
 
-- [ ] `TestLockingNowaitSkipLocked` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestWithTableNameQuoted` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestHintsByDialect` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestLockingNowaitSkipLocked` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestWithTableNameQuoted` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestHintsByDialect` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Red first: with select.go at HEAD (no IndexedBy or WithTableName), `go vet -tags integration .` failed to compile: internal/suite/queries.go: WithTableName undefined, IndexedBy undefined. Unit golden TestLockingHintsTableNameGolden failed to compile the same way before the implementation. The integration tests live as thin wrappers in integration_locking_test.go over suite members LockingNowaitSkipLocked, WithTableNameQuoted and HintsByDialect in internal/suite/queries.go (also run by Queries in run.go).
+- Green: `go test -tags integration -race -count=1 . ./internal/...` all ok against the running Postgres (including the two-transaction SKIP LOCKED and NOWAIT check, NOWAIT yields ErrBusy); go vet (both tag sets), gofmt and go test ./... clean.
+- Deviation: the plan has no FOR NO KEY UPDATE, KEY SHARE, OF or runtime-settings API in Task 8 (ForUpdate and ForShare already existed; SetLocal exists in search.go), so none were added.
 
