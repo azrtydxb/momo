@@ -122,6 +122,9 @@ type Function struct {
 	Language   string `json:"language"`   // "plpgsql", "sql", ...
 	Volatility string `json:"volatility"` // "VOLATILE", "STABLE", "IMMUTABLE"
 	Body       string `json:"body"`       // rendered with dollar-quote tag $momo$
+	// Strict is RETURNS NULL ON NULL INPUT; SecurityDefiner is SECURITY DEFINER.
+	Strict          bool `json:"strict,omitempty"`
+	SecurityDefiner bool `json:"security_definer,omitempty"`
 }
 
 // Trigger is a table trigger.

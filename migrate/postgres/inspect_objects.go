@@ -31,7 +31,7 @@ JOIN pg_namespace rn ON rn.oid = rc.relnamespace
 WHERE v.oid = $1 AND rc.oid <> v.oid AND d.classid = 'pg_rewrite'::regclass AND d.refclassid = 'pg_class'::regclass
 ORDER BY 1,2`
 	qFunctions = `SELECT n.nspname, p.proname, pg_get_function_arguments(p.oid), pg_get_function_result(p.oid),
-  l.lanname, p.provolatile::text, p.prosrc
+  l.lanname, p.provolatile::text, p.prosrc, p.proisstrict, p.prosecdef
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace JOIN pg_language l ON l.oid = p.prolang
 WHERE p.prokind = 'f' AND n.nspname = ANY($1)
   AND NOT EXISTS (SELECT 1 FROM pg_depend e WHERE e.classid = 'pg_proc'::regclass AND e.objid = p.oid AND e.deptype = 'e')
@@ -53,7 +53,8 @@ JOIN pg_namespace pn ON pn.oid = p.pronamespace
 WHERE NOT t.tgisinternal AND t.tgparentid = 0 AND n.nspname = ANY($1)
 ORDER BY 1,2,3`
 	qPolicies = `SELECT n.nspname, c.relname, p.polname, p.polcmd::text, p.polpermissive,
-  ARRAY(SELECT rolname::text FROM pg_roles WHERE oid = ANY(p.polroles) ORDER BY rolname),
+  ARRAY(SELECT CASE WHEN r.oid = 0 THEN 'PUBLIC' ELSE (SELECT rolname::text FROM pg_roles WHERE oid = r.oid) END
+        FROM unnest(p.polroles) AS r(oid) ORDER BY 1),
   pg_get_expr(p.polqual, p.polrelid), pg_get_expr(p.polwithcheck, p.polrelid)
 FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname = ANY($1)
@@ -176,7 +177,7 @@ func (in *inspector) functions(ctx context.Context, s *schema.Schema) error {
 		var ns, vol string
 		var f schema.Function
 		var body *string
-		if err := r.Scan(&ns, &f.Name, &f.Args, &f.Returns, &f.Language, &vol, &body); err != nil {
+		if err := r.Scan(&ns, &f.Name, &f.Args, &f.Returns, &f.Language, &vol, &body, &f.Strict, &f.SecurityDefiner); err != nil {
 			return err
 		}
 		f.Schema = in.optSchema(ns)
@@ -247,6 +248,11 @@ func (in *inspector) policies(ctx context.Context, s *schema.Schema) error {
 		p.Command = policyCmds[cmd]
 		p.Using = deref(using)
 		p.Check = deref(check)
+		// PUBLIC alone is the model's empty list; PUBLIC mixed with named
+		// roles is kept so that no grant is lost.
+		if len(p.Roles) == 1 && p.Roles[0] == "PUBLIC" {
+			p.Roles = nil
+		}
 		s.Policies = append(s.Policies, p)
 		return nil
 	})

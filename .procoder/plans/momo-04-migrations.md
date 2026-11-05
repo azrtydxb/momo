@@ -2258,6 +2258,19 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error)
 
 Hard dependency (Task 11): drift must call `postgres.Dialect.InspectWithInvalid`, not plain `Inspect`, and report every returned invalid index name as Changed with Detail "invalid index (failed CONCURRENTLY build)". A plain Inspect hides a failed CONCURRENTLY build.
 
+Hard requirement (Task 12 review): declared views, function bodies and policy and trigger expressions never compare Equal to inspected text, because PostgreSQL rewrites them (pg_get_viewdef qualifies and re-parenthesizes, pg_get_functiondef adds clauses). Without canonicalisation the first Diff after baseline drops and recreates every view and its dependents and loses materialized view data. Task 18 therefore adds a dialect hook, used by Baseline before it stores the snapshot:
+
+```go
+// Canonicalize rewrites the declared views, functions, policies and triggers of s to the text
+// PostgreSQL itself reports. It creates them in a scratch schema (dependencies first), reads back
+// pg_get_viewdef, pg_get_functiondef and the policy and trigger expressions, drops the scratch
+// schema and replaces the declared text in s. Baseline stores this canonical text, not the
+// inspected text of the live objects.
+func (Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.Schema) error
+```
+
+Acceptance for the hook: baseline then diff gives zero changes for a declared view written differently from pg_get_viewdef's output (for example with qualified columns and different line breaks), for a declared function whose body differs only by formatting, and for a materialized view (its data is not dropped).
+
 Object identity for drift: `Kind` (table, column, index, fk, unique, check, view, function, trigger, policy, enum, extension, schema) plus qualified name `schema.table.name`.
 
 Steps:

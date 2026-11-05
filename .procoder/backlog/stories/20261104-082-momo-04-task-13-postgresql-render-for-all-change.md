@@ -11,6 +11,8 @@ Implements plan momo-04-migrations Task 13: PostgreSQL render for all change kin
 
 ## Acceptance criteria
 
+- [ ] Function render emits `STRICT` when `Function.Strict` and `SECURITY DEFINER` when `Function.SecurityDefiner` (both are inspected since Task 12) and the round trip has no diff
+
 - [ ] `TestPostgresObjects` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestPostgresConcurrentIndexNoTx` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestManagedFunctionsTriggersPartitions` exists as written in the plan, failed before the implementation, and passes now
