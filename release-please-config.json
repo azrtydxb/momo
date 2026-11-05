@@ -6,6 +6,8 @@
   "include-v-in-tag": true,
   "changelog-path": "CHANGELOG.md",
   "packages": {
-    ".": {}
+    ".": {
+      "release-as": "0.1.0"
+    }
   }
 }
