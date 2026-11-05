@@ -93,6 +93,45 @@ func TestFromSQLDBDiscardWithOpenTx(t *testing.T) {
 	}
 }
 
+// Two Begins on one pinned connection, both left open: Release and Discard must roll back
+// every open transaction instead of hanging on the first one's close lock.
+func TestFromSQLDBTwoOpenTxs(t *testing.T) {
+	for _, mode := range []string{"Release", "Discard"} {
+		t.Run(mode, func(t *testing.T) {
+			db, d := openSQLDriver(t)
+			ctx := context.Background()
+			p, err := d.(momo.Pinner).Pin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var pid int
+			scanOne(t, p, "SELECT pg_backend_pid()", &pid)
+			for range 2 {
+				if _, err := p.Begin(ctx, momo.TxOptions{}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var endErr error
+			within(t, mode+" with two open txs", func() {
+				if mode == "Release" {
+					endErr = p.Release()
+				} else {
+					endErr = p.(momo.Discarder).Discard()
+				}
+			})
+			if endErr != nil {
+				t.Fatalf("%s: %v", mode, endErr)
+			}
+			if mode == "Discard" && !backendGone(t, db, pid) {
+				t.Fatalf("backend %d still alive after Discard", pid)
+			}
+			if st := db.Stats(); st.InUse != 0 {
+				t.Fatalf("InUse = %d, want 0", st.InUse)
+			}
+		})
+	}
+}
+
 func TestFromSQLDBPinnedBeginAndFinishedTx(t *testing.T) {
 	_, d := openSQLDriver(t)
 	ctx := context.Background()

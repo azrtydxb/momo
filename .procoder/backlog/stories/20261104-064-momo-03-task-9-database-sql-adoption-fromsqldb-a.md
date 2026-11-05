@@ -23,3 +23,4 @@ Implements plan momo-03-drivers Task 9: database/sql adoption: FromSQLDB and Fro
 - Gate: `procoder check` 0 blocking; `go vet ./...`, `gofmt -l .`, `go mod tidy -diff`, `go test ./...` and `go test -tags integration -race ./driver/...` all clean.
 - Steps 2b, 2c and 5b (`TestPostgresSQLDBAdapter`, S-88) are out of this story's scope and need `suite.RunAll` (momo-05 Task 35), which does not exist yet in `internal/suite`.
 - Deferred, NOT satisfied: the S-88 acceptance test (`suite.RunAll`, plan steps 2b, 2c and 5b, `TestPostgresSQLDBAdapter`) is deferred until momo-05 Task 35 provides `suite.RunAll`; it has not been run and the adapter is not yet proven against the shared suite.
+- Review fix: `sqlPinned` now tracks every open transaction (`txs` map) and `take()` rolls them all back outside `p.mu`; `TestFromSQLDBTwoOpenTxs` (two open Begins, Release and Discard within 10s) hung before the fix and passes now; `-race -count=3` integration run green.

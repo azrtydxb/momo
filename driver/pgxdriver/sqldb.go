@@ -259,11 +259,11 @@ func sqlTxErr(op string, err error) error {
 // sqlPinned is one *sql.Conn checked out of the pool. See momo.PinnedConn for the
 // Release contract.
 type sqlPinned struct {
-	mu    sync.Mutex // guards conn, calls, rows and tx
+	mu    sync.Mutex // guards conn, calls, rows and txs
 	conn  *sql.Conn
 	calls int                         // Query, Exec and Begin calls executing now
 	rows  map[*pinnedSQLRows]struct{} // Rows not yet closed or exhausted
-	tx    *sql.Tx                     // transaction begun on this connection and not yet finished
+	txs   map[*sql.Tx]struct{}        // transactions begun on this connection and not yet finished
 }
 
 func (p *sqlPinned) live() (*sql.Conn, error) {
@@ -326,16 +326,17 @@ func (p *sqlPinned) Begin(ctx context.Context, opts momo.TxOptions) (momo.Driver
 		return nil, err
 	}
 	p.mu.Lock()
-	p.tx = tx
+	if p.txs == nil {
+		p.txs = make(map[*sql.Tx]struct{})
+	}
+	p.txs[tx] = struct{}{}
 	p.mu.Unlock()
 	return &sqlTx{tx: tx, onDone: func() { p.clearTx(tx) }}, nil
 }
 
 func (p *sqlPinned) clearTx(tx *sql.Tx) {
 	p.mu.Lock()
-	if p.tx == tx {
-		p.tx = nil
-	}
+	delete(p.txs, tx)
 	p.mu.Unlock()
 }
 
@@ -343,25 +344,29 @@ func (p *sqlPinned) clearTx(tx *sql.Tx) {
 // already released and errBusy while a call is executing.
 func (p *sqlPinned) take() (*sql.Conn, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.conn == nil {
+		p.mu.Unlock()
 		return nil, nil
 	}
 	if p.calls > 0 {
+		p.mu.Unlock()
 		return nil, errBusy()
 	}
 	for r := range p.rows {
 		_ = r.sqlRows.r.Close()
 	}
 	p.rows = nil
-	if p.tx != nil {
-		// An open *sql.Tx holds the Conn's close lock, so Conn.Close would block forever. The native
-		// contract discards an open transaction with the session: roll it back first.
-		_ = p.tx.Rollback()
-		p.tx = nil
-	}
+	txs := p.txs
+	p.txs = nil
 	c := p.conn
 	p.conn = nil
+	p.mu.Unlock()
+	// Each open *sql.Tx holds the Conn's close lock, so Conn.Close would block forever. The native
+	// contract discards an open transaction with the session: roll them all back first, outside
+	// the lock because Rollback is network I/O.
+	for tx := range txs {
+		_ = tx.Rollback()
+	}
 	return c, nil
 }
 
