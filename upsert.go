@@ -11,9 +11,19 @@ import (
 // caller chooses otherwise with OnConflict, the conflict target is T's
 // primary key, and DoUpdate (when not given, or given without assignments)
 // assigns every written column that an update may change with
-// SetExcluded. The primary key, version, soft-delete, created-at and
-// updated-at columns are never part of DO UPDATE SET, and an explicit
-// assignment to one is refused with ErrValidation.
+// SetExcluded. The primary key, version, soft-delete and created-at columns
+// are never part of DO UPDATE SET, and an explicit assignment to one (or to
+// updated-at) is refused with ErrValidation. When the model has an
+// updated-at column, DO UPDATE SET always ends with updated_at =
+// EXCLUDED.updated_at, also after an explicit DoUpdate list, so a conflict
+// refreshes the timestamp just as Update does; created_at is never
+// overwritten.
+//
+// The version column is neither advanced nor checked on conflict: an upsert
+// overwrites the existing row without optimistic-lock detection. Explicit
+// identity values inserted with OVERRIDING SYSTEM VALUE do not advance the
+// PostgreSQL identity sequence, so later generated identities may collide
+// with them; the caller must setval the sequence.
 //
 // When the conflict target is the primary key and every model carries a
 // non-zero identity value, the identity column joins the INSERT column list
@@ -68,7 +78,30 @@ func (q InsertQuery[T]) resolveUpsert() (InsertQuery[T], error) {
 	if len(q.i.set) == 0 {
 		q.i.set = q.defaultUpsertSet()
 	}
+	q.i.set = q.withUpdatedAt(q.i.set)
 	return q, nil
+}
+
+// withUpdatedAt appends updated_at = EXCLUDED.updated_at to a DO UPDATE list
+// so a conflict refreshes the timestamp the way Update always does. The
+// inserted row's updated_at comes from the clock, so EXCLUDED carries now.
+// It is skipped when the model has no updated-at column, the column is
+// omitted from the INSERT, or no other assignment exists to extend.
+func (q InsertQuery[T]) withUpdatedAt(set []Assignment) []Assignment {
+	ci := q.meta.UpdatedAt
+	if ci < 0 || ci >= len(q.meta.Columns) || !q.writable(ci) || len(set) == 0 {
+		return set
+	}
+	name := q.meta.Columns[ci].Name
+	if slices.Contains(q.i.omit, name) {
+		return set
+	}
+	for _, a := range set {
+		if a.col == name {
+			return set
+		}
+	}
+	return append(set, Assignment{col: name, kind: setExcluded})
 }
 
 // pkNames returns the primary-key column names.

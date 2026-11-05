@@ -61,7 +61,7 @@ func upsertSQL(t *testing.T, name dialect.Name, build func(q momo.Querier) momo.
 func TestUpsertGoldenSQL(t *testing.T) {
 	doc := suite.Document{ID: 77, TenantID: 1, Title: "t"}
 	zero := suite.Document{TenantID: 1, Title: "t"}
-	const set = `DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title", "body" = EXCLUDED."body", "secret" = EXCLUDED."secret"`
+	const set = `DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title", "body" = EXCLUDED."body", "secret" = EXCLUDED."secret", "updated_at" = EXCLUDED."updated_at"`
 	cases := []struct {
 		name  dialect.Name
 		build func(q momo.Querier) momo.InsertQuery[suite.Document]
@@ -78,10 +78,10 @@ func TestUpsertGoldenSQL(t *testing.T) {
 		}, `INSERT INTO "documents" ("tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("id") ` + set},
 		{dialect.Postgres, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 			return momo.Upsert[suite.Document](q).Model(&doc).Omit(suite.DocBody, suite.DocSecret)
-		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "version", "deleted_at", "created_at", "updated_at") OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT ("id") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title"`},
+		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "version", "deleted_at", "created_at", "updated_at") OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT ("id") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title", "updated_at" = EXCLUDED."updated_at"`},
 		{dialect.Postgres, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 			return momo.Upsert[suite.Document](q).Model(&doc).OnConflict(suite.DocTitle).DoUpdate(suite.DocTenantID.SetExcluded())
-		}, `INSERT INTO "documents" ("tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("title") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id"`},
+		}, `INSERT INTO "documents" ("tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("title") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "updated_at" = EXCLUDED."updated_at"`},
 		{dialect.Postgres, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 			return momo.Upsert[suite.Document](q).Model(&doc).Returning(suite.DocID)
 		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("id") ` + set + ` RETURNING "id"`},

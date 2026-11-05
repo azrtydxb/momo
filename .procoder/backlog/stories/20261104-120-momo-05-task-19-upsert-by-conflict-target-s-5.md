@@ -23,3 +23,12 @@ Scope rule: the builder must render its statement inside a target-table scope vi
 - Implementation is in upsert.go; insert.go gains only the hooks. Rendering still goes through `Builder.withScope` in `InsertQuery.render`.
 
 - `procoder check`: 0 blocking findings. `go vet ./...`, `gofmt -l .` clean, `go test ./...` ok.
+
+### Review fixes
+
+- Updated-at on conflict: the default DO UPDATE SET now ends with updated_at = EXCLUDED.updated_at, and an explicit DoUpdate list that omits it gets it appended. created_at is never assigned. `TestUpsertRefreshesUpdatedAtKeepsCreatedAt` (Postgres, clock t1 then t2) asserts updated_at == t2 and created_at == t1; `TestUpsertExplicitDoUpdateStillRefreshesUpdatedAt` pins the appended assignment. Existing goldens were updated for the new trailing assignment.
+- Doc comment on Upsert: version is neither advanced nor checked on conflict, and explicit identity values do not advance the Postgres identity sequence (caller must setval). `TestUpsertLeavesVersionUnchangedOnConflict` pins the unchanged version.
+- Added tests: `TestUpsertCompositePrimaryKeyGolden`, `TestUpsertDoNothingGolden` (OnConflict on the PK then DoNothing), `TestUpsertNonPKTargetNeverInsertsIdentity` (non-zero ID with a non-PK target: no identity column, no OVERRIDING SYSTEM VALUE).
+- SQLite integration is not available yet, so these ran on Postgres only (SQLite coverage is by the golden tests).
+- Story 121 follow-ups made on this branch: the clock is normalized to UTC (not truncated; Postgres stores microseconds, test compares against the microsecond-truncated value), an unsupported timestamp field type (named int64, sql.NullTime) now fails with ErrValidation naming column and type, and tests cover timestampValue/timestampUnset and the clock reaching a Tx insert.
+- Verification: `go test -tags integration -race -count=1 .` ok, `go vet ./...`, `gofmt -l .`, `go test ./...` clean.
