@@ -186,3 +186,45 @@ func TestRenderDeterministic(t *testing.T) {
 		t.Fatalf("got %q want %q", a[0].SQL, want)
 	}
 }
+
+func TestRenderUnknownKindErrors(t *testing.T) {
+	if _, err := (mpg.Dialect{}).Render([]migrate.Change{{Kind: "no_such_kind", Name: "x"}}); err == nil {
+		t.Fatal("an unknown change kind must be an error")
+	}
+}
+
+func TestRenderFunctionBodyTagCollision(t *testing.T) {
+	for _, body := range []string{"SELECT '$momo$'", "SELECT 1 -- $momo", "$momo"} {
+		f := &schema.Function{Name: "f", Returns: "int", Language: "sql", Body: body}
+		if _, err := (mpg.Dialect{}).Render([]migrate.Change{{Kind: migrate.CreateFunction, Name: "f", After: f}}); err == nil {
+			t.Fatalf("body %q would collide with the dollar tag and must be refused", body)
+		}
+	}
+}
+
+func TestRenderPolicyRoleKeywordsCaseInsensitive(t *testing.T) {
+	p := &schema.Policy{Table: "d", Name: "p", Command: "ALL", Permissive: true, Roles: []string{"public", "Current_User", "app"}}
+	st := renderSQL(t, migrate.Change{Kind: migrate.CreatePolicy, Table: "d", Name: "p", After: p})
+	want := `CREATE POLICY "p" ON "d" AS PERMISSIVE FOR ALL TO PUBLIC, CURRENT_USER, "app"`
+	if st[0].SQL != want {
+		t.Fatalf("got %q want %q", st[0].SQL, want)
+	}
+}
+
+func TestRenderTriggerFunctionValidated(t *testing.T) {
+	ok := func(fn string) error {
+		tr := &schema.Trigger{Table: "d", Name: "t", Timing: "AFTER", Events: []string{"INSERT"}, Function: fn}
+		_, err := (mpg.Dialect{}).Render([]migrate.Change{{Kind: migrate.CreateTrigger, Table: "d", Name: "t", After: tr}})
+		return err
+	}
+	for _, fn := range []string{"touch()", `app.touch()`, `"My Fn"()`, `"app"."my fn"()`} {
+		if err := ok(fn); err != nil {
+			t.Fatalf("%q must be accepted: %v", fn, err)
+		}
+	}
+	for _, fn := range []string{"touch", "touch(); DROP TABLE x", "a.b.c()", "touch(text)"} {
+		if err := ok(fn); err == nil {
+			t.Fatalf("%q must be refused", fn)
+		}
+	}
+}

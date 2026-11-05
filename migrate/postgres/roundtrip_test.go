@@ -56,26 +56,6 @@ func inspectNow(t *testing.T, db *momo.DB) *schema.Schema {
 	return got
 }
 
-// pinVersions returns want with the format version set and each extension that
-// leaves Version empty ("whatever the server installs") pinned to the version
-// found in got. schema.Equal compares both fields literally.
-func pinVersions(want, got *schema.Schema) *schema.Schema {
-	c := *want
-	c.FormatVersion = schema.FormatVersion
-	c.Extensions = append([]schema.Extension(nil), want.Extensions...)
-	for i, e := range c.Extensions {
-		if e.Version != "" {
-			continue
-		}
-		for _, g := range got.Extensions {
-			if g.Name == e.Name {
-				c.Extensions[i].Version = g.Version
-			}
-		}
-	}
-	return &c
-}
-
 func jsonDiff(a, b *schema.Schema) string {
 	x, _ := json.MarshalIndent(schema.Normalized(a), "", " ")
 	y, _ := json.MarshalIndent(schema.Normalized(b), "", " ")
@@ -88,7 +68,6 @@ func roundTrip(t *testing.T, db *momo.DB, desired *schema.Schema) *schema.Schema
 	t.Helper()
 	applyStatements(t, db, planStatements(t, &schema.Schema{Dialect: "postgres"}, desired, migrate.DiffOptions{}))
 	got := inspectNow(t, db)
-	desired = pinVersions(desired, got)
 	if !schema.Equal(got, desired) {
 		t.Fatalf("round trip has a diff:\n%s", jsonDiff(got, desired))
 	}
@@ -190,7 +169,6 @@ func TestPostgresAlterColumnRoundTrip(t *testing.T) {
 	stmts := planStatements(t, v1, v2, migrate.DiffOptions{AllowDestructive: true})
 	applyStatements(t, db, stmts)
 	got := inspectNow(t, db)
-	v2 = pinVersions(v2, got)
 	if !schema.Equal(got, v2) {
 		t.Fatalf("alter round trip has a diff:\n%s", jsonDiff(got, v2))
 	}

@@ -625,8 +625,8 @@ func renderCreatePolicy(c migrate.Change) ([]migrate.Statement, error) {
 	if len(p.Roles) > 0 {
 		roles := make([]string, len(p.Roles))
 		for i, r := range p.Roles {
-			if roleKeywords[r] {
-				roles[i] = r
+			if roleKeywords[strings.ToUpper(r)] {
+				roles[i] = strings.ToUpper(r)
 			} else {
 				roles[i] = ident(r)
 			}
@@ -667,6 +667,8 @@ func renderCreateView(c migrate.Change) ([]migrate.Statement, error) {
 
 // --------------------------------------------------- functions, triggers
 
+var triggerFunc = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:[^"]|"")+")(?:\.(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:[^"]|"")+"))?\(\)$`)
+
 var (
 	volatilities = map[string]bool{"VOLATILE": true, "STABLE": true, "IMMUTABLE": true}
 	timings      = map[string]bool{"BEFORE": true, "AFTER": true, "INSTEAD OF": true}
@@ -674,7 +676,7 @@ var (
 )
 
 func createFunction(f schema.Function, replace bool) (string, error) {
-	if strings.Contains(f.Body, bodyTag) {
+	if strings.Contains(f.Body+"$", bodyTag) {
 		return "", fmt.Errorf("function %q: the body contains the reserved dollar-quote tag %s", f.Name, bodyTag)
 	}
 	vol := strings.ToUpper(f.Volatility)
@@ -748,6 +750,9 @@ func renderCreateTrigger(c migrate.Change) ([]migrate.Statement, error) {
 	}
 	// Function is the regprocedure text read by inspection, for example
 	// "touch()". The trigger arguments replace the empty parentheses.
+	if !triggerFunc.MatchString(t.Function) {
+		return nil, fmt.Errorf("trigger %q: function %q must be a (qualified) identifier followed by ()", t.Name, t.Function)
+	}
 	fn := strings.TrimSuffix(t.Function, "()")
 	args := make([]string, len(t.Args))
 	for i, a := range t.Args {
