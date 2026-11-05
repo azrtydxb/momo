@@ -26,3 +26,17 @@ type Account struct {
 	DeletedAt  *time.Time `momo:"column:deleted_at,soft_delete:timestamp"`
 	Home       Address    `momo:"embedded,prefix:home_"`
 }
+
+// UnixDoc soft-deletes with a Unix-seconds marker.
+type UnixDoc struct {
+	momo.Model `momo:"table:unix_docs"`
+	ID         int64  `momo:"pk,identity"`
+	DeletedAt  *int64 `momo:"column:deleted_unix,soft_delete:unix"`
+}
+
+// BoolDoc soft-deletes with a boolean marker.
+type BoolDoc struct {
+	momo.Model `momo:"table:bool_docs"`
+	ID         int64 `momo:"pk,identity"`
+	Deleted    bool  `momo:"column:deleted,soft_delete:bool"`
+}

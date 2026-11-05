@@ -119,6 +119,15 @@ func emitModelMeta(b *strings.Builder, m *Model, t *schema.Table, lower string) 
 		indexOf(m, func(f *Field) bool { return f.Tags.SoftDelete != "" }),
 		indexOf(m, func(f *Field) bool { return f.Tags.CreatedAt }),
 		indexOf(m, func(f *Field) bool { return f.Tags.UpdatedAt }))
+	// The timestamp kind is the zero value, so it is omitted.
+	if i := indexOf(m, func(f *Field) bool { return f.Tags.SoftDelete != "" }); i >= 0 {
+		switch m.Fields[i].Tags.SoftDelete {
+		case "unix":
+			w("SoftDeleteKind: momo.SoftDeleteUnix,\n")
+		case "bool":
+			w("SoftDeleteKind: momo.SoftDeleteBool,\n")
+		}
+	}
 	var pk []string
 	for i, f := range m.Fields {
 		if f.Tags.PK {

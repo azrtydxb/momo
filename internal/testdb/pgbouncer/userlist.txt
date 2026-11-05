@@ -1,2 +1,2 @@
 "postgres" "momo"
-"momo" "momo"
+"momo_app" "momo_app"

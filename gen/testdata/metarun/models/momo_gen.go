@@ -120,3 +120,100 @@ var accountTable = schema.Table{
 	},
 	PrimaryKey: []string{"id"},
 }
+
+func (*BoolDoc) MomoMeta() *momo.Meta[BoolDoc] { return &boolDocMeta }
+
+var boolDocMeta = momo.Meta[BoolDoc]{
+	Table: "bool_docs",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK | momo.FlagIdentity},
+		{Name: "deleted", Flags: momo.FlagSoftDelete},
+	},
+	Ptr: func(m *BoolDoc, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.Deleted
+		}
+		return nil
+	},
+	Value: func(m *BoolDoc, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.Deleted
+		}
+		return nil
+	},
+	TableSchema: &boolDocTable,
+	Identity:    0, Version: -1, SoftDelete: 1, CreatedAt: -1, UpdatedAt: -1,
+	SoftDeleteKind: momo.SoftDeleteBool,
+	PK:             []int{0},
+}
+
+var boolDocTable = schema.Table{
+	Name: "bool_docs",
+	Columns: []schema.Column{
+		{
+			Name:     "id",
+			Type:     "bigint",
+			Identity: "by_default",
+		},
+		{
+			Name: "deleted",
+			Type: "boolean",
+		},
+	},
+	PrimaryKey: []string{"id"},
+}
+
+func (*UnixDoc) MomoMeta() *momo.Meta[UnixDoc] { return &unixDocMeta }
+
+var unixDocMeta = momo.Meta[UnixDoc]{
+	Table: "unix_docs",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK | momo.FlagIdentity},
+		{Name: "deleted_unix", Flags: momo.FlagNullable | momo.FlagSoftDelete},
+	},
+	Ptr: func(m *UnixDoc, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.DeletedAt
+		}
+		return nil
+	},
+	Value: func(m *UnixDoc, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.DeletedAt
+		}
+		return nil
+	},
+	TableSchema: &unixDocTable,
+	Identity:    0, Version: -1, SoftDelete: 1, CreatedAt: -1, UpdatedAt: -1,
+	SoftDeleteKind: momo.SoftDeleteUnix,
+	PK:             []int{0},
+}
+
+var unixDocTable = schema.Table{
+	Name: "unix_docs",
+	Columns: []schema.Column{
+		{
+			Name:     "id",
+			Type:     "bigint",
+			Identity: "by_default",
+		},
+		{
+			Name:     "deleted_unix",
+			Type:     "bigint",
+			Nullable: true,
+		},
+	},
+	PrimaryKey: []string{"id"},
+}
