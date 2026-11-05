@@ -20,3 +20,4 @@ Implements plan momo-04-migrations Task 16: Engine Apply, Plan, Status with lock
 
 ## Evidence
 
+- Deferred from story 082 (owner: this story, once the Engine and `migratetest` exist): (1) `TestPostgresObjects` run through the Engine (`migratetest.NewEngine`, `e.Diff`, `e.Apply`, `e.Inspect`) exactly as the plan's Task 13 Step 1 writes it, including the CONCURRENTLY index applied with `NoTx`; (2) the S-39 read-back for `TestManagedFunctionsTriggersPartitions`: no diff after apply and no function, trigger or table reported as unmanaged by `e.Drift`. The function and trigger read-back also needs story 081's inspection.

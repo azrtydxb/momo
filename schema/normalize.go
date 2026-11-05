@@ -267,25 +267,36 @@ func enclosedByOnePair(s string) bool {
 
 // Equal reports whether two schemas are equivalent: order of named
 // collections, the Concurrently migration option, and the spelling of types
-// and expressions are ignored. Neither argument is modified.
+// and expressions, and FormatVersion (a file-format marker) are ignored. An
+// extension version counts only when both schemas set it: an empty version
+// means "whatever the server installs". Neither argument is modified.
 func Equal(a, b *Schema) bool {
-	ca, err := canonical(a)
+	na, err := normalizedCopy(a)
 	if err != nil {
 		return false
 	}
-	cb, err := canonical(b)
+	nb, err := normalizedCopy(b)
+	if err != nil {
+		return false
+	}
+	na.FormatVersion, nb.FormatVersion = 0, 0
+	for i := range na.Extensions {
+		for j := range nb.Extensions {
+			x, y := &na.Extensions[i], &nb.Extensions[j]
+			if x.Name == y.Name && (x.Version == "" || y.Version == "") {
+				x.Version, y.Version = "", ""
+			}
+		}
+	}
+	ca, err := json.Marshal(na)
+	if err != nil {
+		return false
+	}
+	cb, err := json.Marshal(nb)
 	if err != nil {
 		return false
 	}
 	return bytes.Equal(ca, cb)
-}
-
-func canonical(s *Schema) ([]byte, error) {
-	c, err := normalizedCopy(s)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(c)
 }
 
 // Normalized returns a deep copy of s with every type and expression

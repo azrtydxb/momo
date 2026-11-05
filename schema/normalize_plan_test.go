@@ -8,6 +8,21 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 )
 
+func TestEqualExtensionVersionAndFormatVersion(t *testing.T) {
+	mk := func(fv int, ver string) *Schema {
+		return &Schema{FormatVersion: fv, Dialect: "postgres", Extensions: []Extension{{Name: "vector", Version: ver}}}
+	}
+	if !Equal(mk(1, "0.8.7"), mk(0, "")) || !Equal(mk(0, ""), mk(1, "0.8.7")) {
+		t.Fatal("an unset extension version matches any installed version, symmetrically, and FormatVersion is ignored")
+	}
+	if Equal(mk(1, "0.8.7"), mk(1, "0.7.0")) {
+		t.Fatal("two set, different versions must differ")
+	}
+	if Equal(mk(1, ""), &Schema{Dialect: "postgres"}) {
+		t.Fatal("a missing extension must differ")
+	}
+}
+
 func TestNormalizeTypes(t *testing.T) {
 	cases := []struct {
 		d        dialect.Name

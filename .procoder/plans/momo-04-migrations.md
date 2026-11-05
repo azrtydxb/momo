@@ -32,6 +32,7 @@ The pure core (`migrate` diff, ordering, file/checksum/snapshot handling, lint, 
 - Security: identifiers always quoted, values always bound; raw SQL is an explicit escape hatch with a documented contract; parameter values not logged unless explicitly enabled.
 - No hidden background goroutines, no implicit migrations at connect time, no unexplained global mutable state.
 - Persisted formats carry explicit format versions independent of the module version: schema snapshot JSON (`format_version`), the checksum file header, the `momo_migrations` history table (metadata row), and generated-file headers (generator version). A newer Momo reads every older format; an older Momo refuses a newer format with an actionable error instead of misreading it.
+- Raw SQL in the model: expressions (Default, Generated, Check, Where, Using, When, Partition Key and Bound, function Args, Returns and Body) are raw SQL taken from the model and are trusted input; Render emits them verbatim. Identifiers are always quoted, and every string literal (comments, enum values, trigger arguments) is escaped. Trigger.Function must be a (qualified) identifier followed by empty parentheses and is validated before rendering.
 
 ## Build order and test harness (round 2)
 
