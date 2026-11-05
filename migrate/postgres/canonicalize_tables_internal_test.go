@@ -94,6 +94,20 @@ func TestRewriteTablesTakesTheWholeReadBackPart(t *testing.T) {
 	}
 }
 
+// Two tables of different names in different schemas can each carry an index
+// of one name; both indexes live in the scratch schema, so they must not share
+// a round.
+func TestPlanRoundsSeparatesIndexNameCollisions(t *testing.T) {
+	tb := func(ns, name, idx string) schema.Table {
+		return schema.Table{Schema: ns, Name: name, Indexes: []schema.Index{{Name: idx, Where: "id > 0"}}}
+	}
+	s := &schema.Schema{Tables: []schema.Table{tb("a", "t1", "idx_n"), tb("b", "t2", "idx_n"), tb("b", "t3", "idx_o")}}
+	rounds := planRounds(s, true)
+	if len(rounds) != 2 || len(rounds[0].tables) != 2 || rounds[0].tables[0] != 0 || rounds[0].tables[1] != 2 || rounds[1].tables[0] != 1 {
+		t.Fatalf("a table whose index name is taken goes to a later round: %+v", rounds)
+	}
+}
+
 func TestPlanRoundsSeparatesTablesOfOneName(t *testing.T) {
 	text := func(ns string) schema.Table {
 		return schema.Table{Schema: ns, Name: "t", Checks: []schema.Check{{Name: "c", Expr: "true"}}}

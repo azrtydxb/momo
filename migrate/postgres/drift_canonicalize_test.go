@@ -94,6 +94,47 @@ func TestCanonicalizeTwoSchemasSameTableName(t *testing.T) {
 	}
 }
 
+// Differently named tables in different schemas can each carry a partial index
+// of one name. Both indexes would land in one scratch schema, so the second
+// table must be created in a later round: Baseline (strict) works and Drift is
+// clean with nothing skipped.
+func TestCanonicalizeTwoSchemasSameIndexName(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	cur := testdb.Schema(t)
+	other := cur + "_b"
+	mustExec(t, db.Driver(), `CREATE SCHEMA `+other)
+	t.Cleanup(func() { _, _ = db.Driver().Exec(context.Background(), `DROP SCHEMA IF EXISTS `+other+` CASCADE`, nil) })
+	mustExec(t, db.Driver(), `CREATE TABLE t1 (n int)`)
+	mustExec(t, db.Driver(), `CREATE INDEX idx_n ON t1 (n) WHERE n IN (1, 2)`)
+	mustExec(t, db.Driver(), `CREATE TABLE `+other+`.t2 (n int)`)
+	mustExec(t, db.Driver(), `CREATE INDEX idx_n ON `+other+`.t2 (n) WHERE n BETWEEN 1 AND 5`)
+	col := []schema.Column{{Name: "n", Type: "integer", Nullable: true}}
+	part := []schema.IndexPart{{Column: "n"}}
+	s := canonSchema(
+		schema.Table{Name: "t1", Columns: col, Indexes: []schema.Index{{Name: "idx_n", Parts: part, Where: "n IN (1, 2)"}}},
+		schema.Table{Schema: other, Name: "t2", Columns: col, Indexes: []schema.Index{{Name: "idx_n", Parts: part, Where: "n BETWEEN 1 AND 5"}}},
+	)
+	s.Schemas = []schema.SchemaNamespace{{Name: other}}
+	e := canonEngine(t, db.Driver(), canonFS(t, s), cur, other)
+	if err := e.Baseline(ctx, canonVersion, false); err != nil {
+		t.Fatalf("baseline: %v", err)
+	}
+	rep, err := e.Drift(ctx)
+	if err != nil {
+		t.Fatalf("drift: %v", err)
+	}
+	if !rep.Clean() || len(rep.CanonicalizeSkipped) != 0 {
+		t.Fatalf("want a clean report with nothing skipped: %+v", rep)
+	}
+	mustExec(t, db.Driver(), `DROP INDEX `+other+`.idx_n`)
+	mustExec(t, db.Driver(), `CREATE INDEX idx_n ON `+other+`.t2 (n) WHERE n BETWEEN 1 AND 6`)
+	rep, err = e.Drift(ctx)
+	if err != nil || len(rep.Changed) != 1 || rep.Changed[0].Object.Schema != other {
+		t.Fatalf("a changed index in the second schema must be reported there: %+v %v", rep, err)
+	}
+}
+
 // failingCreateDriver turns every CREATE TABLE of a table named in bad into a
 // statement PostgreSQL rejects, so that table's scratch copy fails for real
 // (the transaction is aborted until the savepoint is rolled back).

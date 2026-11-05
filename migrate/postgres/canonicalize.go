@@ -50,6 +50,12 @@ import (
 // schemas are canonicalized in separate scratch schemas, one per round, so none
 // of them is refused; two views or functions of one name in different schemas
 // still are.
+//
+// Limit: each round's scratch schema leads the search_path alone, so a table,
+// trigger or policy in a later round (one whose table or index name is taken in
+// an earlier round) does not see a function created in an earlier round's
+// scratch schema. It resolves the live function of that name when there is one;
+// otherwise Canonicalize fails.
 func (d Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.Schema) error {
 	_, err := d.canonicalize(ctx, c, s, false)
 	return err
@@ -63,7 +69,9 @@ func (d Dialect) Canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.
 // in a savepoint, so one failing table does not abort the others). When the
 // whole round trip fails (no CREATE privilege, a read-only transaction, a
 // failing read-back) it returns the error together with every table that
-// carries text in skipped; s is then left as declared.
+// carries text in skipped; s is then left as declared. The search_path limit of
+// Canonicalize applies: a function created in an earlier round's scratch schema
+// is not visible to a later round.
 func (d Dialect) CanonicalizeTables(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (skipped []migrate.ObjectRef, err error) {
 	skipped, err = d.canonicalize(ctx, c, s, true)
 	if err != nil {
@@ -96,8 +104,10 @@ func (r *canonRound) empty() bool {
 }
 
 // planRounds splits s into the rounds that are created in one scratch schema
-// each. The n-th table of a name goes to round n, so a round never holds two
-// tables of one name; views and functions go to round 0, triggers and policies
+// each. A table goes to the first round in which neither its name nor the name
+// of one of its scratch indexes or unique constraints is taken, so a round never
+// holds two relations of one name (tables of one name in different schemas, or
+// differently named tables whose indexes share a name); views and functions go to round 0, triggers and policies
 // to the round of their table. With tablesOnly only tables with text are
 // planned.
 func planRounds(s *schema.Schema, tablesOnly bool) []*canonRound {
@@ -109,17 +119,29 @@ func planRounds(s *schema.Schema, tablesOnly bool) []*canonRound {
 		return rounds[i]
 	}
 	needAll := !tablesOnly && len(s.Views)+len(s.Functions)+len(s.Triggers)+len(s.Policies) > 0
-	seen := map[string]int{}
+	// used holds, per round, the relation names (tables, and the indexes and
+	// unique constraints that carry an index of their own name) already
+	// created there: one scratch schema has one relation namespace.
+	var used []map[string]bool
 	where := map[[2]string]int{}
 	for i, t := range s.Tables {
-		n := seen[t.Name]
-		seen[t.Name]++
-		where[[2]string{t.Schema, t.Name}] = n
-		if needAll || tableHasText(t) {
-			r := round(n)
-			r.tables = append(r.tables, i)
-			r.sub.Tables = append(r.sub.Tables, t)
+		if !needAll && !tableHasText(t) {
+			continue
 		}
+		names := scratchRelationNames(t)
+		n := 0
+		for ; n < len(used) && slices.ContainsFunc(names, func(name string) bool { return used[n][name] }); n++ {
+		}
+		if n == len(used) {
+			used = append(used, map[string]bool{})
+		}
+		for _, name := range names {
+			used[n][name] = true
+		}
+		where[[2]string{t.Schema, t.Name}] = n
+		r := round(n)
+		r.tables = append(r.tables, i)
+		r.sub.Tables = append(r.sub.Tables, t)
 	}
 	if !tablesOnly {
 		for i := range s.Views {
@@ -144,6 +166,24 @@ func planRounds(s *schema.Schema, tablesOnly bool) []*canonRound {
 		}
 	}
 	return slices.DeleteFunc(rounds, func(r *canonRound) bool { return r.empty() })
+}
+
+// scratchRelationNames lists the relation names t creates in a scratch schema:
+// the table, each index that scratchModel keeps (the ones with text) and each
+// named unique constraint.
+func scratchRelationNames(t schema.Table) []string {
+	names := []string{t.Name}
+	for _, ix := range t.Indexes {
+		if indexHasText(ix) && ix.Name != "" {
+			names = append(names, ix.Name)
+		}
+	}
+	for _, u := range t.Uniques {
+		if u.Name != "" {
+			names = append(names, u.Name)
+		}
+	}
+	return names
 }
 
 // savepoint names the savepoint around one scratch table in best-effort mode.
