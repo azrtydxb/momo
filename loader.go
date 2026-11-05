@@ -24,6 +24,8 @@ type loadConfig struct {
 	where          []Predicate
 	order          []Orderable
 	perParentLimit int
+	withDeleted    bool
+	onlyDeleted    bool
 }
 
 // LoadOption configures one relation load.
@@ -40,8 +42,9 @@ func LoadOrderBy[C any](items ...Orderable) LoadOption[C] {
 	return func(c *loadConfig) { c.order = append(c.order[:len(c.order):len(c.order)], items...) }
 }
 
-// LoadPerParentLimit keeps at most n children per parent (implemented with a
-// window function; see the top-N task).
+// LoadPerParentLimit keeps at most n children per parent. It is not supported
+// yet: a load that sets it fails with ErrUnsupported (Op "load") before any
+// statement runs, until the top-N-per-parent strategy lands.
 func LoadPerParentLimit[C any](n int) LoadOption[C] {
 	return func(c *loadConfig) { c.perParentLimit = n }
 }
@@ -49,6 +52,15 @@ func LoadPerParentLimit[C any](n int) LoadOption[C] {
 // Load loads rel for parents and assigns the result onto each parent. Parent
 // order and length are unchanged. Parents with a NULL key get an empty
 // association (nil pointer or nil slice).
+//
+// Children of a model with a soft-delete column are excluded by default, as in
+// Select; LoadWithDeleted and LoadOnlyDeleted change that.
+//
+// Associations are cleared up front, so a load that fails part-way leaves the
+// parents with empty associations rather than stale or partial ones. Children
+// are copied per parent: a to-one child shared by several parents is copied
+// shallowly for each, so pointers inside it (including relations loaded with
+// Then) are shared among those copies.
 func Load[P, C any](ctx context.Context, q Querier, parents []P, rel Relation[P, C], opts ...LoadOption[C]) error {
 	return rel.scoped(opts, nil).load(ctx, q, parents)
 }
@@ -120,4 +132,15 @@ func (r Relation[P, C]) prepare(q Querier, parents []P) (pendingLoad, error) {
 
 func (r Relation[P, C]) load(ctx context.Context, q Querier, parents []P) error {
 	return LoadAll(ctx, q, parents, Loader[P](r))
+}
+
+// LoadWithDeleted includes soft-deleted children for child models with a
+// soft-delete column, like SelectQuery.WithDeleted. They are excluded by default.
+func LoadWithDeleted[C any]() LoadOption[C] {
+	return func(c *loadConfig) { c.withDeleted, c.onlyDeleted = true, false }
+}
+
+// LoadOnlyDeleted loads only soft-deleted children, like SelectQuery.OnlyDeleted.
+func LoadOnlyDeleted[C any]() LoadOption[C] {
+	return func(c *loadConfig) { c.onlyDeleted, c.withDeleted = true, false }
 }

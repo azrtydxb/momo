@@ -7,8 +7,14 @@ import (
 	"time"
 )
 
-// RelationEvent describes one relation load (S-18). Children and Duration are
-// filled before AfterRelation; Queries counts child statements issued.
+// RelationEvent describes one relation load (S-18). Queries is the number of
+// child statements compiled for the load (a failed load may have run fewer).
+// Children is set only when the load's statements succeeded; on error it is
+// zero and Err holds the error. Duration is filled before AfterRelation.
+//
+// Events fire only for loads that execute statements: not when there are no
+// parents, and not when the load fails while being prepared (validation,
+// unsupported options), before any statement runs.
 type RelationEvent struct {
 	Parent   string
 	Name     string

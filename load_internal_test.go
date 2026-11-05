@@ -4,7 +4,9 @@ package momo
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -13,6 +15,13 @@ import (
 // loadQ is a Querier that only provides a dialect; compiling statements never
 // touches the connection.
 type loadQ struct{ d *dialect.Dialect }
+
+// classified makes a Querier whose driver errors classify to ErrSerialization.
+type classifiedQ struct{ loadQ }
+
+func (q classifiedQ) conn() *execer {
+	return &execer{d: q.d, classify: func(err error) error { return &Error{Kind: ErrSerialization, Err: err} }}
+}
 
 func (q loadQ) Dialect() *dialect.Dialect { return q.d }
 func (q loadQ) conn() *execer             { return &execer{d: q.d} }
@@ -28,8 +37,9 @@ type par struct {
 }
 
 var kidMeta = Meta[kid]{
-	Table:   "kids",
-	Columns: []ColumnMeta{{Name: "pid"}, {Name: "seq"}},
+	Table:      "kids",
+	SoftDelete: -1,
+	Columns:    []ColumnMeta{{Name: "pid"}, {Name: "seq"}},
 	Ptr: func(m *kid, i int) any {
 		if i == 0 {
 			return &m.Pid
@@ -224,5 +234,198 @@ func TestKeysPerStatementCompositeCap(t *testing.T) {
 	tiny.MaxParams = 10
 	if got := keysPerStatement(&tiny, 2, 0); got != 5 {
 		t.Fatalf("a tight bind limit still wins over the cap, got %d", got)
+	}
+}
+
+func argRange(n int) []int {
+	vs := make([]int, n)
+	for i := range vs {
+		vs[i] = 1000 + i
+	}
+	return vs
+}
+
+// TestLoadReservesUserScopeArgs pins that the arguments of LoadWhere
+// predicates are reserved out of the bind budget: with 20 scope args and a
+// limit of 40, only 4 keys fit per statement.
+func TestLoadReservesUserScopeArgs(t *testing.T) {
+	d := *dialect.For(dialect.Postgres)
+	d.MaxParams = 40
+	seq := NewColumn[int]("kids", "seq", 0)
+	var cfg loadConfig
+	LoadWhere[kid](seq.In(argRange(20)...))(&cfg)
+	parents := make([]par, 30)
+	for i := range parents {
+		parents[i].Pid = i + 1
+	}
+	rel := kidsRel(HasMany)
+	pl, err := rel.prepareWith(loadQ{&d}, parents, &cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	qs := pl.(*pending[par, kid]).queries
+	if len(qs) != 8 {
+		t.Fatalf("30 keys at (40-16-20 floored to) 4 per statement: want 8 statements, got %d", len(qs))
+	}
+	for i, q := range qs {
+		if len(q.Args) > d.MaxParams {
+			t.Fatalf("statement %d binds %d > limit %d", i, len(q.Args), d.MaxParams)
+		}
+	}
+}
+
+func TestLoadScopeArgsExceedingBindLimitFail(t *testing.T) {
+	d := *dialect.For(dialect.Postgres)
+	d.MaxParams = 40
+	seq := NewColumn[int]("kids", "seq", 0)
+	var cfg loadConfig
+	LoadWhere[kid](seq.In(argRange(40)...))(&cfg)
+	rel := kidsRel(HasMany)
+	_, err := rel.prepareWith(loadQ{&d}, []par{{Pid: 1}}, &cfg, nil)
+	var me *Error
+	if !errors.As(err, &me) || me.Kind != ErrValidation || me.Op != "load" {
+		t.Fatalf("want ErrValidation with Op load, got %v", err)
+	}
+}
+
+func TestLoadPerParentLimitNotSupportedYet(t *testing.T) {
+	var cfg loadConfig
+	LoadPerParentLimit[kid](3)(&cfg)
+	rel := kidsRel(HasMany)
+	_, err := rel.prepareWith(loadQ{dialect.For(dialect.Postgres)}, []par{{Pid: 1}}, &cfg, nil)
+	var me *Error
+	if !errors.As(err, &me) || me.Kind != ErrUnsupported || me.Op != "load" {
+		t.Fatalf("want ErrUnsupported with Op load, got %v", err)
+	}
+}
+
+// softKidMeta is kidMeta with a timestamp soft-delete marker (column "gone").
+var softKidMeta = Meta[kid]{
+	Table:          "kids",
+	SoftDelete:     2,
+	SoftDeleteKind: SoftDeleteTimestamp,
+	Columns:        []ColumnMeta{{Name: "pid"}, {Name: "seq"}, {Name: "gone", Flags: FlagSoftDelete | FlagNullable}},
+	Ptr:            kidMeta.Ptr,
+}
+
+func softKidsSQL(t *testing.T, opts ...LoadOption[kid]) string {
+	t.Helper()
+	rel := kidsRel(HasMany)
+	rel.ChildMeta = &softKidMeta
+	var cfg loadConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	pl, err := rel.prepareWith(loadQ{dialect.For(dialect.Postgres)}, []par{{Pid: 1}}, &cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pl.(*pending[par, kid]).queries[0].SQL
+}
+
+func TestLoadExcludesSoftDeletedChildrenByDefault(t *testing.T) {
+	const want = `SELECT "kids"."pid", "kids"."seq", "kids"."gone" FROM "kids" WHERE "kids"."pid" IN ($1) AND "kids"."gone" IS NULL ORDER BY "kids"."pid", "kids"."seq"`
+	if got := softKidsSQL(t); got != want {
+		t.Fatalf("default load must hide soft-deleted children:\n got %s\nwant %s", got, want)
+	}
+	if got := softKidsSQL(t, LoadWithDeleted[kid]()); strings.Contains(got, "gone\" IS") {
+		t.Fatalf("LoadWithDeleted must not filter: %s", got)
+	}
+	if got := softKidsSQL(t, LoadOnlyDeleted[kid]()); !strings.Contains(got, `"kids"."gone" IS NOT NULL`) {
+		t.Fatalf("LoadOnlyDeleted must select deleted rows: %s", got)
+	}
+	if got := softKidsSQL(t, LoadOnlyDeleted[kid](), LoadWithDeleted[kid]()); strings.Contains(got, "gone\" IS") {
+		t.Fatalf("the last of WithDeleted/OnlyDeleted wins, as in Select: %s", got)
+	}
+}
+
+// Parent and child key columns of different integer widths must group
+// together: the parent holds an int32, the child scans an int64.
+type par32 struct {
+	ID   int32
+	Kids []kid64
+}
+type kid64 struct{ PID, Seq int64 }
+
+var kid64Meta = Meta[kid64]{
+	Table: "kids", SoftDelete: -1,
+	Columns: []ColumnMeta{{Name: "pid"}, {Name: "seq"}},
+	Ptr: func(m *kid64, i int) any {
+		if i == 0 {
+			return &m.PID
+		}
+		return &m.Seq
+	},
+}
+
+type kid64Rows struct {
+	rows []kid64
+	i    int
+}
+
+func (r *kid64Rows) Next() bool { r.i++; return r.i <= len(r.rows) }
+func (r *kid64Rows) Scan(dest ...any) error {
+	*(dest[0].(*int64)), *(dest[1].(*int64)) = r.rows[r.i-1].PID, r.rows[r.i-1].Seq
+	return nil
+}
+func (r *kid64Rows) Err() error   { return nil }
+func (r *kid64Rows) Close() error { return nil }
+
+func TestLoadGroupsAcrossKeyIntegerWidths(t *testing.T) {
+	rel := Relation[par32, kid64]{
+		Name: "Kids", Kind: HasMany,
+		Parent: TableRef{Name: "pars"}, Child: TableRef{Name: "kids"},
+		ChildMeta:  &kid64Meta,
+		ParentCols: []string{"id"}, ChildCols: []string{"pid"}, ChildPK: []string{"seq"},
+		ParentKey: func(p *par32) ([]any, bool) { return []any{p.ID}, true },
+		ChildKey:  func(c *kid64) ([]any, bool) { return []any{c.PID}, true },
+		GetMany:   func(p *par32) []kid64 { return p.Kids },
+		SetMany:   func(p *par32, cs []kid64) { p.Kids = cs },
+	}
+	parents := []par32{{ID: 7}}
+	pl, err := rel.prepareWith(loadQ{dialect.For(dialect.Postgres)}, parents, &loadConfig{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pd := pl.(*pending[par32, kid64])
+	if err := pd.consume(&kid64Rows{rows: []kid64{{7, 1}, {7, 2}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := pd.finish(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(parents[0].Kids) != 2 {
+		t.Fatalf("int32 parent key must match int64 child FK, got %v", parents[0].Kids)
+	}
+}
+
+type errRows struct {
+	sliceRows
+	scanErr, iterErr error
+}
+
+func (r *errRows) Scan(dest ...any) error {
+	if r.scanErr != nil {
+		return r.scanErr
+	}
+	return r.sliceRows.Scan(dest...)
+}
+func (r *errRows) Err() error { return r.iterErr }
+
+func TestLoadWrapsScanAndIterationErrors(t *testing.T) {
+	for name, rows := range map[string]*errRows{
+		"scan": {sliceRows: sliceRows{rows: []kid{{1, 1}}}, scanErr: errors.New("boom")},
+		"iter": {iterErr: errors.New("boom")},
+	} {
+		rel := kidsRel(HasMany)
+		pl, perr := rel.prepareWith(classifiedQ{loadQ{dialect.For(dialect.Postgres)}}, []par{{Pid: 1}}, &loadConfig{}, nil)
+		if perr != nil {
+			t.Fatal(perr)
+		}
+		err := pl.(*pending[par, kid]).consume(rows)
+		var me *Error
+		if !errors.As(err, &me) || me.Op != "load" || me.Table != "kids" || !strings.Contains(err.Error(), "boom") {
+			t.Fatalf("%s: want classified *Error Op load Table kids wrapping the cause, got %#v", name, err)
+		}
 	}
 }

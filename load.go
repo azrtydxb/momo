@@ -5,6 +5,7 @@ package momo
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -31,6 +32,10 @@ type pending[P, C any] struct {
 func (r *Relation[P, C]) prepareWith(q Querier, parents []P, cfg *loadConfig, nested []Loader[C]) (pendingLoad, error) {
 	if err := r.validate(); err != nil {
 		return nil, err
+	}
+	if cfg.perParentLimit != 0 {
+		return nil, &Error{Kind: ErrUnsupported, Op: "load", Table: r.Child.Name,
+			Err: errors.New(r.Name + ": LoadPerParentLimit is not supported yet")}
 	}
 	pd := &pending[P, C]{r: r, q: q, parents: parents, cfg: cfg, nested: nested, groups: map[string][]int{}}
 	for i := range parents {
@@ -92,6 +97,9 @@ func (pd *pending[P, C]) event() *RelationEvent {
 func (pd *pending[P, C]) runQueries(ctx context.Context, q Querier) error {
 	rel := pd.r.Parent.Name + "." + pd.r.Name
 	for _, c := range pd.queries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		rows, err := q.conn().query(ctx, "select", pd.r.Child.Name, rel, c)
 		if err != nil {
 			return err
@@ -110,7 +118,7 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 	for rows.Next() {
 		var c C
 		if err := scanChild(pd.r, rows, &c); err != nil {
-			return err
+			return pd.wrap(err)
 		}
 		key, ok := pd.r.ChildKey(&c)
 		if !ok {
@@ -123,7 +131,12 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 		pd.pool = append(pd.pool, c)
 		pd.owners = append(pd.owners, owners)
 	}
-	return rows.Err()
+	return pd.wrap(rows.Err())
+}
+
+// wrap classifies a scan or iteration error like a query error, tagged Op "load".
+func (pd *pending[P, C]) wrap(err error) error {
+	return pd.q.conn().wrapErr("load", pd.r.Child.Name, err)
 }
 
 // finish runs nested loads once over the whole pool, then assigns children to
@@ -181,6 +194,10 @@ func (r *Relation[P, C]) childQueries(q Querier, keys [][]any, cfg *loadConfig) 
 	if r.Discriminator != nil {
 		scopeArgs++
 	}
+	if d.MaxParams > 0 && scopeArgs+len(r.ChildCols) > d.MaxParams {
+		return nil, &Error{Kind: ErrValidation, Op: "load", Table: r.Child.Name,
+			Err: fmt.Errorf("%s: scope binds %d arguments, leaving no room for a key under the %d-parameter limit", r.Name, scopeArgs, d.MaxParams)}
+	}
 	reserved := 16 + scopeArgs
 	budget := keysPerStatement(d, len(r.ChildCols), reserved)
 	var out []Compiled
@@ -220,6 +237,9 @@ func (r *Relation[P, C]) writeScope(b *Builder, cfg *loadConfig) {
 	var ps []Predicate
 	if r.Discriminator != nil {
 		ps = append(ps, binOp{qcol{r.Child.Qualifier(), r.Discriminator.Column}, " = ", argExpr{r.Discriminator.Value}})
+	}
+	if m := r.ChildMeta; m.SoftDelete >= 0 && !cfg.withDeleted {
+		ps = append(ps, softDeletePred(m, r.Child.Qualifier(), cfg.onlyDeleted))
 	}
 	ps = append(ps, cfg.where...)
 	for _, p := range ps {
