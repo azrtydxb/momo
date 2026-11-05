@@ -16,7 +16,10 @@ import (
 
 // nullTypes maps database/sql Null* wrappers to the type they wrap.
 var nullTypes = map[string]string{
-	"sql.NullBool":    "bool",
+	"sql.NullBool": "bool",
+	// sql.NullByte wraps a Go byte (uint8). uint8 itself is unsupported, but
+	// database/sql stores the wrapper as a smallint because 0..255 does not
+	// fit a signed 8-bit column, so it maps like int16.
 	"sql.NullByte":    "int16",
 	"sql.NullFloat64": "float64",
 	"sql.NullInt16":   "int16",
