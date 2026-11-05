@@ -129,7 +129,19 @@ WHERE e.extname = $1 AND t.typname = $2`
 	if err != nil {
 		return 0, false, err
 	}
-	return uint32(v), true, nil
+	oid, err = oidFromInt64(v)
+	if err != nil {
+		return 0, false, err
+	}
+	return oid, true, nil
+}
+
+// oidFromInt64 narrows an oid read as int8 (0..2^32-1 on the server) to uint32.
+func oidFromInt64(v int64) (uint32, error) {
+	if v < 0 || v > math.MaxUint32 {
+		return 0, fmt.Errorf("pgxdriver: type oid %d outside uint32 range", v)
+	}
+	return uint32(v), nil
 }
 
 // convertVectorArgs makes VectorText independent of the pool's codecs: vector
@@ -396,7 +408,7 @@ func encodeBinary(kind vectorKind, v any, buf []byte) ([]byte, error) {
 		if err := x.Validate(len(x)); err != nil {
 			return nil, err
 		}
-		buf = binary.BigEndian.AppendUint16(buf, uint16(len(x)))
+		buf = binary.BigEndian.AppendUint16(buf, uint16(len(x))) // #nosec G115 -- x.Validate(len(x)) above bounds the length to 1..vector.MaxDim (16000)
 		buf = binary.BigEndian.AppendUint16(buf, 0)
 		for _, f := range x {
 			buf = binary.BigEndian.AppendUint32(buf, math.Float32bits(f))
@@ -410,7 +422,7 @@ func encodeBinary(kind vectorKind, v any, buf []byte) ([]byte, error) {
 		if err := x.Validate(len(x)); err != nil {
 			return nil, err
 		}
-		buf = binary.BigEndian.AppendUint16(buf, uint16(len(x)))
+		buf = binary.BigEndian.AppendUint16(buf, uint16(len(x))) // #nosec G115 -- x.Validate(len(x)) above bounds the length to 1..vector.MaxDim (16000)
 		buf = binary.BigEndian.AppendUint16(buf, 0)
 		for i, f := range x {
 			h, ok := float32ToHalf(f)
@@ -428,11 +440,11 @@ func encodeBinary(kind vectorKind, v any, buf []byte) ([]byte, error) {
 		if err := x.Validate(x.Dim); err != nil {
 			return nil, err
 		}
-		buf = binary.BigEndian.AppendUint32(buf, uint32(x.Dim))
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(x.Indices)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(x.Dim))          // #nosec G115 -- x.Validate(x.Dim) above bounds Dim to 1..vector.MaxSparseDim (1e9)
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(x.Indices))) // #nosec G115 -- x.Validate above bounds the entry count to vector.MaxSparseNNZ (16000)
 		buf = binary.BigEndian.AppendUint32(buf, 0)
 		for _, i := range x.Indices {
-			buf = binary.BigEndian.AppendUint32(buf, uint32(i))
+			buf = binary.BigEndian.AppendUint32(buf, uint32(i)) // #nosec G115 -- x.Validate above requires 0 <= index < Dim <= 1e9
 		}
 		for _, f := range x.Values {
 			buf = binary.BigEndian.AppendUint32(buf, math.Float32bits(f))
@@ -446,7 +458,7 @@ func encodeBinary(kind vectorKind, v any, buf []byte) ([]byte, error) {
 		if err := x.Validate(x.Len); err != nil {
 			return nil, err
 		}
-		buf = binary.BigEndian.AppendUint32(buf, uint32(x.Len))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(x.Len)) // #nosec G115 -- x.Validate(x.Len) above bounds Len to 1..vector.MaxBits (83886080)
 		return append(buf, x.Data...), nil
 	}
 	return nil, fmt.Errorf("pgxdriver: unknown vector kind %d", kind)
@@ -466,6 +478,9 @@ func decodeBinary(kind vectorKind, b []byte) (any, error) {
 			return nil, badBinary(kind, "%d bytes, need a 4-byte header", len(b))
 		}
 		dim := int(binary.BigEndian.Uint16(b))
+		if dim < 1 || dim > vector.MaxDim {
+			return nil, badBinary(kind, "dimension %d outside 1..%d", dim, vector.MaxDim)
+		}
 		if binary.BigEndian.Uint16(b[2:]) != 0 {
 			return nil, badBinary(kind, "unused header field is not 0")
 		}
@@ -494,29 +509,46 @@ func decodeBinary(kind vectorKind, b []byte) (any, error) {
 		if len(b) < 12 {
 			return nil, badBinary(kind, "%d bytes, need a 12-byte header", len(b))
 		}
-		dim := int64(int32(binary.BigEndian.Uint32(b)))
-		nnz := int64(int32(binary.BigEndian.Uint32(b[4:])))
+		// Compare as uint32 first: a header with the top bit set would be
+		// negative as int32, and both fields are bounded before any use.
+		dimU := binary.BigEndian.Uint32(b)
+		nnzU := binary.BigEndian.Uint32(b[4:])
+		if dimU < 1 || dimU > vector.MaxSparseDim {
+			return nil, badBinary(kind, "dimension %d outside 1..%d", dimU, vector.MaxSparseDim)
+		}
+		if nnzU > vector.MaxSparseNNZ {
+			return nil, badBinary(kind, "%d entries exceed the limit of %d", nnzU, vector.MaxSparseNNZ)
+		}
 		if binary.BigEndian.Uint32(b[8:]) != 0 {
 			return nil, badBinary(kind, "unused header field is not 0")
 		}
-		if nnz < 0 || int64(len(b)) != 12+8*nnz {
+		dim, nnz := int(dimU), int(nnzU)
+		if len(b) != 12+8*nnz {
 			return nil, badBinary(kind, "%d bytes for %d entries", len(b), nnz)
 		}
-		s := vector.SparseVector{Dim: int(dim), Indices: make([]int32, nnz), Values: make([]float32, nnz)}
+		s := vector.SparseVector{Dim: dim, Indices: make([]int32, nnz), Values: make([]float32, nnz)}
 		for i := range s.Indices {
-			s.Indices[i] = int32(binary.BigEndian.Uint32(b[12+4*i:]))
-			s.Values[i] = math.Float32frombits(binary.BigEndian.Uint32(b[12+4*int(nnz)+4*i:]))
+			idx := binary.BigEndian.Uint32(b[12+4*i:])
+			if idx > math.MaxInt32 || idx >= dimU {
+				return nil, badBinary(kind, "index %d outside [0, %d)", idx, dim)
+			}
+			s.Indices[i] = int32(idx)
+			s.Values[i] = math.Float32frombits(binary.BigEndian.Uint32(b[12+4*nnz+4*i:]))
 		}
 		return s, s.Validate(s.Dim)
 	case kindBit:
 		if len(b) < 4 {
 			return nil, badBinary(kind, "%d bytes, need a 4-byte length", len(b))
 		}
-		n := int64(int32(binary.BigEndian.Uint32(b)))
-		if n < 1 || n > vector.MaxBits || int64(len(b)-4) != (n+7)/8 {
+		nU := binary.BigEndian.Uint32(b)
+		if nU < 1 || nU > vector.MaxBits {
+			return nil, badBinary(kind, "length %d outside 1..%d", nU, vector.MaxBits)
+		}
+		n := int(nU)
+		if len(b)-4 != (n+7)/8 {
 			return nil, badBinary(kind, "%d data bytes for %d bits", len(b)-4, n)
 		}
-		x := vector.Bits{Len: int(n), Data: append([]byte(nil), b[4:]...)}
+		x := vector.Bits{Len: n, Data: append([]byte(nil), b[4:]...)}
 		return x, x.Validate(x.Len)
 	}
 	return nil, fmt.Errorf("pgxdriver: unknown vector kind %d", kind)
@@ -538,7 +570,7 @@ func float32ToHalf(f float32) (h uint16, ok bool) {
 		}
 		mant |= 0x800000
 		shift := uint(14 - exp)
-		half := uint16(mant >> shift)
+		half := uint16(mant >> shift) // #nosec G115 -- mant < 2^24 and shift = 14-exp is in 14..24 here, so the result is < 2^10
 		rem := mant & (1<<shift - 1)
 		mid := uint32(1) << (shift - 1)
 		if rem > mid || (rem == mid && half&1 == 1) {

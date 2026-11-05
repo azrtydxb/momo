@@ -5,7 +5,10 @@ package pgxdriver
 import (
 	"bytes"
 	"context"
+	"errors"
+	"math"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/azrtydxb/momo/internal/testdb"
@@ -268,4 +271,69 @@ func FuzzVectorBinaryDecode(f *testing.F) {
 			t.Fatalf("second decode %+v err %v, want %+v", again, err, v)
 		}
 	})
+}
+
+// allocated reports the bytes decodeBinary allocates for b.
+func allocated(kind vectorKind, b []byte) (n uint64, err error) {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	_, err = decodeBinary(kind, b)
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc, err
+}
+
+// TestVectorBinaryDecodeRejectsOversizedBeforeAllocating feeds headers whose
+// declared sizes are consistent with the payload length but beyond pgvector's
+// limits (or negative once read as int32): the decode must fail on the bound,
+// not after allocating for it.
+func TestVectorBinaryDecodeRejectsOversizedBeforeAllocating(t *testing.T) {
+	const budget = 32 << 10
+	cases := []struct {
+		name string
+		kind vectorKind
+		b    []byte
+	}{
+		{"vector dim 0xFFFF", kindVector, append([]byte{0xff, 0xff, 0, 0}, make([]byte, 4*0xffff)...)},
+		{"halfvec dim 0xFFFF", kindHalfvec, append([]byte{0xff, 0xff, 0, 0}, make([]byte, 2*0xffff)...)},
+		{"vector dim 16001", kindVector, append([]byte{0x3e, 0x81, 0, 0}, make([]byte, 4*16001)...)},
+		{"sparsevec nnz 16001", kindSparsevec, append([]byte{0, 0, 0x27, 0x10, 0, 0, 0x3e, 0x81, 0, 0, 0, 0}, make([]byte, 8*16001)...)},
+		{"sparsevec negative nnz", kindSparsevec, []byte{0, 0, 0, 5, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0}},
+		{"sparsevec negative dim", kindSparsevec, []byte{0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 0}},
+		{"sparsevec dim 0xFFFFFFFE", kindSparsevec, []byte{0xff, 0xff, 0xff, 0xfe, 0, 0, 0, 0, 0, 0, 0, 0}},
+		{"sparsevec dim over max", kindSparsevec, []byte{0x3b, 0x9a, 0xca, 0x01, 0, 0, 0, 0, 0, 0, 0, 0}},
+		{"bit negative length", kindBit, []byte{0x80, 0, 0, 0}},
+		{"bit over max", kindBit, []byte{0x05, 0, 0, 1}},
+	}
+	for _, tc := range cases {
+		n, err := allocated(tc.kind, tc.b)
+		if err == nil || !errors.Is(err, vector.ErrInvalidVector) {
+			t.Errorf("%s: err = %v, want ErrInvalidVector", tc.name, err)
+		}
+		if n > budget {
+			t.Errorf("%s: decode allocated %d bytes before rejecting, budget %d", tc.name, n, budget)
+		}
+	}
+}
+
+func TestSparseIndexOutsideDimRejected(t *testing.T) {
+	// dim 5, one entry whose index 0x80000000 is negative as int32.
+	b := []byte{0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 0, 0x80, 0, 0, 0, 0x3f, 0x80, 0, 0}
+	if _, err := decodeBinary(kindSparsevec, b); !errors.Is(err, vector.ErrInvalidVector) {
+		t.Fatalf("err = %v, want ErrInvalidVector", err)
+	}
+}
+
+func TestOIDFromInt64(t *testing.T) {
+	for _, v := range []int64{0, 1, 16384, math.MaxUint32} {
+		oid, err := oidFromInt64(v)
+		if err != nil || int64(oid) != v {
+			t.Errorf("oidFromInt64(%d) = %d, %v", v, oid, err)
+		}
+	}
+	for _, v := range []int64{-1, math.MaxUint32 + 1, math.MinInt64, math.MaxInt64} {
+		if _, err := oidFromInt64(v); err == nil {
+			t.Errorf("oidFromInt64(%d) accepted", v)
+		}
+	}
 }
