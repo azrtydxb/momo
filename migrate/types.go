@@ -21,6 +21,42 @@ type Statement struct {
 // ChangeKind names the kind of a schema change.
 type ChangeKind string
 
+// Change kinds produced by Diff.
+const (
+	CreateSchema      ChangeKind = "create_schema"
+	CreateExtension   ChangeKind = "create_extension"
+	CreateEnum        ChangeKind = "create_enum"
+	AlterEnumAddValue ChangeKind = "alter_enum_add_value"
+	DropEnum          ChangeKind = "drop_enum"
+	CreateTable       ChangeKind = "create_table"
+	DropTable         ChangeKind = "drop_table"
+	RenameTable       ChangeKind = "rename_table"
+	AddColumn         ChangeKind = "add_column"
+	DropColumn        ChangeKind = "drop_column"
+	RenameColumn      ChangeKind = "rename_column"
+	AlterColumn       ChangeKind = "alter_column"
+	AddPrimaryKey     ChangeKind = "add_primary_key"
+	DropPrimaryKey    ChangeKind = "drop_primary_key"
+	AddUnique         ChangeKind = "add_unique"
+	DropUnique        ChangeKind = "drop_unique"
+	AddCheck          ChangeKind = "add_check"
+	DropCheck         ChangeKind = "drop_check"
+	AddFK             ChangeKind = "add_fk"
+	DropFK            ChangeKind = "drop_fk"
+	CreateIndex       ChangeKind = "create_index"
+	DropIndex         ChangeKind = "drop_index"
+	SetRLS            ChangeKind = "set_rls"
+	CreatePolicy      ChangeKind = "create_policy"
+	DropPolicy        ChangeKind = "drop_policy"
+	CreateView        ChangeKind = "create_view"
+	DropView          ChangeKind = "drop_view"
+	CreateFunction    ChangeKind = "create_function"
+	ReplaceFunction   ChangeKind = "replace_function"
+	DropFunction      ChangeKind = "drop_function"
+	CreateTrigger     ChangeKind = "create_trigger"
+	DropTrigger       ChangeKind = "drop_trigger"
+)
+
 // Change is one schema change in a plan.
 type Change struct {
 	Kind        ChangeKind
