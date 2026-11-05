@@ -42,7 +42,9 @@ var (
 )
 
 // ComputeSum hashes every file in fsys, including nested directories, except
-// the root momo.sum. Entries are slash-separated paths relative to fsys.
+// the root momo.sum and dotfiles or dot directories (.DS_Store, .git and the
+// .momo-*.tmp files of an interrupted write), which are skipped everywhere in
+// the walk. Entries are slash-separated paths relative to fsys.
 func ComputeSum(fsys fs.FS) (*Sum, error) {
 	files := map[string]string{}
 	err := walkFiles(fsys, func(name string) error {

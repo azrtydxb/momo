@@ -91,12 +91,22 @@ var (
 )
 
 // walkFiles calls fn with the slash-separated path of every regular file in
-// fsys, descending into nested directories, except the root momo.sum. fs.FS
-// paths always use forward slashes, so the paths are never OS-specific.
+// fsys, descending into nested directories, except the root momo.sum. Any
+// entry whose name starts with a dot is skipped, and a dot directory is not
+// entered: editors, VCS metadata (.git), OS files (.DS_Store) and momo's own
+// in-flight temporary files (.momo-*.tmp) never belong to a migration
+// directory's content. fs.FS paths always use forward slashes, so the paths
+// are never OS-specific.
 func walkFiles(fsys fs.FS, fn func(p string) error) error {
 	return fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if p != "." && strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 		if d.IsDir() || p == SumFileName {
 			return nil
@@ -109,7 +119,7 @@ func walkFiles(fsys fs.FS, fn func(p string) error) error {
 // (for example an archive/2026 folder), ordered by version and then by path,
 // so an archived old migration still sorts before a newer top-level one. A
 // File's Path is its slash-separated path relative to fsys. It ignores the
-// root momo.sum, and unrelated files. A file that looks like a migration
+// root momo.sum, dotfiles and dot directories (see walkFiles), and unrelated files. A file that looks like a migration
 // (digits, then an underscore) but is malformed, a version that is not a
 // valid UTC timestamp, a repeated version and kind, one version under two
 // names, and one version spread over two directories are errors that name the
