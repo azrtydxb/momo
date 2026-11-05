@@ -21,3 +21,4 @@ Implements plan momo-04-migrations Task 13: PostgreSQL render for all change kin
 
 ## Evidence
 
+- Note: this task carries the inspection and render part of S-74 (FK ON DELETE/ON UPDATE on every dialect, and no FK in inspection for the no-constraint option); the SQLite render story carries the SQLite half. Task 8 (story 077) covers only the diff part.
