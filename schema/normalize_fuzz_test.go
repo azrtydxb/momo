@@ -20,9 +20,10 @@ func fuzzSchema(d dialect.Name, in string) *Schema {
 			{Name: "b", Columns: []Column{{Name: "c", Type: in, Default: in, Generated: in}}, Checks: []Check{{Name: "k", Expr: in}}, Indexes: []Index{ix}},
 			{Name: "a"},
 		},
-		Views:    []View{{Name: "v", Query: in, Indexes: []Index{ix}}},
-		Triggers: []Trigger{{Name: "t", Table: "a", When: in}},
-		Policies: []Policy{{Name: "p", Table: "a", Using: in, Check: in}},
+		Views:     []View{{Name: "v", Query: in, Indexes: []Index{ix}}},
+		Functions: []Function{{Name: "f", Body: in}},
+		Triggers:  []Trigger{{Name: "t", Table: "a", When: in}},
+		Policies:  []Policy{{Name: "p", Table: "a", Using: in, Check: in}},
 	}
 }
 

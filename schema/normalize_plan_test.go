@@ -24,8 +24,8 @@ func TestNormalizeTypes(t *testing.T) {
 		{dialect.Postgres, "decimal(10,2)", "numeric(10,2)"},
 		{dialect.Postgres, "int4[]", "integer[]"},
 		{dialect.Postgres, "vector(1536)", "vector(1536)"},
-		// The plan's SQLite cases (upper-case output) contradict momo-01's
-		// TestNormalizeType (lower-case output) and are not applied.
+		{dialect.SQLite, "bigint", "BIGINT"},
+		{dialect.SQLite, "varchar( 255 )", "VARCHAR(255)"},
 	}
 	for _, c := range cases {
 		if got := NormalizeType(c.d, c.in); got != c.want {
@@ -39,9 +39,7 @@ func TestNormalizeExprDBRewrites(t *testing.T) {
 		{"'active'::character varying", "'active'"},
 		{"('now'::text)", "now()"},
 		{"CURRENT_TIMESTAMP", "now()"},
-		// The plan's "  (lower( name ))  " -> "lower(name)" case contradicts
-		// momo-01's TestNormalizeExpr (spacing inside parentheses is kept).
-		{"  (lower( name ))  ", "lower( name )"},
+		{"  (lower( name ))  ", "lower(name)"},
 		{"((a > 0))", "a > 0"},
 	}
 	for _, c := range cases {
@@ -56,6 +54,14 @@ func TestEqualIgnoresOrder(t *testing.T) {
 	b := &Schema{Dialect: "postgres", Tables: []Table{{Name: "a"}, {Name: "b"}}}
 	if !Equal(a, b) {
 		t.Fatal("schemas differing only in table order must be equal")
+	}
+}
+
+func TestNormalizedFunctionBody(t *testing.T) {
+	a := &Schema{Dialect: "postgres", Functions: []Function{{Name: "f", Body: "BEGIN\n  RETURN  lower( x );\nEND"}}}
+	b := &Schema{Dialect: "postgres", Functions: []Function{{Name: "f", Body: "BEGIN RETURN lower(x); END"}}}
+	if !Equal(a, b) {
+		t.Fatal("function bodies differing only in whitespace and case must be equal")
 	}
 }
 

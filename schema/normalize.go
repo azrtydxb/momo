@@ -54,7 +54,11 @@ func NormalizeType(d dialect.Name, t string) string {
 	if rest != "" {
 		rest = " " + rest
 	}
-	return base + args + rest
+	out := base + args + rest
+	if d == dialect.SQLite {
+		out = strings.ToUpper(out)
+	}
+	return out
 }
 
 // splitArgs splits "(args) rest" into the parenthesised argument list, with
@@ -112,6 +116,16 @@ func postgresTime(base, args, rest string) (string, bool) {
 // redundant enclosing parentheses are removed. Quoted text is kept verbatim.
 // It is idempotent.
 func NormalizeExpr(d dialect.Name, e string) string {
+	for {
+		n := normalizeExprOnce(d, e)
+		if n == e {
+			return n
+		}
+		e = n
+	}
+}
+
+func normalizeExprOnce(d dialect.Name, e string) string {
 	var sb strings.Builder
 	var quote rune
 	space := false
@@ -128,7 +142,9 @@ func NormalizeExpr(d dialect.Name, e string) string {
 			continue
 		}
 		if space {
-			sb.WriteByte(' ')
+			if r != ')' && !strings.HasSuffix(sb.String(), "(") {
+				sb.WriteByte(' ')
+			}
 			space = false
 		}
 		if r == '\'' || r == '"' {
@@ -139,63 +155,86 @@ func NormalizeExpr(d dialect.Name, e string) string {
 		sb.WriteRune(unicode.ToLower(r))
 	}
 	s := strings.TrimSpace(sb.String())
-	for {
-		prev := s
-		for len(s) >= 2 && s[0] == '(' && enclosedByOnePair(s) {
-			s = strings.TrimSpace(s[1 : len(s)-1])
-		}
-		if d == dialect.Postgres {
-			s = postgresRewrite(s)
-		}
-		if s == prev {
-			return s
-		}
+	for len(s) >= 2 && s[0] == '(' && enclosedByOnePair(s) {
+		s = strings.TrimSpace(s[1 : len(s)-1])
 	}
+	if d == dialect.Postgres {
+		s = postgresRewrite(s)
+	}
+	return s
 }
 
 // postgresRewrite undoes spellings PostgreSQL substitutes for what was
-// declared: the ::character varying cast it appends to string literal
-// defaults, the legacy 'now'::text default and CURRENT_TIMESTAMP, both
-// reported as now(). Other casts are kept: dropping them is not always
-// meaning-preserving.
+// declared: CURRENT_TIMESTAMP and the legacy 'now'::text default are reported
+// as now(), and every string literal gets a ::type cast appended, which is
+// dropped here.
 func postgresRewrite(s string) string {
 	switch s {
 	case "current_timestamp", "'now'::text":
 		return "now()"
 	}
-	const cast = "::character varying"
-	if lit, ok := strings.CutSuffix(s, cast); ok && len(lit) >= 2 && lit[0] == '\'' && lit[len(lit)-1] == '\'' && singleLiteral(lit) {
-		return lit
-	}
-	return s
+	return stripLiteralCasts(s)
 }
 
-// singleLiteral reports whether s is exactly one single-quoted literal
-// (” escapes a quote inside it).
-func singleLiteral(s string) bool {
-	in := false
-	for i := 0; i < len(s); i++ {
-		if s[i] != '\'' {
-			if !in {
-				return false
+// stripLiteralCasts removes a ::type cast that directly follows a
+// single-quoted literal. The type is a name with optional multi-word
+// suffixes, a length list and array brackets.
+func stripLiteralCasts(s string) string {
+	var sb strings.Builder
+	inDouble := false
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch {
+		case inDouble:
+			inDouble = c != '"'
+		case c == '"':
+			inDouble = true
+		case c == '\'':
+			start := i
+			j := i + 1
+			for j < len(s) && s[j] != '\'' {
+				j++
+			}
+			if j < len(s) {
+				j++
+			}
+			sb.WriteString(s[start:j])
+			i = j
+			if strings.HasPrefix(s[j:], "::") && j-start > 1 && s[j-1] == '\'' {
+				i = j + 2 + castTypeLen(s[j+2:])
 			}
 			continue
 		}
-		if !in {
-			if i != 0 {
-				return false
-			}
-			in = true
-		} else if i+1 < len(s) && s[i+1] == '\'' {
-			i++
-		} else {
-			in = false
-			if i != len(s)-1 {
-				return false
-			}
+		sb.WriteByte(c)
+		i++
+	}
+	return sb.String()
+}
+
+// castTypeLen returns the length of the type name at the start of s.
+func castTypeLen(s string) int {
+	n := 0
+	isWord := func(c byte) bool {
+		return c == '_' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
+	}
+	for n < len(s) && isWord(s[n]) {
+		n++
+	}
+	for _, suffix := range []string{" varying", " precision", " with time zone", " without time zone"} {
+		if strings.HasPrefix(s[n:], suffix) {
+			n += len(suffix)
+			break
 		}
 	}
-	return !in
+	if n < len(s) && s[n] == '(' {
+		if k := strings.IndexByte(s[n:], ')'); k >= 0 {
+			n += k + 1
+		}
+	}
+	for strings.HasPrefix(s[n:], "[]") {
+		n += 2
+	}
+	return n
 }
 
 // enclosedByOnePair reports whether the opening parenthesis at s[0] closes
@@ -303,6 +342,9 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 				ix.Parts[k].Expr = NormalizeExpr(d, ix.Parts[k].Expr)
 			}
 		}
+	}
+	for i := range c.Functions {
+		c.Functions[i].Body = NormalizeExpr(d, c.Functions[i].Body)
 	}
 	for i := range c.Triggers {
 		c.Triggers[i].When = NormalizeExpr(d, c.Triggers[i].When)
