@@ -23,6 +23,19 @@ func TestCompileFail(t *testing.T) {
 	}
 }
 
+// TestCompileFailVectorMetricMismatch checks that a bit-vector column cannot
+// be given to a dense-vector metric.
+func TestCompileFailVectorMetricMismatch(t *testing.T) {
+	cmd := exec.Command("go", "build", "-o", os.DevNull, "./testdata/compilefail/vector_metric_mismatch")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("vector_metric_mismatch compiled; want a compile error")
+	}
+	if !strings.Contains(string(out), "does not satisfy") {
+		t.Errorf("unexpected error text:\n%s", out)
+	}
+}
+
 func TestValidExamplesCompile(t *testing.T) {
 	cmd := exec.Command("go", "build", "-o", os.DevNull, "./testdata/valid/basic")
 	if out, err := cmd.CombinedOutput(); err != nil {
