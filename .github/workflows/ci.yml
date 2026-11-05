@@ -164,13 +164,12 @@ jobs:
       pgbouncer:
         image: "edoburu/pgbouncer:v1.26.1-p0"
         env:
-          DATABASE_URL: "postgres://postgres:momo@postgres:5432/postgres"
+          DATABASE_URL: "postgres://postgres:momo@postgres:5432"
           POOL_MODE: transaction
           AUTH_TYPE: trust
           DEFAULT_POOL_SIZE: "4"
           MAX_CLIENT_CONN: "200"
           MAX_PREPARED_STATEMENTS: "0"
-          TRACK_EXTRA_PARAMETERS: search_path
           IGNORE_STARTUP_PARAMETERS: extra_float_digits
         ports: ["6432:5432"]
     steps:

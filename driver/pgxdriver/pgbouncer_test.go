@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -62,9 +63,9 @@ func runWorkers(ctx context.Context, d momo.Driver, items string) error {
 }
 
 // setupBouncerItems creates the workload table and returns its schema-qualified
-// name. It is qualified because the pooler may hand a statement a server
-// connection whose search_path is not the per-test schema; the tests must not
-// depend on search_path tracking.
+// name. The pooler cannot track search_path, so a startup search_path does not
+// reliably reach reused server connections and the workload does not depend on
+// it.
 func setupBouncerItems(ctx context.Context, t *testing.T, d momo.Driver) (items string) {
 	t.Helper()
 	items = pgx.Identifier{testdb.Schema(t), "pgb_items"}.Sanitize()
@@ -99,8 +100,42 @@ func TestPgBouncerTransactionMode(t *testing.T) {
 	if total != pgbWorkers*pgbIters {
 		t.Fatalf("rows = %d, want %d", total, pgbWorkers*pgbIters)
 	}
-	// Phase 2 of the plan (suite.RunAll through the pooler) needs momo-05
-	// Task 35, which does not exist yet.
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Phase 2: the shared suite through the pooler.
+	runSuiteThroughBouncer(ctx, t)
+}
+
+// runSuiteThroughBouncer runs suite.RunAll through the pooler in its own
+// scratch database.
+//
+// The suite creates and queries its tables by unqualified name, so every server
+// connection the pooler hands out must resolve them the same way. The image's
+// PgBouncer cannot track search_path (its generated ini has no
+// track_extra_parameters line), so a startup search_path is not reliable
+// through it: a reused backend keeps the value of the client that opened it.
+// The suite therefore gets a database of its own, routed by the pooler's
+// wildcard entry, and uses the default search_path; the database is dropped
+// afterwards, so nothing it creates outlives the run.
+func runSuiteThroughBouncer(ctx context.Context, t *testing.T) {
+	t.Helper()
+	dbname := testdb.ScratchDatabase(t, "momo_bnc_")
+	pool, err := pgxpool.New(ctx, testdb.PgBouncerURLFor(t, dbname))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closePool(t, pool) })
+	var got string
+	if err := pool.QueryRow(ctx, "SELECT current_database()").Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != dbname {
+		t.Fatalf("pooled connection is on database %q, want %q", got, dbname)
+	}
+	db := momo.New(New(pool, WithExecMode(pgx.QueryExecModeExec)))
+	suite.RunAll(t, db, suite.CapsOf(db))
 }
 
 // wireCounter wraps a net.Conn and parses the frontend byte stream (pgx to
