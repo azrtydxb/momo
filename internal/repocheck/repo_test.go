@@ -47,7 +47,9 @@ func TestRepoFiles(t *testing.T) {
 		}
 		if d.IsDir() {
 			switch d.Name() {
-			case ".git", "testdata", ".procoder":
+			// .claude holds local agent worktrees (gitignored); they are
+			// separate checkouts, not part of this tree.
+			case ".git", "testdata", ".procoder", ".claude":
 				return filepath.SkipDir
 			}
 			return nil
