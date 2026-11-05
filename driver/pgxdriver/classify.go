@@ -5,6 +5,7 @@ package pgxdriver
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/azrtydxb/momo"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -25,6 +26,7 @@ func (e driverError) Unwrap() error { return e.cause }
 // Errors that are not recognized, or are already *momo.Error, are returned
 // unchanged. The PgError Detail field, which can contain row values, is never
 // copied into any string; it remains available on the unwrapped cause.
+// Data exceptions (SQLSTATE class 22) are returned with a redacted message.
 func ClassifyError(err error) error {
 	if err == nil {
 		return nil
@@ -52,6 +54,12 @@ func ClassifyError(err error) error {
 	case "55P03":
 		kind = momo.ErrBusy
 	default:
+		// Data exceptions (class 22, e.g. 22P02) quote the offending bound
+		// value in Message, so keep the server text out of the rendered error.
+		// The PgError stays reachable through errors.As.
+		if strings.HasPrefix(pe.Code, "22") {
+			return driverError{cause: err, msg: "pgx: data exception (SQLSTATE " + pe.Code + ")"}
+		}
 		return err
 	}
 	return &momo.Error{

@@ -134,7 +134,7 @@ Additional capability flags: `JSON`, `Arrays`, `UpdateFrom`, `Merge`, `MergeRetu
 
 ### Drivers
 
-- `pgxdriver.WithExecMode` accepts `pgx.QueryExecModeCacheStatement` (default), `QueryExecModeCacheDescribe`, `QueryExecModeDescribeExec` and `QueryExecModeExec`. `QueryExecModeSimpleProtocol` is rejected, because values must always be bound server-side. PgBouncer transaction pooling uses `QueryExecModeExec`. `pgxdriver.FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)`. [momo-03]
+- `pgxdriver.WithExecMode` defaults to `pgx.QueryExecModeExec` (unnamed statements, server-side binding, PgBouncer-safe). `QueryExecModeCacheStatement` is opt-in, as are `QueryExecModeCacheDescribe` and `QueryExecModeDescribeExec`. `QueryExecModeSimpleProtocol` is rejected, because values must always be bound server-side. PgBouncer transaction pooling uses `QueryExecModeExec`. `pgxdriver.FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)`. [momo-03]
 - SQLite read-only transactions use `PRAGMA query_only` on the pinned connection. sqlite-vec is registered once per process inside `Open` (documented). [momo-03]
 
 ### `migrate`

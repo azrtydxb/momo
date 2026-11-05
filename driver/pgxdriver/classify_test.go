@@ -87,3 +87,23 @@ func TestClassifyPassthrough(t *testing.T) {
 		t.Fatalf("momo.Error rewrapped: %v", got)
 	}
 }
+
+func TestClassifyDataExceptionRedactsMessage(t *testing.T) {
+	secret := "tok-" + "class22-8842"
+	pe := &pgconn.PgError{
+		Code:    "22P02",
+		Message: `invalid input syntax for type integer: "` + secret + `"`,
+	}
+	got := ClassifyError(pe)
+	for name, s := range map[string]string{
+		"Error()": got.Error(), "%v": fmt.Sprintf("%v", got), "%+v": fmt.Sprintf("%+v", got),
+	} {
+		if strings.Contains(s, secret) {
+			t.Fatalf("%s leaked the value: %q", name, s)
+		}
+	}
+	var back *pgconn.PgError
+	if !errors.As(got, &back) || back.Code != "22P02" {
+		t.Fatalf("PgError not reachable through errors.As: %v", got)
+	}
+}
