@@ -28,7 +28,7 @@ func TestGenerateNameCollisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(g.Models) == 0 {
-		t.Skip("model builder (task 7) not landed: column collision wiring not exercisable yet")
+		t.Skip("model builder not wired yet; story 043 removes this skip")
 	}
 	var b strings.Builder
 	for _, d := range diags {
@@ -121,7 +121,7 @@ func TestIdentifierEdgeCases(t *testing.T) {
 	}
 }
 
-func TestCheckModelIdentifiers(t *testing.T) {
+func TestModelIdentifierCollisions(t *testing.T) {
 	pos := func(l int) token.Position { return token.Position{Filename: "m.go", Line: l, Column: 6} }
 	models := []*Model{
 		{GoName: "User", PkgPath: "p", PkgName: "p", Pos: pos(1)},
@@ -129,30 +129,30 @@ func TestCheckModelIdentifiers(t *testing.T) {
 		{GoName: "User", PkgPath: "q", PkgName: "q", Pos: pos(3)},
 		{GoName: "Other", PkgPath: "p", PkgName: "p", Pos: pos(4)},
 	}
-	diags := CheckModelIdentifiers(models)
+	diags := checkModelIdentifiers(models)
 	if len(diags) != 1 {
 		t.Fatalf("diags = %v", diags)
 	}
 	if diags[0].Msg != "model identifiers collide in package p: User, user" || diags[0].Pos.Line != 2 {
 		t.Fatalf("diag = %v", diags[0])
 	}
-	if got := CheckModelIdentifiers(nil); len(got) != 0 {
+	if got := checkModelIdentifiers(nil); len(got) != 0 {
 		t.Fatalf("nil -> %v", got)
 	}
 }
 
-func TestCheckColumnCollisions(t *testing.T) {
+func TestColumnCollisions(t *testing.T) {
 	pos := func(l int) token.Position { return token.Position{Filename: "m.go", Line: l, Column: 2} }
-	cols := []ColumnName{
+	cols := []columnName{
 		{Field: "UserID", Column: "user_id", Pos: pos(1)},
 		{Field: "Name", Column: "name", Pos: pos(2)},
 		{Field: "UserId", Column: "user_id", Pos: pos(3)},
 	}
-	diags := CheckColumnCollisions(cols)
+	diags := checkColumnCollisions(cols)
 	if len(diags) != 1 || diags[0].Msg != `column "user_id" is produced by fields UserId and UserID` || diags[0].Pos.Line != 3 {
 		t.Fatalf("diags = %v", diags)
 	}
-	if got := CheckColumnCollisions(cols[:2]); len(got) != 0 {
+	if got := checkColumnCollisions(cols[:2]); len(got) != 0 {
 		t.Fatalf("unexpected %v", got)
 	}
 }

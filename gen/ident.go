@@ -71,18 +71,18 @@ func SubPkgName(model, modelPkgName string) string {
 	return n
 }
 
-// ColumnName is one persisted field's resulting column, input to
-// CheckColumnCollisions.
-type ColumnName struct {
+// columnName is one persisted field's resulting column, input to
+// checkColumnCollisions.
+type columnName struct {
 	Field  string
 	Column string
 	Pos    token.Position
 }
 
-// CheckColumnCollisions reports persisted fields of one model that produce
+// checkColumnCollisions reports persisted fields of one model that produce
 // the same column name, in field order. The diagnostic is positioned at the
 // second (later) field.
-func CheckColumnCollisions(cols []ColumnName) []Diagnostic {
+func checkColumnCollisions(cols []columnName) []Diagnostic {
 	var diags []Diagnostic
 	first := map[string]string{}
 	for _, c := range cols {
@@ -99,9 +99,9 @@ func CheckColumnCollisions(cols []ColumnName) []Diagnostic {
 	return diags
 }
 
-// CheckModelIdentifiers reports models of one package whose names are equal
+// checkModelIdentifiers reports models of one package whose names are equal
 // under strings.ToLower. The diagnostic is positioned at the later model.
-func CheckModelIdentifiers(models []*Model) []Diagnostic {
+func checkModelIdentifiers(models []*Model) []Diagnostic {
 	type key struct{ pkg, lower string }
 	first := map[key]*Model{}
 	var diags []Diagnostic
