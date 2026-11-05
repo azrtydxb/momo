@@ -1,0 +1,18 @@
+{
+  "columns": {
+    "UserProfile.CreatedAt": "created_at",
+    "UserProfile.HTTPURL": "http_url",
+    "UserProfile.UserID": "user_id"
+  },
+  "join_tables": {
+    "UserProfile.Tags": "user_profile_tags"
+  },
+  "orm": "ent",
+  "tables": {
+    "Person": "persons",
+    "Status": "status",
+    "Tag": "tags",
+    "UserProfile": "user_profiles"
+  },
+  "version": "v0.14.6"
+}
