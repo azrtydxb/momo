@@ -7,6 +7,62 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
+func (*Comment) MomoMeta() *momo.Meta[Comment] { return &commentMeta }
+
+var commentMeta = momo.Meta[Comment]{
+	Table: "comments",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK | momo.FlagIdentity},
+		{Name: "owner_id"},
+		{Name: "owner_type"},
+	},
+	Ptr: func(m *Comment, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.OwnerID
+		case 2:
+			return &m.OwnerType
+		}
+		return nil
+	},
+	Value: func(m *Comment, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.OwnerID
+		case 2:
+			return m.OwnerType
+		}
+		return nil
+	},
+	TableSchema: &commentTable,
+	Identity:    0, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+	PK: []int{0},
+}
+
+var commentTable = schema.Table{
+	Name: "comments",
+	Columns: []schema.Column{
+		{
+			Name:     "id",
+			Type:     "bigint",
+			Identity: "by_default",
+		},
+		{
+			Name: "owner_id",
+			Type: "bigint",
+		},
+		{
+			Name: "owner_type",
+			Type: "text",
+		},
+	},
+	PrimaryKey: []string{"id"},
+}
+
 func (*Document) MomoMeta() *momo.Meta[Document] { return &documentMeta }
 
 var documentMeta = momo.Meta[Document]{
@@ -90,6 +146,108 @@ var documentTable = schema.Table{
 			},
 		},
 	},
+	ForeignKeys: []schema.ForeignKey{
+		{
+			Name:       "documents_tenant_id_fkey",
+			Columns:    []string{"tenant_id"},
+			RefTable:   "tenants",
+			RefColumns: []string{"id"},
+		},
+	},
+}
+
+func (*Profile) MomoMeta() *momo.Meta[Profile] { return &profileMeta }
+
+var profileMeta = momo.Meta[Profile]{
+	Table: "profiles",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK | momo.FlagIdentity},
+		{Name: "document_id"},
+	},
+	Ptr: func(m *Profile, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.DocumentID
+		}
+		return nil
+	},
+	Value: func(m *Profile, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.DocumentID
+		}
+		return nil
+	},
+	TableSchema: &profileTable,
+	Identity:    0, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+	PK: []int{0},
+}
+
+var profileTable = schema.Table{
+	Name: "profiles",
+	Columns: []schema.Column{
+		{
+			Name:     "id",
+			Type:     "bigint",
+			Identity: "by_default",
+		},
+		{
+			Name: "document_id",
+			Type: "bigint",
+		},
+	},
+	PrimaryKey: []string{"id"},
+}
+
+func (*Tag) MomoMeta() *momo.Meta[Tag] { return &tagMeta }
+
+var tagMeta = momo.Meta[Tag]{
+	Table: "tags",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK | momo.FlagIdentity},
+		{Name: "name"},
+	},
+	Ptr: func(m *Tag, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.Name
+		}
+		return nil
+	},
+	Value: func(m *Tag, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.Name
+		}
+		return nil
+	},
+	TableSchema: &tagTable,
+	Identity:    0, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+	PK: []int{0},
+}
+
+var tagTable = schema.Table{
+	Name: "tags",
+	Columns: []schema.Column{
+		{
+			Name:     "id",
+			Type:     "bigint",
+			Identity: "by_default",
+		},
+		{
+			Name: "name",
+			Type: "text",
+		},
+	},
+	PrimaryKey: []string{"id"},
 }
 
 func (*Tenant) MomoMeta() *momo.Meta[Tenant] { return &tenantMeta }
