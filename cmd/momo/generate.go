@@ -30,6 +30,12 @@ directory. Command line patterns always resolve against the working directory.
 With --check nothing is written: stale or orphaned generated files are listed
 as "stale: <path>" and the exit code is 1.
 
+Line endings: generated files are written with LF. A copy that differs only in
+CRLF line endings (for example a checkout with core.autocrlf=true) counts as up
+to date. To keep checkouts byte-identical anyway, add this to .gitattributes:
+
+    *_gen.go text eol=lf
+
 Plugins: only the plugins built into this binary can be enabled in momo.yaml.
 To run custom generator plugins, call gen.Emit with your plugins from Go code.
 `
