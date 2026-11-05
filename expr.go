@@ -54,6 +54,10 @@ func NewColumn[T any](table, name string, flags uint16) Column[T] {
 // As returns the same column qualified by a table alias.
 func (c Column[T]) As(alias string) Column[T] { c.table = alias; return c }
 
+// AsExpr returns the column as an Expression[T], so a projection list reads
+// explicitly: DocTitle.As("l").AsExpr().
+func (c Column[T]) AsExpr() Expression[T] { return c }
+
 func (c Column[T]) AppendSQL(b *Builder) { b.QualifiedIdent(c.table, c.name) }
 func (c Column[T]) resultType() T        { var z T; return z }
 

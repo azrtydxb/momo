@@ -330,6 +330,17 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		b.SetErr(s.err)
 		return
 	}
+	names := make([]string, 0, 1+len(s.joins)+len(s.with))
+	for _, c := range s.with {
+		names = append(names, c.name)
+	}
+	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
+		if q, ok := src.(interface{ Qualifier() string }); ok {
+			names = append(names, q.Qualifier())
+		}
+	}
+	b.pushScope(names)
+	defer b.popScope()
 	if len(s.with) > 0 {
 		b.WriteString("WITH ")
 		for _, c := range s.with {
@@ -465,6 +476,14 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		b.writeByte(' ')
 		b.WriteString(s.lock)
 	}
+}
+
+func joinSources(js []join) []TableSource {
+	out := make([]TableSource, len(js))
+	for i, j := range js {
+		out[i] = j.src
+	}
+	return out
 }
 
 // qualifier is the name the model's own columns are qualified with.

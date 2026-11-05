@@ -45,7 +45,7 @@ func FuzzBuilder(f *testing.F) {
 	f.Fuzz(func(t *testing.T, name, value string) {
 		for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 			db := momo.New(fakedriver.New(d))
-			col := momo.NewColumn[string]("tbl", name, 0)
+			col := momo.NewColumn[string]("documents", name, 0)
 			c, err := momo.Select[unitDocument](db).Where(col.Eq(value)).SQL()
 			if err != nil {
 				t.Fatal(err)
