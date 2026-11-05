@@ -46,3 +46,24 @@ func TestKeysetNullableKeyUnsupported(t *testing.T) {
 		t.Fatalf("After on a nullable ORDER BY key: err = %v, want ErrUnsupported", err)
 	}
 }
+
+func TestKeysetMixedDirectionsGoldenSQLite(t *testing.T) {
+	lite := momo.New(fakedriver.New(dialect.SQLite))
+	c, err := momo.Select[unitDocument](lite).OrderBy(DocPublished.Desc(), DocTenantID.Asc()).After(true, int64(2), int64(9)).Limit(3).SQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `SELECT "documents"."id", "documents"."tenant_id", "documents"."title", "documents"."published", "documents"."deleted_at" FROM "documents" WHERE ("documents"."published" < ? OR ("documents"."published" = ? AND "documents"."tenant_id" > ?) OR ("documents"."published" = ? AND "documents"."tenant_id" = ? AND "documents"."id" > ?)) AND ("documents"."deleted_at" IS NULL) ORDER BY "documents"."published" DESC, "documents"."tenant_id" ASC, "documents"."id" ASC LIMIT ?`
+	if c.SQL != want {
+		t.Fatalf("keyset SQL:\n got %s\nwant %s", c.SQL, want)
+	}
+	wantArgs := []any{true, true, int64(2), true, int64(2), int64(9), int64(3)}
+	if len(c.Args) != len(wantArgs) {
+		t.Fatalf("args: %#v", c.Args)
+	}
+	for i := range wantArgs {
+		if c.Args[i] != wantArgs[i] {
+			t.Fatalf("arg %d = %#v, want %#v", i, c.Args[i], wantArgs[i])
+		}
+	}
+}
