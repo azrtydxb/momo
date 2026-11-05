@@ -1,6 +1,6 @@
 # momo-04 Task 5: momo.sum checksum file
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -11,9 +11,15 @@ Implements plan momo-04-migrations Task 5: momo.sum checksum file (`.procoder/pl
 
 ## Acceptance criteria
 
-- [ ] `TestSumFormatVersion` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestChecksumMismatch` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestSumFormatVersion` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestChecksumMismatch` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- RED: `go test ./migrate/` failed to build with `undefined: ComputeSum`, `undefined: ParseSum`, `undefined: ErrNewerFormat`.
+- GREEN: `go test -race -count=1 ./migrate/` ok. TestSumFormatVersion and TestChecksumMismatch pass, plus tests for deterministic line order over 20 runs, round trip, added/removed/edited detection, tampered entry or directory hash (ErrChecksumMismatch), malformed lines, CRLF and BOM, and append-only AppendSum.
+- Mutation check: made VerifySum ignore hash differences; TestChecksumMismatch, TestVerifySumReportsAddedAndRemoved and TestAppendSum failed. Restored.
+- Gate: `procoder check` 0 blocking findings; go build, go vet and go test -race pass.
+- Deviation: the plan uses `migrate.ErrNewerFormat` but Task 3 does not define it; sum.go defines `ErrNewerFormat = schema.ErrNewerFormat` so one sentinel matches both packages.
 
