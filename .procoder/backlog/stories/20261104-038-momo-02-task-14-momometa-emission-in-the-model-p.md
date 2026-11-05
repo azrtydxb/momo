@@ -1,6 +1,6 @@
 # momo-02 Task 14: MomoMeta emission in the model package
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-02-generator
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -11,8 +11,12 @@ Implements plan momo-02-generator Task 14: MomoMeta emission in the model packag
 
 ## Acceptance criteria
 
-- [ ] `TestEmitMetaGolden` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestEmitMetaGolden` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Red: `go test ./gen -run TestEmitMeta` failed to build (`undefined: EmitMeta`, models lacked MomoMeta). Green: TestEmitMetaGolden, TestEmitMetaBuilds (go build of generated output), TestEmitMetaRuntime (momo.Select over generated meta with fakedriver) pass.
+- Mutation: Version index computed from the Identity tag made TestEmitMetaGolden and TestEmitMetaBuilds fail.
+- Gate: go build, go vet, go test -race ./... pass; make staticcheck clean; procoder check 0 blocking.
+- Deviation: the golden has CreatedAt: -1 (Document has no created_at tag, only read_only), the plan sketch showed 4. Meta.Schema is emitted but momo.Select does not yet render the schema in FROM.
