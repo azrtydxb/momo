@@ -80,7 +80,7 @@ func TestInsertDoUpdateExcluded(t *testing.T) {
 	c := insertSQL(t, momo.Insert[suite.Document](unitDB()).
 		Values(suite.DocTenantID.Set(1), suite.DocTitle.Set("x")).
 		OnConflict(suite.DocID).DoUpdate(suite.DocTitle.SetExcluded(), suite.DocTenantID.Set(5)))
-	want := `INSERT INTO "documents" ("tenant_id", "title") VALUES ($1, $2) ON CONFLICT ("id") DO UPDATE SET "title" = EXCLUDED."title", "tenant_id" = $3`
+	want := `INSERT INTO "documents" ("tenant_id", "title", "created_at", "updated_at") VALUES ($1, $2, $3, $4) ON CONFLICT ("id") DO UPDATE SET "title" = EXCLUDED."title", "tenant_id" = $5`
 	if c.SQL != want {
 		t.Fatalf("SQL = %s\nwant  %s", c.SQL, want)
 	}
@@ -120,7 +120,7 @@ func TestInsertValidation(t *testing.T) {
 func TestInsertValuesNullAndExprAreNotBound(t *testing.T) {
 	c := insertSQL(t, momo.Insert[suite.Document](unitDB()).
 		Values(suite.DocTenantID.Set(1), suite.DocBody.SetNull(), suite.DocTitle.SetExpr(momo.Value("e"))))
-	want := `INSERT INTO "documents" ("tenant_id", "body", "title") VALUES ($1, NULL, $2)`
+	want := `INSERT INTO "documents" ("tenant_id", "body", "title", "created_at", "updated_at") VALUES ($1, NULL, $2, $3, $4)`
 	if c.SQL != want {
 		t.Fatalf("SQL = %s\nwant  %s", c.SQL, want)
 	}
