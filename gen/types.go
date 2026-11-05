@@ -64,6 +64,8 @@ type Graph struct {
 	Schema   *schema.Schema
 	Packages []*Package
 	Plugins  []Plugin
+	// Namer is the naming preset the graph was loaded with.
+	Namer naming.Namer
 }
 
 // Model is a discovered model type.

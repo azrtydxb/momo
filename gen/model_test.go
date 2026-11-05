@@ -22,7 +22,7 @@ func TestModelDiscovery(t *testing.T) {
 		byName[m.GoName] = m
 	}
 	doc, ok := byName["Document"]
-	if !ok || len(byName) != 2 {
+	if !ok || len(byName) != 5 {
 		t.Fatalf("models=%v", keys(byName))
 	}
 	if doc.Table != "documents" {

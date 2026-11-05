@@ -653,7 +653,7 @@ func (b *schemaBuilder) manyToMany(m *Model, r *Relation) {
 		var cols []string
 		for _, pk := range t.PrimaryKey {
 			src, _ := t.Column(pk)
-			c := prefix + "_" + pk
+			c := joinColumnName(b.namer, model, pk)
 			jt.Columns = append(jt.Columns, schema.Column{Name: c, Type: src.Type})
 			jt.PrimaryKey = append(jt.PrimaryKey, c)
 			cols = append(cols, c)
