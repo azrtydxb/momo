@@ -146,7 +146,7 @@ Additional capability flags: `JSON`, `Arrays`, `UpdateFrom`, `Merge`, `MergeRetu
 
 ### Generator companion (`MomoConfig`) methods
 
-`Table, Index, Unique, Check, Enum, Default` take literals and field references. `View, Function, Trigger, Policy, RLS, Partition, PartitionOf` each take one composite literal of the matching structured schema type owned by momo-04 Task 1 (`schema.View` covers materialized views through its `Materialized` field). momo-02 parses them statically; any other form is a diagnostic.
+`Index, IndexExpr, Unique, Check, Enum, Default, Comment, Collate` take literals and field references. There is no `Table` method: the table name comes from the marker tag `momo:"table:<name>"` (momo-02 Task 7). `View, Function, Trigger, Policy, RLS, Partition, PartitionOf` each take one composite literal of the matching structured schema type owned by momo-04 Task 1 (`schema.View` covers materialized views through its `Materialized` field). momo-02 parses them statically; any other form is a diagnostic.
 
 ### Test harness (`internal/testdb`)
 
