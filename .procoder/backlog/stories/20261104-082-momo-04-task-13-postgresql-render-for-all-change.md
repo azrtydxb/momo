@@ -1,6 +1,6 @@
 # momo-04 Task 13: PostgreSQL render for all change kinds
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -15,11 +15,11 @@ Implements plan momo-04-migrations Task 13: PostgreSQL render for all change kin
 
 - [x] Function render emits `STRICT` when `Function.Strict` and `SECURITY DEFINER` when `Function.SecurityDefiner` (both are inspected since Task 12) and the round trip has no diff (evidence: `TestRenderFunctionStrictSecurityDefiner` and integration `TestFunctionStrictSecurityDefinerRoundTrip` in `migrate/postgres/`; failed before the render change, passed after; mutation of the SECURITY DEFINER branch fails both)
 
-- [ ] `TestPostgresObjects` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestPostgresObjects` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestPostgresConcurrentIndexNoTx` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestManagedFunctionsTriggersPartitions` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestManagedFunctionsTriggersPartitions` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-12] `TestPostgresObjects` on real PostgreSQL+pgvector: vector extension, enum, partial index, expression index, HNSW index with opclass and a CONCURRENTLY index apply and round-trip with no diff; fails if CONCURRENTLY runs inside a transaction.
-- [ ] [S-39] `TestManagedFunctionsTriggersPartitions`: a function, trigger and partitioned table are created by migrations, round-trip with no diff, and a changed function body produces CREATE OR REPLACE; fails if they are reported as unmanaged.
+- [x] [S-39] `TestManagedFunctionsTriggersPartitions`: a function, trigger and partitioned table are created by migrations, round-trip with no diff, and a changed function body produces CREATE OR REPLACE; fails if they are reported as unmanaged.
 - [x] `procoder check` gate is clean and the task's commit is made
 - [x] PostgreSQL render emits `Column.Collate` (`COLLATE`) and `Column.Comment` (`COMMENT ON COLUMN`) for create and alter, with a round-trip test against inspection
 
@@ -34,3 +34,4 @@ Implements plan momo-04-migrations Task 13: PostgreSQL render for all change kin
 - Deviations: alter_enum_add_value appends (no BEFORE/AFTER) because Change carries only the new value; plan fixture `lower(state::text)` is not IMMUTABLE on an enum, so the test uses `lower(title)`; round-trip tests pin extension versions and FormatVersion because `schema.Equal` compares both literally.
 - Deferred checks now live in story 085 (Engine): `TestPostgresObjects` through the Engine, and the S-39 no-diff and not-unmanaged assertions of `TestManagedFunctionsTriggersPartitions`. The function and trigger inspection they depend on is story 081; story 081's file was not edited from this branch.
 - Review fixes: `schema.Equal` now ignores FormatVersion and compares an extension version only when both sides set it (`TestEqualExtensionVersionAndFormatVersion`); the round-trip tests no longer pin versions. The dollar-tag check also refuses a body ending in `$momo`; policy role keywords are case-insensitive; `Trigger.Function` is validated; an unknown change kind errors; plan Constraints line added.
+- Closed from story 085 (Engine): `TestPostgresObjects` and `TestManagedFunctionsTriggersPartitions` now apply through `migratetest.NewEngine` and `e.Apply` (CONCURRENTLY index as its own no-transaction file), read back with no diff, an empty second diff and exact function, trigger and table counts, and apply the CREATE OR REPLACE body change through the Engine. They are not the plan's literal text because `Engine.Diff`, `Inspect` and `Drift` are Tasks 17 and 18; "not unmanaged" is asserted as `schema.Equal` plus object counts. The S-39 fixture partitions by a `date` column because a `timestamptz` bound reads back with a time zone offset.

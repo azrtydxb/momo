@@ -19,6 +19,7 @@ A dialect hook `Canonicalize(ctx, conn, *schema.Schema) error` creates the decla
 
 ## Acceptance criteria
 
+- [ ] Drift excludes `momo_migrations` and honours `InspectOptions.Exclude` (the dialect Inspect does not apply Exclude)
 - [ ] Baseline then diff gives zero changes for a declared view written differently from pg_get_viewdef's output, for a declared function with a differently formatted body, and for a materialized view (data kept)
 
 - [ ] `TestBaselineAndDrift` exists as written in the plan, failed before the implementation, and passes now

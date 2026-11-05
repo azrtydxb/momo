@@ -6,10 +6,19 @@ import "time"
 
 const defaultLockTimeout = 5 * time.Second
 
+// defaultLockWait is how long Apply waits for the migration lock when neither
+// ApplyOptions.LockWait nor WithLockWait says otherwise.
+const defaultLockWait = 30 * time.Second
+
 type options struct {
 	clock   func() time.Time
 	config  Config
 	dialect Dialect
+	// lockWait is the engine default for waiting on the migration lock;
+	// lockWaitSet distinguishes an explicit zero (do not wait) from unset.
+	lockWait    time.Duration
+	lockWaitSet bool
+	noSum       bool
 }
 
 // Option configures an Engine.
@@ -33,4 +42,19 @@ func WithConfig(c Config) Option {
 // WithDialect sets the dialect; it is required by NewEngine.
 func WithDialect(d Dialect) Option {
 	return func(o *options) { o.dialect = d }
+}
+
+// WithLockWait sets how long Apply waits for the migration lock before it
+// returns ErrLocked. Zero means do not wait. ApplyOptions.LockWait, when
+// non-zero, overrides it for one call; without either the wait is 30s.
+func WithLockWait(d time.Duration) Option {
+	return func(o *options) { o.lockWait, o.lockWaitSet = d, true }
+}
+
+// WithoutSum turns off the momo.sum requirement. Without it Apply and Status
+// refuse a directory that has no momo.sum, because an edited migration file
+// could not be detected. It exists for tests and for tools that check files
+// by other means; production code keeps momo.sum.
+func WithoutSum() Option {
+	return func(o *options) { o.noSum = true }
 }

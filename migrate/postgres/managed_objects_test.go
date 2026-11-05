@@ -11,6 +11,7 @@ import (
 
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
+	"github.com/azrtydxb/momo/migrate/migratetest"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -20,7 +21,7 @@ func managedObjects(body string) *schema.Schema {
 	cols := []schema.Column{
 		{Name: "id", Type: "bigint"},
 		{Name: "tenant", Type: "text"},
-		{Name: "created_at", Type: "timestamp with time zone"},
+		{Name: "created_at", Type: "date"},
 	}
 	return &schema.Schema{
 		Dialect: "postgres",
@@ -47,17 +48,21 @@ func managedObjects(body string) *schema.Schema {
 	}
 }
 
-// TestManagedFunctionsTriggersPartitions renders and applies a partitioned
-// table, a function and a trigger, proves they work in the live database, and
-// proves that a body change renders CREATE OR REPLACE FUNCTION. The inspection
-// half (function and trigger read back, no diff, not unmanaged) needs story
-// 081 and is asserted here only for the partitioned tables.
+// TestManagedFunctionsTriggersPartitions applies a partitioned table, a
+// function and a trigger through the engine, proves they work in the live
+// database, reads them back with no diff (so none of them is unmanaged: an
+// object the model does not declare, or one it declares and the database lacks,
+// would make schema.Equal and the second diff fail) and proves that a body
+// change renders CREATE OR REPLACE FUNCTION and applies through the engine.
 func TestManagedFunctionsTriggersPartitions(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	desired := managedObjects("BEGIN NEW.tenant := lower(NEW.tenant); RETURN NEW; END;")
 	empty := &schema.Schema{Dialect: "postgres"}
-	applyStatements(t, db, planStatements(t, empty, desired, migrate.DiffOptions{}))
+	files := migrationFiles(planStatements(t, empty, desired, migrate.DiffOptions{}), 0)
+	if _, err := engineOn(t, db, migratetest.FS(files)).Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
 
 	// The trigger fires through the partition parent and the child holds the row.
 	mustExec(t, db.Driver(), `INSERT INTO events (id, tenant, created_at) VALUES (1, 'ACME', '2026-03-01')`)
@@ -77,8 +82,18 @@ func TestManagedFunctionsTriggersPartitions(t *testing.T) {
 		t.Fatalf("trigger function did not run, tenant = %q", tenant)
 	}
 
-	// The partitioned tables inspect back with their partition metadata.
+	// Everything reads back: no diff, no extra and no missing object.
 	got := inspectNow(t, db)
+	desired.Extensions = got.Extensions // database-wide; testdb installs vector
+	if !schema.Equal(got, desired) {
+		t.Fatalf("read-back has a diff:\n%s", migratetest.Diff(got, desired))
+	}
+	if again, _, err := migrate.Diff(got, desired, migrate.DiffOptions{}); err != nil || len(again) != 0 {
+		t.Fatalf("second diff must be empty: %v %+v", err, again)
+	}
+	if len(got.Functions) != 1 || got.Functions[0].Name != "touch" || len(got.Triggers) != 1 || got.Triggers[0].Name != "events_touch" || len(got.Tables) != 2 {
+		t.Fatalf("function, trigger and tables must all be read back as managed objects: %d functions, %d triggers, %d tables", len(got.Functions), len(got.Triggers), len(got.Tables))
+	}
 	for _, name := range []string{"events", "events_2026"} {
 		g, ok := got.Table(name)
 		w, _ := desired.Table(name)
@@ -98,8 +113,37 @@ func TestManagedFunctionsTriggersPartitions(t *testing.T) {
 	if !strings.Contains(up.String(), "CREATE OR REPLACE FUNCTION") || strings.Contains(up.String(), "DROP FUNCTION") {
 		t.Fatalf("body change must render CREATE OR REPLACE FUNCTION only, got:\n%s", up.String())
 	}
-	applyStatements(t, db, stmts)
+	second := migrationFiles(stmts, len(files))
+	both := map[string][]byte{}
+	for k, v := range files {
+		both[k] = v
+	}
+	for k, v := range second {
+		both[k] = v
+	}
+	if _, err := engineOn(t, db, migratetest.FS(both)).Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
 	mustExec(t, db.Driver(), `INSERT INTO events (id, tenant, created_at) VALUES (2, 'acme', '2026-03-02')`)
+	var upper string
+	r2, err := db.Driver().Query(ctx, `SELECT tenant FROM events_2026 WHERE id = 2`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r2.Next() {
+		t.Fatal("row 2 missing")
+	}
+	if err := r2.Scan(&upper); err != nil {
+		t.Fatal(err)
+	}
+	_ = r2.Close()
+	if upper != "ACME" {
+		t.Fatalf("the replaced function body did not take effect, tenant = %q", upper)
+	}
+	changed.Extensions = got.Extensions
+	if after := inspectNow(t, db); !schema.Equal(after, changed) {
+		t.Fatalf("read-back after the body change has a diff:\n%s", migratetest.Diff(after, changed))
+	}
 }
 
 func flagSchema(strict, definer bool) *schema.Schema {
