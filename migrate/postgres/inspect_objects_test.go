@@ -12,7 +12,6 @@ import (
 	"github.com/azrtydxb/momo"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
-	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -27,7 +26,7 @@ func TestPostgresObjectInspection(t *testing.T) {
 	mustExec(t, d, `ALTER TABLE events ENABLE ROW LEVEL SECURITY`)
 	mustExec(t, d, `CREATE POLICY tenant_only ON events USING (tenant = current_setting('app.tenant', true))`)
 	mustExec(t, d, `CREATE VIEW recent AS SELECT id FROM events`)
-	got, err := mpg.New().Inspect(ctx, pinned(t, db), migrate.InspectOptions{})
+	got, err := inspectOnce(ctx, t, db, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +79,7 @@ func TestPostgresObjectInspectionDetails(t *testing.T) {
 	mustExec(t, d, `ALTER TABLE items FORCE ROW LEVEL SECURITY`)
 	mustExec(t, d, `CREATE POLICY p_all ON items AS RESTRICTIVE FOR SELECT TO PUBLIC USING (qty > 0)`)
 	mustExec(t, d, `CREATE POLICY p_ins ON items FOR INSERT WITH CHECK (qty >= 0)`)
-	got, err := mpg.New().Inspect(ctx, pinned(t, db), migrate.InspectOptions{})
+	got, err := inspectOnce(ctx, t, db, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +157,7 @@ func TestPostgresInspectTriggerUpdateOfUnsupported(t *testing.T) {
 	mustExec(t, d, `CREATE TABLE t1 (a int, b int)`)
 	mustExec(t, d, `CREATE FUNCTION touch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$`)
 	mustExec(t, d, `CREATE TRIGGER t1_upd BEFORE UPDATE OF a ON t1 FOR EACH ROW EXECUTE FUNCTION touch()`)
-	_, err := mpg.New().Inspect(context.Background(), pinned(t, db), migrate.InspectOptions{})
+	_, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{})
 	if !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}
@@ -179,10 +178,12 @@ func TestPostgresInspectPolicyPublicMixedWithRole(t *testing.T) {
 	mustExec(t, d, `ALTER TABLE docs ENABLE ROW LEVEL SECURITY`)
 	mustExec(t, d, `CREATE POLICY mixed ON docs TO PUBLIC, `+role+` USING (true)`)
 	t.Cleanup(func() {
-		_, _ = d.Exec(context.Background(), `DROP POLICY IF EXISTS named ON docs`, nil)
+		// The policy depends on the role, so drop the table first or the
+		// role (cluster-wide) would outlive the test.
+		_, _ = d.Exec(context.Background(), `DROP TABLE IF EXISTS docs`, nil)
 		_, _ = d.Exec(context.Background(), `DROP ROLE IF EXISTS `+role, nil)
 	})
-	got, err := mpg.New().Inspect(context.Background(), pinned(t, db), migrate.InspectOptions{})
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +196,7 @@ func TestPostgresInspectPolicyPublicMixedWithRole(t *testing.T) {
 	}
 	mustExec(t, d, `DROP POLICY mixed ON docs`)
 	mustExec(t, d, `CREATE POLICY named ON docs TO `+role+` USING (true)`)
-	got, err = mpg.New().Inspect(context.Background(), pinned(t, db), migrate.InspectOptions{})
+	got, err = inspectOnce(context.Background(), t, db, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

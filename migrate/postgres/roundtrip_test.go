@@ -53,7 +53,7 @@ func applyStatements(t *testing.T, db *momo.DB, stmts []migrate.Statement) {
 
 func inspectNow(t *testing.T, db *momo.DB) *schema.Schema {
 	t.Helper()
-	got, err := mpg.New().Inspect(context.Background(), pinned(t, db), migrate.InspectOptions{Schemas: []string{testdb.Schema(t)}})
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{Schemas: []string{testdb.Schema(t)}})
 	if err != nil {
 		t.Fatal(err)
 	}

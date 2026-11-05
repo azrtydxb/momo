@@ -75,7 +75,7 @@ func TestBaselineAndDrift(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	fsys := migratetestFS(t, initVersion)
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
 	cd := migratetest.NewCountingDriver(db.Driver())
 	e := migratetest.NewEngine(t, mpg.New(), cd, fsys)
 	before := countDDL(t, cd)
@@ -85,8 +85,8 @@ func TestBaselineAndDrift(t *testing.T) {
 	if countDDL(t, cd)-before != 0 {
 		t.Fatal("baseline must execute no DDL")
 	}
-	mustExec(t, pinned(t, db), `ALTER TABLE users ADD COLUMN extra TEXT`)
-	mustExec(t, pinned(t, db), `CREATE TABLE unmanaged_audit (id INTEGER PRIMARY KEY)`)
+	mustExecDB(t, db, `ALTER TABLE users ADD COLUMN extra TEXT`)
+	mustExecDB(t, db, `CREATE TABLE unmanaged_audit (id INTEGER PRIMARY KEY)`)
 	rep, err := e.Drift(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestBaselineWritesHistoryRows(t *testing.T) {
 		"20260101000001_b.snapshot.json": {Data: snap.Bytes()},
 		"20260101000002_c.up.sql":        {Data: []byte("SELECT 2;")},
 	})
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
 	if err := e.Baseline(ctx, "20260101000001", false); err != nil {
 		t.Fatal(err)
@@ -154,13 +154,13 @@ func TestBaselineMismatchAndForce(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	fsys := migratetestFS(t, initVersion)
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, extra TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, extra TEXT)`)
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
 	err := e.Baseline(ctx, initVersion, false)
 	if !errors.Is(err, migrate.ErrBaselineMismatch) || !strings.Contains(err.Error(), "column") {
 		t.Fatalf("want ErrBaselineMismatch naming the object kind, got %v", err)
 	}
-	if hist, _ := migrate.ReadHistory(ctx, pinned(t, db)); len(hist) != 0 {
+	if hist, _ := readHistory(ctx, t, db); len(hist) != 0 {
 		t.Fatalf("a refused baseline must write no rows: %+v", hist)
 	}
 	if err := e.Baseline(ctx, initVersion, true); err != nil {
@@ -183,7 +183,7 @@ func TestBaselineGates(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	fsys := migratetestFS(t, initVersion)
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
 
 	// Checksum gate: the directory differs from momo.sum.
 	bad := fstest.MapFS{}
@@ -205,10 +205,12 @@ func TestBaselineGates(t *testing.T) {
 
 	// Dirty gate.
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
-	if err := migrate.EnsureHistory(ctx, pinned(t, db), mpg.New()); err != nil {
-		t.Fatal(err)
-	}
-	mustExec(t, pinned(t, db), `INSERT INTO momo_migrations (version, name, checksum, status, applied_at) VALUES ('20250101000000', 'x', 'x', 'failed', '2025-01-01T00:00:00Z')`)
+	withPinned(t, db, func(c momo.PinnedConn) {
+		if err := migrate.EnsureHistory(ctx, c, mpg.New()); err != nil {
+			t.Fatal(err)
+		}
+	})
+	mustExecDB(t, db, `INSERT INTO momo_migrations (version, name, checksum, status, applied_at) VALUES ('20250101000000', 'x', 'x', 'failed', '2025-01-01T00:00:00Z')`)
 	if err := e.Baseline(ctx, initVersion, false); !errors.Is(err, migrate.ErrDirty) {
 		t.Fatalf("want ErrDirty, got %v", err)
 	}
@@ -217,7 +219,7 @@ func TestBaselineGates(t *testing.T) {
 func TestDriftIsReadOnlyAndTreatsEverythingAsUnmanagedWithoutHistory(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
-	mustExec(t, pinned(t, db), `CREATE TABLE stray (id INTEGER PRIMARY KEY)`)
+	mustExecDB(t, db, `CREATE TABLE stray (id INTEGER PRIMARY KEY)`)
 	cd := migratetest.NewCountingDriver(db.Driver())
 	e := migratetest.NewEngine(t, mpg.New(), cd, migratetestFS(t, initVersion))
 	rep, err := e.Drift(ctx)
@@ -243,13 +245,13 @@ func TestDriftExcludesHistoryTableAndHonoursExclude(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	fsys := migratetestFS(t, initVersion)
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Exclude: []string{"tmp_*", "legacy.*"}}))
 	if err := e.Baseline(context.Background(), initVersion, false); err != nil {
 		t.Fatal(err)
 	}
-	mustExec(t, pinned(t, db), `CREATE TABLE tmp_scratch (id INTEGER)`)
-	mustExec(t, pinned(t, db), `CREATE TABLE audit_log (id INTEGER)`)
+	mustExecDB(t, db, `CREATE TABLE tmp_scratch (id INTEGER)`)
+	mustExecDB(t, db, `CREATE TABLE audit_log (id INTEGER)`)
 	rep, err := e.Drift(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -266,7 +268,7 @@ func TestDriftReportsMissingAndChanged(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	fsys := migratetestFS(t, initVersion)
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys)
 	if err := e.Baseline(ctx, initVersion, false); err != nil {
 		t.Fatal(err)
@@ -275,8 +277,8 @@ func TestDriftReportsMissingAndChanged(t *testing.T) {
 	if err != nil || !rep.Clean() {
 		t.Fatalf("fresh baseline must be clean: %+v %v", rep, err)
 	}
-	mustExec(t, pinned(t, db), `ALTER TABLE users ALTER COLUMN email SET NOT NULL`)
-	mustExec(t, pinned(t, db), `ALTER TABLE users ALTER COLUMN email TYPE VARCHAR(40)`)
+	mustExecDB(t, db, `ALTER TABLE users ALTER COLUMN email SET NOT NULL`)
+	mustExecDB(t, db, `ALTER TABLE users ALTER COLUMN email TYPE VARCHAR(40)`)
 	rep, err = e.Drift(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -285,7 +287,7 @@ func TestDriftReportsMissingAndChanged(t *testing.T) {
 		!strings.Contains(rep.Changed[0].Detail, "type") || !strings.Contains(rep.Changed[0].Detail, "nullable") {
 		t.Fatalf("changed column must name the differing fields: %+v", rep.Changed)
 	}
-	mustExec(t, pinned(t, db), `DROP TABLE users`)
+	mustExecDB(t, db, `DROP TABLE users`)
 	rep, err = e.Drift(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -300,10 +302,10 @@ func TestDriftReportsMissingAndChanged(t *testing.T) {
 func invalidIndexSetup(t *testing.T, db *momo.DB) fs.FS {
 	t.Helper()
 	idx := schema.Index{Name: "users_email_uq", Unique: true, Parts: []schema.IndexPart{{Column: "email"}}}
-	mustExec(t, pinned(t, db), `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
-	mustExec(t, pinned(t, db), `INSERT INTO users VALUES (1, 'a@x'), (2, 'a@x')`)
+	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	mustExecDB(t, db, `INSERT INTO users VALUES (1, 'a@x'), (2, 'a@x')`)
 	// A unique CONCURRENTLY build over duplicates fails and leaves an invalid index.
-	if _, err := pinned(t, db).Exec(context.Background(), `CREATE UNIQUE INDEX CONCURRENTLY users_email_uq ON users (email)`, nil); err == nil {
+	if err := execDB(t, db, `CREATE UNIQUE INDEX CONCURRENTLY users_email_uq ON users (email)`); err == nil {
 		t.Fatal("expected the concurrent build to fail")
 	}
 	return snapshotFS(t, initVersion, usersSchema(idx), "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT);\n")

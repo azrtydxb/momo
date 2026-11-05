@@ -156,7 +156,8 @@ func (w *Writer) Commit() (changed []string, err error) {
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
-		if cur, rerr := os.ReadFile(p); rerr == nil && bytes.Equal(cur, w.files[p]) { // #nosec G304 -- p is a key of w.files, each confined to the module root by File()
+		// Generated output is LF; a CRLF copy (core.autocrlf checkout) is up to date.
+		if cur, rerr := os.ReadFile(p); rerr == nil && bytes.Equal(bytes.ReplaceAll(cur, []byte("\r\n"), []byte("\n")), w.files[p]) { // #nosec G304 -- p is a key of w.files, each confined to the module root by File()
 			continue
 		}
 		if hand, herr := isHandwritten(p); herr != nil {

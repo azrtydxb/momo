@@ -2355,6 +2355,8 @@ Add imports for `store` and `region` subpackages.
 
 - [ ] **Step 5: Commit** — `git add load_test.go && git commit -m "test(relations): composite-key belongs-to and has-many"`.
 
+Reconciliation note (2026-11-05): Task 7 needed one small logic change, not only tests. `prepareWith` now treats a parent key with a NULL (nil) component as no key even when the extractor reports `ok = true` (`hasNilPart` in `load.go`), so such a parent issues no statement and gets no association; generated extractors already return `ok = false` for a nullable component, so this guards hand-written descriptors. `TestEagerLoadComposite` passes on the Task 4 and Task 5 code (its red state is the compile failure from the missing `store` and `region` imports). The added tests `TestEagerLoadCompositeSemantics`, `TestEagerLoadCompositeEmptyAndStale`, `TestEagerLoadCompositeNullComponent` and the internal `TestLoadCompositeKeysDedupeNullAndChunk` pin one statement per load, parent-key dedupe, primary-key child order, tuple (not per-column) matching, stale clearing and composite chunking. The composite chunk test lowers `MaxParams` on a dialect copy because `WithMaxParams` arrives in Task 8.
+
 ---
 
 ## Task 8: Bind-limit chunking

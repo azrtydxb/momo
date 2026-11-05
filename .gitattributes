@@ -1,0 +1,7 @@
+# Generated code, golden files and sources are byte-compared by tests and
+# `momo generate --check`; keep LF on every platform (Windows checkouts
+# otherwise convert to CRLF).
+* text=auto eol=lf
+*.png binary
+*.gif binary
+*.jpg binary

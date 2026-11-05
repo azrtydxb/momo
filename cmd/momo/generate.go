@@ -30,6 +30,12 @@ directory. Command line patterns always resolve against the working directory.
 With --check nothing is written: stale or orphaned generated files are listed
 as "stale: <path>" and the exit code is 1.
 
+Line endings: generated files are written with LF. A copy that differs only in
+CRLF line endings (for example a checkout with core.autocrlf=true) counts as up
+to date. To keep checkouts byte-identical anyway, add this to .gitattributes:
+
+    *_gen.go text eol=lf
+
 Plugins: only the plugins built into this binary can be enabled in momo.yaml.
 To run custom generator plugins, call gen.Emit with your plugins from Go code.
 `
@@ -117,7 +123,7 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	}
 	if !check {
 		for _, p := range changed {
-			_, _ = fmt.Fprintln(stdout, relPath(p, cwd))
+			_, _ = fmt.Fprintln(stdout, filepath.ToSlash(relPath(p, cwd)))
 		}
 		return exitOK
 	}
@@ -127,7 +133,7 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	}
 	stale := dedupe(append(append([]string{}, changed...), orphans...))
 	for _, p := range stale {
-		_, _ = fmt.Fprintf(stdout, "stale: %s\n", relPath(p, cwd))
+		_, _ = fmt.Fprintf(stdout, "stale: %s\n", filepath.ToSlash(relPath(p, cwd)))
 	}
 	if len(stale) > 0 {
 		return exitFindings
@@ -261,7 +267,7 @@ func relPath(p, cwd string) string {
 
 func printDiagnostics(w io.Writer, diags []gen.Diagnostic, cwd string) {
 	for _, d := range diags {
-		d.Pos = token.Position{Filename: relPath(d.Pos.Filename, cwd), Line: d.Pos.Line, Column: d.Pos.Column}
+		d.Pos = token.Position{Filename: filepath.ToSlash(relPath(d.Pos.Filename, cwd)), Line: d.Pos.Line, Column: d.Pos.Column}
 		_, _ = fmt.Fprintln(w, redactURL(d.String()))
 	}
 }

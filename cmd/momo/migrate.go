@@ -374,6 +374,9 @@ func (l *cli) databaseURL() (string, error) {
 		return "", errors.New("no database URL: pass --url, set migrate.url_env in momo.yaml, or set MOMO_DATABASE_URL")
 	}
 	l.secrets = append(l.secrets, u)
+	if w := TLSWarning(u); w != "" {
+		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", redactURL(w, l.secrets...))
+	}
 	if parsed, err := url.Parse(u); err == nil && parsed.User != nil {
 		if pw, ok := parsed.User.Password(); ok {
 			l.secrets = append(l.secrets, pw)
