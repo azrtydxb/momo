@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // InsertValue is an explicit column write accepted by Insert.Values: an
@@ -32,7 +34,11 @@ type insertCore struct {
 	target    []string
 	conflict  conflictKind
 	set       []Assignment
-	err       error
+	// upsert and withIdentity are owned by upsert.go: upsert marks an Upsert
+	// query, withIdentity puts the identity column in a model INSERT list.
+	upsert       bool
+	withIdentity bool
+	err          error
 }
 
 // InsertQuery builds and runs an INSERT into T's table.
@@ -182,6 +188,11 @@ func (q InsertQuery[T]) render(b *Builder) {
 		b.SetErr(q.verr("", "%T has no table", *new(T)))
 		return
 	}
+	q, err := q.resolveUpsert()
+	if err != nil {
+		b.SetErr(err)
+		return
+	}
 	b.withScope([]string{q.meta.Table}, func() { q.renderStatement(b) })
 }
 
@@ -209,7 +220,7 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 			omit[ci] = struct{}{}
 		}
 		for i := range q.meta.Columns {
-			if _, skip := omit[i]; !skip && q.writable(i) {
+			if _, skip := omit[i]; !skip && (q.writable(i) || q.insertsIdentity(i)) {
 				cols = append(cols, i)
 			}
 		}
@@ -268,7 +279,11 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 		}
 		b.Ident(q.meta.Columns[ci].Name)
 	}
-	b.WriteString(") VALUES ")
+	b.writeByte(')')
+	if q.i.withIdentity && d.Name == dialect.Postgres {
+		b.WriteString(" OVERRIDING SYSTEM VALUE")
+	}
+	b.WriteString(" VALUES ")
 	if modelMode {
 		for r := range q.models {
 			if r > 0 {

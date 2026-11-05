@@ -13,8 +13,13 @@ Scope rule: the builder must render its statement inside a target-table scope vi
 
 ## Acceptance criteria
 
-- [ ] `TestUpsertUpdatesAllColumns` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestUpsertUpdatesAllColumns` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- `TestUpsertUpdatesAllColumns` (upsert_test.go): before implementing, `go test -run Upsert .` failed with `undefined: momo.Upsert`. After: `go test -tags integration -race -count=1 -run Upsert -v .` passes on postgres, and the full `go test -tags integration -race -count=1 .` suite is ok.
+- Unit tests: `TestUpsertGoldenSQL` (Postgres and SQLite goldens, with OVERRIDING SYSTEM VALUE on Postgres only), `TestUpsertMySQLUnsupported`, `TestUpsertRefusesReservedColumnsInDoUpdate` (PK, version, soft-delete, created-at, updated-at), `TestUpsertValidation` (mixed identity), `TestUpsertZeroIdentityInsertsNewRow`.
+- Implementation is in upsert.go; insert.go gains only the hooks. Rendering still goes through `Builder.withScope` in `InsertQuery.render`.
+
+- `procoder check`: 0 blocking findings. `go vet ./...`, `gofmt -l .` clean, `go test ./...` ok.
