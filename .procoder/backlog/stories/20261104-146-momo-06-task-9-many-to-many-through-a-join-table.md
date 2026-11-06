@@ -22,3 +22,4 @@ Implements plan momo-06-relations Task 9: Many-to-many through a join table (`.p
 - Tests: TestEagerLoadManyToMany, ...Order, ...SharedCopiesStaleAndNull, TestLoadManyToManyChunksOnJoinKeyWidth, TestLoadManyToManyNoRoomForKey, TestLoadManyToManySoftDeleteAndDuplicateJoinRows. One statement per load (hook count), chunking by join key width, NULL/no-key parents skipped, stale cleared, shared children copied.
 - Mutations killed: no ORDER BY, group by child key instead of holders, no join-row dedupe, budget by ChildCols, no soft-delete scope, no NULL-key skip, truncated tuple columns.
 
+- Review fixes (2026-11-06): join-row dedupe now keys on (holder parent key, child primary key) whenever the child has a PK (TestLoadManyToManyDuplicateJoinRowsOnNonPKTarget; restoring the ChildCols==ChildPK condition fails it); TestLoadManyToManyCompositeJoinKeyChunking uses WithMaxParams and asserts per-statement args [4 4 2] (budget by len(ChildCols) fails it).
