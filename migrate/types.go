@@ -207,7 +207,11 @@ type DiffOptions struct {
 	RenameColumns    map[string]string // "table.old" -> "new"
 	AllowDestructive bool
 	Stage            bool
-	Name             string // not used; name is passed to Diff
+	// EnforceNotNull emits SET NOT NULL for an existing column that the
+	// snapshot has as nullable and the model has as NOT NULL without a
+	// default: the follow-up to a staged change, run after the backfill.
+	EnforceNotNull bool
+	Name           string // not used; name is passed to Diff
 }
 
 // Config is the engine configuration.

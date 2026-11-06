@@ -162,17 +162,17 @@ finding:
 Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
 `--dialect`, `--url`.
 
-| Command                                                                                          | Needs DB        | Does                                                                                     | Exit 1 when                                                          |
-| ------------------------------------------------------------------------------------------------ | --------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage]` | no              | Write a migration (section 1, 5).                                                        | destructive or staged refusal; target file exists; model diagnostics |
-| `plan`                                                                                           | yes             | List pending migrations with statement counts. Read-only, no lock, creates nothing.      | never                                                                |
-| `apply [--to N] [--force-unlock] [--lock-wait 30s]`                                              | yes             | Apply pending.                                                                           | never; failures are 3                                                |
-| `status`                                                                                         | yes             | One line per version: `applied`, `pending`, `dirty`, `mismatch`, `missing`. Read-only.   | any version not `applied`/`pending`                                  |
-| `validate [--db]`                                                                                | no (`--db` yes) | Directory checks (below); `--db` adds `status`.                                          | any problem or unhealthy status                                      |
-| `hash`                                                                                           | no              | Recompute `momo.sum`, list files it accepts as `changed:`/`added:`/`removed:`, write it. | never                                                                |
-| `baseline --version N [--force]`                                                                 | yes             | Record migrations through N as applied without running them (section 7).                 | database differs from snapshot                                       |
-| `drift`                                                                                          | yes             | Section 1.                                                                               | any change, missing or unmanaged                                     |
-| `resolve --version N --applied` or `--rolled-back`                                               | yes             | Settle a dirty migration (section 4).                                                    | never                                                                |
+| Command                                                                                                               | Needs DB        | Does                                                                                     | Exit 1 when                                                          |
+| --------------------------------------------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage] [--enforce-not-null]` | no              | Write a migration (section 1, 5).                                                        | destructive or staged refusal; target file exists; model diagnostics |
+| `plan`                                                                                                                | yes             | List pending migrations with statement counts. Read-only, no lock, creates nothing.      | never                                                                |
+| `apply [--to N] [--force-unlock] [--lock-wait 30s]`                                                                   | yes             | Apply pending.                                                                           | never; failures are 3                                                |
+| `status`                                                                                                              | yes             | One line per version: `applied`, `pending`, `dirty`, `mismatch`, `missing`. Read-only.   | any version not `applied`/`pending`                                  |
+| `validate [--db]`                                                                                                     | no (`--db` yes) | Directory checks (below); `--db` adds `status`.                                          | any problem or unhealthy status                                      |
+| `hash`                                                                                                                | no              | Recompute `momo.sum`, list files it accepts as `changed:`/`added:`/`removed:`, write it. | never                                                                |
+| `baseline --version N [--force]`                                                                                      | yes             | Record migrations through N as applied without running them (section 7).                 | database differs from snapshot                                       |
+| `drift`                                                                                                               | yes             | Section 1.                                                                               | any change, missing or unmanaged                                     |
+| `resolve --version N --applied` or `--rolled-back`                                                                    | yes             | Settle a dirty migration (section 4).                                                    | never                                                                |
 
 `validate` checks: files parse and directives are known; `momo.sum` matches;
 versions unique and increasing; each snapshot's parent exists; no two snapshots
@@ -383,29 +383,38 @@ a hand-written file with a `DROP` applies without confirmation.
 
 An added `NOT NULL` column (or an existing column made `NOT NULL`) with no
 default, identity or generation expression is refused (`ErrStagedRequired`)
-for any table that already exists in the snapshot. `diff` cannot tell whether
-the table has rows. With `--stage`:
+for any table that already exists in the snapshot. `diff` never queries the
+database, so it cannot tell whether the table has rows: an empty existing
+table is refused too. A column that looks like a rename (same table and type
+as a dropped column) is refused the same way; the message names
+`--rename-column`. With `--stage`, then `--enforce-not-null`:
 
 1. `diff --stage` adds the column as nullable and prints the hint
-   `staged: T.C was added as nullable; backfill it, then run ALTER TABLE T ALTER COLUMN C SET NOT NULL (re-run migrate diff after the backfill)`.
+   `staged: T.C was added as nullable; backfill it, then run migrate diff with --enforce-not-null to emit ALTER TABLE T ALTER COLUMN C SET NOT NULL`.
+   The new snapshot records the column as nullable, like the database will
+   have it, so `validate` and `status` agree after you apply.
 2. Apply, backfill in batches outside the migration.
-3. `diff --stage` records the column as NOT NULL in the snapshot while the
-   database has it nullable, so `diff` will not emit `SET NOT NULL`: re-running
-   it prints "no changes". After the backfill, add a hand-written migration
-   (section 6) with `ALTER TABLE <t> ALTER COLUMN <c> SET NOT NULL`. The
-   snapshot already matches, so `validate` passes. The statement scans the
-   table under a lock; do it when the table is quiet or add a validated
-   `CHECK` first by hand.
+3. `diff <name> --enforce-not-null` emits
+   `ALTER TABLE T ALTER COLUMN C SET NOT NULL` and records `NOT NULL` in the
+   snapshot. A plain `diff` (without the flag) is still refused, because only
+   you know the backfill is done. Apply it. The statement scans the table
+   under a lock; do it when the table is quiet or add a validated `CHECK`
+   first by hand.
 
-The same applies to an existing column made NOT NULL under `--stage`: only the
-hint is emitted, and you must write the `SET NOT NULL` migration yourself.
-The hint's closing advice, "(re-run migrate diff after the backfill)", is
-wrong: `diff` prints "no changes" (known bug, story
-`20261106-staged-not-null-is-never-enforced-after-diff-stage`).
+The same applies to an existing column made `NOT NULL`: `diff --stage` writes
+nothing (the snapshot already has the column nullable; the hint is only
+printed when the same run writes other changes), and `diff <name> --enforce-not-null` emits
+the `SET NOT NULL` after the backfill. `--enforce-not-null` only affects
+existing columns: a new `NOT NULL` column without a default still needs
+`--stage`.
 
 A `NOT NULL` column with a default is not staged. A constant default is cheap
-on PostgreSQL 11 and later; a volatile default (for example `random()`)
-rewrites the table. Momo does not warn about either.
+on PostgreSQL 11 and later. A volatile default (`random()`,
+`clock_timestamp()`, `gen_random_uuid()`, `nextval(...)` and a few more
+well-known functions) rewrites the table under `ACCESS EXCLUSIVE`; `diff`
+prints a `risk:` hint for an `ADD COLUMN` with one on an existing table. It
+only knows the built-in names it lists; a function you wrote yourself is not
+checked.
 
 ### Other items
 
@@ -515,7 +524,6 @@ changes only, writes no history and no files, and returns the rest as
 
 Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
 
-- s2: Staged NOT NULL is never enforced after diff --stage (`20261106-staged-not-null-is-never-enforced-after-diff-stage`)
 - s3: Apply does not run chain and fork checks (`20261106-apply-does-not-run-chain-and-fork-checks`)
 - s3: The momo:destructive directive is never enforced (`20261106-the-momo-destructive-directive-is-never-enforced`)
 - s3: Index `Concurrently()` is ignored by diff, which writes a plain CREATE INDEX (`20261106-index-concurrently-is-ignored-by-migrate-diff`)
@@ -523,9 +531,7 @@ Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
 - s3: Index drop, constraint drop, UNIQUE and CHECK are not flagged risky or emitted safely (`20261106-index-drop-constraint-drop-unique-and-check-are-not-flagged`)
 - s3: No way to accept an edited applied migration (`20261106-no-way-to-accept-an-edited-applied-migration`)
 - s4: lock_timeout and statement_timeout of 0s cannot disable the timeout (`20261106-lock-timeout-and-statement-timeout-of-0s-cannot-disable-the`)
-- s4: NOT NULL staging refusal says populated table but fires for any existing table (`20261106-not-null-staging-refusal-says-populated-table-but-fires-for`)
 - s4: apply creates the history table and meta row even when nothing is pending (`20261106-apply-creates-the-history-table-and-meta-row-even-when`)
-- s4: No warning for NOT NULL with a volatile default (`20261106-no-warning-for-not-null-with-a-volatile-default`)
 - s4: --force-unlock is a no-op for every dialect (`20261106-force-unlock-is-a-no-op-for-every-dialect`)
 - s4: History error column is not URL-redacted and --url is visible in the process list (`20261106-history-error-column-is-not-url-redacted-and-url-is-visible`)
 - s4: Rename-candidate exception skips staging for NOT NULL columns (`20261106-rename-candidate-exception-skips-staging-for-not-null`)

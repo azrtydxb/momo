@@ -17,8 +17,8 @@ var (
 	ErrDestructive = errors.New("migrate: destructive change requires --allow-destructive or a -- momo:destructive directive")
 	// ErrBranchConflict: two migration branches modify the same history point.
 	ErrBranchConflict = errors.New("migrate: two migrations share the same parent snapshot")
-	// ErrStagedRequired: a NOT NULL column without default on a populated table needs a staged change.
-	ErrStagedRequired = errors.New("migrate: NOT NULL column without default on a populated table requires a staged change (--stage)")
+	// ErrStagedRequired: a NOT NULL column without default on an existing table needs a staged change.
+	ErrStagedRequired = errors.New("migrate: NOT NULL column without default on an existing table requires a staged change (--stage), or --enforce-not-null once an existing column is backfilled")
 	// ErrNoDown: the migration has no authored down file.
 	ErrNoDown = errors.New("migrate: migration has no authored down file")
 	// ErrNoSnapshot: no snapshot exists for the requested version.
