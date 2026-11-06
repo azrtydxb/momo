@@ -2706,6 +2706,8 @@ Add import `"github.com/azrtydxb/momo/internal/relfixture/comment"`.
 
 - [ ] **Step 5: Commit** — `git add load_test.go && git commit -m "test(relations): nested, filtered and ordered eager loading"`.
 
+Reconciliation note (2026-11-06): Task 11 needed no production change; `finish` already runs nested loads once over the pooled children, and `LoadWhere`/`LoadOrderBy` were already applied in `childQueries`. The red state is mutation-based: skipping the nested load, dropping the where, dropping the order, or loading nested relations for only the first pooled child each fail `TestNestedFilteredEagerLoad`. Beyond the plan's test, `load_nested_test.go` adds `TestNestedLoadDepthAndSharedChildren` (three levels, one statement per level, a child shared by two parents) and `TestNestedLoadFilterAtLeaf` (a nested scope does not leak to the level above). Its helper is named `commentIDs`, not `ids`, so Task 12's `ids` helper in `load_test.go` does not collide.
+
 ---
 
 ## Task 12: Top-N per parent with a window function
