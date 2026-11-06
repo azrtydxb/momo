@@ -970,11 +970,33 @@ func stagedSnapshot(desired, from *schema.Schema, changes []Change, opts DiffOpt
 		}
 	}
 	if !opts.EnforceNotNull && from != nil {
-		for _, t := range from.Tables {
-			for _, col := range t.Columns {
-				if col.Nullable {
-					staged[key{t.Schema, t.Name, col.Name}] = true
+		// Map the previous names through this diff's renames.
+		tableRen := map[[2]string]string{}
+		colRen := map[key]string{}
+		for _, c := range changes {
+			switch c.Kind {
+			case RenameTable:
+				tableRen[[2]string{c.Schema, c.Table}] = c.Name
+			case RenameColumn:
+				if old, ok := c.Before.(*schema.Column); ok {
+					colRen[key{c.Schema, c.Table, old.Name}] = c.Name
 				}
+			}
+		}
+		for _, t := range from.Tables {
+			name := t.Name
+			if n, ok := tableRen[[2]string{t.Schema, t.Name}]; ok {
+				name = n
+			}
+			for _, col := range t.Columns {
+				if !col.Nullable {
+					continue
+				}
+				colName := col.Name
+				if n, ok := colRen[key{t.Schema, name, col.Name}]; ok {
+					colName = n
+				}
+				staged[key{t.Schema, name, colName}] = true
 			}
 		}
 	}

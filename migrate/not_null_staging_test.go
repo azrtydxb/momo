@@ -199,6 +199,57 @@ func TestStagedColumnsCarriedThroughALaterStageDiff(t *testing.T) {
 	}
 }
 
+// stageThenRename stages docs.tenant in m2, applies rename (with --stage) in
+// m3 and checks the renamed column is still nullable in m3's snapshot and
+// that enforce emits SET NOT NULL for it.
+func stageThenRename(t *testing.T, opts migrate.DiffOptions, rename func(*schema.Schema), table, column string) {
+	t.Helper()
+	ctx := context.Background()
+	files := initFiles(t)
+	d2 := docsSchema()
+	d2.Tables[0].Columns = append(d2.Tables[0].Columns, schema.Column{Name: "tenant", Type: "BIGINT"})
+	e2 := offlineEngine(t, mapFS(files), time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC))
+	m2, err := e2.Diff(ctx, d2, "add_tenant", migrate.DiffOptions{Stage: true})
+	if err != nil || m2 == nil {
+		t.Fatal(m2, err)
+	}
+
+	d3 := docsSchema()
+	d3.Tables[0].Columns = append(d3.Tables[0].Columns, schema.Column{Name: "tenant", Type: "BIGINT"})
+	rename(d3)
+	opts.Stage = true
+	e3 := offlineEngine(t, withMigrations(files, m2), time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC))
+	m3, err := e3.Diff(ctx, d3, "rename", opts)
+	if err != nil || m3 == nil {
+		t.Fatal(m3, err)
+	}
+	if col := findColumn(snapshotOf(t, m3), table, column); col == nil || !col.Nullable {
+		t.Fatalf("%s.%s is still nullable in the database, the snapshot must say so: %+v", table, column, col)
+	}
+
+	e4 := offlineEngine(t, withMigrations(files, m2, m3), time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC))
+	m4, err := e4.Diff(ctx, d3, "enforce", migrate.DiffOptions{EnforceNotNull: true})
+	if err != nil || m4 == nil {
+		t.Fatalf("enforce: %v %v", m4, err)
+	}
+	if !strings.Contains(upOf(m4), `"`+column+`" SET NOT NULL`) {
+		t.Fatalf("enforce must emit SET NOT NULL for %s:\n%s", column, upOf(m4))
+	}
+}
+
+func TestStagedColumnSurvivesATableRename(t *testing.T) {
+	stageThenRename(t, migrate.DiffOptions{RenameTables: map[string]string{"docs": "documents"}},
+		func(s *schema.Schema) { s.Tables[0].Name = "documents" }, "documents", "tenant")
+}
+
+func TestStagedColumnSurvivesAColumnRename(t *testing.T) {
+	stageThenRename(t, migrate.DiffOptions{RenameColumns: map[string]string{"docs.tenant": "tenant_id"}},
+		func(s *schema.Schema) {
+			cols := s.Tables[0].Columns
+			cols[len(cols)-1].Name = "tenant_id"
+		}, "docs", "tenant_id")
+}
+
 func TestEnforceNotNullDoesNotAuthorizeNewColumns(t *testing.T) {
 	ctx := context.Background()
 	desired := docsSchema()
