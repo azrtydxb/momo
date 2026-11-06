@@ -79,8 +79,8 @@ func versions(t *testing.T) []string {
 
 func TestUpgradeKeepsData(t *testing.T) {
 	ctx := context.Background()
-	bin := momoBinary(t)
 	url := testdb.PostgresURLFor(t, scratch(t))
+	bin := momoBinary(t)
 	v := versions(t)
 	if len(v) != 3 {
 		t.Fatalf("want 3 migrations (init, add_plan, rename_name), found %v", v)

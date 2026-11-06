@@ -61,8 +61,8 @@ func mustCLI(t *testing.T, bin, url string, args ...string) string {
 
 func TestCustomMigrationsRunBesideGeneratedOnes(t *testing.T) {
 	ctx := context.Background()
-	bin := momoBinary(t)
 	url := testdb.PostgresURLFor(t, testdb.ScratchDatabase(t, "custom_sql_"))
+	bin := momoBinary(t)
 
 	// The directory is valid: every file is in momo.sum, every migration has a
 	// snapshot, and the custom ones leave the schema as their parent had it.

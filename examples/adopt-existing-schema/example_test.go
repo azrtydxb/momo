@@ -102,8 +102,8 @@ func legacyDatabase(ctx context.Context, t *testing.T) (url string, conn *pgx.Co
 
 func TestAdoptLegacyDatabase(t *testing.T) {
 	ctx := context.Background()
-	bin := momoBinary(t)
 	url, conn := legacyDatabase(ctx, t)
+	bin := momoBinary(t)
 	v := versions(t)
 	if len(v) != 2 {
 		t.Fatalf("want 2 migrations (init, add_order_status), found %v", v)
@@ -157,8 +157,8 @@ func TestAdoptLegacyDatabase(t *testing.T) {
 // ends with the same schema, so every environment converges.
 func TestNewDatabaseGetsTheSameSchema(t *testing.T) {
 	ctx := context.Background()
-	bin := momoBinary(t)
 	url := testdb.PostgresURLFor(t, testdb.ScratchDatabase(t, "adopt_new_"))
+	bin := momoBinary(t)
 	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)

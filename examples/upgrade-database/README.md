@@ -31,8 +31,12 @@ offline and never touches a database. Run it again with nothing changed and it
 prints `no changes`.
 
 A new `NOT NULL` column is safe on a table with rows only when it has a
-default. Without one `diff` refuses; `momo migrate help` describes `--stage`,
-which stages such a column.
+default. Without one `diff` refuses. Do not rely on `--stage` in v0.1.0: it
+splits the change into add-nullable, backfill and `SET NOT NULL` steps, but the
+`NOT NULL` is never enforced afterwards (known issue s2, story
+`20261106-staged-not-null-is-never-enforced-after-diff-stage`). Give the column
+a default instead, as `Plan` does here, or write the `SET NOT NULL` migration
+yourself as a custom migration (see `examples/custom-sql-migration`).
 
 A column rename needs to be named. Without it `diff` sees a dropped column and
 a new one, and refuses the drop as destructive:
@@ -63,7 +67,8 @@ momo migrate drift
 - `generate --check` writes nothing. It exits 1 and prints `stale: <path>` when
   a model changed and `momo generate` was not run. Run it in CI.
 - `migrate validate` checks the files in `migrations/` against `momo.sum`
-  without a database.
+  without a database. Run it in CI too. `diff` updates `momo.sum` itself; after
+  editing a migration file by hand, run `momo migrate hash` to accept the edit.
 - `migrate drift` compares the live database with the last applied snapshot.
   It exits 1 and names what differs, for example a column someone added with
   `ALTER TABLE` outside Momo.

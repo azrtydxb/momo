@@ -47,18 +47,35 @@ Do this before the next `momo migrate diff`, which builds on the latest snapshot
 - **Transactions.** Each file runs in one transaction. A `-- momo:no-transaction`
   directive in the leading comment block runs its statements outside one. Use it
   for statements PostgreSQL refuses in a transaction, such as `VACUUM` and
-  `CREATE INDEX CONCURRENTLY`, and put one statement in the file.
+  `CREATE INDEX CONCURRENTLY`, and put one statement in the file. The directive
+  applies to the whole file: every statement in it loses atomicity, and a
+  failure part-way leaves the earlier statements committed (see "Known issues in
+  v0.1.0" in `docs/migrations.md`, which also covers recovery).
 - **Directives.** An unknown `-- momo:` directive is an error. The others are
   `destructive` (allows a drop in a generated migration) and `generated`.
 
 ## CONCURRENTLY
 
 In v0.1.0 `momo migrate diff` writes a plain `CREATE UNIQUE INDEX`, which blocks
-writes while it builds, even if the model asks for `Concurrently()`. For a large
+writes while it builds, even if the model asks for `Concurrently()`. This is a
+known bug (story `20261106-index-concurrently-is-ignored-by-migrate-diff`), and the edit below is the workaround. For a large
 table, edit the generated file as in `..._unique_email_norm.up.sql`: add
 `CONCURRENTLY` and the `-- momo:no-transaction` directive, keep the snapshot, then
-run `momo migrate hash`. If a concurrent build fails, PostgreSQL leaves an
+run `momo migrate hash` to refresh `momo.sum`. Because the file is edited
+generated output, it keeps its `-- momo:generated` line and its snapshot; only
+the hand-written files lack both. If a concurrent build fails, PostgreSQL leaves an
 invalid index behind; `momo migrate drift` reports it.
+
+## CI
+
+```sh
+momo generate --check
+momo migrate validate
+```
+
+`generate --check` fails when the models changed without `momo generate`;
+`validate` fails when a file differs from `momo.sum`, so a hand edit without
+`momo migrate hash` is caught offline.
 
 ## Run it
 

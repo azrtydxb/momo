@@ -62,7 +62,20 @@ The legacy schema has to be spelled the way Momo reads it. In this example:
 
 When the check fails, change the models to describe the database as it is. If
 the difference is deliberate, such as a table Momo should ignore, add it to
-`Config.Exclude`, or pass `--force` to record the baseline anyway.
+`migrate.exclude` (a list of glob patterns) in `momo.yaml`, or pass `--force` to record the baseline anyway.
+
+## CI
+
+After baselining, the normal checks apply:
+
+```sh
+momo generate --check
+momo migrate validate
+```
+
+`generate --check` fails when the models changed without `momo generate`.
+`validate` checks the files in `migrations/` against `momo.sum`; if you edit one,
+run `momo migrate hash` to accept it.
 
 ## Run it
 
