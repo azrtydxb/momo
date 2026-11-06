@@ -284,8 +284,9 @@ func runInsert[T any](ctx context.Context, q Querier, iq InsertQuery[T], m *T) (
 // unique index (WHERE deleted_at IS NULL) would let the new row in, but
 // FindOrCreate cannot target it: ON CONFLICT (key) without the index predicate
 // does not match a partial index and the database rejects the statement. For a
-// key that soft-deleted rows may release, use Insert with OnConflict(key).Where
-// (the index predicate).DoNothing and re-select yourself. A model without a
+// key that soft-deleted rows may release, use
+// Insert(...).OnConflict(key).Where(indexPredicate).DoNothing() and re-select
+// yourself. A model without a
 // soft-delete column is unaffected.
 //
 // Under READ COMMITTED the conflicting insert waits for a concurrent
