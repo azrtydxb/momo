@@ -2561,6 +2561,8 @@ Important: `keyString` normalization (Task 1) is what makes the driver-returned 
 
 - [ ] **Step 5: Commit** — `git add load.go load_test.go && git commit -m "feat(relations): many-to-many eager loading through a join table"`.
 
+Reconciliation note (2026-11-06): Task 9 differs from the sketch in four ways. (1) The per-chunk statement is built by `chunkQuery` (plain and join shapes) instead of a separate `m2mQuery` method, so `childQueries` keeps one loop. (2) The bind budget and the "scope leaves no room" check use the join table's parent key width (`len(Through.ParentCols)`), because that is the tuple the join statement binds, not `len(ChildCols)`. (3) `consume` skips rows with a NULL holder and collapses duplicated join-table rows by (parent key, child key) when `ChildCols` equals `ChildPK`, so a join table without a primary key never duplicates a child; with a non-primary child key no collapsing is done. (4) `Through` carries no `Meta`, so soft-delete is applied to the far table only; join-table rows are never filtered by a soft-delete column. Children shared by several parents are copied per parent (value slices), never aliased. The chunking test lowers `MaxParams` on a dialect copy (`WithMaxParams` is added separately).
+
 ---
 
 ## Task 10: Polymorphic, self-referencing, back-references and explicit join model

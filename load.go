@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
+	"strconv"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -23,9 +25,10 @@ type pending[P, C any] struct {
 	groups  map[string][]int // parent key -> parent indexes
 	keys    [][]any          // distinct parent keys, first-seen order
 	queries []Compiled
-	pool    []C            // child rows, in query order
-	owners  [][]int        // owners[j]: parent indexes that receive pool[j]
-	ev      *RelationEvent // event reported to relation hooks
+	pool    []C                 // child rows, in query order
+	owners  [][]int             // owners[j]: parent indexes that receive pool[j]
+	seen    map[string]struct{} // many-to-many: (parent key, child key) pairs already pooled
+	ev      *RelationEvent      // event reported to relation hooks
 }
 
 // prepareWith validates the descriptor, clears existing associations and
@@ -119,12 +122,44 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var c C
-		if err := scanChild(pd.r, rows, &c); err != nil {
-			return pd.wrap(err)
-		}
-		key, ok := pd.r.ChildKey(&c)
-		if !ok {
-			continue
+		var key []any
+		if pd.r.Through != nil {
+			holders := make([]any, len(pd.r.Through.ParentCols))
+			dest := make([]any, 0, len(pd.r.ChildMeta.Columns)+len(holders))
+			for i := range pd.r.ChildMeta.Columns {
+				dest = append(dest, pd.r.ChildMeta.Ptr(&c, i))
+			}
+			for i := range holders {
+				dest = append(dest, &holders[i])
+			}
+			if err := rows.Scan(dest...); err != nil {
+				return pd.wrap(err)
+			}
+			if hasNilPart(holders) {
+				continue
+			}
+			key = holders
+			if pd.dedupeJoin() {
+				if ck, ok := pd.r.ChildKey(&c); ok {
+					id := keyString(holders) + "\x00" + keyString(ck)
+					if _, dup := pd.seen[id]; dup {
+						continue // duplicated join row: one child per (parent, child) pair
+					}
+					if pd.seen == nil {
+						pd.seen = map[string]struct{}{}
+					}
+					pd.seen[id] = struct{}{}
+				}
+			}
+		} else {
+			if err := scanChild(pd.r, rows, &c); err != nil {
+				return pd.wrap(err)
+			}
+			k, ok := pd.r.ChildKey(&c)
+			if !ok {
+				continue
+			}
+			key = k
 		}
 		owners := pd.groups[keyString(key)]
 		if len(owners) == 0 {
@@ -134,6 +169,13 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 		pd.owners = append(pd.owners, owners)
 	}
 	return pd.wrap(rows.Err())
+}
+
+// dedupeJoin reports whether duplicated join-table rows can be collapsed by
+// the child key: only when the relation's child key is the child primary key,
+// so two rows with the same key are the same child.
+func (pd *pending[P, C]) dedupeJoin() bool {
+	return slices.Equal(pd.r.ChildCols, pd.r.ChildPK)
 }
 
 // wrap classifies a scan or iteration error like a query error, tagged Op "load".
@@ -196,17 +238,40 @@ func (r *Relation[P, C]) childQueries(q Querier, keys [][]any, cfg *loadConfig) 
 	if r.Discriminator != nil {
 		scopeArgs++
 	}
-	if d.MaxParams > 0 && scopeArgs+len(r.ChildCols) > d.MaxParams {
+	ncols := len(r.ChildCols)
+	if r.Through != nil {
+		ncols = len(r.Through.ParentCols) // the join query binds the parent key
+	}
+	if d.MaxParams > 0 && scopeArgs+ncols > d.MaxParams {
 		return nil, &Error{Kind: ErrValidation, Op: "load", Table: r.Child.Name,
 			Err: fmt.Errorf("%s: scope binds %d arguments, leaving no room for a key under the %d-parameter limit", r.Name, scopeArgs, d.MaxParams)}
 	}
 	reserved := 16 + scopeArgs
-	budget := keysPerStatement(d, len(r.ChildCols), reserved)
+	budget := keysPerStatement(d, ncols, reserved)
 	var out []Compiled
 	for start := 0; start < len(keys); start += budget {
 		end := min(start+budget, len(keys))
 		chunk := keys[start:end]
-		c, err := compile(d, func(b *Builder) {
+		c, err := r.chunkQuery(d, chunk, cfg)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// chunkQuery compiles the statement for one chunk of parent keys. A
+// many-to-many relation joins the join table and projects its parent key
+// columns as momo_key_N holders, because the child row itself does not carry
+// the parent key:
+//
+//	SELECT child.cols..., jt.parent_col AS momo_key_0, ...
+//	FROM child INNER JOIN jt ON jt.child_col = child.key_col ...
+//	WHERE (jt.parent_cols) IN (keys) AND scope ORDER BY ...
+func (r *Relation[P, C]) chunkQuery(d *dialect.Dialect, chunk [][]any, cfg *loadConfig) (Compiled, error) {
+	if r.Through == nil {
+		return compile(d, func(b *Builder) {
 			b.WriteString("SELECT ")
 			r.writeChildColumns(b)
 			b.WriteString(" FROM ")
@@ -217,12 +282,36 @@ func (r *Relation[P, C]) childQueries(q Querier, keys [][]any, cfg *loadConfig) 
 			b.WriteString(" ORDER BY ")
 			r.writeOrder(b, cfg)
 		})
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, c)
 	}
-	return out, nil
+	jt := r.Through.Table
+	return compile(d, func(b *Builder) {
+		b.WriteString("SELECT ")
+		r.writeChildColumns(b)
+		for i, c := range r.Through.ParentCols {
+			b.WriteString(", ")
+			b.QualifiedIdent(jt.Qualifier(), c)
+			b.WriteString(" AS ")
+			b.Ident("momo_key_" + strconv.Itoa(i))
+		}
+		b.WriteString(" FROM ")
+		r.Child.appendFrom(b)
+		b.WriteString(" INNER JOIN ")
+		jt.appendFrom(b)
+		b.WriteString(" ON ")
+		for i, c := range r.Through.ChildCols {
+			if i > 0 {
+				b.WriteString(" AND ")
+			}
+			b.QualifiedIdent(jt.Qualifier(), c)
+			b.WriteString(" = ")
+			b.QualifiedIdent(r.Child.Qualifier(), r.ChildCols[i])
+		}
+		b.WriteString(" WHERE ")
+		inTuple{table: jt.Qualifier(), cols: r.Through.ParentCols, keys: chunk}.AppendSQL(b)
+		r.writeScope(b, cfg)
+		b.WriteString(" ORDER BY ")
+		r.writeOrder(b, cfg)
+	})
 }
 
 func (r *Relation[P, C]) writeChildColumns(b *Builder) {

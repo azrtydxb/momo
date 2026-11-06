@@ -453,3 +453,84 @@ func TestEagerLoadChunking(t *testing.T) {
 		}
 	}, momo.WithHook(h), momo.WithMaxParams(4))
 }
+
+func TestEagerLoadManyToMany(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		docs := allDocs(t, db)
+		h.After = nil
+		if err := momo.Load(ctx, db, docs, document.Tags); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.After) != 1 {
+			t.Fatalf("many-to-many must be one statement, got %d", len(h.After))
+		}
+		names := map[int64][]string{}
+		for _, d := range docs {
+			for _, tg := range d.Tags {
+				names[d.ID] = append(names[d.ID], tg.Name)
+			}
+		}
+		if fmt.Sprint(names[1]) != "[go db]" || len(names[2]) != 0 || len(names[3]) != 1 || names[3][0] != "db" {
+			t.Fatalf("tags by doc: %v", names)
+		}
+	})
+}
+
+// LoadOrderBy orders each parent's tags; without the order clause the join
+// would return them in key order (go, db).
+func TestEagerLoadManyToManyOrder(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		docs := allDocs(t, db)
+		name := momo.NewColumn[string]("tags", "name", 0)
+		if err := momo.Load(context.Background(), db, docs, document.Tags, momo.LoadOrderBy[models.Tag](name.Desc())); err != nil {
+			t.Fatal(err)
+		}
+		if docs[0].Tags[0].Name != "go" || docs[0].Tags[1].Name != "db" {
+			t.Fatalf("desc order: %+v", docs[0].Tags)
+		}
+		if err := momo.Load(context.Background(), db, docs, document.Tags, momo.LoadOrderBy[models.Tag](name.Asc())); err != nil {
+			t.Fatal(err)
+		}
+		if docs[0].Tags[0].Name != "db" || docs[0].Tags[1].Name != "go" {
+			t.Fatalf("asc order: %+v", docs[0].Tags)
+		}
+	})
+}
+
+// A tag shared by two parents is delivered to both as independent copies, in
+// per-parent order, and stale tags are cleared on reload. A parent whose key
+// extractor reports no key stays empty.
+func TestEagerLoadManyToManySharedCopiesStaleAndNull(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		docs := allDocs(t, db)
+		docs[1].Tags = []models.Tag{{ID: 99, Name: "stale"}} // doc 2 has no tags
+		docs[3].Tags = []models.Tag{{ID: 98, Name: "stale"}} // doc 4: NULL key below
+		rel := document.Tags
+		rel.ParentKey = func(p *models.Document) ([]any, bool) { return []any{p.ID}, p.ID != 4 }
+		h.After = nil
+		if err := momo.Load(ctx, db, docs, rel); err != nil {
+			t.Fatal(err)
+		}
+		if len(docs[1].Tags) != 0 || len(docs[3].Tags) != 0 {
+			t.Fatalf("stale tags survived: %+v %+v", docs[1].Tags, docs[3].Tags)
+		}
+		if len(docs[0].Tags) != 2 || len(docs[2].Tags) != 1 {
+			t.Fatalf("tags: doc1=%+v doc3=%+v", docs[0].Tags, docs[2].Tags)
+		}
+		if docs[0].Tags[0].Name != "go" || docs[0].Tags[1].Name != "db" || docs[2].Tags[0].Name != "db" {
+			t.Fatalf("order or shared tag wrong: %+v %+v", docs[0].Tags, docs[2].Tags)
+		}
+		docs[0].Tags[1].Name = "mutated"
+		if docs[2].Tags[0].Name != "db" {
+			t.Fatal("a tag shared by two parents aliases the same memory")
+		}
+		if n := relationStatements(h); n != 1 {
+			t.Fatalf("want 1 statement, got %d", n)
+		}
+	})
+}
