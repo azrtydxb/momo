@@ -293,15 +293,8 @@ func readAndChange(ctx context.Context, q momo.Querier, authorID int64) error {
 
 `OnConflict(...).DoUpdate(...)` takes a condition with `Where`, so one statement can take a lease: insert the row, or update it only when the current lease expired or is already yours. `RowsAffected` is 1 when you hold the lease and 0 when someone else does. In the condition, columns mean the existing row and `Excluded()` means the proposed one.
 
-```go
-res, err := momo.Insert[models.Lock](q).
-	Values(lock.Name.Set("nightly"), lock.Holder.Set(me), lock.Until.Set(until)).
-	OnConflict(lock.Name).
-	DoUpdate(lock.Holder.SetExcluded(), lock.Until.SetExcluded()).
-	Where(momo.Or(lock.Until.Le(now), lock.Holder.Eq(me))).
-	Exec(ctx)
-held := err == nil && res.RowsAffected == 1
-```
+The full example, with the model and the partial-index form, is in
+[docs/ai-guide.md](docs/ai-guide.md) under upserts.
 
 To conflict on a partial unique index, give the index predicate with `OnConflict(cols...).Where(...)` before `DoNothing` or `DoUpdate`. Both forms work on PostgreSQL and SQLite; MySQL returns `ErrUnsupported`.
 
