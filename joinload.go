@@ -149,36 +149,50 @@ func (j joinedLoader[P, C]) joinWidth() int { return len(j.rel.ChildMeta.Columns
 // NULL in such a column gets the same treatment as in normal scanning (Scan(nil)
 // for a sql.Scanner, nil for slices, an error otherwise).
 type joinBinding[P, C any] struct {
-	rel  *Relation[P, C]
-	c    *C
-	dst  []reflect.Value // destination pointer (*E) per column
-	tmp  []reflect.Value // **E holder per column; invalid when scanned directly
-	keys []bool          // column is one of the relation's child key columns
+	rel     *Relation[P, C]
+	scratch *C              // the row is scanned here; a matched row is copied out
+	dst     []reflect.Value // destination pointer (*E) per column, into scratch
+	tmp     []reflect.Value // **E holder per column, allocated once; invalid when scanned directly
+	targets []any           // what the driver scans into, per column
+	keys    []bool          // column is one of the relation's child key columns
 }
 
+// joinBinder builds the per-scan state once: the scratch child, the
+// destination pointers into it and the **E holders. bind only resets them per
+// row, so a joined row costs one child allocation (on a match) instead of a
+// fresh child, reflect values and holders for every row.
 func (j joinedLoader[P, C]) joinBinder() joinBinder[P] {
 	n := len(j.rel.ChildMeta.Columns)
-	b := &joinBinding[P, C]{rel: &j.rel, dst: make([]reflect.Value, n), tmp: make([]reflect.Value, n), keys: make([]bool, n)}
+	b := &joinBinding[P, C]{rel: &j.rel, scratch: new(C), dst: make([]reflect.Value, n),
+		tmp: make([]reflect.Value, n), targets: make([]any, n), keys: make([]bool, n)}
 	for i, col := range j.rel.ChildMeta.Columns {
 		b.keys[i] = slices.Contains(j.rel.ChildCols, col.Name)
+		p := j.rel.ChildMeta.Ptr(b.scratch, i)
+		v := reflect.ValueOf(p)
+		b.dst[i] = v
+		if v.Elem().Kind() == reflect.Pointer {
+			b.targets[i] = p // nullable: NULL leaves the pointer nil
+			continue
+		}
+		b.tmp[i] = reflect.New(reflect.PointerTo(v.Elem().Type()))
+		b.targets[i] = b.tmp[i].Interface()
 	}
 	return b
 }
 
+// bind resets the scratch child and the holders for the next row and points
+// dst at the destinations. Zeroing the scratch drops its pointers rather than
+// writing through them, so a child copied out of an earlier row keeps its own
+// pointees.
 func (b *joinBinding[P, C]) bind(dst []any) {
-	b.c = new(C)
-	for i := range b.dst {
-		p := b.rel.ChildMeta.Ptr(b.c, i)
-		v := reflect.ValueOf(p)
-		b.dst[i] = v
-		if v.Elem().Kind() == reflect.Pointer {
-			b.tmp[i] = reflect.Value{} // nullable: NULL leaves the pointer nil
-			dst[i] = p
-			continue
+	var zero C
+	*b.scratch = zero
+	for _, t := range b.tmp {
+		if t.IsValid() {
+			t.Elem().SetZero()
 		}
-		b.tmp[i] = reflect.New(reflect.PointerTo(v.Elem().Type()))
-		dst[i] = b.tmp[i].Interface()
 	}
+	copy(dst, b.targets)
 }
 
 // null reports whether column i of the scanned row was NULL.
@@ -190,7 +204,8 @@ func (b *joinBinding[P, C]) null(i int) bool {
 }
 
 // assign sets the parent's field from the scanned row: nil when the key columns
-// are NULL (no child matched), else the scratch child.
+// are NULL (no child matched), else a copy of the scratch child. A NULL in a
+// non-nullable column of a matched row returns an error naming the column.
 func (b *joinBinding[P, C]) assign(p *P) error {
 	matched := false
 	for i, k := range b.keys {
@@ -208,14 +223,28 @@ func (b *joinBinding[P, C]) assign(p *P) error {
 		}
 		if t.Elem().IsNil() {
 			if err := scanNull(b.dst[i].Interface()); err != nil {
-				return err
+				return b.columnErr(i, err)
 			}
 			continue
 		}
 		b.dst[i].Elem().Set(t.Elem().Elem())
 	}
-	b.rel.SetOne(p, b.c)
+	c := new(C)
+	*c = *b.scratch
+	b.rel.SetOne(p, c)
 	return nil
+}
+
+// columnErr names the child column i in err.
+func (b *joinBinding[P, C]) columnErr(i int, err error) error {
+	col := b.rel.ChildMeta.Columns[i].Name
+	var me *Error
+	if errors.As(err, &me) {
+		c := *me
+		c.Table, c.Column = b.rel.Child.Name, col
+		return &c
+	}
+	return &Error{Kind: ErrValidation, Op: "scan", Table: b.rel.Child.Name, Column: col, Err: err}
 }
 
 // scanNull stores a NULL into dst, a pointer to a field of a joined child. A

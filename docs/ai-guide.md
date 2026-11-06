@@ -651,8 +651,9 @@ dead, _ := momo.Select[models.Task](q).OnlyDeleted().All(ctx)
   loads and `Has`/`HasNo` of a model. It does NOT apply to raw SQL (`momo.SQL`,
   `momo.Exec`, `momo.Scalars`) or to projections (see "Projections" in section
   4): add `deleted_at IS NULL` / `<table>.DeletedAt.IsNull()` yourself.
-- A soft-deleted row still occupies its unique keys. `FindOrCreate` returns the
-  soft-deleted row. Use partial unique indexes (`Where("deleted_at IS NULL")`) if
+- A soft-deleted row still occupies its unique keys. `FindOrCreate` does not
+  treat it as found: the insert conflicts and it returns `ErrUniqueViolation`
+  (it never returns or restores the deleted row). Use partial unique indexes (`Where("deleted_at IS NULL")`) if
   keys must be reusable.
 - `Delete.Model(&m)` deletes by primary key (`ErrNotFound` if missing).
 
@@ -808,6 +809,7 @@ Decision table:
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Children for rows you already fetched                       | `momo.Load(ctx, q, parents, rel, opts...)`: one statement per relation, not per parent                                                                                                                                 |
 | Several relations for the same parents                      | `momo.LoadAll(ctx, q, parents, rel1, rel2.Scope(...), rel3.Then(...))`                                                                                                                                                 |
+| Filter, order and nest one relation                         | `rel.Scope(momo.LoadWhere[C](...), momo.LoadOrderBy[C](...)).Then(nested)`                                                                                                                                             |
 | Load as part of a query (`All`/`One`/`First`)               | a select query's `.Preload(rel, ...)`                                                                                                                                                                                  |
 | Belongs-to with no extra round trip                         | `Preload(rel.Joined())`: LEFT JOIN in the parent statement                                                                                                                                                             |
 | Only some children, ordered, top-N per parent, soft-deleted | `rel.Scope(opts...)` with `LoadWhere`, `LoadOrderBy`, `LoadPerParentLimit`, `LoadWithDeleted`, `LoadOnlyDeleted` (each generic over the child type, as in the example below; `Load` accepts the same options directly) |
@@ -847,11 +849,12 @@ Rules and limits:
 - `Load`/`LoadAll`/`Preload` clear the association first, so a parent with no
   children is empty (nil), never stale. NULL-key parents get an empty
   association. Parent order never changes.
-- `Scope(...)` and `Then(...)` CANNOT be combined on one relation (each returns a
-  loader without the other). WORKAROUND: load the scoped relation first, then
-  call `Load` on the children held inside each parent:
-  `for i := range authors { err = momo.Load(ctx, db, authors[i].Documents, document.Comments) }`.
-  Pass the slice stored in the parent, not a flattened copy.
+- `Scope(...)` and `Then(...)` combine: both return a `RelationLoader` with
+  `Scope` and `Then` methods, so
+  `document.Comments.Scope(momo.LoadWhere[models.Comment](comment.Approved.Eq(true))).Then(comment.Author)`
+  filters the comments and loads each one's author in one loader. The options
+  apply to that relation's children only; nested loaders carry their own; the
+  nested level runs over the surviving children only (one statement per level).
 - `Joined()` is belongs-to only, and only when the child key is the child's
   primary key or a single unique column. Has-one, has-many, many-to-many give
   `ErrUnsupported`. `momo.Load(ctx, db, docs, X.Joined())` does not compile
@@ -893,10 +896,14 @@ Rules and limits:
   belongs-to children first, has-one/has-many after the parent, many-to-many
   children inserted then linked; hooks, timestamps and defaults run. On a `*Tx` it
   runs in a savepoint. Nil parent, a model as its own child, or a NULL key that
-  must be copied: `ErrValidation`. Use `Link` for existing rows.
+  must be copied: `ErrValidation`. Has-many and many-to-many children go in as
+  chunked bulk inserts (1000 children = one statement). A dialect without
+  `RETURNING` gives `ErrUnsupported` before a transaction opens. DON'T list a
+  many-to-many relation whose children are already stored: they are inserted
+  again and fail with `ErrUniqueViolation`; use `Link` for existing rows.
 - `FindOrCreate` needs a UNIQUE constraint on exactly the key columns. It
-  overwrites your struct with the stored row when it exists and counts
-  soft-deleted rows. Under REPEATABLE READ/SERIALIZABLE the re-select can return
+  overwrites your struct with the stored row when it exists; a soft-deleted
+  row is not found, it fails with `ErrUniqueViolation`. Under REPEATABLE READ/SERIALIZABLE the re-select can return
   `ErrNotFound`: retry the transaction. Empty key or unmapped column:
   `ErrValidation`.
 - Tag-declared relations need a single-column primary key on both models.
@@ -1176,7 +1183,8 @@ Examples: every `examples/*/example_test.go`, harness
     `ErrSerialization` with jittered backoff; never retry inside it.
 13. Check errors with `errors.Is` against the `momo.Err*` sentinels.
 14. Load relations explicitly (`Load`, `LoadAll`, `Preload`); never assume a field
-    is populated. `Scope` and `Then` cannot be combined on one relation.
+    is populated. `Scope` and `Then` chain on one relation:
+    `rel.Scope(opts...).Then(nested...)`.
 15. `Joined()` is belongs-to only; `Link`/`Unlink`/`Replace`/`Count` are not for
     belongs-to; helpers skip hooks and `UpdatedAt`.
 16. `FindOrCreate` and `OnConflict` need a matching UNIQUE constraint; many-to-many

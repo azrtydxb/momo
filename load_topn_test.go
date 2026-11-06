@@ -237,11 +237,10 @@ func TestTopNPerParentNested(t *testing.T) {
 		relfixture.SeedBasic(t, db)
 		docs := allDocs(t, db)
 		h.Events = nil
-		l := momo.ScopeThen(document.Taggings,
-			[]momo.LoadOption[models.Tagging]{
-				momo.LoadPerParentLimit[models.Tagging](1),
-				momo.LoadOrderBy[models.Tagging](tagging.Position.Asc()),
-			}, tagging.Tag)
+		l := document.Taggings.Scope(
+			momo.LoadPerParentLimit[models.Tagging](1),
+			momo.LoadOrderBy[models.Tagging](tagging.Position.Asc()),
+		).Then(tagging.Tag)
 		if err := momo.LoadAll(context.Background(), db, docs, l); err != nil {
 			t.Fatal(err)
 		}

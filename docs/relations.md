@@ -230,21 +230,34 @@ err := momo.LoadAll(ctx, db, authors,
 Nested loads run over the children that were kept, so combined with a
 per-parent limit they only load for the survivors.
 
-`Scope` and `Then` cannot be combined on one relation yet: `Scope` returns a
-loader without nested loads and `Then` returns one without options. This is a
-known follow-up. Until it lands, load the scoped relation first and then load
-the nested relation on the children with a second `Load` call. Call `Load` on
-the slice held inside each parent (`parent.Children`), not on a flattened copy,
-or write the results back to the parents yourself:
+`Scope` and `Then` combine on one relation. Both return a `RelationLoader`,
+which has `Scope` and `Then` methods itself, so a filtered, ordered relation
+with nested loads is one loader ("approved comments, newest first, each with
+its author"):
 
 ```go
-err := momo.LoadAll(ctx, db, authors,
-	author.Documents.Scope(momo.LoadPerParentLimit[models.Document](3)),
+err := momo.LoadAll(ctx, db, documents,
+	document.Comments.Scope(
+		momo.LoadWhere[models.Comment](comment.Approved.Eq(true)),
+		momo.LoadOrderBy[models.Comment](comment.ID.Desc()),
+	).Then(comment.Author),
 )
-for i := range authors {
-	err = momo.Load(ctx, db, authors[i].Documents, document.Comments)
-}
 ```
+
+- `Scope(...).Then(...)` and `Then(...).Scope(...)` are the same loader. Calling
+  either more than once accumulates: predicates AND together, order items
+  append, a later `LoadPerParentLimit` replaces an earlier one, nested loaders
+  append. A `RelationLoader` is a value, so a base loader can be shared.
+- The options apply to this relation's children only. Nested loaders carry
+  their own options, so `author.Documents.Then(document.Comments.Scope(...))`
+  scopes the comments, not the documents.
+- The nested level runs once over exactly the children that survived the
+  options, so the statement count stays one per bind-limit chunk at the top
+  and one per level below it. A child excluded by `LoadWhere` is never a
+  nested parent.
+- With no options and no nested loaders a `RelationLoader` behaves like the
+  plain relation. An error or cancelled context at the nested level is
+  returned from `LoadAll`.
 
 ### Chunking
 
@@ -285,7 +298,9 @@ relation loads. With preloads they return `ErrUnsupported`.
 
 `Relation.Joined()` folds a belongs-to relation into the parent statement as a
 LEFT JOIN, so it costs no extra round trip. Pass it to `Preload`. It does not
-work with `Load`, `LoadAll`, `Scope` or `Then`.
+work with `Load`, `LoadAll`, `Scope` or `Then`. A matched joined child with
+NULL in a column its Go field cannot hold fails with `ErrValidation` and an
+error naming the child column (`column=...`).
 
 ```go
 docs, err := momo.Select[models.Document](db).
@@ -492,8 +507,14 @@ err := momo.CreateGraph(ctx, db, &doc,
   appears as its own child fails with `ErrValidation`.
 - Every row goes through the ordinary insert path, so field hooks, automatic
   timestamps, Go-side defaults and validation run as for a plain `Insert`.
-- Many-to-many children are always inserted, not looked up. Link existing rows
-  with `Link` instead.
+- Many-to-many children are always inserted, not looked up. A child that is
+  already stored is inserted again and fails with `ErrUniqueViolation`, which
+  undoes the whole graph. Link existing rows with `Link` instead.
+- Has-many and many-to-many children are inserted with the chunked bulk insert:
+  one multi-row statement per bind-limit chunk, so 1000 children cost one
+  statement, not 1000. A has-one or belongs-to child is a single insert.
+- A dialect without `RETURNING` (MySQL) returns `ErrUnsupported` before a
+  transaction is opened.
 - On a `*DB` the graph runs in a new transaction. On a `*Tx` it runs in a
   savepoint, so a failure undoes the whole graph and leaves your transaction
   usable. A dialect without savepoints returns `ErrUnsupported` there.
@@ -513,11 +534,19 @@ inserted it.
   `INSERT ... ON CONFLICT (key) DO NOTHING`, so the constraint decides the
   winner and concurrent callers never create duplicates; the losers re-select
   the winner's row. Without a constraint on exactly those columns the database
-  rejects the statement. Dialects without `ON CONFLICT` return `ErrUnsupported`.
+  rejects the statement. Dialects without `ON CONFLICT` or `RETURNING` return
+  `ErrUnsupported` before any statement runs.
 - When the row exists, all mapped columns of the model are overwritten by the
   stored values, and its relation fields are reset.
-- Soft-deleted rows count: they still hold the key, so the existing
-  soft-deleted row is returned and no new row is created.
+- A soft-deleted row is not "found". `FindOrCreate` never returns or restores a
+  row you deleted, and it does not create a second row with the same key: the
+  unique constraint still holds the soft-deleted row's key, so the insert
+  conflicts and the call fails with `ErrUniqueViolation` (the deleted row is
+  left untouched, and your model is not overwritten). To reuse the row, restore
+  it first; to create a new one, use a different key. A model without a
+  soft-delete column is unaffected. This is the least surprising choice:
+  returning the deleted row would hand back data the application removed, and
+  restoring it would undo a delete silently.
 - Isolation. Under READ COMMITTED the conflicting insert waits for a concurrent
   transaction and the re-select then sees its row. Under REPEATABLE READ or
   SERIALIZABLE, the re-select can miss a row committed after the snapshot and
@@ -599,7 +628,8 @@ The `Op` field names the operation.
 |                                      | `ErrUnsupported`      | `*Tx` on a dialect without savepoints; identity read-back on a dialect without `RETURNING`                                          |
 | `FindOrCreate`                       | `ErrValidation`       | nil model, empty key, unmapped key column                                                                                           |
 |                                      | `ErrNotFound`         | re-select misses the winner's row under REPEATABLE READ or SERIALIZABLE                                                             |
-|                                      | `ErrUnsupported`      | dialect without `ON CONFLICT`                                                                                                       |
+|                                      | `ErrUniqueViolation`  | the key is held by a soft-deleted row                                                                                               |
+|                                      | `ErrUnsupported`      | dialect without `ON CONFLICT` or `RETURNING`                                                                                        |
 | `UpsertByPK`                         | `ErrValidation`       | nil model                                                                                                                           |
 
 Database errors (unique, foreign key, check, not-null violations, serialization
@@ -607,7 +637,6 @@ failures) are classified the same way as for any other statement.
 
 Known limitations and follow-ups:
 
-- `Scope` and `Then` cannot yet be combined on one relation.
 - Tag-declared relations need single-column primary keys. Composite keys work
   with hand-written descriptors but cannot be expressed with tags.
 - `Joined` covers belongs-to only. Has-one is not joinable.
