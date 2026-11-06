@@ -85,7 +85,11 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		}
 		return one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " ADD CONSTRAINT " + ident(c.Name) + " PRIMARY KEY (" + identList(cols) + ")"), nil
 	case migrate.DropPrimaryKey, migrate.DropUnique, migrate.DropCheck, migrate.DropFK:
-		return one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " DROP CONSTRAINT " + ident(c.Name)), nil
+		ifExists := ""
+		if c.IfExists {
+			ifExists = "IF EXISTS "
+		}
+		return one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " DROP CONSTRAINT " + ifExists + ident(c.Name)), nil
 	case migrate.AddUnique:
 		u, err := get[schema.Unique](c.After)
 		if err != nil {
@@ -113,6 +117,9 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		if err != nil {
 			return nil, err
 		}
+		if c.Partitioned {
+			ix.Concurrently = false // not allowed on a partitioned table
+		}
 		s, err := createIndex(c.Schema, c.Table, ix)
 		if err != nil {
 			return nil, err
@@ -123,11 +130,15 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		if err != nil {
 			return nil, err
 		}
+		concurrently := ix.Concurrently && !c.Partitioned // not allowed on a partitioned table
 		sql := "DROP INDEX "
-		if ix.Concurrently {
+		if concurrently {
 			sql += "CONCURRENTLY "
 		}
-		return []migrate.Statement{{SQL: sql + tableRef(c.Schema, c.Name), NoTx: ix.Concurrently}}, nil
+		if c.IfExists {
+			sql += "IF EXISTS "
+		}
+		return []migrate.Statement{{SQL: sql + tableRef(c.Schema, c.Name), NoTx: concurrently}}, nil
 	case migrate.SetRLS:
 		return renderSetRLS(c)
 	case migrate.CreatePolicy:

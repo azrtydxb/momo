@@ -76,6 +76,59 @@ func TestSplitPairAppliesLockFree(t *testing.T) {
 	}
 }
 
+// TestPartitionedTableConstraintsAndIndexes settles what PostgreSQL accepts on
+// a partitioned table: ADD CONSTRAINT ... CHECK ... NOT VALID followed by
+// VALIDATE CONSTRAINT, a plain unique constraint and a plain index (the
+// Concurrently() request is dropped there). The pair must apply and leave the
+// check validated.
+func TestPartitionedTableConstraintsAndIndexes(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	part := &schema.Partition{Strategy: "range", Key: "RANGE (id)"}
+	base := docsSchema()
+	base.Tables[0].Partition = part
+	base.Tables[0].Indexes = nil
+	first := migratetest.NewEngine(t, mpg.New(), db.Driver(), migratetest.EmptyFS())
+	m1, err := first.Diff(ctx, base, "init", migrate.DiffOptions{})
+	if err != nil || m1 == nil {
+		t.Fatal(m1, err)
+	}
+	e1 := migratetest.NewEngine(t, mpg.New(), db.Driver(), migratetest.FS(m1.Files))
+	if _, err := e1.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	desired := docsSchema()
+	desired.Tables[0].Partition = part
+	desired.Tables[0].Indexes = []schema.Index{{Name: "docs_title", Concurrently: true, Parts: []schema.IndexPart{{Column: "title"}}}}
+	desired.Tables[0].Uniques = []schema.Unique{{Name: "docs_id_title_key", Columns: []string{"id", "title"}}}
+	desired.Tables[0].Checks = []schema.Check{{Name: "docs_id_pos", Expr: "id > 0"}}
+	m2, err := e1.Diff(ctx, desired, "harden", migrate.DiffOptions{})
+	if err != nil || m2 == nil {
+		t.Fatal(m2, err)
+	}
+	files := map[string][]byte{}
+	for k, v := range m1.Files {
+		files[k] = v
+	}
+	for k, v := range m2.Files {
+		files[k] = v
+	}
+	e2 := migratetest.NewEngine(t, mpg.New(), db.Driver(), migratetest.FS(files))
+	if _, err := e2.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`SELECT convalidated::text FROM pg_constraint WHERE conname = 'docs_id_pos' AND conrelid = to_regclass('docs')`,
+		`SELECT (count(*) = 1)::text FROM pg_constraint WHERE conname = 'docs_id_title_key' AND contype = 'u' AND conrelid = to_regclass('docs')`,
+		`SELECT (count(*) = 1)::text FROM pg_indexes WHERE indexname = 'docs_title' AND schemaname = current_schema()`,
+	} {
+		if got := firstValue(t, db, q); got != "true" {
+			t.Errorf("%s = %q, want true", q, got)
+		}
+	}
+}
+
 // TestSplitHeadFailureLeavesNoPartialDDL breaks the transactional head after
 // diff wrote it: its CREATE TABLE must roll back whole, and the tail must not
 // run.

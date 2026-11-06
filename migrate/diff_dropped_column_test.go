@@ -50,9 +50,17 @@ func TestDiffSkipsDropsOfObjectsOnDroppedColumn(t *testing.T) {
 			if !strings.Contains(up, `DROP COLUMN "title"`) {
 				t.Fatalf("column drop missing:\n%s", up)
 			}
-			for _, bad := range []string{"DROP INDEX", "DROP CONSTRAINT"} {
+			// Objects named by column are removed with the column. Objects that
+			// only hold an expression may or may not mention it, so they get an
+			// idempotent drop that is right in both cases.
+			for _, bad := range []string{`DROP INDEX "`, `DROP CONSTRAINT "`, `"docs_title"`, `"docs_title_key"`} {
 				if strings.Contains(up, bad) {
 					t.Fatalf("%s on the dropped column must be left to DROP COLUMN:\n%s", bad, up)
+				}
+			}
+			for _, want := range []string{`DROP INDEX IF EXISTS "docs_lower_title"`, `DROP CONSTRAINT IF EXISTS "docs_title_ne"`} {
+				if !strings.Contains(up, want) {
+					t.Fatalf("expression object needs %s:\n%s", want, up)
 				}
 			}
 		})
@@ -128,5 +136,129 @@ func TestDiffAddUniqueOnPartitionedTable(t *testing.T) {
 	up := string(m.Files[m.Version+"_uq.up.sql"])
 	if m.Next != nil || m.NoTx || strings.Contains(up, "CONCURRENTLY") || !strings.Contains(up, `ADD CONSTRAINT "docs_id_title_key" UNIQUE ("id", "title")`) {
 		t.Fatalf("want a plain transactional ADD CONSTRAINT UNIQUE:\n%s", up)
+	}
+}
+
+// TestDiffExpressionDropsAreIdempotent: whether an expression mentions a
+// dropped column cannot be told reliably (string literals, function and type
+// names, quoted identifiers). Guessing wrong either leaves the constraint in
+// the database or fails the migration, so a drop of an expression-only object
+// on a table that loses columns is DROP ... IF EXISTS.
+func TestDiffExpressionDropsAreIdempotent(t *testing.T) {
+	cases := []struct {
+		name, col, expr string
+	}{
+		{"literal", "note", "id <> length('note')"},
+		{"function name", "length", "id > length('x')"},
+		{"cast", "date", "id::date IS NOT NULL"},
+		{"quoted identifier", "my title", `"my title" <> ''`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			from := docsSchema()
+			from.Tables[0].Columns = append(from.Tables[0].Columns, schema.Column{Name: tc.col, Type: "TEXT", Default: "''"})
+			from.Tables[0].Checks = []schema.Check{{Name: "docs_chk", Expr: tc.expr}}
+			first := offlineEngine(t, fstest.MapFS{}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+			m1, err := first.Diff(ctx, from, "init", migrate.DiffOptions{})
+			if err != nil || m1 == nil {
+				t.Fatal(m1, err)
+			}
+			m, err := offlineEngine(t, mapFS(m1.Files), lockfreeClock).Diff(ctx, docsSchema(), "drop_col", migrate.DiffOptions{AllowDestructive: true})
+			if err != nil || m == nil {
+				t.Fatal(m, err)
+			}
+			up := string(m.Files[m.Version+"_drop_col.up.sql"])
+			if !strings.Contains(up, `DROP CONSTRAINT IF EXISTS "docs_chk"`) {
+				t.Fatalf("want an idempotent explicit drop:\n%s", up)
+			}
+		})
+	}
+}
+
+// TestDiffPartitionedTableIndexesAreNotConcurrent: PostgreSQL rejects CREATE
+// and DROP INDEX CONCURRENTLY on a partitioned table, and in the
+// no-transaction tail that would fail after the head committed. They stay
+// plain statements in the transactional head.
+func TestDiffPartitionedTableIndexesAreNotConcurrent(t *testing.T) {
+	ctx := context.Background()
+	part := &schema.Partition{Strategy: "range", Key: "RANGE (id)"}
+	from := docsSchema()
+	from.Tables[0].Partition = part
+	from.Tables[0].Indexes = append(from.Tables[0].Indexes, schema.Index{
+		Name: "docs_old", Concurrently: true, Parts: []schema.IndexPart{{Column: "title"}, {Column: "id"}},
+	})
+	first := offlineEngine(t, fstest.MapFS{}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	m1, err := first.Diff(ctx, from, "init", migrate.DiffOptions{})
+	if err != nil || m1 == nil {
+		t.Fatal(m1, err)
+	}
+	to := docsSchema()
+	to.Tables[0].Partition = part
+	to.Tables[0].Indexes = append(to.Tables[0].Indexes, schema.Index{
+		Name: "docs_new", Concurrently: true, Parts: []schema.IndexPart{{Column: "id"}, {Column: "title"}},
+	})
+	m, err := offlineEngine(t, mapFS(m1.Files), lockfreeClock).Diff(ctx, to, "swap", migrate.DiffOptions{})
+	if err != nil || m == nil {
+		t.Fatal(m, err)
+	}
+	up := string(m.Files[m.Version+"_swap.up.sql"])
+	if m.Next != nil || m.NoTx || strings.Contains(up, "CONCURRENTLY") ||
+		!strings.Contains(up, `CREATE INDEX "docs_new"`) || !strings.Contains(up, `DROP INDEX "docs_old"`) {
+		t.Fatalf("want plain transactional index statements:\n%s", up)
+	}
+}
+
+// TestDiffNewPartitionedTableIndexIsNotConcurrent: the same for an index
+// declared on a partitioned table that the diff creates.
+func TestDiffNewPartitionedTableIndexIsNotConcurrent(t *testing.T) {
+	d := docsSchema()
+	d.Tables[0].Partition = &schema.Partition{Strategy: "range", Key: "RANGE (id)"}
+	d.Tables[0].Indexes[0].Concurrently = true
+	m, err := offlineEngine(t, fstest.MapFS{}, lockfreeClock).Diff(context.Background(), d, "init", migrate.DiffOptions{})
+	if err != nil || m == nil {
+		t.Fatal(m, err)
+	}
+	up := string(m.Files[m.Version+"_init.up.sql"])
+	if m.Next != nil || m.NoTx || strings.Contains(up, "CONCURRENTLY") || !strings.Contains(up, `CREATE INDEX "docs_title"`) {
+		t.Fatalf("want a plain index in one transactional file:\n%s", up)
+	}
+}
+
+// TestDiffAddCheckOnPartitionedTables: a check added to a partitioned and to a
+// sub-partitioned table is NOT VALID in the head and validated in the tail.
+func TestDiffAddCheckOnPartitionedTables(t *testing.T) {
+	ctx := context.Background()
+	mk := func(withCheck bool) *schema.Schema {
+		s := docsSchema()
+		s.Tables[0].Partition = &schema.Partition{Strategy: "range", Key: "RANGE (id)"}
+		mid := schema.Table{
+			Name:        "docs_mid",
+			Columns:     s.Tables[0].Columns,
+			PrimaryKey:  []string{"id"},
+			PartitionOf: &schema.PartitionOf{Parent: "docs", Bound: "FOR VALUES FROM (0) TO (1000)"},
+			Partition:   &schema.Partition{Strategy: "range", Key: "RANGE (id)"},
+		}
+		s.Tables = append(s.Tables, mid)
+		if withCheck {
+			s.Tables[0].Checks = []schema.Check{{Name: "docs_id_pos", Expr: "id > 0"}}
+			s.Tables[1].Checks = []schema.Check{{Name: "docs_mid_id_pos", Expr: "id > 0"}}
+		}
+		return s
+	}
+	first := offlineEngine(t, fstest.MapFS{}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	m1, err := first.Diff(ctx, mk(false), "init", migrate.DiffOptions{})
+	if err != nil || m1 == nil {
+		t.Fatal(m1, err)
+	}
+	m, err := offlineEngine(t, mapFS(m1.Files), lockfreeClock).Diff(ctx, mk(true), "checks", migrate.DiffOptions{})
+	if err != nil || m == nil || m.Next == nil {
+		t.Fatal(m, err)
+	}
+	head, tail := string(m.Files[m.Version+"_checks.up.sql"]), string(m.Files[m.Next.Version+"_"+m.Next.Name+".up.sql"])
+	for _, c := range []string{"docs_id_pos", "docs_mid_id_pos"} {
+		if !strings.Contains(head, `ADD CONSTRAINT "`+c+`" CHECK (id > 0) NOT VALID`) || !strings.Contains(tail, `VALIDATE CONSTRAINT "`+c+`"`) {
+			t.Fatalf("%s: want NOT VALID in the head and VALIDATE in the tail\nhead:\n%s\ntail:\n%s", c, head, tail)
+		}
 	}
 }

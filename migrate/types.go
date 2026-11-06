@@ -78,7 +78,11 @@ type Change struct {
 	// Partitioned is set on a change to a partitioned table. PostgreSQL rejects
 	// CREATE INDEX CONCURRENTLY there, so the renderer avoids it.
 	Partitioned bool
-	Rebuild     bool // SQLite: requires 12-step rebuild
+	// IfExists asks a drop to be idempotent (DROP ... IF EXISTS): Diff sets it
+	// when it cannot tell whether a column dropped in the same diff already
+	// took the object with it.
+	IfExists bool
+	Rebuild  bool // SQLite: requires 12-step rebuild
 }
 
 // Migration is one migration version.

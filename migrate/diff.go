@@ -376,7 +376,7 @@ func (d *differ) createTable(t *schema.Table) {
 	d.emit(Change{Kind: CreateTable, Schema: t.Schema, Table: t.Name, Name: t.Name, After: cp(*t)})
 	for i := range t.Indexes {
 		ix := &t.Indexes[i]
-		d.emit(Change{Kind: CreateIndex, Schema: t.Schema, Table: t.Name, Name: ix.Name, After: cp(*ix)})
+		d.emit(Change{Kind: CreateIndex, Schema: t.Schema, Table: t.Name, Name: ix.Name, After: cp(*ix), Partitioned: t.Partition != nil})
 	}
 	if rls := effectiveRLS(t.RLS); rls != (schema.RLS{}) {
 		d.emit(Change{Kind: SetRLS, Schema: t.Schema, Table: t.Name, Name: t.Name, After: cp(rls)})
@@ -542,7 +542,7 @@ func (d *differ) primaryKey(fn, tn, to *schema.Table) {
 		return
 	}
 	name := to.Name + "_pkey"
-	if len(fn.PrimaryKey) > 0 && !usesGone(d.gone, fn.PrimaryKey) {
+	if len(fn.PrimaryKey) > 0 && usesGone(d.gone, fn.PrimaryKey) == goneNo {
 		d.emitRisky(Change{Kind: DropPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, Before: slices.Clone(fn.PrimaryKey)})
 	}
 	if len(tn.PrimaryKey) > 0 {
@@ -553,13 +553,13 @@ func (d *differ) primaryKey(fn, tn, to *schema.Table) {
 func (d *differ) uniques(fn, tn, to *schema.Table) {
 	diffNamed(d, fn.Uniques, tn.Uniques, to, func(u schema.Unique) string { return u.Name },
 		func(a, b schema.Unique) bool { return slices.Equal(a.Columns, b.Columns) }, DropUnique, AddUnique,
-		func(u schema.Unique) bool { return usesGone(d.gone, u.Columns) })
+		func(u schema.Unique) goneUse { return usesGone(d.gone, u.Columns) })
 }
 
 func (d *differ) checks(fn, tn, to *schema.Table) {
 	diffNamed(d, fn.Checks, tn.Checks, to, func(c schema.Check) string { return c.Name },
 		func(a, b schema.Check) bool { return a.Expr == b.Expr }, DropCheck, AddCheck,
-		func(c schema.Check) bool { return usesGone(d.gone, nil, c.Expr) })
+		func(c schema.Check) goneUse { return usesGone(d.gone, nil, c.Expr) })
 }
 
 func (d *differ) foreignKeys(fn, tn, to *schema.Table) {
@@ -568,7 +568,7 @@ func (d *differ) foreignKeys(fn, tn, to *schema.Table) {
 			return slices.Equal(a.Columns, b.Columns) && a.RefTable == b.RefTable &&
 				slices.Equal(a.RefColumns, b.RefColumns) &&
 				fkAction(a.OnDelete) == fkAction(b.OnDelete) && fkAction(a.OnUpdate) == fkAction(b.OnUpdate)
-		}, DropFK, AddFK, func(f schema.ForeignKey) bool { return usesGone(d.gone, f.Columns) })
+		}, DropFK, AddFK, func(f schema.ForeignKey) goneUse { return usesGone(d.gone, f.Columns) })
 }
 
 func fkAction(a string) string {
@@ -586,7 +586,7 @@ func fkAction(a string) string {
 func (d *differ) indexes(fn, tn, fo, to *schema.Table) {
 	start := len(d.changes)
 	diffNamed(d, fn.Indexes, tn.Indexes, to, func(i schema.Index) string { return i.Name },
-		indexEqual, DropIndex, CreateIndex, func(i schema.Index) bool {
+		indexEqual, DropIndex, CreateIndex, func(i schema.Index) goneUse {
 			cols, exprs := []string{}, []string{i.Where}
 			for _, p := range i.Parts {
 				cols, exprs = append(cols, p.Column), append(exprs, p.Expr)
@@ -622,19 +622,24 @@ func indexEqual(a, b schema.Index) bool {
 // by an add; a dropped one is a drop; a new one is an add. The emitted Before
 // and After values are the normalized objects.
 //
-// A drop is skipped when onGone reports that the object uses a column this
-// diff drops from the table: PostgreSQL removes such an index or constraint
-// together with the column, so an explicit drop after DROP COLUMN fails. An
-// add records whether the table is partitioned (Change.Partitioned).
-func diffNamed[T any](d *differ, from, to []T, t *schema.Table, name func(T) string, equal func(a, b T) bool, drop, add ChangeKind, onGone func(T) bool) {
+// onGone classifies a dropped object against the columns this diff drops from
+// the table. PostgreSQL removes an index or constraint together with a column
+// it names, so an explicit drop after DROP COLUMN would fail: goneYes skips
+// the drop. goneMaybe (an expression that may mention a dropped column) keeps
+// the drop but makes it DROP ... IF EXISTS, which is right either way. Drops
+// and adds record whether the table is partitioned (Change.Partitioned).
+func diffNamed[T any](d *differ, from, to []T, t *schema.Table, name func(T) string, equal func(a, b T) bool, drop, add ChangeKind, onGone func(T) goneUse) {
 	byName := make(map[string]T, len(from))
 	for _, o := range from {
 		byName[name(o)] = o
 	}
 	for _, o := range from {
 		nw, ok := lookup(to, name, name(o))
-		if (!ok || !equal(o, nw)) && !onGone(o) {
-			d.emitRisky(Change{Kind: drop, Schema: t.Schema, Table: t.Name, Name: name(o), Before: cp(o)})
+		if ok && equal(o, nw) {
+			continue
+		}
+		if use := onGone(o); use != goneYes {
+			d.emitRisky(Change{Kind: drop, Schema: t.Schema, Table: t.Name, Name: name(o), Before: cp(o), Partitioned: t.Partition != nil, IfExists: use == goneMaybe})
 		}
 	}
 	for _, n := range to {
@@ -662,25 +667,39 @@ func goneColumns(fn, tn *schema.Table) map[string]bool {
 	return gone
 }
 
-// usesGone reports whether any of cols is a gone column, or any of exprs
-// mentions one as an identifier.
-func usesGone(gone map[string]bool, cols []string, exprs ...string) bool {
+// goneUse is how a dropped object relates to the columns dropped with it.
+type goneUse int
+
+const (
+	goneNo    goneUse = iota // unrelated: drop it normally
+	goneYes                  // names a dropped column: DROP COLUMN removes it
+	goneMaybe                // an expression that might mention one
+)
+
+// usesGone classifies an object by the columns it lists (cols) and the
+// expressions it holds (exprs). A listed column is certain. An expression is
+// only a "maybe": telling a column reference from a string literal, a function
+// or type name, or a quoted identifier is not reliable, so any mention of a
+// dropped column's name, case-insensitively and anywhere in the text, counts.
+// Too wide a net only makes the drop idempotent.
+func usesGone(gone map[string]bool, cols []string, exprs ...string) goneUse {
 	if len(gone) == 0 {
-		return false
+		return goneNo
 	}
 	for _, c := range cols {
 		if gone[c] {
-			return true
+			return goneYes
 		}
 	}
 	for _, e := range exprs {
-		for _, tok := range strings.FieldsFunc(e, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' }) {
-			if gone[tok] || gone[strings.ToLower(tok)] {
-				return true
+		le := strings.ToLower(e)
+		for g := range gone {
+			if e != "" && strings.Contains(le, strings.ToLower(g)) {
+				return goneMaybe
 			}
 		}
 	}
-	return false
+	return goneNo
 }
 
 // riskNotes names the changes that are not destructive but are risky on a

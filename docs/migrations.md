@@ -384,20 +384,31 @@ or check constraint (both can fail on existing data).
   with `ErrDirty`. The constraint stays `NOT VALID`: it still checks new rows.
   Recovery: fix the offending rows, run
   `ALTER TABLE t VALIDATE CONSTRAINT c;` in `psql`, then
-  `momo migrate resolve --version V --applied` (V is the `_no_tx` version). If
-  the file also holds statements before the `VALIDATE`, they are already
-  committed (see "No-transaction migration fails"). Alternatively fix the
-  rows and use `resolve --version V --rolled-back` to run the file again.
+  `momo migrate resolve --version V --applied` (V is the `_no_tx` version).
+  `resolve --version V --rolled-back` runs the whole file again from its first
+  statement, so it is safe only when the file holds just the failed
+  `VALIDATE`. If earlier statements of the file (a `CREATE UNIQUE INDEX
+CONCURRENTLY`, another `VALIDATE`) already committed, they would fail with
+  "already exists": use `--applied` after finishing by hand, or undo those
+  statements first (see "No-transaction migration fails").
 - `ADD UNIQUE` on an existing table is `CREATE UNIQUE INDEX CONCURRENTLY`
   followed by `ADD CONSTRAINT ... UNIQUE USING INDEX`, both in the trailing
   no-transaction migration. On duplicate rows the build fails and leaves an
   `INVALID` index (`drift` reports it): drop it with
-  `DROP INDEX CONCURRENTLY IF EXISTS`, fix the data, then `resolve --rolled-back` and re-apply.
-- On a partitioned table `ADD UNIQUE` is a plain, transactional
-  `ADD CONSTRAINT ... UNIQUE`, because PostgreSQL rejects `CONCURRENTLY` there.
-- `diff` leaves out the explicit drop of an index, unique, check, foreign key or
-  primary key that uses a column dropped in the same diff: `DROP COLUMN`
-  removes it, and an explicit drop after it would fail.
+  `DROP INDEX CONCURRENTLY IF EXISTS`, fix the data, then `resolve --rolled-back`
+  and re-apply (the unique index is the first statement of its file; if other
+  statements of that file already committed, undo them first).
+- On a partitioned table (including a sub-partitioned one) `ADD UNIQUE` is a
+  plain, transactional `ADD CONSTRAINT ... UNIQUE`, and an index declared with
+  `Concurrently()` is created and dropped without `CONCURRENTLY`, because
+  PostgreSQL rejects `CONCURRENTLY` there. `ADD CHECK` keeps the `NOT VALID`
+  form (`TestPartitionedTableConstraintsAndIndexes`).
+- `diff` leaves out the explicit drop of an index, unique, foreign key or
+  primary key that lists a column dropped in the same diff: `DROP COLUMN`
+  removes it, and an explicit drop after it would fail. A check or an index
+  expression or `WHERE` that merely mentions a dropped column's name anywhere
+  in its text cannot be classified reliably, so its drop is written
+  `DROP ... IF EXISTS`, which is correct whether or not the column took it.
 - Limit: an inline foreign key in a new `CREATE TABLE` cannot reference a
   unique constraint that the same diff adds to another table, because that
   unique is created in the later no-transaction migration and the foreign key
