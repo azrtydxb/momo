@@ -2429,6 +2429,8 @@ Ensure `New` assigns `db.ex.d` from the driver before the option loop (`db.go:70
 
 - [ ] **Step 5: Commit** — `git add options_maxparams.go db.go load_test.go && git commit -m "feat(relations): bind-limit chunking with WithMaxParams"`.
 
+Reconciliation note (2026-11-05): `New` applied options before building `db.ex`, so `db.go` now builds the execer first and runs the option loop after it (the plan's contingency). Transactions copy `db.ex.d`, so they inherit the lowered limit, and the bulk-insert budget (`InsertQuery.plan`) already reads the DB dialect, so `WithMaxParams` applies to inserts too without further change. Added `options_maxparams_test.go` (`TestWithMaxParamsCopiesDialect`, `TestWithMaxParamsAppliesToTransactionsAndInserts`) for the copy, transaction and insert behaviour. The Task 4-7 internal tests (`load_internal_test.go`, `load_composite_internal_test.go`, `in_tuple_edges_internal_test.go`) call `prepareWith` on a dialect copy with no `DB`, so they stay as they are; the plan does not ask to migrate them.
+
 ---
 
 ## Task 9: Many-to-many through a join table

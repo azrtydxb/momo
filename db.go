@@ -112,12 +112,14 @@ type DB struct {
 // closes it.
 func New(drv Driver, opts ...Option) *DB {
 	db := &DB{drv: drv}
-	for _, o := range opts {
-		o(db)
-	}
+	// The execer is set up before the options run so that options such as
+	// WithMaxParams can adjust the dialect it carries.
 	db.ex = execer{db: db, q: drv, d: drv.Dialect(), owner: db}
 	if c, ok := drv.(ErrorClassifier); ok {
 		db.ex.classify = c.ClassifyError
+	}
+	for _, o := range opts {
+		o(db)
 	}
 	return db
 }
