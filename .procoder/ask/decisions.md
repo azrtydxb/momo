@@ -38,3 +38,11 @@ Decision (2026-11-06): push branches, use CI; standing approval to push worktree
 - Leave all of them open in sprint 2 and decide after the release
 
 Decision (2026-11-06): carry with reasons; 094, 097, 098, 123, 124 and 148 go back to the backlog with the reason recorded, nothing ticked without evidence.
+
+## Open the v0.1.0 relations PR (sprint-2 into main)
+
+- Open the PR with the drafted title and body, then run the merge loop (checks, bot reviews) and ask again before squash-merging (recommended)
+- Open it as a draft PR first
+- Do not open it yet
+
+Decision (2026-11-06): open the PR with the drafted title and body; ask again before squash-merging.

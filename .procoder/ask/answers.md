@@ -1,6 +1,6 @@
 # What a human decided
 
-Written 2026-11-06 11:00 UTC. procoder reads this
+Written 2026-11-06 12:08 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
 
@@ -29,6 +29,19 @@ Question: Where story verification runs
 Decision (2026-11-06): push branches, use CI; standing approval to push worktree-agent-* story branches and sprint-2 to origin (no PRs or merges to main without asking); local runs limited to the story's own tests.
 
 Answer: Push branches, use CI (user, AskUserQuestion 2026-11-06): standing approval to push worktree-agent-* story branches and sprint-2; no PRs or merges to main without asking; local runs limited to the story's own tests.
+
+## [decision] decisions.md
+
+Key: 35d45a47756b
+Question: Open the v0.1.0 relations PR (sprint-2 into main)
+
+- Open the PR with the drafted title and body, then run the merge loop (checks, bot reviews) and ask again before squash-merging (recommended)
+- Open it as a draft PR first
+- Do not open it yet
+
+Decision (2026-11-06): open the PR with the drafted title and body; ask again before squash-merging.
+
+Answer: Open the PR (user, AskUserQuestion 2026-11-06): opened as PR #5; ask again before squash-merging.
 
 ## [decision] decisions.md
 
