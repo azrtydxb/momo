@@ -1,6 +1,6 @@
 # What a human decided
 
-Written 2026-11-06 18:03 UTC. procoder reads this
+Written 2026-11-06 18:26 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
 
@@ -58,6 +58,19 @@ Answer: Squash-merge now (user, AskUserQuestion 2026-11-06): merged as c744711; 
 
 ## [decision] decisions.md
 
+Key: a7cd8592fd5d
+Question: Squash-merge PR #7 into main
+
+- Squash-merge PR #7 now with its title as the commit subject; keep sprint-2 as the working branch (recommended)
+- Wait for a human review first
+- Do not merge yet
+
+Decision (2026-11-06): squash-merge PR #7 now; keep sprint-2 as the working branch.
+
+Answer: Squash-merge now (user, AskUserQuestion 2026-11-06): PR #7 squash-merged into main as 4ccb323; sprint-2 kept.
+
+## [decision] decisions.md
+
 Key: a8fe0cf11cac
 Question: Recreate the momo PgBouncer test container with the new pgbouncer.ini (story 065)
 
@@ -73,6 +86,20 @@ Answer: Recreate now (user's choice via AskUserQuestion, 2026-11-05).
 Key: after-sprint-1
 
 Answer: Push init to azrtydxb/momo and open a PR into main so CI runs; start sprint 2 (plan 09 Task 1 + plan 02 generator) in parallel.
+
+## [decision] decisions.md
+
+Key: b64de45664d2
+Question: Issue #8: WHERE on ON CONFLICT (design and release)
+
+- Build it as designed: ConflictQuery.Where (conflict-target predicate), InsertQuery.Where after DoUpdate (action condition, existing row table-qualified), Column.Excluded() expression; PostgreSQL and SQLite, ErrUnsupported on MySQL; integration tests incl. the lease RowsAffected case; docs and AI guide updated; release as v0.2.0 via release-please (recommended)
+- Same design, but release as v0.1.1 (release-as override)
+- Only the action WHERE (skip the conflict-target WHERE)
+- Do not build it yet
+
+Decision (2026-11-06): build issue #8 as designed (ConflictQuery.Where, InsertQuery.Where after DoUpdate, Column.Excluded(); PG and SQLite, ErrUnsupported on MySQL) and release as v0.2.0 via release-please.
+
+Answer: Build it, release v0.2.0 (user, AskUserQuestion 2026-11-06).
 
 ## (no longer asked)
 

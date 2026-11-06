@@ -157,9 +157,13 @@ func TestMigrateHashRepairsSum(t *testing.T) {
 	}
 	// validate still has no snapshot to complain about only through sum: filter on sum problems.
 	out.Reset()
-	runMigrate(&out, &errOut, []string{"--config", cfg, "validate"}, noEnv)
+	code := runMigrate(&out, &errOut, []string{"--config", cfg, "validate"}, noEnv)
 	if strings.Contains(out.String(), "momo.sum") {
 		t.Fatalf("validate still reports momo.sum after hash: %s", out.String())
+	}
+	// The only remaining problem is the missing snapshot, so validate exits 1.
+	if code != 1 || !strings.Contains(out.String(), "snapshot") {
+		t.Fatalf("validate after hash: exit %d, want 1 with a snapshot problem: %s", code, out.String())
 	}
 	if strings.Contains(readOrEmpty(t, filepath.Join(mdir, "momo.sum")), ".DS_Store") {
 		t.Fatal("momo.sum records a dotfile")
@@ -167,7 +171,9 @@ func TestMigrateHashRepairsSum(t *testing.T) {
 	// An edit makes the sum stale; hash accepts it as the new baseline.
 	writeFile(t, filepath.Join(mdir, "20260101000000_a.up.sql"), "CREATE TABLE a (id bigint);\n")
 	out.Reset()
-	runMigrate(&out, &errOut, []string{"--config", cfg, "validate"}, noEnv)
+	if code := runMigrate(&out, &errOut, []string{"--config", cfg, "validate"}, noEnv); code != 1 {
+		t.Fatalf("validate of an edited migration: exit %d, want 1", code)
+	}
 	if !strings.Contains(out.String(), "momo.sum mismatch") {
 		t.Fatalf("an edit must be reported: %s", out.String())
 	}
@@ -175,7 +181,9 @@ func TestMigrateHashRepairsSum(t *testing.T) {
 		t.Fatalf("second hash: exit %d", code)
 	}
 	out.Reset()
-	runMigrate(&out, &errOut, []string{"--config", cfg, "validate"}, noEnv)
+	if code := runMigrate(&out, &errOut, []string{"--config", cfg, "validate"}, noEnv); code != 1 {
+		t.Fatalf("validate after second hash: exit %d, want 1 (missing snapshot only): %s", code, out.String())
+	}
 	if strings.Contains(out.String(), "momo.sum") {
 		t.Fatalf("validate still reports momo.sum: %s", out.String())
 	}

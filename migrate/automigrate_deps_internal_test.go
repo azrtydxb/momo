@@ -9,6 +9,33 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
+// TestEnumColumnRequiresCreateType: an enum-typed column depends on the
+// CREATE TYPE that provides it, whether Enum is set or only Type names it.
+func TestEnumColumnRequiresCreateType(t *testing.T) {
+	create := Change{Kind: CreateEnum, Name: "mood"}
+	want := provided(create)[0]
+	for name, col := range map[string]schema.Column{
+		"enum field": {Name: "m", Type: "mood", Enum: "mood"},
+		"type only":  {Name: "m", Type: "mood"},
+	} {
+		tbl := Change{Kind: CreateTable, Name: "feels", After: &schema.Table{Name: "feels", Columns: []schema.Column{col}}}
+		found := false
+		for _, r := range requires(tbl) {
+			found = found || r == want
+		}
+		if !found {
+			t.Errorf("%s: requires %q not in %q", name, want, requires(tbl))
+		}
+	}
+	got, err := OrderErr([]Change{
+		{Kind: CreateTable, Name: "feels", After: &schema.Table{Name: "feels", Columns: []schema.Column{{Name: "m", Type: "mood", Enum: "mood"}}}},
+		create,
+	})
+	if err != nil || len(got) != 2 || got[0].Kind != CreateEnum {
+		t.Fatalf("CREATE TYPE must order before the table using it: %v %v", got, err)
+	}
+}
+
 func TestSkipDependentsKinds(t *testing.T) {
 	skip := []Skipped{
 		{Change: Change{Kind: CreateEnum, Name: "mood"}, Reason: "x"},

@@ -149,7 +149,14 @@ type pgxRows struct{ pgx.Rows }
 
 func (r pgxRows) Scan(dest ...any) error { return ClassifyError(r.Rows.Scan(dest...)) }
 func (r pgxRows) Err() error             { return ClassifyError(r.Rows.Err()) }
-func (r pgxRows) Close() error           { r.Rows.Close(); return nil }
+
+// Close releases the rows. pgx's Close returns nothing and leaves a failure
+// from the rows still unread, or from the server's command completion, in
+// Err, so it is reported here for callers that only check the result of Close.
+func (r pgxRows) Close() error {
+	r.Rows.Close()
+	return ClassifyError(r.Rows.Err())
+}
 
 type pgxTx struct {
 	tx pgx.Tx

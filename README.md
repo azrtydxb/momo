@@ -289,6 +289,15 @@ func readAndChange(ctx context.Context, q momo.Querier, authorID int64) error {
 
 `One` returns an error that matches `momo.ErrNotFound` when no row matches.
 
+#### Conditional upsert
+
+`OnConflict(...).DoUpdate(...)` takes a condition with `Where`, so one statement can take a lease: insert the row, or update it only when the current lease expired or is already yours. `RowsAffected` is 1 when you hold the lease and 0 when someone else does. In the condition, columns mean the existing row and `Excluded()` means the proposed one.
+
+The full example, with the model and the partial-index form, is in
+[docs/ai-guide.md](docs/ai-guide.md) under upserts.
+
+To conflict on a partial unique index, give the index predicate with `OnConflict(cols...).Where(...)` before `DoNothing` or `DoUpdate`. Both forms work on PostgreSQL; MySQL returns `ErrUnsupported`. On SQLite the target predicate must match the index text, so write it as raw SQL, for example `momo.SQL("live = 1")`.
+
 ### 6. Load relations
 
 Relations are loaded eagerly after the parents are fetched, with one query per
@@ -315,6 +324,9 @@ func loadRelations(ctx context.Context, q momo.Querier, authorID int64) error {
 	}
 	if err := momo.Load(ctx, q, authors, author.Posts); err != nil {
 		return err
+	}
+	if len(authors) == 0 {
+		return fmt.Errorf("author %d not found", authorID)
 	}
 	posts := authors[0].Posts
 	if err := momo.Load(ctx, q, posts, post.Author); err != nil {

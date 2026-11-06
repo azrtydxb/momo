@@ -22,8 +22,11 @@ func NewReadOnlyColumn[T any](table, name string, flags uint16) ReadOnlyColumn[T
 // As returns the same column qualified by a table alias.
 func (c ReadOnlyColumn[T]) As(alias string) ReadOnlyColumn[T] { c.col = c.col.As(alias); return c }
 
-func (c ReadOnlyColumn[T]) AppendSQL(b *Builder)             { c.col.AppendSQL(b) }
-func (c ReadOnlyColumn[T]) AsExpr() Expression[T]            { return c.col.AsExpr() }
+func (c ReadOnlyColumn[T]) AppendSQL(b *Builder)  { c.col.AppendSQL(b) }
+func (c ReadOnlyColumn[T]) AsExpr() Expression[T] { return c.col.AsExpr() }
+
+// Excluded is the value proposed for insertion, for an upsert condition.
+func (c ReadOnlyColumn[T]) Excluded() Expression[T]          { return c.col.Excluded() }
 func (c ReadOnlyColumn[T]) resultType() T                    { return c.col.resultType() }
 func (c ReadOnlyColumn[T]) order() Order                     { return c.col.order() }
 func (c ReadOnlyColumn[T]) ColumnName() string               { return c.col.ColumnName() }
@@ -67,8 +70,11 @@ func (c NullReadOnlyColumn[T]) As(alias string) NullReadOnlyColumn[T] {
 	return c
 }
 
-func (c NullReadOnlyColumn[T]) AppendSQL(b *Builder)             { c.col.AppendSQL(b) }
-func (c NullReadOnlyColumn[T]) AsExpr() Expression[T]            { return c.col.AsExpr() }
+func (c NullReadOnlyColumn[T]) AppendSQL(b *Builder)  { c.col.AppendSQL(b) }
+func (c NullReadOnlyColumn[T]) AsExpr() Expression[T] { return c.col.AsExpr() }
+
+// Excluded is the value proposed for insertion, for an upsert condition.
+func (c NullReadOnlyColumn[T]) Excluded() Expression[T]          { return c.col.Excluded() }
 func (c NullReadOnlyColumn[T]) resultType() T                    { return c.col.resultType() }
 func (c NullReadOnlyColumn[T]) order() Order                     { return c.col.order() }
 func (c NullReadOnlyColumn[T]) ColumnName() string               { return c.col.ColumnName() }
@@ -109,8 +115,11 @@ func NewCreateOnlyColumn[T any](table, name string, flags uint16) CreateOnlyColu
 // As returns the same column qualified by a table alias.
 func (c CreateOnlyColumn[T]) As(alias string) CreateOnlyColumn[T] { c.col = c.col.As(alias); return c }
 
-func (c CreateOnlyColumn[T]) AppendSQL(b *Builder)             { c.col.AppendSQL(b) }
-func (c CreateOnlyColumn[T]) AsExpr() Expression[T]            { return c.col.AsExpr() }
+func (c CreateOnlyColumn[T]) AppendSQL(b *Builder)  { c.col.AppendSQL(b) }
+func (c CreateOnlyColumn[T]) AsExpr() Expression[T] { return c.col.AsExpr() }
+
+// Excluded is the value proposed for insertion, for an upsert condition.
+func (c CreateOnlyColumn[T]) Excluded() Expression[T]          { return c.col.Excluded() }
 func (c CreateOnlyColumn[T]) resultType() T                    { return c.col.resultType() }
 func (c CreateOnlyColumn[T]) order() Order                     { return c.col.order() }
 func (c CreateOnlyColumn[T]) ColumnName() string               { return c.col.ColumnName() }
@@ -155,8 +164,11 @@ func NewImmutableColumn[T any](table, name string, flags uint16) ImmutableColumn
 // As returns the same column qualified by a table alias.
 func (c ImmutableColumn[T]) As(alias string) ImmutableColumn[T] { c.col = c.col.As(alias); return c }
 
-func (c ImmutableColumn[T]) AppendSQL(b *Builder)             { c.col.AppendSQL(b) }
-func (c ImmutableColumn[T]) AsExpr() Expression[T]            { return c.col.AsExpr() }
+func (c ImmutableColumn[T]) AppendSQL(b *Builder)  { c.col.AppendSQL(b) }
+func (c ImmutableColumn[T]) AsExpr() Expression[T] { return c.col.AsExpr() }
+
+// Excluded is the value proposed for insertion, for an upsert condition.
+func (c ImmutableColumn[T]) Excluded() Expression[T]          { return c.col.Excluded() }
 func (c ImmutableColumn[T]) resultType() T                    { return c.col.resultType() }
 func (c ImmutableColumn[T]) order() Order                     { return c.col.order() }
 func (c ImmutableColumn[T]) ColumnName() string               { return c.col.ColumnName() }

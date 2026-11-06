@@ -65,6 +65,10 @@ func (b *Builder) pushScope(names []string) {
 // handed to the enclosing SELECT (a correlated reference); with no
 // enclosing SELECT it is a column of a table that is not in the query.
 func (b *Builder) popScope() {
+	if len(b.scopes) == 0 {
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("internal error: scope stack underflow: popScope without a matching pushScope")})
+		return
+	}
 	sc := b.scopes[len(b.scopes)-1]
 	b.scopes = b.scopes[:len(b.scopes)-1]
 	for q := range sc.refs {

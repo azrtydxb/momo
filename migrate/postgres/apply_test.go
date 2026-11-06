@@ -55,7 +55,7 @@ func TestCreateIndexConcurrentlyApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	var valid bool
-	queryOne(t, db, `SELECT indisvalid FROM pg_index WHERE indexrelid = 'd_title'::regclass`, &valid)
+	queryOne(t, db, `SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass(quote_ident('`+testdb.Schema(t)+`')||'.d_title')`, &valid)
 	if !valid {
 		t.Fatal("concurrent index must be valid")
 	}
