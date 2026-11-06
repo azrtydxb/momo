@@ -8,3 +8,14 @@ contributor guide, supported versions, performance).
 - [Go to SQL type mapping](TYPE_MAPPING.md): column type per Go type, edge values, null handling.
 - [Vector search](vectors.md): pgvector types, metrics, limits, search settings and the binary codec.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
+
+## Examples
+
+Runnable programs, each tested end to end in CI. See [the examples index](../examples/README.md) for the layout and how to add one.
+
+- [quickstart](../examples/quickstart/): the root README loop: models, generate, CRUD, relations, vector search, a transaction.
+- [crud-zero-null](../examples/crud-zero-null/): insert, update, delete; zero value versus NULL versus default; soft delete.
+- [transactions](../examples/transactions/): Tx, rollback, savepoints, read-only and isolation, retry on serialization failure.
+- [relations](../examples/relations/): has-many, belongs-to, many-to-many; Load, Preload, Joined, Has, Link, CreateGraph.
+- [projection-pagination](../examples/projection-pagination/): column subsets, keyset pagination with a tie-break, counting.
+- [vector-search](../examples/vector-search/): HNSW index, nearest-neighbour queries, filters, search settings.
