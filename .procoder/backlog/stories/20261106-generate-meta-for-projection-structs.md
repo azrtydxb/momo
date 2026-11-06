@@ -1,6 +1,6 @@
 # Generate Meta for projection structs
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-06
 Epic: momo-02-generator
 Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
@@ -30,6 +30,6 @@ needs no hand-written metadata, and the docs say how to declare one.
 - Criterion 1: TestEmitMetaProjectionGolden compares the emitted MomoMeta of two projections against gen/testdata/golden/meta/projection/momo_gen.go (all five indexes -1, Columns, Ptr and Value in declaration order); TestProjectionOnlyPackageEmits covers a package with only projections.
 - Criterion 2: the same golden shows `momo:"column:points"` honored and `HTTPCode` named http_code by the naming rule.
 - Criterion 3: TestProjectionUnsupportedFieldNamesStructAndField expects "projection Odd: field Value: ... complex128"; breaking the check made it fail.
-- Criterion 4: the hand-written MomoMeta is removed from both example models packages, and the example tests pass in RUNID.
+- Criterion 4: the hand-written MomoMeta is removed from both example models packages, and the example tests pass in 42305772717 (success, sha 80ac97b).
 - Criterion 5: `momo generate --check` exits 0 in examples/projection-pagination and examples/vector-search.
 - Criterion 6 (also the upgrade note for hand-written projection metadata in docs/projections.md): docs/projections.md is linked from docs/README.md, and the hand-written MomoMeta notes are gone from README and docs/ai-guide.md.

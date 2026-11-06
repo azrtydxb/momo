@@ -1,6 +1,6 @@
 # Projections over soft-delete tables skip the deleted_at filter
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-06
 Epic: momo-05-writes-queries
 Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
@@ -8,7 +8,7 @@ Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
 ## Description
 
 As a Momo user (or an AI coding agent following the guide), I select a
-projection (`momo.Select[Card](db).From(article.Table).Columns(...)`, or the
+projection (`momo.Select[Card]` with `From` and `Columns`, or the
 vector `Hit`) over a table that has a soft-delete column and expect soft-deleted
 rows to stay hidden, as they are for a model. They are not: the filter is chosen
 from the result type's metadata (`sq.meta.SoftDelete >= 0` in `select.go`), and a
@@ -33,8 +33,8 @@ metadata that carries the soft-delete column. The second ties in with
 
 ## Evidence
 
-- Criterion 1: TestProjectionSoftDelete (integration) selects a projection over the timestamp, unix and bool tables and sees only live rows by default; RUNID.
-- Criterion 2: the same test checks WithDeleted returns both rows and OnlyDeleted only the deleted one; RUNID.
+- Criterion 1: TestProjectionSoftDelete (integration) selects a projection over the timestamp, unix and bool tables and sees only live rows by default; 42305772717 (success, sha 80ac97b).
+- Criterion 2: the same test checks WithDeleted returns both rows and OnlyDeleted only the deleted one; 42305772717 (success, sha 80ac97b).
 - Criterion 3: TestProjectionSoftDeleteFilter snapshots the SQL for a plain table (no filter), a subquery source (inner filter only), a join (FROM table filtered, joined table untouched, plain FROM unfiltered), an aliased `As` table, a generated-style `task.Table` and an IN subquery; TestProjectionSoftDeleteCountAndExists asserts Count and Exists carry the filter. Making joins skip the filter again fails the join case.
 - Criterion 4: README Projections, docs/ai-guide.md (Projections, vector section, rule 9, section 7), docs/vectors.md, docs/projections.md and the projection-pagination README and main.go comment state the new behavior; no "add the filter yourself" remains except for joins and subqueries.
-- Criterion 5: the example tests of projection-pagination and vector-search pass in RUNID.
+- Criterion 5: the example tests of projection-pagination and vector-search pass in 42305772717 (success, sha 80ac97b).
