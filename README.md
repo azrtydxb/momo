@@ -302,6 +302,11 @@ the relations after the rows are read, with the same one query per relation,
 and a result with no rows runs no extra query. `Preload` returns a copy, so a base query can be reused. `Each` and `Iter` stream rows
 and return an error matching `momo.ErrUnsupported` when the query has preloads.
 
+Scoped and nested loads, top-N per parent, single-query `Joined()` loading,
+relation predicates such as `Has`, the `Link` and `Replace` helpers, graph
+writes and the error behavior of each are covered in
+[docs/relations.md](docs/relations.md).
+
 ```go
 func loadRelations(ctx context.Context, q momo.Querier, authorID int64) error {
 	authors, err := momo.Select[models.Author](q).Where(author.ID.Eq(authorID)).All(ctx)
