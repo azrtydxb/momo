@@ -52,7 +52,7 @@ func TestAssociationHelpers(t *testing.T) {
 		if err := document.Tags.Replace(ctx, db, p, &models.Tag{ID: 2}); err != nil {
 			t.Fatal(err)
 		}
-		if got := len(h.After); got != 5 { // BEGIN, select, clear, link, COMMIT
+		if got := len(h.After); got != 5+lockEvents(db) { // BEGIN, [lock], select, clear, link, COMMIT
 			t.Fatalf("Replace must be one transaction (select, clear, link), got %d events", got)
 		}
 		n, err = document.Tags.Count(ctx, db, p)
@@ -125,7 +125,7 @@ func TestAssociationManyToManyUnlinkAndReplaceEmpty(t *testing.T) {
 		if err := document.Tags.Replace(ctx, db, doc); err != nil {
 			t.Fatal(err)
 		}
-		if got := len(h.After); got != 3 { // BEGIN, clear, COMMIT
+		if got := len(h.After); got != 3+lockEvents(db) { // BEGIN, [lock], clear, COMMIT
 			t.Fatalf("Replace(empty) must issue one statement in a transaction, got %d events", got)
 		}
 		if n, _ := document.Tags.Count(ctx, db, doc); n != 0 {
@@ -181,8 +181,8 @@ func TestAssociationHasManyReplaceInTx(t *testing.T) {
 		if err := employee.Reports.Replace(ctx, db, boss, &models.Employee{ID: 3}); err != nil {
 			t.Fatal(err)
 		}
-		if got := len(h.After); got != 4 {
-			t.Fatalf("Replace events = %d, want 4", got)
+		if got := len(h.After); got != 4+lockEvents(db) {
+			t.Fatalf("Replace events = %d, want %d", got, 4+lockEvents(db))
 		}
 		if n, _ := employee.Reports.Count(ctx, db, boss); n != 1 {
 			t.Fatalf("Replace must leave one report: %d", n)

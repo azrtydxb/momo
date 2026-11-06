@@ -30,11 +30,13 @@ func eachSmall(t *testing.T, maxParams int, fn func(t *testing.T, db *momo.DB, h
 	}, momo.WithHook(h), momo.WithMaxParams(maxParams))
 }
 
-func mustExec(t *testing.T, db *momo.DB, sql string, args ...any) {
-	t.Helper()
-	if _, err := momo.Exec(context.Background(), db, sql, args...); err != nil {
-		t.Fatalf("%s: %v", sql, err)
+// lockEvents is the number of extra statements Replace issues: the parent row
+// lock (SELECT ... FOR UPDATE) on dialects with row locks, none elsewhere.
+func lockEvents(db *momo.DB) int {
+	if db.Dialect().Locking {
+		return 1
 	}
+	return 0
 }
 
 func tagList(from, to int64) []*models.Tag {
@@ -60,7 +62,7 @@ func seedEmployees(t *testing.T, db *momo.DB, from, to int64) {
 	}
 }
 
-func ids(t *testing.T, db *momo.DB, sql string, args ...any) []int64 {
+func assocQueryIDs(t *testing.T, db *momo.DB, sql string, args ...any) []int64 {
 	t.Helper()
 	out, err := momo.Scalars[int64](context.Background(), db, sql, args...)
 	if err != nil {
@@ -133,8 +135,8 @@ func TestAssociationChunkedManyToMany(t *testing.T) {
 			t.Fatal(err)
 		}
 		// BEGIN, SELECT, DELETE{20,21} (1 chunk), INSERT{25,26,27} (2 chunks), COMMIT.
-		if got := len(h.After); got != 6 {
-			t.Fatalf("Replace events = %d, want 6", got)
+		if got := len(h.After); got != 6+lockEvents(db) {
+			t.Fatalf("Replace events = %d, want %d", got, 6+lockEvents(db))
 		}
 		if got := tagIDs(t, db, 2); !sameIDs(got, 22, 23, 24, 25, 26, 27) {
 			t.Fatalf("Replace rows: %v", got)
@@ -169,7 +171,7 @@ func TestAssociationChunkedHasMany(t *testing.T) {
 		if got := len(h.After); got != 2+2 {
 			t.Fatalf("Unlink events = %d, want 4", got)
 		}
-		if got := ids(t, db, `SELECT id FROM employees WHERE manager_id = ? ORDER BY id`, int64(1)); !sameIDs(got, 2, 3, 14, 15, 16) {
+		if got := assocQueryIDs(t, db, `SELECT id FROM employees WHERE manager_id = ? ORDER BY id`, int64(1)); !sameIDs(got, 2, 3, 14, 15, 16) {
 			t.Fatalf("reports after Unlink: %v", got)
 		}
 
@@ -178,7 +180,7 @@ func TestAssociationChunkedHasMany(t *testing.T) {
 		if err := employee.Reports.Replace(ctx, db, boss, empList(3, 3)[0], &models.Employee{ID: 14}, &models.Employee{ID: 20}); err != nil {
 			t.Fatal(err)
 		}
-		if got := ids(t, db, `SELECT id FROM employees WHERE manager_id = ? ORDER BY id`, int64(1)); !sameIDs(got, 3, 14, 20) {
+		if got := assocQueryIDs(t, db, `SELECT id FROM employees WHERE manager_id = ? ORDER BY id`, int64(1)); !sameIDs(got, 3, 14, 20) {
 			t.Fatalf("reports after Replace: %v", got)
 		}
 	})
@@ -209,7 +211,7 @@ func TestAssociationChunkedLinkIsAtomic(t *testing.T) {
 		if !errors.Is(err, momo.ErrCheckViolation) {
 			t.Fatalf("Link error = %v, want check violation", err)
 		}
-		if got := ids(t, db, `SELECT id FROM employees WHERE manager_id = ? ORDER BY id`, int64(1)); !sameIDs(got, 2, 3) {
+		if got := assocQueryIDs(t, db, `SELECT id FROM employees WHERE manager_id = ? ORDER BY id`, int64(1)); !sameIDs(got, 2, 3) {
 			t.Fatalf("partial rows after failed Link: %v", got)
 		}
 	})
@@ -288,7 +290,7 @@ func TestAssociationReplaceDoesNotRewriteKeptJoinRows(t *testing.T) {
 		if err := rel.Replace(ctx, db, doc, &models.Tag{ID: 1}, &models.Tag{ID: 2}, &models.Tag{ID: 3}); err != nil {
 			t.Fatal(err)
 		}
-		got := ids(t, db, `SELECT tag_id FROM taggings_nokey WHERE document_id = 1 ORDER BY tag_id`)
+		got := assocQueryIDs(t, db, `SELECT tag_id FROM taggings_nokey WHERE document_id = 1 ORDER BY tag_id`)
 		if !sameIDs(got, 1, 2, 3) {
 			t.Fatalf("rows = %v, want 1 2 3 without duplicates", got)
 		}
@@ -306,7 +308,7 @@ func TestAssociationPolymorphicClearKeepsOtherOwnerType(t *testing.T) {
 		}
 		doc := &models.Document{ID: 1}
 		authorOwner := func() []int64 {
-			return ids(t, db, `SELECT id FROM images WHERE owner_type = 'author' AND owner_id = 1`)
+			return assocQueryIDs(t, db, `SELECT id FROM images WHERE owner_type = 'author' AND owner_id = 1`)
 		}
 
 		// Unlink names image 2 explicitly; the discriminator keeps it untouched.
@@ -326,8 +328,8 @@ func TestAssociationPolymorphicClearKeepsOtherOwnerType(t *testing.T) {
 		if err := document.Images.Replace(ctx, db, doc, &models.Image{ID: 1}); err != nil {
 			t.Fatal(err)
 		}
-		if got := len(h.After); got != 3 {
-			t.Fatalf("Replace of an unchanged set issued %d events, want 3", got)
+		if got := len(h.After); got != 3+lockEvents(db) {
+			t.Fatalf("Replace of an unchanged set issued %d events, want %d", got, 3+lockEvents(db))
 		}
 		if !sameIDs(authorOwner(), 2) {
 			t.Fatal("Replace cleared an image owned by another owner type")
@@ -341,7 +343,7 @@ func TestAssociationPolymorphicClearKeepsOtherOwnerType(t *testing.T) {
 		if !sameIDs(authorOwner(), 2) {
 			t.Fatal("Replace cleared an image owned by another owner type")
 		}
-		if got := ids(t, db, `SELECT id FROM images WHERE owner_type = 'document' AND owner_id = 1`); !sameIDs(got, 3) {
+		if got := assocQueryIDs(t, db, `SELECT id FROM images WHERE owner_type = 'document' AND owner_id = 1`); !sameIDs(got, 3) {
 			t.Fatalf("document images = %v, want [3]", got)
 		}
 

@@ -40,6 +40,10 @@ import (
 //     removed keys and links only the added keys, in chunks. Kept children are
 //     not rewritten. On a *DB the helper opens the transaction; on a *Tx it runs
 //     in a savepoint.
+//     Before reading, it locks the parent row with SELECT 1 FROM parent WHERE
+//     key = ? FOR UPDATE on dialects with row locks (PostgreSQL, MySQL), so
+//     concurrent Replace calls on one parent are serialised; SQLite serialises
+//     writers and skips it.
 //   - Count: one SELECT COUNT(*) over the related children (soft-deleted
 //     children are not counted).
 //   - On BelongsTo every helper returns ErrUnsupported: set the foreign key on
@@ -49,7 +53,8 @@ import (
 // ManyToMany, a child key) is NULL. Link and Unlink with no children are
 // no-ops that issue no statement. When Link or Unlink needs more than one chunk
 // and q is a *DB, the chunks run in one transaction, so the call is atomic. On a
-// *Tx the chunks run in the caller's transaction.
+// *Tx the chunks run in the caller's transaction without a savepoint: if a later
+// chunk fails, earlier chunks stay applied until the caller rolls back.
 
 // Link associates the listed children with p: HasOne and HasMany set the
 // children's foreign key (UPDATE), ManyToMany inserts the join rows (INSERT,
@@ -104,7 +109,13 @@ func (r Relation[P, C]) Unlink(ctx context.Context, q Querier, p *P, cs ...*C) e
 }
 
 // Replace makes the listed children the complete set associated with p, in one
-// transaction (a savepoint on a *Tx). With no children it clears the whole set
+// transaction (a savepoint on a *Tx). It first locks the parent row (SELECT 1
+// FROM parent WHERE key = ? FOR UPDATE) on dialects with row locks (PostgreSQL,
+// MySQL), so concurrent Replace calls on the same parent run one after the
+// other and each reads the set the previous one committed; without that, two
+// callers under READ COMMITTED could produce unique violations, duplicate join
+// rows or a mix of both sets. SQLite serialises writers and skips the lock. On a
+// *Tx the lock is held until the caller's transaction ends. With no children it clears the whole set
 // in one statement. Otherwise it reads the current child keys, diffs them in Go
 // against cs, unlinks only the removed keys and links only the added keys, each
 // in chunks that respect the bind limit, so a set of any size works and kept
@@ -141,6 +152,9 @@ func (r Relation[P, C]) Replace(ctx context.Context, q Querier, p *P, cs ...*C) 
 
 func (r Relation[P, C]) replaceIn(ctx context.Context, tx *Tx, pkey []any, want [][]any) error {
 	m2m := r.Kind == ManyToMany
+	if err := r.lockParent(ctx, tx, pkey); err != nil {
+		return err
+	}
 	if len(want) == 0 { // clear the whole set: one statement, no SELECT
 		if m2m {
 			return r.deleteJoinChunk(ctx, tx, pkey, nil)
@@ -192,6 +206,40 @@ func (r Relation[P, C]) replaceIn(ctx context.Context, tx *Tx, pkey []any, want 
 	}
 	return r.runChunks(ctx, tx, added, r.chunkSize(tx, len(r.ChildPK), len(r.ChildCols)+r.discArgs()),
 		func(x Querier, ks [][]any) error { return r.updateChunk(ctx, x, pkey, ks, linkSet) })
+}
+
+// lockParent serialises concurrent Replace calls on one parent: it locks the
+// parent row with SELECT 1 FROM parent WHERE key = ? FOR UPDATE, so a second
+// Replace waits for the first to commit and then reads the committed key set.
+// It runs on dialects whose Locking capability is set (PostgreSQL, MySQL); it is
+// skipped on SQLite, which serialises writers. A parent row that does not exist
+// locks nothing and is not an error.
+func (r Relation[P, C]) lockParent(ctx context.Context, tx *Tx, pkey []any) error {
+	if !tx.Dialect().Locking {
+		return nil
+	}
+	tbl := r.Parent.Qualifier()
+	c, err := compile(tx.Dialect(), func(b *Builder) {
+		b.WriteString("SELECT 1 FROM ")
+		r.Parent.appendFrom(b)
+		b.WriteString(" WHERE ")
+		inTuple{table: tbl, cols: r.ParentCols, keys: [][]any{pkey}}.AppendSQL(b)
+		b.WriteString(" FOR UPDATE")
+	})
+	if err != nil {
+		return err
+	}
+	rows, err := tx.conn().query(ctx, "select", r.Parent.Name, "", c)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+	}
+	err = rows.Err()
+	if cerr := rows.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // currentKeys reads the keys of the children currently associated with the
