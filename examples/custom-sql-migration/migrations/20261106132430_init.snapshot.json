@@ -1,0 +1,28 @@
+{
+  "format_version": 1,
+  "version": "20261106132430",
+  "parent": "",
+  "schema": {
+    "format_version": 1,
+    "dialect": "postgres",
+    "tables": [
+      {
+        "name": "accounts",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "email",
+            "type": "varchar(200)"
+          }
+        ],
+        "primary_key": [
+          "id"
+        ]
+      }
+    ]
+  }
+}
