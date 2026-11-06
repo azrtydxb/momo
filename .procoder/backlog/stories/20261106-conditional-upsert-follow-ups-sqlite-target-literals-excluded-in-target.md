@@ -30,6 +30,8 @@ predicate gets a database error instead of `ErrValidation`.
 
 ## Evidence
 
+Open: there is no SQLite driver in go.mod and no SQLite integration opener, so the first criterion's integration test cannot be written yet.
+
 - Criterion 1 (open): `TestConflictTargetSQLiteLiterals` and `TestConflictActionStaysBoundOnSQLite` prove the rendering (bool 1/0, integer, string with quote doubling, In/Between/IsNull/Not; PostgreSQL still binds; VALUES and the action predicate stay bound). No SQLite integration opener exists and go.mod has no SQLite driver (adding one needs a dependency decision), so the integration test is not written and this criterion stays unticked.
 - Criterion 2: `TestConflictTargetExcludedIsValidation` (postgres and sqlite, direct and nested) returns ErrValidation; mutation `if false` in `excludedExpr.AppendSQL` fails it.
 - Criterion 3: `TestConflictActionWhereNestedGolden` (Not/And/Or/In/NotIn/Between/IsNull), `TestConflictWhereChunkedArgNumbering` (MaxParams 10: two chunks, args $9/$10 then $5/$6) and `TestConflictWhereDoesNotAlias` (mutating either `slices.Clip` fails it).
