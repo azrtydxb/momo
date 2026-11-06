@@ -387,10 +387,11 @@ or check constraint (both can fail on existing data).
   `momo migrate resolve --version V --applied` (V is the `_no_tx` version).
   `resolve --version V --rolled-back` runs the whole file again from its first
   statement, so it is safe only when the file holds just the failed
-  `VALIDATE`. If earlier statements of the file (a `CREATE UNIQUE INDEX
-CONCURRENTLY`, another `VALIDATE`) already committed, they would fail with
-  "already exists": use `--applied` after finishing by hand, or undo those
-  statements first (see "No-transaction migration fails").
+  `VALIDATE`. If earlier statements of the file (a
+  `CREATE UNIQUE INDEX CONCURRENTLY`, another `VALIDATE`) already committed,
+  they would fail with "already exists": use `--applied` after finishing by
+  hand, or undo those statements first (see "No-transaction migration
+  fails").
 - `ADD UNIQUE` on an existing table is `CREATE UNIQUE INDEX CONCURRENTLY`
   followed by `ADD CONSTRAINT ... UNIQUE USING INDEX`, both in the trailing
   no-transaction migration. On duplicate rows the build fails and leaves an

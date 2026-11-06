@@ -209,6 +209,79 @@ func TestDiffPartitionedTableIndexesAreNotConcurrent(t *testing.T) {
 	}
 }
 
+// TestDiffPlainDropOfObjectsUnrelatedToDroppedColumn: a check on another column
+// is dropped plainly, with no IF EXISTS, even when the diff drops a column.
+func TestDiffPlainDropOfObjectsUnrelatedToDroppedColumn(t *testing.T) {
+	ctx := context.Background()
+	from := docsSchema()
+	from.Tables[0].Columns = append(from.Tables[0].Columns, schema.Column{Name: "note", Type: "TEXT", Default: "''"})
+	from.Tables[0].Checks = []schema.Check{{Name: "docs_id_pos", Expr: "id > 0"}}
+	first := offlineEngine(t, fstest.MapFS{}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	m1, err := first.Diff(ctx, from, "init", migrate.DiffOptions{})
+	if err != nil || m1 == nil {
+		t.Fatal(m1, err)
+	}
+	m, err := offlineEngine(t, mapFS(m1.Files), lockfreeClock).Diff(ctx, docsSchema(), "drop_note", migrate.DiffOptions{AllowDestructive: true})
+	if err != nil || m == nil {
+		t.Fatal(m, err)
+	}
+	up := string(m.Files[m.Version+"_drop_note.up.sql"])
+	if !strings.Contains(up, `DROP CONSTRAINT "docs_id_pos"`) || strings.Contains(up, "IF EXISTS") {
+		t.Fatalf("want a plain DROP CONSTRAINT for the unrelated check:\n%s", up)
+	}
+}
+
+// TestDiffPartialIndexOnDroppedColumnIsSkipped: an index that lists a dropped
+// column goes with it even when its WHERE only mentions another column.
+func TestDiffPartialIndexOnDroppedColumnIsSkipped(t *testing.T) {
+	ctx := context.Background()
+	from := docsSchema()
+	from.Tables[0].Indexes = []schema.Index{{Name: "docs_title_part", Where: "id > 0", Parts: []schema.IndexPart{{Column: "title"}}}}
+	first := offlineEngine(t, fstest.MapFS{}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	m1, err := first.Diff(ctx, from, "init", migrate.DiffOptions{})
+	if err != nil || m1 == nil {
+		t.Fatal(m1, err)
+	}
+	to := docsSchema()
+	to.Tables[0].Columns = to.Tables[0].Columns[:1]
+	to.Tables[0].Indexes = nil
+	m, err := offlineEngine(t, mapFS(m1.Files), lockfreeClock).Diff(ctx, to, "drop_title", migrate.DiffOptions{AllowDestructive: true})
+	if err != nil || m == nil {
+		t.Fatal(m, err)
+	}
+	up := string(m.Files[m.Version+"_drop_title.up.sql"])
+	if strings.Contains(up, "docs_title_part") || !strings.Contains(up, `DROP COLUMN "title"`) {
+		t.Fatalf("the partial index must be left to DROP COLUMN:\n%s", up)
+	}
+}
+
+// TestDiffConcurrentExpressionIndexOnDroppedColumn: a concurrent expression
+// index that mentions the dropped column keeps its drop, written
+// DROP INDEX CONCURRENTLY IF EXISTS in the no-transaction tail, after the head
+// has dropped the column.
+func TestDiffConcurrentExpressionIndexOnDroppedColumn(t *testing.T) {
+	ctx := context.Background()
+	from := docsSchema()
+	from.Tables[0].Indexes = []schema.Index{{Name: "docs_lower_title", Concurrently: true, Parts: []schema.IndexPart{{Expr: "lower(title)"}}}}
+	first := offlineEngine(t, fstest.MapFS{}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	m1, err := first.Diff(ctx, from, "init", migrate.DiffOptions{})
+	if err != nil || m1 == nil {
+		t.Fatal(m1, err)
+	}
+	to := docsSchema()
+	to.Tables[0].Columns = to.Tables[0].Columns[:1]
+	to.Tables[0].Indexes = nil
+	m, err := offlineEngine(t, mapFS(m1.Files), lockfreeClock).Diff(ctx, to, "drop_title", migrate.DiffOptions{AllowDestructive: true})
+	if err != nil || m == nil || m.Next == nil {
+		t.Fatal(m, err)
+	}
+	head, tail := string(m.Files[m.Version+"_drop_title.up.sql"]), string(m.Files[m.Next.Version+"_"+m.Next.Name+".up.sql"])
+	if !strings.Contains(head, `DROP COLUMN "title"`) || strings.Contains(head, "docs_lower_title") ||
+		!strings.Contains(tail, "-- momo:no-transaction") || !strings.Contains(tail, `DROP INDEX CONCURRENTLY IF EXISTS "docs_lower_title"`) {
+		t.Fatalf("want the column drop in the head and the idempotent concurrent drop in the tail\nhead:\n%s\ntail:\n%s", head, tail)
+	}
+}
+
 // TestDiffNewPartitionedTableIndexIsNotConcurrent: the same for an index
 // declared on a partitioned table that the diff creates.
 func TestDiffNewPartitionedTableIndexIsNotConcurrent(t *testing.T) {
