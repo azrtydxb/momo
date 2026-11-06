@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 )
@@ -177,6 +178,10 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	}
 	if len(sets) == 0 && !u.versioned() {
 		return nil, nil, u.fail(ErrValidation, errors.New("no columns to update"))
+	}
+	sets, err := u.applyFieldHooks(sets)
+	if err != nil {
+		return nil, nil, err
 	}
 	if ci := u.meta.UpdatedAt; ci >= 0 && columnAssignable(writeUpdate, u.meta.Columns[ci].Flags) {
 		// updated_at rides in the same statement as the change, so an
@@ -379,4 +384,50 @@ func (u UpdateQuery[T]) advanceVersion() {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		e.SetUint(e.Uint() + 1)
 	}
+}
+
+// applyFieldHooks adds the OnUpdate values for columns the caller did not
+// assign with Set, then runs the validators over every column the statement
+// sets. Soft-delete updates do not run it.
+func (u UpdateQuery[T]) applyFieldHooks(sets []Assignment) ([]Assignment, error) {
+	fp, err := newFieldPlan(u.q, u.meta)
+	if err != nil || len(fp.hooks) == 0 {
+		return sets, err
+	}
+	var zero T
+	m := u.model
+	if m == nil {
+		m = &zero
+	}
+	for _, ci := range slices.Sorted(maps.Keys(fp.upd)) {
+		c := u.meta.Columns[ci]
+		if slices.ContainsFunc(u.assigns, func(a Assignment) bool { return a.col == c.Name }) {
+			continue // an explicit Set wins
+		}
+		if role := u.reservedRole(c.Name); role != "" {
+			hint := ""
+			if role == "updated-at" {
+				hint = "; updated_at is maintained automatically on every update (set the time source with WithClock)"
+			}
+			return nil, fieldError("update", u.meta.Table, c.Name, fmt.Errorf("OnUpdate: column %q is the %s column and cannot be set by a field hook%s", c.Name, role, hint))
+		}
+		if !columnAssignable(writeUpdate, c.Flags) {
+			return nil, fieldError("update", u.meta.Table, c.Name, fmt.Errorf("OnUpdate: column %q cannot be written by UPDATE", c.Name))
+		}
+		a := Assignment{col: c.Name, kind: setValue, val: fp.upd[ci](m)}
+		if j := slices.IndexFunc(sets, func(s Assignment) bool { return s.col == c.Name }); j >= 0 {
+			sets[j] = a
+		} else {
+			sets = append(sets, a)
+		}
+	}
+	err = fp.validate("update", u.meta, func(ci int) (any, bool) {
+		for _, a := range sets {
+			if a.col == u.meta.Columns[ci].Name {
+				return assignedValue(a)
+			}
+		}
+		return nil, false
+	})
+	return sets, err
 }
