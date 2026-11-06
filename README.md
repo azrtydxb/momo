@@ -428,6 +428,8 @@ for usage or configuration errors, and 3 for database errors.
 ## More
 
 - [docs/README.md](docs/README.md) is the documentation index.
+- [docs/ai-guide.md](docs/ai-guide.md) is a single-file guide for AI coding
+  agents that use Momo in an application (also indexed by [llms.txt](llms.txt)).
 - [docs/vectors.md](docs/vectors.md) covers pgvector types, distance
   metrics, index limits and search settings.
 - [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md) maps every Go type to its

@@ -5,6 +5,7 @@ written; see `.procoder/specs/momo.md` scope item S-21 for the full list
 (architecture, API, capability matrix, migration safety and recovery,
 contributor guide, supported versions, performance).
 
+- [Guide for AI coding agents](ai-guide.md): one self-contained file for an agent using Momo in an application: setup, modeling, migrations, queries, relations, vectors, errors, testing, known pitfalls and rules. Also indexed by `llms.txt` at the repository root.
 - [Go to SQL type mapping](TYPE_MAPPING.md): column type per Go type, edge values, null handling.
 - [Vector search](vectors.md): pgvector types, metrics, limits, search settings and the binary codec.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
