@@ -3638,6 +3638,8 @@ Reconciliation note (2026-11-06): Task 15 differs from the sketch in seven ways.
 
 Reconciliation note (2026-11-06, review fix): point (2) above changed. The child block is scanned into a scratch child through its own `Meta.Ptr` destinations (`joinBinding`), not into `*any` through `ScanValue`, so child columns have the same semantics as a plain Load of the child. Non-nullable destinations are scanned through `**T` and a NULL there is interpreted only once the key columns show a match (`scanNull`: `Scan(nil)` for a `sql.Scanner`, nil for slices/maps/interfaces, an error otherwise); an unmatched row leaves the relation nil and drops the scratch child. `ScanValue` stays as a public helper; `scanNull` now also accepts named slice, map and interface kinds. A raw unqualified column such as `id` in the parent's Where is ambiguous with a Joined relation (SQLSTATE 42702), as the `Joined` doc says.
 
+Reconciliation note (2026-11-06, pre-PR review): `ScanValue` and its converters (`scanVal`, `scanPtr`, `as*`) were removed: joined loading scans through `Meta.Ptr` destinations and only needs `scanNull`, which now lives in `joinload.go`. `scan.go` and `scan_internal_test.go` are gone; `TestScanValueNullHandling` is superseded by `TestJoinLoadScanMatchesPlainLoad`. The Interfaces entry `func ScanValue(dst any, src any) error` is withdrawn.
+
 ---
 
 ## Task 16: Relation predicates, traversal and count ordering
@@ -3657,6 +3659,8 @@ Interfaces:
 - `type Direction uint8` with constants `DirAsc`, `DirDesc` (not `Asc`/`Desc`: those names are taken by `Asc(e Expr)` and `Desc(e Expr)` in `expr.go`). `CountOrder(dir Direction) Orderable` renders `(SELECT COUNT(*) FROM child AS "momo_r" WHERE correlation) DESC`.
 
 Scope predicates in `Has*` must reference the child alias `momo_r` (build them with `.As("momo_r")` on the generated column). Documented in the godoc of `Has`.
+
+Reconciliation note (2026-11-06, pre-PR review): `HasWith` was removed. It was a pure alias of `Has` that nothing used and the spec does not name; use `Has` (or `HasFrom` with an explicit alias). The Interfaces entry for `HasWith` is withdrawn.
 
 Covers: S-76 (EXISTS predicates, traversal to typed child query, ordering by relation count). Acceptance test names: `TestRelationPredicates`, `TestRelationTraverseAndOrder`.
 
