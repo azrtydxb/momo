@@ -668,10 +668,31 @@ _, err = momo.Insert[models.Task](q).Model(&t).
 	Exec(ctx)
 _, err = momo.Insert[models.Task](q).Model(&t).OnConflict(task.Title).DoNothing().Exec(ctx)
 err = momo.UpsertByPK(ctx, q, &t) // one-call form of Upsert(q).Model(m); reads generated columns back
+// Conditional upsert (lease/lock): update only when the condition holds.
+res, err := momo.Insert[models.Lock](q).
+	Values(lock.Name.Set("n"), lock.Holder.Set(me), lock.Until.Set(until)).
+	OnConflict(lock.Name).
+	// .Where(targetPreds...) here names a partial unique index as the target
+	DoUpdate(lock.Holder.SetExcluded(), lock.Until.SetExcluded()).
+	Where(momo.Or(lock.Until.Le(now), lock.Holder.Eq(me))). // columns = existing row
+	Exec(ctx)                                               // res.RowsAffected == 1: you hold it; 0: refused
+// Compare with the proposed row: lock.Until.LtExpr(lock.Until.Excluded())
 ```
 
 - Upsert never overwrites pk, version, soft-delete or created_at columns, and does
   not advance or check the version (no optimistic-lock detection).
+- `InsertQuery.Where` is the DO UPDATE condition: valid only after `DoUpdate` or on
+  `Upsert[T]` (keeps its default set); after `DoNothing` or with no conflict clause it
+  is `ErrValidation`. Columns render qualified by the table name (existing row);
+  `col.Excluded()` is `EXCLUDED.col`, used with `LtExpr`/`LeExpr`/`EqExpr`. A false
+  condition affects 0 rows and, with `Returning`, returns no row.
+- `OnConflict(cols...).Where(preds...)` renders `ON CONFLICT (cols) WHERE ...` for a
+  partial unique index (unqualified columns); PostgreSQL rejects the statement
+  without it. It needs target columns (`ErrValidation` otherwise). Multiple `Where`
+  calls AND. MySQL: both are `ErrUnsupported`. Do not use `Excluded()` in the
+  target predicate; PostgreSQL rejects it.
+- SQLite matches the target predicate against the index text, so a bound value
+  never matches: write it as raw SQL, for example `momo.SQL("live = 1")`.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
   Explicit identity values do not advance the sequence: `setval` it yourself.
 
@@ -1159,7 +1180,9 @@ Examples: every `examples/*/example_test.go`, harness
 15. `Joined()` is belongs-to only; `Link`/`Unlink`/`Replace`/`Count` are not for
     belongs-to; helpers skip hooks and `UpdatedAt`.
 16. `FindOrCreate` and `OnConflict` need a matching UNIQUE constraint; many-to-many
-    join tables need a unique key.
+    join tables need a unique key. A partial unique index needs
+    `OnConflict(cols).Where(indexPredicate)`; a conditional DO UPDATE uses
+    `.DoUpdate(...).Where(...)`.
 17. Vector columns need `dim:<n>`; hnsw/ivfflat indexes need an explicit opclass
     matching the distance function used in queries; ivfflat needs `lists`.
 18. Run vector queries that need tuning inside `db.WithSearch` and use `tx`

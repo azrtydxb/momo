@@ -108,6 +108,10 @@ func (c VectorColumn[V]) SetDefault() Assignment { return c.col.SetDefault() }
 // SetExcluded assigns the value proposed for insertion in an upsert.
 func (c VectorColumn[V]) SetExcluded() Assignment { return c.col.SetExcluded() }
 
+// Excluded is the vector proposed for insertion in an upsert, rendered as
+// EXCLUDED.<col>. See Column.Excluded.
+func (c VectorColumn[V]) Excluded() Expression[V] { return c.col.Excluded() }
+
 // NullVectorColumn is the descriptor of a nullable vector column. It adds
 // SetNull.
 type NullVectorColumn[V VectorValue] struct{ VectorColumn[V] }

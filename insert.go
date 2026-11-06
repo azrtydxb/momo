@@ -40,6 +40,10 @@ type insertCore struct {
 	target    []string
 	conflict  conflictKind
 	set       []Assignment
+	// targetWhere is the conflict-target predicate (ON CONFLICT (cols) WHERE
+	// ...) and actionWhere the DO UPDATE condition; each ANDs its parts.
+	targetWhere []Predicate
+	actionWhere []Predicate
 	// upsert and withIdentity are owned by upsert.go: upsert marks an Upsert
 	// query, withIdentity puts the identity column in a model INSERT list.
 	upsert       bool
@@ -167,6 +171,7 @@ func (q InsertQuery[T]) ReturningAll() InsertQuery[T] {
 type ConflictQuery[T any] struct {
 	q      InsertQuery[T]
 	target []string
+	where  []Predicate
 }
 
 // OnConflict starts an ON CONFLICT clause with the given conflict target.
@@ -179,10 +184,24 @@ func (q InsertQuery[T]) OnConflict(cols ...ColumnRef) ConflictQuery[T] {
 	return ConflictQuery[T]{q: q, target: names}
 }
 
+// Where adds predicates to the conflict target, rendered as
+// ON CONFLICT (cols) WHERE <preds>. PostgreSQL and SQLite need it to infer a
+// partial unique index: the predicate must imply the index predicate, and
+// without it the database rejects the statement. Several calls AND together.
+// It needs target columns in OnConflict (otherwise the build fails with
+// ErrValidation) and works with both DoNothing and DoUpdate. Columns render
+// without a table qualifier, as the database requires in an index
+// predicate. MySQL has no ON CONFLICT and fails with ErrUnsupported.
+func (c ConflictQuery[T]) Where(preds ...Predicate) ConflictQuery[T] {
+	c.where = append(slices.Clip(c.where), preds...)
+	return c
+}
+
 // DoNothing skips rows that conflict.
 func (c ConflictQuery[T]) DoNothing() InsertQuery[T] {
 	q := c.q
 	q.i.target, q.i.conflict, q.i.set = c.target, conflictNothing, nil
+	q.i.targetWhere = slices.Clone(c.where)
 	return q
 }
 
@@ -191,6 +210,24 @@ func (c ConflictQuery[T]) DoNothing() InsertQuery[T] {
 func (c ConflictQuery[T]) DoUpdate(assigns ...Assignment) InsertQuery[T] {
 	q := c.q
 	q.i.target, q.i.conflict, q.i.set = c.target, conflictUpdate, slices.Clone(assigns)
+	q.i.targetWhere = slices.Clone(c.where)
+	return q
+}
+
+// Where adds a condition to the DO UPDATE action: the existing row is
+// updated only when the predicates hold, rendered as
+// DO UPDATE SET ... WHERE <preds>. When they do not, the conflicting row is
+// left untouched and the statement affects 0 rows (with Returning, no row
+// comes back). Several calls AND together.
+//
+// Columns are qualified by the table name, so they mean the existing row;
+// use Column.Excluded for the value proposed for insertion, for example
+// until.LtExpr(until.Excluded()). It is valid only when the conflict action
+// is DoUpdate, including Upsert[T], whose default update set is kept; after
+// DoNothing, or without any conflict clause, the build fails with
+// ErrValidation. MySQL fails with ErrUnsupported.
+func (q InsertQuery[T]) Where(preds ...Predicate) InsertQuery[T] {
+	q.i.actionWhere = append(slices.Clip(q.i.actionWhere), preds...)
 	return q
 }
 
@@ -564,7 +601,17 @@ func (q InsertQuery[T]) appendValue(b *Builder, a Assignment) {
 	}
 }
 
+// renderWhere writes ` WHERE ` and the predicates ANDed.
+func renderWhere(b *Builder, preds []Predicate) {
+	b.WriteString(" WHERE ")
+	And(preds...).AppendSQL(b)
+}
+
 func (q InsertQuery[T]) renderConflict(b *Builder) {
+	if len(q.i.actionWhere) > 0 && q.i.conflict != conflictUpdate {
+		b.SetErr(q.verr("", "Where is only valid after DoUpdate (or on Upsert): there is no DO UPDATE to condition"))
+		return
+	}
 	if q.i.conflict == conflictNone {
 		return
 	}
@@ -588,6 +635,16 @@ func (q InsertQuery[T]) renderConflict(b *Builder) {
 			b.Ident(n)
 		}
 		b.writeByte(')')
+	}
+	if len(q.i.targetWhere) > 0 {
+		if len(q.i.target) == 0 {
+			b.SetErr(q.verr("", "OnConflict(...).Where needs a conflict target: pass columns to OnConflict"))
+			return
+		}
+		prev := b.unqualified
+		b.unqualified = true
+		renderWhere(b, q.i.targetWhere)
+		b.unqualified = prev
 	}
 	if q.i.conflict == conflictNothing {
 		b.WriteString(" DO NOTHING")
@@ -618,6 +675,9 @@ func (q InsertQuery[T]) renderConflict(b *Builder) {
 		b.Ident(a.col)
 		b.WriteString(" = ")
 		q.appendValue(b, a)
+	}
+	if len(q.i.actionWhere) > 0 {
+		renderWhere(b, q.i.actionWhere)
 	}
 }
 
