@@ -320,10 +320,9 @@ func loadRelations(ctx context.Context, q momo.Querier, authorID int64) error {
 ### 7. Similarity search
 
 Distance expressions take a vector column and a query vector, and the result
-orders a select. In this release the generator emits a plain column for a
-vector field, and the distance functions need a `momo.VectorColumn`, which
-also records the dimension so a wrong-sized query vector is rejected when the
-query is built. Declare it once next to the code that searches.
+orders a select. The generator emits a `momo.VectorColumn` for every field of
+a `vector` type, such as `post.Embedding`. It records the dimension from the
+`dim` tag, so a wrong-sized query vector is rejected when the query is built.
 
 `WithSearch` runs a function in a transaction with pgvector settings applied,
 here `hnsw.ef_search`. The settings end with the transaction. `SearchSettings`
@@ -331,13 +330,11 @@ also covers iterative scans for filtered searches, IVFFlat probes, and
 `ExactSearch`.
 
 ```go
-var postEmbedding = momo.NewVectorColumn[vector.Vector]("posts", "embedding", 3, 0)
-
 func similarPosts(ctx context.Context, db *momo.DB, query vector.Vector) error {
 	settings := momo.SearchSettings{HNSWEfSearch: 100}
 	return db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
 		nearest, err := momo.Select[models.Post](tx).
-			OrderBy(momo.CosineDistance(postEmbedding, query).Asc()).
+			OrderBy(momo.CosineDistance(post.Embedding, query).Asc()).
 			Limit(5).
 			All(ctx)
 		if err != nil {

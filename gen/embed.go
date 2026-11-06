@@ -132,7 +132,9 @@ func (fl *flattener) newField(v *types.Var, path []int, prefix string, ft tags.T
 	if col == "" {
 		col = fl.namer.ColumnName(v.Name())
 	}
-	t := v.Type()
+	// Unalias first so an alias to a pointer type is seen as that pointer:
+	// GoType, the nullability and the vector detection all read it.
+	t := types.Unalias(v.Type())
 	_, nullable := t.Underlying().(*types.Pointer)
 	access, adiags := AccessFor(ft, v.Name(), nullable)
 	for _, d := range adiags {

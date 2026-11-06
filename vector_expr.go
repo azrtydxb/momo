@@ -41,37 +41,38 @@ type DistanceExpr struct {
 	arg         any
 }
 
-func newDistance[V VectorValue](c VectorColumn[V], m dialect.Metric, v V) DistanceExpr {
-	return DistanceExpr{table: c.table, name: c.name, dim: c.dim, metric: m, arg: v}
+func newDistance[V VectorValue](src VectorSource[V], m dialect.Metric, v V) DistanceExpr {
+	c := src.vectorColumn()
+	return DistanceExpr{table: c.Table(), name: c.ColumnName(), dim: c.Dim(), metric: m, arg: v}
 }
 
 // L2Distance is the Euclidean distance (pgvector <->).
-func L2Distance[V denseVector](c VectorColumn[V], v V) DistanceExpr {
+func L2Distance[V denseVector, C VectorSource[V]](c C, v V) DistanceExpr {
 	return newDistance(c, dialect.MetricL2, v)
 }
 
 // InnerProductDistance is the negative inner product (pgvector <#>).
-func InnerProductDistance[V denseVector](c VectorColumn[V], v V) DistanceExpr {
+func InnerProductDistance[V denseVector, C VectorSource[V]](c C, v V) DistanceExpr {
 	return newDistance(c, dialect.MetricInnerProduct, v)
 }
 
 // CosineDistance is the cosine distance (pgvector <=>).
-func CosineDistance[V denseVector](c VectorColumn[V], v V) DistanceExpr {
+func CosineDistance[V denseVector, C VectorSource[V]](c C, v V) DistanceExpr {
 	return newDistance(c, dialect.MetricCosine, v)
 }
 
 // L1Distance is the taxicab distance (pgvector <+>).
-func L1Distance[V denseVector](c VectorColumn[V], v V) DistanceExpr {
+func L1Distance[V denseVector, C VectorSource[V]](c C, v V) DistanceExpr {
 	return newDistance(c, dialect.MetricL1, v)
 }
 
 // HammingDistance is the Hamming distance of bit vectors (pgvector <~>).
-func HammingDistance[V bitVector](c VectorColumn[V], v V) DistanceExpr {
+func HammingDistance[V bitVector, C VectorSource[V]](c C, v V) DistanceExpr {
 	return newDistance(c, dialect.MetricHamming, v)
 }
 
 // JaccardDistance is the Jaccard distance of bit vectors (pgvector <%>).
-func JaccardDistance[V bitVector](c VectorColumn[V], v V) DistanceExpr {
+func JaccardDistance[V bitVector, C VectorSource[V]](c C, v V) DistanceExpr {
 	return newDistance(c, dialect.MetricJaccard, v)
 }
 
