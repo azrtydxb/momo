@@ -1,6 +1,6 @@
 # What a human decided
 
-Written 2026-11-06 18:15 UTC. procoder reads this
+Written 2026-11-06 18:26 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
 
@@ -86,6 +86,20 @@ Answer: Recreate now (user's choice via AskUserQuestion, 2026-11-05).
 Key: after-sprint-1
 
 Answer: Push init to azrtydxb/momo and open a PR into main so CI runs; start sprint 2 (plan 09 Task 1 + plan 02 generator) in parallel.
+
+## [decision] decisions.md
+
+Key: b64de45664d2
+Question: Issue #8: WHERE on ON CONFLICT (design and release)
+
+- Build it as designed: ConflictQuery.Where (conflict-target predicate), InsertQuery.Where after DoUpdate (action condition, existing row table-qualified), Column.Excluded() expression; PostgreSQL and SQLite, ErrUnsupported on MySQL; integration tests incl. the lease RowsAffected case; docs and AI guide updated; release as v0.2.0 via release-please (recommended)
+- Same design, but release as v0.1.1 (release-as override)
+- Only the action WHERE (skip the conflict-target WHERE)
+- Do not build it yet
+
+Decision (2026-11-06): build issue #8 as designed (ConflictQuery.Where, InsertQuery.Where after DoUpdate, Column.Excluded(); PG and SQLite, ErrUnsupported on MySQL) and release as v0.2.0 via release-please.
+
+Answer: Build it, release v0.2.0 (user, AskUserQuestion 2026-11-06).
 
 ## (no longer asked)
 

@@ -78,3 +78,12 @@ Decision (2026-11-06): open the PR from sprint-2 into main with the drafted titl
 - Do not merge yet
 
 Decision (2026-11-06): squash-merge PR #7 now; keep sprint-2 as the working branch.
+
+## Issue #8: WHERE on ON CONFLICT (design and release)
+
+- Build it as designed: ConflictQuery.Where (conflict-target predicate), InsertQuery.Where after DoUpdate (action condition, existing row table-qualified), Column.Excluded() expression; PostgreSQL and SQLite, ErrUnsupported on MySQL; integration tests incl. the lease RowsAffected case; docs and AI guide updated; release as v0.2.0 via release-please (recommended)
+- Same design, but release as v0.1.1 (release-as override)
+- Only the action WHERE (skip the conflict-target WHERE)
+- Do not build it yet
+
+Decision (2026-11-06): build issue #8 as designed (ConflictQuery.Where, InsertQuery.Where after DoUpdate, Column.Excluded(); PG and SQLite, ErrUnsupported on MySQL) and release as v0.2.0 via release-please.
