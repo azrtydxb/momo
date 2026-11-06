@@ -1848,6 +1848,8 @@ func TestDefaultsAndValidators(t *testing.T) {
 
 - [ ] **Step 5: Commit.** `feat(core): Go-side defaults and validators run before SQL`
 
+Reconciliation note (2026-11-05): the Task 21 test as written contradicts itself. Its default case inserts `Document{TenantID: 1, Title: "ok"}` with `Model` and expects `Version == 1` from the default, while its zero case inserts a `Model` with `Version: 0` and expects 0 to be written; both have the same zero version, and a `Model` insert writes every column it does not omit. Decision: a default applies to a column the statement omits, that is a `Values` or `ValuesRows` row that does not assign it, or a `Model` insert that lists it in `Omit`; the default case in the test therefore calls `.Omit(suite.DocVersion)`. Further decisions: `WithFieldHooks` is generic (`WithFieldHooks[T, PT]`, inferred from the slice) and keys the hooks by the `*Meta[T]` pointer on the DB, in addition to `Meta.Fields`; a validator receives the bound Go value, or nil for NULL, DEFAULT and an omitted insert column without a default (so an empty-title check also rejects an omitted title, which the test relies on); an update validates only the columns it sets; `OnUpdate` fills a column the caller did not assign with `Set` (an explicit `Set` wins) and is refused on key, version, soft-delete and timestamp columns; defaults on non-writable columns are ignored. A bulk insert validates every row before the first chunk runs.
+
 ## Task 22: Codecs and the types package (S-73)
 
 Files:
