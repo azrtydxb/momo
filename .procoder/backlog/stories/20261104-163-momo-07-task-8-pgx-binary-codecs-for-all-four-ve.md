@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-07-vectors-pgvector
-Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
+Sprint: -
+Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Criterion [S-50] unmet: BenchmarkVectorEncoding results are not recorded under bench/results (the directory does not exist; plan assigns it to momo-12). Binary codecs themselves exist in driver/pgxdriver/vector_codec.go with TestVectorBinaryCodec.
 
 ## Description
 
