@@ -36,16 +36,18 @@ type cte struct {
 // immutable once stored: every builder method appends to a clipped copy, so
 // derived queries never share writable backing arrays.
 type selectCore struct {
-	with        []cte
-	distinct    bool
-	cols        []Expr // nil: the model's mapped columns
-	from        TableSource
-	joins       []join
-	where       []Predicate
-	groupBy     []Expr
-	having      []Predicate
-	order       []Order
-	keyset      []any
+	with     []cte
+	distinct bool
+	cols     []Expr // nil: the model's mapped columns
+	from     TableSource
+	joins    []join
+	where    []Predicate
+	groupBy  []Expr
+	having   []Predicate
+	order    []Order
+	keyset   []any
+	// joinLoads holds the joined loaders added by Preload (copy-on-write).
+	joinLoads   []any
 	limit       int64 // -1: none
 	offset      int64
 	lock        string
@@ -366,7 +368,11 @@ func (sq SelectQuery[T]) SQL() (Compiled, error) {
 	if sq.q == nil {
 		return Compiled{}, errors.New("momo: query has no Querier")
 	}
-	return compile(sq.q.Dialect(), sq.render)
+	run, _, err := sq.expandJoins()
+	if err != nil {
+		return Compiled{}, err
+	}
+	return compile(sq.q.Dialect(), run.render)
 }
 
 func (sq SelectQuery[T]) render(b *Builder) {
@@ -601,16 +607,39 @@ func (sq SelectQuery[T]) rows(ctx context.Context) (Rows, error) {
 type scanner[T any] struct {
 	meta *Meta[T]
 	dest []any
+	join *joinScan[T] // joined relations scanned after the model's columns
+}
+
+// newScanner returns a scanner for the rows of sq, including the child
+// columns of joined relations.
+func (sq SelectQuery[T]) newScanner() scanner[T] {
+	sc := scanner[T]{meta: sq.meta}
+	if _, ls, _ := sq.expandJoins(); len(ls) > 0 {
+		sc.join = newJoinScan(ls)
+	}
+	return sc
 }
 
 func (s *scanner[T]) scan(r Rows, m *T) error {
+	n := len(s.meta.Columns)
 	if s.dest == nil {
-		s.dest = make([]any, len(s.meta.Columns))
+		extra := 0
+		if s.join != nil {
+			extra = s.join.width
+		}
+		s.dest = make([]any, n+extra)
 	}
-	for i := range s.dest {
+	for i := 0; i < n; i++ {
 		s.dest[i] = s.meta.Ptr(m, i)
 	}
-	return r.Scan(s.dest...)
+	if s.join == nil {
+		return r.Scan(s.dest...)
+	}
+	s.join.bind(s.dest[n:])
+	if err := r.Scan(s.dest...); err != nil {
+		return err
+	}
+	return s.join.assign(m)
 }
 
 // All runs the query and collects every row. An empty result is an empty
@@ -626,7 +655,7 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 		out = make([]T, 0, sq.s.limit)
 	}
 	var zero T
-	sc := scanner[T]{meta: sq.meta}
+	sc := sq.newScanner()
 	for r.Next() {
 		out = append(out, zero)
 		if err := sc.scan(r, &out[len(out)-1]); err != nil {
@@ -660,7 +689,7 @@ func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 		}
 		return zero, &Error{Kind: ErrNotFound, Op: "select", Table: sq.meta.Table}
 	}
-	sc := scanner[T]{meta: sq.meta}
+	sc := sq.newScanner()
 	if err := sc.scan(r, &m); err != nil {
 		return zero, err
 	}

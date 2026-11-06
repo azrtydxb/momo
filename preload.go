@@ -18,14 +18,22 @@ import (
 // issues no relation statement, and an error from a relation load is returned
 // instead of the rows. Relation hooks fire as they do for LoadAll.
 //
+// Loaders from Relation.Joined are not loaded afterwards but joined into the
+// query itself; see Joined for their rules.
+//
 // Each and Iter stream rows without collecting them, so they cannot batch
 // relation loads: with preloads they return an error matching ErrUnsupported.
 func (sq SelectQuery[T]) Preload(loaders ...Loader[T]) SelectQuery[T] {
-	add := make([]any, len(loaders))
-	for i, l := range loaders {
-		add[i] = l
+	var plain, joined []any
+	for _, l := range loaders {
+		if _, ok := l.(joinLoader[T]); ok {
+			joined = append(joined, l)
+			continue
+		}
+		plain = append(plain, l)
 	}
-	sq.s.preloads = append(slices.Clip(sq.s.preloads), add...)
+	sq.s.preloads = append(slices.Clip(sq.s.preloads), plain...)
+	sq.s.joinLoads = append(slices.Clip(sq.s.joinLoads), joined...)
 	return sq
 }
 
@@ -44,7 +52,7 @@ func (sq SelectQuery[T]) runPreloads(ctx context.Context, rows []T) error {
 
 // errStreamPreload is the error Each and Iter return when preloads are set.
 func (sq SelectQuery[T]) errStreamPreload() error {
-	if len(sq.s.preloads) == 0 {
+	if len(sq.s.preloads) == 0 && len(sq.s.joinLoads) == 0 {
 		return nil
 	}
 	return &Error{Kind: ErrUnsupported, Op: "select", Table: sq.meta.Table,

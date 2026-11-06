@@ -48,7 +48,12 @@ func LoadOrderBy[C any](items ...Orderable) LoadOption[C] {
 // has-many and many-to-many relations; on belongs-to and has-one the load fails
 // with ErrUnsupported, and a negative n fails with ErrValidation (both with Op
 // "load", before any statement runs). Zero leaves the load unlimited. Nested
-// loads (Then) run over the kept children only. Window functions need
+// loads (Then) run over the kept children only. A many-to-many relation whose
+// child has a primary key ranks with DENSE_RANK, so duplicated join-table rows
+// share a rank and cannot use up the limit; without a child primary key
+// (Relation.ChildPK empty) it ranks with ROW_NUMBER, so duplicated join rows
+// each take a rank and can count against the limit before duplicates collapse.
+// Window functions need
 // PostgreSQL, MySQL 8 / MariaDB 10.2 or SQLite 3.25 and later.
 func LoadPerParentLimit[C any](n int) LoadOption[C] {
 	return func(c *loadConfig) { c.perParentLimit = n }
