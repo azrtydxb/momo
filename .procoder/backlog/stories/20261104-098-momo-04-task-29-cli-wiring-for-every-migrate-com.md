@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
+Sprint: -
+Carried: 002-generator-from-go-structs-with-its-type-prerequisites — S-10 needs CLI commands rebase, lint, rollback and new, which are not built; S-26 needs the SQLite+sqlite-vec packages on the Windows job. Carried until those land.
 
 ## Description
 

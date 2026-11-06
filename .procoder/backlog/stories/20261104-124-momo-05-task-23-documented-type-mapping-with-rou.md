@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-05-writes-queries
-Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
+Sprint: -
+Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Red-first criterion unverifiable (mapping pre-existed) and S-31 requires every dialect; only PostgreSQL exists. Carried until SQLite and MySQL land.
 
 ## Description
 
