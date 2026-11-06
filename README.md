@@ -325,6 +325,9 @@ func loadRelations(ctx context.Context, q momo.Querier, authorID int64) error {
 	if err := momo.Load(ctx, q, authors, author.Posts); err != nil {
 		return err
 	}
+	if len(authors) == 0 {
+		return fmt.Errorf("author %d not found", authorID)
+	}
 	posts := authors[0].Posts
 	if err := momo.Load(ctx, q, posts, post.Author); err != nil {
 		return err
