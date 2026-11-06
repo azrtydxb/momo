@@ -170,3 +170,70 @@ func TestLoadManyToManyDuplicateJoinRowsOnNonPKTarget(t *testing.T) {
 		}
 	})
 }
+
+type mcHook struct{ args []int }
+
+func (h *mcHook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Context { return ctx }
+func (h *mcHook) AfterQuery(_ context.Context, e *momo.QueryEvent) {
+	if e.Relation != "" {
+		h.args = append(h.args, e.NumArgs)
+	}
+}
+
+type mcPost struct {
+	Tenant, Code int64
+	Kids         []mmCoded
+}
+
+var mcRel = momo.Relation[mcPost, mmCoded]{
+	Name: "Kids", Kind: momo.ManyToMany,
+	Parent: momo.TableRef{Name: "mc_posts"}, Child: momo.TableRef{Name: "mm_coded"},
+	ChildMeta:  &mmCodedMeta,
+	ParentCols: []string{"tenant", "code"}, ChildCols: []string{"id"}, ChildPK: []string{"id"},
+	Through:   &momo.Through{Table: momo.TableRef{Name: "mc_join"}, ParentCols: []string{"tenant", "code"}, ChildCols: []string{"kid_id"}},
+	ParentKey: func(p *mcPost) ([]any, bool) { return []any{p.Tenant, p.Code}, true },
+	ChildKey:  func(c *mmCoded) ([]any, bool) { return []any{c.ID}, true },
+	GetMany:   func(p *mcPost) []mmCoded { return p.Kids },
+	SetMany:   func(p *mcPost, cs []mmCoded) { p.Kids = cs },
+}
+
+// A composite join key (two parent columns, one child column) is chunked on
+// the parent key width: with room for four arguments, five parents need three
+// statements binding 4, 4 and 2 arguments.
+func TestLoadManyToManyCompositeJoinKeyChunking(t *testing.T) {
+	h := &mcHook{}
+	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+		ctx := context.Background()
+		for _, s := range []string{
+			"DROP TABLE IF EXISTS mc_join",
+			"DROP TABLE IF EXISTS mc_posts",
+			"DROP TABLE IF EXISTS mm_coded",
+			"CREATE TABLE mc_posts (tenant BIGINT NOT NULL, code BIGINT NOT NULL, PRIMARY KEY (tenant, code))",
+			"CREATE TABLE mm_coded (id BIGINT PRIMARY KEY, code TEXT NOT NULL UNIQUE)",
+			"CREATE TABLE mc_join (tenant BIGINT NOT NULL, code BIGINT NOT NULL, kid_id BIGINT NOT NULL)",
+			"INSERT INTO mc_posts (tenant, code) VALUES (1, 1), (1, 2), (2, 1), (2, 2), (3, 1)",
+			"INSERT INTO mm_coded (id, code) VALUES (1, 'a'), (2, 'b')",
+			"INSERT INTO mc_join (tenant, code, kid_id) VALUES (1, 1, 1), (1, 2, 2), (2, 1, 1), (2, 1, 2), (3, 1, 2)",
+		} {
+			if _, err := momo.Exec(ctx, db, s); err != nil {
+				t.Fatalf("%s: %v", s, err)
+			}
+		}
+		t.Cleanup(func() {
+			for _, s := range []string{"mc_join", "mc_posts", "mm_coded"} {
+				_, _ = momo.Exec(context.Background(), db, "DROP TABLE IF EXISTS "+s)
+			}
+		})
+		ps := []mcPost{{Tenant: 1, Code: 1}, {Tenant: 1, Code: 2}, {Tenant: 2, Code: 1}, {Tenant: 2, Code: 2}, {Tenant: 3, Code: 1}}
+		h.args = nil
+		if err := momo.Load(ctx, db, ps, mcRel); err != nil {
+			t.Fatal(err)
+		}
+		if fmt.Sprint(h.args) != "[4 4 2]" {
+			t.Fatalf("per-statement argument counts %v, want [4 4 2]", h.args)
+		}
+		if len(ps[0].Kids) != 1 || len(ps[1].Kids) != 1 || len(ps[2].Kids) != 2 || len(ps[3].Kids) != 0 || len(ps[4].Kids) != 1 {
+			t.Fatalf("kids: %+v", ps)
+		}
+	}, momo.WithHook(h), momo.WithMaxParams(16+4))
+}
