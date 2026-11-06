@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-06-relations
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
@@ -11,10 +11,14 @@ Implements plan momo-06-relations Task 16: Relation predicates, traversal and co
 
 ## Acceptance criteria
 
-- [ ] `TestRelationPredicates` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestRelationTraverseAndOrder` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-76] `TestRelationPredicates` asserts SQL shape (EXISTS) and rows for each; fails if a predicate duplicates parents via JOIN.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestRelationPredicates` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestRelationTraverseAndOrder` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-76] `TestRelationPredicates` asserts SQL shape (EXISTS) and rows for each; fails if a predicate duplicates parents via JOIN.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Red: `go test ./ -run 'TestRelationPredicates|TestRelationTraverseAndOrder'` failed to compile (`document.Comments.Has undefined`, also `HasNo`, `From`, `CountOrder`). Green on PostgreSQL with `-tags integration -race` after `relpred.go`.
+- S-76: `TestRelationPredicates` asserts `EXISTS (SELECT 1 FROM` / `NOT EXISTS (SELECT 1 FROM` and no `JOIN` in the SQL for Has and HasNo, plus rows ([1 3], [2 4]); many-to-many Has goes through `momo_j` and returns [1 3]. `TestRelationPredicateShapes` adds self-reference (`HasFrom`), composite key, polymorphic discriminator and composite traversal.
+- Mutation checks (each made the relation tests fail, then restored): drop NOT in HasNo, correlate on first key column only, CountOrder ignores direction, drop scope predicates, `IN` to `NOT IN` in traversal, drop the discriminator (killed only after adding the polymorphic case).
+- Deviations are recorded in the plan's Task 16 reconciliation note (2026-11-06).
