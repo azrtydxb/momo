@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/azrtydxb/momo/compare/v0.1.0...v0.2.0) (2026-11-06)
+
+
+### Features
+
+* **insert:** WHERE on ON CONFLICT target and DO UPDATE ([#9](https://github.com/azrtydxb/momo/issues/9)) ([ffae95a](https://github.com/azrtydxb/momo/commit/ffae95a6c8eed9e551758d7f5fa41181af9aa00f))
+
 ## 0.1.0 (2026-11-06)
 
 First release. Supported backend: PostgreSQL with pgvector (pgx driver), including PgBouncer. SQLite and MySQL are not usable yet; only their dialect metadata exists.
