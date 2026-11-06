@@ -199,8 +199,9 @@ list.
 
 One connection is pinned for the whole run. Order: lock, set timeouts, history
 table, migrations, reset timeouts, unlock (reset runs first so a small
-`statement_timeout` cannot cancel the unlock). All three cleanup steps run on a
-context detached from Ctrl-C, with a 5 s bound each.
+`statement_timeout` cannot cancel the unlock). Cleanup runs on a
+context detached from Ctrl-C and has two steps: the two RESETs share one 5 s
+bound, and the unlock has its own.
 
 ### Lock
 
@@ -225,12 +226,15 @@ does nothing. If a lock appears stuck, find the session
 - **Default: one transaction per migration file**, not per batch. The
   `running` history row, all statements and the update to `applied` commit
   together. A second migration failing never undoes a first that committed.
-- **Marked `-- momo:no-transaction` (or containing a statement that needs it,
-  such as `CREATE INDEX CONCURRENTLY`): the whole file runs with no
+- **Marked `-- momo:no-transaction`: the whole file runs with no
   transaction**, one autocommitted statement at a time, with `statements_applied`
   updated after each. Every statement in that file loses atomicity, not only
-  the concurrent one. `diff` writes the directive when any statement needs it,
-  so a first migration that contains a concurrent index also creates its
+  the concurrent one. Only the directive selects this mode on apply; `apply`
+  does not inspect statements. `diff` writes the directive when it renders a
+  concurrent index. A hand-written file must carry the directive itself:
+  otherwise PostgreSQL rejects `CREATE INDEX CONCURRENTLY` inside a
+  transaction, the version is recorded `rolled_back`, and it can be retried
+  after you add the directive. Because `diff` marks the whole file, a first migration that contains a concurrent index also creates its
   tables outside a transaction. To keep a concurrent index build in a migration
   of its own, add the index in a separate model change and run `diff` for it
   alone.
@@ -380,9 +384,18 @@ the table has rows. With `--stage`:
 1. `diff --stage` adds the column as nullable and prints the hint
    `staged: T.C was added as nullable; backfill it, then run ALTER TABLE T ALTER COLUMN C SET NOT NULL`.
 2. Apply, backfill in batches outside the migration.
-3. Run `diff` again: it emits the `SET NOT NULL` migration (it scans the table
-   under a lock; do it when the table is quiet or add a validated `CHECK`
-   first by hand).
+3. `diff --stage` records the column as NOT NULL in the snapshot while the
+   database has it nullable, so `diff` will not emit `SET NOT NULL`: re-running
+   it prints "no changes". After the backfill, add a hand-written migration
+   (section 6) with `ALTER TABLE <t> ALTER COLUMN <c> SET NOT NULL`. The
+   snapshot already matches, so `validate` passes. The statement scans the
+   table under a lock; do it when the table is quiet or add a validated
+   `CHECK` first by hand.
+
+The same applies to an existing column made NOT NULL under `--stage`: only the
+hint is emitted, and you must write the `SET NOT NULL` migration yourself.
+The hint that tells you to re-run `migrate diff` is wrong (known bug, story
+`20261106-staged-not-null-is-never-enforced-after-diff-stage`).
 
 A `NOT NULL` column with a default is not staged. A constant default is cheap
 on PostgreSQL 11 and later; a volatile default (for example `random()`)
@@ -425,7 +438,8 @@ SQL by creating the files yourself:
    `20260301120000_backfill_slug.up.sql`. Do not put `-- momo:generated` in it.
 2. Optional directives at the top, before the first statement:
    `-- momo:no-transaction`, `-- momo:split`, `-- momo:destructive`
-   (informational). An unknown `-- momo:` directive is an error.
+   (informational, never enforced), `-- momo:generated` (do not use it here)
+   and `-- momo:sqlite-foreign-keys-off` (SQLite only). An unknown `-- momo:` directive is an error.
 3. Create `20260301120000_backfill_slug.snapshot.json` as a copy of the previous
    snapshot with `version` set to the new version and `parent` set to the
    previous version. The `schema` must stay equal to the parent's, or
@@ -470,7 +484,9 @@ changes only, writes no history and no files, and returns the rest as
   becomes `***@`, a URL in text that has a query keeps the part before `?` and
   shows `?***`, a `password=`/`passwd=`/`pwd=` value becomes `***`, and the
   exact URL and password given are replaced by `***`.
-  History `error` text comes from the server and is not run through this.
+  History `error` text is the server message only, never `Detail`. Messages of
+  SQLSTATE class 22 (data exception) are withheld because they can contain
+  data values. The text is not URL-redacted (migrate/runner.go).
 - A warning on stderr (not a failure) when a command that needs a database is
   given a URL with `sslmode=disable` and any non-local host: `TLS is disabled
 (sslmode=disable) for remote host H: credentials and data cross the network
@@ -481,3 +497,21 @@ unencrypted; use sslmode=require or stronger`. It names the hosts only.
   `MOMO_DATABASE_URL`.
 - Review `*.up.sql` in code review like any code: `apply` runs it as the
   connected role, and `momo.sum` only detects change, not intent.
+
+## Known issues in v0.1.0
+
+Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
+
+- s2: Staged NOT NULL is never enforced after diff --stage (`20261106-staged-not-null-is-never-enforced-after-diff-stage`)
+- s3: Apply does not run chain and fork checks (`20261106-apply-does-not-run-chain-and-fork-checks`)
+- s3: The momo:destructive directive is never enforced (`20261106-the-momo-destructive-directive-is-never-enforced`)
+- s3: diff marks a whole file no-transaction when it has a concurrent index (`20261106-diff-marks-a-whole-file-no-transaction-when-it-has-a`)
+- s3: Index drop, constraint drop, UNIQUE and CHECK are not flagged risky or emitted safely (`20261106-index-drop-constraint-drop-unique-and-check-are-not-flagged`)
+- s3: No way to accept an edited applied migration (`20261106-no-way-to-accept-an-edited-applied-migration`)
+- s4: lock_timeout and statement_timeout of 0s cannot disable the timeout (`20261106-lock-timeout-and-statement-timeout-of-0s-cannot-disable-the`)
+- s4: NOT NULL staging refusal says populated table but fires for any existing table (`20261106-not-null-staging-refusal-says-populated-table-but-fires-for`)
+- s4: apply creates the history table and meta row even when nothing is pending (`20261106-apply-creates-the-history-table-and-meta-row-even-when`)
+- s4: No warning for NOT NULL with a volatile default (`20261106-no-warning-for-not-null-with-a-volatile-default`)
+- s4: --force-unlock is a no-op for every dialect (`20261106-force-unlock-is-a-no-op-for-every-dialect`)
+- s4: History error column is not URL-redacted and --url is visible in the process list (`20261106-history-error-column-is-not-url-redacted-and-url-is-visible`)
+- s4: Rename-candidate exception skips staging for NOT NULL columns (`20261106-rename-candidate-exception-skips-staging-for-not-null`)
