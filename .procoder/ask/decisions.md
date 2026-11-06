@@ -89,3 +89,10 @@ Decision (2026-11-06): squash-merge PR #7 now; keep sprint-2 as the working bran
 Decision (2026-11-06): build issue #8 as designed (ConflictQuery.Where, InsertQuery.Where after DoUpdate, Column.Excluded(); PG and SQLite, ErrUnsupported on MySQL) and release as v0.2.0 via release-please.
 
 User direction (2026-11-06): "get it build and released, use more agents if needed, but hurry" — standing approval for issue #8: open the PR, squash-merge when green and reviewed, merge the release-please PR for v0.2.0.
+
+## GitHub Actions: version tags or commit SHAs (Scout semgrep mutable-action-tag)
+
+- Keep version tags per the azrtydxb CI standard; revert the SHA pins; mark the Scout finding IGNORED with a note (recommended)
+- Switch Momo to SHA pins and change the repocheck tests
+
+Decision (2026-11-06): keep version tags (azrtydxb CI standard); SHA pins reverted; Scout finding IGNORED with the standard as the reason.
