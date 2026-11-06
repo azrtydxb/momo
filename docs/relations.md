@@ -89,8 +89,9 @@ Tag options for relations:
 - `join:<table>` is required for `many2many`. The join columns are named after
   each model and its primary key column, for example `document_id` and
   `tag_id`. Rules:
-  - Set `join:` on both sides of the relation, or the generator reports a
-    diagnostic.
+  - Set `join:` (same table) on every many2many side you declare. The
+    reverse side is optional, but a reverse side declared without `join:`
+    makes the generator report a diagnostic.
   - A many-to-many to the model's own type is not supported.
   - Both models need a primary key.
   - The join table has exactly two key columns, named `<model>_<pkcol>`. Extra
@@ -122,7 +123,7 @@ The generator reports a diagnostic, and writes nothing for that package, when:
 - a relation has more than one kind, or the field type does not match the kind;
 - the target is not a Momo model;
 - `fk` is missing, or names a field that does not exist;
-- `many2many` has no `join:`, or `join:` is set on only one side;
+- `many2many` has no `join:`, or a declared reverse side has no `join:`;
 - `polytype` is given without `polyvalue` or the other way round, or
   `polytype` is used on a relation that is not `has_one` or `has_many`;
 - the `polytype` column is not a field of the target.

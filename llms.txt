@@ -1,0 +1,36 @@
+# Momo
+
+> Momo is a Go ORM (github.com/azrtydxb/momo, v0.1.0) that generates typed column and relation descriptors from plain Go structs. v0.1.0 supports PostgreSQL 16/17 with pgvector through pgx only; SQLite and MySQL are not usable. Includes versioned SQL migrations, relations, transactions and vector search. Read the AI guide first.
+
+## Start here
+
+- [Guide for AI coding agents](https://github.com/azrtydxb/momo/blob/main/docs/ai-guide.md): setup, modeling, migrations, queries, relations, vectors, errors, testing, and DO/DON'T rules with every known v0.1.0 pitfall.
+- [README](https://github.com/azrtydxb/momo/blob/main/README.md): install, worked example, command line overview.
+
+## Reference
+
+- [Relations](https://github.com/azrtydxb/momo/blob/main/docs/relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
+- [Migrations](https://github.com/azrtydxb/momo/blob/main/docs/migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, known issues, CLI reference.
+- [Vector search](https://github.com/azrtydxb/momo/blob/main/docs/vectors.md): pgvector types, distance functions, index limits, search settings.
+- [Go to SQL type mapping](https://github.com/azrtydxb/momo/blob/main/docs/TYPE_MAPPING.md): column type per Go type, edge values, null handling.
+- [Capabilities](https://github.com/azrtydxb/momo/blob/main/docs/capabilities.md): what each database supports, what is not built, what returns ErrUnsupported.
+- [Supported versions](https://github.com/azrtydxb/momo/blob/main/docs/supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer and pgx versions tested in CI, and the stability policy.
+- [Architecture](https://github.com/azrtydxb/momo/blob/main/docs/ARCHITECTURE.md): layers, package names and contracts.
+
+## Examples
+
+- [Examples index](https://github.com/azrtydxb/momo/blob/main/examples/README.md): nine runnable programs, each tested end to end in CI.
+- [quickstart](https://github.com/azrtydxb/momo/tree/main/examples/quickstart): models, generate, CRUD, relations, vector search, a transaction.
+- [crud-zero-null](https://github.com/azrtydxb/momo/tree/main/examples/crud-zero-null): zero value versus NULL versus default, soft delete, optimistic lock.
+- [transactions](https://github.com/azrtydxb/momo/tree/main/examples/transactions): Tx, rollback, savepoints, read-only, retry on serialization failure.
+- [relations](https://github.com/azrtydxb/momo/tree/main/examples/relations): has-many, belongs-to, many-to-many; Load, Preload, Joined, Has, Link, CreateGraph.
+- [projection-pagination](https://github.com/azrtydxb/momo/tree/main/examples/projection-pagination): hand-written projections, keyset pagination, counting.
+- [vector-search](https://github.com/azrtydxb/momo/tree/main/examples/vector-search): HNSW index, nearest-neighbour queries, filters, search settings.
+- [upgrade-database](https://github.com/azrtydxb/momo/tree/main/examples/upgrade-database): add a column and an index, rename a column, apply with data kept, drift.
+- [custom-sql-migration](https://github.com/azrtydxb/momo/tree/main/examples/custom-sql-migration): hand-written migrations, backfill, no-transaction, CONCURRENTLY workaround.
+- [adopt-existing-schema](https://github.com/azrtydxb/momo/tree/main/examples/adopt-existing-schema): put a plain-SQL database under Momo with migrate baseline.
+
+## Optional
+
+- [Changelog](https://github.com/azrtydxb/momo/blob/main/CHANGELOG.md): release notes; read before upgrading.
+- [Contributing](https://github.com/azrtydxb/momo/blob/main/CONTRIBUTING.md): how to build and test Momo itself.
