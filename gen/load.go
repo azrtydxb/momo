@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -42,10 +43,11 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 	}
 
 	g := &Graph{
-		Models:   []*Model{},
-		Schema:   &schema.Schema{},
-		Packages: []*Package{},
-		Plugins:  append([]Plugin(nil), cfg.Plugins...),
+		Models:      []*Model{},
+		Projections: []*Model{},
+		Schema:      &schema.Schema{},
+		Packages:    []*Package{},
+		Plugins:     append([]Plugin(nil), cfg.Plugins...),
 	}
 	var diags []Diagnostic
 	var namer naming.Namer = naming.Momo{}
@@ -69,10 +71,12 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 			dir = dirOf(p.GoFiles[0])
 		}
 		g.Packages = append(g.Packages, &Package{Path: p.PkgPath, Name: p.Name, Dir: dir})
-		ms, mdiags := discoverModels(p, namer)
+		ms, ps, mdiags := discoverAll(p, namer)
 		g.Models = append(g.Models, ms...)
+		g.Projections = append(g.Projections, ps...)
 		diags = append(diags, mdiags...)
 		diags = append(diags, collisionDiagnostics(ms)...)
+		diags = append(diags, projectionDiagnostics(ps, cfg)...)
 	}
 	rdiags, bad := resolveRelations(g.Models)
 	diags = append(diags, rdiags...)
@@ -84,10 +88,24 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 			}
 		}
 		g.Models = kept
+		keptP := g.Projections[:0]
+		for _, m := range g.Projections {
+			if !bad[m.PkgPath] {
+				keptP = append(keptP, m)
+			}
+		}
+		g.Projections = keptP
 	}
 	sort.SliceStable(g.Packages, func(i, j int) bool { return g.Packages[i].Path < g.Packages[j].Path })
 	sort.SliceStable(g.Models, func(i, j int) bool {
 		a, b := g.Models[i], g.Models[j]
+		if a.PkgPath != b.PkgPath {
+			return a.PkgPath < b.PkgPath
+		}
+		return a.GoName < b.GoName
+	})
+	sort.SliceStable(g.Projections, func(i, j int) bool {
+		a, b := g.Projections[i], g.Projections[j]
 		if a.PkgPath != b.PkgPath {
 			return a.PkgPath < b.PkgPath
 		}
@@ -148,4 +166,26 @@ func collisionDiagnostics(models []*Model) []Diagnostic {
 		diags = append(diags, checkColumnCollisions(cols)...)
 	}
 	return append(diags, checkModelIdentifiers(models)...)
+}
+
+// projectionDiagnostics checks that each field type of a projection is one
+// the type map knows, as for a model; the error names the struct and the
+// field. Column names are positional labels, so repeats are allowed.
+func projectionDiagnostics(projections []*Model, cfg Config) []Diagnostic {
+	var diags []Diagnostic
+	b := &schemaBuilder{namer: cfg.Naming, primary: dialect.Postgres}
+	if len(cfg.Dialects) > 0 {
+		b.primary = cfg.Dialects[0]
+	}
+	for _, p := range projections {
+		for _, f := range p.Fields {
+			core, _ := strings.CutPrefix(f.GoType, "*")
+			b.diags = nil
+			b.columnType(f, core)
+			for _, d := range b.diags {
+				diags = append(diags, Diagnostic{Pos: d.Pos, Msg: "projection " + p.GoName + ": " + d.Msg})
+			}
+		}
+	}
+	return diags
 }

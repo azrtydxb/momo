@@ -413,18 +413,12 @@ DATABASE_URL='postgres://user:password@localhost:5432/app?sslmode=disable' go ru
 
 A projection reads a subset of columns or an aggregate into a struct that is
 not a table. Embed `momo.Projection` and select it with `From` and `Columns`;
-see [examples/projection-pagination](examples/projection-pagination/) and the
-`Hit` type in [examples/vector-search](examples/vector-search/). In v0.1.0 the
-generator does not emit projections, so you write the `MomoMeta` by hand. A projection has no identity, version, soft-delete or timestamp column, so set
-`Identity`, `Version`, `SoftDelete`, `CreatedAt` and `UpdatedAt` to -1 in its
-`Meta`. The `Card` type in the projection example shows the whole thing.
-
-A projection does not get the automatic soft-delete filter (its `SoftDelete` is
-`-1`). When the table has a soft-delete column, add the filter yourself, for
-example `.Where(article.DeletedAt.IsNull())`.
-
-Generating this is tracked in the backlog story
-[Generate Meta for projection structs](.procoder/backlog/stories/20261106-generate-meta-for-projection-structs.md).
+`momo generate` writes its `MomoMeta`, so there is nothing to maintain by hand.
+When `From` is a table with a soft-delete column, soft-deleted rows are
+excluded automatically, as for a model; `WithDeleted()` and `OnlyDeleted()`
+work the same way. See [docs/projections.md](docs/projections.md),
+[examples/projection-pagination](examples/projection-pagination/) and the
+`Hit` type in [examples/vector-search](examples/vector-search/).
 
 ## Command line
 

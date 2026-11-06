@@ -24,7 +24,7 @@
 - [crud-zero-null](https://github.com/azrtydxb/momo/tree/main/examples/crud-zero-null): zero value versus NULL versus default, soft delete, optimistic lock.
 - [transactions](https://github.com/azrtydxb/momo/tree/main/examples/transactions): Tx, rollback, savepoints, read-only, retry on serialization failure.
 - [relations](https://github.com/azrtydxb/momo/tree/main/examples/relations): has-many, belongs-to, many-to-many; Load, Preload, Joined, Has, Link, CreateGraph.
-- [projection-pagination](https://github.com/azrtydxb/momo/tree/main/examples/projection-pagination): hand-written projections, keyset pagination, counting.
+- [projection-pagination](https://github.com/azrtydxb/momo/tree/main/examples/projection-pagination): projections, keyset pagination, counting.
 - [vector-search](https://github.com/azrtydxb/momo/tree/main/examples/vector-search): HNSW index, nearest-neighbour queries, filters, search settings.
 - [upgrade-database](https://github.com/azrtydxb/momo/tree/main/examples/upgrade-database): add a column and an index, rename a column, apply with data kept, drift.
 - [custom-sql-migration](https://github.com/azrtydxb/momo/tree/main/examples/custom-sql-migration): hand-written migrations, backfill, no-transaction, CONCURRENTLY workaround.

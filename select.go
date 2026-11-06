@@ -504,6 +504,13 @@ func (sq SelectQuery[T]) renderBody(b *Builder) {
 	if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted {
 		where = append(slices.Clip(where), softDeletePred(sq.meta, sq.qualifier(), s.onlyDeleted))
 	}
+	if sq.meta.Table == "" && len(s.joins) == 0 && !s.withDeleted {
+		// A projection has no soft-delete column of its own: the filter
+		// comes from the single table it reads FROM.
+		if t, ok := s.from.(TableRef); ok && t.SoftDelete != "" {
+			where = append(slices.Clip(where), softMarkerPred{t.Qualifier(), t.SoftDelete, t.SoftDeleteKind, s.onlyDeleted})
+		}
+	}
 	if len(where) > 0 {
 		b.WriteString(" WHERE ")
 		appendAnd(b, where)

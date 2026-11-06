@@ -54,10 +54,13 @@ type Package struct {
 
 // Graph is the loaded model graph.
 type Graph struct {
-	Models   []*Model
-	Schema   *schema.Schema
-	Packages []*Package
-	Plugins  []Plugin
+	Models []*Model
+	// Projections are the structs that embed momo.Projection. They have no
+	// table, so they are not in Schema; only their MomoMeta is generated.
+	Projections []*Model
+	Schema      *schema.Schema
+	Packages    []*Package
+	Plugins     []Plugin
 	// Namer is the naming preset the graph was loaded with.
 	Namer naming.Namer
 }
@@ -86,6 +89,9 @@ type Model struct {
 	Config *CompanionResult
 	// SubPkg is the per-model subpackage name.
 	SubPkg string
+	// Projection is set for a struct that embeds momo.Projection: it has
+	// Fields but no Table, Relations, Indexes or companion.
+	Projection bool
 
 	named *types.Named
 }

@@ -89,10 +89,19 @@ func metaOf[T any, PT Modeler[T]]() *Meta[T] {
 
 // TableRef names a table source in FROM and JOIN clauses, optionally
 // aliased. Generated per-model packages embed it in their Table type.
+//
+// Generated code sets SoftDelete and SoftDeleteKind on a model's Table when
+// the model has a soft-delete column. A projection read FROM such a table
+// (and not joined) then excludes soft-deleted rows like a model does.
 type TableRef struct {
 	Name   string
 	Alias  string
 	Schema string
+	// SoftDelete is the name of the table's soft-delete marker column; empty
+	// when the table has none.
+	SoftDelete string
+	// SoftDeleteKind is the type of that marker column.
+	SoftDeleteKind SoftDeleteKind
 }
 
 func (t TableRef) appendFrom(b *Builder) {
