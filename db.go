@@ -112,12 +112,14 @@ type DB struct {
 // closes it.
 func New(drv Driver, opts ...Option) *DB {
 	db := &DB{drv: drv}
-	for _, o := range opts {
-		o(db)
-	}
+	// The execer is set up before the options run so that options such as
+	// WithMaxParams can adjust the dialect it carries.
 	db.ex = execer{db: db, q: drv, d: drv.Dialect(), owner: db}
 	if c, ok := drv.(ErrorClassifier); ok {
 		db.ex.classify = c.ClassifyError
+	}
+	for _, o := range opts {
+		o(db)
 	}
 	return db
 }
@@ -246,6 +248,27 @@ type hookedRows struct {
 	table  string
 	n      int64
 	closed bool
+	// scanErr is the first Scan failure; Close reports it to AfterQuery.
+	scanErr error
+}
+
+// Scan records a failure so the statement's AfterQuery carries it.
+func (r *hookedRows) Scan(dest ...any) error {
+	err := r.Rows.Scan(dest...)
+	if err != nil && r.scanErr == nil {
+		r.scanErr = err
+	}
+	return err
+}
+
+// abort closes the statement's hook pair with err unless it already ended.
+func (r *hookedRows) abort(err error) {
+	if r.closed {
+		return
+	}
+	r.closed = true
+	_ = r.Rows.Close()
+	r.e.after(r.ctx, r.ev, r.n, r.e.wrapErr(r.op, r.table, err))
 }
 
 func (r *hookedRows) Next() bool {
@@ -265,6 +288,9 @@ func (r *hookedRows) Close() error {
 		ferr := err
 		if ferr == nil {
 			ferr = r.Rows.Err()
+		}
+		if ferr == nil {
+			ferr = r.scanErr
 		}
 		r.e.after(r.ctx, r.ev, r.n, r.e.wrapErr(r.op, r.table, ferr))
 	}
@@ -352,6 +378,19 @@ func (db *DB) Tx(ctx context.Context, opts TxOptions, fn func(tx *Tx) error) (er
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// inTx runs fn in a new transaction when q is a *DB and in a savepoint when q
+// is a *Tx. A *DB pinned with OnConn cannot begin a transaction: the call fails
+// with ErrUnsupported (Op "begin") before fn runs.
+func inTx(ctx context.Context, q Querier, fn func(tx *Tx) error) error {
+	switch qq := q.(type) {
+	case *DB:
+		return qq.Tx(ctx, TxOptions{}, fn)
+	case *Tx:
+		return qq.Tx(ctx, fn)
+	}
+	return &Error{Kind: ErrUnsupported, Op: "begin", Err: errors.New("unknown Querier")}
 }
 
 // Tx runs fn inside a savepoint of this transaction: an error or panic

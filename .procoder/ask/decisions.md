@@ -14,3 +14,35 @@ The edoburu PgBouncer image cannot track `search_path` (no env variable for `tra
 - Leave phase 2 red and carry the S-30 criterion of story 065.
 
 Decision (2026-11-05): scratch database per run.
+
+## v0.1.0 scope and release push
+
+- Lock scope: merged relations plus stories 149, 154 and 150; stories 151, 152 and 155 move to 0.2; approve pushing sprint-2 and opening the PR into main once the scope is done (recommended)
+- Lock that scope, but ask again before pushing
+- Wait for all of momo-06 (stories 150 to 155) before release
+
+Decision (2026-11-06): wait for all relations (stories 150 to 155) before v0.1.0.
+
+## Where story verification runs
+
+- Push each story branch (and sprint-2) to origin so GitHub Actions runs the full suite, race, lint and the pg16/pg17 matrix; agents run only targeted tests locally (recommended)
+- Keep everything local, but cap concurrent agents at two and move GOCACHE off the full DATA disk
+- Keep the current setup
+
+Decision (2026-11-06): push branches, use CI; standing approval to push worktree-agent-* story branches and sprint-2 to origin (no PRs or merges to main without asking); local runs limited to the story's own tests.
+
+## Stories with honestly unticked criteria before v0.1.0
+
+- Carry 094, 097, 098, 123, 124 and 148 out of sprint 2 with their reason recorded (pre-existing code so no red state; SQLite/MySQL not built yet; CLI commands rebase/lint/rollback/new not built); they stay open in the backlog and the sprint can close (recommended)
+- Tick the "failed before the implementation" criteria with a note that mutation runs stand in for the red state, close 094, 097, 124 and 148; carry 098 and 123
+- Leave all of them open in sprint 2 and decide after the release
+
+Decision (2026-11-06): carry with reasons; 094, 097, 098, 123, 124 and 148 go back to the backlog with the reason recorded, nothing ticked without evidence.
+
+## Open the v0.1.0 relations PR (sprint-2 into main)
+
+- Open the PR with the drafted title and body, then run the merge loop (checks, bot reviews) and ask again before squash-merging (recommended)
+- Open it as a draft PR first
+- Do not open it yet
+
+Decision (2026-11-06): open the PR with the drafted title and body; ask again before squash-merging.

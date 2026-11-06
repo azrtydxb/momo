@@ -6,6 +6,7 @@ package relfixture
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ var ddl = []string{
 	`CREATE TABLE authors (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,
 	`CREATE TABLE documents (id BIGINT PRIMARY KEY, author_id BIGINT REFERENCES authors(id), title TEXT NOT NULL)`,
 	`CREATE TABLE comments (id BIGINT PRIMARY KEY, document_id BIGINT NOT NULL REFERENCES documents(id), body TEXT NOT NULL, approved BOOLEAN NOT NULL)`,
+	`CREATE TABLE notes (id BIGINT PRIMARY KEY, document_id BIGINT NOT NULL REFERENCES documents(id), body TEXT NOT NULL, deleted BOOLEAN NOT NULL DEFAULT FALSE)`,
 	`CREATE TABLE tags (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,
 	`CREATE TABLE taggings (document_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, position BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (document_id, tag_id))`,
 	`CREATE TABLE images (id BIGINT PRIMARY KEY, owner_type TEXT NOT NULL, owner_id BIGINT NOT NULL, url TEXT NOT NULL)`,
@@ -93,7 +95,8 @@ func SeedBasic(t testing.TB, db *momo.DB) {
 // Hook counts statements. Each subtest gets fresh counters. Relation events
 // join it when the relation hook lands (momo-06 relhook).
 type Hook struct {
-	After  []string // QueryEvent.Relation of each statement ("" when not a relation load)
+	mu     sync.Mutex // guards the recorders: statements can run concurrently
+	After  []string   // QueryEvent.Relation of each statement ("" when not a relation load)
 	Events []momo.RelationEvent
 }
 
@@ -104,6 +107,8 @@ func (h *Hook) BeforeRelation(ctx context.Context, _ *momo.RelationEvent) contex
 
 // AfterRelation implements momo.RelationHook; it records a copy of the event.
 func (h *Hook) AfterRelation(_ context.Context, e *momo.RelationEvent) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.Events = append(h.Events, *e)
 }
 
@@ -112,6 +117,8 @@ func (h *Hook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Cont
 
 // AfterQuery implements momo.Hook.
 func (h *Hook) AfterQuery(_ context.Context, e *momo.QueryEvent) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.After = append(h.After, e.Relation)
 }
 

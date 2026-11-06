@@ -288,7 +288,14 @@ func (t *pgxTx) CopyFrom(ctx context.Context, table string, cols []string, rows 
 
 // SendBatch implements momo.Batcher on the transaction's connection.
 func (t *pgxTx) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.Rows, error) {
-	return sendBatch(ctx, t.tx, t.d.mode, t.d.vecFormat, stmts)
+	if t.done.Load() {
+		return nil, &momo.Error{Kind: momo.ErrTxDone, Op: "select", Err: pgx.ErrTxClosed}
+	}
+	rows, err := sendBatch(ctx, t.tx, t.d.mode, t.d.vecFormat, stmts)
+	if errors.Is(err, pgx.ErrTxClosed) {
+		return nil, &momo.Error{Kind: momo.ErrTxDone, Op: "select", Err: err}
+	}
+	return rows, err
 }
 
 // CopyFrom implements momo.Copier on the pinned session.

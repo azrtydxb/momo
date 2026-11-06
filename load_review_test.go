@@ -148,11 +148,3 @@ func TestLoadRunsEveryChunkOnThePassedTx(t *testing.T) {
 		t.Fatalf("events: %+v", h.events)
 	}
 }
-
-func TestLoadPerParentLimitReturnsUnsupported(t *testing.T) {
-	db := momo.New(fakedriver.New(dialect.Postgres))
-	err := momo.Load(context.Background(), db, lrParents(2, false), lrKids, momo.LoadPerParentLimit[lrChild](1))
-	if !errors.Is(err, momo.ErrUnsupported) {
-		t.Fatalf("want ErrUnsupported, got %v", err)
-	}
-}

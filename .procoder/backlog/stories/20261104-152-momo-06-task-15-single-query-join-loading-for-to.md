@@ -1,9 +1,9 @@
 # momo-06 Task 15: Single-query join loading for to-one relations with NULL-to-nil
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-04
 Epic: momo-06-relations
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
@@ -11,10 +11,15 @@ Implements plan momo-06-relations Task 15: Single-query join loading for to-one 
 
 ## Acceptance criteria
 
-- [ ] `TestScanValueNullHandling` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestJoinLoadToOne` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-81] `TestNestedFilteredEagerLoad` and `TestJoinLoadToOne` assert query counts and that a missing to-one leaves nil, not a zero struct; fails if join loading duplicates parents.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestScanValueNullHandling` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestJoinLoadToOne` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-81] `TestNestedFilteredEagerLoad` and `TestJoinLoadToOne` assert query counts and that a missing to-one leaves nil, not a zero struct; fails if join loading duplicates parents.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Red: before scan.go/joinload.go existed both tests failed to compile (`ScanValue` and `Joined` undefined). Green: `scan_internal_test.go` and `joinload_test.go` pass against PostgreSQL with the integration tag.
+- S-81: `TestJoinLoadToOne` asserts one statement, four parents (none duplicated or dropped), a nil Author for the NULL foreign key and no relation event. Also covered: Where/Order/Limit/Offset, One/First, self-reference, composite keys, soft-deleted target kept in ON (SQL shape pinned), several joins, ErrUnsupported cases.
+- Mutations, each failing tests: soft-delete in WHERE instead of ON, constant alias (self-reference breaks), no NULL-to-nil detection, composite key joined on the first column only (parents duplicated), DENSE_RANK to ROW_NUMBER for the story-149 follow-up tests.
+- Deviations are recorded in the dated reconciliation note after Task 15 in the plan. The discriminator-in-ON case does not arise: belongs-to cannot carry a Discriminator and has-one is not joinable.
+- Review fix (2026-11-06): joined children no longer scan through `*any` and `ScanValue`. `joinBinding` scans the child's columns into its real `Meta.Ptr` destinations, so `*int8`, `uint8`, named string types, `**types.UUID`, `**types.Date`, `**vector.Vector`, JSON and `*time.Time` behave exactly as in a plain Load of the child. Destinations that cannot hold NULL are scanned through a fresh `**T` (nil for the LEFT JOIN no-match row, same driver conversion otherwise). `TestJoinLoadScanMatchesPlainLoad` compares joined and plain children field by field (values, NULLs) and the all-NULL no-match case; mutation: restoring the `ScanValue` path fails it with `unsupported destination type *int8`. `TestJoinLoadRawUnqualifiedColumn` pins that a raw unqualified `id` in the parent's Where is ambiguous (SQLSTATE 42702) with a Joined relation and that qualifying it works.

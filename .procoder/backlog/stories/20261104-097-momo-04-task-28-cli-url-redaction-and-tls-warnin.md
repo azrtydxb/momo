@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
+Sprint: -
+Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Red-first criterion unverifiable (behaviour pre-existed) and its gate criterion depends on it. Decided 2026-11-06: carry rather than tick.
 
 ## Description
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go/format"
 	"go/types"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -108,6 +109,36 @@ func derefType(t types.Type) (types.Type, bool) {
 	return t, false
 }
 
+// vectorTypeNames are the momo/vector types a momo.VectorColumn can hold.
+var vectorTypeNames = map[string]bool{"Vector": true, "HalfVector": true, "SparseVector": true, "Bits": true}
+
+// isVectorType reports whether t, after one pointer, is one of the four types
+// of the momo vector package. A look-alike declared elsewhere is not.
+func isVectorType(t types.Type) bool {
+	t, _ = derefType(t)
+	n, ok := types.Unalias(t).(*types.Named)
+	if !ok || n.Obj().Pkg() == nil {
+		return false
+	}
+	return n.Obj().Pkg().Path() == momoImportPath+"/vector" && vectorTypeNames[n.Obj().Name()]
+}
+
+var vectorTypeDim = regexp.MustCompile(`\((\d+)\)`)
+
+// vectorDim is the declared dimension of a vector field: the dim tag, else
+// the length in an explicit type tag such as vector(3), else 0 (unchecked).
+func vectorDim(f *Field) int {
+	if f.Tags.Dim > 0 {
+		return f.Tags.Dim
+	}
+	if m := vectorTypeDim.FindStringSubmatch(f.Tags.Type); m != nil {
+		if n, err := strconv.Atoi(m[1]); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
 var flagOrder = []struct {
 	name string
 	on   func(f *Field) bool
@@ -174,6 +205,8 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	}
 	type col struct {
 		name, typ, ctor, colName, flags string
+		dim                             int  // vector columns only
+		vector                          bool // emitted as a momo vector column
 	}
 	cols := make([]col, 0, len(m.Fields))
 	for i, f := range m.Fields {
@@ -187,13 +220,21 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 			elem = strings.TrimPrefix(f.GoType, "*")
 		}
 		typeName, ctor := DescriptorType(f.Access, f.Nullable || f.Tags.Nullable)
-		cols = append(cols, col{
+		c := col{
 			name:    name,
 			typ:     "momo." + typeName + "[" + elem + "]",
 			ctor:    "momo." + ctor + "[" + elem + "]",
 			colName: f.Column,
 			flags:   flagExpr(f),
-		})
+		}
+		if v != nil && isVectorType(v.Type()) {
+			tn, cn := VectorDescriptorType(f.Access, f.Nullable || f.Tags.Nullable)
+			c.typ = "momo." + tn + "[" + elem + "]"
+			c.ctor = "momo." + cn + "[" + elem + "]"
+			c.dim = vectorDim(f)
+			c.vector = true
+		}
+		cols = append(cols, c)
 	}
 
 	var body strings.Builder
@@ -208,6 +249,10 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	w("// As returns the column descriptors qualified by alias (the table name when alias is empty).\n")
 	w("func As(alias string) Columns {\n\tq := alias\n\tif q == \"\" {\n\t\tq = %s\n\t}\n\treturn Columns{\n", strconv.Quote(m.Table))
 	for _, c := range cols {
+		if c.vector {
+			w("\t\t%s: %s(q, %s, %d, %s),\n", c.name, c.ctor, strconv.Quote(c.colName), c.dim, c.flags)
+			continue
+		}
 		w("\t\t%s: %s(q, %s, %s),\n", c.name, c.ctor, strconv.Quote(c.colName), c.flags)
 	}
 	w("\t}\n}\n\n")

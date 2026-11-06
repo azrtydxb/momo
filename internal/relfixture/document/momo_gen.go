@@ -47,6 +47,21 @@ var Comments = momo.Relation[models.Document, models.Comment]{
 	SetMany: func(p *models.Document, cs []models.Comment) { p.Comments = cs },
 }
 
+// Notes are soft-deletable children (boolean marker).
+var Notes = momo.Relation[models.Document, models.Note]{
+	Name: "Notes", Kind: momo.HasMany,
+	Parent: momo.TableRef{Name: "documents"}, Child: momo.TableRef{Name: "notes"},
+	ParentMeta: (*models.Document)(nil).MomoMeta(), ChildMeta: (*models.Note)(nil).MomoMeta(),
+	ParentCols: []string{"id"}, ChildCols: []string{"document_id"}, ChildPK: []string{"id"},
+	ParentKey: func(p *models.Document) ([]any, bool) { return []any{p.ID}, true },
+	ChildKey:  func(c *models.Note) ([]any, bool) { return []any{c.DocumentID}, true },
+	SetChildKey: func(c *models.Note, k []any) {
+		c.DocumentID = k[0].(int64)
+	},
+	GetMany: func(p *models.Document) []models.Note { return p.Notes },
+	SetMany: func(p *models.Document, cs []models.Note) { p.Notes = cs },
+}
+
 var Tags = momo.Relation[models.Document, models.Tag]{
 	Name: "Tags", Kind: momo.ManyToMany,
 	Parent: momo.TableRef{Name: "documents"}, Child: momo.TableRef{Name: "tags"},

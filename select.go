@@ -36,23 +36,30 @@ type cte struct {
 // immutable once stored: every builder method appends to a clipped copy, so
 // derived queries never share writable backing arrays.
 type selectCore struct {
-	with        []cte
-	distinct    bool
-	cols        []Expr // nil: the model's mapped columns
-	from        TableSource
-	joins       []join
-	where       []Predicate
-	groupBy     []Expr
-	having      []Predicate
-	order       []Order
-	keyset      []any
+	with     []cte
+	distinct bool
+	cols     []Expr // nil: the model's mapped columns
+	from     TableSource
+	joins    []join
+	where    []Predicate
+	groupBy  []Expr
+	having   []Predicate
+	order    []Order
+	keyset   []any
+	// joinLoads holds the joined loaders added by Preload (copy-on-write).
+	joinLoads   []any
 	limit       int64 // -1: none
 	offset      int64
 	lock        string
 	indexedBy   string
 	withDeleted bool
 	onlyDeleted bool
-	err         error
+	// keysOnly marks an internal key-set subquery (relation traversal) whose
+	// select list is not the model's column list, so the arity check is skipped.
+	keysOnly bool
+	// preloads holds the Loader[T] values added by Preload (copy-on-write).
+	preloads []any
+	err      error
 }
 
 // SelectQuery builds and runs a SELECT whose rows scan into T.
@@ -358,10 +365,26 @@ func (sq SelectQuery[T]) WithRecursive(name string, q Subquery, cols ...string) 
 
 // SQL compiles the query without executing it.
 func (sq SelectQuery[T]) SQL() (Compiled, error) {
+	c, _, err := sq.compileJoined()
+	return c, err
+}
+
+// compileJoined compiles sq with its joined relations expanded and returns
+// the scanner for the resulting rows, expanding the joins once.
+func (sq SelectQuery[T]) compileJoined() (Compiled, scanner[T], error) {
+	sc := scanner[T]{meta: sq.meta}
 	if sq.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
+		return Compiled{}, sc, errors.New("momo: query has no Querier")
 	}
-	return compile(sq.q.Dialect(), sq.render)
+	run, ls, err := sq.expandJoins()
+	if err != nil {
+		return Compiled{}, sc, err
+	}
+	if len(ls) > 0 {
+		sc.join = newJoinScan(ls)
+	}
+	c, err := compile(sq.q.Dialect(), run.render)
+	return c, sc, err
 }
 
 func (sq SelectQuery[T]) render(b *Builder) {
@@ -435,7 +458,7 @@ func (sq SelectQuery[T]) renderBody(b *Builder) {
 			b.QualifiedIdent(q, c.Name)
 		}
 	} else {
-		if len(s.cols) != len(sq.meta.Columns) {
+		if len(s.cols) != len(sq.meta.Columns) && !s.keysOnly {
 			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("select list has %d expressions but result type maps %d fields", len(s.cols), len(sq.meta.Columns))})
 			return
 		}
@@ -584,34 +607,49 @@ func appendList(b *Builder, es []Expr) {
 
 // ------------------------------------------------------------ execution
 
-func (sq SelectQuery[T]) rows(ctx context.Context) (Rows, error) {
-	c, err := sq.SQL()
+// rows runs the query and returns its rows with the scanner for them.
+func (sq SelectQuery[T]) rows(ctx context.Context) (Rows, scanner[T], error) {
+	c, sc, err := sq.compileJoined()
 	if err != nil {
-		return nil, err
+		return nil, sc, err
 	}
-	return sq.q.conn().query(ctx, "select", sq.meta.Table, "", c)
+	r, err := sq.q.conn().query(ctx, "select", sq.meta.Table, "", c)
+	return r, sc, err
 }
 
 // scanner reuses one destination slice across rows.
 type scanner[T any] struct {
 	meta *Meta[T]
 	dest []any
+	join *joinScan[T] // joined relations scanned after the model's columns
 }
 
 func (s *scanner[T]) scan(r Rows, m *T) error {
+	n := len(s.meta.Columns)
 	if s.dest == nil {
-		s.dest = make([]any, len(s.meta.Columns))
+		extra := 0
+		if s.join != nil {
+			extra = s.join.width
+		}
+		s.dest = make([]any, n+extra)
 	}
-	for i := range s.dest {
+	for i := 0; i < n; i++ {
 		s.dest[i] = s.meta.Ptr(m, i)
 	}
-	return r.Scan(s.dest...)
+	if s.join == nil {
+		return r.Scan(s.dest...)
+	}
+	s.join.bind(s.dest[n:])
+	if err := r.Scan(s.dest...); err != nil {
+		return err
+	}
+	return s.join.assign(m)
 }
 
 // All runs the query and collects every row. An empty result is an empty
 // (nil) slice and a nil error, never ErrNotFound.
 func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
-	r, err := sq.rows(ctx)
+	r, sc, err := sq.rows(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -621,7 +659,6 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 		out = make([]T, 0, sq.s.limit)
 	}
 	var zero T
-	sc := scanner[T]{meta: sq.meta}
 	for r.Next() {
 		out = append(out, zero)
 		if err := sc.scan(r, &out[len(out)-1]); err != nil {
@@ -631,14 +668,20 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
-	return out, r.Close()
+	if err := r.Close(); err != nil {
+		return nil, err
+	}
+	if err := sq.runPreloads(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // One returns the single matching row: ErrNotFound when none matches and
 // ErrTooManyRows when more than one does. It adds no LIMIT.
 func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 	var zero, m T
-	r, err := sq.rows(ctx)
+	r, sc, err := sq.rows(ctx)
 	if err != nil {
 		return zero, err
 	}
@@ -649,7 +692,6 @@ func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 		}
 		return zero, &Error{Kind: ErrNotFound, Op: "select", Table: sq.meta.Table}
 	}
-	sc := scanner[T]{meta: sq.meta}
 	if err := sc.scan(r, &m); err != nil {
 		return zero, err
 	}
@@ -659,7 +701,17 @@ func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 	if err := r.Err(); err != nil {
 		return zero, err
 	}
-	return m, r.Close()
+	if err := r.Close(); err != nil {
+		return zero, err
+	}
+	if len(sq.s.preloads) > 0 {
+		rows := []T{m}
+		if err := sq.runPreloads(ctx, rows); err != nil {
+			return zero, err
+		}
+		m = rows[0]
+	}
+	return m, nil
 }
 
 // First applies LIMIT 1 and returns the first row, or ErrNotFound.
@@ -669,12 +721,14 @@ func (sq SelectQuery[T]) First(ctx context.Context) (T, error) { return sq.Limit
 // reused for the next row; copy it to retain it. Returning an error from fn
 // stops iteration, closes the cursor and returns that error.
 func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
-	r, err := sq.rows(ctx)
+	if err := sq.errStreamPreload(); err != nil {
+		return err
+	}
+	r, sc, err := sq.rows(ctx)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
-	sc := scanner[T]{meta: sq.meta}
 	var m, zero T
 	for {
 		if err := ctx.Err(); err != nil {
@@ -702,13 +756,16 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var zero T
-		r, err := sq.rows(ctx)
+		if err := sq.errStreamPreload(); err != nil {
+			yield(zero, err)
+			return
+		}
+		r, sc, err := sq.rows(ctx)
 		if err != nil {
 			yield(zero, err)
 			return
 		}
 		defer r.Close()
-		sc := scanner[T]{meta: sq.meta}
 		for {
 			if err := ctx.Err(); err != nil {
 				yield(zero, fmt.Errorf("momo: select cancelled: %w", err))

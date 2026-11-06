@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -23,9 +24,10 @@ type pending[P, C any] struct {
 	groups  map[string][]int // parent key -> parent indexes
 	keys    [][]any          // distinct parent keys, first-seen order
 	queries []Compiled
-	pool    []C            // child rows, in query order
-	owners  [][]int        // owners[j]: parent indexes that receive pool[j]
-	ev      *RelationEvent // event reported to relation hooks
+	pool    []C                 // child rows, in query order
+	owners  [][]int             // owners[j]: parent indexes that receive pool[j]
+	seen    map[string]struct{} // many-to-many: (parent key, child key) pairs already pooled
+	ev      *RelationEvent      // event reported to relation hooks
 }
 
 // prepareWith validates the descriptor, clears existing associations and
@@ -35,9 +37,13 @@ func (r *Relation[P, C]) prepareWith(q Querier, parents []P, cfg *loadConfig, ne
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
-	if cfg.perParentLimit != 0 {
+	if cfg.perParentLimit < 0 {
+		return nil, &Error{Kind: ErrValidation, Op: "load", Table: r.Child.Name,
+			Err: fmt.Errorf("%s: LoadPerParentLimit must be positive, got %d", r.Name, cfg.perParentLimit)}
+	}
+	if cfg.perParentLimit > 0 && (r.Kind == BelongsTo || r.Kind == HasOne) {
 		return nil, &Error{Kind: ErrUnsupported, Op: "load", Table: r.Child.Name,
-			Err: errors.New(r.Name + ": LoadPerParentLimit is not supported yet")}
+			Err: errors.New(r.Name + ": per-parent limit applies to has-many and many-to-many")}
 	}
 	pd := &pending[P, C]{r: r, q: q, parents: parents, cfg: cfg, nested: nested, groups: map[string][]int{}}
 	for i := range parents {
@@ -117,14 +123,50 @@ func (pd *pending[P, C]) runQueries(ctx context.Context, q Querier) error {
 // NULL or matches no requested parent are dropped.
 func (pd *pending[P, C]) consume(rows Rows) error {
 	defer func() { _ = rows.Close() }()
+	dedupe := pd.r.Through != nil && pd.dedupeJoin()
 	for rows.Next() {
 		var c C
-		if err := scanChild(pd.r, rows, &c); err != nil {
-			return pd.wrap(err)
-		}
-		key, ok := pd.r.ChildKey(&c)
-		if !ok {
-			continue
+		var key []any
+		if pd.r.Through != nil {
+			holders := make([]any, len(pd.r.Through.ParentCols))
+			dest := make([]any, 0, len(pd.r.ChildMeta.Columns)+len(holders))
+			for i := range pd.r.ChildMeta.Columns {
+				dest = append(dest, pd.r.ChildMeta.Ptr(&c, i))
+			}
+			for i := range holders {
+				dest = append(dest, &holders[i])
+			}
+			if err := rows.Scan(dest...); err != nil {
+				return pd.wrap(err)
+			}
+			if hasNilPart(holders) {
+				continue
+			}
+			key = holders
+			if dedupe {
+				m := pd.r.ChildMeta
+				pk := make([]any, len(m.PK))
+				for i, ci := range m.PK {
+					pk[i] = m.Value(&c, ci)
+				}
+				id := keyString(holders) + "\x00" + keyString(pk)
+				if _, dup := pd.seen[id]; dup {
+					continue // duplicated join row: one child per (parent, child) pair
+				}
+				if pd.seen == nil {
+					pd.seen = map[string]struct{}{}
+				}
+				pd.seen[id] = struct{}{}
+			}
+		} else {
+			if err := scanChild(pd.r, rows, &c); err != nil {
+				return pd.wrap(err)
+			}
+			k, ok := pd.r.ChildKey(&c)
+			if !ok {
+				continue
+			}
+			key = k
 		}
 		owners := pd.groups[keyString(key)]
 		if len(owners) == 0 {
@@ -134,6 +176,15 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 		pd.owners = append(pd.owners, owners)
 	}
 	return pd.wrap(rows.Err())
+}
+
+// dedupeJoin reports whether duplicated join-table rows can be collapsed:
+// whenever the child has a primary key, two rows with the same holder parent
+// key and child primary key are the same (parent, child) pair, whichever
+// column the relation targets.
+func (pd *pending[P, C]) dedupeJoin() bool {
+	m := pd.r.ChildMeta
+	return len(m.PK) > 0 && m.Value != nil
 }
 
 // wrap classifies a scan or iteration error like a query error, tagged Op "load".
@@ -196,17 +247,49 @@ func (r *Relation[P, C]) childQueries(q Querier, keys [][]any, cfg *loadConfig) 
 	if r.Discriminator != nil {
 		scopeArgs++
 	}
-	if d.MaxParams > 0 && scopeArgs+len(r.ChildCols) > d.MaxParams {
+	ncols := len(r.ChildCols)
+	if r.Through != nil {
+		ncols = len(r.Through.ParentCols) // the join query binds the parent key
+	}
+	if cfg.perParentLimit > 0 {
+		scopeArgs++ // the row-number bound
+	}
+	if d.MaxParams > 0 && scopeArgs+ncols > d.MaxParams {
 		return nil, &Error{Kind: ErrValidation, Op: "load", Table: r.Child.Name,
 			Err: fmt.Errorf("%s: scope binds %d arguments, leaving no room for a key under the %d-parameter limit", r.Name, scopeArgs, d.MaxParams)}
 	}
 	reserved := 16 + scopeArgs
-	budget := keysPerStatement(d, len(r.ChildCols), reserved)
+	budget := keysPerStatement(d, ncols, reserved)
 	var out []Compiled
 	for start := 0; start < len(keys); start += budget {
 		end := min(start+budget, len(keys))
 		chunk := keys[start:end]
-		c, err := compile(d, func(b *Builder) {
+		var c Compiled
+		var err error
+		if cfg.perParentLimit > 0 {
+			c, err = r.topNQuery(d, chunk, cfg)
+		} else {
+			c, err = r.chunkQuery(d, chunk, cfg)
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// chunkQuery compiles the statement for one chunk of parent keys. A
+// many-to-many relation joins the join table and projects its parent key
+// columns as momo_key_N holders, because the child row itself does not carry
+// the parent key:
+//
+//	SELECT child.cols..., jt.parent_col AS momo_key_0, ...
+//	FROM child INNER JOIN jt ON jt.child_col = child.key_col ...
+//	WHERE (jt.parent_cols) IN (keys) AND scope ORDER BY ...
+func (r *Relation[P, C]) chunkQuery(d *dialect.Dialect, chunk [][]any, cfg *loadConfig) (Compiled, error) {
+	if r.Through == nil {
+		return compile(d, func(b *Builder) {
 			b.WriteString("SELECT ")
 			r.writeChildColumns(b)
 			b.WriteString(" FROM ")
@@ -217,12 +300,134 @@ func (r *Relation[P, C]) childQueries(q Querier, keys [][]any, cfg *loadConfig) 
 			b.WriteString(" ORDER BY ")
 			r.writeOrder(b, cfg)
 		})
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, c)
 	}
-	return out, nil
+	jt := r.Through.Table
+	return compile(d, func(b *Builder) {
+		b.WriteString("SELECT ")
+		r.writeChildColumns(b)
+		for i, c := range r.Through.ParentCols {
+			b.WriteString(", ")
+			b.QualifiedIdent(jt.Qualifier(), c)
+			b.WriteString(" AS ")
+			b.Ident("momo_key_" + strconv.Itoa(i))
+		}
+		b.WriteString(" FROM ")
+		r.Child.appendFrom(b)
+		b.WriteString(" INNER JOIN ")
+		jt.appendFrom(b)
+		b.WriteString(" ON ")
+		for i, c := range r.Through.ChildCols {
+			if i > 0 {
+				b.WriteString(" AND ")
+			}
+			b.QualifiedIdent(jt.Qualifier(), c)
+			b.WriteString(" = ")
+			b.QualifiedIdent(r.Child.Qualifier(), r.ChildCols[i])
+		}
+		b.WriteString(" WHERE ")
+		inTuple{table: jt.Qualifier(), cols: r.Through.ParentCols, keys: chunk}.AppendSQL(b)
+		r.writeScope(b, cfg)
+		b.WriteString(" ORDER BY ")
+		r.writeOrder(b, cfg)
+	})
+}
+
+// topNQuery compiles the statement for one chunk of parent keys when
+// LoadPerParentLimit is set: a window function numbers the children of each
+// parent in load order and the outer statement keeps the first n of each.
+//
+//	SELECT momo_t.cols..., momo_t.momo_key_i... FROM (
+//	  SELECT child.cols..., jt.parent_col AS momo_key_i,
+//	         ROW_NUMBER() OVER (PARTITION BY partition_cols ORDER BY order) AS momo_rn
+//	  FROM child [INNER JOIN jt ON ...] WHERE keys AND scope
+//	) AS momo_t WHERE momo_t.momo_rn <= n ORDER BY momo_t.momo_rn, partition
+//
+// The partition is the child's foreign key for has-many and the join table's
+// parent key for many-to-many. The order is the load order with the relation
+// key and child primary key as tie-breakers, so the kept set is deterministic.
+// A many-to-many with a child primary key ranks with DENSE_RANK: duplicated
+// join rows share a rank, so they cannot consume the limit before consume
+// collapses them.
+func (r *Relation[P, C]) topNQuery(d *dialect.Dialect, chunk [][]any, cfg *loadConfig) (Compiled, error) {
+	partition := r.ChildCols
+	qual := r.Child.Qualifier()
+	rank := "ROW_NUMBER"
+	if r.Through != nil {
+		partition = r.Through.ParentCols
+		qual = r.Through.Table.Qualifier()
+		if len(r.ChildPK) > 0 {
+			rank = "DENSE_RANK"
+		}
+	}
+	holder := func(i int) string { return "momo_key_" + strconv.Itoa(i) }
+	return compile(d, func(b *Builder) {
+		b.WriteString("SELECT ")
+		for i, col := range r.ChildMeta.Columns {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.QualifiedIdent("momo_t", col.Name)
+		}
+		if r.Through != nil {
+			for i := range partition {
+				b.WriteString(", ")
+				b.QualifiedIdent("momo_t", holder(i))
+			}
+		}
+		b.WriteString(" FROM (SELECT ")
+		r.writeChildColumns(b)
+		if r.Through != nil {
+			for i, c := range partition {
+				b.WriteString(", ")
+				b.QualifiedIdent(qual, c)
+				b.WriteString(" AS ")
+				b.Ident(holder(i))
+			}
+		}
+		b.WriteString(", " + rank + "() OVER (PARTITION BY ")
+		for i, c := range partition {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.QualifiedIdent(qual, c)
+		}
+		b.WriteString(" ORDER BY ")
+		r.writeOrder(b, cfg)
+		b.WriteString(") AS ")
+		b.Ident("momo_rn")
+		b.WriteString(" FROM ")
+		r.Child.appendFrom(b)
+		if r.Through != nil {
+			b.WriteString(" INNER JOIN ")
+			r.Through.Table.appendFrom(b)
+			b.WriteString(" ON ")
+			for i, c := range r.Through.ChildCols {
+				if i > 0 {
+					b.WriteString(" AND ")
+				}
+				b.QualifiedIdent(qual, c)
+				b.WriteString(" = ")
+				b.QualifiedIdent(r.Child.Qualifier(), r.ChildCols[i])
+			}
+		}
+		b.WriteString(" WHERE ")
+		inTuple{table: qual, cols: partition, keys: chunk}.AppendSQL(b)
+		r.writeScope(b, cfg)
+		b.WriteString(") AS momo_t WHERE ")
+		b.QualifiedIdent("momo_t", "momo_rn")
+		b.WriteString(" <= ")
+		b.Arg(int64(cfg.perParentLimit))
+		b.WriteString(" ORDER BY ")
+		b.QualifiedIdent("momo_t", "momo_rn")
+		for i, c := range partition {
+			b.WriteString(", ")
+			if r.Through != nil {
+				b.QualifiedIdent("momo_t", holder(i))
+			} else {
+				b.QualifiedIdent("momo_t", c)
+			}
+		}
+	})
 }
 
 func (r *Relation[P, C]) writeChildColumns(b *Builder) {

@@ -42,9 +42,19 @@ func LoadOrderBy[C any](items ...Orderable) LoadOption[C] {
 	return func(c *loadConfig) { c.order = append(c.order[:len(c.order):len(c.order)], items...) }
 }
 
-// LoadPerParentLimit keeps at most n children per parent. It is not supported
-// yet: a load that sets it fails with ErrUnsupported (Op "load") before any
-// statement runs, until the top-N-per-parent strategy lands.
+// LoadPerParentLimit keeps at most n children per parent, in load order
+// (LoadOrderBy, then the relation key and child primary key), using a window
+// function so the load stays one statement per bind-limit chunk. It applies to
+// has-many and many-to-many relations; on belongs-to and has-one the load fails
+// with ErrUnsupported, and a negative n fails with ErrValidation (both with Op
+// "load", before any statement runs). Zero leaves the load unlimited. Nested
+// loads (Then) run over the kept children only. A many-to-many relation whose
+// child has a primary key ranks with DENSE_RANK, so duplicated join-table rows
+// share a rank and cannot use up the limit; without a child primary key
+// (Relation.ChildPK empty) it ranks with ROW_NUMBER, so duplicated join rows
+// each take a rank and can count against the limit before duplicates collapse.
+// Window functions need PostgreSQL, MySQL 8 / MariaDB 10.2 or SQLite 3.25 and
+// later.
 func LoadPerParentLimit[C any](n int) LoadOption[C] {
 	return func(c *loadConfig) { c.perParentLimit = n }
 }
@@ -68,6 +78,14 @@ func Load[P, C any](ctx context.Context, q Querier, parents []P, rel Relation[P,
 // LoadAll loads several relations for the same parents, in order. The top
 // level of each relation is one statement per bind-limit chunk; nested loads
 // run once over all children of the level above.
+//
+// On a connection whose driver implements Batcher (pgx), the statements of all
+// relations of a level, and every bind-limit chunk, are pipelined in one round
+// trip; other drivers load sequentially. Results are the same either way; hook
+// event order differs (see pipeline.go). A pipelined level buffers all of its
+// child rows in memory before assigning them (roughly twice the peak of
+// sequential loading). There is no per-call opt-out: a driver or connection
+// without Batcher loads sequentially.
 func LoadAll[P any](ctx context.Context, q Querier, parents []P, loaders ...Loader[P]) error {
 	if len(parents) == 0 {
 		return nil
@@ -80,12 +98,7 @@ func LoadAll[P any](ctx context.Context, q Querier, parents []P, loaders ...Load
 		}
 		pending = append(pending, p)
 	}
-	for _, p := range pending {
-		if err := p.run(ctx, q); err != nil {
-			return err
-		}
-	}
-	return nil
+	return runPending(ctx, q, pending)
 }
 
 // Scope returns a loader for r with per-load options.

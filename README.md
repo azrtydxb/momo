@@ -294,8 +294,18 @@ func readAndChange(ctx context.Context, q momo.Querier, authorID int64) error {
 Relations are loaded eagerly after the parents are fetched, with one query per
 relation instead of one per parent. `momo.Load` loads one relation, and
 `momo.LoadAll` loads several for the same parents. Has-many (`author.Posts`)
-and belongs-to (`post.Author`) work the same way. There is no `Preload` on
-`SelectQuery` in this release; load relations with these functions.
+and belongs-to (`post.Author`) work the same way.
+
+To load relations as part of a query, add them with `Preload`, for example
+`Preload(author.Posts)` on an author query. `All`, `One` and `First` then load
+the relations after the rows are read, with the same one query per relation,
+and a result with no rows runs no extra query. `Preload` returns a copy, so a base query can be reused. `Each` and `Iter` stream rows
+and return an error matching `momo.ErrUnsupported` when the query has preloads.
+
+Scoped and nested loads, top-N per parent, single-query `Joined()` loading,
+relation predicates such as `Has`, the `Link` and `Replace` helpers, graph
+writes and the error behavior of each are covered in
+[docs/relations.md](docs/relations.md).
 
 ```go
 func loadRelations(ctx context.Context, q momo.Querier, authorID int64) error {
@@ -320,10 +330,9 @@ func loadRelations(ctx context.Context, q momo.Querier, authorID int64) error {
 ### 7. Similarity search
 
 Distance expressions take a vector column and a query vector, and the result
-orders a select. In this release the generator emits a plain column for a
-vector field, and the distance functions need a `momo.VectorColumn`, which
-also records the dimension so a wrong-sized query vector is rejected when the
-query is built. Declare it once next to the code that searches.
+orders a select. The generator emits a `momo.VectorColumn` for every field of
+a `vector` type, such as `post.Embedding`. It records the dimension from the
+`dim` tag, so a wrong-sized query vector is rejected when the query is built.
 
 `WithSearch` runs a function in a transaction with pgvector settings applied,
 here `hnsw.ef_search`. The settings end with the transaction. `SearchSettings`
@@ -331,13 +340,11 @@ also covers iterative scans for filtered searches, IVFFlat probes, and
 `ExactSearch`.
 
 ```go
-var postEmbedding = momo.NewVectorColumn[vector.Vector]("posts", "embedding", 3, 0)
-
 func similarPosts(ctx context.Context, db *momo.DB, query vector.Vector) error {
 	settings := momo.SearchSettings{HNSWEfSearch: 100}
 	return db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
 		nearest, err := momo.Select[models.Post](tx).
-			OrderBy(momo.CosineDistance(postEmbedding, query).Asc()).
+			OrderBy(momo.CosineDistance(post.Embedding, query).Asc()).
 			Limit(5).
 			All(ctx)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sync/atomic"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -153,6 +154,14 @@ func (r pgxRows) Close() error           { r.Rows.Close(); return nil }
 type pgxTx struct {
 	tx pgx.Tx
 	d  *driver
+	// done is set once Commit or Rollback has run, whatever their outcome: pgx
+	// (dbTx.Commit and dbTx.Rollback) marks the transaction closed before it
+	// looks at the Exec error and then closes or kills the connection, so a
+	// failed Commit or Rollback leaves nothing to send a batch on. pgx.Tx.Conn
+	// still returns the connection afterwards (it may already serve other
+	// users of the pool), so connection-level calls such as SendBatch check
+	// done first.
+	done atomic.Bool
 }
 
 func (t *pgxTx) Query(ctx context.Context, sql string, args []any) (momo.Rows, error) {
@@ -171,8 +180,17 @@ func (t *pgxTx) Exec(ctx context.Context, sql string, args []any) (int64, error)
 	return tag.RowsAffected(), nil
 }
 
-func (t *pgxTx) Commit(ctx context.Context) error   { return txErr("commit", t.tx.Commit(ctx)) }
-func (t *pgxTx) Rollback(ctx context.Context) error { return txErr("rollback", t.tx.Rollback(ctx)) }
+func (t *pgxTx) Commit(ctx context.Context) error {
+	err := t.tx.Commit(ctx)
+	t.done.Store(true)
+	return txErr("commit", err)
+}
+
+func (t *pgxTx) Rollback(ctx context.Context) error {
+	err := t.tx.Rollback(ctx)
+	t.done.Store(true)
+	return txErr("rollback", err)
+}
 
 // txErr maps a finished pgx transaction to momo.ErrTxDone and classifies
 // everything else.
