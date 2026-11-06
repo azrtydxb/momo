@@ -76,6 +76,10 @@ func seed(ctx context.Context, q momo.Querier, _ io.Writer) error {
 // articles table, without the large Body column. Columns lists the columns in
 // the field order of Card, and the compiler checks each one against its Go
 // type through the generated article package.
+//
+// A projection skips the soft-delete filter that a model query adds. The
+// articles table is not soft-deletable, so nothing is filtered here; for a
+// soft-deletable table add .Where(<table>.DeletedAt.IsNull()).
 func cards(q momo.Querier) momo.SelectQuery[models.Card] {
 	return momo.Select[models.Card](q).
 		From(article.Table).

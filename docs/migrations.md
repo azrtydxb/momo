@@ -59,8 +59,9 @@ directory (the empty schema when there is none), orders the changes by
 dependency and renders SQL. No difference: prints `no changes`, exit 0, writes
 nothing.
 
-- Renames are never guessed. A drop plus an add prints a `hint: possible
-rename ...`; pass `--rename-table old=new` or `--rename-column table.old=new`.
+- Renames are never guessed. A drop plus an add prints a
+  `hint: possible rename ...`; pass `--rename-table old=new` or
+  `--rename-column table.old=new`.
 - Dropped extensions and schemas are not dropped in the database; `diff` prints
   a hint that they are no longer managed.
 - Diff never reads the database. A table that is already populated is
@@ -84,8 +85,8 @@ Two independent checks, both SHA-256 of the file bytes:
    that names `momo migrate hash`. `momo.sum` itself carries a directory hash;
    a hand-edited `momo.sum` is rejected.
 2. The history row of an applied migration stores the checksum of its up file.
-   `Apply` refuses when that file changed since (`... changed after version V
-was applied`).
+   `Apply` refuses when that file changed since (the error says
+   `... changed after version V was applied`).
 
 `Plan` and `Drift` do not check either.
 
@@ -208,8 +209,9 @@ bound, and the unlock has its own.
 `pg_try_advisory_lock(id)` on the pinned session, polled every 200 ms until
 `--lock-wait` (default 30 s) passes. `id` = FNV-64a of
 `momo:<history schema>.momo_migrations`, so schemas are independent. On timeout
-`apply` exits 3 with `migration lock is held by another process: held by
-pid=N application_name=X` (`TestApplyLockWaitTimesOutWithHolder`; waiting
+`apply` exits 3 with
+`migration lock is held by another process: held by pid=N application_name=X`
+(`TestApplyLockWaitTimesOutWithHolder`; waiting
 callers proceed once it is released, `TestApplyWaitsForLockRelease`).
 
 The lock is session-scoped: it is released when the holder's connection ends,
@@ -385,7 +387,7 @@ for any table that already exists in the snapshot. `diff` cannot tell whether
 the table has rows. With `--stage`:
 
 1. `diff --stage` adds the column as nullable and prints the hint
-   `staged: T.C was added as nullable; backfill it, then run ALTER TABLE T ALTER COLUMN C SET NOT NULL`.
+   `staged: T.C was added as nullable; backfill it, then run ALTER TABLE T ALTER COLUMN C SET NOT NULL (re-run migrate diff after the backfill)`.
 2. Apply, backfill in batches outside the migration.
 3. `diff --stage` records the column as NOT NULL in the snapshot while the
    database has it nullable, so `diff` will not emit `SET NOT NULL`: re-running
@@ -397,7 +399,8 @@ the table has rows. With `--stage`:
 
 The same applies to an existing column made NOT NULL under `--stage`: only the
 hint is emitted, and you must write the `SET NOT NULL` migration yourself.
-The hint that tells you to re-run `migrate diff` is wrong (known bug, story
+The hint's closing advice, "(re-run migrate diff after the backfill)", is
+wrong: `diff` prints "no changes" (known bug, story
 `20261106-staged-not-null-is-never-enforced-after-diff-stage`).
 
 A `NOT NULL` column with a default is not staged. A constant default is cheap
@@ -432,8 +435,8 @@ rewrites the table. Momo does not warn about either.
 - **After**: `momo migrate status` (exit 0) and `momo migrate drift`.
 - **Roles**: `CREATE EXTENSION` (pgvector, and any extension the models
   declare) needs a role allowed to create it. A missing package or privilege is
-  reported as `extension "x" is not installed (install its server package and
-run CREATE EXTENSION as a role that may)`, exit 3.
+  reported, with exit 3, as
+  `extension "x" is not installed (install its server package and run CREATE EXTENSION as a role that may)`.
 
 ## 6. Custom SQL migrations
 
@@ -498,9 +501,9 @@ changes only, writes no history and no files, and returns the rest as
   SQLSTATE class 22 (data exception) are withheld because they can contain
   data values. The text is not URL-redacted (migrate/runner.go).
 - A warning on stderr (not a failure) when a command that needs a database is
-  given a URL with `sslmode=disable` and any non-local host: `TLS is disabled
-(sslmode=disable) for remote host H: credentials and data cross the network
-unencrypted; use sslmode=require or stronger`. It names the hosts only.
+  given a URL with `sslmode=disable` and any non-local host:
+  `TLS is disabled (sslmode=disable) for remote host H: credentials and data cross the network unencrypted; use sslmode=require or stronger`.
+  It names the hosts only.
   `localhost`, `127.0.0.1`, `::1` and unix socket paths do not warn. Use
   `sslmode=verify-full` against a real server.
 - Do not pass the URL with `--url` on shared hosts; use `migrate.url_env` or

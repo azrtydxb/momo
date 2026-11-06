@@ -16,7 +16,7 @@ import (
 // example's migrations applied, and pins what it prints.
 func TestExample(t *testing.T) {
 	exampletest.CheckGenerated(t)
-	db := exampletest.Open(t, "migrations")
+	db := exampletest.Open(t)
 	var out bytes.Buffer
 	if err := run(context.Background(), db, &out); err != nil {
 		t.Fatal(err)

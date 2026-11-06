@@ -102,8 +102,8 @@ Tag options for relations:
   type column equals the value.
 - `on_delete`, `on_update` and `no_constraint` affect only the foreign key
   emitted for `belongs_to`. `has_one` and `has_many` create no constraint, and
-  many-to-many join tables always get two foreign keys with `ON DELETE
-CASCADE`.
+  many-to-many join tables always get two foreign keys with
+  `ON DELETE CASCADE`.
 
 `momo generate` reads these tags and writes one descriptor per relation field
 into the model's package. The descriptor holds the relation name and kind, the
@@ -324,7 +324,7 @@ the relations you listed, and each `Then` adds a level. On a connection whose
 driver implements `Batcher`, which the pgx driver does on the pool, on a
 transaction and on a pinned connection, all statements of a level, including
 every bind-limit chunk, are sent in one round trip. Other drivers (the
-`database/sql` adapters, SQLite, MySQL) load sequentially (a pinned connection from `FromSQLDB` has no batch path and loads sequentially). The result is the
+`database/sql` adapters, SQLite, MySQL) load sequentially. The result is the
 same either way. There is nothing to enable and no per-call opt-out.
 
 Two differences to know about:

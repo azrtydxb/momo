@@ -48,7 +48,7 @@ in [`internal/exampletest`](internal/exampletest/exampletest.go):
 ```go
 func TestExample(t *testing.T) {
 	exampletest.CheckGenerated(t)               // momo generate --check: generated code is current
-	db := exampletest.Open(t, "migrations")     // scratch database + the example's migrations applied
+	db := exampletest.Open(t)                         // scratch database + the example's migrations applied
 	var out bytes.Buffer
 	if err := run(context.Background(), db, &out); err != nil {
 		t.Fatal(err)

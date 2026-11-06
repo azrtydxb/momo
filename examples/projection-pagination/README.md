@@ -17,6 +17,8 @@ A list screen over a table of articles whose `body` column is large.
   cross a page boundary.
 - Fetch `size+1` rows to know whether another page exists without a `COUNT`.
 - A composite index in `MomoConfig` that matches the order serves the query.
+- A projection skips the soft-delete filter. The articles table is not
+  soft-deletable; on one that is, add `.Where(<table>.DeletedAt.IsNull())`.
 - Counting: `Count` ignores ordering and the cursor, `Exists` is `Count` with a
   limit of one, and an aggregate projection with `GroupBy` and `Having` counts
   per group.

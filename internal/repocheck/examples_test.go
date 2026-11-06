@@ -97,7 +97,7 @@ func TestExamplesAreWired(t *testing.T) {
 				t.Fatal(err)
 			}
 			src := string(b)
-			if strings.Contains(src, "exampletest.") && !strings.Contains(src, "//go:build integration") {
+			if (strings.Contains(src, "exampletest.") || strings.Contains(src, "testdb.")) && !strings.Contains(src, "//go:build integration") {
 				t.Errorf("%s uses the database harness but lacks //go:build integration, so no CI job would run it with a database", filepath.Base(p))
 			}
 		}

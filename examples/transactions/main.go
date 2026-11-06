@@ -198,10 +198,13 @@ func retrySerializable(ctx context.Context, db *momo.DB, fn func(tx *momo.Tx) er
 		backoff     = 5 * time.Millisecond // a real service starts higher, such as 20ms, and doubles
 	)
 	var err error
-	for range maxAttempts {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		err = db.Tx(ctx, momo.TxOptions{Isolation: sql.LevelSerializable}, fn)
 		if !errors.Is(err, momo.ErrSerialization) {
 			return err
+		}
+		if attempt == maxAttempts {
+			break // out of attempts: return the error without sleeping
 		}
 		// Back off with jitter so the competing transactions do not collide
 		// again in lockstep, and stop at once if the caller gives up.

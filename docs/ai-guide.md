@@ -44,8 +44,8 @@ go install github.com/azrtydxb/momo/cmd/momo@v0.1.0   # the CLI: generate, migra
 ```
 
 Run `go get` first in a fresh module: it produces `go.sum`, which `go run` and
-the generated code's compilation need. `go install` puts `momo` in `$(go env
-GOPATH)/bin`; make sure that is on `PATH`.
+the generated code's compilation need. `go install` puts `momo` in
+`$(go env GOPATH)/bin`; make sure that is on `PATH`.
 
 Layout of a project (the `models` package holds structs; `momo generate` writes
 into it):
@@ -414,8 +414,8 @@ momo migrate drift                      # live DB vs latest applied snapshot
   `momo migrate baseline --version <init version>`; the live schema must match
   the snapshot (extra objects: add globs to `migrate.exclude`). Example:
   [adopt-existing-schema](../examples/adopt-existing-schema/).
-- The first migration with a vector column runs `CREATE EXTENSION IF NOT EXISTS
-"vector"`. pgvector must be installed on the server (image
+- The first migration with a vector column runs
+  `CREATE EXTENSION IF NOT EXISTS "vector"`. pgvector must be installed on the server (image
   `pgvector/pgvector`), and the migration role must be allowed to create
   extensions, otherwise apply exits 3 naming the extension.
 
@@ -431,8 +431,8 @@ momo migrate diff ci_probe | grep -qx 'no changes'      # models have a migratio
 The last line is derived from the code, not covered by a test: when models
 changed, `diff` writes files (exit 0) and `grep` fails the job; discard the files
 (`git checkout -- migrations && git clean -fd migrations`). There is no
-`diff --check`. `validate` already verifies `momo.sum`; do not run `momo migrate
-hash` in CI.
+`diff --check`. `validate` already verifies `momo.sum`; do not run
+`momo migrate hash` in CI.
 
 Production checklist:
 
@@ -463,8 +463,8 @@ Known issues in v0.1.0, as rules (each is a filed bug):
   plain `CREATE INDEX` that blocks writes. WORKAROUND for large tables: edit the
   generated file to `CREATE INDEX CONCURRENTLY`, add `-- momo:no-transaction`,
   keep it as its own migration with only that statement, run `momo migrate hash`.
-  A failed concurrent build leaves an INVALID index: `drift` reports it; `DROP
-INDEX CONCURRENTLY IF EXISTS` it, then `resolve --rolled-back` and re-apply.
+  A failed concurrent build leaves an INVALID index: `drift` reports it; drop it with
+  `DROP INDEX CONCURRENTLY IF EXISTS`, then `resolve --rolled-back` and re-apply.
 - `-- momo:no-transaction` applies to the WHOLE file: every statement loses
   atomicity and a mid-file failure leaves earlier statements committed (dirty).
   `diff` marks the whole file when it contains a concurrent index, so a first
@@ -534,8 +534,9 @@ n, err := momo.Select[models.Task](q).Where(task.Done.Eq(true)).Count(ctx)  // i
 ok, err := momo.Select[models.Task](q).Where(task.Title.Eq("x")).Exists(ctx)
 ```
 
-Predicates on columns: `Eq Ne Lt Le Gt Ge In NotIn Between IsNull IsNotNull
-IsDistinctFrom IsNotDistinctFrom InQuery NotInQuery` and `*Expr` variants;
+Predicates on columns:
+`Eq Ne Lt Le Gt Ge In NotIn Between IsNull IsNotNull IsDistinctFrom IsNotDistinctFrom InQuery NotInQuery`
+and `*Expr` variants;
 combinators `momo.And`, `momo.Or`, `momo.Not`, `momo.Like`, `momo.ILike`,
 `momo.ContainsLiteral`, `momo.Exists(subquery)`, `momo.NotExists`.
 `momo.EscapeLike(s)` escapes user text for `Like`. Find NULLs with `IsNull()`;
@@ -748,10 +749,13 @@ func retrySerializable(ctx context.Context, db *momo.DB, fn func(tx *momo.Tx) er
 		backoff     = 20 * time.Millisecond // doubles in a real service
 	)
 	var err error
-	for range maxAttempts {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		err = db.Tx(ctx, momo.TxOptions{Isolation: sql.LevelSerializable}, fn)
 		if !errors.Is(err, momo.ErrSerialization) {
 			return err
+		}
+		if attempt == maxAttempts {
+			break // out of attempts: return the error without sleeping
 		}
 		d := backoff/2 + rand.N(backoff) // math/rand/v2: jitter so competitors do not collide in lockstep
 		select {
@@ -1129,8 +1133,8 @@ Examples: every `examples/*/example_test.go`, harness
 1. v0.1.0 is PostgreSQL + pgvector via pgx only. Never target SQLite or MySQL.
 2. Install the CLI at the same version as the library
    (`go install github.com/azrtydxb/momo/cmd/momo@v0.1.0`).
-3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run `momo
-generate` after every model change and commit the generated files.
+3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run
+   `momo generate` after every model change and commit the generated files.
 4. Never edit `*_gen.go`. Never hand-write `MomoMeta` for a table model.
 5. Non-pointer field = NOT NULL; pointer = NULL-able. Use `SetNull()` only on
    pointer fields.
