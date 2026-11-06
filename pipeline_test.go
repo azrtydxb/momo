@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -57,6 +58,7 @@ func pipeJSON(t testing.TB, docs []models.Document) string {
 type batchStub struct {
 	momo.Driver
 	mutate func([]momo.Compiled) []momo.Compiled
+	wrap   func([]momo.Rows) []momo.Rows
 	err    error
 	mu     sync.Mutex
 	sent   int
@@ -72,7 +74,11 @@ func (d *batchStub) SendBatch(ctx context.Context, qs []momo.Compiled) ([]momo.R
 	if d.mutate != nil {
 		qs = d.mutate(append([]momo.Compiled(nil), qs...))
 	}
-	return d.Driver.(momo.Batcher).SendBatch(ctx, qs)
+	rows, err := d.Driver.(momo.Batcher).SendBatch(ctx, qs)
+	if err == nil && d.wrap != nil {
+		rows = d.wrap(rows)
+	}
+	return rows, err
 }
 
 func (d *batchStub) ClassifyError(err error) error {
@@ -203,6 +209,45 @@ func TestPipelinedInTx(t *testing.T) {
 	}
 }
 
+// TestPipelinedOnFinishedTx requires a pipelined load on a committed or rolled
+// back transaction to fail with ErrTxDone, like the sequential path, and never
+// to run on a pooled connection.
+func TestPipelinedOnFinishedTx(t *testing.T) {
+	ctx := context.Background()
+	base := pipeBase(t)
+	for _, finish := range []string{"commit", "rollback"} {
+		t.Run(finish, func(t *testing.T) {
+			drv, ctr := relfixture.Counting(base)
+			db := momo.New(drv)
+			docs := pipeDocs(t, db)
+			tx, err := db.Begin(ctx, momo.TxOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if finish == "commit" {
+				err = tx.Commit(ctx)
+			} else {
+				err = tx.Rollback(ctx)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctr.Reset()
+			err = momo.LoadAll(ctx, tx, docs, document.Author, document.Comments)
+			if !errors.Is(err, momo.ErrTxDone) {
+				t.Fatalf("pipelined LoadAll on a finished tx: err = %v, want ErrTxDone", err)
+			}
+			seqErr := momo.LoadAll(ctx, tx, docs, document.Author)
+			if !errors.Is(seqErr, momo.ErrTxDone) {
+				t.Fatalf("sequential reference: err = %v, want ErrTxDone", seqErr)
+			}
+			if st := base.(momo.PoolStater).PoolStats(); st.AcquiredConns != 0 {
+				t.Fatalf("connection leaked: %+v", st)
+			}
+		})
+	}
+}
+
 // TestPipelinedHooksMatchSequential requires the same statement events and the
 // same relation events, in the same order, as the sequential path.
 func TestPipelinedHooksMatchSequential(t *testing.T) {
@@ -234,6 +279,121 @@ func TestPipelinedHooksMatchSequential(t *testing.T) {
 		if p.Name != s.Name || p.Queries != s.Queries || p.Children != s.Children || p.Parents != s.Parents || p.Err != nil {
 			t.Fatalf("relation event %d differs: pipelined %+v sequential %+v", i, p, s)
 		}
+	}
+}
+
+// scanFailRows fails every Scan and counts Close calls.
+type scanFailRows struct {
+	momo.Rows
+	fail   bool
+	closes *atomic.Int64
+}
+
+func (r *scanFailRows) Scan(dest ...any) error {
+	if r.fail {
+		return errors.New("injected scan failure")
+	}
+	return r.Rows.Scan(dest...)
+}
+
+func (r *scanFailRows) Close() error {
+	r.closes.Add(1)
+	return r.Rows.Close()
+}
+
+// pairHook records every Before/After pair of statements and relations.
+type pairHook struct {
+	mu               sync.Mutex
+	beforeQ, beforeR int
+	relErrs          []error
+	queryErrs        []error
+}
+
+func (h *pairHook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Context {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.beforeQ++
+	return ctx
+}
+
+func (h *pairHook) AfterQuery(_ context.Context, e *momo.QueryEvent) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.queryErrs = append(h.queryErrs, e.Err)
+}
+
+func (h *pairHook) BeforeRelation(ctx context.Context, _ *momo.RelationEvent) context.Context {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.beforeR++
+	return ctx
+}
+
+func (h *pairHook) AfterRelation(_ context.Context, e *momo.RelationEvent) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.relErrs = append(h.relErrs, e.Err)
+}
+
+// TestPipelinedConsumeFailure forces a read failure on the second of three
+// relations: every relation and statement that began must end exactly once and
+// carry the error, and every batch result set must be closed.
+func TestPipelinedConsumeFailure(t *testing.T) {
+	ctx := context.Background()
+	base := pipeBase(t)
+	var closes atomic.Int64
+	stub := &batchStub{Driver: base, wrap: func(rows []momo.Rows) []momo.Rows {
+		out := make([]momo.Rows, len(rows))
+		for i, r := range rows {
+			out[i] = &scanFailRows{Rows: r, fail: i == 1, closes: &closes}
+		}
+		return out
+	}}
+	h := &pairHook{}
+	db := momo.New(stub, momo.WithHook(h))
+	docs := pipeDocs(t, db)
+	h.mu.Lock()
+	h.beforeQ, h.beforeR, h.queryErrs, h.relErrs = 0, 0, nil, nil
+	h.mu.Unlock()
+	closes.Store(0)
+
+	err := momo.LoadAll(ctx, db, docs, document.Author, document.Comments, document.Tags)
+	if err == nil || !strings.Contains(err.Error(), "injected scan failure") {
+		t.Fatalf("want the injected scan failure, got %v", err)
+	}
+	if h.beforeR != 3 || h.beforeQ != 3 {
+		t.Fatalf("want 3 BeforeRelation and 3 BeforeQuery, got %d and %d", h.beforeR, h.beforeQ)
+	}
+	if len(h.relErrs) != 3 {
+		t.Fatalf("want exactly one AfterRelation per relation (3), got %d", len(h.relErrs))
+	}
+	for i, e := range h.relErrs {
+		if e == nil {
+			t.Fatalf("AfterRelation %d carries no error", i)
+		}
+	}
+	if len(h.queryErrs) != 3 {
+		t.Fatalf("want exactly one AfterQuery per statement (3), got %d", len(h.queryErrs))
+	}
+	// Statement 0 finished cleanly before the failure; the failing statement
+	// and the unread one must report an error, not a 0-row success.
+	if h.queryErrs[0] != nil && !strings.Contains(h.queryErrs[0].Error(), "injected") {
+		t.Fatalf("statement 0 unexpected error: %v", h.queryErrs[0])
+	}
+	failed := 0
+	for _, e := range h.queryErrs {
+		if e != nil {
+			failed++
+		}
+	}
+	if failed != 2 {
+		t.Fatalf("the failing and the unread statement must carry the error, got %v", h.queryErrs)
+	}
+	if closes.Load() < 3 {
+		t.Fatalf("every batch result set must be closed, got %d closes for 3", closes.Load())
+	}
+	if st := base.(momo.PoolStater).PoolStats(); st.AcquiredConns != 0 {
+		t.Fatalf("connection leaked: %+v", st)
 	}
 }
 

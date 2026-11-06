@@ -16,23 +16,31 @@ import (
 // Everything else keeps the sequential path: drivers without a Batcher (the
 // database/sql adapters, SQLite, MySQL), a single statement, and loaders that
 // are not batchable. The result is identical to sequential loading; only the
-// number of round trips changes.
+// number of round trips changes (hook event order and memory use differ, see
+// below).
 //
-// Order of events for a batched level, which is also the order the sequential
-// path would use:
+// Order of events for a batched level. It differs from the sequential path,
+// which interleaves each relation's events with its own statements:
 //
-//  1. BeforeRelation for each relation, in loader order.
-//  2. BeforeQuery for each statement, in loader then chunk order, then one
-//     driver round trip. The batch runs under the context of the first
-//     statement's hooks, so a cancelled context stops the whole batch.
-//  3. Result sets are read in statement order (AfterQuery fires per statement
-//     as its rows close).
-//  4. Per relation, in loader order: nested loads and assignment, then
-//     AfterRelation. A nested level is pipelined the same way.
+//  1. BeforeRelation for every relation, in loader order.
+//  2. BeforeQuery for every statement, in loader then chunk order, then one
+//     driver round trip. The batch runs under the context of statement 0's
+//     hooks (not each statement's own), so cancelling that context stops the
+//     whole batch.
+//  3. Result sets are read in statement order; AfterQuery fires per statement
+//     as its rows close. Its duration includes the time the statement waited
+//     for the batch, not just its own execution.
+//  4. Per relation, in loader order: nested loads and assignment (a nested
+//     level is pipelined the same way), then AfterRelation.
 //
-// A batch is all or nothing. When one statement fails the driver cancels the
-// rest, every statement's AfterQuery reports the error and so does every
-// relation's AfterRelation; the parents keep the empty associations that
+// Memory: a pipelined level buffers every child row of the level before any is
+// assigned, so peak memory is roughly twice that of sequential loading (which
+// holds one relation's rows at a time). There is no public opt-out; a driver
+// or connection that does not implement Batcher loads sequentially.
+
+// A batch is all or nothing. When one statement fails, or reading a result set
+// fails, every statement's AfterQuery reports the error (except statements that
+// already finished cleanly) and so does every relation's AfterRelation; the parents keep the empty associations that
 // preparing a load leaves. A driver that rejects the batch as unsupported
 // (ErrUnsupported with Op "batch", before sending anything, for example a pgx
 // batch under a non-default exec mode) makes the level fall back to sequential
@@ -151,8 +159,10 @@ func runBatched(ctx context.Context, q Querier, b Batcher, pend []batchable) err
 	for i, p := range pend {
 		n := counts[i]
 		if err := p.consumeRows(rows[off : off+n]); err != nil {
-			closeRows(rows[off:])
-			return abort(i, err)
+			// Every relation has begun, so every one ends with the error;
+			// statements not read yet report it instead of a 0-row success.
+			abortRows(rows, err)
+			return abort(0, err)
 		}
 		off += n
 	}
@@ -225,6 +235,17 @@ func (e *execer) batch(b Batcher, stmts []stmt) ([]Rows, error) {
 		out[i] = &hookedRows{Rows: rows[i], e: e, ctx: ctxs[i], ev: evs[i], op: "select", table: stmts[i].table}
 	}
 	return out, nil
+}
+
+// abortRows closes every result set after a failed read. Statements whose rows
+// are still open report err to their AfterQuery hook; closed ones already did.
+func abortRows(rs []Rows, err error) {
+	for _, r := range rs {
+		if h, ok := r.(*hookedRows); ok {
+			h.abort(err)
+		}
+		_ = r.Close()
+	}
 }
 
 // closeRows closes every result set; Close is safe to call more than once.

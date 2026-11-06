@@ -19,3 +19,4 @@ Implements plan momo-06-relations Task 14: Pipelined relation loading over pgx b
 
 - Targeted run (integration tag, PG + PgBouncer): `go test -tags integration -count=1 -run 'Pipelin|Nested|TopN' .` passed (TestPipelined* x8 incl. Tx, hooks, errors, cancel, fallback, PgBouncer; Nested*; TopN*). `go vet` clean for both tag sets, `gofmt -l` empty.
 - Full suite, lint gate (`procoder check`) and mutation sweeps are not run locally; CI runs them. The gate criterion stays unticked until CI is green.
+- Review fixes (2026-11-06): consume-phase failure now ends every relation and statement once with the error (`TestPipelinedConsumeFailure`; mutation skipping `abortRows` fails it); pipelined load on a finished pgx transaction returned nil before the fix and now returns `ErrTxDone` (`TestPipelinedOnFinishedTx`); the reversed batch result order mutation is caught by the pipelined tests. Event order and memory behaviour are documented in `pipeline.go` and `LoadAll`.

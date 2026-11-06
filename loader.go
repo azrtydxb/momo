@@ -76,8 +76,11 @@ func Load[P, C any](ctx context.Context, q Querier, parents []P, rel Relation[P,
 //
 // On a connection whose driver implements Batcher (pgx), the statements of all
 // relations of a level, and every bind-limit chunk, are pipelined in one round
-// trip; other drivers load sequentially. Results, hook events and their order
-// are the same either way (see pipeline.go).
+// trip; other drivers load sequentially. Results are the same either way; hook
+// event order differs (see pipeline.go). A pipelined level buffers all of its
+// child rows in memory before assigning them (roughly twice the peak of
+// sequential loading). There is no per-call opt-out: a driver or connection
+// without Batcher loads sequentially.
 func LoadAll[P any](ctx context.Context, q Querier, parents []P, loaders ...Loader[P]) error {
 	if len(parents) == 0 {
 		return nil

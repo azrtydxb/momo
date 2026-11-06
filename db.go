@@ -248,6 +248,27 @@ type hookedRows struct {
 	table  string
 	n      int64
 	closed bool
+	// scanErr is the first Scan failure; Close reports it to AfterQuery.
+	scanErr error
+}
+
+// Scan records a failure so the statement's AfterQuery carries it.
+func (r *hookedRows) Scan(dest ...any) error {
+	err := r.Rows.Scan(dest...)
+	if err != nil && r.scanErr == nil {
+		r.scanErr = err
+	}
+	return err
+}
+
+// abort closes the statement's hook pair with err unless it already ended.
+func (r *hookedRows) abort(err error) {
+	if r.closed {
+		return
+	}
+	r.closed = true
+	_ = r.Rows.Close()
+	r.e.after(r.ctx, r.ev, r.n, r.e.wrapErr(r.op, r.table, err))
 }
 
 func (r *hookedRows) Next() bool {
@@ -267,6 +288,9 @@ func (r *hookedRows) Close() error {
 		ferr := err
 		if ferr == nil {
 			ferr = r.Rows.Err()
+		}
+		if ferr == nil {
+			ferr = r.scanErr
 		}
 		r.e.after(r.ctx, r.ev, r.n, r.e.wrapErr(r.op, r.table, ferr))
 	}
