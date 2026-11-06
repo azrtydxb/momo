@@ -154,9 +154,13 @@ func (r pgxRows) Close() error           { r.Rows.Close(); return nil }
 type pgxTx struct {
 	tx pgx.Tx
 	d  *driver
-	// done is set once Commit or Rollback has run. pgx.Tx.Conn still returns
-	// the connection afterwards (it may already serve other users of the
-	// pool), so connection-level calls such as SendBatch check it first.
+	// done is set once Commit or Rollback has run, whatever their outcome: pgx
+	// (dbTx.Commit and dbTx.Rollback) marks the transaction closed before it
+	// looks at the Exec error and then closes or kills the connection, so a
+	// failed Commit or Rollback leaves nothing to send a batch on. pgx.Tx.Conn
+	// still returns the connection afterwards (it may already serve other
+	// users of the pool), so connection-level calls such as SendBatch check
+	// done first.
 	done atomic.Bool
 }
 
