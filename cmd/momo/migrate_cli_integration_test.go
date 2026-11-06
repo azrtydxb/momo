@@ -98,8 +98,8 @@ func holdMigrationLock(t *testing.T, dsn string) (release func()) {
 	return release
 }
 
-// TestMigrateApplyLockWait covers --lock-wait and --force-unlock against a
-// lock held by another connection.
+// TestMigrateApplyLockWait covers --lock-wait against a lock held by another
+// connection; --force-unlock no longer exists.
 func TestMigrateApplyLockWait(t *testing.T) {
 	t.Run("times out with exit 3 naming the holder", func(t *testing.T) {
 		dsn, _ := startedProject(t)
@@ -127,12 +127,11 @@ func TestMigrateApplyLockWait(t *testing.T) {
 			t.Fatalf("exit %d, out %q, err %q", code, out, errOut)
 		}
 	})
-	t.Run("force-unlock cannot take a live advisory lock", func(t *testing.T) {
+	t.Run("force-unlock is not a flag", func(t *testing.T) {
 		dsn, _ := startedProject(t)
-		holdMigrationLock(t, dsn)
-		code, _, errOut := cliRun(t, dsn, "apply", "--force-unlock", "--lock-wait", "600ms")
-		if code != 3 || !strings.Contains(errOut, "held by") {
-			t.Fatalf("exit %d, want 3: %s", code, errOut)
+		code, _, errOut := cliRun(t, dsn, "apply", "--force-unlock")
+		if code != 2 || !strings.Contains(errOut, "force-unlock") {
+			t.Fatalf("exit %d, want 2 (unknown flag): %s", code, errOut)
 		}
 	})
 }
@@ -163,5 +162,64 @@ func TestMigrateStatusExitsOneOnDirty(t *testing.T) {
 	code, out, errOut := cliRun(t, dsn, "status")
 	if code != 1 || !strings.Contains(out, "dirty") {
 		t.Fatalf("dirty status: exit %d, out %q, err %q; want 1 listing the dirty row", code, out, errOut)
+	}
+}
+
+// TestMigrateRehashAcceptsEditedMigration walks the supported route past a
+// checksum mismatch: edit, hash, rehash (dry run, then --accept).
+func TestMigrateRehashAcceptsEditedMigration(t *testing.T) {
+	dsn, root := startedProject(t)
+	if code, _, errOut := cliRun(t, dsn, "apply"); code != 0 {
+		t.Fatalf("apply: exit %d: %s", code, errOut)
+	}
+	files, _ := filepath.Glob(filepath.Join(root, "migrations", "postgres", "*_init.up.sql"))
+	if len(files) != 1 {
+		t.Fatalf("glob: %v", files)
+	}
+	version := strings.SplitN(filepath.Base(files[0]), "_", 2)[0]
+	body, err := os.ReadFile(files[0]) // #nosec G304 -- test fixture
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(files[0], append(body, []byte("\n-- reviewed\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errOut := cliRun(t, dsn, "hash"); code != 0 {
+		t.Fatalf("hash: exit %d: %s", code, errOut)
+	}
+	if code, _, _ := cliRun(t, dsn, "apply"); code == 0 {
+		t.Fatal("apply must refuse an edited applied migration")
+	}
+	code, out, _ := cliRun(t, dsn, "rehash", "--version", version)
+	if code != 1 || !strings.Contains(out, "--accept") {
+		t.Fatalf("rehash without --accept: exit %d, out %q; want 1 explaining --accept", code, out)
+	}
+	if code, _, _ := cliRun(t, dsn, "status"); code == 0 {
+		t.Fatal("a dry-run rehash must not clear the mismatch")
+	}
+	if code, out, errOut := cliRun(t, dsn, "rehash", "--version", version, "--accept"); code != 0 {
+		t.Fatalf("rehash --accept: exit %d, out %q, err %q", code, out, errOut)
+	}
+	if code, out, errOut := cliRun(t, dsn, "status"); code != 0 {
+		t.Fatalf("status after rehash: exit %d, out %q, err %q", code, out, errOut)
+	}
+	if code, _, errOut := cliRun(t, dsn, "apply"); code != 0 {
+		t.Fatalf("apply after rehash: exit %d: %s", code, errOut)
+	}
+}
+
+// TestMigrateZeroTimeoutsInConfig: lock_timeout: 0s and statement_timeout: 0s in
+// momo.yaml reach the session as SET ... = 0.
+func TestMigrateZeroTimeoutsInConfig(t *testing.T) {
+	dsn, root := startedProject(t)
+	writeFile(t, filepath.Join(root, "momo.yaml"),
+		"version: 1\nmigrate:\n  dir:\n    postgres: migrations/postgres\n  url_env:\n    postgres: MOMO_TEST_URL\n  exclude: [vector]\n  lock_timeout: 0s\n  statement_timeout: 0s\n")
+	check := "DO $$ BEGIN IF current_setting('statement_timeout') <> '0' OR current_setting('lock_timeout') <> '0' THEN RAISE EXCEPTION 'timeouts are on'; END IF; END $$;\n"
+	writeFile(t, filepath.Join(root, "migrations", "postgres", "99990101000000_timeouts.up.sql"), check)
+	if code, _, errOut := cliRun(t, dsn, "hash"); code != 0 {
+		t.Fatalf("hash: exit %d: %s", code, errOut)
+	}
+	if code, _, errOut := cliRun(t, dsn, "apply"); code != 0 {
+		t.Fatalf("apply with 0s timeouts: exit %d: %s", code, errOut)
 	}
 }

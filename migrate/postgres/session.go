@@ -30,7 +30,8 @@ kind TEXT NOT NULL DEFAULT 'sql'
 }
 
 // Setup applies lock_timeout and statement_timeout at session scope on the
-// pinned connection; a zero duration leaves that setting untouched. The
+// pinned connection. A zero duration leaves that setting untouched unless
+// SessionOptions says it was set explicitly, which sends SET ... = 0 (off). The
 // returned reset restores both to the session defaults (RESET), so nothing
 // leaks into the pool when the connection is released. reset is idempotent and
 // ignores cancellation of ctx. When RESET fails, reset discards the connection
@@ -54,8 +55,9 @@ func (Dialect) Setup(ctx context.Context, c momo.PinnedConn, s migrate.SessionOp
 	for _, st := range []struct {
 		name string
 		d    time.Duration
-	}{{"lock_timeout", s.LockTimeout}, {"statement_timeout", s.StatementTimeout}} {
-		if st.d <= 0 {
+		set  bool
+	}{{"lock_timeout", s.LockTimeout, s.LockTimeoutSet}, {"statement_timeout", s.StatementTimeout, s.StatementTimeoutSet}} {
+		if st.d < 0 || st.d == 0 && !st.set {
 			continue
 		}
 		// SET takes no bind parameters; the value is a formatted integer.

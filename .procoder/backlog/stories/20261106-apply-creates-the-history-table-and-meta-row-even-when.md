@@ -1,6 +1,6 @@
 # apply creates the history table and meta row even when nothing is pending
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-06
 Epic: momo-04-migrations-core-postgresql
 Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
@@ -15,12 +15,13 @@ Expected: no writes when nothing is pending (or document and gate it).
 
 ## Acceptance criteria
 
-- [ ] apply with no pending migrations on a database without the history table creates nothing
-- [ ] apply with pending migrations still creates the history table first
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] apply with no pending migrations on a database without the history table creates nothing
+- [x] apply with pending migrations still creates the history table first
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
+- TestApplyNothingPendingWritesNothing: with no history table (and with everything applied) Apply executes zero statements and the table is not created. Mutation (early return removed) fails it. TestApplyNothingPendingCreatesNoHistoryTable runs the same on PostgreSQL in CI.
+- TestApplyWithPendingCreatesHistoryFirst: the first statement is CREATE TABLE IF NOT EXISTS momo_migrations and the row ends applied.
+- Red first: Apply called EnsureHistory before knowing what is pending, so the first test saw the CREATE TABLE.
 

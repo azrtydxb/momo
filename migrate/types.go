@@ -121,9 +121,8 @@ type Report struct {
 
 // ApplyOptions controls Apply.
 type ApplyOptions struct {
-	To          string // empty: all pending
-	ForceUnlock bool
-	LockWait    time.Duration // default 30s
+	To       string        // empty: all pending
+	LockWait time.Duration // default 30s
 }
 
 // ResolveState is the state a dirty migration is resolved to: "applied" or "rolled_back".
@@ -217,13 +216,23 @@ type Config struct {
 	// (Plan/Apply/Status/Diff/Drift/Inspect each resolve it once per call). An app with search_path=app
 	// therefore migrates `app` by default. Schemas[0] hosts the history table and must equal
 	// current_schema(); otherwise the engine returns a configuration error naming both.
-	Schemas          []string
-	LockTimeout      time.Duration // default 5s, PostgreSQL only
-	StatementTimeout time.Duration // default 0 (unset)
-	Exclude          []string      // glob patterns for unmanaged objects (drift)
+	Schemas []string
+	// LockTimeout is the PostgreSQL lock_timeout of the migration session;
+	// zero keeps the 5s default. WithLockTimeout(0) disables it.
+	LockTimeout time.Duration
+	// StatementTimeout is the PostgreSQL statement_timeout of the migration
+	// session; zero leaves the server setting. WithStatementTimeout(0) sets it
+	// to 0 explicitly.
+	StatementTimeout time.Duration
+	Exclude          []string // glob patterns for unmanaged objects (drift)
 }
 
 // SessionOptions are the per-session timeouts a Dialect applies in Setup.
+//
+// A timeout above zero is applied. A zero timeout leaves the setting alone
+// unless its Set field is true, in which case the dialect sets it to zero
+// (PostgreSQL treats 0 as off).
 type SessionOptions struct {
-	LockTimeout, StatementTimeout time.Duration
+	LockTimeout, StatementTimeout       time.Duration
+	LockTimeoutSet, StatementTimeoutSet bool
 }

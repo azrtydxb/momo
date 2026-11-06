@@ -162,36 +162,44 @@ finding:
 Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
 `--dialect`, `--url`.
 
-| Command                                                                                          | Needs DB        | Does                                                                                     | Exit 1 when                                                          |
-| ------------------------------------------------------------------------------------------------ | --------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage]` | no              | Write a migration (section 1, 5).                                                        | destructive or staged refusal; target file exists; model diagnostics |
-| `plan`                                                                                           | yes             | List pending migrations with statement counts. Read-only, no lock, creates nothing.      | never                                                                |
-| `apply [--to N] [--force-unlock] [--lock-wait 30s]`                                              | yes             | Apply pending.                                                                           | never; failures are 3                                                |
-| `status`                                                                                         | yes             | One line per version: `applied`, `pending`, `dirty`, `mismatch`, `missing`. Read-only.   | any version not `applied`/`pending`                                  |
-| `validate [--db]`                                                                                | no (`--db` yes) | Directory checks (below); `--db` adds `status`.                                          | any problem or unhealthy status                                      |
-| `hash`                                                                                           | no              | Recompute `momo.sum`, list files it accepts as `changed:`/`added:`/`removed:`, write it. | never                                                                |
-| `baseline --version N [--force]`                                                                 | yes             | Record migrations through N as applied without running them (section 7).                 | database differs from snapshot                                       |
-| `drift`                                                                                          | yes             | Section 1.                                                                               | any change, missing or unmanaged                                     |
-| `resolve --version N --applied` or `--rolled-back`                                               | yes             | Settle a dirty migration (section 4).                                                    | never                                                                |
+| Command                                                                                          | Needs DB        | Does                                                                                          | Exit 1 when                                                          |
+| ------------------------------------------------------------------------------------------------ | --------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage]` | no              | Write a migration (section 1, 5).                                                             | destructive or staged refusal; target file exists; model diagnostics |
+| `plan`                                                                                           | yes             | List pending migrations with statement counts. Read-only, no lock, creates nothing.           | never                                                                |
+| `apply [--to N] [--lock-wait 30s]`                                                               | yes             | Apply pending.                                                                                | never; failures are 3                                                |
+| `status`                                                                                         | yes             | One line per version: `applied`, `pending`, `dirty`, `mismatch`, `missing`. Read-only.        | any version not `applied`/`pending`                                  |
+| `validate [--db]`                                                                                | no (`--db` yes) | Directory checks (below); `--db` adds `status`.                                               | any problem or unhealthy status                                      |
+| `hash`                                                                                           | no              | Recompute `momo.sum`, list files it accepts as `changed:`/`added:`/`removed:`, write it.      | never                                                                |
+| `baseline --version N [--force]`                                                                 | yes             | Record migrations through N as applied without running them (section 7).                      | database differs from snapshot                                       |
+| `drift`                                                                                          | yes             | Section 1.                                                                                    | any change, missing or unmanaged                                     |
+| `resolve --version N --applied` or `--rolled-back`                                               | yes             | Settle a dirty migration (section 4).                                                         | never                                                                |
+| `rehash --version N [--accept]`                                                                  | yes             | Show, and with `--accept` store, the new checksum of an edited applied migration (section 4). | without `--accept`, when the file differs                            |
 
 `validate` checks: files parse and directives are known; `momo.sum` matches;
 versions unique and increasing; each snapshot's parent exists; no two snapshots
 share a parent (branch conflict); each up file has a snapshot; a hand-written
 migration (no `-- momo:generated`) has a snapshot equal to its parent's. Use it
-in CI. `apply` does not run these chain checks.
+in CI. `apply` runs the chain checks too (fork, missing parent, cycle, gap) and
+refuses with the same message, and it refuses with `ErrOutOfOrder` (exit 1) when a
+pending version is older than the latest applied one, so a late-merged older
+migration is never applied after newer ones: rename or rebase it to a newer
+version (`TestApplyRefusesForkedChain`, `TestApplyRefusesPendingOlderThanApplied`).
 
 Not built in v0.1.0 (story 098): `rebase`, `lint`, `rollback`, `new`. Each exits
 2 with `migrate <name> is not available yet`. There are no down migrations: undo
 a change with a new forward migration.
 
-`--force-unlock` only matters for a lock table that PostgreSQL does not use. On
-PostgreSQL it has no effect (section 3). `--lock-wait` exists on `apply` only.
+There is no `--force-unlock`: the PostgreSQL lock is a session advisory lock that
+the server frees when its holder's connection ends (section 3). `--lock-wait`
+exists on `apply` only.
 `--lock-wait 0s` fails immediately when locked. `resolve` and `baseline` wait
 the default 30 s.
 
 Database URL: `--url`, else the variable named in `migrate.url_env.postgres`,
-else `MOMO_DATABASE_URL`. Prefer the environment: `--url` shows in the process
-list.
+else `MOMO_DATABASE_URL`. Prefer the environment, or `--url -`, which reads the
+URL from standard input (`printf '%s' "$URL" | momo migrate apply --url -`): a
+`--url` value shows in the process list of a shared host, and momo prints a
+warning on stderr when it sees one.
 
 `momo.yaml` `migrate:` keys: `dir`, `url_env` (maps keyed by dialect),
 `schemas`, `lock_timeout`, `statement_timeout` (Go durations), `exclude`.
@@ -215,8 +223,8 @@ bound, and the unlock has its own.
 callers proceed once it is released, `TestApplyWaitsForLockRelease`).
 
 The lock is session-scoped: it is released when the holder's connection ends,
-so a crashed process frees it. There is no lock row to delete and `--force-unlock`
-does nothing. If a lock appears stuck, find the session
+so a crashed process frees it. There is no lock row to delete and no flag to force
+the lock (`--force-unlock` was removed: it never did anything). If a lock appears stuck, find the session
 (`pg_stat_activity` by the pid in the message) and terminate it with
 `pg_terminate_backend`.
 
@@ -254,10 +262,10 @@ file: the index is valid and the version is `applied`
 
 Applied with `SET` on the pinned session, `RESET` at the end:
 
-| Setting             | momo.yaml                   | Default | Notes                                                                                                                                                                                                                |
-| ------------------- | --------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lock_timeout`      | `migrate.lock_timeout`      | 5 s     | A DDL statement that cannot get its table lock within the limit fails with SQLSTATE 55P03; the transaction rolls back and the version stays retryable. `0s` means "use the default 5 s"; it cannot be disabled here. |
-| `statement_timeout` | `migrate.statement_timeout` | not set | Left as the role or server default. A role-level `statement_timeout` therefore applies to long migrations such as index builds. Use a migration role without it. A value of `0s` leaves the setting untouched.       |
+| Setting             | momo.yaml                   | Default | Notes                                                                                                                                                                                                                                                                                                         |
+| ------------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lock_timeout`      | `migrate.lock_timeout`      | 5 s     | A DDL statement that cannot get its table lock within the limit fails with SQLSTATE 55P03; the transaction rolls back and the version stays retryable. Key absent: 5 s. `0s` sets `lock_timeout = 0`, which disables the limit.                                                                               |
+| `statement_timeout` | `migrate.statement_timeout` | not set | Left as the role or server default. A role-level `statement_timeout` therefore applies to long migrations such as index builds. Use a migration role without it. Key absent: untouched. `0s` sends `SET statement_timeout = 0`, which disables the limit even when the role has one (for a long index build). |
 
 If `RESET` fails, the connection is discarded rather than returned to the pool.
 
@@ -340,9 +348,14 @@ refuses. Options:
 - Revert the file (`git checkout -- <file>`), then write a new migration for the
   change. This is the supported path.
 - If the edit is cosmetic (whitespace or a comment) and you accept it: run
-  `momo migrate hash`, then update the row by hand,
-  `UPDATE momo_migrations SET checksum = '<sha256 hex of the new file>' WHERE version = 'V';`.
-  Momo has no command for this.
+  `momo migrate hash` (momo.sum), then `momo migrate rehash --version V` to see
+  the recorded and the new checksum, then `momo migrate rehash --version V --accept`
+  to store it. Without `--accept` nothing changes and the command exits 1 and says
+  so. With it, only the row of version V is updated, and the row's `error` column
+  records `checksum accepted by rehash at <time>: <old> -> <new>`, which `status`
+  shows. The edit is accepted, not run: the database is not changed, so rehash
+  only edits that do not alter what the migration did
+  (`TestRehash`, `TestRehashOnPostgres`, `TestMigrateRehashAcceptsEditedMigration`).
 
 Editing a migration that is not applied yet (status `pending`) is fine: run
 `momo migrate hash` to accept it. `hash` records whatever is on disk, so review
@@ -353,8 +366,11 @@ A history row whose file is gone shows `missing` and exit 1 on `status`.
 ### Idempotency
 
 `apply` with nothing pending prints `no pending migrations`, exits 0, and
-runs no migration. It still takes the lock and creates the history table and
-meta row if absent, so it writes to the database even then. Running it twice,
+runs no migration. It takes the lock (an advisory lock, not a write) but writes
+nothing: it does not create the history table or its meta row, so it works with a
+read-mostly role. When something is pending, the history table is created first
+(`TestApplyNothingPendingWritesNothing`,
+`TestApplyNothingPendingCreatesNoHistoryTable`). Running it twice,
 or two processes at once, is safe: the second waits for the lock, then finds
 nothing to do (`TestConcurrentApply`, `TestConcurrentApplyWaits`).
 `plan`, `status`, `drift` are read-only.
@@ -499,15 +515,16 @@ changes only, writes no history and no files, and returns the rest as
   exact URL and password given are replaced by `***`.
   History `error` text is the server message only, never `Detail`. Messages of
   SQLSTATE class 22 (data exception) are withheld because they can contain
-  data values. The text is not URL-redacted (migrate/runner.go).
+  data values. Connection URLs and `password=` values in the text are replaced
+  by `***` before it is stored (`TestHistoryErrorIsRedacted`).
 - A warning on stderr (not a failure) when a command that needs a database is
   given a URL with `sslmode=disable` and any non-local host:
   `TLS is disabled (sslmode=disable) for remote host H: credentials and data cross the network unencrypted; use sslmode=require or stronger`.
   It names the hosts only.
   `localhost`, `127.0.0.1`, `::1` and unix socket paths do not warn. Use
   `sslmode=verify-full` against a real server.
-- Do not pass the URL with `--url` on shared hosts; use `migrate.url_env` or
-  `MOMO_DATABASE_URL`.
+- Do not pass the URL with `--url` on shared hosts (momo warns); use
+  `migrate.url_env`, `MOMO_DATABASE_URL` or `--url -` (stdin).
 - Review `*.up.sql` in code review like any code: `apply` runs it as the
   connected role, and `momo.sum` only detects change, not intent.
 
@@ -516,16 +533,10 @@ changes only, writes no history and no files, and returns the rest as
 Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
 
 - s2: Staged NOT NULL is never enforced after diff --stage (`20261106-staged-not-null-is-never-enforced-after-diff-stage`)
-- s3: Apply does not run chain and fork checks (`20261106-apply-does-not-run-chain-and-fork-checks`)
 - s3: The momo:destructive directive is never enforced (`20261106-the-momo-destructive-directive-is-never-enforced`)
 - s3: Index `Concurrently()` is ignored by diff, which writes a plain CREATE INDEX (`20261106-index-concurrently-is-ignored-by-migrate-diff`)
 - s3: diff marks a whole file no-transaction when it has a concurrent index (`20261106-diff-marks-a-whole-file-no-transaction-when-it-has-a`)
 - s3: Index drop, constraint drop, UNIQUE and CHECK are not flagged risky or emitted safely (`20261106-index-drop-constraint-drop-unique-and-check-are-not-flagged`)
-- s3: No way to accept an edited applied migration (`20261106-no-way-to-accept-an-edited-applied-migration`)
-- s4: lock_timeout and statement_timeout of 0s cannot disable the timeout (`20261106-lock-timeout-and-statement-timeout-of-0s-cannot-disable-the`)
 - s4: NOT NULL staging refusal says populated table but fires for any existing table (`20261106-not-null-staging-refusal-says-populated-table-but-fires-for`)
-- s4: apply creates the history table and meta row even when nothing is pending (`20261106-apply-creates-the-history-table-and-meta-row-even-when`)
 - s4: No warning for NOT NULL with a volatile default (`20261106-no-warning-for-not-null-with-a-volatile-default`)
-- s4: --force-unlock is a no-op for every dialect (`20261106-force-unlock-is-a-no-op-for-every-dialect`)
-- s4: History error column is not URL-redacted and --url is visible in the process list (`20261106-history-error-column-is-not-url-redacted-and-url-is-visible`)
 - s4: Rename-candidate exception skips staging for NOT NULL columns (`20261106-rename-candidate-exception-skips-staging-for-not-null`)

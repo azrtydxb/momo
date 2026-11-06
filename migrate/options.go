@@ -19,6 +19,9 @@ type options struct {
 	lockWait    time.Duration
 	lockWaitSet bool
 	noSum       bool
+	// lockTimeout and statementTimeout, when non-nil, were given explicitly
+	// (possibly as zero) and override the Config values.
+	lockTimeout, statementTimeout *time.Duration
 }
 
 // Option configures an Engine.
@@ -37,6 +40,20 @@ func WithConfig(c Config) Option {
 		}
 		o.config = c
 	}
+}
+
+// WithLockTimeout sets the lock_timeout of the migration session. Unlike
+// Config.LockTimeout, an explicit zero is kept and disables the timeout
+// (PostgreSQL treats 0 as off), for example for a long index build.
+func WithLockTimeout(d time.Duration) Option {
+	return func(o *options) { o.lockTimeout = &d }
+}
+
+// WithStatementTimeout sets the statement_timeout of the migration session.
+// Unlike Config.StatementTimeout, an explicit zero is sent to the server and
+// disables the timeout.
+func WithStatementTimeout(d time.Duration) Option {
+	return func(o *options) { o.statementTimeout = &d }
 }
 
 // WithDialect sets the dialect; it is required by NewEngine.
