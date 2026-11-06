@@ -26,6 +26,7 @@ type Document struct {
 	Title      string
 	Author     *Author
 	Comments   []Comment
+	Notes      []Note
 	Tags       []Tag
 	Taggings   []Tagging
 	Images     []Image
@@ -38,6 +39,15 @@ type Comment struct {
 	DocumentID int64
 	Body       string
 	Approved   bool
+}
+
+// Note is a soft-deletable child of a document (boolean marker).
+type Note struct {
+	momo.Model `momo:"table:notes"`
+	ID         int64 `momo:"pk"`
+	DocumentID int64
+	Body       string
+	Deleted    bool `momo:"softdelete"`
 }
 
 // Tag is joined to documents through Tagging.

@@ -22,6 +22,7 @@ var ddl = []string{
 	`CREATE TABLE authors (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,
 	`CREATE TABLE documents (id BIGINT PRIMARY KEY, author_id BIGINT REFERENCES authors(id), title TEXT NOT NULL)`,
 	`CREATE TABLE comments (id BIGINT PRIMARY KEY, document_id BIGINT NOT NULL REFERENCES documents(id), body TEXT NOT NULL, approved BOOLEAN NOT NULL)`,
+	`CREATE TABLE notes (id BIGINT PRIMARY KEY, document_id BIGINT NOT NULL REFERENCES documents(id), body TEXT NOT NULL, deleted BOOLEAN NOT NULL DEFAULT FALSE)`,
 	`CREATE TABLE tags (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,
 	`CREATE TABLE taggings (document_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, position BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (document_id, tag_id))`,
 	`CREATE TABLE images (id BIGINT PRIMARY KEY, owner_type TEXT NOT NULL, owner_id BIGINT NOT NULL, url TEXT NOT NULL)`,

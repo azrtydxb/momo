@@ -116,6 +116,8 @@ func (correlated) resultType() bool { return false }
 // Scope predicates must reference the child through the alias "momo_r": build
 // them with As on the generated column, for example
 // comment.Approved.As("momo_r").Eq(true). Soft-deleted children do not count.
+// For many-to-many relations the join table gets no soft-delete filter: only
+// the child table's marker is applied.
 func (r Relation[P, C]) Has(scope ...Predicate) Predicate {
 	return correlated{r: r.corr(r.Parent.Qualifier()), scope: scope}
 }
@@ -156,7 +158,9 @@ func (r Relation[P, C]) corr(parentQual string) *relCorr {
 // ErrValidation.
 func (r Relation[P, C]) From(parents SelectQuery[P]) SelectQuery[C] {
 	if r.Through != nil {
-		return SelectQuery[C]{meta: r.ChildMeta, s: selectCore{limit: -1, err: r.invalid("From does not support many-to-many relations")}}
+		bad := selectFrom(parents.q, r.ChildMeta, r.Child)
+		bad.s.err = r.invalid("From does not support many-to-many relations")
+		return bad
 	}
 	keyCols := make([]Expr, len(r.ParentCols))
 	for i, c := range r.ParentCols {
