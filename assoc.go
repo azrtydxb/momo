@@ -43,7 +43,9 @@ import (
 //     Before reading, it locks the parent row with SELECT 1 FROM parent WHERE
 //     key = ? FOR UPDATE on dialects with row locks (PostgreSQL, MySQL), so
 //     concurrent Replace calls on one parent are serialised; SQLite serialises
-//     writers and skips it.
+//     writers and skips it. A parent row that does not exist locks nothing, so
+//     concurrent Replace calls on a missing parent are not serialised. Link and
+//     Unlink take no parent lock and can interleave with a concurrent Replace.
 //   - Count: one SELECT COUNT(*) over the related children (soft-deleted
 //     children are not counted).
 //   - On BelongsTo every helper returns ErrUnsupported: set the foreign key on
@@ -115,8 +117,12 @@ func (r Relation[P, C]) Unlink(ctx context.Context, q Querier, p *P, cs ...*C) e
 // other and each reads the set the previous one committed; without that, two
 // callers under READ COMMITTED could produce unique violations, duplicate join
 // rows or a mix of both sets. SQLite serialises writers and skips the lock. On a
-// *Tx the lock is held until the caller's transaction ends. With no children it clears the whole set
-// in one statement. Otherwise it reads the current child keys, diffs them in Go
+// *Tx the lock is held until the caller's transaction ends, because the
+// savepoint does not release it. The lock is a row lock, so a parent row that
+// does not exist locks nothing: concurrent Replace calls on a missing parent
+// are not serialised. Link and Unlink take no parent lock, so they can
+// interleave with a concurrent Replace on the same parent. With no children it
+// clears the whole set in one statement. Otherwise it reads the current child keys, diffs them in Go
 // against cs, unlinks only the removed keys and links only the added keys, each
 // in chunks that respect the bind limit, so a set of any size works and kept
 // children are not rewritten. It writes directly: no model hooks, field hooks
