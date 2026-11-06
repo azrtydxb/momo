@@ -12,8 +12,10 @@ Nearest-neighbour search with pgvector over items that carry an embedding.
   (`vector_cosine_ops` for cosine, `vector_l2_ops` for `L2Distance`), or the
   index is not used. The query vector is a bound argument and a wrong dimension
   fails before any round trip.
-- The distance can be selected as a column through a projection. The id is the
-  last `OrderBy` key so ties return in a stable order.
+- The distance can be selected as a column through a projection. The order among
+  equal distances is unspecified. Adding a tie-break key such as `id` makes
+  PostgreSQL sort on top of the index scan, and on some versions (seen on PG16)
+  the planner then drops the HNSW index.
 - Filters: a `Where` next to the distance order. An HNSW index applies the filter
   after it returns its nearest candidates, which can leave fewer rows than the
   limit; `HNSWIterativeScan` (pgvector 0.8 or newer) keeps scanning until enough
@@ -25,9 +27,7 @@ Nearest-neighbour search with pgvector over items that carry an embedding.
   prefers a sequential scan, so the example turns sequential scans off for the
   transaction with `tx.SetLocal(ctx, "enable_seqscan", "off")` and checks that the
   plan names `items_embedding_hnsw`. With enough rows you leave that out. The
-  explained query orders by the distance alone, without the id tie-break: the
-  index delivers exactly that order, and whether the planner puts an Incremental
-  Sort for the extra id key over the index scan differs between PostgreSQL versions.
+  explained plan is the query the example runs.
 
 The full reference is [docs/vectors.md](../../docs/vectors.md).
 

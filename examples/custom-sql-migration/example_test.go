@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -16,23 +15,9 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/examples/internal/exampletest"
 	"github.com/azrtydxb/momo/internal/testdb"
 )
-
-const modulePath = "github.com/azrtydxb/momo"
-
-// momoBinary builds the real CLI once per test and returns its path.
-func momoBinary(t *testing.T) string {
-	t.Helper()
-	bin := filepath.Join(t.TempDir(), "momo")
-	if runtime.GOOS == "windows" {
-		bin += ".exe"
-	}
-	if out, err := exec.Command("go", "build", "-o", bin, modulePath+"/cmd/momo").CombinedOutput(); err != nil { //nolint:gosec // fixed arguments
-		t.Fatalf("go build momo: %v\n%s", err, out)
-	}
-	return bin
-}
 
 // cli runs the momo binary in this directory, where momo.yaml lives, against
 // the database url. It returns the combined output and the exit code.
@@ -66,7 +51,7 @@ func mustCLI(t *testing.T, bin, url string, args ...string) string {
 func TestCustomMigrationsRunBesideGeneratedOnes(t *testing.T) {
 	ctx := context.Background()
 	url := testdb.PostgresURLFor(t, testdb.ScratchDatabase(t, "custom_sql_"))
-	bin := momoBinary(t)
+	bin := exampletest.MomoBinary(t)
 
 	// The directory is valid: every file is in momo.sum, every migration has a
 	// snapshot, and the custom ones leave the schema as their parent had it.
@@ -129,7 +114,7 @@ func TestCustomMigrationsRunBesideGeneratedOnes(t *testing.T) {
 // TestEditedMigrationIsRefused shows the checksum guard: changing an applied
 // or pending file without re-recording it in momo.sum fails validation.
 func TestEditedMigrationIsRefused(t *testing.T) {
-	bin := momoBinary(t)
+	bin := exampletest.MomoBinary(t)
 	dir := t.TempDir()
 	files, err := filepath.Glob("migrations/*")
 	if err != nil {

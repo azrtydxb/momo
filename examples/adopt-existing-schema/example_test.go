@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -17,23 +16,9 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/examples/internal/exampletest"
 	"github.com/azrtydxb/momo/internal/testdb"
 )
-
-const modulePath = "github.com/azrtydxb/momo"
-
-// momoBinary builds the real CLI once per test and returns its path.
-func momoBinary(t *testing.T) string {
-	t.Helper()
-	bin := filepath.Join(t.TempDir(), "momo")
-	if runtime.GOOS == "windows" {
-		bin += ".exe"
-	}
-	if out, err := exec.Command("go", "build", "-o", bin, modulePath+"/cmd/momo").CombinedOutput(); err != nil { //nolint:gosec // fixed arguments
-		t.Fatalf("go build momo: %v\n%s", err, out)
-	}
-	return bin
-}
 
 // cli runs the momo binary in this directory, where momo.yaml lives, against
 // the database url. It returns the combined output and the exit code.
@@ -107,7 +92,7 @@ func legacyDatabase(ctx context.Context, t *testing.T) (url string, conn *pgx.Co
 func TestAdoptLegacyDatabase(t *testing.T) {
 	ctx := context.Background()
 	url, conn := legacyDatabase(ctx, t)
-	bin := momoBinary(t)
+	bin := exampletest.MomoBinary(t)
 	v := versions(t)
 	if len(v) != 2 {
 		t.Fatalf("want 2 migrations (init, add_order_status), found %v", v)
@@ -162,7 +147,7 @@ func TestAdoptLegacyDatabase(t *testing.T) {
 func TestNewDatabaseGetsTheSameSchema(t *testing.T) {
 	ctx := context.Background()
 	url := testdb.PostgresURLFor(t, testdb.ScratchDatabase(t, "adopt_new_"))
-	bin := momoBinary(t)
+	bin := exampletest.MomoBinary(t)
 	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)

@@ -98,28 +98,26 @@ func nearest(ctx context.Context, db *momo.DB, out io.Writer) error {
 	return nil
 }
 
-// search is the reusable query. Distances can tie, and ties come back in an
-// unspecified order, so the id is the last ORDER BY key: the same query then
-// always returns the same rows in the same order. Extra predicates go in
-// where; Where can only narrow the candidates, it never reorders them.
+// search is the reusable query. Extra predicates go in where; Where can only
+// narrow the candidates, it never reorders them.
+//
+// The order among equal distances is unspecified. Adding a tie-break key such
+// as id makes PostgreSQL sort on top of the index scan, and on some versions
+// (seen on PG16) the planner then drops the HNSW index.
 func search(ctx context.Context, q momo.Querier, limit int64, where ...momo.Predicate) ([]models.Hit, error) {
-	return searchQuery(q, limit, true, where...).All(ctx)
+	return searchQuery(q, limit, where...).All(ctx)
 }
 
-// searchQuery builds the query without running it, so Explain can plan it.
-// With tieBreak the id is the last ORDER BY key, which is the statement search
-// runs. Without it the query orders by the distance alone, the shape an HNSW
-// index scan answers directly.
-func searchQuery(q momo.Querier, limit int64, tieBreak bool, where ...momo.Predicate) momo.SelectQuery[models.Hit] {
+// searchQuery builds the query without running it, so Explain plans exactly
+// the statement search runs.
+func searchQuery(q momo.Querier, limit int64, where ...momo.Predicate) momo.SelectQuery[models.Hit] {
 	distance := momo.CosineDistance(item.Embedding, query)
-	b := momo.Select[models.Hit](q).
+	return momo.Select[models.Hit](q).
 		From(item.Table).
 		Columns(item.Title, distance).
-		Where(where...)
-	if tieBreak {
-		return b.OrderBy(distance.Asc(), item.ID.Asc()).Limit(limit)
-	}
-	return b.OrderBy(distance.Asc()).Limit(limit)
+		Where(where...).
+		OrderBy(distance.Asc()).
+		Limit(limit)
 }
 
 // explainIndex checks that the query uses the HNSW index. Explain runs EXPLAIN
@@ -129,19 +127,13 @@ func searchQuery(q momo.Querier, limit int64, tieBreak bool, where ...momo.Predi
 // rows, the planner picks the index by itself and you leave this out. The
 // plan text varies between PostgreSQL versions, so the example tests for the
 // index name instead of printing the plan.
-//
-// The plan is for the distance-only query, not for search with its id
-// tie-break. An index scan can only deliver the distance order; the extra id
-// key needs an Incremental Sort on top, and whether the planner builds that
-// over the index scan depends on the PostgreSQL version (PostgreSQL 16 did
-// not here). The distance-only shape is what the index serves on every
-// version.
+// The explained plan is the query search runs.
 func explainIndex(ctx context.Context, db *momo.DB, out io.Writer) error {
 	return db.Tx(ctx, momo.TxOptions{ReadOnly: true}, func(tx *momo.Tx) error {
 		if err := tx.SetLocal(ctx, "enable_seqscan", "off"); err != nil {
 			return err
 		}
-		plan, err := searchQuery(tx, 3, false).Explain(ctx)
+		plan, err := searchQuery(tx, 3).Explain(ctx)
 		if err != nil {
 			return err
 		}
