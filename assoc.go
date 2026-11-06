@@ -5,29 +5,41 @@ package momo
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 // Association helpers write the link between a parent and its children
-// explicitly. Each helper issues the single documented statement and nothing
-// else; none of them touches the in-memory values passed in.
+// explicitly. They issue the documented statements and nothing else; none of
+// them touches the in-memory values passed in.
 //
-// Statement contract:
+// The helpers write directly with SQL: they do not run model hooks (BeforeUpdate
+// and friends), do not run field hooks, and do not touch an UpdatedAt column.
+// Use the model's own update path when those must fire.
 //
-//   - HasOne/HasMany Link: one UPDATE child SET fk = ? WHERE pk IN (...). For a
+// Statement contract (one statement per chunk; a chunk holds as many keys as
+// fit under the dialect's bind limit, see WithMaxParams, so a small call is one
+// statement):
+//
+//   - HasOne/HasMany Link: UPDATE child SET fk = ? WHERE pk IN (...). For a
 //     polymorphic relation the discriminator column is set in the same UPDATE.
-//   - HasOne/HasMany Unlink: one UPDATE child SET fk = NULL WHERE fk = ? AND pk
-//     IN (...) (and the discriminator, for a polymorphic relation). The foreign
-//     key columns must be nullable.
-//   - ManyToMany Link: one INSERT INTO join table (parent cols, child cols)
-//     VALUES (...), ... that skips pairs which already exist (ON CONFLICT DO
-//     NOTHING; MySQL: ON DUPLICATE KEY UPDATE with a no-op assignment of the
-//     first column to itself).
-//   - ManyToMany Unlink: one DELETE FROM join table WHERE parent cols = ? AND
+//   - HasOne/HasMany Unlink: UPDATE child SET fk = NULL WHERE fk = ? AND pk IN
+//     (...) (and the discriminator, for a polymorphic relation). The foreign
+//     key columns must be nullable; a NOT NULL violation is reported as
+//     ErrNotNullViolation with a message that says so.
+//   - ManyToMany Link: INSERT INTO join table (parent cols, child cols) VALUES
+//     (...), ... that skips pairs which already exist (ON CONFLICT DO NOTHING;
+//     MySQL: ON DUPLICATE KEY UPDATE with a no-op assignment of the first
+//     column to itself). This needs a primary or unique key over the join
+//     columns: without one, nothing detects an existing pair and Link inserts a
+//     duplicate row.
+//   - ManyToMany Unlink: DELETE FROM join table WHERE parent cols = ? AND
 //     (child cols) IN (...).
-//   - Replace: one transaction with two statements: (1) clear the associations
-//     that are not in the new set; (2) link the new set (skipped when the set is
-//     empty). On a *DB the helper opens a transaction; on a *Tx it runs in a
-//     savepoint.
+//   - Replace: one transaction. With no children it clears the whole set in one
+//     statement. Otherwise it SELECTs the current child keys, diffs them in Go
+//     against the requested set (NOT IN cannot be chunked), unlinks only the
+//     removed keys and links only the added keys, in chunks. Kept children are
+//     not rewritten. On a *DB the helper opens the transaction; on a *Tx it runs
+//     in a savepoint.
 //   - Count: one SELECT COUNT(*) over the related children (soft-deleted
 //     children are not counted).
 //   - On BelongsTo every helper returns ErrUnsupported: set the foreign key on
@@ -35,71 +47,89 @@ import (
 //
 // Link, Unlink and Replace return ErrValidation when the parent key (or, for
 // ManyToMany, a child key) is NULL. Link and Unlink with no children are
-// no-ops that issue no statement. Each statement binds every key, so a set that
-// would exceed the dialect's bind limit (see WithMaxParams) is rejected with
-// ErrValidation instead of being split into several statements.
+// no-ops that issue no statement. When Link or Unlink needs more than one chunk
+// and q is a *DB, the chunks run in one transaction, so the call is atomic. On a
+// *Tx the chunks run in the caller's transaction.
 
 // Link associates the listed children with p: HasOne and HasMany set the
-// children's foreign key (one UPDATE), ManyToMany inserts the join rows (one
-// INSERT, existing pairs are kept). BelongsTo returns ErrUnsupported.
+// children's foreign key (UPDATE), ManyToMany inserts the join rows (INSERT,
+// existing pairs are kept; the join columns need a unique or primary key). Sets
+// larger than the bind limit are split into one statement per chunk. It writes
+// directly: no model hooks, field hooks or UpdatedAt. BelongsTo returns
+// ErrUnsupported.
 func (r Relation[P, C]) Link(ctx context.Context, q Querier, p *P, cs ...*C) error {
 	switch r.Kind {
 	case HasOne, HasMany:
-		if len(cs) == 0 {
-			return nil
+		pkey, keys, err := r.childPKs(p, cs)
+		if err != nil || len(keys) == 0 {
+			return err
 		}
-		return r.updateChildren(ctx, q, p, cs, linkSet)
+		return r.runChunks(ctx, q, keys, r.chunkSize(q, len(r.ChildPK), len(r.ChildCols)+r.discArgs()),
+			func(x Querier, ks [][]any) error { return r.updateChunk(ctx, x, pkey, ks, linkSet) })
 	case ManyToMany:
-		if len(cs) == 0 {
-			return nil
+		pkey, keys, err := r.joinKeys(p, cs)
+		if err != nil || len(keys) == 0 {
+			return err
 		}
-		return r.insertJoinRows(ctx, q, p, cs)
+		return r.runChunks(ctx, q, keys, r.chunkSize(q, len(r.Through.ParentCols)+len(r.Through.ChildCols), 0),
+			func(x Querier, ks [][]any) error { return r.insertJoinChunk(ctx, x, pkey, ks) })
 	}
 	return r.notLinkable("link")
 }
 
 // Unlink removes the association between p and the listed children: HasOne and
-// HasMany clear the children's foreign key (one UPDATE), ManyToMany deletes the
-// join rows (one DELETE). Children that are not associated with p are left
-// alone. BelongsTo returns ErrUnsupported.
+// HasMany clear the children's foreign key (UPDATE; the key columns must be
+// nullable), ManyToMany deletes the join rows (DELETE). Children that are not
+// associated with p are left alone. Sets larger than the bind limit are split
+// into one statement per chunk. It writes directly: no model hooks, field hooks
+// or UpdatedAt. BelongsTo returns ErrUnsupported.
 func (r Relation[P, C]) Unlink(ctx context.Context, q Querier, p *P, cs ...*C) error {
 	switch r.Kind {
 	case HasOne, HasMany:
-		if len(cs) == 0 {
-			return nil
+		pkey, keys, err := r.childPKs(p, cs)
+		if err != nil || len(keys) == 0 {
+			return err
 		}
-		return r.updateChildren(ctx, q, p, cs, linkClear)
+		return r.runChunks(ctx, q, keys, r.chunkSize(q, len(r.ChildPK), len(r.ChildCols)+r.discArgs()),
+			func(x Querier, ks [][]any) error { return r.updateChunk(ctx, x, pkey, ks, linkClear) })
 	case ManyToMany:
-		if len(cs) == 0 {
-			return nil
+		pkey, keys, err := r.joinKeys(p, cs)
+		if err != nil || len(keys) == 0 {
+			return err
 		}
-		return r.deleteJoinRows(ctx, q, p, cs, false)
+		return r.runChunks(ctx, q, keys, r.chunkSize(q, len(r.Through.ChildCols), len(r.Through.ParentCols)),
+			func(x Querier, ks [][]any) error { return r.deleteJoinChunk(ctx, x, pkey, ks) })
 	}
 	return r.notLinkable("unlink")
 }
 
-// Replace makes the listed children the complete set associated with p. In one
-// transaction it clears every association that is not in cs and then links cs
-// (the second statement is skipped when cs is empty). On a *DB it opens the
-// transaction, on a *Tx it uses a savepoint. BelongsTo returns ErrUnsupported.
+// Replace makes the listed children the complete set associated with p, in one
+// transaction (a savepoint on a *Tx). With no children it clears the whole set
+// in one statement. Otherwise it reads the current child keys, diffs them in Go
+// against cs, unlinks only the removed keys and links only the added keys, each
+// in chunks that respect the bind limit, so a set of any size works and kept
+// children are not rewritten. It writes directly: no model hooks, field hooks
+// or UpdatedAt. HasOne/HasMany need a nullable foreign key. BelongsTo returns
+// ErrUnsupported.
 func (r Relation[P, C]) Replace(ctx context.Context, q Querier, p *P, cs ...*C) error {
 	switch r.Kind {
 	case HasOne, HasMany, ManyToMany:
 	default:
 		return r.notLinkable("replace")
 	}
-	if _, err := r.parentKey(p, r.Child.Name); err != nil {
-		return err // no transaction for a call that cannot succeed
+	// Validate everything before opening a transaction for a call that cannot succeed.
+	var pkey []any
+	var want [][]any
+	var err error
+	if r.Kind == ManyToMany {
+		pkey, want, err = r.joinKeys(p, cs)
+	} else {
+		pkey, want, err = r.childPKs(p, cs)
 	}
-	fn := func(tx *Tx) error {
-		if err := r.unlinkExcept(ctx, tx, p, cs); err != nil {
-			return err
-		}
-		if len(cs) == 0 {
-			return nil
-		}
-		return r.Link(ctx, tx, p, cs...)
+	if err != nil {
+		return err
 	}
+	fn := func(tx *Tx) error { return r.replaceIn(ctx, tx, pkey, want) }
 	switch qq := q.(type) {
 	case *DB:
 		return qq.Tx(ctx, TxOptions{}, fn)
@@ -107,6 +137,115 @@ func (r Relation[P, C]) Replace(ctx context.Context, q Querier, p *P, cs ...*C) 
 		return qq.Tx(ctx, fn)
 	}
 	return &Error{Kind: ErrUnsupported, Op: "replace", Table: r.Child.Name, Err: errors.New("unknown Querier")}
+}
+
+func (r Relation[P, C]) replaceIn(ctx context.Context, tx *Tx, pkey []any, want [][]any) error {
+	m2m := r.Kind == ManyToMany
+	if len(want) == 0 { // clear the whole set: one statement, no SELECT
+		if m2m {
+			return r.deleteJoinChunk(ctx, tx, pkey, nil)
+		}
+		return r.updateChunk(ctx, tx, pkey, nil, linkClear)
+	}
+	have, err := r.currentKeys(ctx, tx, pkey)
+	if err != nil {
+		return err
+	}
+	wantSet := make(map[string]struct{}, len(want))
+	for _, k := range want {
+		wantSet[keyString(k)] = struct{}{}
+	}
+	haveSet := make(map[string]struct{}, len(have))
+	var removed, added [][]any
+	for _, k := range have {
+		s := keyString(k)
+		if _, dup := haveSet[s]; dup {
+			continue
+		}
+		haveSet[s] = struct{}{}
+		if _, ok := wantSet[s]; !ok {
+			removed = append(removed, k)
+		}
+	}
+	seen := make(map[string]struct{}, len(want))
+	for _, k := range want {
+		s := keyString(k)
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		if _, ok := haveSet[s]; !ok {
+			added = append(added, k)
+		}
+	}
+	if m2m {
+		if err := r.runChunks(ctx, tx, removed, r.chunkSize(tx, len(r.Through.ChildCols), len(r.Through.ParentCols)),
+			func(x Querier, ks [][]any) error { return r.deleteJoinChunk(ctx, x, pkey, ks) }); err != nil {
+			return err
+		}
+		return r.runChunks(ctx, tx, added, r.chunkSize(tx, len(r.Through.ParentCols)+len(r.Through.ChildCols), 0),
+			func(x Querier, ks [][]any) error { return r.insertJoinChunk(ctx, x, pkey, ks) })
+	}
+	if err := r.runChunks(ctx, tx, removed, r.chunkSize(tx, len(r.ChildPK), len(r.ChildCols)+r.discArgs()),
+		func(x Querier, ks [][]any) error { return r.updateChunk(ctx, x, pkey, ks, linkClear) }); err != nil {
+		return err
+	}
+	return r.runChunks(ctx, tx, added, r.chunkSize(tx, len(r.ChildPK), len(r.ChildCols)+r.discArgs()),
+		func(x Querier, ks [][]any) error { return r.updateChunk(ctx, x, pkey, ks, linkSet) })
+}
+
+// currentKeys reads the keys of the children currently associated with the
+// parent key: the child columns of the join table for ManyToMany, the child
+// primary key (scoped by the discriminator) for HasOne/HasMany. Soft-deleted
+// children are included, as Replace clears them too.
+func (r Relation[P, C]) currentKeys(ctx context.Context, q Querier, pkey []any) ([][]any, error) {
+	tr, match, cols := r.Child, r.ChildCols, r.ChildPK
+	if r.Through != nil {
+		tr, match, cols = r.Through.Table, r.Through.ParentCols, r.Through.ChildCols
+	}
+	tbl := tr.Qualifier()
+	c, err := compile(q.Dialect(), func(b *Builder) {
+		b.WriteString("SELECT ")
+		for i, col := range cols {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.QualifiedIdent(tbl, col)
+		}
+		b.WriteString(" FROM ")
+		tr.appendFrom(b)
+		b.WriteString(" WHERE ")
+		inTuple{table: tbl, cols: match, keys: [][]any{pkey}}.AppendSQL(b)
+		if r.Through == nil && r.Discriminator != nil {
+			b.WriteString(" AND ")
+			b.QualifiedIdent(tbl, r.Discriminator.Column)
+			b.WriteString(" = ")
+			b.Arg(r.Discriminator.Value)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.conn().query(ctx, "select", tr.Name, "", c)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out [][]any
+	for rows.Next() {
+		k := make([]any, len(cols))
+		dest := make([]any, len(cols))
+		for i := range k {
+			dest[i] = &k[i]
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return nil, err
+		}
+		if !hasNilPart(k) {
+			out = append(out, k)
+		}
+	}
+	return out, rows.Err()
 }
 
 // Count returns the number of children associated with p in one SELECT
@@ -168,24 +307,11 @@ func (r Relation[P, C]) Count(ctx context.Context, q Querier, p *P) (int64, erro
 	return n, rows.Err()
 }
 
-// unlinkExcept removes every association of p that is not in cs (one UPDATE or
-// one DELETE). Replace calls it before linking the new set.
-func (r Relation[P, C]) unlinkExcept(ctx context.Context, q Querier, p *P, cs []*C) error {
-	switch r.Kind {
-	case HasOne, HasMany:
-		return r.updateChildren(ctx, q, p, cs, linkClearExcept)
-	case ManyToMany:
-		return r.deleteJoinRows(ctx, q, p, cs, true)
-	}
-	return r.notLinkable("replace")
-}
-
 type linkMode uint8
 
 const (
 	linkSet linkMode = iota
 	linkClear
-	linkClearExcept
 )
 
 func (r Relation[P, C]) notLinkable(op string) error {
@@ -195,14 +321,6 @@ func (r Relation[P, C]) notLinkable(op string) error {
 
 func (r Relation[P, C]) assocErr(table, msg string) error {
 	return &Error{Kind: ErrValidation, Op: "assoc", Table: table, Err: errors.New(r.Name + ": " + msg)}
-}
-
-// checkBinds rejects a statement that binds more arguments than the dialect allows.
-func (r Relation[P, C]) checkBinds(q Querier, c Compiled, table string) error {
-	if m := q.Dialect().MaxParams; m > 0 && len(c.Args) > m {
-		return r.assocErr(table, "statement would bind more arguments than the dialect limit; link fewer children per call")
-	}
-	return nil
 }
 
 // parentKey returns the non-NULL parent key.
@@ -245,25 +363,74 @@ func pkValues[C any](m *Meta[C], idx []int, c *C) []any {
 	return out
 }
 
-// updateChildren writes the foreign key of cs (linkSet), clears it on cs
-// (linkClear), or clears it on every child of p that is not in cs
-// (linkClearExcept). Children are addressed by their primary key.
-func (r Relation[P, C]) updateChildren(ctx context.Context, q Querier, p *P, cs []*C, mode linkMode) error {
+// discArgs is the number of bind arguments the discriminator adds to a statement.
+func (r Relation[P, C]) discArgs() int {
+	if r.Discriminator != nil {
+		return 1
+	}
+	return 0
+}
+
+// chunkSize is how many key tuples (ncols binds each) fit in one statement
+// alongside reserved other binds.
+func (r Relation[P, C]) chunkSize(q Querier, ncols, reserved int) int {
+	return keysPerStatement(q.Dialect(), ncols, reserved)
+}
+
+// runChunks splits keys into chunks of size n and runs fn once per chunk. When
+// q is a *DB and more than one chunk is needed the chunks share one transaction,
+// so the call either applies in full or not at all.
+func (r Relation[P, C]) runChunks(ctx context.Context, q Querier, keys [][]any, n int, fn func(Querier, [][]any) error) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	run := func(x Querier) error {
+		for i := 0; i < len(keys); i += n {
+			if err := fn(x, keys[i:min(i+n, len(keys))]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if db, ok := q.(*DB); ok && len(keys) > n {
+		return db.Tx(ctx, TxOptions{}, func(tx *Tx) error { return run(tx) })
+	}
+	return run(q)
+}
+
+// nullableFK wraps a NOT NULL violation from clearing a foreign key.
+func (r Relation[P, C]) nullableFK(err error) error {
+	if err != nil && errors.Is(err, ErrNotNullViolation) {
+		return &Error{Kind: ErrNotNullViolation, Op: "assoc", Table: r.Child.Name,
+			Err: fmt.Errorf("%s: Unlink and Replace need a nullable foreign key: %w", r.Name, err)}
+	}
+	return err
+}
+
+// childPKs returns the non-NULL parent key and the child primary keys of cs.
+func (r Relation[P, C]) childPKs(p *P, cs []*C) ([]any, [][]any, error) {
 	key, err := r.parentKey(p, r.Child.Name)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	idx, err := pkIndexes(r.ChildMeta, r.ChildPK)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	keys := make([][]any, len(cs))
 	for i, c := range cs {
 		keys[i] = pkValues(r.ChildMeta, idx, c)
 		if hasNilPart(keys[i]) {
-			return r.assocErr(r.Child.Name, "child primary key is NULL")
+			return nil, nil, r.assocErr(r.Child.Name, "child primary key is NULL")
 		}
 	}
+	return key, keys, nil
+}
+
+// updateChunk writes the foreign key of the children with the given primary
+// keys (linkSet) or clears it on them (linkClear). With no keys, linkClear
+// clears every child of the parent key (Replace with an empty set).
+func (r Relation[P, C]) updateChunk(ctx context.Context, q Querier, key []any, keys [][]any, mode linkMode) error {
 	tbl := r.Child.Qualifier()
 	st, err := compile(q.Dialect(), func(b *Builder) {
 		b.WriteString("UPDATE ")
@@ -290,29 +457,27 @@ func (r Relation[P, C]) updateChildren(ctx context.Context, q Querier, p *P, cs 
 		b.WriteString(" WHERE ")
 		if mode != linkSet {
 			inTuple{table: tbl, cols: r.ChildCols, keys: [][]any{key}}.AppendSQL(b)
-			b.WriteString(" AND ")
 			if r.Discriminator != nil {
+				b.WriteString(" AND ")
 				b.QualifiedIdent(tbl, r.Discriminator.Column)
 				b.WriteString(" = ")
 				b.Arg(r.Discriminator.Value)
+			}
+			if len(keys) > 0 {
 				b.WriteString(" AND ")
 			}
 		}
-		if mode == linkClearExcept {
-			b.WriteString("NOT (")
-		}
-		inTuple{table: tbl, cols: r.ChildPK, keys: keys}.AppendSQL(b)
-		if mode == linkClearExcept {
-			b.WriteString(")")
+		if len(keys) > 0 {
+			inTuple{table: tbl, cols: r.ChildPK, keys: keys}.AppendSQL(b)
 		}
 	})
 	if err != nil {
 		return err
 	}
-	if err := r.checkBinds(q, st, r.Child.Name); err != nil {
-		return err
-	}
 	_, err = q.conn().exec(ctx, "update", r.Child.Name, st)
+	if mode != linkSet {
+		err = r.nullableFK(err)
+	}
 	return err
 }
 
@@ -336,14 +501,10 @@ func (r Relation[P, C]) joinKeys(p *P, cs []*C) ([]any, [][]any, error) {
 	return pkey, ckeys, nil
 }
 
-// insertJoinRows inserts one join row per child in one INSERT. Existing pairs are
-// skipped with ON CONFLICT DO NOTHING, or with a no-op ON DUPLICATE KEY UPDATE on
-// MySQL. A dialect with neither capability gets a plain INSERT.
-func (r Relation[P, C]) insertJoinRows(ctx context.Context, q Querier, p *P, cs []*C) error {
-	pkey, ckeys, err := r.joinKeys(p, cs)
-	if err != nil {
-		return err
-	}
+// insertJoinChunk inserts one join row per child key in one INSERT. Existing
+// pairs are skipped with ON CONFLICT DO NOTHING, or with a no-op ON DUPLICATE KEY
+// UPDATE on MySQL. A dialect with neither capability gets a plain INSERT.
+func (r Relation[P, C]) insertJoinChunk(ctx context.Context, q Querier, pkey []any, ckeys [][]any) error {
 	d := q.Dialect()
 	cols := append(append([]string{}, r.Through.ParentCols...), r.Through.ChildCols...)
 	st, err := compile(d, func(b *Builder) {
@@ -357,12 +518,12 @@ func (r Relation[P, C]) insertJoinRows(ctx context.Context, q Querier, p *P, cs 
 			b.Ident(col)
 		}
 		b.WriteString(") VALUES ")
-		for i := range cs {
+		for i, ck := range ckeys {
 			if i > 0 {
 				b.WriteString(", ")
 			}
 			b.WriteString("(")
-			vals := append(append([]any{}, pkey...), ckeys[i]...)
+			vals := append(append([]any{}, pkey...), ck...)
 			for j, v := range vals {
 				if j > 0 {
 					b.WriteString(", ")
@@ -384,39 +545,25 @@ func (r Relation[P, C]) insertJoinRows(ctx context.Context, q Querier, p *P, cs 
 	if err != nil {
 		return err
 	}
-	if err := r.checkBinds(q, st, r.Through.Table.Name); err != nil {
-		return err
-	}
 	_, err = q.conn().exec(ctx, "insert", r.Through.Table.Name, st)
 	return err
 }
 
-// deleteJoinRows deletes the join rows of p for cs (keep false), or the join rows
-// of p for every child not in cs (keep true, used by Replace). One DELETE either way.
-func (r Relation[P, C]) deleteJoinRows(ctx context.Context, q Querier, p *P, cs []*C, keep bool) error {
-	pkey, ckeys, err := r.joinKeys(p, cs)
-	if err != nil {
-		return err
-	}
+// deleteJoinChunk deletes the join rows of the parent key for the given child
+// keys; with no keys it deletes every join row of the parent key.
+func (r Relation[P, C]) deleteJoinChunk(ctx context.Context, q Querier, pkey []any, ckeys [][]any) error {
 	tbl := r.Through.Table.Qualifier()
 	st, err := compile(q.Dialect(), func(b *Builder) {
 		b.WriteString("DELETE FROM ")
 		r.Through.Table.appendFrom(b)
 		b.WriteString(" WHERE ")
 		inTuple{table: tbl, cols: r.Through.ParentCols, keys: [][]any{pkey}}.AppendSQL(b)
-		b.WriteString(" AND ")
-		if keep {
-			b.WriteString("NOT (")
-		}
-		inTuple{table: tbl, cols: r.Through.ChildCols, keys: ckeys}.AppendSQL(b)
-		if keep {
-			b.WriteString(")")
+		if len(ckeys) > 0 {
+			b.WriteString(" AND ")
+			inTuple{table: tbl, cols: r.Through.ChildCols, keys: ckeys}.AppendSQL(b)
 		}
 	})
 	if err != nil {
-		return err
-	}
-	if err := r.checkBinds(q, st, r.Through.Table.Name); err != nil {
 		return err
 	}
 	_, err = q.conn().exec(ctx, "delete", r.Through.Table.Name, st)

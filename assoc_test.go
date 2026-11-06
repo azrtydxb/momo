@@ -52,8 +52,8 @@ func TestAssociationHelpers(t *testing.T) {
 		if err := document.Tags.Replace(ctx, db, p, &models.Tag{ID: 2}); err != nil {
 			t.Fatal(err)
 		}
-		if got := len(h.After); got != 4 { // BEGIN, clear, link, COMMIT
-			t.Fatalf("Replace must be one transaction of two statements, got %d events", got)
+		if got := len(h.After); got != 5 { // BEGIN, select, clear, link, COMMIT
+			t.Fatalf("Replace must be one transaction (select, clear, link), got %d events", got)
 		}
 		n, err = document.Tags.Count(ctx, db, p)
 		if err != nil {

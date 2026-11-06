@@ -43,20 +43,45 @@ func assocRelation(kind RelationKind) Relation[assocParent, assocChild] {
 	return r
 }
 
-func TestAssociationRejectsStatementOverBindLimit(t *testing.T) {
+func TestAssociationChunkSizeAndRunChunks(t *testing.T) {
 	d := *dialect.For(dialect.Postgres)
-	d.MaxParams = 3
+	d.MaxParams = 4
 	q := limitedQuerier{d: &d}
-	for _, kind := range []RelationKind{HasMany, ManyToMany} {
-		r := assocRelation(kind)
-		cs := []*assocChild{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}}
-		for name, err := range map[string]error{
-			"link":   r.Link(context.Background(), q, &assocParent{ID: 1}, cs...),
-			"unlink": r.Unlink(context.Background(), q, &assocParent{ID: 1}, cs...),
-		} {
-			if !errors.Is(err, ErrValidation) {
-				t.Errorf("%s %s over the bind limit: %v, want ErrValidation", kind, name, err)
-			}
-		}
+	r := assocRelation(HasMany)
+	if got := r.chunkSize(q, 1, 1); got != 3 { // one fk bind leaves room for 3 keys
+		t.Fatalf("chunkSize(1,1) = %d, want 3", got)
+	}
+	if got := r.chunkSize(q, 2, 0); got != 2 {
+		t.Fatalf("chunkSize(2,0) = %d, want 2", got)
+	}
+	if got := r.chunkSize(q, 1, 9); got != 1 { // never below one key
+		t.Fatalf("chunkSize(1,9) = %d, want 1", got)
+	}
+	keys := make([][]any, 7)
+	for i := range keys {
+		keys[i] = []any{int64(i)}
+	}
+	var sizes []int
+	err := r.runChunks(context.Background(), q, keys, 3, func(_ Querier, ks [][]any) error {
+		sizes = append(sizes, len(ks))
+		return nil
+	})
+	if err != nil || len(sizes) != 3 || sizes[0] != 3 || sizes[1] != 3 || sizes[2] != 1 {
+		t.Fatalf("chunks %v err=%v, want [3 3 1]", sizes, err)
+	}
+	boom := errors.New("boom")
+	calls := 0
+	err = r.runChunks(context.Background(), q, keys, 3, func(Querier, [][]any) error {
+		calls++
+		return boom
+	})
+	if !errors.Is(err, boom) || calls != 1 {
+		t.Fatalf("a failing chunk must stop the run: calls=%d err=%v", calls, err)
+	}
+	if err := r.runChunks(context.Background(), q, nil, 3, func(Querier, [][]any) error {
+		t.Fatal("no keys, no chunk")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
