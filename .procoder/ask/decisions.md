@@ -54,3 +54,11 @@ Decision (2026-11-06): open the PR with the drafted title and body; ask again be
 - Do not merge yet
 
 Decision (2026-11-06): squash-merge PR #5 now; keep sprint-2 as the working branch; check release-please PR #3 before tagging.
+
+## Release v0.1.0 (merge release-please PR #3)
+
+- Edit PR #3's CHANGELOG to add a "PostgreSQL + pgvector only; SQLite and MySQL are not usable yet" note and reword the MySQL dialect line, run the pre-tag release check, then merge PR #3 so release-please tags v0.1.0, and remove release-as afterwards (recommended)
+- Merge PR #3 as generated, then remove release-as
+- Do not release yet
+
+Decision (2026-11-06): fix the changelog (PG + pgvector only note, reword the MySQL line), run the pre-tag check, merge PR #3 to tag v0.1.0, then remove release-as.
