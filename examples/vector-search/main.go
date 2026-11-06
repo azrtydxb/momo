@@ -59,6 +59,7 @@ func run(ctx context.Context, db *momo.DB, out io.Writer) error {
 		nearest,
 		nearestWithFilter,
 		searchSettings,
+		explainIndex,
 	} {
 		if err := step(ctx, db, out); err != nil {
 			return err
@@ -102,14 +103,40 @@ func nearest(ctx context.Context, db *momo.DB, out io.Writer) error {
 // always returns the same rows in the same order. Extra predicates go in
 // where; Where can only narrow the candidates, it never reorders them.
 func search(ctx context.Context, q momo.Querier, limit int64, where ...momo.Predicate) ([]models.Hit, error) {
+	return searchQuery(q, limit, where...).All(ctx)
+}
+
+// searchQuery builds the query without running it, so Explain can plan the
+// very statement that search runs.
+func searchQuery(q momo.Querier, limit int64, where ...momo.Predicate) momo.SelectQuery[models.Hit] {
 	distance := momo.CosineDistance(item.Embedding, query)
 	return momo.Select[models.Hit](q).
 		From(item.Table).
 		Columns(item.Title, distance).
 		Where(where...).
 		OrderBy(distance.Asc(), item.ID.Asc()).
-		Limit(limit).
-		All(ctx)
+		Limit(limit)
+}
+
+// explainIndex checks that the query uses the HNSW index. Explain runs EXPLAIN
+// (never EXPLAIN ANALYZE), so nothing executes. The planner prefers a
+// sequential scan on a table this small, so the transaction turns sequential
+// scans off with SetLocal (reverts at commit); in production, with enough
+// rows, the planner picks the index by itself and you leave this out. The
+// plan text varies between PostgreSQL versions, so the example tests for the
+// index name instead of printing the plan.
+func explainIndex(ctx context.Context, db *momo.DB, out io.Writer) error {
+	return db.Tx(ctx, momo.TxOptions{ReadOnly: true}, func(tx *momo.Tx) error {
+		if err := tx.SetLocal(ctx, "enable_seqscan", "off"); err != nil {
+			return err
+		}
+		plan, err := searchQuery(tx, 3).Explain(ctx)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "plan uses items_embedding_hnsw: %t\n", strings.Contains(plan, "items_embedding_hnsw"))
+		return nil
+	})
 }
 
 // nearestWithFilter combines similarity with an ordinary filter.

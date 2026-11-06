@@ -5,14 +5,17 @@ Read one, copy the parts you need. Every example is compiled, and every example
 that talks to a database is run end to end in CI, so the code here is code that
 works.
 
-| Example                                         | Shows                                                                                                |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| [quickstart](quickstart/)                       | The whole loop of the root README: models, generate, insert, select, relations, vector search, a Tx. |
-| [crud-zero-null](crud-zero-null/)               | Insert, select, update, delete; writing a zero value versus NULL versus the default; soft delete.    |
-| [transactions](transactions/)                   | `db.Tx`, rollback on error, savepoints, read-only and isolation options, retry on serialization.     |
-| [relations](relations/)                         | has-many, belongs-to, many-to-many; Load, Preload, Joined, Has/HasNo, Link/Replace, CreateGraph.     |
-| [projection-pagination](projection-pagination/) | Reading a subset of columns into a struct, keyset pagination with a tie-break, counting.             |
-| [vector-search](vector-search/)                 | A vector column, an HNSW index in a migration, nearest-neighbour queries, filters, search settings.  |
+| Example                                         | Shows                                                                                                                                              |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [quickstart](quickstart/)                       | The whole loop of the root README: models, generate, insert, select, relations, vector search, a Tx.                                               |
+| [crud-zero-null](crud-zero-null/)               | Insert, select, update, delete; writing a zero value versus NULL versus the default; soft delete.                                                  |
+| [transactions](transactions/)                   | `db.Tx`, rollback on error, savepoints, read-only and isolation options, retry on serialization.                                                   |
+| [relations](relations/)                         | has-many, belongs-to, many-to-many; Load, Preload, Joined, Has/HasNo, Link/Replace, CreateGraph.                                                   |
+| [projection-pagination](projection-pagination/) | Reading a subset of columns into a struct, keyset pagination with a tie-break, counting.                                                           |
+| [vector-search](vector-search/)                 | A vector column, an HNSW index in a migration, nearest-neighbour queries, filters, search settings.                                                |
+| [upgrade-database](upgrade-database/)           | change a model after production: add a column with a default, add an index, rename a column, apply with data kept, generate --check and drift.     |
+| [custom-sql-migration](custom-sql-migration/)   | hand-written SQL migrations beside generated ones: backfill, DO $$ splitting, -- momo:no-transaction, CONCURRENTLY workaround, momo.sum checksums. |
+| [adopt-existing-schema](adopt-existing-schema/) | put a plain-SQL database under Momo with migrate baseline (no model generation from a database in v0.1.0).                                         |
 
 ## Layout of an example
 

@@ -31,6 +31,7 @@ tasks with NULL note: 2
 model update ok, version 0 -> 1
 stale update: optimistic lock conflict=true
 soft delete: live=1 with deleted=2 only deleted=["zero"]
+plain Delete refused: ErrValidation
 force delete removed 1 row
 `
 	if got := out.String(); got != want {

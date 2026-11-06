@@ -176,9 +176,11 @@ func softDeleteAndDelete(ctx context.Context, q momo.Querier, out io.Writer) err
 	}
 	fmt.Fprintf(out, "soft delete: live=%d with deleted=%d only deleted=%q\n", live, all, titles(gone))
 
-	if _, err := momo.Delete[models.Task](q).Where(task.Title.Eq("zero")).Exec(ctx); err == nil {
-		return errors.New("plain Delete on a soft-delete model should be refused")
+	_, err = momo.Delete[models.Task](q).Where(task.Title.Eq("zero")).Exec(ctx)
+	if !errors.Is(err, momo.ErrValidation) {
+		return fmt.Errorf("plain Delete on a soft-delete model: want ErrValidation, got %v", err)
 	}
+	fmt.Fprintln(out, "plain Delete refused: ErrValidation")
 	res, err := momo.ForceDelete[models.Task](q).Where(task.Title.Eq("zero")).Exec(ctx)
 	if err != nil {
 		return err

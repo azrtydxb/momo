@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/azrtydxb/momo/migrate"
 )
 
 // exampleDirs lists the examples: every directory of examples/ except the
@@ -99,5 +101,33 @@ func TestExamplesAreWired(t *testing.T) {
 				t.Errorf("%s uses the database harness but lacks //go:build integration, so no CI job would run it with a database", filepath.Base(p))
 			}
 		}
+	}
+}
+
+// TestExampleMigrationSumsMatch verifies, without a database, that the
+// momo.sum of every example still matches its migration files. A formatter
+// that rewrites a *.snapshot.json changes its checksum, so this fails in the
+// unit job instead of at `momo migrate apply` time.
+func TestExampleMigrationSumsMatch(t *testing.T) {
+	for _, name := range exampleDirs(t) {
+		dir := filepath.Join(repoRoot(t), "examples", name, "migrations")
+		if _, err := os.Stat(dir); err != nil {
+			continue // an example without migrations has nothing to verify
+		}
+		t.Run(name, func(t *testing.T) {
+			f, err := os.Open(filepath.Join(dir, migrate.SumFileName)) // #nosec G304 -- the repository's own files
+			if err != nil {
+				t.Fatalf("examples/%s/migrations: %v; run `momo migrate hash` there", name, err)
+			}
+			defer f.Close()
+			want, err := migrate.ParseSum(f)
+			if err != nil {
+				t.Fatalf("examples/%s/migrations/%s: %v; run `momo migrate hash` there", name, migrate.SumFileName, err)
+			}
+			if bad := migrate.VerifySum(os.DirFS(dir), want); len(bad) > 0 {
+				t.Errorf("examples/%s/migrations: %s does not match %v. A formatter probably rewrote a snapshot; run `momo migrate hash` in examples/%s and commit the result",
+					name, migrate.SumFileName, bad, name)
+			}
+		})
 	}
 }

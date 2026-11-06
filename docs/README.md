@@ -22,3 +22,6 @@ Runnable programs, each tested end to end in CI. See [the examples index](../exa
 - [relations](../examples/relations/): has-many, belongs-to, many-to-many; Load, Preload, Joined, Has, Link, CreateGraph.
 - [projection-pagination](../examples/projection-pagination/): column subsets, keyset pagination with a tie-break, counting.
 - [vector-search](../examples/vector-search/): HNSW index, nearest-neighbour queries, filters, search settings.
+- [upgrade-database](../examples/upgrade-database/): change a model after production: add a column with a default, add an index, rename a column, apply with data kept, generate --check and drift.
+- [custom-sql-migration](../examples/custom-sql-migration/): hand-written SQL migrations beside generated ones: backfill, DO $$ splitting, -- momo:no-transaction, CONCURRENTLY workaround, momo.sum checksums.
+- [adopt-existing-schema](../examples/adopt-existing-schema/): put a plain-SQL database under Momo with migrate baseline (no model generation from a database in v0.1.0).

@@ -21,6 +21,28 @@ A list screen over a table of articles whose `body` column is large.
   limit of one, and an aggregate projection with `GroupBy` and `Having` counts
   per group.
 
+A minimal hand-written projection `MomoMeta`. A projection has no identity,
+version, soft-delete or timestamp column, so those five fields are -1:
+
+```go
+func (*Card) MomoMeta() *momo.Meta[Card] { return &cardMeta }
+
+var cardMeta = momo.Meta[Card]{
+	Columns: []momo.ColumnMeta{{Name: "id"}, {Name: "title"}},
+	Ptr: func(m *Card, i int) any {
+		if i == 0 {
+			return &m.ID
+		}
+		return &m.Title
+	},
+	Value:    func(*Card, int) any { return nil },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}
+```
+
+Generating this is tracked in the backlog story
+[Generate Meta for projection structs](../../.procoder/backlog/stories/20261106-generate-meta-for-projection-structs.md).
+
 ## Run
 
 ```sh

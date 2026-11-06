@@ -17,7 +17,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand/v2"
 	"os"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
@@ -146,7 +150,13 @@ func readOnly(ctx context.Context, db *momo.DB, out io.Writer) error {
 	err := db.Tx(ctx, momo.TxOptions{ReadOnly: true}, func(tx *momo.Tx) error {
 		return addBalance(ctx, tx, "ada", 1000)
 	})
-	fmt.Fprintf(out, "write in read-only transaction refused=%t\n", err != nil)
+	// Momo has no sentinel for this failure, so read the SQLSTATE off the
+	// driver error: 25006 is read_only_sql_transaction.
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "25006" {
+		return fmt.Errorf("read-only write: want SQLSTATE 25006, got %w", err)
+	}
+	fmt.Fprintf(out, "write in read-only transaction refused: SQLSTATE %s\n", pgErr.Code)
 	return nil
 }
 
@@ -180,15 +190,26 @@ func retryOnSerializationFailure(ctx context.Context, db *momo.DB, out io.Writer
 
 // retrySerializable runs fn in a serializable transaction and runs the whole
 // transaction again, up to maxAttempts times, while it fails with
-// momo.ErrSerialization. A real service adds a short randomized pause
+// momo.ErrSerialization. It waits a short randomized pause
 // between attempts.
 func retrySerializable(ctx context.Context, db *momo.DB, fn func(tx *momo.Tx) error) error {
-	const maxAttempts = 3
+	const (
+		maxAttempts = 3
+		backoff     = 5 * time.Millisecond // a real service starts higher, such as 20ms, and doubles
+	)
 	var err error
 	for range maxAttempts {
 		err = db.Tx(ctx, momo.TxOptions{Isolation: sql.LevelSerializable}, fn)
 		if !errors.Is(err, momo.ErrSerialization) {
 			return err
+		}
+		// Back off with jitter so the competing transactions do not collide
+		// again in lockstep, and stop at once if the caller gives up.
+		d := backoff/2 + rand.N(backoff) // #nosec G404 -- jitter, not a secret
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(d):
 		}
 	}
 	return err

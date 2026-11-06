@@ -21,6 +21,10 @@ Nearest-neighbour search with pgvector over items that carry an embedding.
 - `db.WithSearch` applies settings to one transaction only, so they never leak to
   a pooled connection and are safe behind PgBouncer: `HNSWEfSearch` trades
   latency for recall, and `ExactSearch` switches the index off for exact results.
+- `Explain` shows whether the index is used. On a table this small the planner
+  prefers a sequential scan, so the example turns sequential scans off for the
+  transaction with `tx.SetLocal(ctx, "enable_seqscan", "off")` and checks that the
+  plan names `items_embedding_hnsw`. With enough rows you leave that out.
 
 The full reference is [docs/vectors.md](../../docs/vectors.md).
 

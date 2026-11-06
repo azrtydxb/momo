@@ -27,7 +27,7 @@ transfer 500 ada->grace: check violation=true
   balances: ada=70 grace=80
 savepoint: unique violation=true
   balances: ada=71 grace=80
-write in read-only transaction refused=true
+write in read-only transaction refused: SQLSTATE 25006
   balances: ada=71 grace=80
 serializable retry: attempts=2 err=<nil>
   balances: ada=86 grace=80

@@ -129,7 +129,7 @@ for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 A nearest-neighbour query (`ExampleCosineDistance`):
 
 ```go
-c, err := momo.Select[example.Document, *example.Document](db).
+c, err := momo.Select[example.Document](db).
 	OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
 	Limit(5).
 	SQL()
@@ -232,7 +232,7 @@ settings := momo.SearchSettings{
 	HNSWMaxScanTuples: 20000,
 }
 err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
-	_, err := momo.Select[example.Document, *example.Document](tx).
+	_, err := momo.Select[example.Document](tx).
 		OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
 		Limit(10).
 		All(ctx)
@@ -275,7 +275,7 @@ it inside the transaction whose settings you want to see
 (`ExampleSelectQuery_Explain`):
 
 ```go
-plan, err := momo.Select[example.Document, *example.Document](db).
+plan, err := momo.Select[example.Document](db).
 	OrderBy(momo.L2Distance(document.Embedding, query).Asc()).
 	Limit(10).
 	Explain(ctx)

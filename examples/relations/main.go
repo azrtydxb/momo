@@ -152,7 +152,10 @@ func loadWithScope(ctx context.Context, q momo.Querier, out io.Writer) error {
 	if err := momo.LoadAll(ctx, q, docs,
 		document.Author,
 		document.Tags,
-		document.Comments.Scope(momo.LoadPerParentLimit[models.Comment](1)),
+		document.Comments.Scope(
+			momo.LoadOrderBy[models.Comment](comment.ID.Asc()),
+			momo.LoadPerParentLimit[models.Comment](1),
+		),
 	); err != nil {
 		return err
 	}
@@ -169,7 +172,10 @@ func preloadAndJoin(ctx context.Context, q momo.Querier, out io.Writer) error {
 	docs, err := momo.Select[models.Document](q).
 		Preload(
 			document.Author.Joined(),
-			document.Comments.Scope(momo.LoadPerParentLimit[models.Comment](1)),
+			document.Comments.Scope(
+				momo.LoadOrderBy[models.Comment](comment.ID.Asc()),
+				momo.LoadPerParentLimit[models.Comment](1),
+			),
 		).
 		OrderBy(document.ID.Asc()).
 		All(ctx)
