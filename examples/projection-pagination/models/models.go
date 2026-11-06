@@ -29,35 +29,14 @@ func (a *Article) MomoConfig(c *momo.Config) {
 // projection embeds momo.Projection and has no table of its own; the query
 // names the table (From) and the columns (Columns), in field order.
 //
-// The generator does not emit projections yet, so the metadata is written by
-// hand. It is short, and the compiler checks every line of it: Ptr is how a
-// row is scanned into the struct, Value is only for writes, which a
-// projection never does.
+// The generator writes its MomoMeta into momo_gen.go, so there is nothing to
+// maintain by hand. A field maps to the column its name gives under the
+// naming rule, or to the column of a `momo:"column:..."` tag.
 type Card struct {
 	momo.Projection
 	ID    int64
 	Title string
 	Score int64
-}
-
-// MomoMeta describes Card to Momo. Identity, Version, SoftDelete, CreatedAt
-// and UpdatedAt are -1 because a projection has none of those columns.
-func (*Card) MomoMeta() *momo.Meta[Card] { return &cardMeta }
-
-var cardMeta = momo.Meta[Card]{
-	Columns: []momo.ColumnMeta{{Name: "id"}, {Name: "title"}, {Name: "score"}},
-	Ptr: func(m *Card, i int) any {
-		switch i {
-		case 0:
-			return &m.ID
-		case 1:
-			return &m.Title
-		default:
-			return &m.Score
-		}
-	},
-	Value:    func(*Card, int) any { return nil },
-	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
 }
 
 // ScoreCount is a projection of an aggregate: how many articles have each
@@ -66,19 +45,4 @@ type ScoreCount struct {
 	momo.Projection
 	Score    int64
 	Articles int64
-}
-
-// MomoMeta describes ScoreCount to Momo.
-func (*ScoreCount) MomoMeta() *momo.Meta[ScoreCount] { return &scoreCountMeta }
-
-var scoreCountMeta = momo.Meta[ScoreCount]{
-	Columns: []momo.ColumnMeta{{Name: "score"}, {Name: "articles"}},
-	Ptr: func(m *ScoreCount, i int) any {
-		if i == 0 {
-			return &m.Score
-		}
-		return &m.Articles
-	},
-	Value:    func(*ScoreCount, int) any { return nil },
-	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
 }

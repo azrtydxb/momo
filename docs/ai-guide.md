@@ -307,13 +307,14 @@ What the generator emits per model `Task` (package `task`):
   names (`task := ...` shadows the package). Name variables differently or
   alias the import.
 
-### Projections (hand-written metadata in v0.1.0)
+### Projections
 
-A projection reads a column subset or aggregate into a non-table struct. The
-generator does NOT emit projection metadata in v0.1.0, so write `MomoMeta` by
-hand. A projection has no identity, version, soft-delete or timestamp column, so
-every such index is `-1`. `Columns` order must equal struct field order and the
-`Columns(...)` list of the query.
+A projection reads a column subset or aggregate into a non-table struct. Embed
+`momo.Projection` by value; `momo generate` emits its `MomoMeta` into
+`momo_gen.go` (every exported field, in declaration order; column name from the
+naming rule or a `momo:"column:..."` tag). NEVER hand-write `MomoMeta` for a
+projection. The `Columns(...)` list of the query must equal the struct field
+order.
 
 ```go
 type Card struct {
@@ -322,24 +323,6 @@ type Card struct {
 	Title string
 	Score int64
 }
-
-func (*Card) MomoMeta() *momo.Meta[Card] { return &cardMeta }
-
-var cardMeta = momo.Meta[Card]{
-	Columns: []momo.ColumnMeta{{Name: "id"}, {Name: "title"}, {Name: "score"}},
-	Ptr: func(m *Card, i int) any {
-		switch i {
-		case 0:
-			return &m.ID
-		case 1:
-			return &m.Title
-		default:
-			return &m.Score
-		}
-	},
-	Value:    func(*Card, int) any { return nil },
-	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
-}
 ```
 
 Use it like this:
@@ -347,17 +330,22 @@ Use it like this:
 ```go
 cards := momo.Select[models.Card](q).From(article.Table).
 	Columns(article.ID, article.Title, article.Score).
-	Where(article.DeletedAt.IsNull()). // REQUIRED when the articles table has a soft-delete column
 	OrderBy(article.ID.Asc()).
 	All(ctx)
 ```
 
-A projection does NOT get the automatic soft-delete filter. The filter is chosen
-from the result type's metadata, and a projection's `SoftDelete` is `-1`, so
-`SELECT id, title, score FROM articles` returns soft-deleted rows. When the
-table has a soft-delete column, add `Where(<table>.DeletedAt.IsNull())` yourself
-(for a `bool` marker, `Eq(false)`). This applies to every projection, including
-the vector `Hit` in section 9.
+When `From` is a plain generated table (`article.Table`) with a soft-delete
+column (timestamp, unix or bool), the live-row filter is added automatically,
+exactly as for a model; `WithDeleted()` and `OnlyDeleted()` work too. Do NOT add
+`Where(<table>.DeletedAt.IsNull())` yourself. A `Join` does not change this:
+the `From` table is filtered and joined tables are not. To alias use
+`article.Table.As("a")`, which keeps the filter. The filter is NOT added when
+`From` is a subquery or CTE, or a hand-built `momo.TableRef{Name:..., Alias:...}`
+(it has no soft-delete column): filter those yourself.
+
+If a package still has a hand-written projection `MomoMeta` from before the
+generator emitted it, delete it (method and `Meta` variable); the generated one
+redeclares it.
 
 A projection cannot be inserted, updated or deleted (it embeds `Projection`, not
 `Model`). Computed columns (a distance, `momo.CountAll()`) are valid entries in
@@ -647,8 +635,10 @@ dead, _ := momo.Select[models.Task](q).OnlyDeleted().All(ctx)
   `ErrValidation`. Use `SoftDelete` or `ForceDelete`.
 - The soft-delete filter applies automatically to `Select`, `Count`, relation
   loads and `Has`/`HasNo` of a model. It does NOT apply to raw SQL (`momo.SQL`,
-  `momo.Exec`, `momo.Scalars`) or to projections (see "Projections" in section
-  4): add `deleted_at IS NULL` / `<table>.DeletedAt.IsNull()` yourself.
+  `momo.Exec`, `momo.Scalars`), or to a projection whose `From` is a subquery or
+  a hand-built `TableRef` (see "Projections" in section 4): add
+  `deleted_at IS NULL` / `<table>.DeletedAt.IsNull()` yourself. A projection
+  read `From` a generated table (also with joins) is filtered automatically.
 - A soft-deleted row still occupies its unique keys. `FindOrCreate` returns the
   soft-deleted row. Use partial unique indexes (`Where("deleted_at IS NULL")`) if
   keys must be reusable.
@@ -963,11 +953,10 @@ Nearest-neighbour query; `Asc()` is nearest first:
 
 ```go
 distance := momo.CosineDistance(item.Embedding, query) // query is vector.Vector of dim 1536
-hits, err := momo.Select[models.Hit](q). // projection with Title string, Distance float64 (section 4)
+hits, err := momo.Select[models.Hit](q). // projection with Title string, Distance float64 (section 4); soft-deleted items are filtered automatically
 	From(item.Table).
 	Columns(item.Title, distance).
 	Where(item.Category.Eq("news")).
-	// if Item is soft-deletable (a projection skips the soft-delete filter): Where(item.DeletedAt.IsNull()).
 	OrderBy(distance.Asc()). // distance only: see the tie-break note below
 	Limit(10).
 	All(ctx)
@@ -977,10 +966,9 @@ items, err := momo.Select[models.Item](q).
 	OrderBy(momo.CosineDistance(item.Embedding, query).Asc()).Limit(5).All(ctx)
 ```
 
-- `Hit` is a hand-written projection (section 4); its meta is
-  `Columns: []momo.ColumnMeta{{Name: "title"}, {Name: "distance"}}`, `Ptr`
-  returning `&m.Title` then `&m.Distance`, and every index `-1`. The name
-  `distance` is only a label for the computed column.
+- `Hit` is a projection (section 4); the generator emits its meta. The select
+  list is positional, so the field name `Distance` only labels the computed
+  column.
 - A vector literal is `vector.Vector{0.1, 0.2, 0.3}` (`vector.Vector` is
   `[]float32`; its length must equal `dim`).
 - `InnerProductDistance` is pgvector `<#>`: the NEGATIVE inner product, so
@@ -1154,7 +1142,8 @@ Examples: every `examples/*/example_test.go`, harness
    (`go install github.com/azrtydxb/momo/cmd/momo@v0.1.0`).
 3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run
    `momo generate` after every model change and commit the generated files.
-4. Never edit `*_gen.go`. Never hand-write `MomoMeta` for a table model.
+4. Never edit `*_gen.go`. Never hand-write `MomoMeta` for a table model or a
+   projection.
 5. Non-pointer field = NOT NULL; pointer = NULL-able. Use `SetNull()` only on
    pointer fields.
 6. Use `Insert.Model` to store the struct as-is (zeros included); `Insert.Values`
@@ -1164,8 +1153,10 @@ Examples: every `examples/*/example_test.go`, harness
    retry. `Set` updates do not touch the version.
 8. Never call `AllRows()` to get past `ErrUnfilteredMutation`; add a `Where`.
 9. Soft-delete models: `SoftDelete`/`ForceDelete`, not `Delete`. Raw SQL and
-   projections (`Select[Card]`, the vector `Hit`) do not get the soft-delete
-   filter: add `Where(<table>.DeletedAt.IsNull())` yourself.
+   projections whose `From` is a subquery or a hand-built `TableRef` do not get
+   the soft-delete filter: add `Where(<table>.DeletedAt.IsNull())` yourself. A
+   projection read `From` a generated table (`Select[Card]`, the vector `Hit`)
+   is filtered automatically; do not add the predicate.
 10. Page with `OrderBy` + `After` and a unique tie-break; pass one value per
     effective ORDER BY key (primary key included).
 11. Pass user input only as arguments to `momo.SQL`/`TypedSQL`/`Exec`/`Scalars`;

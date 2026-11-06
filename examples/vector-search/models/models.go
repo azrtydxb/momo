@@ -42,24 +42,9 @@ func (i *Item) MomoConfig(c *momo.Config) {
 
 // Hit is a projection: an item's title together with its distance from the
 // query, which no column holds. See the projection-pagination example for
-// how projections work; the generator does not emit them yet.
+// how projections work; the generator writes its MomoMeta.
 type Hit struct {
 	momo.Projection
 	Title    string
 	Distance float64
-}
-
-// MomoMeta describes Hit to Momo.
-func (*Hit) MomoMeta() *momo.Meta[Hit] { return &hitMeta }
-
-var hitMeta = momo.Meta[Hit]{
-	Columns: []momo.ColumnMeta{{Name: "title"}, {Name: "distance"}},
-	Ptr: func(m *Hit, i int) any {
-		if i == 0 {
-			return &m.Title
-		}
-		return &m.Distance
-	},
-	Value:    func(*Hit, int) any { return nil },
-	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
 }

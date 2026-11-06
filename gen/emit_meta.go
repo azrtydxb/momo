@@ -20,13 +20,35 @@ import (
 // scan and bind functions, and the literal schema.Table. models must belong
 // to a single package; the result is gofmt-formatted and starts with
 // Header().
+//
+// Structs that embed momo.Projection in the same package (g.Projections) get
+// a MomoMeta with no table and every derived index set to -1.
 func EmitMeta(models []*Model, g *Graph) ([]byte, []Diagnostic) {
 	if len(models) == 0 {
 		return nil, nil
 	}
-	pkgName, pkgPath := models[0].PkgName, models[0].PkgPath
+	var projs []*Model
+	if g != nil {
+		for _, p := range g.Projections {
+			if p.PkgPath == models[0].PkgPath && p.PkgDir == models[0].PkgDir {
+				projs = append(projs, p)
+			}
+		}
+	}
+	return emitPackageMeta(models, projs, g)
+}
+
+// emitPackageMeta is EmitMeta for the models and projections of one package.
+func emitPackageMeta(models, projections []*Model, g *Graph) ([]byte, []Diagnostic) {
+	if len(models)+len(projections) == 0 {
+		return nil, nil
+	}
+	first := append(append([]*Model(nil), models...), projections...)[0]
+	pkgName, pkgPath := first.PkgName, first.PkgPath
 	sorted := append([]*Model(nil), models...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].GoName < sorted[j].GoName })
+	sortedP := append([]*Model(nil), projections...)
+	sort.SliceStable(sortedP, func(i, j int) bool { return sortedP[i].GoName < sortedP[j].GoName })
 
 	var diags []Diagnostic
 	var body strings.Builder
@@ -50,6 +72,18 @@ func EmitMeta(models []*Model, g *Graph) ([]byte, []Diagnostic) {
 		}
 		emitModelMeta(&body, m, t, lower)
 	}
+	for _, m := range sortedP {
+		if m.PkgPath != pkgPath {
+			diags = append(diags, Diagnostic{Pos: m.Pos, Msg: "projection " + m.GoName + " is not in package " + pkgPath})
+			continue
+		}
+		lower := lowerFirst(m.GoName)
+		if prev, ok := used[lower+"Meta"]; ok {
+			diags = append(diags, Diagnostic{Pos: m.Pos, Msg: fmt.Sprintf("generated name %s of %s collides with %s", lower+"Meta", m.GoName, prev)})
+		}
+		used[lower+"Meta"] = m.GoName
+		emitProjectionMeta(&body, m, lower)
+	}
 	if len(diags) > 0 {
 		return nil, diags
 	}
@@ -57,11 +91,15 @@ func EmitMeta(models []*Model, g *Graph) ([]byte, []Diagnostic) {
 	var out strings.Builder
 	out.WriteString(Header() + "\n\n")
 	fmt.Fprintf(&out, "package %s\n\n", pkgName)
-	out.WriteString("import (\n\t\"github.com/azrtydxb/momo\"\n\t\"github.com/azrtydxb/momo/schema\"\n)\n")
+	if len(sorted) > 0 {
+		out.WriteString("import (\n\t\"github.com/azrtydxb/momo\"\n\t\"github.com/azrtydxb/momo/schema\"\n)\n")
+	} else {
+		out.WriteString("import \"github.com/azrtydxb/momo\"\n")
+	}
 	out.WriteString(body.String())
 	src, err := format.Source([]byte(out.String()))
 	if err != nil {
-		return nil, []Diagnostic{{Pos: models[0].Pos, Msg: "generator bug: formatting meta for " + pkgName + ": " + err.Error()}}
+		return nil, []Diagnostic{{Pos: first.Pos, Msg: "generator bug: formatting meta for " + pkgName + ": " + err.Error()}}
 	}
 	return src, nil
 }
@@ -137,6 +175,31 @@ func emitModelMeta(b *strings.Builder, m *Model, t *schema.Table, lower string) 
 	w("PK: []int{%s},\n", strings.Join(pk, ", "))
 	w("}\n\n")
 	w("var %sTable = %s\n", lower, literal(reflect.ValueOf(*t)))
+}
+
+// emitProjectionMeta writes the MomoMeta of a projection: the columns in
+// field order, scan and bind functions, and -1 for every derived index.
+func emitProjectionMeta(b *strings.Builder, m *Model, lower string) {
+	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
+	w("\nfunc (*%s) MomoMeta() *momo.Meta[%s] { return &%sMeta }\n\n", m.GoName, m.GoName, lower)
+	w("var %sMeta = momo.Meta[%s]{\n", lower, m.GoName)
+	w("Columns: []momo.ColumnMeta{\n")
+	for _, f := range m.Fields {
+		w("{Name: %s},\n", strconv.Quote(f.Column))
+	}
+	w("},\n")
+	sels := make([]string, len(m.Fields))
+	for i, f := range m.Fields {
+		sels[i], _ = fieldVar(m, f)
+	}
+	w("Ptr: func(m *%s, i int) any {\n", m.GoName)
+	writeSwitch(b, sels, "&m.")
+	w("},\n")
+	w("Value: func(m *%s, i int) any {\n", m.GoName)
+	writeSwitch(b, sels, "m.")
+	w("},\n")
+	w("Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,\n")
+	w("}\n")
 }
 
 // writeSwitch writes the body of a Ptr or Value function: one case per

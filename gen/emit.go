@@ -52,13 +52,24 @@ func Emit(g *Graph, w *Writer) error {
 		}
 	}
 	byPkg := map[string][]*Model{}
+	projByPkg := map[string][]*Model{}
 	var keys []string
-	for _, m := range g.Models {
-		key := m.PkgDir + "\x00" + m.PkgPath
-		if _, ok := byPkg[key]; !ok {
+	note := func(key string) {
+		_, a := byPkg[key]
+		_, b := projByPkg[key]
+		if !a && !b {
 			keys = append(keys, key)
 		}
+	}
+	for _, m := range g.Models {
+		key := m.PkgDir + "\x00" + m.PkgPath
+		note(key)
 		byPkg[key] = append(byPkg[key], m)
+	}
+	for _, m := range g.Projections {
+		key := m.PkgDir + "\x00" + m.PkgPath
+		note(key)
+		projByPkg[key] = append(projByPkg[key], m)
 	}
 	sort.Strings(keys)
 
@@ -67,9 +78,10 @@ func Emit(g *Graph, w *Writer) error {
 	for _, key := range keys {
 		models := byPkg[key]
 		sort.SliceStable(models, func(i, j int) bool { return models[i].GoName < models[j].GoName })
-		dir := models[0].PkgDir
+		projs := projByPkg[key]
+		dir := key[:strings.IndexByte(key, 0)]
 
-		src, d := EmitMeta(models, g)
+		src, d := emitPackageMeta(models, projs, g)
 		diags = append(diags, d...)
 		if len(d) == 0 {
 			files = append(files, pending{filepath.Join(dir, "momo_gen.go"), src})

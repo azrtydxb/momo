@@ -19,14 +19,17 @@ import (
 const (
 	momoPkgPath   = "github.com/azrtydxb/momo"
 	momoModelName = "Model"
+	// momoProjectionName is the marker type of a projection.
+	momoProjectionName = "Projection"
 )
 
-// discoverModels finds the models of one loaded package. It reports
-// positioned diagnostics and never guesses: a type is a model only when it is
-// a non-generic, non-alias struct that embeds momo.Model by value.
-func discoverModels(pkg *packages.Package, namer naming.Namer) ([]*Model, []Diagnostic) {
+// discoverAll finds the models and projections of one loaded package. It
+// reports positioned diagnostics and never guesses: a type is a model only
+// when it is a non-generic, non-alias struct that embeds momo.Model by value,
+// and a projection when it embeds momo.Projection by value.
+func discoverAll(pkg *packages.Package, namer naming.Namer) ([]*Model, []*Model, []Diagnostic) {
 	if pkg.TypesInfo == nil || pkg.Types == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	fl := newFlattener(pkg, namer)
 	var all []*discovery
@@ -51,7 +54,7 @@ func discoverModels(pkg *packages.Package, namer naming.Namer) ([]*Model, []Diag
 	// A struct without the marker that carries momo tags is only a mistake
 	// when no model flattens it as a mixin or embedded struct, so the check
 	// waits until every model of the package has been built.
-	var models []*Model
+	var models, projections []*Model
 	var diags []Diagnostic
 	companionBad := false
 	for _, d := range all {
@@ -60,14 +63,16 @@ func discoverModels(pkg *packages.Package, namer naming.Namer) ([]*Model, []Diag
 		}
 		diags = append(diags, d.diags...)
 		companionBad = companionBad || d.companionBad
-		if d.model != nil {
+		if d.model != nil && d.model.Projection {
+			projections = append(projections, d.model)
+		} else if d.model != nil {
 			models = append(models, d.model)
 		}
 	}
 	if companionBad {
-		models = nil // an invalid companion means no output for the package
+		models, projections = nil, nil // an invalid companion means no output for the package
 	}
-	return models, dedupeDiagnostics(diags)
+	return models, projections, dedupeDiagnostics(diags)
 }
 
 type discovery struct {
@@ -102,13 +107,13 @@ func (d *discovery) run() *Model {
 	if strct == nil {
 		return nil
 	}
-	marker := -1
+	marker, projMarker := -1, -1
 	idx := 0
 	for _, f := range d.st.Fields.List {
 		n := len(f.Names)
 		if n == 0 {
 			n = 1
-			switch d.markerKind(f.Type) {
+			switch d.markerKind(f.Type, momoModelName) {
 			case markerValue:
 				if marker < 0 {
 					marker = idx
@@ -117,15 +122,36 @@ func (d *discovery) run() *Model {
 				d.diag(f.Pos(), "momo.Model must be embedded by value in "+d.ts.Name.Name)
 				return nil
 			}
+			switch d.markerKind(f.Type, momoProjectionName) {
+			case markerValue:
+				if projMarker < 0 {
+					projMarker = idx
+				}
+			case markerPointer:
+				d.diag(f.Pos(), "momo.Projection must be embedded by value in "+d.ts.Name.Name)
+				return nil
+			}
 		}
 		idx += n
+	}
+	if marker >= 0 && projMarker >= 0 {
+		d.diag(d.ts.Pos(), d.ts.Name.Name+" embeds both momo.Model and momo.Projection")
+		return nil
+	}
+	projection := marker < 0 && projMarker >= 0
+	if projection {
+		marker = projMarker
 	}
 	if marker < 0 {
 		d.nonModel = named
 		return nil
 	}
 	if named.TypeParams().Len() > 0 {
-		d.diag(d.ts.Pos(), "generic type "+d.ts.Name.Name+" cannot be a model")
+		what := "a model"
+		if projection {
+			what = "a projection"
+		}
+		d.diag(d.ts.Pos(), "generic type "+d.ts.Name.Name+" cannot be "+what)
 		return nil
 	}
 	// Embedding Model twice makes the type checker drop the duplicate field,
@@ -134,7 +160,7 @@ func (d *discovery) run() *Model {
 	if astFieldCount(d.st) != strct.NumFields() {
 		return nil // redeclared fields: the type checker already reported it
 	}
-	return d.build(obj, named, strct, marker)
+	return d.build(obj, named, strct, marker, projection)
 }
 
 type markerKindT int
@@ -145,8 +171,9 @@ const (
 	markerPointer
 )
 
-// markerKind reports whether a field type expression is momo.Model.
-func (d *discovery) markerKind(e ast.Expr) markerKindT {
+// markerKind reports whether a field type expression is the momo marker
+// type of that name (Model or Projection).
+func (d *discovery) markerKind(e ast.Expr, name string) markerKindT {
 	t := d.pkg.TypesInfo.TypeOf(e)
 	if t == nil {
 		return markerNone
@@ -161,7 +188,7 @@ func (d *discovery) markerKind(e ast.Expr) markerKindT {
 	if !ok || n.Obj().Pkg() == nil {
 		return markerNone
 	}
-	if n.Obj().Pkg().Path() == momoPkgPath && n.Obj().Name() == momoModelName {
+	if n.Obj().Pkg().Path() == momoPkgPath && n.Obj().Name() == name {
 		return kind
 	}
 	return markerNone
@@ -220,7 +247,7 @@ func fieldLabel(f *ast.Field) string {
 	return "field " + strings.Join(names, ", ")
 }
 
-func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.Struct, marker int) *Model {
+func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.Struct, marker int, projection bool) *Model {
 	pos := d.pkg.Fset.Position(obj.Pos())
 	m := &Model{
 		GoName:  obj.Name(),
@@ -231,6 +258,8 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 		Pos:     pos,
 		SubPkg:  SubPkgName(obj.Name(), d.pkg.Name),
 		named:   named,
+
+		Projection: projection,
 	}
 	if mod := d.pkg.Module; mod != nil {
 		m.ModulePath, m.ModuleDir = mod.Path, mod.Dir
@@ -240,7 +269,7 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	var fields []*Field
 	for _, f := range d.st.Fields.List {
 		if len(f.Names) == 0 {
-			if idx == marker {
+			if idx == marker && !projection {
 				mt = d.parseTags(f.Tag, "momo.Model marker")
 			}
 			if idx != marker {
@@ -269,6 +298,10 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 				continue
 			}
 			if isRelationTag(ft) {
+				if projection {
+					d.diag(f.Pos(), "relation field "+name.Name+" is not allowed on projection "+m.GoName)
+					continue
+				}
 				m.Relations = append(m.Relations, newRelation(strct.Field(i), ft, d.pkg.Fset))
 				continue
 			}
@@ -282,6 +315,9 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	d.diags = append(d.diags, d.fl.diags...)
 	d.fl.diags = nil
 	m.Fields = fields
+	if projection {
+		return m // no table, indexes or companion
+	}
 	m.Schema = mt.Schema
 	m.Table = mt.Table
 	if m.Table == "" {

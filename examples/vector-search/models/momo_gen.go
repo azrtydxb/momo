@@ -101,3 +101,31 @@ var itemTable = schema.Table{
 		},
 	},
 }
+
+func (*Hit) MomoMeta() *momo.Meta[Hit] { return &hitMeta }
+
+var hitMeta = momo.Meta[Hit]{
+	Columns: []momo.ColumnMeta{
+		{Name: "title"},
+		{Name: "distance"},
+	},
+	Ptr: func(m *Hit, i int) any {
+		switch i {
+		case 0:
+			return &m.Title
+		case 1:
+			return &m.Distance
+		}
+		return nil
+	},
+	Value: func(m *Hit, i int) any {
+		switch i {
+		case 0:
+			return m.Title
+		case 1:
+			return m.Distance
+		}
+		return nil
+	},
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}

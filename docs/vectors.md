@@ -137,10 +137,11 @@ c, err := momo.Select[example.Document](db).
 ```
 
 Reading the distance next to a column subset needs a projection struct
-(`momo.Projection`, `From` and `Columns`). A projection does not get the
-automatic soft-delete filter: on a table with a soft-delete column add
-`.Where(document.DeletedAt.IsNull())` yourself, or soft-deleted rows appear in
-the results.
+(`momo.Projection`, `From` and `Columns`; see [projections](projections.md)).
+A projection read `From` a table with a soft-delete column gets the same
+automatic filter as a model, so soft-deleted rows stay out of the results.
+Add the predicate yourself only when `From` is a subquery or a hand-built
+`TableRef`.
 
 ## Declaring vector columns and indexes
 

@@ -11,7 +11,7 @@ import (
 )
 
 // Table is the base table reference.
-var Table = momo.TableRef{Name: "tasks"}
+var Table = momo.TableRef{Name: "tasks", SoftDelete: "deleted_at"}
 
 // Columns is one alias's set of column descriptors.
 type Columns struct {
