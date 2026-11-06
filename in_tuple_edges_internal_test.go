@@ -67,8 +67,9 @@ func TestKeysPerStatementPerDialect(t *testing.T) {
 func TestTupleInSingleColumnOnEveryDialect(t *testing.T) {
 	keys := [][]any{{int64(1)}, {int64(2)}}
 	want := map[dialect.Name]string{
-		dialect.SQLite: `"c"."a" IN (?, ?)`,
-		dialect.MySQL:  "`c`.`a` IN (?, ?)",
+		dialect.Postgres: `"c"."a" IN ($1, $2)`,
+		dialect.SQLite:   `"c"."a" IN (?, ?)`,
+		dialect.MySQL:    "`c`.`a` IN (?, ?)",
 	}
 	for d, sql := range want {
 		got := renderPred(t, d, inTuple{table: "c", cols: []string{"a"}, keys: keys})
