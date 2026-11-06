@@ -136,6 +136,12 @@ c, err := momo.Select[example.Document](db).
 // ... ORDER BY ("documents"."embedding" <=> $1) ASC LIMIT $2
 ```
 
+Reading the distance next to a column subset needs a projection struct
+(`momo.Projection`, `From` and `Columns`). A projection does not get the
+automatic soft-delete filter: on a table with a soft-delete column add
+`.Where(document.DeletedAt.IsNull())` yourself, or soft-deleted rows appear in
+the results.
+
 ## Declaring vector columns and indexes
 
 The generator maps `vector.Vector`, `vector.HalfVector`,

@@ -39,9 +39,13 @@ Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/q
 ## 2. Install and tooling
 
 ```sh
-go get github.com/azrtydxb/momo@v0.1.0
+go get github.com/azrtydxb/momo@v0.1.0                # adds the library to go.mod and writes go.sum
 go install github.com/azrtydxb/momo/cmd/momo@v0.1.0   # the CLI: generate, migrate, help
 ```
+
+Run `go get` first in a fresh module: it produces `go.sum`, which `go run` and
+the generated code's compilation need. `go install` puts `momo` in `$(go env
+GOPATH)/bin`; make sure that is on `PATH`.
 
 Layout of a project (the `models` package holds structs; `momo generate` writes
 into it):
@@ -134,8 +138,9 @@ PgBouncer (transaction pooling):
 
 - `pgxdriver.New` defaults to `pgx.QueryExecModeExec` (unnamed statements,
   server-side binding). That is PgBouncer-safe; set nothing.
-- `pgxdriver.WithExecMode(m)` accepts `CacheStatement`, `CacheDescribe`,
-  `DescribeExec` (not tested through PgBouncer). The simple protocol is rejected
+- `pgxdriver.WithExecMode(m)` accepts `pgx.QueryExecModeCacheStatement`,
+  `pgx.QueryExecModeCacheDescribe`, `pgx.QueryExecModeDescribeExec` (import
+  `github.com/jackc/pgx/v5`; not tested through PgBouncer). The simple protocol is rejected
   with `ErrUnsupported` on every query. DON'T select it.
 - With `FromConnConfig` set `cfg.DefaultQueryExecMode = pgx.QueryExecModeExec`
   first; pgx defaults to `CacheStatement`, which is NOT PgBouncer-safe. Its
@@ -221,7 +226,7 @@ string literals only.
 ```go
 func (a *Account) MomoConfig(c *momo.Config) {
 	c.Unique("accounts_email_plan_key", &a.Email, &a.Plan)
-	c.Index("accounts_plan_idx", &a.Plan).Where("deleted_at IS NULL")
+	c.Index("accounts_plan_live_idx", &a.Plan).Where("deleted_at IS NULL")
 	c.Index("accounts_embedding_hnsw", &a.Embedding).
 		Method("hnsw").
 		Opclass(&a.Embedding, "vector_cosine_ops").
@@ -230,11 +235,34 @@ func (a *Account) MomoConfig(c *momo.Config) {
 }
 ```
 
+An index name declared in `MomoConfig` must not collide with an auto-named
+`<table>_<col>_idx` produced by an `index` tag (the `Plan` field above already
+yields `accounts_plan_idx`); the generator refuses the duplicate.
+
 Config methods: `Index`, `IndexExpr`, `Unique`, `Check`, `Enum`, `Default`,
 `Comment`, `Collate`, `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`,
 `PartitionOf`. Index chain: `Where(pred)`, `Method(m)`, `With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (see the migration known issue: it is ignored by `diff`).
+
+Many-to-many needs `join:` with the same table on both models you declare it on
+(the reverse side is optional, but if declared it must carry `join:` too):
+
+```go
+type Document struct {
+	momo.Model `momo:"table:documents"`
+	ID         int64 `momo:"pk,identity"`
+	Title      string
+	Tags       []Tag `momo:"many2many,join:taggings"` // join table taggings(document_id, tag_id)
+}
+
+type Tag struct {
+	momo.Model `momo:"table:tags"`
+	ID         int64 `momo:"pk,identity"`
+	Name       string
+	Documents  []Document `momo:"many2many,join:taggings"` // optional reverse side, same join table
+}
+```
 
 Relation tags (a relation is an exported field of struct, slice or pointer type;
 it is not a column):
@@ -317,12 +345,24 @@ var cardMeta = momo.Meta[Card]{
 Use it like this:
 
 ```go
-cards := momo.Select[models.Card](q).From(article.Table).Columns(article.ID, article.Title, article.Score)
+cards := momo.Select[models.Card](q).From(article.Table).
+	Columns(article.ID, article.Title, article.Score).
+	Where(article.DeletedAt.IsNull()). // REQUIRED when the articles table has a soft-delete column
+	OrderBy(article.ID.Asc()).
+	All(ctx)
 ```
+
+A projection does NOT get the automatic soft-delete filter. The filter is chosen
+from the result type's metadata, and a projection's `SoftDelete` is `-1`, so
+`SELECT id, title, score FROM articles` returns soft-deleted rows. When the
+table has a soft-delete column, add `Where(<table>.DeletedAt.IsNull())` yourself
+(for a `bool` marker, `Eq(false)`). This applies to every projection, including
+the vector `Hit` in section 9.
 
 A projection cannot be inserted, updated or deleted (it embeds `Projection`, not
 `Model`). Computed columns (a distance, `momo.CountAll()`) are valid entries in
-`Columns`. Examples: [projection-pagination](../examples/projection-pagination/),
+`Columns`. The select list is positional and not aliased: the `Name` you give a
+computed column in `Columns` of the meta (for example `distance`) is only a label. Examples: [projection-pagination](../examples/projection-pagination/),
 [vector-search](../examples/vector-search/) (`Hit`).
 
 Details: [TYPE_MAPPING.md](TYPE_MAPPING.md), [relations.md](relations.md) section 1.
@@ -349,6 +389,9 @@ momo migrate drift                      # live DB vs latest applied snapshot
   match `^[a-z][a-z0-9_]*$`; the version is a 14-digit UTC timestamp.
 - `diff` compares models with the latest snapshot, never with the database.
   Prints `no changes` and writes nothing when equal.
+- Never edit an applied migration file, even cosmetically: `apply` refuses on the
+  changed checksum. The manual checksum-update route for a cosmetic edit is in
+  [migrations.md](migrations.md) section 4; prefer a new migration.
 - Renames are never guessed: a rename looks like drop plus add and is refused.
   Say it explicitly: `--rename-column table.old=new`, `--rename-table old=new`.
 - Destructive changes (`drop_table`, `drop_column`, `drop_enum`, a column type
@@ -358,6 +401,7 @@ momo migrate drift                      # live DB vs latest applied snapshot
   refused (`ErrStagedRequired`). Give it a `default:`.
 - URL: `--url`, else `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
   Exit codes: 0 ok, 1 findings, 2 usage/config, 3 database/lock/execution error.
+  An invalid migration name (`diff Bad-Name`) exits 3, not 2.
 - Hand-written SQL migration: create `<version>_<name>.up.sql` (no
   `-- momo:generated` line) plus a snapshot file copied from the previous one
   with `version` and `parent` changed; its schema must equal its parent's. Then
@@ -509,6 +553,7 @@ Aggregates: `momo.CountAll()`, `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`,
 Keyset pagination (do not use `Offset` for deep pages):
 
 ```go
+var size int64 = 20 // Limit takes int64
 q := momo.Select[models.Task](db).OrderBy(task.Priority.Desc()) // PK is appended as tie-breaker
 if cur != nil {
 	q = q.After(cur.Priority, cur.ID) // ONE value per effective ORDER BY key, PK included
@@ -600,8 +645,9 @@ dead, _ := momo.Select[models.Task](q).OnlyDeleted().All(ctx)
 - On a model with a soft-delete column plain `Delete` is refused with
   `ErrValidation`. Use `SoftDelete` or `ForceDelete`.
 - The soft-delete filter applies automatically to `Select`, `Count`, relation
-  loads and `Has`/`HasNo`. It does NOT apply to raw SQL (`momo.SQL`,
-  `momo.Exec`, `momo.Scalars`): add `deleted_at IS NULL` yourself.
+  loads and `Has`/`HasNo` of a model. It does NOT apply to raw SQL (`momo.SQL`,
+  `momo.Exec`, `momo.Scalars`) or to projections (see "Projections" in section
+  4): add `deleted_at IS NULL` / `<table>.DeletedAt.IsNull()` yourself.
 - A soft-deleted row still occupies its unique keys. `FindOrCreate` returns the
   soft-deleted row. Use partial unique indexes (`Where("deleted_at IS NULL")`) if
   keys must be reusable.
@@ -781,8 +827,10 @@ Rules and limits:
   Pass the slice stored in the parent, not a flattened copy.
 - `Joined()` is belongs-to only, and only when the child key is the child's
   primary key or a single unique column. Has-one, has-many, many-to-many give
-  `ErrUnsupported`. Not with `Load`, `LoadAll`, `Scope`, `Then`, `GroupBy`,
-  `Having`, `ForUpdate`, `Each`, `Iter` (`ErrUnsupported`). With `Columns` the
+  `ErrUnsupported`. `momo.Load(ctx, db, docs, X.Joined())` does not compile
+  (`Joined()` returns a `Loader`, `Load` wants a `Relation`; cannot infer `C`),
+  and `LoadAll` returns `ErrUnsupported`. Also `ErrUnsupported` with `Scope`,
+  `Then`, `GroupBy`, `Having`, `ForUpdate`, `Each`, `Iter`. With `Columns` the
   select list must have one expression per mapped field (`ErrValidation`).
   Qualify raw column names in the parent's `Where` (ambiguity with the joined
   table).
@@ -894,15 +942,22 @@ hits, err := momo.Select[models.Hit](q). // projection with Title string, Distan
 	From(item.Table).
 	Columns(item.Title, distance).
 	Where(item.Category.Eq("news")).
+	Where(item.DeletedAt.IsNull()). // a projection skips the soft-delete filter: add it if Item is soft-deletable
 	OrderBy(distance.Asc(), item.ID.Asc()). // PK last: ties return in unspecified order otherwise
 	Limit(10).
 	All(ctx)
 
-// Rows only:
+// Rows only (the soft-delete filter applies automatically):
 items, err := momo.Select[models.Item](q).
 	OrderBy(momo.CosineDistance(item.Embedding, query).Asc()).Limit(5).All(ctx)
 ```
 
+- `Hit` is a hand-written projection (section 4); its meta is
+  `Columns: []momo.ColumnMeta{{Name: "title"}, {Name: "distance"}}`, `Ptr`
+  returning `&m.Title` then `&m.Distance`, and every index `-1`. The name
+  `distance` is only a label for the computed column.
+- A vector literal is `vector.Vector{0.1, 0.2, 0.3}` (`vector.Vector` is
+  `[]float32`; its length must equal `dim`).
 - `InnerProductDistance` is pgvector `<#>`: the NEGATIVE inner product, so
   ascending order is closest.
 - Vector columns have no `Lt/Le/Gt/Ge/Between`; use a distance builder.
@@ -971,9 +1026,12 @@ switch {
 case errors.Is(err, momo.ErrNotFound):
 case errors.Is(err, momo.ErrUniqueViolation):
 	var me *momo.Error
-	if errors.As(err, &me) { _ = me.Constraint; _ = me.Column } // which constraint
+	if errors.As(err, &me) { _ = me.Constraint } // which constraint
 }
 ```
+
+`me.Column` is empty for unique, foreign-key and check violations (PostgreSQL
+reports a column only for NOT NULL). Use `Constraint` for those three.
 
 | Error                    | When                                                                                                                                                                                                                                                                                                      | What to do                               |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
@@ -1075,8 +1133,9 @@ generate` after every model change and commit the generated files.
    updates with a `version` column; handle `ErrOptimisticLock` by reload and
    retry. `Set` updates do not touch the version.
 8. Never call `AllRows()` to get past `ErrUnfilteredMutation`; add a `Where`.
-9. Soft-delete models: `SoftDelete`/`ForceDelete`, not `Delete`. Raw SQL does not
-   see the soft-delete filter.
+9. Soft-delete models: `SoftDelete`/`ForceDelete`, not `Delete`. Raw SQL and
+   projections (`Select[Card]`, the vector `Hit`) do not get the soft-delete
+   filter: add `Where(<table>.DeletedAt.IsNull())` yourself.
 10. Page with `OrderBy` + `After` and a unique tie-break; pass one value per
     effective ORDER BY key (primary key included).
 11. Pass user input only as arguments to `momo.SQL`/`TypedSQL`/`Exec`/`Scalars`;

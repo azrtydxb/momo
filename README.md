@@ -407,6 +407,10 @@ generator does not emit projections, so you write the `MomoMeta` by hand. A proj
 `Identity`, `Version`, `SoftDelete`, `CreatedAt` and `UpdatedAt` to -1 in its
 `Meta`. The `Card` type in the projection example shows the whole thing.
 
+A projection does not get the automatic soft-delete filter (its `SoftDelete` is
+`-1`). When the table has a soft-delete column, add the filter yourself, for
+example `.Where(article.DeletedAt.IsNull())`.
+
 Generating this is tracked in the backlog story
 [Generate Meta for projection structs](.procoder/backlog/stories/20261106-generate-meta-for-projection-structs.md).
 
