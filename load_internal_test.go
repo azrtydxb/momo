@@ -288,14 +288,86 @@ func TestLoadScopeArgsExceedingBindLimitFail(t *testing.T) {
 	}
 }
 
-func TestLoadPerParentLimitNotSupportedYet(t *testing.T) {
+func TestLoadPerParentLimitRejectsToOneAndNegative(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind RelationKind
+		n    int
+		want error
+	}{
+		{"belongs-to", BelongsTo, 3, ErrUnsupported},
+		{"has-one", HasOne, 3, ErrUnsupported},
+		{"negative", HasMany, -1, ErrValidation},
+	} {
+		var cfg loadConfig
+		LoadPerParentLimit[kid](tc.n)(&cfg)
+		rel := kidsRel(tc.kind)
+		_, err := rel.prepareWith(loadQ{dialect.For(dialect.Postgres)}, []par{{Pid: 1}}, &cfg, nil)
+		var me *Error
+		if !errors.As(err, &me) || me.Kind != tc.want || me.Op != "load" {
+			t.Fatalf("%s: want %v with Op load, got %v", tc.name, tc.want, err)
+		}
+	}
+}
+
+func topNSQL(t *testing.T, rel Relation[par, kid], parents []par, n int, opts ...LoadOption[kid]) []Compiled {
+	t.Helper()
 	var cfg loadConfig
-	LoadPerParentLimit[kid](3)(&cfg)
+	for _, o := range opts {
+		o(&cfg)
+	}
+	LoadPerParentLimit[kid](n)(&cfg)
+	pl, err := rel.prepareWith(loadQ{dialect.For(dialect.Postgres)}, parents, &cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pl.(*pending[par, kid]).queries
+}
+
+func TestLoadTopNStatementShape(t *testing.T) {
+	qs := topNSQL(t, kidsRel(HasMany), []par{{Pid: 1}, {Pid: 2}, {Pid: -1}, {Pid: 1}}, 3)
+	if len(qs) != 1 {
+		t.Fatalf("one statement for two distinct keys (NULL skipped), got %d", len(qs))
+	}
+	sql := qs[0].SQL
+	for _, want := range []string{
+		`ROW_NUMBER() OVER (PARTITION BY "kids"."pid" ORDER BY "kids"."pid", "kids"."seq") AS "momo_rn"`,
+		`WHERE "momo_t"."momo_rn" <= $`,
+		`ORDER BY "momo_t"."momo_rn", "momo_t"."pid"`,
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("missing %q in\n%s", want, sql)
+		}
+	}
+	if last := qs[0].Args[len(qs[0].Args)-1]; last != int64(3) {
+		t.Fatalf("limit must be the last bind, got %v", qs[0].Args)
+	}
+}
+
+func TestLoadTopNNoKeysNoStatement(t *testing.T) {
+	if qs := topNSQL(t, kidsRel(HasMany), []par{{Pid: -1}}, 2); len(qs) != 0 {
+		t.Fatalf("NULL keys must issue no statement: %v", qs)
+	}
+}
+
+func TestLoadTopNReservesLimitBind(t *testing.T) {
+	d := *dialect.For(dialect.Postgres)
+	d.MaxParams = 20 // reserved 16 + the limit bind leaves room for 3 keys
+	parents := make([]par, 7)
+	for i := range parents {
+		parents[i].Pid = i
+	}
+	var cfg loadConfig
+	LoadPerParentLimit[kid](2)(&cfg)
 	rel := kidsRel(HasMany)
-	_, err := rel.prepareWith(loadQ{dialect.For(dialect.Postgres)}, []par{{Pid: 1}}, &cfg, nil)
-	var me *Error
-	if !errors.As(err, &me) || me.Kind != ErrUnsupported || me.Op != "load" {
-		t.Fatalf("want ErrUnsupported with Op load, got %v", err)
+	pl, err := rel.prepareWith(loadQ{&d}, parents, &cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range pl.(*pending[par, kid]).queries {
+		if len(q.Args) > d.MaxParams {
+			t.Fatalf("statement binds %d > %d", len(q.Args), d.MaxParams)
+		}
 	}
 }
 

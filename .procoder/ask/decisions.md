@@ -14,3 +14,11 @@ The edoburu PgBouncer image cannot track `search_path` (no env variable for `tra
 - Leave phase 2 red and carry the S-30 criterion of story 065.
 
 Decision (2026-11-05): scratch database per run.
+
+## v0.1.0 scope and release push
+
+- Lock scope: merged relations plus stories 149, 154 and 150; stories 151, 152 and 155 move to 0.2; approve pushing sprint-2 and opening the PR into main once the scope is done (recommended)
+- Lock that scope, but ask again before pushing
+- Wait for all of momo-06 (stories 150 to 155) before release
+
+Decision (2026-11-06): wait for all relations (stories 150 to 155) before v0.1.0.
