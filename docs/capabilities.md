@@ -1,0 +1,237 @@
+# Capabilities
+
+What Momo v0.1.0 supports, per database. Only PostgreSQL (through pgx) is
+usable. SQLite and MySQL exist as dialect metadata in `dialect/` only: there is
+no driver package for either (`driver/` holds `pgxdriver` only), `momo migrate`
+rejects them, and nothing opens a connection to them. Treat every SQLite and
+MySQL cell below as **not usable yet**, whatever the metadata says.
+
+Legend: yes = implemented for PostgreSQL and covered by the integration suite
+(`make test-integration-postgres`). no = not provided. `ErrUnsupported` = the
+call exists and fails with `momo.ErrUnsupported`.
+
+## Getting connected
+
+Imports: `github.com/azrtydxb/momo` (core), `github.com/azrtydxb/momo/driver/pgxdriver`
+(PostgreSQL driver), and `github.com/azrtydxb/momo/vector` for vector types.
+
+Open a pool and wrap it, as the README does (the caller closes the pool):
+
+```go
+pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)
+if err != nil { return err }
+defer pool.Close()
+db := momo.New(pgxdriver.New(pool)) // New(pool, opts ...Option) momo.Driver
+```
+
+DSN: `postgres://user:password@host:5432/dbname?sslmode=verify-full`. Use
+`sslmode=disable` for local development only.
+
+With `database/sql`: `pgxdriver.FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)`
+or `pgxdriver.FromSQLDB(db *sql.DB)`. These have no Batch or COPY path.
+
+Vectors need the pgvector `vector` extension in the database. The generated
+migration emits `CREATE EXTENSION IF NOT EXISTS "vector"` when a model has a
+vector column (see `vectors.md`).
+
+PgBouncer (transaction pooling): `pgxdriver.New` defaults to
+`pgx.QueryExecModeExec` (unnamed statements), and the CI PgBouncer tests open a
+pool and use `New(pool)` with that default, so no setting is needed. With
+`FromConnConfig` the exec mode is `cfg.DefaultQueryExecMode`, which pgx
+defaults to `CacheStatement` (not PgBouncer-safe), so set
+`cfg.DefaultQueryExecMode = pgx.QueryExecModeExec` before calling it; its
+`opts` have no effect.
+
+## Dialect and driver status
+
+| Item                           | PostgreSQL (pgx)                              | SQLite                                                     | MySQL / MariaDB |
+| ------------------------------ | --------------------------------------------- | ---------------------------------------------------------- | --------------- |
+| Usable in v0.1.0               | yes                                           | not usable yet                                             | not usable yet  |
+| Driver package                 | `driver/pgxdriver` (pgx v5 pool, `FromSQLDB`) | none                                                       | none            |
+| `dialect.For(name)` metadata   | yes                                           | yes (data only)                                            | yes (data only) |
+| Migration dialect (`migrate`)  | `migrate/postgres`                            | none                                                       | none            |
+| `momo migrate` on this dialect | works                                         | exit 2, "migrations for dialect ... are not available yet" | same            |
+| CI integration matrix          | PostgreSQL 16 and 17, pgvector 0.8.7          | not in matrix                                              | not in matrix   |
+
+The `dialect/dialect.go` flags for the unusable dialects, for planning only:
+
+- SQLite: `Returning`, `OnConflict`, `NullsOrdering`, `RecursiveCTE`,
+  `RowValues`, `Savepoints`, `TransactionalDDL`, `WindowFunctions`; vector
+  storage with l2, l1, cosine, hamming and no ANN index. No row locking, no
+  `DEFAULT` in `VALUES`.
+- MySQL: `OnDuplicateKey`, `Locking`, `DefaultInUpdate`, `DefaultInValues`,
+  `RecursiveCTE`, `RowValues`, `Savepoints`, `IsolationLevels`,
+  `WindowFunctions`. No `Returning`, no `OnConflict`, no vector support.
+
+## Core queries
+
+| Feature                               | PostgreSQL                                                                                  | SQLite / MySQL          | API                                                                                                                                             |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Insert one / many                     | yes                                                                                         | not usable yet          | `Insert[T]`: `.Model(&m)`, `.Models(ms)`, `.Values`, `.ValuesRows`, `.Omit`, `.Exec`                                                            |
+| Insert chunking over the bind limit   | yes, atomic (one transaction, or a savepoint inside a `Tx`); `MaxParams` 65535              | not usable yet          | `Models` + `Exec`; `WithMaxParams(n)` lowers the limit; one row over the limit: `ErrLimitExceeded`                                              |
+| Select                                | yes                                                                                         | not usable yet          | `Select[T]`: `Where`, `OrderBy`, `Limit`, `Offset`, `Distinct`, `All`, `One`, `First`, `Count`, `Exists`                                        |
+| Update, Delete                        | yes; without `Where` they fail with `ErrUnfilteredMutation` unless `.AllRows()`             | not usable yet          | `Update[T].Set(...)`, `Delete[T]`                                                                                                               |
+| Soft delete                           | yes                                                                                         | not usable yet          | `SoftDelete`, `ForceDelete`, `WithDeleted`, `OnlyDeleted`; field tag `soft_delete:`                                                             |
+| Optimistic lock, automatic timestamps | yes                                                                                         | not usable yet          | version column (`ErrOptimisticLock`); `created_at`, `updated_at` tags                                                                           |
+| Typed predicates                      | yes                                                                                         | not usable yet          | generated columns: `Eq`, `In`, `IsNull`, `Lt`, ...; `And`, `Or`, `Not`, `Like`, `ILike`, `ContainsLiteral`, `Exists`                            |
+| Joins                                 | yes                                                                                         | not usable yet          | `Join`, `LeftJoin`, `CrossJoin`, `From`                                                                                                         |
+| Aggregates, `GroupBy`, `Having`       | yes                                                                                         | not usable yet          | `CountAll`, `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`                                                                              |
+| Projections (non-model result types)  | yes                                                                                         | not usable yet          | struct embedding `momo.Projection` with `Columns(...)`; fields are scanned positionally                                                         |
+| Keyset pagination                     | yes, non-nullable keys only                                                                 | not usable yet          | `OrderBy(...).After(values...)`; the primary key is appended as tie-breaker; nullable key: `ErrUnsupported`; wrong value count: `ErrValidation` |
+| Streaming                             | yes                                                                                         | not usable yet          | `Each(ctx, fn)`, `Iter(ctx)` (`iter.Seq2`); both `ErrUnsupported` when the query has `Preload`                                                  |
+| Raw SQL                               | yes                                                                                         | not usable yet          | `momo.Exec`, `momo.Scalars`, `momo.SQL`, `TypedSQL`, `RawSubquery`, `Named`, `In`, `Ident`                                                      |
+| `EXPLAIN`                             | yes (`EXPLAIN`, never `ANALYZE`)                                                            | MySQL: `ErrUnsupported` | `SelectQuery.Explain(ctx)`                                                                                                                      |
+| `IndexedBy` hint                      | `ErrUnsupported`; SQLite syntax, and SQLite is not usable in v0.1.0, so no database runs it | MySQL: `ErrUnsupported` | `SelectQuery.IndexedBy`                                                                                                                         |
+
+## Writes, transactions, drivers
+
+| Feature                                    | PostgreSQL                                                                                                          | SQLite / MySQL                                              | Notes                                                                                                                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RETURNING`                                | yes (`Returning: true`)                                                                                             | MySQL metadata: no                                          | `.Returning(cols...)`, `.ReturningAll()` on insert, update, delete; read with `.Rows(ctx)`. Identity read-back in `CreateGraph` needs it.                                                   |
+| Upsert / `ON CONFLICT`                     | yes (`OnConflict: true`)                                                                                            | MySQL: `ErrUnsupported` (`OnDuplicateKey` is metadata only) | `Upsert[T]` (target = primary key) or `Insert[T].OnConflict(cols...).DoNothing()` / `.DoUpdate(assigns...)` with `SetExcluded`. Upsert neither advances nor checks the version column.      |
+| Graph writes                               | yes                                                                                                                 | not usable yet                                              | `CreateGraph`, `FindOrCreate` (needs `ON CONFLICT`), `UpsertByPK`                                                                                                                           |
+| `MERGE`                                    | no public API (`Merge: true` is dialect metadata; the version gate exists as `ServerVersioner`, PostgreSQL 15+)     | no                                                          | use raw SQL                                                                                                                                                                                 |
+| Bulk `COPY`                                | driver level only: `momo.CopierOf(querier)` then `CopyFrom(ctx, table, cols, rows)`; no typed builder               | not usable yet                                              | pgx pool, transaction and pinned connection; not available through `FromSQLDB`                                                                                                              |
+| Batch (several statements, one round trip) | driver level: `momo.BatcherOf(querier)`; relation loading uses it automatically                                     | not usable yet                                              | not available through `FromSQLDB`                                                                                                                                                           |
+| Transactions                               | yes: `db.Tx(ctx, opts, fn)`, `db.Begin`; read uncommitted, read committed, repeatable read, serializable; read-only | not usable yet                                              | any other `sql.IsolationLevel`: `ErrUnsupported` (Op "begin")                                                                                                                               |
+| Savepoints                                 | yes: `Tx.Savepoint`, `RollbackTo`, `Release`                                                                        | not usable yet                                              | a dialect without savepoints: `ErrUnsupported` (Op "savepoint")                                                                                                                             |
+| Pinned connection                          | yes: `db.OnConn(pc)`                                                                                                | not usable yet                                              | no transactions on a pinned `*DB`: `Begin`, `Tx`, `Replace` and `CreateGraph` fail with `ErrUnsupported` (Op "begin"), chunked `Insert` with Op "insert"; `Link`, `Unlink` and `Count` work |
+| `SET col = DEFAULT`, `VALUES (DEFAULT)`    | yes                                                                                                                 | SQLite: no `DEFAULT` in `VALUES`                            | a multi-row insert that is default in some rows only fails with `ErrUnsupported` where the dialect cannot express it                                                                        |
+
+## Row locking, CTEs, subqueries, window functions
+
+| Feature                             | PostgreSQL                                  | SQLite / MySQL                                  | API                                                                           |
+| ----------------------------------- | ------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| `FOR UPDATE`                        | yes (`Locking: true`)                       | SQLite: `ErrUnsupported`; MySQL: not usable yet | `ForUpdate()`                                                                 |
+| `FOR UPDATE NOWAIT` / `SKIP LOCKED` | yes                                         | same                                            | `ForUpdate("NOWAIT")`, `ForUpdate("SKIP LOCKED")`                             |
+| `FOR SHARE`                         | yes                                         | same                                            | `ForShare()`                                                                  |
+| CTE                                 | yes                                         | not usable yet                                  | `With(name, subquery, cols...)`; `CTE(name)` as table source                  |
+| Recursive CTE                       | yes                                         | not usable yet                                  | `WithRecursive(...)`; `Union(all, qs...)` builds the body                     |
+| Subqueries                          | yes                                         | not usable yet                                  | `Exists`, `NotExists`, `FromSubquery(q, alias)`, `IN` subquery, `RawSubquery` |
+| User-facing window function API     | no                                          | no                                              | write window functions with `TypedSQL` or `SQL`                               |
+| Window functions used internally    | yes: `ROW_NUMBER() OVER (PARTITION BY ...)` | not usable yet                                  | `LoadPerParentLimit` only                                                     |
+
+## Relations
+
+PostgreSQL only. Behavior and error table: [relations.md](relations.md).
+
+| Feature              | PostgreSQL                                                                                                                                                                                    | API                                                                                                               |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Kinds                | yes                                                                                                                                                                                           | `belongs_to`, `has_one`, `has_many`, `many2many` (tag `rel:`); polymorphic through `Discriminator`                |
+| Load one or several  | yes; one statement per relation per bind-limit chunk                                                                                                                                          | `Load`, `LoadAll`                                                                                                 |
+| Load through a query | yes for `All`, `One`, `First`                                                                                                                                                                 | `SelectQuery.Preload(...)`                                                                                        |
+| Load options         | yes                                                                                                                                                                                           | `Relation.Scope(...)` with `LoadWhere`, `LoadOrderBy`, `LoadPerParentLimit`, `LoadWithDeleted`, `LoadOnlyDeleted` |
+| Top-N per parent     | has-many and many-to-many; belongs-to and has-one: `ErrUnsupported`                                                                                                                           | `LoadPerParentLimit(n)`                                                                                           |
+| Nested loads         | yes                                                                                                                                                                                           | `Relation.Then(...)`                                                                                              |
+| Single-query load    | belongs-to with a unique child key only; others `ErrUnsupported`                                                                                                                              | `Relation.Joined()` passed to `Preload` (LEFT JOIN)                                                               |
+| Pipelined loading    | yes, automatic when the driver is a `Batcher` (pgx pool, transaction, pinned connection); sequential on other drivers such as `FromSQLDB`, and when the driver rejects the batch (Op "batch") | nothing to configure                                                                                              |
+| Predicates           | yes                                                                                                                                                                                           | `Has`, `HasFrom`, `HasNo`, `CountOrder`                                                                           |
+| Traversal            | yes; many-to-many: `ErrValidation`                                                                                                                                                            | `Relation.From(parentQuery)`                                                                                      |
+| Association helpers  | yes; belongs-to: `ErrUnsupported`                                                                                                                                                             | `Link`, `Unlink`, `Replace`, `Count`                                                                              |
+| Graph writes         | yes                                                                                                                                                                                           | `Include` with `CreateGraph`, `FindOrCreate`, `UpsertByPK`                                                        |
+| Hooks                | yes                                                                                                                                                                                           | `RelationHook`, `RelationEvent`                                                                                   |
+
+## Vectors
+
+PostgreSQL with the pgvector extension only. Detail: [vectors.md](vectors.md).
+
+| Feature                                         | PostgreSQL                                                                                                                | SQLite                   | MySQL            |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ---------------- |
+| Value types                                     | `vector.Vector` (`vector(n)`, 1 to 16000), `HalfVector` (`halfvec`), `SparseVector` (`sparsevec`), `Bits` (`bit(n)`)      | not usable yet           | no               |
+| Metrics (builders)                              | l2 `<->`, inner product `<#>`, cosine `<=>`, l1 `<+>`, hamming `<~>`, jaccard `<%>`; hamming and jaccard take bit columns | not usable yet           | no               |
+| ANN indexes                                     | `hnsw`, `ivfflat`; limits and opclasses in vectors.md; `ivfflat` does not support sparsevec                               | none planned in metadata | no               |
+| Search settings                                 | `SearchSettings`, `DB.WithSearch`, `Tx.SetSearch`, `Tx.SetLocal`; transaction scoped                                      | not usable yet           | `ErrUnsupported` |
+| Iterative scan, `max_scan_tuples`, `max_probes` | yes, pgvector 0.8.0 or newer (else `ErrUnsupported`)                                                                      | no                       | no               |
+| Exact search                                    | `SearchSettings.ExactSearch`                                                                                              | not usable yet           | no               |
+| Binary wire codec                               | opt-in: `pgxdriver.ConfigureVectors`, `WithVectorFormat(VectorBinary)`                                                    | no                       | no               |
+| Plan inspection                                 | `SelectQuery.Explain`                                                                                                     | no driver                | `ErrUnsupported` |
+| Hybrid search (full text plus vector, RRF)      | no                                                                                                                        | no                       | no               |
+
+## Migrations
+
+PostgreSQL only. `diff`, `validate` (without `--db`) and `hash` run offline;
+the other commands need a database. Run `momo migrate` over a direct
+PostgreSQL connection, not a transaction-mode pooler: the migration lock is a
+session advisory lock.
+
+| Feature                       | PostgreSQL                                                                                                                                                                    | CLI / API                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Diff models to SQL (offline)  | yes                                                                                                                                                                           | `momo migrate diff <name>`; `migrate.Diff`                      |
+| Rename hints                  | yes                                                                                                                                                                           | `--rename-table a=b`, `--rename-column t.a=b`                   |
+| Destructive change guard      | yes; `diff` refuses without `--allow-destructive`                                                                                                                             | directive `-- momo:destructive`                                 |
+| Apply                         | yes, forward only; `--to N`, `--lock-wait`                                                                                                                                    | `momo migrate apply`; `Engine.Apply`                            |
+| Pending list                  | yes                                                                                                                                                                           | `momo migrate plan`; `Engine.Plan`                              |
+| Status per version            | yes; states `pending`, `applied`, `dirty`, `mismatch`, `missing`                                                                                                              | `momo migrate status`; `Engine.Status`                          |
+| Concurrent index              | yes; set `Concurrently` on the index in `MomoConfig`; the migration is written with `-- momo:no-transaction`; a failed build leaves an invalid index that `drift` reports     | `CREATE INDEX CONCURRENTLY`                                     |
+| Transactional DDL             | yes; a migration runs in a transaction unless it carries `-- momo:no-transaction`                                                                                             |                                                                 |
+| Migration lock                | session advisory lock; `--lock-wait` bounds the wait; a held advisory lock cannot be forced (`--force-unlock` applies to the SQLite lock table only)                          |                                                                 |
+| Checksums                     | yes, file `momo.sum`                                                                                                                                                          | `momo migrate hash`, `validate`; `ErrChecksumMismatch`          |
+| Validate                      | yes, offline or with `--db`                                                                                                                                                   | `momo migrate validate [--db]`                                  |
+| Drift detection               | yes: `Changed`, `Missing`, `Unmanaged`; `Unverified` lists view, trigger and policy text that is not compared                                                                 | `momo migrate drift`; `Engine.Drift`                            |
+| Baseline an existing database | yes                                                                                                                                                                           | `momo migrate baseline --version N [--force]`                   |
+| Settle a dirty migration      | yes                                                                                                                                                                           | `momo migrate resolve --version N --applied` or `--rolled-back` |
+| Additive auto-migrate         | yes; never drops or alters types; skipped changes are reported                                                                                                                | `Engine.AutoMigrate`                                            |
+| Rollback                      | **not built**: no down files, no `rollback` command; undo with a new migration. `resolve --rolled-back` only records that you undid a dirty migration by hand; it runs no SQL |                                                                 |
+| `rebase`, `lint`, `new`       | **not built** (story 098)                                                                                                                                                     | the CLI prints "Not available yet: rebase, lint, rollback, new" |
+
+## Generator and CLI
+
+| Item                     | Status                                                                                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `momo generate`          | yes; flags `-c momo.yaml`, `--check` (exit 1 when generated files are stale)                                                                                                                                             |
+| Generated output         | typed column descriptors, `Meta`, relation descriptors, permission-typed columns (`read_only`, `create_only`, `immutable`), vector columns                                                                               |
+| Custom generator plugins | Go API only (`gen.Emit` with plugins); the binary ships and loads none                                                                                                                                                   |
+| `momo migrate`           | `diff`, `plan`, `apply`, `status`, `validate`, `hash`, `baseline`, `drift`, `resolve`; flags `--dir` (migration directory, overrides `migrate.dir`) and, on `diff`, `--stage` (stage NOT NULL columns without a default) |
+| `momo help [command]`    | yes                                                                                                                                                                                                                      |
+| Not built                | `momo migrate rebase`, `lint`, `rollback`, `new` (story 098)                                                                                                                                                             |
+| Exit codes               | 0 success; 1 findings (stale files, drift, validation problems, refusals); 2 usage or configuration error; 3 database, lock or execution error (`migrate` only)                                                          |
+| Database URL             | `--url`, else `migrate.url_env.<dialect>` in `momo.yaml`, else `MOMO_DATABASE_URL`                                                                                                                                       |
+| Dialect selection        | `--dialect`, else the only configured dialect, else `postgres`                                                                                                                                                           |
+
+## Hooks and events
+
+| Feature                                    | PostgreSQL                                                                                              | API                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Query hook                                 | yes; runs synchronously and must be safe for concurrent use; `BeforeQuery` may return a derived context | `Hook`, `QueryEvent` (pool wait, in-transaction, argument count, dialect), `WithHook` |
+| Argument logging                           | opt-in                                                                                                  | `WithArgLogging`                                                                      |
+| Relation hook                              | yes                                                                                                     | `RelationHook`, `RelationEvent`                                                       |
+| Field hooks (Go-side defaults, validators) | yes                                                                                                     | `FieldHook[T]`, `WithFieldHooks`                                                      |
+| Pool wait tracing                          | yes                                                                                                     | `pgxdriver.InstrumentPool(cfg)`, `momo.RecordPoolWait`                                |
+| Injected clock                             | yes                                                                                                     | `WithClock`                                                                           |
+| Ready-made slog or OpenTelemetry hook      | no such package in the repository                                                                       | implement `Hook`                                                                      |
+
+## PgBouncer and TLS
+
+| Feature                        | PostgreSQL                                                                      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PgBouncer, transaction pooling | yes, with the default exec mode                                                 | The default `pgx.QueryExecModeExec` sends unnamed statements and binds server-side. `TestPgBouncerNoNamedPreparedStatements` checks on the wire that no named prepared statement is created. `WithExecMode` also accepts `CacheStatement`, `CacheDescribe`, `DescribeExec`; the simple protocol is rejected with `ErrUnsupported`. Do not run `momo migrate` through a transaction pooler. A `search_path` set at connection start does not reliably survive pooling; `SearchSettings` and `Tx.SetLocal` use transaction-local `set_config`, which does. |
+| TLS                            | yes, as configured by the pgx connection string (`sslmode`, `sslrootcert`, ...) | `NewPool(ctx, url)` hands the URL to pgx. Momo adds no TLS options. `momo migrate` prints a TLS warning when the URL has `sslmode=disable` and a non-loopback host. Use `sslmode=verify-full` for remote databases.                                                                                                                                                                                                                                                                                                                                      |
+
+## What returns `ErrUnsupported`
+
+All match `errors.Is(err, momo.ErrUnsupported)`. Build-time errors surface from
+`SQL()` or at first execution.
+
+| Call                                                          | When                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anything on SQLite or MySQL                                   | there is no driver, so nothing runs; `momo migrate` exits 2                                                                                                                                                                                                                                                                |
+| `Upsert`, `OnConflict`, `FindOrCreate`                        | dialect without `ON CONFLICT` (MySQL metadata)                                                                                                                                                                                                                                                                             |
+| `CreateGraph`                                                 | `*Tx` on a dialect without savepoints; identity read-back without `RETURNING`                                                                                                                                                                                                                                              |
+| `ForUpdate`, `ForShare`                                       | dialect without row locks (SQLite metadata)                                                                                                                                                                                                                                                                                |
+| `IndexedBy`                                                   | PostgreSQL and MySQL                                                                                                                                                                                                                                                                                                       |
+| `After`                                                       | a nullable `OrderBy` key                                                                                                                                                                                                                                                                                                   |
+| `SetDefault`, multi-row insert with default in some rows      | dialect without `DEFAULT` support for that shape                                                                                                                                                                                                                                                                           |
+| `db.Begin`, `db.Tx`, `Replace`, `CreateGraph`, chunked insert | `*DB` pinned with `OnConn` (Op "begin"; chunked insert: Op "insert"); unknown `Querier`; isolation level outside the four standard ones                                                                                                                                                                                    |
+| `Tx.Savepoint`                                                | dialect without savepoints (Op "savepoint")                                                                                                                                                                                                                                                                                |
+| `Each`, `Iter`                                                | the query has `Preload`                                                                                                                                                                                                                                                                                                    |
+| `Joined()`                                                    | not belongs-to, child key not unique, `GroupBy`, `Having`, row locks, `Each`, `Iter`, or combined with `Load`, `LoadAll`, `Scope`, `Then`                                                                                                                                                                                  |
+| `LoadPerParentLimit`                                          | belongs-to or has-one relation                                                                                                                                                                                                                                                                                             |
+| `Link`, `Unlink`, `Replace`, `Count`                          | belongs-to relation                                                                                                                                                                                                                                                                                                        |
+| Vector builders                                               | metric the dialect lacks (inner product and Jaccard on SQLite), or the driver reports `Vectors: false`                                                                                                                                                                                                                     |
+| `SetSearch`, `WithSearch`                                     | pgvector missing or older than 0.8.0 when an iterative, `max_scan_tuples` or `max_probes` field is set; any non-`ExactSearch` field on SQLite; transaction-scoped settings on a non-PostgreSQL dialect                                                                                                                     |
+| `SelectQuery.Explain`                                         | MySQL and MariaDB                                                                                                                                                                                                                                                                                                          |
+| Migration inspect or apply                                    | missing extension (for example `vector`): the error names it; unsupported object on inspect                                                                                                                                                                                                                                |
+| `pgxdriver.WithExecMode`                                      | simple protocol or any unlisted mode: every query returns it                                                                                                                                                                                                                                                               |
+| `pgxdriver.FromSQLDB`                                         | nil `db`, or a `db` not backed by the pgx stdlib driver (every Query, Exec, Begin and Pin then fails). A valid `FromSQLDB` driver can Pin, but the pinned connection has no Batch or COPY                                                                                                                                  |
+| Generator type mapping                                        | Go type with no SQL mapping on the dialect (`gen/typemap`)                                                                                                                                                                                                                                                                 |
+| Batch, `COPY`                                                 | a pinned connection without a batch or COPY path (Op "batch", "copy"); `WithExecMode` differing from the connection's default exec mode makes the pgx batch fail (Op "batch"). Relation loading falls back to sequential on its own in both cases; a `FromSQLDB` pinned connection has no `Batcher` and loads sequentially |
