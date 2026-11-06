@@ -24,5 +24,5 @@ Expected: diff splits concurrent indexes into a separate trailing migration file
 
 - TestDiffSplitsConcurrentIndexFromTransactionalDDL: CREATE TABLE plus concurrent index gives two up files, head without the directive, tail with it; ValidateOffline accepts the pair.
 - TestDiffConcurrentlyReachesRenderer: only a concurrent index gives one no-transaction file and Next is nil.
-- TestSplitPairAppliesLockFree and TestSplitHeadFailureLeavesNoPartialDDL (integration, migrate/diff_lockfree_integration_test.go): CI run pending, see report.
+- TestSplitPairAppliesLockFree and TestSplitHeadFailureLeavesNoPartialDDL (integration, migrate/diff_lockfree_integration_test.go): CI run 42300960819 (commit 841c1cb) passed all four integration jobs (Go 1.26 and 1.27, PostgreSQL 16 and 17), which run the integration-tagged tests.
 - TestDiffSplitsConcurrentIndexFromTransactionalDDL and TestDiffNoTransactionHeader: red before the change (one mixed file), green after.
