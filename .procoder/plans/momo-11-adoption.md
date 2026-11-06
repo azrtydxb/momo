@@ -6,6 +6,7 @@ Spec: .procoder/specs/momo.md
 Scope ids: S-91 (momo import gorm|bun|ent), S-92 (momo generate --from-db), S-93 (history importers: Atlas directories, bun_migrations, goose, golang-migrate), S-94 (Go-function migrations, split directive, group rollback), S-95 (migration guides for GORM, Bun and Ent users with compiled code blocks; TestMigrationGuidesComplete).
 
 Research and verification:
+
 - Ent schema loading: `entc/load` (`(*load.Config).Load`) builds the schema package as a Go plugin, which executes user code. This plan reads Ent schemas statically with go/parser instead (decision D-11.1, reported as an ambiguity). Official reference: https://entgo.io/docs/ (schema and entc/load pages).
 - goose, golang-migrate, bun and Atlas history layouts: the importer tasks pin the layout by reading the library source in the Go module cache of the exact version the fixture module requires (`go list -m -json <module>` then read the `Dir` field). The docs pages were not reliable at planning time (two returned 404), so the source file path is cited in each importer task's Interfaces section.
 - The migration engine, history and checksum formats are the ones defined in plan momo-04-migrations; this plan does not redefine them.
@@ -55,9 +56,11 @@ Importers are read-only static analyzers (go/parser, no execution of user code, 
 Covers: S-91 (every semantic change reported). Acceptance: TestImportReportListsSemanticChanges.
 
 Files:
+
 - Create: `importer/report.go`, `importer/emit.go`, `importer/report_test.go`.
 
 Interfaces (exact):
+
 ```go
 package importer
 
@@ -94,6 +97,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `importer/report_test.go`:
+
 ```go
 package importer
 
@@ -115,6 +119,7 @@ func TestImportReportListsSemanticChanges(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./importer/ -run TestImportReportListsSemanticChanges -count=1`. Expect FAIL with `undefined: Report`.
 
 - [ ] **Step 2: Implement** the types and `String` (sorted by Source with `slices.SortFunc`). `Emit` renders each model as a Go struct embedding `momo.Model`, with `momo:"..."` tags built from Field values, and writes it with `w.Write(path, src)` where `path` is `<pkg>/models.go`; `gen.Writer` gofmts the output. The struct renderer escapes tag values with `strconv.Quote` for the tag text.
@@ -126,9 +131,11 @@ Run: `go test ./importer/ -run TestImportReportListsSemanticChanges -count=1`. E
 Covers: S-91 (gorm). Acceptance: TestImportGORM.
 
 Files:
+
 - Create: `importer/gorm/read.go`, `importer/gorm/read_test.go`, `internal/compat/gormfixture/go.mod`, `internal/compat/gormfixture/models.go`, `internal/compat/gormfixture/gormfixture_test.go`.
 
 Interfaces (exact):
+
 ```go
 package gorm
 // Read parses the Go files of dir (no execution) and returns the models and the report.
@@ -136,9 +143,11 @@ package gorm
 // Semantic changes always reported: zero-value-handling for every non-pointer non-default field (GORM omits zero values on Create), go-default for default:now-style Go defaults (db vs go kind per GORM's rules), implicit-save for associations (has-one/has-many/belongs-to fields with struct or slice types).
 func Read(dir string) ([]importer.Model, *importer.Report, error)
 ```
+
 GORM default-kind rule: a `default:` tag value is a DB default (SQL literal) unless the field also carries `gorm:"autoCreateTime"`; field with a Go-side initializer in a constructor is out of scope and not read.
 
 Fixture module `internal/compat/gormfixture/go.mod`:
+
 ```
 module github.com/azrtydxb/momo/internal/compat/gormfixture
 
@@ -147,6 +156,7 @@ go 1.26
 require gorm.io/gorm v1.31.0
 require gorm.io/driver/sqlite v1.6.0
 ```
+
 Versions are the pins the implementer confirms at Step 2 (latest releases at least two weeks old), recorded in go.sum.
 
 Steps:
@@ -154,6 +164,7 @@ Steps:
 - [ ] **Step 1: Fixture models and failing test**
 
 `internal/compat/gormfixture/models.go`:
+
 ```go
 package gormfixture
 
@@ -176,7 +187,9 @@ type User struct {
 
 func (User) TableName() string { return "app_users" }
 ```
+
 `internal/compat/gormfixture/gormfixture_test.go` (the fixture test that runs GORM AutoMigrate to produce the source schema and compares it with the Momo generated models):
+
 ```go
 package gormfixture
 
@@ -223,6 +236,7 @@ func TestImportGORM(t *testing.T) {
     }
 }
 ```
+
 Create the shared helper package `internal/compat/schemafixture/schemafixture.go` (used by Tasks 3 and 4 as well) with `func Inspect(t *testing.T, db *sql.DB) *schema.Schema` (migrate/sqlite Inspect over the connection, via `sqlitedriver.FromSQLDB`) and `func ImportedSchema(models []importer.Model) *schema.Schema` (the same mapping importer.Emit uses, producing a schema.Schema without writing files). Replace the `inspectGORM` and `importedSchema` calls above with `schemafixture.Inspect(t, sqldb)` and `schemafixture.ImportedSchema(models)`.
 
 - [ ] **Step 2: Implement `importer/gorm/read.go`** using go/parser and go/ast over the files in dir; map tag options to importer.Field; build the report for zero-value-handling (one entry per non-pointer field without a default), implicit-save (one per association field), and go-default when a `default:` value is a Go identifier (not a SQL literal). Then run the fixture test; expect PASS.
@@ -230,6 +244,7 @@ Create the shared helper package `internal/compat/schemafixture/schemafixture.go
 - [ ] **Step 3: Failing test for the implicit-save report and source positions**
 
 Append to `importer/gorm/read_test.go` (package `gorm`; `Read` skips `_test.go` files, so the fixture's own test file is not parsed):
+
 ```go
 package gorm
 
@@ -260,6 +275,7 @@ func TestReadReportsImplicitSaveWithPosition(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./importer/gorm/ -run TestReadReportsImplicitSaveWithPosition -count=1`. Expect FAIL with `implicit-save for User.Org not reported` until Step 2 reports associations with positions; then PASS.
 
 - [ ] **Step 4: Commit** `git commit -m "feat(importer/gorm): static reader with semantic change report and fixture round trip"`.
@@ -269,6 +285,7 @@ Run: `go test ./importer/gorm/ -run TestReadReportsImplicitSaveWithPosition -cou
 Covers: S-91 (bun). Acceptance: TestImportBun.
 
 Files:
+
 - Create: `importer/bun/read.go`, `importer/bun/read_test.go`, `internal/compat/bunfixture/go.mod`, `internal/compat/bunfixture/models.go`, `internal/compat/bunfixture/bunfixture_test.go`.
 - Uses: `internal/compat/schemafixture/schemafixture.go` created in Task 2 Step 1 (exports `ImportedSchema(models []importer.Model) *schema.Schema` and `Inspect(t *testing.T, db *sql.DB) *schema.Schema`).
 
@@ -279,6 +296,7 @@ Steps:
 - [ ] **Step 1: Create the fixture models**
 
 `internal/compat/bunfixture/models.go`:
+
 ```go
 package bunfixture
 
@@ -304,11 +322,13 @@ type Account struct {
     CreatedAt     time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
 }
 ```
+
 The module `internal/compat/bunfixture/go.mod` requires `github.com/uptrace/bun`, `github.com/uptrace/bun/dialect/sqlitedialect` and `github.com/uptrace/bun/driver/sqliteshim` at versions at least two weeks old, pinned in go.sum.
 
 - [ ] **Step 2: Write the failing fixture test**
 
 `internal/compat/bunfixture/bunfixture_test.go`:
+
 ```go
 package bunfixture
 
@@ -354,6 +374,7 @@ func TestImportBun(t *testing.T) {
     }
 }
 ```
+
 Run: `cd internal/compat/bunfixture && go test ./... -run TestImportBun -count=1`. Expect FAIL with `undefined: bun.Read`.
 
 - [ ] **Step 3: Implement `importer/bun/read.go`**
@@ -363,6 +384,7 @@ Parse each `.go` file in dir with `go/parser` (mode `parser.ParseComments`), wal
 - [ ] **Step 4: Unit test for the report positions**
 
 `importer/bun/read_test.go`:
+
 ```go
 package bun
 
@@ -387,6 +409,7 @@ func TestReadReportsNullzeroWithPosition(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./importer/bun/ -count=1`. Expect PASS.
 
 - [ ] **Step 5: Commit**
@@ -400,6 +423,7 @@ Covers: S-91 (ent). Acceptance: TestImportEnt.
 Decision D-11.1: the Ent schema is read with go/parser and go/ast; the schema package is never compiled or executed. Recognised builder chains: `field.<Type>("name")` with `.Optional()`, `.Nillable()`, `.Default(v)`, `.DefaultFunc(f)`, `.Unique()`, `.Immutable()`, `.StorageKey(name)`, `.SchemaType(map[string]string{...})`, `.Comment(s)`; `edge.To`, `edge.From` with `.Ref`, `.Unique`, `.Required`; `index.Fields(...)` with `.Unique()`; `entsql.Annotation{Table: ...}`. Any other method is an `unsupported` change at its `file:line:col`, never a guess. `DefaultFunc` is `go-default`; `Default(literal)` is `go-default` (Ent applies it in Go) unless `entsql.Default` is also present (then `db`). An `edge.From` with `.Ref` is reported as `implicit-save` with the explanation that Ent saves an edge only when set explicitly.
 
 Files:
+
 - Create: `importer/ent/read.go`, `importer/ent/read_test.go`, `internal/compat/entfixture/go.mod`, `internal/compat/entfixture/ent/schema/user.go`, `internal/compat/entfixture/ent/schema/org.go`, `internal/compat/entfixture/entfixture_test.go`.
 
 Interfaces (exact): `func Read(dir string) ([]importer.Model, *importer.Report, error)` in package `ent`. `unsupported` changes block `importer.Emit`.
@@ -409,6 +433,7 @@ Steps:
 - [ ] **Step 1: Create the fixture schema**
 
 `internal/compat/entfixture/ent/schema/user.go`:
+
 ```go
 package schema
 
@@ -438,7 +463,9 @@ func (User) Indexes() []ent.Index {
     return []ent.Index{index.Fields("name").Unique()}
 }
 ```
+
 `internal/compat/entfixture/ent/schema/org.go`:
+
 ```go
 package schema
 
@@ -458,11 +485,13 @@ func (Org) Edges() []ent.Edge {
     return []ent.Edge{edge.To("users", User.Type)}
 }
 ```
+
 The fixture module requires `entgo.io/ent` and `modernc.org/sqlite` (pure Go, registered as driver name `sqlite`), pinned at versions at least two weeks old. Generate the ent client once with `go run entgo.io/ent/cmd/ent generate ./ent/schema` from the fixture directory; the generated `ent/` package files are committed.
 
 - [ ] **Step 2: Write the failing fixture test**
 
 `internal/compat/entfixture/entfixture_test.go`:
+
 ```go
 package entfixture
 
@@ -507,6 +536,7 @@ func TestImportEnt(t *testing.T) {
     }
 }
 ```
+
 Run: `cd internal/compat/entfixture && go test ./... -run TestImportEnt -count=1`. Expect FAIL with `undefined: ent.Read`.
 
 - [ ] **Step 3: Implement `importer/ent/read.go`** per the decision paragraph above, using `go/parser`, walking method bodies `Fields`, `Edges`, `Indexes` and collecting call chains by unwinding `*ast.CallExpr` receivers. Run the fixture test: expect PASS.
@@ -514,6 +544,7 @@ Run: `cd internal/compat/entfixture && go test ./... -run TestImportEnt -count=1
 - [ ] **Step 4: Failing unsupported-builder test**
 
 `importer/ent/read_test.go`:
+
 ```go
 package ent
 
@@ -538,6 +569,7 @@ func TestReadUnsupportedBuilderIsDiagnosed(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./importer/ent/ -run TestReadUnsupportedBuilderIsDiagnosed -count=1`. Expect FAIL before Step 3, PASS after.
 
 - [ ] **Step 5: Commit**
@@ -549,10 +581,12 @@ Run: `go test ./importer/ent/ -run TestReadUnsupportedBuilderIsDiagnosed -count=
 Covers: S-91 (command contract: writes model files, prints the report, refuses on unsupported). Acceptance: TestImportCommand, TestImportRefusesUnsupported.
 
 Files:
+
 - Create: `cmd/momo/import.go`, `cmd/momo/import_test.go`.
 - Modify: `cmd/momo/main.go` (one dispatch case; the file is owned by plan momo-02, report to the lead).
 
 Interfaces (exact):
+
 ```go
 // momo import <gorm|bun|ent> --src <dir> --out <pkg dir> [--report <file>]
 // Exit 0 when models are written; exit 1 when the report has an unsupported change (nothing is written); exit 2 usage.
@@ -564,6 +598,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `cmd/momo/import_test.go`:
+
 ```go
 package main
 
@@ -607,6 +642,7 @@ func TestImportRefusesUnsupported(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./cmd/momo/ -run 'TestImport' -count=1`. Expect FAIL with `undefined: runImport`.
 
 - [ ] **Step 2: Implement** `runImport` dispatching to the three readers, `importer.Emit`, and printing `rep.String()` to `out`. Emit writes nothing when unsupported.
@@ -618,9 +654,11 @@ Run: `go test ./cmd/momo/ -run 'TestImport' -count=1`. Expect FAIL with `undefin
 Covers: S-92 (mapping per dialect; unmapped types are errors, never silent). Acceptance: TestGenerateFromDBMapping, TestGenerateFromDBUnmapped.
 
 Files:
+
 - Create: `gen/fromdb/mapping.go`, `gen/fromdb/mapping_test.go`.
 
 Interfaces (exact):
+
 ```go
 package fromdb
 type GoType struct{ Expr string; Import string; Nullable bool; Codec string } // Codec names a momo/types or vector type when needed
@@ -629,6 +667,7 @@ type GoType struct{ Expr string; Import string; Nullable bool; Codec string } //
 var ErrUnmapped = errors.New("fromdb: unmapped column type")
 func MapType(d dialect.Name, sqlType string) (GoType, error)
 ```
+
 Mapping table (exact, PostgreSQL): `smallint`→`int16`; `integer`→`int32`; `bigint`→`int64`; `real`→`float32`; `double precision`→`float64`; `numeric(...)`→`types.Decimal`? (not in types package: map to `string` with Codec "numeric" and a report note `decimal-as-string` — as an explicit mapping, not silent); `boolean`→`bool`; `text`, `character varying(...)`, `character(...)`→`string`; `bytea`→`[]byte`; `uuid`→`types.UUID`; `date`→`types.Date`; `time without time zone`→`types.TimeOfDay`; `timestamp without time zone`→`time.Time`; `timestamp with time zone`→`time.Time`; `jsonb`, `json`→`types.JSON[json.RawMessage]`; `integer[]`→`[]int32`; `text[]`→`[]string`; `bigint[]`→`[]int64`; `vector(N)`→`vector.Vector`; `halfvec(N)`→`vector.HalfVector`; `sparsevec(N)`→`vector.SparseVector`; `bit(N)`→`vector.Bits`; enums (named in schema.Column.Enum)→named string type generated in the package (Codec "enum"). SQLite: `INTEGER`→`int64`; `REAL`→`float64`; `TEXT`→`string`; `BLOB`→`[]byte`; `NUMERIC`→`float64` with report note; `BOOLEAN`→`bool`; `DATETIME`/`TIMESTAMP`→`time.Time`.
 
 Steps:
@@ -636,6 +675,7 @@ Steps:
 - [ ] **Step 1: Failing tests**
 
 `gen/fromdb/mapping_test.go`:
+
 ```go
 package fromdb
 
@@ -674,6 +714,7 @@ func TestGenerateFromDBUnmapped(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./gen/fromdb/ -count=1`. Expect FAIL with `undefined: MapType`.
 
 - [ ] **Step 2: Implement** `MapType` with the tables above (input normalized through `schema.NormalizeType` first, arrays and vector dimensions parsed by the same helper). Run; expect PASS. Commit `git commit -m "feat(gen/fromdb): explicit per-dialect type mapping with unmapped errors"`.
@@ -683,10 +724,12 @@ Run: `go test ./gen/fromdb/ -count=1`. Expect FAIL with `undefined: MapType`.
 Covers: S-92 (generated models diff to zero against the inspected database on SQLite and PostgreSQL; MySQL once plan momo-08 lands). Acceptance: TestGenerateFromDB.
 
 Files:
+
 - Create: `gen/fromdb/emit.go`, `gen/fromdb/fromdb_test.go`.
 - Modify: `cmd/momo/generate.go` (plan momo-02 owns it; this task adds `--from-db <env-name>` and `--out <pkg dir>`; report the change to the lead).
 
 Interfaces (exact):
+
 ```go
 package fromdb
 // FromDB inspects the database (migrate Dialect.Inspect on the configured schemas) and returns importer.Model values plus a report.
@@ -702,6 +745,7 @@ Steps:
 - [ ] **Step 1: Write the failing round-trip test**
 
 `gen/fromdb/fromdb_test.go`:
+
 ```go
 package fromdb
 
@@ -749,11 +793,15 @@ func TestGenerateFromDB(t *testing.T) {
                     t.Fatal(err)
                 }
             }
-            c, err := db.Pin(ctx)
+            pn, ok := db.Driver().(momo.Pinner)
+            if !ok {
+                t.Fatal("driver does not implement momo.Pinner")
+            }
+            c, err := pn.Pin(ctx)
             if err != nil {
                 t.Fatal(err)
             }
-            defer c.Close()
+            defer c.Release()
             // PostgreSQL tests run in the per-test schema (docs/ARCHITECTURE.md, "Per-test isolation"), never in "public".
             var schemas []string
             if tc.d == dialect.Postgres {
@@ -782,6 +830,7 @@ func TestGenerateFromDB(t *testing.T) {
     }
 }
 ```
+
 `migrate.InspectWith(ctx, c, d, opts)` is a helper added in plan momo-04's `migrate/engine.go` (selects the registered dialect by name and calls its Inspect) and is referenced here as an allowed addition; report it to the lead. Run: `go test ./gen/fromdb/ -run TestGenerateFromDB -count=1`. Expect FAIL with `undefined: Generate`.
 
 - [ ] **Step 2: Implement `FromDB` and `Generate`**
@@ -805,9 +854,11 @@ Mapping decision (accepted): a source version that is not a 14-digit timestamp m
 Database: every importer test runs on PostgreSQL through `testopen.Postgres(t)`. A "scratch database" is a second `testopen.Postgres(t)` that starts empty.
 
 Files:
+
 - Create: `importer/history/history.go`, `importer/history/history_test.go`.
 
 Interfaces (exact):
+
 ```go
 package history
 
@@ -870,6 +921,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `importer/history/history_test.go`:
+
 ```go
 package history
 
@@ -917,6 +969,7 @@ func TestDirtySourceRefused(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./importer/history/ -count=1`. Expect FAIL with `undefined: Convert`.
 
 - [ ] **Step 2: Implement**
@@ -932,6 +985,7 @@ Run: `go test ./importer/history/ -count=1`. Expect FAIL with `undefined: Conver
 Covers: S-93 (Atlas directories; the shared check that every importer's TestHistoryImporters subtest uses). Acceptance: TestHistoryImporters/atlas.
 
 Files:
+
 - Create: `importer/history/atlas/atlas.go`, `importer/history/atlas/atlas_test.go`.
 - Create: `internal/importtest/importtest.go` (shared check, used by Tasks 9 to 12).
 - Create fixtures: `internal/compat/atlasfixture/migrations/20260101000000_init.sql`, `internal/compat/atlasfixture/migrations/20260101000001_more.sql`, `internal/compat/atlasfixture/migrations/atlas.sum`.
@@ -939,11 +993,13 @@ Files:
 Fixture contents (committed verbatim):
 
 `internal/compat/atlasfixture/migrations/20260101000000_init.sql`:
+
 ```sql
 CREATE TABLE a (x int);
 ```
 
 `internal/compat/atlasfixture/migrations/20260101000001_more.sql`:
+
 ```sql
 CREATE TABLE b (x int);
 ```
@@ -951,6 +1007,7 @@ CREATE TABLE b (x int);
 `internal/compat/atlasfixture/migrations/atlas.sum`: produced once by the pinned Atlas CLI (`atlas migrate hash --dir file://internal/compat/atlasfixture/migrations`) and committed. The Atlas CLI is a fixture-generation tool only, not a test dependency; the test reads the committed file.
 
 Interfaces (exact):
+
 ```go
 package atlas
 type Revision struct {
@@ -967,6 +1024,7 @@ func Read(dir fs.FS, revisions []Revision) (history.Source, error)
 ```
 
 `internal/importtest/importtest.go` (literal):
+
 ```go
 // Package importtest is the shared end-to-end check for history importers.
 package importtest
@@ -1027,11 +1085,15 @@ func CheckImport(t *testing.T, live *momo.DB, in Input) {
             }
         }
     }
-    conn, err := live.Pin(ctx)
+    pn, ok := live.Driver().(momo.Pinner)
+    if !ok {
+        t.Fatal("driver does not implement momo.Pinner")
+    }
+    conn, err := pn.Pin(ctx)
     if err != nil {
         t.Fatal(err)
     }
-    defer conn.Close()
+    defer conn.Release()
     if err := migrate.EnsureHistory(ctx, conn, mpg.New()); err != nil {
         t.Fatal(err)
     }
@@ -1075,7 +1137,6 @@ func CheckImport(t *testing.T, live *momo.DB, in Input) {
 
 `internal/importtest` is a non-test package and imports `testing` for `*testing.T`; it is used only by test files.
 
-
 Steps:
 
 - [ ] **Step 1: Failing test**
@@ -1111,7 +1172,6 @@ func TestHistoryImporters(t *testing.T) {
 }
 ```
 
-
 Create the fixtures listed under Files. Run: `go test ./importer/history/atlas/ -run TestHistoryImporters/atlas -count=1`. Expect FAIL with `undefined: Read`.
 
 - [ ] **Step 2: Implement `Read` and the atlas.sum check**
@@ -1127,12 +1187,14 @@ List the directory, parse `<version>_<name>.sql` names with a regexp `^(\d+)_([a
 Covers: S-93 (goose). Acceptance: TestHistoryImporters/goose.
 
 Files:
+
 - Create: `importer/history/goose/goose.go`, `importer/history/goose/goose_test.go`.
 - Create fixtures: `internal/compat/goosefixture/migrations/00001_init.sql`, `internal/compat/goosefixture/migrations/00002_more.sql`, `internal/compat/goosefixture/migrations/00003_notx.sql`.
 
 Fixture contents (committed verbatim):
 
 `internal/compat/goosefixture/migrations/00001_init.sql`:
+
 ```sql
 -- +goose Up
 CREATE TABLE a (x int);
@@ -1142,6 +1204,7 @@ DROP TABLE a;
 ```
 
 `internal/compat/goosefixture/migrations/00002_more.sql`:
+
 ```sql
 -- +goose Up
 -- +goose StatementBegin
@@ -1151,6 +1214,7 @@ INSERT INTO b VALUES (1);
 ```
 
 `internal/compat/goosefixture/migrations/00003_notx.sql`:
+
 ```sql
 -- +goose Up
 -- +goose NO TRANSACTION
@@ -1158,6 +1222,7 @@ CREATE TABLE c (x int);
 ```
 
 Interfaces (exact):
+
 ```go
 package goose
 // splitGoose splits a goose file body into up and down. It handles -- +goose StatementBegin / StatementEnd (a
@@ -1202,11 +1267,15 @@ func TestHistoryImporters(t *testing.T) {
         if _, err := momo.Exec(ctx, live, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (0, true), (1, true), (2, true), (3, true)`); err != nil {
             t.Fatal(err)
         }
-        conn, err := live.Pin(ctx)
+        pn, ok := live.Driver().(momo.Pinner)
+        if !ok {
+            t.Fatal("driver does not implement momo.Pinner")
+        }
+        conn, err := pn.Pin(ctx)
         if err != nil {
             t.Fatal(err)
         }
-        defer conn.Close()
+        defer conn.Release()
         src, err := Read(os.DirFS("../../../internal/compat/goosefixture/migrations"), conn, "goose_db_version")
         if err != nil {
             t.Fatal(err)
@@ -1221,7 +1290,6 @@ func TestHistoryImporters(t *testing.T) {
     })
 }
 ```
-
 
 Create the fixtures listed under Files. Run: `go test ./importer/history/goose/ -run TestHistoryImporters/goose -count=1`. Expect FAIL with `undefined: Read`.
 
@@ -1238,6 +1306,7 @@ Create the fixtures listed under Files. Run: `go test ./importer/history/goose/ 
 Covers: S-93 (golang-migrate). Acceptance: TestHistoryImporters/golangmigrate.
 
 Files:
+
 - Create: `importer/history/golangmigrate/golangmigrate.go`, `importer/history/golangmigrate/golangmigrate_test.go`.
 - Create fixtures: `internal/compat/gmfixture/migrations/1_create_a.up.sql`, `internal/compat/gmfixture/migrations/1_create_a.down.sql`, `internal/compat/gmfixture/migrations/2_create_b.up.sql`.
 
@@ -1248,6 +1317,7 @@ Fixture contents (committed verbatim):
 `internal/compat/gmfixture/migrations/2_create_b.up.sql`: `CREATE TABLE b (x int);`
 
 Interfaces (exact):
+
 ```go
 package golangmigrate
 // Read returns a history.Source. Files are <version>_<title>.up.sql and <version>_<title>.down.sql; the version is the
@@ -1293,11 +1363,15 @@ func TestHistoryImporters(t *testing.T) {
         if _, err := momo.Exec(ctx, live, `INSERT INTO schema_migrations (version, dirty) VALUES (2, false)`); err != nil {
             t.Fatal(err)
         }
-        conn, err := live.Pin(ctx)
+        pn, ok := live.Driver().(momo.Pinner)
+        if !ok {
+            t.Fatal("driver does not implement momo.Pinner")
+        }
+        conn, err := pn.Pin(ctx)
         if err != nil {
             t.Fatal(err)
         }
-        defer conn.Close()
+        defer conn.Release()
         src, err := Read(fixtures, conn, "schema_migrations")
         if err != nil {
             t.Fatal(err)
@@ -1316,11 +1390,15 @@ func TestHistoryImporters(t *testing.T) {
         if _, err := momo.Exec(ctx, live, `INSERT INTO schema_migrations (version, dirty) VALUES (1, true)`); err != nil {
             t.Fatal(err)
         }
-        conn, err := live.Pin(ctx)
+        pn, ok := live.Driver().(momo.Pinner)
+        if !ok {
+            t.Fatal("driver does not implement momo.Pinner")
+        }
+        conn, err := pn.Pin(ctx)
         if err != nil {
             t.Fatal(err)
         }
-        defer conn.Close()
+        defer conn.Release()
         src, err := Read(fixtures, conn, "schema_migrations")
         if err != nil {
             t.Fatal(err)
@@ -1334,7 +1412,6 @@ func TestHistoryImporters(t *testing.T) {
     })
 }
 ```
-
 
 Create the fixtures listed under Files. Run: `go test ./importer/history/golangmigrate/ -run TestHistoryImporters/golangmigrate -count=1`. Expect FAIL with `undefined: Read`.
 
@@ -1351,12 +1428,14 @@ List the directory, parse the integer prefix of each name with `strconv.ParseInt
 Covers: S-93 (bun_migrations). Acceptance: TestHistoryImporters/bun.
 
 Files:
+
 - Create: `importer/history/bun/bun.go`, `importer/history/bun/bun_test.go`.
 - Create fixture: `internal/compat/bunmigfixture/migrations/20260101000000_init.up.sql`.
 
 Fixture contents (committed verbatim): `internal/compat/bunmigfixture/migrations/20260101000000_init.up.sql`: `CREATE TABLE a (x int);`
 
 Interfaces (exact):
+
 ```go
 package bun
 // Read returns a history.Source for bun's SQL migrations: files <timestamp>_<name>.up.sql and optional .down.sql.
@@ -1402,11 +1481,15 @@ func TestHistoryImporters(t *testing.T) {
         if _, err := momo.Exec(ctx, live, `INSERT INTO bun_migrations (name, group_id) VALUES ('20260101000000_init', 1)`); err != nil {
             t.Fatal(err)
         }
-        conn, err := live.Pin(ctx)
+        pn, ok := live.Driver().(momo.Pinner)
+        if !ok {
+            t.Fatal("driver does not implement momo.Pinner")
+        }
+        conn, err := pn.Pin(ctx)
         if err != nil {
             t.Fatal(err)
         }
-        defer conn.Close()
+        defer conn.Release()
         src, err := Read(os.DirFS("../../../internal/compat/bunmigfixture/migrations"), conn)
         if err != nil {
             t.Fatal(err)
@@ -1422,11 +1505,15 @@ func TestHistoryImporters(t *testing.T) {
         if _, err := momo.Exec(ctx, live, `CREATE TABLE bun_migrations (id BIGSERIAL PRIMARY KEY, name VARCHAR(180), group_id INTEGER NOT NULL DEFAULT 0, migrated_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
             t.Fatal(err)
         }
-        conn, err := live.Pin(ctx)
+        pn, ok := live.Driver().(momo.Pinner)
+        if !ok {
+            t.Fatal("driver does not implement momo.Pinner")
+        }
+        conn, err := pn.Pin(ctx)
         if err != nil {
             t.Fatal(err)
         }
-        defer conn.Close()
+        defer conn.Release()
         fsys := fstest.MapFS{
             "20260101000000_go_step.go": {Data: []byte("package migrations\n")},
         }
@@ -1444,7 +1531,6 @@ func TestHistoryImporters(t *testing.T) {
 }
 ```
 
-
 Create the fixtures listed under Files. Run: `go test ./importer/history/bun/ -run TestHistoryImporters/bun -count=1`. Expect FAIL with `undefined: Read`.
 
 - [ ] **Step 2: Implement `Read`**
@@ -1460,10 +1546,12 @@ List the directory: `.up.sql` and `.down.sql` files become `Raw` values, `.go` f
 Covers: S-94 (Go-function migrations run once under the lock with history). The split directive is consumed from plan momo-04 Task 4 (not re-specified here). Group rollback is owned by plan momo-04 Task 18, which dispatches Go downs to `GoMigration.Down`. Acceptance: TestGoMigrations.
 
 Files:
+
 - Create: `migrate/gomigration.go`, `migrate/gomigration_test.go`.
 - Modify (additive, plan momo-04 files): `migrate/runner.go` (Go branch in RunMigration), `migrate/engine.go` (the WithGoMigrations option and the `goMigrations` field read by Rollback).
 
 Interfaces (exact):
+
 ```go
 type GoMigration struct {
     Version string // 14-digit UTC timestamp
@@ -1480,6 +1568,7 @@ func WithGoMigrations(ms ...GoMigration) Option
 // Accepted limit: changing a registered function's logic is not detected; add a new migration instead.
 // History: kind "go". Up runs in the same transaction as the applied update unless NoTx.
 ```
+
 Requires from plan momo-03: `func (db *DB) OnConn(pc momo.PinnedConn) *momo.DB` (contract item 10 of plan momo-04) and `Driver.Exec`.
 
 Steps:
@@ -1487,6 +1576,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `migrate/gomigration_test.go`:
+
 ```go
 package migrate_test
 
@@ -1555,6 +1645,7 @@ func TestGoMigrations(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./migrate/ -run TestGoMigrations -count=1`. Expect FAIL with `undefined: migrate.GoMigration`.
 
 - [ ] **Step 2: Implement** the type, the option, the Go branch in RunMigration (the callback receives the transaction, or the pinned DB when NoTx), and the Go dispatch in Rollback (plan momo-04 Task 19). Run the test: expect PASS.
@@ -1568,6 +1659,7 @@ Run: `go test ./migrate/ -run TestGoMigrations -count=1`. Expect FAIL with `unde
 Covers: S-95 (guides with call-site cheat sheets and compiled code blocks). Acceptance: TestMigrationGuidesComplete (section presence), (code blocks are compiled by plan momo-13's TestDocsCodeBlocks).
 
 Files:
+
 - Create: `docs/guides/gorm.md`, `docs/guides/bun.md`, `docs/guides/ent.md`, `examples/guides/models/models.go` (the Momo models used by every guide block), `examples/guides/models/momo_gen.go` (generated by `momo generate` from the models file; committed).
 
 Each guide has exactly these level-2 headings in this order: `## Models`, `## Queries`, `## Relations`, `## Hooks`, `## Transactions`, `## Migrations`, `## Errors`. Each code block is a complete Go file (`package main`) that imports `github.com/azrtydxb/momo/examples/guides/models` and compiles on its own (compiled by plan momo-13's TestDocsCodeBlocks); blocks that must not compile are fenced with the info string `go notest` and are excluded from compilation but never used for CI-tested claims. Each guide also has a "Cheat sheet" table mapping the ORM call to the Momo call.
@@ -1587,6 +1679,7 @@ Run: `for g in gorm bun ent; do grep -c '^## ' docs/guides/$g.md; done`. Expect 
 Covers: S-95 (each guide has the required sections). The code-block extractor is NOT in this plan: plan momo-13's TestDocsCodeBlocks is the only docs code-block extractor and covers the guide pages. Acceptance: TestMigrationGuidesComplete.
 
 Files:
+
 - Create: `internal/docscheck/guides_test.go`.
 
 Interfaces (exact): test-only package `docscheck`, one test function.
@@ -1596,6 +1689,7 @@ Steps:
 - [ ] **Step 1: Failing test**
 
 `internal/docscheck/guides_test.go`:
+
 ```go
 package docscheck
 
@@ -1622,6 +1716,7 @@ func TestMigrationGuidesComplete(t *testing.T) {
     }
 }
 ```
+
 Run: `go test ./internal/docscheck/ -run TestMigrationGuidesComplete -count=1`. Expect FAIL with `no such file` before Task 14.
 
 - [ ] **Step 2: Run after Task 14, expect PASS**
@@ -1634,13 +1729,13 @@ Run: `go test ./internal/docscheck/ -run TestMigrationGuidesComplete -count=1`. 
 
 ## Coverage check (planning report)
 
-| Scope id | Tasks |
-|---|---|
-| S-91 | 1, 2, 3, 4, 5 |
-| S-92 | 6, 7 |
-| S-93 | 8, 9, 10, 11, 12 |
-| S-94 | 13 |
-| S-95 | 14, 15 |
+| Scope id | Tasks            |
+| -------- | ---------------- |
+| S-91     | 1, 2, 3, 4, 5    |
+| S-92     | 6, 7             |
+| S-93     | 8, 9, 10, 11, 12 |
+| S-94     | 13               |
+| S-95     | 14, 15           |
 
 ## Open items for the lead
 

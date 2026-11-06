@@ -1,0 +1,104 @@
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build integration
+
+package momo_test
+
+import (
+	"context"
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/internal/testdb"
+)
+
+// singleConnPool returns a pool with one connection, so every transaction reuses the same backend.
+func singleConnPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	cfg, err := pgxpool.ParseConfig(testdb.PostgresURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}
+
+// checkSetting raises an error unless the named setting has the expected value.
+func checkSetting(ctx context.Context, q momo.Querier, name, want string) error {
+	_, err := momo.Exec(ctx, q, "DO $$ BEGIN IF current_setting('"+name+"') <> '"+want+"' THEN RAISE EXCEPTION 'setting "+name+" is not "+want+"'; END IF; END $$")
+	return err
+}
+
+func TestSearchSettingsScoped(t *testing.T) {
+	ctx := context.Background()
+	db := momo.New(pgxdriver.New(singleConnPool(t)))
+	mustExecPG(t, db, "CREATE EXTENSION IF NOT EXISTS vector")
+	mustExecPG(t, db, "CREATE TABLE docs (id bigint PRIMARY KEY, emb vector(4))")
+	mustExecPG(t, db, "CREATE INDEX docs_emb ON docs USING hnsw (emb vector_l2_ops)")
+	err := db.WithSearch(ctx, momo.SearchSettings{HNSWEfSearch: 200}, func(tx *momo.Tx) error {
+		return checkSetting(ctx, tx, "hnsw.ef_search", "200")
+	})
+	if err != nil {
+		t.Fatalf("inside WithSearch: %v", err)
+	}
+	if err := checkSetting(ctx, db, "hnsw.ef_search", "40"); err != nil {
+		t.Fatalf("setting leaked after the transaction: %v", err)
+	}
+}
+
+// hitCount copies the rows of table into a temporary sink and returns how many were copied.
+func hitCount(ctx context.Context, tx *momo.Tx, table string) (int64, error) {
+	if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE sink_"+table+" (id bigint)"); err != nil {
+		return 0, err
+	}
+	return momo.Exec(ctx, tx, "INSERT INTO sink_"+table+" SELECT id FROM "+table)
+}
+
+func TestFilteredANNIterativeScan(t *testing.T) {
+	ctx := context.Background()
+	db := momo.New(pgxdriver.New(singleConnPool(t)))
+	for _, stmt := range []string{
+		"CREATE EXTENSION IF NOT EXISTS vector",
+		"CREATE TABLE items (id bigint PRIMARY KEY, grp text NOT NULL, emb vector(8) NOT NULL)",
+		"SELECT setseed(0.42)",
+		"INSERT INTO items SELECT g, CASE WHEN g % 100 = 0 THEN 'rare' ELSE 'common' END, ARRAY(SELECT random()::real FROM generate_series(1, 8))::vector FROM generate_series(1, 20000) AS g",
+		"CREATE INDEX items_emb ON items USING hnsw (emb vector_l2_ops)",
+		"ANALYZE items",
+	} {
+		mustExecPG(t, db, stmt)
+	}
+	count := func(name string, s momo.SearchSettings) int64 {
+		var n int64
+		err := db.WithSearch(ctx, s, func(tx *momo.Tx) error {
+			if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE "+name+" AS SELECT id FROM items WHERE grp = 'rare' ORDER BY emb <-> (SELECT emb FROM items WHERE id = 1) LIMIT 10"); err != nil {
+				return err
+			}
+			var err error
+			n, err = hitCount(ctx, tx, name)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	off := count("hits_off", momo.SearchSettings{})
+	on := count("hits_on", momo.SearchSettings{HNSWIterativeScan: momo.IterativeRelaxedOrder, HNSWMaxScanTuples: 20000})
+	if off >= 10 {
+		t.Fatalf("iterative scan off returned %d rows, want fewer than 10", off)
+	}
+	if on != 10 {
+		t.Fatalf("iterative scan on returned %d rows, want 10", on)
+	}
+	if err := checkSetting(ctx, db, "hnsw.iterative_scan", "off"); err != nil {
+		t.Fatalf("setting leaked after the transaction: %v", err)
+	}
+}

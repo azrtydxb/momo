@@ -1,9 +1,9 @@
 # momo-02 Task 13: Column and relation descriptors in the per-model subpackage
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-02-generator
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
@@ -11,9 +11,13 @@ Implements plan momo-02-generator Task 13: Column and relation descriptors in th
 
 ## Acceptance criteria
 
-- [ ] `TestRelationMetadata` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestEmitDescriptorsGolden` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestRelationMetadata` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestEmitDescriptorsGolden` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Files: gen/emit_descriptors.go, gen/relations.go, gen/types.go, gen/model.go, gen/load.go, tests gen/emit_descriptors_test.go, gen/relations_test.go, gen/relations_emit_test.go, golden gen/testdata/golden/descriptors/document/momo_gen.go, fixture gen/testdata/fixtures/rel/rel.go. Commit b2edd5a.
+- FAIL before: go test ./gen build failed: undefined: EmitDescriptors; Relations[0].Kind undefined; undefined: HasMany. PASS after: TestRelationMetadata, TestEmitDescriptorsGolden, plus TestRelationDiagnostics and TestDescriptorsCompile (all relation kinds generated into a scratch dir, then go build).
+- Mutation: dropping the named-type conversion in generated key setters failed TestDescriptorsCompile (cannot use &v0 as *models.Status); reverted.
+- Gate: go build, go vet, go test -race -count=1 ./... pass; procoder check: 0 blocking findings.

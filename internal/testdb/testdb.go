@@ -38,6 +38,9 @@ const (
 	vectorLockID = 7000001
 	roleLockID   = 7000002
 	opTimeout    = 30 * time.Second
+	// dropTimeout bounds CREATE and DROP DATABASE, which checkpoint and can
+	// take over a minute on a busy shared server.
+	dropTimeout = 3 * time.Minute
 )
 
 var errSkip = errors.New("testdb: integration URL not set")
@@ -132,7 +135,7 @@ func schemaFor(t testing.TB) (admin, name string) {
 	}
 	t.Cleanup(func() {
 		schemas.Delete(t)
-		cctx, ccancel := context.WithTimeout(context.Background(), opTimeout)
+		cctx, ccancel := context.WithTimeout(context.Background(), dropTimeout)
 		defer ccancel()
 		c, err := pgx.Connect(cctx, admin)
 		if err != nil {
@@ -328,3 +331,84 @@ func MySQL97URL(t testing.TB) string { t.Helper(); return freshMySQL(t, envMySQL
 
 // MariaDBURL returns a DSN for a database private to t on MariaDB 11.8.
 func MariaDBURL(t testing.TB) string { t.Helper(); return freshMySQL(t, envMariaDB) }
+
+// ScratchDatabase creates a database named prefix followed by 16 random hex
+// characters through MOMO_TEST_POSTGRES_URL, installs the vector extension in
+// it, and drops it (WITH (FORCE), which also ends the connections a pooler
+// holds to it) in t.Cleanup. Cleanups run last-in first-out, so a pool the
+// caller opens afterwards and closes in its own t.Cleanup is closed before the
+// drop. It returns the database name.
+func ScratchDatabase(t testing.TB, prefix string) string {
+	t.Helper()
+	admin := require(t, envPostgres)
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		t.Fatalf("testdb: crypto/rand failed: %v", err)
+	}
+	name := prefix + hex.EncodeToString(b[:])
+	ctx, cancel := context.WithTimeout(context.Background(), dropTimeout)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, admin)
+	if err != nil {
+		t.Fatalf("testdb: connect %s: %v", envPostgres, err)
+	}
+	defer conn.Close(ctx)
+	if err := execDDL(ctx, conn, "CREATE DATABASE %s", name); err != nil {
+		t.Fatalf("testdb: create database %s: %v", name, err)
+	}
+	t.Cleanup(func() {
+		cctx, ccancel := context.WithTimeout(context.Background(), dropTimeout)
+		defer ccancel()
+		c, err := pgx.Connect(cctx, admin)
+		if err != nil {
+			t.Errorf("testdb: connect to drop database %s: %v", name, err)
+			return
+		}
+		defer c.Close(cctx)
+		if err := execDDL(cctx, c, "DROP DATABASE IF EXISTS %s WITH (FORCE)", name); err != nil {
+			t.Errorf("testdb: drop database %s: %v", name, err)
+		}
+	})
+	sc, err := pgx.Connect(ctx, withDatabase(t, admin, name))
+	if err != nil {
+		t.Fatalf("testdb: connect to scratch database %s: %v", name, err)
+	}
+	defer sc.Close(ctx)
+	if _, err := sc.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS vector SCHEMA public"); err != nil {
+		t.Fatalf("testdb: create vector extension in %s: %v", name, err)
+	}
+	return name
+}
+
+// withDatabase returns raw with its database name replaced and no search_path
+// parameter. raw must be a postgres:// or postgresql:// URL.
+func withDatabase(t testing.TB, raw, dbname string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
+		t.Fatalf("testdb: a postgres:// URL is required to name a database (got a value that is not one)")
+	}
+	u.Path = "/" + dbname
+	u.RawPath = ""
+	q := u.Query()
+	q.Del("search_path")
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// PostgresURLFor returns MOMO_TEST_POSTGRES_URL with its database replaced by
+// dbname and no search_path, so objects created through it land in dbname's
+// own public schema. Pair it with ScratchDatabase for a test that creates
+// cluster-visible objects such as extensions.
+func PostgresURLFor(t testing.TB, dbname string) string {
+	t.Helper()
+	return withDatabase(t, require(t, envPostgres), dbname)
+}
+
+// PgBouncerURLFor returns MOMO_TEST_PGBOUNCER_URL with its database replaced by
+// dbname and no search_path. The pooler routes every database name (its
+// wildcard entry), so dbname can be a database from ScratchDatabase.
+func PgBouncerURLFor(t testing.TB, dbname string) string {
+	t.Helper()
+	return withDatabase(t, require(t, envPgBouncer), dbname)
+}

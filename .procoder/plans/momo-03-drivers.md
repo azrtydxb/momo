@@ -28,12 +28,12 @@ Copied verbatim from `.procoder/specs/momo.md` (Constraints section) where they 
 
 Pinned versions, verified against the Go module proxy and the module sources on 2026-11-04:
 
-| Module | Pin | Published | Note |
-|---|---|---|---|
-| github.com/jackc/pgx/v5 | v5.11.0 | 2026-09-07 | v5.12.0 exists (2026-10-31) and is not used: too new for this plan |
-| github.com/mattn/go-sqlite3 | v1.14.52 | 2026-09-05 | bundles SQLite 3.53.4 (`sqlite3-binding.h`) |
-| github.com/asg017/sqlite-vec-go-bindings/cgo | v0.1.6 | 2024-11-20 | `Auto()` calls `sqlite3_auto_extension` |
-| modernc.org/sqlite | v1.60.1 | 2026-09-29 | bundles SQLite 3.54.1 in v1.61.1; v1.60.1 is pinned |
+| Module                                       | Pin      | Published  | Note                                                               |
+| -------------------------------------------- | -------- | ---------- | ------------------------------------------------------------------ |
+| github.com/jackc/pgx/v5                      | v5.11.0  | 2026-09-07 | v5.12.0 exists (2026-10-31) and is not used: too new for this plan |
+| github.com/mattn/go-sqlite3                  | v1.14.52 | 2026-09-05 | bundles SQLite 3.53.4 (`sqlite3-binding.h`)                        |
+| github.com/asg017/sqlite-vec-go-bindings/cgo | v0.1.6   | 2024-11-20 | `Auto()` calls `sqlite3_auto_extension`                            |
+| modernc.org/sqlite                           | v1.60.1  | 2026-09-29 | bundles SQLite 3.54.1 in v1.61.1; v1.60.1 is pinned                |
 
 Source facts relied on (read from the pinned module sources):
 
@@ -50,6 +50,7 @@ Open items that this plan does not resolve (recorded in the final report): Postg
 ## Task 1: testopen package with Postgres and Each (milestone M1)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/internal/testdb/testopen/testopen.go`
 - Create: `/Volumes/DATA/Development/momo/internal/testdb/testopen/testopen_test.go`
 
@@ -164,6 +165,7 @@ func TestEachPassesOptions(t *testing.T) {
 ## Task 2: Optional driver capability interfaces in the root package
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver_optional.go`
 - Create: `/Volumes/DATA/Development/momo/driver_optional_test.go`
 
@@ -171,10 +173,12 @@ Interfaces (root package `momo`, exact):
 
 ```go
 // PinnedConn is one database connection checked out of a driver's pool.
-// Statements on it run on the same session. Release returns it to the pool.
+// Statements on it run on the same session. Begin starts a transaction on that
+// session; Release returns the connection to the pool.
 type PinnedConn interface {
     Query(ctx context.Context, sql string, args []any) (Rows, error)
     Exec(ctx context.Context, sql string, args []any) (int64, error)
+    Begin(ctx context.Context, opts TxOptions) (DriverTx, error)
     Release() error
 }
 
@@ -268,6 +272,7 @@ func TestOptionalInterfacesAreSatisfiedByAdapters(t *testing.T) {
 ## Task 3: Error classification for PostgreSQL (pgx) with value redaction at the source
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/classify.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/classify_test.go`
 
@@ -340,6 +345,7 @@ func TestClassifySerialization(t *testing.T) {
 ## Task 4: pgx adapter core (pgxpool) with per-call exec mode
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/driver.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/driver_test.go`
 - Modify: `/Volumes/DATA/Development/momo/go.mod` (via `go get`)
@@ -456,6 +462,7 @@ func TestDefaultExecModeNoNamedStatements(t *testing.T) {
 ## Task 5: Pool acquire tracer feeding momo.RecordPoolWait
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/tracer.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/tracer_test.go` (package `pgxdriver_test`)
 - Modify: `/Volumes/DATA/Development/momo/internal/testdb/testopen/testopen.go` (`Postgres` builds its pool with `NewPool`)
@@ -473,7 +480,7 @@ func InstrumentPool(cfg *pgxpool.Config)
 func NewPool(ctx context.Context, url string) (*pgxpool.Pool, error)
 ```
 
-Behaviour (pgxpool v5.11.0 selects an acquire tracer from `ConnConfig.Tracer` when it implements `pgxpool.AcquireTracer`, and passes to `TraceAcquireEnd` the context that `TraceAcquireStart` returned): `TraceAcquireStart` returns the context with the current time stored under an unexported key. `TraceAcquireEnd` reads that time and calls `momo.RecordPoolWait(ctx, time.Since(start))`, so the wait is attributed to the statement whose context is being acquired for. An acquire that finds an idle connection records a near-zero wait.
+Behaviour (pgxpool v5.11.0 selects an acquire tracer from `ConnConfig.Tracer` when it implements `pgxpool.AcquireTracer`, and passes to `TraceAcquireEnd` the context that `TraceAcquireStart` returned): `TraceAcquireStart` returns the context with the current time stored under an unexported key. `TraceAcquireEnd` reads that time and calls `momo.RecordPoolWait(ctx, time.Since(start))`, so the wait is attributed to the statement whose context is being acquired for. An acquire that finds an idle connection records nothing, so `PoolWait == 0` means no wait; the one exception is a concurrent idle hit, which may record its own small, real elapsed time (see the comment in `tracer.go`).
 
 - [ ] **Step 1: Write the failing test** `tracer_test.go`:
 
@@ -603,6 +610,7 @@ Change `testopen.Postgres` to `pool, err := pgxdriver.NewPool(ctx, testdb.Postgr
 ## Task 6: Transactions with isolation, read-only access and savepoints on PostgreSQL
 
 Files:
+
 - Modify: `/Volumes/DATA/Development/momo/driver/pgxdriver/driver.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/tx_test.go`
 
@@ -666,6 +674,7 @@ func TestUnknownIsolationIsUnsupported(t *testing.T) {
 ## Task 7: Pinned connections and pool statistics on PostgreSQL
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/pin.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/pin_test.go`
 - Create: `/Volumes/DATA/Development/momo/onconn.go` (package `momo`, root)
@@ -690,7 +699,7 @@ func (db *DB) OnConn(pc PinnedConn) *DB
 func (d *driver) PoolStats() momo.PoolStats
 ```
 
-`pinned` wraps `*pgxpool.Conn`. `Release` calls the pool release once; a second call returns nil. `PoolStats` copies `pool.Stat()` into `momo.PoolStats`, with `EmptyAcquireWaitNS = stat.EmptyAcquireWaitTime().Nanoseconds()`.
+`pinned` wraps `*pgxpool.Conn`. `Begin` starts a pgx transaction on that connection through the same `DriverTx` wrapper the pool driver uses (Task 6), so a transaction on a pinned connection ends on the same session. `Release` calls the pool release once; a second call returns nil. `PoolStats` copies `pool.Stat()` into `momo.PoolStats`, with `EmptyAcquireWaitNS = stat.EmptyAcquireWaitTime().Nanoseconds()`.
 
 - [ ] **Step 1: Write the failing test** `pin_test.go`:
 
@@ -730,6 +739,16 @@ func TestPinnedConn(t *testing.T) {
     }
     if st := d.(momo.PoolStater).PoolStats(); st.AcquiredConns < 1 {
         t.Fatalf("AcquiredConns = %d while pinned", st.AcquiredConns)
+    }
+    tx, err := p.Begin(ctx, momo.TxOptions{})
+    if err != nil {
+        t.Fatal(err)
+    }
+    if _, err := tx.Exec(ctx, "SELECT 1", nil); err != nil {
+        t.Fatal(err)
+    }
+    if err := tx.Rollback(ctx); err != nil {
+        t.Fatal(err)
     }
     if err := p.Release(); err != nil {
         t.Fatal(err)
@@ -821,6 +840,7 @@ func TestOnConnSessionAndHooks(t *testing.T) {
 ## Task 8: COPY and batch paths on PostgreSQL
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/bulk.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/bulk_test.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/bulk_tx_test.go` (package `pgxdriver_test`)
@@ -848,6 +868,8 @@ func BatcherOf(q Querier) (Batcher, bool)
 ```
 
 `driver_access.go` implements both with a type switch on `*DB` (`db.ex.q`) and `*Tx` (`tx.dtx`), so that momo-05's COPY insert works inside a transaction.
+
+**Batch buffering and exec mode (review 063).** `SendBatch` buffers every statement result eagerly and without bound before returning (documented in ARCHITECTURE). It honours the driver exec mode: under the default mode it sends unnamed extended-protocol statements through pgconn (no prepared statements, PgBouncer-safe), because `pgx.Batch` always uses the connection default mode.
 
 `CopyFrom` splits `table` on `.` into `pgx.Identifier` parts (schema, table) so schema-qualified tables work. `SendBatch` returns one `momo.Rows` per statement: `pgx.BatchResults.Query()` for each, wrapped in `pgxRows` (Task 4); a statement that returns no rows yields a `Rows` whose `Next` is false and whose `Close` drains the result.
 
@@ -990,6 +1012,7 @@ func TestCopyAndBatchInTransaction(t *testing.T) {
 ## Task 9: database/sql adoption: FromSQLDB and FromConnConfig (pgx stdlib)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/sqldb.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/sqldb_test.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/sqldb_adapter_test.go` (the S-88 acceptance test, external package `pgxdriver_test`, because it imports `testopen`, which imports `pgxdriver`)
@@ -1007,7 +1030,7 @@ func FromSQLDB(db *sql.DB) momo.Driver
 func FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)
 ```
 
-Pin uses `db.Conn(ctx)` wrapped as `momo.PinnedConn`. `PoolStats` maps `db.Stats()`: `OpenConnections` to TotalConns, `InUse` to AcquiredConns, `Idle` to IdleConns, `MaxOpenConnections` to MaxConns, `WaitCount` to AcquireCount, `WaitDuration` nanoseconds to EmptyAcquireWaitNS. Begin uses `db.BeginTx(ctx, &sql.TxOptions{Isolation, ReadOnly})`. Errors pass through unwrapped (database/sql does not wrap driver errors), so `ClassifyError` from Task 3 sees `*pgconn.PgError`. The driver returned by `FromSQLDB` also implements `Capabilities()` returning `momo.Capabilities{Vectors: true}`, as `New` does, because S-88 requires vector support shared with the native adapter. It implements neither `momo.Copier` nor `momo.Batcher`; that difference is the only one allowed (see `allowedDiffs` in Step 2b).
+Pin uses `db.Conn(ctx)` wrapped as `momo.PinnedConn`. `PoolStats` maps `db.Stats()`: `OpenConnections` to TotalConns, `InUse` to AcquiredConns, `Idle` to IdleConns, `MaxOpenConnections` to MaxConns, `WaitCount` to AcquireCount, `WaitDuration` nanoseconds to EmptyAcquireWaitNS. Begin uses `db.BeginTx(ctx, &sql.TxOptions{Isolation, ReadOnly})`; the pinned connection's `Begin` uses `conn.BeginTx(ctx, &sql.TxOptions{Isolation, ReadOnly})` on the `*sql.Conn` from `Pin`, and its `Release` calls `conn.Close()` (which returns the connection to the pool). Errors pass through unwrapped (database/sql does not wrap driver errors), so `ClassifyError` from Task 3 sees `*pgconn.PgError`. The driver returned by `FromSQLDB` also implements `Capabilities()` returning `momo.Capabilities{Vectors: true}`, as `New` does, because S-88 requires vector support shared with the native adapter. It implements neither `momo.Copier` nor `momo.Batcher`; that difference is the only one allowed (see `allowedDiffs` in Step 2b).
 
 - [ ] **Step 1: Write the failing tests** `sqldb_test.go`:
 
@@ -1158,6 +1181,7 @@ func TestPostgresSQLDBAdapter(t *testing.T) {
 ## Task 10: PgBouncer transaction-mode compatibility with QueryExecModeExec
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/pgbouncer_test.go`
 - Modify: `/Volumes/DATA/Development/momo/internal/testdb/compose.yaml` (adds the `pgbouncer` service)
 - Create: `/Volumes/DATA/Development/momo/internal/testdb/pgbouncer/pgbouncer.ini`
@@ -1167,9 +1191,10 @@ Interfaces: `testdb.PgBouncerURL(t testing.TB) string` (contract name; the momo-
 
 Pinned container: `edoburu/pgbouncer:v1.25.2-p0` (published 2026-06-10, verified on Docker Hub during planning).
 
-`internal/testdb/compose.yaml` gains:
+`internal/testdb/compose.yaml` gains this service under `services:`:
 
 ```yaml
+services:
   pgbouncer:
     image: edoburu/pgbouncer:v1.25.2-p0
     volumes:
@@ -1202,6 +1227,8 @@ track_extra_parameters = search_path
 `track_extra_parameters = search_path` (PgBouncer 1.20 or later) is required: `testdb.PgBouncerURL(t)` carries the per-test schema as a `search_path` startup parameter, and PgBouncer must apply it to whichever server connection it hands the client. The `[databases]` entry must route to the same database as `MOMO_TEST_POSTGRES_URL`, because that URL's connection creates the per-test schema.
 
 `internal/testdb/pgbouncer/userlist.txt` (test credentials only): `"momo" "momo"`.
+
+Reconciled 2026-11-05: mounting `pgbouncer.ini` and `userlist.txt` does not work here. Docker Desktop cannot share the checkout path (`/Volumes/DATA`), and GitHub Actions service containers start before checkout. The service is therefore configured through the edoburu image environment in both `internal/testdb/compose.yaml` and `.github/workflows/ci.yml`: `POOL_MODE=transaction`, `DEFAULT_POOL_SIZE=4`, `MAX_CLIENT_CONN=200`, `MAX_PREPARED_STATEMENTS=0`, `IGNORE_STARTUP_PARAMETERS=extra_float_digits`, and a `DATABASE_URL` that names no database, which makes the image write a `* =` entry so every database name is routed. The two files above are not created. The image's generated ini has no `track_extra_parameters` line and its entrypoint has no variable for it, so the pooler cannot track `search_path`: a startup `search_path` is not reliable through this pooler (a reused server connection keeps the value of the client that opened it). The suite phase of `pgbouncer_test.go` therefore runs `suite.RunAll` in a per-run scratch database `momo_bnc_<hex>` (`testdb.ScratchDatabase` and `testdb.PgBouncerURLFor`, default `search_path`, dropped afterwards `WITH (FORCE)`); the workload phase schema-qualifies its tables.
 
 Two phases. Phase 1 runs eight concurrent workers over `onePass` (transactions, reads, batches), so statements hop server connections. Phase 2 runs `suite.RunAll` (momo-05 Task 35) through the same pooler with `suite.CapsOf(db)`, exercising the full query and write surface under transaction pooling. Phase 2 runs after phase 1 has finished, because the suite creates its own tables.
 
@@ -1333,6 +1360,7 @@ func countWorker(ctx context.Context, tx momo.DriverTx, w int) (n int, err error
 ## Task 11: Read-replica routing with a unit of work and AllowStaleReads (S-40)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/replica.go`
 - Create: `/Volumes/DATA/Development/momo/replica_test.go`
 - Modify: `/Volumes/DATA/Development/momo/db.go` (after momo-01 creates it)
@@ -1357,6 +1385,8 @@ func NewUnitOfWork(ctx context.Context) context.Context
 // after a write in the same unit of work.
 func AllowStaleReads(ctx context.Context) context.Context
 ```
+
+OnConn copies *DB; the copy must nil the replicas field.
 
 Implementation: `uowState{written atomic.Bool}` is stored under an unexported key by `NewUnitOfWork`; `AllowStaleReads` stores a `staleOK` key. `routingDriver{primary, replica Driver}` implements `Driver`: `Dialect` returns the primary's; `Query` goes to the primary when `uowWritten(ctx) && !staleOK(ctx)` and to the replica otherwise; `Exec` and `Begin` always go to the primary. Every non-select statement executed by `execer.exec` (and therefore by Tx) calls `markWrite(ctx)` first. Replicas do not chain.
 
@@ -1480,6 +1510,7 @@ The file also imports `"errors"`. `stubDriver` is a Driver whose `Dialect()` ret
 ## Task 12: Iterator closes the cursor on early exit (S-4 cursor guarantee)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/iter_test.go`
 
 Interfaces used (root, from momo-01 spike `select.go`): `SelectQuery[T].Each(ctx, fn) error`, `SelectQuery[T].Iter(ctx) iter.Seq2[T, error]`.
@@ -1581,6 +1612,7 @@ func TestIterClosesCursor(t *testing.T) {
 ## Task 13: Pool statistics track acquisition (S-90)
 
 Files:
+
 - Modify: `/Volumes/DATA/Development/momo/driver/pgxdriver/pin_test.go` (adds one test)
 
 Scope: pool statistics only. Bounded memory during iteration belongs to momo-09 (S-56) and is not tested here.
@@ -1617,6 +1649,7 @@ func TestPoolStatsReflectAcquisition(t *testing.T) {
 ## Task 14: ServerVersion for MERGE gating
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/version.go`
 - Create: `/Volumes/DATA/Development/momo/driver/pgxdriver/version_test.go`
 
@@ -1666,6 +1699,7 @@ func TestServerVersion(t *testing.T) {
 ## Task 15: testopen SQLite opener, its Each entry and the options path (milestone M2)
 
 Files:
+
 - Modify: `/Volumes/DATA/Development/momo/internal/testdb/testopen/testopen.go` (adds `SQLite` and appends the registry entry)
 - Modify: `/Volumes/DATA/Development/momo/internal/testdb/testopen/testopen_test.go` (replaces `TestEachRunsPostgres`, adds the SQLite tests)
 
@@ -1728,6 +1762,7 @@ func TestOptionsReachSQLite(t *testing.T) {
 ## Task 16: Error classification for SQLite (mattn) with redaction-safe causes
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/classify.go`
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/classify_test.go`
 
@@ -1795,6 +1830,7 @@ func TestClassifyPassesThroughUnknown(t *testing.T) {
 ## Task 17: SQLite adapter core (mattn + sqlite-vec) with recommended configuration
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/open.go`
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/open_test.go`
 - Modify: `/Volumes/DATA/Development/momo/go.mod` (via `go get`)
@@ -1886,6 +1922,7 @@ func TestSQLiteRecommendedConfig(t *testing.T) {
 ## Task 18: SQLite transaction isolation and read-only transactions
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/driver_test.go`
 - Modify: `/Volumes/DATA/Development/momo/driver/sqlitedriver/open.go` (Begin)
 
@@ -1965,10 +2002,11 @@ func TestSQLiteReadOnlyTransaction(t *testing.T) {
 ## Task 19: SQLite pinned connections, pool statistics and busy mapping
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/pin_test.go`
 - Modify: `/Volumes/DATA/Development/momo/driver/sqlitedriver/driver.go`
 
-Interfaces: `Pin(ctx) (momo.PinnedConn, error)` via `db.Conn(ctx)`; `PoolStats()` from `db.Stats()` with the same mapping as Task 9.
+Interfaces: `Pin(ctx) (momo.PinnedConn, error)` via `db.Conn(ctx)`, with `Begin(ctx, momo.TxOptions) (momo.DriverTx, error)` on the pinned connection via `conn.BeginTx` and `Release() error` via `conn.Close()`, as in Task 9; `PoolStats()` from `db.Stats()` with the same mapping as Task 9.
 
 - [ ] **Step 1: Write the failing test** `pin_test.go`:
 
@@ -2048,6 +2086,7 @@ The `Config` used in `TestBusyIsStructuredError` ensures the second writer's `_t
 ## Task 20: SQLite load_extension is refused on every connection (S-45)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/extension_test.go`
 - Modify: `/Volumes/DATA/Development/momo/driver/sqlitedriver/open.go` (connect hook)
 
@@ -2123,6 +2162,7 @@ func TestSQLiteNoLoadExtension(t *testing.T) {
 ## Task 21: Structured error round trip for SQLite (classification in use)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/errors_test.go`
 
 - [ ] **Step 1: Write the failing test:**
@@ -2179,6 +2219,7 @@ func TestErrorClassificationSQLite(t *testing.T) {
 ## Task 22: Pure-Go SQLite adapter (modernc, no cgo, no vectors)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitepure/open.go`
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitepure/open_test.go`
 - Modify: `/Volumes/DATA/Development/momo/go.mod` (via `go get modernc.org/sqlite@v1.60.1`)
@@ -2235,6 +2276,7 @@ func TestPureSQLiteCapabilitiesAndErrors(t *testing.T) {
 ## Task 23: Pure-Go build proof (S-89)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitepure/nocgo_test.go`
 - Modify: `/Volumes/DATA/Development/momo/driver/sqlitepure/classify.go` (adds the `vec_` rule)
 
@@ -2279,6 +2321,7 @@ func TestSQLitePureGo(t *testing.T) {
 ## Task 24: SQLite round trip through the public driver interface
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/driver_roundtrip_test.go` (package `driver_test`)
 
 - [ ] **Step 1: Write the failing test:**
@@ -2334,6 +2377,7 @@ func TestRoundTripSQLite(t *testing.T) {
 ## Task 25: Document process-wide effects and hardening of the cgo SQLite driver
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/doc.go`
 - Create: `/Volumes/DATA/Development/momo/driver/sqlitedriver/doc_test.go`
 
@@ -2383,34 +2427,34 @@ Files: none created. This task runs the gate.
 
 ## Spec coverage
 
-| Spec id | Tasks |
-|---|---|
-| S-7 | 6 (PostgreSQL transactions, isolation, savepoints), 18 (SQLite isolation and read-only) |
-| S-8 | 3 (PostgreSQL classification), 16 (SQLite classification), 21 (SQLite error round trip) |
-| S-9 | 4, 8, 9 (PostgreSQL pgx, COPY and batch on pools and transactions, database/sql), 17 (SQLite via database/sql) |
-| S-18 pool wait | 5 (pool acquire tracer feeds `momo.RecordPoolWait`) |
-| S-30 | 4 (exec mode), 10 (PgBouncer transaction mode) |
-| S-40 | 11 (replicas, unit of work, AllowStaleReads) |
-| S-45 | 17 (open), 20 (load_extension refused on every connection), 25 (hardening doc) |
-| S-57 | 17 (WAL, busy_timeout, synchronous), 19 (busy mapping) |
-| S-88 | 9 |
-| S-89 | 22 (modernc adapter), 23 (no-cgo build) |
-| S-90 | 7 (PostgreSQL pinned, OnConn), 13 (pool stats acquisition), 19 (SQLite pinned) |
-| TestIterClosesCursor | 12 |
-| SQLite >= 3.35 check | 17 |
-| TestErrorClassification (drivers) | 3, 16, 21 |
-| TestTransactions (driver) | 6, 18 |
-| TestSQLiteRecommendedConfig | 17, 19 |
-| TestSQLiteNoLoadExtension | 20 |
-| TestPgBouncerTransactionMode | 10 |
-| TestPinnedConn | 7 |
-| TestPoolWaitRecordedWhenExhausted | 5 |
-| TestCopyAndBatchInTransaction | 8 |
-| TestSQLitePureGo | 23 |
-| TestPostgresSQLDBAdapter | 9 |
-| MERGE version gate input | 14 |
-| testopen.Each (options) and dialect registry | 1 (Postgres, Each with options), 15 (SQLite entry and options) |
-| Final gate | 26 |
+| Spec id                                      | Tasks                                                                                                          |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| S-7                                          | 6 (PostgreSQL transactions, isolation, savepoints), 18 (SQLite isolation and read-only)                        |
+| S-8                                          | 3 (PostgreSQL classification), 16 (SQLite classification), 21 (SQLite error round trip)                        |
+| S-9                                          | 4, 8, 9 (PostgreSQL pgx, COPY and batch on pools and transactions, database/sql), 17 (SQLite via database/sql) |
+| S-18 pool wait                               | 5 (pool acquire tracer feeds `momo.RecordPoolWait`)                                                            |
+| S-30                                         | 4 (exec mode), 10 (PgBouncer transaction mode)                                                                 |
+| S-40                                         | 11 (replicas, unit of work, AllowStaleReads)                                                                   |
+| S-45                                         | 17 (open), 20 (load_extension refused on every connection), 25 (hardening doc)                                 |
+| S-57                                         | 17 (WAL, busy_timeout, synchronous), 19 (busy mapping)                                                         |
+| S-88                                         | 9                                                                                                              |
+| S-89                                         | 22 (modernc adapter), 23 (no-cgo build)                                                                        |
+| S-90                                         | 7 (PostgreSQL pinned, OnConn), 13 (pool stats acquisition), 19 (SQLite pinned)                                 |
+| TestIterClosesCursor                         | 12                                                                                                             |
+| SQLite >= 3.35 check                         | 17                                                                                                             |
+| TestErrorClassification (drivers)            | 3, 16, 21                                                                                                      |
+| TestTransactions (driver)                    | 6, 18                                                                                                          |
+| TestSQLiteRecommendedConfig                  | 17, 19                                                                                                         |
+| TestSQLiteNoLoadExtension                    | 20                                                                                                             |
+| TestPgBouncerTransactionMode                 | 10                                                                                                             |
+| TestPinnedConn                               | 7                                                                                                              |
+| TestPoolWaitRecordedWhenExhausted            | 5                                                                                                              |
+| TestCopyAndBatchInTransaction                | 8                                                                                                              |
+| TestSQLitePureGo                             | 23                                                                                                             |
+| TestPostgresSQLDBAdapter                     | 9                                                                                                              |
+| MERGE version gate input                     | 14                                                                                                             |
+| testopen.Each (options) and dialect registry | 1 (Postgres, Each with options), 15 (SQLite entry and options)                                                 |
+| Final gate                                   | 26                                                                                                             |
 
 ## Dependencies on other plans
 

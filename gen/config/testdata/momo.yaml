@@ -1,0 +1,19 @@
+version: 1
+packages:
+  - ./internal/testmodels/...
+naming: gorm
+dialects: [postgres, sqlite]
+tags: []
+migrate:
+  dir:
+    postgres: migrations/postgres
+    sqlite: migrations/sqlite
+  url_env:
+    postgres: MOMO_POSTGRES_URL
+  schemas: [public]
+  lock_timeout: 5s
+  statement_timeout: 30s
+  exclude: ["pg_*"]
+plugins:
+  viz:
+    format: mermaid

@@ -73,7 +73,7 @@ func TestNegativeLimitAndOffset(t *testing.T) {
 func TestKeysetTieBreakerNeedsOwnTable(t *testing.T) {
 	pg := momo.New(fakedriver.New(dialect.Postgres))
 	other := momo.ColumnOf[int64]("other", "id")
-	c, err := momo.Select[unitDocument](pg).OrderBy(other.Asc()).After(int64(1), int64(2)).SQL()
+	c, err := momo.Select[unitDocument](pg).CrossJoin(momo.TableRef{Name: "other"}).OrderBy(other.Asc()).After(int64(1), int64(2)).SQL()
 	if err != nil {
 		t.Fatalf("ordering by another table's id must still add the primary key: %v", err)
 	}

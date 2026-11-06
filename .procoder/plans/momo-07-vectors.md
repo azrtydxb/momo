@@ -720,6 +720,8 @@ Rules (enforced by ValidateVectorIndex; each is a row in TestVectorIndexRules):
 - `ivfflat` on `bit(N)`: opclass `bit_hamming_ops` only (bit_jaccard_ops on IVFFlat is not documented by pgvector).
 - Index Parts must be exactly one column part (expression parts are rejected for vector indexes).
 - Index `With` keys other than `m`, `ef_construction`, `lists` are rejected.
+- Unsized `vector`, `halfvec` and `sparsevec` columns are rejected (the server requires dimensions); unsized `bit` is valid. `ef_construction` defaults to 64, so `m` above 32 needs an explicit `ef_construction` of at least `2*m`. `ivfflat` without `lists` is rejected by plan choice although the server defaults it to 100.
+- `gen/schema.go` `addIndex` calls `ValidateVectorIndex` for hnsw and ivfflat indexes on PostgreSQL and reports its error as a positioned diagnostic.
 
 - [ ] Step 1. Write `schema/vector_test.go` with a table of cases named by intent:
 
@@ -1016,10 +1018,10 @@ type SearchSettings struct {
 	ExactSearch          bool          // enable_indexscan = off and enable_bitmapscan = off
 	HNSWEfSearch         int           // hnsw.ef_search, 1..1000
 	HNSWIterativeScan    IterativeScan // hnsw.iterative_scan
-	HNSWMaxScanTuples    int           // hnsw.max_scan_tuples, >= 1 (server default 20000)
-	IVFFlatProbes        int           // ivfflat.probes, >= 1
+	HNSWMaxScanTuples    int           // hnsw.max_scan_tuples, 1..2147483647 (server default 20000)
+	IVFFlatProbes        int           // ivfflat.probes, 1..32768
 	IVFFlatIterativeScan IterativeScan // ivfflat.iterative_scan: off or relaxed_order only
-	IVFFlatMaxProbes     int           // ivfflat.max_probes, >= 1
+	IVFFlatMaxProbes     int           // ivfflat.max_probes, 1..32768
 }
 
 func (s SearchSettings) Validate() error // wraps ErrValidation
@@ -1034,7 +1036,7 @@ type settingPair struct{ Name, Value string }
 func searchSettingPairs(s SearchSettings) []settingPair
 ```
 
-Binding rule: every setting is applied with `tx.SetLocal(ctx, pair.Name, pair.Value)` (plan momo-04 Task 27, contract method `Tx.SetLocal(ctx, name, value string) error`), which renders `SELECT set_config($1, $2, true)`. Name and value are bound parameters, and nothing is interpolated into SQL text. `SetSearch` returns `ErrUnsupported` on SQLite when any field other than `ExactSearch` is non-zero; `ExactSearch` alone is a no-op on SQLite.
+Binding rule: every setting is applied with `tx.SetLocal(ctx, pair.Name, pair.Value)` (plan momo-04 Task 23, contract method `Tx.SetLocal(ctx, name, value string) error`), which renders `SELECT set_config($1, $2, true)`. Name and value are bound parameters, and nothing is interpolated into SQL text. `SetSearch` returns `ErrUnsupported` on SQLite when any field other than `ExactSearch` is non-zero; `ExactSearch` alone is a no-op on SQLite.
 
 - [ ] Step 1. Write `search_test.go`:
 
@@ -2116,7 +2118,7 @@ Required content of `docs/vectors.md`, in this order:
 8. Hybrid search (PostgreSQL only): full-text and vector candidate lists, `TextCandidates` and `VectorCandidates` (default 100 each, range 1..1000), fused score `1/(k + rank_text) + 1/(k + rank_vec)` with `RRFK` default 60 (k=60), ties broken by primary key ascending.
 9. Value rules: NaN and Inf are rejected; halfvec values must satisfy |x| <= 65504; dimensions above 16000 are rejected.
 
-Pages list row in `docs/README.md`: `| [Vector search](vectors.md) | pgvector and sqlite-vec types, metrics, limits and hybrid search |`.
+Pages list row in `docs/README.md`: `| [Vector search] (vectors.md) | pgvector and sqlite-vec types, metrics, limits and hybrid search |`.
 
 - [ ] Step 1. Write `vector/doc_test.go`:
 
@@ -2161,7 +2163,7 @@ Deliver first-class vector search for Momo: validated pgvector value types (vect
 
 ## Architecture
 
-The `vector` package owns the four Go value types, their validation, and per-dialect encodings chosen by `DialectValue(dialect.Name)`; the root package owns `VectorColumn[V]` and the distance expressions, which render pgvector operators on PostgreSQL and sqlite-vec functions on SQLite, gated by `dialect.Dialect.Vector` capabilities. Index declarations are `schema.Index` values (`Method`, `Parts[].OpClass`, `With`) validated by `schema.ValidateVectorIndex` and rendered by `migrate/postgres` (plan momo-04); search settings are applied with `set_config(name, value, true)` through `Tx.SetLocal` (plan momo-04 Task 27) inside a transaction, so pooled connections never keep them. Drivers own wire format: `driver/pgxdriver` sends text by default and binary through codecs installed by `pgxdriver.ConfigureVectors`, and `driver/sqlitedriver` loads the statically linked sqlite-vec.
+The `vector` package owns the four Go value types, their validation, and per-dialect encodings chosen by `DialectValue(dialect.Name)`; the root package owns `VectorColumn[V]` and the distance expressions, which render pgvector operators on PostgreSQL and sqlite-vec functions on SQLite, gated by `dialect.Dialect.Vector` capabilities. Index declarations are `schema.Index` values (`Method`, `Parts[].OpClass`, `With`) validated by `schema.ValidateVectorIndex` and rendered by `migrate/postgres` (plan momo-04); search settings are applied with `set_config(name, value, true)` through `Tx.SetLocal` (plan momo-04 Task 23) inside a transaction, so pooled connections never keep them. Drivers own wire format: `driver/pgxdriver` sends text by default and binary through codecs installed by `pgxdriver.ConfigureVectors`, and `driver/sqlitedriver` loads the statically linked sqlite-vec.
 
 ## Constraints
 

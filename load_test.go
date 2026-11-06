@@ -1,0 +1,426 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package momo_test
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/relfixture"
+	"github.com/azrtydxb/momo/internal/relfixture/author"
+	"github.com/azrtydxb/momo/internal/relfixture/comment"
+	"github.com/azrtydxb/momo/internal/relfixture/document"
+	"github.com/azrtydxb/momo/internal/relfixture/employee"
+	"github.com/azrtydxb/momo/internal/relfixture/models"
+	"github.com/azrtydxb/momo/internal/relfixture/region"
+	"github.com/azrtydxb/momo/internal/relfixture/store"
+)
+
+func allDocs(t *testing.T, db *momo.DB) []models.Document {
+	t.Helper()
+	docs, err := momo.Select[models.Document, *models.Document](db).OrderBy(document.ID.Asc()).All(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return docs
+}
+
+func TestEagerLoadBelongsTo(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		docs := allDocs(t, db)
+		h.After = nil
+
+		if err := momo.Load(context.Background(), db, docs, document.Author); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.After) != 1 || h.After[0] != "documents.Author" {
+			t.Fatalf("want exactly one child statement tagged documents.Author, got %v", h.After)
+		}
+		wantNames := map[int64]string{1: "Ada", 2: "Ada", 3: "Grace"}
+		for _, d := range docs {
+			want, ok := wantNames[d.ID]
+			if !ok {
+				if d.Author != nil {
+					t.Fatalf("doc %d with NULL FK must keep Author nil", d.ID)
+				}
+				continue
+			}
+			if d.Author == nil || d.Author.Name != want {
+				t.Fatalf("doc %d: author %+v, want %s", d.ID, d.Author, want)
+			}
+		}
+		if docs[0].Author == docs[1].Author {
+			t.Fatal("parents sharing a key must get distinct copies, not one shared pointer")
+		}
+	})
+}
+
+func TestEagerLoadHasOne(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		authors, err := momo.Select[models.Author, *models.Author](db).OrderBy(author.ID.Asc()).All(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(context.Background(), db, authors, author.FirstDocument); err != nil {
+			t.Fatal(err)
+		}
+		if authors[0].FirstDocument == nil || authors[0].FirstDocument.ID != 1 || authors[1].FirstDocument == nil || authors[1].FirstDocument.ID != 2 {
+			t.Fatalf("has-one loaded wrong documents: %+v %+v", authors[0].FirstDocument, authors[1].FirstDocument)
+		}
+	})
+}
+
+func TestRelationHookEvents(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		docs := allDocs(t, db)
+		if err := momo.Load(context.Background(), db, docs, document.Author); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.Events) != 1 {
+			t.Fatalf("want one RelationEvent, got %d", len(h.Events))
+		}
+		e := h.Events[0]
+		if e.Parent != "documents" || e.Name != "Author" || e.Kind != momo.BelongsTo || e.Parents != 4 || e.Children != 2 || e.Queries != 1 {
+			t.Fatalf("unexpected event %+v", e)
+		}
+	})
+}
+
+func TestEagerLoadHasMany(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		docs := allDocs(t, db)
+		if err := momo.Load(context.Background(), db, docs, document.Comments); err != nil {
+			t.Fatal(err)
+		}
+		got := map[int64][]int64{}
+		for _, d := range docs {
+			for _, c := range d.Comments {
+				got[d.ID] = append(got[d.ID], c.ID)
+			}
+		}
+		if fmt.Sprint(got[1]) != "[1 2 3]" || fmt.Sprint(got[3]) != "[4]" || len(got[2]) != 0 || len(got[4]) != 0 {
+			t.Fatalf("comments by doc: %v", got)
+		}
+	})
+}
+
+func TestEagerLoadParentOrderAndPagination(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		// A page of parents, reversed and with a duplicate key on purpose.
+		page, err := momo.Select[models.Document, *models.Document](db).
+			Where(document.ID.Le(3)).OrderBy(document.ID.Desc()).All(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		page = append(page, page[0]) // duplicate parent row
+		if err := momo.Load(context.Background(), db, page, document.Comments); err != nil {
+			t.Fatal(err)
+		}
+		ids := []int64{}
+		for _, d := range page {
+			ids = append(ids, d.ID)
+		}
+		if fmt.Sprint(ids) != "[3 2 1 3]" {
+			t.Fatalf("parent order changed: %v", ids)
+		}
+		if len(page[0].Comments) != 1 || len(page[3].Comments) != 1 || page[3].Comments[0].ID != 4 {
+			t.Fatalf("duplicate parent must receive its own copy of the children: %+v", page[3].Comments)
+		}
+		if len(page[2].Comments) != 3 {
+			t.Fatalf("parent 1 must have 3 comments, got %d", len(page[2].Comments))
+		}
+	})
+}
+
+func TestEagerLoadNullFKEmpty(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		emps, err := momo.Select[models.Employee, *models.Employee](db).OrderBy(employee.ID.Asc()).All(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Employee 1 has a NULL manager_id: Manager must stay nil, and Reports of boss must be 2 employees.
+		if err := momo.Load(context.Background(), db, emps, employee.Manager); err != nil {
+			t.Fatal(err)
+		}
+		if emps[0].Manager != nil || emps[1].Manager == nil || emps[1].Manager.Name != "boss" {
+			t.Fatalf("manager loading wrong: %+v", emps)
+		}
+		if err := momo.Load(context.Background(), db, emps, employee.Reports); err != nil {
+			t.Fatal(err)
+		}
+		if len(emps[0].Reports) != 2 || emps[0].Reports[0].Name != "dev1" || emps[0].Reports[1].Name != "dev2" {
+			t.Fatalf("reports of boss: %+v", emps[0].Reports)
+		}
+		if emps[1].Reports != nil {
+			t.Fatal("a leaf must have a nil slice, not an empty one")
+		}
+	})
+}
+
+func TestEagerLoadReloadClearsStaleChildren(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		docs := allDocs(t, db)
+		if err := momo.Load(ctx, db, docs, document.Comments); err != nil {
+			t.Fatal(err)
+		}
+		// Reload with a scope that matches nothing: every association must become empty.
+		if err := momo.LoadAll(ctx, db, docs, document.Comments.Scope(momo.LoadWhere[models.Comment](comment.ID.Eq(999)))); err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range docs {
+			if d.Comments != nil {
+				t.Fatalf("doc %d kept stale comments after reload: %d", d.ID, len(d.Comments))
+			}
+		}
+	})
+}
+
+// Children of one parent come back in primary-key order even when the physical
+// row order differs (an UPDATE moves a row version in PostgreSQL heaps).
+func TestEagerLoadHasManyOrderIndependentOfStorage(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		for _, id := range []int64{1, 2} {
+			if _, err := momo.Exec(ctx, db, "UPDATE comments SET body = body || 'x' WHERE id = ?", id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		docs := allDocs(t, db)
+		if err := momo.Load(ctx, db, docs, document.Comments); err != nil {
+			t.Fatal(err)
+		}
+		ids := []int64{}
+		for _, c := range docs[0].Comments {
+			ids = append(ids, c.ID)
+		}
+		if fmt.Sprint(ids) != "[1 2 3]" {
+			t.Fatalf("children not in primary-key order: %v", ids)
+		}
+	})
+}
+
+func TestEagerLoadComposite(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+
+		stores, err := momo.Select[models.Store, *models.Store](db).OrderBy(store.ID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, stores, store.Region); err != nil {
+			t.Fatal(err)
+		}
+		// store 1 -> (1,EU) Europe; store 2 -> (1,US) America; store 3 NULL region_code -> nil; store 4 -> (2,EU) Europe2.
+		want := map[int64]string{1: "Europe", 2: "America", 4: "Europe2"}
+		for _, s := range stores {
+			if name, ok := want[s.ID]; ok {
+				if s.Region == nil || s.Region.Name != name {
+					t.Fatalf("store %d: region %+v want %s", s.ID, s.Region, name)
+				}
+			} else if s.Region != nil {
+				t.Fatalf("store %d with NULL composite component must have nil Region", s.ID)
+			}
+		}
+
+		regions, err := momo.Select[models.Region, *models.Region](db).OrderBy(region.TenantID.Asc(), region.Code.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, regions, region.Stores); err != nil {
+			t.Fatal(err)
+		}
+		if len(regions[0].Stores) != 1 || regions[0].Stores[0].Name != "Paris" {
+			t.Fatalf("region (1,EU) stores: %+v", regions[0].Stores)
+		}
+		if len(regions[1].Stores) != 1 || regions[1].Stores[0].Name != "NYC" {
+			t.Fatalf("region (1,US) stores: %+v", regions[1].Stores)
+		}
+		if len(regions[2].Stores) != 1 || regions[2].Stores[0].Name != "Other" {
+			t.Fatalf("region (2,EU) stores: %+v", regions[2].Stores)
+		}
+	})
+}
+
+func relationStatements(h *relfixture.Hook) int {
+	n := 0
+	for _, r := range h.After {
+		if r != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// Composite keys must keep the tuple semantics of the single-column paths:
+// one statement for many parents, deduplicated parent keys, primary-key child
+// order independent of insertion order, tuple (not per-column) matching, and a
+// partly NULL key loads nothing.
+func TestEagerLoadCompositeSemantics(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		// Two more stores in region (1,EU), inserted out of id order.
+		for _, r := range []struct {
+			id   int64
+			name string
+		}{{6, "Nice"}, {5, "Lyon"}} {
+			if _, err := momo.Exec(ctx, db, "INSERT INTO stores (id, tenant_id, region_code, name) VALUES (?, 1, 'EU', ?)", r.id, r.name); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// Belongs-to: stores 1, 5, 6 share region (1,EU); one statement, all assigned.
+		stores, err := momo.Select[models.Store, *models.Store](db).OrderBy(store.ID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.After = nil
+		if err := momo.Load(ctx, db, stores, store.Region); err != nil {
+			t.Fatal(err)
+		}
+		if n := relationStatements(h); n != 1 {
+			t.Fatalf("belongs-to issued %d relation statements, want 1", n)
+		}
+		for _, s := range stores {
+			switch s.ID {
+			case 1, 5, 6:
+				if s.Region == nil || s.Region.TenantID != 1 || s.Region.Code != "EU" {
+					t.Fatalf("store %d: region %+v want (1,EU)", s.ID, s.Region)
+				}
+			case 4:
+				if s.Region == nil || s.Region.TenantID != 2 || s.Region.Code != "EU" {
+					t.Fatalf("store %d: region %+v want (2,EU), tuple matching crossed columns", s.ID, s.Region)
+				}
+			}
+		}
+		if stores[0].Region == stores[3].Region {
+			t.Fatal("distinct composite keys must not share a child")
+		}
+
+		// Has-many: children in primary-key order, one statement for all regions.
+		regions, err := momo.Select[models.Region, *models.Region](db).OrderBy(region.TenantID.Asc(), region.Code.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A duplicated parent row must not duplicate children or the query keys.
+		regions = append(regions, regions[0])
+		h.After = nil
+		if err := momo.Load(ctx, db, regions, region.Stores); err != nil {
+			t.Fatal(err)
+		}
+		if n := relationStatements(h); n != 1 {
+			t.Fatalf("has-many issued %d relation statements, want 1", n)
+		}
+		ids := func(cs []models.Store) string {
+			out := []int64{}
+			for _, c := range cs {
+				out = append(out, c.ID)
+			}
+			return fmt.Sprint(out)
+		}
+		if got := ids(regions[0].Stores); got != "[1 5 6]" {
+			t.Fatalf("region (1,EU) stores %s, want [1 5 6] in primary-key order", got)
+		}
+		if got := ids(regions[3].Stores); got != "[1 5 6]" {
+			t.Fatalf("duplicate parent row stores %s, want [1 5 6]", got)
+		}
+		if got := ids(regions[2].Stores); got != "[4]" {
+			t.Fatalf("region (2,EU) stores %s, want [4]", got)
+		}
+	})
+}
+
+// A region with no stores gets a nil slice, and reloading with a scope that
+// matches nothing clears previously loaded composite associations.
+func TestEagerLoadCompositeEmptyAndStale(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		if _, err := momo.Exec(ctx, db, "INSERT INTO regions (tenant_id, code, name) VALUES (3, 'ZZ', 'Empty')"); err != nil {
+			t.Fatal(err)
+		}
+		regions, err := momo.Select[models.Region, *models.Region](db).OrderBy(region.TenantID.Asc(), region.Code.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, regions, region.Stores); err != nil {
+			t.Fatal(err)
+		}
+		if last := regions[len(regions)-1]; last.Code != "ZZ" || last.Stores != nil {
+			t.Fatalf("region without stores: %+v, want nil Stores", last)
+		}
+		if regions[0].Stores == nil {
+			t.Fatal("seed region lost its stores")
+		}
+		if err := momo.LoadAll(ctx, db, regions, region.Stores.Scope(momo.LoadWhere[models.Store](store.ID.Eq(999)))); err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range regions {
+			if r.Stores != nil {
+				t.Fatalf("region (%d,%s) kept stale stores after reload", r.TenantID, r.Code)
+			}
+		}
+
+		stores, err := momo.Select[models.Store, *models.Store](db).OrderBy(store.ID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, stores, store.Region); err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.LoadAll(ctx, db, stores, store.Region.Scope(momo.LoadWhere[models.Region](region.Code.Eq("nope")))); err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range stores {
+			if s.Region != nil {
+				t.Fatalf("store %d kept a stale region after reload", s.ID)
+			}
+		}
+	})
+}
+
+// NULL in any key component means no key: a descriptor whose extractor reports
+// a key with a nil element (ok = true) must still not query or assign.
+func TestEagerLoadCompositeNullComponent(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		rel := store.Region
+		rel.ParentKey = func(p *models.Store) ([]any, bool) {
+			var code any
+			if p.RegionCode != nil {
+				code = *p.RegionCode
+			}
+			if p.ID == 3 {
+				return []any{nil, code}, true // NULL first component, non-NULL second
+			}
+			return []any{p.TenantID, code}, true
+		}
+		stores, err := momo.Select[models.Store, *models.Store](db).Where(store.ID.In(3)).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.After = nil
+		if err := momo.Load(ctx, db, stores, rel); err != nil {
+			t.Fatal(err)
+		}
+		if n := relationStatements(h); n != 0 {
+			t.Fatalf("a key with a NULL component issued %d statements, want 0", n)
+		}
+		if stores[0].Region != nil {
+			t.Fatalf("NULL component matched a region: %+v", stores[0].Region)
+		}
+	})
+}

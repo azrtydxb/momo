@@ -1,9 +1,9 @@
 # momo-02 Task 17: The Writer: collision-safe, deterministic, refuses handwritten files
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-02-generator
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
@@ -11,9 +11,12 @@ Implements plan momo-02-generator Task 17: The Writer: collision-safe, determini
 
 ## Acceptance criteria
 
-- [ ] `TestGenerateRefusesHandwritten` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-3, part] `TestGenerateRefusesHandwritten` passes for the part of S-3 this task delivers; the full criterion is verified in story 043.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestGenerateRefusesHandwritten` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-3, part] `TestGenerateRefusesHandwritten` passes for the part of S-3 this task delivers; the full criterion is verified in story 043.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+Failing run before implementation: `go test ./gen -run Writer -count=1` gave `undefined: NewWriter`. After: `go test -race -count=1 ./...` all ok, including TestGenerateRefusesHandwritten, TestWriterIdempotentAndCheck, TestWriterFailedWriteLeavesNothing, TestWriterOrphans, TestWriterCollisionSameBytesOK. Gate clean; commit 9b263e1 feat(gen): collision-safe deterministic writer. The S-3 part criterion stays unchecked: verified in story 043.
+
+- Story 043 (commit 515a3ad): TestGenerateRefusesHandwritten passes in the full `go test -race ./...` run; with cross-package generation (TestGenerateCrossPackage) the Writer commits files of two packages without overwriting handwritten files.

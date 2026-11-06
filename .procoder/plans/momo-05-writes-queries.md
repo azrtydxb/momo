@@ -1,5 +1,3 @@
-# momo-05-writes-queries — implementation plan
-
 Status: draft
 Spec: .procoder/specs/momo.md
 
@@ -41,6 +39,7 @@ Owned by momo-01 and not repeated here: the S-4 unit tests `TestQueryReuseNoLeak
 ## Task 1: Integration fixtures, capabilities and the internal/suite package
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/internal/suite/fixture.go` (package `suite`, non-test: driver packages and momo-08 import the suite)
 - Create: `/Volumes/DATA/Development/momo/internal/suite/caps.go` (package `suite`)
 - Create: `/Volumes/DATA/Development/momo/internal/suite/fixture_test.go` (package `suite_test`, smoke test through `testopen.Each`)
@@ -160,6 +159,7 @@ func TestHarnessCreatesDocuments(t *testing.T) {
 ## Task 2: Transactions, error classification and the Scalars helper (S-7, S-8)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/internal/suite/transactions.go` (package `suite`)
 - Create: `/Volumes/DATA/Development/momo/internal/suite/errors.go` (package `suite`)
 - Create: `/Volumes/DATA/Development/momo/scalars.go` (package `momo`)
@@ -249,6 +249,7 @@ func TestScalarsRawPlaceholders(t *testing.T) {
 ## Task 3: Safe names and LIKE escaping (S-43)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/allowlist.go`
 - Create: `/Volumes/DATA/Development/momo/allowlist_test.go`
 
@@ -264,15 +265,15 @@ func NewAllowlist(cols ...ColumnRef) Allowlist
 // Column returns the descriptor for name, or a *Error with Kind ErrValidation.
 func (a Allowlist) Column(name string) (ColumnRef, error)
 
-// EscapeLike escapes %, _ and the escape character \ so the result matches literally inside a LIKE pattern
-// that is rendered with ESCAPE '\'.
+// EscapeLike escapes %, _ and the escape character ! (prefixing each with !) so the result matches literally inside a LIKE pattern
+// that is rendered with ESCAPE '!' on every dialect (no backslash, so server settings cannot change its meaning).
 func EscapeLike(s string) string
 
 // Contains returns a predicate matching rows whose column contains s literally.
 func (c Column[T]) Contains(s string) Predicate  // only for string columns: see Task 3 note
 ```
 
-Note on `Contains`: Go generics do not allow a method only on `Column[string]`; implement `func ContainsLiteral(c Expression[string], s string) Predicate` and render `c LIKE ? ESCAPE '\'` with `EscapeLike(s)` bound as `%` + escaped + `%`. `Like` and `ILike` from the spike stay as they are.
+Note on `Contains`: Go generics do not allow a method only on `Column[string]`; implement `func ContainsLiteral(c Expression[string], s string) Predicate` and render `c LIKE ? ESCAPE '!'` with `EscapeLike(s)` bound as `%` + escaped + `%`. `Like` and `ILike` from the spike stay as they are.
 
 - [ ] **Step 1: Write the failing test** `allowlist_test.go`:
 
@@ -298,7 +299,7 @@ func TestColumnByName(t *testing.T) {
 }
 
 func TestEscapeLike(t *testing.T) {
-    if got := momo.EscapeLike(`50%_off\`); got != `50\%\_off\\` {
+    if got := momo.EscapeLike(`50%_off!`); got != `50!%!_off!!` {
         t.Fatalf("EscapeLike = %q", got)
     }
     testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
@@ -331,6 +332,7 @@ func TestEscapeLike(t *testing.T) {
 ## Task 4: Joins, aliases and self-joins
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/integration_joins_test.go`
 - Modify: `/Volumes/DATA/Development/momo/select.go` only if the join test exposes a rendering gap.
 
@@ -392,6 +394,7 @@ func TestJoinsAliasesSelfJoin(t *testing.T) {
 ## Task 5: Projections, aggregates, GROUP BY and HAVING
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/integration_aggregates_test.go`
 - Modify: `/Volumes/DATA/Development/momo/expr.go` (adds `Count`, `Sum`, `Avg`, `Min`, `Max` typed expressions)
 
@@ -401,11 +404,11 @@ Interfaces:
 func CountAll() Expression[int64]
 func Sum[T Number](e Expression[T]) Expression[T]     // Number: ~int64 | ~float64 (spec-listed numeric aggregates)
 func Avg(e Expression[float64]) Expression[float64]
-func Min[T Ordered](e Expression[T]) Expression[T]
-func Max[T Ordered](e Expression[T]) Expression[T]
+func Min[T any](e Expression[T]) Expression[T]     // any orderable type: timestamps, dates, decimals
+func Max[T any](e Expression[T]) Expression[T]
 ```
 
-`Ordered` is `cmp.Ordered`. Typed projection row: `tenantCount{TenantID int64; N int64}` with `Projection` marker.
+Min and Max accept any T because SQL orders more than the Go ordered types. Typed projection row: `tenantCount{TenantID int64; N int64}` with `Projection` marker.
 
 - [ ] **Step 1: Write the failing test** `integration_aggregates_test.go`:
 
@@ -463,7 +466,13 @@ func TestAggregatesGroupHaving(t *testing.T) {
 }
 ```
 
-Note: `Having(momo.CountAll().Gt(1))` requires `Expression[int64].Gt`; add the comparison methods to the generic `Expression` helpers in this task (`func Cmp[T](e Expression[T]) ...` or methods on the aggregate type). Pick: aggregates return `Agg[T]` with methods `Gt(v T) Predicate`, `Ge`, `Lt`, `Le`, `Eq`, which the test uses.
+Note: the `Having` call below requires `Expression[int64].Gt`; add the comparison methods to the generic `Expression` helpers in this task (a `Cmp` function, signature below, or methods on the aggregate type). Pick: aggregates return `Agg[T]` with methods `Gt(v T) Predicate`, `Ge`, `Lt`, `Le`, `Eq`, which the test uses.
+
+```go
+Having(momo.CountAll().Gt(1))
+
+func Cmp[T](e Expression[T]) ...
+```
 
 - [ ] **Step 2: Run and expect FAIL.** `go test -run TestAggregatesGroupHaving .` → `undefined: momo.CountAll`.
 
@@ -476,9 +485,10 @@ Note: `Having(momo.CountAll().Gt(1))` requires `Expression[int64].Gt`; add the c
 ## Task 6: Subqueries, CTEs (including recursive) and set operations
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/integration_subquery_test.go`
 
-Interfaces (existing): `Column[T].InQuery(q Subquery)`, `SelectQuery.With(name, q, cols...)`, `WithRecursive`, `Union(all, qs...)`, `FromSubquery(q, alias)`.
+Interfaces (existing): `Column[T].InQuery(q Subquery)`, `SelectQuery.With(name, q, cols...)`, `SelectQuery.WithRecursive(name, q, cols...)`, `Union(all, qs...)`, `FromSubquery(q, alias)`.
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -506,9 +516,14 @@ func TestSubqueriesCTEsRecursive(t *testing.T) {
         if err != nil || n != 2 {
             t.Fatalf("IN subquery count = %d, %v; want 2", n, err)
         }
-        seq := momo.Subquery(`SELECT 1 AS n UNION ALL SELECT n + 1 FROM seq WHERE n < 5`)
+        seq := momo.RawSubquery(`SELECT 1 AS n UNION ALL SELECT n + 1 FROM seq WHERE n < 5`)
         var ints []int64 // single-column projection via momo.Scalars
-        ints, err = momo.Scalars[int64](ctx, db, momo.WithRecursive("seq", seq, "n")(`SELECT n FROM seq ORDER BY n`))
+        seqN := momo.ColumnOf[int64]("seq", "n")
+        rec, err := momo.Select[Document](db).WithRecursive("seq", seq, "n").From(momo.CTE("seq")).Columns(seqN).OrderBy(seqN.Asc()).SQL()
+        if err != nil {
+            t.Fatal(err)
+        }
+        ints, err = momo.Scalars[int64](ctx, db, rec.SQL) // no bound args in this query
         if err != nil {
             t.Fatal(err)
         }
@@ -519,9 +534,9 @@ func TestSubqueriesCTEsRecursive(t *testing.T) {
 }
 ```
 
-`momo.Subquery(sql)` is a raw `Subquery` whose `AppendSQL` writes the fragment through `appendRaw`; `momo.WithRecursive(name, q, cols...)` returns a function that prefixes `WITH RECURSIVE name(cols) AS (...)` to the given `SELECT`; `momo.Scalars[T]` (introduced in Task 2) is the scan used by the assertion above.
+`momo.RawSubquery(sql, args...)` is a raw `Subquery` (the name avoids clashing with the `Subquery` interface type) whose fragment is written through `appendRaw`; the `SelectQuery.WithRecursive(name, q, cols...)` method prefixes `WITH RECURSIVE name(cols) AS (...)` to the query; `momo.Scalars[T]` (introduced in Task 2) is the scan used by the assertion above.
 
-- [ ] **Step 2: Run and expect FAIL.** `go test -run TestSubqueriesCTEsRecursive .` → `undefined: momo.Subquery`.
+- [ ] **Step 2: Run and expect FAIL.** `go test -run TestSubqueriesCTEsRecursive .` → `undefined: momo.RawSubquery`.
 
 - [ ] **Step 3: Implement** `Subquery` (a raw `Subquery` whose `AppendSQL` writes the fragment through `appendRaw`), `WithRecursive` as a curried helper, and `Scalars[T]`. Recursive CTE rendering: `WITH RECURSIVE seq(n) AS (...)` on both dialects (`dialect.RecursiveCTE` is true for both).
 
@@ -532,6 +547,7 @@ func TestSubqueriesCTEsRecursive(t *testing.T) {
 ## Task 7: Keyset pagination integration tests (consumes momo-01 After)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/internal/suite/keyset.go` (package `suite`, body `KeysetPaginationMixedDirections`)
 - Create: `/Volumes/DATA/Development/momo/integration_keyset_test.go` (package `momo_test`, wrapper)
 
@@ -570,7 +586,11 @@ func TestKeysetRejectsNullableKey(t *testing.T) {
 
 Body of `KeysetPaginationMixedDirections` (`internal/suite/keyset.go`): call `CreateDocuments`; insert ten documents with `momo.Exec` (`tenant_id = i%3`, `version = i%2+1`), every error checked; walk pages of three with `OrderBy(DocVersion.Desc(), DocTenantID.Asc()).Limit(3)` and `After(last.Version, last.TenantID, last.ID)`; fail on a repeated ID, on an error from `All`, or unless all ten rows and at least four pages were seen.
 
-Body of `KeysetRejectsNullableKey`: `momo.Select[Document](db).OrderBy(DocBody.Asc()).After("x", int64(1)).SQL()` must return `momo.ErrUnsupported`, checked with `errors.Is`, and the same query over `DocTitle` (non-nullable) must build without error.
+Body of `KeysetRejectsNullableKey`: the query below must return `momo.ErrUnsupported`, checked with `errors.Is`, and the same query over `DocTitle` (non-nullable) must build without error.
+
+```go
+momo.Select[Document](db).OrderBy(DocBody.Asc()).After("x", int64(1)).SQL()
+```
 
 - [ ] **Step 2: Run and expect FAIL** if momo-01's `After` is absent: `MOMO_TEST_POSTGRES_URL=... go test -run 'Keyset' .` → `undefined: After` or `row N returned twice`. With momo-01 complete the expected result is PASS.
 
@@ -583,6 +603,7 @@ Body of `KeysetRejectsNullableKey`: `momo.Select[Document](db).OrderBy(DocBody.A
 ## Task 8: Locking, optimizer hints and runtime table override (S-79)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/integration_locking_test.go`
 - Modify: `/Volumes/DATA/Development/momo/select.go` (adds `IndexedBy`, `WithTableName`)
 
@@ -691,6 +712,7 @@ func TestHintsByDialect(t *testing.T) {
 ## Task 9: RETURNING on insert, update and delete
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/returning_test.go`
 - (The builders themselves are created in Tasks 15, 18 and 19; this task adds the `Returning` method shared by them as `returning.go`.)
 
@@ -704,7 +726,7 @@ type ReturningList struct{ cols []ColumnRef }
 func Returning(cols ...ColumnRef) ReturningList
 ```
 
-`InsertQuery[T].ReturningAll()` etc. are defined in Task 12; this task defines `ReturningList` and `appendReturning(b *Builder, cols []ColumnRef)` (renders `RETURNING "c1", "c2"` unqualified).
+`ReturningAll()` on the Insert and Update builders, and the shared `returningSet`, `renderReturning` (dialect gate, column validation, clause) and `runReturning` helpers the Delete builder (Task 17) calls, are defined in this task (Task 12 only added `Returning(cols...)` and `Rows`); this task defines `ReturningList` and `appendReturningNames(b *Builder, names []string)` (renders `RETURNING "c1", "c2"` unqualified).
 
 - [ ] **Step 1: Write the failing test** `returning_test.go`:
 
@@ -750,7 +772,7 @@ func TestReturningRendersAndScans(t *testing.T) {
 
 - [ ] **Step 2: Run and expect FAIL.** `go test -run TestReturningRendersAndScans .` → `undefined: momo.Insert`.
 
-- [ ] **Step 3: Implement** `returning.go`: `Returning(cols ...ColumnRef) ReturningList`, `appendReturning`, and `ModelRows[T]` wrapping `Rows` with `ScanModel` using `Meta.Ptr`. Insert, Update and Delete builders (Tasks 15, 18, 19) call `appendReturning`.
+- [ ] **Step 3: Implement** `returning.go`: `Returning(cols ...ColumnRef) ReturningList`, `appendReturningNames`, and `ModelRows[T]` wrapping `Rows` with `ScanModel` using `Meta.Ptr`. Insert, Update and Delete builders (Tasks 15, 18, 19) call `appendReturning`.
 
 - [ ] **Step 4: Run and expect PASS** after Task 12 lands: `go test -run TestReturningRendersAndScans -race .` → `ok`.
 
@@ -759,6 +781,7 @@ func TestReturningRendersAndScans(t *testing.T) {
 ## Task 10: Raw SQL arguments: named, expanded IN and identifiers (S-77)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/raw_args.go`
 - Create: `/Volumes/DATA/Development/momo/raw_args_test.go`
 
@@ -870,7 +893,11 @@ func TestRawNonEmptyInBinds(t *testing.T) {
 
 - [ ] **Step 2: Run and expect FAIL.** `go test -run TestRawArgs .` → `undefined: momo.Named`.
 
-- [ ] **Step 3: Implement** `raw_args.go` and extend `appendRaw` in `builder.go` per the rules above. The identifier assertion in the test is checked by compiling the query: `c, err := momo.Select[Document](db).Where(momo.TypedSQL[bool]("? = ?", momo.Ident("title"), "a")).SQL()` followed by `if err != nil { t.Fatal(err) }` must satisfy `strings.Contains(c.SQL, `"title"`)` and `len(c.Args) == 1 && c.Args[0] == "a"`; add that check to the test file together with the `strings` import.
+- [ ] **Step 3: Implement** `raw_args.go` and extend `appendRaw` in `builder.go` per the rules above. The identifier assertion in the test is checked by compiling the query: the snippet below followed by `if err != nil { t.Fatal(err) }` must satisfy `strings.Contains(c.SQL, `"title"`)` and `len(c.Args) == 1 && c.Args[0] == "a"`; add that check to the test file together with the `strings` import.
+
+```go
+c, err := momo.Select[Document](db).Where(momo.TypedSQL[bool]("? = ?", momo.Ident("title"), "a")).SQL()
+```
 
 - [ ] **Step 4: Run and expect PASS.** `go test -run TestRawArgs -race .` → `ok`.
 
@@ -879,6 +906,7 @@ func TestRawNonEmptyInBinds(t *testing.T) {
 ## Task 11: Fuzzed raw arguments and typed IN and empty results (S-77, S-8)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/raw_args_fuzz_test.go`
 - Create: `/Volumes/DATA/Development/momo/empty_result_test.go`
 - Modify: `/Volumes/DATA/Development/momo/expr.go` (typed `In` renders `FALSE` for an empty list)
@@ -960,6 +988,7 @@ func TestEmptyResultNotNotFoundIntegration(t *testing.T) {
 ## Task 12: Insert builder: single, model, bulk and conflict handling — S-5
 
 Files:
+
 - Modify: `/Volumes/DATA/Development/momo/insert.go`
 - Create: `/Volumes/DATA/Development/momo/insert_test.go`
 
@@ -1025,6 +1054,7 @@ func TestInsertModelOmitAndConflict(t *testing.T) {
 ## Task 13: Bulk insert chunking under the bind-parameter limit — S-5
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/bulk_test.go`
 - Modify: `/Volumes/DATA/Development/momo/insert.go` (adds chunking in `Models`)
 
@@ -1079,6 +1109,7 @@ Note: 40000 rows × 6 written columns (tenant_id, title, version, created_at, up
 ## Task 14: COPY bulk path through the driver (S-5, S-9)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/copy_test.go`
 - Modify: `/Volumes/DATA/Development/momo/insert.go` (adds `Copy`)
 
@@ -1137,7 +1168,12 @@ func TestCopyInsert(t *testing.T) {
 
 ## Task 15: Update builder, mutation guardrails and optimistic locking — S-5
 
+Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
+
+Hard-delete rule: from Task 17, plain `Delete` refuses a model with a soft-delete column with `ErrValidation`; `SoftDelete` is the soft path and `ForceDelete` the explicit hard delete. `ForceDelete` must therefore bypass that refusal, and a test must show `Delete` on a soft-delete model still fails.
+
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/update.go`
 - Create: `/Volumes/DATA/Development/momo/update_test.go`
 
@@ -1178,7 +1214,9 @@ func TestMutationGuardrails(t *testing.T) {
         if _, err := momo.Update[Document](db).Set(DocTitle.Set("x")).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
             t.Fatalf("unfiltered update err = %v", err)
         }
-        if _, err := momo.Delete[Document](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
+        // documents is a soft-delete model, which Delete refuses; assert the guard on delNote.
+        createDelNotes(t, db)
+        if _, err := momo.Delete[delNote](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
             t.Fatalf("unfiltered delete err = %v", err)
         }
         res, err := momo.Update[Document](db).Set(DocTitle.Set("all")).AllRows().Exec(ctx)
@@ -1223,6 +1261,7 @@ func TestOptimisticLock(t *testing.T) {
 ## Task 16: Explicit write states: omitted, zero, NULL and DEFAULT (S-5)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/write_states_test.go` (wrappers; bodies live in `internal/suite/writes.go`)
 - Create: `/Volumes/DATA/Development/momo/internal/suite/writes.go` (`WriteStates`, `WriteStatesInsert`, `WriteStatesMultiRow`)
 - Modify: `/Volumes/DATA/Development/momo/insert.go` (adds `ValuesRows` and the DEFAULT rules)
@@ -1428,10 +1467,15 @@ func WriteStatesMultiRow(t *testing.T, db *momo.DB, caps Caps) {
 ## Task 17: Delete builder and guardrail — S-5
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/delete.go`
 - Create: `/Volumes/DATA/Development/momo/delete_test.go`
 
-Interfaces: `func Delete[T any, PT Modeler[T]](q Querier) DeleteQuery[T]`, with `Where`, `Model(*T)` (by primary key), `AllRows`, `Exec(ctx) (Result, error)`, `SQL()`, `Returning` (Task 9). Same guardrail as Task 15.
+Interfaces: `func Delete[T any, PT Modeler[T]](q Querier) DeleteQuery[T]`, with `Where`, `Model(*T)` (by primary key), `AllRows`, `Exec(ctx) (Result, error)`, `SQL()`, `Returning`, `ReturningAll` and `Rows` (through the shared `renderReturning` and `runReturning` of Task 9). Same guardrail as Task 15, using the shared `hasEffectiveFilter` helper so an empty And or Or is not a filter.
+
+Soft-delete rule: Delete on a model whose metadata has a soft-delete column fails with `ErrValidation` ("model has a soft-delete column: use SoftDelete or ForceDelete"), so a plain Delete can never hard-delete soft-deletable data; `SoftDelete` and `ForceDelete` arrive in Task 18. `Model` deletes by primary key and does not check a version column, even on a versioned model.
+
+The tests delete from a test-local model without soft delete, `delNote` (table `del_notes`, hand-written `MomoMeta`, helper `createDelNotes`), because `documents` is a soft-delete fixture.
 
 - [ ] **Step 1: Write the failing test** `delete_test.go`:
 
@@ -1448,30 +1492,26 @@ import (
 
 func TestDeleteByModelAndGuard(t *testing.T) {
     testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-        suite.CreateDocuments(t, db, suite.CapsOf(db))
+        createDelNotes(t, db)
         ctx := context.Background()
-        if _, err := momo.Exec(ctx, db, "INSERT INTO documents (tenant_id, title) VALUES (1, 'd1'), (1, 'd2')"); err != nil {
-            t.Fatal(err)
-        }
-        d, err := momo.Select[Document](db).Where(DocTitle.Eq("d1")).One(ctx)
-        if err != nil {
-            t.Fatal(err)
-        }
-        if res, err := momo.Delete[Document](db).Model(&d).Exec(ctx); err != nil || res.RowsAffected != 1 {
+        if res, err := momo.Delete[delNote](db).Model(&delNote{ID: 1}).Exec(ctx); err != nil || res.RowsAffected != 1 {
             t.Fatalf("delete by model: %+v %v", res, err)
         }
-        if _, err := momo.Delete[Document](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
+        if _, err := momo.Delete[delNote](db).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
             t.Fatalf("unfiltered delete err = %v", err)
+        }
+        if _, err := momo.Delete[delNote](db).Where(momo.And()).Exec(ctx); !errors.Is(err, momo.ErrUnfilteredMutation) {
+            t.Fatalf("Where(And()) delete err = %v", err)
         }
     })
 }
 ```
 
-The code above is the final test.
+The code above is the final test. Unit tests (no integration tag) in the same package cover empty and nested junctions, a composite primary key, a correlated EXISTS in WHERE, the soft-delete refusal and RETURNING rendering (MySQL gives `ErrUnsupported`).
 
 - [ ] **Step 2: Run and expect FAIL.** `go test -run TestDeleteByModelAndGuard .` → `undefined: momo.Delete`.
 
-- [ ] **Step 3: Implement** `delete.go` per Interfaces: `DELETE FROM t WHERE pk = ?` for `Model`; guardrail as in Task 15.
+- [ ] **Step 3: Implement** `delete.go` per Interfaces: `DELETE FROM t WHERE pk = ?` for `Model`; guardrail as in Task 15, the soft-delete refusal, and RETURNING through `renderReturning` and `runReturning`.
 
 - [ ] **Step 4: Run and expect PASS.** `go test -run TestDeleteByModelAndGuard -race .` → `ok`.
 
@@ -1479,7 +1519,10 @@ The code above is the final test.
 
 ## Task 18: Soft delete variants (S-75) and the soft-delete read filter (S-5)
 
+Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
+
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/softdelete.go`
 - Create: `/Volumes/DATA/Development/momo/softdelete_test.go`
 
@@ -1585,7 +1628,10 @@ func TestSoftDeleteVariants(t *testing.T) {
 
 ## Task 19: Upsert by conflict target (S-5)
 
+Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
+
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/upsert_test.go`
 - Modify: `/Volumes/DATA/Development/momo/insert.go`
 
@@ -1635,6 +1681,7 @@ func TestUpsertUpdatesAllColumns(t *testing.T) {
 ## Task 20: Automatic timestamps and the injectable clock (S-68)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/clock.go`
 - Create: `/Volumes/DATA/Development/momo/timestamps_test.go`
 - Modify: `/Volumes/DATA/Development/momo/db.go` (adds `WithClock`)
@@ -1714,6 +1761,7 @@ func TestAutoTimestamps(t *testing.T) {
 ## Task 21: Go-side defaults and validators before SQL (S-72)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/fields.go`
 - Create: `/Volumes/DATA/Development/momo/fields_test.go`
 - Modify: `/Volumes/DATA/Development/momo/meta.go` (adds `Fields []FieldHook[T]` to `Meta[T]`)
@@ -1800,9 +1848,12 @@ func TestDefaultsAndValidators(t *testing.T) {
 
 - [ ] **Step 5: Commit.** `feat(core): Go-side defaults and validators run before SQL`
 
+Reconciliation note (2026-11-05): the Task 21 test as written contradicts itself. Its default case inserts `Document{TenantID: 1, Title: "ok"}` with `Model` and expects `Version == 1` from the default, while its zero case inserts a `Model` with `Version: 0` and expects 0 to be written; both have the same zero version, and a `Model` insert writes every column it does not omit. Decision: a default applies to a column the statement omits, that is a `Values` or `ValuesRows` row that does not assign it, or a `Model` insert that lists it in `Omit`; the default case in the test therefore calls `.Omit(suite.DocVersion)`. Further decisions: `WithFieldHooks` is generic (`WithFieldHooks[T, PT]`, inferred from the slice) and keys the hooks by the `*Meta[T]` pointer on the DB, in addition to `Meta.Fields`; a validator receives the bound Go value, or nil for NULL, DEFAULT and an omitted insert column without a default (so an empty-title check also rejects an omitted title, which the test relies on); an update validates only the columns it sets; `OnUpdate` fills a column the caller did not assign with `Set` (an explicit `Set` wins) and is refused on key, version, soft-delete and timestamp columns; defaults on non-writable columns are ignored. A bulk insert validates every row before the first chunk runs.
+
 ## Task 22: Codecs and the types package (S-73)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/types/codec.go`
 - Create: `/Volumes/DATA/Development/momo/types/json.go`
 - Create: `/Volumes/DATA/Development/momo/types/date.go`
@@ -1887,7 +1938,7 @@ func ptr(s string) *string { return &s }
 
 - [ ] **Step 2: Run and expect FAIL.** `go test ./types/ -run TestCodecsRoundTrip` → `undefined: Codec`.
 
-- [ ] **Step 3: Implement** the five files per Interfaces. Date on SQLite stores `2006-01-02` text; `Scan` parses it back. `UUID` stores the canonical 36-char form on SQLite and `uuid` on PostgreSQL; the Value on PostgreSQL is the canonical string. `Hstore` `Value` returns JSON text; PostgreSQL uses the hstore text form `"k"=>"v", "n"=>NULL` produced by the same function.
+- [ ] **Step 3: Implement** the five files per Interfaces. Date on SQLite stores `2006-01-02` text; `Scan` parses it back. `UUID` stores the canonical 36-char form on SQLite and `uuid` on PostgreSQL; the Value on PostgreSQL is the canonical string. `Hstore` `Value` returns the hstore text form `"k"=>"v", "n"=>NULL`; SQLite stores it as TEXT; `Scan` accepts both the hstore and JSON forms. A dialect-aware `ValueFor(dialect.Name)` codec hook, for JSON storage on SQLite, is deferred to M2 and must be added to ARCHITECTURE when designed. `TimeOfDay` `Value` truncates to microseconds (PostgreSQL precision) and `Scan` reads `24:00:00` as end of day.
 
 - [ ] **Step 4: Run and expect PASS.** `go test ./types/ -race` → `ok`.
 
@@ -1896,26 +1947,27 @@ func ptr(s string) *string { return &s }
 ## Task 23: Documented type mapping with round-trip test per mapping (S-31)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/docs/TYPE_MAPPING.md`
 - Create: `/Volumes/DATA/Development/momo/type_mapping_test.go`
 
 Mapping table (the document and the test are generated from the same table in the test file to keep them in sync; the test asserts the doc contains each row):
 
-| Go type | PostgreSQL | SQLite |
-|---|---|---|
-| int64 | bigint | INTEGER |
-| int32 | integer | INTEGER |
-| float64 | double precision | REAL |
-| string | text | TEXT |
-| bool | boolean | INTEGER (0/1) |
-| []byte | bytea | BLOB |
-| time.Time (timestamp) | timestamp (without time zone, UTC) | TEXT (RFC3339Nano, UTC) |
-| time.Time (timestamptz) | timestamptz | TEXT (RFC3339Nano with offset preserved) |
-| types.Date | date | TEXT |
-| types.UUID | uuid | TEXT |
-| types.JSON[T] | jsonb | TEXT |
-| []string | text[] | TEXT (JSON array) |
-| decimal (string) | numeric | TEXT |
+| Go type                 | PostgreSQL                         | SQLite                                   |
+| ----------------------- | ---------------------------------- | ---------------------------------------- |
+| int64                   | bigint                             | INTEGER                                  |
+| int32                   | integer                            | INTEGER                                  |
+| float64                 | double precision                   | REAL                                     |
+| string                  | text                               | TEXT                                     |
+| bool                    | boolean                            | INTEGER (0/1)                            |
+| []byte                  | bytea                              | BLOB                                     |
+| time.Time (timestamp)   | timestamp (without time zone, UTC) | TEXT (RFC3339Nano, UTC)                  |
+| time.Time (timestamptz) | timestamptz                        | TEXT (RFC3339Nano with offset preserved) |
+| types.Date              | date                               | TEXT                                     |
+| types.UUID              | uuid                               | TEXT                                     |
+| types.JSON[T]           | jsonb                              | TEXT                                     |
+| []string                | text[]                             | TEXT (JSON array)                        |
+| decimal (string)        | numeric                            | TEXT                                     |
 
 Edge values: `math.MaxInt64`, pre-1970 time (`1969-07-20T20:17:40Z`), a non-UTC zone for timestamptz (`+05:30`), `NaN` for float64 (PostgreSQL only; SQLite stores NULL-free NaN as NULL is not used: test asserts SQLite rejects NaN by returning ErrValidation).
 
@@ -1997,6 +2049,7 @@ The `NaN` edge is asserted in a second function `TestTypeMappingNaN` in the same
 ## Task 24: JSON and array operators (S-32)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/json_array.go`
 - Create: `/Volumes/DATA/Development/momo/json_array_test.go`
 
@@ -2067,7 +2120,12 @@ func TestJSONAndArrayOperators(t *testing.T) {
 }
 ```
 
-`docMeta()` and `docTags()` return the typed descriptors `momo.NewColumn[string]("documents","meta",0)` and `momo.NewColumn[[]string]("documents","tags",0)` defined in the test file. `DocTitle` is already defined in Task 1.
+`docMeta()` and `docTags()` return the typed descriptors below, defined in the test file. `DocTitle` is already defined in Task 1.
+
+```go
+momo.NewColumn[string]("documents","meta",0)
+momo.NewColumn[[]string]("documents","tags",0)
+```
 
 - [ ] **Step 2: Run and expect FAIL.** `go test -run TestJSONAndArrayOperators .` → `undefined: momo.JSONContains`.
 
@@ -2080,6 +2138,7 @@ func TestJSONAndArrayOperators(t *testing.T) {
 ## Task 25: Window functions, partitioned and ordered (S-33, window part only)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/window.go`
 - Create: `/Volumes/DATA/Development/momo/window_test.go`
 
@@ -2172,6 +2231,7 @@ func TestWindowFunctions(t *testing.T) {
 ## Task 26: Error redaction with Detail accessor (S-41)
 
 Files:
+
 - Modify: `/Volumes/DATA/Development/momo/errors.go` (adds an unexported `detail string` field to `Error` and the `Detail() string` method)
 - Create: `/Volumes/DATA/Development/momo/errors_redaction_test.go`
 
@@ -2238,6 +2298,7 @@ func TestErrorRedaction(t *testing.T) {
 ## Task 27: Typed model hooks (S-85)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/hooks.go`
 - Create: `/Volumes/DATA/Development/momo/hooks_test.go`
 - Modify: `/Volumes/DATA/Development/momo/meta.go` (`Meta[T].Hooks HookSet[T]`, added in momo-01 per the contract; this task populates it)
@@ -2317,6 +2378,7 @@ Note: `DocumentMeta` is the package-level `Meta` of `internal/suite` (Task 1) an
 ## Task 28: Sensitive columns redacted in events, errors and dumps (S-42)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/sensitive.go`
 - Create: `/Volumes/DATA/Development/momo/sensitive_test.go`
 - Modify: `/Volumes/DATA/Development/momo/db.go` (`before` redacts `QueryEvent.Args` when any argument is sensitive)
@@ -2394,6 +2456,7 @@ func TestSensitiveColumns(t *testing.T) {
 ## Task 29: Interceptors and the per-handle privacy recipe (S-86)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/interceptor.go`
 - Create: `/Volumes/DATA/Development/momo/interceptor_test.go`
 - Create: `/Volumes/DATA/Development/momo/docs/PRIVACY_RULES.md`
@@ -2483,6 +2546,7 @@ func TestInterceptors(t *testing.T) {
 ## Task 30: Resource-exhaustion guards: max rows and IN-list cap (S-48)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/limits.go`
 - Create: `/Volumes/DATA/Development/momo/limits_test.go`
 
@@ -2554,6 +2618,7 @@ func TestInListCap(t *testing.T) {
 ## Task 31: Result helpers: Pluck, IDs, FirstID, scalars, maps, FindAndCount, Batches (S-78)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/results.go`
 - Create: `/Volumes/DATA/Development/momo/results_test.go`
 
@@ -2633,6 +2698,7 @@ Note: `MapRows` takes a `Querier`; `db` is `*momo.DB`, which implements it. `Fin
 ## Task 32: Named scopes, typed fragments and runtime filter tree (S-79)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/compose.go`
 - Create: `/Volumes/DATA/Development/momo/compose_test.go`
 
@@ -2723,7 +2789,10 @@ The last block asserts the SQLite `ErrUnsupported` rule for NOWAIT.
 
 ## Task 33: MERGE with a server-version gate, bulk update from VALUES and Truncate (S-80)
 
+Scope rule: the builder must render its statement inside a target-table scope via `Builder.withScope` (builder.go), so a correlated subquery may reference the target table.
+
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/merge.go`
 - Create: `/Volumes/DATA/Development/momo/merge_gate_test.go` (package `momo`, unit test)
 - Create: `/Volumes/DATA/Development/momo/merge_test.go` (package `momo_test` wrappers)
@@ -2816,10 +2885,23 @@ func TestMergeAndBulkUpdate(t *testing.T) {
 
 `suite.MergeAndBulkUpdate` (in `internal/suite/merge.go`) body: create documents; insert rows with ids 1 and 2 through `momo.Exec`; on SQLite assert `BulkUpdate(...).SQL()` and `Merge(...).Exec` return `ErrUnsupported`, then return; on PostgreSQL:
 
-- `BulkUpdate[Document](db, DocID, []momo.ColumnRef{DocTitle}, [][]any{{int64(2), "new"}}).Exec` returns `RowsAffected == 1`, and row 1 keeps its title (rows outside the VALUES list do not change).
-- MERGE insert path, on the server version reported by the driver: `v := db.Driver().(momo.ServerVersioner)`; `ver, err := v.ServerVersion(ctx)`. Without RETURNING: `Merge[Document](db, momo.Subquery("SELECT 3 AS id, 1 AS tenant_id, 'merged' AS title")).On(DocID.EqExpr(momo.TypedSQL[int64]("src.id"))).WhenNotMatchedInsert([]momo.ColumnRef{DocID, DocTenantID, DocTitle}, momo.TypedSQL[int64]("src.id"), momo.TypedSQL[int64]("src.tenant_id"), momo.TypedSQL[string]("src.title")).Exec(ctx)` must succeed and then `Count` of `title = 'merged'` is 1.
+- The `BulkUpdate` call below returns `RowsAffected == 1`, and row 1 keeps its title (rows outside the VALUES list do not change).
+  ```go
+  BulkUpdate[Document](db, DocID, []momo.ColumnRef{DocTitle}, [][]any{{int64(2), "new"}}).Exec
+  ```
+- MERGE insert path, on the server version reported by the driver: the snippet below (`ServerVersioner`, `ServerVersion`). Without RETURNING: the snippet below must succeed and then `Count` of `title = 'merged'` is 1.
+  ```go
+  v := db.Driver().(momo.ServerVersioner)
+  ver, err := v.ServerVersion(ctx)
+  // Without RETURNING:
+  Merge[Document](db, momo.RawSubquery("SELECT 3 AS id, 1 AS tenant_id, 'merged' AS title")).On(DocID.EqExpr(momo.TypedSQL[int64]("src.id"))).WhenNotMatchedInsert([]momo.ColumnRef{DocID, DocTenantID, DocTitle}, momo.TypedSQL[int64]("src.id"), momo.TypedSQL[int64]("src.tenant_id"), momo.TypedSQL[string]("src.title")).Exec(ctx)
+  ```
 - RETURNING path: when `ver >= 170000` the same MERGE with `.Returning(DocID).Rows(ctx)` returns one row whose ID is 4 after inserting `'merged-2'`; when `ver < 170000` it returns `ErrUnsupported`. CI runs `pgvector/pgvector:pg17`, so the RETURNING branch is the path it exercises; older majors in the CI matrix exercise the `ErrUnsupported` branch.
-- `Truncate[Document](ctx, db)` then `Count` is 0.
+- Truncate the documents table, then `Count` is 0:
+
+  ```go
+  Truncate[Document](ctx, db)
+  ```
 
 - [ ] **Step 6: Mutation check.** Change `mergeGate` to return nil for `returning` at 150000; run `go test -run TestMergeGate .`. Expected FAIL `mergeGate(150000, true) = <nil>, want ok=false`. Restore.
 
@@ -2828,6 +2910,7 @@ func TestMergeAndBulkUpdate(t *testing.T) {
 ## Task 34: momovet analyzer for non-constant raw SQL (S-44)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/momovet/analyzer.go`
 - Create: `/Volumes/DATA/Development/momo/momovet/analyzer_test.go`
 - Create: `/Volumes/DATA/Development/momo/momovet/testdata/src/raw/raw.go`
@@ -2891,6 +2974,7 @@ The fixture imports `github.com/azrtydxb/momo` from the module, so `testdata` mu
 ## Task 35: Shared suite groups, RunAll and the integration gate (S-4, S-20)
 
 Files:
+
 - Create: `/Volumes/DATA/Development/momo/internal/suite/run.go` (package `suite`)
 - Create: `/Volumes/DATA/Development/momo/integration_queries_test.go` (package `momo_test`)
 
@@ -2964,31 +3048,31 @@ func TestSuiteRunAll(t *testing.T) {
 
 ## Spec coverage
 
-| Spec id | Tasks |
-|---|---|
-| S-4 | 3 (allowlist), 4 (joins), 5 (aggregates), 6 (subqueries and CTEs), 7 (keyset integration tests of momo-01's `After`), 8 (locking, hints, table override), 9 (returning), 10 (raw SQL), 11 (fuzzed raw args, empty IN), 35 (suite.Queries, TestIntegrationQueries). Unit-level tests (TestQueryReuseNoLeak, TestPlaceholdersAndQuoting, FuzzBuilder, TestCompileFail, TestValidExamplesCompile) are owned by momo-01 |
-| S-5 | 12 (insert), 13 (bulk chunking), 14 (COPY), 15 (update, TestMutationGuardrails, TestOptimisticLock), 16 (TestWriteStates on UPDATE, TestWriteStatesInsert, TestWriteStatesMultiRow), 17 (delete), 18 (TestSoftDelete), 19 (upsert) |
-| S-7 | 2 (TestTransactions) |
-| S-8 | 2 (TestErrorClassification), 11 (TestEmptyResultNotNotFoundIntegration) |
-| S-31 | 22 (codecs), 23 (TestTypeMapping) |
-| S-32 | 24 (TestJSONAndArrayOperators) |
-| S-33 | 25 (TestWindowFunctions); top-N relation loading is momo-06 |
-| S-41 | 26 (TestErrorRedaction) |
-| S-42 | 28 (TestSensitiveColumns) |
-| S-43 | 3 (TestColumnByName, TestEscapeLike) |
-| S-44 | 34 (TestMomovet) |
-| S-48 | 30 (TestMaxRowsGuard, TestInListCap) |
-| S-68 | 20 (TestAutoTimestamps) |
-| S-72 | 21 (TestDefaultsAndValidators) |
-| S-73 | 22 (TestCodecsRoundTrip) |
-| S-75 | 18 (TestSoftDeleteVariants) |
-| S-77 | 10 (TestRawArgs), 11 (FuzzRawArgs) |
-| S-78 | 31 (TestResultHelpers) |
-| S-79 | 8 (locking, hints, table override), 32 (TestCompositionHelpers) |
-| S-80 | 33 (TestMergeAndBulkUpdate, TestMergeGate) |
-| S-85 | 27 (TestModelHooks) |
-| S-86 | 29 (TestInterceptors) |
-| Shared suite (plan momo-03 Task 9, plan momo-08) | 1 (package and Caps), 2, 35 (Queries, Writes, Transactions, Errors, RunAll) |
+| Spec id                                          | Tasks                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S-4                                              | 3 (allowlist), 4 (joins), 5 (aggregates), 6 (subqueries and CTEs), 7 (keyset integration tests of momo-01's `After`), 8 (locking, hints, table override), 9 (returning), 10 (raw SQL), 11 (fuzzed raw args, empty IN), 35 (suite.Queries, TestIntegrationQueries). Unit-level tests (TestQueryReuseNoLeak, TestPlaceholdersAndQuoting, FuzzBuilder, TestCompileFail, TestValidExamplesCompile) are owned by momo-01 |
+| S-5                                              | 12 (insert), 13 (bulk chunking), 14 (COPY), 15 (update, TestMutationGuardrails, TestOptimisticLock), 16 (TestWriteStates on UPDATE, TestWriteStatesInsert, TestWriteStatesMultiRow), 17 (delete), 18 (TestSoftDelete), 19 (upsert)                                                                                                                                                                                  |
+| S-7                                              | 2 (TestTransactions)                                                                                                                                                                                                                                                                                                                                                                                                |
+| S-8                                              | 2 (TestErrorClassification), 11 (TestEmptyResultNotNotFoundIntegration)                                                                                                                                                                                                                                                                                                                                             |
+| S-31                                             | 22 (codecs), 23 (TestTypeMapping)                                                                                                                                                                                                                                                                                                                                                                                   |
+| S-32                                             | 24 (TestJSONAndArrayOperators)                                                                                                                                                                                                                                                                                                                                                                                      |
+| S-33                                             | 25 (TestWindowFunctions); top-N relation loading is momo-06                                                                                                                                                                                                                                                                                                                                                         |
+| S-41                                             | 26 (TestErrorRedaction)                                                                                                                                                                                                                                                                                                                                                                                             |
+| S-42                                             | 28 (TestSensitiveColumns)                                                                                                                                                                                                                                                                                                                                                                                           |
+| S-43                                             | 3 (TestColumnByName, TestEscapeLike)                                                                                                                                                                                                                                                                                                                                                                                |
+| S-44                                             | 34 (TestMomovet)                                                                                                                                                                                                                                                                                                                                                                                                    |
+| S-48                                             | 30 (TestMaxRowsGuard, TestInListCap)                                                                                                                                                                                                                                                                                                                                                                                |
+| S-68                                             | 20 (TestAutoTimestamps)                                                                                                                                                                                                                                                                                                                                                                                             |
+| S-72                                             | 21 (TestDefaultsAndValidators)                                                                                                                                                                                                                                                                                                                                                                                      |
+| S-73                                             | 22 (TestCodecsRoundTrip)                                                                                                                                                                                                                                                                                                                                                                                            |
+| S-75                                             | 18 (TestSoftDeleteVariants)                                                                                                                                                                                                                                                                                                                                                                                         |
+| S-77                                             | 10 (TestRawArgs), 11 (FuzzRawArgs)                                                                                                                                                                                                                                                                                                                                                                                  |
+| S-78                                             | 31 (TestResultHelpers)                                                                                                                                                                                                                                                                                                                                                                                              |
+| S-79                                             | 8 (locking, hints, table override), 32 (TestCompositionHelpers)                                                                                                                                                                                                                                                                                                                                                     |
+| S-80                                             | 33 (TestMergeAndBulkUpdate, TestMergeGate)                                                                                                                                                                                                                                                                                                                                                                          |
+| S-85                                             | 27 (TestModelHooks)                                                                                                                                                                                                                                                                                                                                                                                                 |
+| S-86                                             | 29 (TestInterceptors)                                                                                                                                                                                                                                                                                                                                                                                               |
+| Shared suite (plan momo-03 Task 9, plan momo-08) | 1 (package and Caps), 2, 35 (Queries, Writes, Transactions, Errors, RunAll)                                                                                                                                                                                                                                                                                                                                         |
 
 ## Dependencies on other plans
 

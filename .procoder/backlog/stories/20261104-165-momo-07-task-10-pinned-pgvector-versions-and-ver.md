@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-07-vectors-pgvector
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
@@ -12,7 +12,13 @@ Implements plan momo-07-vectors Task 10: Pinned pgvector versions and version as
 ## Acceptance criteria
 
 - [ ] `TestPgvectorVersionPinned` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Pins: internal/testdb/compose.yaml (0.8.7-pg17, 0.8.7-pg16) and the .github/workflows/ci.yml matrix (0.8.7-pg17, 0.8.7-pg16) agree; TestPgvectorPinsAgree (untagged, part of the normal suite) enforces it.
+- Integration: TestPgvectorVersionPinned (build tag integration, as in the plan) PASS against pgvector/pgvector:0.8.7-pg17 and 0.8.7-pg16 containers (extversion 0.8.7).
+- Mutation: setting pinnedPgvector to 0.8.6 made TestPgvectorVersionPinned and TestPgvectorPinsAgree fail; restored.
+- NOT met: criterion 1, "failed before the implementation". compose.yaml was already pinned by momo-01 and the unpinned pgvector/pgvector:pg17 image also reports 0.8.7, so no honest red existed. Red was shown only through the mutation above.
+- Gate: `procoder check` 0 blocking findings. Commit 71845d6.
 

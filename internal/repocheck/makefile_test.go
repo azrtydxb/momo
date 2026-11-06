@@ -15,7 +15,7 @@ func TestMakefileTargets(t *testing.T) {
 	targets := []string{
 		"test", "test-race", "test-compilefail", "test-fuzz", "test-integration",
 		"test-integration-postgres", "bench-smoke", "fmt-check", "vet", "tidy-check",
-		"govulncheck", "gosec", "db-up", "db-down",
+		"staticcheck", "govulncheck", "gosec", "db-up", "db-down",
 	}
 	for _, target := range targets {
 		cmd := exec.Command(makePath, "-n", target)

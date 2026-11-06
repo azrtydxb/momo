@@ -575,6 +575,8 @@ func TestFormatVersions(t *testing.T) {
 
 Delivers: S-1 normalization, including the edge case "normalization of DB-rewritten expressions so round-trip diffs are empty".
 
+Canonical forms: momo-04 Task 2 owns the canonical spellings of `schema/normalize.go` (SQLite types upper-case, spacing inside parentheses removed, literal casts stripped, `CURRENT_TIMESTAMP` as `now()`, function bodies normalized). The tests and rules below show them as updated by that decision; where this task and momo-04 Task 2 differ, momo-04 Task 2 wins.
+
 Files:
 
 - Create: `schema/normalize.go`
@@ -612,8 +614,8 @@ func TestNormalizeType(t *testing.T) {
 		{dialect.Postgres, "timestamptz", "timestamp with time zone"},
 		{dialect.Postgres, "vector( 3 )", "vector(3)"},
 		{dialect.Postgres, "  Text  ", "text"},
-		{dialect.SQLite, "INTEGER", "integer"},
-		{dialect.SQLite, "varchar(20)", "varchar(20)"},
+		{dialect.SQLite, "integer", "INTEGER"},
+		{dialect.SQLite, "varchar(20)", "VARCHAR(20)"},
 	}
 	for _, c := range cases {
 		if got := NormalizeType(c.d, c.in); got != c.out {
@@ -628,8 +630,8 @@ func TestNormalizeExpr(t *testing.T) {
 		in, out string
 	}{
 		{dialect.Postgres, "((now()))", "now()"},
-		{dialect.Postgres, "  COALESCE( a ,  0 )  ", "coalesce( a , 0 )"},
-		{dialect.Postgres, "'Mixed CASE'::text", "'Mixed CASE'::text"},
+		{dialect.Postgres, "  COALESCE( a ,  0 )  ", "coalesce(a , 0)"},
+		{dialect.Postgres, "'Mixed CASE'::text", "'Mixed CASE'"},
 		{dialect.Postgres, `"Quoted" > 0`, `"Quoted" > 0`},
 		{dialect.SQLite, "(a > 0)", "a > 0"},
 	}
@@ -671,8 +673,8 @@ func FuzzNormalizeType(f *testing.F) {
 - [ ] **Step 2: Run and expect FAIL.** `go test ./schema/ -run 'Normalize|Equal' -count=1` fails with `undefined: NormalizeType`, `undefined: NormalizeExpr` and `undefined: Equal`.
 
 - [ ] **Step 3: Implement `schema/normalize.go`.**
-  - `NormalizeType`: trim, lowercase, collapse runs of spaces, remove spaces inside parentheses. For `dialect.Postgres`, map the base name (the text before any `(`) through this table: `int`, `int4`, `integer` to `integer`; `int8`, `bigint` to `bigint`; `int2`, `smallint` to `smallint`; `bool`, `boolean` to `boolean`; `varchar` to `character varying`; `timestamptz` to `timestamp with time zone`; `timestamp` to `timestamp without time zone`; `float8`, `double precision` to `double precision`; `float4`, `real` to `real`. Keep the parenthesized suffix. For `dialect.SQLite` and `dialect.MySQL`, only lowercasing and whitespace are normalized.
-  - `NormalizeExpr`: trim; collapse runs of whitespace to one space outside quoted text (single and double quotes); lowercase characters outside quoted text; then, while the whole expression is enclosed in one matching pair of parentheses, remove that pair and trim.
+  - `NormalizeType`: trim, lowercase, collapse runs of spaces, remove spaces inside parentheses. For `dialect.Postgres`, map the base name (the text before any `(`) through this table: `int`, `int4`, `integer` to `integer`; `int8`, `bigint` to `bigint`; `int2`, `smallint` to `smallint`; `bool`, `boolean` to `boolean`; `varchar` to `character varying`; `timestamptz` to `timestamp with time zone`; `timestamp` to `timestamp without time zone`; `float8`, `double precision` to `double precision`; `float4`, `real` to `real`. Keep the parenthesized suffix. For `dialect.SQLite` the result is upper-cased (`bigint` becomes `BIGINT`); for `dialect.MySQL` only lowercasing and whitespace are normalized.
+  - `NormalizeExpr`: trim; collapse runs of whitespace to one space outside quoted text (single and double quotes); lowercase characters outside quoted text; remove whitespace after `(` and before `)`; then, while the whole expression is enclosed in one matching pair of parentheses, remove that pair and trim. For PostgreSQL also drop a `::type` cast that directly follows a single-quoted literal and map `current_timestamp` and `'now'::text` to `now()`; repeat until the text is stable.
   - `Equal(a, b)`: deep-copy both schemas with a JSON round trip, zero every `Indexes[i].Concurrently`, apply `NormalizeType` to every column type using the schema's dialect, apply `NormalizeExpr` to defaults, generated columns, checks, index predicates and index part expressions, call `Sort`, marshal both and compare the bytes.
 
 - [ ] **Step 4: Run and expect PASS.** `go test ./schema/ -run 'Normalize|Equal' -count=1` prints `ok`, and `go test ./schema/ -run '^$' -fuzz '^FuzzNormalizeType$' -fuzztime=10s` completes without a failure.

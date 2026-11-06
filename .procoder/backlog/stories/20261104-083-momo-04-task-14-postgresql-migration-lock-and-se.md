@@ -1,9 +1,9 @@
 # momo-04 Task 14: PostgreSQL migration lock and session timeouts
 
-Status: open
+Status: done 2026-11-05
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
@@ -11,11 +11,18 @@ Implements plan momo-04-migrations Task 14: PostgreSQL migration lock and sessio
 
 ## Acceptance criteria
 
-- [ ] `TestLockHolderNamed` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestLockKeyPerSchema` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestLockTimeoutApplied` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-28, part] `TestLockTimeoutApplied` passes for the part of S-28 this task delivers; the full criterion is verified in story 095.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestLockHolderNamed` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestLockKeyPerSchema` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestLockTimeoutApplied` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-28, part] `TestLockTimeoutApplied` passes for the part of S-28 this task delivers; the full criterion is verified in story 095.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Failing first: `go test -tags integration -race ./migrate/postgres/` failed to build with `mpg.New().Lock undefined` and `mpg.New().Setup undefined`.
+- Passing now: `MOMO_REQUIRE_INTEGRATION=1 ... go test -tags integration -race -count=1 ./migrate/...` gives `ok migrate` and `ok migrate/postgres`.
+- Extra live-DB tests: lock released after panic, unlock after context cancel, second locker refused with holder named then succeeds after unlock, and timeouts reset (no leak) on the pooled connection.
+- Mutation check: replacing pg_advisory_unlock with a no-op made TestLockReleasedAfterPanic and TestUnlockAfterContextCancel fail with the lock still held; restored afterwards.
+- Gate: `procoder check` 0 blocking findings, `make staticcheck` clean, `go build ./...` and `go vet ./...` pass.
+- Commit: f2a8312 feat(migrate/postgres): advisory migration lock with named holder and session timeouts.
 

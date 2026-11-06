@@ -22,3 +22,28 @@ Entry shape (unindented in real entries):
   and REVIEW.md requires it clean before review. gosec v2.29.0 could not
   type-check under Go 1.27 and silently passed, so both pins moved to
   v2.30.0, verified by a probe file that must fail with G104.
+
+## 2026-11-05 Kuvryn Scout — unused code (U1000) and an unchecked type assertion
+
+- Class: mechanical
+- Missed by: linter
+- Adaptation: CI's lint job ran only fmt-check, vet and tidy-check, so
+  staticcheck findings escaped. `make staticcheck` (pinned staticcheck
+  v0.8.2, run through `go run pkg@version` so go.mod is untouched) now
+  runs in the lint job after vet, `TestMakefileTargets` pins the target,
+  and REVIEW.md requires it clean before review. Verified with a probe
+  unused func that fails with U1000. Dependabot gained a 7-day cooldown.
+
+## 2026-11-05 PR #4 github-advanced-security (gosec) — unbounded vector decode lengths (G115)
+
+- Class: mechanical
+- Missed by: ci
+- Adaptation: REVIEW.md already required `make gosec` clean, but CI ran
+  gosec only as a non-failing SARIF upload and a local run over the repo
+  root also scanned agent worktrees under `.claude/`, burying the five
+  real G115 findings (pgvector binary dims, nnz, indices and bit length
+  narrowed before any bound check) in noise. `make gosec` now excludes
+  `.claude`, runs blocking in CI's lint job, and REVIEW.md gained a rubric
+  line: wire/file integers are range-checked as the unsigned source type
+  before narrowing or allocating, and a `#nosec G115` names the bounding
+  check. Verified: gosec v2.30.0 over the tree reports 0 issues.

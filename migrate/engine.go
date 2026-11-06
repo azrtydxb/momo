@@ -1,0 +1,747 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package migrate
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io/fs"
+	"regexp"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/schema"
+)
+
+// Engine plans and applies the migrations of one directory on one database.
+type Engine struct {
+	drv  momo.Driver
+	dir  fs.FS
+	opts options
+}
+
+// NewEngine returns an engine for the migration directory dir. The option
+// WithDialect is required.
+func NewEngine(drv momo.Driver, dir fs.FS, opts ...Option) (*Engine, error) {
+	o := options{clock: time.Now, config: Config{LockTimeout: defaultLockTimeout}}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if o.dialect == nil {
+		return nil, errors.New("migrate: NewEngine requires migrate.WithDialect(...)")
+	}
+	return &Engine{drv: drv, dir: dir, opts: o}, nil
+}
+
+// pin checks a connection out of the driver.
+func (e *Engine) pin(ctx context.Context) (momo.PinnedConn, error) {
+	p, ok := e.drv.(momo.Pinner)
+	if !ok {
+		return nil, errors.New("migrate: the driver cannot pin a connection (it does not implement momo.Pinner)")
+	}
+	c, err := p.Pin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("migrate: pin connection: %w", err)
+	}
+	return c, nil
+}
+
+func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
+	files, err := Discover(e.dir)
+	if err != nil {
+		return nil, err
+	}
+	sum, err := ComputeSum(e.dir)
+	if err != nil {
+		return nil, err
+	}
+	name := string(e.opts.dialect.Dialect().Name)
+	var out []Pending
+	for _, f := range files {
+		if f.Kind != "up" || done[f.Version] {
+			continue
+		}
+		dirs, err := ParseDirectives(f.Body)
+		if err != nil {
+			return nil, fmt.Errorf("migrate: %s: %w", f.Path, err)
+		}
+		parts, err := SplitStatements(f.Body, name)
+		if err != nil {
+			return nil, fmt.Errorf("migrate: %s: %w", f.Path, err)
+		}
+		stmts := make([]Statement, len(parts))
+		for i, s := range parts {
+			stmts[i] = Statement{SQL: s}
+		}
+		out = append(out, Pending{Version: f.Version, Name: f.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: sum.Files[f.Path]})
+	}
+	return out, nil
+}
+
+// history creates the history table when it is missing and reads it. Only
+// callers that hold the migration lock may use it.
+func (e *Engine) history(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
+	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
+		return nil, err
+	}
+	return ReadHistory(ctx, c)
+}
+
+// undefinedTable is the SQLSTATE of a query on a table that does not exist.
+const undefinedTable = "42P01"
+
+// readHistory reads the history table without creating it: a database that
+// has none yet has an empty history. Plan and Status use it so they stay
+// read-only and cannot race the first Apply on CREATE TABLE.
+func (e *Engine) readHistory(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
+	hist, err := ReadHistory(ctx, c)
+	var s interface{ SQLState() string }
+	if errors.As(err, &s) && s.SQLState() == undefinedTable {
+		return nil, nil
+	}
+	return hist, err
+}
+
+// dirtyError returns ErrDirty naming the first running or failed row.
+func dirtyError(hist []HistoryRow) error {
+	for _, r := range hist {
+		if r.dirty() {
+			return fmt.Errorf("%w: version %s is %s", ErrDirty, r.Version, r.Status)
+		}
+	}
+	return nil
+}
+
+// pendingFrom lists the migrations without an applied history row, in version
+// order. A rolled_back row does not count as done.
+func (e *Engine) pendingFrom(hist []HistoryRow) ([]Pending, error) {
+	done := map[string]bool{}
+	for _, r := range hist {
+		if r.Status != StatusRolledBack {
+			done[r.Version] = true
+		}
+	}
+	return e.loadPending(done)
+}
+
+// sumMismatches returns the names of files whose content differs from
+// momo.sum. A directory without momo.sum is an error, because without it an
+// edited migration cannot be detected; WithoutSum turns the check off.
+func (e *Engine) sumMismatches() ([]string, error) {
+	if e.opts.noSum {
+		return nil, nil
+	}
+	f, err := e.dir.Open(SumFileName)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("migrate: %s is missing; run momo migrate hash to create it (it records the checksum of every migration file so edits are detected)", SumFileName)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("migrate: open %s: %w", SumFileName, err)
+	}
+	defer func() { _ = f.Close() }()
+	want, err := ParseSum(f)
+	if err != nil {
+		return nil, err
+	}
+	return VerifySum(e.dir, want), nil
+}
+
+// verifyChecksums refuses with ErrChecksumMismatch, naming the file, when a
+// file differs from momo.sum or from the checksum recorded when its migration
+// was applied.
+func (e *Engine) verifyChecksums(hist []HistoryRow) error {
+	bad, err := e.sumMismatches()
+	if err != nil {
+		return err
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("%w: %s differ from %s", ErrChecksumMismatch, strings.Join(bad, ", "), SumFileName)
+	}
+	files, err := Discover(e.dir)
+	if err != nil {
+		return err
+	}
+	sum, err := ComputeSum(e.dir)
+	if err != nil {
+		return err
+	}
+	byVersion := map[string]File{}
+	for _, f := range files {
+		if f.Kind == "up" {
+			byVersion[f.Version] = f
+		}
+	}
+	for _, r := range hist {
+		f, ok := byVersion[r.Version]
+		if r.Status == StatusApplied && ok && sum.Files[f.Path] != r.Checksum {
+			return fmt.Errorf("%w: %s changed after version %s was applied", ErrChecksumMismatch, f.Path, r.Version)
+		}
+	}
+	return nil
+}
+
+// Plan lists the migrations that Apply would run. It is read-only: it takes no
+// lock, creates nothing (a database without a history table has every
+// migration pending) and does not check checksums or dirty state; Status
+// reports those.
+func (e *Engine) Plan(ctx context.Context) ([]Pending, error) {
+	c, err := e.pin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = c.Release() }()
+	hist, err := e.readHistory(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	return e.pendingFrom(hist)
+}
+
+// resolveSchemas returns the managed schemas: Config.Schemas, or the
+// connection's current_schema() when none are configured. On PostgreSQL the
+// first one must be current_schema(), because the history table is referenced
+// unqualified and lives there.
+func (e *Engine) resolveSchemas(ctx context.Context, c momo.PinnedConn) ([]string, error) {
+	if e.opts.dialect.Dialect().Name != dialect.Postgres {
+		return e.opts.config.Schemas, nil
+	}
+	rows, err := c.Query(ctx, `SELECT COALESCE(current_schema(), '')`, nil)
+	if err != nil {
+		return nil, fmt.Errorf("migrate: read current_schema(): %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var cur string
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("migrate: read current_schema(): %w", err)
+		}
+		return nil, errors.New("migrate: current_schema() returned no row")
+	}
+	if err := rows.Scan(&cur); err != nil {
+		return nil, fmt.Errorf("migrate: read current_schema(): %w", err)
+	}
+	if cur == "" {
+		return nil, errors.New("migrate: the connection has no current schema; set search_path to the schema that holds momo_migrations")
+	}
+	schemas := e.opts.config.Schemas
+	if len(schemas) == 0 {
+		return []string{cur}, nil
+	}
+	if schemas[0] != cur {
+		return nil, fmt.Errorf("migrate: configuration error: Config.Schemas[0] is %q but the connection's current_schema() is %q; the history table is created unqualified in the current schema, so set search_path to %q or list %q first", schemas[0], cur, schemas[0], cur)
+	}
+	return schemas, nil
+}
+
+// applyIDLayout is RFC 3339 with a fixed nine-digit fraction (RFC3339Nano drops
+// trailing zeros, which breaks string ordering). Report.ApplyID is this UTC time,
+// a dash and 8 random hex digits, so two applies in the same instant stay
+// distinct. Group rollback picks the greatest apply_id, which therefore is the
+// most recent apply; nothing parses the value.
+const applyIDLayout = "2006-01-02T15:04:05.000000000Z"
+
+// lockPoll is how often Apply retries a held migration lock.
+const lockPoll = 200 * time.Millisecond
+
+// acquireLock takes the migration lock, retrying every lockPoll until wait has
+// passed. On timeout it returns the dialect's ErrLocked error, which names the
+// holder.
+func (e *Engine) acquireLock(ctx context.Context, c momo.PinnedConn, key string, wait time.Duration) (func() error, error) {
+	deadline := time.Now().Add(wait)
+	for {
+		unlock, _, err := e.opts.dialect.Lock(ctx, c, key)
+		if err == nil {
+			return unlock, nil
+		}
+		left := time.Until(deadline)
+		if !errors.Is(err, ErrLocked) || left <= 0 {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, errors.Join(err, ctx.Err())
+		case <-time.After(min(lockPoll, left)):
+		}
+	}
+}
+
+func (e *Engine) lockWait(o ApplyOptions) time.Duration {
+	switch {
+	case o.LockWait > 0:
+		return o.LockWait
+	case e.opts.lockWaitSet:
+		return e.opts.lockWait
+	default:
+		return defaultLockWait
+	}
+}
+
+// checkTo refuses a To version that has no up file, so a typo does not
+// silently apply nothing.
+func (e *Engine) checkTo(to string) error {
+	if to == "" {
+		return nil
+	}
+	files, err := Discover(e.dir)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		if f.Kind == "up" && f.Version == to {
+			return nil
+		}
+	}
+	return fmt.Errorf("migrate: --to %s: no migration with that version in the directory", to)
+}
+
+// classify lets the dialect turn a driver error into a structured one (for
+// example a missing extension into momo.ErrUnsupported). It returns err when the
+// dialect has no classifier or does not recognize the error.
+func (e *Engine) classify(err error) error {
+	if c, ok := e.opts.dialect.(momo.ErrorClassifier); ok {
+		return c.ClassifyError(err)
+	}
+	return err
+}
+
+// joinErr joins cleanup into err without wrapping err when cleanup is nil.
+func joinErr(err, cleanup error) error {
+	if cleanup == nil {
+		return err
+	}
+	return errors.Join(err, cleanup)
+}
+
+// session resolves the managed schemas, takes the migration lock (waiting up to
+// wait) and applies the session timeouts. The returned end joins its argument
+// with the outcome of the cleanup: it resets the session timeouts first and
+// releases the lock second, so a small statement_timeout cannot cancel the
+// unlock. Both run detached from ctx; the unlock still runs when the reset or
+// the Setup fails.
+func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Duration) (end func(error) error, err error) {
+	schemas, err := e.resolveSchemas(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	hs := ""
+	if len(schemas) > 0 {
+		hs = schemas[0]
+	}
+	unlock, err := e.acquireLock(ctx, c, "momo:"+hs+".momo_migrations", wait)
+	if err != nil {
+		return nil, err
+	}
+	reset, err := e.opts.dialect.Setup(ctx, c, SessionOptions{LockTimeout: e.opts.config.LockTimeout, StatementTimeout: e.opts.config.StatementTimeout})
+	if err != nil {
+		return nil, joinErr(err, unlock())
+	}
+	return func(err error) error {
+		err = joinErr(err, reset()) // runs first
+		return joinErr(err, unlock())
+	}, nil
+}
+
+// Apply runs the pending migrations in version order, each with its own
+// history row, and stops at the first failure.
+//
+// It takes the migration lock (waiting up to ApplyOptions.LockWait, then
+// WithLockWait, then 30s, and returning ErrLocked naming the holder), applies
+// the session timeouts, creates the history table, refuses with ErrDirty while
+// a migration is running or failed and with ErrChecksumMismatch when an applied
+// or listed file was edited, and then runs the pending migrations up to
+// ApplyOptions.To. The session timeouts are reset and the lock released on every
+// path, in that order, detached from ctx; a failure of either is joined to the
+// returned error.
+func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err error) {
+	if err := e.checkTo(o.To); err != nil {
+		return nil, err
+	}
+	c, err := e.pin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = c.Release() }()
+	end, err := e.session(ctx, c, e.lockWait(o))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = end(err) }()
+
+	// The history table is created under the lock, so two first-time callers
+	// cannot race on CREATE TABLE.
+	hist, err := e.history(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	if err := dirtyError(hist); err != nil {
+		return nil, err
+	}
+	if err := e.verifyChecksums(hist); err != nil {
+		return nil, err
+	}
+	pending, err := e.pendingFrom(hist)
+	if err != nil {
+		return nil, err
+	}
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return nil, fmt.Errorf("migrate: apply id: %w", err)
+	}
+	rep = &Report{ApplyID: e.opts.clock().UTC().Format(applyIDLayout) + "-" + hex.EncodeToString(b[:])}
+	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin}
+	for _, p := range pending {
+		if o.To != "" && p.Version > o.To {
+			break
+		}
+		a, err := RunMigration(ctx, env, p, rep.ApplyID)
+		if err != nil {
+			return rep, e.classify(err)
+		}
+		rep.Applied = append(rep.Applied, a)
+	}
+	return rep, nil
+}
+
+// Status reports the state of every migration version: applied, pending, dirty
+// (running or failed), mismatch (the file differs from the recorded checksum or
+// from momo.sum) or missing (a history row without a file). It is read-only:
+// it takes no lock and creates nothing.
+func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
+	c, err := e.pin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = c.Release() }()
+	hist, err := e.readHistory(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	files, err := Discover(e.dir)
+	if err != nil {
+		return nil, err
+	}
+	sum, err := ComputeSum(e.dir)
+	if err != nil {
+		return nil, err
+	}
+	badNames, err := e.sumMismatches()
+	if err != nil {
+		return nil, err
+	}
+	bad := map[string]bool{}
+	for _, n := range badNames {
+		bad[n] = true
+	}
+	rows := map[string]HistoryRow{}
+	for _, r := range hist {
+		rows[r.Version] = r
+	}
+	var out []VersionStatus
+	seen := map[string]bool{}
+	for _, f := range files {
+		if f.Kind != "up" {
+			continue
+		}
+		seen[f.Version] = true
+		fileSum := sum.Files[f.Path]
+		st := VersionStatus{Version: f.Version, Name: f.Name, State: "pending", Checksum: fileSum}
+		if r, ok := rows[f.Version]; ok {
+			st.Checksum, st.Error = r.Checksum, r.Error
+			switch {
+			case r.dirty():
+				st.State = "dirty"
+			case r.Status == StatusApplied && r.Checksum == fileSum && !bad[f.Path]:
+				st.State = "applied"
+			case r.Status == StatusApplied:
+				st.State = "mismatch"
+			}
+		}
+		if st.State == "pending" && bad[f.Path] {
+			st.State = "mismatch"
+		}
+		out = append(out, st)
+	}
+	for _, r := range hist {
+		if seen[r.Version] || r.Status == StatusRolledBack {
+			continue
+		}
+		st := VersionStatus{Version: r.Version, Name: r.Name, State: "missing", Checksum: r.Checksum, Error: r.Error}
+		if r.dirty() {
+			st.State = "dirty"
+		}
+		out = append(out, st)
+	}
+	slices.SortFunc(out, func(a, b VersionStatus) int { return strings.Compare(a.Version, b.Version) })
+	return out, nil
+}
+
+// Resolve clears the dirty state of version after manual repair. With
+// ResolveApplied the failed or running row becomes applied and keeps its
+// statements_applied; with ResolveRolledBack the row is deleted, so the version
+// is pending again. It is an error when the version has no dirty row.
+func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState) (err error) {
+	if state != ResolveApplied && state != ResolveRolledBack {
+		return fmt.Errorf("migrate: unknown resolve state %q; use %q or %q", state, ResolveApplied, ResolveRolledBack)
+	}
+	c, err := e.pin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = c.Release() }()
+	// Resolve writes, so it holds the migration lock like Apply.
+	end, err := e.session(ctx, c, e.lockWait(ApplyOptions{}))
+	if err != nil {
+		return err
+	}
+	defer func() { err = end(err) }()
+	hist, err := e.history(ctx, c)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, r := range hist {
+		if r.Version == version && r.dirty() {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("migrate: version %s has no running or failed history row to resolve", version)
+	}
+	d := e.opts.dialect
+	var q string
+	var args []any
+	if state == ResolveApplied {
+		q = fmt.Sprintf(`UPDATE momo_migrations SET status = %s, error = '' WHERE version = %s AND status IN ('running', 'failed')`, ph(d, 1), ph(d, 2))
+		args = []any{StatusApplied, version}
+	} else {
+		q = fmt.Sprintf(`DELETE FROM momo_migrations WHERE version = %s AND status IN ('running', 'failed')`, ph(d, 1))
+		args = []any{version}
+	}
+	if _, err := c.Exec(ctx, q, args); err != nil {
+		return fmt.Errorf("migrate: resolve %s: %w", version, err)
+	}
+	return nil
+}
+
+// historyTable is the name of the migration history table. It is engine
+// bookkeeping, not part of the application schema, so Inspect leaves it out.
+const historyTable = "momo_migrations"
+
+// Inspect reads the live database into a schema, using the configured Schemas
+// (default: current_schema()). The momo_migrations history table is removed
+// from the result: it is not declared by any model or snapshot, so reporting
+// it would turn it into drift or a DROP TABLE.
+func (e *Engine) Inspect(ctx context.Context) (*schema.Schema, error) {
+	c, err := e.pin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = c.Release() }()
+	s, _, err := e.inspectOn(ctx, c)
+	return s, err
+}
+
+// inspectOn is Inspect on a connection the caller holds. It also returns the
+// indexes the dialect reports as invalid (a failed CONCURRENTLY build) when the
+// dialect implements InvalidInspector, and applies Config.Exclude to the result
+// because the dialects do not.
+func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Schema, []string, error) {
+	if _, err := excludeMatcher(e.opts.config.Exclude); err != nil {
+		return nil, nil, err
+	}
+	schemas, err := e.resolveSchemas(ctx, c)
+	if err != nil {
+		return nil, nil, err
+	}
+	opts := InspectOptions{Schemas: schemas, Exclude: e.opts.config.Exclude}
+	var s *schema.Schema
+	var invalid []string
+	if ii, ok := e.opts.dialect.(InvalidInspector); ok {
+		s, invalid, err = ii.InspectWithInvalid(ctx, c, opts)
+	} else {
+		s, err = e.opts.dialect.Inspect(ctx, c, opts)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	hs := ""
+	if len(schemas) > 0 {
+		hs = schemas[0]
+	}
+	s.Tables = slices.DeleteFunc(s.Tables, func(t schema.Table) bool {
+		return t.Name == historyTable && (t.Schema == "" || t.Schema == hs)
+	})
+	invalid = dropExcludedInvalid(s, invalid, e.opts.config.Exclude)
+	return applyExclude(s, e.opts.config.Exclude), invalid, nil
+}
+
+// dropExcludedInvalid removes from invalid the indexes of a table or view that
+// Config.Exclude hides. It must run on the schema before applyExclude strips
+// that table, because the index is located through it.
+func dropExcludedInvalid(s *schema.Schema, invalid []string, globs []string) []string {
+	if len(globs) == 0 || len(invalid) == 0 {
+		return invalid
+	}
+	match, err := excludeMatcher(globs)
+	if err != nil {
+		return invalid
+	}
+	return slices.DeleteFunc(slices.Clone(invalid), func(name string) bool {
+		ref := invalidIndexRef(s, name)
+		i := strings.LastIndexByte(ref.Name, '.')
+		return i >= 0 && match(ref.Schema, ref.Name[:i])
+	})
+}
+
+// migrationName is the form a migration name must have.
+var migrationName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// Diff compares desired with the schema of the latest snapshot in the
+// migration directory (the empty schema when there is none) and renders the
+// difference as a new migration. It returns nil, nil when nothing changed.
+// Otherwise Migration.Files holds the new files only, by relative name:
+// <version>_<name>.up.sql, <version>_<name>.snapshot.json (whose parent is the
+// latest snapshot's version) and the updated momo.sum. The version is the
+// engine clock in UTC (NextVersion), moved to the second after the latest
+// existing version when the clock is not already past it, so versions only grow.
+//
+// Diff does not touch the database: it reads the directory and renders through
+// the dialect. It orders the changes with OrderWithViews and returns the
+// ordering error (a dependency cycle) instead of falling back to the unordered
+// list. SQLite table rebuilds need a live connection and are not supported
+// here yet.
+func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, opts DiffOptions) (*Migration, error) {
+	if !migrationName.MatchString(name) {
+		return nil, fmt.Errorf("migrate: migration name %q must match %s", name, migrationName)
+	}
+	if desired == nil {
+		return nil, errors.New("migrate: Diff needs a desired schema")
+	}
+	to := *desired
+	if to.Dialect == "" {
+		to.Dialect = e.opts.dialect.Dialect().Name
+	}
+	from := &schema.Schema{Dialect: to.Dialect}
+	parent := ""
+	snap, err := LatestSnapshot(e.dir)
+	switch {
+	case err == nil:
+		from, parent = snap.Schema, snap.Version
+	case !errors.Is(err, ErrNoSnapshot):
+		return nil, err
+	}
+	version, err := NextVersion(e.opts.clock, e.dir)
+	if err != nil {
+		return nil, err
+	}
+	changes, hints, err := Diff(from, &to, opts)
+	if err != nil {
+		return nil, err
+	}
+	if len(changes) == 0 {
+		return nil, nil
+	}
+	ordered, err := OrderWithViews(changes, from.Views, to.Views)
+	if err != nil {
+		return nil, fmt.Errorf("migrate: order changes: %w", err)
+	}
+	stmts, err := e.opts.dialect.Render(ordered)
+	if err != nil {
+		return nil, err
+	}
+	m := &Migration{Version: version, Name: name, Kind: "sql", Parent: parent, Up: stmts, Changes: ordered, Snapshot: &to, Hints: hints}
+	for _, c := range ordered {
+		m.Destructive = m.Destructive || c.Destructive
+	}
+	for _, s := range stmts {
+		m.NoTx = m.NoTx || s.NoTx
+	}
+	if m.Files, err = e.migrationFiles(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// migrationFiles renders the up file, the snapshot and the extended momo.sum
+// of m, keyed by relative file name.
+func (e *Engine) migrationFiles(m *Migration) (map[string][]byte, error) {
+	upName := m.Version + "_" + m.Name + ".up.sql"
+	snapName := m.Version + "_" + m.Name + ".snapshot.json"
+	var snapBuf bytes.Buffer
+	if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: m.Version, ParentVersion: m.Parent, Schema: m.Snapshot}); err != nil {
+		return nil, err
+	}
+	added := memFS{upName: renderUp(m), snapName: snapBuf.Bytes()}
+	existing, err := e.existingSum()
+	if err != nil {
+		return nil, err
+	}
+	sum, err := AppendSum(existing, added, []string{snapName, upName})
+	if err != nil {
+		return nil, err
+	}
+	var sumBuf bytes.Buffer
+	if err := sum.Write(&sumBuf); err != nil {
+		return nil, err
+	}
+	return map[string][]byte{upName: added[upName], snapName: added[snapName], SumFileName: sumBuf.Bytes()}, nil
+}
+
+// existingSum reads momo.sum from the directory; a directory without one gets
+// a sum computed over its current files, as momo migrate hash would write.
+func (e *Engine) existingSum() (*Sum, error) {
+	f, err := e.dir.Open(SumFileName)
+	if errors.Is(err, fs.ErrNotExist) {
+		return ComputeSum(e.dir)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("migrate: open %s: %w", SumFileName, err)
+	}
+	defer func() { _ = f.Close() }()
+	return ParseSum(f)
+}
+
+// renderUp writes the up file: the directive header, then the statements
+// separated by a blank line, each ended by a semicolon.
+func renderUp(m *Migration) []byte {
+	var b bytes.Buffer
+	b.WriteString("-- momo:generated\n")
+	if m.Destructive {
+		b.WriteString("-- momo:destructive\n")
+	}
+	if m.NoTx {
+		b.WriteString("-- momo:no-transaction\n")
+	}
+	b.WriteString("\n")
+	for i, s := range m.Up {
+		if i > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(strings.TrimRight(strings.TrimSpace(s.SQL), "; \n\t"))
+		b.WriteString(";")
+	}
+	b.WriteString("\n")
+	return b.Bytes()
+}
+
+// memFS holds new files before they are written. AppendSum only reads it
+// through fs.ReadFile, so ReadFile is the one supported operation.
+type memFS map[string][]byte
+
+func (m memFS) ReadFile(name string) ([]byte, error) {
+	if b, ok := m[name]; ok {
+		return b, nil
+	}
+	return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
+}
+
+func (m memFS) Open(name string) (fs.File, error) {
+	return nil, &fs.PathError{Op: "open", Path: name, Err: errors.ErrUnsupported}
+}

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"math/rand"
+	"slices"
 	"testing"
 )
 
@@ -63,4 +64,45 @@ func FuzzSchemaSort(f *testing.F) {
 			t.Fatalf("Sort is order-sensitive:\n%s\n%s", a, b)
 		}
 	})
+}
+
+func TestSortCoversManagedObjects(t *testing.T) {
+	s := &Schema{
+		Schemas:   []SchemaNamespace{{Name: "b"}, {Name: "a"}},
+		Tables:    []Table{{Schema: "b", Name: "t"}, {Schema: "a", Name: "t"}},
+		Views:     []View{{Name: "v2", Depends: []string{"z", "a", "z"}, Indexes: []Index{{Name: "i2"}, {Name: "i1"}}}, {Name: "v1"}},
+		Functions: []Function{{Name: "f", Args: "b"}, {Name: "f", Args: "a"}},
+		Triggers:  []Trigger{{Table: "t", Name: "b", Events: []string{"UPDATE", "INSERT"}}, {Table: "t", Name: "a"}},
+		Policies:  []Policy{{Table: "t", Name: "q", Roles: []string{"y", "x"}}, {Table: "t", Name: "p"}},
+	}
+	s.Sort()
+	if s.Schemas[0].Name != "a" || s.Tables[0].Schema != "a" || s.Views[0].Name != "v1" ||
+		s.Functions[0].Args != "a" || s.Triggers[0].Name != "a" || s.Policies[0].Name != "p" {
+		t.Fatalf("Sort left a managed-object collection unsorted: %+v", s)
+	}
+	v := s.Views[1]
+	if !slices.Equal(v.Depends, []string{"a", "z"}) || v.Indexes[0].Name != "i1" {
+		t.Fatalf("view depends/indexes not sorted and deduplicated: %+v", v)
+	}
+	if !slices.Equal(s.Triggers[1].Events, []string{"INSERT", "UPDATE"}) || !slices.Equal(s.Policies[1].Roles, []string{"x", "y"}) {
+		t.Fatalf("events/roles not sorted: %+v", s)
+	}
+}
+
+func TestEqualNormalizesManagedObjects(t *testing.T) {
+	a := &Schema{Dialect: "postgres",
+		Views:    []View{{Name: "v", Query: "SELECT  A FROM t"}},
+		Triggers: []Trigger{{Table: "t", Name: "g", When: "(NEW.x > 1)"}},
+		Policies: []Policy{{Table: "t", Name: "p", Using: "(Tenant = 1)", Check: "tenant  = 1"}}}
+	b := &Schema{Dialect: "postgres",
+		Views:    []View{{Name: "v", Query: "select a from t"}},
+		Triggers: []Trigger{{Table: "t", Name: "g", When: "new.x > 1"}},
+		Policies: []Policy{{Table: "t", Name: "p", Using: "tenant = 1", Check: "tenant = 1"}}}
+	if !Equal(a, b) {
+		t.Fatal("equivalent managed objects compared unequal")
+	}
+	b.Policies[0].Using = "tenant = 2"
+	if Equal(a, b) {
+		t.Fatal("different policy compared equal")
+	}
 }

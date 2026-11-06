@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/vector"
 )
 
 // Builder accumulates SQL text and bind arguments for one statement.
@@ -26,6 +27,56 @@ type Builder struct {
 	// set while rendering SET targets, INSERT column lists, ON CONFLICT
 	// targets and RETURNING lists.
 	unqualified bool
+	// scopes tracks, per SELECT being rendered, which table qualifiers its
+	// FROM and JOIN sources expose and which qualifiers its columns used.
+	scopes []*qscope
+}
+
+// qscope is one SELECT's source names and the qualifiers referenced inside it.
+type qscope struct {
+	names map[string]struct{}
+	refs  map[string]struct{}
+}
+
+// withScope renders fn inside a scope whose sources expose names. Every
+// statement builder (SELECT, and UPDATE, DELETE and MERGE with their target
+// table) must render through it, so a column qualified by a table that is
+// not among the sources fails the build with ErrValidation. A qualifier the
+// scope does not provide is passed to the enclosing scope, which is what lets
+// a correlated subquery reference its outer statement's target table.
+func (b *Builder) withScope(names []string, fn func()) {
+	b.pushScope(names)
+	defer b.popScope()
+	fn()
+}
+
+// pushScope opens a scope for a statement whose sources expose names.
+func (b *Builder) pushScope(names []string) {
+	sc := &qscope{names: make(map[string]struct{}, len(names)), refs: map[string]struct{}{}}
+	for _, n := range names {
+		if n != "" {
+			sc.names[n] = struct{}{}
+		}
+	}
+	b.scopes = append(b.scopes, sc)
+}
+
+// popScope closes the innermost scope. A qualifier it does not provide is
+// handed to the enclosing SELECT (a correlated reference); with no
+// enclosing SELECT it is a column of a table that is not in the query.
+func (b *Builder) popScope() {
+	sc := b.scopes[len(b.scopes)-1]
+	b.scopes = b.scopes[:len(b.scopes)-1]
+	for q := range sc.refs {
+		if _, ok := sc.names[q]; ok {
+			continue
+		}
+		if n := len(b.scopes); n > 0 {
+			b.scopes[n-1].refs[q] = struct{}{}
+			continue
+		}
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("column reference to table %q, which is not in the query's FROM or JOIN sources", q)})
+	}
 }
 
 // NewBuilder returns a builder for the dialect.
@@ -52,6 +103,9 @@ func (b *Builder) Ident(name string) { b.buf = b.d.AppendIdent(b.buf, name) }
 // (or an unqualified context) renders the bare quoted name.
 func (b *Builder) QualifiedIdent(qualifier, name string) {
 	if qualifier != "" && !b.unqualified {
+		if n := len(b.scopes); n > 0 {
+			b.scopes[n-1].refs[qualifier] = struct{}{}
+		}
 		b.Ident(qualifier)
 		b.buf = append(b.buf, '.')
 	}
@@ -69,6 +123,9 @@ func (b *Builder) Arg(v any) {
 	if dv, ok := v.(DialectValuer); ok {
 		enc, err := dv.DialectValue(b.d.Name)
 		if err != nil {
+			if errors.Is(err, vector.ErrDialect) {
+				err = &Error{Kind: ErrUnsupported, Err: err}
+			}
 			b.SetErr(err)
 			return
 		}
@@ -98,38 +155,6 @@ func (b *Builder) Args() []any { return b.args }
 // unsupported records an ErrUnsupported build error for feature.
 func (b *Builder) unsupported(feature string) {
 	b.SetErr(&Error{Kind: ErrUnsupported, Op: "build", Err: fmt.Errorf("%s is not supported by %s", feature, b.d.Name)})
-}
-
-// appendRaw renders a raw fragment, replacing each '?' with a bind
-// placeholder for the corresponding argument. "??" renders a literal '?'
-// (for PostgreSQL's jsonb ? operators). Argument count must match.
-func (b *Builder) appendRaw(sql string, args []any) {
-	n := 0
-	for i := 0; i < len(sql); i++ {
-		c := sql[i]
-		if c != '?' {
-			b.buf = append(b.buf, c)
-			continue
-		}
-		if i+1 < len(sql) && sql[i+1] == '?' {
-			b.buf = append(b.buf, '?')
-			i++
-			continue
-		}
-		if n >= len(args) {
-			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("raw SQL %q has more placeholders than the %d arguments given", sql, len(args))})
-			return
-		}
-		if e, ok := args[n].(Expr); ok {
-			e.AppendSQL(b)
-		} else {
-			b.Arg(args[n])
-		}
-		n++
-	}
-	if n != len(args) {
-		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("raw SQL %q has %d placeholders but %d arguments were given", sql, n, len(args))})
-	}
 }
 
 // Compiled is a rendered statement ready for inspection or execution.

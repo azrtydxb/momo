@@ -54,6 +54,10 @@ func NewColumn[T any](table, name string, flags uint16) Column[T] {
 // As returns the same column qualified by a table alias.
 func (c Column[T]) As(alias string) Column[T] { c.table = alias; return c }
 
+// AsExpr returns the column as an Expression[T], so a projection list reads
+// explicitly: DocTitle.As("l").AsExpr().
+func (c Column[T]) AsExpr() Expression[T] { return c }
+
 func (c Column[T]) AppendSQL(b *Builder) { b.QualifiedIdent(c.table, c.name) }
 func (c Column[T]) resultType() T        { var z T; return z }
 
@@ -166,26 +170,6 @@ type Assignment struct {
 
 // ColumnName returns the assigned column.
 func (a Assignment) ColumnName() string { return a.col }
-
-func (a Assignment) appendValue(b *Builder, insert bool) {
-	switch a.kind {
-	case setValue:
-		b.Arg(a.val)
-	case setExpr:
-		a.expr.AppendSQL(b)
-	case setNull:
-		b.WriteString("NULL")
-	case setDefault:
-		if (insert && !b.d.DefaultInValues) || (!insert && !b.d.DefaultInUpdate) {
-			b.unsupported("SET column = DEFAULT")
-			return
-		}
-		b.WriteString("DEFAULT")
-	case setExcluded:
-		b.WriteString("excluded.")
-		b.Ident(a.col)
-	}
-}
 
 // ------------------------------------------------------------- ordering
 
@@ -509,31 +493,58 @@ type typedFn[T any] struct{ fn }
 
 func (typedFn[T]) resultType() T { var z T; return z }
 
-// Count is COUNT(*).
-func Count() Expression[int64] { return typedFn[int64]{fn{name: "COUNT", star: true}} }
+// Number is the constraint of the numeric aggregates SUM.
+type Number interface{ ~int64 | ~float64 }
+
+// Agg is a typed aggregate expression such as COUNT(*) or SUM(col). Besides
+// being an Expression[T] usable in a select list, it carries the comparison
+// methods HAVING needs.
+type Agg[T any] struct{ fn }
+
+func (Agg[T]) resultType() T  { var z T; return z }
+func (a Agg[T]) order() Order { return Order{Expr: a} }
+
+func (a Agg[T]) Eq(v T) Predicate { return binOp{a, " = ", argExpr{v}} }
+func (a Agg[T]) Ne(v T) Predicate { return binOp{a, " <> ", argExpr{v}} }
+func (a Agg[T]) Lt(v T) Predicate { return binOp{a, " < ", argExpr{v}} }
+func (a Agg[T]) Le(v T) Predicate { return binOp{a, " <= ", argExpr{v}} }
+func (a Agg[T]) Gt(v T) Predicate { return binOp{a, " > ", argExpr{v}} }
+func (a Agg[T]) Ge(v T) Predicate { return binOp{a, " >= ", argExpr{v}} }
+
+// Asc orders by the aggregate ascending.
+func (a Agg[T]) Asc() Order { return Order{Expr: a} }
+
+// Desc orders by the aggregate descending.
+func (a Agg[T]) Desc() Order { return Order{Expr: a, Desc: true} }
+
+// CountAll is COUNT(*).
+func CountAll() Agg[int64] { return Agg[int64]{fn{name: "COUNT", star: true}} }
 
 // CountOf is COUNT(expr), which skips NULLs.
-func CountOf(e Expr) Expression[int64] { return typedFn[int64]{fn{name: "COUNT", args: []Expr{e}}} }
+func CountOf(e Expr) Agg[int64] { return Agg[int64]{fn{name: "COUNT", args: []Expr{e}}} }
 
 // CountDistinct is COUNT(DISTINCT expr).
-func CountDistinct(e Expr) Expression[int64] {
-	return typedFn[int64]{fn{name: "COUNT", args: []Expr{SQL("DISTINCT ?", e)}}}
+func CountDistinct(e Expr) Agg[int64] {
+	return Agg[int64]{fn{name: "COUNT", args: []Expr{SQL("DISTINCT ?", e)}}}
 }
 
-// Sum is SUM(expr). The result is NULL over zero rows; scan it into a
-// nullable type or wrap it in Coalesce.
-func Sum[T any](e Expression[T]) Expression[T] { return typedFn[T]{fn{name: "SUM", args: []Expr{e}}} }
+// Sum is SUM(expr). The result is NULL over zero rows, so scan it into a
+// nullable destination such as *int64 or *float64 (sql.Null types work too), or
+// wrap it in Coalesce. Scanning NULL into a plain int64 returns an error.
+func Sum[T Number](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "SUM", args: []Expr{e}}} }
 
-// Avg is AVG(expr) as float64 (NULL over zero rows).
-func Avg[T any](e Expression[T]) Expression[float64] {
-	return typedFn[float64]{fn{name: "AVG", args: []Expr{e}}}
+// Avg is AVG(expr) as float64. It is NULL over zero rows: scan it into *float64
+// (or sql.NullFloat64), or wrap it in Coalesce.
+func Avg(e Expression[float64]) Agg[float64] {
+	return Agg[float64]{fn{name: "AVG", args: []Expr{e}}}
 }
 
-// Min is MIN(expr) (NULL over zero rows).
-func Min[T any](e Expression[T]) Expression[T] { return typedFn[T]{fn{name: "MIN", args: []Expr{e}}} }
+// Min is MIN(expr) (NULL over zero rows). T is any type the database can
+// order, such as time.Time, a decimal, or a string.
+func Min[T any](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "MIN", args: []Expr{e}}} }
 
 // Max is MAX(expr) (NULL over zero rows).
-func Max[T any](e Expression[T]) Expression[T] { return typedFn[T]{fn{name: "MAX", args: []Expr{e}}} }
+func Max[T any](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "MAX", args: []Expr{e}}} }
 
 // Coalesce returns the first non-NULL argument.
 func Coalesce[T any](e Expression[T], fallback T) Expression[T] {
@@ -558,6 +569,11 @@ func (rawExpr) isRaw() bool            { return true }
 // Every '?' is replaced by a bound parameter for the next argument (an Expr
 // argument is rendered inline instead). Write "??" for a literal '?'. Never
 // build sql from user input; pass user input as arguments.
+//
+// Raw arguments: In(slice) expands to a bind list (an empty slice is a build
+// error), Ident(name) renders a quoted identifier, and @name binds Named(name,
+// value). A ? or @name inside a string literal, quoted identifier, comment or
+// dollar-quoted string is text, as are the PostgreSQL operators ?| ?& @? @@ @>.
 func SQL(sql string, args ...any) Predicate { return rawExpr{sql, slices.Clone(args)} }
 
 // TypedSQL is SQL with a declared result type, for use in projections and

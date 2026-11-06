@@ -49,7 +49,9 @@ type selectCore struct {
 	limit       int64 // -1: none
 	offset      int64
 	lock        string
+	indexedBy   string
 	withDeleted bool
+	onlyDeleted bool
 	err         error
 }
 
@@ -299,9 +301,47 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 	return sq
 }
 
+// IndexedBy renders SQLite's INDEXED BY hint after the FROM table. The index
+// name is quoted, never spliced. PostgreSQL and MySQL have no such clause
+// and return ErrUnsupported when the query is built. The FROM source must be
+// a plain table (TableRef).
+func (sq SelectQuery[T]) IndexedBy(index string) SelectQuery[T] {
+	if index == "" {
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("IndexedBy needs an index name")}
+		return sq
+	}
+	sq.s.indexedBy = index
+	return sq
+}
+
+// WithTableName replaces the FROM table name at runtime, for example to run
+// one query shape over several identically shaped tables. The name is
+// quoted; it is never spliced. The replacement is aliased to the model's
+// table name, so the model's column expressions and the soft-delete filter
+// keep resolving. It needs a plain table as the FROM source.
+func (sq SelectQuery[T]) WithTableName(name string) SelectQuery[T] {
+	t, ok := sq.s.from.(TableRef)
+	switch {
+	case name == "":
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("WithTableName needs a table name")}
+	case !ok:
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("WithTableName needs a plain table as the FROM source")}
+	default:
+		if t.Alias == "" {
+			t.Alias = t.Name
+		}
+		t.Name = name
+		sq.s.from = t
+	}
+	return sq
+}
+
 // WithDeleted includes soft-deleted rows for models with a soft-delete
 // column (they are excluded by default).
-func (sq SelectQuery[T]) WithDeleted() SelectQuery[T] { sq.s.withDeleted = true; return sq }
+func (sq SelectQuery[T]) WithDeleted() SelectQuery[T] {
+	sq.s.withDeleted, sq.s.onlyDeleted = true, false
+	return sq
+}
 
 // With adds a common table expression. cols optionally names its columns.
 func (sq SelectQuery[T]) With(name string, q Subquery, cols ...string) SelectQuery[T] {
@@ -330,6 +370,23 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		b.SetErr(s.err)
 		return
 	}
+	names := make([]string, 0, 1+len(s.joins)+len(s.with))
+	for _, c := range s.with {
+		names = append(names, c.name)
+	}
+	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
+		if q, ok := src.(interface{ Qualifier() string }); ok {
+			names = append(names, q.Qualifier())
+		}
+	}
+	// FromSubquery and CTE bodies render inside this scope, so they can see
+	// the sibling FROM names. That is more lenient than SQL, which allows it
+	// only with LATERAL, but it is safe: it never hides a wrong table.
+	b.withScope(names, func() { sq.renderBody(b) })
+}
+
+func (sq SelectQuery[T]) renderBody(b *Builder) {
+	s := &sq.s
 	if len(s.with) > 0 {
 		b.WriteString("WITH ")
 		for _, c := range s.with {
@@ -392,6 +449,18 @@ func (sq SelectQuery[T]) render(b *Builder) {
 	if s.from != nil {
 		b.WriteString(" FROM ")
 		s.from.appendFrom(b)
+		if s.indexedBy != "" {
+			if _, ok := s.from.(TableRef); !ok {
+				b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("IndexedBy needs a plain table as the FROM source")})
+				return
+			}
+			if b.d.Name != dialect.SQLite {
+				b.unsupported("INDEXED BY")
+				return
+			}
+			b.WriteString(" INDEXED BY ")
+			b.Ident(s.indexedBy)
+		}
 	}
 	for _, j := range s.joins {
 		b.writeByte(' ')
@@ -410,7 +479,7 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		}
 	}
 	if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted {
-		where = append(slices.Clip(where), postfix{qcol{sq.qualifier(), sq.meta.Columns[sq.meta.SoftDelete].Name}, " IS NULL"})
+		where = append(slices.Clip(where), softDeletePred(sq.meta, sq.qualifier(), s.onlyDeleted))
 	}
 	if len(where) > 0 {
 		b.WriteString(" WHERE ")
@@ -465,6 +534,14 @@ func (sq SelectQuery[T]) render(b *Builder) {
 		b.writeByte(' ')
 		b.WriteString(s.lock)
 	}
+}
+
+func joinSources(js []join) []TableSource {
+	out := make([]TableSource, len(js))
+	for i, j := range js {
+		out[i] = j.src
+	}
+	return out
 }
 
 // qualifier is the name the model's own columns are qualified with.
@@ -727,6 +804,35 @@ func CTE(name string) TableRef { return TableRef{Name: name} }
 // alias). Momo cannot check that the column exists or has type T.
 func ColumnOf[T any](source string, name string) Column[T] {
 	return Column[T]{table: source, name: name}
+}
+
+type rawSubquery struct {
+	sql  string
+	args []any
+}
+
+func (rawSubquery) isSubquery() {}
+func (r rawSubquery) AppendSQL(b *Builder) {
+	b.writeByte('(')
+	r.render(b)
+	b.writeByte(')')
+}
+
+// render writes the fragment bare; a set operation renders members this way.
+func (r rawSubquery) render(b *Builder) { b.appendRaw(r.sql, r.args) }
+
+// RawSubquery is an explicit escape hatch: a raw SELECT usable as a Subquery
+// (IN, EXISTS, CTE body, set operation member, FromSubquery source).
+//
+// Safety contract: as for SQL, sql is inserted verbatim and must be a
+// trusted constant; '?' binds the next argument and "??" is a literal '?'.
+// Momo cannot check which tables the fragment references. Only '?'
+// placeholders bind; never write native '$1' style placeholders, which would
+// collide with momo's own numbering. For a scalar subquery as a typed
+// comparison operand use TypedSQL[T]("?", sub): the subquery renders its own
+// parentheses.
+func RawSubquery(sql string, args ...any) Subquery {
+	return rawSubquery{sql, slices.Clone(args)}
 }
 
 // Union combines queries with UNION (all=false) or UNION ALL (all=true).

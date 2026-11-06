@@ -63,9 +63,16 @@ type Meta[T any] struct {
 	Identity   int
 	Version    int
 	SoftDelete int
-	CreatedAt  int
-	UpdatedAt  int
-	PK         []int
+	// SoftDeleteKind is the type of the soft-delete marker column; the zero
+	// value is a nullable timestamp.
+	SoftDeleteKind SoftDeleteKind
+	CreatedAt      int
+	UpdatedAt      int
+	PK             []int
+
+	// Fields are Go-side defaults and validators per column, run by the
+	// write builders before SQL is built. See FieldHook.
+	Fields []FieldHook[T]
 }
 
 // Modeler is implemented (by generated code) on pointers to model and

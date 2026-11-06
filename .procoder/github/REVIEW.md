@@ -27,6 +27,10 @@ Check every hunk for:
   says what the code actually does.
 - Security linters run before review: `make gosec` is clean (CI reports
   gosec findings only as annotations, so they would otherwise reach the PR).
+- Integers read from the wire or a file are range-checked as the unsigned
+  source type before narrowing and before any allocation sized by them; a
+  `#nosec G115` names the check that bounds the value.
+- `make staticcheck` is clean (unused code and misuse that vet does not catch).
 
 End with a verdict line: findings counted by severity, or exactly
 "Nothing found — open the PR."

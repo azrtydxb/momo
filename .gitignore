@@ -11,3 +11,6 @@ coverage.*
 /.claude/
 /.procoder/index/
 .lycheecache
+
+# Scratch modules created by gen tests (removed by t.Cleanup).
+gen/testdata/scratch-*/

@@ -18,3 +18,4 @@ Implements plan momo-04-migrations Task 21: Staged changes end to end (PostgreSQ
 
 ## Evidence
 
+- Note (from the Task 8 review): Task 8's `Diff` deliberately returns `ErrStagedRequired` (or, with Stage, a hint and no alter) for a NULL to NOT NULL change without default, and `TestStagedNotNullOnExistingColumn` in `migrate/diff_test.go` asserts it. This task's third diff expects a plain `alter_column` once the snapshot shows the column nullable. The task must therefore change that rule in `migrate/diff.go` and that test together (for example by treating a staged snapshot as the signal that the backfill is done), not just one of them.

@@ -16,6 +16,7 @@ func populated() *Schema {
 	return &Schema{
 		FormatVersion: FormatVersion,
 		Dialect:       dialect.Postgres,
+		Schemas:       []SchemaNamespace{{Name: "audit"}},
 		Extensions:    []Extension{{Name: "vector", Version: "0.8.7"}},
 		Enums:         []Enum{{Name: "status", Values: []string{"open", "closed"}}},
 		Tables: []Table{{
@@ -32,7 +33,18 @@ func populated() *Schema {
 			ForeignKeys:  []ForeignKey{{Name: "documents_fk", Columns: []string{"id"}, RefTable: "owners", RefColumns: []string{"id"}, OnDelete: "CASCADE", OnUpdate: "NO ACTION"}},
 			Checks:       []Check{{Name: "documents_c", Expr: "id > 0"}},
 			WithoutRowID: true,
+			Schema:       "audit",
+			RLS:          &RLS{Enabled: true, Forced: true},
+			Partition:    &Partition{Strategy: "range", Key: "RANGE (id)"},
+			PartitionOf:  &PartitionOf{Parent: "p", Bound: "FOR VALUES FROM (1) TO (2)"},
 		}},
+		Views: []View{{Schema: "audit", Name: "v", Materialized: true, Query: "SELECT 1", Depends: []string{"documents"},
+			Indexes: []Index{{Name: "v_i", Parts: []IndexPart{{Column: "x"}}}}}},
+		Functions: []Function{{Schema: "audit", Name: "f", Args: "a integer", Returns: "integer", Language: "sql", Volatility: "STABLE", Body: "SELECT a"}},
+		Triggers: []Trigger{{Schema: "audit", Table: "documents", Name: "tg", Timing: "BEFORE", Events: []string{"INSERT", "UPDATE"},
+			ForEachRow: true, When: "(true)", Function: "f()", Args: []string{"x"}, Definition: "CREATE TRIGGER tg"}},
+		Policies: []Policy{{Schema: "audit", Table: "documents", Name: "pol", Command: "ALL", Permissive: true,
+			Roles: []string{"app"}, Using: "tenant = 1", Check: "tenant = 1"}},
 	}
 }
 
@@ -63,7 +75,7 @@ func TestSchemaJSONRoundTrip(t *testing.T) {
 func TestSchemaEveryFieldSerialized(t *testing.T) {
 	var walk func(reflect.Type, string)
 	walk = func(rt reflect.Type, path string) {
-		if rt.Kind() == reflect.Slice {
+		for rt.Kind() == reflect.Slice || rt.Kind() == reflect.Ptr {
 			rt = rt.Elem()
 		}
 		if rt.Kind() != reflect.Struct {
@@ -87,9 +99,41 @@ func TestSchemaFieldSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{`"format_version":1`, `"extensions"`, `"enums"`, `"without_rowid":true`} {
+	for _, key := range []string{`"format_version":1`, `"extensions"`, `"enums"`, `"without_rowid":true`,
+		`"schemas"`, `"views"`, `"functions"`, `"triggers"`, `"policies"`, `"rls"`, `"partition"`, `"partition_of"`, `"schema":"audit"`} {
 		if !strings.Contains(string(b), key) {
 			t.Errorf("snapshot JSON lacks %s", key)
 		}
+	}
+}
+
+func TestColumnCollateCommentJSONRoundTrip(t *testing.T) {
+	in := &Schema{FormatVersion: FormatVersion, Dialect: "postgres", Tables: []Table{{
+		Name:    "t",
+		Columns: []Column{{Name: "c", Type: "text", Collate: "C", Comment: "a \"quoted\" note"}},
+	}}}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out Schema
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	c := out.Tables[0].Columns[0]
+	if c.Collate != "C" || c.Comment != "a \"quoted\" note" {
+		t.Fatalf("lost: %+v", c)
+	}
+	if !Equal(in, &out) {
+		t.Fatal("round trip not Equal")
+	}
+	out.Tables[0].Columns[0].Comment = "other"
+	if Equal(in, &out) {
+		t.Fatal("Equal ignores Comment")
+	}
+	out.Tables[0].Columns[0].Comment = in.Tables[0].Columns[0].Comment
+	out.Tables[0].Columns[0].Collate = "POSIX"
+	if Equal(in, &out) {
+		t.Fatal("Equal ignores Collate")
 	}
 }

@@ -2,16 +2,29 @@
 SHELL := /bin/sh
 GO ?= go
 FUZZTIME ?= 10s
-FUZZ_TARGETS = .:FuzzBuilder ./schema:FuzzSchemaSort ./schema:FuzzNormalizeType
+# One fuzz target per line, so parallel branches add targets without conflicts.
+FUZZ_TARGETS  = .:FuzzBuilder
+FUZZ_TARGETS += ./schema:FuzzSchemaSort
+FUZZ_TARGETS += ./schema:FuzzNormalizeType
+FUZZ_TARGETS += ./types:FuzzHstore
+FUZZ_TARGETS += ./migrate:FuzzSplitStatements
+FUZZ_TARGETS += ./schema:FuzzNormalize
+FUZZ_TARGETS += ./vector:FuzzVectorDecode
+FUZZ_TARGETS += ./vector:FuzzSparseDecode
+FUZZ_TARGETS += ./driver/pgxdriver:FuzzVectorBinaryDecode
+FUZZ_TARGETS += ./gen/testdata/golden/descriptors/document:FuzzColumnByName
+FUZZ_TARGETS += .:FuzzEscapeLike
 GOVULNCHECK = go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
 # Same gosec release as .github/workflows/gosec.yml. Locally it fails on any
 # finding and on any type-check error, so a toolchain mismatch cannot pass silently.
 GOSEC = go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0
+# Pinned like the others; go run pkg@version leaves go.mod untouched.
+STATICCHECK = go run honnef.co/go/tools/cmd/staticcheck@v0.8.2
 PG_URL ?= postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
 PG_APP_URL ?= postgres://momo_app:momo_app@127.0.0.1:5432/postgres?sslmode=disable
 PGBOUNCER_URL ?= postgres://postgres:momo@127.0.0.1:6432/postgres?sslmode=disable
 
-.PHONY: test test-race test-compilefail test-fuzz test-integration test-integration-postgres bench-smoke fmt-check vet tidy-check govulncheck gosec db-up db-down
+.PHONY: test test-race test-compilefail test-fuzz test-integration test-integration-postgres bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -21,6 +34,7 @@ test-race:
 
 test-compilefail:
 	$(GO) test -count=1 -run '^TestCompileFail' .
+	$(GO) test -count=1 -run '^TestFieldPermissions$$' ./gen
 
 test-fuzz:
 	@for t in $(FUZZ_TARGETS); do \
@@ -37,19 +51,23 @@ bench-smoke:
 	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...
 
 fmt-check:
-	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "$$out"; exit 1; fi
+	@out=$$(git ls-files -z '*.go' | xargs -0 gofmt -l); if [ -n "$$out" ]; then echo "$$out"; exit 1; fi
 
 vet:
 	$(GO) vet ./...
+	$(GO) vet -tags integration ./...
 
 tidy-check:
 	$(GO) mod tidy -diff
+
+staticcheck:
+	$(STATICCHECK) ./...
 
 govulncheck:
 	$(GOVULNCHECK) ./...
 
 gosec:
-	$(GOSEC) -exclude-dir=testdata ./...
+	$(GOSEC) -quiet -exclude-dir=testdata -exclude-dir=.claude ./...
 
 db-up:
 	docker compose -f internal/testdb/compose.yaml up -d --wait

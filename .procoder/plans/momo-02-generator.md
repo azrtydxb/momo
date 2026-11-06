@@ -728,7 +728,7 @@ Interfaces:
 
 - A struct embedded without a `momo:"embedded"` tag and without `momo.Model` is a mixin when it carries persisted fields. Its fields are flattened into the containing model in declaration order, with `Path` extended by the embedded field's index.
 - A struct-typed field tagged `momo:"embedded,prefix:<p>"` (anonymous or named; two fields of one struct type need names) is flattened, and its column names get `<p>` prepended (`prefix + column`). The prefix does not change `GoName`.
-- A mixin's `index` and `unique` tags are copied into the containing model's `Table` with index names prefixed by the containing table name when they are not explicit: `<table>_<column>_idx`.
+- A mixin's `index` and `unique` tags are copied into the containing model's `Table` one entry per `index` or `unique` tag, named when not explicit exactly like the same tags on a direct field (Task 10): `<table>_<column>_idx` for an index and `<table>_<column>_key` for a unique; an explicit name takes the instance prefix so a reused struct does not repeat it.
 - `func Flatten(m *Model, st *types.Struct, path []int, prefix string, seen map[*types.Named]bool) []*Field` returns the field list. A cycle through `seen` is a diagnostic `"embedded cycle through X"`.
 
 - [ ] Step 1: Write `gen/testdata/fixtures/mixins/mixins.go`:
@@ -1034,7 +1034,7 @@ The schema helpers `Table(name)`, `Column(name)`, and `Index(name)` on `schema.S
 
 - [ ] Step 2: Run `go test ./gen -run TestTagVocabulary -count=1`; expect FAIL with `undefined: BuildSchema`.
 
-- [ ] Step 3: Implement `gen/schema.go` as specified. Use one function per effect group (`applyColumnTags`, `applyIndexTags`, `applyCompanion`, `dialectCheck`). The dialect check runs per `cfg.Dialects` entry; diagnostics carry the model's `Pos`.
+- [ ] Step 3: Implement `gen/schema.go` as specified. Use one function per effect group (`applyColumnTags`, `applyIndexTags`, `applyCompanion`, `dialectCheck`). The dialect check runs per `cfg.Dialects` entry; diagnostics carry the model's `Pos`. `addIndex` calls `schema.ValidateVectorIndex` (momo-07 Task 4) for every hnsw and ivfflat index on a PostgreSQL schema and reports its error at the field or model position.
 
 - [ ] Step 4: Run `go test ./gen -run TestTagVocabulary -count=1`; expect `ok`.
 
@@ -1052,7 +1052,8 @@ Files:
 
 Interfaces:
 
-- `func Map(goType string, d dialect.Name, tg tags.Tags) (sqlType string, err error)`. Supported Go types: `int`, `int8`, `int16`, `int32`, `int64` → `smallint`/`integer`/`bigint` (on SQLite `INTEGER`); `uint*` → unsupported diagnostic; `float32` → `real`, `float64` → `double precision` (SQLite `REAL`); `bool` → `boolean` (SQLite `INTEGER`); `string` → `text` (SQLite `TEXT`, Postgres `varchar(n)` when `size` is set); `[]byte` → `bytea` (SQLite `BLOB`); `time.Time` → `timestamptz` (SQLite `TEXT` in RFC3339 with UTC, documented); `vector.Vector` → `vector(n)` (requires `vector` tag); `vector.HalfVector`, `vector.SparseVector`, `vector.Bits` → matching types; `types.JSON[T]` → `jsonb` (SQLite `TEXT`); `types.UUID` → `uuid` (SQLite `TEXT`); `types.Date` → `date` (SQLite `TEXT`).
+- `func Map(goType string, d dialect.Name, tg tags.Tags) (sqlType string, err error)`. Supported Go types: `int`, `int8`, `int16`, `int32`, `int64` → `smallint`/`integer`/`bigint` (on SQLite `INTEGER`); `uint*` → unsupported diagnostic; `float32` → `real`, `float64` → `double precision` (SQLite `REAL`); `bool` → `boolean` (SQLite `INTEGER`); `string` → `text` (SQLite `TEXT`, Postgres `character varying(n)` when `size` is set); `[]byte` → `bytea` (SQLite `BLOB`); `time.Time` → `timestamp with time zone` (SQLite `TEXT` in RFC3339 with UTC, documented); `vector.Vector` → `vector(n)` (requires `vector` tag); `vector.HalfVector`, `vector.SparseVector`, `vector.Bits` → matching types; `types.JSON[T]` → `jsonb` (SQLite `TEXT`); `types.UUID` → `uuid` (SQLite `TEXT`); `types.Date` → `date` (SQLite `TEXT`).
+- Every returned type is canonical: `schema.NormalizeType(d, got) == got` for every table entry and dialect (momo-04 Task 2 owns the canonical forms, so the table spells `character varying(n)` and `timestamp with time zone`, not `varchar(n)` and `timestamptz`; SQLite types stay upper-case). Step 1 asserts this across the full table.
 - Unknown types yield `ErrUnsupported` wrapped: `fmt.Errorf("%w: Go type %s has no SQL mapping on %s", momo.ErrUnsupported, goType, d)`. The generator reports it as a diagnostic at the field's position.
 - Codec types are resolved by Task 13 through their `SQLType(dialect.Name) string` method when they implement it (a codec's own mapping wins over this table).
 
@@ -1068,6 +1069,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/tags"
+	"github.com/azrtydxb/momo/schema"
 )
 
 func TestGeneratorTypeMap(t *testing.T) {
@@ -1079,9 +1081,9 @@ func TestGeneratorTypeMap(t *testing.T) {
 	}{
 		{"int64", dialect.Postgres, tags.Tags{}, "bigint"},
 		{"int64", dialect.SQLite, tags.Tags{}, "INTEGER"},
-		{"string", dialect.Postgres, tags.Tags{Size: 40}, "varchar(40)"},
+		{"string", dialect.Postgres, tags.Tags{Size: 40}, "character varying(40)"},
 		{"string", dialect.SQLite, tags.Tags{}, "TEXT"},
-		{"time.Time", dialect.Postgres, tags.Tags{}, "timestamptz"},
+		{"time.Time", dialect.Postgres, tags.Tags{}, "timestamp with time zone"},
 		{"[]byte", dialect.SQLite, tags.Tags{}, "BLOB"},
 		{"vector.Vector", dialect.Postgres, tags.Tags{VectorDim: 3}, "vector(3)"},
 	}
@@ -1089,6 +1091,9 @@ func TestGeneratorTypeMap(t *testing.T) {
 		got, err := Map(c.goType, c.d, c.tg)
 		if err != nil || got != c.want {
 			t.Errorf("Map(%s,%s)=%q,%v want %q", c.goType, c.d, got, err, c.want)
+		}
+		if err == nil && schema.NormalizeType(c.d, got) != got {
+			t.Errorf("Map(%s,%s)=%q is not canonical (NormalizeType gives %q)", c.goType, c.d, got, schema.NormalizeType(c.d, got))
 		}
 	}
 	if _, err := Map("uint64", dialect.Postgres, tags.Tags{}); !errors.Is(err, momo.ErrUnsupported) {
@@ -1376,6 +1381,10 @@ The `momo.NewReadOnlyColumn` constructor is a contract addition with the same si
 - Relation descriptor fields: exactly the momo-06 Task 2 set, emitted per kind. Common: `Name`, `Kind` (`momo.BelongsTo`, `momo.HasOne`, `momo.HasMany`, `momo.ManyToMany`), `Parent` and `Child` (`TableRef`), `ParentMeta` and `ChildMeta` (`(*P)(nil).MomoMeta()` and `(*C)(nil).MomoMeta()`), `ParentCols`, `ChildCols`, `ChildPK`, `ParentKey func(*P) ([]any, bool)`, `ChildKey func(*C) ([]any, bool)`. Per kind (momo-06 rule 3): belongs-to adds `SetParentKey func(*P, []any)`, `GetOne func(*P) *C`, `SetOne func(*P, *C)`; has-one adds `SetChildKey func(*C, []any)`, `GetOne`, `SetOne`; has-many adds `SetChildKey`, `GetMany func(*P) []C`, `SetMany func(*P, []C)`; many-to-many adds `Through *momo.Through` (`Through{Table TableRef; ParentCols, ChildCols []string}`), `GetMany`, `SetMany`. Polymorphic relations (momo-06 rule 5) add `Discriminator *momo.Discriminator` (`Discriminator{Column string; Value any}`). The emitter writes exactly these fields. The retired names `Assign`, `JoinSpec`, `ParentColumns` and `ChildColumns` are never emitted. Key closures follow momo-06 rules 1 and 2: base Go values only (named types are converted), pointer key fields return `nil, false` when nil and are dereferenced otherwise, and setters assert `k[i].(Base)` and store `&v` into pointer fields. Per-field rules are in Task 28.
 - Relation discovery: fields tagged `belongs_to`, `has_one`, `has_many`, `many2many` are relations, not columns. Belongs-to uses `fk:<LocalField>` (the local key); has-many and has-one use `fk:<ChildField>` (the key on the child); many-to-many uses `join:<table>` and the target type from the field type. A relation whose target model is not in `Graph.Models` is a diagnostic `relation target X is not a momo model`.
 - Polymorphic relations: tag keys `rel:<kind>` (or a bare kind key) with `polytype:<column>` and `polyvalue:<value>` on the relation field. `polytype` and `polyvalue` must come together, else the error `polymorphic relation <Field> needs both polytype and polyvalue`. `polytype` or `polyvalue` on a belongs-to or many-to-many relation is the error `polymorphic is only valid for has_one and has_many`. A polymorphic relation whose child model has no field for the `polytype` column is the error `polymorphic column <col> is not a field of <Child>`. All three are errors at the relation field's position, and the package yields no output (Task 9 rule).
+- Polymorphic `SetChildKey` (momo-06 rule 3): for a polymorphic has-one or has-many the generated closure sets the child FK fields and also the discriminator field, the child field whose column equals `polytype`, to `polyvalue`, converted to the field's named type when it has one (`c.OwnerType = Kind("document")`). The discriminator field must be a string field.
+- Many-to-many join columns: each `Through` column is `<namer.ColumnName(model GoName)>_<model's PK column>`, using the configured naming preset (`Config.Naming`, default Momo; carried on `Graph.Namer`). The plan's example gives `document_id` and `tag_id`, and a `column:` override on the primary key flows through (`document_uid`). Schema generation (Task 10) builds the join table with the same helper, so the schema and the descriptors always agree.
+- `nullable` on a non-pointer field emits `momo.NullColumn[T]` with `momo.FlagNullable`, as the schema marks the column nullable too.
+- Identifier safety: every import alias used by the output is reserved before any field or relation identifier is chosen, so a field named like an alias (for example `dialect`) is renamed with a trailing `_` instead of redeclaring the import.
 - `Relation` (in `gen/types.go`): `GoName`, `Kind RelKind`, `Target *Model`, `FK string`, `JoinTable string`, `PolyType string`, `PolyValue string`, `Pos token.Position`.
 
 - [ ] Step 1: Write `gen/testdata/fixtures/rel/rel.go` with models `Author` (table `authors`, fields `ID int64 pk`, `Name string`, `Posts []Post` with `momo:"has_many,fk:AuthorID"`), `Post` (table `posts`, fields `ID int64 pk`, `AuthorID int64`, `Author *Author` with `momo:"belongs_to,fk:AuthorID"`).
