@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-06
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
 Type: bug
 Severity: s3
 

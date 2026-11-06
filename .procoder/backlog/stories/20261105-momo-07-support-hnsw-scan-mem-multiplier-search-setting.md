@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-05
 Epic: momo-07-vectors-pgvector
-Sprint: -
+Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
 
 ## Description
 

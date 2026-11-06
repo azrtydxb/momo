@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-06
 Epic: momo-05-writes-queries
-Sprint: -
+Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
 
 ## Description
 
