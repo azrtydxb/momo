@@ -22,3 +22,11 @@ Decision (2026-11-05): scratch database per run.
 - Wait for all of momo-06 (stories 150 to 155) before release
 
 Decision (2026-11-06): wait for all relations (stories 150 to 155) before v0.1.0.
+
+## Where story verification runs
+
+- Push each story branch (and sprint-2) to origin so GitHub Actions runs the full suite, race, lint and the pg16/pg17 matrix; agents run only targeted tests locally (recommended)
+- Keep everything local, but cap concurrent agents at two and move GOCACHE off the full DATA disk
+- Keep the current setup
+
+Decision (2026-11-06): push branches, use CI; standing approval to push worktree-agent-* story branches and sprint-2 to origin (no PRs or merges to main without asking); local runs limited to the story's own tests.

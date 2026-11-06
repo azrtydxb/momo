@@ -294,8 +294,13 @@ func readAndChange(ctx context.Context, q momo.Querier, authorID int64) error {
 Relations are loaded eagerly after the parents are fetched, with one query per
 relation instead of one per parent. `momo.Load` loads one relation, and
 `momo.LoadAll` loads several for the same parents. Has-many (`author.Posts`)
-and belongs-to (`post.Author`) work the same way. There is no `Preload` on
-`SelectQuery` in this release; load relations with these functions.
+and belongs-to (`post.Author`) work the same way.
+
+To load relations as part of a query, add them with `Preload`, for example
+`Preload(author.Posts)` on an author query. `All`, `One` and `First` then load
+the relations after the rows are read, with the same one query per relation,
+and a result with no rows runs no extra query. `Preload` returns a copy, so a base query can be reused. `Each` and `Iter` stream rows
+and return an error matching `momo.ErrUnsupported` when the query has preloads.
 
 ```go
 func loadRelations(ctx context.Context, q momo.Querier, authorID int64) error {

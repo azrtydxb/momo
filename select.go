@@ -55,6 +55,8 @@ type selectCore struct {
 	// keysOnly marks an internal key-set subquery (relation traversal) whose
 	// select list is not the model's column list, so the arity check is skipped.
 	keysOnly bool
+	// preloads holds the Loader[T] values added by Preload (copy-on-write).
+	preloads []any
 	err      error
 }
 
@@ -634,7 +636,13 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
-	return out, r.Close()
+	if err := r.Close(); err != nil {
+		return nil, err
+	}
+	if err := sq.runPreloads(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // One returns the single matching row: ErrNotFound when none matches and
@@ -662,7 +670,17 @@ func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 	if err := r.Err(); err != nil {
 		return zero, err
 	}
-	return m, r.Close()
+	if err := r.Close(); err != nil {
+		return zero, err
+	}
+	if len(sq.s.preloads) > 0 {
+		rows := []T{m}
+		if err := sq.runPreloads(ctx, rows); err != nil {
+			return zero, err
+		}
+		m = rows[0]
+	}
+	return m, nil
 }
 
 // First applies LIMIT 1 and returns the first row, or ErrNotFound.
@@ -672,6 +690,9 @@ func (sq SelectQuery[T]) First(ctx context.Context) (T, error) { return sq.Limit
 // reused for the next row; copy it to retain it. Returning an error from fn
 // stops iteration, closes the cursor and returns that error.
 func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
+	if err := sq.errStreamPreload(); err != nil {
+		return err
+	}
 	r, err := sq.rows(ctx)
 	if err != nil {
 		return err
@@ -705,6 +726,10 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var zero T
+		if err := sq.errStreamPreload(); err != nil {
+			yield(zero, err)
+			return
+		}
 		r, err := sq.rows(ctx)
 		if err != nil {
 			yield(zero, err)
