@@ -625,7 +625,7 @@ func (s *scanner[T]) scan(r Rows, m *T) error {
 	if s.dest == nil {
 		extra := 0
 		if s.join != nil {
-			extra = len(s.join.vals)
+			extra = s.join.width
 		}
 		s.dest = make([]any, n+extra)
 	}

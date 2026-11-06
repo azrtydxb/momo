@@ -4,6 +4,7 @@ package momo
 
 import (
 	"errors"
+	"reflect"
 	"slices"
 	"strconv"
 )
@@ -22,8 +23,15 @@ type joinLoader[P any] interface {
 	joinExpand(parent, alias string, cols []Expr, joins []join) ([]Expr, []join)
 	// joinWidth is the number of child columns joinExpand adds.
 	joinWidth() int
-	// joinAssign sets the to-one field from one row's child columns.
-	joinAssign(p *P, vals []any) error
+	// joinBinder returns the per-scan state that scans one row's child columns.
+	joinBinder() joinBinder[P]
+}
+
+// joinBinder scans the child block of one joined relation. bind is called
+// before each row; assign after Scan, to set the to-one field.
+type joinBinder[P any] interface {
+	bind(dst []any)
+	assign(p *P) error
 }
 
 // Joined returns a loader that fetches the parent's belongs-to child in the
@@ -130,28 +138,82 @@ func (j joinedLoader[P, C]) joinExpand(parent, alias string, cols []Expr, joins 
 
 func (j joinedLoader[P, C]) joinWidth() int { return len(j.rel.ChildMeta.Columns) }
 
-// joinAssign sets the parent's field from one row's child columns. A LEFT JOIN
-// without a match yields NULL in every child column, in particular in the
-// matched key columns, which are never NULL on a real child.
-func (j joinedLoader[P, C]) joinAssign(p *P, vals []any) error {
-	r := &j.rel
+// joinBinding scans a joined child block into a scratch child through the
+// model's own destinations (Meta.Ptr), so every column scans exactly as a
+// non-joined Load of the child would. A LEFT JOIN without a match yields NULL in
+// every child column, which a non-nullable destination would reject; so each
+// destination that cannot hold NULL is scanned through a pointer to a fresh
+// pointer (**T), which both pgx and database/sql fill with nil for NULL and
+// otherwise convert exactly as for *T. Once the key columns show a match, a
+// NULL in such a column gets the same treatment as in normal scanning (Scan(nil)
+// for a sql.Scanner, nil for slices, an error otherwise).
+type joinBinding[P, C any] struct {
+	rel  *Relation[P, C]
+	c    *C
+	dst  []reflect.Value // destination pointer (*E) per column
+	tmp  []reflect.Value // **E holder per column; invalid when scanned directly
+	keys []bool          // column is one of the relation's child key columns
+}
+
+func (j joinedLoader[P, C]) joinBinder() joinBinder[P] {
+	n := len(j.rel.ChildMeta.Columns)
+	b := &joinBinding[P, C]{rel: &j.rel, dst: make([]reflect.Value, n), tmp: make([]reflect.Value, n), keys: make([]bool, n)}
+	for i, col := range j.rel.ChildMeta.Columns {
+		b.keys[i] = slices.Contains(j.rel.ChildCols, col.Name)
+	}
+	return b
+}
+
+func (b *joinBinding[P, C]) bind(dst []any) {
+	b.c = new(C)
+	for i := range b.dst {
+		p := b.rel.ChildMeta.Ptr(b.c, i)
+		v := reflect.ValueOf(p)
+		b.dst[i] = v
+		if v.Elem().Kind() == reflect.Pointer {
+			b.tmp[i] = reflect.Value{} // nullable: NULL leaves the pointer nil
+			dst[i] = p
+			continue
+		}
+		b.tmp[i] = reflect.New(reflect.PointerTo(v.Elem().Type()))
+		dst[i] = b.tmp[i].Interface()
+	}
+}
+
+// null reports whether column i of the scanned row was NULL.
+func (b *joinBinding[P, C]) null(i int) bool {
+	if t := b.tmp[i]; t.IsValid() {
+		return t.Elem().IsNil()
+	}
+	return b.dst[i].Elem().IsNil()
+}
+
+// assign sets the parent's field from the scanned row: nil when the key columns
+// are NULL (no child matched), else the scratch child.
+func (b *joinBinding[P, C]) assign(p *P) error {
 	matched := false
-	for i, col := range r.ChildMeta.Columns {
-		if vals[i] != nil && slices.Contains(r.ChildCols, col.Name) {
+	for i, k := range b.keys {
+		if k && !b.null(i) {
 			matched = true
 		}
 	}
 	if !matched {
-		r.SetOne(p, nil)
+		b.rel.SetOne(p, nil)
 		return nil
 	}
-	var c C
-	for i, v := range vals {
-		if err := ScanValue(r.ChildMeta.Ptr(&c, i), v); err != nil {
-			return err
+	for i, t := range b.tmp {
+		if !t.IsValid() {
+			continue
 		}
+		if t.Elem().IsNil() {
+			if err := scanNull(b.dst[i].Interface()); err != nil {
+				return err
+			}
+			continue
+		}
+		b.dst[i].Elem().Set(t.Elem().Elem())
 	}
-	r.SetOne(p, &c)
+	b.rel.SetOne(p, b.c)
 	return nil
 }
 
@@ -200,38 +262,39 @@ func (sq SelectQuery[T]) expandJoins() (SelectQuery[T], []joinLoader[T], error) 
 	return sq, ls, nil
 }
 
-// joinScan scans the child blocks of a joined query into scratch values and
-// assigns them to the parent after each row.
+// joinScan scans the child blocks of a joined query and assigns them to the
+// parent after each row.
 type joinScan[T any] struct {
-	loaders []joinLoader[T]
-	vals    []any
+	binders []joinBinder[T]
+	widths  []int
+	width   int
 }
 
 func newJoinScan[T any](ls []joinLoader[T]) *joinScan[T] {
-	n := 0
+	js := &joinScan[T]{}
 	for _, l := range ls {
-		n += l.joinWidth()
+		js.binders = append(js.binders, l.joinBinder())
+		js.widths = append(js.widths, l.joinWidth())
+		js.width += l.joinWidth()
 	}
-	return &joinScan[T]{loaders: ls, vals: make([]any, n)}
+	return js
 }
 
-// bind points dst at the scratch values.
+// bind points dst at the child destinations of a fresh row.
 func (js *joinScan[T]) bind(dst []any) {
-	for i := range js.vals {
-		js.vals[i] = nil
-		dst[i] = &js.vals[i]
+	off := 0
+	for i, b := range js.binders {
+		b.bind(dst[off : off+js.widths[i]])
+		off += js.widths[i]
 	}
 }
 
 // assign sets every joined relation on m from the scanned row.
 func (js *joinScan[T]) assign(m *T) error {
-	off := 0
-	for _, l := range js.loaders {
-		w := l.joinWidth()
-		if err := l.joinAssign(m, js.vals[off:off+w]); err != nil {
+	for _, b := range js.binders {
+		if err := b.assign(m); err != nil {
 			return err
 		}
-		off += w
 	}
 	return nil
 }

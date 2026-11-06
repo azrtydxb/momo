@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"time"
 )
 
@@ -100,6 +101,14 @@ func scanNull(dst any) error {
 	default:
 		if s, ok := dst.(sql.Scanner); ok {
 			return s.Scan(nil)
+		}
+		// Named slice, map and interface kinds hold NULL as their zero value.
+		if v := reflect.ValueOf(dst); v.Kind() == reflect.Pointer && !v.IsNil() {
+			switch v.Elem().Kind() {
+			case reflect.Slice, reflect.Map, reflect.Interface, reflect.Pointer:
+				v.Elem().SetZero()
+				return nil
+			}
 		}
 		return scanErr(errors.New("NULL into a non-nullable field"))
 	}
