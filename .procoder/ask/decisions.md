@@ -46,3 +46,11 @@ Decision (2026-11-06): carry with reasons; 094, 097, 098, 123, 124 and 148 go ba
 - Do not open it yet
 
 Decision (2026-11-06): open the PR with the drafted title and body; ask again before squash-merging.
+
+## Squash-merge PR #5 into main
+
+- Squash-merge PR #5 now, delete the remote sprint-2 branch afterwards only if you want sprint-2 retired, then check that release-please's PR #3 shows 0.1.0 (recommended)
+- Wait for a human review first
+- Do not merge yet
+
+Decision (2026-11-06): squash-merge PR #5 now; keep sprint-2 as the working branch; check release-please PR #3 before tagging.

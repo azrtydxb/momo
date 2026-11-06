@@ -1,6 +1,6 @@
 # What a human decided
 
-Written 2026-11-06 12:08 UTC. procoder reads this
+Written 2026-11-06 12:32 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
 
@@ -42,6 +42,19 @@ Question: Open the v0.1.0 relations PR (sprint-2 into main)
 Decision (2026-11-06): open the PR with the drafted title and body; ask again before squash-merging.
 
 Answer: Open the PR (user, AskUserQuestion 2026-11-06): opened as PR #5; ask again before squash-merging.
+
+## [decision] decisions.md
+
+Key: 506a3307210c
+Question: Squash-merge PR #5 into main
+
+- Squash-merge PR #5 now, delete the remote sprint-2 branch afterwards only if you want sprint-2 retired, then check that release-please's PR #3 shows 0.1.0 (recommended)
+- Wait for a human review first
+- Do not merge yet
+
+Decision (2026-11-06): squash-merge PR #5 now; keep sprint-2 as the working branch; check release-please PR #3 before tagging.
+
+Answer: Squash-merge now (user, AskUserQuestion 2026-11-06): merged as c744711; sprint-2 kept and reset onto main.
 
 ## [decision] decisions.md
 
