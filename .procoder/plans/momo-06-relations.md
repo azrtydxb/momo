@@ -2851,6 +2851,8 @@ Note: the outer `ORDER BY momo_rn` alone yields per-parent order because the con
 
 - [ ] **Step 5: Commit** — `git add load.go load_test.go && git commit -m "feat(relations): top-N per parent via ROW_NUMBER window strategy"`.
 
+Reconciliation note (2026-11-06): Task 12 differs from the sketch in six ways. (1) The guard in `prepareWith` now rejects only BelongsTo/HasOne (`ErrUnsupported`) and a negative limit (`ErrValidation`); zero means unlimited. (2) The sketch's `qual`/`partition` are kept, but many-to-many with a child primary key ranks with `DENSE_RANK()` instead of `ROW_NUMBER()`, so duplicated join rows share a rank and cannot use up the limit before `consume` collapses them. (3) The outer `ORDER BY` is `momo_rn` then the partition columns, so the pool order is deterministic across parents. (4) The limit bind is counted in the scope-argument reserve. (5) The plan's `ids` helper and test live in `load_topn_test.go` (not `load_test.go`, which story 148 edits in parallel); `export_test.go` adds `ScopeThen`, because `Scope` and `Then` cannot be combined through the public API, to test nested loads over kept children. (6) `TestLoadPerParentLimitReturnsUnsupported` (load_review_test.go) and the internal "not supported yet" test are replaced by to-one/negative rejection tests.
+
 ---
 
 ## Task 13: Preload on SelectQuery
