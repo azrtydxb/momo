@@ -16,6 +16,18 @@ type testOrderID int64
 
 func (u testUUIDValuer) Value() (driver.Value, error) { return string(u), nil }
 
+// selfValuer returns itself from Value, which used to recurse without bound.
+type selfValuer struct{}
+
+func (s selfValuer) Value() (driver.Value, error) { return s, nil }
+
+func TestKeyStringSelfReturningValuerTerminates(t *testing.T) {
+	a := keyString([]any{selfValuer{}})
+	if a == "" || a != keyString([]any{selfValuer{}}) {
+		t.Fatalf("unstable key for a self-returning Valuer: %q", a)
+	}
+}
+
 func TestKeyStringNormalization(t *testing.T) {
 	same := func(a, b []any) {
 		t.Helper()

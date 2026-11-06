@@ -78,6 +78,13 @@ func writeKeyPart(sb *strings.Builder, v any) {
 			sb.WriteString(err.Error())
 			return
 		}
+		if _, again := vv.(driver.Valuer); again {
+			// A conforming Valuer returns a plain driver.Value. One that returns
+			// another Valuer (or itself) is not unwrapped further: that would
+			// recurse without bound.
+			fmt.Fprintf(sb, "x:%T:%v", vv, vv)
+			return
+		}
 		writeKeyPart(sb, vv)
 		return
 	}

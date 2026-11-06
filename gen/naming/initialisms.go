@@ -21,6 +21,9 @@ var gormReplacer = newInitialismReplacer(gormInitialisms)
 func newInitialismReplacer(list []string) *strings.Replacer {
 	pairs := make([]string, 0, 2*len(list))
 	for _, in := range list {
+		if in == "" { // strings.NewReplacer would match the empty string everywhere
+			continue
+		}
 		pairs = append(pairs, in, titleASCII(in))
 	}
 	return strings.NewReplacer(pairs...)
@@ -28,6 +31,9 @@ func newInitialismReplacer(list []string) *strings.Replacer {
 
 // titleASCII upper-cases the first byte and lower-cases the rest.
 func titleASCII(s string) string {
+	if s == "" {
+		return ""
+	}
 	var b strings.Builder
 	b.WriteString(strings.ToUpper(s[:1]))
 	b.WriteString(strings.ToLower(s[1:]))
