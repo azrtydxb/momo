@@ -267,12 +267,12 @@ type Tag struct {
 Relation tags (a relation is an exported field of struct, slice or pointer type;
 it is not a column):
 
-| Tag                      | Field type | FK lives on | Notes                                                                                 |
-| ------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------- |
-| `belongs_to,fk:<Field>`  | `*Target`  | this struct | `fk` names the FK field on THIS struct; make it a pointer if the relation is optional |
-| `has_one,fk:<Field>`     | `*Target`  | the target  | `fk` names the field on the TARGET                                                    |
-| `has_many,fk:<Field>`    | `[]Target` | the target  | `fk` names the field on the TARGET                                                    |
-| `many2many,join:<table>` | `[]Target` | join table  | set `join:` with the same table on BOTH sides; two key columns `<model>_<pkcol>`      |
+| Tag                      | Field type | FK lives on | Notes                                                                                                               |
+| ------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| `belongs_to,fk:<Field>`  | `*Target`  | this struct | `fk` names the FK field on THIS struct; make it a pointer if the relation is optional                               |
+| `has_one,fk:<Field>`     | `*Target`  | the target  | `fk` names the field on the TARGET                                                                                  |
+| `has_many,fk:<Field>`    | `[]Target` | the target  | `fk` names the field on the TARGET                                                                                  |
+| `many2many,join:<table>` | `[]Target` | join table  | set `join:` (same table) on every side you declare; the reverse side is optional; two key columns `<model>_<pkcol>` |
 
 Extra relation options: `polytype:<column>` + `polyvalue:<value>` (both, on
 `has_one`/`has_many` only: polymorphic), `on_delete:` / `on_update:`
@@ -285,7 +285,7 @@ side does. Many-to-many join tables get a composite primary key plus two FKs wit
 Generator diagnostics (nothing is written for the package until fixed): more
 than one relation kind on a field; field type does not match the kind; target is
 not a Momo model; `fk` missing or naming a missing field; `many2many` without
-`join:` or with `join:` on one side only; `polytype` without `polyvalue` (or the
+`join:`, or a declared reverse side without `join:`; `polytype` without `polyvalue` (or the
 reverse), or on a kind other than `has_one`/`has_many`; `polytype` column not a
 field of the target; many-to-many to the model's own type; `momo.Model` embedded
 by pointer; a generic model; `size` on a non-string; `dim` on a non-vector;
@@ -362,7 +362,9 @@ the vector `Hit` in section 9.
 A projection cannot be inserted, updated or deleted (it embeds `Projection`, not
 `Model`). Computed columns (a distance, `momo.CountAll()`) are valid entries in
 `Columns`. The select list is positional and not aliased: the `Name` you give a
-computed column in `Columns` of the meta (for example `distance`) is only a label. Examples: [projection-pagination](../examples/projection-pagination/),
+computed column in `Columns` of the meta (for example `distance`) is only a label.
+
+Examples: [projection-pagination](../examples/projection-pagination/),
 [vector-search](../examples/vector-search/) (`Hit`).
 
 Details: [TYPE_MAPPING.md](TYPE_MAPPING.md), [relations.md](relations.md) section 1.
@@ -942,7 +944,7 @@ hits, err := momo.Select[models.Hit](q). // projection with Title string, Distan
 	From(item.Table).
 	Columns(item.Title, distance).
 	Where(item.Category.Eq("news")).
-	Where(item.DeletedAt.IsNull()). // a projection skips the soft-delete filter: add it if Item is soft-deletable
+	// if Item is soft-deletable (a projection skips the soft-delete filter): Where(item.DeletedAt.IsNull()).
 	OrderBy(distance.Asc(), item.ID.Asc()). // PK last: ties return in unspecified order otherwise
 	Limit(10).
 	All(ctx)
