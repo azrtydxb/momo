@@ -236,19 +236,21 @@ does nothing. If a lock appears stuck, find the session
   concurrent index. A hand-written file must carry the directive itself:
   otherwise PostgreSQL rejects `CREATE INDEX CONCURRENTLY` inside a
   transaction, the version is recorded `rolled_back`, and it can be retried
-  after you add the directive. Because `diff` marks the whole file, a first migration that contains a concurrent index also creates its
-  tables outside a transaction. To keep a concurrent index build in a migration
-  of its own, add the index in a separate model change and run `diff` for it
-  alone.
+  after you add the directive. `diff` never mixes the two modes in one file:
+  when a diff holds both transactional DDL and statements that must run outside
+  a transaction, it writes two migrations, the transactional one first and a
+  trailing `<name>_no_tx` one that carries the directive (one second later
+  version). A failure in the first file rolls it back whole. A diff with only
+  such statements writes the single no-transaction file.
 - Statements run one by one with no bind parameters. The splitter respects
   strings, comments and `$$` bodies; `-- momo:split` disables dollar-quote
   awareness and splits at every semicolon.
 
 `CREATE INDEX CONCURRENTLY` applies correctly when it is in a no-transaction
 file: the index is valid and the version is `applied`
-(`TestCreateIndexConcurrentlyApply`). In v0.1.0 `diff` does not produce it from
-`Concurrently()`; you write or edit the file yourself (section 5, known issue
-`20261106-index-concurrently-is-ignored-by-migrate-diff`).
+(`TestCreateIndexConcurrentlyApply`). `diff` produces it from `Concurrently()`
+on a model index, and for `ADD UNIQUE` and the `VALIDATE CONSTRAINT` of an
+`ADD CHECK` (section 5).
 
 ### Session timeouts
 
@@ -372,12 +374,27 @@ carries `-- momo:destructive`. Review these. Type changes render as
 `ALTER COLUMN ... TYPE ... USING col::type`: a full table rewrite under an
 `ACCESS EXCLUSIVE` lock, which fails on rows that do not cast.
 
-Not flagged as destructive: dropping an index, view, function, trigger,
-policy or constraint; adding a unique or check constraint (it can fail on
-existing data); any change you write by hand.
+Not destructive, but reported as `risky:` hints by `diff` (no flag needed):
+dropping an index, primary key, unique, check or foreign key; adding a unique
+or check constraint (both can fail on existing data).
 
-The `-- momo:destructive` header is informational. `apply` does not read it:
-a hand-written file with a `DROP` applies without confirmation.
+- `ADD CHECK` is written `NOT VALID`; its `VALIDATE CONSTRAINT` (a full scan
+  that does not block writes) goes in the trailing no-transaction migration.
+  If the validation fails the constraint stays `NOT VALID`: it still checks new
+  rows; fix the data and rerun the validation by hand.
+- `ADD UNIQUE` on an existing table is `CREATE UNIQUE INDEX CONCURRENTLY`
+  followed by `ADD CONSTRAINT ... UNIQUE USING INDEX`, both in the trailing
+  no-transaction migration. On duplicate rows the build fails and leaves an
+  `INVALID` index (`drift` reports it): drop it with
+  `DROP INDEX CONCURRENTLY IF EXISTS`, fix the data, then `resolve --rolled-back` and re-apply.
+- Not flagged at all: dropping a view, function, trigger or policy, and any
+  change you write by hand.
+
+The `-- momo:destructive` header is informational. `diff` writes it and
+`--allow-destructive` is the only guard, and that guard exists in `diff` only:
+`apply` does not read the header or scan statements, so a hand-written file
+with a `DROP` applies without confirmation. Review every `.up.sql` in code
+review.
 
 ### NOT NULL columns
 
@@ -413,13 +430,12 @@ rewrites the table. Momo does not warn about either.
   migration (section 6) or a separate job. A long backfill inside a
   transactional migration holds its locks until commit and can hit
   `lock_timeout`/`statement_timeout`.
-- **Large-table indexes**: in v0.1.0 `Concurrently()` does not reach `diff`,
-  which always writes a plain `CREATE INDEX` that blocks writes to the table
-  while it builds (known issue, `20261106-index-concurrently-is-ignored-by-migrate-diff`). Edit the generated file to
-  `CREATE INDEX CONCURRENTLY`, add `-- momo:no-transaction`, keep it as its own
-  migration containing only that statement (section 3), then run
-  `momo migrate hash`. Set a role without `statement_timeout` for the run.
-  Worked example: `examples/custom-sql-migration`.
+- **Large-table indexes**: declare `Concurrently()` on the index in
+  `MomoConfig`. `diff` then writes `CREATE INDEX CONCURRENTLY` in its own
+  no-transaction migration, so the build does not block writes. Without
+  `Concurrently()` the index is a plain `CREATE INDEX` that blocks writes while
+  it builds. Set a role without `statement_timeout` for the run. A hand-written
+  alternative: `examples/custom-sql-migration`.
 - **Lock timeout**: the default 5 s lock wait fails fast instead of queuing
   behind a long transaction. A retry is safe for transactional migrations.
 - **Deploy order**: migrate first, then roll out code, with every migration
@@ -517,10 +533,6 @@ Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
 
 - s2: Staged NOT NULL is never enforced after diff --stage (`20261106-staged-not-null-is-never-enforced-after-diff-stage`)
 - s3: Apply does not run chain and fork checks (`20261106-apply-does-not-run-chain-and-fork-checks`)
-- s3: The momo:destructive directive is never enforced (`20261106-the-momo-destructive-directive-is-never-enforced`)
-- s3: Index `Concurrently()` is ignored by diff, which writes a plain CREATE INDEX (`20261106-index-concurrently-is-ignored-by-migrate-diff`)
-- s3: diff marks a whole file no-transaction when it has a concurrent index (`20261106-diff-marks-a-whole-file-no-transaction-when-it-has-a`)
-- s3: Index drop, constraint drop, UNIQUE and CHECK are not flagged risky or emitted safely (`20261106-index-drop-constraint-drop-unique-and-check-are-not-flagged`)
 - s3: No way to accept an edited applied migration (`20261106-no-way-to-accept-an-edited-applied-migration`)
 - s4: lock_timeout and statement_timeout of 0s cannot disable the timeout (`20261106-lock-timeout-and-statement-timeout-of-0s-cannot-disable-the`)
 - s4: NOT NULL staging refusal says populated table but fires for any existing table (`20261106-not-null-staging-refusal-says-populated-table-but-fires-for`)

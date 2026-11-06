@@ -243,7 +243,7 @@ Config methods: `Index`, `IndexExpr`, `Unique`, `Check`, `Enum`, `Default`,
 `Comment`, `Collate`, `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`,
 `PartitionOf`. Index chain: `Where(pred)`, `Method(m)`, `With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
-`Concurrently()` (see the migration known issue: it is ignored by `diff`).
+`Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
 
 Many-to-many needs `join:` with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry `join:` too):
@@ -459,22 +459,26 @@ Known issues in v0.1.0, as rules (each is a filed bug):
   the column nullable, backfill, and write your own migration with
   `ALTER TABLE t ALTER COLUMN c SET NOT NULL;` (same for an existing column made
   NOT NULL).
-- DON'T rely on `Concurrently()` in `MomoConfig`: `diff` ignores it and writes a
-  plain `CREATE INDEX` that blocks writes. WORKAROUND for large tables: edit the
-  generated file to `CREATE INDEX CONCURRENTLY`, add `-- momo:no-transaction`,
-  keep it as its own migration with only that statement, run `momo migrate hash`.
+- For large tables declare `Concurrently()` on the index in `MomoConfig`: `diff`
+  writes `CREATE INDEX CONCURRENTLY` in its own `-- momo:no-transaction`
+  migration (a trailing `<name>_no_tx` file when the diff also has other DDL).
+  Without it the index is a plain `CREATE INDEX` that blocks writes.
   A failed concurrent build leaves an INVALID index: `drift` reports it; drop it with
   `DROP INDEX CONCURRENTLY IF EXISTS`, then `resolve --rolled-back` and re-apply.
 - `-- momo:no-transaction` applies to the WHOLE file: every statement loses
   atomicity and a mid-file failure leaves earlier statements committed (dirty).
-  `diff` marks the whole file when it contains a concurrent index, so a first
-  migration with a concurrent index creates its tables outside a transaction.
-  Keep such files to one statement.
-- `-- momo:destructive` is never enforced: `apply` runs a hand-written `DROP`
-  without confirmation. Review every `.up.sql` like code.
-- DON'T assume dropping an index or constraint, adding `UNIQUE`/`CHECK`, or any
-  hand-written change is flagged; none is. Adding `UNIQUE`/`CHECK` fails on
-  existing violating data.
+  `diff` never mixes modes: it splits concurrent indexes, `ADD UNIQUE` and
+  `VALIDATE CONSTRAINT` into a trailing no-transaction migration and keeps the
+  transactional DDL in the first file. Keep hand-written no-transaction files
+  to one statement.
+- `-- momo:destructive` is informational: `diff` writes it, `apply` does not
+  read it, so a hand-written `DROP` applies without confirmation. The only
+  guard is `diff --allow-destructive`. Review every `.up.sql` like code.
+- `diff` prints `risky:` hints for dropping an index, primary key, unique, check
+  or foreign key and for adding `UNIQUE`/`CHECK`; these need no flag.
+  `ADD CHECK` is emitted `NOT VALID` with a later `VALIDATE CONSTRAINT`, and
+  `ADD UNIQUE` as `CREATE UNIQUE INDEX CONCURRENTLY` plus `USING INDEX`. Both
+  can still fail on existing violating data. Hand-written changes are not flagged.
 - `apply` does NOT run chain or fork checks. Two branches that both added a
   migration are not caught by `apply`; `validate` catches it. Always run
   `validate` in CI. Pending = every file without a history row, so a
@@ -1192,8 +1196,8 @@ Examples: every `examples/*/example_test.go`, harness
     applied migration; undo with a new one. No rollback exists.
 20. Don't use `--stage`; give NOT NULL additions a default or write the
     `SET NOT NULL` migration by hand.
-21. Don't rely on `Concurrently()` or `-- momo:destructive`; hand-edit large-table
-    index builds into their own `-- momo:no-transaction` migration.
+21. Declare `Concurrently()` on large-table indexes. `-- momo:destructive` is
+    informational; only `diff --allow-destructive` guards drops.
 22. CI must run `momo generate --check`, `momo migrate validate` and the
     `diff ci_probe | grep -qx 'no changes'` probe; `apply` does not detect forks.
 23. Run `momo migrate` over a direct connection, URL from the environment, never

@@ -403,7 +403,7 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	d.uniques(fn, tn, to)
 	d.checks(fn, tn, to)
 	d.foreignKeys(fn, tn, to)
-	d.indexes(fn, tn, to)
+	d.indexes(fn, tn, fo, to)
 	if effectiveRLS(fn.RLS) != effectiveRLS(tn.RLS) {
 		d.emit(Change{Kind: SetRLS, Schema: to.Schema, Table: to.Name, Name: to.Name, Before: cp(effectiveRLS(fo.RLS)), After: cp(effectiveRLS(to.RLS))})
 	}
@@ -541,7 +541,7 @@ func (d *differ) primaryKey(fn, tn, to *schema.Table) {
 	}
 	name := to.Name + "_pkey"
 	if len(fn.PrimaryKey) > 0 {
-		d.emit(Change{Kind: DropPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, Before: slices.Clone(fn.PrimaryKey)})
+		d.emitRisky(Change{Kind: DropPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, Before: slices.Clone(fn.PrimaryKey)})
 	}
 	if len(tn.PrimaryKey) > 0 {
 		d.emit(Change{Kind: AddPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, After: slices.Clone(tn.PrimaryKey)})
@@ -575,9 +575,25 @@ func fkAction(a string) string {
 	return a
 }
 
-func (d *differ) indexes(fn, tn, to *schema.Table) {
+// indexes diffs the table's indexes. Normalization clears Concurrently, so the
+// emitted changes take it back from the caller's original indexes (fo, to):
+// the renderer needs it to write CREATE INDEX CONCURRENTLY. indexEqual
+// ignores Concurrently, so toggling it alone is no change.
+func (d *differ) indexes(fn, tn, fo, to *schema.Table) {
+	start := len(d.changes)
 	diffNamed(d, fn.Indexes, tn.Indexes, to, func(i schema.Index) string { return i.Name },
 		indexEqual, DropIndex, CreateIndex)
+	for _, c := range d.changes[start:] {
+		src, payload := to.Indexes, c.After
+		if c.Kind == DropIndex {
+			src, payload = fo.Indexes, c.Before
+		}
+		if ix, ok := payload.(*schema.Index); ok {
+			if o, found := lookup(src, func(i schema.Index) string { return i.Name }, ix.Name); found {
+				ix.Concurrently = o.Concurrently
+			}
+		}
+	}
 }
 
 func indexEqual(a, b schema.Index) bool {
@@ -603,15 +619,38 @@ func diffNamed[T any](d *differ, from, to []T, t *schema.Table, name func(T) str
 	for _, o := range from {
 		nw, ok := lookup(to, name, name(o))
 		if !ok || !equal(o, nw) {
-			d.emit(Change{Kind: drop, Schema: t.Schema, Table: t.Name, Name: name(o), Before: cp(o)})
+			d.emitRisky(Change{Kind: drop, Schema: t.Schema, Table: t.Name, Name: name(o), Before: cp(o)})
 		}
 	}
 	for _, n := range to {
 		o, ok := byName[name(n)]
 		if !ok || !equal(o, n) {
-			d.emit(Change{Kind: add, Schema: t.Schema, Table: t.Name, Name: name(n), After: cp(n)})
+			d.emitRisky(Change{Kind: add, Schema: t.Schema, Table: t.Name, Name: name(n), After: cp(n)})
 		}
 	}
+}
+
+// riskNotes names the changes that are not destructive but are risky on a
+// large table, with what to expect. They are reported as "risky:" hints.
+var riskNotes = map[ChangeKind]string{
+	DropIndex:      "queries that used the index slow down, and the drop takes an ACCESS EXCLUSIVE lock on the table",
+	DropPrimaryKey: "the table loses its key and its index; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	DropUnique:     "uniqueness is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	DropCheck:      "the rule is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	DropFK:         "referential integrity is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	AddUnique:      "built with CREATE UNIQUE INDEX CONCURRENTLY and adopted with USING INDEX in a no-transaction migration; fails on duplicate rows and then leaves an INVALID index to drop",
+	AddCheck:       "added NOT VALID, then validated by a full scan in a no-transaction migration; the validation fails if existing rows violate it",
+}
+
+// emitRisky emits c, marking it Risky and adding a hint when its kind is in
+// riskNotes. Only changes to existing tables come through here: the
+// constraints of a dropped or new table are not risky on their own.
+func (d *differ) emitRisky(c Change) {
+	if note, ok := riskNotes[c.Kind]; ok {
+		c.Risky = true
+		d.hint(fmt.Sprintf("risky: %s %s: %s", c.Kind, qualified(c.Schema, c.Table, c.Name), note))
+	}
+	d.emit(c)
 }
 
 func lookup[T any](xs []T, name func(T) string, n string) (T, bool) {

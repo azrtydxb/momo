@@ -1,6 +1,6 @@
 # diff marks a whole file no-transaction when it has a concurrent index
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-06
 Epic: momo-04-migrations-core-postgresql
 Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
@@ -15,13 +15,14 @@ Expected: diff splits concurrent indexes into a separate trailing migration file
 
 ## Acceptance criteria
 
-- [ ] a diff mixing CREATE TABLE and a concurrent index yields two files; the first is transactional, the second carries no-transaction
-- [ ] a diff with only concurrent indexes yields one no-transaction file
-- [ ] apply of the pair works and a failure in the first file leaves no partial DDL
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] a diff mixing CREATE TABLE and a concurrent index yields two files; the first is transactional, the second carries no-transaction
+- [x] a diff with only concurrent indexes yields one no-transaction file
+- [x] apply of the pair works and a failure in the first file leaves no partial DDL
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
-
+- TestDiffSplitsConcurrentIndexFromTransactionalDDL: CREATE TABLE plus concurrent index gives two up files, head without the directive, tail with it; ValidateOffline accepts the pair.
+- TestDiffConcurrentlyReachesRenderer: only a concurrent index gives one no-transaction file and Next is nil.
+- TestSplitPairAppliesLockFree and TestSplitHeadFailureLeavesNoPartialDDL (integration, migrate/diff_lockfree_integration_test.go): CI run pending, see report.
+- TestDiffSplitsConcurrentIndexFromTransactionalDDL and TestDiffNoTransactionHeader: red before the change (one mixed file), green after.

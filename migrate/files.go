@@ -25,7 +25,7 @@ type File struct {
 // Directives are the `-- momo:` directives in a migration's leading comment block.
 type Directives struct {
 	NoTransaction        bool // -- momo:no-transaction
-	Destructive          bool // -- momo:destructive
+	Destructive          bool // -- momo:destructive; informational, apply does not read it
 	Split                bool // -- momo:split
 	SQLiteForeignKeysOff bool // -- momo:sqlite-foreign-keys-off
 	Generated            bool // -- momo:generated (written by diff)

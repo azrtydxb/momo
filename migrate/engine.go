@@ -612,6 +612,14 @@ var migrationName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // engine clock in UTC (NextVersion), moved to the second after the latest
 // existing version when the clock is not already past it, so versions only grow.
 //
+// When the rendered plan mixes transactional statements with statements that
+// must run outside a transaction (CREATE INDEX CONCURRENTLY, the unique index
+// of an added UNIQUE, the VALIDATE CONSTRAINT of an added CHECK), Diff splits
+// it: the returned Migration holds the transactional part and Next is a
+// trailing "<name>_no_tx" migration, one second later, that carries
+// -- momo:no-transaction. Files holds the files of both. A plan of only
+// such statements is the single no-transaction migration.
+//
 // Diff does not touch the database: it reads the directory and renders through
 // the dialect. It orders the changes with OrderWithViews and returns the
 // ordering error (a dependency cycle) instead of falling back to the unordered
@@ -657,33 +665,51 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 		return nil, err
 	}
 	m := &Migration{Version: version, Name: name, Kind: "sql", Parent: parent, Up: stmts, Changes: ordered, Snapshot: &to, Hints: hints}
-	for _, c := range ordered {
-		m.Destructive = m.Destructive || c.Destructive
+	finishMigration(m)
+	// Statements that must run outside a transaction share a file with
+	// transactional ones only when that is all there is: a mixed plan is split
+	// so the transactional DDL stays atomic.
+	if hasNoTx(stmts) && slices.ContainsFunc(stmts, func(s Statement) bool { return !s.NoTx }) {
+		head, _, ok, err := e.splitNoTx(version, name, parent, ordered, &to, hints)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			m = head
+		}
 	}
-	for _, s := range stmts {
-		m.NoTx = m.NoTx || s.NoTx
+	files := []*Migration{m}
+	if m.Next != nil {
+		files = append(files, m.Next)
 	}
-	if m.Files, err = e.migrationFiles(m); err != nil {
+	if m.Files, err = e.migrationFiles(files...); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-// migrationFiles renders the up file, the snapshot and the extended momo.sum
-// of m, keyed by relative file name.
-func (e *Engine) migrationFiles(m *Migration) (map[string][]byte, error) {
-	upName := m.Version + "_" + m.Name + ".up.sql"
-	snapName := m.Version + "_" + m.Name + ".snapshot.json"
-	var snapBuf bytes.Buffer
-	if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: m.Version, ParentVersion: m.Parent, Schema: m.Snapshot}); err != nil {
-		return nil, err
+// migrationFiles renders the up file, the snapshot of each migration in ms and
+// the extended momo.sum, keyed by relative file name.
+func (e *Engine) migrationFiles(ms ...*Migration) (map[string][]byte, error) {
+	added := memFS{}
+	var names []string
+	out := map[string][]byte{}
+	for _, m := range ms {
+		upName := m.Version + "_" + m.Name + ".up.sql"
+		snapName := m.Version + "_" + m.Name + ".snapshot.json"
+		var snapBuf bytes.Buffer
+		if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: m.Version, ParentVersion: m.Parent, Schema: m.Snapshot}); err != nil {
+			return nil, err
+		}
+		added[upName], added[snapName] = renderUp(m), snapBuf.Bytes()
+		names = append(names, snapName, upName)
+		out[upName], out[snapName] = added[upName], added[snapName]
 	}
-	added := memFS{upName: renderUp(m), snapName: snapBuf.Bytes()}
 	existing, err := e.existingSum()
 	if err != nil {
 		return nil, err
 	}
-	sum, err := AppendSum(existing, added, []string{snapName, upName})
+	sum, err := AppendSum(existing, added, names)
 	if err != nil {
 		return nil, err
 	}
@@ -691,7 +717,8 @@ func (e *Engine) migrationFiles(m *Migration) (map[string][]byte, error) {
 	if err := sum.Write(&sumBuf); err != nil {
 		return nil, err
 	}
-	return map[string][]byte{upName: added[upName], snapName: added[snapName], SumFileName: sumBuf.Bytes()}, nil
+	out[SumFileName] = sumBuf.Bytes()
+	return out, nil
 }
 
 // existingSum reads momo.sum from the directory; a directory without one gets

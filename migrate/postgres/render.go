@@ -91,13 +91,13 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		if err != nil {
 			return nil, err
 		}
-		return one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " ADD " + uniqueDef(u)), nil
+		return renderAddUnique(c, u), nil
 	case migrate.AddCheck:
 		ck, err := get[schema.Check](c.After)
 		if err != nil {
 			return nil, err
 		}
-		return one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " ADD " + checkDef(ck)), nil
+		return renderAddCheck(c, ck), nil
 	case migrate.AddFK:
 		fk, err := get[schema.ForeignKey](c.After)
 		if err != nil {
@@ -313,6 +313,32 @@ func columnDef(col schema.Column) string {
 
 func uniqueDef(u schema.Unique) string {
 	return "CONSTRAINT " + ident(u.Name) + " UNIQUE (" + identList(u.Columns) + ")"
+}
+
+// renderAddUnique adds a unique constraint to an existing table without
+// holding a long lock: the unique index is built CONCURRENTLY, then adopted
+// as the constraint with USING INDEX, which only takes a brief lock. Both
+// statements run outside a transaction (Diff puts them in the trailing
+// no-transaction migration). A new table's uniques stay inline in CREATE TABLE.
+func renderAddUnique(c migrate.Change, u schema.Unique) []migrate.Statement {
+	t := tableRef(c.Schema, c.Table)
+	return []migrate.Statement{
+		{SQL: "CREATE UNIQUE INDEX CONCURRENTLY " + ident(u.Name) + " ON " + t + " (" + identList(u.Columns) + ")", NoTx: true},
+		{SQL: "ALTER TABLE " + t + " ADD CONSTRAINT " + ident(u.Name) + " UNIQUE USING INDEX " + ident(u.Name), NoTx: true},
+	}
+}
+
+// renderAddCheck adds a check constraint to an existing table as NOT VALID,
+// which skips the full-table scan, then validates it in a separate statement
+// that only takes SHARE UPDATE EXCLUSIVE. The validation is NoTx so Diff
+// places it in the trailing migration: inside the transaction of the ADD it
+// would run under the ADD's ACCESS EXCLUSIVE lock and gain nothing.
+func renderAddCheck(c migrate.Change, ck schema.Check) []migrate.Statement {
+	t := tableRef(c.Schema, c.Table)
+	return []migrate.Statement{
+		{SQL: "ALTER TABLE " + t + " ADD " + checkDef(ck) + " NOT VALID"},
+		{SQL: "ALTER TABLE " + t + " VALIDATE CONSTRAINT " + ident(ck.Name), NoTx: true},
+	}
 }
 
 func checkDef(c schema.Check) string {
