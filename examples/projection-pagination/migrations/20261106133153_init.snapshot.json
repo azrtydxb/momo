@@ -1,0 +1,48 @@
+{
+  "format_version": 1,
+  "version": "20261106133153",
+  "parent": "",
+  "schema": {
+    "format_version": 1,
+    "dialect": "postgres",
+    "tables": [
+      {
+        "name": "articles",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "title",
+            "type": "varchar(200)"
+          },
+          {
+            "name": "body",
+            "type": "text"
+          },
+          {
+            "name": "score",
+            "type": "bigint"
+          }
+        ],
+        "primary_key": ["id"],
+        "indexes": [
+          {
+            "name": "articles_score_id_idx",
+            "parts": [
+              {
+                "column": "score",
+                "desc": true
+              },
+              {
+                "column": "id"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

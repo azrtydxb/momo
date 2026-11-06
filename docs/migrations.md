@@ -242,9 +242,11 @@ does nothing. If a lock appears stuck, find the session
   strings, comments and `$$` bodies; `-- momo:split` disables dollar-quote
   awareness and splits at every semicolon.
 
-`CREATE INDEX CONCURRENTLY` is produced when the index declares `Concurrently()`
-in its companion config. Applied by `apply`, the index is valid and the version
-is `applied` (`TestCreateIndexConcurrentlyApply`).
+`CREATE INDEX CONCURRENTLY` applies correctly when it is in a no-transaction
+file: the index is valid and the version is `applied`
+(`TestCreateIndexConcurrentlyApply`). In v0.1.0 `diff` does not produce it from
+`Concurrently()`; you write or edit the file yourself (section 5, known issue
+`20261106-index-concurrently-is-ignored-by-migrate-diff`).
 
 ### Session timeouts
 
@@ -358,6 +360,7 @@ nothing to do (`TestConcurrentApply`, `TestConcurrentApplyWaits`).
 ## 5. Production safety checklist
 
 What Momo enforces, what it only hints at, what it does not see.
+A complete worked upgrade (add column, index, rename) is `examples/upgrade-database`.
 
 ### Refused unless you opt in (`diff`, exit 1)
 
@@ -407,10 +410,13 @@ rewrites the table. Momo does not warn about either.
   migration (section 6) or a separate job. A long backfill inside a
   transactional migration holds its locks until commit and can hit
   `lock_timeout`/`statement_timeout`.
-- **Large-table indexes**: declare `Concurrently()` so `diff` emits
-  `CREATE INDEX CONCURRENTLY` in a no-transaction migration. Without it the
-  build blocks writes to the table. Keep it in its own migration (section 3).
-  Set a role without `statement_timeout` for the run.
+- **Large-table indexes**: in v0.1.0 `Concurrently()` does not reach `diff`,
+  which always writes a plain `CREATE INDEX` that blocks writes to the table
+  while it builds (known issue, `20261106-index-concurrently-is-ignored-by-migrate-diff`). Edit the generated file to
+  `CREATE INDEX CONCURRENTLY`, add `-- momo:no-transaction`, keep it as its own
+  migration containing only that statement (section 3), then run
+  `momo migrate hash`. Set a role without `statement_timeout` for the run.
+  Worked example: `examples/custom-sql-migration`.
 - **Lock timeout**: the default 5 s lock wait fails fast instead of queuing
   behind a long transaction. A retry is safe for transactional migrations.
 - **Deploy order**: migrate first, then roll out code, with every migration
@@ -430,6 +436,8 @@ rewrites the table. Momo does not warn about either.
 run CREATE EXTENSION as a role that may)`, exit 3.
 
 ## 6. Custom SQL migrations
+
+Worked example: `examples/custom-sql-migration`.
 
 There is no `momo migrate new --custom` in v0.1.0. You can still add hand-written
 SQL by creating the files yourself:
@@ -451,6 +459,8 @@ which compares against the latest snapshot as written; otherwise the next `diff`
 will try to generate the same change again.
 
 ## 7. Adopting an existing database
+
+Worked example: `examples/adopt-existing-schema`.
 
 Momo has no command that turns a database into models or a snapshot.
 (`migrate.Engine.Inspect` returns the live schema as a Go value, but nothing
@@ -505,6 +515,7 @@ Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
 - s2: Staged NOT NULL is never enforced after diff --stage (`20261106-staged-not-null-is-never-enforced-after-diff-stage`)
 - s3: Apply does not run chain and fork checks (`20261106-apply-does-not-run-chain-and-fork-checks`)
 - s3: The momo:destructive directive is never enforced (`20261106-the-momo-destructive-directive-is-never-enforced`)
+- s3: Index `Concurrently()` is ignored by diff, which writes a plain CREATE INDEX (`20261106-index-concurrently-is-ignored-by-migrate-diff`)
 - s3: diff marks a whole file no-transaction when it has a concurrent index (`20261106-diff-marks-a-whole-file-no-transaction-when-it-has-a`)
 - s3: Index drop, constraint drop, UNIQUE and CHECK are not flagged risky or emitted safely (`20261106-index-drop-constraint-drop-unique-and-check-are-not-flagged`)
 - s3: No way to accept an edited applied migration (`20261106-no-way-to-accept-an-edited-applied-migration`)

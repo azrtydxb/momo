@@ -1,0 +1,164 @@
+{
+  "format_version": 1,
+  "version": "20261106132537",
+  "parent": "",
+  "schema": {
+    "format_version": 1,
+    "dialect": "postgres",
+    "tables": [
+      {
+        "name": "authors",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "name",
+            "type": "varchar(100)"
+          }
+        ],
+        "primary_key": ["id"],
+        "indexes": [
+          {
+            "name": "authors_name_key",
+            "unique": true,
+            "parts": [
+              {
+                "column": "name"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "comments",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "document_id",
+            "type": "bigint"
+          },
+          {
+            "name": "body",
+            "type": "varchar(500)"
+          },
+          {
+            "name": "approved",
+            "type": "boolean"
+          }
+        ],
+        "primary_key": ["id"],
+        "indexes": [
+          {
+            "name": "comments_document_id_idx",
+            "parts": [
+              {
+                "column": "document_id"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "documents",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "author_id",
+            "type": "bigint",
+            "nullable": true
+          },
+          {
+            "name": "title",
+            "type": "varchar(200)"
+          }
+        ],
+        "primary_key": ["id"],
+        "indexes": [
+          {
+            "name": "documents_author_id_idx",
+            "parts": [
+              {
+                "column": "author_id"
+              }
+            ]
+          }
+        ],
+        "foreign_keys": [
+          {
+            "name": "documents_author_id_fkey",
+            "columns": ["author_id"],
+            "ref_table": "authors",
+            "ref_columns": ["id"]
+          }
+        ]
+      },
+      {
+        "name": "taggings",
+        "columns": [
+          {
+            "name": "document_id",
+            "type": "bigint"
+          },
+          {
+            "name": "tag_id",
+            "type": "bigint"
+          }
+        ],
+        "primary_key": ["document_id", "tag_id"],
+        "foreign_keys": [
+          {
+            "name": "taggings_document_fkey",
+            "columns": ["document_id"],
+            "ref_table": "documents",
+            "ref_columns": ["id"],
+            "on_delete": "CASCADE"
+          },
+          {
+            "name": "taggings_tag_fkey",
+            "columns": ["tag_id"],
+            "ref_table": "tags",
+            "ref_columns": ["id"],
+            "on_delete": "CASCADE"
+          }
+        ]
+      },
+      {
+        "name": "tags",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "name",
+            "type": "varchar(50)"
+          }
+        ],
+        "primary_key": ["id"],
+        "indexes": [
+          {
+            "name": "tags_name_key",
+            "unique": true,
+            "parts": [
+              {
+                "column": "name"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "format_version": 1,
+  "version": "20261106131916",
+  "parent": "20261106131516",
+  "schema": {
+    "format_version": 1,
+    "dialect": "postgres",
+    "tables": [
+      {
+        "name": "customers",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "email",
+            "type": "varchar(200)"
+          },
+          {
+            "name": "full_name",
+            "type": "varchar(200)"
+          },
+          {
+            "name": "plan",
+            "type": "varchar(20)",
+            "default": "'free'"
+          }
+        ],
+        "primary_key": [
+          "id"
+        ],
+        "indexes": [
+          {
+            "name": "customers_email_key",
+            "unique": true,
+            "parts": [
+              {
+                "column": "email"
+              }
+            ]
+          },
+          {
+            "name": "customers_plan_idx",
+            "parts": [
+              {
+                "column": "plan"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

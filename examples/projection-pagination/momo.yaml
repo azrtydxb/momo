@@ -1,0 +1,10 @@
+version: 1
+packages:
+  - ./models
+naming: gorm
+dialects: [postgres]
+migrate:
+  dir:
+    postgres: migrations
+  url_env:
+    postgres: DATABASE_URL

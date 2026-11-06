@@ -11,3 +11,17 @@ contributor guide, supported versions, performance).
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
 - [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI, and the stability policy.
+
+## Examples
+
+Runnable programs, each tested end to end in CI. See [the examples index](../examples/README.md) for the layout and how to add one.
+
+- [quickstart](../examples/quickstart/): the root README loop: models, generate, CRUD, relations, vector search, a transaction.
+- [crud-zero-null](../examples/crud-zero-null/): insert, update, delete; zero value versus NULL versus default; soft delete.
+- [transactions](../examples/transactions/): Tx, rollback, savepoints, read-only and isolation, retry on serialization failure.
+- [relations](../examples/relations/): has-many, belongs-to, many-to-many; Load, Preload, Joined, Has, Link, CreateGraph.
+- [projection-pagination](../examples/projection-pagination/): column subsets, keyset pagination with a tie-break, counting.
+- [vector-search](../examples/vector-search/): HNSW index, nearest-neighbour queries, filters, search settings.
+- [upgrade-database](../examples/upgrade-database/): change a model after production: add a column with a default, add an index, rename a column, apply with data kept, generate --check and drift.
+- [custom-sql-migration](../examples/custom-sql-migration/): hand-written SQL migrations beside generated ones: backfill, DO $$ splitting, -- momo:no-transaction, CONCURRENTLY workaround, momo.sum checksums.
+- [adopt-existing-schema](../examples/adopt-existing-schema/): put a plain-SQL database under Momo with migrate baseline (no model generation from a database in v0.1.0).

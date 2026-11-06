@@ -29,7 +29,7 @@ func ExampleCosineDistance() {
 	query := make(vector.Vector, 1536)
 	query[0] = 1
 
-	c, err := momo.Select[example.Document, *example.Document](db).
+	c, err := momo.Select[example.Document](db).
 		OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
 		Limit(5).
 		SQL()
@@ -46,7 +46,7 @@ func ExampleCosineDistance() {
 func ExampleL2Distance() {
 	db := momo.New(pgxdriver.New(nil))
 
-	_, err := momo.Select[example.Document, *example.Document](db).
+	_, err := momo.Select[example.Document](db).
 		OrderBy(momo.L2Distance(document.Embedding, vector.Vector{1, 2, 3}).Asc()).
 		SQL()
 	fmt.Println(err != nil)
@@ -73,7 +73,7 @@ func ExampleHammingDistance() {
 	col := momo.NewVectorColumn[vector.Bits]("documents", "bits", 8, 0)
 
 	expr := momo.HammingDistance(col, vector.Bits{Len: 8, Data: []byte{0xF0}})
-	c, err := momo.Select[example.Document, *example.Document](db).
+	c, err := momo.Select[example.Document](db).
 		OrderBy(expr.Asc()).Limit(3).SQL()
 	if err != nil {
 		fmt.Println(err)
@@ -96,7 +96,7 @@ func ExampleDB_WithSearch() {
 		HNSWMaxScanTuples: 20000,
 	}
 	err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
-		_, err := momo.Select[example.Document, *example.Document](tx).
+		_, err := momo.Select[example.Document](tx).
 			OrderBy(momo.CosineDistance(document.Embedding, make(vector.Vector, 1536)).Asc()).
 			Limit(10).
 			All(ctx)
@@ -128,7 +128,7 @@ func ExampleSelectQuery_Explain() {
 	var db *momo.DB
 	ctx := context.Background()
 
-	plan, err := momo.Select[example.Document, *example.Document](db).
+	plan, err := momo.Select[example.Document](db).
 		OrderBy(momo.L2Distance(document.Embedding, make(vector.Vector, 1536)).Asc()).
 		Limit(10).
 		Explain(ctx)
