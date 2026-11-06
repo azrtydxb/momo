@@ -33,7 +33,9 @@ var mmTagMeta = momo.Meta[mmTag]{
 		{Name: "name"},
 		{Name: "deleted_at", Flags: momo.FlagSoftDelete | momo.FlagNullable},
 	},
-	Ptr: func(m *mmTag, i int) any { return [...]any{&m.ID, &m.Name, &m.DeletedAt}[i] },
+	Ptr:   func(m *mmTag, i int) any { return [...]any{&m.ID, &m.Name, &m.DeletedAt}[i] },
+	Value: func(m *mmTag, i int) any { return [...]any{m.ID, m.Name, m.DeletedAt}[i] },
+	PK:    []int{0},
 }
 
 var mmTags = momo.Relation[mmPost, mmTag]{
@@ -100,6 +102,71 @@ func TestLoadManyToManySoftDeleteAndDuplicateJoinRows(t *testing.T) {
 			if got := mmNames(ps[0]) + " " + mmNames(ps[1]) + " " + mmNames(ps[2]); got != tc.want {
 				t.Fatalf("%s: got %s, want %s", tc.name, got, tc.want)
 			}
+		}
+	})
+}
+
+type mmCoded struct {
+	ID   int64
+	Code string
+}
+
+var mmCodedMeta = momo.Meta[mmCoded]{
+	Table: "mm_coded", SoftDelete: -1,
+	Columns: []momo.ColumnMeta{{Name: "id", Flags: momo.FlagPK}, {Name: "code"}},
+	Ptr:     func(m *mmCoded, i int) any { return [...]any{&m.ID, &m.Code}[i] },
+	Value:   func(m *mmCoded, i int) any { return [...]any{m.ID, m.Code}[i] },
+	PK:      []int{0},
+}
+
+type mmCodedPost struct {
+	ID    int64
+	Coded []mmCoded
+}
+
+// The relation targets the non-PK unique column "code"; duplicated join rows
+// must still collapse to one child per (parent, child) pair.
+var mmCodedRel = momo.Relation[mmCodedPost, mmCoded]{
+	Name: "Coded", Kind: momo.ManyToMany,
+	Parent: momo.TableRef{Name: "mm_posts"}, Child: momo.TableRef{Name: "mm_coded"},
+	ChildMeta:  &mmCodedMeta,
+	ParentCols: []string{"id"}, ChildCols: []string{"code"}, ChildPK: []string{"id"},
+	Through:   &momo.Through{Table: momo.TableRef{Name: "mm_post_codes"}, ParentCols: []string{"post_id"}, ChildCols: []string{"code"}},
+	ParentKey: func(p *mmCodedPost) ([]any, bool) { return []any{p.ID}, true },
+	ChildKey:  func(c *mmCoded) ([]any, bool) { return []any{c.Code}, true },
+	GetMany:   func(p *mmCodedPost) []mmCoded { return p.Coded },
+	SetMany:   func(p *mmCodedPost, cs []mmCoded) { p.Coded = cs },
+}
+
+func TestLoadManyToManyDuplicateJoinRowsOnNonPKTarget(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+		ctx := context.Background()
+		for _, s := range []string{
+			"DROP TABLE IF EXISTS mm_post_codes",
+			"DROP TABLE IF EXISTS mm_coded",
+			"DROP TABLE IF EXISTS mm_posts",
+			"CREATE TABLE mm_posts (id BIGINT PRIMARY KEY)",
+			"CREATE TABLE mm_coded (id BIGINT PRIMARY KEY, code TEXT NOT NULL UNIQUE)",
+			"CREATE TABLE mm_post_codes (post_id BIGINT NOT NULL, code TEXT NOT NULL)",
+			"INSERT INTO mm_posts (id) VALUES (1), (2)",
+			"INSERT INTO mm_coded (id, code) VALUES (1, 'x'), (2, 'y')",
+			"INSERT INTO mm_post_codes (post_id, code) VALUES (1, 'x'), (1, 'x'), (1, 'y'), (2, 'x')",
+		} {
+			if _, err := momo.Exec(ctx, db, s); err != nil {
+				t.Fatalf("%s: %v", s, err)
+			}
+		}
+		t.Cleanup(func() {
+			for _, s := range []string{"mm_post_codes", "mm_coded", "mm_posts"} {
+				_, _ = momo.Exec(context.Background(), db, "DROP TABLE IF EXISTS "+s)
+			}
+		})
+		ps := []mmCodedPost{{ID: 1}, {ID: 2}}
+		if err := momo.Load(ctx, db, ps, mmCodedRel); err != nil {
+			t.Fatal(err)
+		}
+		if len(ps[0].Coded) != 2 || len(ps[1].Coded) != 1 {
+			t.Fatalf("duplicate join rows not collapsed: %+v %+v", ps[0].Coded, ps[1].Coded)
 		}
 	})
 }

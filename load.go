@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"slices"
 	"strconv"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -139,9 +138,13 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 				continue
 			}
 			key = holders
-			if pd.dedupeJoin() {
-				if ck, ok := pd.r.ChildKey(&c); ok {
-					id := keyString(holders) + "\x00" + keyString(ck)
+			if m := pd.r.ChildMeta; pd.dedupeJoin() {
+				{
+					pk := make([]any, len(m.PK))
+					for i, ci := range m.PK {
+						pk[i] = m.Value(&c, ci)
+					}
+					id := keyString(holders) + "\x00" + keyString(pk)
 					if _, dup := pd.seen[id]; dup {
 						continue // duplicated join row: one child per (parent, child) pair
 					}
@@ -171,11 +174,13 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 	return pd.wrap(rows.Err())
 }
 
-// dedupeJoin reports whether duplicated join-table rows can be collapsed by
-// the child key: only when the relation's child key is the child primary key,
-// so two rows with the same key are the same child.
+// dedupeJoin reports whether duplicated join-table rows can be collapsed:
+// whenever the child has a primary key, two rows with the same holder parent
+// key and child primary key are the same (parent, child) pair, whichever
+// column the relation targets.
 func (pd *pending[P, C]) dedupeJoin() bool {
-	return slices.Equal(pd.r.ChildCols, pd.r.ChildPK)
+	m := pd.r.ChildMeta
+	return len(m.PK) > 0 && m.Value != nil
 }
 
 // wrap classifies a scan or iteration error like a query error, tagged Op "load".
