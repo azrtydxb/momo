@@ -122,12 +122,14 @@ func (r Relation[P, C]) Unlink(ctx context.Context, q Querier, p *P, cs ...*C) e
 // does not exist locks nothing: concurrent Replace calls on a missing parent
 // are not serialised. Link and Unlink take no parent lock, so they can
 // interleave with a concurrent Replace on the same parent. With no children it
-// clears the whole set in one statement. Otherwise it reads the current child keys, diffs them in Go
-// against cs, unlinks only the removed keys and links only the added keys, each
-// in chunks that respect the bind limit, so a set of any size works and kept
-// children are not rewritten. It writes directly: no model hooks, field hooks
-// or UpdatedAt. HasOne/HasMany need a nullable foreign key. BelongsTo returns
-// ErrUnsupported.
+// clears the whole set in one statement. Otherwise it reads the current child
+// keys, diffs them in Go against cs, unlinks only the removed keys and links
+// only the added keys, each in chunks that respect the bind limit, so a set of
+// any size works and kept children are not rewritten. It writes directly: no
+// model hooks, field hooks or UpdatedAt. HasOne/HasMany need a nullable
+// foreign key. BelongsTo returns ErrUnsupported. Replace needs a transaction,
+// so a *DB pinned with OnConn fails with ErrUnsupported (Op "begin"); run it on
+// the pool or inside a *Tx. Link, Unlink and Count accept a pinned handle.
 func (r Relation[P, C]) Replace(ctx context.Context, q Querier, p *P, cs ...*C) error {
 	switch r.Kind {
 	case HasOne, HasMany, ManyToMany:
@@ -147,13 +149,7 @@ func (r Relation[P, C]) Replace(ctx context.Context, q Querier, p *P, cs ...*C) 
 		return err
 	}
 	fn := func(tx *Tx) error { return r.replaceIn(ctx, tx, pkey, want) }
-	switch qq := q.(type) {
-	case *DB:
-		return qq.Tx(ctx, TxOptions{}, fn)
-	case *Tx:
-		return qq.Tx(ctx, fn)
-	}
-	return &Error{Kind: ErrUnsupported, Op: "replace", Table: r.Child.Name, Err: errors.New("unknown Querier")}
+	return inTx(ctx, q, fn)
 }
 
 func (r Relation[P, C]) replaceIn(ctx context.Context, tx *Tx, pkey []any, want [][]any) error {

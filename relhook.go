@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// RelationEvent describes one relation load (S-18). Queries is the number of
+// RelationEvent describes one relation load. Queries is the number of
 // child statements compiled for the load (a failed load may have run fewer).
 // Children is set only when the load's statements succeeded; on error it is
 // zero and Err holds the error. Duration is filled before AfterRelation.

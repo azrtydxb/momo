@@ -380,6 +380,19 @@ func (db *DB) Tx(ctx context.Context, opts TxOptions, fn func(tx *Tx) error) (er
 	return tx.Commit(ctx)
 }
 
+// inTx runs fn in a new transaction when q is a *DB and in a savepoint when q
+// is a *Tx. A *DB pinned with OnConn cannot begin a transaction: the call fails
+// with ErrUnsupported (Op "begin") before fn runs.
+func inTx(ctx context.Context, q Querier, fn func(tx *Tx) error) error {
+	switch qq := q.(type) {
+	case *DB:
+		return qq.Tx(ctx, TxOptions{}, fn)
+	case *Tx:
+		return qq.Tx(ctx, fn)
+	}
+	return &Error{Kind: ErrUnsupported, Op: "begin", Err: errors.New("unknown Querier")}
+}
+
 // Tx runs fn inside a savepoint of this transaction: an error or panic
 // rolls back to the savepoint (and the panic is re-raised); success releases
 // it. The outer transaction stays open either way.

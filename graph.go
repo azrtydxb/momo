@@ -125,6 +125,12 @@ func (r Relation[P, C]) insertChildren(ctx context.Context, tx *Tx, p *P, cs []*
 // savepoint, so a failure undoes the whole graph and leaves the caller's
 // transaction usable (a dialect without savepoints returns ErrUnsupported).
 // A model that appears as its own child fails with ErrValidation.
+//
+// CreateGraph needs a transaction, so a *DB pinned with OnConn fails with
+// ErrUnsupported (Op "begin"); run it on the pool or inside a *Tx. After a
+// failure the database is unchanged, but p and the children keep the generated
+// keys and foreign keys already written into them; do not reuse them as if
+// they were unsaved.
 func CreateGraph[P any, PP Modeler[P]](ctx context.Context, q Querier, p *P, includes ...Association[P]) error {
 	if p == nil {
 		return graphErr("", "CreateGraph(nil)")
@@ -145,13 +151,7 @@ func CreateGraph[P any, PP Modeler[P]](ctx context.Context, q Querier, p *P, inc
 		}
 		return nil
 	}
-	switch qq := q.(type) {
-	case *DB:
-		return qq.Tx(ctx, TxOptions{}, fn)
-	case *Tx:
-		return qq.Tx(ctx, fn)
-	}
-	return &Error{Kind: ErrUnsupported, Op: "create graph", Err: errors.New("unknown Querier")}
+	return inTx(ctx, q, fn)
 }
 
 // insertModel inserts m through the ordinary insert path and reads generated

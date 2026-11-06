@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-// Pipelined relation loading (S-51).
+// Pipelined relation loading.
 //
 // When the connection behind a Querier implements Batcher (the pgx driver, on
 // the pool, on a transaction and on a pinned connection), the child statements
@@ -37,14 +37,15 @@ import (
 // assigned, so peak memory is roughly twice that of sequential loading (which
 // holds one relation's rows at a time). There is no public opt-out; a driver
 // or connection that does not implement Batcher loads sequentially.
-
+//
 // A batch is all or nothing. When one statement fails, or reading a result set
-// fails, every statement's AfterQuery reports the error (except statements that
-// already finished cleanly) and so does every relation's AfterRelation; the parents keep the empty associations that
-// preparing a load leaves. A driver that rejects the batch as unsupported
-// (ErrUnsupported with Op "batch", before sending anything, for example a pgx
-// batch under a non-default exec mode) makes the level fall back to sequential
-// loading; the rejected attempt is visible to hooks as failed statements.
+// fails, every statement's AfterQuery reports the error (except statements
+// that already finished cleanly) and so does every relation's AfterRelation;
+// the parents keep the empty associations that preparing a load leaves. A
+// driver that rejects the batch as unsupported (ErrUnsupported with Op
+// "batch", before sending anything, for example a pgx batch under a
+// non-default exec mode) makes the level fall back to sequential loading; the
+// rejected attempt is visible to hooks as failed statements.
 
 // batchable is a pendingLoad whose statements can be pipelined.
 type batchable interface {

@@ -3,6 +3,7 @@
 package momo
 
 import (
+	"database/sql"
 	"errors"
 	"reflect"
 	"slices"
@@ -215,6 +216,24 @@ func (b *joinBinding[P, C]) assign(p *P) error {
 	}
 	b.rel.SetOne(p, b.c)
 	return nil
+}
+
+// scanNull stores a NULL into dst, a pointer to a field of a joined child. A
+// sql.Scanner receives Scan(nil); pointer, slice, map and interface kinds take
+// their zero value; any other destination cannot hold NULL and fails with an
+// error matching ErrValidation (Op "scan").
+func scanNull(dst any) error {
+	if s, ok := dst.(sql.Scanner); ok {
+		return s.Scan(nil)
+	}
+	if v := reflect.ValueOf(dst); v.Kind() == reflect.Pointer && !v.IsNil() {
+		switch v.Elem().Kind() {
+		case reflect.Slice, reflect.Map, reflect.Interface, reflect.Pointer:
+			v.Elem().SetZero()
+			return nil
+		}
+	}
+	return &Error{Kind: ErrValidation, Op: "scan", Err: errors.New("NULL into a non-nullable field")}
 }
 
 // expandJoins returns the query to run when joined loaders are present: the
