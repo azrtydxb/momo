@@ -10,9 +10,10 @@ import (
 	"testing"
 )
 
-var pinnedRef = regexp.MustCompile(`@[0-9a-f]{40}$`)
+// Actions are referenced by version tag, never by commit hash (azrtydxb CI standard).
+var versionTagRef = regexp.MustCompile(`@v[0-9][0-9A-Za-z.\-]*$`)
 
-func TestWorkflowsPinned(t *testing.T) {
+func TestWorkflowsUseVersionTags(t *testing.T) {
 	dir := filepath.Join(repoRoot(t), ".github", "workflows")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -31,8 +32,8 @@ func TestWorkflowsPinned(t *testing.T) {
 				if s.Uses == "" || strings.HasPrefix(s.Uses, "./") || strings.HasPrefix(s.Uses, "docker://") {
 					continue
 				}
-				if !pinnedRef.MatchString(s.Uses) {
-					t.Errorf("%s job %s: %s is not pinned by a 40-character SHA", e.Name(), name, s.Uses)
+				if !versionTagRef.MatchString(s.Uses) {
+					t.Errorf("%s job %s: %s is not referenced by a version tag (@vN)", e.Name(), name, s.Uses)
 				}
 			}
 		}
