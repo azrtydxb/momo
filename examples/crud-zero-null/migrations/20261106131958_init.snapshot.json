@@ -1,0 +1,51 @@
+{
+  "format_version": 1,
+  "version": "20261106131958",
+  "parent": "",
+  "schema": {
+    "format_version": 1,
+    "dialect": "postgres",
+    "tables": [
+      {
+        "name": "tasks",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "title",
+            "type": "varchar(200)"
+          },
+          {
+            "name": "priority",
+            "type": "bigint",
+            "default": "3"
+          },
+          {
+            "name": "done",
+            "type": "boolean",
+            "default": "false"
+          },
+          {
+            "name": "note",
+            "type": "varchar(500)",
+            "nullable": true
+          },
+          {
+            "name": "version",
+            "type": "bigint",
+            "default": "0"
+          },
+          {
+            "name": "deleted_at",
+            "type": "timestamp with time zone",
+            "nullable": true
+          }
+        ],
+        "primary_key": ["id"]
+      }
+    ]
+  }
+}

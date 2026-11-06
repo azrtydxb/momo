@@ -1,0 +1,43 @@
+{
+  "format_version": 1,
+  "version": "20261106131501",
+  "parent": "",
+  "schema": {
+    "format_version": 1,
+    "dialect": "postgres",
+    "tables": [
+      {
+        "name": "customers",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "email",
+            "type": "varchar(200)"
+          },
+          {
+            "name": "name",
+            "type": "varchar(200)"
+          }
+        ],
+        "primary_key": [
+          "id"
+        ],
+        "indexes": [
+          {
+            "name": "customers_email_key",
+            "unique": true,
+            "parts": [
+              {
+                "column": "email"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

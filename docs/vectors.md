@@ -129,12 +129,18 @@ for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 A nearest-neighbour query (`ExampleCosineDistance`):
 
 ```go
-c, err := momo.Select[example.Document, *example.Document](db).
+c, err := momo.Select[example.Document](db).
 	OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
 	Limit(5).
 	SQL()
 // ... ORDER BY ("documents"."embedding" <=> $1) ASC LIMIT $2
 ```
+
+Reading the distance next to a column subset needs a projection struct
+(`momo.Projection`, `From` and `Columns`). A projection does not get the
+automatic soft-delete filter: on a table with a soft-delete column add
+`.Where(document.DeletedAt.IsNull())` yourself, or soft-deleted rows appear in
+the results.
 
 ## Declaring vector columns and indexes
 
@@ -232,7 +238,7 @@ settings := momo.SearchSettings{
 	HNSWMaxScanTuples: 20000,
 }
 err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
-	_, err := momo.Select[example.Document, *example.Document](tx).
+	_, err := momo.Select[example.Document](tx).
 		OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
 		Limit(10).
 		All(ctx)
@@ -275,7 +281,7 @@ it inside the transaction whose settings you want to see
 (`ExampleSelectQuery_Explain`):
 
 ```go
-plan, err := momo.Select[example.Document, *example.Document](db).
+plan, err := momo.Select[example.Document](db).
 	OrderBy(momo.L2Distance(document.Embedding, query).Asc()).
 	Limit(10).
 	Explain(ctx)

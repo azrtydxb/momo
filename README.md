@@ -397,6 +397,23 @@ To run the whole example against a database with the migrations applied:
 DATABASE_URL='postgres://user:password@localhost:5432/app?sslmode=disable' go run ./examples/quickstart
 ```
 
+### Projections
+
+A projection reads a subset of columns or an aggregate into a struct that is
+not a table. Embed `momo.Projection` and select it with `From` and `Columns`;
+see [examples/projection-pagination](examples/projection-pagination/) and the
+`Hit` type in [examples/vector-search](examples/vector-search/). In v0.1.0 the
+generator does not emit projections, so you write the `MomoMeta` by hand. A projection has no identity, version, soft-delete or timestamp column, so set
+`Identity`, `Version`, `SoftDelete`, `CreatedAt` and `UpdatedAt` to -1 in its
+`Meta`. The `Card` type in the projection example shows the whole thing.
+
+A projection does not get the automatic soft-delete filter (its `SoftDelete` is
+`-1`). When the table has a soft-delete column, add the filter yourself, for
+example `.Where(article.DeletedAt.IsNull())`.
+
+Generating this is tracked in the backlog story
+[Generate Meta for projection structs](.procoder/backlog/stories/20261106-generate-meta-for-projection-structs.md).
+
 ## Command line
 
 `momo help` lists the commands. The ones used above:
@@ -415,6 +432,8 @@ for usage or configuration errors, and 3 for database errors.
 ## More
 
 - [docs/README.md](docs/README.md) is the documentation index.
+- [docs/ai-guide.md](docs/ai-guide.md) is a single-file guide for AI coding
+  agents that use Momo in an application (also indexed by [llms.txt](llms.txt)).
 - [docs/vectors.md](docs/vectors.md) covers pgvector types, distance
   metrics, index limits and search settings.
 - [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md) maps every Go type to its
