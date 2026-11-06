@@ -70,3 +70,11 @@ Decision (2026-11-06): fix the changelog (PG + pgvector only note, reword the My
 - Do not open it yet
 
 Decision (2026-11-06): open the PR from sprint-2 into main with the drafted title and body; ask again before merging.
+
+## Squash-merge PR #7 into main
+
+- Squash-merge PR #7 now with its title as the commit subject; keep sprint-2 as the working branch (recommended)
+- Wait for a human review first
+- Do not merge yet
+
+Decision (2026-11-06): squash-merge PR #7 now; keep sprint-2 as the working branch.

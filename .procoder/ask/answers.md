@@ -1,6 +1,6 @@
 # What a human decided
 
-Written 2026-11-06 18:03 UTC. procoder reads this
+Written 2026-11-06 18:15 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
 
@@ -55,6 +55,19 @@ Question: Squash-merge PR #5 into main
 Decision (2026-11-06): squash-merge PR #5 now; keep sprint-2 as the working branch; check release-please PR #3 before tagging.
 
 Answer: Squash-merge now (user, AskUserQuestion 2026-11-06): merged as c744711; sprint-2 kept and reset onto main.
+
+## [decision] decisions.md
+
+Key: a7cd8592fd5d
+Question: Squash-merge PR #7 into main
+
+- Squash-merge PR #7 now with its title as the commit subject; keep sprint-2 as the working branch (recommended)
+- Wait for a human review first
+- Do not merge yet
+
+Decision (2026-11-06): squash-merge PR #7 now; keep sprint-2 as the working branch.
+
+Answer: Squash-merge now (user, AskUserQuestion 2026-11-06): PR #7 squash-merged into main as 4ccb323; sprint-2 kept.
 
 ## [decision] decisions.md
 
