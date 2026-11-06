@@ -19,5 +19,7 @@ Implements plan momo-06-relations Task 11: Nested, filtered, ordered eager loadi
 
 - Criterion 1 is left open on purpose: the test exists as in the plan and passes, but it never failed before an implementation because Tasks 5-9 already deliver nesting, where and order (no production change). Its red state is mutation-based: skipping the nested load, dropping the where, dropping the order, or nesting over only the first pooled child each fail it.
 - `go test -tags integration -race -run Nested .` passes on PostgreSQL: `TestNestedFilteredEagerLoad`, `TestNestedLoadDepthAndSharedChildren` (3 levels, 3 statements, shared author), `TestNestedLoadFilterAtLeaf`.
+- Added tests for behaviours the review found untested (`load_nested_more_test.go`, PostgreSQL): `TestNestedLoadErrorPropagates`, `TestNestedLoadHonoursContext`, `TestNestedLoadSkipsEmptyIntermediate`, `TestNestedLoadSiblings`, `TestNestedLoadManyToMany`, `TestNestedLoadNullKeyAtIntermediate`, `TestNestedLoadSoftDeletedIntermediate`.
+- Criterion 1 stays unticked (the behaviour pre-existed, no red state before the implementation). Mutation runs in `load.go` `finish()`: swallowing the nested `LoadAll` error fails `TestNestedLoadErrorPropagates` and `TestNestedLoadHonoursContext`; passing `context.Background()` instead of `ctx` to the nested `LoadAll` fails `TestNestedLoadHonoursContext`. Both were restored afterwards.
 - make fmt-check vet staticcheck gosec tidy-check clean; full `go test -race ./...` run once at the end.
 
