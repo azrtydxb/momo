@@ -1,6 +1,6 @@
 # momo-06 Task 18: Graph writes: CreateGraph, FindOrCreate and Upsert
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-04
 Epic: momo-06-relations
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
@@ -14,7 +14,7 @@ Implements plan momo-06-relations Task 18: Graph writes: CreateGraph, FindOrCrea
 - [x] `TestCreateGraphAndFindOrCreate` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestUpsertByPK` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-84] `TestCreateGraphAndFindOrCreate` asserts only listed relations are written, FindOrCreate is race-safe under concurrency (ON CONFLICT based), and Upsert updates all columns; fails if an unlisted relation is saved.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
@@ -23,3 +23,5 @@ Implements plan momo-06-relations Task 18: Graph writes: CreateGraph, FindOrCrea
 - Mutations that fail the tests: dropping `SetChildKey`, dropping the RETURNING read-back, FindOrCreate always reporting created, skipping the belongs-to pass.
 - Doc nits from the story 154 review applied to the `assoc.go` godoc (missing parent row, Link/Unlink take no parent lock, reflowed `*Tx` lock sentence).
 - The full suite, repo-wide race and lint gates were not run locally (shared disk); CI runs them on push. The last criterion stays open until CI is green.
+
+- 2026-11-06 gate: commit 2e0aaa6; CI run 42201494600 (full suite, race, lint, pg16/pg17 matrix) concluded success; fresh review approved (merge-ready, mutations: SetChildKey drop killed); merged into sprint-2.
