@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -16,11 +17,25 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
-	"github.com/azrtydxb/momo/examples/internal/exampletest"
 	"github.com/azrtydxb/momo/examples/upgrade-database/models"
 	"github.com/azrtydxb/momo/examples/upgrade-database/models/customer"
 	"github.com/azrtydxb/momo/internal/testdb"
 )
+
+const modulePath = "github.com/azrtydxb/momo"
+
+// momoBinary builds the real CLI once per test and returns its path.
+func momoBinary(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "momo")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	if out, err := exec.Command("go", "build", "-o", bin, modulePath+"/cmd/momo").CombinedOutput(); err != nil { //nolint:gosec // fixed arguments
+		t.Fatalf("go build momo: %v\n%s", err, out)
+	}
+	return bin
+}
 
 // cli runs the momo binary in this directory, where momo.yaml lives, against
 // the database url. It returns the combined output and the exit code.
@@ -69,7 +84,7 @@ func versions(t *testing.T) []string {
 func TestUpgradeKeepsData(t *testing.T) {
 	ctx := context.Background()
 	url := testdb.PostgresURLFor(t, scratch(t))
-	bin := exampletest.MomoBinary(t)
+	bin := momoBinary(t)
 	v := versions(t)
 	if len(v) != 3 {
 		t.Fatalf("want 3 migrations (init, add_plan, rename_name), found %v", v)

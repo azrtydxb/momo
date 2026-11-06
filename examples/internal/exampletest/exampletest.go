@@ -10,8 +10,6 @@ import (
 	"context"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -54,19 +52,4 @@ func CheckGenerated(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("momo generate --check: %v\n%s", err, out)
 	}
-}
-
-const modulePath = "github.com/azrtydxb/momo"
-
-// MomoBinary builds the real CLI once per test and returns its path.
-func MomoBinary(t *testing.T) string {
-	t.Helper()
-	bin := filepath.Join(t.TempDir(), "momo")
-	if runtime.GOOS == "windows" {
-		bin += ".exe"
-	}
-	if out, err := exec.Command("go", "build", "-o", bin, modulePath+"/cmd/momo").CombinedOutput(); err != nil { //nolint:gosec // fixed arguments
-		t.Fatalf("go build momo: %v\n%s", err, out)
-	}
-	return bin
 }
