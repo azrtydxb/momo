@@ -1,0 +1,97 @@
+{
+  "format_version": 1,
+  "version": "20261106133349",
+  "parent": "20261106133222",
+  "schema": {
+    "format_version": 1,
+    "dialect": "postgres",
+    "tables": [
+      {
+        "name": "orders",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "user_id",
+            "type": "bigint"
+          },
+          {
+            "name": "total_cents",
+            "type": "bigint"
+          },
+          {
+            "name": "placed_at",
+            "type": "timestamp with time zone",
+            "default": "now()"
+          },
+          {
+            "name": "status",
+            "type": "varchar(20)",
+            "default": "'new'"
+          }
+        ],
+        "primary_key": [
+          "id"
+        ],
+        "indexes": [
+          {
+            "name": "orders_user_id_idx",
+            "parts": [
+              {
+                "column": "user_id"
+              }
+            ]
+          }
+        ],
+        "foreign_keys": [
+          {
+            "name": "orders_user_id_fkey",
+            "columns": [
+              "user_id"
+            ],
+            "ref_table": "users",
+            "ref_columns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "users",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "email",
+            "type": "varchar(200)"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp with time zone",
+            "default": "now()"
+          }
+        ],
+        "primary_key": [
+          "id"
+        ],
+        "indexes": [
+          {
+            "name": "users_email_key",
+            "unique": true,
+            "parts": [
+              {
+                "column": "email"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
