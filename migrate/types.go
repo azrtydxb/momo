@@ -74,8 +74,11 @@ type Change struct {
 	// locks, scan the table, or fail on existing data: dropping an index or
 	// constraint, adding a unique or check constraint. Diff reports each as a
 	// "risky:" hint; it never needs --allow-destructive.
-	Risky   bool
-	Rebuild bool // SQLite: requires 12-step rebuild
+	Risky bool
+	// Partitioned is set on a change to a partitioned table. PostgreSQL rejects
+	// CREATE INDEX CONCURRENTLY there, so the renderer avoids it.
+	Partitioned bool
+	Rebuild     bool // SQLite: requires 12-step rebuild
 }
 
 // Migration is one migration version.

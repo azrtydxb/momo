@@ -380,13 +380,29 @@ or check constraint (both can fail on existing data).
 
 - `ADD CHECK` is written `NOT VALID`; its `VALIDATE CONSTRAINT` (a full scan
   that does not block writes) goes in the trailing no-transaction migration.
-  If the validation fails the constraint stays `NOT VALID`: it still checks new
-  rows; fix the data and rerun the validation by hand.
+  If the validation fails, the trailing migration is `failed` and `apply` stops
+  with `ErrDirty`. The constraint stays `NOT VALID`: it still checks new rows.
+  Recovery: fix the offending rows, run
+  `ALTER TABLE t VALIDATE CONSTRAINT c;` in `psql`, then
+  `momo migrate resolve --version V --applied` (V is the `_no_tx` version). If
+  the file also holds statements before the `VALIDATE`, they are already
+  committed (see "No-transaction migration fails"). Alternatively fix the
+  rows and use `resolve --version V --rolled-back` to run the file again.
 - `ADD UNIQUE` on an existing table is `CREATE UNIQUE INDEX CONCURRENTLY`
   followed by `ADD CONSTRAINT ... UNIQUE USING INDEX`, both in the trailing
   no-transaction migration. On duplicate rows the build fails and leaves an
   `INVALID` index (`drift` reports it): drop it with
   `DROP INDEX CONCURRENTLY IF EXISTS`, fix the data, then `resolve --rolled-back` and re-apply.
+- On a partitioned table `ADD UNIQUE` is a plain, transactional
+  `ADD CONSTRAINT ... UNIQUE`, because PostgreSQL rejects `CONCURRENTLY` there.
+- `diff` leaves out the explicit drop of an index, unique, check, foreign key or
+  primary key that uses a column dropped in the same diff: `DROP COLUMN`
+  removes it, and an explicit drop after it would fail.
+- Limit: an inline foreign key in a new `CREATE TABLE` cannot reference a
+  unique constraint that the same diff adds to another table, because that
+  unique is created in the later no-transaction migration and the foreign key
+  would fail. Workaround: run `diff` twice, first the unique on the existing
+  table, then the new table with its foreign key.
 - Not flagged at all: dropping a view, function, trigger or policy, and any
   change you write by hand.
 

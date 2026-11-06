@@ -322,6 +322,10 @@ func uniqueDef(u schema.Unique) string {
 // no-transaction migration). A new table's uniques stay inline in CREATE TABLE.
 func renderAddUnique(c migrate.Change, u schema.Unique) []migrate.Statement {
 	t := tableRef(c.Schema, c.Table)
+	if c.Partitioned {
+		// CONCURRENTLY is not allowed on a partitioned table.
+		return one("ALTER TABLE " + t + " ADD " + uniqueDef(u))
+	}
 	return []migrate.Statement{
 		{SQL: "CREATE UNIQUE INDEX CONCURRENTLY " + ident(u.Name) + " ON " + t + " (" + identList(u.Columns) + ")", NoTx: true},
 		{SQL: "ALTER TABLE " + t + " ADD CONSTRAINT " + ident(u.Name) + " UNIQUE USING INDEX " + ident(u.Name), NoTx: true},
