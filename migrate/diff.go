@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -34,16 +35,20 @@ import (
 // opts.AllowDestructive is false; ErrStagedRequired when a NOT NULL column
 // without default is added to (or an existing column becomes NOT NULL on) an
 // existing table and opts.Stage is false. With opts.Stage the NOT NULL part is
-// left out and a hint describes the remaining steps.
+// left out and a hint describes the remaining steps; Engine.Diff records the
+// column as nullable in the new snapshot, so a later Diff with
+// opts.EnforceNotNull emits the SET NOT NULL once the data is backfilled.
 //
 // Drops are never paired with adds into renames: only opts.RenameTables and
 // opts.RenameColumns produce renames. A hint names likely rename candidates.
 //
-// One deliberate exception to the staging rule: an added NOT NULL column that
-// is a rename candidate (same table and type as a dropped column) is not
-// reported as ErrStagedRequired, because the hint already tells the user to
-// pass the rename flag. Applying the result without the flag would fail on a
-// populated table, which is why the hint is always emitted.
+// An added NOT NULL column that is a rename candidate (same table and type as
+// a dropped column) follows the staging rule like any other; its refusal names
+// the rename flag.
+//
+// An ADD COLUMN on an existing table whose default calls a volatile function
+// (random(), gen_random_uuid(), ...) gets a risk hint: PostgreSQL rewrites the
+// table under ACCESS EXCLUSIVE.
 func Diff(from, to *schema.Schema, opts DiffOptions) (changes []Change, hints []string, err error) {
 	if from == nil {
 		from = &schema.Schema{}
@@ -429,6 +434,28 @@ func colByName(t *schema.Table) map[string]*schema.Column {
 	return m
 }
 
+// volatileFuncs are the built-in and common extension functions whose use in
+// a column default makes ADD COLUMN rewrite the table.
+var volatileFuncs = []string{
+	"random", "random_normal", "setseed", "clock_timestamp", "timeofday",
+	"gen_random_uuid", "uuidv4", "uuidv7", "uuid_generate_v1", "uuid_generate_v1mc", "uuid_generate_v4",
+	"gen_random_bytes", "nextval", "txid_current", "pg_current_xact_id",
+}
+
+var volatileCall = regexp.MustCompile(`(?i)\b(` + strings.Join(volatileFuncs, "|") + `)\s*\(`)
+
+var quotedLiteral = regexp.MustCompile(`'(?:[^']|'')*'`)
+
+// volatileDefault returns the name of the first known volatile function the
+// default expression calls, or "" when it calls none.
+func volatileDefault(expr string) string {
+	expr = quotedLiteral.ReplaceAllString(expr, "''")
+	if m := volatileCall.FindStringSubmatch(expr); m != nil {
+		return strings.ToLower(m[1])
+	}
+	return ""
+}
+
 func needsStaging(c *schema.Column) bool {
 	return !c.Nullable && c.Default == "" && c.Identity == "" && c.Generated == ""
 }
@@ -479,16 +506,23 @@ func (d *differ) columns(fn, tn, fo, to *schema.Table, renameTo map[string]strin
 			continue
 		}
 		col := toO[c.Name]
-		if needsStaging(&c) && !candidate[c.Name] {
+		if needsStaging(&c) {
 			if !d.opts.Stage {
-				d.staged = append(d.staged, fmt.Sprintf("%s.%s", to.Name, c.Name))
+				entry := fmt.Sprintf("%s.%s", to.Name, c.Name)
+				if candidate[c.Name] {
+					entry += " (possible rename: pass --rename-column)"
+				}
+				d.staged = append(d.staged, entry)
 			} else {
 				staged := *col
 				staged.Nullable = true
 				d.emit(Change{Kind: AddColumn, Schema: to.Schema, Table: to.Name, Name: c.Name, After: &staged})
-				d.hint(fmt.Sprintf("staged: %s.%s was added as nullable; backfill it, then run ALTER TABLE %s ALTER COLUMN %s SET NOT NULL (re-run migrate diff after the backfill)", to.Name, c.Name, to.Name, c.Name))
+				d.hint(fmt.Sprintf("staged: %s.%s was added as nullable; backfill it, then run migrate diff with --enforce-not-null to emit ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", to.Name, c.Name, to.Name, c.Name))
 				continue
 			}
+		}
+		if v := volatileDefault(col.Default); v != "" && d.d == dialect.Postgres {
+			d.hint(fmt.Sprintf("risk: %s.%s adds a column with the volatile default %s(); PostgreSQL rewrites the table under ACCESS EXCLUSIVE; add the column nullable, backfill in batches, then set the default", to.Name, c.Name, v))
 		}
 		d.emit(Change{Kind: AddColumn, Schema: to.Schema, Table: to.Name, Name: c.Name, After: cp(*col)})
 	}
@@ -518,13 +552,13 @@ func (d *differ) alterColumn(t *schema.Table, a, b *schema.Column, ao, bo *schem
 		return
 	}
 	after := *bo
-	if a.Nullable && !b.Nullable && needsStaging(b) {
+	if a.Nullable && !b.Nullable && needsStaging(b) && !d.opts.EnforceNotNull {
 		if !d.opts.Stage {
 			d.staged = append(d.staged, fmt.Sprintf("%s.%s", t.Name, b.Name))
 		} else {
 			after.Nullable = true
 			nb.Nullable = true
-			d.hint(fmt.Sprintf("staged: %s.%s stays nullable; backfill it, then run ALTER TABLE %s ALTER COLUMN %s SET NOT NULL (re-run migrate diff after the backfill)", t.Name, b.Name, t.Name, b.Name))
+			d.hint(fmt.Sprintf("staged: %s.%s stays nullable; backfill it, then run migrate diff with --enforce-not-null to emit ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", t.Name, b.Name, t.Name, b.Name))
 			if !columnAttrsDiffer(&na, &nb) {
 				return
 			}
@@ -913,4 +947,84 @@ func rewriteIdents(expr string, m map[string]string) string {
 		i++
 	}
 	return sb.String()
+}
+
+// stagedSnapshot returns desired with every still-staged column recorded as
+// nullable, the way the database has it, so a later Diff with
+// opts.EnforceNotNull can emit SET NOT NULL after the backfill. A column is
+// staged when this diff stages it (add_column or alter_column whose After is
+// nullable while the model says NOT NULL), or when from already has it
+// nullable, the model has it NOT NULL without a default and EnforceNotNull is
+// off: a diff that carries an earlier staged column along must not record it
+// as NOT NULL. desired is never modified; it is returned as is when nothing
+// is staged.
+func stagedSnapshot(desired, from *schema.Schema, changes []Change, opts DiffOptions) *schema.Schema {
+	type key struct{ schema, table, column string }
+	staged := map[key]bool{}
+	for _, c := range changes {
+		if c.Kind != AddColumn && c.Kind != AlterColumn {
+			continue
+		}
+		if col, ok := c.After.(*schema.Column); ok && col.Nullable {
+			staged[key{c.Schema, c.Table, c.Name}] = true
+		}
+	}
+	if !opts.EnforceNotNull && from != nil {
+		// Map the previous names through this diff's renames.
+		tableRen := map[[2]string]string{}
+		colRen := map[key]string{}
+		for _, c := range changes {
+			switch c.Kind {
+			case RenameTable:
+				tableRen[[2]string{c.Schema, c.Table}] = c.Name
+			case RenameColumn:
+				if old, ok := c.Before.(*schema.Column); ok {
+					colRen[key{c.Schema, c.Table, old.Name}] = c.Name
+				}
+			}
+		}
+		for _, t := range from.Tables {
+			name := t.Name
+			if n, ok := tableRen[[2]string{t.Schema, t.Name}]; ok {
+				name = n
+			}
+			for _, col := range t.Columns {
+				if !col.Nullable {
+					continue
+				}
+				colName := col.Name
+				if n, ok := colRen[key{t.Schema, name, col.Name}]; ok {
+					colName = n
+				}
+				staged[key{t.Schema, name, colName}] = true
+			}
+		}
+	}
+	if len(staged) == 0 {
+		return desired
+	}
+	out := *desired
+	out.Tables = slices.Clone(desired.Tables)
+	changed := false
+	for i := range out.Tables {
+		t := &out.Tables[i]
+		var cols []schema.Column
+		for j, col := range t.Columns {
+			if col.Nullable || !needsStaging(&col) || !staged[key{t.Schema, t.Name, col.Name}] {
+				continue
+			}
+			if cols == nil {
+				cols = slices.Clone(t.Columns)
+			}
+			cols[j].Nullable = true
+			changed = true
+		}
+		if cols != nil {
+			t.Columns = cols
+		}
+	}
+	if !changed {
+		return desired
+	}
+	return &out
 }

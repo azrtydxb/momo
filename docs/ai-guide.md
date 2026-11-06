@@ -400,7 +400,11 @@ momo migrate drift                      # live DB vs latest applied snapshot
   change) are refused without `--allow-destructive`. Type changes rewrite the
   table under `ACCESS EXCLUSIVE` and fail on rows that do not cast.
 - A `NOT NULL` column without a default on a table that exists in the snapshot is
-  refused (`ErrStagedRequired`). Give it a `default:`.
+  refused (`ErrStagedRequired`). Give it a `default:`, or stage it: `diff --stage`,
+  apply, backfill, check `SELECT count(*) FROM t WHERE c IS NULL` is 0, then
+  `diff --enforce-not-null`. The flag enforces every nullable column the model
+  has as NOT NULL, not only staged ones; with NULLs left, `apply` fails (exit 3)
+  and rolls back cleanly (not dirty): backfill and `apply` again.
 - URL: `--url`, else `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
   Exit codes: 0 ok, 1 findings, 2 usage/config, 3 database/lock/execution error.
   An invalid migration name (`diff Bad-Name`) exits 3, not 2.
@@ -453,12 +457,6 @@ Production checklist:
 
 Known issues in v0.1.0, as rules (each is a filed bug):
 
-- DON'T use `--stage`. The column is recorded NOT NULL in the snapshot while the
-  database has it nullable, so `diff` never emits `SET NOT NULL` and the printed
-  hint (re-run `diff`) is wrong. WORKAROUND: give the column a `default:`, or add
-  the column nullable, backfill, and write your own migration with
-  `ALTER TABLE t ALTER COLUMN c SET NOT NULL;` (same for an existing column made
-  NOT NULL).
 - DON'T rely on `Concurrently()` in `MomoConfig`: `diff` ignores it and writes a
   plain `CREATE INDEX` that blocks writes. WORKAROUND for large tables: edit the
   generated file to `CREATE INDEX CONCURRENTLY`, add `-- momo:no-transaction`,
@@ -1190,8 +1188,9 @@ Examples: every `examples/*/example_test.go`, harness
     tables.
 19. Migrations: `diff`, review SQL, commit all files, `apply`. Never edit an
     applied migration; undo with a new one. No rollback exists.
-20. Don't use `--stage`; give NOT NULL additions a default or write the
-    `SET NOT NULL` migration by hand.
+20. NOT NULL additions without a default: `diff --stage`, apply, backfill, check
+    no NULLs remain, then `diff --enforce-not-null` (or give the column a
+    default).
 21. Don't rely on `Concurrently()` or `-- momo:destructive`; hand-edit large-table
     index builds into their own `-- momo:no-transaction` migration.
 22. CI must run `momo generate --check`, `momo migrate validate` and the

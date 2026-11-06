@@ -36,7 +36,7 @@ const exitDatabase = 3 // database, lock or execution error
 const migrateUsage = `Usage: momo migrate [--config momo.yaml] [--dir path] [--dialect name] <command> [flags]
 
 Commands:
-  diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage]
+  diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage] [--enforce-not-null]
               write a migration for the difference between the models and the
               latest snapshot (offline; refuses to overwrite files)
   plan        list the pending migrations (needs a database)
@@ -742,11 +742,12 @@ func (l *cli) validateCmd(fs *flag.FlagSet) func([]string) int {
 
 func (l *cli) diffCmd(fs *flag.FlagSet) func([]string) int {
 	renameTables, renameColumns := pairs{}, pairs{}
-	var allow, stage bool
+	var allow, stage, enforce bool
 	fs.Var(renameTables, "rename-table", "old=new table rename (repeatable)")
 	fs.Var(renameColumns, "rename-column", "table.old=new column rename (repeatable)")
 	fs.BoolVar(&allow, "allow-destructive", false, "allow drops and rewrites")
 	fs.BoolVar(&stage, "stage", false, "stage NOT NULL columns without a default")
+	fs.BoolVar(&enforce, "enforce-not-null", false, "emit SET NOT NULL for a staged, backfilled column")
 	return func(args []string) int {
 		pos, stop := l.setup(fs, args)
 		if stop != nil {
@@ -776,7 +777,7 @@ func (l *cli) diffCmd(fs *flag.FlagSet) func([]string) int {
 		ctx, cancel := interruptContext()
 		defer cancel()
 		m, err := e.Diff(ctx, desired, pos[0], migrate.DiffOptions{
-			RenameTables: renameTables, RenameColumns: renameColumns, AllowDestructive: allow, Stage: stage,
+			RenameTables: renameTables, RenameColumns: renameColumns, AllowDestructive: allow, Stage: stage, EnforceNotNull: enforce,
 		})
 		if err != nil {
 			return l.failure(err)
