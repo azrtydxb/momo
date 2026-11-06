@@ -95,3 +95,37 @@ func TestEmitDescriptorsStandInVectorStaysPlain(t *testing.T) {
 		t.Fatalf("stand-in Vector must stay a plain column:\n%s", src)
 	}
 }
+
+// TestEmitDescriptorsVectorPermissions pins the descriptor type of a vector
+// field under each write permission, the dimension read from an explicit type
+// tag, and an alias to a pointer vector type.
+func TestEmitDescriptorsVectorPermissions(t *testing.T) {
+	src := emitFixtureModel(t, "vectorperm", "Chunk")
+	ok, err := golden.Diff("testdata/golden/descriptors/chunk/descriptors.golden", src, *update)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("descriptors differ from golden; review and rerun with -update")
+	}
+	for _, want := range []string{
+		`Generated  momo.ReadOnlyVectorColumn[vector.Vector]`,
+		`GenNull    momo.ReadOnlyVectorColumn[vector.Vector]`,
+		`Once       momo.CreateOnlyVectorColumn[vector.Vector]`,
+		`Frozen     momo.ImmutableVectorColumn[vector.Vector]`,
+		`Plain      momo.VectorColumn[vector.Vector]`,
+		`Maybe      momo.NullVectorColumn[vector.Vector]`,
+		`ViaAlias   momo.NullVectorColumn[vector.Vector]`,
+		`momo.NewReadOnlyVectorColumn[vector.Vector](q, "generated", 3,`,
+		`momo.NewCreateOnlyVectorColumn[vector.Vector](q, "once", 3,`,
+		`momo.NewImmutableVectorColumn[vector.Vector](q, "frozen", 3,`,
+		`momo.NewVectorColumn[vector.Vector](q, "type_vec", 3, 0)`,
+		`momo.NewVectorColumn[vector.HalfVector](q, "type_half", 4, 0)`,
+		`momo.NewVectorColumn[vector.SparseVector](q, "type_sparse", 5, 0)`,
+		`momo.NewVectorColumn[vector.Bits](q, "type_bits", 8, 0)`,
+	} {
+		if !strings.Contains(string(src), want) {
+			t.Errorf("descriptors miss %q:\n%s", want, src)
+		}
+	}
+}

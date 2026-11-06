@@ -26,10 +26,10 @@ type Columns struct {
 	Price     momo.Column[float64]
 	Rating    momo.Column[int32]
 	State     momo.Column[string]
-	Embedding momo.VectorColumn[vector.Vector]
-	Half      momo.VectorColumn[vector.HalfVector]
-	Sparse    momo.VectorColumn[vector.SparseVector]
-	Flags     momo.VectorColumn[vector.Bits]
+	Embedding momo.NullVectorColumn[vector.Vector]
+	Half      momo.NullVectorColumn[vector.HalfVector]
+	Sparse    momo.NullVectorColumn[vector.SparseVector]
+	Flags     momo.NullVectorColumn[vector.Bits]
 	CreatedAt momo.Column[time.Time]
 }
 
@@ -49,10 +49,10 @@ func As(alias string) Columns {
 		Price:     momo.NewColumn[float64](q, "price", 0),
 		Rating:    momo.NewColumn[int32](q, "rating", momo.FlagHasDefault),
 		State:     momo.NewColumn[string](q, "state", momo.FlagHasDefault),
-		Embedding: momo.NewVectorColumn[vector.Vector](q, "embedding", 3, momo.FlagNullable),
-		Half:      momo.NewVectorColumn[vector.HalfVector](q, "half", 4, momo.FlagNullable),
-		Sparse:    momo.NewVectorColumn[vector.SparseVector](q, "sparse", 5, momo.FlagNullable),
-		Flags:     momo.NewVectorColumn[vector.Bits](q, "flags", 8, momo.FlagNullable),
+		Embedding: momo.NewNullVectorColumn[vector.Vector](q, "embedding", 3, momo.FlagNullable),
+		Half:      momo.NewNullVectorColumn[vector.HalfVector](q, "half", 4, momo.FlagNullable),
+		Sparse:    momo.NewNullVectorColumn[vector.SparseVector](q, "sparse", 5, momo.FlagNullable),
+		Flags:     momo.NewNullVectorColumn[vector.Bits](q, "flags", 8, momo.FlagNullable),
 		CreatedAt: momo.NewColumn[time.Time](q, "created_at", momo.FlagHasDefault|momo.FlagCreatedAt),
 	}
 }

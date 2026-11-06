@@ -53,3 +53,22 @@ func DescriptorType(a Access, pointer bool) (typeName, ctor string) {
 	}
 	return "Column", "NewColumn"
 }
+
+// VectorDescriptorType returns the momo vector descriptor type and
+// constructor names for an access mode, without type arguments. Every
+// variant is accepted by the distance builders, so a restricted vector can
+// still be searched.
+func VectorDescriptorType(a Access, pointer bool) (typeName, ctor string) {
+	switch a {
+	case ReadOnly:
+		return "ReadOnlyVectorColumn", "NewReadOnlyVectorColumn"
+	case CreateOnly:
+		return "CreateOnlyVectorColumn", "NewCreateOnlyVectorColumn"
+	case Immutable:
+		return "ImmutableVectorColumn", "NewImmutableVectorColumn"
+	}
+	if pointer {
+		return "NullVectorColumn", "NewNullVectorColumn"
+	}
+	return "VectorColumn", "NewVectorColumn"
+}

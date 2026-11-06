@@ -77,9 +77,21 @@ A `momo.VectorColumn[V]` is a typed column descriptor that carries the
 declared dimension. Generated code emits one for every field of a `vector`
 package type, with the dimension from the `dim` tag, so `document.Embedding`
 passes straight to a distance builder. Build one by hand with
-`momo.NewVectorColumn` only for a table the generator does not cover. A
-vector field tagged `read_only`, `create_only` or `immutable` still gets the
-plain permission column.
+`momo.NewVectorColumn` only for a table the generator does not cover.
+
+A vector column offers the predicates, ordering and write methods of a plain
+column (`Eq`, `In`, `IsNull`, `IsNotNull`, `IsDistinctFrom`, `Asc`, `Desc`,
+`Set`, `SetExpr`, `SetDefault`, `SetExcluded`), except the range comparisons
+`Lt`, `Le`, `Gt`, `Ge` and `Between`: vectors have no meaningful total order,
+so use a distance builder to order them. A nullable field (`*vector.Vector`)
+gets `momo.NullVectorColumn`, which adds `SetNull`.
+
+A vector field tagged `read_only`, `create_only` or `immutable` gets the
+matching `ReadOnlyVectorColumn`, `CreateOnlyVectorColumn` or
+`ImmutableVectorColumn`. They keep the write restriction of the plain
+permission columns (no `Set` on a read-only column, an insert-only `Set` on
+the other two) and every distance builder accepts them, so a read-only
+embedding can be searched.
 
 The distance builders take a column and a query vector of the same type.
 Each returns a `DistanceExpr`, an `Expression[float64]` that works in the

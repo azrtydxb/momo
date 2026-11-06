@@ -205,7 +205,8 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	}
 	type col struct {
 		name, typ, ctor, colName, flags string
-		dim                             int // VectorColumn only
+		dim                             int  // vector columns only
+		vector                          bool // emitted as a momo vector column
 	}
 	cols := make([]col, 0, len(m.Fields))
 	for i, f := range m.Fields {
@@ -226,10 +227,12 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 			colName: f.Column,
 			flags:   flagExpr(f),
 		}
-		if f.Access == Writable && v != nil && isVectorType(v.Type()) {
-			c.typ = "momo.VectorColumn[" + elem + "]"
-			c.ctor = "momo.NewVectorColumn[" + elem + "]"
+		if v != nil && isVectorType(v.Type()) {
+			tn, cn := VectorDescriptorType(f.Access, f.Nullable || f.Tags.Nullable)
+			c.typ = "momo." + tn + "[" + elem + "]"
+			c.ctor = "momo." + cn + "[" + elem + "]"
 			c.dim = vectorDim(f)
+			c.vector = true
 		}
 		cols = append(cols, c)
 	}
@@ -246,7 +249,7 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	w("// As returns the column descriptors qualified by alias (the table name when alias is empty).\n")
 	w("func As(alias string) Columns {\n\tq := alias\n\tif q == \"\" {\n\t\tq = %s\n\t}\n\treturn Columns{\n", strconv.Quote(m.Table))
 	for _, c := range cols {
-		if strings.HasPrefix(c.typ, "momo.VectorColumn[") {
+		if c.vector {
 			w("\t\t%s: %s(q, %s, %d, %s),\n", c.name, c.ctor, strconv.Quote(c.colName), c.dim, c.flags)
 			continue
 		}
