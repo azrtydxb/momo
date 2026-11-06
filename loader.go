@@ -7,7 +7,8 @@ import (
 )
 
 // Loader is one relation load request, optionally scoped and nested.
-// It is sealed: only Relation.Scope, Relation.Then and Relation itself implement it.
+// It is sealed: only Relation, RelationLoader (from Relation.Scope and
+// Relation.Then) and Relation.Joined implement it.
 type Loader[P any] interface {
 	relationName() string
 	prepare(q Querier, parents []P) (pendingLoad, error)
@@ -72,7 +73,7 @@ func LoadPerParentLimit[C any](n int) LoadOption[C] {
 // shallowly for each, so pointers inside it (including relations loaded with
 // Then) are shared among those copies.
 func Load[P, C any](ctx context.Context, q Querier, parents []P, rel Relation[P, C], opts ...LoadOption[C]) error {
-	return rel.scoped(opts, nil).load(ctx, q, parents)
+	return rel.Scope(opts...).load(ctx, q, parents)
 }
 
 // LoadAll loads several relations for the same parents, in order. The top
@@ -101,39 +102,69 @@ func LoadAll[P any](ctx context.Context, q Querier, parents []P, loaders ...Load
 	return runPending(ctx, q, pending)
 }
 
-// Scope returns a loader for r with per-load options.
-func (r Relation[P, C]) Scope(opts ...LoadOption[C]) Loader[P] {
-	return r.scoped(opts, nil)
+// Scope returns a loader for r with per-load options. The result can be scoped
+// further and given nested loads: r.Scope(opts...).Then(nested...) filters and
+// orders the relation and loads nested relations over exactly the children
+// that remain.
+func (r Relation[P, C]) Scope(opts ...LoadOption[C]) RelationLoader[P, C] {
+	return RelationLoader[P, C]{rel: r}.Scope(opts...)
 }
 
 // Then returns a loader for r that also loads nested relations on the children.
-func (r Relation[P, C]) Then(nested ...Loader[C]) Loader[P] {
-	return r.scoped(nil, nested)
+// The result can be scoped: r.Then(nested...).Scope(opts...) is the same loader
+// as r.Scope(opts...).Then(nested...).
+func (r Relation[P, C]) Then(nested ...Loader[C]) RelationLoader[P, C] {
+	return RelationLoader[P, C]{rel: r}.Then(nested...)
 }
 
-// scopedLoader is the sealed Loader implementation for a relation with options and nested loads.
-type scopedLoader[P, C any] struct {
+// RelationLoader is a loader for one relation that carries per-load options
+// (Scope) and nested loads (Then) together, so "approved comments, newest first,
+// each with its author" is one loader:
+//
+//	document.Comments.Scope(
+//		momo.LoadWhere[models.Comment](comment.Approved.Eq(true)),
+//		momo.LoadOrderBy[models.Comment](comment.ID.Desc()),
+//	).Then(comment.Author)
+//
+// It is a value: Scope and Then return a new loader and leave the receiver
+// unchanged, so a base loader can be shared. Scope may be called several times
+// (predicates AND together, order items append, a later LoadPerParentLimit
+// replaces an earlier one). Then appends nested loaders. The options apply to
+// this relation's children only; nested loaders carry their own options. Nested
+// loads run once over exactly the children that survive the options, so
+// the statement count stays one per bind-limit chunk at the top and one per
+// level below it.
+//
+// A RelationLoader with no options and no nested loaders behaves like the plain
+// Relation. It implements Loader[P]; Loader stays sealed.
+type RelationLoader[P, C any] struct {
 	rel    Relation[P, C]
 	cfg    loadConfig
 	nested []Loader[C]
 }
 
-func (r Relation[P, C]) scoped(opts []LoadOption[C], nested []Loader[C]) scopedLoader[P, C] {
-	s := scopedLoader[P, C]{rel: r, nested: nested}
+// Scope returns a copy of l with opts applied after its existing options.
+func (l RelationLoader[P, C]) Scope(opts ...LoadOption[C]) RelationLoader[P, C] {
 	for _, o := range opts {
-		o(&s.cfg)
+		o(&l.cfg)
 	}
-	return s
+	return l
 }
 
-func (s scopedLoader[P, C]) relationName() string { return s.rel.Name }
-
-func (s scopedLoader[P, C]) prepare(q Querier, parents []P) (pendingLoad, error) {
-	return s.rel.prepareWith(q, parents, &s.cfg, s.nested)
+// Then returns a copy of l with nested appended after its existing nested loads.
+func (l RelationLoader[P, C]) Then(nested ...Loader[C]) RelationLoader[P, C] {
+	l.nested = append(l.nested[:len(l.nested):len(l.nested)], nested...)
+	return l
 }
 
-func (s scopedLoader[P, C]) load(ctx context.Context, q Querier, parents []P) error {
-	return LoadAll(ctx, q, parents, Loader[P](s))
+func (l RelationLoader[P, C]) relationName() string { return l.rel.Name }
+
+func (l RelationLoader[P, C]) prepare(q Querier, parents []P) (pendingLoad, error) {
+	return l.rel.prepareWith(q, parents, &l.cfg, l.nested)
+}
+
+func (l RelationLoader[P, C]) load(ctx context.Context, q Querier, parents []P) error {
+	return LoadAll(ctx, q, parents, Loader[P](l))
 }
 
 // Relation implements Loader for the plain relation (no options, no nesting).

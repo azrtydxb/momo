@@ -5,6 +5,7 @@ package momo
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 // Graph writes are explicit and opt-in. CreateGraph writes a parent and the
@@ -71,11 +72,17 @@ func (x includedRel[P, C]) after(ctx context.Context, tx *Tx, p *P) error {
 		}
 	case HasMany:
 		cs := r.GetMany(p)
-		ptrs := make([]*C, len(cs))
-		for i := range cs {
-			ptrs[i] = &cs[i]
+		key, ok := r.ParentKey(p)
+		if !ok {
+			return graphErr(r.Child.Name, r.Name+": parent key is NULL")
 		}
-		return r.insertChildren(ctx, tx, p, ptrs)
+		for i := range cs {
+			if any(&cs[i]) == any(p) {
+				return graphErr(r.Child.Name, r.Name+": the parent lists itself as its own child (cycle)")
+			}
+			r.SetChildKey(&cs[i], key)
+		}
+		return insertModels(ctx, tx, r.ChildMeta, cs)
 	case ManyToMany:
 		cs := r.GetMany(p)
 		ptrs := make([]*C, len(cs))
@@ -84,9 +91,9 @@ func (x includedRel[P, C]) after(ctx context.Context, tx *Tx, p *P) error {
 			if any(ptrs[i]) == any(p) {
 				return graphErr(r.Child.Name, r.Name+": the parent lists itself as its own child (cycle)")
 			}
-			if err := insertModel(ctx, tx, r.ChildMeta, ptrs[i]); err != nil {
-				return err
-			}
+		}
+		if err := insertModels(ctx, tx, r.ChildMeta, cs); err != nil {
+			return err
 		}
 		return r.Link(ctx, tx, p, ptrs...)
 	}
@@ -94,7 +101,8 @@ func (x includedRel[P, C]) after(ctx context.Context, tx *Tx, p *P) error {
 }
 
 // insertChildren writes the parent's key (and a polymorphic discriminator) into
-// each child, then inserts it.
+// each child, then inserts it. HasMany does not use it: it inserts its slice
+// with the chunked bulk path (insertModels).
 func (r Relation[P, C]) insertChildren(ctx context.Context, tx *Tx, p *P, cs []*C) error {
 	key, ok := r.ParentKey(p)
 	if !ok {
@@ -121,6 +129,23 @@ func (r Relation[P, C]) insertChildren(ctx context.Context, tx *Tx, p *P, cs []*
 // the order listed. Unlisted relations are not written, and the children's own
 // relations are not followed.
 //
+// The children of a HasMany or ManyToMany relation are inserted with the
+// chunked bulk insert (InsertQuery.Models): one multi-row statement per
+// bind-limit chunk instead of one statement per child, so 1000 children cost
+// one statement, not 1000. A HasOne or BelongsTo child is a single insert.
+//
+// Every listed child is inserted as a new row, including a ManyToMany child
+// that is already stored: it is not linked, it is inserted again and fails with
+// ErrUniqueViolation (undoing the whole graph) when its primary key exists. To
+// associate children that already exist, use Relation.Link (or insert them
+// first and Link them) instead of listing the relation here.
+//
+// A bulk insert returns its rows in insertion order, and CreateGraph matches
+// them to the children by position. If the database returns a different number
+// of rows than were inserted (for example a BEFORE INSERT trigger skipped one),
+// the graph fails with ErrValidation and is undone, rather than leaving the
+// remaining children without their generated keys.
+//
 // On a *DB the graph runs in a new transaction; on a *Tx it runs in a
 // savepoint, so a failure undoes the whole graph and leaves the caller's
 // transaction usable (a dialect without savepoints returns ErrUnsupported).
@@ -131,9 +156,15 @@ func (r Relation[P, C]) insertChildren(ctx context.Context, tx *Tx, p *P, cs []*
 // failure the database is unchanged, but p and the children keep the generated
 // keys and foreign keys already written into them; do not reuse them as if
 // they were unsaved.
+//
+// CreateGraph needs RETURNING to read generated keys back: a dialect without it
+// (MySQL) fails with ErrUnsupported before a transaction is opened.
 func CreateGraph[P any, PP Modeler[P]](ctx context.Context, q Querier, p *P, includes ...Association[P]) error {
 	if p == nil {
 		return graphErr("", "CreateGraph(nil)")
+	}
+	if !q.Dialect().Returning {
+		return &Error{Kind: ErrUnsupported, Op: "create graph", Table: metaOf[P, PP]().Table, Err: errors.New("CreateGraph needs RETURNING to read generated keys back")}
 	}
 	fn := func(tx *Tx) error {
 		for _, inc := range includes {
@@ -159,6 +190,48 @@ func CreateGraph[P any, PP Modeler[P]](ctx context.Context, q Querier, p *P, inc
 func insertModel[T any](ctx context.Context, q Querier, meta *Meta[T], m *T) error {
 	_, err := runInsert(ctx, q, InsertQuery[T]{q: q, meta: meta}.Model(m), m)
 	return err
+}
+
+// insertModels inserts ms with the chunked bulk insert and reads generated
+// columns back into each element, in order. It needs RETURNING (CreateGraph
+// checks that before it opens a transaction).
+func insertModels[T any](ctx context.Context, q Querier, meta *Meta[T], ms []T) error {
+	switch len(ms) {
+	case 0:
+		return nil
+	case 1:
+		return insertModel(ctx, q, meta, &ms[0])
+	}
+	rows, err := InsertQuery[T]{q: q, meta: meta}.Models(ms).ReturningAll().Rows(ctx)
+	if err != nil {
+		return err
+	}
+	n := 0
+	for rows.Next() {
+		if n >= len(ms) {
+			_ = rows.Close()
+			return &Error{Kind: ErrValidation, Op: "insert", Table: meta.Table, Err: errors.New("bulk insert returned more rows than were inserted")}
+		}
+		if err := rows.ScanModel(&ms[n]); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		n++
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if n != len(ms) {
+		// A trigger that skips a row would leave the tail children without
+		// their generated keys; do not report success.
+		return &Error{Kind: ErrValidation, Op: "insert", Table: meta.Table,
+			Err: fmt.Errorf("bulk insert returned %d rows for %d inserted models", n, len(ms))}
+	}
+	return nil
 }
 
 // runInsert executes iq (which holds exactly the model m). With RETURNING it
@@ -198,13 +271,29 @@ func runInsert[T any](ctx context.Context, q Querier, iq InsertQuery[T], m *T) (
 // winner and concurrent callers never create duplicates: the losers re-select
 // the winner's row. created reports whether this call inserted. When the row
 // exists, all of m's mapped columns are overwritten by the stored values; its
-// relation fields are reset (the row is loaded as a plain model, soft-deleted
-// rows included, since they still hold the key).
+// relation fields are reset (the row is loaded as a plain model).
+//
+// A soft-deleted row does not count as found: FindOrCreate never returns or
+// restores a row the application deleted. The insert is attempted. When the
+// unique constraint on key covers soft-deleted rows (a plain unique constraint
+// or index, the case FindOrCreate supports), it still holds the deleted row's
+// key, the insert conflicts and the call fails with ErrUniqueViolation (Op
+// "find or create") instead of returning the deleted row: a soft-deleted match
+// is an error, not a surprise resurrection. To reuse the old row, restore it
+// first (update the soft-delete marker back) or pick a new key. A partial
+// unique index (WHERE deleted_at IS NULL) would let the new row in, but
+// FindOrCreate cannot target it: ON CONFLICT (key) without the index predicate
+// does not match a partial index and the database rejects the statement. For a
+// key that soft-deleted rows may release, use
+// Insert(...).OnConflict(key).Where(indexPredicate).DoNothing() and re-select
+// yourself. A model without a
+// soft-delete column is unaffected.
 //
 // Under READ COMMITTED the conflicting insert waits for a concurrent
 // transaction and the re-select then sees its row. Under REPEATABLE READ or
 // SERIALIZABLE the re-select can miss a row committed after the snapshot and
-// returns ErrNotFound. Dialects without ON CONFLICT return ErrUnsupported.
+// returns ErrNotFound. A dialect without ON CONFLICT or RETURNING (MySQL)
+// returns ErrUnsupported before any statement runs.
 func FindOrCreate[T any, PT Modeler[T]](ctx context.Context, q Querier, key []ColumnRef, m *T) (created bool, err error) {
 	meta := metaOf[T, PT]()
 	if m == nil {
@@ -221,12 +310,26 @@ func FindOrCreate[T any, PT Modeler[T]](ctx context.Context, q Querier, key []Co
 		}
 		preds[i] = binOp{k, " = ", argExpr{meta.Value(m, ci)}}
 	}
+	if d := q.Dialect(); !d.OnConflict || !d.Returning {
+		return false, &Error{Kind: ErrUnsupported, Op: "find or create", Table: meta.Table, Err: errors.New("FindOrCreate needs ON CONFLICT and RETURNING")}
+	}
 	iq := InsertQuery[T]{q: q, meta: meta}.Model(m).OnConflict(key...).DoNothing()
 	created, err = runInsert(ctx, q, iq, m)
 	if err != nil || created {
 		return created, err
 	}
-	row, err := Select[T, PT](q).WithDeleted().Where(preds...).One(ctx)
+	row, err := Select[T, PT](q).Where(preds...).One(ctx)
+	if errors.Is(err, ErrNotFound) && meta.SoftDelete >= 0 {
+		// The conflict came from a soft-deleted row that still holds the key.
+		n, cerr := Select[T, PT](q).WithDeleted().Where(preds...).Count(ctx)
+		if cerr != nil {
+			return false, cerr
+		}
+		if n > 0 {
+			return false, &Error{Kind: ErrUniqueViolation, Op: "find or create", Table: meta.Table,
+				Err: errors.New("the key is held by a soft-deleted row; FindOrCreate does not return or restore deleted rows")}
+		}
+	}
 	if err != nil {
 		return false, err
 	}
