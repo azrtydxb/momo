@@ -78,6 +78,14 @@ func Load[P, C any](ctx context.Context, q Querier, parents []P, rel Relation[P,
 // LoadAll loads several relations for the same parents, in order. The top
 // level of each relation is one statement per bind-limit chunk; nested loads
 // run once over all children of the level above.
+//
+// On a connection whose driver implements Batcher (pgx), the statements of all
+// relations of a level, and every bind-limit chunk, are pipelined in one round
+// trip; other drivers load sequentially. Results are the same either way; hook
+// event order differs (see pipeline.go). A pipelined level buffers all of its
+// child rows in memory before assigning them (roughly twice the peak of
+// sequential loading). There is no per-call opt-out: a driver or connection
+// without Batcher loads sequentially.
 func LoadAll[P any](ctx context.Context, q Querier, parents []P, loaders ...Loader[P]) error {
 	if len(parents) == 0 {
 		return nil
@@ -90,12 +98,7 @@ func LoadAll[P any](ctx context.Context, q Querier, parents []P, loaders ...Load
 		}
 		pending = append(pending, p)
 	}
-	for _, p := range pending {
-		if err := p.run(ctx, q); err != nil {
-			return err
-		}
-	}
-	return nil
+	return runPending(ctx, q, pending)
 }
 
 // Scope returns a loader for r with per-load options.
