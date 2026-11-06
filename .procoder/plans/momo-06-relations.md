@@ -2956,6 +2956,8 @@ In `select.go`, add the field `preloads []any` to `selectCore` (the struct at `s
 
 - [ ] **Step 5: Commit** — `git add preload.go preload_test.go select.go && git commit -m "feat(relations): Preload on SelectQuery"`.
 
+Reconciliation note (2026-11-06): Task 13 shipped as sketched, with three additions. (1) `All` and `One` close the cursor before running the preloads, so the relation statements never run while the parent cursor still holds the connection (single-connection and transaction safety); `One` preloads only after the single-row and too-many-rows checks pass. (2) `Each` and `Iter` return an `ErrUnsupported` error (`errStreamPreload`, before any statement runs) when the query has preloads, because streaming cannot batch the relation load; Task 19 keeps this behaviour for the non-joined preloads too. (3) The guard on an empty result in `runPreloads` is redundant with `LoadAll` (which returns early for no parents) but kept for clarity. Extra tests: `TestPreloadDerivedQueriesAreIndependent` (copy-on-write with spare capacity), `TestPreloadFirstOneAndEmpty`, `TestPreloadInTransactionAndEvents`, `TestPreloadErrorPropagates`, `TestPreloadStreamingUnsupported`. README section 6 now describes `Preload` in prose (its Go snippets must stay verbatim in `examples/quickstart`).
+
 ---
 
 ## Task 14: Pipelined relation loading over pgx batching
