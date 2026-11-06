@@ -17,6 +17,7 @@ import (
 	"github.com/azrtydxb/momo/internal/relfixture/models"
 	"github.com/azrtydxb/momo/internal/relfixture/region"
 	"github.com/azrtydxb/momo/internal/relfixture/store"
+	"github.com/azrtydxb/momo/internal/relfixture/tagging"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 )
 
@@ -533,4 +534,89 @@ func TestEagerLoadManyToManySharedCopiesStaleAndNull(t *testing.T) {
 			t.Fatalf("want 1 statement, got %d", n)
 		}
 	})
+}
+
+func TestPolymorphicAndThrough(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+
+		docs := allDocs(t, db)
+		if err := momo.Load(ctx, db, docs, document.Images); err != nil {
+			t.Fatal(err)
+		}
+		if len(docs[0].Images) != 1 || docs[0].Images[0].URL != "u1" {
+			t.Fatalf("document images: %+v", docs[0].Images)
+		}
+
+		authors, err := momo.Select[models.Author, *models.Author](db).OrderBy(author.ID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, authors, author.Images); err != nil {
+			t.Fatal(err)
+		}
+		if len(authors[0].Images) != 1 || authors[0].Images[0].URL != "u2" {
+			t.Fatalf("author images must not mix with document images: %+v", authors[0].Images)
+		}
+
+		// Join model: document -> taggings (with Position) -> tag.
+		if err := momo.LoadAll(ctx, db, docs, document.Taggings.Then(tagging.Tag)); err != nil {
+			t.Fatal(err)
+		}
+		if len(docs[0].Taggings) != 2 || docs[0].Taggings[0].Position != 1 || docs[0].Taggings[0].Tag == nil || docs[0].Taggings[0].Tag.Name != "go" {
+			t.Fatalf("join rows with tags: %+v", docs[0].Taggings)
+		}
+		if docs[0].Taggings[1].Position != 2 || docs[0].Taggings[1].Tag == nil || docs[0].Taggings[1].Tag.Name != "db" {
+			t.Fatalf("second join row: %+v", docs[0].Taggings[1])
+		}
+		if len(docs[1].Taggings) != 0 {
+			t.Fatal("document 2 has no taggings")
+		}
+
+		emps, err := momo.Select[models.Employee, *models.Employee](db).OrderBy(employee.ID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := momo.Load(ctx, db, emps, employee.Reports); err != nil {
+			t.Fatal(err)
+		}
+		if len(emps[0].Reports) != 2 || len(emps[1].Reports) != 0 {
+			t.Fatalf("self-reference back-reference: %+v", emps[0].Reports)
+		}
+		if err := momo.Load(ctx, db, emps, employee.Manager); err != nil {
+			t.Fatal(err)
+		}
+		if emps[0].Manager != nil || emps[1].Manager == nil || emps[1].Manager.Name != "boss" || emps[2].Manager.Name != "boss" {
+			t.Fatalf("self-reference belongs-to: %+v %+v", emps[0].Manager, emps[1].Manager)
+		}
+	})
+}
+
+// A polymorphic relation chunked under a tiny bind limit keeps the
+// discriminator on every statement: the discriminator bind is budgeted, so
+// no chunk mixes in another type's rows and none exceeds the limit.
+func TestPolymorphicChunkingKeepsDiscriminator(t *testing.T) {
+	h := &relfixture.Hook{}
+	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+		h.After, h.Events = nil, nil
+		relfixture.CreateSchema(t, db)
+		relfixture.SeedBasic(t, db)
+		docs := allDocs(t, db)
+		h.After = nil
+		if err := momo.Load(context.Background(), db, docs, document.Images); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.After) != len(docs) {
+			t.Fatalf("want one statement per key under the limit, got %d", len(h.After))
+		}
+		if len(docs[0].Images) != 1 || docs[0].Images[0].URL != "u1" {
+			t.Fatalf("document images: %+v", docs[0].Images)
+		}
+		for _, d := range docs[1:] {
+			if len(d.Images) != 0 {
+				t.Fatalf("document %d got images %+v", d.ID, d.Images)
+			}
+		}
+	}, momo.WithHook(h), momo.WithMaxParams(16+1+1))
 }
