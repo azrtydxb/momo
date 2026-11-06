@@ -24,13 +24,16 @@ import (
 // Each and Iter stream rows without collecting them, so they cannot batch
 // relation loads: with preloads they return an error matching ErrUnsupported.
 func (sq SelectQuery[T]) Preload(loaders ...Loader[T]) SelectQuery[T] {
+	var plain, joined []any
 	for _, l := range loaders {
 		if _, ok := l.(joinLoader[T]); ok {
-			sq.s.joinLoads = append(slices.Clip(sq.s.joinLoads), l)
+			joined = append(joined, l)
 			continue
 		}
-		sq.s.preloads = append(slices.Clip(sq.s.preloads), l)
+		plain = append(plain, l)
 	}
+	sq.s.preloads = append(slices.Clip(sq.s.preloads), plain...)
+	sq.s.joinLoads = append(slices.Clip(sq.s.joinLoads), joined...)
 	return sq
 }
 
