@@ -146,10 +146,10 @@ func TestEmitMetaProjectionGolden(t *testing.T) {
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
-	if len(g.Projections) != 2 || len(g.Models) != 1 {
+	if len(g.Projections) != 2 || len(g.Models) != 3 {
 		t.Fatalf("models %d projections %d", len(g.Models), len(g.Projections))
 	}
-	if len(g.Schema.Tables) != 1 {
+	if len(g.Schema.Tables) != 3 {
 		t.Fatalf("a projection must not get a table: %+v", g.Schema.Tables)
 	}
 	src, ds := EmitMeta(g.Models, g)
@@ -222,11 +222,18 @@ func TestDescriptorTableCarriesSoftDelete(t *testing.T) {
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
-	src, ds := EmitDescriptors(g.Models[0], g)
-	if len(ds) != 0 {
-		t.Fatalf("emit diagnostics: %v", ds)
+	want := map[string]string{
+		"Widget":     `var Table = momo.TableRef{Name: "widgets", SoftDelete: "deleted_at"}`,
+		"UnixWidget": `var Table = momo.TableRef{Name: "unix_widgets", SoftDelete: "gone_at", SoftDeleteKind: momo.SoftDeleteUnix}`,
+		"BoolWidget": `var Table = momo.TableRef{Name: "bool_widgets", SoftDelete: "removed", SoftDeleteKind: momo.SoftDeleteBool}`,
 	}
-	if want := `var Table = momo.TableRef{Name: "widgets", SoftDelete: "deleted_at"}`; !strings.Contains(string(src), want) {
-		t.Fatalf("Table lacks the soft-delete column, want %s in:\n%s", want, src)
+	for _, m := range g.Models {
+		src, ds := EmitDescriptors(m, g)
+		if len(ds) != 0 {
+			t.Fatalf("emit diagnostics: %v", ds)
+		}
+		if !strings.Contains(string(src), want[m.GoName]) {
+			t.Errorf("%s: Table lacks its soft-delete column and kind, want %s in:\n%s", m.GoName, want[m.GoName], src)
+		}
 	}
 }

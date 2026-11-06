@@ -140,8 +140,8 @@ Reading the distance next to a column subset needs a projection struct
 (`momo.Projection`, `From` and `Columns`; see [projections](projections.md)).
 A projection read `From` a table with a soft-delete column gets the same
 automatic filter as a model, so soft-deleted rows stay out of the results.
-Add the predicate yourself only when the query has a `Join` or a subquery
-source.
+Add the predicate yourself only when `From` is a subquery or a hand-built
+`TableRef`.
 
 ## Declaring vector columns and indexes
 

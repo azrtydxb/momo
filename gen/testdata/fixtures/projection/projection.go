@@ -16,6 +16,18 @@ type Widget struct {
 	DeletedAt *time.Time `momo:"soft_delete:timestamp"`
 }
 
+type UnixWidget struct {
+	momo.Model
+	ID   int64  `momo:"pk,identity"`
+	Gone *int64 `momo:"column:gone_at,soft_delete:unix"`
+}
+
+type BoolWidget struct {
+	momo.Model
+	ID      int64 `momo:"pk,identity"`
+	Removed bool  `momo:"soft_delete:bool"`
+}
+
 // Card has columns set by tag and columns named by the naming rule.
 type Card struct {
 	momo.Projection

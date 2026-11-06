@@ -7,6 +7,103 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
+func (*BoolWidget) MomoMeta() *momo.Meta[BoolWidget] { return &boolWidgetMeta }
+
+var boolWidgetMeta = momo.Meta[BoolWidget]{
+	Table: "bool_widgets",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK | momo.FlagIdentity},
+		{Name: "removed", Flags: momo.FlagSoftDelete},
+	},
+	Ptr: func(m *BoolWidget, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.Removed
+		}
+		return nil
+	},
+	Value: func(m *BoolWidget, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.Removed
+		}
+		return nil
+	},
+	TableSchema: &boolWidgetTable,
+	Identity:    0, Version: -1, SoftDelete: 1, CreatedAt: -1, UpdatedAt: -1,
+	SoftDeleteKind: momo.SoftDeleteBool,
+	PK:             []int{0},
+}
+
+var boolWidgetTable = schema.Table{
+	Name: "bool_widgets",
+	Columns: []schema.Column{
+		{
+			Name:     "id",
+			Type:     "bigint",
+			Identity: "by_default",
+		},
+		{
+			Name: "removed",
+			Type: "boolean",
+		},
+	},
+	PrimaryKey: []string{"id"},
+}
+
+func (*UnixWidget) MomoMeta() *momo.Meta[UnixWidget] { return &unixWidgetMeta }
+
+var unixWidgetMeta = momo.Meta[UnixWidget]{
+	Table: "unix_widgets",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK | momo.FlagIdentity},
+		{Name: "gone_at", Flags: momo.FlagNullable | momo.FlagSoftDelete},
+	},
+	Ptr: func(m *UnixWidget, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.Gone
+		}
+		return nil
+	},
+	Value: func(m *UnixWidget, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.Gone
+		}
+		return nil
+	},
+	TableSchema: &unixWidgetTable,
+	Identity:    0, Version: -1, SoftDelete: 1, CreatedAt: -1, UpdatedAt: -1,
+	SoftDeleteKind: momo.SoftDeleteUnix,
+	PK:             []int{0},
+}
+
+var unixWidgetTable = schema.Table{
+	Name: "unix_widgets",
+	Columns: []schema.Column{
+		{
+			Name:     "id",
+			Type:     "bigint",
+			Identity: "by_default",
+		},
+		{
+			Name:     "gone_at",
+			Type:     "bigint",
+			Nullable: true,
+		},
+	},
+	PrimaryKey: []string{"id"},
+}
+
 func (*Widget) MomoMeta() *momo.Meta[Widget] { return &widgetMeta }
 
 var widgetMeta = momo.Meta[Widget]{

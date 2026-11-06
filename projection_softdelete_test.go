@@ -3,11 +3,13 @@
 package momo_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/examples/crud-zero-null/models/task"
 	"github.com/azrtydxb/momo/internal/fakedriver"
 )
 
@@ -40,8 +42,17 @@ func TestProjectionSoftDeleteFilter(t *testing.T) {
 			`SELECT "d"."title" FROM "docs" AS "d" WHERE "d"."deleted_at" IS NULL`},
 		// Unchanged: no soft-delete column, a join, a subquery source.
 		{"no soft delete", sel(plain), `SELECT "docs"."title" FROM "docs"`},
-		{"join", sel(ts).Join(momo.TableRef{Name: "other"}, title.EqExpr(momo.NewColumn[string]("other", "title", 0))),
+		// The FROM table is filtered whatever is joined; the joined table is not.
+		{"join", sel(ts).LeftJoin(momo.TableRef{Name: "other", SoftDelete: "gone"}, title.EqExpr(momo.NewColumn[string]("other", "title", 0))),
+			`SELECT "docs"."title" FROM "docs" LEFT JOIN "other" ON "docs"."title" = "other"."title" WHERE "docs"."deleted_at" IS NULL`},
+		{"join plain from", sel(plain).Join(momo.TableRef{Name: "other", SoftDelete: "gone"}, title.EqExpr(momo.NewColumn[string]("other", "title", 0))),
 			`SELECT "docs"."title" FROM "docs" INNER JOIN "other" ON "docs"."title" = "other"."title"`},
+		{"as alias", momo.Select[unitTally](pg).From(ts.As("d")).Columns(momo.NewColumn[string]("d", "title", 0)),
+			`SELECT "d"."title" FROM "docs" AS "d" WHERE "d"."deleted_at" IS NULL`},
+		{"generated table", momo.Select[unitTally](pg).From(task.Table).Columns(task.Title),
+			`SELECT "tasks"."title" FROM "tasks" WHERE "tasks"."deleted_at" IS NULL`},
+		{"in subquery", momo.Select[unitTally](pg).From(plain).Columns(title).Where(title.InQuery(sel(ts))),
+			`SELECT "docs"."title" FROM "docs" WHERE "docs"."title" IN (SELECT "docs"."title" FROM "docs" WHERE "docs"."deleted_at" IS NULL)`},
 		{"subquery", momo.Select[unitTally](pg).From(momo.FromSubquery(sel(ts), "s")).Columns(momo.NewColumn[string]("s", "title", 0)),
 			`SELECT "s"."title" FROM (SELECT "docs"."title" FROM "docs" WHERE "docs"."deleted_at" IS NULL) AS "s"`},
 	}
@@ -53,6 +64,29 @@ func TestProjectionSoftDeleteFilter(t *testing.T) {
 		}
 		if !strings.EqualFold(got.SQL, c.want) {
 			t.Errorf("%s:\n got %s\nwant %s", c.name, got.SQL, c.want)
+		}
+	}
+}
+
+// Count and Exists wrap the projection query, so the filter applies there too.
+func TestProjectionSoftDeleteCountAndExists(t *testing.T) {
+	d := fakedriver.New(dialect.Postgres)
+	pg := momo.New(d)
+	title := momo.NewColumn[string]("docs", "title", 0)
+	q := momo.Select[unitTally](pg).From(momo.TableRef{Name: "docs", SoftDelete: "deleted_at"}).Columns(title)
+	if _, err := q.Count(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Exists(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	calls := d.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("calls = %d, want 2", len(calls))
+	}
+	for _, c := range calls {
+		if !strings.Contains(c.SQL, `WHERE "docs"."deleted_at" IS NULL`) {
+			t.Errorf("no soft-delete filter: %s", c.SQL)
 		}
 	}
 }

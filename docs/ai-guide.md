@@ -337,10 +337,15 @@ cards := momo.Select[models.Card](q).From(article.Table).
 When `From` is a plain generated table (`article.Table`) with a soft-delete
 column (timestamp, unix or bool), the live-row filter is added automatically,
 exactly as for a model; `WithDeleted()` and `OnlyDeleted()` work too. Do NOT add
-`Where(<table>.DeletedAt.IsNull())` yourself. The filter is NOT added when the
-query has a `Join`, when `From` is a subquery or CTE, or when `From` is a
-hand-built `momo.TableRef` without the soft-delete column: filter those
-yourself.
+`Where(<table>.DeletedAt.IsNull())` yourself. A `Join` does not change this:
+the `From` table is filtered and joined tables are not. To alias use
+`article.Table.As("a")`, which keeps the filter. The filter is NOT added when
+`From` is a subquery or CTE, or a hand-built `momo.TableRef{Name:..., Alias:...}`
+(it has no soft-delete column): filter those yourself.
+
+If a package still has a hand-written projection `MomoMeta` from before the
+generator emitted it, delete it (method and `Meta` variable); the generated one
+redeclares it.
 
 A projection cannot be inserted, updated or deleted (it embeds `Projection`, not
 `Model`). Computed columns (a distance, `momo.CountAll()`) are valid entries in
@@ -632,10 +637,10 @@ dead, _ := momo.Select[models.Task](q).OnlyDeleted().All(ctx)
   `ErrValidation`. Use `SoftDelete` or `ForceDelete`.
 - The soft-delete filter applies automatically to `Select`, `Count`, relation
   loads and `Has`/`HasNo` of a model. It does NOT apply to raw SQL (`momo.SQL`,
-  `momo.Exec`, `momo.Scalars`), or to a projection with a `Join` or a subquery
-  source (see "Projections" in section 4): add `deleted_at IS NULL` /
-  `<table>.DeletedAt.IsNull()` yourself. A projection read `From` one generated
-  table is filtered automatically.
+  `momo.Exec`, `momo.Scalars`), or to a projection whose `From` is a subquery or
+  a hand-built `TableRef` (see "Projections" in section 4): add
+  `deleted_at IS NULL` / `<table>.DeletedAt.IsNull()` yourself. A projection
+  read `From` a generated table (also with joins) is filtered automatically.
 - A soft-deleted row still occupies its unique keys. `FindOrCreate` returns the
   soft-deleted row. Use partial unique indexes (`Where("deleted_at IS NULL")`) if
   keys must be reusable.
@@ -1150,10 +1155,10 @@ Examples: every `examples/*/example_test.go`, harness
    retry. `Set` updates do not touch the version.
 8. Never call `AllRows()` to get past `ErrUnfilteredMutation`; add a `Where`.
 9. Soft-delete models: `SoftDelete`/`ForceDelete`, not `Delete`. Raw SQL and
-   projections with a `Join` or a subquery source do not get the soft-delete
-   filter: add `Where(<table>.DeletedAt.IsNull())` yourself. A projection read
-   `From` one generated table (`Select[Card]`, the vector `Hit`) is filtered
-   automatically; do not add the predicate.
+   projections whose `From` is a subquery or a hand-built `TableRef` do not get
+   the soft-delete filter: add `Where(<table>.DeletedAt.IsNull())` yourself. A
+   projection read `From` a generated table (`Select[Card]`, the vector `Hit`)
+   is filtered automatically; do not add the predicate.
 10. Page with `OrderBy` + `After` and a unique tie-break; pass one value per
     effective ORDER BY key (primary key included).
 11. Pass user input only as arguments to `momo.SQL`/`TypedSQL`/`Exec`/`Scalars`;

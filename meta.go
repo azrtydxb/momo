@@ -92,7 +92,7 @@ func metaOf[T any, PT Modeler[T]]() *Meta[T] {
 //
 // Generated code sets SoftDelete and SoftDeleteKind on a model's Table when
 // the model has a soft-delete column. A projection read FROM such a table
-// (and not joined) then excludes soft-deleted rows like a model does.
+// then excludes soft-deleted rows like a model does. Use As to alias it.
 type TableRef struct {
 	Name   string
 	Alias  string
@@ -125,6 +125,13 @@ func (t TableRef) Qualifier() string {
 		return t.Alias
 	}
 	return t.Name
+}
+
+// As returns a copy of t under the alias, keeping everything else, including
+// the soft-delete column that a projection read FROM t is filtered by.
+func (t TableRef) As(alias string) TableRef {
+	t.Alias = alias
+	return t
 }
 
 // Source returns the table reference itself; it satisfies TableSource.

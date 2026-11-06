@@ -34,7 +34,7 @@ cards, err := momo.Select[models.Card](q).
 	All(ctx)
 ```
 
-`From` takes the generated `Table` of a model package, an aliased table, a CTE or a subquery. `Columns` must list as many expressions as the struct has fields, in field order. Without `Columns` the query fails with `ErrValidation`. Computed expressions (a distance, `momo.CountAll()`) are valid entries.
+`From` takes the generated `Table` of a model package, an aliased table (`article.Table.As("a")`), a CTE or a subquery. `Columns` must list as many expressions as the struct has fields, in field order. Without `Columns` the query fails with `ErrValidation`. Computed expressions (a distance, `momo.CountAll()`) are valid entries.
 
 Keyset pagination over a projection lists the unique tie-break key in `OrderBy` yourself, since the metadata has no primary key. See [projection-pagination](../examples/projection-pagination/).
 
@@ -42,13 +42,16 @@ Keyset pagination over a projection lists the unique tie-break key in `OrderBy` 
 
 When `From` is the generated `Table` of a model that has a soft-delete column (timestamp, unix or bool), a projection excludes soft-deleted rows by default, exactly as a model query does. `WithDeleted()` includes them and `OnlyDeleted()` returns only them. Do not add the `deleted_at` predicate by hand.
 
+The filter applies to the `From` table whatever else the query does: with `Join` or `LeftJoin` the `From` table is still filtered, and the joined tables are not (filter them in the `ON` clause or a `Where`, as for a model). To alias the table keep the generated one and call `As`: `article.Table.As("a")` keeps the soft-delete column, so the filter is qualified with the alias.
+
 The filter is not added when:
 
-- the query has a `Join` (the projection can read columns of several tables, so there is no single table to filter);
 - `From` is a subquery or CTE: filter inside it;
-- `From` is a hand-built `momo.TableRef` that does not carry the soft-delete column.
+- `From` is a hand-built `momo.TableRef{Name: ..., Alias: ...}`: it carries no soft-delete column. Start from the generated `article.Table` instead, or add the predicate yourself, for example `Where(article.DeletedAt.IsNull())`.
 
-In those cases add the predicate yourself, for example `Where(article.DeletedAt.IsNull())`.
+## Upgrading from hand-written metadata
+
+Before the generator emitted projections, the guides told you to write `MomoMeta` and a `momo.Meta` value for each projection by hand. After you upgrade, `momo generate` writes them too, and the package no longer compiles (`MomoMeta redeclared`). Delete the hand-written `MomoMeta` method and its `Meta` variable for every struct that embeds `momo.Projection`, then run `momo generate`. Check that the field order and `momo:"column:..."` tags give the column names you had. Remove any `Where(<table>.DeletedAt.IsNull())` you added to projection queries; keeping it is harmless but redundant.
 
 ## Examples
 
