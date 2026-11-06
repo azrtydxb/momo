@@ -1,6 +1,6 @@
 # momo-06 Task 15: Single-query join loading for to-one relations with NULL-to-nil
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-04
 Epic: momo-06-relations
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
