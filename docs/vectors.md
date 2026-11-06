@@ -216,7 +216,7 @@ transaction mode.
 | `HNSWEfSearch`          | `hnsw.ef_search`                                   | 1 to 1000                                                       |
 | `HNSWIterativeScan`     | `hnsw.iterative_scan`                              | `IterativeOff`, `IterativeRelaxedOrder`, `IterativeStrictOrder` |
 | `HNSWMaxScanTuples`     | `hnsw.max_scan_tuples`                             | 1 to 2147483647 (server default 20000)                          |
-| `HNSWScanMemMultiplier` | `hnsw.scan_mem_multiplier`                         | 1 to 1000, float, a multiple of `work_mem` (server default 1)   |
+| `HNSWScanMemMultiplier` | `hnsw.scan_mem_multiplier`                         | 1 to 1000, float, a multiple of `work_mem`                      |
 | `IVFFlatProbes`         | `ivfflat.probes`                                   | 1 to 32768                                                      |
 | `IVFFlatIterativeScan`  | `ivfflat.iterative_scan`                           | `IterativeOff` or `IterativeRelaxedOrder`                       |
 | `IVFFlatMaxProbes`      | `ivfflat.max_probes`                               | 1 to 32768                                                      |

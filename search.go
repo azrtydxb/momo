@@ -59,7 +59,7 @@ type SearchSettings struct {
 	// HNSWScanMemMultiplier sets hnsw.scan_mem_multiplier: the memory an
 	// iterative HNSW scan may use, as a multiple of work_mem. The unit is a
 	// plain multiplier (not bytes), the accepted range is 1 to 1000 and zero
-	// leaves the server default (1) alone. It needs pgvector 0.8.0 or newer;
+	// leaves the server default alone. It needs pgvector 0.8.0 or newer;
 	// SetSearch returns ErrUnsupported on an older extension.
 	HNSWScanMemMultiplier float64
 	IVFFlatProbes         int           // ivfflat.probes, 1..32768

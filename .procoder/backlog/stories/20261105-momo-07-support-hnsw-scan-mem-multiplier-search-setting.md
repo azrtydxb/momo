@@ -11,11 +11,11 @@ pgvector 0.8.0 added the `hnsw.scan_mem_multiplier` setting, which bounds how mu
 
 ## Acceptance criteria
 
-- [ ] `SearchSettings` gains an `HNSWScanMemMultiplier` field (float, zero means unchanged) that `searchSettingPairs` emits as `hnsw.scan_mem_multiplier`, formatted without exponent notation; a unit test pins the pair and its order.
-- [ ] `Validate` rejects values outside pgvector's accepted range (1 to 1000) with `ErrValidation`; unit tests cover both bounds and a value just outside each.
-- [ ] Setting the field triggers the same pgvector 0.8 version check as the iterative settings and returns `ErrUnsupported` on an older extension; a fake-driver test proves no `set_config` is issued on 0.7.x.
+- [x] `SearchSettings` gains an `HNSWScanMemMultiplier` field (float, zero means unchanged) that `searchSettingPairs` emits as `hnsw.scan_mem_multiplier`, formatted without exponent notation; a unit test pins the pair and its order.
+- [x] `Validate` rejects values outside pgvector's accepted range (1 to 1000) with `ErrValidation`; unit tests cover both bounds and a value just outside each.
+- [x] Setting the field triggers the same pgvector 0.8 version check as the iterative settings and returns `ErrUnsupported` on an older extension; a fake-driver test proves no `set_config` is issued on 0.7.x.
 - [ ] An integration test applies the field inside `WithSearch`, reads it back with `current_setting`, and shows it reset after the transaction on a one-connection pool.
-- [ ] The field doc comment states the unit, the range and the 0.8 requirement, and the `procoder check` gate is clean.
+- [x] The field doc comment states the unit, the range and the 0.8 requirement, and the `procoder check` gate is clean.
 
 ## Evidence
 

@@ -226,7 +226,6 @@ var leasePrio = momo.NewColumn[int]("jobs_lock", "prio", 0)
 // unescaped quote in a string literal, and PostgreSQL losing its bind
 // parameters to the inline rendering.
 func TestConflictTargetSQLiteLiterals(t *testing.T) {
-	const ins = `INSERT INTO "jobs_lock" ("name", "holder", "until") VALUES (`
 	cases := []struct {
 		name  string
 		d     dialect.Name
