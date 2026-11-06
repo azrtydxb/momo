@@ -42,9 +42,14 @@ func LoadOrderBy[C any](items ...Orderable) LoadOption[C] {
 	return func(c *loadConfig) { c.order = append(c.order[:len(c.order):len(c.order)], items...) }
 }
 
-// LoadPerParentLimit keeps at most n children per parent. It is not supported
-// yet: a load that sets it fails with ErrUnsupported (Op "load") before any
-// statement runs, until the top-N-per-parent strategy lands.
+// LoadPerParentLimit keeps at most n children per parent, in load order
+// (LoadOrderBy, then the relation key and child primary key), using a window
+// function so the load stays one statement per bind-limit chunk. It applies to
+// has-many and many-to-many relations; on belongs-to and has-one the load fails
+// with ErrUnsupported, and a negative n fails with ErrValidation (both with Op
+// "load", before any statement runs). Zero leaves the load unlimited. Nested
+// loads (Then) run over the kept children only. Window functions need
+// PostgreSQL, MySQL 8 / MariaDB 10.2 or SQLite 3.25 and later.
 func LoadPerParentLimit[C any](n int) LoadOption[C] {
 	return func(c *loadConfig) { c.perParentLimit = n }
 }
