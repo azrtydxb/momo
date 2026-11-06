@@ -195,7 +195,10 @@ func (q InsertQuery[T]) OnConflict(cols ...ColumnRef) ConflictQuery[T] {
 // (SQLite matches the predicate against the index text, so a bound value
 // never matches), which also puts them in logs and traces. Only bool,
 // integer, finite float and string values (after Value()) can be inlined;
-// any other value fails with ErrValidation. Excluded() in the predicate
+// any other value fails with ErrValidation. SQLite compares the literal
+// text with the index, so write index literals as Momo renders them:
+// integers as 2, floats in plain decimal with .0 for whole numbers (2.0);
+// otherwise use momo.SQL. Excluded() in the predicate
 // fails with ErrValidation. MySQL has no ON CONFLICT and fails with
 // ErrUnsupported.
 func (c ConflictQuery[T]) Where(preds ...Predicate) ConflictQuery[T] {

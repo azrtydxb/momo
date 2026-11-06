@@ -452,6 +452,12 @@ func TestConflictTargetSQLiteFloatAndValuer(t *testing.T) {
 		{"float", leaseRatio.Gt(1.5), `WHERE "ratio" > 1.5`},
 		{"whole float stays a real", leaseRatio.Gt(2), `WHERE "ratio" > 2.0`},
 		{"exponent float", leaseRatio.Lt(1e21), `WHERE "ratio" < 1e+21`},
+		{"million is plain decimal", leaseRatio.Gt(1e6), `WHERE "ratio" > 1000000.0`},
+		{"large fraction", leaseRatio.Gt(123456789.5), `WHERE "ratio" > 123456789.5`},
+		{"small float", leaseRatio.Gt(0.001), `WHERE "ratio" > 0.001`},
+		{"smallest plain", leaseRatio.Gt(1e-6), `WHERE "ratio" > 0.000001`},
+		{"tiny float uses exponent", leaseRatio.Gt(1e-7), `WHERE "ratio" > 1e-07`},
+		{"zero", leaseRatio.Gt(0), `WHERE "ratio" > 0.0`},
 		{"valuer", leaseStatus.Eq("a"), `WHERE "status" = 'A'`},
 		{"sql null (valid)", leaseNull.Eq(sql.NullString{String: "a", Valid: true}), `WHERE "nul" = 'a'`},
 	}
@@ -465,6 +471,46 @@ func TestConflictTargetSQLiteFloatAndValuer(t *testing.T) {
 			}
 			if !strings.Contains(got.SQL, c.want) || len(got.Args) != 3 {
 				t.Fatalf("SQL %s (%d args), want %s and 3 args", got.SQL, len(got.Args), c.want)
+			}
+		})
+	}
+}
+
+type failingValuer string
+
+var errValuer = errors.New("valuer broke")
+
+func (failingValuer) Value() (driver.Value, error) { return nil, errValuer }
+
+// Catches: a rejection that names only the type, hiding why a string or float
+// cannot be inlined, and a Valuer error that loses its original cause or the
+// ON CONFLICT target context.
+func TestConflictTargetSQLiteErrorReasons(t *testing.T) {
+	col := momo.NewColumn[failingValuer]("jobs_lock", "fv", 0)
+	cases := []struct {
+		name  string
+		where momo.Predicate
+		want  string
+	}{
+		{"NUL", leaseHolder.Eq("a\x00b"), "NUL byte"},
+		{"NaN", leaseRatio.Gt(math.NaN()), "NaN or Inf"},
+		{"Inf", leaseRatio.Gt(math.Inf(-1)), "NaN or Inf"},
+		{"NULL", leaseNull.Eq(sql.NullString{}), "NULL"},
+		{"valuer error", col.Eq("x"), "ON CONFLICT target"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := compileFor(t, dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+				return leaseTake(q).Where(c.where).DoNothing()
+			})
+			if !errors.Is(err, momo.ErrValidation) {
+				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("err = %q, want it to contain %q", err, c.want)
+			}
+			if c.name == "valuer error" && !errors.Is(err, errValuer) {
+				t.Fatalf("err = %v, want the Valuer error wrapped", err)
 			}
 		})
 	}
