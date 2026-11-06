@@ -50,7 +50,35 @@ type Document struct {
 	Comments []Comment `momo:"has_many,fk:DocumentID"`
 	Tags     []Tag     `momo:"many2many,join:taggings"`
 }
+
+type Comment struct {
+	momo.Model `momo:"table:comments"`
+	ID         int64 `momo:"pk,identity"`
+	DocumentID int64
+	Body       string
+	Approved   bool
+}
+
+type Tag struct {
+	momo.Model `momo:"table:tags"`
+	ID         int64 `momo:"pk,identity"`
+	Name       string
+}
 ```
+
+The generated code lives in one package per model (`author`, `document`,
+`comment`, `tag`), imported next to the `models` package.
+
+### Generating relation code
+
+Run `momo generate` in the module that holds your models (or add
+`//go:generate momo generate` to a source file and run `go generate ./...`).
+It reads `momo.yaml` and writes the descriptors into the model packages. Commit
+the generated files, and use `momo generate --check` in CI to catch stale ones.
+The README walks through the setup in
+[Configure and generate](../README.md#2-configure-and-generate). The join
+tables and foreign keys come from `momo migrate diff` and `momo migrate apply`,
+see [Create and apply the migration](../README.md#3-create-and-apply-the-migration).
 
 Tag options for relations:
 
@@ -60,12 +88,21 @@ Tag options for relations:
   the child.
 - `join:<table>` is required for `many2many`. The join columns are named after
   each model and its primary key column, for example `document_id` and
-  `tag_id`.
+  `tag_id`. Rules:
+  - Set `join:` on both sides of the relation, or the generator reports a
+    diagnostic.
+  - A many-to-many to the model's own type is not supported.
+  - Both models need a primary key.
+  - The join table has exactly two key columns, named `<model>_<pkcol>`. Extra
+    join-table columns are not modelled by this guide; use an explicit join
+    model such as a `Tagging` struct for those.
 - `polytype:<column>` together with `polyvalue:<value>` makes a `has_one` or
   `has_many` polymorphic: the child row belongs to the parent only when its
   type column equals the value.
-- `on_delete`, `on_update` and `no_constraint` control the foreign key
-  constraint in the migration.
+- `on_delete`, `on_update` and `no_constraint` affect only the foreign key
+  emitted for `belongs_to`. `has_one` and `has_many` create no constraint, and
+  many-to-many join tables always get two foreign keys with `ON DELETE
+CASCADE`.
 
 `momo generate` reads these tags and writes one descriptor per relation field
 into the model's package. The descriptor holds the relation name and kind, the
@@ -80,9 +117,16 @@ document.Comments // has-many
 document.Tags     // many-to-many
 ```
 
-The generator reports a diagnostic, and writes nothing for that package, when a
-relation has more than one kind, the field type does not match the kind, the
-target is not a Momo model, or the key field named by `fk` does not exist.
+The generator reports a diagnostic, and writes nothing for that package, when:
+
+- a relation has more than one kind, or the field type does not match the kind;
+- the target is not a Momo model;
+- `fk` is missing, or names a field that does not exist;
+- `many2many` has no `join:`, or `join:` is set on only one side;
+- `polytype` is given without `polyvalue` or the other way round, or
+  `polytype` is used on a relation that is not `has_one` or `has_many`;
+- the `polytype` column is not a field of the target.
+
 Tag-declared relations need a single-column primary key on both models.
 Composite keys are supported by the runtime but cannot yet be expressed with
 tags.
@@ -177,8 +221,8 @@ wins. They have no effect on a child model without a soft-delete column.
 of the level above:
 
 ```go
-err := momo.LoadAll(ctx, db, docs,
-	document.Comments.Then(comment.Author),
+err := momo.LoadAll(ctx, db, authors,
+	author.Documents.Then(document.Comments),
 )
 ```
 
@@ -188,8 +232,18 @@ per-parent limit they only load for the survivors.
 `Scope` and `Then` cannot be combined on one relation yet: `Scope` returns a
 loader without nested loads and `Then` returns one without options. This is a
 known follow-up. Until it lands, load the scoped relation first and then load
-the nested relation on the children you now hold, with a second `Load` call
-over the child slice.
+the nested relation on the children with a second `Load` call. Call `Load` on
+the slice held inside each parent (`parent.Children`), not on a flattened copy,
+or write the results back to the parents yourself:
+
+```go
+err := momo.LoadAll(ctx, db, authors,
+	author.Documents.Scope(momo.LoadPerParentLimit[models.Document](3)),
+)
+for i := range authors {
+	err = momo.Load(ctx, db, authors[i].Documents, document.Comments)
+}
+```
 
 ### Chunking
 
@@ -301,15 +355,17 @@ Relations also filter and order queries without loading anything.
 withApproved := momo.Select[models.Document](db).
 	Where(document.Comments.Has(comment.Approved.As("momo_r").Eq(true)))
 
-// Documents without any comments, most-commented first otherwise.
+// Documents without any comments.
 quiet := momo.Select[models.Document](db).Where(document.Comments.HasNo())
+
+// Documents ordered by number of comments, most-commented first.
 busy := momo.Select[models.Document](db).
 	OrderBy(document.Comments.CountOrder(momo.DirDesc), document.ID.Asc())
 ```
 
 - `Has(scope...)` renders `EXISTS (...)` over the child table, correlated with
   the parent through the relation's key columns. It is always a subquery, never
-  a join, so it cannot duplicate parent rows. `HasWith` is an alias.
+  a join, so it cannot duplicate parent rows.
 - `HasNo(scope...)` renders `NOT EXISTS`.
 - `HasFrom(parentAlias, scope...)` is `Has` with an explicit parent alias.
   Self-referencing relations need it: when the outer query aliases the parent
@@ -361,18 +417,21 @@ column are not touched. Use the model's own update path when those must run.
 Statement contract, per relation kind (one statement per chunk; a small call is
 one statement):
 
-| Call      | Has-one, has-many                                                                               | Many-to-many                                                                                                                    |
-| --------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `Link`    | `UPDATE child SET fk = ? WHERE pk IN (...)`; a polymorphic relation also sets the discriminator | `INSERT` into the join table that skips existing pairs (`ON CONFLICT DO NOTHING`; MySQL `ON DUPLICATE KEY UPDATE` with a no-op) |
-| `Unlink`  | `UPDATE child SET fk = NULL WHERE fk = ? AND pk IN (...)`                                       | `DELETE FROM join WHERE parent cols = ? AND (child cols) IN (...)`                                                              |
-| `Replace` | diff, then unlink the removed and link the added                                                | same                                                                                                                            |
-| `Count`   | `SELECT COUNT(*)` over the children                                                             | counts join rows, joined to the far table when it has a soft-delete column                                                      |
+| Call      | Has-one, has-many                                                                                                       | Many-to-many                                                                                                                                                                             |
+| --------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Link`    | `UPDATE child SET fk = ? WHERE pk IN (...)`; a polymorphic relation also sets the discriminator                         | `INSERT` into the join table that skips existing pairs (`ON CONFLICT DO NOTHING`; MySQL `ON DUPLICATE KEY UPDATE` with a no-op); relies on a primary or unique key over the join columns |
+| `Unlink`  | `UPDATE child SET fk = NULL WHERE fk = ? AND pk IN (...)`; a polymorphic relation also adds the discriminator predicate | `DELETE FROM join WHERE parent cols = ? AND (child cols) IN (...)`                                                                                                                       |
+| `Replace` | diff, then unlink the removed and link the added                                                                        | same                                                                                                                                                                                     |
+| `Count`   | `SELECT COUNT(*)` over the children                                                                                     | counts join rows, joined to the far table when it has a soft-delete column                                                                                                               |
 
 What this means in practice:
 
 - **Join tables need a unique key.** Many-to-many `Link` relies on a primary or
-  unique key over the join columns to detect an existing pair. Without one,
-  `Link` inserts a duplicate row. Declare the primary or unique key in the join table's migration.
+  unique key over the join columns to detect an existing pair. Join tables
+  generated from `many2many` tags already have a composite primary key over the
+  two columns, plus two foreign keys with `ON DELETE CASCADE`. A hand-written
+  join table needs a primary or unique key too, or `Link` inserts duplicate
+  rows.
 - **Has-one and has-many `Unlink` and `Replace` need a nullable foreign key**,
   because they clear it. On a NOT NULL column they fail with
   `ErrNotNullViolation`, with a message saying so. Delete the children instead
@@ -521,26 +580,26 @@ pipelining, see [Pipelined loading](#4-pipelined-loading).
 Errors are `*momo.Error` values. Test them with `errors.Is(err, momo.ErrX)`.
 The `Op` field names the operation.
 
-| Operation                            | Error                 | When                                                                                                                             |
-| ------------------------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `Load`, `LoadAll`, `Preload`         | `ErrValidation`       | negative `LoadPerParentLimit`; invalid descriptor; scope binds too many arguments for the bind limit                             |
-|                                      | `ErrUnsupported`      | `LoadPerParentLimit` on belongs-to or has-one; `Each` or `Iter` on a query with preloads                                         |
-|                                      | `ErrTooManyRows`      | has-one matched more than one child for a parent                                                                                 |
-| `Joined`                             | `ErrUnsupported`      | not belongs-to, child key not unique, `GroupBy`, `Having`, locks, `Each`, `Iter`; used with `Load`, `LoadAll`, `Scope` or `Then` |
-|                                      | `ErrValidation`       | select list does not have one expression per mapped field                                                                        |
-| `Has`, `HasNo`, `CountOrder`         | none of their own     | an error in the scope predicate surfaces when the query runs                                                                     |
-| `From`                               | `ErrValidation`       | many-to-many relation                                                                                                            |
-| `Link`, `Unlink`, `Replace`, `Count` | `ErrUnsupported`      | belongs-to                                                                                                                       |
-|                                      | `ErrValidation`       | NULL parent key, or NULL child key on many-to-many                                                                               |
-|                                      | `ErrNotNullViolation` | has-one or has-many `Unlink` or `Replace` on a NOT NULL foreign key                                                              |
-|                                      | `ErrUniqueViolation`  | has-one `Link` that would break a unique foreign key on the child                                                                |
-|                                      | `ErrTxDone`           | the `*Tx` passed in is already committed or rolled back                                                                          |
-| `CreateGraph`                        | `ErrValidation`       | nil parent, a model listed as its own child, a NULL key that must be copied                                                      |
-|                                      | `ErrUnsupported`      | `*Tx` on a dialect without savepoints; identity read-back on a dialect without `RETURNING`                                       |
-| `FindOrCreate`                       | `ErrValidation`       | nil model, empty key, unmapped key column                                                                                        |
-|                                      | `ErrNotFound`         | re-select misses the winner's row under REPEATABLE READ or SERIALIZABLE                                                          |
-|                                      | `ErrUnsupported`      | dialect without `ON CONFLICT`                                                                                                    |
-| `UpsertByPK`                         | `ErrValidation`       | nil model                                                                                                                        |
+| Operation                            | Error                 | When                                                                                                                                |
+| ------------------------------------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `Load`, `LoadAll`, `Preload`         | `ErrValidation`       | negative `LoadPerParentLimit`; invalid descriptor; scope binds too many arguments for the bind limit                                |
+|                                      | `ErrUnsupported`      | `LoadPerParentLimit` on belongs-to or has-one; `Each` or `Iter` on a query with preloads                                            |
+|                                      | `ErrTooManyRows`      | has-one matched more than one child for a parent                                                                                    |
+| `Joined`                             | `ErrUnsupported`      | not belongs-to, child key not unique, `GroupBy`, `Having`, locks, `Each`, `Iter`; used with `Load`, `LoadAll`, `Scope` or `Then`    |
+|                                      | `ErrValidation`       | select list does not have one expression per mapped field                                                                           |
+| `Has`, `HasNo`, `CountOrder`         | none of their own     | an error in the scope predicate surfaces when the query runs                                                                        |
+| `From`                               | `ErrValidation`       | many-to-many relation                                                                                                               |
+| `Link`, `Unlink`, `Replace`, `Count` | `ErrUnsupported`      | belongs-to                                                                                                                          |
+|                                      | `ErrValidation`       | `Link`, `Unlink`, `Replace`: NULL parent key, or NULL child key on many-to-many. `Count` with a NULL parent key returns 0, no error |
+|                                      | `ErrNotNullViolation` | has-one or has-many `Unlink` or `Replace` on a NOT NULL foreign key                                                                 |
+|                                      | `ErrUniqueViolation`  | has-one `Link` that would break a unique foreign key on the child                                                                   |
+|                                      | `ErrTxDone`           | the `*Tx` passed in is already committed or rolled back                                                                             |
+| `CreateGraph`                        | `ErrValidation`       | nil parent, a model listed as its own child, a NULL key that must be copied                                                         |
+|                                      | `ErrUnsupported`      | `*Tx` on a dialect without savepoints; identity read-back on a dialect without `RETURNING`                                          |
+| `FindOrCreate`                       | `ErrValidation`       | nil model, empty key, unmapped key column                                                                                           |
+|                                      | `ErrNotFound`         | re-select misses the winner's row under REPEATABLE READ or SERIALIZABLE                                                             |
+|                                      | `ErrUnsupported`      | dialect without `ON CONFLICT`                                                                                                       |
+| `UpsertByPK`                         | `ErrValidation`       | nil model                                                                                                                           |
 
 Database errors (unique, foreign key, check, not-null violations, serialization
 failures) are classified the same way as for any other statement.

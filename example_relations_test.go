@@ -50,7 +50,7 @@ func ExampleLoad() {
 	fmt.Println(err)
 }
 
-// LoadAll loads several relations together; Then nests a load on the children.
+// LoadAll loads several relations together.
 func ExampleLoadAll() {
 	var (
 		ctx  = context.Background()
