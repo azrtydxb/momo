@@ -128,11 +128,18 @@ func NormalizeExpr(d dialect.Name, e string) string {
 func normalizeExprOnce(d dialect.Name, e string) string {
 	var sb strings.Builder
 	var quote rune
+	escapes := false // inside an E'' string, where a backslash escapes the next character
+	skip := false
 	space := false
 	for _, r := range e {
 		if quote != 0 {
 			sb.WriteRune(r)
-			if r == quote {
+			switch {
+			case skip:
+				skip = false
+			case escapes && r == '\\':
+				skip = true
+			case r == quote:
 				quote = 0
 			}
 			continue
@@ -148,6 +155,7 @@ func normalizeExprOnce(d dialect.Name, e string) string {
 			space = false
 		}
 		if r == '\'' || r == '"' {
+			escapes = r == '\'' && endsWithEscapePrefix(sb.String())
 			quote = r
 			sb.WriteRune(r)
 			continue
@@ -191,8 +199,12 @@ func stripLiteralCasts(s string) string {
 			inDouble = true
 		case c == '\'':
 			start := i
+			escapes := endsWithEscapePrefix(s[:i])
 			j := i + 1
 			for j < len(s) && s[j] != '\'' {
+				if escapes && s[j] == '\\' {
+					j++
+				}
 				j++
 			}
 			if j < len(s) {
@@ -209,6 +221,21 @@ func stripLiteralCasts(s string) string {
 		i++
 	}
 	return sb.String()
+}
+
+// endsWithEscapePrefix reports whether s ends with the E (or e) that turns the
+// following quote into an escape string literal, as opposed to the last letter
+// of an identifier.
+func endsWithEscapePrefix(s string) bool {
+	n := len(s)
+	if n == 0 || s[n-1] != 'e' && s[n-1] != 'E' {
+		return false
+	}
+	if n == 1 {
+		return true
+	}
+	c := s[n-2]
+	return !(c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c >= 0x80)
 }
 
 // castTypeLen returns the length of the type name at the start of s.
