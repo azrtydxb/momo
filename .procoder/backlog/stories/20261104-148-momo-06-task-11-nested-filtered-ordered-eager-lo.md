@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-06-relations
-Sprint: -
+Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
 
 ## Description
 
@@ -12,8 +12,12 @@ Implements plan momo-06-relations Task 11: Nested, filtered, ordered eager loadi
 ## Acceptance criteria
 
 - [ ] `TestNestedFilteredEagerLoad` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-81, part] `TestNestedFilteredEagerLoad` passes for the part of S-81 this task delivers; the full criterion is verified in story 152.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] [S-81, part] `TestNestedFilteredEagerLoad` passes for the part of S-81 this task delivers; the full criterion is verified in story 152.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Criterion 1 is left open on purpose: the test exists as in the plan and passes, but it never failed before an implementation because Tasks 5-9 already deliver nesting, where and order (no production change). Its red state is mutation-based: skipping the nested load, dropping the where, dropping the order, or nesting over only the first pooled child each fail it.
+- `go test -tags integration -race -run Nested .` passes on PostgreSQL: `TestNestedFilteredEagerLoad`, `TestNestedLoadDepthAndSharedChildren` (3 levels, 3 statements, shared author), `TestNestedLoadFilterAtLeaf`.
+- make fmt-check vet staticcheck gosec tidy-check clean; full `go test -race ./...` run once at the end.
 

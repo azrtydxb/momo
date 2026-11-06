@@ -277,3 +277,37 @@ var storeMeta = &momo.Meta[Store]{
 }
 
 func (*Store) MomoMeta() *momo.Meta[Store] { return storeMeta }
+
+var noteMeta = &momo.Meta[Note]{
+	Table:   "notes",
+	Columns: []momo.ColumnMeta{{Name: "id", Flags: momo.FlagPK}, {Name: "document_id"}, {Name: "body"}, {Name: "deleted", Flags: momo.FlagSoftDelete}},
+	Ptr: func(m *Note, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.DocumentID
+		case 2:
+			return &m.Body
+		case 3:
+			return &m.Deleted
+		}
+		panic("models: column index out of range")
+	},
+	Value: func(m *Note, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.DocumentID
+		case 2:
+			return m.Body
+		case 3:
+			return m.Deleted
+		}
+		panic("models: column index out of range")
+	},
+	Identity: -1, Version: -1, SoftDelete: 3, SoftDeleteKind: momo.SoftDeleteBool, CreatedAt: -1, UpdatedAt: -1, PK: []int{0},
+}
+
+func (*Note) MomoMeta() *momo.Meta[Note] { return noteMeta }

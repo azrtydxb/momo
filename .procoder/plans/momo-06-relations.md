@@ -2706,6 +2706,8 @@ Add import `"github.com/azrtydxb/momo/internal/relfixture/comment"`.
 
 - [ ] **Step 5: Commit** — `git add load_test.go && git commit -m "test(relations): nested, filtered and ordered eager loading"`.
 
+Reconciliation note (2026-11-06): Task 11 needed no production change; `finish` already runs nested loads once over the pooled children, and `LoadWhere`/`LoadOrderBy` were already applied in `childQueries`. The red state is mutation-based: skipping the nested load, dropping the where, dropping the order, or loading nested relations for only the first pooled child each fail `TestNestedFilteredEagerLoad`. Beyond the plan's test, `load_nested_test.go` adds `TestNestedLoadDepthAndSharedChildren` (three levels, one statement per level, a child shared by two parents) and `TestNestedLoadFilterAtLeaf` (a nested scope does not leak to the level above). Its helper is named `commentIDs`, not `ids`, so Task 12's `ids` helper in `load_test.go` does not collide.
+
 ---
 
 ## Task 12: Top-N per parent with a window function
@@ -3947,6 +3949,8 @@ Remove the two placeholder `var _` lines in step 3 before running the build; the
 - [ ] **Step 4: Run and expect PASS** — `go test ./ -run 'TestRelationPredicates|TestRelationTraverseAndOrder' -count=1` prints `ok`.
 
 - [ ] **Step 5: Commit** — `git add relpred.go relpred_test.go select_meta.go && git commit -m "feat(relations): EXISTS predicates, traversal and relation-count ordering"`.
+
+Reconciliation note (2026-11-06): the shipped `relpred.go` differs from the draft above. `selectFrom` takes the child `TableRef` as a third argument and sets it as FROM (the draft left FROM empty). The correlated subquery renders inside `Builder.withScope([momo_r, momo_j])`, so a scope predicate that names another table fails the build instead of silently correlating. Scope predicates are wrapped in parentheses, so an `Or` scope cannot escape the correlation. The child's soft-delete marker and a polymorphic discriminator are applied inside `Has`, `HasNo` and `CountOrder`, and `From` also applies the discriminator. `From` builds the parent key subquery with an internal `selectCore.keysOnly` flag that skips the "select list matches model fields" arity check, because the key list is not the model's column list; `From` on a many-to-many relation returns a query that fails with `ErrValidation` (the traversal needs a join table, which `tupleInSubquery` does not model). `tupleInSubquery` writes the same `(cols) IN (subquery)` on every dialect, since `Subquery.AppendSQL` already adds the parentheses. The plan's test used an undefined `ids(...)` helper; it is `docIDs(...)`. Extra tests: `TestRelationPredicateShapes` (self-reference with `HasFrom`, composite key, polymorphic discriminator, composite traversal), count ordering ascending, `HasNo` and many-to-many SQL shape.
 
 ---
 

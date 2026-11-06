@@ -620,3 +620,37 @@ func TestPolymorphicChunkingKeepsDiscriminator(t *testing.T) {
 		}
 	}, momo.WithHook(h), momo.WithMaxParams(16+1+1))
 }
+
+func TestNestedFilteredEagerLoad(t *testing.T) {
+	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+		relfixture.SeedBasic(t, db)
+		ctx := context.Background()
+		docs := allDocs(t, db)
+		h.After = nil
+
+		loaders := []momo.Loader[models.Document]{
+			document.Comments.Scope(
+				momo.LoadWhere[models.Comment](comment.Approved.Eq(true)),
+				momo.LoadOrderBy[models.Comment](comment.ID.Desc()),
+			),
+			document.Taggings.Then(tagging.Tag),
+		}
+		if err := momo.LoadAll(ctx, db, docs, loaders...); err != nil {
+			t.Fatal(err)
+		}
+		// Two top-level statements (comments, taggings) and one nested statement (tags).
+		if len(h.After) != 3 {
+			t.Fatalf("want 3 statements (comments, taggings, nested tags), got %d: %v", len(h.After), h.After)
+		}
+		var ids []int64
+		for _, c := range docs[0].Comments {
+			ids = append(ids, c.ID)
+		}
+		if fmt.Sprint(ids) != "[3 1]" {
+			t.Fatalf("approved comments newest-first: %v", ids)
+		}
+		if docs[0].Taggings[1].Tag == nil || docs[0].Taggings[1].Tag.Name != "db" {
+			t.Fatal("nested tag not loaded")
+		}
+	})
+}
