@@ -23,16 +23,10 @@ const (
 	momoProjectionName = "Projection"
 )
 
-// discoverModels finds the models of one loaded package. It reports
-// positioned diagnostics and never guesses: a type is a model only when it is
-// a non-generic, non-alias struct that embeds momo.Model by value.
-func discoverModels(pkg *packages.Package, namer naming.Namer) ([]*Model, []Diagnostic) {
-	ms, _, diags := discoverAll(pkg, namer)
-	return ms, diags
-}
-
-// discoverAll is discoverModels that also returns the projections: structs
-// that embed momo.Projection by value.
+// discoverAll finds the models and projections of one loaded package. It
+// reports positioned diagnostics and never guesses: a type is a model only
+// when it is a non-generic, non-alias struct that embeds momo.Model by value,
+// and a projection when it embeds momo.Projection by value.
 func discoverAll(pkg *packages.Package, namer naming.Namer) ([]*Model, []*Model, []Diagnostic) {
 	if pkg.TypesInfo == nil || pkg.Types == nil {
 		return nil, nil, nil
