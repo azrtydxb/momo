@@ -24,7 +24,10 @@ Nearest-neighbour search with pgvector over items that carry an embedding.
 - `Explain` shows whether the index is used. On a table this small the planner
   prefers a sequential scan, so the example turns sequential scans off for the
   transaction with `tx.SetLocal(ctx, "enable_seqscan", "off")` and checks that the
-  plan names `items_embedding_hnsw`. With enough rows you leave that out.
+  plan names `items_embedding_hnsw`. With enough rows you leave that out. The
+  explained query orders by the distance alone, without the id tie-break: the
+  index delivers exactly that order, and whether the planner puts an Incremental
+  Sort for the extra id key over the index scan differs between PostgreSQL versions.
 
 The full reference is [docs/vectors.md](../../docs/vectors.md).
 

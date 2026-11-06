@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -24,6 +25,9 @@ const modulePath = "github.com/azrtydxb/momo"
 func momoBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "momo")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
 	if out, err := exec.Command("go", "build", "-o", bin, modulePath+"/cmd/momo").CombinedOutput(); err != nil { //nolint:gosec // fixed arguments
 		t.Fatalf("go build momo: %v\n%s", err, out)
 	}
