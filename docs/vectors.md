@@ -211,19 +211,20 @@ values leave the server default alone. Settings use
 never reach a pooled connection, which makes them safe behind PgBouncer in
 transaction mode.
 
-| Field                  | Setting                                            | Range                                                           |
-| ---------------------- | -------------------------------------------------- | --------------------------------------------------------------- |
-| `HNSWEfSearch`         | `hnsw.ef_search`                                   | 1 to 1000                                                       |
-| `HNSWIterativeScan`    | `hnsw.iterative_scan`                              | `IterativeOff`, `IterativeRelaxedOrder`, `IterativeStrictOrder` |
-| `HNSWMaxScanTuples`    | `hnsw.max_scan_tuples`                             | 1 to 2147483647 (server default 20000)                          |
-| `IVFFlatProbes`        | `ivfflat.probes`                                   | 1 to 32768                                                      |
-| `IVFFlatIterativeScan` | `ivfflat.iterative_scan`                           | `IterativeOff` or `IterativeRelaxedOrder`                       |
-| `IVFFlatMaxProbes`     | `ivfflat.max_probes`                               | 1 to 32768                                                      |
-| `ExactSearch`          | `enable_indexscan`, `enable_bitmapscan` set to off | bool                                                            |
+| Field                   | Setting                                            | Range                                                           |
+| ----------------------- | -------------------------------------------------- | --------------------------------------------------------------- |
+| `HNSWEfSearch`          | `hnsw.ef_search`                                   | 1 to 1000                                                       |
+| `HNSWIterativeScan`     | `hnsw.iterative_scan`                              | `IterativeOff`, `IterativeRelaxedOrder`, `IterativeStrictOrder` |
+| `HNSWMaxScanTuples`     | `hnsw.max_scan_tuples`                             | 1 to 2147483647 (server default 20000)                          |
+| `HNSWScanMemMultiplier` | `hnsw.scan_mem_multiplier`                         | 1 to 1000, float, a multiple of `work_mem` (server default 1)   |
+| `IVFFlatProbes`         | `ivfflat.probes`                                   | 1 to 32768                                                      |
+| `IVFFlatIterativeScan`  | `ivfflat.iterative_scan`                           | `IterativeOff` or `IterativeRelaxedOrder`                       |
+| `IVFFlatMaxProbes`      | `ivfflat.max_probes`                               | 1 to 32768                                                      |
+| `ExactSearch`           | `enable_indexscan`, `enable_bitmapscan` set to off | bool                                                            |
 
 `SearchSettings.Validate` reports a value outside its range as
-`ErrValidation`. The iterative fields, `HNSWMaxScanTuples` and
-`IVFFlatMaxProbes` need pgvector 0.8.0 or newer. When any of them is set,
+`ErrValidation`. The iterative fields, `HNSWMaxScanTuples`,
+`HNSWScanMemMultiplier` and `IVFFlatMaxProbes` need pgvector 0.8.0 or newer. When any of them is set,
 `SetSearch` reads `pg_extension` and returns `ErrUnsupported` on an older or
 missing extension, instead of letting the server accept an unknown setting as
 a placeholder.
@@ -236,6 +237,7 @@ settings := momo.SearchSettings{
 	HNSWEfSearch:      100,
 	HNSWIterativeScan: momo.IterativeRelaxedOrder, // needs pgvector 0.8
 	HNSWMaxScanTuples: 20000,
+	HNSWScanMemMultiplier: 2, // pgvector 0.8: iterative scan memory, times work_mem
 }
 err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
 	_, err := momo.Select[example.Document](tx).

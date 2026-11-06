@@ -5,6 +5,7 @@ package momo
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -27,6 +28,10 @@ type Builder struct {
 	// set while rendering SET targets, INSERT column lists, ON CONFLICT
 	// targets and RETURNING lists.
 	unqualified bool
+	// conflictTarget is set while rendering an ON CONFLICT target predicate.
+	// Excluded references are invalid there, and SQLite needs literal values
+	// inline because it matches the predicate against the index text.
+	conflictTarget bool
 	// scopes tracks, per SELECT being rendered, which table qualifiers its
 	// FROM and JOIN sources expose and which qualifiers its columns used.
 	scopes []*qscope
@@ -124,6 +129,12 @@ type DialectValuer interface {
 
 // Arg appends a bind placeholder and records v as its argument.
 func (b *Builder) Arg(v any) {
+	if b.conflictTarget && b.d.Name == dialect.SQLite {
+		if lit, ok := sqliteLiteral(v); ok {
+			b.WriteString(lit)
+			return
+		}
+	}
 	if dv, ok := v.(DialectValuer); ok {
 		enc, err := dv.DialectValue(b.d.Name)
 		if err != nil {
@@ -188,4 +199,29 @@ func compile(d *dialect.Dialect, render func(*Builder)) (Compiled, error) {
 		return Compiled{}, b.err
 	}
 	return Compiled{SQL: string(b.buf), Args: b.args}, nil
+}
+
+// sqliteLiteral renders a bool, integer or string as an SQL literal. SQLite
+// matches an ON CONFLICT target predicate against the index text, so a bound
+// value never matches; ok is false for any other type, which stays bound.
+func sqliteLiteral(v any) (string, bool) {
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Bool:
+		if rv.Bool() {
+			return "1", true
+		}
+		return "0", true
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.FormatInt(rv.Int(), 10), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatUint(rv.Uint(), 10), true
+	case reflect.String:
+		str := rv.String()
+		if strings.IndexByte(str, 0) >= 0 {
+			return "", false // a NUL cannot sit in a quoted literal; keep it bound
+		}
+		return "'" + strings.ReplaceAll(str, "'", "''") + "'", true
+	}
+	return "", false
 }

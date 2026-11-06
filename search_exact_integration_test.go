@@ -129,3 +129,18 @@ func TestSearchSettingsPgBouncer(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchScanMemMultiplierScoped(t *testing.T) {
+	ctx := context.Background()
+	db := momo.New(pgxdriver.New(singleConnPool(t)))
+	mustExecPG(t, db, "CREATE EXTENSION IF NOT EXISTS vector")
+	err := db.WithSearch(ctx, momo.SearchSettings{HNSWIterativeScan: momo.IterativeRelaxedOrder, HNSWScanMemMultiplier: 2.5}, func(tx *momo.Tx) error {
+		return checkSetting(ctx, tx, "hnsw.scan_mem_multiplier", "2.5")
+	})
+	if err != nil {
+		t.Fatalf("inside WithSearch: %v", err)
+	}
+	if err := checkSetting(ctx, db, "hnsw.scan_mem_multiplier", "1"); err != nil {
+		t.Fatalf("setting leaked after the transaction: %v", err)
+	}
+}
