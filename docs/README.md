@@ -8,3 +8,6 @@ contributor guide, supported versions, performance).
 - [Go to SQL type mapping](TYPE_MAPPING.md): column type per Go type, edge values, null handling.
 - [Vector search](vectors.md): pgvector types, metrics, limits, search settings and the binary codec.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
+- [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
+- [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
+- [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI, and the stability policy.
