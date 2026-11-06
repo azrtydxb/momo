@@ -24,4 +24,4 @@ Expected: no writes when nothing is pending (or document and gate it).
 - TestApplyNothingPendingWritesNothing: with no history table (and with everything applied) Apply executes zero statements and the table is not created. Mutation (early return removed) fails it. TestApplyNothingPendingCreatesNoHistoryTable runs the same on PostgreSQL in CI.
 - TestApplyWithPendingCreatesHistoryFirst: the first statement is CREATE TABLE IF NOT EXISTS momo_migrations and the row ends applied.
 - Red first: Apply called EnsureHistory before knowing what is pending, so the first test saw the CREATE TABLE.
-
+- Review fix: TestHistoryFormatCheckedWithoutWrites pins that a no-op apply (and rehash) still refuses a newer history format, reading only.

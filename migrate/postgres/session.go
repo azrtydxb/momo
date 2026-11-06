@@ -60,8 +60,14 @@ func (Dialect) Setup(ctx context.Context, c momo.PinnedConn, s migrate.SessionOp
 		if st.d < 0 || st.d == 0 && !st.set {
 			continue
 		}
-		// SET takes no bind parameters; the value is a formatted integer.
-		if _, err := c.Exec(ctx, fmt.Sprintf("SET %s = %d", st.name, st.d.Milliseconds()), nil); err != nil {
+		// SET takes no bind parameters; the value is a formatted integer. A
+		// positive value below 1ms would become 0, which switches the timeout
+		// off, so it is rounded up.
+		ms := st.d.Milliseconds()
+		if st.d > 0 && ms == 0 {
+			ms = 1
+		}
+		if _, err := c.Exec(ctx, fmt.Sprintf("SET %s = %d", st.name, ms), nil); err != nil {
 			return nil, errors.Join(fmt.Errorf("migrate/postgres: set %s: %w", st.name, err), reset())
 		}
 	}

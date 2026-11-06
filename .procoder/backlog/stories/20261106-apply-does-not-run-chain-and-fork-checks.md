@@ -26,4 +26,4 @@ Expected: apply refuses (non-zero exit, clear message) when the pending set has 
 - TestApplyRefusesForkedChain: two snapshots sharing a parent give ErrBranchConflict, the message contains a problem ValidateOffline reports for the same directory, and no migration runs. Mutation (Chain call removed) fails it.
 - TestApplyLinearChainStillApplies: a linear two-snapshot chain applies both migrations; the existing engine tests (no snapshots, WithoutSum) pass unchanged.
 - Red first for all three: Apply had no chain or order check, so both refusal tests failed with a nil error before the change.
-
+- Review fixes: a missing parent, cycle or gap is ErrChainInvalid (TestApplyRefusesBrokenChain); TestMigrateChainRefusalsExitOne pins exit 1 for fork, out-of-order and broken chain. Recovery steps documented in docs/migrations.md section 2.

@@ -486,8 +486,12 @@ Known issues in v0.1.0, as rules (each is a filed bug):
   is fine; then run `hash`. `hash` accepts every edit, so read its
   `changed:/added:/removed:` list first.
 - `apply` refuses a forked snapshot chain (same error as `validate`) and a pending
-  version older than the latest applied one (`ErrOutOfOrder`); fix it by giving
-  the late migration a newer version. Still run `validate` in CI.
+  version older than the latest applied one (`ErrOutOfOrder`); both exit 1, as
+  does a broken chain (`ErrChainInvalid`). There is no `rebase` command: delete
+  the late migration's `.up.sql` and `.snapshot.json`, run
+  `momo migrate diff <name>` to regenerate it with a new version, then
+  `momo migrate hash` (a pending file needs no `rehash`); see [migrations.md](migrations.md) section 2. Still
+  run `validate` in CI.
 - There is no rollback and no down migrations. Undo with a new forward
   migration. `resolve --rolled-back` runs no SQL.
 - There is no `--force-unlock` (an unknown flag, exit 2). The migration lock is a

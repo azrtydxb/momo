@@ -30,6 +30,8 @@ type sfDB struct {
 	// with failErr.
 	failOn  string
 	failErr error
+	// metaFormat is the checksum of the metadata row; empty means "1".
+	metaFormat string
 }
 
 type sfSQLState string
@@ -83,7 +85,14 @@ func (d *sfDB) query(sql string) (momo.Rows, error) {
 	case strings.Contains(sql, "current_schema()"):
 		return &sfRows{rows: [][]any{{"public"}}}, nil
 	case strings.Contains(sql, "WHERE status = 'meta'"):
-		return &sfRows{rows: [][]any{{"1"}}}, nil
+		if !d.tableExists {
+			return nil, sfSQLState("42P01")
+		}
+		f := d.metaFormat
+		if f == "" {
+			f = "1"
+		}
+		return &sfRows{rows: [][]any{{f}}}, nil
 	case strings.Contains(sql, "FROM momo_migrations WHERE status <> 'meta'"):
 		if !d.tableExists {
 			return nil, sfSQLState("42P01")

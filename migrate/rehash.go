@@ -56,6 +56,9 @@ func (e *Engine) Rehash(ctx context.Context, version string, accept bool) (res *
 	if err != nil {
 		return nil, err
 	}
+	if err := checkHistoryFormat(ctx, c); err != nil {
+		return nil, err
+	}
 	var row *HistoryRow
 	for i := range hist {
 		if hist[i].Version == version {

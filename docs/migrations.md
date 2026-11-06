@@ -162,28 +162,50 @@ finding:
 Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
 `--dialect`, `--url`.
 
-| Command                                                                                          | Needs DB        | Does                                                                                          | Exit 1 when                                                          |
-| ------------------------------------------------------------------------------------------------ | --------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage]` | no              | Write a migration (section 1, 5).                                                             | destructive or staged refusal; target file exists; model diagnostics |
-| `plan`                                                                                           | yes             | List pending migrations with statement counts. Read-only, no lock, creates nothing.           | never                                                                |
-| `apply [--to N] [--lock-wait 30s]`                                                               | yes             | Apply pending.                                                                                | never; failures are 3                                                |
-| `status`                                                                                         | yes             | One line per version: `applied`, `pending`, `dirty`, `mismatch`, `missing`. Read-only.        | any version not `applied`/`pending`                                  |
-| `validate [--db]`                                                                                | no (`--db` yes) | Directory checks (below); `--db` adds `status`.                                               | any problem or unhealthy status                                      |
-| `hash`                                                                                           | no              | Recompute `momo.sum`, list files it accepts as `changed:`/`added:`/`removed:`, write it.      | never                                                                |
-| `baseline --version N [--force]`                                                                 | yes             | Record migrations through N as applied without running them (section 7).                      | database differs from snapshot                                       |
-| `drift`                                                                                          | yes             | Section 1.                                                                                    | any change, missing or unmanaged                                     |
-| `resolve --version N --applied` or `--rolled-back`                                               | yes             | Settle a dirty migration (section 4).                                                         | never                                                                |
-| `rehash --version N [--accept]`                                                                  | yes             | Show, and with `--accept` store, the new checksum of an edited applied migration (section 4). | without `--accept`, when the file differs                            |
+| Command                                                                                          | Needs DB        | Does                                                                                          | Exit 1 when                                                                                     |
+| ------------------------------------------------------------------------------------------------ | --------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage]` | no              | Write a migration (section 1, 5).                                                             | destructive or staged refusal; target file exists; model diagnostics                            |
+| `plan`                                                                                           | yes             | List pending migrations with statement counts. Read-only, no lock, creates nothing.           | never                                                                                           |
+| `apply [--to N] [--lock-wait 30s]`                                                               | yes             | Apply pending.                                                                                | a chain refusal (`ErrBranchConflict`, `ErrChainInvalid`, `ErrOutOfOrder`); other failures are 3 |
+| `status`                                                                                         | yes             | One line per version: `applied`, `pending`, `dirty`, `mismatch`, `missing`. Read-only.        | any version not `applied`/`pending`                                                             |
+| `validate [--db]`                                                                                | no (`--db` yes) | Directory checks (below); `--db` adds `status`.                                               | any problem or unhealthy status                                                                 |
+| `hash`                                                                                           | no              | Recompute `momo.sum`, list files it accepts as `changed:`/`added:`/`removed:`, write it.      | never                                                                                           |
+| `baseline --version N [--force]`                                                                 | yes             | Record migrations through N as applied without running them (section 7).                      | database differs from snapshot                                                                  |
+| `drift`                                                                                          | yes             | Section 1.                                                                                    | any change, missing or unmanaged                                                                |
+| `resolve --version N --applied` or `--rolled-back`                                               | yes             | Settle a dirty migration (section 4).                                                         | never                                                                                           |
+| `rehash --version N [--accept]`                                                                  | yes             | Show, and with `--accept` store, the new checksum of an edited applied migration (section 4). | without `--accept`, when the file differs                                                       |
 
 `validate` checks: files parse and directives are known; `momo.sum` matches;
 versions unique and increasing; each snapshot's parent exists; no two snapshots
 share a parent (branch conflict); each up file has a snapshot; a hand-written
 migration (no `-- momo:generated`) has a snapshot equal to its parent's. Use it
 in CI. `apply` runs the chain checks too (fork, missing parent, cycle, gap) and
-refuses with the same message, and it refuses with `ErrOutOfOrder` (exit 1) when a
-pending version is older than the latest applied one, so a late-merged older
-migration is never applied after newer ones: rename or rebase it to a newer
-version (`TestApplyRefusesForkedChain`, `TestApplyRefusesPendingOlderThanApplied`).
+refuses with the same message (a fork is `ErrBranchConflict`; a missing parent,
+cycle or gap is `ErrChainInvalid`; both exit 1, like `validate` findings), and it
+refuses with `ErrOutOfOrder` (exit 1) when a pending version is older than the
+latest applied one, so a late-merged older migration is never applied after newer
+ones (`TestApplyRefusesForkedChain`, `TestApplyRefusesPendingOlderThanApplied`,
+`TestApplyRefusesBrokenChain`, `TestMigrateChainRefusalsExitOne`).
+
+Recovering from `ErrBranchConflict` or `ErrOutOfOrder` (there is no `rebase`
+command yet). Both mean two teammates branched from the same snapshot and both
+merged: two snapshots share a parent, and one of the new migrations has a
+version older than the other. Fix it in the files of the branch that merged
+last, before it is applied anywhere. The late migration is still pending, so it
+needs no `rehash`:
+
+1. Delete its `<version>_<name>.up.sql` and `<version>_<name>.snapshot.json`
+   (a generated migration; for a hand-written one rename the `.up.sql` to a
+   version later than the newest applied one and copy the newest snapshot to
+   the same new version, with `parent` set to the previous snapshot).
+2. Run `momo migrate diff <name>`. It compares the models with the latest
+   snapshot and writes the migration again with a new version and the right
+   parent.
+3. Run `momo migrate hash`, review the `changed:/added:/removed:` list, and run
+   `momo migrate validate`.
+
+If the older migration was already applied somewhere, do not rewrite it: leave
+the chain as it is and add a new migration for the difference.
 
 Not built in v0.1.0 (story 098): `rebase`, `lint`, `rollback`, `new`. Each exits
 2 with `migrate <name> is not available yet`. There are no down migrations: undo

@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -89,6 +91,41 @@ func TestMigrateURLRoutes(t *testing.T) {
 			t.Fatalf("exit %d, want 2: %s", code, errOut.String())
 		}
 	})
+}
+
+// Chain refusals are findings (exit 1) like validate's, not database errors.
+func TestMigrateChainRefusalsExitOne(t *testing.T) {
+	for name, err := range map[string]error{
+		"fork":         fmt.Errorf("x: %w", migrate.ErrBranchConflict),
+		"out of order": fmt.Errorf("x: %w", migrate.ErrOutOfOrder),
+		"broken chain": fmt.Errorf("%w: parent snapshot 1 is missing", migrate.ErrChainInvalid),
+	} {
+		var out, errOut bytes.Buffer
+		l := &cli{out: &out, errOut: &errOut}
+		if code := l.failure(err); code != 1 {
+			t.Errorf("%s: exit %d, want 1", name, code)
+		}
+	}
+	var errOut bytes.Buffer
+	if code := (&cli{errOut: &errOut}).failure(errors.New("connection refused")); code != 3 {
+		t.Errorf("other errors stay exit 3, got %d", code)
+	}
+}
+
+// "--url -" on a terminal would hang waiting for input; it is refused.
+func TestMigrateURLStdinTerminalRefused(t *testing.T) {
+	null, err := os.Open(os.DevNull) // a character device, like a terminal
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = null.Close() })
+	old := migrateStdin
+	migrateStdin = null
+	t.Cleanup(func() { migrateStdin = old })
+	var out, errOut bytes.Buffer
+	if code := runMigrate(&out, &errOut, []string{"--config", safetyConfig(t), "status", "--url", "-"}, noEnv); code != 2 || !strings.Contains(errOut.String(), "terminal") {
+		t.Fatalf("exit %d, want 2 naming the terminal: %s", code, errOut.String())
+	}
 }
 
 func TestMigrateRehashUsage(t *testing.T) {

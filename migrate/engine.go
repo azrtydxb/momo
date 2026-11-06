@@ -419,6 +419,9 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	if err != nil {
 		return nil, err
 	}
+	if err := checkHistoryFormat(ctx, c); err != nil {
+		return nil, err
+	}
 	if err := dirtyError(hist); err != nil {
 		return nil, err
 	}
@@ -426,7 +429,10 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		return nil, err
 	}
 	if _, err := Chain(e.dir); err != nil {
-		return nil, err
+		if errors.Is(err, ErrBranchConflict) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %w", ErrChainInvalid, err)
 	}
 	pending, err := e.pendingFrom(hist)
 	if err != nil {
@@ -456,7 +462,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		}
 		a, err := RunMigration(ctx, env, p, rep.ApplyID)
 		if err != nil {
-			return rep, e.classify(err)
+			return rep, redactErr(e.classify(err))
 		}
 		rep.Applied = append(rep.Applied, a)
 	}

@@ -38,6 +38,10 @@ func TestSetupTimeouts(t *testing.T) {
 			migrate.SessionOptions{LockTimeout: 5 * time.Second, StatementTimeoutSet: true},
 			[]string{"SET lock_timeout = 5000", "SET statement_timeout = 0"},
 		},
+		"sub-millisecond values round up to 1ms, not to off": {
+			migrate.SessionOptions{LockTimeout: 500 * time.Microsecond, StatementTimeout: time.Nanosecond},
+			[]string{"SET lock_timeout = 1", "SET statement_timeout = 1"},
+		},
 		"explicit zero lock_timeout is sent": {
 			migrate.SessionOptions{LockTimeoutSet: true, StatementTimeout: time.Second},
 			[]string{"SET lock_timeout = 0", "SET statement_timeout = 1000"},

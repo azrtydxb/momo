@@ -4,6 +4,7 @@ package migrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -55,8 +56,18 @@ func EnsureHistory(ctx context.Context, c momo.PinnedConn, d Dialect) error {
 	if _, err := c.Exec(ctx, ins, []any{MetaVersion, "meta", strconv.Itoa(FormatVersion), StatusMeta, time.Now().UTC().Format(timeLayout)}); err != nil {
 		return fmt.Errorf("migrate: write history metadata: %w", err)
 	}
+	return checkHistoryFormat(ctx, c)
+}
+
+// checkHistoryFormat refuses a history table written with a newer format. It
+// only reads: a database without the table or without a metadata row passes.
+func checkHistoryFormat(ctx context.Context, c momo.PinnedConn) error {
 	rows, err := c.Query(ctx, `SELECT checksum FROM momo_migrations WHERE status = 'meta'`, nil)
 	if err != nil {
+		var s interface{ SQLState() string }
+		if errors.As(err, &s) && s.SQLState() == undefinedTable {
+			return nil
+		}
 		return fmt.Errorf("migrate: read history metadata: %w", err)
 	}
 	defer func() { _ = rows.Close() }()

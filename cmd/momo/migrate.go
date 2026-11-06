@@ -355,6 +355,11 @@ func (l *cli) databaseURL() (string, error) {
 	u := l.c.url
 	switch u {
 	case "-":
+		if f, ok := migrateStdin.(*os.File); ok {
+			if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+				return "", errors.New("--url -: standard input is a terminal; pipe the URL in, for example: printf '%s' \"$URL\" | momo migrate status --url -")
+			}
+		}
 		b, err := io.ReadAll(io.LimitReader(migrateStdin, 1<<16))
 		if err != nil {
 			return "", fmt.Errorf("read the database URL from stdin: %w", err)
@@ -428,7 +433,7 @@ func (l *cli) failure(err error) int {
 	switch {
 	case errors.Is(err, migrate.ErrDestructive), errors.Is(err, migrate.ErrStagedRequired),
 		errors.Is(err, migrate.ErrBaselineMismatch), errors.Is(err, migrate.ErrBranchConflict),
-		errors.Is(err, migrate.ErrOutOfOrder):
+		errors.Is(err, migrate.ErrOutOfOrder), errors.Is(err, migrate.ErrChainInvalid):
 		return l.errf(exitFindings, "%v", err)
 	case errors.Is(err, migrate.ErrNoSnapshot):
 		return l.errf(exitUsage, "%v", err)

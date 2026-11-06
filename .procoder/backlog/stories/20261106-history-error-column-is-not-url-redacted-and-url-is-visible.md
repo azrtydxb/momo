@@ -26,4 +26,4 @@ Expected: history errors are redacted before storing; the CLI prefers env or std
 - Routes: MOMO_DATABASE_URL, migrate.url_env and the new `--url -` (stdin), documented in docs/migrations.md and docs/ai-guide.md; TestMigrateURLRoutes covers env without warning and stdin (exit 3 on an unreachable host, no leak, no warning), empty stdin exits 2.
 - TestMigrateURLRoutes: `--url` prints the process-list warning naming MOMO_DATABASE_URL; mutations (warning discarded, stdin case broken) fail it.
 - Red first: the history error was stored verbatim and there was no stdin route or warning.
-
+- Review fixes: TestRedactURLsForms covers MySQL tcp(...) DSNs, escaped quotes and PGPASSWORD=; TestRunMigrationErrorIsRedacted and TestReturnedErrorIsRedacted pin the returned error (errors.Is still works); TestMigrateURLStdinTerminalRefused pins that `--url -` on a terminal exits 2.

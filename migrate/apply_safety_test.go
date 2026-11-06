@@ -5,6 +5,7 @@ package migrate_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -171,12 +172,110 @@ func TestHistoryErrorIsRedacted(t *testing.T) {
 	}
 }
 
+// The error returned to Go callers is redacted too, and errors.Is still works.
+func TestReturnedErrorIsRedacted(t *testing.T) {
+	boom := errors.New("boom")
+	db := &sfDB{failOn: "CREATE TABLE a", failErr: fmt.Errorf("%w: dial postgres://admin:s3cretpw@db.internal/prod failed", boom)}
+	fsys := fstest.MapFS{"20260101000000_a.up.sql": {Data: []byte("CREATE TABLE a (x int);")}}
+	_, err := sfEngine(t, db, fsys).Apply(context.Background(), migrate.ApplyOptions{})
+	if err == nil || strings.Contains(err.Error(), "s3cretpw") {
+		t.Fatalf("returned error leaks or is nil: %v", err)
+	}
+	if !errors.Is(err, boom) {
+		t.Fatalf("errors.Is must still see the cause: %v", err)
+	}
+}
+
+// RunMigration, called directly, redacts the error it returns as well.
+func TestRunMigrationErrorIsRedacted(t *testing.T) {
+	db := &sfDB{tableExists: true, failOn: "CREATE TABLE a", failErr: errors.New("dial postgres://admin:s3cretpw@db/prod failed")}
+	conn, err := db.Pin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := migrate.RunEnv{Conn: conn, Dialect: sfDialect{db}, Clock: time.Now}
+	p := migrate.Pending{Version: "20260101000000", Name: "a", Statements: []migrate.Statement{{SQL: "CREATE TABLE a (x int)"}}}
+	_, err = migrate.RunMigration(context.Background(), env, p, "apply-1")
+	if err == nil || strings.Contains(err.Error(), "s3cretpw") {
+		t.Fatalf("RunMigration error leaks or is nil: %v", err)
+	}
+}
+
+// A history table written with a newer format is refused on the paths that
+// write nothing too: a no-op apply and rehash.
+func TestHistoryFormatCheckedWithoutWrites(t *testing.T) {
+	fsys := fstest.MapFS{"20260101000000_a.up.sql": {Data: []byte("CREATE TABLE a (x int);")}}
+	sum, err := migrate.ComputeSum(fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newDB := func() *sfDB {
+		return &sfDB{tableExists: true, metaFormat: "2", hist: []migrate.HistoryRow{sfApplied("20260101000000", sum.Files["20260101000000_a.up.sql"])}}
+	}
+	t.Run("no-op apply", func(t *testing.T) {
+		db := newDB()
+		_, err := sfEngine(t, db, fsys).Apply(context.Background(), migrate.ApplyOptions{})
+		if err == nil || !strings.Contains(err.Error(), "format 2") {
+			t.Fatalf("want a format error, got %v", err)
+		}
+		if n := len(db.execLog()); n != 0 {
+			t.Fatalf("wrote %d statements", n)
+		}
+	})
+	t.Run("rehash", func(t *testing.T) {
+		_, err := sfEngine(t, newDB(), fsys).Rehash(context.Background(), "20260101000000", true)
+		if err == nil || !strings.Contains(err.Error(), "format 2") {
+			t.Fatalf("want a format error, got %v", err)
+		}
+	})
+}
+
+// A snapshot chain with a missing parent is ErrChainInvalid, not a fork.
+func TestApplyRefusesBrokenChain(t *testing.T) {
+	db := &sfDB{tableExists: true}
+	fsys := fstest.MapFS{
+		"20260102000000_b.up.sql":        {Data: []byte("CREATE TABLE b (x int);")},
+		"20260102000000_b.snapshot.json": {Data: []byte(sfSnap("20260102000000", "20260101000000"))},
+	}
+	_, err := sfEngine(t, db, fsys).Apply(context.Background(), migrate.ApplyOptions{})
+	if !errors.Is(err, migrate.ErrChainInvalid) || errors.Is(err, migrate.ErrBranchConflict) {
+		t.Fatalf("want ErrChainInvalid only, got %v", err)
+	}
+	if sfRan(db, "CREATE TABLE b") {
+		t.Fatal("apply ran on a broken chain")
+	}
+}
+
 func TestRedactURLs(t *testing.T) {
 	got := migrate.RedactURLs("dial postgres://u:pw@h/db?password=x and password=hunter2 end", "hunter2")
 	for _, bad := range []string{"u:pw", "password=x", "hunter2"} {
 		if strings.Contains(got, bad) {
 			t.Fatalf("%q still contains %q", got, bad)
 		}
+	}
+}
+
+func TestRedactURLsForms(t *testing.T) {
+	for in, leaks := range map[string][]string{
+		"dial root:hunter2@tcp(db.local:3306)/app?parseTime=true failed": {"hunter2"},
+		"dial root:p4ss@unix(/var/run/mysqld.sock)/app":                  {"p4ss"},
+		`conn password='it\'s secret' host=h`:                            {"it", "secret"},
+		`PGPASSWORD=s3cr3t psql`:                                         {"s3cr3t"},
+		`conn PASSWORD="a \"b\" c" x`:                                    {`\"b`},
+		"dial postgres://u:pw1@h:5432/db":                                {"pw1"},
+	} {
+		got := migrate.RedactURLs(in)
+		for _, l := range leaks {
+			if strings.Contains(got, l) {
+				t.Errorf("RedactURLs(%q) = %q still contains %q", in, got, l)
+			}
+		}
+	}
+	if got := migrate.RedactURLs("dial root:hunter2@tcp(db.local:3306)/app"); !strings.Contains(got, "root:***@tcp(db.local:3306)") {
+		t.Errorf("only the password may change: %q", got)
+	}
+	if got := migrate.RedactURLs("relation foo: not found at (1:2)"); got != "relation foo: not found at (1:2)" {
+		t.Errorf("ordinary text changed: %q", got)
 	}
 }
 

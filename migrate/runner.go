@@ -40,6 +40,12 @@ type execer interface {
 // statements_applied after each one; an error leaves the row failed, which is
 // dirty until resolved.
 func RunMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (Applied, error) {
+	a, err := runMigration(ctx, env, p, applyID)
+	// The history row is redacted; so is the message of the returned error.
+	return a, redactErr(err)
+}
+
+func runMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (Applied, error) {
 	h := historyWriter{d: env.Dialect}
 	start := env.Clock()
 	kind := string(p.Kind)

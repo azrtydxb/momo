@@ -26,4 +26,4 @@ Expected: an explicit 0s sets the PostgreSQL timeout to 0; only an absent value 
 - TestMigrateTimeoutKeysReachTheSession/absent and TestSessionTimeouts/absent_keeps_the_defaults: lock_timeout 5s, statement_timeout untouched.
 - TestSetupTimeouts/explicit_zero_lock_timeout_is_sent and TestSessionTimeouts/explicit_zero: SET lock_timeout = 0. Mutation (Set flag dropped in the engine) fails TestSessionTimeouts.
 - Red first: SessionOptions had no way to say explicit zero, so a 0s key behaved as unset.
-
+- Review fix: TestSetupTimeouts/sub-millisecond rounds a positive value up to 1ms instead of 0 (off).
