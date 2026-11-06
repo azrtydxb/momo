@@ -3,8 +3,10 @@
 package momo
 
 import (
+	"database/sql/driver"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -129,12 +131,6 @@ type DialectValuer interface {
 
 // Arg appends a bind placeholder and records v as its argument.
 func (b *Builder) Arg(v any) {
-	if b.conflictTarget && b.d.Name == dialect.SQLite {
-		if lit, ok := sqliteLiteral(v); ok {
-			b.WriteString(lit)
-			return
-		}
-	}
 	if dv, ok := v.(DialectValuer); ok {
 		enc, err := dv.DialectValue(b.d.Name)
 		if err != nil {
@@ -145,6 +141,15 @@ func (b *Builder) Arg(v any) {
 			return
 		}
 		v = enc
+	}
+	if b.conflictTarget && b.d.Name == dialect.SQLite {
+		lit, err := sqliteLiteral(v)
+		if err != nil {
+			b.SetErr(err)
+			return
+		}
+		b.WriteString(lit)
+		return
 	}
 	b.args = append(b.args, v)
 	b.buf = b.d.AppendPlaceholder(b.buf, len(b.args))
@@ -201,27 +206,57 @@ func compile(d *dialect.Dialect, render func(*Builder)) (Compiled, error) {
 	return Compiled{SQL: string(b.buf), Args: b.args}, nil
 }
 
-// sqliteLiteral renders a bool, integer or string as an SQL literal. SQLite
-// matches an ON CONFLICT target predicate against the index text, so a bound
-// value never matches; ok is false for any other type, which stays bound.
-func sqliteLiteral(v any) (string, bool) {
+// sqliteLiteral renders the value that would be bound (after DialectValuer
+// and driver.Valuer) as an SQL literal: bool, integer, finite float or string
+// without a NUL byte. SQLite matches an ON CONFLICT target predicate against
+// the index text, so a bound value never matches; any other value fails with
+// ErrValidation instead of silently reproducing that failure.
+func sqliteLiteral(v any) (string, error) {
+	orig := v
+	if dv, ok := v.(driver.Valuer); ok {
+		if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
+			return "", sqliteLiteralErr(orig)
+		}
+		enc, err := dv.Value()
+		if err != nil {
+			return "", &Error{Kind: ErrValidation, Op: "insert", Err: err}
+		}
+		v = enc
+	}
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 	case reflect.Bool:
 		if rv.Bool() {
-			return "1", true
+			return "1", nil
 		}
-		return "0", true
+		return "0", nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return strconv.FormatInt(rv.Int(), 10), true
+		return strconv.FormatInt(rv.Int(), 10), nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return strconv.FormatUint(rv.Uint(), 10), true
+		return strconv.FormatUint(rv.Uint(), 10), nil
+	case reflect.Float32, reflect.Float64:
+		f := rv.Float()
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			break
+		}
+		bits := 64
+		if rv.Kind() == reflect.Float32 {
+			bits = 32
+		}
+		out := strconv.FormatFloat(f, 'g', -1, bits)
+		if !strings.ContainsAny(out, ".e") {
+			out += ".0" // keep it a real, as in the index text
+		}
+		return out, nil
 	case reflect.String:
 		str := rv.String()
-		if strings.IndexByte(str, 0) >= 0 {
-			return "", false // a NUL cannot sit in a quoted literal; keep it bound
+		if strings.IndexByte(str, 0) < 0 {
+			return "'" + strings.ReplaceAll(str, "'", "''") + "'", nil
 		}
-		return "'" + strings.ReplaceAll(str, "'", "''") + "'", true
 	}
-	return "", false
+	return "", sqliteLiteralErr(orig)
+}
+
+func sqliteLiteralErr(v any) error {
+	return &Error{Kind: ErrValidation, Op: "insert", Err: fmt.Errorf("value of type %T cannot be rendered inline in an ON CONFLICT target predicate on SQLite; use momo.SQL", v)}
 }

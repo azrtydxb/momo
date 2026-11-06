@@ -296,7 +296,7 @@ func readAndChange(ctx context.Context, q momo.Querier, authorID int64) error {
 The full example, with the model and the partial-index form, is in
 [docs/ai-guide.md](docs/ai-guide.md) under upserts.
 
-To conflict on a partial unique index, give the index predicate with `OnConflict(cols...).Where(...)` before `DoNothing` or `DoUpdate`. Both forms work on PostgreSQL; MySQL returns `ErrUnsupported`. On SQLite, bool, integer and string values in the target predicate render inline (`"live" = 1`) because SQLite matches the predicate against the index text; `Excluded()` in the target predicate is `ErrValidation`.
+To conflict on a partial unique index, give the index predicate with `OnConflict(cols...).Where(...)` before `DoNothing` or `DoUpdate`. Both forms work on PostgreSQL; MySQL returns `ErrUnsupported`. On SQLite, bool, integer, finite float and string values in the target predicate render inline (`"live" = 1`) because SQLite matches the predicate against the index text; any other value, and `Excluded()`, is `ErrValidation`. This is golden-tested but not yet run against a real SQLite, so `momo.SQL("live = 1")` remains the proven fallback. The values appear in the SQL text, so they show up in logs and traces.
 
 ### 6. Load relations
 

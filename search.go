@@ -67,6 +67,11 @@ type SearchSettings struct {
 	IVFFlatMaxProbes      int           // ivfflat.max_probes, 1..32768 (pgvector >= 0.8)
 }
 
+// hnsw.scan_mem_multiplier arrived with the iterative scans in pgvector 0.8.0
+// (CHANGELOG "0.8.0: Added support for iterative index scans"; src/hnsw.c at
+// tag v0.8.0 defines it with range 1..1000, and v0.7.4 does not), so the same
+// 0.8.0 gate covers it.
+
 // usesIterativeGUCs reports whether s sets a parameter that exists only in
 // pgvector 0.8.0 and newer.
 func (s SearchSettings) usesIterativeGUCs() bool {

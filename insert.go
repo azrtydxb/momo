@@ -193,7 +193,9 @@ func (q InsertQuery[T]) OnConflict(cols ...ColumnRef) ConflictQuery[T] {
 // without a table qualifier, as the database requires in an index
 // predicate. On SQLite, bool, integer and string values render inline
 // (SQLite matches the predicate against the index text, so a bound value
-// never matches); other value types stay bound. Excluded() in the predicate
+// never matches), which also puts them in logs and traces. Only bool,
+// integer, finite float and string values (after Value()) can be inlined;
+// any other value fails with ErrValidation. Excluded() in the predicate
 // fails with ErrValidation. MySQL has no ON CONFLICT and fails with
 // ErrUnsupported.
 func (c ConflictQuery[T]) Where(preds ...Predicate) ConflictQuery[T] {

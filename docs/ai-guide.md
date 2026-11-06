@@ -691,8 +691,13 @@ res, err := momo.Insert[models.Lock](q).
   without it. It needs target columns (`ErrValidation` otherwise). Multiple `Where`
   calls AND. MySQL: both are `ErrUnsupported`. `Excluded()` in the target
   predicate is `ErrValidation` (use it in the `DoUpdate` `Where`). On SQLite the
-  target predicate renders bool, integer and string values inline (`"live" = 1`),
-  because SQLite matches it against the index text; other value types stay bound.
+  target predicate renders bool, integer, finite float and string values inline
+  (`"live" = 1`), because SQLite matches it against the index text; a value
+  that cannot be inlined (time, bytes, pointer, NULL, NaN, a string with a NUL
+  byte) is `ErrValidation`, and a type with `Value()` is inlined as that value.
+  This is golden-tested but not yet run against a real SQLite; `momo.SQL("live = 1")`
+  is the proven fallback. The values appear in the SQL text, so they show up in
+  logs and traces.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
   Explicit identity values do not advance the sequence: `setval` it yourself.
 
@@ -1001,10 +1006,10 @@ PgBouncer):
 
 ```go
 err := db.WithSearch(ctx, momo.SearchSettings{
-	HNSWEfSearch:      100,                          // 1..1000 (default 40; at least your LIMIT)
-	HNSWIterativeScan: momo.IterativeRelaxedOrder,   // pgvector >= 0.8: filtered searches
-	HNSWMaxScanTuples: 20000,                        // pgvector >= 0.8
-	HNSWScanMemMultiplier: 2,                        // pgvector >= 0.8; 1..1000 x work_mem
+	HNSWEfSearch:          100,                        // 1..1000 (default 40; at least your LIMIT)
+	HNSWIterativeScan:     momo.IterativeRelaxedOrder, // pgvector >= 0.8: filtered searches
+	HNSWMaxScanTuples:     20000,                      // pgvector >= 0.8
+	HNSWScanMemMultiplier: 2,                          // pgvector >= 0.8; 1..1000 x work_mem
 }, func(tx *momo.Tx) error {
 	// run EVERY vector query for this search on tx, not db
 	_, err := momo.Select[models.Item](tx).

@@ -93,8 +93,19 @@ func TestSearchScanMemMultiplierNeedsPgvector08(t *testing.T) {
 			t.Fatal(err)
 		}
 		err = tx.SetSearch(t.Context(), momo.SearchSettings{HNSWScanMemMultiplier: 2})
-		if tc.ok && err != nil {
-			t.Fatalf("%s: %v", tc.version, err)
+		if tc.ok {
+			if err != nil {
+				t.Fatalf("%s: %v", tc.version, err)
+			}
+			found := false
+			for _, c := range drv.Calls() {
+				if strings.Contains(c.SQL, "set_config") && slices.Equal(c.Args, []any{"hnsw.scan_mem_multiplier", "2"}) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("%s: no set_config(hnsw.scan_mem_multiplier, 2) among %v", tc.version, drv.Calls())
+			}
 		}
 		if !tc.ok {
 			if !errors.Is(err, momo.ErrUnsupported) {

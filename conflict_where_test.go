@@ -3,7 +3,10 @@
 package momo_test
 
 import (
+	"database/sql"
+	"database/sql/driver"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -379,5 +382,90 @@ func TestConflictWhereDoesNotAlias(t *testing.T) {
 		if len(got.Args) < 1 || got.Args[len(got.Args)-1] != tc.want {
 			t.Fatalf("%s: args = %v, want last %q", name, got.Args, tc.want)
 		}
+	}
+}
+
+// status is a named string whose bound form differs from its Go value.
+type status string
+
+func (s status) Value() (driver.Value, error) { return strings.ToUpper(string(s)), nil }
+
+// badStatus is a Valuer whose bound form cannot be rendered inline.
+type badStatus string
+
+func (badStatus) Value() (driver.Value, error) { return time.Unix(0, 0).UTC(), nil }
+
+var (
+	leaseRatio  = momo.NewColumn[float64]("jobs_lock", "ratio", 0)
+	leaseBlob   = momo.NewColumn[[]byte]("jobs_lock", "blob", 0)
+	leasePtr    = momo.NewColumn[*string]("jobs_lock", "ptr", 0)
+	leaseNull   = momo.NewColumn[sql.NullString]("jobs_lock", "nul", 0)
+	leaseStatus = momo.NewColumn[status]("jobs_lock", "status", 0)
+	leaseBad    = momo.NewColumn[badStatus]("jobs_lock", "bad", 0)
+)
+
+// Catches: a target-predicate value SQLite cannot match inline staying bound
+// and reproducing the "does not match any PRIMARY KEY or UNIQUE constraint"
+// failure, instead of failing the build with ErrValidation.
+func TestConflictTargetSQLiteUnrenderableIsValidation(t *testing.T) {
+	str := "x"
+	cases := map[string]momo.Predicate{
+		"time":            leaseUntil.Le(leaseNow),
+		"nan":             leaseRatio.Gt(math.NaN()),
+		"inf":             leaseRatio.Lt(math.Inf(1)),
+		"bytes":           leaseBlob.Eq([]byte("a")),
+		"pointer":         leasePtr.Eq(&str),
+		"sql null (NULL)": leaseNull.Eq(sql.NullString{}),
+		"string with NUL": leaseHolder.Eq("a\x00b"),
+		"valuer to time":  leaseBad.Eq("b"),
+	}
+	for name, p := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := compileFor(t, dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+				return leaseTake(q).Where(p).DoNothing()
+			})
+			if !errors.Is(err, momo.ErrValidation) {
+				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "ON CONFLICT target") {
+				t.Fatalf("err = %v, want it to name the ON CONFLICT target", err)
+			}
+		})
+		t.Run(name+"/postgres binds", func(t *testing.T) {
+			if _, err := compileFor(t, dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
+				return leaseTake(q).Where(p).DoNothing()
+			}); err != nil {
+				t.Fatalf("postgres: %v", err)
+			}
+		})
+	}
+}
+
+// Catches: floats rendered inexactly or as integer literals, and a named
+// type rendered from its Go value instead of the value it binds as.
+func TestConflictTargetSQLiteFloatAndValuer(t *testing.T) {
+	cases := []struct {
+		name  string
+		where momo.Predicate
+		want  string
+	}{
+		{"float", leaseRatio.Gt(1.5), `WHERE "ratio" > 1.5`},
+		{"whole float stays a real", leaseRatio.Gt(2), `WHERE "ratio" > 2.0`},
+		{"exponent float", leaseRatio.Lt(1e21), `WHERE "ratio" < 1e+21`},
+		{"valuer", leaseStatus.Eq("a"), `WHERE "status" = 'A'`},
+		{"sql null (valid)", leaseNull.Eq(sql.NullString{String: "a", Valid: true}), `WHERE "nul" = 'a'`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := compileFor(t, dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+				return leaseTake(q).Where(c.where).DoNothing()
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(got.SQL, c.want) || len(got.Args) != 3 {
+				t.Fatalf("SQL %s (%d args), want %s and 3 args", got.SQL, len(got.Args), c.want)
+			}
+		})
 	}
 }
