@@ -40,8 +40,8 @@ func TestReleaseConfig(t *testing.T) {
 	if _, ok := w.On["pull_request"]; !ok {
 		t.Error("pr-title.yml must run on pull_request")
 	}
-	if !strings.Contains(stepUses(w), "amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50") {
-		t.Error("pr-title.yml must use the pinned semantic PR action")
+	if !strings.Contains(stepUses(w), "amannn/action-semantic-pull-request@v") {
+		t.Error("pr-title.yml must use the semantic PR action by version tag")
 	}
 	if _, err := os.Stat(filepath.Join(root, ".github", "workflows", "release-please.yml")); err != nil {
 		t.Error(err)
