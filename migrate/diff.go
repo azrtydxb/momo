@@ -521,7 +521,7 @@ func (d *differ) columns(fn, tn, fo, to *schema.Table, renameTo map[string]strin
 				continue
 			}
 		}
-		if v := volatileDefault(col.Default); v != "" {
+		if v := volatileDefault(col.Default); v != "" && d.d == dialect.Postgres {
 			d.hint(fmt.Sprintf("risk: %s.%s adds a column with the volatile default %s(); PostgreSQL rewrites the table under ACCESS EXCLUSIVE; add the column nullable, backfill in batches, then set the default", to.Name, c.Name, v))
 		}
 		d.emit(Change{Kind: AddColumn, Schema: to.Schema, Table: to.Name, Name: c.Name, After: cp(*col)})
@@ -949,12 +949,16 @@ func rewriteIdents(expr string, m map[string]string) string {
 	return sb.String()
 }
 
-// stagedSnapshot returns desired with every column that changes staged as
-// nullable (add_column or alter_column whose After is nullable while the
-// model says NOT NULL) recorded as nullable, so the next Diff sees the column
-// the way the database has it and can emit SET NOT NULL after the backfill.
-// desired is never modified; it is returned as is when nothing was staged.
-func stagedSnapshot(desired *schema.Schema, changes []Change) *schema.Schema {
+// stagedSnapshot returns desired with every still-staged column recorded as
+// nullable, the way the database has it, so a later Diff with
+// opts.EnforceNotNull can emit SET NOT NULL after the backfill. A column is
+// staged when this diff stages it (add_column or alter_column whose After is
+// nullable while the model says NOT NULL), or when from already has it
+// nullable, the model has it NOT NULL without a default and EnforceNotNull is
+// off: a diff that carries an earlier staged column along must not record it
+// as NOT NULL. desired is never modified; it is returned as is when nothing
+// is staged.
+func stagedSnapshot(desired, from *schema.Schema, changes []Change, opts DiffOptions) *schema.Schema {
 	type key struct{ schema, table, column string }
 	staged := map[key]bool{}
 	for _, c := range changes {
@@ -965,26 +969,40 @@ func stagedSnapshot(desired *schema.Schema, changes []Change) *schema.Schema {
 			staged[key{c.Schema, c.Table, c.Name}] = true
 		}
 	}
+	if !opts.EnforceNotNull && from != nil {
+		for _, t := range from.Tables {
+			for _, col := range t.Columns {
+				if col.Nullable {
+					staged[key{t.Schema, t.Name, col.Name}] = true
+				}
+			}
+		}
+	}
 	if len(staged) == 0 {
 		return desired
 	}
 	out := *desired
 	out.Tables = slices.Clone(desired.Tables)
+	changed := false
 	for i := range out.Tables {
 		t := &out.Tables[i]
 		var cols []schema.Column
 		for j, col := range t.Columns {
-			if col.Nullable || !staged[key{t.Schema, t.Name, col.Name}] {
+			if col.Nullable || !needsStaging(&col) || !staged[key{t.Schema, t.Name, col.Name}] {
 				continue
 			}
 			if cols == nil {
 				cols = slices.Clone(t.Columns)
 			}
 			cols[j].Nullable = true
+			changed = true
 		}
 		if cols != nil {
 			t.Columns = cols
 		}
+	}
+	if !changed {
+		return desired
 	}
 	return &out
 }

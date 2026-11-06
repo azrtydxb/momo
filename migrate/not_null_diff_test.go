@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -96,6 +97,23 @@ func TestVolatileDefaultOnNewTableDoesNotWarn(t *testing.T) {
 	_, hints, err := Diff(from, to, DiffOptions{})
 	if err != nil || hasHint(hints, "risk:") {
 		t.Fatalf("a new table has no rewrite: %v %v", hints, err)
+	}
+}
+
+func TestVolatileDefaultHintIsPostgresOnly(t *testing.T) {
+	for _, name := range []string{"sqlite", "mysql", "postgres"} {
+		from := base()
+		from.Dialect = dialect.Name(name)
+		to := base()
+		to.Dialect = dialect.Name(name)
+		to.Tables[0].Columns = append(to.Tables[0].Columns, schema.Column{Name: "x", Type: "text", Default: "random()"})
+		_, hints, err := Diff(from, to, DiffOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := hasHint(hints, "risk:"); got != (name == "postgres") {
+			t.Fatalf("%s: risk hint = %v, hints %v", name, got, hints)
+		}
 	}
 }
 

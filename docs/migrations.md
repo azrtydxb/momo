@@ -394,12 +394,27 @@ as a dropped column) is refused the same way; the message names
    The new snapshot records the column as nullable, like the database will
    have it, so `validate` and `status` agree after you apply.
 2. Apply, backfill in batches outside the migration.
-3. `diff <name> --enforce-not-null` emits
+3. Check the backfill: `SELECT count(*) FROM T WHERE C IS NULL` must return 0.
+4. `diff <name> --enforce-not-null` emits
    `ALTER TABLE T ALTER COLUMN C SET NOT NULL` and records `NOT NULL` in the
    snapshot. A plain `diff` (without the flag) is still refused, because only
    you know the backfill is done. Apply it. The statement scans the table
    under a lock; do it when the table is quiet or add a validated `CHECK`
    first by hand.
+
+Several columns can be staged in separate migrations before any backfill:
+each stays recorded as nullable until enforced, and one `--enforce-not-null`
+emits `SET NOT NULL` for all of them. The flag enforces every column that is
+nullable in the snapshot and `NOT NULL` without a default in the model, not
+only staged ones, so backfill all of them first. New `NOT NULL` columns stay
+refused.
+
+If NULLs remain, `apply` of the `SET NOT NULL` migration fails (exit 3). The
+migration is transactional, so it rolls back: the version is `rolled_back`
+(not dirty), `status` shows it as pending with the error, and nothing
+changed. Finish the backfill and run `apply` again. Only a hand-edited
+`-- momo:no-transaction` file can leave a dirty row; settle that with
+`momo migrate resolve --version V --applied` or `--rolled-back` (section 4).
 
 The same applies to an existing column made `NOT NULL`: `diff --stage` writes
 nothing (the snapshot already has the column nullable; the hint is only
@@ -412,7 +427,7 @@ A `NOT NULL` column with a default is not staged. A constant default is cheap
 on PostgreSQL 11 and later. A volatile default (`random()`,
 `clock_timestamp()`, `gen_random_uuid()`, `nextval(...)` and a few more
 well-known functions) rewrites the table under `ACCESS EXCLUSIVE`; `diff`
-prints a `risk:` hint for an `ADD COLUMN` with one on an existing table. It
+prints a `risk:` hint (PostgreSQL only) for an `ADD COLUMN` with one on an existing table. It
 only knows the built-in names it lists; a function you wrote yourself is not
 checked.
 

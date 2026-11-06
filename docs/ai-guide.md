@@ -401,7 +401,10 @@ momo migrate drift                      # live DB vs latest applied snapshot
   table under `ACCESS EXCLUSIVE` and fail on rows that do not cast.
 - A `NOT NULL` column without a default on a table that exists in the snapshot is
   refused (`ErrStagedRequired`). Give it a `default:`, or stage it: `diff --stage`,
-  apply, backfill, then `diff --enforce-not-null`.
+  apply, backfill, check `SELECT count(*) FROM t WHERE c IS NULL` is 0, then
+  `diff --enforce-not-null`. The flag enforces every nullable column the model
+  has as NOT NULL, not only staged ones; with NULLs left, `apply` fails (exit 3)
+  and rolls back cleanly (not dirty): backfill and `apply` again.
 - URL: `--url`, else `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
   Exit codes: 0 ok, 1 findings, 2 usage/config, 3 database/lock/execution error.
   An invalid migration name (`diff Bad-Name`) exits 3, not 2.
@@ -1185,8 +1188,9 @@ Examples: every `examples/*/example_test.go`, harness
     tables.
 19. Migrations: `diff`, review SQL, commit all files, `apply`. Never edit an
     applied migration; undo with a new one. No rollback exists.
-20. NOT NULL additions without a default: `diff --stage`, apply, backfill, then
-    `diff --enforce-not-null` (or give the column a default).
+20. NOT NULL additions without a default: `diff --stage`, apply, backfill, check
+    no NULLs remain, then `diff --enforce-not-null` (or give the column a
+    default).
 21. Don't rely on `Concurrently()` or `-- momo:destructive`; hand-edit large-table
     index builds into their own `-- momo:no-transaction` migration.
 22. CI must run `momo generate --check`, `momo migrate validate` and the

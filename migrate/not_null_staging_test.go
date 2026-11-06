@@ -150,6 +150,55 @@ func TestStagedExistingColumnIsEnforcedByTheNextDiff(t *testing.T) {
 	}
 }
 
+// Two columns staged in two different migrations, with no backfill between
+// them, are both enforced by one --enforce-not-null.
+func TestStagedColumnsCarriedThroughALaterStageDiff(t *testing.T) {
+	ctx := context.Background()
+	files := initFiles(t)
+
+	d2 := docsSchema()
+	d2.Tables[0].Columns = append(d2.Tables[0].Columns, schema.Column{Name: "tenant", Type: "BIGINT"})
+	e2 := offlineEngine(t, mapFS(files), time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC))
+	m2, err := e2.Diff(ctx, d2, "add_tenant", migrate.DiffOptions{Stage: true})
+	if err != nil || m2 == nil {
+		t.Fatal(m2, err)
+	}
+
+	d3 := docsSchema()
+	d3.Tables[0].Columns = append(d3.Tables[0].Columns,
+		schema.Column{Name: "tenant", Type: "BIGINT"}, schema.Column{Name: "region", Type: "TEXT"})
+	e3 := offlineEngine(t, withMigrations(files, m2), time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC))
+	m3, err := e3.Diff(ctx, d3, "add_region", migrate.DiffOptions{Stage: true})
+	if err != nil || m3 == nil {
+		t.Fatal(m3, err)
+	}
+	snap3 := snapshotOf(t, m3)
+	for _, c := range []string{"tenant", "region"} {
+		if col := findColumn(snap3, "docs", c); col == nil || !col.Nullable {
+			t.Fatalf("%s is still nullable in the database, the snapshot must say so: %+v", c, col)
+		}
+	}
+
+	e4 := offlineEngine(t, withMigrations(files, m2, m3), time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC))
+	m4, err := e4.Diff(ctx, d3, "enforce", migrate.DiffOptions{EnforceNotNull: true})
+	if err != nil || m4 == nil {
+		t.Fatalf("enforce: %v %v", m4, err)
+	}
+	for _, c := range []string{"tenant", "region"} {
+		if !strings.Contains(upOf(m4), `"`+c+`" SET NOT NULL`) {
+			t.Fatalf("enforce must emit SET NOT NULL for %s:\n%s", c, upOf(m4))
+		}
+		if col := findColumn(snapshotOf(t, m4), "docs", c); col == nil || col.Nullable {
+			t.Fatalf("%s must be NOT NULL after enforce: %+v", c, col)
+		}
+	}
+
+	e5 := offlineEngine(t, withMigrations(files, m2, m3, m4), time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC))
+	if m5, err := e5.Diff(ctx, d3, "noop", migrate.DiffOptions{}); err != nil || m5 != nil {
+		t.Fatalf("after enforce diff must report no changes: %v %v", m5, err)
+	}
+}
+
 func TestEnforceNotNullDoesNotAuthorizeNewColumns(t *testing.T) {
 	ctx := context.Background()
 	desired := docsSchema()

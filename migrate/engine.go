@@ -657,7 +657,7 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 		return nil, err
 	}
 	m := &Migration{Version: version, Name: name, Kind: "sql", Parent: parent, Up: stmts, Changes: ordered, Snapshot: &to, Hints: hints}
-	m.Snapshot = stagedSnapshot(&to, changes)
+	m.Snapshot = stagedSnapshot(&to, from, changes, opts)
 	for _, c := range ordered {
 		m.Destructive = m.Destructive || c.Destructive
 	}

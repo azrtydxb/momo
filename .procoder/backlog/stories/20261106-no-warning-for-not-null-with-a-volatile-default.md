@@ -23,4 +23,5 @@ Expected: diff flags volatile defaults on ADD COLUMN as a table rewrite risk.
 
 - TestVolatileDefaultOnAddColumnWarns: random(), clock_timestamp(), gen_random_uuid() (any case or spacing), nested calls and nextval produce a risk hint naming ACCESS EXCLUSIVE; TestVolatileDefaultOnNewTableDoesNotWarn: a new table does not.
 - TestConstantDefaultOnAddColumnDoesNotWarn: '', 0, now(), current_timestamp, a quoted 'random()' literal, coalesce(1, 2) and false produce no hint.
-- Mutation: disabling volatileDefault makes TestVolatileDefaultOnAddColumnWarns fail.
+- TestVolatileDefaultHintIsPostgresOnly: SQLite and MySQL diffs get no risk hint; PostgreSQL does.
+- Mutation: disabling volatileDefault makes TestVolatileDefaultOnAddColumnWarns fail; removing the dialect gate makes TestVolatileDefaultHintIsPostgresOnly fail.
