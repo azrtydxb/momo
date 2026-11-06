@@ -53,8 +53,8 @@ func LoadOrderBy[C any](items ...Orderable) LoadOption[C] {
 // share a rank and cannot use up the limit; without a child primary key
 // (Relation.ChildPK empty) it ranks with ROW_NUMBER, so duplicated join rows
 // each take a rank and can count against the limit before duplicates collapse.
-// Window functions need
-// PostgreSQL, MySQL 8 / MariaDB 10.2 or SQLite 3.25 and later.
+// Window functions need PostgreSQL, MySQL 8 / MariaDB 10.2 or SQLite 3.25 and
+// later.
 func LoadPerParentLimit[C any](n int) LoadOption[C] {
 	return func(c *loadConfig) { c.perParentLimit = n }
 }
