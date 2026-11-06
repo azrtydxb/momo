@@ -1,6 +1,6 @@
 # What a human decided
 
-Written 2026-11-06 12:59 UTC. procoder reads this
+Written 2026-11-06 18:03 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
 
@@ -174,6 +174,19 @@ Answer: Build first-party GraphQL, gRPC and OpenAPI generators, plus generator p
 Key: extra-scope
 
 Answer: All 17 suggested gaps added to the spec (S-24..S-40).
+
+## [decision] decisions.md
+
+Key: fa42793ba699
+Question: Open the docs and examples PR (sprint-2 into main)
+
+- Open the PR "docs: guides, capability matrix and runnable examples" from sprint-2 into main with the drafted body; ask again before merging (recommended)
+- Open it as a draft PR first
+- Do not open it yet
+
+Decision (2026-11-06): open the PR from sprint-2 into main with the drafted title and body; ask again before merging.
+
+Answer: Open the PR (user, AskUserQuestion 2026-11-06): open sprint-2 into main with the drafted title and body; ask again before merging.
 
 ## (no longer asked)
 

@@ -62,3 +62,11 @@ Decision (2026-11-06): squash-merge PR #5 now; keep sprint-2 as the working bran
 - Do not release yet
 
 Decision (2026-11-06): fix the changelog (PG + pgvector only note, reword the MySQL line), run the pre-tag check, merge PR #3 to tag v0.1.0, then remove release-as.
+
+## Open the docs and examples PR (sprint-2 into main)
+
+- Open the PR "docs: guides, capability matrix and runnable examples" from sprint-2 into main with the drafted body; ask again before merging (recommended)
+- Open it as a draft PR first
+- Do not open it yet
+
+Decision (2026-11-06): open the PR from sprint-2 into main with the drafted title and body; ask again before merging.
