@@ -132,6 +132,22 @@ func (c Column[T]) SetDefault() Assignment { return Assignment{col: c.name, kind
 // (ON CONFLICT ... DO UPDATE SET col = excluded.col).
 func (c Column[T]) SetExcluded() Assignment { return Assignment{col: c.name, kind: setExcluded} }
 
+// Excluded is the value proposed for insertion in an upsert, rendered as
+// EXCLUDED.<col>. Use it on the right-hand side of a comparison in the
+// DO UPDATE WHERE or ON CONFLICT predicates, for example
+// until.LtExpr(until.Excluded()). It is only meaningful inside an ON CONFLICT
+// clause; the database rejects it elsewhere.
+func (c Column[T]) Excluded() Expression[T] { return excludedExpr[T]{c.name} }
+
+// excludedExpr renders EXCLUDED.<name>.
+type excludedExpr[T any] struct{ name string }
+
+func (e excludedExpr[T]) AppendSQL(b *Builder) {
+	b.WriteString("EXCLUDED.")
+	b.Ident(e.name)
+}
+func (excludedExpr[T]) resultType() T { var z T; return z }
+
 // NullColumn is the descriptor for a nullable column. It adds SetNull.
 type NullColumn[T any] struct{ Column[T] }
 
