@@ -52,7 +52,10 @@ type selectCore struct {
 	indexedBy   string
 	withDeleted bool
 	onlyDeleted bool
-	err         error
+	// keysOnly marks an internal key-set subquery (relation traversal) whose
+	// select list is not the model's column list, so the arity check is skipped.
+	keysOnly bool
+	err      error
 }
 
 // SelectQuery builds and runs a SELECT whose rows scan into T.
@@ -435,7 +438,7 @@ func (sq SelectQuery[T]) renderBody(b *Builder) {
 			b.QualifiedIdent(q, c.Name)
 		}
 	} else {
-		if len(s.cols) != len(sq.meta.Columns) {
+		if len(s.cols) != len(sq.meta.Columns) && !s.keysOnly {
 			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("select list has %d expressions but result type maps %d fields", len(s.cols), len(sq.meta.Columns))})
 			return
 		}

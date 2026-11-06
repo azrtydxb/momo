@@ -3948,6 +3948,8 @@ Remove the two placeholder `var _` lines in step 3 before running the build; the
 
 - [ ] **Step 5: Commit** — `git add relpred.go relpred_test.go select_meta.go && git commit -m "feat(relations): EXISTS predicates, traversal and relation-count ordering"`.
 
+Reconciliation note (2026-11-06): the shipped `relpred.go` differs from the draft above. `selectFrom` takes the child `TableRef` as a third argument and sets it as FROM (the draft left FROM empty). The correlated subquery renders inside `Builder.withScope([momo_r, momo_j])`, so a scope predicate that names another table fails the build instead of silently correlating. Scope predicates are wrapped in parentheses, so an `Or` scope cannot escape the correlation. The child's soft-delete marker and a polymorphic discriminator are applied inside `Has`, `HasNo` and `CountOrder`, and `From` also applies the discriminator. `From` builds the parent key subquery with an internal `selectCore.keysOnly` flag that skips the "select list matches model fields" arity check, because the key list is not the model's column list; `From` on a many-to-many relation returns a query that fails with `ErrValidation` (the traversal needs a join table, which `tupleInSubquery` does not model). `tupleInSubquery` writes the same `(cols) IN (subquery)` on every dialect, since `Subquery.AppendSQL` already adds the parentheses. The plan's test used an undefined `ids(...)` helper; it is `docIDs(...)`. Extra tests: `TestRelationPredicateShapes` (self-reference with `HasFrom`, composite key, polymorphic discriminator, composite traversal), count ordering ascending, `HasNo` and many-to-many SQL shape.
+
 ---
 
 ## Task 17: Association helpers Link, Unlink, Replace and Count
