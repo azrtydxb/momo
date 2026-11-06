@@ -86,7 +86,8 @@ func (d *sfDB) query(sql string) (momo.Rows, error) {
 		return &sfRows{rows: [][]any{{"public"}}}, nil
 	case strings.Contains(sql, "WHERE status = 'meta'"):
 		if !d.tableExists {
-			return nil, sfSQLState("42P01")
+			// Like pgx, report the missing table when the rows are read.
+			return &sfRows{err: sfSQLState("42P01")}, nil
 		}
 		f := d.metaFormat
 		if f == "" {
@@ -192,10 +193,11 @@ func (t *sfTx) Rollback(ctx context.Context) error {
 type sfRows struct {
 	rows [][]any
 	i    int
+	err  error
 }
 
 func (r *sfRows) Next() bool { r.i++; return r.i <= len(r.rows) }
-func (r *sfRows) Err() error { return nil }
+func (r *sfRows) Err() error { return r.err }
 func (r *sfRows) Close() error {
 	return nil
 }
