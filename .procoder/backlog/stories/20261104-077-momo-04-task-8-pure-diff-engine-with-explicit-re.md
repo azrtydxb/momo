@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
+Sprint: -
+Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Criterion [S-74] TestFKActions on every dialect and no-constraint option absent from inspection is unchecked: TestFKActions covers only the diff part. Also staged NOT NULL is never enforced after diff --stage (bug story 20261106-staged-not-null-is-never-enforced-after-diff-stage).
 
 ## Description
 
