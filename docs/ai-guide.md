@@ -945,7 +945,7 @@ hits, err := momo.Select[models.Hit](q). // projection with Title string, Distan
 	Columns(item.Title, distance).
 	Where(item.Category.Eq("news")).
 	// if Item is soft-deletable (a projection skips the soft-delete filter): Where(item.DeletedAt.IsNull()).
-	OrderBy(distance.Asc(), item.ID.Asc()). // PK last: ties return in unspecified order otherwise
+	OrderBy(distance.Asc()). // distance only: see the tie-break note below
 	Limit(10).
 	All(ctx)
 
@@ -965,6 +965,11 @@ items, err := momo.Select[models.Item](q).
 - Vector columns have no `Lt/Le/Gt/Ge/Between`; use a distance builder.
 - Passing a dense vector to a bit builder (or the reverse) does not compile.
 - `Where` only narrows candidates; it never reorders.
+- Order a vector search by the distance alone. Adding a tie-break key such as
+  `item.ID.Asc()` makes PostgreSQL sort on top of the index scan, and on some
+  versions (seen on PostgreSQL 16) the planner then skips the HNSW or IVFFlat
+  index entirely. Order among equal distances is unspecified. Check the plan
+  with `Explain` (see [vector-search](../examples/vector-search/)).
 
 Search settings (transaction-scoped; revert at commit or rollback; safe behind
 PgBouncer):
