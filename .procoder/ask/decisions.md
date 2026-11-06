@@ -96,3 +96,11 @@ User direction (2026-11-06): "get it build and released, use more agents if need
 - Switch Momo to SHA pins and change the repocheck tests
 
 Decision (2026-11-06): keep version tags (azrtydxb CI standard); SHA pins reverted; Scout finding IGNORED with the standard as the reason.
+
+## Dependabot PR #2 (pgx 5.11.0 -> 5.12.0)
+
+- Rebase onto current main, re-run CI, squash-merge when green (recommended)
+- Leave it open
+- Close it
+
+Decision (2026-11-07): rebase via @dependabot, squash-merge once the full CI matrix is green.
