@@ -66,14 +66,6 @@ func TestNestedLoadDepthAndSharedChildren(t *testing.T) {
 	})
 }
 
-func commentIDs(cs []models.Comment) []int64 {
-	out := []int64{}
-	for _, c := range cs {
-		out = append(out, c.ID)
-	}
-	return out
-}
-
 // TestNestedLoadFilterAtLeaf checks that a filter on the nested level does not
 // leak to the level above: the unfiltered top-level comments keep the
 // unapproved row, while the nested scope drops it.
