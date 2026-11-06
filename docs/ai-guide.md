@@ -689,7 +689,10 @@ res, err := momo.Insert[models.Lock](q).
 - `OnConflict(cols...).Where(preds...)` renders `ON CONFLICT (cols) WHERE ...` for a
   partial unique index (unqualified columns); PostgreSQL rejects the statement
   without it. It needs target columns (`ErrValidation` otherwise). Multiple `Where`
-  calls AND. MySQL: both are `ErrUnsupported`.
+  calls AND. MySQL: both are `ErrUnsupported`. Do not use `Excluded()` in the
+  target predicate; PostgreSQL rejects it.
+- SQLite matches the target predicate against the index text, so a bound value
+  never matches: write it as raw SQL, for example `momo.SQL("live = 1")`.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
   Explicit identity values do not advance the sequence: `setval` it yourself.
 

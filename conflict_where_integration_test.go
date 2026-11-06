@@ -13,6 +13,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func createJobsLock(t *testing.T, db *momo.DB, extra ...string) {
@@ -138,17 +139,30 @@ func TestConflictWherePartialIndexTarget(t *testing.T) {
 			t.Fatal(err)
 		}
 		// A second live row for the same holder conflicts on the partial index.
-		r, err := ins("two").Where(leaseLive.Eq(true)).DoUpdate(leaseUntil.SetExcluded()).Exec(ctx)
+		later := t0.Add(time.Hour)
+		r, err := momo.Insert[Lease](db).
+			Values(leaseName.Set("two"), leaseHolder.Set("H"), leaseUntil.Set(later), leaseLive.Set(true)).
+			OnConflict(leaseHolder).Where(leaseLive.Eq(true)).
+			DoUpdate(leaseUntil.SetExcluded()).Exec(ctx)
 		if err != nil || r.RowsAffected != 1 {
 			t.Fatalf("partial target upsert: rows=%d err=%v", r.RowsAffected, err)
+		}
+		// The conflict updated row "one" in place; no row "two" was inserted.
+		if n, err := momo.Select[Lease](db).Count(ctx); err != nil || n != 1 {
+			t.Fatalf("rows after partial target upsert: n=%d err=%v, want 1", n, err)
+		}
+		one, err := momo.Select[Lease](db).Where(leaseName.Eq("one")).One(ctx)
+		if err != nil || !one.Until.Equal(later) {
+			t.Fatalf("row one until=%v err=%v, want %v", one.Until, err, later)
 		}
 		// Without the target WHERE PostgreSQL cannot infer the partial index.
 		_, err = ins("three").DoNothing().Exec(ctx)
 		if err == nil {
 			t.Fatal("expected PostgreSQL to reject the target without its WHERE")
 		}
-		if errors.Is(err, momo.ErrValidation) {
-			t.Fatalf("rejection must come from the database, got %v", err)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "42P10" {
+			t.Fatalf("want SQLSTATE 42P10 (no matching unique index) from the database, got %v", err)
 		}
 	})
 }
