@@ -5,6 +5,7 @@ package momo_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -24,6 +25,7 @@ type graphDriver struct {
 	begins  int
 	inserts map[string]int // INSERT statements by table
 	nextID  int64
+	drop    int // rows left out of each comments RETURNING result, like a skipping trigger
 }
 
 func newGraphDriver(d dialect.Name) *graphDriver {
@@ -38,15 +40,17 @@ func (g *graphDriver) script(sql string, args []any) {
 	switch {
 	case strings.Contains(sql, `"comments"`):
 		g.inserts["comments"]++
+		// Echo the bound document_id and body, so a key that was not written
+		// before the insert shows up in the children.
 		rows := make([][]any, 0, len(args)/4)
-		for range len(args) / 4 {
+		for i := range len(args) / 4 {
 			g.nextID++
-			rows = append(rows, []any{g.nextID, int64(10), "b", true})
+			rows = append(rows, []any{g.nextID, args[i*4+1], args[i*4+2], args[i*4+3]})
 		}
-		g.Driver.SetRows(rows)
+		g.Driver.SetRows(rows[:len(rows)-g.drop])
 	case strings.Contains(sql, `"documents"`):
 		g.inserts["documents"]++
-		g.Driver.SetRows([][]any{{int64(10), nil, "t"}})
+		g.Driver.SetRows([][]any{{args[0], nil, args[2]}})
 	default:
 		g.Driver.SetRows(nil)
 	}
@@ -83,7 +87,7 @@ func TestCreateGraphInsertsChildrenInBulk(t *testing.T) {
 		db := momo.New(g)
 		doc := &models.Document{ID: 10, Title: "t", Comments: make([]models.Comment, tc.children)}
 		for i := range doc.Comments {
-			doc.Comments[i].Body = "b"
+			doc.Comments[i].Body = "b" + strconv.Itoa(i)
 		}
 		if err := momo.CreateGraph(context.Background(), db, doc, document.Comments.Include()); err != nil {
 			t.Fatalf("%d children: %v", tc.children, err)
@@ -95,10 +99,28 @@ func TestCreateGraphInsertsChildrenInBulk(t *testing.T) {
 			t.Fatalf("documents inserts: %d", g.inserts["documents"])
 		}
 		for i, c := range doc.Comments {
-			if c.ID != int64(i+1) || c.DocumentID != 10 {
-				t.Fatalf("child %d: id=%d document=%d; keys must be written and read back in order", i, c.ID, c.DocumentID)
+			if c.ID != int64(i+1) || c.DocumentID != 10 || c.Body != "b"+strconv.Itoa(i) {
+				t.Fatalf("child %d: id=%d document=%d body=%q; keys must be written before the insert and read back in order", i, c.ID, c.DocumentID, c.Body)
 			}
 		}
+	}
+}
+
+// TestCreateGraphRejectsMissingReturnedRows checks that children are matched to
+// the returned rows in insertion order and that fewer rows than children is an
+// error: a skipped row (a BEFORE INSERT trigger) would otherwise leave the tail
+// children with key 0, and Link would write join rows for them.
+func TestCreateGraphRejectsMissingReturnedRows(t *testing.T) {
+	g := newGraphDriver(dialect.SQLite)
+	g.drop = 1
+	db := momo.New(g)
+	doc := &models.Document{ID: 10, Title: "t", Comments: []models.Comment{{Body: "a"}, {Body: "b"}, {Body: "c"}}}
+	err := momo.CreateGraph(context.Background(), db, doc, document.Comments.Include())
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("want ErrValidation for a short RETURNING result, got %v", err)
+	}
+	if g.Rollbacks() == 0 || g.Commits() != 0 {
+		t.Fatalf("the graph must be rolled back: rollbacks=%d commits=%d", g.Rollbacks(), g.Commits())
 	}
 }
 

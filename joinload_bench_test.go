@@ -96,6 +96,44 @@ func TestJoinBinderNullColumnIsNamed(t *testing.T) {
 	}
 }
 
+// TestJoinBinderResetsScratchBetweenRows checks that nothing of row 1 leaks into
+// row 2: a nullable pointer field row 1 set must be nil in row 2 when the driver
+// leaves it untouched, and row 1's child keeps its own value.
+func TestJoinBinderResetsScratchBetweenRows(t *testing.T) {
+	j := joinedLoader[jbParent, jbChild]{jbRel}
+	bind := j.joinBinder()
+	dst := make([]any, j.joinWidth())
+
+	var p1, p2 jbParent
+	bind.bind(dst)
+	fillScan(dst) // sets Note (column 2)
+	if err := bind.assign(&p1); err != nil {
+		t.Fatal(err)
+	}
+	if p1.Child.Note == nil {
+		t.Fatal("row 1 must have a Note")
+	}
+
+	bind.bind(dst)
+	for i, d := range dst {
+		if i == 2 {
+			continue // NULL: the driver writes nothing
+		}
+		one := make([]any, 1)
+		one[0] = d
+		fillScan(one)
+	}
+	if err := bind.assign(&p2); err != nil {
+		t.Fatal(err)
+	}
+	if p2.Child.Note != nil {
+		t.Fatalf("row 2 inherited row 1's Note: %v", *p2.Child.Note)
+	}
+	if p1.Child.Note == nil {
+		t.Fatal("row 1's Note was changed by row 2")
+	}
+}
+
 // TestJoinBinderRowsDoNotShare checks that consecutive rows scanned through
 // one binder yield independent children: no shared struct and no shared
 // pointee behind a nullable field.

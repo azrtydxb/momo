@@ -5,6 +5,7 @@ package momo
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 // Graph writes are explicit and opt-in. CreateGraph writes a parent and the
@@ -139,6 +140,12 @@ func (r Relation[P, C]) insertChildren(ctx context.Context, tx *Tx, p *P, cs []*
 // associate children that already exist, use Relation.Link (or insert them
 // first and Link them) instead of listing the relation here.
 //
+// A bulk insert returns its rows in insertion order, and CreateGraph matches
+// them to the children by position. If the database returns a different number
+// of rows than were inserted (for example a BEFORE INSERT trigger skipped one),
+// the graph fails with ErrValidation and is undone, rather than leaving the
+// remaining children without their generated keys.
+//
 // On a *DB the graph runs in a new transaction; on a *Tx it runs in a
 // savepoint, so a failure undoes the whole graph and leaves the caller's
 // transaction usable (a dialect without savepoints returns ErrUnsupported).
@@ -215,7 +222,16 @@ func insertModels[T any](ctx context.Context, q Querier, meta *Meta[T], ms []T) 
 		_ = rows.Close()
 		return err
 	}
-	return rows.Close()
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if n != len(ms) {
+		// A trigger that skips a row would leave the tail children without
+		// their generated keys; do not report success.
+		return &Error{Kind: ErrValidation, Op: "insert", Table: meta.Table,
+			Err: fmt.Errorf("bulk insert returned %d rows for %d inserted models", n, len(ms))}
+	}
+	return nil
 }
 
 // runInsert executes iq (which holds exactly the model m). With RETURNING it
@@ -258,14 +274,19 @@ func runInsert[T any](ctx context.Context, q Querier, iq InsertQuery[T], m *T) (
 // relation fields are reset (the row is loaded as a plain model).
 //
 // A soft-deleted row does not count as found: FindOrCreate never returns or
-// restores a row the application deleted. The insert is attempted, and because
-// the unique constraint on key still holds the soft-deleted row's key, the
-// insert conflicts and the call fails with ErrUniqueViolation (Op "find or
-// create") instead of returning the deleted row. It creates a new row only when
-// no stored row, deleted or not, holds the key, so a soft-deleted match is an
-// error rather than a surprise resurrection. To reuse the old row, restore it
-// first (update the soft-delete marker back) or pick a new key. A model
-// without a soft-delete column is unaffected.
+// restores a row the application deleted. The insert is attempted. When the
+// unique constraint on key covers soft-deleted rows (a plain unique constraint
+// or index, the case FindOrCreate supports), it still holds the deleted row's
+// key, the insert conflicts and the call fails with ErrUniqueViolation (Op
+// "find or create") instead of returning the deleted row: a soft-deleted match
+// is an error, not a surprise resurrection. To reuse the old row, restore it
+// first (update the soft-delete marker back) or pick a new key. A partial
+// unique index (WHERE deleted_at IS NULL) would let the new row in, but
+// FindOrCreate cannot target it: ON CONFLICT (key) without the index predicate
+// does not match a partial index and the database rejects the statement. For a
+// key that soft-deleted rows may release, use Insert with OnConflict(key).Where
+// (the index predicate).DoNothing and re-select yourself. A model without a
+// soft-delete column is unaffected.
 //
 // Under READ COMMITTED the conflicting insert waits for a concurrent
 // transaction and the re-select then sees its row. Under REPEATABLE READ or

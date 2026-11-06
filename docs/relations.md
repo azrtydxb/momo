@@ -244,6 +244,12 @@ err := momo.LoadAll(ctx, db, documents,
 )
 ```
 
+- API note: `Relation.Scope` and `Relation.Then` used to return `Loader[P]`
+  and now return `RelationLoader[P, C]`, which implements `Loader[P]`. Passing
+  them to `Load`, `LoadAll`, `Preload` or `Then`, or assigning them to a
+  `Loader[P]`, compiles unchanged. Only code that declares a variable with the
+  inferred type and then assigns a different loader to it needs a
+  `var l momo.Loader[P]` declaration.
 - `Scope(...).Then(...)` and `Then(...).Scope(...)` are the same loader. Calling
   either more than once accumulates: predicates AND together, order items
   append, a later `LoadPerParentLimit` replaces an earlier one, nested loaders
@@ -513,6 +519,10 @@ err := momo.CreateGraph(ctx, db, &doc,
 - Has-many and many-to-many children are inserted with the chunked bulk insert:
   one multi-row statement per bind-limit chunk, so 1000 children cost one
   statement, not 1000. A has-one or belongs-to child is a single insert.
+- The bulk insert's `RETURNING` rows are matched to the children in insertion
+  order. If the database returns fewer or more rows than were inserted (a
+  `BEFORE INSERT` trigger that skips a row, say), the graph fails with
+  `ErrValidation` and is undone instead of leaving children without keys.
 - A dialect without `RETURNING` (MySQL) returns `ErrUnsupported` before a
   transaction is opened.
 - On a `*DB` the graph runs in a new transaction. On a `*Tx` it runs in a
@@ -542,8 +552,14 @@ inserted it.
   row you deleted, and it does not create a second row with the same key: the
   unique constraint still holds the soft-deleted row's key, so the insert
   conflicts and the call fails with `ErrUniqueViolation` (the deleted row is
-  left untouched, and your model is not overwritten). To reuse the row, restore
-  it first; to create a new one, use a different key. A model without a
+  left untouched, and your model is not overwritten). This holds when the
+  unique constraint covers soft-deleted rows, the case `FindOrCreate`
+  supports. A partial unique index (`WHERE deleted_at IS NULL`) would let a new
+  row in, but `FindOrCreate` cannot target it: its `ON CONFLICT (key)` has no
+  index predicate, so the database rejects the statement. For keys that
+  soft-deleted rows release, use `Insert` with `OnConflict(key).Where(...)`
+  and `DoNothing`, then re-select. To reuse the old row, restore it first; to
+  create a new one, use a different key. A model without a
   soft-delete column is unaffected. This is the least surprising choice:
   returning the deleted row would hand back data the application removed, and
   restoring it would undo a delete silently.

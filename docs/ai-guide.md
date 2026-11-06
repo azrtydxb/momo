@@ -652,8 +652,11 @@ dead, _ := momo.Select[models.Task](q).OnlyDeleted().All(ctx)
   `momo.Exec`, `momo.Scalars`) or to projections (see "Projections" in section
   4): add `deleted_at IS NULL` / `<table>.DeletedAt.IsNull()` yourself.
 - A soft-deleted row still occupies its unique keys. `FindOrCreate` does not
-  treat it as found: the insert conflicts and it returns `ErrUniqueViolation`
-  (it never returns or restores the deleted row). Use partial unique indexes (`Where("deleted_at IS NULL")`) if
+  treat it as found: with a unique constraint that covers deleted rows the
+  insert conflicts and it returns `ErrUniqueViolation` (it never returns or
+  restores the deleted row). A partial unique index would release the key, but
+  `FindOrCreate` cannot target one (its `ON CONFLICT (key)` has no predicate;
+  use `Insert` + `OnConflict(key).Where(...)`). Use partial unique indexes (`Where("deleted_at IS NULL")`) if
   keys must be reusable.
 - `Delete.Model(&m)` deletes by primary key (`ErrNotFound` if missing).
 
