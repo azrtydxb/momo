@@ -1,6 +1,6 @@
 # momo-06 Task 12: Top-N per parent with a window function
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-04
 Epic: momo-06-relations
 Sprint: 002-generator-from-go-structs-with-its-type-prerequisites
