@@ -1,6 +1,6 @@
 # What a human decided
 
-Written 2026-11-06 12:32 UTC. procoder reads this
+Written 2026-11-06 12:59 UTC. procoder reads this
 file to avoid asking a question twice; edit an answer here to change what
 it believes. Reword the question and it will be asked again.
 
@@ -79,6 +79,19 @@ Answer: Push init to azrtydxb/momo and open a PR into main so CI runs; start spr
 Key: build-priority
 
 Answer: PostgreSQL and pgvector are built first (M1 end to end), then SQLite+sqlite-vec parity (M2), MySQL/MariaDB (M3), then ecosystem, adoption, performance, docs site (M4).
+
+## [decision] decisions.md
+
+Key: cff978ecc3dc
+Question: Release v0.1.0 (merge release-please PR #3)
+
+- Edit PR #3's CHANGELOG to add a "PostgreSQL + pgvector only; SQLite and MySQL are not usable yet" note and reword the MySQL dialect line, run the pre-tag release check, then merge PR #3 so release-please tags v0.1.0, and remove release-as afterwards (recommended)
+- Merge PR #3 as generated, then remove release-as
+- Do not release yet
+
+Decision (2026-11-06): fix the changelog (PG + pgvector only note, reword the MySQL line), run the pre-tag check, merge PR #3 to tag v0.1.0, then remove release-as.
+
+Answer: Fix changelog, then release (user, AskUserQuestion 2026-11-06): changelog scoped to PostgreSQL + pgvector; PR #3 merged; v0.1.0 tagged by release-please; release-as removed.
 
 ## (no longer asked)
 

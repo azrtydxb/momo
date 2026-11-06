@@ -1,6 +1,6 @@
 # Questions procoder cannot answer for you
 
-Written 2026-11-06 12:32 UTC.
+Written 2026-11-06 12:59 UTC.
 
 Answer each one by writing a line beginning `Answer: ` under it, then
 hand the file back with `procoder ask --file .procoder/ask/QA.md`.
@@ -8,13 +8,13 @@ Leave the `Key:` lines alone — they are what ties an answer to its question.
 
 ## Q1: [decision] decisions.md
 
-Key: 506a3307210c
-Question: Squash-merge PR #5 into main
+Key: cff978ecc3dc
+Question: Release v0.1.0 (merge release-please PR #3)
 
-- Squash-merge PR #5 now, delete the remote sprint-2 branch afterwards only if you want sprint-2 retired, then check that release-please's PR #3 shows 0.1.0 (recommended)
-- Wait for a human review first
-- Do not merge yet
+- Edit PR #3's CHANGELOG to add a "PostgreSQL + pgvector only; SQLite and MySQL are not usable yet" note and reword the MySQL dialect line, run the pre-tag release check, then merge PR #3 so release-please tags v0.1.0, and remove release-as afterwards (recommended)
+- Merge PR #3 as generated, then remove release-as
+- Do not release yet
 
-Decision (2026-11-06): squash-merge PR #5 now; keep sprint-2 as the working branch; check release-please PR #3 before tagging.
+Decision (2026-11-06): fix the changelog (PG + pgvector only note, reword the MySQL line), run the pre-tag check, merge PR #3 to tag v0.1.0, then remove release-as.
 
-Answer: Squash-merge now (user, AskUserQuestion 2026-11-06): merged as c744711; sprint-2 kept and reset onto main.
+Answer: Fix changelog, then release (user, AskUserQuestion 2026-11-06): changelog scoped to PostgreSQL + pgvector; PR #3 merged; v0.1.0 tagged by release-please; release-as removed.
