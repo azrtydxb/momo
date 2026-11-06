@@ -123,6 +123,7 @@ func (pd *pending[P, C]) runQueries(ctx context.Context, q Querier) error {
 // NULL or matches no requested parent are dropped.
 func (pd *pending[P, C]) consume(rows Rows) error {
 	defer func() { _ = rows.Close() }()
+	dedupe := pd.r.Through != nil && pd.dedupeJoin()
 	for rows.Next() {
 		var c C
 		var key []any
@@ -142,21 +143,20 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 				continue
 			}
 			key = holders
-			if m := pd.r.ChildMeta; pd.dedupeJoin() {
-				{
-					pk := make([]any, len(m.PK))
-					for i, ci := range m.PK {
-						pk[i] = m.Value(&c, ci)
-					}
-					id := keyString(holders) + "\x00" + keyString(pk)
-					if _, dup := pd.seen[id]; dup {
-						continue // duplicated join row: one child per (parent, child) pair
-					}
-					if pd.seen == nil {
-						pd.seen = map[string]struct{}{}
-					}
-					pd.seen[id] = struct{}{}
+			if dedupe {
+				m := pd.r.ChildMeta
+				pk := make([]any, len(m.PK))
+				for i, ci := range m.PK {
+					pk[i] = m.Value(&c, ci)
 				}
+				id := keyString(holders) + "\x00" + keyString(pk)
+				if _, dup := pd.seen[id]; dup {
+					continue // duplicated join row: one child per (parent, child) pair
+				}
+				if pd.seen == nil {
+					pd.seen = map[string]struct{}{}
+				}
+				pd.seen[id] = struct{}{}
 			}
 		} else {
 			if err := scanChild(pd.r, rows, &c); err != nil {
