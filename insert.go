@@ -197,7 +197,8 @@ func (q InsertQuery[T]) OnConflict(cols ...ColumnRef) ConflictQuery[T] {
 // integer, finite float and string values (after Value()) can be inlined;
 // any other value fails with ErrValidation. SQLite compares the literal
 // text with the index, so write index literals as Momo renders them:
-// integers as 2, floats in plain decimal with .0 for whole numbers (2.0);
+// integers as 2, floats in plain decimal with .0 for whole numbers (2.0) for magnitudes from
+// 1e-6 up to 1e21, and exponent form (1e-07, 1e+21) outside that range;
 // otherwise use momo.SQL. Excluded() in the predicate
 // fails with ErrValidation. MySQL has no ON CONFLICT and fails with
 // ErrUnsupported.
