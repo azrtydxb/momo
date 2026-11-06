@@ -2,10 +2,12 @@
 
 ## 0.1.0 (2026-11-06)
 
+First release. Supported backend: PostgreSQL with pgvector (pgx driver), including PgBouncer. SQLite and MySQL are not usable yet; only their dialect metadata exists.
+
 
 ### Features
 
-* **dialect:** add MySQL flavours and the full capability set ([d19c341](https://github.com/azrtydxb/momo/commit/d19c34165c2d286c969d431430c9eb65e6f49ed6))
+* **dialect:** add MySQL dialect metadata (flavours and capability set); the MySQL backend is not usable yet ([d19c341](https://github.com/azrtydxb/momo/commit/d19c34165c2d286c969d431430c9eb65e6f49ed6))
 * **errors:** add the sentinel set, Detail accessor and vector and migrate sentinels ([da81d21](https://github.com/azrtydxb/momo/commit/da81d211f24383c4a2e8f275751bf75ee8cdb6fd))
 * **momo:** keyset pagination with deterministic tie-breaking ([0421baf](https://github.com/azrtydxb/momo/commit/0421bafaa7902e44d2493d0f4d0fad7f42d4716c))
 * **relations:** eager loading, predicates, associations, graph writes ([#5](https://github.com/azrtydxb/momo/issues/5)) ([c744711](https://github.com/azrtydxb/momo/commit/c74471152e515379901eb92213513c2c44e50208))
