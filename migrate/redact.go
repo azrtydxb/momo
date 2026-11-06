@@ -12,9 +12,14 @@ var (
 	urlInText   = regexp.MustCompile(`(?i)\b(?:postgres(?:ql)?|mysql|mariadb)://[^\s"']+`)
 	// kvPassword matches a key=value DSN password: password=x, password='a b',
 	// password='it\'s' and environment-style names such as PGPASSWORD=x.
-	kvPassword = regexp.MustCompile(`(?i)\b(\w*(?:password|passwd|pwd))(\s*=\s*)('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[^\s'"&]+)`)
+	kvPassword = regexp.MustCompile(`(?i)\b(\w*(?:password|passwd|pwd))(\s*=)(\s*)('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[^\s'"&]+)`)
+	// kvNextKey matches the next key=value pair that an empty value, as in
+	// "password= host=h", would otherwise swallow; kvPlaceholder matches a bind
+	// placeholder ($1 or ?), which is not a secret.
+	kvNextKey     = regexp.MustCompile(`^\w+=`)
+	kvPlaceholder = regexp.MustCompile(`^(?:\$\d+|\?)$`)
 	// mysqlDSN matches the go-sql-driver form user:password@tcp(host:port)/db.
-	mysqlDSN = regexp.MustCompile(`([^\s:/@"']+):([^\s@"']*)@([A-Za-z][A-Za-z0-9]*\()`)
+	mysqlDSN = regexp.MustCompile(`([^\s:/@"']+):([^\s"']*)@([A-Za-z][A-Za-z0-9]*\()`)
 )
 
 // redactedError shows err's message with URLs and passwords removed while
@@ -44,7 +49,7 @@ func redactErr(err error) error {
 //
 // It is best effort. Known limits: a URL password that contains a raw "/" or a
 // space ends the match early and the tail stays visible (percent-encode it), and
-// a MySQL DSN password containing "@" is cut at the first "@".
+// a MySQL DSN password containing a space or a quote is not matched.
 func RedactURLs(msg string, secrets ...string) string {
 	for _, s := range secrets {
 		if s != "" {
@@ -59,5 +64,12 @@ func RedactURLs(msg string, secrets ...string) string {
 		return m
 	})
 	msg = mysqlDSN.ReplaceAllString(msg, "${1}:***@${3}")
-	return kvPassword.ReplaceAllString(msg, "${1}${2}***")
+	return kvPassword.ReplaceAllStringFunc(msg, func(m string) string {
+		g := kvPassword.FindStringSubmatch(m)
+		key, eq, space, val := g[1], g[2], g[3], g[4]
+		if kvPlaceholder.MatchString(val) || space != "" && kvNextKey.MatchString(val) {
+			return m
+		}
+		return key + eq + space + "***"
+	})
 }
