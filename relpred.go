@@ -122,9 +122,6 @@ func (r Relation[P, C]) Has(scope ...Predicate) Predicate {
 	return correlated{r: r.corr(r.Parent.Qualifier()), scope: scope}
 }
 
-// HasWith is an alias of Has.
-func (r Relation[P, C]) HasWith(scope ...Predicate) Predicate { return r.Has(scope...) }
-
 // HasFrom is Has correlated on an explicit parent alias. Self-referencing
 // relations need it: the parent table is aliased in the outer query and the
 // alias is passed here.

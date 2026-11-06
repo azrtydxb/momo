@@ -53,9 +53,8 @@ func TestRelationPredicates(t *testing.T) {
 			t.Fatalf("documents without comments: %v", docIDs(got))
 		}
 
-		// HasWith is Has; HasFrom with the default qualifier is Has.
+		// HasFrom with the default qualifier is Has.
 		for name, p := range map[string]momo.Predicate{
-			"HasWith": document.Comments.HasWith(),
 			"HasFrom": document.Comments.HasFrom("documents"),
 		} {
 			got, err := momo.Select[models.Document, *models.Document](db).Where(p).OrderBy(document.ID.Asc()).All(ctx)

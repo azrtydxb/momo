@@ -365,14 +365,26 @@ func (sq SelectQuery[T]) WithRecursive(name string, q Subquery, cols ...string) 
 
 // SQL compiles the query without executing it.
 func (sq SelectQuery[T]) SQL() (Compiled, error) {
+	c, _, err := sq.compileJoined()
+	return c, err
+}
+
+// compileJoined compiles sq with its joined relations expanded and returns
+// the scanner for the resulting rows, expanding the joins once.
+func (sq SelectQuery[T]) compileJoined() (Compiled, scanner[T], error) {
+	sc := scanner[T]{meta: sq.meta}
 	if sq.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
+		return Compiled{}, sc, errors.New("momo: query has no Querier")
 	}
-	run, _, err := sq.expandJoins()
+	run, ls, err := sq.expandJoins()
 	if err != nil {
-		return Compiled{}, err
+		return Compiled{}, sc, err
 	}
-	return compile(sq.q.Dialect(), run.render)
+	if len(ls) > 0 {
+		sc.join = newJoinScan(ls)
+	}
+	c, err := compile(sq.q.Dialect(), run.render)
+	return c, sc, err
 }
 
 func (sq SelectQuery[T]) render(b *Builder) {
@@ -595,12 +607,14 @@ func appendList(b *Builder, es []Expr) {
 
 // ------------------------------------------------------------ execution
 
-func (sq SelectQuery[T]) rows(ctx context.Context) (Rows, error) {
-	c, err := sq.SQL()
+// rows runs the query and returns its rows with the scanner for them.
+func (sq SelectQuery[T]) rows(ctx context.Context) (Rows, scanner[T], error) {
+	c, sc, err := sq.compileJoined()
 	if err != nil {
-		return nil, err
+		return nil, sc, err
 	}
-	return sq.q.conn().query(ctx, "select", sq.meta.Table, "", c)
+	r, err := sq.q.conn().query(ctx, "select", sq.meta.Table, "", c)
+	return r, sc, err
 }
 
 // scanner reuses one destination slice across rows.
@@ -608,16 +622,6 @@ type scanner[T any] struct {
 	meta *Meta[T]
 	dest []any
 	join *joinScan[T] // joined relations scanned after the model's columns
-}
-
-// newScanner returns a scanner for the rows of sq, including the child
-// columns of joined relations.
-func (sq SelectQuery[T]) newScanner() scanner[T] {
-	sc := scanner[T]{meta: sq.meta}
-	if _, ls, _ := sq.expandJoins(); len(ls) > 0 {
-		sc.join = newJoinScan(ls)
-	}
-	return sc
 }
 
 func (s *scanner[T]) scan(r Rows, m *T) error {
@@ -645,7 +649,7 @@ func (s *scanner[T]) scan(r Rows, m *T) error {
 // All runs the query and collects every row. An empty result is an empty
 // (nil) slice and a nil error, never ErrNotFound.
 func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
-	r, err := sq.rows(ctx)
+	r, sc, err := sq.rows(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -655,7 +659,6 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 		out = make([]T, 0, sq.s.limit)
 	}
 	var zero T
-	sc := sq.newScanner()
 	for r.Next() {
 		out = append(out, zero)
 		if err := sc.scan(r, &out[len(out)-1]); err != nil {
@@ -678,7 +681,7 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 // ErrTooManyRows when more than one does. It adds no LIMIT.
 func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 	var zero, m T
-	r, err := sq.rows(ctx)
+	r, sc, err := sq.rows(ctx)
 	if err != nil {
 		return zero, err
 	}
@@ -689,7 +692,6 @@ func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 		}
 		return zero, &Error{Kind: ErrNotFound, Op: "select", Table: sq.meta.Table}
 	}
-	sc := sq.newScanner()
 	if err := sc.scan(r, &m); err != nil {
 		return zero, err
 	}
@@ -722,12 +724,11 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 	if err := sq.errStreamPreload(); err != nil {
 		return err
 	}
-	r, err := sq.rows(ctx)
+	r, sc, err := sq.rows(ctx)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
-	sc := scanner[T]{meta: sq.meta}
 	var m, zero T
 	for {
 		if err := ctx.Err(); err != nil {
@@ -759,13 +760,12 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 			yield(zero, err)
 			return
 		}
-		r, err := sq.rows(ctx)
+		r, sc, err := sq.rows(ctx)
 		if err != nil {
 			yield(zero, err)
 			return
 		}
 		defer r.Close()
-		sc := scanner[T]{meta: sq.meta}
 		for {
 			if err := ctx.Err(); err != nil {
 				yield(zero, fmt.Errorf("momo: select cancelled: %w", err))
