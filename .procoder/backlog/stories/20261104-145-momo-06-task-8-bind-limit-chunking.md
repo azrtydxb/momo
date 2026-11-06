@@ -20,3 +20,10 @@ Implements plan momo-06-relations Task 8: Bind-limit chunking (`.procoder/plans/
 - TestEagerLoadChunking: red first (`undefined: momo.WithMaxParams`), green on Postgres with `-tags integration`; four chunked statements, four comments.
 - Mutations caught: no dialect copy, ignored n, transaction dropping the limit, chunk test fails when the limit is raised.
 - `procoder check` 0 blocking; `make fmt-check vet staticcheck gosec tidy-check` and `go test -race ./...` pass; committed as feat(relations): bind-limit chunking with WithMaxParams.
+
+### Review fixes
+
+- WithMaxParams(n) now panics at New for n <= 0 (0 or negative read as "no limit" in every guard), clamps n above the dialect limit to the dialect limit, and clones Vector.Metrics/Indexes in the dialect copy. Doc states n semantics and that the limit covers Tx, OnConn handles, Load/LoadAll, bulk inserts and raw In().
+- Re-checked the New() reorder against story 122's WithFieldHooks: both orders work (TestWithMaxParamsComposesWithFieldHooks).
+- New Postgres-free tests in options_maxparams_limits_test.go: rejection of 0/negative, clamp, deep copy, Load chunking on the fake driver, Load inside Tx, OnConn inheritance, scope-leaves-no-room validation error, raw In() rejection under a lowered limit.
+- Mutations caught: clamp removed, slices.Clone removed, OnConn using db.drv.Dialect(), Tx using db.drv.Dialect(), load scope check removed, checkMaxParams removed, chunk size ignoring the limit, panic removed.
