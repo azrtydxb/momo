@@ -189,6 +189,37 @@ returns the opclass for a column type and metric (`ExampleValidateVectorIndex`).
 - An index covers one plain column. Expression parts are rejected.
 - Vector indexes exist only on PostgreSQL. Another dialect gets an error.
 
+### Dimensionless columns
+
+A `vector.Vector` or `vector.HalfVector` field without a `dim` tag maps to the
+bare `vector` or `halfvec` type. Use it for a store whose embedding size
+depends on the configured model: each row carries its size in a `dims`
+column, and every search filters on it.
+
+```go
+type KbChunk struct {
+	momo.Model `momo:"table:kb_chunks"`
+	ID         int64         `momo:"pk,identity"`
+	Dims       int
+	Embedding  vector.Vector // no dim: any size
+}
+```
+
+- Generation emits a plain `vector` column and a `momo.VectorColumn` whose
+  `Dim()` is zero. `sparsevec` and `bit` still require `dim`.
+- A distance argument of any size is accepted; it is checked against its own
+  size, so NaN, Inf and an empty vector are still rejected. The column never
+  catches a size mismatch itself.
+- pgvector fails a distance between two sizes, so filter on `dims` in the same
+  query: `Where(chunk.Dims.Eq(len(q)))` plus `OrderBy(momo.CosineDistance(chunk.Embedding, q).Asc())`.
+- The migration round-trips the bare type and the next diff is empty.
+- Limit: pgvector cannot build an hnsw or ivfflat index on a dimensionless
+  column. Momo refuses one, with an error that wraps
+  `schema.ErrInvalidVectorIndex` and names the column. Searches run as a
+  sequential scan over the filtered rows. An expression or partial index such
+  as `((embedding::vector(1536))) WHERE dims = 1536` is not supported yet:
+  expression parts are rejected.
+
 ## Migrations
 
 `migrate.Diff` emits the extension, the table and the index, and

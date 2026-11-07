@@ -22,8 +22,12 @@ it.
 
 ## Generated mappings
 
-`N` is the `size` tag for `string` and the `dim` tag for vector types. The
-generator rejects a vector field without `dim`. SQLite has no vector types.
+`N` is the `size` tag for `string` and the `dim` tag for vector types. A
+`vector.Vector` or `vector.HalfVector` field without `dim` is supported: it maps
+to the bare `vector` or `halfvec` type, a dimensionless column that holds
+embeddings of any size (see [vectors.md](vectors.md#dimensionless-columns)).
+`vector.SparseVector` and `vector.Bits` require `dim`. SQLite has no vector
+types.
 
 | Go type               | PostgreSQL                 | SQLite        |
 | --------------------- | -------------------------- | ------------- |
@@ -42,8 +46,8 @@ generator rejects a vector field without `dim`. SQLite has no vector types.
 | `types.UUID`          | `uuid`                     | `TEXT`        |
 | `types.Date`          | `date`                     | `TEXT`        |
 | `types.JSON[T]`       | `jsonb`                    | `TEXT`        |
-| `vector.Vector`       | `vector(N)`                | `unsupported` |
-| `vector.HalfVector`   | `halfvec(N)`               | `unsupported` |
+| `vector.Vector`       | `vector(N)`, `vector`      | `unsupported` |
+| `vector.HalfVector`   | `halfvec(N)`, `halfvec`    | `unsupported` |
 | `vector.SparseVector` | `sparsevec(N)`             | `unsupported` |
 | `vector.Bits`         | `bit(N)`                   | `unsupported` |
 

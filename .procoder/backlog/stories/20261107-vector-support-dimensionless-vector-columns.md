@@ -18,3 +18,11 @@ GitHub issue #29, found by the NovaCRM port. A pgvector column declared without 
 - [ ] an HNSW or IVFFlat index on a dimensionless column is refused with a clear error naming the column (test)
 
 ## Evidence
+
+## Out of scope
+
+The optional follow-up in the issue, allowing an expression or partial index such as an HNSW index on the embedding cast to a fixed size with a dims predicate, is not part of this story. Expression parts stay rejected by the vector index validation.
+
+## Notes
+
+Support needed one code change: a distance on a column with dimension zero validated its argument against zero and so rejected every vector. A zero dimension now means the argument is checked against its own size (NaN, Inf and emptiness are still refused).

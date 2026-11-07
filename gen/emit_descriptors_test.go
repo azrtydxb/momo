@@ -87,6 +87,20 @@ func TestEmitDescriptorsVectorColumns(t *testing.T) {
 	}
 }
 
+// TestEmitDescriptorsDimensionlessVector pins the descriptor emitted for a
+// vector field declared without dim: a momo.VectorColumn with dimension zero,
+// which accepts a query vector of any size.
+func TestEmitDescriptorsDimensionlessVector(t *testing.T) {
+	src := emitFixtureModel(t, "vectordimless", "Chunk")
+	ok, err := golden.Diff("testdata/golden/descriptors/dimless/descriptors.golden", src, *update)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("descriptors differ from golden; review and rerun with -update")
+	}
+}
+
 // TestEmitDescriptorsStandInVectorStaysPlain proves a type merely named like
 // a vector type, not from the vector package, keeps a plain column.
 func TestEmitDescriptorsStandInVectorStaysPlain(t *testing.T) {
