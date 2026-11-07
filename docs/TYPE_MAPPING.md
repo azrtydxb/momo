@@ -46,8 +46,8 @@ types.
 | `types.UUID`          | `uuid`                     | `TEXT`        |
 | `types.Date`          | `date`                     | `TEXT`        |
 | `types.JSON[T]`       | `jsonb`                    | `TEXT`        |
-| `vector.Vector`       | `vector(N)`, `vector`      | `unsupported` |
-| `vector.HalfVector`   | `halfvec(N)`, `halfvec`    | `unsupported` |
+| `vector.Vector`       | `vector(N)`                | `unsupported` |
+| `vector.HalfVector`   | `halfvec(N)`               | `unsupported` |
 | `vector.SparseVector` | `sparsevec(N)`             | `unsupported` |
 | `vector.Bits`         | `bit(N)`                   | `unsupported` |
 
