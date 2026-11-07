@@ -31,8 +31,9 @@ set `migrate.dir.postgres` or `--dir`). `diff` writes exactly three files:
   past the latest existing version, `diff` uses the second after it, so
   versions only grow.
 - `name` must match `^[a-z][a-z0-9_]*$`.
-- `.down.sql` files are accepted by the file scanner and hashed, but never run.
-  There is no rollback (section 2).
+- `.down.sql` files are optional and hand-written (`diff` never generates one).
+  They are hashed in `momo.sum`, and `apply` never runs them. Only
+  `Engine.Rollback` runs them (section 2).
 - Files whose name starts with `.` are ignored everywhere (`.DS_Store`,
   `.momo-*.tmp`). A symlink to a directory inside the migration directory is an
   error. Moving an applied file into a subdirectory is fine: history is keyed by
@@ -244,9 +245,29 @@ needs no `rehash`:
 If the older migration was already applied somewhere, do not rewrite it: leave
 the chain as it is and add a new migration for the difference.
 
-Not built yet (story 098): `rebase`, `lint`, `rollback`, `new`. Each exits
-2 with `migrate <name> is not available yet`. There are no down migrations: undo
-a change with a new forward migration.
+Not wired into the CLI yet (story 098): `rebase`, `lint`, `rollback`, `new`.
+Each exits 2 with `migrate <name> is not available yet`. The engine already has
+two of them, for Go callers:
+
+- `Engine.Rollback(ctx, RollbackOptions{Group: false})` runs the `.down.sql` of
+  the last applied migration (the applied row with the greatest `applied_at`);
+  with `Group: true` it runs the downs of every row that shares the greatest
+  `apply_id`, in descending version order. It takes the same lock and session
+  timeouts as `Apply`, refuses a dirty database or a checksum mismatch, and
+  returns `ErrNoDown` before running anything when any selected version has no
+  down file. A transactional down runs in one transaction together with the
+  history update; the row becomes `rolled_back`, so the version is pending
+  again and the next `apply` runs it anew. A down with `-- momo:no-transaction`
+  runs statement by statement and, if one fails, leaves the row `failed`
+  (dirty, settle it with `resolve`). A rollback undoes schema, not data: write
+  the down so that it can run on a populated table (`TestRollbackGroup`,
+  `TestRollbackNoDown`).
+- `Engine.Rebase(ctx, target, desired, name)` takes the directory of the target
+  branch (from `git`, Momo has no git dependency). It lists every file of the
+  branch's migrations that the target lacks, refuses with the file name when one
+  has no `-- momo:generated` header, and regenerates one migration on top of
+  the target's latest snapshot. It writes nothing: the caller deletes the
+  returned files and writes the new ones (`TestMigrateRebase`).
 
 There is no `--force-unlock`: the PostgreSQL lock is a session advisory lock that
 the server frees when its holder's connection ends (section 3). `--lock-wait`

@@ -89,7 +89,7 @@ Vector fields declare their dimension with the field tag `dim:<n>` (e.g. `momo:"
 
 ### `migrate`
 
-- Directory format: `<YYYYMMDDHHMMSS>_<name>.up.sql`, optional `.down.sql`, `<version>_<name>.snapshot.json`, `momo.sum`. Directives: `-- momo:no-transaction`, `-- momo:destructive`, `-- momo:split`. Migrations are forward only: nothing runs a `.down.sql` file.
+- Directory format: `<YYYYMMDDHHMMSS>_<name>.up.sql`, optional `.down.sql`, `<version>_<name>.snapshot.json`, `momo.sum`. Directives: `-- momo:no-transaction`, `-- momo:destructive`, `-- momo:split`. Migrations are forward only: `apply` never runs a `.down.sql` file; only `Engine.Rollback` does.
 - Go API: `type Engine struct`; `NewEngine(drv momo.Driver, dir fs.FS, opts ...Option) (*Engine, error)`; methods `Diff(ctx, desired *schema.Schema, name string, opts DiffOptions) (*Migration, error)`, `Plan(ctx) ([]Pending, error)`, `Apply(ctx, ApplyOptions) (*Report, error)`, `Status(ctx)`, `Baseline(ctx, version string, force bool)`, `Drift(ctx) (*DriftReport, error)`, `Resolve(ctx, version string, state ResolveState)`, `Rehash`, `Inspect`, `AutoMigrate(ctx, desired *schema.Schema) (*AutoReport, error)`; the package function `ValidateOffline` checks a directory without a database.
 - The PostgreSQL implementation in `migrate/postgres` satisfies `migrate.Dialect` (`Dialect`, `Inspect`, `Render`, `HistoryDDL`, `Setup`, `Lock`; see the additions below).
 - The history table `momo_migrations` is defined by the dialect's `HistoryDDL`.

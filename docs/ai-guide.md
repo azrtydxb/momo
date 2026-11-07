@@ -29,7 +29,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
   `momo migrate` exits 2 for them. Do not write code for them, do not set
   `dialects:` to anything but `[postgres]`.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
-- Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
+- Forward migrations only in the CLI. No `migrate rollback`, `new`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
 - No command turns a database into models. Write models by hand.
 - Hybrid (full text plus vector) search, `MERGE` builder and window-function API
   do not exist. Use `momo.SQL` / `momo.TypedSQL` for those.
@@ -511,8 +511,9 @@ Known issues, as rules (each is a filed bug):
   `momo migrate diff <name>` to regenerate it with a new version, then
   `momo migrate hash` (a pending file needs no `rehash`); see [migrations.md](migrations.md) section 2. Still
   run `validate` in CI.
-- There is no rollback and no down migrations. Undo with a new forward
-  migration. `resolve --rolled-back` runs no SQL.
+- The CLI has no rollback. Undo with a new forward migration (`Engine.Rollback`
+  runs hand-written `.down.sql` files from Go only). `resolve --rolled-back` runs
+  no SQL.
 - There is no `--force-unlock` (an unknown flag, exit 2). The migration lock is a
   session advisory lock, freed when its holder disconnects. A stuck lock: find
   the session in `pg_stat_activity` and `pg_terminate_backend` it.
@@ -1376,7 +1377,7 @@ Examples: every `examples/*/example_test.go`, harness
     there; use iterative scan for filtered ANN searches; expect seq scans on small
     tables.
 19. Migrations: `diff`, review SQL, commit all files, `apply`. Never edit an
-    applied migration; undo with a new one. No rollback exists.
+    applied migration; undo with a new one. The CLI has no rollback.
 20. NOT NULL additions without a default: `diff --stage`, apply, backfill, check
     no NULLs remain, then `diff --enforce-not-null` (or give the column a
     default).
