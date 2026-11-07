@@ -55,7 +55,7 @@ func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 	s.writeGroupHaving(b)
 	sq.writeOrderBy(b)
 	s.writeLimitOffset(b)
-	s.writeLock(b)
+	sq.writeLock(b)
 }
 
 // writeWith writes the WITH clause, if any.
@@ -268,17 +268,67 @@ func (s *selectCore) writeLimitOffset(b *Builder) {
 	}
 }
 
-// writeLock writes the row-lock clause, if any.
-func (s *selectCore) writeLock(b *Builder) {
+// writeLock writes the row-lock clause, if any: the lock mode, OF tables, then
+// NOWAIT or SKIP LOCKED. A lock cannot be combined with DISTINCT, GROUP BY or
+// HAVING, and LockOf without a lock is an error.
+func (sq SelectQuery[T]) writeLock(b *Builder) {
+	s := &sq.s
 	if s.lock == "" {
+		if len(s.lockOf) > 0 {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("LockOf needs ForUpdate or ForShare")})
+		}
 		return
 	}
 	if !b.d.Locking {
 		b.unsupported(s.lock)
 		return
 	}
+	if s.distinct || len(s.groupBy) > 0 || len(s.having) > 0 {
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("%s cannot be combined with DISTINCT, GROUP BY or HAVING", s.lock)})
+		return
+	}
+	if !sq.checkLockOf(b) {
+		return
+	}
 	b.writeByte(' ')
 	b.WriteString(s.lock)
+	for i, t := range s.lockOf {
+		if i == 0 {
+			b.WriteString(" OF ")
+		} else {
+			b.WriteString(", ")
+		}
+		b.Ident(t)
+	}
+	b.WriteString(s.lockWait)
+}
+
+// checkLockOf reports whether every LockOf name is the qualifier of the FROM
+// table or of a joined table. A subquery, CTE or unaliased source has no
+// lockable name, and naming one is a validation error here rather than a
+// server error. Aggregates in the select list and set operations around this
+// select are not detected; the server rejects those.
+func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
+	s := sq.s
+	if len(s.lockOf) == 0 {
+		return true
+	}
+	known := map[string]struct{}{}
+	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
+		if _, sub := src.(subquerySource); sub {
+			continue
+		}
+		if q, ok := src.(interface{ Qualifier() string }); ok {
+			known[q.Qualifier()] = struct{}{}
+		}
+	}
+	for _, t := range s.lockOf {
+		if _, ok := known[t]; !ok {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("LockOf names %q, which is not a table or alias in the FROM or JOIN sources", t)})
+			return false
+		}
+	}
+	return true
 }
 
 // selectArity reports the number of columns the select yields, when known.
