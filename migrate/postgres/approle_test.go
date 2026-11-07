@@ -21,10 +21,12 @@ import (
 // and deliberately no CREATE; this test grants nothing itself.
 func TestAppRoleCannotDDL(t *testing.T) {
 	admin := testopen.Postgres(t)
+	// The role's default privileges are installed when it is opened, so open
+	// it before the administrator creates the table.
+	app := openAppRole(t)
 	mustExec(t, admin.Driver(), `CREATE TABLE app_visible (x int)`)
 	mustExec(t, admin.Driver(), `INSERT INTO app_visible VALUES (1)`)
 
-	app := openAppRole(t)
 	ctx := context.Background()
 	c := pinned(t, app)
 
