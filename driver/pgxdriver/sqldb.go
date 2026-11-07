@@ -419,3 +419,12 @@ var (
 	_ momo.PoolStater         = (*sqlDriver)(nil)
 	_ momo.CapabilityReporter = (*sqlDriver)(nil)
 )
+
+// Columns reports the result column names (momo.ColumnNamer).
+func (r sqlRows) Columns() []string {
+	names, err := r.r.Columns()
+	if err != nil {
+		return nil
+	}
+	return names
+}

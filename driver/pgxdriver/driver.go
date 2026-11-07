@@ -219,3 +219,13 @@ func txErr(op string, err error) error {
 	}
 	return ClassifyError(err)
 }
+
+// Columns reports the result column names (momo.ColumnNamer).
+func (r pgxRows) Columns() []string {
+	fds := r.Rows.FieldDescriptions()
+	names := make([]string, len(fds))
+	for i, f := range fds {
+		names[i] = f.Name
+	}
+	return names
+}

@@ -49,6 +49,13 @@ type Copier interface {
 	CopyFrom(ctx context.Context, table string, cols []string, rows [][]any) (int64, error)
 }
 
+// ColumnNamer is implemented by Rows that can report the names of their result
+// columns, in order. MapRows needs it; a driver whose Rows lack it makes
+// MapRows return ErrUnsupported.
+type ColumnNamer interface {
+	Columns() []string
+}
+
 // Batcher is implemented by drivers that send several statements in one round trip.
 // Every statement is executed with Query; a statement without result rows yields
 // a Rows whose Next returns false.

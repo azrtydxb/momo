@@ -282,6 +282,14 @@ func (r *hookedRows) Next() bool {
 	return false
 }
 
+// Columns forwards to the wrapped rows when they report column names.
+func (r *hookedRows) Columns() []string {
+	if c, ok := r.Rows.(ColumnNamer); ok {
+		return c.Columns()
+	}
+	return nil
+}
+
 func (r *hookedRows) Err() error { return r.e.wrapErr(r.op, r.table, r.Rows.Err()) }
 
 func (r *hookedRows) Close() error {
