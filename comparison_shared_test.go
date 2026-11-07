@@ -68,7 +68,7 @@ func TestAggCarriesTheSharedComparisons(t *testing.T) {
 }
 
 func TestAggComparisonRendersAgainstTheAggregate(t *testing.T) {
-	c, err := compile(dialect.Postgres, func(b *Builder) {
+	c, err := compile(dialect.For(dialect.Postgres), func(b *Builder) {
 		CountAll().Between(1, 5).AppendSQL(b)
 	})
 	if err != nil {

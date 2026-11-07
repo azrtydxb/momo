@@ -80,3 +80,15 @@ func (c ImmutableColumn[T]) As(alias string) ImmutableColumn[T] {
 func (c ImmutableColumn[T]) Set(v T) InsertAssignment {
 	return InsertAssignment{Column[T]{c.colCore}.Set(v)}
 }
+
+// Excluded is the value proposed for insertion, for an upsert condition.
+func (c ReadOnlyColumn[T]) Excluded() Expression[T] { return c.colCore.Excluded() }
+
+// Excluded is the value proposed for insertion, for an upsert condition.
+func (c NullReadOnlyColumn[T]) Excluded() Expression[T] { return c.colCore.Excluded() }
+
+// Excluded is the value proposed for insertion, for an upsert condition.
+func (c CreateOnlyColumn[T]) Excluded() Expression[T] { return c.colCore.Excluded() }
+
+// Excluded is the value proposed for insertion, for an upsert condition.
+func (c ImmutableColumn[T]) Excluded() Expression[T] { return c.colCore.Excluded() }
