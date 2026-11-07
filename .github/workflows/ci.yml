@@ -119,7 +119,6 @@ jobs:
   # carries the integration build tag, so go test without the tag cannot
   # reach one. The integration job is the only place a database is used.
   windows:
-    name: windows (unit tests only, no database)
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -132,7 +131,6 @@ jobs:
       - run: go test ./...
 
   macos:
-    name: macos (unit tests only, no database)
     runs-on: macos-latest
     timeout-minutes: 20
     steps:

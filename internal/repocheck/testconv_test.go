@@ -59,7 +59,7 @@ var (
 	// dbHelperUse matches a use of the relfixture helpers that open a database;
 	// the rest of relfixture (Hook, Counting, WithoutBatch) needs none.
 	dbHelperUse = regexp.MustCompile(`\brelfixture\.(Each|SeedBasic|CreateSchema|PostgresDriver)\b`)
-	buildTag    = regexp.MustCompile(`(?m)^//go:build .*\bintegration\b`)
+	buildTag    = regexp.MustCompile(`(?m)^//go:build (?:.*[ (&|])?integration\b`)
 	packageLine = regexp.MustCompile(`(?m)^package `)
 )
 
