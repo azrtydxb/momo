@@ -54,8 +54,24 @@ func TestFromSelectGoldenSQL(t *testing.T) {
 		}, head + `SELECT "jobs_lock"."name", "jobs_lock"."holder", "jobs_lock"."until", "jobs_lock"."live" FROM "jobs_lock" WHERE "jobs_lock"."live" = $1`, 1},
 		{"mysql from-less with where uses dual", dialect.MySQL, func(q momo.Querier) momo.InsertQuery[Lease] {
 			return momo.Insert[Lease](q).FromSelect(
-				momo.SelectExprs(momo.Value("a"), momo.Value("h")).Where(leaseLive.Eq(true)), leaseName, leaseHolder)
-		}, "INSERT INTO `jobs_lock` (`name`, `holder`) SELECT ?, ? FROM DUAL WHERE `jobs_lock`.`live` = ?", 3},
+				momo.SelectExprs(momo.Value("a"), momo.Value("h")).Where(momo.NotExists(momo.SelectExprs(momo.TypedSQL[int]("1")).From(leaseTable).Where(leaseLive.Eq(true)))), leaseName, leaseHolder)
+		}, "INSERT INTO `jobs_lock` (`name`, `holder`) SELECT ?, ? FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `jobs_lock` WHERE `jobs_lock`.`live` = ?)", 3},
+		{"sqlite from select without where adds where true", dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+			return momo.Insert[Lease](q).FromSelect(
+				momo.SelectExprs(momo.Value("a"), momo.Value("h")).From(leaseTable), leaseName, leaseHolder).
+				OnConflict(leaseName).DoNothing()
+		}, `INSERT INTO "jobs_lock" ("name", "holder") SELECT ?, ? FROM "jobs_lock" WHERE true ON CONFLICT ("name") DO NOTHING`, 2},
+		{"pg from select without where has no where true", dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
+			return momo.Insert[Lease](q).FromSelect(
+				momo.SelectExprs(momo.Value("a"), momo.Value("h")).From(leaseTable), leaseName, leaseHolder).
+				OnConflict(leaseName).DoNothing()
+		}, `INSERT INTO "jobs_lock" ("name", "holder") SELECT $1, $2 FROM "jobs_lock" ON CONFLICT ("name") DO NOTHING`, 2},
+		{"soft-delete table ref filters the guard and the source", dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
+			sd := momo.TableRef{Name: "jobs_lock", SoftDelete: "deleted_at", SoftDeleteKind: momo.SoftDeleteTimestamp}
+			row := momo.SelectExprs(momo.Value("a"), momo.Value("h")).
+				Where(momo.NotExists(momo.SelectExprs(momo.TypedSQL[int]("1")).From(sd).Where(leaseLive.Eq(true))))
+			return momo.Insert[Lease](q).FromSelect(row, leaseName, leaseHolder).OnConflict(leaseName).DoNothing()
+		}, `INSERT INTO "jobs_lock" ("name", "holder") SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM "jobs_lock" WHERE "jobs_lock"."live" = $3 AND "jobs_lock"."deleted_at" IS NULL) ON CONFLICT ("name") DO NOTHING`, 3},
 		{"upsert default set covers listed columns only, pg", dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
 			return momo.Upsert[Lease](q).FromSelect(momo.SelectExprs(momo.Value("a"), momo.Value("h")), leaseName, leaseHolder)
 		}, `INSERT INTO "jobs_lock" ("name", "holder") SELECT $1, $2 ON CONFLICT ("name") DO UPDATE SET "holder" = EXCLUDED."holder"`, 2},

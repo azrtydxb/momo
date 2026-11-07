@@ -33,7 +33,10 @@ func SelectExprs(cols ...Expr) ExprSelect {
 
 // From sets the FROM source. Without it the SELECT has no FROM clause, which
 // PostgreSQL and SQLite accept and MySQL accepts only as FROM DUAL (added
-// automatically when a WHERE is present).
+// automatically when a WHERE is present). The soft-delete filter is added
+// only when src is a TableRef whose SoftDelete marker is set: generated Table
+// refs carry it, a hand-built TableRef{Name: ...} does not and then counts
+// soft-deleted rows, so set SoftDelete and SoftDeleteKind on it.
 func (s ExprSelect) From(src TableSource) ExprSelect { s.from = src; return s }
 
 // Where adds predicates combined with AND. On a FROM-less select the WHERE
@@ -56,7 +59,11 @@ func (s ExprSelect) AppendSQL(b *Builder) {
 }
 
 // render writes the bare SELECT; INSERT ... SELECT and set operations use it.
-func (s ExprSelect) render(b *Builder) {
+func (s ExprSelect) render(b *Builder) { s.renderBare(b, false) }
+
+// renderBare is render; onConflictFollows makes a select with a FROM source
+// and no WHERE end in WHERE true so SQLite does not read ON CONFLICT as a join.
+func (s ExprSelect) renderBare(b *Builder, onConflictFollows bool) {
 	var names []string
 	if q, ok := s.from.(interface{ Qualifier() string }); ok {
 		names = append(names, q.Qualifier())
@@ -78,9 +85,12 @@ func (s ExprSelect) render(b *Builder) {
 		} else if len(where) > 0 && b.d.Name == dialect.MySQL {
 			b.WriteString(" FROM DUAL")
 		}
-		if len(where) > 0 {
+		switch {
+		case len(where) > 0:
 			b.WriteString(" WHERE ")
 			appendAnd(b, where)
+		case s.from != nil && onConflictFollows:
+			b.WriteString(" WHERE true")
 		}
 	})
 }
@@ -136,9 +146,7 @@ func (sq SelectQuery[T]) selectArity() (int, bool) {
 // writable by INSERT is refused with ErrValidation, as are an unmapped or
 // repeated column, an empty list, and combining FromSelect with Model,
 // Models, Values, ValuesRows or Omit. Calling FromSelect again replaces the
-// source. On SQLite a SELECT with a FROM clause followed by ON CONFLICT
-// needs a WHERE (SQLite parses the ON as a join otherwise); a FROM-less
-// select does not.
+// source. FromSelect runs no model hooks.
 func (q InsertQuery[T]) FromSelect(sel Subquery, cols ...ColumnRef) InsertQuery[T] {
 	if sel == nil {
 		return q.fail(q.verr("", "FromSelect: nil select"))
@@ -192,12 +200,7 @@ func (q InsertQuery[T]) renderFromSelect(b *Builder) {
 		b.SetErr(err)
 		return
 	}
-	b.WriteString("INSERT INTO ")
-	if q.meta.Schema != "" {
-		b.Ident(q.meta.Schema)
-		b.writeByte('.')
-	}
-	b.Ident(q.meta.Table)
+	q.writeInsertHead(b)
 	b.WriteString(" (")
 	for i, n := range q.i.selCols {
 		if i > 0 {
@@ -206,7 +209,10 @@ func (q InsertQuery[T]) renderFromSelect(b *Builder) {
 		b.Ident(n)
 	}
 	b.WriteString(") ")
-	if r, ok := q.i.sel.(interface{ render(*Builder) }); ok {
+	if e, ok := q.i.sel.(ExprSelect); ok {
+		// SQLite parses ON after a FROM select without WHERE as a join.
+		e.renderBare(b, b.d.Name == dialect.SQLite && q.i.conflict != conflictNone)
+	} else if r, ok := q.i.sel.(interface{ render(*Builder) }); ok {
 		r.render(b) // bare: SQLite rejects a parenthesized SELECT here
 	} else {
 		q.i.sel.AppendSQL(b)

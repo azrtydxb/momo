@@ -368,12 +368,7 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 		return
 	}
 
-	b.WriteString("INSERT INTO ")
-	if q.meta.Schema != "" {
-		b.Ident(q.meta.Schema)
-		b.writeByte('.')
-	}
-	b.Ident(q.meta.Table)
+	q.writeInsertHead(b)
 	if len(cols) == 0 {
 		// No column is written: every column takes its default.
 		if d.Name == dialect.MySQL {
@@ -1064,4 +1059,14 @@ func (q InsertQuery[T]) validateConflictSet(fp fieldPlan[T]) error {
 		}
 		return nil, false
 	})
+}
+
+// writeInsertHead writes INSERT INTO [schema.]table.
+func (q InsertQuery[T]) writeInsertHead(b *Builder) {
+	b.WriteString("INSERT INTO ")
+	if q.meta.Schema != "" {
+		b.Ident(q.meta.Schema)
+		b.writeByte('.')
+	}
+	b.Ident(q.meta.Table)
 }

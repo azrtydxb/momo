@@ -695,10 +695,15 @@ res, err := momo.Insert[models.Meter](q).
 	Exec(ctx) // res.RowsAffected: 1 inserted, 0 skipped
 ```
 
-- `FromSelect(sub, cols...)` takes any `Subquery`: `SelectExprs(...)` (a FROM-less or
-  single-source select of expressions, with `From` and `Where`) or a `Select[T]`
-  query. The select list must have as many columns as `cols` (`ErrValidation`
-  otherwise; a `RawSubquery` is checked by the database).
+- `FromSelect` takes any `Subquery` (the first argument) plus the typed target columns:
+  `SelectExprs` (a FROM-less or single-source select of expressions, with `From` and
+  `Where`) or a `Select[T]` query. The select list must have as many columns as the
+  target columns (`ErrValidation` otherwise; a `RawSubquery` is checked by the
+  database). `FromSelect` runs no model hooks.
+- The soft-delete filter on a `SelectExprs` source (including inside `NotExists`) is
+  added only when `From` gets a `TableRef` that carries the soft-delete marker.
+  Generated `Table` refs do; a hand-built `TableRef{Name: ...}` does not and then
+  counts soft-deleted rows, so set its `SoftDelete` and `SoftDeleteKind`.
 - Only the listed columns are written. Nothing is injected: no automatic
   created_at/updated_at, no Go-side defaults, no field validators. List those columns
   and select their values. Identity, read-only and non-writable columns, unmapped or
@@ -709,9 +714,7 @@ res, err := momo.Insert[models.Meter](q).
   PostgreSQL, `?` on SQLite/MySQL). For the constant in `EXISTS (SELECT 1 ...)` use
   `momo.TypedSQL` with the SQL text `1`, as in the example: PostgreSQL cannot infer
   the type of a bound `Value` there.
-- SQLite needs a `WHERE` on a select that has a FROM clause and is followed by
-  `ON CONFLICT`; a FROM-less select does not. MySQL has no `ON CONFLICT`
-  (`ErrUnsupported`) but a plain `FromSelect` works; a FROM-less select with a
+- MySQL has no `ON CONFLICT` (`ErrUnsupported`) but a plain `FromSelect` works; a FROM-less select with a
   `WHERE` renders `FROM DUAL`.
 
 - Upsert never overwrites pk, version, soft-delete or created_at columns, and does
