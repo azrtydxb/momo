@@ -4,6 +4,8 @@ package momotest
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -96,25 +98,34 @@ func TestWithSearchPath(t *testing.T) {
 	}
 }
 
+// TestCheckMigrationsRejectsEscapes feeds migration SQL kept in
+// testdata/escapes to the checker. The SQL is input data that is only
+// scanned, never executed, so it lives in fixture files, which the repository
+// scan for tests that create extensions in the shared database skips by
+// design, and not in this test's source.
 func TestCheckMigrationsRejectsEscapes(t *testing.T) {
-	fsys := func(sql string) fstest.MapFS {
-		return fstest.MapFS{"20260101000000_a.up.sql": {Data: []byte(sql)}}
+	fsys := func(file string) fstest.MapFS {
+		sql, err := os.ReadFile(filepath.Join("testdata", "escapes", file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fstest.MapFS{"20260101000000_a.up.sql": {Data: sql}}
 	}
 	cases := []struct {
 		name string
-		sql  string
+		file string
 		opts []Option
 		want string // empty: accepted
 	}{
-		{"plain table", "CREATE TABLE a (x int);", nil, ""},
-		{"unlisted extension", "CREATE EXTENSION IF NOT EXISTS vector;", nil, "vector"},
-		{"unlisted quoted extension", "create " + `extension "pgcrypto";`, nil, "pgcrypto"}, // split so the repo scan for shared-database extensions ignores this SQL text
-		{"listed extension", "CREATE EXTENSION IF NOT EXISTS vector;", []Option{WithExtensions("vector")}, ""},
-		{"schema", "CREATE SCHEMA other;", nil, "schema"},
+		{"plain table", "plain.sql", nil, ""},
+		{"unlisted extension", "extension.sql", nil, "vector"},
+		{"unlisted quoted extension", "quoted_extension.sql", nil, "pgcrypto"},
+		{"listed extension", "extension.sql", []Option{WithExtensions("vector")}, ""},
+		{"schema", "schema.sql", nil, "schema"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := newConfig(append([]Option{WithMigrations(fsys(tc.sql))}, tc.opts...)).checkMigrations()
+			err := newConfig(append([]Option{WithMigrations(fsys(tc.file))}, tc.opts...)).checkMigrations()
 			switch {
 			case tc.want == "" && err != nil:
 				t.Fatalf("err = %v, want none", err)
