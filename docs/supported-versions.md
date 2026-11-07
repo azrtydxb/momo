@@ -1,6 +1,6 @@
 # Supported versions
 
-What Momo v0.1.0 is built and tested against. "Tested" means a job in
+What Momo v0.3.0 is built and tested against. "Tested" means a job in <!-- x-release-please-version -->
 `.github/workflows/ci.yml` runs it. Anything not listed there is untested, not
 necessarily broken.
 
@@ -9,8 +9,8 @@ necessarily broken.
 | Item        | Value                                                                      |
 | ----------- | -------------------------------------------------------------------------- |
 | Module path | `github.com/azrtydxb/momo`                                                 |
-| Version     | v0.1.0 (tags use a `v` prefix)                                             |
-| Install     | `go get github.com/azrtydxb/momo@v0.1.0`                                   |
+| Version     | v0.3.0 (tags use a `v` prefix) <!-- x-release-please-version -->           |
+| Install     | `go get github.com/azrtydxb/momo@v0.3.0` <!-- x-release-please-version --> |
 | CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path) |
 | Databases   | PostgreSQL with pgvector only; SQLite and MySQL are not usable yet         |
 
@@ -18,7 +18,7 @@ necessarily broken.
 
 | Item                         | Value                                                                                                                                   |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Minimum (`go.mod` `go` line) | 1.26.0                                                                                                                                  |
+| Minimum (`go.mod` `go` line) | 1.26.10                                                                                                                                 |
 | CI matrix                    | 1.26 and 1.27 for unit, compile-fail, race, fuzz smoke and integration jobs                                                             |
 | Single-version CI jobs       | lint (1.26); bench smoke, govulncheck, Windows and macOS (1.27)                                                                         |
 | Older than 1.26              | not supported                                                                                                                           |
@@ -45,13 +45,13 @@ Integration tests (real PostgreSQL, pgvector, PgBouncer) run on Linux only.
 
 ## PostgreSQL
 
-| Item                    | Value                                                                                                                                                 |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tested major versions   | 16 and 17 (images `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`)                                                                                    |
-| Other majors            | untested; no minimum is enforced in code and none is documented                                                                                       |
-| `MERGE` gate            | the driver exposes `server_version_num` (`ServerVersioner`) so a `MERGE` gate can require PostgreSQL 15; Momo has no public `MERGE` builder in v0.1.0 |
-| Authentication in tests | password (`postgres` and `momo_app` roles); TLS is off in CI (`sslmode=disable`)                                                                      |
-| Driver                  | pgx v5 pool through `pgxdriver.NewPool` or `pgxdriver.New`; `database/sql` through `pgxdriver.FromSQLDB`                                              |
+| Item                    | Value                                                                                                                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tested major versions   | 16 and 17 (images `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`)                                                                                                                      |
+| Other majors            | untested; no minimum is enforced in code and none is documented                                                                                                                         |
+| `MERGE` gate            | the driver exposes `server_version_num` (`ServerVersioner`) so a `MERGE` gate can require PostgreSQL 15; Momo has no public `MERGE` builder in v0.3.0 <!-- x-release-please-version --> |
+| Authentication in tests | password (`postgres` and `momo_app` roles); TLS is off in CI (`sslmode=disable`)                                                                                                        |
+| Driver                  | pgx v5 pool through `pgxdriver.NewPool` or `pgxdriver.New`; `database/sql` through `pgxdriver.FromSQLDB`                                                                                |
 
 ## pgvector
 
@@ -90,7 +90,7 @@ Integration tests (real PostgreSQL, pgvector, PgBouncer) run on Linux only.
 
 | Item                | Statement                                                                                                                                                       |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pre-1.0             | the README states: "v0.1.0, pre-v1, with no compatibility promise between releases"                                                                             |
+| Pre-1.0             | the README states: "v0.3.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version -->                                           |
 | Versioning          | release-please with `bump-minor-pre-major: true` and Conventional Commits; breaking changes are marked `feat!:` or a `BREAKING CHANGE:` footer (CONTRIBUTING)   |
 | Deprecation process | none documented                                                                                                                                                 |
 | Security fixes      | latest minor only (`SECURITY.md`)                                                                                                                               |

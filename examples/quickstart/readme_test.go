@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"regexp"
@@ -159,9 +160,14 @@ func TestReadmeCommandsMatchHelp(t *testing.T) {
 // TestReadmeStatements pins the install lines and the notes the README must keep.
 func TestReadmeStatements(t *testing.T) {
 	readme := readFile(t, readmePath)
+	var manifest map[string]string
+	if err := json.Unmarshal([]byte(readFile(t, "../../.release-please-manifest.json")), &manifest); err != nil || manifest["."] == "" {
+		t.Fatalf("release-please manifest has no root version: %v", err)
+	}
+	version := "v" + manifest["."]
 	for _, want := range []string{
-		"go get " + modulePath + "@v0.1.0",
-		"go install " + modulePath + "/cmd/momo@v0.1.0",
+		"go get " + modulePath + "@" + version,
+		"go install " + modulePath + "/cmd/momo@" + version,
 		"PgBouncer",
 		"*_gen.go text eol=lf",
 	} {

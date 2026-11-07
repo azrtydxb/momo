@@ -1,7 +1,7 @@
 # Momo guide for AI coding agents
 
-Target: `github.com/azrtydxb/momo` v0.1.0. Read this file instead of the Momo
-source. Every identifier below was checked against v0.1.0. Where the guide says
+Target: `github.com/azrtydxb/momo` v0.3.0. Read this file instead of the Momo <!-- x-release-please-version -->
+source. Every identifier below was checked against v0.3.0. Where the guide says <!-- x-release-please-version -->
 DON'T, the call either fails, silently does the wrong thing, or is a known bug.
 
 Imports used throughout:
@@ -24,11 +24,11 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 
 ## 1. Scope
 
-- v0.1.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5 only.
+- v0.3.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5 only. <!-- x-release-please-version -->
 - SQLite and MySQL/MariaDB are NOT usable. There is no driver for either and
   `momo migrate` exits 2 for them. Do not write code for them, do not set
   `dialects:` to anything but `[postgres]`.
-- Go 1.26 or newer. Pre-v1: no compatibility promise; pin the exact version.
+- Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
 - Hybrid (full text plus vector) search, `MERGE` builder and window-function API
@@ -39,8 +39,8 @@ Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/q
 ## 2. Install and tooling
 
 ```sh
-go get github.com/azrtydxb/momo@v0.1.0                # adds the library to go.mod and writes go.sum
-go install github.com/azrtydxb/momo/cmd/momo@v0.1.0   # the CLI: generate, migrate, help
+go get github.com/azrtydxb/momo@v0.3.0                # adds the library to go.mod and writes go.sum  # x-release-please-version
+go install github.com/azrtydxb/momo/cmd/momo@v0.3.0   # the CLI: generate, migrate, help  # x-release-please-version
 ```
 
 Run `go get` first in a fresh module: it produces `go.sum`, which `go run` and
@@ -438,7 +438,7 @@ momo migrate drift                      # live DB vs latest applied snapshot
 CI (every change):
 
 ```sh
-go install github.com/azrtydxb/momo/cmd/momo@v0.1.0
+go install github.com/azrtydxb/momo/cmd/momo@v0.3.0  # x-release-please-version
 momo generate --check                                   # generated code is current
 momo migrate validate                                   # files vs momo.sum, version chain, forks, snapshots
 momo migrate diff ci_probe | grep -qx 'no changes'      # models have a migration
@@ -467,7 +467,7 @@ Production checklist:
    by hand in `psql`, then `momo migrate resolve --version V --applied` or
    `--rolled-back`. Full procedure: [migrations.md](migrations.md) section 4.
 
-Known issues in v0.1.0, as rules (each is a filed bug):
+Known issues in v0.3.0, as rules (each is a filed bug): <!-- x-release-please-version -->
 
 - For large tables declare `Concurrently()` on the index in `MomoConfig`: `diff`
   writes `CREATE INDEX CONCURRENTLY` in its own `-- momo:no-transaction`
@@ -1301,9 +1301,9 @@ Examples: every `examples/*/example_test.go`, harness
 
 ## 12. Rules for AI agents
 
-1. v0.1.0 is PostgreSQL + pgvector via pgx only. Never target SQLite or MySQL.
+1. v0.3.0 is PostgreSQL + pgvector via pgx only. Never target SQLite or MySQL. <!-- x-release-please-version -->
 2. Install the CLI at the same version as the library
-   (`go install github.com/azrtydxb/momo/cmd/momo@v0.1.0`).
+   (`go install github.com/azrtydxb/momo/cmd/momo@v0.3.0`). <!-- x-release-please-version -->
 3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run
    `momo generate` after every model change and commit the generated files.
 4. Never edit `*_gen.go`. Never hand-write `MomoMeta` for a table model or a
