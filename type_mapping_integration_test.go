@@ -122,6 +122,8 @@ func liveCases(t *testing.T) map[string]liveCase {
 			types.TimeOfDay{Nanos: 0}, types.TimeOfDay{Nanos: 86399999999000}),
 		"types.Hstore": roundTripAll[types.Hstore](nil,
 			types.Hstore{"k": sptr("v"), "n": nil, `q"=>\`: sptr(`a"b\c`)}, types.Hstore{}),
+		"types.TSVector":        roundTripAll[types.TSVector](nil, types.TSVector("'cat':3 'fat':2"), types.TSVector("")),
+		"types.TSQuery":         roundTripAll[types.TSQuery](nil, types.TSQuery("'fat' & 'cat'"), types.TSQuery("")),
 		"time.Time (timestamp)": roundTripAll(timeEq, pre1970, time.Date(2026, 1, 1, 12, 0, 0, 123456000, time.UTC)),
 		"[]string": roundTripAll[[]string](nil,
 			[]string{"a", "b,c", `w"q`, "NULL", ""}, []string{}),

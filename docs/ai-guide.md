@@ -11,7 +11,7 @@ import (
 	"github.com/azrtydxb/momo"                    // core: DB, Tx, Select, Insert, Update, Delete, errors
 	"github.com/azrtydxb/momo/driver/pgxdriver"   // PostgreSQL driver (pgx v5)
 	"github.com/azrtydxb/momo/vector"             // vector.Vector, HalfVector, SparseVector, Bits
-	"github.com/azrtydxb/momo/types"              // types.UUID, Date, JSON[T], TimeOfDay, Hstore
+	"github.com/azrtydxb/momo/types"              // types.UUID, Date, JSON[T], TimeOfDay, Hstore, TSVector, TSQuery
 	"yourmodule/models"                           // your structs
 	"yourmodule/models/task"                      // GENERATED: one package per model (lowercase model name)
 )
@@ -31,8 +31,11 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
-- Hybrid (full text plus vector) search, `MERGE` builder and window-function API
-  do not exist. Use `momo.SQL` / `momo.TypedSQL` for those.
+- Reciprocal-rank-fusion hybrid search, `MERGE` builder and window-function API
+  do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
+  (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
+  query builders) exists on PostgreSQL; combine it with a vector distance in
+  one score as shown in [fulltext.md](fulltext.md).
 
 Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/quickstart/).
 
@@ -1224,7 +1227,8 @@ Pitfalls:
   `pgxpool.NewWithConfig`, then `pgxdriver.WithVectorFormat(pgxdriver.VectorBinary)`
   with a describe-based exec mode). Default text transport is correct; skip unless
   profiling says otherwise. `NewPool` does not call `ConfigureVectors`.
-- Hybrid (full text plus vector) search does not exist.
+- Reciprocal-rank-fusion hybrid search does not exist; combine a distance and a
+  text rank in one score instead ([fulltext.md](fulltext.md)).
 
 Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-search/).
 

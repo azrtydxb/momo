@@ -61,6 +61,8 @@ the column; the generator's table is the fallback for everything else.
 | ----------------- | ---------- | ------ |
 | `types.TimeOfDay` | `time`     | `TEXT` |
 | `types.Hstore`    | `hstore`   | `TEXT` |
+| `types.TSVector`  | `tsvector` | `TEXT` |
+| `types.TSQuery`   | `tsquery`  | `TEXT` |
 
 `types.Hstore` needs the `hstore` extension; the vector types need `vector`
 (pgvector). Momo never runs `CREATE EXTENSION` for you.
@@ -109,6 +111,10 @@ Each statement below is asserted by a test against PostgreSQL.
   value, and a value outside one day is an error.
 - `types.Hstore`: a nil `*string` value is an hstore NULL; keys and values
   with quotes and backslashes are escaped.
+- `types.TSVector` and `types.TSQuery`: the server's text form, with the
+  lexemes sorted and normalized, so write values in that canonical form to
+  compare them with `==`. An empty tsvector reads back empty. Full-text
+  expressions are PostgreSQL only (see docs/fulltext.md).
 - `[]string` on `text[]`: elements containing commas, quotes, the text `NULL`,
   or empty strings round-trip; an empty slice reads back empty.
 - Decimal: carry `numeric` as a string to avoid binary floating point. Values
