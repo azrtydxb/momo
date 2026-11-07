@@ -180,7 +180,7 @@ func (q InsertQuery[T]) renderFromSelect(b *Builder) {
 			b.SetErr(q.verr(n, "FromSelect: column %q is not mapped by %s", n, q.meta.Table))
 			return
 		case !q.writable(ci):
-			b.SetErr(q.verr(n, "FromSelect: column %q is identity or read-only and is never written", n))
+			b.SetErr(q.verr(n, "FromSelect: column %q is identity, serial or read-only and is never written", n))
 			return
 		case slices.Contains(q.i.selCols[:i], n):
 			b.SetErr(q.verr(n, "FromSelect: column %q listed twice", n))
@@ -209,7 +209,7 @@ func (q InsertQuery[T]) renderFromSelect(b *Builder) {
 		b.Ident(n)
 	}
 	b.WriteString(") ")
-	if e, ok := q.i.sel.(ExprSelect); ok {
+	if e, ok := q.i.sel.(interface{ renderBare(*Builder, bool) }); ok {
 		// SQLite parses ON after a FROM select without WHERE as a join.
 		e.renderBare(b, b.d.Name == dialect.SQLite && q.i.conflict != conflictNone)
 	} else if r, ok := q.i.sel.(interface{ render(*Builder) }); ok {

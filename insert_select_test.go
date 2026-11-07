@@ -66,6 +66,18 @@ func TestFromSelectGoldenSQL(t *testing.T) {
 				momo.SelectExprs(momo.Value("a"), momo.Value("h")).From(leaseTable), leaseName, leaseHolder).
 				OnConflict(leaseName).DoNothing()
 		}, `INSERT INTO "jobs_lock" ("name", "holder") SELECT $1, $2 FROM "jobs_lock" ON CONFLICT ("name") DO NOTHING`, 2},
+		{"sqlite select[T] source without where adds where true", dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+			return momo.Insert[Lease](q).FromSelect(momo.Select[Lease](q), leaseName, leaseHolder, leaseUntil, leaseLive).
+				OnConflict(leaseName).DoNothing()
+		}, head + `SELECT "jobs_lock"."name", "jobs_lock"."holder", "jobs_lock"."until", "jobs_lock"."live" FROM "jobs_lock" WHERE true ON CONFLICT ("name") DO NOTHING`, 0},
+		{"sqlite select[T] source with where is unchanged", dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+			return momo.Insert[Lease](q).FromSelect(momo.Select[Lease](q).Where(leaseLive.Eq(false)), leaseName, leaseHolder, leaseUntil, leaseLive).
+				OnConflict(leaseName).DoNothing()
+		}, head + `SELECT "jobs_lock"."name", "jobs_lock"."holder", "jobs_lock"."until", "jobs_lock"."live" FROM "jobs_lock" WHERE "jobs_lock"."live" = ? ON CONFLICT ("name") DO NOTHING`, 1},
+		{"pg select[T] source without where is unchanged", dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
+			return momo.Insert[Lease](q).FromSelect(momo.Select[Lease](q), leaseName, leaseHolder, leaseUntil, leaseLive).
+				OnConflict(leaseName).DoNothing()
+		}, head + `SELECT "jobs_lock"."name", "jobs_lock"."holder", "jobs_lock"."until", "jobs_lock"."live" FROM "jobs_lock" ON CONFLICT ("name") DO NOTHING`, 0},
 		{"soft-delete table ref filters the guard and the source", dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
 			sd := momo.TableRef{Name: "jobs_lock", SoftDelete: "deleted_at", SoftDeleteKind: momo.SoftDeleteTimestamp}
 			row := momo.SelectExprs(momo.Value("a"), momo.Value("h")).

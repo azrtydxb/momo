@@ -140,12 +140,19 @@ func (c Column[T]) SetExcluded() Assignment { return Assignment{col: c.name, kin
 // DO UPDATE WHERE or ON CONFLICT predicates, for example
 // until.LtExpr(until.Excluded()). It is only meaningful inside an ON CONFLICT
 // clause; the database rejects it elsewhere.
-func (c Column[T]) Excluded() ExcludedExpr[T] { return ExcludedExpr[T]{c.name} }
+func (c Column[T]) Excluded() ExcludedExpr[T] {
+	e := ExcludedExpr[T]{name: c.name}
+	e.exprOps = selfOps[T](e)
+	return e
+}
 
 // ExcludedExpr is the EXCLUDED.<col> reference returned by Column.Excluded.
 // Besides being an Expression[T], it carries value comparisons for CASE and
 // DO UPDATE WHERE predicates, for example hostname.Excluded().Ne("").
-type ExcludedExpr[T any] struct{ name string }
+type ExcludedExpr[T any] struct {
+	exprOps[T]
+	name string
+}
 
 func (e ExcludedExpr[T]) AppendSQL(b *Builder) {
 	if b.conflictTarget {
@@ -156,13 +163,6 @@ func (e ExcludedExpr[T]) AppendSQL(b *Builder) {
 	b.Ident(e.name)
 }
 func (ExcludedExpr[T]) resultType() T { var z T; return z }
-
-func (e ExcludedExpr[T]) Eq(v T) Predicate { return binOp{e, " = ", argExpr{v}} }
-func (e ExcludedExpr[T]) Ne(v T) Predicate { return binOp{e, " <> ", argExpr{v}} }
-func (e ExcludedExpr[T]) Lt(v T) Predicate { return binOp{e, " < ", argExpr{v}} }
-func (e ExcludedExpr[T]) Le(v T) Predicate { return binOp{e, " <= ", argExpr{v}} }
-func (e ExcludedExpr[T]) Gt(v T) Predicate { return binOp{e, " > ", argExpr{v}} }
-func (e ExcludedExpr[T]) Ge(v T) Predicate { return binOp{e, " >= ", argExpr{v}} }
 
 // NullColumn is the descriptor for a nullable column. It adds SetNull.
 type NullColumn[T any] struct{ Column[T] }

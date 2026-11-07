@@ -396,7 +396,11 @@ func (sq SelectQuery[T]) compileJoined() (Compiled, scanner[T], error) {
 	return c, sc, err
 }
 
-func (sq SelectQuery[T]) render(b *Builder) {
+func (sq SelectQuery[T]) render(b *Builder) { sq.renderBare(b, false) }
+
+// renderBare is render; onConflictFollows ends a select that has a FROM and
+// no WHERE in WHERE true so SQLite does not read ON CONFLICT as a join.
+func (sq SelectQuery[T]) renderBare(b *Builder, onConflictFollows bool) {
 	s := &sq.s
 	if s.err != nil {
 		b.SetErr(s.err)
@@ -414,10 +418,10 @@ func (sq SelectQuery[T]) render(b *Builder) {
 	// FromSubquery and CTE bodies render inside this scope, so they can see
 	// the sibling FROM names. That is more lenient than SQL, which allows it
 	// only with LATERAL, but it is safe: it never hides a wrong table.
-	b.withScope(names, func() { sq.renderBody(b) })
+	b.withScope(names, func() { sq.renderBody(b, onConflictFollows) })
 }
 
-func (sq SelectQuery[T]) renderBody(b *Builder) {
+func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 	s := &sq.s
 	if len(s.with) > 0 {
 		b.WriteString("WITH ")
@@ -524,6 +528,8 @@ func (sq SelectQuery[T]) renderBody(b *Builder) {
 	if len(where) > 0 {
 		b.WriteString(" WHERE ")
 		appendAnd(b, where)
+	} else if s.from != nil && onConflictFollows {
+		b.WriteString(" WHERE true")
 	}
 	if len(s.groupBy) > 0 {
 		b.WriteString(" GROUP BY ")
