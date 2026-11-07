@@ -37,6 +37,39 @@ to date. To keep checkouts byte-identical anyway, add this to .gitattributes:
 
     *_gen.go text eol=lf
 
+Models from a database:
+
+    momo generate --from-db <url|-|ENVVAR> [--out dir] [--package name]
+                  [--schema a,b] [--no-snapshot] [--overwrite] [--check]
+
+Inspects the PostgreSQL database and writes one model file per table into the
+model package (default: introspect.out, else the first local entry of
+packages, else ./models), plus the init migration and snapshot into the
+migration directory when it has none. Then run "momo generate" for the
+generated code and "momo migrate baseline --version <init version>".
+
+The value of --from-db is a database URL, "-" to read the URL from standard
+input, or the name of an environment variable that holds it. Prefer the last
+two: a URL on the command line is visible in the process list.
+
+Settings that the database cannot tell (Prisma updatedAt, Json shapes,
+Unsupported columns) go in the introspect section of momo.yaml: skip (table
+globs), types (SQL type to Go type), columns (match "table.column" globs, go,
+import, name, tags) and tables (name, tags). The rules are applied again on
+every run.
+
+A re-run rewrites the model files that nobody edited. A file with hand edits,
+or one that --from-db did not write, is kept: the regenerated version goes
+next to it as <file>.new, the run lists "conflict: <file>" and exits 1.
+--overwrite replaces such files. --check writes nothing and exits 1 when a
+file would change. A file whose table is gone is listed as "orphan" and is
+never deleted.
+
+Constraints the models cannot declare (composite or renamed foreign keys,
+unique expression indexes, generated columns) are left out of the models and
+the snapshot and listed as warnings; the baseline then reports them. A column
+type with no Go mapping is an error and nothing is written.
+
 Plugins: only the plugins built into this binary can be enabled in momo.yaml.
 To run custom generator plugins, call gen.Emit with your plugins from Go code.
 `
@@ -59,6 +92,14 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&cfgPath, "c", "", "path to momo.yaml")
 	fs.StringVar(&cfgPath, "config", "", "path to momo.yaml")
 	fs.BoolVar(&check, "check", false, "report stale or orphaned generated files without writing")
+	var fromDB fromDBArgs
+	fs.StringVar(&fromDB.src, "from-db", "", "generate models from this database: a URL, - for stdin, or an environment variable name")
+	fs.StringVar(&fromDB.out, "out", "", "with --from-db: the model package directory")
+	fs.StringVar(&fromDB.pkg, "package", "", "with --from-db: the Go package name")
+	fs.StringVar(&fromDB.schemas, "schema", "", "with --from-db: comma-separated PostgreSQL schemas to read")
+	fs.StringVar(&fromDB.name, "migration-name", "init", "with --from-db: name of the init migration")
+	fs.BoolVar(&fromDB.noSnapshot, "no-snapshot", false, "with --from-db: do not write the init migration and snapshot")
+	fs.BoolVar(&fromDB.overwrite, "overwrite", false, "with --from-db: replace model files that have hand edits")
 	fs.Usage = func() {}
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -68,6 +109,17 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		code := fail(stderr, err)
 		_, _ = fmt.Fprintf(stderr, "\n%s", generateUsage)
 		return code
+	}
+
+	if fromDB.src != "" || fromDB.othersSet() {
+		if fromDB.src == "" {
+			return fail(stderr, errors.New("--out, --package, --schema, --no-snapshot and --overwrite need --from-db"))
+		}
+		if fs.NArg() > 0 {
+			return fail(stderr, errors.New("--from-db takes no package patterns"))
+		}
+		fromDB.check = check
+		return runGenerateFromDB(fromDB, cfgPath, stdout, stderr)
 	}
 
 	cwd, err := os.Getwd()

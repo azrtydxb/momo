@@ -252,7 +252,10 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 	inner := unwrapNull(core)
 	kind := vectorKind(inner, tg.Dim)
 	isString := inner == "string"
-	isFloat := inner == "float32" || inner == "float64" || strings.HasSuffix(inner, "decimal.Decimal")
+	// A string that carries a decimal (numeric) takes precision and scale like
+	// a float does.
+	isFloat := inner == "float32" || inner == "float64" || strings.HasSuffix(inner, "decimal.Decimal") ||
+		(isString && tg.Size == 0 && tg.Precision > 0)
 
 	conflict := func(tag string) {
 		b.diag(f.Pos, fmt.Sprintf("field %s: %s conflicts with type", f.GoName, tag))
