@@ -191,17 +191,17 @@ func TestImplicitTxRLSFailClosed(t *testing.T) {
 }
 
 func TestTxSetupWithoutImplicitTxLeavesAutoCommitUnscoped(t *testing.T) {
-	db, pool := rlsDB(t, momo.WithTxSetup(tenantSetup))
+	db, pool := rlsDB(t, momo.WithTxSetup(tenantSetup), momo.WithMaxParams(20))
 	ctx := context.Background()
 	t1 := withTenant(ctx, 1)
 	// Explicit and internal transactions are scoped.
-	if _, err := momo.Insert[suite.Document](db).Models(docs(1, 2, "a")).Exec(t1); err != nil {
-		t.Fatalf("chunked or single insert as tenant 1: %v", err)
+	if _, err := momo.Insert[suite.Document](db).Models(docs(1, 5, "a")).Exec(t1); err != nil {
+		t.Fatalf("chunked insert as tenant 1: %v", err)
 	}
 	err := db.Tx(t1, momo.TxOptions{}, func(tx *momo.Tx) error {
 		n, err := momo.Select[suite.Document](tx).Count(t1)
-		if err != nil || n != 2 {
-			return fmt.Errorf("in Tx count = %d, %v; want 2", n, err)
+		if err != nil || n != 5 {
+			return fmt.Errorf("in Tx count = %d, %v; want 5", n, err)
 		}
 		return nil
 	})
