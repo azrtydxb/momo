@@ -4,6 +4,7 @@ package migrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -55,13 +56,26 @@ func EnsureHistory(ctx context.Context, c momo.PinnedConn, d Dialect) error {
 	if _, err := c.Exec(ctx, ins, []any{MetaVersion, "meta", strconv.Itoa(FormatVersion), StatusMeta, time.Now().UTC().Format(timeLayout)}); err != nil {
 		return fmt.Errorf("migrate: write history metadata: %w", err)
 	}
+	return checkHistoryFormat(ctx, c)
+}
+
+// checkHistoryFormat refuses a history table written with a newer format. It
+// only reads: a database without the table or without a metadata row passes.
+func checkHistoryFormat(ctx context.Context, c momo.PinnedConn) error {
 	rows, err := c.Query(ctx, `SELECT checksum FROM momo_migrations WHERE status = 'meta'`, nil)
 	if err != nil {
+		if isUndefinedTable(err) {
+			return nil
+		}
 		return fmt.Errorf("migrate: read history metadata: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
-		return rows.Err()
+		// A driver may report a missing table here instead of from Query.
+		if err := rows.Err(); err != nil && !isUndefinedTable(err) {
+			return fmt.Errorf("migrate: read history metadata: %w", err)
+		}
+		return nil
 	}
 	var raw string
 	if err := rows.Scan(&raw); err != nil {
@@ -75,6 +89,12 @@ func EnsureHistory(ctx context.Context, c momo.PinnedConn, d Dialect) error {
 		return fmt.Errorf("migrate: the history table has format %d but this momo reads up to format %d; upgrade momo", v, FormatVersion)
 	}
 	return nil
+}
+
+// isUndefinedTable reports whether err is PostgreSQL's "relation does not exist".
+func isUndefinedTable(err error) bool {
+	var s interface{ SQLState() string }
+	return errors.As(err, &s) && s.SQLState() == undefinedTable
 }
 
 // ReadHistory returns the migration rows of the history table ordered by

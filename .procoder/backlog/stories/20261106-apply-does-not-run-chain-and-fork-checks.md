@@ -1,6 +1,6 @@
 # Apply does not run chain and fork checks
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-06
 Epic: momo-04-migrations-core-postgresql
 Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
@@ -15,13 +15,15 @@ Expected: apply refuses (non-zero exit, clear message) when the pending set has 
 
 ## Acceptance criteria
 
-- [ ] apply exits non-zero and applies nothing when a pending version is older than the latest applied version
-- [ ] apply exits non-zero on a forked snapshot chain with the same error validate reports
-- [ ] a linear chain still applies unchanged
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] apply exits non-zero and applies nothing when a pending version is older than the latest applied version
+- [x] apply exits non-zero on a forked snapshot chain with the same error validate reports
+- [x] a linear chain still applies unchanged
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
-
+- TestApplyRefusesPendingOlderThanApplied: history holds applied 20260103000000, pending 20260102000000 gives ErrOutOfOrder naming both versions and runs no statement. Red before (apply ran it); mutation (outOfOrder call removed) fails it. Integration twin TestApplyRefusesOutOfOrderOnPostgres runs in CI.
+- TestApplyRefusesForkedChain: two snapshots sharing a parent give ErrBranchConflict, the message contains a problem ValidateOffline reports for the same directory, and no migration runs. Mutation (Chain call removed) fails it.
+- TestApplyLinearChainStillApplies: a linear two-snapshot chain applies both migrations; the existing engine tests (no snapshots, WithoutSum) pass unchanged.
+- Red first for all three: Apply had no chain or order check, so both refusal tests failed with a nil error before the change.
+- Review fixes: a missing parent, cycle or gap is ErrChainInvalid (TestApplyRefusesBrokenChain); TestMigrateChainRefusalsExitOne pins exit 1 for fork, out-of-order and broken chain. Recovery steps documented in docs/migrations.md section 2.

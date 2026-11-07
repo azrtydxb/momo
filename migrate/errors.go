@@ -19,6 +19,10 @@ var (
 	ErrDestructive = errors.New("migrate: destructive change requires --allow-destructive")
 	// ErrBranchConflict: two migration branches modify the same history point.
 	ErrBranchConflict = errors.New("migrate: two migrations share the same parent snapshot")
+	// ErrChainInvalid: the snapshots do not form one linear chain (missing parent, cycle or gap); a fork is ErrBranchConflict.
+	ErrChainInvalid = errors.New("migrate: the snapshot chain is invalid")
+	// ErrOutOfOrder: a pending migration is older than the latest applied one.
+	ErrOutOfOrder = errors.New("migrate: a pending migration is older than the latest applied migration")
 	// ErrStagedRequired: a NOT NULL column without default on an existing table needs a staged change.
 	ErrStagedRequired = errors.New("migrate: NOT NULL column without default on an existing table requires a staged change (--stage), or --enforce-not-null once an existing column is backfilled")
 	// ErrNoDown: the migration has no authored down file.

@@ -228,7 +228,8 @@ func TestSumFileMismatchRefusesApply(t *testing.T) {
 	if !errors.Is(err, migrate.ErrChecksumMismatch) || !strings.Contains(err.Error(), "20260101000001_b.up.sql") {
 		t.Fatalf("want ErrChecksumMismatch naming the edited file, got %v", err)
 	}
-	if appliedCount(t, db) != 0 {
+	// A refused apply writes nothing, so the history table may not exist at all.
+	if tableExists(t, db, testdb.Schema(t)+".momo_migrations") && appliedCount(t, db) != 0 {
 		t.Fatal("nothing may run when momo.sum disagrees with the directory")
 	}
 }

@@ -380,8 +380,10 @@ momo migrate drift                      # live DB vs latest applied snapshot
 - `diff` compares models with the latest snapshot, never with the database.
   Prints `no changes` and writes nothing when equal.
 - Never edit an applied migration file, even cosmetically: `apply` refuses on the
-  changed checksum. The manual checksum-update route for a cosmetic edit is in
-  [migrations.md](migrations.md) section 4; prefer a new migration.
+  changed checksum. For a cosmetic edit you accept: `momo migrate hash`, then
+  `momo migrate rehash --version V --accept` (without `--accept` it only shows
+  the two checksums); see [migrations.md](migrations.md) section 4. Prefer a new
+  migration.
 - Renames are never guessed: a rename looks like drop plus add and is refused.
   Say it explicitly: `--rename-column table.old=new`, `--rename-table old=new`.
 - Destructive changes (`drop_table`, `drop_column`, `drop_enum`, a column type
@@ -393,7 +395,8 @@ momo migrate drift                      # live DB vs latest applied snapshot
   `diff --enforce-not-null`. The flag enforces every nullable column the model
   has as NOT NULL, not only staged ones; with NULLs left, `apply` fails (exit 3)
   and rolls back cleanly (not dirty): backfill and `apply` again.
-- URL: `--url`, else `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
+- URL: `--url` (warns: visible in the process list; `--url -` reads stdin), else
+  `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
   Exit codes: 0 ok, 1 findings, 2 usage/config, 3 database/lock/execution error.
   An invalid migration name (`diff Bad-Name`) exits 3, not 2.
 - Hand-written SQL migration: create `<version>_<name>.up.sql` (no
@@ -465,31 +468,32 @@ Known issues in v0.1.0, as rules (each is a filed bug):
   `ADD CHECK` is emitted `NOT VALID` with a later `VALIDATE CONSTRAINT`, and
   `ADD UNIQUE` as `CREATE UNIQUE INDEX CONCURRENTLY` plus `USING INDEX`. Both
   can still fail on existing violating data. Hand-written changes are not flagged.
-- `apply` does NOT run chain or fork checks. Two branches that both added a
-  migration are not caught by `apply`; `validate` catches it. Always run
-  `validate` in CI. Pending = every file without a history row, so a
-  late-merged older file is applied after newer ones.
 - NEVER edit an applied migration. `apply` and `status` refuse
-  (`ErrChecksumMismatch`) and `momo migrate hash` does NOT fix it (the history row
-  keeps the old checksum). WORKAROUND: `git checkout -- <file>` and write a new
-  migration. Editing a still-pending migration is fine; then run `hash`. `hash`
-  accepts every edit, so read its `changed:/added:/removed:` list first.
+  (`ErrChecksumMismatch`) and `momo migrate hash` alone does NOT fix it (the
+  history row keeps the old checksum). Preferred: `git checkout -- <file>` and
+  write a new migration. A cosmetic edit you accept: `hash`, then
+  `momo migrate rehash --version V --accept`. Editing a still-pending migration
+  is fine; then run `hash`. `hash` accepts every edit, so read its
+  `changed:/added:/removed:` list first.
+- `apply` refuses a forked snapshot chain (same error as `validate`) and a pending
+  version older than the latest applied one (`ErrOutOfOrder`); both exit 1, as
+  does a broken chain (`ErrChainInvalid`). There is no `rebase` command: delete
+  the late migration's `.up.sql` and `.snapshot.json`, run
+  `momo migrate diff <name>` to regenerate it with a new version, then
+  `momo migrate hash` (a pending file needs no `rehash`); see [migrations.md](migrations.md) section 2. Still
+  run `validate` in CI.
 - There is no rollback and no down migrations. Undo with a new forward
   migration. `resolve --rolled-back` runs no SQL.
-- `--force-unlock` does nothing on PostgreSQL. A stuck lock: find the session in
-  `pg_stat_activity` and `pg_terminate_backend` it.
-- `migrate.lock_timeout: 0s` and `statement_timeout: 0s` cannot disable the
-  timeout (0 means default / untouched).
-- `apply` creates the history table (`momo_migrations`) and a meta row even when
-  nothing is pending.
-- A `NOT NULL` column with a volatile default (for example `random()`) rewrites
-  the table with no warning. Constant defaults are cheap.
-- The staging refusal fires for ANY table already in the snapshot, empty or not,
-  although its message says "populated". A rename-candidate exception also skips
-  staging for NOT NULL columns: review the SQL of any `diff` that used a rename
-  flag.
-- History `error` text is not URL-redacted and `--url` is visible in the process
-  list: use `migrate.url_env`, not `--url`.
+- There is no `--force-unlock` (an unknown flag, exit 2). The migration lock is a
+  session advisory lock, freed when its holder disconnects. A stuck lock: find
+  the session in `pg_stat_activity` and `pg_terminate_backend` it.
+- `migrate.lock_timeout: 0s` and `statement_timeout: 0s` disable the timeouts
+  (`SET ... = 0`); leave the key out for the defaults (5 s, untouched).
+- `apply` with nothing pending writes nothing, not even the history table.
+- A rename-candidate exception skips staging for NOT NULL columns: review the
+  SQL of any `diff` that used a rename flag.
+- `--url` is visible in the process list (momo warns): use `migrate.url_env`,
+  `MOMO_DATABASE_URL` or `--url -`. URLs in history `error` text are redacted.
 - `momo_migrations` lives in the first schema of `search_path`;
   `migrate.schemas[0]` must equal `current_schema()` or the engine errors.
 - Dropped extensions and schemas are not dropped in the database.
@@ -1208,9 +1212,11 @@ Examples: every `examples/*/example_test.go`, harness
 21. Declare `Concurrently()` on large-table indexes. `-- momo:destructive` is
     informational; only `diff --allow-destructive` guards drops.
 22. CI must run `momo generate --check`, `momo migrate validate` and the
-    `diff ci_probe | grep -qx 'no changes'` probe; `apply` does not detect forks.
+    `diff ci_probe | grep -qx 'no changes'` probe; `apply` also refuses forks and
+    out-of-order versions, but fail the pull request earlier.
 23. Run `momo migrate` over a direct connection, URL from the environment, never
-    `--url`. Use `sslmode=verify-full` for remote databases.
+    `--url` (or `--url -` for stdin). Use `sslmode=verify-full` for remote
+    databases.
 24. Behind PgBouncer keep the default exec mode; never select the simple
     protocol.
 25. Test against real PostgreSQL with pgvector; do not mock `momo.Querier`.
