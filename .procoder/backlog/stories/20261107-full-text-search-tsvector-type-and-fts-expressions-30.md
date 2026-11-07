@@ -30,3 +30,8 @@ CI run 42409393949 (ci-agent, head aeebc3b, merged with origin/sprint-5 126646b)
 - Goldens: TestFullTextGolden passed.
 - Hybrid example: docs/fulltext.md; TestFullTextHybridRanking passed.
 - CI green: run above.
+
+Review fixes (head 367b72f, CI run 42411922211, ci-agent: unit, lint, fuzz-smoke, integration postgres all green):
+- Sensitive-column masking: TestFullTextHooksSeeMaskedArgs (configuration, query and options show as RedactedArg for a sensitive operand, stay visible for a plain one) and TestDistanceArgMaskedForSensitiveColumn for DistanceExpr.
+- Grouping limit documented in docs/fulltext.md and pinned by TestFullTextBindsAreNotGroupable.
+- Codec edge cases: TestTSVectorAndQueryForms and the TestTypeMapping rows with quote, backslash, position and weight.
