@@ -106,7 +106,7 @@ func TestMigrateValidateExitOneOnProblems(t *testing.T) {
 	}
 }
 
-func TestMigrateRedactsURL(t *testing.T) {
+func TestCLIRedactsURL(t *testing.T) {
 	dir := t.TempDir()
 	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(dir)+"/m\n")
 	var out, errOut bytes.Buffer
@@ -117,5 +117,15 @@ func TestMigrateRedactsURL(t *testing.T) {
 	}
 	if all := out.String() + errOut.String(); strings.Contains(all, "hunter2secret") || strings.Contains(all, url) {
 		t.Fatalf("output leaks the DSN: %s", all)
+	}
+
+	// A missing URL names the environment variable to set.
+	out.Reset()
+	errOut.Reset()
+	if code := runMigrate(&out, &errOut, []string{"--config", cfg, "status"}, noEnv); code == 0 {
+		t.Fatalf("status without a URL must fail: %s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "MOMO_DATABASE_URL") {
+		t.Fatalf("missing URL must name MOMO_DATABASE_URL: %q", errOut.String())
 	}
 }
