@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // comparisons is the comparison and ordering surface every comparable
@@ -66,7 +68,7 @@ func TestAggCarriesTheSharedComparisons(t *testing.T) {
 }
 
 func TestAggComparisonRendersAgainstTheAggregate(t *testing.T) {
-	c, err := compile(testDialect(), func(b *Builder) {
+	c, err := compile(dialect.Postgres, func(b *Builder) {
 		CountAll().Between(1, 5).AppendSQL(b)
 	})
 	if err != nil {
