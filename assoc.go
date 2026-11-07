@@ -225,7 +225,7 @@ func (r Relation[P, C]) lockParent(ctx context.Context, tx *Tx, pkey []any) erro
 		b.WriteString("SELECT 1 FROM ")
 		r.Parent.appendFrom(b)
 		b.WriteString(" WHERE ")
-		inTuple{table: tbl, cols: r.ParentCols, keys: [][]any{pkey}}.AppendSQL(b)
+		inTuple{table: tbl, cols: r.ParentCols, keys: [][]any{pkey}, flags: r.parentKeyFlags()}.AppendSQL(b)
 		b.WriteString(" FOR UPDATE")
 	})
 	if err != nil {
@@ -265,7 +265,7 @@ func (r Relation[P, C]) currentKeys(ctx context.Context, q Querier, pkey []any) 
 		b.WriteString(" FROM ")
 		tr.appendFrom(b)
 		b.WriteString(" WHERE ")
-		inTuple{table: tbl, cols: match, keys: [][]any{pkey}}.AppendSQL(b)
+		inTuple{table: tbl, cols: match, keys: [][]any{pkey}, flags: r.ownerFlags()}.AppendSQL(b)
 		if r.Through == nil && r.Discriminator != nil {
 			b.WriteString(" AND ")
 			b.QualifiedIdent(tbl, r.Discriminator.Column)
@@ -335,7 +335,7 @@ func (r Relation[P, C]) Count(ctx context.Context, q Querier, p *P) (int64, erro
 			}
 		}
 		b.WriteString(" WHERE ")
-		inTuple{table: tr.Qualifier(), cols: cols, keys: [][]any{key}}.AppendSQL(b)
+		inTuple{table: tr.Qualifier(), cols: cols, keys: [][]any{key}, flags: r.ownerFlags()}.AppendSQL(b)
 		if joined {
 			r.writeScope(b, &loadConfig{})
 		}
@@ -482,6 +482,7 @@ func (r Relation[P, C]) childPKs(p *P, cs []*C) ([]any, [][]any, error) {
 // clears every child of the parent key (Replace with an empty set).
 func (r Relation[P, C]) updateChunk(ctx context.Context, q Querier, key []any, keys [][]any, mode linkMode) error {
 	tbl := r.Child.Qualifier()
+	ownFlags := r.ownerFlags()
 	st, err := compile(q.Dialect(), func(b *Builder) {
 		b.WriteString("UPDATE ")
 		r.Child.appendFrom(b)
@@ -493,7 +494,7 @@ func (r Relation[P, C]) updateChunk(ctx context.Context, q Querier, key []any, k
 			b.Ident(col)
 			b.WriteString(" = ")
 			if mode == linkSet {
-				b.Arg(key[i])
+				b.argFor(flagAt(ownFlags, i), key[i])
 			} else {
 				b.WriteString("NULL")
 			}
@@ -506,7 +507,7 @@ func (r Relation[P, C]) updateChunk(ctx context.Context, q Querier, key []any, k
 		}
 		b.WriteString(" WHERE ")
 		if mode != linkSet {
-			inTuple{table: tbl, cols: r.ChildCols, keys: [][]any{key}}.AppendSQL(b)
+			inTuple{table: tbl, cols: r.ChildCols, keys: [][]any{key}, flags: r.childKeyFlags()}.AppendSQL(b)
 			if r.Discriminator != nil {
 				b.WriteString(" AND ")
 				b.QualifiedIdent(tbl, r.Discriminator.Column)
@@ -518,7 +519,7 @@ func (r Relation[P, C]) updateChunk(ctx context.Context, q Querier, key []any, k
 			}
 		}
 		if len(keys) > 0 {
-			inTuple{table: tbl, cols: r.ChildPK, keys: keys}.AppendSQL(b)
+			inTuple{table: tbl, cols: r.ChildPK, keys: keys, flags: keyFlags(r.ChildMeta, r.ChildPK)}.AppendSQL(b)
 		}
 	})
 	if err != nil {
@@ -557,6 +558,7 @@ func (r Relation[P, C]) joinKeys(p *P, cs []*C) ([]any, [][]any, error) {
 func (r Relation[P, C]) insertJoinChunk(ctx context.Context, q Querier, pkey []any, ckeys [][]any) error {
 	d := q.Dialect()
 	cols := append(append([]string{}, r.Through.ParentCols...), r.Through.ChildCols...)
+	colFlags := append(append([]uint16{}, r.ownerFlags()...), r.childKeyFlags()...)
 	st, err := compile(d, func(b *Builder) {
 		b.WriteString("INSERT INTO ")
 		r.Through.Table.appendFrom(b)
@@ -578,7 +580,7 @@ func (r Relation[P, C]) insertJoinChunk(ctx context.Context, q Querier, pkey []a
 				if j > 0 {
 					b.WriteString(", ")
 				}
-				b.Arg(v)
+				b.argFor(flagAt(colFlags, j), v)
 			}
 			b.WriteString(")")
 		}
@@ -607,10 +609,10 @@ func (r Relation[P, C]) deleteJoinChunk(ctx context.Context, q Querier, pkey []a
 		b.WriteString("DELETE FROM ")
 		r.Through.Table.appendFrom(b)
 		b.WriteString(" WHERE ")
-		inTuple{table: tbl, cols: r.Through.ParentCols, keys: [][]any{pkey}}.AppendSQL(b)
+		inTuple{table: tbl, cols: r.Through.ParentCols, keys: [][]any{pkey}, flags: r.ownerFlags()}.AppendSQL(b)
 		if len(ckeys) > 0 {
 			b.WriteString(" AND ")
-			inTuple{table: tbl, cols: r.Through.ChildCols, keys: ckeys}.AppendSQL(b)
+			inTuple{table: tbl, cols: r.Through.ChildCols, keys: ckeys, flags: r.childKeyFlags()}.AppendSQL(b)
 		}
 	})
 	if err != nil {
