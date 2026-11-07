@@ -100,7 +100,7 @@ func runPending(ctx context.Context, q Querier, pend []pendingLoad) error {
 // pipelinePlan reports whether pend can be sent as one batch on q.
 func pipelinePlan(q Querier, pend []pendingLoad) ([]batchable, Batcher, bool) {
 	b, ok := q.conn().q.(Batcher)
-	if !ok {
+	if !ok || bypassesTx(q) {
 		return nil, nil, false
 	}
 	bs := make([]batchable, len(pend))

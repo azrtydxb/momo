@@ -219,6 +219,50 @@ session advisory lock.
 | Injected clock                             | yes                                                                                                     | `WithClock`                                                                           |
 | Ready-made slog or OpenTelemetry hook      | no such package in the repository                                                                       | implement `Hook`                                                                      |
 
+## Multi-tenant row-level security
+
+Row-level security (RLS) policies usually read a setting such as
+`current_setting('app.tenant_id', true)`. The fail-closed pattern sets that
+setting at the start of every transaction from a scope carried in the
+`context.Context`, so a statement that forgot its scope matches no rows.
+`WithTxSetup` and `WithImplicitTx` build that into the `*DB`:
+
+```go
+db := momo.New(pgxdriver.New(pool),
+	momo.WithTxSetup(func(ctx context.Context, tx *momo.Tx) error {
+		id, ok := tenantFrom(ctx)
+		if !ok {
+			return nil // no scope: nothing is set, the policy matches no rows
+		}
+		return momo.SetConfigLocal(ctx, tx, "app.tenant_id", id)
+	}),
+	momo.WithImplicitTx(),
+)
+```
+
+```sql
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON documents
+  USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::bigint)
+  WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::bigint);
+```
+
+Connect as a role without `BYPASSRLS` that does not own the tables (or use
+`FORCE`, as above): superusers and `BYPASSRLS` roles skip every policy.
+
+| Feature                       | Behavior                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WithTxSetup`                 | The function runs right after every transaction momo begins: `DB.Begin`, `DB.Tx`, and the transactions momo opens itself (chunked inserts, graph creation, relation writes, `WithSearch`, implicit transactions). It runs once per real transaction, not per savepoint, and not for `AdoptTx` (the caller began that transaction). An error rolls back and is returned.  |
+| `WithImplicitTx`              | Auto-commit statements on a `*DB` (`Select`, `Insert`, `Update`, `Delete`, `Exec`, `Scalars`, relation loads) each run in a short transaction, so the setup applies. `Iter`, `Each` and `Rows` hold the transaction until exhausted or closed, then commit; a scan or driver error or a cancelled context rolls back. Close early-abandoned rows to free the connection. |
+| `SetConfigLocal`              | `set_config(key, value, true)`: the setting ends with the transaction. The same as `Tx.SetLocal`.                                                                                                                                                                                                                                                                        |
+| Not used on an implicit `*DB` | Pipelined relation loading (`Batch`) and the `COPY` fast path, because they bypass the setup. `BatcherOf` and `CopierOf` report none for such a `*DB`; use a `Tx` for them.                                                                                                                                                                                              |
+
+Behind PgBouncer in transaction mode use only transaction-local settings
+(`SetConfigLocal`), never a session-level `SET`: the session belongs to
+whichever client PgBouncer hands the backend to next. `TestImplicitTxPgBouncer`
+runs concurrent tenants through PgBouncer and checks no scope leaks.
+
 ## PgBouncer and TLS
 
 | Feature                        | PostgreSQL                                                                      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
