@@ -24,6 +24,7 @@ func KeysetPaginationMixedDirections(t *testing.T, db *momo.DB, caps Caps) {
 	}
 	seen := map[int64]bool{}
 	pages := 0
+	var trace [][]int64
 	q := momo.Select[Document](db).OrderBy(DocVersion.Desc(), DocTenantID.Asc()).Limit(3)
 	page := q
 	for {
@@ -35,12 +36,15 @@ func KeysetPaginationMixedDirections(t *testing.T, db *momo.DB, caps Caps) {
 			break
 		}
 		pages++
+		var ids []int64
 		for _, r := range rows {
+			ids = append(ids, r.ID)
 			if seen[r.ID] {
 				t.Fatalf("row %d returned twice (page %d)", r.ID, pages)
 			}
 			seen[r.ID] = true
 		}
+		trace = append(trace, ids)
 		last := rows[len(rows)-1]
 		page = q.After(last.Version, last.TenantID, last.ID)
 		if pages > 10 {
@@ -49,7 +53,7 @@ func KeysetPaginationMixedDirections(t *testing.T, db *momo.DB, caps Caps) {
 	}
 	if len(seen) != 10 || pages < 4 {
 		c, _ := page.SQL()
-		t.Fatalf("saw %d rows over %d pages, want 10 rows over at least 4 pages; last page SQL %s args %v", len(seen), pages, c.SQL, c.Args)
+		t.Fatalf("saw %d rows over %d pages, want 10 rows over at least 4 pages; pages %v; last page SQL %s args %v", len(seen), pages, trace, c.SQL, c.Args)
 	}
 }
 

@@ -309,8 +309,11 @@ func WithTableNameQuoted(t *testing.T, db *momo.DB, caps Caps) {
 		t.Fatal(err)
 	}
 	ddl := documentsDDLPostgres
-	if caps.Dialect == dialect.SQLite {
+	switch caps.Dialect {
+	case dialect.SQLite:
 		ddl = documentsDDLSQLite
+	case dialect.MySQL:
+		ddl = documentsDDLMySQL
 	}
 	if _, err := momo.Exec(ctx, db, strings.Replace(ddl, "CREATE TABLE documents", "CREATE TABLE docs_alt", 1)); err != nil {
 		t.Fatal(err)
