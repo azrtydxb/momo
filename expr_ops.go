@@ -33,12 +33,12 @@ func (o exprOps[T]) e() Expr {
 	return o.self
 }
 
-func (o exprOps[T]) Eq(v T) Predicate  { return binOp{o.e(), " = ", argExpr{v}} }
-func (o exprOps[T]) Ne(v T) Predicate  { return binOp{o.e(), " <> ", argExpr{v}} }
-func (o exprOps[T]) Lt(v T) Predicate  { return binOp{o.e(), " < ", argExpr{v}} }
-func (o exprOps[T]) Le(v T) Predicate  { return binOp{o.e(), " <= ", argExpr{v}} }
-func (o exprOps[T]) Gt(v T) Predicate  { return binOp{o.e(), " > ", argExpr{v}} }
-func (o exprOps[T]) Ge(v T) Predicate  { return binOp{o.e(), " >= ", argExpr{v}} }
+func (o exprOps[T]) Eq(v T) Predicate  { return binOp{o.e(), " = ", argExpr{v: v}} }
+func (o exprOps[T]) Ne(v T) Predicate  { return binOp{o.e(), " <> ", argExpr{v: v}} }
+func (o exprOps[T]) Lt(v T) Predicate  { return binOp{o.e(), " < ", argExpr{v: v}} }
+func (o exprOps[T]) Le(v T) Predicate  { return binOp{o.e(), " <= ", argExpr{v: v}} }
+func (o exprOps[T]) Gt(v T) Predicate  { return binOp{o.e(), " > ", argExpr{v: v}} }
+func (o exprOps[T]) Ge(v T) Predicate  { return binOp{o.e(), " >= ", argExpr{v: v}} }
 func (o exprOps[T]) IsNull() Predicate { return postfix{o.e(), " IS NULL"} }
 
 // IsNotNull is true when the expression is not NULL.

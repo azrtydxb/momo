@@ -5,6 +5,7 @@ package momo_test
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -97,6 +98,115 @@ func TestHookCannotMutateBoundArgs(t *testing.T) {
 	for _, c := range drv.Calls() {
 		if slices.Contains(c.Args, any("tampered")) {
 			t.Fatalf("a hook changed the arguments sent to the driver: %v", c.Args)
+		}
+	}
+}
+
+// predicateCase runs one statement and checks hook arguments position by
+// position: every driver argument holding the secret shows as RedactedArg in
+// the last hook event, every other argument is unchanged, and want arguments
+// were masked.
+func predicateCase(t *testing.T, name string, want int, run func(ctx context.Context, db *momo.DB) error) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		rec := &obstest.Recorder{}
+		drv := fakedriver.New(dialect.Postgres)
+		db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
+		if err := run(t.Context(), db); err != nil {
+			t.Fatal(err)
+		}
+		calls := drv.Calls()
+		evs := rec.Events()
+		if len(calls) == 0 || len(evs) == 0 {
+			t.Fatalf("calls %d, events %d", len(calls), len(evs))
+		}
+		sent, seen := calls[len(calls)-1].Args, evs[len(evs)-1].Args
+		if len(sent) != len(seen) {
+			t.Fatalf("driver got %d args, hook saw %d", len(sent), len(seen))
+		}
+		masked := 0
+		for i := range sent {
+			s, isStr := sent[i].(string)
+			if isStr && strings.Contains(s, sensitiveValue) {
+				if seen[i] != momo.RedactedArg {
+					t.Errorf("arg %d: hook saw %v, want the placeholder", i, seen[i])
+				}
+				masked++
+				continue
+			}
+			if seen[i] != sent[i] {
+				t.Errorf("arg %d: hook saw %v, driver got %v", i, seen[i], sent[i])
+			}
+		}
+		if masked != want {
+			t.Errorf("masked %d arguments, want %d (driver args %v)", masked, want, sent)
+		}
+	})
+}
+
+func TestHooksSeeMaskedSensitivePredicateArgs(t *testing.T) {
+	sel := func(p momo.Predicate) func(context.Context, *momo.DB) error {
+		return func(ctx context.Context, db *momo.DB) error {
+			_, err := momo.Select[suite.Document](db).Where(p).All(ctx)
+			return err
+		}
+	}
+	predicateCase(t, "eq", 1, sel(momo.And(suite.DocTitle.Eq("visible"), suite.DocSecret.Eq(sensitiveValue))))
+	predicateCase(t, "ne", 1, sel(suite.DocSecret.Ne(sensitiveValue)))
+	predicateCase(t, "distinct", 2, sel(momo.Or(suite.DocSecret.IsDistinctFrom(sensitiveValue), suite.DocSecret.IsNotDistinctFrom(sensitiveValue))))
+	predicateCase(t, "in", 1, sel(momo.And(suite.DocSecret.In(sensitiveValue, "other"), suite.DocTitle.In("a", "b"))))
+	predicateCase(t, "not in", 1, sel(suite.DocSecret.NotIn(sensitiveValue)))
+	predicateCase(t, "between", 1, sel(suite.DocSecret.Between("a", sensitiveValue)))
+	predicateCase(t, "like", 1, sel(momo.Like(suite.DocSecret, "%"+sensitiveValue+"%")))
+	predicateCase(t, "ilike", 1, sel(momo.ILike(suite.DocSecret, "%"+sensitiveValue+"%")))
+	predicateCase(t, "contains literal", 1, sel(momo.ContainsLiteral(suite.DocSecret, sensitiveValue)))
+	predicateCase(t, "non-sensitive stays visible", 0, sel(suite.DocTitle.Eq("visible")))
+	predicateCase(t, "update where", 1, func(ctx context.Context, db *momo.DB) error {
+		_, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("visible")).Where(suite.DocSecret.Eq(sensitiveValue)).Exec(ctx)
+		return err
+	})
+	predicateCase(t, "delete where", 1, func(ctx context.Context, db *momo.DB) error {
+		_, err := momo.Delete[suite.Document](db).Where(suite.DocSecret.Eq(sensitiveValue)).Exec(ctx)
+		return err
+	})
+	predicateCase(t, "set expr", 1, func(ctx context.Context, db *momo.DB) error {
+		_, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("visible"), suite.DocSecret.SetExpr(momo.Value(sensitiveValue))).
+			Where(suite.DocID.Eq(1)).Exec(ctx)
+		return err
+	})
+	predicateCase(t, "insert set expr", 1, func(ctx context.Context, db *momo.DB) error {
+		_, err := momo.Insert[suite.Document](db).Values(suite.DocTenantID.Set(1), suite.DocTitle.Set("visible"), suite.DocSecret.SetExpr(momo.Value(sensitiveValue))).Exec(ctx)
+		return err
+	})
+}
+
+// byteHook overwrites the bytes of any []byte argument in place.
+type byteHook struct{}
+
+func (byteHook) BeforeQuery(ctx context.Context, e *momo.QueryEvent) context.Context {
+	for _, a := range e.Args {
+		if b, ok := a.([]byte); ok {
+			for i := range b {
+				b[i] = 'X'
+			}
+		}
+	}
+	return ctx
+}
+func (byteHook) AfterQuery(context.Context, *momo.QueryEvent) {}
+
+func TestHookCannotMutateByteArgsInPlace(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv, momo.WithHook(byteHook{}), momo.WithArgLogging())
+	_, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("t")).Where(momo.SQL("title = ?", []byte("keep"))).Exec(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range drv.Calls() {
+		for _, a := range c.Args {
+			if b, ok := a.([]byte); ok && string(b) != "keep" {
+				t.Fatalf("a hook changed a byte argument in place: %q", b)
+			}
 		}
 	}
 }

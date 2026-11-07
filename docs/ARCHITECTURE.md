@@ -126,7 +126,7 @@ name as written.
 - `WithClock(func() time.Time)`, `WithMaxInList(n)`, `MaxRows(n)` query option, `ErrBusy`, `ErrValidation`, `ErrLimitExceeded`. Sentinels are declared in `errors.go` by momo-01. [momo-05]
 - `Interceptor`, `Operation`, `WithInterceptor`. [momo-05 Task on interceptors]
 - `Meta.Hooks` filled by generated code with method values; `FieldHook[T]` for Go-side defaults and validators. [momo-05]
-- `Error.Detail() string`; driver-level redaction keeps driver detail off `Error()`. `Compiled` carries a sensitive-args mask used by hooks. [momo-03, momo-05]
+- `Error.Detail() string`; driver-level redaction keeps driver detail off `Error()`. `Compiled` carries a sensitive-args mask used by hooks: values bound from `sensitive` columns (assignments, key and WHERE predicates) show as `momo.RedactedArg`; raw `momo.SQL` arguments are not masked. [momo-03, momo-05]
 - Read-only models: marker `View` (tag `momo:"view:<name>[,materialized]"`). `WritableModeler[T]` = `*T` with `MomoMeta()` and `MomoWritable()`. `MomoWritable` is generated only for `Model` tables, and `Insert/Update/Delete/SoftDelete` require `PT WritableModeler[T]`. `RefreshMaterializedView(ctx, q, name string, concurrently bool) error`. [momo-02 emits, momo-04 tests]
 - `Tx.SetLocal(ctx, name, value string) error` (set_config(name, value, true), transaction-scoped) for RLS and search settings. [momo-04 Task 23]
 

@@ -4,6 +4,7 @@ package momo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -190,11 +191,21 @@ const RedactedArg = "[redacted]"
 
 // maskArgs returns a copy of args with the sensitive positions replaced, so a
 // hook can neither read those values nor mutate the slice sent to the driver.
+// Byte slices are copied too, so changing their contents in place does not reach
+// the driver. It runs only when hooks are registered.
 func maskArgs(args []any, sens []int) []any {
 	if args == nil {
 		return nil
 	}
 	out := slices.Clone(args)
+	for i, a := range out {
+		switch v := a.(type) {
+		case []byte:
+			out[i] = slices.Clone(v)
+		case json.RawMessage:
+			out[i] = slices.Clone(v)
+		}
+	}
 	for _, i := range sens {
 		if i >= 0 && i < len(out) {
 			out[i] = RedactedArg

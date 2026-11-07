@@ -165,19 +165,19 @@ func (b *Builder) Arg(v any) {
 // argFor binds v like Arg and records it as sensitive when flags carries
 // FlagSensitive, so QueryEvent.Args shows RedactedArg instead of the value.
 func (b *Builder) argFor(flags uint16, v any) {
-	b.argSens = flags&FlagSensitive != 0
+	prev := b.argSens
+	b.argSens = prev || flags&FlagSensitive != 0
 	b.Arg(v)
-	b.argSens = false
+	b.argSens = prev
 }
 
-// columnFlags returns the flags of the column called name, or 0.
-func columnFlags(cols []ColumnMeta, name string) uint16 {
-	for _, c := range cols {
-		if c.Name == name {
-			return c.Flags
-		}
-	}
-	return 0
+// exprFor renders e with every argument it binds recorded as sensitive when
+// flags carries FlagSensitive, for an expression assigned to such a column.
+func (b *Builder) exprFor(flags uint16, e Expr) {
+	prev := b.argSens
+	b.argSens = prev || flags&FlagSensitive != 0
+	e.AppendSQL(b)
+	b.argSens = prev
 }
 
 // SetErr records the first build error; rendering continues but the

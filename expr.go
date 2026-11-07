@@ -73,12 +73,12 @@ func (c Column[T]) Table() string { return c.table }
 // Flags returns the generated column flags.
 func (c Column[T]) Flags() uint16 { return c.flags }
 
-func (c Column[T]) Eq(v T) Predicate  { return binOp{c, " = ", argExpr{v}} }
-func (c Column[T]) Ne(v T) Predicate  { return binOp{c, " <> ", argExpr{v}} }
-func (c Column[T]) Lt(v T) Predicate  { return binOp{c, " < ", argExpr{v}} }
-func (c Column[T]) Le(v T) Predicate  { return binOp{c, " <= ", argExpr{v}} }
-func (c Column[T]) Gt(v T) Predicate  { return binOp{c, " > ", argExpr{v}} }
-func (c Column[T]) Ge(v T) Predicate  { return binOp{c, " >= ", argExpr{v}} }
+func (c Column[T]) Eq(v T) Predicate  { return binOp{c, " = ", argExpr{v: v, flags: c.flags}} }
+func (c Column[T]) Ne(v T) Predicate  { return binOp{c, " <> ", argExpr{v: v, flags: c.flags}} }
+func (c Column[T]) Lt(v T) Predicate  { return binOp{c, " < ", argExpr{v: v, flags: c.flags}} }
+func (c Column[T]) Le(v T) Predicate  { return binOp{c, " <= ", argExpr{v: v, flags: c.flags}} }
+func (c Column[T]) Gt(v T) Predicate  { return binOp{c, " > ", argExpr{v: v, flags: c.flags}} }
+func (c Column[T]) Ge(v T) Predicate  { return binOp{c, " >= ", argExpr{v: v, flags: c.flags}} }
 func (c Column[T]) IsNull() Predicate { return postfix{c, " IS NULL"} }
 
 // IsNotNull is meaningful on nullable columns and on columns from the
@@ -93,20 +93,24 @@ func (c Column[T]) GtExpr(e Expression[T]) Predicate { return binOp{c, " > ", e}
 func (c Column[T]) GeExpr(e Expression[T]) Predicate { return binOp{c, " >= ", e} }
 
 // IsDistinctFrom is a NULL-safe inequality.
-func (c Column[T]) IsDistinctFrom(v T) Predicate { return distinctFrom{c, argExpr{v}, false} }
+func (c Column[T]) IsDistinctFrom(v T) Predicate {
+	return distinctFrom{c, argExpr{v: v, flags: c.flags}, false}
+}
 
 // IsNotDistinctFrom is a NULL-safe equality.
-func (c Column[T]) IsNotDistinctFrom(v T) Predicate { return distinctFrom{c, argExpr{v}, true} }
+func (c Column[T]) IsNotDistinctFrom(v T) Predicate {
+	return distinctFrom{c, argExpr{v: v, flags: c.flags}, true}
+}
 
 // Between is inclusive on both ends.
-func (c Column[T]) Between(lo, hi T) Predicate { return between{c, lo, hi} }
+func (c Column[T]) Between(lo, hi T) Predicate { return between{e: c, lo: lo, hi: hi, flags: c.flags} }
 
 // In matches any of vs. An empty list renders a predicate that is always
 // false (1 = 0) rather than invalid SQL.
-func (c Column[T]) In(vs ...T) Predicate { return inList[T]{c, slices.Clone(vs), false} }
+func (c Column[T]) In(vs ...T) Predicate { return inList[T]{c, slices.Clone(vs), false, c.flags} }
 
 // NotIn is the negation of In; an empty list is always true.
-func (c Column[T]) NotIn(vs ...T) Predicate { return inList[T]{c, slices.Clone(vs), true} }
+func (c Column[T]) NotIn(vs ...T) Predicate { return inList[T]{c, slices.Clone(vs), true, c.flags} }
 
 // InQuery matches the single-column result of a subquery.
 func (c Column[T]) InQuery(q Subquery) Predicate { return inQuery{c, q, false} }
@@ -119,11 +123,13 @@ func (c Column[T]) Asc() Order  { return Order{Expr: c} }
 func (c Column[T]) Desc() Order { return Order{Expr: c, Desc: true} }
 
 // Set assigns a value (including the zero value) in INSERT or UPDATE.
-func (c Column[T]) Set(v T) Assignment { return Assignment{col: c.name, kind: setValue, val: v} }
+func (c Column[T]) Set(v T) Assignment {
+	return Assignment{col: c.name, kind: setValue, val: v, flags: c.flags}
+}
 
 // SetExpr assigns an expression.
 func (c Column[T]) SetExpr(e Expression[T]) Assignment {
-	return Assignment{col: c.name, kind: setExpr, expr: e}
+	return Assignment{col: c.name, kind: setExpr, expr: e, flags: c.flags}
 }
 
 // SetDefault assigns the column's database default. PostgreSQL supports it
@@ -198,6 +204,8 @@ type Assignment struct {
 	kind setKind
 	val  any
 	expr Expr
+	// flags are the column flags; FlagSensitive masks bound values in hooks.
+	flags uint16
 }
 
 // ColumnName returns the assigned column.
@@ -256,12 +264,28 @@ func Desc(e Expr) Order { return Order{Expr: e, Desc: true} }
 
 // ---------------------------------------------------------- expressions
 
-type argExpr struct{ v any }
+// argExpr binds a value as a parameter. flags are the flags of the column it is
+// compared with or assigned to; a sensitive column masks the value in hooks.
+type argExpr struct {
+	v     any
+	flags uint16
+}
 
-func (a argExpr) AppendSQL(b *Builder) { b.Arg(a.v) }
+func (a argExpr) AppendSQL(b *Builder) { b.argFor(a.flags, a.v) }
+
+// flagged is implemented by column descriptors, whose flags decide masking.
+type flagged interface{ Flags() uint16 }
+
+// flagsOf returns the column flags of e, or 0 when e is not a column.
+func flagsOf(e Expr) uint16 {
+	if f, ok := e.(flagged); ok {
+		return f.Flags()
+	}
+	return 0
+}
 
 // Value wraps a Go value as a typed bound parameter.
-func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v}} }
+func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v: v}} }
 
 type typed[T any] struct{ Expr }
 
@@ -332,21 +356,23 @@ func (distinctFrom) resultType() bool { return false }
 type between struct {
 	e      Expr
 	lo, hi any
+	flags  uint16
 }
 
 func (x between) AppendSQL(b *Builder) {
 	x.e.AppendSQL(b)
 	b.WriteString(" BETWEEN ")
-	b.Arg(x.lo)
+	b.argFor(x.flags, x.lo)
 	b.WriteString(" AND ")
-	b.Arg(x.hi)
+	b.argFor(x.flags, x.hi)
 }
 func (between) resultType() bool { return false }
 
 type inList[T any] struct {
-	e   Expr
-	vs  []T
-	not bool
+	e     Expr
+	vs    []T
+	not   bool
+	flags uint16
 }
 
 func (x inList[T]) AppendSQL(b *Builder) {
@@ -372,7 +398,7 @@ func (x inList[T]) AppendSQL(b *Builder) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.Arg(v)
+		b.argFor(x.flags, v)
 	}
 	b.writeByte(')')
 }
@@ -482,18 +508,19 @@ func NotExists(q Subquery) Predicate { return exists{q, true} }
 // input with EscapeLike (or use ContainsLiteral) so it cannot act as a
 // wildcard. A literal ! in a hand-written pattern must be written as !!.
 func Like(e Expression[string], pattern string) Predicate {
-	return like{e: e, p: pattern}
+	return like{e: e, p: pattern, flags: flagsOf(e)}
 }
 
 type like struct {
-	e Expr
-	p string
+	e     Expr
+	p     string
+	flags uint16
 }
 
 func (x like) AppendSQL(b *Builder) {
 	x.e.AppendSQL(b)
 	b.WriteString(" LIKE ")
-	b.Arg(x.p)
+	b.argFor(x.flags, x.p)
 	b.WriteString(likeEscape)
 }
 func (like) resultType() bool { return false }
@@ -506,11 +533,12 @@ const likeEscape = ` ESCAPE '!'`
 // already ASCII case-insensitive by default, it is ErrUnsupported to avoid
 // implying Unicode case folding SQLite does not perform. Like Like, it always
 // carries ESCAPE '!' to match EscapeLike.
-func ILike(e Expression[string], pattern string) Predicate { return ilike{e, pattern} }
+func ILike(e Expression[string], pattern string) Predicate { return ilike{e, pattern, flagsOf(e)} }
 
 type ilike struct {
-	e Expr
-	p string
+	e     Expr
+	p     string
+	flags uint16
 }
 
 func (x ilike) AppendSQL(b *Builder) {
@@ -520,7 +548,7 @@ func (x ilike) AppendSQL(b *Builder) {
 	}
 	x.e.AppendSQL(b)
 	b.WriteString(" ILIKE ")
-	b.Arg(x.p)
+	b.argFor(x.flags, x.p)
 	b.WriteString(likeEscape)
 }
 func (ilike) resultType() bool { return false }
@@ -563,12 +591,12 @@ type Agg[T any] struct{ fn }
 func (Agg[T]) resultType() T  { var z T; return z }
 func (a Agg[T]) order() Order { return Order{Expr: a} }
 
-func (a Agg[T]) Eq(v T) Predicate { return binOp{a, " = ", argExpr{v}} }
-func (a Agg[T]) Ne(v T) Predicate { return binOp{a, " <> ", argExpr{v}} }
-func (a Agg[T]) Lt(v T) Predicate { return binOp{a, " < ", argExpr{v}} }
-func (a Agg[T]) Le(v T) Predicate { return binOp{a, " <= ", argExpr{v}} }
-func (a Agg[T]) Gt(v T) Predicate { return binOp{a, " > ", argExpr{v}} }
-func (a Agg[T]) Ge(v T) Predicate { return binOp{a, " >= ", argExpr{v}} }
+func (a Agg[T]) Eq(v T) Predicate { return binOp{a, " = ", argExpr{v: v}} }
+func (a Agg[T]) Ne(v T) Predicate { return binOp{a, " <> ", argExpr{v: v}} }
+func (a Agg[T]) Lt(v T) Predicate { return binOp{a, " < ", argExpr{v: v}} }
+func (a Agg[T]) Le(v T) Predicate { return binOp{a, " <= ", argExpr{v: v}} }
+func (a Agg[T]) Gt(v T) Predicate { return binOp{a, " > ", argExpr{v: v}} }
+func (a Agg[T]) Ge(v T) Predicate { return binOp{a, " >= ", argExpr{v: v}} }
 
 // As names the aggregate in a select list: SUM(col) AS name.
 func (a Agg[T]) As(name string) Aliased[T] { return As[T](a, name) }
@@ -610,7 +638,7 @@ func Max[T any](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "MAX", args: []
 
 // Coalesce returns the first non-NULL argument.
 func Coalesce[T any](e Expression[T], fallback T) Expression[T] {
-	return typedFn[T]{fn{name: "COALESCE", args: []Expr{e, argExpr{fallback}}}}
+	return typedFn[T]{fn{name: "COALESCE", args: []Expr{e, argExpr{v: fallback}}}}
 }
 
 // ------------------------------------------------------------- raw SQL

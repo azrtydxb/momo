@@ -487,7 +487,7 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPla
 				continue
 			}
 			var zero T
-			m[ci] = Assignment{col: q.meta.Columns[ci].Name, kind: setValue, val: fp.def[ci](&zero)}
+			m[ci] = Assignment{col: q.meta.Columns[ci].Name, kind: setValue, val: fp.def[ci](&zero), flags: q.meta.Columns[ci].Flags}
 			add(ci)
 		}
 		seen := make(map[int]struct{}, len(m))
@@ -574,7 +574,7 @@ func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) (
 		}
 		if v, ok := autoTimestamp(q.meta, ci, now); ok {
 			cols = append(cols, ci)
-			assigns = append(assigns, Assignment{col: q.meta.Columns[ci].Name, kind: setValue, val: v})
+			assigns = append(assigns, Assignment{col: q.meta.Columns[ci].Name, kind: setValue, val: v, flags: q.meta.Columns[ci].Flags})
 		}
 	}
 	return cols, assigns, nil
@@ -600,9 +600,9 @@ func (q InsertQuery[T]) modelValue(m *T, ci int, now time.Time, fp fieldPlan[T])
 func (q InsertQuery[T]) appendValue(b *Builder, a Assignment) {
 	switch a.kind {
 	case setValue:
-		b.argFor(columnFlags(q.meta.Columns, a.col), a.val)
+		b.argFor(a.flags, a.val)
 	case setExpr:
-		a.expr.AppendSQL(b)
+		b.exprFor(a.flags, a.expr)
 	case setNull:
 		b.WriteString("NULL")
 	case setDefault:

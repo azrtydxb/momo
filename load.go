@@ -295,7 +295,7 @@ func (r *Relation[P, C]) chunkQuery(d *dialect.Dialect, chunk [][]any, cfg *load
 			b.WriteString(" FROM ")
 			r.Child.appendFrom(b)
 			b.WriteString(" WHERE ")
-			inTuple{table: r.Child.Qualifier(), cols: r.ChildCols, keys: chunk}.AppendSQL(b)
+			inTuple{table: r.Child.Qualifier(), cols: r.ChildCols, keys: chunk, flags: keyFlags(r.ChildMeta, r.ChildCols)}.AppendSQL(b)
 			r.writeScope(b, cfg)
 			b.WriteString(" ORDER BY ")
 			r.writeOrder(b, cfg)
@@ -443,7 +443,7 @@ func (r *Relation[P, C]) writeChildColumns(b *Builder) {
 func (r *Relation[P, C]) writeScope(b *Builder, cfg *loadConfig) {
 	var ps []Predicate
 	if r.Discriminator != nil {
-		ps = append(ps, binOp{qcol{r.Child.Qualifier(), r.Discriminator.Column}, " = ", argExpr{r.Discriminator.Value}})
+		ps = append(ps, binOp{qcol{r.Child.Qualifier(), r.Discriminator.Column}, " = ", argExpr{v: r.Discriminator.Value}})
 	}
 	if m := r.ChildMeta; m.SoftDelete >= 0 && !cfg.withDeleted {
 		ps = append(ps, softDeletePred(m, r.Child.Qualifier(), cfg.onlyDeleted))

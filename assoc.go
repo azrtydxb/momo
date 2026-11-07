@@ -225,7 +225,7 @@ func (r Relation[P, C]) lockParent(ctx context.Context, tx *Tx, pkey []any) erro
 		b.WriteString("SELECT 1 FROM ")
 		r.Parent.appendFrom(b)
 		b.WriteString(" WHERE ")
-		inTuple{table: tbl, cols: r.ParentCols, keys: [][]any{pkey}}.AppendSQL(b)
+		inTuple{table: tbl, cols: r.ParentCols, keys: [][]any{pkey}, flags: keyFlags(r.ParentMeta, r.ParentCols)}.AppendSQL(b)
 		b.WriteString(" FOR UPDATE")
 	})
 	if err != nil {
@@ -506,7 +506,7 @@ func (r Relation[P, C]) updateChunk(ctx context.Context, q Querier, key []any, k
 		}
 		b.WriteString(" WHERE ")
 		if mode != linkSet {
-			inTuple{table: tbl, cols: r.ChildCols, keys: [][]any{key}}.AppendSQL(b)
+			inTuple{table: tbl, cols: r.ChildCols, keys: [][]any{key}, flags: keyFlags(r.ChildMeta, r.ChildCols)}.AppendSQL(b)
 			if r.Discriminator != nil {
 				b.WriteString(" AND ")
 				b.QualifiedIdent(tbl, r.Discriminator.Column)
@@ -518,7 +518,7 @@ func (r Relation[P, C]) updateChunk(ctx context.Context, q Querier, key []any, k
 			}
 		}
 		if len(keys) > 0 {
-			inTuple{table: tbl, cols: r.ChildPK, keys: keys}.AppendSQL(b)
+			inTuple{table: tbl, cols: r.ChildPK, keys: keys, flags: keyFlags(r.ChildMeta, r.ChildPK)}.AppendSQL(b)
 		}
 	})
 	if err != nil {

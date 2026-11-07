@@ -96,12 +96,13 @@ func updModelWritable(f uint16) bool {
 type updPKEq struct {
 	table, col string
 	val        any
+	flags      uint16
 }
 
 func (p updPKEq) AppendSQL(b *Builder) {
 	b.QualifiedIdent(p.table, p.col)
 	b.WriteString(" = ")
-	b.Arg(p.val)
+	b.argFor(p.flags, p.val)
 }
 func (updPKEq) resultType() bool { return false }
 
@@ -112,7 +113,7 @@ func (u UpdateQuery[T]) pkPredicates(m *T) ([]Predicate, error) {
 	}
 	ps := make([]Predicate, 0, len(u.meta.PK)+1)
 	for _, i := range u.meta.PK {
-		ps = append(ps, updPKEq{u.meta.Table, u.meta.Columns[i].Name, u.meta.Value(m, i)})
+		ps = append(ps, updPKEq{u.meta.Table, u.meta.Columns[i].Name, u.meta.Value(m, i), u.meta.Columns[i].Flags})
 	}
 	return ps, nil
 }
@@ -146,7 +147,7 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 			if !updModelWritable(c.Flags) {
 				continue
 			}
-			sets = append(sets, Assignment{col: c.Name, kind: setValue, val: u.meta.Value(u.model, i)})
+			sets = append(sets, Assignment{col: c.Name, kind: setValue, val: u.meta.Value(u.model, i), flags: c.Flags})
 		}
 		pks, err := u.pkPredicates(u.model)
 		if err != nil {
@@ -155,7 +156,7 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 		where = append(pks, where...)
 		if u.versioned() {
 			v := u.meta.Version
-			where = append(where, updPKEq{u.meta.Table, u.meta.Columns[v].Name, u.meta.Value(u.model, v)})
+			where = append(where, updPKEq{u.meta.Table, u.meta.Columns[v].Name, u.meta.Value(u.model, v), u.meta.Columns[v].Flags})
 		}
 	}
 	for _, a := range u.assigns {
@@ -190,7 +191,7 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 			return nil, nil, u.fail(ErrValidation, err)
 		}
 		if v, ok := autoTimestamp(u.meta, ci, u.q.conn().now()); ok {
-			sets = append(sets, Assignment{col: u.meta.Columns[ci].Name, kind: setValue, val: v})
+			sets = append(sets, Assignment{col: u.meta.Columns[ci].Name, kind: setValue, val: v, flags: u.meta.Columns[ci].Flags})
 		}
 	}
 	if !hasEffectiveFilter(where) && !u.allRows {
@@ -249,9 +250,9 @@ func (u UpdateQuery[T]) appendAssignment(b *Builder, a Assignment) {
 	b.WriteString(" = ")
 	switch a.kind {
 	case setValue:
-		b.argFor(columnFlags(u.meta.Columns, a.col), a.val)
+		b.argFor(a.flags, a.val)
 	case setExpr:
-		a.expr.AppendSQL(b)
+		b.exprFor(a.flags, a.expr)
 	case setNull:
 		b.WriteString("NULL")
 	case setDefault:
@@ -414,7 +415,7 @@ func (u UpdateQuery[T]) applyFieldHooks(sets []Assignment) ([]Assignment, error)
 		if !columnAssignable(writeUpdate, c.Flags) {
 			return nil, fieldError("update", u.meta.Table, c.Name, fmt.Errorf("OnUpdate: column %q cannot be written by UPDATE", c.Name))
 		}
-		a := Assignment{col: c.Name, kind: setValue, val: fp.upd[ci](m)}
+		a := Assignment{col: c.Name, kind: setValue, val: fp.upd[ci](m), flags: c.Flags}
 		if j := slices.IndexFunc(sets, func(s Assignment) bool { return s.col == c.Name }); j >= 0 {
 			sets[j] = a
 		} else {

@@ -260,13 +260,13 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 	for i := range keys {
 		parts := make([]Predicate, 0, i+1)
 		for j := 0; j < i; j++ {
-			parts = append(parts, binOp{keys[j].expr, " = ", argExpr{s.keyset[j]}})
+			parts = append(parts, binOp{keys[j].expr, " = ", argExpr{v: s.keyset[j], flags: flagsOf(keys[j].expr)}})
 		}
 		op := " > "
 		if keys[i].desc {
 			op = " < "
 		}
-		parts = append(parts, binOp{keys[i].expr, op, argExpr{s.keyset[i]}})
+		parts = append(parts, binOp{keys[i].expr, op, argExpr{v: s.keyset[i], flags: flagsOf(keys[i].expr)}})
 		if len(parts) == 1 {
 			disjuncts[i] = parts[0]
 		} else {
