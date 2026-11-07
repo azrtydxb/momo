@@ -13,7 +13,10 @@ Implements plan momo-04-migrations Task 19: Optional authored down migrations an
 
 - [ ] `TestRollbackGroup` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestRollbackNoDown` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+CI run 42414158119 on 764d4d1 (workflow ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests ran and passed there.
+
+Left open: the criterion that the named test "failed before the implementation" cannot be ticked. The test and the implementation were not pushed as a red commit followed by a green one, so no CI run shows the failing state. Not ticked rather than weakened.

@@ -12,8 +12,11 @@ Split from plan momo-03-drivers Task 9 (`.procoder/plans/momo-03-drivers.md:990`
 ## Acceptance criteria
 
 - [ ] `TestPostgresSQLDBAdapter` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-88] `TestPostgresSQLDBAdapter` runs the PostgreSQL suite through *sql.DB; fails if any capability differs without being listed in the matrix.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] [S-88] `TestPostgresSQLDBAdapter` runs the PostgreSQL suite through *sql.DB; fails if any capability differs without being listed in the matrix.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+CI run 42414158119 on 764d4d1 (workflow ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests ran and passed there.
+
+Left open: the criterion that the named test "failed before the implementation" cannot be ticked. The test and the implementation were not pushed as a red commit followed by a green one, so no CI run shows the failing state. Not ticked rather than weakened.
