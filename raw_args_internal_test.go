@@ -217,8 +217,8 @@ func TestRawDollarRenumbersInsideLargerStatement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "$1 AND a = $3 OR b = $2 OR c = $3 AND d = $4"
-	if c.SQL != want || len(c.Args) != 4 || c.Args[1] != "x" || c.Args[2] != "y" || c.Args[3] != "z" {
+	want := "$1 AND a = $2 OR b = $3 OR c = $2 AND d = $4"
+	if c.SQL != want || len(c.Args) != 4 || c.Args[1] != "y" || c.Args[2] != "x" || c.Args[3] != "z" {
 		t.Fatalf("SQL = %q args %v, want %q", c.SQL, c.Args, want)
 	}
 }
