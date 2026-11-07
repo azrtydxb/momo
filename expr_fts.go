@@ -56,16 +56,33 @@ func tsAvailable(b *Builder, what string) bool {
 	return false
 }
 
+// sensFlags reports FlagSensitive when rendering any of es reads a sensitive
+// column. The operands render into a scratch builder, so the answer is known
+// before the first argument of the call is bound (a configuration precedes
+// the operands in the SQL text). Arguments bound by the call are then masked
+// in hook events, as for a comparison against a sensitive column.
+func sensFlags(b *Builder, es ...Expr) uint16 {
+	probe := Builder{d: b.d}
+	for _, e := range es {
+		e.AppendSQL(&probe)
+	}
+	if probe.sensSeen != 0 {
+		return FlagSensitive
+	}
+	return 0
+}
+
 // writeRegconfig binds config and casts it to regconfig. An empty config is a
-// validation error: PostgreSQL would reject it at run time.
-func writeRegconfig(b *Builder, what, config string) {
+// validation error: PostgreSQL would reject it at run time. fl carries
+// FlagSensitive to mask the bound value.
+func writeRegconfig(b *Builder, what, config string, fl uint16) {
 	if config == "" {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build",
 			Err: fmt.Errorf("%s: text search configuration must not be empty", what)})
 		return
 	}
 	b.WriteString("CAST(")
-	b.Arg(config)
+	b.argFor(fl, config)
 	b.WriteString(" AS regconfig)")
 }
 
@@ -73,10 +90,11 @@ func writeRegconfig(b *Builder, what, config string) {
 // text search configuration config.
 func ToTSVector(config string, doc Expression[string]) TSExpr[types.TSVector] {
 	return newTS[types.TSVector]("to_tsvector", func(b *Builder) {
+		fl := sensFlags(b, doc)
 		b.WriteString("to_tsvector(")
-		writeRegconfig(b, "to_tsvector", config)
+		writeRegconfig(b, "to_tsvector", config, fl)
 		b.WriteString(", ")
-		doc.AppendSQL(b)
+		b.exprFor(fl, doc)
 		b.WriteString(")")
 	})
 }
@@ -85,7 +103,7 @@ func ToTSVector(config string, doc Expression[string]) TSExpr[types.TSVector] {
 func tsQuery(fn, config, query string) TSExpr[types.TSQuery] {
 	return newTS[types.TSQuery](fn, func(b *Builder) {
 		b.WriteString(fn + "(")
-		writeRegconfig(b, fn, config)
+		writeRegconfig(b, fn, config, 0)
 		b.WriteString(", ")
 		b.Arg(query)
 		b.WriteString(")")
@@ -127,9 +145,10 @@ func (m tsMatch) AppendSQL(b *Builder) {
 	if !tsAvailable(b, "@@") {
 		return
 	}
-	m.vec.AppendSQL(b)
+	fl := sensFlags(b, m.vec, m.q)
+	b.exprFor(fl, m.vec)
 	b.WriteString(" @@ ")
-	m.q.AppendSQL(b)
+	b.exprFor(fl, m.q)
 }
 
 func (tsMatch) resultType() bool { return false }
@@ -154,10 +173,11 @@ func tsRank(fn string, vec Expression[types.TSVector], q Expression[types.TSQuer
 				Err: fmt.Errorf("%s: normalization %d outside 0..%d", fn, normalization[0], maxTSNormalization)})
 			return
 		}
+		fl := sensFlags(b, vec, q)
 		b.WriteString(fn + "(")
-		vec.AppendSQL(b)
+		b.exprFor(fl, vec)
 		b.WriteString(", ")
-		q.AppendSQL(b)
+		b.exprFor(fl, q)
 		if len(normalization) == 1 {
 			b.WriteString(", ")
 			intLit(normalization[0]).AppendSQL(b)
@@ -186,15 +206,16 @@ func TSRankCD(vec Expression[types.TSVector], q Expression[types.TSQuery], norma
 // original text, not the tsvector.
 func TSHeadline(config string, doc Expression[string], q Expression[types.TSQuery], options string) TSExpr[string] {
 	return newTS[string]("ts_headline", func(b *Builder) {
+		fl := sensFlags(b, doc, q)
 		b.WriteString("ts_headline(")
-		writeRegconfig(b, "ts_headline", config)
+		writeRegconfig(b, "ts_headline", config, fl)
 		b.WriteString(", ")
-		doc.AppendSQL(b)
+		b.exprFor(fl, doc)
 		b.WriteString(", ")
-		q.AppendSQL(b)
+		b.exprFor(fl, q)
 		if options != "" {
 			b.WriteString(", ")
-			b.Arg(options)
+			b.argFor(fl, options)
 		}
 		b.WriteString(")")
 	})

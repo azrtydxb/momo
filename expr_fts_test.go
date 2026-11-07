@@ -3,6 +3,7 @@
 package momo_test
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -11,8 +12,61 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/types"
 )
+
+// TestFullTextHooksSeeMaskedArgs requires the arguments a full-text call binds
+// (configuration, query text, headline options) to show as RedactedArg in hook
+// events when an operand reads a sensitive column, and to stay visible for a
+// plain column. The driver always receives the real values.
+func TestFullTextHooksSeeMaskedArgs(t *testing.T) {
+	secretTsv := momo.NewColumn[types.TSVector]("documents", "secret_tsv", momo.FlagSensitive)
+	plainTsv := momo.NewColumn[types.TSVector]("documents", "search_tsv", 0)
+	sel := func(p momo.Predicate) func(context.Context, *momo.DB) error {
+		return func(ctx context.Context, db *momo.DB) error {
+			_, err := momo.Select[suite.Document](db).Where(p).All(ctx)
+			return err
+		}
+	}
+	web := func(cfg, text string) momo.TSExpr[types.TSQuery] { return momo.WebsearchToTSQuery(cfg, text) }
+
+	predicateCase(t, "fts match sensitive column", 1, []any{"english"},
+		sel(momo.TSMatch(secretTsv, web("english", sensitiveValue))))
+	predicateCase(t, "fts match plain column", 0, nil,
+		sel(momo.TSMatch(plainTsv, web("english", "visible"))))
+	predicateCase(t, "fts to_tsvector over a sensitive column", 1, []any{"english", "simple"},
+		sel(momo.TSMatch(momo.ToTSVector("english", suite.DocSecret), web("simple", sensitiveValue))))
+	predicateCase(t, "fts rank over a sensitive column", 1, []any{"english", 0.1},
+		sel(momo.TSRankCD(secretTsv, web("english", sensitiveValue)).Gt(0.1)))
+	predicateCase(t, "fts rank over a plain column", 0, nil,
+		sel(momo.TSRank(plainTsv, web("english", "visible")).Gt(0.1)))
+	predicateCase(t, "fts headline over a sensitive column", 0, []any{"english", "simple", "x", "StartSel=<b>"},
+		func(ctx context.Context, db *momo.DB) error {
+			h := momo.TSHeadline("english", suite.DocSecret, web("simple", "x"), "StartSel=<b>")
+			_, err := momo.Select[suite.Document](db).OrderBy(h.Asc()).All(ctx)
+			return err
+		})
+}
+
+// TestFullTextBindsAreNotGroupable pins that every use of a full-text call
+// binds its own parameters: the same expression in the select list and in
+// GROUP BY gets different placeholders, which PostgreSQL rejects as an
+// ungrouped column. Group by a stored tsvector, or compute the call in a
+// subquery or CTE.
+func TestFullTextBindsAreNotGroupable(t *testing.T) {
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	rank := momo.TSRank(ftsTsv, momo.WebsearchToTSQuery("english", "red fox"))
+	got, err := momo.Select[ftsRow](pg).From(momo.TableRef{Name: "articles"}).
+		Columns(rank, momo.CountAll(), momo.CountAll()).GroupBy(rank).SQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `SELECT ts_rank("articles"."search_tsv", websearch_to_tsquery(CAST($1 AS regconfig), $2)), COUNT(*), COUNT(*) FROM "articles" GROUP BY ts_rank("articles"."search_tsv", websearch_to_tsquery(CAST($3 AS regconfig), $4))`
+	if !strings.Contains(got.SQL, want) {
+		t.Errorf("got %s\nwant to contain %s", got.SQL, want)
+	}
+}
 
 var (
 	ftsTsv   = momo.NewColumn[types.TSVector]("articles", "search_tsv", 0)

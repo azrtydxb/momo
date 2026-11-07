@@ -288,3 +288,28 @@ func TestHstoreDuplicateKeysFirstWins(t *testing.T) {
 		t.Fatalf("got %v %v", *h["a"], h["b"])
 	}
 }
+
+func TestTSVectorAndQueryForms(t *testing.T) {
+	const form = `'a''b':1A 'c\\d':2B,3 'plain':4`
+	var v TSVector
+	if err := v.Scan([]byte(form)); err != nil || string(v) != form {
+		t.Fatalf("TSVector Scan([]byte) = %q, %v", v, err)
+	}
+	if got, err := v.Value(); err != nil || got != form {
+		t.Fatalf("TSVector Value = %v, %v", got, err)
+	}
+	if got, err := TSVector("").Value(); err != nil || got != "" {
+		t.Fatalf("empty TSVector Value = %v, %v", got, err)
+	}
+	const query = `'a''b' & 'c\\d':*`
+	var q TSQuery
+	if err := q.Scan([]byte(query)); err != nil || string(q) != query {
+		t.Fatalf("TSQuery Scan([]byte) = %q, %v", q, err)
+	}
+	if got, err := q.Value(); err != nil || got != query {
+		t.Fatalf("TSQuery Value = %v, %v", got, err)
+	}
+	if TSVector("").SQLType(dialect.Postgres) != "tsvector" || TSQuery("").SQLType(dialect.Postgres) != "tsquery" {
+		t.Fatal("wrong PostgreSQL column types")
+	}
+}

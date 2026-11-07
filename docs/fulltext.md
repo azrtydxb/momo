@@ -84,8 +84,19 @@ hits, err := momo.Select[Hit](db).
 
 Here `articleSearch` is a `Column[types.TSVector]` and `articleBody` a
 `Column[string]`. Without a stored column, search a text column directly with
-`momo.ToTSVector("english", articleBody)` as the first operand of `TSMatch`
-(an expression index on the same expression keeps it fast).
+`momo.ToTSVector` over `articleBody` as the first operand of `TSMatch` (an
+expression index on the same expression keeps it fast).
+
+Every use of a call binds its own parameters (the configuration and the query
+text), so the same expression written in the select list and again in GROUP BY
+gets different placeholders, and PostgreSQL rejects the statement as an
+ungrouped column. The same applies to SELECT DISTINCT with an ORDER BY on the
+call. Group by a stored tsvector instead, or compute the call once in a
+subquery or CTE and refer to its alias. A golden test pins the placeholders.
+
+Arguments bound by these calls are masked in hook events (shown as
+`RedactedArg`) when an operand reads a column marked sensitive; the driver
+still receives the real values.
 
 ## Hybrid ranking: vector plus text
 
@@ -108,7 +119,7 @@ hits, err := momo.Select[Hit](db).
 ```
 
 This scores every row. To restrict the candidate set to text matches, add
-`Where(momo.TSMatch(articleSearch, q))` with the same query, which lets the GIN
+a Where on `TSMatch` over `articleSearch` and the same query, which lets the GIN
 index prune the rows before the vector distance is computed. The
 `TestFullTextHybridRanking` integration test runs this pattern.
 
