@@ -15,9 +15,6 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
-// Version is the generator version written into generated-file headers.
-const Version = "v0.1.0-dev"
-
 // FormatVersion is the generated-file format version.
 const FormatVersion = 1
 
