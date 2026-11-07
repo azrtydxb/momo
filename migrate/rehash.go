@@ -52,11 +52,15 @@ func (e *Engine) Rehash(ctx context.Context, version string, accept bool) (res *
 		}
 		defer func() { err = end(err) }()
 	}
-	hist, err := e.readHistory(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkHistoryFormat(ctx, c); err != nil {
+	hist, err := e.readHistoryAt(ctx, c, tbl)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkHistoryFormat(ctx, c, tbl); err != nil {
 		return nil, err
 	}
 	var row *HistoryRow
@@ -95,8 +99,8 @@ func (e *Engine) Rehash(ctx context.Context, version string, accept bool) (res *
 	}
 	d := e.opts.dialect
 	note := fmt.Sprintf("checksum accepted by rehash at %s: %s -> %s", e.opts.clock().UTC().Format(time.RFC3339), row.Checksum, cur)
-	q := fmt.Sprintf(`UPDATE momo_migrations SET checksum = %s, error = %s WHERE version = %s AND status = 'applied' AND checksum = %s`,
-		ph(d, 1), ph(d, 2), ph(d, 3), ph(d, 4))
+	q := fmt.Sprintf(`UPDATE %s SET checksum = %s, error = %s WHERE version = %s AND status = 'applied' AND checksum = %s`,
+		tbl, ph(d, 1), ph(d, 2), ph(d, 3), ph(d, 4))
 	n, err := c.Exec(ctx, q, []any{cur, note, version, row.Checksum})
 	if err != nil {
 		return nil, fmt.Errorf("migrate: rehash %s: %w", version, err)
