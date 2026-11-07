@@ -1,6 +1,6 @@
 # Refactor: split InsertQuery modes and unify select rendering
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-07
 Epic: momo-05-writes-queries
 Sprint: 005-sprint-5-security-and-maintainability-hardening
@@ -19,4 +19,5 @@ Maintainability items 6 and 8: InsertQuery is a five-mode type in a 1072-line in
 
 <!-- Filled at close time: the commands run and what their output proved,
      one line per criterion. Empty evidence keeps the story open. -->
+
 CI run 42409368006 on 76cc882 (ci-agent.yml): success; no golden or test file changed by this refactor.
