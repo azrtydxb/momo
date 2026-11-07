@@ -307,3 +307,51 @@ func TestDiffFunctionViewChanges(t *testing.T) {
 		t.Fatalf("normalized equal queries are no diff: %v %v", cs, err)
 	}
 }
+
+func TestDiffTriggerPolicyChanges(t *testing.T) {
+	from := base()
+	from.Triggers = []schema.Trigger{
+		{Table: "users", Name: "t_same", Timing: "BEFORE", Events: []string{"INSERT"}, Function: "f"},
+		{Table: "users", Name: "t_changed", Timing: "BEFORE", Events: []string{"INSERT"}, Function: "f"},
+		{Table: "users", Name: "t_gone", Timing: "AFTER", Events: []string{"DELETE"}, Function: "f"},
+	}
+	from.Policies = []schema.Policy{
+		{Table: "users", Name: "p_same", Command: "ALL", Permissive: true, Using: "true"},
+		{Table: "users", Name: "p_changed", Command: "ALL", Permissive: true, Using: "true"},
+		{Table: "users", Name: "p_gone", Command: "SELECT", Permissive: true, Using: "true"},
+	}
+	from.Functions = []schema.Function{{Name: "f_gone", Returns: "integer", Language: "sql", Body: "select 1"}}
+	to := base()
+	to.Triggers = []schema.Trigger{
+		{Table: "users", Name: "t_same", Timing: "BEFORE", Events: []string{"INSERT"}, Function: "f"},
+		{Table: "users", Name: "t_changed", Timing: "AFTER", Events: []string{"INSERT"}, Function: "f"},
+		{Table: "users", Name: "t_new", Timing: "AFTER", Events: []string{"UPDATE"}, Function: "f"},
+	}
+	to.Policies = []schema.Policy{
+		{Table: "users", Name: "p_same", Command: "ALL", Permissive: true, Using: "true"},
+		{Table: "users", Name: "p_changed", Command: "ALL", Permissive: true, Using: "false"},
+		{Table: "users", Name: "p_new", Command: "SELECT", Permissive: true, Using: "true"},
+	}
+	to.Functions = []schema.Function{{Name: "f_new", Returns: "integer", Language: "sql", Body: "select 1"}}
+	changes, _, err := Diff(from, to, DiffOptions{AllowDestructive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, c := range changes {
+		switch c.Kind {
+		case CreateTrigger, DropTrigger, CreatePolicy, DropPolicy, CreateFunction, DropFunction:
+			got[string(c.Kind)+" "+c.Table+"."+c.Name]++
+		}
+	}
+	want := map[string]int{
+		"create_trigger users.t_changed": 1, "drop_trigger users.t_changed": 1,
+		"create_trigger users.t_new": 1, "drop_trigger users.t_gone": 1,
+		"create_policy users.p_changed": 1, "drop_policy users.p_changed": 1,
+		"create_policy users.p_new": 1, "drop_policy users.p_gone": 1,
+		"create_function .f_new": 1, "drop_function .f_gone": 1,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("changes = %v, want %v", got, want)
+	}
+}
