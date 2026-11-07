@@ -577,8 +577,7 @@ func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 			b.unsupported(s.lock)
 			return
 		}
-		b.writeByte(' ')
-		b.WriteString(s.lock)
+		renderLock(b, s.lock)
 	}
 }
 
