@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -32,12 +33,13 @@ type File struct {
 // MigrateConfig is the single schema of the migrate: section. Its semantics
 // are owned by the migrations plan; this package validates the shape only.
 type MigrateConfig struct {
-	Dir              map[string]string `yaml:"dir"`               // dialect -> directory
-	URLEnv           map[string]string `yaml:"url_env"`           // dialect -> environment variable name
-	Schemas          []string          `yaml:"schemas"`           // default: the connection's current_schema()
-	LockTimeout      string            `yaml:"lock_timeout"`      // Go duration string, default "5s"
-	StatementTimeout string            `yaml:"statement_timeout"` // Go duration string, default unset
-	Exclude          []string          `yaml:"exclude"`           // glob patterns for unmanaged objects
+	Dir                map[string]string `yaml:"dir"`                 // dialect -> directory
+	URLEnv             map[string]string `yaml:"url_env"`             // dialect -> environment variable name
+	Schemas            []string          `yaml:"schemas"`             // default: the connection's current_schema()
+	LockTimeout        string            `yaml:"lock_timeout"`        // Go duration string, default "5s"
+	StatementTimeout   string            `yaml:"statement_timeout"`   // Go duration string, default unset
+	Exclude            []string          `yaml:"exclude"`             // glob patterns for unmanaged objects
+	ExternalExtensions []string          `yaml:"external_extensions"` // extensions created outside momo: never emitted, never reported
 }
 
 // Load reads and validates the momo.yaml at path.
@@ -83,6 +85,11 @@ func Load(path string) (*File, error) {
 }
 
 func (m *MigrateConfig) validate() error {
+	for _, x := range m.ExternalExtensions {
+		if strings.TrimSpace(x) == "" {
+			return errors.New("migrate.external_extensions: an extension name must not be empty")
+		}
+	}
 	for _, k := range []struct{ key, val string }{
 		{"migrate.lock_timeout", m.LockTimeout},
 		{"migrate.statement_timeout", m.StatementTimeout},

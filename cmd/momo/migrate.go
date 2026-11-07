@@ -45,6 +45,8 @@ Commands:
   hash        recompute momo.sum from the files in the directory and write it (offline;
               first lists the changed, added and removed files it accepts;
               review the files first: this accepts every edit as the new baseline)
+  new --custom <name>   write an empty hand-written migration: an up file, a snapshot copied
+              from the latest one and the extended momo.sum (offline)
   baseline --version N [--force]   record migrations as applied without running them (needs a database)
   drift       compare the live database with the latest applied snapshot (needs a database)
   resolve --version N --applied|--rolled-back   settle a dirty migration (needs a database)
@@ -56,7 +58,7 @@ holder's connection ends, and there is no flag to force it. When apply keeps
 exiting 3 with "held by pid=N", find that session in pg_stat_activity and end it
 with pg_terminate_backend(N) once you know it is dead. apply waits for --lock-wait.
 
-Not available yet: rebase, lint, rollback, new.
+Not available yet: rebase, lint, rollback.
 
 The database URL comes from --url, else the environment variable named by
 migrate.url_env.<dialect> in momo.yaml, else MOMO_DATABASE_URL. Offline
@@ -87,7 +89,6 @@ var notAvailable = map[string]string{
 	"rebase":   "migrate rebase needs Engine.Rebase",
 	"lint":     "migrate lint needs Engine.Lint",
 	"rollback": "migrate rollback needs down migrations",
-	"new":      "migrate new --custom needs engine support for custom migrations",
 }
 
 // runMigrateCmd adapts runMigrate to the command table.
@@ -195,6 +196,7 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 	}
 	run := map[string]func(*flag.FlagSet) func([]string) int{
 		"diff":     l.diffCmd,
+		"new":      l.newCmd,
 		"plan":     l.planCmd,
 		"apply":    l.applyCmd,
 		"status":   l.statusCmd,
@@ -327,7 +329,7 @@ func (l *cli) dialectImpl() (migrate.Dialect, error) {
 // engineOptions maps the migrate: section of momo.yaml to engine options.
 func (l *cli) engineOptions(d migrate.Dialect, extra ...migrate.Option) ([]migrate.Option, error) {
 	m := l.file.Migrate
-	cfg := migrate.Config{Schemas: m.Schemas, Exclude: m.Exclude}
+	cfg := migrate.Config{Schemas: m.Schemas, Exclude: m.Exclude, ExternalExtensions: m.ExternalExtensions}
 	var timeouts []migrate.Option
 	var err error
 	if m.LockTimeout != "" {
@@ -840,6 +842,56 @@ func (l *cli) diffCmd(fs *flag.FlagSet) func([]string) int {
 		for _, h := range m.Hints {
 			l.say("hint: %s", h)
 		}
+		return exitOK
+	}
+}
+
+// newCmd writes an empty hand-written migration (story 098).
+func (l *cli) newCmd(fs *flag.FlagSet) func([]string) int {
+	var custom bool
+	fs.BoolVar(&custom, "custom", false, "write an empty hand-written migration (required)")
+	return func(args []string) int {
+		pos, stop := l.setup(fs, args)
+		if stop != nil {
+			return *stop
+		}
+		if !custom {
+			return l.errf(exitUsage, "new needs --custom: momo migrate new --custom <name> (use diff for a generated migration)")
+		}
+		if len(pos) != 1 {
+			return l.errf(exitUsage, "new --custom needs exactly one migration name")
+		}
+		d, err := l.dialectImpl()
+		if err != nil {
+			return l.errf(exitUsage, "%v", err)
+		}
+		opts, err := l.engineOptions(d)
+		if err != nil {
+			return l.errf(exitUsage, "%v", err)
+		}
+		dir := l.migrationDir()
+		e, err := migrate.NewEngine(nil, dirFS(dir), opts...)
+		if err != nil {
+			return l.errf(exitUsage, "%v", err)
+		}
+		m, err := e.NewCustom(pos[0])
+		if err != nil {
+			if strings.Contains(err.Error(), "must match") {
+				return l.errf(exitUsage, "%v", err)
+			}
+			return l.failure(err)
+		}
+		written, err := writeNewFiles(dir, m.Files)
+		for _, p := range written {
+			l.say("%s", l.rel(p))
+		}
+		if err != nil {
+			if errors.Is(err, iofs.ErrExist) {
+				return l.errf(exitFindings, "%v", err)
+			}
+			return l.errf(exitUsage, "%v", err)
+		}
+		l.say("hint: write the SQL in the .up.sql file, then run momo migrate hash and momo migrate validate")
 		return exitOK
 	}
 }
