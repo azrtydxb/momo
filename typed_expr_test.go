@@ -12,20 +12,20 @@ import (
 	"github.com/azrtydxb/momo/internal/fakedriver"
 )
 
-// pairRow is a two-field projection: a key and a count.
-type pairRow struct {
+// kvRow is a two-field projection: a key and a count.
+type kvRow struct {
 	K int64
 	N int64
 }
 
-var pairRowMeta = momo.Meta[pairRow]{
+var kvRowMeta = momo.Meta[kvRow]{
 	Columns:  []momo.ColumnMeta{{Name: "k"}, {Name: "n"}},
-	Ptr:      func(m *pairRow, i int) any { return [...]any{&m.K, &m.N}[i] },
-	Value:    func(m *pairRow, i int) any { return [...]any{m.K, m.N}[i] },
+	Ptr:      func(m *kvRow, i int) any { return [...]any{&m.K, &m.N}[i] },
+	Value:    func(m *kvRow, i int) any { return [...]any{m.K, m.N}[i] },
 	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
 }
 
-func (*pairRow) MomoMeta() *momo.Meta[pairRow] { return &pairRowMeta }
+func (*kvRow) MomoMeta() *momo.Meta[kvRow] { return &kvRowMeta }
 
 // strCount is a projection of a string key and a count.
 type strCount struct {
@@ -89,7 +89,7 @@ var typedDialects = []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MyS
 func TestAliasGolden(t *testing.T) {
 	const want = `SELECT "documents"."tenant_id", COUNT(*) AS "n" FROM "documents" GROUP BY "documents"."tenant_id"`
 	for _, d := range typedDialects {
-		got, err := momo.Select[pairRow](typedDB(d)).From(momo.TableRef{Name: "documents"}).
+		got, err := momo.Select[kvRow](typedDB(d)).From(momo.TableRef{Name: "documents"}).
 			Columns(DocTenantID, momo.CountAll().As("n")).GroupBy(DocTenantID).SQL()
 		if err != nil {
 			t.Fatalf("%s: %v", d, err)
@@ -100,8 +100,8 @@ func TestAliasGolden(t *testing.T) {
 	}
 }
 
-func aggregateInner(db *momo.DB) momo.SelectQuery[pairRow] {
-	return momo.Select[pairRow](db).From(momo.TableRef{Name: "documents"}).
+func aggregateInner(db *momo.DB) momo.SelectQuery[kvRow] {
+	return momo.Select[kvRow](db).From(momo.TableRef{Name: "documents"}).
 		Columns(DocTenantID, momo.CountAll().As("n")).GroupBy(DocTenantID)
 }
 
@@ -112,7 +112,7 @@ func TestAliasReferencedFromOuterQuery(t *testing.T) {
 	const inner = `(SELECT "documents"."tenant_id", COUNT(*) AS "n" FROM "documents" GROUP BY "documents"."tenant_id")`
 	n := momo.CountAll().As("n")
 
-	got, err := momo.Select[pairRow](db).From(momo.FromSubquery(aggregateInner(db), "s")).
+	got, err := momo.Select[kvRow](db).From(momo.FromSubquery(aggregateInner(db), "s")).
 		Columns(pairK, n.Ref("s")).Where(n.Ref("s").Gt(1)).SQL()
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestAliasReferencedFromOuterQuery(t *testing.T) {
 		t.Errorf("subquery:\n got %s %v\nwant %s", got.SQL, got.Args, want)
 	}
 
-	got, err = momo.Select[pairRow](db).With("s", aggregateInner(db)).From(momo.CTE("s")).
+	got, err = momo.Select[kvRow](db).With("s", aggregateInner(db)).From(momo.CTE("s")).
 		Columns(pairK, n.Ref("s")).SQL()
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func TestAliasReferencedFromOuterQuery(t *testing.T) {
 func TestAliasValidation(t *testing.T) {
 	db := typedDB(dialect.Postgres)
 	build := func(alias string) (momo.Compiled, error) {
-		return momo.Select[pairRow](db).From(momo.TableRef{Name: "documents"}).
+		return momo.Select[kvRow](db).From(momo.TableRef{Name: "documents"}).
 			Columns(DocTenantID, momo.As[int64](momo.CountAll(), alias)).SQL()
 	}
 	got, err := build("order")

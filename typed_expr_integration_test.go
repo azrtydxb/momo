@@ -23,17 +23,17 @@ func TestAliasedAggregateReferencedByName(t *testing.T) {
 		seedTenants(t, db, 1, 2, 2, 3)
 
 		n := momo.CountAll().As("n")
-		inner := momo.Select[pairRow](db).From(momo.TableRef{Name: "documents"}).
+		inner := momo.Select[kvRow](db).From(momo.TableRef{Name: "documents"}).
 			Columns(suite.DocTenantID, n).GroupBy(suite.DocTenantID)
 
-		rows, err := momo.Select[pairRow](db).From(momo.FromSubquery(inner, "s")).
+		rows, err := momo.Select[kvRow](db).From(momo.FromSubquery(inner, "s")).
 			Columns(pairK, n.Ref("s")).Where(n.Ref("s").Gt(1)).All(ctx)
 		if err != nil || len(rows) != 1 || rows[0].K != 2 || rows[0].N != 2 {
 			t.Fatalf("subquery filtered on alias = %+v, %v; want tenant 2 with 2", rows, err)
 		}
 
 		k := momo.ColumnOf[int64]("t", "tenant_id")
-		cte := momo.Select[pairRow](db).With("t", inner).From(momo.CTE("t")).
+		cte := momo.Select[kvRow](db).With("t", inner).From(momo.CTE("t")).
 			Columns(k, n.Ref("t")).OrderBy(n.Ref("t").Desc(), k.Asc())
 		rows, err = cte.All(ctx)
 		if err != nil || len(rows) != 3 || rows[0].K != 2 || rows[0].N != 2 || rows[2].K != 3 {
@@ -41,8 +41,8 @@ func TestAliasedAggregateReferencedByName(t *testing.T) {
 		}
 
 		top := momo.Max(suite.DocTenantID).As("top")
-		maxRows, err := momo.Select[pairRow](db).
-			From(momo.FromSubquery(momo.Select[pairRow](db).From(momo.TableRef{Name: "documents"}).
+		maxRows, err := momo.Select[kvRow](db).
+			From(momo.FromSubquery(momo.Select[kvRow](db).From(momo.TableRef{Name: "documents"}).
 				Columns(top, n), "m")).
 			Columns(top.Ref("m"), n.Ref("m")).All(ctx)
 		if err != nil || len(maxRows) != 1 || maxRows[0].K != 3 || maxRows[0].N != 4 {
