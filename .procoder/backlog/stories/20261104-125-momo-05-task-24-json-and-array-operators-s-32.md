@@ -1,6 +1,6 @@
 # momo-05 Task 24: JSON and array operators (S-32)
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: -
