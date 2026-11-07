@@ -4,6 +4,7 @@ package pgxdriver
 
 import (
 	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -52,6 +53,24 @@ func TestUnwrapMatchesDriverKindWithoutDatabase(t *testing.T) {
 	}
 	if _, ok := UnwrapPgxTx(fb); ok {
 		t.Fatal("fake driver tx is not a pgx.Tx")
+	}
+}
+
+func TestPgxTxRejectedExecModeReturnsErrUnsupported(t *testing.T) {
+	ctx := t.Context()
+	// stubPgxTx panics on any use, so the error must come before pgx is touched.
+	dtx := PgxTx(&stubPgxTx{}, WithExecMode(pgx.QueryExecModeSimpleProtocol))
+	if _, err := dtx.Query(ctx, "SELECT 1", nil); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("Query = %v, want ErrUnsupported", err)
+	}
+	if _, err := dtx.Exec(ctx, "SELECT 1", nil); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("Exec = %v, want ErrUnsupported", err)
+	}
+	if _, err := dtx.(momo.Batcher).SendBatch(ctx, []momo.Compiled{{SQL: "SELECT 1"}}); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("SendBatch = %v, want ErrUnsupported", err)
+	}
+	if _, err := dtx.(momo.Copier).CopyFrom(ctx, "t", []string{"a"}, [][]any{{1}}); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("CopyFrom = %v, want ErrUnsupported", err)
 	}
 }
 

@@ -30,8 +30,8 @@ func SQLTx(tx *sql.Tx) momo.DriverTx {
 //
 // Options are the ones New accepts: WithExecMode (default
 // pgx.QueryExecModeExec) and WithVectorFormat (default VectorText). A mode
-// that WithExecMode rejects makes PgxTx panic, since there is no error to
-// return. Momo never commits or rolls the transaction back (Tx.Commit and
+// that WithExecMode rejects does not panic: as with New, every Query, Exec,
+// batch and COPY on the transaction returns momo.ErrUnsupported. Momo never commits or rolls the transaction back (Tx.Commit and
 // Tx.Rollback return momo.ErrAdoptedTx); the caller does. PgxTx panics when
 // tx is nil.
 //
@@ -49,10 +49,7 @@ func PgxTx(tx pgx.Tx, opts ...Option) momo.DriverTx {
 	for _, o := range opts {
 		o(d)
 	}
-	if d.modeErr != nil {
-		panic("pgxdriver: PgxTx: " + d.modeErr.Error())
-	}
-	return &pgxTx{tx: tx, d: d}
+	return &pgxTx{tx: tx, d: d, modeErr: d.modeErr}
 }
 
 // UnwrapSQLTx returns the *sql.Tx behind tx, so legacy database/sql code can

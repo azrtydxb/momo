@@ -39,7 +39,9 @@ unwrapped handle of a momo-begun transaction is not allowed; momo still owns it.
 An adopted `pgx.Tx` keeps Batch (relation loading pipelines) and `COPY`; `COPY`
 is always binary, so vector columns need the pgvector codec on the caller's
 connection (`ConfigureVectors` on the pool, or your own AfterConnect). An
-adopted `*sql.Tx` has neither.
+adopted `*sql.Tx` has neither. `PgxTx` accepts the options of `New`; an exec
+mode that `WithExecMode` rejects makes every statement, batch and `COPY` on the
+adopted transaction return `ErrUnsupported`, as with `New`.
 
 Vectors need the pgvector `vector` extension in the database. The generated
 migration emits `CREATE EXTENSION IF NOT EXISTS "vector"` when a model has a

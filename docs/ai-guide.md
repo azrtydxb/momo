@@ -765,7 +765,7 @@ err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 - Incremental adoption in a `database/sql` or pgx codebase, both directions:
   - Adopt a transaction the caller began: `mtx := db.AdoptTx(pgxdriver.SQLTx(sqlTx))`
     for a `*sql.Tx` (database must be pgx-stdlib backed, `FromSQLDB`), or
-    `db.AdoptTx(pgxdriver.PgxTx(pgxTx, opts))` for a `pgx.Tx` (pgxpool driver; `opts` are the options of `New`, such as `WithExecMode`). Statements,
+    `db.AdoptTx(pgxdriver.PgxTx(pgxTx, opts...))` for a `pgx.Tx` (pgxpool driver; `opts` are the options of `New`, such as `WithExecMode`; an unsupported exec mode returns `ErrUnsupported` on use, as with `New`). An adopted `pgx.Tx` keeps Batch and `COPY`; an adopted `*sql.Tx` has neither. Statements,
     hooks, error classification and savepoints (`mtx.Tx`) work as usual. `Commit`
     and `Rollback` on `mtx` return `ErrAdoptedTx` and do nothing: the caller
     commits or rolls back its own transaction. After that, `mtx` statements

@@ -315,6 +315,28 @@ func TestAdoptPgxTxVectorRoundTripTextMode(t *testing.T) {
 	}
 }
 
+func TestAdoptPgxTxVectorBinaryDescribeExecOptions(t *testing.T) {
+	ctx := context.Background()
+	pool := openCodecPool(t, testdb.PostgresURL(t))
+	mdb := momo.New(New(pool))
+	if _, err := momo.Exec(ctx, mdb, "CREATE TABLE adopt_vecb (id int PRIMARY KEY, emb vector(3))"); err != nil {
+		t.Fatal(err)
+	}
+	ptx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ptx.Rollback(ctx) }()
+	mtx := mdb.AdoptTx(PgxTx(ptx, WithVectorFormat(VectorBinary), WithExecMode(pgx.QueryExecModeDescribeExec)))
+	if _, err := momo.Exec(ctx, mtx, "INSERT INTO adopt_vecb VALUES (?, ?)", 1, vector.Vector{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := momo.Scalars[vector.Vector](ctx, mtx, "SELECT emb FROM adopt_vecb WHERE id = 1")
+	if err != nil || len(got) != 1 || len(got[0]) != 3 || got[0][2] != 3 {
+		t.Fatalf("binary vector round trip = %v, %v", got, err)
+	}
+}
+
 func TestAdoptPgxTxBatchPath(t *testing.T) {
 	ctx := context.Background()
 	pool, mdb := adoptPgxDB(t)

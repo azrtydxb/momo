@@ -279,6 +279,9 @@ func (d *driver) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.R
 
 // CopyFrom implements momo.Copier on the transaction's connection.
 func (t *pgxTx) CopyFrom(ctx context.Context, table string, cols []string, rows [][]any) (int64, error) {
+	if t.modeErr != nil {
+		return 0, t.modeErr
+	}
 	n, err := copyFrom(ctx, t.tx, table, cols, rows)
 	if errors.Is(err, pgx.ErrTxClosed) {
 		return 0, &momo.Error{Kind: momo.ErrTxDone, Op: "copy", Err: err}
@@ -288,6 +291,9 @@ func (t *pgxTx) CopyFrom(ctx context.Context, table string, cols []string, rows 
 
 // SendBatch implements momo.Batcher on the transaction's connection.
 func (t *pgxTx) SendBatch(ctx context.Context, stmts []momo.Compiled) ([]momo.Rows, error) {
+	if t.modeErr != nil {
+		return nil, t.modeErr
+	}
 	if t.done.Load() {
 		return nil, &momo.Error{Kind: momo.ErrTxDone, Op: "select", Err: pgx.ErrTxClosed}
 	}
