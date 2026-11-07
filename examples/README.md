@@ -10,6 +10,7 @@ works.
 | [quickstart](quickstart/)                       | The whole loop of the root README: models, generate, insert, select, relations, vector search, a Tx.                                               |
 | [crud-zero-null](crud-zero-null/)               | Insert, select, update, delete; writing a zero value versus NULL versus the default; soft delete.                                                  |
 | [transactions](transactions/)                   | `db.Tx`, rollback on error, savepoints, read-only and isolation options, retry on serialization.                                                   |
+| [testing](testing/)                             | `momotest`: a database or a rolled-back transaction per test with the migrations applied, seeded fixtures, parallel tests.                         |
 | [relations](relations/)                         | has-many, belongs-to, many-to-many; Load, Preload, Joined, Has/HasNo, Link/Replace, CreateGraph.                                                   |
 | [projection-pagination](projection-pagination/) | Reading a subset of columns into a struct, keyset pagination with a tie-break, counting.                                                           |
 | [vector-search](vector-search/)                 | A vector column, an HNSW index in a migration, nearest-neighbour queries, filters, search settings.                                                |

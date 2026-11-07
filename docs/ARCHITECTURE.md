@@ -104,7 +104,7 @@ Vector fields declare their dimension with the field tag `dim:<n>` (e.g. `momo:"
 
 ### Other packages
 
-`cmd/momo` (the CLI: generate and migrate). Every other package once listed here is under "Planned, not implemented".
+`cmd/momo` (the CLI: generate and migrate) and `momotest` (the public test kit for applications: a schema or a rolled-back transaction per test with the project migrations applied, and fixture seeding; see [testing.md](testing.md)). Every other package once listed here is under "Planned, not implemented".
 
 ## Planned, not implemented
 
@@ -120,7 +120,7 @@ them as available in user documentation.
 - Go migrations: `GoMigration` and `WithGoMigrations`.
 - Migration engine: `Engine.Lint`, `Engine.Rebase`, an online `Engine.Validate`, and the `-- momo:sqlite-foreign-keys-off` directive.
 - Other databases: `driver/sqlitedriver`, `driver/sqlitepure`, `driver/mysqldriver`, `migrate/sqlite`, `migrate/mysql` and `migrate/importers/{atlas,bun,goose,golangmigrate}`. Their `testopen` entries come with them.
-- Tooling packages: `momotest` (test helpers), `momolog` (slog hook), `momovet` and `cmd/momovet` (analyzer), `importer/{gorm,bun,ent}` and `gen/{graphql,grpc,openapi,viz}`.
+- Tooling packages: `momolog` (slog hook), `momovet` and `cmd/momovet` (analyzer), `importer/{gorm,bun,ent}` and `gen/{graphql,grpc,openapi,viz}`.
 - Separate modules: `otelmomo` (OpenTelemetry) and `bench`.
 
 ## Contract additions (round 1, from plan reviews)
@@ -163,6 +163,10 @@ Only the `Merge` capability flag exists on `dialect.Dialect` beyond the base set
 ### Test harness (`internal/testdb`)
 
 The harness returns connection strings only, so driver packages can use it without import cycles: `PostgresURL`, `PostgresAppRoleURL`, `PgBouncerURL`, `SQLitePath`, `MySQL84URL`, `MySQL97URL`, `MariaDBURL` and `Schema`, each taking the `*testing.T`. `internal/testdb/testopen` opens PostgreSQL as a `*momo.DB` (`testopen.Postgres(t)`, `testopen.PostgresIn`) for packages above the drivers; only PostgreSQL has a driver, so there is no `testopen.SQLite` or MySQL opener yet. In both packages, a missing URL fails the test when `MOMO_REQUIRE_INTEGRATION=1` and skips it otherwise; no test calls `t.Skip` directly. [momo-01]
+
+### Public test kit (`momotest`)
+
+`momotest` is the public counterpart for applications; it is independent of `internal/testdb` (it does not require pgvector). `momotest.New(t, opts...)` returns a `*momo.DB` on a per-test schema `momotest_<16 hex>` with the project migrations applied (`WithMigrations(fs.FS)`, run through `migrate.Engine` with `WithoutSum`), dropped in `t.Cleanup` after the pool is closed. `momotest.NewTx(t, opts...)` returns a `*momo.Tx` from `DB.AdoptTx` on a template schema named `momotest_tpl_<hash of the migration files and extensions>`, built once under a PostgreSQL advisory lock and marked ready with a schema comment, so a half-built template left by a killed run is rebuilt; the transaction is rolled back in `t.Cleanup`. `momotest.Seed`, `Insert` and `Graph` insert fixtures in order inside one transaction or savepoint. The URL comes from `MOMO_TEST_POSTGRES_URL` (`WithEnv` changes it), with the skip and `MOMO_REQUIRE_INTEGRATION=1` behavior of `testdb`. See [testing.md](testing.md).
 
 ## Delivery order (user decision 2026-11-04: PostgreSQL and pgvector first)
 
