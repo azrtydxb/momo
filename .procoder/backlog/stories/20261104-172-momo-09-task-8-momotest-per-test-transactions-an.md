@@ -24,4 +24,4 @@ Scope decision (GitHub issue #34 and audit item N8): the public `momotest` packa
 
 ## Evidence
 
-- CI run 42409375668 on 07ea866: unit, integration (postgres), fuzz-smoke, lint all success.
+- CI run 42411327153 on 34051e1 (final code head, merged with origin/sprint-5): unit, integration (postgres), fuzz-smoke, lint all success. Earlier green run 42409375668 on 07ea866.
