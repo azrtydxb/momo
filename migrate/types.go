@@ -243,8 +243,8 @@ type Config struct {
 	// Schemas lists the PostgreSQL schemas the engine manages. Default (nil or empty): the single schema
 	// returned by `SELECT current_schema()` on the pinned connection, resolved when the engine starts
 	// (Plan/Apply/Status/Diff/Drift/Inspect each resolve it once per call). An app with search_path=app
-	// therefore migrates `app` by default. Schemas[0] hosts the history table and must equal
-	// current_schema(); otherwise the engine returns a configuration error naming both.
+	// therefore migrates `app` by default. Schemas[0] must equal current_schema(), the schema in which a new
+	// history table is created (an existing one is found through the search_path); otherwise the engine returns a configuration error naming both.
 	Schemas []string
 	// LockTimeout is the PostgreSQL lock_timeout of the migration session;
 	// zero keeps the 5s default. WithLockTimeout(0) disables it.

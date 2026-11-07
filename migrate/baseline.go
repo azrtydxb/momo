@@ -59,7 +59,14 @@ func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err 
 	}
 	defer func() { err = end(err) }()
 
-	hist, err := e.history(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if err != nil {
+		return err
+	}
+	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
+		return err
+	}
+	hist, err := readHistoryRows(ctx, c, tbl)
 	if err != nil {
 		return err
 	}
@@ -86,7 +93,7 @@ func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err 
 		return fmt.Errorf("%w: differing object kinds: %s (%d changed, %d missing, %d unmanaged); fix the database, adjust Config.Exclude, or force the baseline",
 			ErrBaselineMismatch, strings.Join(rep.kinds(), ", "), len(rep.Changed), len(rep.Missing), len(rep.Unmanaged))
 	}
-	return e.insertBaselineRows(ctx, c, version, hist)
+	return e.insertBaselineRows(ctx, c, tbl, version, hist)
 }
 
 // cloneSchema returns a deep copy of s through its JSON form.
@@ -104,7 +111,7 @@ func cloneSchema(s *schema.Schema) (*schema.Schema, error) {
 
 // insertBaselineRows writes the applied rows of every migration up to version
 // that the history does not already hold, in one transaction.
-func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, version string, hist []HistoryRow) (err error) {
+func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, tbl, version string, hist []HistoryRow) (err error) {
 	have := map[string]bool{}
 	for _, r := range hist {
 		if r.Status != StatusRolledBack {
@@ -130,7 +137,7 @@ func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, vers
 			}
 		}
 	}()
-	w := historyWriter{d: e.opts.dialect}
+	w := historyWriter{d: e.opts.dialect, tbl: tbl}
 	now := e.opts.clock().UTC()
 	for _, f := range files {
 		if f.Kind != "up" || f.Version > version || have[f.Version] {
