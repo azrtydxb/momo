@@ -13,5 +13,5 @@ type Contact struct {
 	Counts     []int64   `momo:"notnull"`
 	Flags      []bool    `momo:"notnull"`
 	Weights    []float64 `momo:"notnull"`
-	Aliases    []string
+	Aliases    []string  `momo:"nullable"`
 }
