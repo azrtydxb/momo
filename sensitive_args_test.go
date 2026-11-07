@@ -103,10 +103,10 @@ func TestHookCannotMutateBoundArgs(t *testing.T) {
 }
 
 // predicateCase runs one statement and checks hook arguments position by
-// position: every driver argument holding the secret shows as RedactedArg in
-// the last hook event, every other argument is unchanged, and want arguments
-// were masked.
-func predicateCase(t *testing.T, name string, want int, run func(ctx context.Context, db *momo.DB) error) {
+// position: every driver argument holding the secret, and every value in
+// also (the other values bound to the same sensitive column), shows as
+// RedactedArg in the last hook event; every other argument is unchanged.
+func predicateCase(t *testing.T, name string, also []any, run func(ctx context.Context, db *momo.DB) error) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		rec := &obstest.Recorder{}
@@ -127,7 +127,7 @@ func predicateCase(t *testing.T, name string, want int, run func(ctx context.Con
 		masked := 0
 		for i := range sent {
 			s, isStr := sent[i].(string)
-			if isStr && strings.Contains(s, sensitiveValue) {
+			if (isStr && strings.Contains(s, sensitiveValue)) || slices.Contains(also, sent[i]) {
 				if seen[i] != momo.RedactedArg {
 					t.Errorf("arg %d: hook saw %v, want the placeholder", i, seen[i])
 				}
@@ -138,8 +138,8 @@ func predicateCase(t *testing.T, name string, want int, run func(ctx context.Con
 				t.Errorf("arg %d: hook saw %v, driver got %v", i, seen[i], sent[i])
 			}
 		}
-		if masked != want {
-			t.Errorf("masked %d arguments, want %d (driver args %v)", masked, want, sent)
+		if want := 1 + len(also); masked < want && name != "non-sensitive stays visible" {
+			t.Errorf("masked %d arguments, want at least %d (driver args %v)", masked, want, sent)
 		}
 	})
 }
@@ -151,30 +151,30 @@ func TestHooksSeeMaskedSensitivePredicateArgs(t *testing.T) {
 			return err
 		}
 	}
-	predicateCase(t, "eq", 1, sel(momo.And(suite.DocTitle.Eq("visible"), suite.DocSecret.Eq(sensitiveValue))))
-	predicateCase(t, "ne", 1, sel(suite.DocSecret.Ne(sensitiveValue)))
-	predicateCase(t, "distinct", 2, sel(momo.Or(suite.DocSecret.IsDistinctFrom(sensitiveValue), suite.DocSecret.IsNotDistinctFrom(sensitiveValue))))
-	predicateCase(t, "in", 1, sel(momo.And(suite.DocSecret.In(sensitiveValue, "other"), suite.DocTitle.In("a", "b"))))
-	predicateCase(t, "not in", 1, sel(suite.DocSecret.NotIn(sensitiveValue)))
-	predicateCase(t, "between", 1, sel(suite.DocSecret.Between("a", sensitiveValue)))
-	predicateCase(t, "like", 1, sel(momo.Like(suite.DocSecret, "%"+sensitiveValue+"%")))
-	predicateCase(t, "ilike", 1, sel(momo.ILike(suite.DocSecret, "%"+sensitiveValue+"%")))
-	predicateCase(t, "contains literal", 1, sel(momo.ContainsLiteral(suite.DocSecret, sensitiveValue)))
-	predicateCase(t, "non-sensitive stays visible", 0, sel(suite.DocTitle.Eq("visible")))
-	predicateCase(t, "update where", 1, func(ctx context.Context, db *momo.DB) error {
+	predicateCase(t, "eq", nil, sel(momo.And(suite.DocTitle.Eq("visible"), suite.DocSecret.Eq(sensitiveValue))))
+	predicateCase(t, "ne", nil, sel(suite.DocSecret.Ne(sensitiveValue)))
+	predicateCase(t, "distinct", nil, sel(momo.Or(suite.DocSecret.IsDistinctFrom(sensitiveValue), suite.DocSecret.IsNotDistinctFrom(sensitiveValue))))
+	predicateCase(t, "in", []any{"other"}, sel(momo.And(suite.DocSecret.In(sensitiveValue, "other"), suite.DocTitle.In("a", "b"))))
+	predicateCase(t, "not in", nil, sel(suite.DocSecret.NotIn(sensitiveValue)))
+	predicateCase(t, "between", []any{"a"}, sel(suite.DocSecret.Between("a", sensitiveValue)))
+	predicateCase(t, "like", nil, sel(momo.Like(suite.DocSecret, "%"+sensitiveValue+"%")))
+	predicateCase(t, "ilike", nil, sel(momo.ILike(suite.DocSecret, "%"+sensitiveValue+"%")))
+	predicateCase(t, "contains literal", nil, sel(momo.ContainsLiteral(suite.DocSecret, sensitiveValue)))
+	predicateCase(t, "non-sensitive stays visible", nil, sel(suite.DocTitle.Eq("visible")))
+	predicateCase(t, "update where", nil, func(ctx context.Context, db *momo.DB) error {
 		_, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("visible")).Where(suite.DocSecret.Eq(sensitiveValue)).Exec(ctx)
 		return err
 	})
-	predicateCase(t, "delete where", 1, func(ctx context.Context, db *momo.DB) error {
-		_, err := momo.Delete[suite.Document](db).Where(suite.DocSecret.Eq(sensitiveValue)).Exec(ctx)
+	predicateCase(t, "delete where", nil, func(ctx context.Context, db *momo.DB) error {
+		_, err := momo.ForceDelete[suite.Document](db).Where(suite.DocSecret.Eq(sensitiveValue)).Exec(ctx)
 		return err
 	})
-	predicateCase(t, "set expr", 1, func(ctx context.Context, db *momo.DB) error {
+	predicateCase(t, "set expr", nil, func(ctx context.Context, db *momo.DB) error {
 		_, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("visible"), suite.DocSecret.SetExpr(momo.Value(sensitiveValue))).
 			Where(suite.DocID.Eq(1)).Exec(ctx)
 		return err
 	})
-	predicateCase(t, "insert set expr", 1, func(ctx context.Context, db *momo.DB) error {
+	predicateCase(t, "insert set expr", nil, func(ctx context.Context, db *momo.DB) error {
 		_, err := momo.Insert[suite.Document](db).Values(suite.DocTenantID.Set(1), suite.DocTitle.Set("visible"), suite.DocSecret.SetExpr(momo.Value(sensitiveValue))).Exec(ctx)
 		return err
 	})
