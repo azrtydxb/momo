@@ -33,18 +33,18 @@ func WithQueryScope(ctx context.Context) context.Context {
 }
 
 var (
-	pgPlaceholder = regexp.MustCompile(`\$\d+`)
-	inList        = regexp.MustCompile(`\(\?(, \?)*\)`)
-	tupleList     = regexp.MustCompile(`\(\?\)(, \(\?\))+`)
+	shapePGPlaceholder = regexp.MustCompile(`\$\d+`)
+	shapeInList        = regexp.MustCompile(`\(\?(, \?)*\)`)
+	shapeTupleList     = regexp.MustCompile(`\(\?\)(, \(\?\))+`)
 )
 
 // normalizeShape collapses numbered placeholders to ? and any run of
 // placeholders inside parentheses to one, so batched IN loads of different
 // sizes share a shape while per-row statements repeat it.
 func normalizeShape(sql string) string {
-	s := pgPlaceholder.ReplaceAllString(sql, "?")
-	s = inList.ReplaceAllString(s, "(?)")
-	return tupleList.ReplaceAllString(s, "(?)")
+	s := shapePGPlaceholder.ReplaceAllString(sql, "?")
+	s = shapeInList.ReplaceAllString(s, "(?)")
+	return shapeTupleList.ReplaceAllString(s, "(?)")
 }
 
 type nPlusOneHook struct {
