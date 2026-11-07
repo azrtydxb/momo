@@ -36,6 +36,25 @@ func TestCompileFailVectorMetricMismatch(t *testing.T) {
 	}
 }
 
+// TestCompileFailTypedExpressions checks that CASE branches share one type
+// and that arithmetic accepts numeric columns only.
+func TestCompileFailTypedExpressions(t *testing.T) {
+	for name, want := range map[string]string{
+		"case_mismatch": "cannot use",
+		"arith_string":  "does not satisfy",
+	} {
+		cmd := exec.Command("go", "build", "-o", os.DevNull, "./testdata/compilefail/"+name)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Errorf("%s compiled; want a compile error", name)
+			continue
+		}
+		if !strings.Contains(string(out), want) {
+			t.Errorf("%s: want %q in:\n%s", name, want, out)
+		}
+	}
+}
+
 func TestValidExamplesCompile(t *testing.T) {
 	cmd := exec.Command("go", "build", "-o", os.DevNull, "./testdata/valid/basic")
 	if out, err := cmd.CombinedOutput(); err != nil {

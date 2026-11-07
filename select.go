@@ -142,6 +142,9 @@ func (sq SelectQuery[T]) CrossJoin(src TableSource) SelectQuery[T] {
 
 // GroupBy sets GROUP BY expressions.
 func (sq SelectQuery[T]) GroupBy(es ...Expr) SelectQuery[T] {
+	for _, e := range es {
+		rejectAliased(&sq.s.err, "GROUP BY", e)
+	}
 	sq.s.groupBy = append(slices.Clip(sq.s.groupBy), es...)
 	return sq
 }
@@ -235,6 +238,12 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 	if len(s.order) == 0 {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("After requires OrderBy")})
 		return nil
+	}
+	for _, o := range s.order {
+		if isAliasOrder(o) {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("keyset pagination cannot order by a select-list alias; order by the expression itself")})
+			return nil
+		}
 	}
 	keys := sq.keysetKeys()
 	if len(s.keyset) != len(keys) {

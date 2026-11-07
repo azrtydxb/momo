@@ -3,8 +3,10 @@
 package momo
 
 import (
+	"errors"
 	"fmt"
 	"slices"
+	"unicode"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -138,12 +140,14 @@ func (c Column[T]) SetExcluded() Assignment { return Assignment{col: c.name, kin
 // DO UPDATE WHERE or ON CONFLICT predicates, for example
 // until.LtExpr(until.Excluded()). It is only meaningful inside an ON CONFLICT
 // clause; the database rejects it elsewhere.
-func (c Column[T]) Excluded() Expression[T] { return excludedExpr[T]{c.name} }
+func (c Column[T]) Excluded() ExcludedExpr[T] { return ExcludedExpr[T]{c.name} }
 
-// excludedExpr renders EXCLUDED.<name>.
-type excludedExpr[T any] struct{ name string }
+// ExcludedExpr is the EXCLUDED.<col> reference returned by Column.Excluded.
+// Besides being an Expression[T], it carries value comparisons for CASE and
+// DO UPDATE WHERE predicates, for example hostname.Excluded().Ne("").
+type ExcludedExpr[T any] struct{ name string }
 
-func (e excludedExpr[T]) AppendSQL(b *Builder) {
+func (e ExcludedExpr[T]) AppendSQL(b *Builder) {
 	if b.conflictTarget {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "insert", Err: fmt.Errorf("Excluded() column %q is not valid in the ON CONFLICT target predicate; use it in the DO UPDATE Where", e.name)})
 		return
@@ -151,7 +155,14 @@ func (e excludedExpr[T]) AppendSQL(b *Builder) {
 	b.WriteString("EXCLUDED.")
 	b.Ident(e.name)
 }
-func (excludedExpr[T]) resultType() T { var z T; return z }
+func (ExcludedExpr[T]) resultType() T { var z T; return z }
+
+func (e ExcludedExpr[T]) Eq(v T) Predicate { return binOp{e, " = ", argExpr{v}} }
+func (e ExcludedExpr[T]) Ne(v T) Predicate { return binOp{e, " <> ", argExpr{v}} }
+func (e ExcludedExpr[T]) Lt(v T) Predicate { return binOp{e, " < ", argExpr{v}} }
+func (e ExcludedExpr[T]) Le(v T) Predicate { return binOp{e, " <= ", argExpr{v}} }
+func (e ExcludedExpr[T]) Gt(v T) Predicate { return binOp{e, " > ", argExpr{v}} }
+func (e ExcludedExpr[T]) Ge(v T) Predicate { return binOp{e, " >= ", argExpr{v}} }
 
 // NullColumn is the descriptor for a nullable column. It adds SetNull.
 type NullColumn[T any] struct{ Column[T] }
@@ -532,6 +543,9 @@ func (a Agg[T]) Le(v T) Predicate { return binOp{a, " <= ", argExpr{v}} }
 func (a Agg[T]) Gt(v T) Predicate { return binOp{a, " > ", argExpr{v}} }
 func (a Agg[T]) Ge(v T) Predicate { return binOp{a, " >= ", argExpr{v}} }
 
+// As names the aggregate in a select list: SUM(col) AS name.
+func (a Agg[T]) As(name string) Aliased[T] { return As[T](a, name) }
+
 // Asc orders by the aggregate ascending.
 func (a Agg[T]) Asc() Order { return Order{Expr: a} }
 
@@ -603,17 +617,52 @@ func TypedSQL[T any](sql string, args ...any) Expression[T] {
 	return typed[T]{rawExpr{sql, slices.Clone(args)}}
 }
 
-// Aliased renders "expr AS alias" in a select list.
-type Aliased struct {
-	Expr  Expr
-	Alias string
+// Aliased is a select-list item "expr AS alias". T is the expression's
+// result type, which Ref carries to the outer query.
+type Aliased[T any] struct {
+	e     Expr
+	alias string
 }
 
-func (a Aliased) AppendSQL(b *Builder) {
-	a.Expr.AppendSQL(b)
+func (a Aliased[T]) AppendSQL(b *Builder) {
+	if err := validName(a.alias); err != nil {
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("alias %q: %w", a.alias, err)})
+		return
+	}
+	a.e.AppendSQL(b)
 	b.WriteString(" AS ")
-	b.Ident(a.Alias)
+	b.Ident(a.alias)
 }
 
-// As aliases an expression in a select list.
-func As(e Expr, alias string) Aliased { return Aliased{e, alias} }
+// Ref is the typed column through which an outer query reads this alias from
+// a subquery (FromSubquery alias) or CTE (name) called source. Momo cannot
+// check that source exposes the alias.
+func (a Aliased[T]) Ref(source string) Column[T] { return ColumnOf[T](source, a.alias) }
+
+// As aliases an expression in a select list: expr AS alias. The alias is
+// quoted and must be a plain identifier (letters, digits, underscore, "$",
+// not starting with a digit, at most 63 bytes), otherwise the build fails
+// with ErrValidation. Use it on columns, aggregates, CASE, function calls
+// and TypedSQL fragments; to alias a scalar subquery wrap it in
+// TypedSQL[T] with "?". Column.As is the table alias, so use
+// As[T](col, name) for a column.
+func As[T any](e Expression[T], alias string) Aliased[T] { return Aliased[T]{e, alias} }
+
+// validName checks an identifier-like name (alias, function name part).
+func validName(s string) error {
+	if s == "" {
+		return errors.New("name is empty")
+	}
+	if len(s) > 63 {
+		return errors.New("name is longer than 63 bytes")
+	}
+	for i, r := range s {
+		switch {
+		case r == '_' || unicode.IsLetter(r):
+		case i > 0 && (unicode.IsDigit(r) || r == '$'):
+		default:
+			return fmt.Errorf("invalid character %q", r)
+		}
+	}
+	return nil
+}
