@@ -178,7 +178,20 @@ func predicateCaseOn(t *testing.T, d dialect.Name, name string, wantSecret int, 
 		if len(calls) == 0 || len(evs) == 0 {
 			t.Fatalf("calls %d, events %d", len(calls), len(evs))
 		}
-		sent, seen := calls[len(calls)-1].Args, evs[len(evs)-1].Args
+		// The last statement that reached both the driver and a hook (a
+		// failed follow-up query may reach only the driver).
+		var sent, seen []any
+		for i := len(calls) - 1; i >= 0 && seen == nil; i-- {
+			for j := len(evs) - 1; j >= 0; j-- {
+				if evs[j].SQL == calls[i].SQL {
+					sent, seen = calls[i].Args, evs[j].Args
+					break
+				}
+			}
+		}
+		if seen == nil && len(sent) == 0 {
+			t.Fatal("no statement was seen by both the driver and a hook")
+		}
 		if len(sent) != len(seen) {
 			t.Fatalf("driver got %d args, hook saw %d", len(sent), len(seen))
 		}
