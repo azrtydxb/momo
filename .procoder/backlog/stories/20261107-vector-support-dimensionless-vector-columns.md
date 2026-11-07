@@ -1,6 +1,6 @@
 # Vector: support dimensionless vector columns
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-07
 Epic: momo-07-vectors-pgvector
 Sprint: 005-sprint-5-security-and-maintainability-hardening
@@ -11,13 +11,21 @@ GitHub issue #29, found by the NovaCRM port. A pgvector column declared without 
 
 ## Acceptance criteria
 
-- [ ] docs/TYPE_MAPPING.md, docs/ai-guide.md and docs/capabilities.md describe dimensionless vector columns as supported, with their limits (no HNSW or IVFFlat index on the bare column)
-- [ ] generate emits a plain vector column for a vector field without dim (golden test)
-- [ ] migrate diff and apply create and round-trip a dimensionless vector column with no spurious change on the next diff (integration test on CI)
-- [ ] a CosineDistance search over rows of mixed dimensions filtered by a dims column returns the right rows (integration test on CI)
-- [ ] an HNSW or IVFFlat index on a dimensionless column is refused with a clear error naming the column (test)
+- [x] docs/TYPE_MAPPING.md, docs/ai-guide.md and docs/capabilities.md describe dimensionless vector columns as supported, with their limits (no HNSW or IVFFlat index on the bare column)
+- [x] generate emits a plain vector column for a vector field without dim (golden test)
+- [x] migrate diff and apply create and round-trip a dimensionless vector column with no spurious change on the next diff (integration test on CI)
+- [x] a CosineDistance search over rows of mixed dimensions filtered by a dims column returns the right rows (integration test on CI)
+- [x] an HNSW or IVFFlat index on a dimensionless column is refused with a clear error naming the column (test)
 
 ## Evidence
+
+CI run 42409354133 (workflow ci-agent) on 7ba44fe: success.
+
+- Docs: docs/TYPE_MAPPING.md, docs/ai-guide.md, docs/capabilities.md and docs/vectors.md (new Dimensionless columns section).
+- Golden: gen TestEmitDescriptorsDimensionlessVector and TestDimensionlessVectorColumns.
+- Round trip: migrate/postgres TestDimensionlessVectorRoundTrip (integration).
+- Search: TestCosineDistanceDimensionlessColumn (integration), plus the unit test TestVectorDistanceDimensionless.
+- Refusal: schema TestVectorIndexRefusesDimensionlessColumn and the gen index diagnostics.
 
 ## Out of scope
 
