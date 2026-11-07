@@ -21,3 +21,4 @@ GitHub issue #40. A port from Prisma needs EXTRACT(EPOCH FROM ..), AT TIME ZONE,
 - Golden tests (TestExtractGolden, TestIntervalGolden, TestNowGolden, TestDateTruncGolden, TestJoinSQLGolden) pass in the unit job of CI run 42410488648 on 802e18a.
 - TestTimeKeywordsValidated and TestJoinSQLValidation pass in the same run: names outside the allowlists give ErrValidation on every dialect.
 - TestExtractIntegration, TestDateTruncIntegration, TestIntervalAndNowIntegration and TestJoinSQLIntegration pass in the integration (postgres) job of the same run; lint and fuzz-smoke are green too.
+- Refresh after review fixes: CI run 42411536064 on 19ed918 is green (unit, integration (postgres), lint, fuzz-smoke). It adds TestAtTimeZone literal goldens, TestTimeKeywordsValidated zone and nil-count cases, TestJoinSQLGolden MySQL CONCAT and empty AND/OR cases, TestBoundTimeOperandIntegration and TestGroupByLocalDayIntegration.
