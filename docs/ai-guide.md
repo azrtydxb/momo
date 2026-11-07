@@ -553,12 +553,37 @@ and `*Expr` variants;
 combinators `momo.And`, `momo.Or`, `momo.Not`, `momo.Like`, `momo.ILike`,
 `momo.ContainsLiteral`, `momo.Exists(subquery)`, `momo.NotExists`.
 `momo.EscapeLike(s)` escapes user text for `Like`. Find NULLs with `IsNull()`;
-`Eq(nil)` is not expressible. Other builder methods: `Distinct`, `Join`,
-`LeftJoin`, `CrossJoin`, `GroupBy`, `Having`, `ForUpdate(opt...)`
-(`"NOWAIT"`, `"SKIP LOCKED"`), `ForShare`, `With`, `WithRecursive`, `Union`,
-`FromSubquery`, `Each(ctx, fn)`, `Iter(ctx)` (`iter.Seq2[T, error]`).
-Aggregates: `momo.CountAll()`, `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`,
-`Max`.
+`Eq(nil)` is not expressible.
+
+Searching with user input safely. `Like` and `ILike` always render
+`ESCAPE '!'` on every dialect, matching `EscapeLike`. Wildcards (`%`, `_`) in
+the pattern still work; only a `!` makes the next character literal, so a
+hand-written literal `!` is written `!!`. Never concatenate raw user text into
+a pattern. For a substring search use `momo.ContainsLiteral` with the column
+and the user text; it is case-sensitive on PostgreSQL, while SQLite and MySQL
+follow their own LIKE and collation rules. For a case-insensitive search on
+PostgreSQL, pass `ILike` a pattern built as a percent sign, the user text run
+through `momo.EscapeLike`, and another percent sign. A user typing `%` then
+matches only a literal percent sign, never every row.
+
+A backslash is not an escape character. Without an ESCAPE clause PostgreSQL
+and MySQL treat `\` as the LIKE escape; in momo a pattern such as `\%` means
+a literal backslash followed by a wildcard. Replace hand-escaped patterns with
+`momo.EscapeLike`, or write `!%` for a literal percent sign.
+
+`In`, `NotIn` and tuple IN bind one parameter per value. A list over the
+dialect bind limit (PostgreSQL 65535, MySQL 65535, SQLite 32766, or a lower
+`WithMaxParams`) fails at build time with `ErrValidation`, not at the driver.
+The check counts the binds rendered before the list; binds rendered after it
+are left to the driver. Cap or chunk request-supplied lists yourself. An empty
+`In` renders a constant false and an empty `NotIn` a constant true.
+
+Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
+`GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
+`"SKIP LOCKED"`), `ForShare`, `With`, `WithRecursive`, `Union`,
+`FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
+context; it returns `iter.Seq2[T, error]`). Aggregates: `momo.CountAll`,
+`CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
 
 Typed expressions (no `momo.SQL` needed). Computed values (`Func`, `Substr`,
 `Lower`, `Upper`, `Length`, `Case`, `Add`/`Sub`/`Mul`, `Cast`, `Concat`,

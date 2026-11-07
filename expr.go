@@ -358,6 +358,10 @@ func (x inList[T]) AppendSQL(b *Builder) {
 		}
 		return
 	}
+	if !b.checkBindCap(len(x.vs), "IN") {
+		b.WriteString("1 = 0")
+		return
+	}
 	x.e.AppendSQL(b)
 	if x.not {
 		b.WriteString(" NOT IN (")
@@ -472,14 +476,36 @@ func Exists(q Subquery) Predicate { return exists{q, false} }
 func NotExists(q Subquery) Predicate { return exists{q, true} }
 
 // Like matches a string expression against a LIKE pattern. The pattern is
-// bound as a parameter; escape wildcards in user input yourself.
+// bound as a parameter and the statement always carries ESCAPE '!' on every
+// dialect, the escape character EscapeLike uses. % and _ in the pattern stay
+// wildcards; a ! in the pattern makes the next character literal. Escape user
+// input with EscapeLike (or use ContainsLiteral) so it cannot act as a
+// wildcard. A literal ! in a hand-written pattern must be written as !!.
 func Like(e Expression[string], pattern string) Predicate {
-	return binOp{e, " LIKE ", argExpr{pattern}}
+	return like{e: e, p: pattern}
 }
+
+type like struct {
+	e Expr
+	p string
+}
+
+func (x like) AppendSQL(b *Builder) {
+	x.e.AppendSQL(b)
+	b.WriteString(" LIKE ")
+	b.Arg(x.p)
+	b.WriteString(likeEscape)
+}
+func (like) resultType() bool { return false }
+
+// likeEscape is the clause every LIKE form appends; the character must match
+// EscapeLike.
+const likeEscape = ` ESCAPE '!'`
 
 // ILike is PostgreSQL's case-insensitive LIKE. On SQLite, whose LIKE is
 // already ASCII case-insensitive by default, it is ErrUnsupported to avoid
-// implying Unicode case folding SQLite does not perform.
+// implying Unicode case folding SQLite does not perform. Like Like, it always
+// carries ESCAPE '!' to match EscapeLike.
 func ILike(e Expression[string], pattern string) Predicate { return ilike{e, pattern} }
 
 type ilike struct {
@@ -495,6 +521,7 @@ func (x ilike) AppendSQL(b *Builder) {
 	x.e.AppendSQL(b)
 	b.WriteString(" ILIKE ")
 	b.Arg(x.p)
+	b.WriteString(likeEscape)
 }
 func (ilike) resultType() bool { return false }
 

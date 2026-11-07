@@ -42,6 +42,10 @@ func (x inTuple) AppendSQL(b *Builder) {
 			return
 		}
 	}
+	if !b.checkBindCap(len(x.keys)*len(x.cols), "tuple IN") {
+		b.WriteString("1 = 0")
+		return
+	}
 	if len(x.cols) == 1 {
 		b.QualifiedIdent(x.table, x.cols[0])
 		b.WriteString(" IN (")
