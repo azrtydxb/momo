@@ -49,8 +49,8 @@ Do this before the next `momo migrate diff`, which builds on the latest snapshot
   for statements PostgreSQL refuses in a transaction, such as `VACUUM` and
   `CREATE INDEX CONCURRENTLY`, and put one statement in the file. The directive
   applies to the whole file: every statement in it loses atomicity, and a
-  failure part-way leaves the earlier statements committed (see "Known issues in
-  v0.3.0" in `docs/migrations.md`, which also covers recovery). <!-- x-release-please-version -->
+  failure part-way leaves the earlier statements committed (see "Known issues" in
+  `docs/migrations.md`, which also covers recovery). <!-- x-release-please-version -->
 - **Directives.** An unknown `-- momo:` directive is an error. The others are
   `destructive` (allows a drop in a generated migration) and `generated`.
 

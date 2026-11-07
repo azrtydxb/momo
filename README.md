@@ -17,10 +17,14 @@ needs Go 1.26 or newer (see `go.mod` for the exact patch floor, 1.26.10).
 
 Add the library to your module and install the CLI:
 
+<!-- x-release-please-start-version -->
+
 ```sh
-go get github.com/azrtydxb/momo@v0.3.0  # x-release-please-version
-go install github.com/azrtydxb/momo/cmd/momo@v0.3.0  # x-release-please-version
+go get github.com/azrtydxb/momo@v0.3.0
+go install github.com/azrtydxb/momo/cmd/momo@v0.3.0
 ```
+
+<!-- x-release-please-end -->
 
 Momo expects PostgreSQL with the pgvector extension. The first migration runs
 `CREATE EXTENSION IF NOT EXISTS "vector"` for you, which needs a role that may

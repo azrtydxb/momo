@@ -207,7 +207,7 @@ needs no `rehash`:
 If the older migration was already applied somewhere, do not rewrite it: leave
 the chain as it is and add a new migration for the difference.
 
-Not built in v0.3.0 (story 098): `rebase`, `lint`, `rollback`, `new`. Each exits <!-- x-release-please-version -->
+Not built yet (story 098): `rebase`, `lint`, `rollback`, `new`. Each exits
 2 with `migrate <name> is not available yet`. There are no down migrations: undo
 a change with a new forward migration.
 
@@ -548,7 +548,7 @@ checked.
 
 Worked example: `examples/custom-sql-migration`.
 
-There is no `momo migrate new --custom` in v0.3.0. You can still add hand-written <!-- x-release-please-version -->
+There is no `momo migrate new --custom` yet. You can still add hand-written
 SQL by creating the files yourself:
 
 1. Choose a version greater than the latest and a name:
@@ -647,7 +647,7 @@ recognises that form, so orphan detection keeps working.
 After upgrading, run `momo generate` once. Until then `momo generate --check`
 reports the header change in every generated file.
 
-## Known issues in v0.3.0 <!-- x-release-please-version -->
+## Known issues
 
 Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
 

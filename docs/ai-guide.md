@@ -38,10 +38,14 @@ Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/q
 
 ## 2. Install and tooling
 
+<!-- x-release-please-start-version -->
+
 ```sh
-go get github.com/azrtydxb/momo@v0.3.0                # adds the library to go.mod and writes go.sum  # x-release-please-version
-go install github.com/azrtydxb/momo/cmd/momo@v0.3.0   # the CLI: generate, migrate, help  # x-release-please-version
+go get github.com/azrtydxb/momo@v0.3.0                # adds the library to go.mod and writes go.sum
+go install github.com/azrtydxb/momo/cmd/momo@v0.3.0   # the CLI: generate, migrate, help
 ```
+
+<!-- x-release-please-end -->
 
 Run `go get` first in a fresh module: it produces `go.sum`, which `go run` and
 the generated code's compilation need. `go install` puts `momo` in
@@ -437,12 +441,16 @@ momo migrate drift                      # live DB vs latest applied snapshot
 
 CI (every change):
 
+<!-- x-release-please-start-version -->
+
 ```sh
-go install github.com/azrtydxb/momo/cmd/momo@v0.3.0  # x-release-please-version
+go install github.com/azrtydxb/momo/cmd/momo@v0.3.0
 momo generate --check                                   # generated code is current
 momo migrate validate                                   # files vs momo.sum, version chain, forks, snapshots
 momo migrate diff ci_probe | grep -qx 'no changes'      # models have a migration
 ```
+
+<!-- x-release-please-end -->
 
 The last line is derived from the code, not covered by a test: when models
 changed, `diff` writes files (exit 0) and `grep` fails the job; discard the files
@@ -467,7 +475,7 @@ Production checklist:
    by hand in `psql`, then `momo migrate resolve --version V --applied` or
    `--rolled-back`. Full procedure: [migrations.md](migrations.md) section 4.
 
-Known issues in v0.3.0, as rules (each is a filed bug): <!-- x-release-please-version -->
+Known issues, as rules (each is a filed bug):
 
 - For large tables declare `Concurrently()` on the index in `MomoConfig`: `diff`
   writes `CREATE INDEX CONCURRENTLY` in its own `-- momo:no-transaction`

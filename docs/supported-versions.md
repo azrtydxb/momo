@@ -21,7 +21,7 @@ necessarily broken.
 | Minimum (`go.mod` `go` line) | 1.26.10                                                                                                                                 |
 | CI matrix                    | 1.26 and 1.27 for unit, compile-fail, race, fuzz smoke and integration jobs                                                             |
 | Single-version CI jobs       | lint (1.26); bench smoke, govulncheck, Windows and macOS (1.27)                                                                         |
-| Older than 1.26              | not supported                                                                                                                           |
+| Older than 1.26.10           | not supported                                                                                                                           |
 | cgo                          | the macOS job sets `CGO_ENABLED=1`; Linux and Windows jobs set nothing; CONTRIBUTING lists a C toolchain for the future SQLite packages |
 
 ## Dependencies (`go.mod`)

@@ -4,10 +4,12 @@ This is the contract for every implementation plan under `.procoder/plans/`.
 Plans and code use the names below exactly; changing a name means changing
 this file first. Requirements live in `.procoder/specs/momo.md` (cited as S-n).
 
-Everything outside the section "Planned, not implemented" exists in the code
-today. Only PostgreSQL through pgx has a driver and a migration dialect.
-Anything listed under "Planned, not implemented" has no code yet, and no other
-document may describe it as available.
+The package and contract sections exist in the code today, except what the
+section "Planned, not implemented" lists. Only PostgreSQL through pgx has a
+driver and a migration dialect. Anything listed as planned has no code yet, and
+no other document may describe it as available. The sections "Delivery order"
+and "Ownership decisions" are roadmap and plan bookkeeping, not status: they
+describe intended order and ownership, and do not show what has been built.
 
 ## Layering
 
@@ -67,7 +69,7 @@ Dependency rules (enforced by `TestImportGraph`, which runs `go list -deps`):
 - Terminals on `SelectQuery[T]`: `All, One, First, Each, Iter, Count, Exists, SQL`; on mutations: `Exec(ctx) (Result, error)`, `SQL()`. `type Result struct{ RowsAffected int64 }`.
 - Relations (see [relations.md](relations.md)): generated `Relation[P, C]` descriptors (`relation.go`; the generator emits one value per relation field, with key accessors, `Through` for many-to-many and `Discriminator` for polymorphic relations). Loading: `Load[P, C]` (parents, one relation, then `opts ...LoadOption[C]`) and `LoadAll[P]` (parents, then `loaders ...Loader[P]`), both taking a context and a `Querier` first and returning an error. `Loader[P]` is a sealed interface implemented by `Relation` itself, `RelationLoader` (returned by `Relation.Scope(opts ...LoadOption[C])` and `Relation.Then(nested ...Loader[C])`, which chain: `rel.Scope(...).Then(...)`) and `Relation.Joined()`; options are `LoadWhere`, `LoadOrderBy`, `LoadPerParentLimit`, `LoadWithDeleted`, `LoadOnlyDeleted`. `SelectQuery.Preload(loaders ...Loader[T])` runs the loads after the rows are read, and joined loaders fold into the parent statement. On a Batcher connection (pgx) the statements of one `LoadAll` level are pipelined in one round trip. Predicates and traversal: `Has`, `HasFrom`, `HasNo`, `CountOrder(Direction)`, `From`. Writes: `Link`, `Unlink`, `Replace`, `Count`, `Include` with `CreateGraph`, `FindOrCreate`, `UpsertByPK`. Observability: `RelationHook` and `RelationEvent`. `With` stays the CTE method.
 - Transactions: `DB.Tx(ctx, TxOptions, func(*Tx) error) error`, `DB.Begin`, `Tx.Commit/Rollback/Tx/Savepoint/RollbackTo/Release`; `DB.AdoptTx(DriverTx)` binds a Tx to a caller-owned transaction (Commit and Rollback return `ErrAdoptedTx`), `Tx.DriverTx()` exposes the driver transaction.
-- Observability: `Hook{BeforeQuery(ctx,*QueryEvent) context.Context; AfterQuery(ctx,*QueryEvent)}`, `QueryEvent`, options `WithHook`, `WithArgLogging`, `WithClock(func() time.Time)`, `WithMaxParams`.
+- Observability: `Hook`, a struct with a `BeforeQuery` function (takes a context and a query event, returns a context) and an `AfterQuery` function (takes a context and a query event), `QueryEvent`, options `WithHook`, `WithArgLogging`, `WithClock(func() time.Time)`, `WithMaxParams`.
 - Errors (`errors.go`): `Error{Kind, Op, Table, Column, Constraint, Err}` plus `Detail() string`; sentinels `ErrNotFound, ErrTooManyRows, ErrUniqueViolation, ErrForeignKeyViolation, ErrCheckViolation, ErrNotNullViolation, ErrSerialization, ErrOptimisticLock, ErrUnsupported, ErrUnfilteredMutation, ErrTxDone, ErrAdoptedTx, ErrInvalidVector (= vector.ErrInvalidVector), ErrValidation, ErrBusy, ErrLimitExceeded`. Migration sentinels live in `migrate`: `ErrChecksumMismatch, ErrDirty, ErrLocked, ErrDestructive, ErrBranchConflict`.
 - Placeholders in raw SQL: `?` positional, `??` literal `?`, `@name` named (via `momo.Named`), `momo.In(slice)` expands, `momo.Ident(name)` quotes.
 
@@ -131,18 +133,18 @@ name as written.
 
 - `PinnedConn` interface: `Query`, `Exec` (same signatures as `Driver`), `Begin(ctx, TxOptions) (DriverTx, error)`, `Release() error`; obtained through `Pinner.Pin(ctx)`. `Release` closes Rows still open, then returns the connection (a repeat after success is a nil no-op); while a Query, Exec or Begin is executing in another goroutine it returns an error matching `ErrPinnedBusy` and releases nothing. Pinned connections of drivers that can destroy a session also implement the optional `Discarder{Discard() error}`: it closes the underlying connection and then releases it so the pool destroys it (open Rows closed first; `ErrPinnedBusy` while a call is in flight; nil when already released or discarded). Callers that cannot restore session state (failed advisory unlock or `RESET`) call it instead of leaving a dirty connection in the pool. `PoolStats` struct (acquired, idle, total, wait count, wait duration). `Capabilities` / `CapabilityReporter`. Exact `Copier` and `Batcher` signatures. [momo-03 Task 1]
 - `func (db *DB) OnConn(pc PinnedConn) *DB`: a DB bound to one pinned connection that keeps db's hooks, classifier and options. Used for non-transactional Go migrations and session-scoped work. [momo-03]
-- `testopen.Each(t, fn, opts ...momo.Option)` passes options to every available dialect's DB (PostgreSQL only today). [momo-03]
+- `testopen.Each` takes the test, a callback, and optional momo options; it passes the options to every available dialect's DB (PostgreSQL only today). [momo-03]
 - `WithMaxParams(n)` lowers the per-statement bind limit for chunking tests and for databases configured with lower limits. [momo-06]
 - `Batcher` is implemented by the pgx driver and by pgx transactions. The pgx pool tracer calls the observability recorder for pool wait (`RecordPoolWait`, owned by momo-09). [momo-03 implements, momo-09 defines] Batch results are buffered eagerly and without bound: `SendBatch` reads every row of every statement into memory before it returns (so the connection is free and rows can be read in any order), and a failed batch returns one error naming the statement index, never its arguments. With the default `QueryExecMode` Exec the batch is sent as unnamed extended-protocol statements, so no prepared statement is created (PgBouncer-safe); pgx has no per-batch mode, so any other `WithExecMode` is accepted only when it equals the pool connection default, else `ErrUnsupported`. Pinned connections and `OnConn` handles run COPY and batch on the pinned session.
 - `QueryEvent` adds `PoolWait`, `InTx`, `NumArgs`, `Dialect`. [momo-09]
-- `WithClock(func() time.Time)`, `ErrBusy`, `ErrValidation`, `ErrLimitExceeded`. Sentinels are declared in `errors.go` by momo-01. [momo-05]
+- `WithClock` (takes a function returning the current time), `ErrBusy`, `ErrValidation`, `ErrLimitExceeded`. Sentinels are declared in `errors.go` by momo-01. [momo-05]
 - `Meta.Fields` holds one `FieldHook[T]` per column that needs a Go-side default or validator. [momo-05]
-- `Error.Detail() string`; driver-level redaction keeps driver detail off `Error()`. [momo-03, momo-05]
+- The `Error.Detail` method returns the driver detail as a string; driver-level redaction keeps driver detail off the `Error` text. [momo-03, momo-05]
 - `Tx.SetLocal(ctx, name, value string) error` (set_config(name, value, true), transaction-scoped) for RLS and search settings. [momo-04 Task 23]
 
 ### `dialect`
 
-Additional capability flags: `JSON`, `Arrays`, `UpdateFrom`, `Merge`, `MergeReturning`. Server-version-dependent capabilities, such as PostgreSQL MERGE (>= 15) and MERGE ... RETURNING (>= 17), are gated at runtime from the driver's `ServerVersion()`. [momo-05]
+Only the `Merge` capability flag exists on `dialect.Dialect` beyond the base set. The flags `JSON`, `Arrays`, `UpdateFrom` and `MergeReturning` are planned. Server-version-dependent capabilities, such as PostgreSQL MERGE (>= 15) and MERGE ... RETURNING (>= 17), are meant to be gated at runtime from the driver's reported server version. [momo-05]
 
 ### Drivers
 
@@ -151,7 +153,7 @@ Additional capability flags: `JSON`, `Arrays`, `UpdateFrom`, `Merge`, `MergeRetu
 ### `migrate`
 
 - `migrate.Dialect` adds `Dialect() *dialect.Dialect`, `HistoryDDL() []string`, `Setup(ctx, momo.PinnedConn, SessionOptions) (reset func() error, err error)`. `Lock` also reports the holder. There is no global registry: `NewEngine` requires `migrate.WithDialect(d)`, and the CLI selects the dialect statically. [momo-04]
-- The history table adds `apply_id` (groups for rollback) and `kind` (`sql`, `go`, `custom`). Transactional migrations write their history row inside the migration transaction. Only non-transactional `failed`/`running` rows are dirty. [momo-04]
+- The history table adds `apply_id` (groups the migrations of one apply run) and `kind` (`sql` today; `go` is reserved for the planned Go migrations). Transactional migrations write their history row inside the migration transaction. Only non-transactional `failed`/`running` rows are dirty. [momo-04]
 - Snapshots are stored as a wrapper `{format_version, parent, schema}`. [momo-04 Task 6]
 
 ### Generator companion (`MomoConfig`) methods
@@ -160,7 +162,7 @@ Additional capability flags: `JSON`, `Arrays`, `UpdateFrom`, `Merge`, `MergeRetu
 
 ### Test harness (`internal/testdb`)
 
-The harness returns connection strings only, so driver packages can use it without import cycles: `PostgresURL(t)`, `PostgresAppRoleURL(t)`, `PgBouncerURL(t)`, `SQLitePath(t)`, `MySQL84URL(t)`, `MySQL97URL(t)`, `MariaDBURL(t)`, `Schema(t)`. `internal/testdb/testopen` opens PostgreSQL as a `*momo.DB` (`testopen.Postgres(t)`, `testopen.PostgresIn`) for packages above the drivers; only PostgreSQL has a driver, so there is no `testopen.SQLite` or MySQL opener yet. In both packages, a missing URL fails the test when `MOMO_REQUIRE_INTEGRATION=1` and skips it otherwise; no test calls `t.Skip` directly. [momo-01]
+The harness returns connection strings only, so driver packages can use it without import cycles: `PostgresURL`, `PostgresAppRoleURL`, `PgBouncerURL`, `SQLitePath`, `MySQL84URL`, `MySQL97URL`, `MariaDBURL` and `Schema`, each taking the `*testing.T`. `internal/testdb/testopen` opens PostgreSQL as a `*momo.DB` (`testopen.Postgres(t)`, `testopen.PostgresIn`) for packages above the drivers; only PostgreSQL has a driver, so there is no `testopen.SQLite` or MySQL opener yet. In both packages, a missing URL fails the test when `MOMO_REQUIRE_INTEGRATION=1` and skips it otherwise; no test calls `t.Skip` directly. [momo-01]
 
 ## Delivery order (user decision 2026-11-04: PostgreSQL and pgvector first)
 
@@ -212,7 +214,3 @@ See "Ownership decisions (round 2)". `internal/testdb` (momo-01) returns URLs an
 5. `MySQL84URL`, `MySQL97URL` and `MariaDBURL` create database `t_<16 hex>` through `github.com/go-sql-driver/mysql` directly, return the DSN with that dbname, drop it in `t.Cleanup`, and are memoized per `t`.
 6. Tests never `CREATE` or `DROP` schemas or databases themselves and need not use unique table names; `DROP TABLE IF EXISTS` is unnecessary but harmless.
 7. Migration-engine tests that inspect the database introspect `current_schema()` only, unless a test explicitly manages extra namespaces. Those namespace names derive from the per-test schema name: `testdb.Schema(t)` returns `t_xxx`.
-
-## Starting point
-
-The uncommitted spike on branch `init` (`builder.go`, `db.go`, `driver.go`, `errors.go`, `expr.go`, `meta.go`, `select.go`, `dialect/`, `schema/`) is the starting code for plan `momo-01-foundation`; it has no tests yet and is accepted only as each task's tests pass.
