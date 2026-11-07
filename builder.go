@@ -172,6 +172,19 @@ func (b *Builder) String() string { return string(b.buf) }
 // Args returns the bind arguments built so far.
 func (b *Builder) Args() []any { return b.args }
 
+// checkBindCap reports whether n more bind parameters fit under the dialect's
+// limit. When they do not it records an ErrValidation build error, so the
+// caller gets a typed error at build time instead of a driver failure. Inline
+// literal rendering (SQLite conflict targets) binds nothing and always fits.
+func (b *Builder) checkBindCap(n int, what string) bool {
+	m := b.d.MaxParams
+	if m <= 0 || b.conflictTarget || len(b.args)+n <= m {
+		return true
+	}
+	b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("%s needs %d bind parameters, over the %s limit of %d; chunk the list", what, len(b.args)+n, b.d.Name, m)})
+	return false
+}
+
 // unsupported records an ErrUnsupported build error for feature.
 func (b *Builder) unsupported(feature string) {
 	b.SetErr(&Error{Kind: ErrUnsupported, Op: "build", Err: fmt.Errorf("%s is not supported by %s", feature, b.d.Name)})
