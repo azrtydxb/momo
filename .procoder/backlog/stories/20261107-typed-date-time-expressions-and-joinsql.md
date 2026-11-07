@@ -1,6 +1,6 @@
 # Typed date/time expressions and JoinSQL
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-07
 Epic: momo-05-writes-queries
 Sprint: -
@@ -11,11 +11,13 @@ GitHub issue #40. A port from Prisma needs EXTRACT(EPOCH FROM ..), AT TIME ZONE,
 
 ## Acceptance criteria
 
-- [ ] Extract, DateTrunc, interval arithmetic and Now render the expected SQL on PostgreSQL, SQLite and MySQL (golden tests).
-- [ ] A field, unit or separator outside its allowlist fails the build with ErrValidation, on every dialect.
-- [ ] The expressions execute against a real PostgreSQL in CI and return the expected values.
-- [ ] JoinSQL keeps each part's arguments and numbers placeholders across the whole statement; empty and nil parts are refused.
+- [x] Extract, DateTrunc, interval arithmetic and Now render the expected SQL on PostgreSQL, SQLite and MySQL (golden tests).
+- [x] A field, unit or separator outside its allowlist fails the build with ErrValidation, on every dialect.
+- [x] The expressions execute against a real PostgreSQL in CI and return the expected values.
+- [x] JoinSQL keeps each part's arguments and numbers placeholders across the whole statement; empty and nil parts are refused.
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Golden tests (TestExtractGolden, TestIntervalGolden, TestNowGolden, TestDateTruncGolden, TestJoinSQLGolden) pass in the unit job of CI run 42410488648 on 802e18a.
+- TestTimeKeywordsValidated and TestJoinSQLValidation pass in the same run: names outside the allowlists give ErrValidation on every dialect.
+- TestExtractIntegration, TestDateTruncIntegration, TestIntervalAndNowIntegration and TestJoinSQLIntegration pass in the integration (postgres) job of the same run; lint and fuzz-smoke are green too.
