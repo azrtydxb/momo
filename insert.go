@@ -68,6 +68,9 @@ type InsertQuery[T any] struct {
 	// back holds, per model, the caller's value that generated ids are
 	// written back to (nil for none); see generateIDs.
 	back []*T
+	// idsDone marks that generateIDs has run, and reconcile that Exec reads
+	// the stored ids back after a conflict that may keep an existing row.
+	idsDone, reconcile bool
 	// clock, when set, is the statement time shared by every chunk of a
 	// chunked bulk insert; otherwise the DB clock is read per statement.
 	clock time.Time
@@ -283,7 +286,7 @@ func (q InsertQuery[T]) render(b *Builder) {
 		b.SetErr(q.verr("", "%T has no table", *new(T)))
 		return
 	}
-	q, err := q.generateIDs(false) // a preview: Exec and Rows write the ids back
+	q, err := q.generateIDs(false) // a preview; plan has done this for Exec and Rows
 	if err == nil {
 		q, err = q.resolveUpsert()
 	}
@@ -334,7 +337,7 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 			return
 		}
 	} else {
-		if cols, rowAssigns, err = q.valueRows(d, now, fp); err != nil {
+		if cols, rowAssigns, err = q.valueRowsSafe(d, now, fp); err != nil {
 			b.SetErr(err)
 			return
 		}
@@ -751,6 +754,9 @@ func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
 }
 
 func (q InsertQuery[T]) execOne(ctx context.Context) (Result, error) {
+	if q.reconcile {
+		return q.execReconcile(ctx)
+	}
 	c, err := q.SQL()
 	if err != nil {
 		return Result{}, err
@@ -776,6 +782,9 @@ func (q InsertQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	chunks, err := q.plan()
 	if err != nil {
 		return nil, err
+	}
+	for i := range chunks {
+		chunks[i].reconcile = false // the caller reads the stored ids from the rows
 	}
 	if len(chunks) == 1 {
 		return chunks[0].rowsOne(ctx)
@@ -813,6 +822,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	if err != nil {
 		return nil, err
 	}
+	q.idsDone = true
 	one := []InsertQuery[T]{q}
 	if q.q == nil || q.i.err != nil || q.meta.Table == "" || len(q.models) < 2 {
 		return one, nil
@@ -870,6 +880,9 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		c := r
 		hi := min(lo+per, len(r.models))
 		c.models = r.models[lo:hi]
+		if len(r.back) == len(r.models) {
+			c.back = r.back[lo:hi]
+		}
 		if r.pre != nil {
 			c.pre = r.pre[lo:hi]
 		}

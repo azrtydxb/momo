@@ -3,6 +3,7 @@
 package momo
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // IDGen declares a Go-side id generator for one column of a model: the
@@ -30,7 +33,8 @@ type IDGen struct {
 // WithIDGenerator registers the id generator name on this DB, or replaces the
 // built-in of that name (cuid, uuid, ulid). A model column declared with
 // idgen:name takes its id from fn when an insert writes the zero value. fn
-// must return a non-empty string and be safe for concurrent use. A model that
+// must return a non-empty string and be safe for concurrent use. An empty
+// id, a panic in fn and a nil fn fail the insert with ErrValidation. A model that
 // names a generator that is neither built in nor registered fails with
 // ErrValidation when it is inserted.
 func WithIDGenerator(name string, fn func() string) Option {
@@ -53,7 +57,7 @@ var builtinIDGens = map[string]func() string{
 func idGenerator(q Querier, name string) (func() string, bool) {
 	if q != nil {
 		if e := q.conn(); e != nil && e.db != nil {
-			if fn, ok := e.db.idGens[name]; ok && fn != nil {
+			if fn, ok := e.db.idGens[name]; ok {
 				return fn, true
 			}
 		}
@@ -62,8 +66,30 @@ func idGenerator(q Querier, name string) (func() string, bool) {
 	return fn, ok
 }
 
+// idGenFail carries an id generator error out of a Go-side default, which
+// cannot return one; the insert builder turns it back into an error.
+type idGenFail struct{ err error }
+
+// callIDGen runs a generator and turns a nil function, a panic and an empty id
+// into an error.
+func callIDGen(name string, fn func() string) (id string, err error) {
+	if fn == nil {
+		return "", fmt.Errorf("id generator %q is registered with a nil function", name)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			id, err = "", fmt.Errorf("id generator %q panicked: %v", name, p)
+		}
+	}()
+	id = fn()
+	if id == "" {
+		err = fmt.Errorf("id generator %q returned an empty id", name)
+	}
+	return id, err
+}
+
 // idGenDefaults resolves the generators of m into Go-side defaults, so a
-// column left out of the statement (Omit, Values) still gets an id.
+// column left out of a Values statement still gets an id.
 func idGenDefaults[T any](q Querier, m *Meta[T]) (map[int]func(*T) any, error) {
 	var out map[int]func(*T) any
 	for _, g := range m.IDGens {
@@ -79,55 +105,217 @@ func idGenDefaults[T any](q Querier, m *Meta[T]) (map[int]func(*T) any, error) {
 		if out == nil {
 			out = map[int]func(*T) any{}
 		}
-		out[g.Column] = func(*T) any { return fn() }
+		name, col := g.Name, m.Columns[g.Column].Name
+		out[g.Column] = func(*T) any {
+			id, err := callIDGen(name, fn)
+			if err != nil {
+				panic(idGenFail{&Error{Kind: ErrValidation, Op: "insert", Table: m.Table, Column: col, Err: err}})
+			}
+			return id
+		}
 	}
 	return out, nil
 }
 
-// generateIDs fills the id fields that hold their zero value in the models of
-// q. With writeBack it also stores each generated id in the caller's model,
-// so the caller reads it after Exec or Rows. It is a no-op for a model
-// without id generators.
+// valueRowsSafe is valueRows with a failing id generator reported as an error.
+func (q InsertQuery[T]) valueRowsSafe(d *dialect.Dialect, now time.Time, fp fieldPlan[T]) (cols []int, rows []map[int]Assignment, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			f, ok := p.(idGenFail)
+			if !ok {
+				panic(p)
+			}
+			cols, rows, err = nil, nil, f.err
+		}
+	}()
+	return q.valueRows(d, now, fp)
+}
+
+// keepsExistingRow reports whether the statement can leave a conflicting row
+// in place under another id than the one generated: it has an ON CONFLICT
+// action on something other than the primary key.
+func (q InsertQuery[T]) keepsExistingRow() bool {
+	rq, err := q.resolveUpsert()
+	if err != nil || rq.i.conflict == conflictNone {
+		return false
+	}
+	if len(rq.i.target) != len(rq.meta.PK) {
+		return true
+	}
+	for _, pk := range rq.meta.PK {
+		if !slices.Contains(rq.i.target, rq.meta.Columns[pk].Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// generateIDs fills the id fields of the models of q that hold their zero
+// value, and every id column listed in Omit. With writeBack it also stores
+// each generated id in the caller's model, so the caller reads it after Exec
+// or Rows. It is a no-op for a model without id generators.
+//
+// When the statement can keep an existing row under its own id (ON CONFLICT on
+// a column other than the primary key) the generated id is not stored in the
+// caller's model up front: Exec sets reconcile and reads the stored ids back
+// with RETURNING instead (see execReconcile).
 func (q InsertQuery[T]) generateIDs(writeBack bool) (InsertQuery[T], error) {
-	if q.q == nil || len(q.meta.IDGens) == 0 || len(q.models) == 0 || q.meta.Ptr == nil || q.meta.Value == nil {
+	if q.idsDone || q.q == nil || len(q.meta.IDGens) == 0 || len(q.models) == 0 || q.meta.Ptr == nil || q.meta.Value == nil {
 		return q, nil
 	}
-	cloned := false
+	eager := writeBack
+	if writeBack && q.keepsExistingRow() {
+		eager = false
+	}
+	cloned, generated := false, false
+	var undoOmit []string
 	for _, g := range q.meta.IDGens {
 		ci := g.Column
-		if ci < 0 || ci >= len(q.meta.Columns) || !q.writable(ci) || slices.Contains(q.i.omit, q.meta.Columns[ci].Name) {
-			continue // an omitted column gets its id through the Go-side default
+		if ci < 0 || ci >= len(q.meta.Columns) || !q.writable(ci) {
+			continue
 		}
+		name := q.meta.Columns[ci].Name
+		omitted := slices.Contains(q.i.omit, name)
 		fn, ok := idGenerator(q.q, g.Name)
 		if !ok {
-			return q, q.verr(q.meta.Columns[ci].Name, "unknown id generator %q: use cuid, uuid, ulid or register it with WithIDGenerator", g.Name)
+			return q, q.verr(name, "unknown id generator %q: use cuid, uuid, ulid or register it with WithIDGenerator", g.Name)
 		}
 		for r := range q.models {
 			v := q.meta.Value(&q.models[r], ci)
 			unset, ok := idUnset(v)
 			if !ok {
-				return q, q.verr(q.meta.Columns[ci].Name, "idgen needs a string column, got %T", v)
+				return q, q.verr(name, "idgen needs a string column, got %T", v)
 			}
-			if !unset {
-				continue
+			if !unset && !omitted {
+				continue // an Omit column always takes a fresh id
 			}
-			id := fn()
-			if id == "" {
-				return q, q.verr(q.meta.Columns[ci].Name, "id generator %q returned an empty id", g.Name)
+			id, err := callIDGen(g.Name, fn)
+			if err != nil {
+				return q, q.verr(name, "%v", err)
 			}
 			if !cloned {
 				q.models = slices.Clone(q.models)
 				cloned = true
 			}
-			if !setID(q.meta.Ptr(&q.models[r], ci), id) {
-				return q, q.verr(q.meta.Columns[ci].Name, "idgen needs a string column, got %T", q.meta.Value(&q.models[r], ci))
-			}
-			if writeBack && r < len(q.back) && q.back[r] != nil {
+			setID(q.meta.Ptr(&q.models[r], ci), id)
+			generated = true
+			if eager && r < len(q.back) && q.back[r] != nil {
 				setID(q.meta.Ptr(q.back[r], ci), id)
 			}
 		}
+		if omitted {
+			undoOmit = append(undoOmit, name) // the generated id is bound from the model
+		}
+	}
+	if len(undoOmit) > 0 {
+		q.i.omit = slices.DeleteFunc(slices.Clone(q.i.omit), func(n string) bool { return slices.Contains(undoOmit, n) })
+	}
+	if generated && writeBack && !eager && q.q.Dialect().Returning {
+		q.reconcile = true
 	}
 	return q, nil
+}
+
+// execReconcile runs an insert that may keep conflicting rows under their own
+// ids, asking RETURNING for the id and conflict-target columns, and writes the
+// id each stored row has into the matching caller model. A row the statement
+// skipped (DO NOTHING) comes back empty and its model keeps what the caller
+// had.
+func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
+	rq, err := q.resolveUpsert()
+	if err != nil {
+		return Result{}, err
+	}
+	idCols := make([]int, 0, len(q.meta.IDGens))
+	var refs []ColumnRef
+	for _, g := range q.meta.IDGens {
+		idCols = append(idCols, g.Column)
+		refs = append(refs, NewColumn[string](q.meta.Table, q.meta.Columns[g.Column].Name, 0))
+	}
+	// Rows are matched on the conflict target when there is one, otherwise on
+	// the generated id (a skipped row never comes back, an inserted one does).
+	keyCols := idCols
+	if len(rq.i.target) > 0 {
+		keyCols = keyCols[:0:0]
+		for _, n := range rq.i.target {
+			ci := q.column(n)
+			if ci < 0 {
+				return Result{}, q.verr(n, "OnConflict: column %q is not mapped by %s", n, q.meta.Table)
+			}
+			keyCols = append(keyCols, ci)
+			if !slices.Contains(idCols, ci) {
+				refs = append(refs, NewColumn[string](q.meta.Table, n, 0))
+			}
+		}
+	}
+	q2 := q
+	q2.i.returning = returningSet{cols: refs}
+	c, err := q2.SQL()
+	if err != nil {
+		return Result{}, err
+	}
+	rows, err := runReturning(ctx, q.q, "insert", q.meta, q2.i.returning, c)
+	if err != nil {
+		return Result{}, err
+	}
+	byKey := make(map[string]int, len(q.models))
+	for i := range q.models {
+		byKey[idKey(q.meta, &q.models[i], keyCols)] = i
+	}
+	var n int64
+	for rows.Next() {
+		var got T
+		if err := rows.ScanModel(&got); err != nil {
+			_ = rows.Close()
+			return Result{}, err
+		}
+		n++
+		i, ok := byKey[idKey(q.meta, &got, keyCols)]
+		if !ok || i >= len(q.back) || q.back[i] == nil {
+			continue
+		}
+		for _, ci := range idCols {
+			if id, ok := idString(q.meta.Value(&got, ci)); ok {
+				setID(q.meta.Ptr(q.back[i], ci), id)
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return Result{}, err
+	}
+	if err := rows.Close(); err != nil {
+		return Result{}, err
+	}
+	return Result{RowsAffected: n}, nil
+}
+
+// idKey joins the values of the given columns of m into a comparable key.
+func idKey[T any](meta *Meta[T], m *T, cols []int) string {
+	var sb strings.Builder
+	for _, ci := range cols {
+		v := reflect.ValueOf(meta.Value(m, ci))
+		for v.Kind() == reflect.Pointer && !v.IsNil() {
+			v = v.Elem()
+		}
+		fmt.Fprintf(&sb, "%v\x00", v)
+	}
+	return sb.String()
+}
+
+// idString reads a string-kind field value, or the string a *string points to.
+func idString(v any) (string, bool) {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return "", false
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.String {
+		return "", false
+	}
+	return rv.String(), true
 }
 
 // idUnset reports whether an id field value counts as not assigned: an empty
@@ -203,7 +391,8 @@ var ulidState struct {
 
 // newULID returns a ULID: 48 bits of millisecond time and 80 random bits in
 // 26 Crockford base32 characters. Ids from one process sort in creation
-// order, also within the same millisecond.
+// order, also within the same millisecond. It returns the empty string, which
+// the insert reports as an error, if the random part would overflow.
 func newULID() string {
 	ulidState.Lock()
 	ms := uint64(time.Now().UnixMilli())
@@ -212,11 +401,18 @@ func newULID() string {
 		randBytes(ulidState.rand[:])
 	} else {
 		ms = ulidState.ms // same millisecond or a clock step back: stay monotonic
-		for i := len(ulidState.rand) - 1; i >= 0; i-- {
+		prev := ulidState.rand
+		i := len(ulidState.rand) - 1
+		for ; i >= 0; i-- {
 			ulidState.rand[i]++
 			if ulidState.rand[i] != 0 {
 				break
 			}
+		}
+		if i < 0 { // 2^80 ids in one millisecond: refuse instead of wrapping
+			ulidState.rand = prev
+			ulidState.Unlock()
+			return ""
 		}
 	}
 	var raw [16]byte

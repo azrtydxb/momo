@@ -348,11 +348,28 @@ func (n *Note) MomoConfig(c *momo.Config) { c.IDGen(&n.ID, "ulid") }
   other type, a name given twice (tag and `MomoConfig`) or `identity`/`serial`
   on the same field is refused by the generator. A name that is neither built in
   nor registered fails the insert with `ErrValidation`.
-- With `Omit` on the id column, or `Values` that leave it out, the generator
-  supplies the value too. `SQL()` shows a generated id in the arguments but does
-  not store it in the model.
-- The tag adds no database default: the column stays `text primary key`. Retried
-  inserts generate a new id.
+- A column named in `Omit` always takes a fresh generated id, which is bound
+  and written back like any other. `Values` and `ValuesRows` that leave the id
+  out get one too. `SQL()` shows a generated id in the arguments but does not
+  store it in the model.
+- On an `OnConflict` upsert whose target is not the primary key, the row in the
+  database may keep its own id. `Exec` then asks the database for the stored id
+  and writes that into the model (a `DoUpdate` that hit an existing row gives
+  that row's id). A model whose row `DoNothing` skipped keeps the id it had,
+  usually empty. This needs `RETURNING`; without it (MySQL) the id is not
+  written back for such statements. `Rows` never writes back there: read the id
+  from the returned rows.
+- A generated id stays in your struct, also when the insert fails. Retrying the
+  same struct reuses the id, and so do all rows of a failed chunked insert. Clear
+  the field to get a new one.
+- The generator is a client-side convenience, not a secret. A `cuid` is built
+  from the time, a counter and a process fingerprint, so it is guessable: do not
+  use it for tokens or anything that must be unpredictable. Use `uuid` (random,
+  version 4) or your own generator for that.
+- A generator that returns an empty id, panics, or is registered with a nil
+  function fails the insert with `ErrValidation`. The `ulid` generator does the
+  same in the unlikely case that it runs out of ids within one millisecond.
+- The tag adds no database default: the column stays `text primary key`.
 
 ### Projections
 
