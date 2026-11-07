@@ -67,7 +67,7 @@ func TestEmitWritesModelsThroughWriter(t *testing.T) {
 		"package models",
 		`"time"`,
 		"momo.Model `momo:\"table:app_users\"`",
-		"`momo:\"pk\"`",
+		"`momo:\"pk,column:id\"`",
 		"`momo:\"column:email,type:varchar(255),notnull,unique\"`",
 		"`momo:\"column:note\"`",
 		"`momo:\"column:seen,notnull,default:now()\"`",
