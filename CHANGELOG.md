@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/azrtydxb/momo/compare/v0.2.0...v0.3.0) (2026-11-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* ApplyOptions.ForceUnlock and momo migrate apply --force-unlock are removed; they were a no-op on every dialect.
+
+### Features
+
+* sprint 3 PostgreSQL hardening and adopted transactions ([#12](https://github.com/azrtydxb/momo/issues/12)) ([d215dad](https://github.com/azrtydxb/momo/commit/d215dadee6cf5a1721efa15becdf2312fc909c9f)), closes [#11](https://github.com/azrtydxb/momo/issues/11)
+
 ## 0.2.0 (2026-11-06)
 
 Conditional upserts, the AI coder guide and runnable examples. Supported backend: PostgreSQL with pgvector (pgx driver). [Changes since 0.1.0](https://github.com/azrtydxb/momo/compare/v0.1.0...v0.2.0).
