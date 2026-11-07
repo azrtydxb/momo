@@ -92,7 +92,7 @@ func advisoryTry(ctx context.Context, tx *Tx, sql string, key any) (bool, error)
 		return false, err
 	}
 	if len(got) != 1 {
-		return false, &Error{Kind: ErrUnsupported, Op: "advisory lock", Err: errors.New("pg_try_advisory_xact_lock returned no row")}
+		return false, &Error{Kind: ErrNotFound, Op: "advisory lock", Err: errors.New("pg_try_advisory_xact_lock returned no row")}
 	}
 	return got[0], nil
 }
