@@ -352,6 +352,26 @@ A projection cannot be inserted, updated or deleted (it embeds `Projection`, not
 `Columns`. The select list is positional and not aliased: the `Name` you give a
 computed column in `Columns` of the meta (for example `distance`) is only a label.
 
+Tuple rows: for an aggregate, join or few-column read use `momo.Row1` to
+`momo.Row10` instead of declaring a projection (no struct, no generated meta).
+`Columns(...)` is scanned positionally into the fields `C1`..`Cn`:
+
+```go
+counts, err := momo.Select[momo.Row2[string, int64]](q).From(article.Table).
+	Columns(article.Status, momo.CountAll()).GroupBy(article.Status).All(ctx)
+// counts[i].C1 is the status, counts[i].C2 the count
+
+// LeftJoin side: pointer type parameters are nil when no row joined
+rows, err := momo.Select[momo.Row2[string, *int64]](q).From(article.Table).
+	Columns(article.Title, comment.ID).
+	LeftJoin(comment.Table, comment.ArticleID.EqExpr(article.ID)).All(ctx)
+```
+
+A `Columns` count different from the arity is `ErrValidation` (no statement is
+sent). Tuple rows are read-only projections: the same soft-delete rule as above
+applies to the `From` table, and `After` needs a unique key in `OrderBy`.
+NEVER hand-write a projection `Meta` for a tuple shape.
+
 Examples: [projection-pagination](../examples/projection-pagination/),
 [vector-search](../examples/vector-search/) (`Hit`).
 

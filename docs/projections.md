@@ -38,6 +38,35 @@ cards, err := momo.Select[models.Card](q).
 
 Keyset pagination over a projection lists the unique tie-break key in `OrderBy` yourself, since the metadata has no primary key. See [projection-pagination](../examples/projection-pagination/).
 
+## Tuple rows: no struct per shape
+
+For an aggregate, a join or a few columns that you read in one place, skip the struct and the generated metadata: `momo.Row1` to `momo.Row10` are generic projections with fields `C1` to `Cn`. `Columns` is scanned positionally, so expression `i` fills `Ci`.
+
+```go
+// a count per key
+rows, err := momo.Select[momo.Row2[string, int64]](db).
+	From(license.Table).
+	Columns(license.Key, momo.CountAll()).
+	GroupBy(license.Key).
+	All(ctx)
+for _, r := range rows {
+	fmt.Println(r.C1, r.C2) // key, count
+}
+
+// a single aggregate
+total, err := momo.Select[momo.Row1[int64]](db).From(license.Table).Columns(momo.CountAll()).One(ctx)
+// total.C1
+```
+
+- A column that can be NULL takes a pointer type: a `LeftJoin` side or an aggregate over no rows. `momo.Row3[string, *int64, *string]` reads `Columns(a.Title, b.ID, b.Title)` and leaves `C2` and `C3` nil when the join finds no row.
+- Subquery columns, `Union`, `FromSubquery`, `With` and `WithRecursive` work as for any projection. The Go types of the columns are yours to match; they are not checked against the SQL.
+- A mismatch between the number of `Columns` and the arity of the row is `ErrValidation`, reported before any statement runs. So is omitting `Columns`.
+- A tuple row is a projection with no table: `Insert`, `Update` and `Delete` refuse it with `ErrValidation`. It has no soft-delete column of its own, and the filter on the `From` table applies as described below, so `Row1[int64]` with `CountAll()` over `article.Table` counts live rows; `WithDeleted()` counts all.
+- `After` works when `OrderBy` lists a unique key, since a tuple has no primary key to break ties.
+- The metadata is built once per instantiation and shared; looking it up does not allocate.
+
+When the result has meaning worth a name, or more than ten columns, declare a projection struct instead and let `momo generate` write its metadata.
+
 ## Soft-deleted rows
 
 When `From` is the generated `Table` of a model that has a soft-delete column (timestamp, unix or bool), a projection excludes soft-deleted rows by default, exactly as a model query does. `WithDeleted()` includes them and `OnlyDeleted()` returns only them. Do not add the `deleted_at` predicate by hand.
