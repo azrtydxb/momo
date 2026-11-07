@@ -74,13 +74,11 @@ func TestRowsAndTxErrorsAreRedacted(t *testing.T) {
 }
 
 func TestFromConnConfigRefusesSimpleProtocol(t *testing.T) {
-	cfg, err := pgx.ParseConfig("postgres://u@127.0.0.1:1/db?prefer_simple_protocol=true")
+	cfg, err := pgx.ParseConfig("postgres://u@127.0.0.1:1/db")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.DefaultQueryExecMode != pgx.QueryExecModeSimpleProtocol {
-		t.Fatalf("mode = %v, test premise broken", cfg.DefaultQueryExecMode)
-	}
+	cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	db, drv := FromConnConfig(cfg)
 	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
