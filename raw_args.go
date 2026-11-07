@@ -4,7 +4,6 @@ package momo
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 
 	"github.com/azrtydxb/momo/dialect"
