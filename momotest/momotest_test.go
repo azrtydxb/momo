@@ -96,6 +96,35 @@ func TestWithSearchPath(t *testing.T) {
 	}
 }
 
+func TestCheckMigrationsRejectsEscapes(t *testing.T) {
+	fsys := func(sql string) fstest.MapFS {
+		return fstest.MapFS{"20260101000000_a.up.sql": {Data: []byte(sql)}}
+	}
+	cases := []struct {
+		name string
+		sql  string
+		opts []Option
+		want string // empty: accepted
+	}{
+		{"plain table", "CREATE TABLE a (x int);", nil, ""},
+		{"unlisted extension", "CREATE EXTENSION IF NOT EXISTS vector;", nil, "vector"},
+		{"unlisted quoted extension", `create extension "pgcrypto";`, nil, "pgcrypto"},
+		{"listed extension", "CREATE EXTENSION IF NOT EXISTS vector;", []Option{WithExtensions("vector")}, ""},
+		{"schema", "CREATE SCHEMA other;", nil, "schema"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := newConfig(append([]Option{WithMigrations(fsys(tc.sql))}, tc.opts...)).checkMigrations()
+			switch {
+			case tc.want == "" && err != nil:
+				t.Fatalf("err = %v, want none", err)
+			case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+				t.Fatalf("err = %v, want one naming %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestTemplateNameTracksMigrations(t *testing.T) {
 	name := func(opts ...Option) string {
 		n, err := newConfig(opts).templateName()

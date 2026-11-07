@@ -63,9 +63,13 @@ func TestOverdraft(t *testing.T) {
 ```
 
 The migrations are applied once to a template schema, named after a hash of the
-migration files, and kept on the server between runs. Each test only begins a
-transaction on it, which is much cheaper than `New`. A changed migration gets a
-new template; old `momotest_tpl_*` schemas can be dropped at any time.
+migration files, the extension list and the momo version, and kept on the
+server between runs. The first `NewTx` in a test binary builds it (or finds it
+ready) under an advisory lock, over a short-lived administrator connection;
+after that success the binary remembers it, and each later test only opens its
+own small pool and begins a transaction, which is much cheaper than `New`. A
+changed migration gets a new template; old `momotest_tpl_*` schemas can be
+dropped at any time between runs.
 
 The `Tx` is adopted: `Commit` and `Rollback` on it return an error matching
 `momo.ErrAdoptedTx`, so a test cannot make its writes permanent. `tx.Tx` opens
@@ -77,6 +81,31 @@ from using one transaction per test:
 - Parallel tests do not see each other's rows, but two that insert the same
   unique key wait for each other until one finishes. Give parallel tests
   distinct keys.
+- DDL, `TRUNCATE` and `LOCK TABLE` inside a `NewTx` test take locks that block
+  every other parallel test using the same template until this one ends. Run
+  such tests with `New`.
+- Identity and sequence values are consumed by a rolled-back transaction, so
+  never assert a literal generated id; compare with the id that `Insert` read
+  back.
+
+## Migrations must stay in their schema
+
+Migrations run in a schema of the test's own, with `public` after it on the
+search path. Write them unqualified. `momotest` refuses early, with the file
+name, a migration that contains `CREATE SCHEMA`, or `CREATE EXTENSION` for an
+extension not listed in `WithExtensions`: an extension exists once per
+database, so it would land in one test's schema and vanish under the others when
+that schema is dropped. List extensions in `WithExtensions`; they are installed
+once in `public`.
+
+## Leftover schemas
+
+Cleanup runs in `t.Cleanup`, so a killed test run (`kill -9`, a CI timeout)
+can leave `momotest_<hex>` schemas behind. They are harmless but accumulate. Drop
+them on a disposable server by recreating it, or with
+`DROP SCHEMA momotest_<hex> CASCADE` for each name in `pg_namespace` that matches
+`momotest\_%` and is not `momotest_tpl_%`. Template schemas `momotest_tpl_*` are
+meant to stay.
 
 ## Fixtures: Seed
 
@@ -110,9 +139,12 @@ custom fixtures fit too.
 
 Every call opens its own connection pool and, in `New`, its own schema, so
 `t.Parallel` and `-race` are safe. The one shared step, creating extensions and
-building a template, runs under a PostgreSQL advisory lock, so tests in one
-binary and several test binaries running at once (`go test ./...`) cooperate.
-Each parallel test holds a few connections; keep the server's
+building a template, runs under a PostgreSQL advisory lock (keyed by
+`hashtext` of the names `momotest:extensions` and `momotest:template`), so tests
+in one binary and several test binaries running at once (`go test ./...`)
+cooperate. `New` also opens a short administrator connection to create and, at
+cleanup, drop its schema. A `NewTx` test holds one connection for its
+transaction, plus the pool's spare. Each parallel test holds a few connections; keep the server's
 `max_connections` above the number of parallel tests times the pool size, or
 lower the pool with `WithMaxConns` or the parallelism with `-parallel`.
 

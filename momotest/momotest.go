@@ -37,7 +37,11 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"regexp"
+	"runtime/debug"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -57,10 +61,11 @@ const (
 	// into a failure.
 	RequireEnv = "MOMO_REQUIRE_INTEGRATION"
 
-	extLockID      = 7100001
-	templateLockID = 7100002
-	readyMarker    = "momotest:ready"
-	opTimeout      = 30 * time.Second
+	// Advisory lock keys; the server hashes them (hashtext) to lock ids.
+	extLockKey      = "momotest:extensions"
+	templateLockKey = "momotest:template"
+	readyMarker     = "momotest:ready"
+	opTimeout       = 30 * time.Second
 	// dropTimeout bounds DROP SCHEMA of a large schema on a busy server.
 	dropTimeout  = 3 * time.Minute
 	applyTimeout = 5 * time.Minute
@@ -170,13 +175,15 @@ func ddl(ctx context.Context, conn *pgx.Conn, format, name string) error {
 	return err
 }
 
-// withLock runs fn on conn while holding the session advisory lock id.
-func withLock(ctx context.Context, conn *pgx.Conn, id int64, fn func() error) (err error) {
-	if _, err = conn.Exec(ctx, "SELECT pg_advisory_lock($1)", id); err != nil {
+// withLock runs fn on conn while holding the session advisory lock named key.
+// The lock id is hashtext(key) on the server, so it needs no number reserved
+// in the application's own lock space.
+func withLock(ctx context.Context, conn *pgx.Conn, key string, fn func() error) (err error) {
+	if _, err = conn.Exec(ctx, "SELECT pg_advisory_lock(hashtext($1))", key); err != nil {
 		return err
 	}
 	defer func() {
-		if _, uerr := conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", id); err == nil {
+		if _, uerr := conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock(hashtext($1))", key); err == nil {
 			err = uerr
 		}
 	}()
@@ -187,7 +194,7 @@ func ensureExtensions(ctx context.Context, conn *pgx.Conn, names []string) error
 	if len(names) == 0 {
 		return nil
 	}
-	return withLock(ctx, conn, extLockID, func() error {
+	return withLock(ctx, conn, extLockKey, func() error {
 		for _, n := range names {
 			if err := ddl(ctx, conn, "CREATE EXTENSION IF NOT EXISTS %s SCHEMA public", n); err != nil {
 				return fmt.Errorf("create extension %s: %w", n, err)
@@ -254,6 +261,42 @@ func (c *config) openPool(t testing.TB, raw, schema string, defaultConns int32) 
 	return pool
 }
 
+var (
+	createExtension = regexp.MustCompile(`(?is)\bcreate\s+extension\s+(?:if\s+not\s+exists\s+)?"?([a-z0-9_-]+)"?`)
+	createSchema    = regexp.MustCompile(`(?is)\bcreate\s+schema\b`)
+)
+
+// checkMigrations fails early on migration SQL that would escape the per-test
+// schema. An extension is created once per database, not once per schema, so a
+// migration that creates one lands it in whichever test's schema ran first,
+// and DROP SCHEMA removes it under the other tests. List the extension in
+// WithExtensions instead; it is then installed in public, which is on every
+// search path. A migration that creates another schema would collide between
+// parallel tests, so keep every object unqualified in the test schema.
+func (c *config) checkMigrations() error {
+	if c.migrations == nil {
+		return nil
+	}
+	return fs.WalkDir(c.migrations, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".sql") {
+			return err
+		}
+		b, err := fs.ReadFile(c.migrations, p)
+		if err != nil {
+			return err
+		}
+		for _, m := range createExtension.FindAllSubmatch(b, -1) {
+			if !slices.Contains(c.extensions, strings.ToLower(string(m[1]))) {
+				return fmt.Errorf("migration %s creates extension %s; list it in momotest.WithExtensions so it is installed once in the public schema", p, m[1])
+			}
+		}
+		if createSchema.Match(b) {
+			return fmt.Errorf("migration %s creates a schema; momotest runs migrations in a per-test schema, so objects must be unqualified and no extra schema may be created", p)
+		}
+		return nil
+	})
+}
+
 // applyTo runs the configured migrations through drv.
 func (c *config) applyTo(ctx context.Context, drv momo.Driver) error {
 	if c.migrations == nil {
@@ -274,6 +317,9 @@ func New(t testing.TB, opts ...Option) *momo.DB {
 	t.Helper()
 	c := newConfig(opts)
 	raw := c.serverURL(t)
+	if err := c.checkMigrations(); err != nil {
+		t.Fatalf("momotest: %v", err)
+	}
 	name := randomName("momotest_")
 
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
@@ -300,12 +346,28 @@ func New(t testing.TB, opts ...Option) *momo.DB {
 	return db
 }
 
+// momoVersion returns the version of the momo module this binary links, so a
+// template built by one engine version is not reused by another. It is "devel"
+// when momo is the main module or the build carries no module information.
+func momoVersion() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "devel"
+	}
+	for _, d := range bi.Deps {
+		if d.Path == "github.com/azrtydxb/momo" {
+			return d.Version
+		}
+	}
+	return "devel"
+}
+
 // templateName names the shared schema for this migration set: the hash covers
 // the file names and contents of the migrations and the extension list, so a
 // changed migration gets a fresh template and a stale one is never reused.
 func (c *config) templateName() (string, error) {
 	h := sha256.New()
-	fmt.Fprintf(h, "momotest-template-v1\x00%s\x00", strings.Join(c.extensions, ","))
+	fmt.Fprintf(h, "momotest-template-v1\x00%s\x00%s\x00", momoVersion(), strings.Join(c.extensions, ","))
 	if c.migrations != nil {
 		err := fs.WalkDir(c.migrations, ".", func(p string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
@@ -326,9 +388,34 @@ func (c *config) templateName() (string, error) {
 	return "momotest_tpl_" + hex.EncodeToString(h.Sum(nil))[:16], nil
 }
 
+var (
+	templateMu    sync.Mutex
+	templateReady sync.Map // raw URL + NUL + template name -> struct{}
+)
+
 // ensureTemplate creates and migrates the template schema unless a complete
-// one exists. It is idempotent and safe across goroutines and processes.
+// one exists. It is idempotent and safe across goroutines and processes. After
+// the first success in this process it returns at once, so later tests pay
+// for no admin connection and no lock; a template dropped by hand while the
+// test binary runs is not noticed until the next run.
 func (c *config) ensureTemplate(t testing.TB, raw, name string) {
+	t.Helper()
+	key := raw + "\x00" + name
+	if _, ok := templateReady.Load(key); ok {
+		return
+	}
+	// One build at a time per process; the advisory lock below covers other
+	// processes. Tests that wait here find the key stored and leave.
+	templateMu.Lock()
+	defer templateMu.Unlock()
+	if _, ok := templateReady.Load(key); ok {
+		return
+	}
+	c.buildOnce(t, raw, name)
+	templateReady.Store(key, struct{}{})
+}
+
+func (c *config) buildOnce(t testing.TB, raw, name string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
 	defer cancel()
@@ -337,7 +424,7 @@ func (c *config) ensureTemplate(t testing.TB, raw, name string) {
 	if err := ensureExtensions(ctx, conn, c.extensions); err != nil {
 		t.Fatalf("momotest: %v", err)
 	}
-	err := withLock(ctx, conn, templateLockID, func() error {
+	err := withLock(ctx, conn, templateLockKey, func() error {
 		var comment *string
 		err := conn.QueryRow(ctx,
 			"SELECT obj_description(oid, 'pg_namespace') FROM pg_namespace WHERE nspname = $1", name).Scan(&comment)
@@ -403,6 +490,9 @@ func NewTx(t testing.TB, opts ...Option) *momo.Tx {
 	t.Helper()
 	c := newConfig(opts)
 	raw := c.serverURL(t)
+	if err := c.checkMigrations(); err != nil {
+		t.Fatalf("momotest: %v", err)
+	}
 	name, err := c.templateName()
 	if err != nil {
 		t.Fatalf("momotest: hash migrations: %v", err)
