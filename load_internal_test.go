@@ -508,7 +508,8 @@ func TestLoadPerParentLimitRejectsAliasOrder(t *testing.T) {
 	var cfg loadConfig
 	LoadOrderBy[kid](CountAll().As("n").Asc())(&cfg)
 	LoadPerParentLimit[kid](2)(&cfg)
-	_, err := kidsRel(HasMany).prepareWith(loadQ{dialect.For(dialect.Postgres)}, []par{{Pid: 1}}, &cfg, nil)
+	rel := kidsRel(HasMany)
+	_, err := rel.prepareWith(loadQ{dialect.For(dialect.Postgres)}, []par{{Pid: 1}}, &cfg, nil)
 	var me *Error
 	if !errors.As(err, &me) || me.Kind != ErrValidation {
 		t.Fatalf("want ErrValidation, got %v", err)
