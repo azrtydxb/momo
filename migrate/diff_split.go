@@ -124,13 +124,8 @@ func (e *Engine) splitNoTx(version, name, parent string, ordered []Change, to *s
 // finishMigration derives the Destructive and NoTx flags of m from its
 // changes and statements.
 func finishMigration(m *Migration) {
-	m.Destructive, m.NoTx = false, false
-	for _, c := range m.Changes {
-		m.Destructive = m.Destructive || c.Destructive
-	}
-	for _, s := range m.Up {
-		m.NoTx = m.NoTx || s.NoTx
-	}
+	m.Destructive = slices.ContainsFunc(m.Changes, func(c Change) bool { return c.Destructive })
+	m.NoTx = hasNoTx(m.Up)
 }
 
 func nameKey(c Change) string { return c.Schema + "\x00" + c.Table + "\x00" + c.Name }

@@ -11,6 +11,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -173,6 +174,46 @@ func TestDiffReportsRiskyChanges(t *testing.T) {
 	wantHints(t, m.Hints, "drop_index docs.docs_title")
 	if m.Destructive {
 		t.Error("dropping an index is risky, not destructive")
+	}
+}
+
+// TestDiffRiskHintsArePostgresOnly: the risky hints name CONCURRENTLY and
+// ACCESS EXCLUSIVE, which are PostgreSQL; another dialect gets none, but the
+// changes keep their Risky flag for API users.
+func TestDiffRiskHintsArePostgresOnly(t *testing.T) {
+	ctx := context.Background()
+	// The differ takes the dialect from the desired schema.
+	lite := func() *schema.Schema {
+		s := docsSchema()
+		s.Dialect = dialect.SQLite
+		s.Extensions = nil
+		return s
+	}
+	first, err := offlineEngine(t, fstest.MapFS{}, lockfreeClock).Diff(ctx, lite(), "init", migrate.DiffOptions{})
+	if err != nil || first == nil {
+		t.Fatal(first, err)
+	}
+	e := offlineEngine(t, mapFS(first.Files), lockfreeClock)
+
+	add := lite()
+	add.Tables[0].Uniques = []schema.Unique{{Name: "docs_title_key", Columns: []string{"title"}}}
+	m, err := e.Diff(ctx, add, "uniq", migrate.DiffOptions{})
+	if err != nil || m == nil {
+		t.Fatal(m, err)
+	}
+	if !slices.ContainsFunc(m.Changes, func(c migrate.Change) bool { return c.Kind == migrate.AddUnique && c.Risky }) {
+		t.Error("add_unique must stay flagged Risky")
+	}
+	drop := lite()
+	drop.Tables[0].Indexes = nil
+	m2, err := e.Diff(ctx, drop, "drop_idx", migrate.DiffOptions{})
+	if err != nil || m2 == nil {
+		t.Fatal(m2, err)
+	}
+	for _, h := range append(m.Hints, m2.Hints...) {
+		if strings.Contains(h, "risky:") || strings.Contains(h, "CONCURRENTLY") || strings.Contains(h, "ACCESS EXCLUSIVE") {
+			t.Errorf("PostgreSQL hint on a SQLite diff: %q", h)
+		}
 	}
 }
 
