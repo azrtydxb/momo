@@ -127,3 +127,8 @@ Decision (2026-11-07): "keep merging, no need to ask me" — open and merge with
 - Release v0.3.0 now
 
 Decision (2026-11-07): finish the port in kuvryn-license-momo on branch store/momo; release v0.3.0 only after kuvryn-license runs fully on momo main.
+
+## Merge kuvryn-license PR #28 (finish the momo port) once CI is green
+
+- Merge PR #28 into kuvryn-license main when CI is green (recommended): main deploys, start-up migrations are unchanged
+- Leave PR #28 as a draft for the user to merge
