@@ -1,17 +1,25 @@
 # Changelog
 
-## [0.3.0](https://github.com/azrtydxb/momo/compare/v0.2.0...v0.3.0) (2026-11-07)
+## 0.3.0 (2026-11-07)
 
+_Momo now carries a real PostgreSQL application end to end: kuvryn-license runs fully on it, its queries all on the typed API. Supported backend: PostgreSQL with pgvector (pgx driver). [Changes since 0.2.0](https://github.com/azrtydxb/momo/compare/v0.2.0...v0.3.0)._
 
 ### ⚠ BREAKING CHANGES
 
-* momo.As is generic and takes Expression[T]; Aliased is Aliased[T] with unexported fields. Column[T].Excluded returns ExcludedExpr[T]. The PostgreSQL inspector reports serial columns as Identity serial instead of by_default, so a model declaring pk,identity for a BIGSERIAL column must switch to the serial tag.
-* ApplyOptions.ForceUnlock and momo migrate apply --force-unlock are removed; they were a no-op on every dialect.
+- **expr:** `momo.As` is generic and takes a typed expression; `Aliased` is `Aliased[T]` with unexported fields. Wrap a bare SQL fragment in `TypedSQL` ([#21](https://github.com/azrtydxb/momo/issues/21))
+- **expr:** `Column[T].Excluded` returns `ExcludedExpr[T]`, which still implements `Expression[T]` ([#21](https://github.com/azrtydxb/momo/issues/21))
+- **migrate:** the PostgreSQL inspector reports serial columns as identity `serial` instead of `by_default`; a model that declares `pk,identity` for a BIGSERIAL column must switch to the `serial` tag (see the upgrade note in docs/migrations.md) ([#14](https://github.com/azrtydxb/momo/issues/14))
+- **migrate:** `ApplyOptions.ForceUnlock` and `momo migrate apply --force-unlock` are removed; they were a no-op on every dialect ([#12](https://github.com/azrtydxb/momo/issues/12))
 
 ### Features
 
-* sprint 3 PostgreSQL hardening and adopted transactions ([#12](https://github.com/azrtydxb/momo/issues/12)) ([d215dad](https://github.com/azrtydxb/momo/commit/d215dadee6cf5a1721efa15becdf2312fc909c9f)), closes [#11](https://github.com/azrtydxb/momo/issues/11)
-* sprint 4 adoption gaps for porting kuvryn-license ([#21](https://github.com/azrtydxb/momo/issues/21)) ([468dd0a](https://github.com/azrtydxb/momo/commit/468dd0afc8437ac60d1ec832a8ae4405cdccd666)), closes [#13](https://github.com/azrtydxb/momo/issues/13) [#14](https://github.com/azrtydxb/momo/issues/14) [#15](https://github.com/azrtydxb/momo/issues/15) [#16](https://github.com/azrtydxb/momo/issues/16) [#17](https://github.com/azrtydxb/momo/issues/17) [#19](https://github.com/azrtydxb/momo/issues/19) [#20](https://github.com/azrtydxb/momo/issues/20)
+- **pgxdriver:** run momo inside a transaction the caller already opened, and hand legacy code the transaction behind a momo one: `AdoptTx`, `SQLTx`, `PgxTx`, `UnwrapSQLTx`, `UnwrapPgxTx` ([#11](https://github.com/azrtydxb/momo/issues/11))
+- **gen:** foreign keys on a column that is part of a composite primary key ([#13](https://github.com/azrtydxb/momo/issues/13))
+- **schema:** `serial` tag for smallserial, serial and bigserial ids, recognised by the inspector ([#14](https://github.com/azrtydxb/momo/issues/14))
+- **query:** select-list aliases usable from subqueries and CTEs ([#15](https://github.com/azrtydxb/momo/issues/15)), and tuple result rows `Row1` to `Row10` with no per-shape projection struct ([#19](https://github.com/azrtydxb/momo/issues/19))
+- **insert:** `INSERT ... SELECT` through `Insert[T].FromSelect`, including FROM-less selects guarded by `WHERE NOT EXISTS` ([#16](https://github.com/azrtydxb/momo/issues/16))
+- **expr:** typed `Substr`, `Case`, column arithmetic in SET and upserts, `CurrentSchema`, `Func`, `CoalesceExpr`, `Cast`, `Lower`, `Upper`, `Length` and `Concat`, usable in `Where` and `OrderBy` ([#17](https://github.com/azrtydxb/momo/issues/17), [#20](https://github.com/azrtydxb/momo/issues/20))
+- **migrate:** `--enforce-not-null` for staged columns, concurrent indexes split into a no-transaction migration, lock-safe UNIQUE and CHECK, chain and order checks on apply, `momo migrate rehash`, URL redaction ([#12](https://github.com/azrtydxb/momo/issues/12))
 
 ## 0.2.0 (2026-11-06)
 
