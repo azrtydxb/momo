@@ -31,6 +31,8 @@ type CompanionResult struct {
 	Defaults map[string]string
 	Comments map[string]string
 	Collates map[string]string
+	// IDGens maps a column to the id generator named by an IDGen call.
+	IDGens map[string]string
 
 	Views       []schema.View
 	Functions   []schema.Function
@@ -63,6 +65,7 @@ func ReadCompanion(pkg *packages.Package, m *Model) (*CompanionResult, []Diagnos
 			Defaults: map[string]string{},
 			Comments: map[string]string{},
 			Collates: map[string]string{},
+			IDGens:   map[string]string{},
 		},
 		byPath:  map[string]*Field{},
 		indexAt: map[string]string{},
@@ -574,6 +577,8 @@ func (r *companionReader) config(c call) {
 		r.columnText(c, r.res.Comments, "comment")
 	case "Collate":
 		r.columnText(c, r.res.Collates, "collate")
+	case "IDGen":
+		r.columnText(c, r.res.IDGens, "idgen")
 	default:
 		r.unsupported(c.expr)
 	}

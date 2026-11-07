@@ -41,6 +41,12 @@ func TestParseTags(t *testing.T) {
 				t.Fatalf("got %+v", g)
 			}
 		}},
+		{name: "idgen", raw: "pk,idgen:ulid", check: func(t *testing.T, g Tags) {
+			if !g.PK || g.IDGen != "ulid" {
+				t.Fatalf("got %+v", g)
+			}
+		}},
+		{name: "idgen without value", raw: "idgen", wantMsg: "idgen requires a value"},
 		{name: "unknown key", raw: "bogus", wantMsg: `unknown tag option "bogus"`},
 		{name: "retired vector key", raw: "vector:3", wantMsg: `unknown tag option "vector"`},
 		{name: "bad integer", raw: "size:abc", wantMsg: "size must be an integer"},
@@ -73,7 +79,7 @@ func TestTagGrammar(t *testing.T) {
 		"collate:C", "default:now()", "check:x > 0", "comment:hello", "enum:e", "table:t",
 		"schema:s", "view:v,materialized", "prefix:p_", "fk:AuthorID", "join:document_tags", "rel:has_many", "polytype:owner_type", "polyvalue:document",
 		"on_delete:cascade", "on_update:cascade", "soft_delete:timestamp", "method:gin",
-		"size:1", "precision:10", "scale:2", "dim:3", "index", "unique", "sort:asc", "nulls:last",
+		"size:1", "precision:10", "scale:2", "dim:3", "index", "unique", "sort:asc", "nulls:last", "idgen:cuid",
 	} {
 		if _, probs := Parse(raw); len(probs) != 0 {
 			t.Fatalf("%q rejected: %+v", raw, probs)

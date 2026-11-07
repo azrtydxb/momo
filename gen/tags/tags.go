@@ -22,6 +22,9 @@ type Tags struct {
 	Fk, Join, OnDelete, OnUpdate, SoftDelete, TimeUnit, IndexName, UniqueName   string
 	Sort, Nulls, Method, View                                                   string
 
+	// IDGen is the idgen option: the name of a Go-side id generator.
+	IDGen string
+
 	Materialized bool
 
 	Rel, PolyType, PolyValue string
@@ -191,6 +194,8 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return str(&t.View)
 	case "prefix":
 		return str(&t.Prefix)
+	case "idgen":
+		return str(&t.IDGen)
 	case "fk":
 		return str(&t.Fk)
 	case "join":

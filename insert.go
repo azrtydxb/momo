@@ -65,6 +65,9 @@ type InsertQuery[T any] struct {
 	meta   *Meta[T]
 	i      insertCore
 	models []T
+	// back holds, per model, the caller's value that generated ids are
+	// written back to (nil for none); see generateIDs.
+	back []*T
 	// clock, when set, is the statement time shared by every chunk of a
 	// chunked bulk insert; otherwise the DB clock is read per statement.
 	clock time.Time
@@ -98,6 +101,7 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 		return q.fail(q.verr("", "Model(nil)"))
 	}
 	q.models = append(slices.Clip(q.models), *m)
+	q.back = append(slices.Clip(q.back), m)
 	return q
 }
 
@@ -108,6 +112,9 @@ func (q InsertQuery[T]) Models(ms []T) InsertQuery[T] {
 		return q.fail(q.verr("", "Models: no rows"))
 	}
 	q.models = append(slices.Clip(q.models), ms...)
+	for i := range ms {
+		q.back = append(slices.Clip(q.back), &ms[i])
+	}
 	return q
 }
 
@@ -276,7 +283,10 @@ func (q InsertQuery[T]) render(b *Builder) {
 		b.SetErr(q.verr("", "%T has no table", *new(T)))
 		return
 	}
-	q, err := q.resolveUpsert()
+	q, err := q.generateIDs(false) // a preview: Exec and Rows write the ids back
+	if err == nil {
+		q, err = q.resolveUpsert()
+	}
 	if err != nil {
 		b.SetErr(err)
 		return
@@ -799,6 +809,10 @@ func (q InsertQuery[T]) rowsOne(ctx context.Context) (*ModelRows[T], error) {
 // query itself when no split is needed (or when rendering will report the
 // error), so validation errors keep their single-statement form.
 func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
+	q, err := q.generateIDs(true)
+	if err != nil {
+		return nil, err
+	}
 	one := []InsertQuery[T]{q}
 	if q.q == nil || q.i.err != nil || q.meta.Table == "" || len(q.models) < 2 {
 		return one, nil
@@ -825,7 +839,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	// row late in a bulk insert executes nothing. The computed values are
 	// kept and bound by the chunks, so a non-deterministic default cannot
 	// pass here and change afterwards.
-	if len(fp.hooks) > 0 {
+	if len(fp.hooks) > 0 || len(fp.def) > 0 {
 		r.pre = r.modelValues(fp, cols, r.clock)
 		if err := r.validateModelRows(fp, cols, r.pre); err != nil {
 			return nil, err

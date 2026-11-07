@@ -214,6 +214,7 @@ Tag reference (all lower case):
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                              |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                         |
+| `idgen:<name>`                                                            | client-generated string id (`cuid`, `uuid`, `ulid` or a name registered with `WithIDGenerator`); filled on insert when the field is empty                                                                                                             |
 | `version`                                                                 | optimistic-lock column (integer type)                                                                                                                                                                                                                 |
 | `created_at[:unix\|unixmilli\|unixnano]`, `updated_at`                    | automatic timestamps; field type `time.Time`, `*time.Time`, `int64` or `*int64`                                                                                                                                                                       |
 | `soft_delete:timestamp\|unix\|bool`                                       | soft-delete marker; Go type `*time.Time`, `*int64` or `bool`                                                                                                                                                                                          |
@@ -311,6 +312,47 @@ What the generator emits per model `Task` (package `task`):
 - Package name = lowercase model name. It can collide with your local variable
   names (`task := ...` shadows the package). Name variables differently or
   alias the import.
+
+### Client-generated ids
+
+Databases that keep ids as text and generate them in the client (Prisma
+`@default(cuid())`) have no column default to lean on. Declare the generator
+on the field, with the tag or in `MomoConfig`:
+
+```go
+type Contact struct {
+	momo.Model `momo:"table:contacts"`
+	ID         string `momo:"pk,idgen:cuid"`
+	Name       string
+}
+
+type Note struct {
+	momo.Model `momo:"table:notes"`
+	ID         string `momo:"pk"`
+}
+
+func (n *Note) MomoConfig(c *momo.Config) { c.IDGen(&n.ID, "ulid") }
+```
+
+- Built-in generators: `cuid` (25 characters in the layout Prisma writes, so old
+  and new ids look alike), `uuid` (random, version 4, 36 characters) and `ulid`
+  (26 characters, sortable by creation time). Register your own, or replace a
+  built-in, with `momo.New(drv, momo.WithIDGenerator("short", fn))` and tag
+  `idgen:short`. Names are lowercase; the `MomoConfig` form takes a string
+  literal.
+- The generator fires when an insert writes the field and it holds the Go zero
+  value: `Model`, `Models`, `Upsert` and every chunk of a bulk insert. An id you
+  assigned is kept. The generated id is stored in your struct (the model you
+  passed, or the slice element), so read `m.ID` after `Exec` or `Rows`.
+- The field must be a `string` kind (named string types and `*string` work). Any
+  other type, a name given twice (tag and `MomoConfig`) or `identity`/`serial`
+  on the same field is refused by the generator. A name that is neither built in
+  nor registered fails the insert with `ErrValidation`.
+- With `Omit` on the id column, or `Values` that leave it out, the generator
+  supplies the value too. `SQL()` shows a generated id in the arguments but does
+  not store it in the model.
+- The tag adds no database default: the column stays `text primary key`. Retried
+  inserts generate a new id.
 
 ### Projections
 

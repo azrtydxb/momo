@@ -106,6 +106,8 @@ type DB struct {
 	pinned   bool             // set by OnConn: statements run on one pinned connection
 	// fieldHooks holds the []FieldHook[T] of WithFieldHooks keyed by *Meta[T].
 	fieldHooks map[any]any
+	// idGens holds the id generators of WithIDGenerator by name.
+	idGens map[string]func() string
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and
