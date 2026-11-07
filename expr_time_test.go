@@ -80,6 +80,11 @@ func TestTimeKeywordsValidated(t *testing.T) {
 		"huge":      momo.AddInterval(tmCreated, momo.IntervalOf(1<<62, momo.IntervalWeek)),
 		"nil":       momo.Extract(momo.ExtractYear, nil),
 		"tzEmpty":   momo.AtTimeZone(tmCreated, ""),
+		"tzQuote":   momo.AtTimeZone(tmCreated, "UTC'); DROP TABLE documents; --"),
+		"tzSpace":   momo.AtTimeZone(tmCreated, "Europe Brussels"),
+		"tzNul":     momo.AtTimeZone(tmCreated, "UTC\x00"),
+		"tzLong":    momo.AtTimeZone(tmCreated, strings.Repeat("a", 65)),
+		"ivNilExpr": momo.AddInterval(tmCreated, momo.IntervalExpr(nil, momo.IntervalDay)),
 	}
 	for _, d := range typedDialects {
 		for name, e := range exprs {
@@ -95,7 +100,10 @@ func TestTimeKeywordsValidated(t *testing.T) {
 // rendered on engines without a portable equivalent.
 func TestAtTimeZone(t *testing.T) {
 	runTimeGoldens(t, []timeGolden{
-		{dialect.Postgres, momo.AtTimeZone(tmCreated, "Europe/Brussels"), `(` + tmC + ` AT TIME ZONE $1)`, []any{"Europe/Brussels"}},
+		{dialect.Postgres, momo.AtTimeZone(tmCreated, "Europe/Brussels"), `(` + tmC + ` AT TIME ZONE 'Europe/Brussels')`, nil},
+		{dialect.Postgres, momo.AtTimeZone(tmCreated, "Etc/GMT+5"), `(` + tmC + ` AT TIME ZONE 'Etc/GMT+5')`, nil},
+		{dialect.Postgres, momo.Extract(momo.ExtractYear, momo.Value(time.Unix(0, 0).UTC())), `CAST(EXTRACT(YEAR FROM CAST($1 AS timestamptz)) AS double precision)`, []any{time.Unix(0, 0).UTC()}},
+		{dialect.Postgres, momo.DateTrunc(momo.TruncDay, momo.Value(time.Unix(0, 0).UTC())), `date_trunc('day', CAST($1 AS timestamptz))`, []any{time.Unix(0, 0).UTC()}},
 		{dialect.Postgres, momo.AtTimeZoneExpr(tmCreated, DocTitle), `(` + tmC + ` AT TIME ZONE "documents"."title")`, nil},
 	})
 	for _, d := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
@@ -176,6 +184,19 @@ func TestTimeExprComposition(t *testing.T) {
 	if got.SQL != want {
 		t.Errorf("composition:\n got %s\nwant %s", got.SQL, want)
 	}
+	// A zone-converted bucket groups with identical text in both clauses.
+	local := func() momo.TimeExpr {
+		return momo.DateTrunc(momo.TruncDay, momo.AtTimeZone(tmCreated, "Europe/Brussels"))
+	}
+	got, err = momo.Select[strCount](db).From(momo.TableRef{Name: "documents"}).
+		Columns(local(), momo.CountAll()).GroupBy(local()).SQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lw := `date_trunc('day', (` + tmC + ` AT TIME ZONE 'Europe/Brussels'))`
+	if want := `SELECT ` + lw + `, COUNT(*) FROM "documents" GROUP BY ` + lw; got.SQL != want || len(got.Args) != 0 {
+		t.Errorf("local day:\n got %s %v\nwant %s", got.SQL, got.Args, want)
+	}
 	if _, err := selectOne(dialect.Postgres, momo.Extract(momo.ExtractEpoch, day())); err != nil {
 		t.Errorf("extract over date_trunc: %v", err)
 	}
@@ -217,6 +238,24 @@ func TestJoinSQLGolden(t *testing.T) {
 	}
 	if !strings.Contains(q.SQL, `"documents"."tenant_id" = $1`) || !strings.Contains(q.SQL, `((a = $2) OR (b = $3))`) || len(q.Args) != 3 {
 		t.Errorf("where: %s %v", q.SQL, q.Args)
+	}
+
+	got, err = joinRender(dialect.MySQL, momo.JoinSQL("||", momo.SQL("a"), momo.SQL("b")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "SELECT CONCAT((a), (b)) FROM `documents`"; got.SQL != want {
+		t.Errorf("mysql concat:\n got %s\nwant %s", got.SQL, want)
+	}
+	got, err = joinRender(dialect.Postgres, momo.JoinSQL("||", momo.SQL("a"), momo.SQL("b")))
+	if err != nil || got.SQL != `SELECT ((a) || (b)) FROM "documents"` {
+		t.Errorf("pg concat: %s, %v", got.SQL, err)
+	}
+	for sep, want := range map[string]string{" AND ": "1 = 1", " or ": "1 = 0"} {
+		got, err = joinRender(dialect.Postgres, momo.JoinSQL(sep))
+		if err != nil || got.SQL != `SELECT `+want+` FROM "documents"` {
+			t.Errorf("empty %q join: %s, %v; want %s", sep, got.SQL, err, want)
+		}
 	}
 
 	typedJoin := momo.JoinTypedSQL[int64]("+", momo.SQL("a"), momo.SQL("b"))

@@ -3,9 +3,9 @@
 package momo
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -31,6 +31,21 @@ const sqliteTimeFmt = `'%Y-%m-%d %H:%M:%f'`
 // maxIntervalMagnitude bounds a literal interval count, so scaling it by a
 // unit factor can never overflow an int64.
 const maxIntervalMagnitude = 1_000_000_000_000
+
+// appendTime renders a timestamp operand. On PostgreSQL a bound Go time
+// (Value(t)) is cast to timestamptz, because the server cannot always infer
+// the parameter type inside EXTRACT, date_trunc or AT TIME ZONE.
+func appendTime(b *Builder, e Expression[time.Time]) {
+	if t, ok := e.(typed[time.Time]); ok && b.d.Name == dialect.Postgres {
+		if _, bound := t.Expr.(argExpr); bound {
+			b.WriteString("CAST(")
+			e.AppendSQL(b)
+			b.WriteString(" AS timestamptz)")
+			return
+		}
+	}
+	e.AppendSQL(b)
+}
 
 // ------------------------------------------------------------- Extract
 
@@ -101,7 +116,7 @@ func (x ExtractExpr) AppendSQL(b *Builder) {
 	switch b.d.Name {
 	case dialect.Postgres:
 		b.WriteString("CAST(EXTRACT(" + kw + " FROM ")
-		x.e.AppendSQL(b)
+		appendTime(b, x.e)
 		b.WriteString(") AS double precision)")
 	case dialect.SQLite:
 		x.appendSQLite(b)
@@ -192,17 +207,47 @@ func (t TimeExpr) AppendSQL(b *Builder) {
 
 // ---------------------------------------------------------- AtTimeZone
 
-// AtTimeZone is (e AT TIME ZONE zone) on PostgreSQL: a timestamptz becomes
-// the wall-clock timestamp in zone and a timestamp is read as wall-clock in
-// zone. zone is a bound parameter, an IANA name such as Europe/Brussels; an
-// empty or NUL-containing name fails the build with ErrValidation. SQLite
-// and MySQL have no portable time zone conversion and fail with
-// ErrUnsupported.
+// AtTimeZone is (e AT TIME ZONE 'zone') on PostgreSQL: a timestamptz becomes
+// the wall-clock timestamp without time zone in zone, and a timestamp is read
+// as wall-clock in zone and becomes a timestamptz. zone is an IANA name such
+// as Europe/Brussels. It is written as a quoted literal, not bound, so the
+// same expression in SELECT and GROUP BY renders identical text and
+// PostgreSQL accepts the grouping; for that it must be at most 64 bytes of
+// letters, digits and _ + : / -, otherwise the build fails with
+// ErrValidation. Use AtTimeZoneExpr for a zone held in a column. SQLite and
+// MySQL have no portable time zone conversion and fail with ErrUnsupported.
+//
+// For local-time buckets wrap the column before truncating or extracting:
+// DateTrunc(TruncDay, AtTimeZone(col, "Europe/Brussels")). DateTrunc and
+// Extract on a bare timestamptz work in the session time zone.
 func AtTimeZone(e Expression[time.Time], zone string) TimeExpr {
-	if zone == "" || strings.ContainsRune(zone, 0) {
-		return newTimeExpr(func(b *Builder) { b.SetErr(timeErr("AtTimeZone zone must be a non-empty name")) })
+	if err := validZone(zone); err != nil {
+		return newTimeExpr(func(b *Builder) { b.SetErr(timeErr("AtTimeZone zone %q: %v", zone, err)) })
 	}
-	return AtTimeZoneExpr(e, Value(zone))
+	return AtTimeZoneExpr(e, zoneLiteral(zone))
+}
+
+// zoneLiteral is a validated zone name rendered as a quoted SQL literal.
+type zoneLiteral string
+
+func (zoneLiteral) resultType() string { return "" }
+
+func (z zoneLiteral) AppendSQL(b *Builder) { b.WriteString("'" + string(z) + "'") }
+
+func validZone(zone string) error {
+	if zone == "" || len(zone) > 64 {
+		return errors.New("must be 1 to 64 bytes")
+	}
+	for i := 0; i < len(zone); i++ {
+		c := zone[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
+			c == '_', c == '+', c == ':', c == '/', c == '-':
+		default:
+			return fmt.Errorf("invalid byte %q", c)
+		}
+	}
+	return nil
 }
 
 // AtTimeZoneExpr is AtTimeZone with the zone taken from a string
@@ -218,7 +263,7 @@ func AtTimeZoneExpr(e Expression[time.Time], zone Expression[string]) TimeExpr {
 			return
 		}
 		b.writeByte('(')
-		e.AppendSQL(b)
+		appendTime(b, e)
 		b.WriteString(" AT TIME ZONE ")
 		zone.AppendSQL(b)
 		b.writeByte(')')
@@ -268,6 +313,7 @@ type Interval struct {
 	count   Expression[int64] // nil for a literal
 	unit    IntervalUnit
 	isBuilt bool
+	isExpr  bool
 }
 
 // IntervalOf is a literal interval of n units, written into the SQL text
@@ -282,13 +328,16 @@ func IntervalOf(n int64, unit IntervalUnit) Interval {
 // a column, or Value(n) to bind a parameter. On PostgreSQL the count is
 // multiplied into a one-unit INTERVAL.
 func IntervalExpr(count Expression[int64], unit IntervalUnit) Interval {
-	return Interval{count: count, unit: unit, isBuilt: true}
+	return Interval{count: count, unit: unit, isBuilt: true, isExpr: true}
 }
 
 // AddInterval is ts + iv: the timestamp moved forward by the interval.
 // PostgreSQL renders (ts + INTERVAL ...), MySQL DATE_ADD and SQLite
 // strftime with a modifier. The SQLite result is text in momo's timestamp
-// format, in UTC, with millisecond precision.
+// format, in UTC, with millisecond precision. Month and year arithmetic
+// differs at month ends: PostgreSQL and MySQL clamp to the last day (Jan 31
+// plus one month is Feb 28 or 29), SQLite normalises the overflow into the
+// next month (Mar 2 or 3). SQLite years outside 0000 to 9999 are NULL.
 func AddInterval(ts Expression[time.Time], iv Interval) TimeExpr { return intervalExpr(ts, iv, 1) }
 
 // SubInterval is ts - iv: the timestamp moved back by the interval.
@@ -301,23 +350,26 @@ func intervalExpr(ts Expression[time.Time], iv Interval, sign int64) TimeExpr {
 		case ts == nil || !iv.isBuilt:
 			b.SetErr(timeErr("interval arithmetic needs a timestamp and an interval built with IntervalOf or IntervalExpr"))
 			return
+		case iv.isExpr && iv.count == nil:
+			b.SetErr(timeErr("IntervalExpr needs a count expression"))
+			return
 		case !ok:
 			b.SetErr(timeErr("interval unit %q is not one of the Interval... constants", string(iv.unit)))
 			return
-		case iv.count == nil && (iv.lit > maxIntervalMagnitude || iv.lit < -maxIntervalMagnitude):
+		case !iv.isExpr && (iv.lit > maxIntervalMagnitude || iv.lit < -maxIntervalMagnitude):
 			b.SetErr(timeErr("interval of %d %ss is outside the supported range", iv.lit, string(iv.unit)))
 			return
 		}
 		switch b.d.Name {
 		case dialect.Postgres:
 			b.writeByte('(')
-			ts.AppendSQL(b)
+			appendTime(b, ts)
 			op := " + "
 			if sign < 0 {
 				op = " - "
 			}
 			b.WriteString(op)
-			if iv.count == nil {
+			if !iv.isExpr {
 				b.WriteString("INTERVAL '" + strconv.FormatInt(iv.lit, 10) + " " + spec.pg + "')")
 				return
 			}
@@ -332,7 +384,7 @@ func intervalExpr(ts Expression[time.Time], iv Interval, sign int64) TimeExpr {
 			b.WriteString(fn)
 			ts.AppendSQL(b)
 			b.WriteString(", INTERVAL ")
-			if iv.count == nil {
+			if !iv.isExpr {
 				b.WriteString(strconv.FormatInt(iv.lit, 10))
 			} else {
 				iv.count.AppendSQL(b)
@@ -342,7 +394,7 @@ func intervalExpr(ts Expression[time.Time], iv Interval, sign int64) TimeExpr {
 			b.WriteString("strftime(" + sqliteTimeFmt + ", ")
 			ts.AppendSQL(b)
 			b.WriteString(", ")
-			if iv.count == nil {
+			if !iv.isExpr {
 				b.WriteString("'" + strconv.FormatInt(iv.lit*sign*spec.factor, 10) + " " + spec.sqlite + "')")
 				return
 			}
@@ -418,7 +470,9 @@ var truncFormats = map[TruncUnit]struct{ sqlite, mysql string }{
 // DateTrunc rounds a timestamp down to the start of its unit:
 // date_trunc('day', e) on PostgreSQL, and the equivalent strftime or
 // DATE_FORMAT composition on SQLite and MySQL. The unit is written as a
-// literal so SELECT and GROUP BY render identically. On SQLite the result
+// literal so SELECT and GROUP BY render identically. On PostgreSQL a
+// timestamptz is truncated in the session time zone; wrap the input in
+// AtTimeZone for buckets in a chosen zone. On SQLite the result
 // is text in momo's timestamp format; on MySQL it is a DATETIME.
 func DateTrunc(unit TruncUnit, e Expression[time.Time]) TimeExpr {
 	return newTimeExpr(func(b *Builder) {
@@ -434,7 +488,7 @@ func DateTrunc(unit TruncUnit, e Expression[time.Time]) TimeExpr {
 		switch b.d.Name {
 		case dialect.Postgres:
 			b.WriteString("date_trunc('" + string(unit) + "', ")
-			e.AppendSQL(b)
+			appendTime(b, e)
 			b.writeByte(')')
 		case dialect.SQLite:
 			truncSQLite(b, unit, f.sqlite, e)

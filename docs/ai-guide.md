@@ -642,7 +642,8 @@ momo.CurrentSchema()
 // Dates and times (PostgreSQL; SQLite and MySQL render equivalents). Fields and
 // units are constants checked against an allowlist; anything else is ErrValidation.
 momo.Extract(momo.ExtractEpoch, doc.CreatedAt)         // float64, also Year, Month, Day, Hour, Minute, Second, Quarter, Dow, ISODow, Doy
-momo.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is bound; PostgreSQL only, else ErrUnsupported
+momo.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is a validated literal; PostgreSQL only, else ErrUnsupported
+// Local-day buckets: momo.DateTrunc(momo.TruncDay, momo.AtTimeZone(col, zone)); a bare timestamptz truncates in the session zone.
 momo.DateTrunc(momo.TruncDay, doc.CreatedAt)           // Second..Year, weeks start on Monday
 momo.Now()                                             // also CurrentTimestamp(); the database clock, not WithClock
 // Intervals are an operand of AddInterval/SubInterval, not an expression of their own.
@@ -651,7 +652,8 @@ momo.AddInterval(doc.CreatedAt, momo.IntervalExpr(momo.Value(int64(n)), momo.Int
 
 // JoinSQL composes raw fragments with their args (Prisma.join). The separator is a fixed
 // literal from an allowlist: "," or " " (parts as written), " AND ", " OR ", "||", "+"
-// (parts and the whole parenthesised). A part is any Expr, usually momo.SQL(...).
+// (parts and the whole parenthesised; MySQL renders "||" as CONCAT). A part is any Expr, usually
+// momo.SQL(...). An empty AND join is 1 = 1 and an empty OR join 1 = 0, like And and Or.
 var conds []momo.Expr
 conds = append(conds, momo.SQL("status = ?", status))
 q.Where(momo.JoinSQL(" AND ", conds...))               // JoinTypedSQL[T] declares a result type

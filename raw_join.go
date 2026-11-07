@@ -5,6 +5,8 @@ package momo
 import (
 	"slices"
 	"strings"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // joinSeparators is the allowlist of separators JoinSQL accepts, keyed by
@@ -36,8 +38,34 @@ func (j joinExpr) AppendSQL(b *Builder) {
 	case !ok:
 		b.SetErr(rawErr("JoinSQL separator %q is not one of , AND OR || + or a space", j.sep))
 		return
+	case len(j.parts) == 0 && (s.text == " AND " || s.text == " OR "):
+		// Match And and Or: the empty conjunction is true, the empty
+		// disjunction false.
+		if s.text == " AND " {
+			b.WriteString("1 = 1")
+		} else {
+			b.WriteString("1 = 0")
+		}
+		return
 	case len(j.parts) == 0:
-		b.SetErr(rawErr("JoinSQL needs at least one part"))
+		b.SetErr(rawErr("JoinSQL with separator %q needs at least one part", j.sep))
+		return
+	case s.text == " || " && b.d.Name == dialect.MySQL:
+		// || is logical OR on MySQL; concatenate with CONCAT instead.
+		b.WriteString("CONCAT(")
+		for i, p := range j.parts {
+			if p == nil {
+				b.SetErr(rawErr("JoinSQL part %d is nil", i))
+				return
+			}
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.writeByte('(')
+			p.AppendSQL(b)
+			b.writeByte(')')
+		}
+		b.writeByte(')')
 		return
 	}
 	if s.parens {
@@ -80,14 +108,16 @@ func (joinExpr) isRaw() bool      { return true }
 //	where := momo.JoinSQL(" AND ", conds...)
 //
 // sep must be a fixed literal and is checked against an allowlist, ignoring
-// surrounding spaces and letter case: a comma, AND, OR, ||, + or a single
-// space (the empty string). Any other separator fails the build with
+// surrounding spaces and letter case: a comma, AND, OR, ||, + or a plain
+// space (sep empty or only spaces). Any other separator fails the build with
 // ErrValidation, so the separator can never carry caller-controlled SQL.
 // For AND, OR, || and + every part and the whole join are parenthesised,
 // which keeps operator precedence intact; a comma or a space writes the
-// parts as they are. A join of no parts, or with a nil part, fails the
-// build with ErrValidation. Use JoinTypedSQL when the join must carry a Go
-// type.
+// parts as they are. On MySQL, where || is logical OR, a "||" join renders
+// CONCAT of the parenthesised parts. A join of no parts renders 1 = 1 for
+// AND and 1 = 0 for OR, like And and Or; with any other separator, or with
+// a nil part, the build fails with ErrValidation. Use JoinTypedSQL when the
+// join must carry a Go type.
 func JoinSQL(sep string, parts ...Expr) Predicate {
 	return joinExpr{sep: sep, parts: slices.Clone(parts)}
 }
