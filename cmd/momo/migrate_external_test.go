@@ -29,11 +29,18 @@ type Doc struct {
 // and returns the text of the generated up file.
 func diffUp(t *testing.T, migrateYAML string) string {
 	t.Helper()
+	// copyModule resolves the repository from the working directory, and a
+	// previous call left it in its module: go back to where the test started.
+	start, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 	src := t.TempDir()
 	writeFile(t, filepath.Join(src, "models.go"), vectorModels)
 	root := copyModule(t, src)
 	writeFile(t, filepath.Join(root, "momo.yaml"), "version: 1\nmigrate:\n  dir:\n    postgres: m\n"+migrateYAML)
 	chdir(t, root)
+	defer func() { _ = os.Chdir(start) }()
 	var out, errOut bytes.Buffer
 	if code := runMigrate(&out, &errOut, []string{"diff", "init"}, noEnv); code != 0 {
 		t.Fatalf("diff: exit %d: %s", code, errOut.String())
