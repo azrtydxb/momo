@@ -128,9 +128,19 @@ The generator reports a diagnostic, and writes nothing for that package, when:
   `polytype` is used on a relation that is not `has_one` or `has_many`;
 - the `polytype` column is not a field of the target.
 
-Tag-declared relations need a single-column primary key on both models.
-Composite keys are supported by the runtime but cannot yet be expressed with
-tags.
+A `belongs_to` is keyed by its own `fk` field against the target's primary
+key, so the referencing model may have any primary key, including a composite
+one that contains the foreign key column. For example `exams` with primary key
+`(license_id, exam_id)` can declare `License *License` with
+`momo:"belongs_to,fk:LicenseID"`, which emits
+`FOREIGN KEY (license_id) REFERENCES licenses(license_id)` and matches a live
+database that already has that constraint. The target of a `belongs_to` must
+have a single-column primary key: a foreign key to a composite target key is
+refused with a diagnostic that names the target's key columns. A `has_one` or
+`has_many` needs a single-column primary key on the parent, and the child may
+have a composite key. `many2many` needs a single-column primary key on both
+models. Other composite-key relations work with hand-written descriptors but
+cannot be expressed with tags.
 
 Generated relation field values (`Document.Comments`) are only ever written by
 Momo when you load them or list them for `CreateGraph`. A plain `Insert` or
@@ -653,8 +663,11 @@ failures) are classified the same way as for any other statement.
 
 Known limitations and follow-ups:
 
-- Tag-declared relations need single-column primary keys. Composite keys work
-  with hand-written descriptors but cannot be expressed with tags.
+- A tag-declared `belongs_to` needs a single-column primary key on its target
+  (the referencing model's key may be composite); `has_one` and `has_many`
+  need one on the parent; `many2many` needs one on both models. Other
+  composite keys work with hand-written descriptors but cannot be expressed
+  with tags.
 - `Joined` covers belongs-to only. Has-one is not joinable.
 - Pipelining has no public opt-out and doubles peak memory for a level.
 - `Link`, `Unlink` and `Replace` bypass model and field hooks and `UpdatedAt`.
