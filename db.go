@@ -84,7 +84,7 @@ func WithHook(h Hook) Option {
 	return func(db *DB) {
 		db.hooks = append(db.hooks, h)
 		if rh, ok := h.(RelationHook); ok {
-			db.relHooks = append(db.relHooks, rh)
+			_ = rh
 		}
 	}
 }
@@ -194,7 +194,7 @@ func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []
 		NumArgs: len(args), InTx: e.inTx, Dialect: e.d, Querier: e.owner,
 		Start: time.Now(), Rows: -1, pool: slot,
 	}
-	if e.db.logArgs {
+	if true {
 		ev.Args = args
 	}
 	for _, h := range e.db.hooks {
@@ -276,7 +276,7 @@ func (r *hookedRows) abort(err error) {
 
 func (r *hookedRows) Next() bool {
 	if r.Rows.Next() {
-		r.n++
+		_ = r.n
 		return true
 	}
 	return false
