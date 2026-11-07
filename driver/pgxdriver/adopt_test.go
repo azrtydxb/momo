@@ -10,6 +10,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/testdb"
+	"github.com/azrtydxb/momo/vector"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -290,5 +291,73 @@ func TestUnwrapMomoBegunTxThenLegacyStatement(t *testing.T) {
 	}
 	if n := countRows(t, pmdb); n != 1 {
 		t.Fatalf("rows = %d, want 1 (momo committed)", n)
+	}
+}
+
+func TestAdoptPgxTxVectorRoundTripTextMode(t *testing.T) {
+	ctx := context.Background()
+	pool, mdb := adoptPgxDB(t)
+	if _, err := momo.Exec(ctx, mdb, "CREATE TABLE adopt_vec (id int PRIMARY KEY, emb vector(3))"); err != nil {
+		t.Fatal(err)
+	}
+	ptx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ptx.Rollback(ctx) }()
+	mtx := mdb.AdoptTx(PgxTx(ptx)) // default: Exec mode, VectorText
+	if _, err := momo.Exec(ctx, mtx, "INSERT INTO adopt_vec VALUES (?, ?)", 1, vector.Vector{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := momo.Scalars[string](ctx, mtx, "SELECT emb::text FROM adopt_vec WHERE id = 1")
+	if err != nil || len(got) != 1 || got[0] != "[1,2,3]" {
+		t.Fatalf("vector round trip = %v, %v", got, err)
+	}
+}
+
+func TestAdoptPgxTxBatchPath(t *testing.T) {
+	ctx := context.Background()
+	pool, mdb := adoptPgxDB(t)
+	ptx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ptx.Rollback(ctx) }()
+	mtx := mdb.AdoptTx(PgxTx(ptx))
+	b, ok := momo.BatcherOf(mtx)
+	if !ok {
+		t.Fatal("an adopted pgx.Tx must be a Batcher")
+	}
+	rows, err := b.SendBatch(ctx, []momo.Compiled{
+		{SQL: "INSERT INTO adopt_t VALUES ($1, $2)", Args: []any{1, "a"}},
+		{SQL: "SELECT name FROM adopt_t WHERE id = $1", Args: []any{1}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		_ = r.Close()
+	}
+	var name string
+	if err := ptx.QueryRow(ctx, "SELECT name FROM adopt_t WHERE id = 1").Scan(&name); err != nil || name != "a" {
+		t.Fatalf("legacy read after batch = %q, %v", name, err)
+	}
+}
+
+func TestAdoptPgxTxSavepointAfterCallerRollback(t *testing.T) {
+	ctx := context.Background()
+	pool, mdb := adoptPgxDB(t)
+	ptx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mtx := mdb.AdoptTx(PgxTx(ptx))
+	if err := ptx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	err = mtx.Tx(ctx, func(*momo.Tx) error { called = true; return nil })
+	if !errors.Is(err, momo.ErrTxDone) || called {
+		t.Fatalf("savepoint after caller rollback: err=%v called=%v, want ErrTxDone without running fn", err, called)
 	}
 }
