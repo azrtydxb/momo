@@ -20,8 +20,20 @@ type item struct {
 	Label string `json:"label"`
 }
 
+// aggOne is a one-column projection for rendering a single expression.
+type aggOne struct{ V string }
+
+var aggOneMeta = momo.Meta[aggOne]{
+	Columns:  []momo.ColumnMeta{{Name: "v"}},
+	Ptr:      func(m *aggOne, _ int) any { return &m.V },
+	Value:    func(m *aggOne, _ int) any { return m.V },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}
+
+func (*aggOne) MomoMeta() *momo.Meta[aggOne] { return &aggOneMeta }
+
 func aggSQL(d dialect.Name, e momo.Expr) (string, error) {
-	c, err := momo.Select[kvRow](typedDB(d)).From(momo.TableRef{Name: "documents"}).Columns(e).SQL()
+	c, err := momo.Select[aggOne](typedDB(d)).From(momo.TableRef{Name: "documents"}).Columns(e).SQL()
 	return c.SQL, err
 }
 
