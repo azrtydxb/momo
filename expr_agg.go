@@ -35,8 +35,9 @@ type aggSpec struct {
 	sep      string // aggString: the separator
 	orderBy  []Order
 	within   []Order
-	ordered  bool    // an ordered-set aggregate: WithinGroup is required
-	fraction float64 // rendered as the only argument when ordered
+	filter   Predicate // FILTER (WHERE ...)
+	ordered  bool      // an ordered-set aggregate: WithinGroup is required
+	fraction float64   // rendered as the only argument when ordered
 }
 
 // AggExpr is an aggregate call whose SQL result type corresponds to T. It is
@@ -79,6 +80,15 @@ func (a AggExpr[T]) WithinGroup(o ...Order) AggExpr[T] {
 	return newAgg[T](a.spec)
 }
 
+// Filter restricts the rows the aggregate sees: agg(...) FILTER (WHERE p),
+// rendered after any WITHIN GROUP. It has the same shape as Agg.Filter, so
+// StringAgg(...).OrderBy(...).Filter(p) works, in either order. PostgreSQL
+// and SQLite support it; MySQL fails the build with ErrUnsupported.
+func (a AggExpr[T]) Filter(p Predicate) AggExpr[T] {
+	a.spec.filter = p
+	return newAgg[T](a.spec)
+}
+
 // As names the call in a select list.
 func (a AggExpr[T]) As(alias string) Aliased[T] { return As[T](a, alias) }
 
@@ -113,6 +123,20 @@ func (s aggSpec) appendArgs(b *Builder) {
 }
 
 func (s aggSpec) appendSQL(b *Builder) {
+	s.appendCall(b)
+	if s.filter == nil {
+		return
+	}
+	if b.d.Name == dialect.MySQL {
+		b.unsupported("aggregate FILTER")
+		return
+	}
+	b.WriteString(" FILTER (WHERE ")
+	s.filter.AppendSQL(b)
+	b.writeByte(')')
+}
+
+func (s aggSpec) appendCall(b *Builder) {
 	name := s.name
 	switch {
 	case len(s.orderBy) > 0 && len(s.within) > 0:

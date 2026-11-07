@@ -53,6 +53,12 @@ func TestAggregateGolden(t *testing.T) {
 			dialect.SQLite:   `SELECT group_concat("documents"."title", 'it''s')` + from,
 			dialect.MySQL:    "SELECT GROUP_CONCAT(`documents`.`title` SEPARATOR 'it''s') FROM `documents`",
 		}},
+		{"filter after order by", func() momo.Expr {
+			return momo.StringAgg(title, ",").Filter(DocTenantID.Gt(1)).OrderBy(title.Asc())
+		}, map[dialect.Name]string{
+			dialect.Postgres: `SELECT string_agg("documents"."title", ',' ORDER BY "documents"."title" ASC) FILTER (WHERE "documents"."tenant_id" > $1)` + from,
+			dialect.SQLite:   `SELECT group_concat("documents"."title", ',' ORDER BY "documents"."title" ASC) FILTER (WHERE "documents"."tenant_id" > ?)` + from,
+		}},
 		{"array_agg", func() momo.Expr {
 			return momo.ArrayAgg[string](title).OrderBy(DocTenantID.Asc(), title.Desc().NullsLast())
 		}, map[dialect.Name]string{
