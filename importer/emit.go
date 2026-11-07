@@ -1,0 +1,196 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package importer
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"go/token"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+
+	"github.com/azrtydxb/momo/gen"
+)
+
+// Model is one source model in the neutral form every reader produces.
+type Model struct {
+	Name, Table string
+	Fields      []Field
+	Source      string
+}
+
+// Field is one column of a Model.
+type Field struct {
+	Name, Column, GoType, SQLType string
+	Nullable, PK, Unique, Index   bool
+	// Default is the default expression; DefaultKind is "db" (a SQL
+	// default Momo keeps) or "go" (applied by the source ORM in Go, which
+	// Momo does not reproduce).
+	Default, DefaultKind string
+	Source               string
+}
+
+// ErrUnsupported is returned by Emit when the report holds an unsupported
+// change.
+var ErrUnsupported = errors.New("importer: the source uses features Momo cannot import")
+
+// stdImports maps the package qualifiers a field type may use to import paths.
+var stdImports = map[string]string{
+	"time": "time",
+	"sql":  "database/sql",
+	"json": "encoding/json",
+}
+
+// Emit writes the Momo model source for models into dir/models.go through w.
+// dir must be absolute and inside the writer's module root. It refuses to
+// write anything when rep holds an Unsupported change, and fails on a name or
+// tag value Momo's tag grammar cannot carry.
+func Emit(models []Model, rep *Report, w *gen.Writer, dir, pkg string) error {
+	if rep != nil {
+		if un := rep.Of(Unsupported); len(un) > 0 {
+			var sb strings.Builder
+			for _, c := range un {
+				fmt.Fprintf(&sb, "\n  %s: %s", c.Source, c.Message)
+			}
+			return fmt.Errorf("%w:%s", ErrUnsupported, sb.String())
+		}
+	}
+	if !token.IsIdentifier(pkg) {
+		return fmt.Errorf("importer: %q is not a package name", pkg)
+	}
+	src, err := render(models, pkg)
+	if err != nil {
+		return err
+	}
+	return w.File(filepath.Join(dir, "models.go"), src)
+}
+
+func render(models []Model, pkg string) ([]byte, error) {
+	imports := map[string]bool{"github.com/azrtydxb/momo": true}
+	var body bytes.Buffer
+	for _, m := range models {
+		if !token.IsIdentifier(m.Name) {
+			return nil, fmt.Errorf("importer: %s: %q is not a Go type name", m.Source, m.Name)
+		}
+		mt := ""
+		if m.Table != "" {
+			if err := checkTagValue(m.Table); err != nil {
+				return nil, fmt.Errorf("importer: model %s table: %w", m.Name, err)
+			}
+			mt = " `momo:" + strconv.Quote("table:"+m.Table) + "`"
+		}
+		fmt.Fprintf(&body, "// %s was imported by momo import.\ntype %s struct {\n\tmomo.Model%s\n", m.Name, m.Name, mt)
+		for _, f := range m.Fields {
+			if !token.IsIdentifier(f.Name) {
+				return nil, fmt.Errorf("importer: %s: %q is not a Go field name", f.Source, f.Name)
+			}
+			if f.GoType == "" {
+				return nil, fmt.Errorf("importer: %s: field %s.%s has no Go type", f.Source, m.Name, f.Name)
+			}
+			if err := collectImports(f.GoType, imports); err != nil {
+				return nil, fmt.Errorf("importer: %s: field %s.%s: %w", f.Source, m.Name, f.Name, err)
+			}
+			tag, err := fieldTag(f)
+			if err != nil {
+				return nil, fmt.Errorf("importer: %s: field %s.%s: %w", f.Source, m.Name, f.Name, err)
+			}
+			if tag != "" {
+				tag = " `momo:" + strconv.Quote(tag) + "`"
+			}
+			fmt.Fprintf(&body, "\t%s %s%s\n", f.Name, f.GoType, tag)
+		}
+		body.WriteString("}\n\n")
+	}
+	var out bytes.Buffer
+	out.WriteString(gen.Header())
+	fmt.Fprintf(&out, "\n\npackage %s\n\nimport (\n", pkg)
+	paths := make([]string, 0, len(imports))
+	for p := range imports {
+		paths = append(paths, p)
+	}
+	slices.Sort(paths)
+	for _, p := range paths {
+		fmt.Fprintf(&out, "\t%s\n", strconv.Quote(p))
+	}
+	out.WriteString(")\n\n")
+	out.Write(body.Bytes())
+	return out.Bytes(), nil
+}
+
+// collectImports adds the import path of every pkg.Name qualifier in goType.
+func collectImports(goType string, into map[string]bool) error {
+	for i := 0; i < len(goType); i++ {
+		if goType[i] != '.' {
+			continue
+		}
+		j := i
+		for j > 0 && isIdentByte(goType[j-1]) {
+			j--
+		}
+		qual := goType[j:i]
+		if qual == "" {
+			continue
+		}
+		path, ok := stdImports[qual]
+		if !ok {
+			return fmt.Errorf("type %q uses package %q, which the importer cannot place", goType, qual)
+		}
+		into[path] = true
+	}
+	return nil
+}
+
+func isIdentByte(b byte) bool {
+	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+}
+
+// checkTagValue rejects values the momo tag grammar cannot carry: a value
+// ends at the next comma, and the tag lives in a raw string literal.
+func checkTagValue(v string) error {
+	if strings.ContainsAny(v, ",`\n\r") {
+		return fmt.Errorf("value %q contains a comma, backtick or newline, which a momo tag cannot carry", v)
+	}
+	return nil
+}
+
+func fieldTag(f Field) (string, error) {
+	var opts []string
+	add := func(key, val string) error {
+		if err := checkTagValue(val); err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+		opts = append(opts, key+":"+val)
+		return nil
+	}
+	if f.PK {
+		opts = append(opts, "pk")
+	}
+	if f.Column != "" {
+		if err := add("column", f.Column); err != nil {
+			return "", err
+		}
+	}
+	if f.SQLType != "" {
+		if err := add("type", f.SQLType); err != nil {
+			return "", err
+		}
+	}
+	if !f.Nullable && !f.PK {
+		opts = append(opts, "notnull")
+	}
+	if f.Unique {
+		opts = append(opts, "unique")
+	}
+	if f.Index {
+		opts = append(opts, "index")
+	}
+	if f.Default != "" && f.DefaultKind != "go" {
+		if err := add("default", f.Default); err != nil {
+			return "", err
+		}
+	}
+	return strings.Join(opts, ","), nil
+}
