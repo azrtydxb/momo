@@ -354,17 +354,17 @@ computed column in `Columns` of the meta (for example `distance`) is only a labe
 
 Tuple rows: for an aggregate, join or few-column read use `momo.Row1` to
 `momo.Row10` instead of declaring a projection (no struct, no generated meta).
-`Columns(...)` is scanned positionally into the fields `C1`..`Cn`:
+`Columns` is scanned positionally into the fields `C1` to `Cn`:
 
 ```go
 counts, err := momo.Select[momo.Row2[string, int64]](q).From(article.Table).
-	Columns(article.Status, momo.CountAll()).GroupBy(article.Status).All(ctx)
-// counts[i].C1 is the status, counts[i].C2 the count
+	Columns(article.Title, momo.CountAll()).GroupBy(article.Title).All(ctx)
+// counts[i].C1 is the title, counts[i].C2 the count
 
-// LeftJoin side: pointer type parameters are nil when no row joined
-rows, err := momo.Select[momo.Row2[string, *int64]](q).From(article.Table).
-	Columns(article.Title, comment.ID).
-	LeftJoin(comment.Table, comment.ArticleID.EqExpr(article.ID)).All(ctx)
+// SUM is NULL over no rows: a pointer type parameter reads it as nil
+total, err := momo.Select[momo.Row1[*int64]](q).From(article.Table).
+	Columns(momo.Sum(article.Score)).One(ctx)
+// total.C1 is nil when no article matches
 ```
 
 A `Columns` count different from the arity is `ErrValidation` (no statement is

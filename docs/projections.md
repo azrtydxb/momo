@@ -58,10 +58,10 @@ total, err := momo.Select[momo.Row1[int64]](db).From(license.Table).Columns(momo
 // total.C1
 ```
 
-- A column that can be NULL takes a pointer type: a `LeftJoin` side or an aggregate over no rows. `momo.Row3[string, *int64, *string]` reads `Columns(a.Title, b.ID, b.Title)` and leaves `C2` and `C3` nil when the join finds no row.
+- A column that can be NULL takes a pointer type: a `LeftJoin` side or an aggregate over no rows. With a `Row3` of `string, *int64, *string`, the columns `a.Title, b.ID, b.Title` fill `C1` to `C3`, and `C2` and `C3` stay nil when the join finds no row.
 - Subquery columns, `Union`, `FromSubquery`, `With` and `WithRecursive` work as for any projection. The Go types of the columns are yours to match; they are not checked against the SQL.
 - A mismatch between the number of `Columns` and the arity of the row is `ErrValidation`, reported before any statement runs. So is omitting `Columns`.
-- A tuple row is a projection with no table: `Insert`, `Update` and `Delete` refuse it with `ErrValidation`. It has no soft-delete column of its own, and the filter on the `From` table applies as described below, so `Row1[int64]` with `CountAll()` over `article.Table` counts live rows; `WithDeleted()` counts all.
+- A tuple row is a projection with no table: `Insert`, `Update`, `Delete`, `Upsert`, `SoftDelete` and `ForceDelete` refuse it with `ErrValidation`. It has no soft-delete column of its own, and the filter on the `From` table applies as described below, so a `Row1[int64]` with `CountAll` over `article.Table` counts live rows, and `WithDeleted` counts all.
 - `After` works when `OrderBy` lists a unique key, since a tuple has no primary key to break ties.
 - The metadata is built once per instantiation and shared; looking it up does not allocate.
 

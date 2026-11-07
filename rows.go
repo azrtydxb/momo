@@ -8,30 +8,6 @@ import (
 	"sync"
 )
 
-// Tuple rows are generic result types for queries that do not read a whole
-// model: aggregates, joins and column subsets. They replace a hand-written
-// projection struct and Meta per result shape:
-//
-//	rows, err := momo.Select[momo.Row2[string, int64]](db).
-//		From(document.Table).
-//		Columns(document.Title, momo.CountAll()).
-//		GroupBy(document.Title).
-//		All(ctx)
-//	// rows[i].C1 is the title, rows[i].C2 the count
-//
-// Row1 to Row10 take 1 to 10 columns. The Columns list is scanned
-// positionally: expression i fills field Ci, so the number of Columns must
-// equal the row's arity (ErrValidation otherwise, at SQL or execution time).
-// Names play no part. Use a pointer type parameter, such as
-// Row2[string, *int64], for a column that can be NULL (a LEFT JOIN side, an
-// aggregate over no rows).
-//
-// A tuple row is a projection: it has no table, so Insert, Update and Delete
-// refuse it with ErrValidation, and it carries no soft-delete column of its
-// own. As for any projection the live-row filter comes from the From table
-// (and WithDeleted or OnlyDeleted adjust it). After works when OrderBy names
-// a unique key, because a tuple has no primary key to break ties with.
-
 // tupleMetas caches one *Meta per tuple instantiation, keyed by the row's
 // reflect.Type. Select asks for the meta on every query, so it must be cheap
 // and must return the same pointer every time.
@@ -60,7 +36,30 @@ func storeTupleMeta[T any](n int, ptr func(m *T, i int) any) *Meta[T] {
 	return v.(*Meta[T])
 }
 
-// Row1 is a result row of 1 column, scanned positionally into C1.
+// Row1 is a result row of 1 column, scanned positionally into C1. Row1 to
+// Row10 are the tuple rows: generic result types for queries that do not read a whole
+// model: aggregates, joins and column subsets. They replace a hand-written
+// projection struct and Meta per result shape:
+//
+//	rows, err := momo.Select[momo.Row2[string, int64]](db).
+//		From(document.Table).
+//		Columns(document.Title, momo.CountAll()).
+//		GroupBy(document.Title).
+//		All(ctx)
+//	// rows[i].C1 is the title, rows[i].C2 the count
+//
+// Row1 to Row10 take 1 to 10 columns. The Columns list is scanned
+// positionally: expression i fills field Ci, so the number of Columns must
+// equal the row's arity (ErrValidation otherwise, at SQL or execution time).
+// Names play no part. Use a pointer type parameter, such as
+// Row2[string, *int64], for a column that can be NULL (a LEFT JOIN side, an
+// aggregate over no rows).
+//
+// A tuple row is a projection: it has no table, so Insert, Update and Delete
+// refuse it with ErrValidation, and it carries no soft-delete column of its
+// own. As for any projection the live-row filter comes from the From table
+// (and WithDeleted or OnlyDeleted adjust it). After works when OrderBy names
+// a unique key, because a tuple has no primary key to break ties with.
 type Row1[A any] struct {
 	Projection
 	C1 A
@@ -81,6 +80,7 @@ func (*Row1[A]) MomoMeta() *Meta[Row1[A]] {
 }
 
 // Row2 is a result row of 2 columns, scanned positionally into C1..C2.
+// Use a pointer type parameter for a column that can be NULL; see Row1.
 type Row2[A, B any] struct {
 	Projection
 	C1 A
@@ -104,6 +104,7 @@ func (*Row2[A, B]) MomoMeta() *Meta[Row2[A, B]] {
 }
 
 // Row3 is a result row of 3 columns, scanned positionally into C1..C3.
+// Use a pointer type parameter for a column that can be NULL; see Row1.
 type Row3[A, B, C any] struct {
 	Projection
 	C1 A
@@ -130,6 +131,7 @@ func (*Row3[A, B, C]) MomoMeta() *Meta[Row3[A, B, C]] {
 }
 
 // Row4 is a result row of 4 columns, scanned positionally into C1..C4.
+// Use a pointer type parameter for a column that can be NULL; see Row1.
 type Row4[A, B, C, D any] struct {
 	Projection
 	C1 A
@@ -159,6 +161,7 @@ func (*Row4[A, B, C, D]) MomoMeta() *Meta[Row4[A, B, C, D]] {
 }
 
 // Row5 is a result row of 5 columns, scanned positionally into C1..C5.
+// Use a pointer type parameter for a column that can be NULL; see Row1.
 type Row5[A, B, C, D, E any] struct {
 	Projection
 	C1 A
@@ -191,6 +194,7 @@ func (*Row5[A, B, C, D, E]) MomoMeta() *Meta[Row5[A, B, C, D, E]] {
 }
 
 // Row6 is a result row of 6 columns, scanned positionally into C1..C6.
+// Use a pointer type parameter for a column that can be NULL; see Row1.
 type Row6[A, B, C, D, E, F any] struct {
 	Projection
 	C1 A
@@ -226,6 +230,7 @@ func (*Row6[A, B, C, D, E, F]) MomoMeta() *Meta[Row6[A, B, C, D, E, F]] {
 }
 
 // Row7 is a result row of 7 columns, scanned positionally into C1..C7.
+// Use a pointer type parameter for a column that can be NULL; see Row1.
 type Row7[A, B, C, D, E, F, G any] struct {
 	Projection
 	C1 A
@@ -264,6 +269,7 @@ func (*Row7[A, B, C, D, E, F, G]) MomoMeta() *Meta[Row7[A, B, C, D, E, F, G]] {
 }
 
 // Row8 is a result row of 8 columns, scanned positionally into C1..C8.
+// Use a pointer type parameter for a column that can be NULL; see Row1.
 type Row8[A, B, C, D, E, F, G, H any] struct {
 	Projection
 	C1 A
@@ -305,6 +311,7 @@ func (*Row8[A, B, C, D, E, F, G, H]) MomoMeta() *Meta[Row8[A, B, C, D, E, F, G, 
 }
 
 // Row9 is a result row of 9 columns, scanned positionally into C1..C9.
+// Use a pointer type parameter for a column that can be NULL; see Row1.
 type Row9[A, B, C, D, E, F, G, H, I any] struct {
 	Projection
 	C1 A
@@ -349,6 +356,7 @@ func (*Row9[A, B, C, D, E, F, G, H, I]) MomoMeta() *Meta[Row9[A, B, C, D, E, F, 
 }
 
 // Row10 is a result row of 10 columns, scanned positionally into C1..C10.
+// Use a pointer type parameter for a column that can be NULL; see Row1.
 type Row10[A, B, C, D, E, F, G, H, I, J any] struct {
 	Projection
 	C1  A

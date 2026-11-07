@@ -161,6 +161,26 @@ func TestTupleRowColumnCountMismatch(t *testing.T) {
 		if _, err := q.One(ctx); !errors.Is(err, momo.ErrValidation) {
 			t.Errorf("%s: One() = %v, want ErrValidation", name, err)
 		}
+		if err := q.Each(ctx, func(*momo.Row2[string, int64]) error { return nil }); !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("%s: Each() = %v, want ErrValidation", name, err)
+		}
+		for _, err := range q.Iter(ctx) {
+			if !errors.Is(err, momo.ErrValidation) {
+				t.Errorf("%s: Iter() = %v, want ErrValidation", name, err)
+			}
+		}
+		if _, err := q.Count(ctx); !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("%s: Count() = %v, want ErrValidation", name, err)
+		}
+	}
+	// A mismatched tuple used as an inner subquery fails the outer statement.
+	inner := momo.Select[momo.Row2[string, int64]](db).From(docs).Columns(DocTitle)
+	outer := momo.Select[momo.Row1[string]](db).From(docs).Columns(DocTitle).Where(DocTitle.InQuery(inner))
+	if _, err := outer.SQL(); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("inner subquery: SQL() = %v, want ErrValidation", err)
+	}
+	if _, err := outer.All(ctx); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("inner subquery: All() = %v, want ErrValidation", err)
 	}
 	if _, err := momo.Select[momo.Row2[string, int64]](db).From(docs).Columns(DocTitle).SQL(); err == nil ||
 		!strings.Contains(err.Error(), "1 expressions") || !strings.Contains(err.Error(), "maps 2 fields") {
@@ -184,6 +204,18 @@ func TestTupleRowWritesRefused(t *testing.T) {
 	}
 	if _, err := momo.Insert[row](db).Model(&r).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("Insert Exec = %v, want ErrValidation", err)
+	}
+	if _, err := momo.Insert[row](db).Models([]row{r}).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("Insert Models Exec = %v, want ErrValidation", err)
+	}
+	if _, err := momo.Upsert[row](db).Models([]row{r}).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("Upsert Exec = %v, want ErrValidation", err)
+	}
+	if _, err := momo.SoftDelete[row](db).Where(DocID.Eq(1)).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("SoftDelete Exec = %v, want ErrValidation", err)
+	}
+	if _, err := momo.ForceDelete[row](db).Where(DocID.Eq(1)).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("ForceDelete Exec = %v, want ErrValidation", err)
 	}
 	if _, err := momo.Update[row](db).Set(DocTitle.Set("x")).Where(DocID.Eq(1)).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("Update Exec = %v, want ErrValidation", err)
@@ -242,6 +274,31 @@ func TestTupleRowGolden(t *testing.T) {
 			`SELECT "docs"."title" FROM "docs" WHERE "docs"."deleted_at" IS NULL`},
 		{"with deleted", momo.Select[momo.Row1[string]](pg).From(momo.TableRef{Name: "docs", SoftDelete: "deleted_at"}).Columns(title).WithDeleted(),
 			`SELECT "docs"."title" FROM "docs"`},
+	}
+	// One case per arity above 3: n copies of the title column.
+	titles := func(n int) []momo.Expr {
+		es := make([]momo.Expr, n)
+		for i := range es {
+			es[i] = DocTitle
+		}
+		return es
+	}
+	wide := map[int]interface{ SQL() (momo.Compiled, error) }{
+		4:  momo.Select[momo.Row4[string, string, string, string]](pg).From(docs).Columns(titles(4)...),
+		5:  momo.Select[momo.Row5[string, string, string, string, string]](pg).From(docs).Columns(titles(5)...),
+		6:  momo.Select[momo.Row6[string, string, string, string, string, string]](pg).From(docs).Columns(titles(6)...),
+		7:  momo.Select[momo.Row7[string, string, string, string, string, string, string]](pg).From(docs).Columns(titles(7)...),
+		8:  momo.Select[momo.Row8[string, string, string, string, string, string, string, string]](pg).From(docs).Columns(titles(8)...),
+		9:  momo.Select[momo.Row9[string, string, string, string, string, string, string, string, string]](pg).From(docs).Columns(titles(9)...),
+		10: momo.Select[momo.Row10[string, string, string, string, string, string, string, string, string, string]](pg).From(docs).Columns(titles(10)...),
+	}
+	for n, q := range wide {
+		cols := strings.TrimSuffix(strings.Repeat(`"documents"."title", `, n), ", ")
+		cases = append(cases, struct {
+			name string
+			q    interface{ SQL() (momo.Compiled, error) }
+			want string
+		}{"Row" + strconv.Itoa(n), q, `SELECT ` + cols + ` FROM "documents"`})
 	}
 	for _, c := range cases {
 		got, err := c.q.SQL()

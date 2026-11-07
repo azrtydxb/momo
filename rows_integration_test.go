@@ -128,3 +128,59 @@ func TestTupleRowSubqueryColumnAndCTE(t *testing.T) {
 		}
 	})
 }
+
+// SUM over no rows is NULL; a pointer type parameter reads it as nil, and a
+// non-empty set as the value.
+func TestTupleRowNullableAggregate(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		suite.CreateDocuments(t, db, suite.CapsOf(db))
+		seedTupleDocs(t, db)
+		ctx := context.Background()
+		docs := momo.TableRef{Name: "documents"}
+
+		none, err := momo.Select[momo.Row1[*int64]](db).From(docs).
+			Columns(momo.Sum(suite.DocTenantID)).
+			Where(suite.DocTenantID.Gt(100)).
+			One(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if none.C1 != nil {
+			t.Errorf("SUM over no rows = %d, want nil", *none.C1)
+		}
+
+		some, err := momo.Select[momo.Row1[*int64]](db).From(docs).
+			Columns(momo.Sum(suite.DocTenantID)).
+			One(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if some.C1 == nil || *some.C1 != 4 {
+			t.Errorf("SUM over three rows = %v, want 4", some.C1)
+		}
+	})
+}
+
+// A tuple row reads a recursive CTE that references itself.
+func TestTupleRowWithRecursive(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		seqN := momo.ColumnOf[int64]("seq", "n")
+		body := momo.Union(true,
+			momo.RawSubquery(`SELECT 1 AS n`),
+			momo.Select[momo.Row1[int64]](db).From(momo.CTE("seq")).
+				Columns(momo.TypedSQL[int64](`"seq"."n" + 1`)).Where(seqN.Lt(5)),
+		)
+		rows, err := momo.Select[momo.Row1[int64]](db).
+			WithRecursive("seq", body, "n").
+			From(momo.CTE("seq")).
+			Columns(seqN).
+			OrderBy(seqN.Asc()).
+			All(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 5 || rows[0].C1 != 1 || rows[4].C1 != 5 {
+			t.Fatalf("recursive CTE rows = %+v, want 1..5", rows)
+		}
+	})
+}
