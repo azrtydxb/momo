@@ -13,8 +13,10 @@ Implements plan momo-05-writes-queries Task 30: Resource-exhaustion guards: max 
 
 - [ ] `TestMaxRowsGuard` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestInListCap` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-48] `TestMaxRowsGuard` and `TestInListCap` return structured errors beyond the configured limits; fails if limits are silently truncated.
+- [x] [S-48] `TestMaxRowsGuard` and `TestInListCap` return structured errors beyond the configured limits; fails if limits are silently truncated.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- CI run 42410267553 (ci-agent, commit d310d41) green: unit, lint, fuzz-smoke and integration (postgres) jobs pass with this story's tests.
+- Criteria left unticked: the red-first claim (no pre-implementation run exists; the first CI run only failed on two fixture mistakes fixed in d310d41) and the local procoder check gate (not run on this laptop).

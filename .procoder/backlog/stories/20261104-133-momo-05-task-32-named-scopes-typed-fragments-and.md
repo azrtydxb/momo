@@ -12,8 +12,10 @@ Implements plan momo-05-writes-queries Task 32: Named scopes, typed fragments an
 ## Acceptance criteria
 
 - [ ] `TestCompositionHelpers` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-79] `TestCompositionHelpers` asserts each renders correctly or returns ErrUnsupported per dialect and the filter tree rejects unknown columns; fails if an override bypasses identifier quoting.
+- [x] [S-79] `TestCompositionHelpers` asserts each renders correctly or returns ErrUnsupported per dialect and the filter tree rejects unknown columns; fails if an override bypasses identifier quoting.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- CI run 42410267553 (ci-agent, commit d310d41) green: unit, lint, fuzz-smoke and integration (postgres) jobs pass with this story's tests.
+- Criteria left unticked: the red-first claim (no pre-implementation run exists; the first CI run only failed on two fixture mistakes fixed in d310d41) and the local procoder check gate (not run on this laptop).

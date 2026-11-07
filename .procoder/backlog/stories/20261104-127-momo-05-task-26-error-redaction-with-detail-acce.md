@@ -12,8 +12,10 @@ Implements plan momo-05-writes-queries Task 26: Error redaction with Detail acce
 ## Acceptance criteria
 
 - [ ] `TestErrorRedaction` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-41, part] `TestErrorRedaction` passes for the part of S-41 this task delivers; the full criterion is verified in story 200.
+- [x] [S-41, part] `TestErrorRedaction` passes for the part of S-41 this task delivers; the full criterion is verified in story 200.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- CI run 42410267553 (ci-agent, commit d310d41) green: unit, lint, fuzz-smoke and integration (postgres) jobs pass with this story's tests.
+- Criteria left unticked: the red-first claim (no pre-implementation run exists; the first CI run only failed on two fixture mistakes fixed in d310d41) and the local procoder check gate (not run on this laptop).
