@@ -48,7 +48,8 @@ func KeysetPaginationMixedDirections(t *testing.T, db *momo.DB, caps Caps) {
 		}
 	}
 	if len(seen) != 10 || pages < 4 {
-		t.Fatalf("saw %d rows over %d pages, want 10 rows over at least 4 pages", len(seen), pages)
+		c, _ := page.SQL()
+		t.Fatalf("saw %d rows over %d pages, want 10 rows over at least 4 pages; last page SQL %s args %v", len(seen), pages, c.SQL, c.Args)
 	}
 }
 

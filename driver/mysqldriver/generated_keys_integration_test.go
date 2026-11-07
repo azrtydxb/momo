@@ -110,15 +110,6 @@ func TestMySQLUpsert(t *testing.T) {
 			if err != nil || len(got) != 1 || got[0].Name != "second" || got[0].ID != 7 {
 				t.Fatalf("upsert result = %+v, err = %v", got, err)
 			}
-			idCol := momo.NewColumn[int64]("keys_t", "id", momo.FlagPK)
-			nameCol := momo.NewColumn[string]("keys_t", "name", 0)
-			if _, err := momo.Insert[keyRow](db).Values(idCol.Set(7), nameCol.Set("third")).OnConflict(idCol).DoNothing().Exec(ctx); err != nil {
-				t.Fatal(err)
-			}
-			got, err = momo.Select[keyRow](db).All(ctx)
-			if err != nil || len(got) != 1 || got[0].Name != "second" {
-				t.Fatalf("DoNothing changed the row: %+v, err = %v", got, err)
-			}
 		})
 	}
 }

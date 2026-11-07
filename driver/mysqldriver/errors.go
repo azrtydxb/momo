@@ -60,7 +60,7 @@ var (
 	reCheckName  = regexp.MustCompile(`(?i)check constraint '([^']+)'|CONSTRAINT [` + "`" + `']?([^` + "`" + `' ]+)[` + "`" + `']? failed`)
 	reFKTable    = regexp.MustCompile("fails \\(`[^`]+`\\.`([^`]+)`")
 	reStmtVerb   = regexp.MustCompile(`(?is)^\s*(insert|replace|update|delete|select)\b`)
-	reStmtTable  = regexp.MustCompile("(?is)^\\s*(?:INSERT\\s+(?:IGNORE\\s+)?INTO|REPLACE\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+`([^`]+)`")
+	reStmtTable  = regexp.MustCompile("(?is)^\\s*(?:INSERT\\s+(?:IGNORE\\s+)?INTO|REPLACE\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+`?([A-Za-z0-9_$]+)`?")
 )
 
 type classifier struct{}
