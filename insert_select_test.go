@@ -71,7 +71,7 @@ func TestFromSelectGoldenSQL(t *testing.T) {
 			row := momo.SelectExprs(momo.Value("a"), momo.Value("h")).
 				Where(momo.NotExists(momo.SelectExprs(momo.TypedSQL[int]("1")).From(sd).Where(leaseLive.Eq(true))))
 			return momo.Insert[Lease](q).FromSelect(row, leaseName, leaseHolder).OnConflict(leaseName).DoNothing()
-		}, `INSERT INTO "jobs_lock" ("name", "holder") SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM "jobs_lock" WHERE "jobs_lock"."live" = $3 AND "jobs_lock"."deleted_at" IS NULL) ON CONFLICT ("name") DO NOTHING`, 3},
+		}, `INSERT INTO "jobs_lock" ("name", "holder") SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM "jobs_lock" WHERE ("jobs_lock"."live" = $3) AND ("jobs_lock"."deleted_at" IS NULL)) ON CONFLICT ("name") DO NOTHING`, 3},
 		{"upsert default set covers listed columns only, pg", dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
 			return momo.Upsert[Lease](q).FromSelect(momo.SelectExprs(momo.Value("a"), momo.Value("h")), leaseName, leaseHolder)
 		}, `INSERT INTO "jobs_lock" ("name", "holder") SELECT $1, $2 ON CONFLICT ("name") DO UPDATE SET "holder" = EXCLUDED."holder"`, 2},
