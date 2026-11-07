@@ -94,6 +94,9 @@ func (q InsertQuery[T]) withUpdatedAt(set []Assignment) []Assignment {
 		return set
 	}
 	name := q.meta.Columns[ci].Name
+	if q.i.sel != nil && !slices.Contains(q.i.selCols, name) {
+		return set // FromSelect writes only the listed columns
+	}
 	if slices.Contains(q.i.omit, name) {
 		return set
 	}
@@ -136,6 +139,14 @@ func (q InsertQuery[T]) reservedRoleOf(ci int) string {
 // an upsert may update.
 func (q InsertQuery[T]) defaultUpsertSet() []Assignment {
 	var out []Assignment
+	if q.i.sel != nil {
+		for _, n := range q.i.selCols {
+			if ci := q.column(n); ci >= 0 && upsertUpdatable(q.meta.Columns[ci].Flags) {
+				out = append(out, Assignment{col: n, kind: setExcluded})
+			}
+		}
+		return out
+	}
 	if len(q.models) > 0 {
 		omit := map[string]struct{}{}
 		for _, n := range q.i.omit {
