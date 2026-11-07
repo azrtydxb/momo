@@ -134,3 +134,8 @@ Decision (2026-11-07): finish the port in kuvryn-license-momo on branch store/mo
 - Leave PR #28 as a draft for the user to merge
 
 Decision (2026-11-07): merge PR #28 into kuvryn-license main once CI is green.
+
+## Scout's model provider key (scans fail with "model provider unavailable")
+
+- Replace Scout's provider key (…4a1c) with the current fastllm key (…9f8c) and rerun the DEEP scan (recommended)
+- Leave Scout's settings alone; the user updates the key
