@@ -18,6 +18,12 @@
 - [Supported versions](https://github.com/azrtydxb/momo/blob/main/docs/supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer and pgx versions tested in CI, and the stability policy.
 - [Architecture](https://github.com/azrtydxb/momo/blob/main/docs/ARCHITECTURE.md): layers, package names and contracts.
 
+## Features
+
+- INSERT ... SELECT: `Insert[T].FromSelect` with `SelectExprs` or `Select[T]` as the source; composes with `OnConflict`, `Returning` and `Upsert`.
+- Typed expressions: `Func`, `Case`, `Cast`, `Concat` and arithmetic work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr` without `momo.SQL`.
+- Serial ids: the `serial` tag on an int field gives a PostgreSQL serial column, omitted from inserts and read back with RETURNING.
+
 ## Examples
 
 - [Examples index](https://github.com/azrtydxb/momo/blob/main/examples/README.md): nine runnable programs, each tested end to end in CI.

@@ -567,7 +567,10 @@ the comparisons of a column for `Where` and `Having`: `Eq`, `Ne`, `Lt`, `Le`,
 `Gt`, `Ge`, `EqExpr` and the other `...Expr` forms, `In`, `NotIn`, `Between`,
 `IsNull`, `IsNotNull`; plus `Asc` and `Desc`. An `.As` alias belongs in the
 select list: `OrderBy` accepts it and orders by the alias name, `GroupBy`
-rejects it with `ErrValidation`. Keyset pagination with `After` and a per-parent
+rejects it with `ErrValidation`. A `Case` used in both the select list and `GroupBy`
+must be built with `WhenExpr` and `ElseExpr` from literal or column expressions: bound
+`When` and `Else` values get a different `$n` in each place, and PostgreSQL rejects the
+mismatch. Otherwise group by position or alias in an outer query. Keyset pagination with `After` and a per-parent
 `LoadPerParentLimit` also reject an alias order key with `ErrValidation`, because
 an alias is not valid in WHERE or inside a window ORDER BY; order by the
 expression itself there.
@@ -786,7 +789,7 @@ res, err := momo.Insert[models.Meter](q).
   counts soft-deleted rows, so set its `SoftDelete` and `SoftDeleteKind`.
 - Only the listed columns are written. Nothing is injected: no automatic
   created_at/updated_at, no Go-side defaults, no field validators. List those columns
-  and select their values. Identity, read-only and non-writable columns, unmapped or
+  and select their values. Identity, serial, read-only and non-writable columns, unmapped or
   repeated columns, and mixing with `Model`/`Values`/`Omit` are `ErrValidation`.
 - Composes with `OnConflict` (`DoNothing`, `DoUpdate`, both `Where`s), `Returning`,
   `ReturningAll`, `Rows` and `Upsert[T]` (default DO UPDATE set = the listed
@@ -818,6 +821,7 @@ res, err := momo.Insert[models.Meter](q).
   logs and traces.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
   Explicit identity or serial values do not advance the sequence: `setval` it yourself.
+  A `FromSelect` into a serial table cannot supply ids at all (`ErrValidation`).
 
 Raw SQL (escape hatches; the SQL text must be a constant, pass user input only
 as arguments):

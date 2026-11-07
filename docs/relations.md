@@ -132,8 +132,8 @@ A `belongs_to` is keyed by its own `fk` field against the target's primary
 key, so the referencing model may have any primary key, including a composite
 one that contains the foreign key column. For example `exams` with primary key
 `(license_id, exam_id)` can declare `License *License` with
-`momo:"belongs_to,fk:LicenseID"`, which emits
-`FOREIGN KEY (license_id) REFERENCES licenses(license_id)` and matches a live
+`momo:"belongs_to,fk:LicenseID"`, which emits a foreign key
+from `license_id` to the `licenses` table's `license_id` column and matches a live
 database that already has that constraint. The target of a `belongs_to` must
 have a single-column primary key: a foreign key to a composite target key is
 refused with a diagnostic that names the target's key columns. A `has_one` or

@@ -28,4 +28,5 @@ Some writes must be one atomic statement: insert a row only when none exists yet
 - Returning and rows affected: TestFromSelectNotExistsOnce asserts RowsAffected 1 then 0 and the returned row; TestFromSelectGoldenSQL covers the RETURNING render; CI run 42342932962 success.
 - Docs show the issue example: docs/ai-guide.md (Insert from a SELECT) and docs/capabilities.md.
 - Red before green: CI run 42342328050 failed to compile the tests before the implementation.
-- Review follow-up: soft-delete TableRef golden, SQLite WHERE true before ON CONFLICT for SelectExprs sources, valid MySQL FROM-less golden, shared writeInsertHead; CI run 42376605062 green on 44cd3a7. Known limit: a Select[T] source with FROM and no WHERE on SQLite still needs an explicit Where before ON CONFLICT.
+- Review follow-up: soft-delete TableRef golden, SQLite WHERE true before ON CONFLICT for SelectExprs sources, valid MySQL FROM-less golden, shared writeInsertHead; CI run 42376605062 green on 44cd3a7.
+- Select[T] source on SQLite gets WHERE true before ON CONFLICT when it has a FROM and no WHERE: TestFromSelectGoldenSQL cases for no WHERE (WHERE true), with a WHERE (unchanged) and PostgreSQL (unchanged).

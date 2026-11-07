@@ -24,7 +24,7 @@ import (
 // identity values inserted with OVERRIDING SYSTEM VALUE do not advance the
 // PostgreSQL identity sequence, and explicit serial ids do not advance the
 // serial sequence either, so later generated keys may collide with them; the
-// caller must setval the sequence.
+// caller must setval the sequence. FromSelect cannot supply serial ids at all.
 //
 // When the conflict target is the primary key and every model carries a
 // non-zero identity value, the identity column joins the INSERT column list
