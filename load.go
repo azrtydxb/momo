@@ -295,7 +295,7 @@ func (r *Relation[P, C]) chunkQuery(d *dialect.Dialect, chunk [][]any, cfg *load
 			b.WriteString(" FROM ")
 			r.Child.appendFrom(b)
 			b.WriteString(" WHERE ")
-			inTuple{table: r.Child.Qualifier(), cols: r.ChildCols, keys: chunk, flags: keyFlags(r.ChildMeta, r.ChildCols)}.AppendSQL(b)
+			inTuple{table: r.Child.Qualifier(), cols: r.ChildCols, keys: chunk, flags: r.childKeyFlags()}.AppendSQL(b)
 			r.writeScope(b, cfg)
 			b.WriteString(" ORDER BY ")
 			r.writeOrder(b, cfg)
@@ -325,7 +325,7 @@ func (r *Relation[P, C]) chunkQuery(d *dialect.Dialect, chunk [][]any, cfg *load
 			b.QualifiedIdent(r.Child.Qualifier(), r.ChildCols[i])
 		}
 		b.WriteString(" WHERE ")
-		inTuple{table: jt.Qualifier(), cols: r.Through.ParentCols, keys: chunk}.AppendSQL(b)
+		inTuple{table: jt.Qualifier(), cols: r.Through.ParentCols, keys: chunk, flags: r.ownerFlags()}.AppendSQL(b)
 		r.writeScope(b, cfg)
 		b.WriteString(" ORDER BY ")
 		r.writeOrder(b, cfg)
@@ -411,7 +411,7 @@ func (r *Relation[P, C]) topNQuery(d *dialect.Dialect, chunk [][]any, cfg *loadC
 			}
 		}
 		b.WriteString(" WHERE ")
-		inTuple{table: qual, cols: partition, keys: chunk}.AppendSQL(b)
+		inTuple{table: qual, cols: partition, keys: chunk, flags: r.ownerFlags()}.AppendSQL(b)
 		r.writeScope(b, cfg)
 		b.WriteString(") AS momo_t WHERE ")
 		b.QualifiedIdent("momo_t", "momo_rn")

@@ -73,9 +73,9 @@ type containsLiteral struct {
 }
 
 func (x containsLiteral) AppendSQL(b *Builder) {
-	x.e.AppendSQL(b)
+	fl := b.renderSens(x.e, x.flags)
 	b.WriteString(" LIKE ")
-	b.argFor(x.flags, x.p)
+	b.argFor(fl, x.p)
 	b.WriteString(likeEscape)
 }
 func (containsLiteral) resultType() bool { return false }

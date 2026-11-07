@@ -61,8 +61,13 @@ func (c Column[T]) As(alias string) Column[T] { c.table = alias; return c }
 // explicitly: DocTitle.As("l").AsExpr().
 func (c Column[T]) AsExpr() Expression[T] { return c }
 
-func (c Column[T]) AppendSQL(b *Builder) { b.QualifiedIdent(c.table, c.name) }
-func (c Column[T]) resultType() T        { var z T; return z }
+func (c Column[T]) AppendSQL(b *Builder) {
+	if c.flags&FlagSensitive != 0 {
+		b.sensSeen++
+	}
+	b.QualifiedIdent(c.table, c.name)
+}
+func (c Column[T]) resultType() T { var z T; return z }
 
 // ColumnName returns the unquoted column name.
 func (c Column[T]) ColumnName() string { return c.name }
@@ -302,9 +307,10 @@ type binOp struct {
 }
 
 func (o binOp) AppendSQL(b *Builder) {
-	o.l.AppendSQL(b)
+	// A sensitive column on either side masks every argument of the other.
+	fl := b.renderSens(o.l, flagsOf(o.l)|flagsOf(o.r))
 	b.WriteString(o.op)
-	o.r.AppendSQL(b)
+	b.exprFor(fl, o.r)
 }
 func (binOp) resultType() bool { return false }
 
@@ -360,11 +366,11 @@ type between struct {
 }
 
 func (x between) AppendSQL(b *Builder) {
-	x.e.AppendSQL(b)
+	fl := b.renderSens(x.e, x.flags)
 	b.WriteString(" BETWEEN ")
-	b.argFor(x.flags, x.lo)
+	b.argFor(fl, x.lo)
 	b.WriteString(" AND ")
-	b.argFor(x.flags, x.hi)
+	b.argFor(fl, x.hi)
 }
 func (between) resultType() bool { return false }
 
@@ -388,7 +394,7 @@ func (x inList[T]) AppendSQL(b *Builder) {
 		b.WriteString("1 = 0")
 		return
 	}
-	x.e.AppendSQL(b)
+	fl := b.renderSens(x.e, x.flags)
 	if x.not {
 		b.WriteString(" NOT IN (")
 	} else {
@@ -398,7 +404,7 @@ func (x inList[T]) AppendSQL(b *Builder) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.argFor(x.flags, v)
+		b.argFor(fl, v)
 	}
 	b.writeByte(')')
 }
@@ -518,9 +524,9 @@ type like struct {
 }
 
 func (x like) AppendSQL(b *Builder) {
-	x.e.AppendSQL(b)
+	fl := b.renderSens(x.e, x.flags)
 	b.WriteString(" LIKE ")
-	b.argFor(x.flags, x.p)
+	b.argFor(fl, x.p)
 	b.WriteString(likeEscape)
 }
 func (like) resultType() bool { return false }
@@ -546,9 +552,9 @@ func (x ilike) AppendSQL(b *Builder) {
 		b.unsupported("ILIKE")
 		return
 	}
-	x.e.AppendSQL(b)
+	fl := b.renderSens(x.e, x.flags)
 	b.WriteString(" ILIKE ")
-	b.argFor(x.flags, x.p)
+	b.argFor(fl, x.p)
 	b.WriteString(likeEscape)
 }
 func (ilike) resultType() bool { return false }

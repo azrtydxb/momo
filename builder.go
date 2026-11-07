@@ -29,7 +29,11 @@ type Builder struct {
 	// marks the next Arg calls as such. Hooks and loggers see a placeholder.
 	sens    []int
 	argSens bool
-	err     error
+	// sensSeen counts sensitive columns rendered so far; a predicate compares it
+	// before and after rendering its left operand to learn whether the operand
+	// reads a sensitive column, directly or inside an expression.
+	sensSeen int
+	err      error
 	// unqualified renders columns without their table qualifier. It is
 	// set while rendering SET targets, INSERT column lists, ON CONFLICT
 	// targets and RETURNING lists.
@@ -169,6 +173,17 @@ func (b *Builder) argFor(flags uint16, v any) {
 	b.argSens = prev || flags&FlagSensitive != 0
 	b.Arg(v)
 	b.argSens = prev
+}
+
+// renderSens renders e and reports whether it read a sensitive column. The
+// result is the flag to bind the other operands of the predicate with.
+func (b *Builder) renderSens(e Expr, flags uint16) uint16 {
+	n := b.sensSeen
+	e.AppendSQL(b)
+	if b.sensSeen != n {
+		flags |= FlagSensitive
+	}
+	return flags
 }
 
 // exprFor renders e with every argument it binds recorded as sensitive when

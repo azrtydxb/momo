@@ -197,13 +197,14 @@ type keysetKey struct {
 	expr     Expr
 	desc     bool
 	nullable bool
+	flags    uint16 // column flags; a sensitive key masks its keyset value
 }
 
 func (sq SelectQuery[T]) keysetKeys() []keysetKey {
 	s := &sq.s
 	keys := make([]keysetKey, 0, len(s.order)+len(sq.meta.PK))
 	for _, o := range s.order {
-		k := keysetKey{expr: o.Expr, desc: o.Desc}
+		k := keysetKey{expr: o.Expr, desc: o.Desc, flags: flagsOf(o.Expr)}
 		if f, ok := o.Expr.(interface{ Flags() uint16 }); ok {
 			k.nullable = f.Flags()&FlagNullable != 0
 		}
@@ -225,7 +226,7 @@ func (sq SelectQuery[T]) keysetKeys() []keysetKey {
 			break
 		}
 		if !present {
-			keys = append(keys, keysetKey{expr: qcol{q, c.Name}, nullable: c.Flags&FlagNullable != 0})
+			keys = append(keys, keysetKey{expr: qcol{q, c.Name}, nullable: c.Flags&FlagNullable != 0, flags: c.Flags})
 		}
 	}
 	return keys
@@ -260,13 +261,13 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 	for i := range keys {
 		parts := make([]Predicate, 0, i+1)
 		for j := 0; j < i; j++ {
-			parts = append(parts, binOp{keys[j].expr, " = ", argExpr{v: s.keyset[j], flags: flagsOf(keys[j].expr)}})
+			parts = append(parts, binOp{keys[j].expr, " = ", argExpr{v: s.keyset[j], flags: keys[j].flags}})
 		}
 		op := " > "
 		if keys[i].desc {
 			op = " < "
 		}
-		parts = append(parts, binOp{keys[i].expr, op, argExpr{v: s.keyset[i], flags: flagsOf(keys[i].expr)}})
+		parts = append(parts, binOp{keys[i].expr, op, argExpr{v: s.keyset[i], flags: keys[i].flags}})
 		if len(parts) == 1 {
 			disjuncts[i] = parts[0]
 		} else {
