@@ -47,6 +47,13 @@ generator rejects a vector field without `dim`. SQLite has no vector types.
 | `vector.SparseVector` | `sparsevec(N)`             | `unsupported` |
 | `vector.Bits`         | `bit(N)`                   | `unsupported` |
 
+The PostgreSQL type of `time.Time` can be changed for the whole project with the
+`types:` section of `momo.yaml`, for example `types: {time.Time: timestamp(3)}`
+for a database created by Prisma (see `naming: prisma` in ai-guide.md). Only
+`time.Time` can be overridden; a `type:` tag on a field still wins, and SQLite
+ignores the setting. `timestamp(3)` stores a wall clock without a zone, so
+follow the `timestamp` notes below and pass UTC times.
+
 On SQLite, `bool` is stored as 0 or 1, and `time.Time`, `types.UUID`,
 `types.Date` and `types.JSON[T]` are stored as text. The SQLite column is what
 the generator emits; it is not yet exercised against a live SQLite database

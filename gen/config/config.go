@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -25,6 +26,7 @@ type File struct {
 	Naming   string                    `yaml:"naming"`
 	Dialects []string                  `yaml:"dialects"`
 	Tags     []string                  `yaml:"tags"`
+	Types    map[string]string         `yaml:"types"`
 	Migrate  MigrateConfig             `yaml:"migrate"`
 	Plugins  map[string]map[string]any `yaml:"plugins"`
 }
@@ -71,6 +73,9 @@ func Load(path string) (*File, error) {
 			return nil, fmt.Errorf("%s: naming: %w", path, err)
 		}
 	}
+	if err := validateTypes(f.Types); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	for _, d := range f.Dialects {
 		if dialect.For(dialect.Name(d)) == nil {
 			return nil, fmt.Errorf("%s: dialects: unknown dialect %q", path, d)
@@ -80,6 +85,20 @@ func Load(path string) (*File, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return &f, nil
+}
+
+// validateTypes checks the types: section. Only the default of time.Time can
+// be overridden, and the replacement must be a non-empty SQL type.
+func validateTypes(types map[string]string) error {
+	for k, v := range types {
+		if k != "time.Time" {
+			return fmt.Errorf("types: %q cannot be overridden; only time.Time is supported", k)
+		}
+		if strings.TrimSpace(v) == "" {
+			return fmt.Errorf("types: %s needs a SQL type", k)
+		}
+	}
+	return nil
 }
 
 func (m *MigrateConfig) validate() error {
@@ -130,5 +149,5 @@ func ToConfig(f *File, dir string) (gen.Config, error) {
 		}
 		dialects = append(dialects, dialect.Name(d))
 	}
-	return gen.Config{Dir: dir, Naming: namer, Dialects: dialects, Tags: f.Tags}, nil
+	return gen.Config{Dir: dir, Naming: namer, Dialects: dialects, Tags: f.Tags, TypeDefaults: f.Types}, nil
 }

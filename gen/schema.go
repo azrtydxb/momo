@@ -32,6 +32,7 @@ import (
 func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 	b := &schemaBuilder{
 		namer:   cfg.Naming,
+		typeDef: cfg.TypeDefaults,
 		primary: dialect.Postgres,
 		index:   map[*Model]int{},
 		enums:   map[string]enumDecl{},
@@ -112,6 +113,7 @@ type feature struct {
 type schemaBuilder struct {
 	s        *schema.Schema
 	namer    naming.Namer
+	typeDef  map[string]string
 	primary  dialect.Name
 	dialects []dialect.Name
 	diags    []Diagnostic
@@ -310,6 +312,9 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 	goType := f.BaseType
 	if goType == "" {
 		goType = inner
+	}
+	if def := b.typeDef[goType]; def != "" && b.primary == dialect.Postgres {
+		return def
 	}
 	typ, err := typemap.Map(goType, b.primary, tg)
 	if err != nil {

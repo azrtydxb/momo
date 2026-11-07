@@ -78,8 +78,27 @@ migrate:
 ```
 
 `naming:` is optional: `momo` (default: snake_case columns, plural snake_case
-tables), `gorm`, `bun`, `ent`. Pick one and never change it: a change renames
-columns.
+tables), `gorm`, `bun`, `ent`, `prisma`. Pick one and never change it: a change
+renames columns.
+
+`naming: prisma` matches a database that Prisma created: the table is the model
+name as written and quoted (`KbChunk`), the column is camelCase (`createdAt`,
+`accountId`; a trailing `ID` becomes `Id`), and the constraint and index names
+are `<Table>_pkey`, `<Table>_<col>_fkey`, `<Table>_<col>_key` (unique) and
+`<Table>_<col>_idx`. Those names come out of the table and column names, so no
+tag is needed. The implicit many-to-many table is named `_AToB` (model names in
+alphabetical order); its columns and foreign key names are not reproduced.
+Prisma maps `DateTime` to `timestamp(3)`, so add a `types:` section:
+
+```yaml
+naming: prisma
+types:
+  time.Time: timestamp(3)
+```
+
+`types:` overrides the default PostgreSQL column type of a Go type. Only
+`time.Time` is supported. A `type:` tag on a field still wins, and SQLite
+ignores it. Without it `time.Time` is `timestamp with time zone`.
 
 Generate:
 
