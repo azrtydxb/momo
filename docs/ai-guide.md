@@ -590,7 +590,8 @@ are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
-`"SKIP LOCKED"`), `ForShare`, `With`, `WithRecursive`, `Union`,
+`"SKIP LOCKED"`), `ForShare`, `LockOf` (names the tables a lock covers, for
+example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim), `With`, `WithRecursive`, `Union`,
 `FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
 context; it returns `iter.Seq2[T, error]`). Aggregates: `momo.CountAll`,
 `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
