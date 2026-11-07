@@ -22,8 +22,9 @@ import (
 // The version column is neither advanced nor checked on conflict: an upsert
 // overwrites the existing row without optimistic-lock detection. Explicit
 // identity values inserted with OVERRIDING SYSTEM VALUE do not advance the
-// PostgreSQL identity sequence, so later generated identities may collide
-// with them; the caller must setval the sequence.
+// PostgreSQL identity sequence, and explicit serial ids do not advance the
+// serial sequence either, so later generated keys may collide with them; the
+// caller must setval the sequence. FromSelect cannot supply serial ids at all.
 //
 // When the conflict target is the primary key and every model carries a
 // non-zero identity value, the identity column joins the INSERT column list
@@ -93,6 +94,9 @@ func (q InsertQuery[T]) withUpdatedAt(set []Assignment) []Assignment {
 		return set
 	}
 	name := q.meta.Columns[ci].Name
+	if q.i.sel != nil && !slices.Contains(q.i.selCols, name) {
+		return set // FromSelect writes only the listed columns
+	}
 	if slices.Contains(q.i.omit, name) {
 		return set
 	}
@@ -135,6 +139,14 @@ func (q InsertQuery[T]) reservedRoleOf(ci int) string {
 // an upsert may update.
 func (q InsertQuery[T]) defaultUpsertSet() []Assignment {
 	var out []Assignment
+	if q.i.sel != nil {
+		for _, n := range q.i.selCols {
+			if ci := q.column(n); ci >= 0 && upsertUpdatable(q.meta.Columns[ci].Flags) {
+				out = append(out, Assignment{col: n, kind: setExcluded})
+			}
+		}
+		return out
+	}
 	if len(q.models) > 0 {
 		omit := map[string]struct{}{}
 		for _, n := range q.i.omit {

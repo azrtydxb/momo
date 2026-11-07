@@ -104,3 +104,17 @@ Decision (2026-11-06): keep version tags (azrtydxb CI standard); SHA pins revert
 - Close it
 
 Decision (2026-11-07): rebase via @dependabot, squash-merge once the full CI matrix is green.
+
+## When to release v0.3.0 (release-please PR #18)
+
+- Merge the release PR now that sprint 3 is on main
+- Hold the release until the kuvryn-license gaps are closed
+
+Decision (2026-11-07): hold. v0.3.0 is released only when the gaps found by the kuvryn-license audit (issues #13 to #17 and the audit's list) are closed and the kuvryn-license migration to momo can be finished. PR #18 stays open and unmerged until then.
+
+## Opening and merging PRs to main
+
+- Ask before every PR and merge
+- Open and merge when CI is green and reviews are addressed, without asking
+
+Decision (2026-11-07): "keep merging, no need to ask me" — open and merge without asking; releases are a separate decision (see above).

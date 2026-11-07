@@ -501,3 +501,17 @@ func TestLoadWrapsScanAndIterationErrors(t *testing.T) {
 		}
 	}
 }
+
+// Catches: a select-list alias rendered inside the per-parent window ORDER BY,
+// where an output alias is invalid.
+func TestLoadPerParentLimitRejectsAliasOrder(t *testing.T) {
+	var cfg loadConfig
+	LoadOrderBy[kid](CountAll().As("n").Asc())(&cfg)
+	LoadPerParentLimit[kid](2)(&cfg)
+	rel := kidsRel(HasMany)
+	_, err := rel.prepareWith(loadQ{dialect.For(dialect.Postgres)}, []par{{Pid: 1}}, &cfg, nil)
+	var me *Error
+	if !errors.As(err, &me) || me.Kind != ErrValidation {
+		t.Fatalf("want ErrValidation, got %v", err)
+	}
+}

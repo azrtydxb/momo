@@ -152,7 +152,7 @@ func emitModelMeta(b *strings.Builder, m *Model, t *schema.Table, lower string) 
 	w("},\n")
 	w("TableSchema: &%sTable,\n", lower)
 	w("Identity: %d, Version: %d, SoftDelete: %d, CreatedAt: %d, UpdatedAt: %d,\n",
-		indexOf(m, func(f *Field) bool { return f.Tags.Identity }),
+		indexOf(m, func(f *Field) bool { return f.Tags.Identity || f.Tags.Serial }),
 		indexOf(m, func(f *Field) bool { return f.Tags.Version }),
 		indexOf(m, func(f *Field) bool { return f.Tags.SoftDelete != "" }),
 		indexOf(m, func(f *Field) bool { return f.Tags.CreatedAt }),

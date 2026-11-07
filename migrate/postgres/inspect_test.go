@@ -147,8 +147,8 @@ func TestPostgresInspectCollateCommentSerialUnique(t *testing.T) {
 		t.Fatalf("plain column: %+v", plain)
 	}
 	id, _ := people.Column("id")
-	if id.Identity != "by_default" || id.Default != "" {
-		t.Fatalf("serial must report identity: %+v", id)
+	if id.Identity != "serial" || id.Default != "" || id.Type != "bigint" {
+		t.Fatalf("serial must report serial: %+v", id)
 	}
 	if len(people.Uniques) != 1 || people.Uniques[0].Columns[0] != "email" {
 		t.Fatalf("uniques: %+v", people.Uniques)

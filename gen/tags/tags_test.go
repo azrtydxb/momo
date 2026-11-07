@@ -67,7 +67,7 @@ func TestParseTags(t *testing.T) {
 func TestTagGrammar(t *testing.T) {
 	// every key in the S-70 vocabulary must be accepted by the grammar
 	for _, raw := range []string{
-		"pk", "identity", "version", "notnull", "nullable", "read_only", "create_only",
+		"pk", "identity", "serial", "version", "notnull", "nullable", "read_only", "create_only",
 		"immutable", "sensitive", "embedded", "no_constraint", "belongs_to", "has_one",
 		"has_many", "many2many", "created_at", "updated_at", "column:c", "type:citext",
 		"collate:C", "default:now()", "check:x > 0", "comment:hello", "enum:e", "table:t",

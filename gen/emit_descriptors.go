@@ -166,7 +166,7 @@ var flagOrder = []struct {
 	{"FlagPK", func(f *Field) bool { return f.Tags.PK }},
 	{"FlagUnique", func(f *Field) bool { return f.Tags.Unique }},
 	{"FlagNullable", func(f *Field) bool { return f.Nullable || f.Tags.Nullable }},
-	{"FlagIdentity", func(f *Field) bool { return f.Tags.Identity }},
+	{"FlagIdentity", func(f *Field) bool { return f.Tags.Identity || f.Tags.Serial }},
 	{"FlagReadOnly", func(f *Field) bool { return f.Access == ReadOnly }},
 	{"FlagVersion", func(f *Field) bool { return f.Tags.Version }},
 	{"FlagSoftDelete", func(f *Field) bool { return f.Tags.SoftDelete != "" }},
@@ -461,9 +461,28 @@ func (e *descEmitter) emitRelation(b *strings.Builder, m *Model, r *Relation, na
 		return
 	}
 	parentPK, childPK := pkFields(m), pkFields(t)
-	if len(parentPK) != 1 || len(childPK) != 1 {
-		e.diag(fmt.Sprintf("relation %s: tag relations need a single-column primary key on %s and %s", r.GoName, m.GoName, t.GoName))
-		return
+	// Which primary keys a relation needs depends on its kind. A belongs_to
+	// is keyed by its own foreign key field against the target key, so the
+	// referencing model may have any primary key (including a composite one
+	// that contains the foreign key column); only the target key must be a
+	// single column. A has_one or has_many is keyed by the parent key
+	// against the child foreign key field, so the child key is free.
+	switch r.Kind {
+	case BelongsTo:
+		if len(childPK) != 1 {
+			e.diag(fmt.Sprintf("relation %s: target %s must have a single-column primary key for a belongs_to foreign key, but its key is (%s)", r.GoName, t.GoName, strings.Join(columnsOf(childPK), ", ")))
+			return
+		}
+	case HasOne, HasMany:
+		if len(parentPK) != 1 {
+			e.diag(fmt.Sprintf("relation %s: %s must have a single-column primary key to be the parent of a %s relation, but its key is (%s)", r.GoName, m.GoName, r.Kind.tagName(), strings.Join(columnsOf(parentPK), ", ")))
+			return
+		}
+	default:
+		if len(parentPK) != 1 || len(childPK) != 1 {
+			e.diag(fmt.Sprintf("relation %s: tag relations need a single-column primary key on %s and %s", r.GoName, m.GoName, t.GoName))
+			return
+		}
 	}
 	var parentKey, childKey []*Field
 	var parentCols, childCols []string

@@ -28,10 +28,10 @@ type Tags struct {
 
 	Size, Precision, Scale, Dim int
 
-	PK, NotNull, Nullable, Identity, Version, CreatedAt, UpdatedAt bool
-	ReadOnly, CreateOnly, Immutable, Sensitive, Embedded           bool
-	NoConstraint, BelongsTo, HasOne, HasMany, ManyToMany           bool
-	Index, Unique                                                  bool
+	PK, NotNull, Nullable, Identity, Serial, Version, CreatedAt, UpdatedAt bool
+	ReadOnly, CreateOnly, Immutable, Sensitive, Embedded                   bool
+	NoConstraint, BelongsTo, HasOne, HasMany, ManyToMany                   bool
+	Index, Unique                                                          bool
 }
 
 // Parse parses a raw tag value. An empty tag yields the zero Tags and no
@@ -135,6 +135,8 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return bare(&t.PK)
 	case "identity":
 		return bare(&t.Identity)
+	case "serial":
+		return bare(&t.Serial)
 	case "version":
 		return bare(&t.Version)
 	case "notnull":
