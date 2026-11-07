@@ -34,6 +34,13 @@ type Builder struct {
 	// Excluded references are invalid there, and SQLite needs literal values
 	// inline because it matches the predicate against the index text.
 	conflictTarget bool
+	// odku is set while rendering a MySQL ON DUPLICATE KEY UPDATE clause;
+	// excluded then names the row alias, or is empty for VALUES(col).
+	// insertStmt is set while rendering an INSERT, the one statement that
+	// MariaDB lets return rows.
+	insertStmt bool
+	odku       bool
+	excluded   string
 	// scopes tracks, per SELECT being rendered, which table qualifiers its
 	// FROM and JOIN sources expose and which qualifiers its columns used.
 	scopes []*qscope

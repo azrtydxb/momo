@@ -44,6 +44,13 @@ type Pinner interface {
 	Pin(ctx context.Context) (PinnedConn, error)
 }
 
+// InsertIDExecer is implemented by drivers, transactions and pinned
+// connections that report the auto-increment key of an INSERT (MySQL and
+// MariaDB LAST_INSERT_ID). The key is meaningful for a single-row insert only.
+type InsertIDExecer interface {
+	ExecInsertID(ctx context.Context, sql string, args []any) (rows, lastInsertID int64, err error)
+}
+
 // Copier is implemented by drivers with a native bulk-copy path.
 type Copier interface {
 	CopyFrom(ctx context.Context, table string, cols []string, rows [][]any) (int64, error)

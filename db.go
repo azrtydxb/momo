@@ -227,6 +227,24 @@ func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64,
 	return n, err
 }
 
+// execInsertID is exec for a statement whose generated key is wanted. A driver
+// without InsertIDExecer reports the key as 0.
+func (e *execer) execInsertID(ctx context.Context, op, table string, c Compiled) (int64, int64, error) {
+	x, ok := e.q.(InsertIDExecer)
+	if !ok {
+		n, err := e.exec(ctx, op, table, c)
+		return n, 0, err
+	}
+	ctx, ev := e.before(ctx, op, table, "", c.SQL, c.Args)
+	n, id, err := x.ExecInsertID(ctx, c.SQL, c.Args)
+	err = e.wrapErr(op, table, err)
+	if err != nil {
+		n, id = -1, 0
+	}
+	e.after(ctx, ev, n, err)
+	return n, id, err
+}
+
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
 	ctx, ev := e.before(ctx, op, table, rel, c.SQL, c.Args)

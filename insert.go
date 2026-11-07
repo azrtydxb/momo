@@ -65,6 +65,9 @@ type InsertQuery[T any] struct {
 	meta   *Meta[T]
 	i      insertCore
 	models []T
+	// ptr is the model of a single Model call, so a generated key can be
+	// written back after the insert; nil for any other shape.
+	ptr *T
 	// clock, when set, is the statement time shared by every chunk of a
 	// chunked bulk insert; otherwise the DB clock is read per statement.
 	clock time.Time
@@ -97,6 +100,10 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 	if m == nil {
 		return q.fail(q.verr("", "Model(nil)"))
 	}
+	q.ptr = nil
+	if len(q.models) == 0 {
+		q.ptr = m
+	}
 	q.models = append(slices.Clip(q.models), *m)
 	return q
 }
@@ -107,6 +114,7 @@ func (q InsertQuery[T]) Models(ms []T) InsertQuery[T] {
 	if len(ms) == 0 {
 		return q.fail(q.verr("", "Models: no rows"))
 	}
+	q.ptr = nil
 	q.models = append(slices.Clip(q.models), ms...)
 	return q
 }
@@ -285,11 +293,17 @@ func (q InsertQuery[T]) render(b *Builder) {
 }
 
 func (q InsertQuery[T]) renderStatement(b *Builder) {
+	b.insertStmt = true
 	if q.i.sel != nil {
 		q.renderFromSelect(b)
 		return
 	}
 	d := b.Dialect()
+	if q.mysqlMultiRowNeedsKeys() {
+		b.SetErr(&Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table, Err: errors.New(
+			"a multi-row model insert cannot return generated keys on MySQL or MariaDB (the ids depend on innodb_autoinc_lock_mode and are not contiguous); set the identity value on every row, or insert the rows one at a time")})
+		return
+	}
 	modelMode := len(q.models) > 0
 	valuesMode := q.i.hasValues || q.i.hasRows
 	switch {
@@ -608,8 +622,7 @@ func (q InsertQuery[T]) appendValue(b *Builder, a Assignment) {
 	case setDefault:
 		b.WriteString("DEFAULT")
 	case setExcluded:
-		b.WriteString("EXCLUDED.")
-		b.Ident(a.col)
+		b.writeExcluded(a.col)
 	}
 }
 
@@ -625,6 +638,10 @@ func (q InsertQuery[T]) renderConflict(b *Builder) {
 		return
 	}
 	if q.i.conflict == conflictNone {
+		return
+	}
+	if b.Dialect().OnDuplicateKey {
+		q.renderMySQLConflict(b)
 		return
 	}
 	if !b.Dialect().OnConflict {
@@ -744,6 +761,16 @@ func (q InsertQuery[T]) execOne(ctx context.Context) (Result, error) {
 	c, err := q.SQL()
 	if err != nil {
 		return Result{}, err
+	}
+	if q.wantsGeneratedKey() {
+		n, id, err := q.q.conn().execInsertID(ctx, "insert", q.meta.Table, c)
+		if err != nil {
+			return Result{}, err
+		}
+		if n > 0 && id != 0 {
+			q.assignGeneratedKey(id)
+		}
+		return Result{RowsAffected: n, InsertID: id}, nil
 	}
 	n, err := q.q.conn().exec(ctx, "insert", q.meta.Table, c)
 	if err != nil {

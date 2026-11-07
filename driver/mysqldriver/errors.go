@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/azrtydxb/momo"
 	"github.com/go-sql-driver/mysql"
@@ -58,6 +59,7 @@ var (
 	reConstraint = regexp.MustCompile("CONSTRAINT `([^`]+)`")
 	reCheckName  = regexp.MustCompile(`(?i)check constraint '([^']+)'|CONSTRAINT [` + "`" + `']?([^` + "`" + `' ]+)[` + "`" + `']? failed`)
 	reFKTable    = regexp.MustCompile("fails \\(`[^`]+`\\.`([^`]+)`")
+	reStmtVerb   = regexp.MustCompile(`(?is)^\s*(insert|replace|update|delete|select)\b`)
 	reStmtTable  = regexp.MustCompile("(?is)^\\s*(?:INSERT\\s+(?:IGNORE\\s+)?INTO|REPLACE\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+`([^`]+)`")
 )
 
@@ -113,6 +115,7 @@ func classify(err error, stmt string) error {
 	if out.Table == "" {
 		out.Table = tableOf(stmt)
 	}
+	out.Op = opOf(stmt)
 	return out
 }
 
@@ -121,6 +124,20 @@ func classify(err error, stmt string) error {
 func tableOf(stmt string) string {
 	if m := reStmtTable.FindStringSubmatch(stmt); m != nil {
 		return m[1]
+	}
+	return ""
+}
+
+// opOf names the operation of a statement for momo.Error.Op, or "" when the
+// statement is unknown.
+func opOf(stmt string) string {
+	if m := reStmtVerb.FindStringSubmatch(stmt); m != nil {
+		switch strings.ToLower(m[1]) {
+		case "replace":
+			return "insert"
+		default:
+			return strings.ToLower(m[1])
+		}
 	}
 	return ""
 }

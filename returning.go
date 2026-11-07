@@ -80,7 +80,7 @@ func renderReturning[T any](b *Builder, m *Meta[T], r returningSet, invalid func
 	if !r.active() {
 		return
 	}
-	if !b.Dialect().Returning {
+	if !b.Dialect().Returning && !(b.insertStmt && b.Dialect().InsertReturning) {
 		b.unsupported("RETURNING")
 		return
 	}

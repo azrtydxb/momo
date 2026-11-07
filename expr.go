@@ -159,8 +159,7 @@ func (e ExcludedExpr[T]) AppendSQL(b *Builder) {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "insert", Err: fmt.Errorf("Excluded() column %q is not valid in the ON CONFLICT target predicate; use it in the DO UPDATE Where", e.name)})
 		return
 	}
-	b.WriteString("EXCLUDED.")
-	b.Ident(e.name)
+	b.writeExcluded(e.name)
 }
 func (ExcludedExpr[T]) resultType() T { var z T; return z }
 
