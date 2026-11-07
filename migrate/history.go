@@ -65,6 +65,17 @@ type HistoryLocator interface {
 	HistoryDDLFor(table string) []string
 }
 
+// ErrNoHistoryTable is returned (wrapped) by HistoryLocator.HistoryTable when
+// no history table exists and the connection has no current schema to create
+// one in. Read-only callers treat it as an empty history.
+var ErrNoHistoryTable = errors.New("migrate: no history table and no schema to create it in")
+
+// historyLockKeyer is implemented by locators that derive the advisory-lock key
+// from the resolved history table reference.
+type historyLockKeyer interface {
+	HistoryLockKey(table string) string
+}
+
 // resolveHistoryTable returns the SQL reference of the history table of d on c.
 func resolveHistoryTable(ctx context.Context, c momo.PinnedConn, d Dialect) (string, error) {
 	if l, ok := d.(HistoryLocator); ok {
@@ -85,6 +96,16 @@ func ensureHistory(ctx context.Context, c momo.PinnedConn, d Dialect, tbl string
 		if _, err := c.Exec(ctx, ddl, nil); err != nil {
 			return fmt.Errorf("migrate: create history table: %w", err)
 		}
+	}
+	// CREATE TABLE IF NOT EXISTS adopts a table that is already there. Resolve
+	// again so that table passes the same checks as one found at the start
+	// (kind, persistence, owner), and so it is the one named by tbl.
+	again, err := resolveHistoryTable(ctx, c, d)
+	if err != nil {
+		return err
+	}
+	if again != tbl {
+		return fmt.Errorf("migrate: the history table resolves to %s after it was created, not %s; the search_path changed under the migration", again, tbl)
 	}
 	ins := fmt.Sprintf(`INSERT INTO %s (version, name, checksum, status, applied_at) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (version) DO NOTHING`,
 		tbl, ph(d, 1), ph(d, 2), ph(d, 3), ph(d, 4), ph(d, 5))

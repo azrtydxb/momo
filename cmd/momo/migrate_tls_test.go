@@ -23,6 +23,19 @@ func TestCLITLSWarning(t *testing.T) {
 		"host=db.example.com user=app password=x dbname=app",
 		"host='db.example.com' user=app password='p w' dbname=app sslmode='prefer'",
 		"user=app host=localhost,db.example.com sslmode=disable",
+		// sslmode is matched without regard to case.
+		"host=db.example.com sslmode=DISABLE",
+		"postgres://app:x@db.example.com/app?sslmode=Prefer",
+		// hostaddr is a host too, alone or next to a local host.
+		"hostaddr=192.0.2.7 dbname=app sslmode=disable",
+		"host=localhost hostaddr=192.0.2.7 sslmode=disable",
+		"postgres://app:x@localhost/app?hostaddr=192.0.2.7&sslmode=disable",
+		// the URL scheme is case-insensitive.
+		"Postgres://app:x@db.example.com/app?sslmode=disable",
+		"POSTGRESQL://app:x@db.example.com/app?sslmode=disable",
+		// a backslash escapes a quote inside a quoted value.
+		`host=db.example.com password='it\'s a secret' sslmode=disable`,
+		`password='a\\' host=db.example.com sslmode=disable`,
 	}
 	for _, u := range warn {
 		w := TLSWarning(u, noEnv)
@@ -51,6 +64,10 @@ func TestCLITLSWarning(t *testing.T) {
 		"postgres://app:x@db.example.com/app?sslmode=verify-ca",
 		"postgres://app:x@db.example.com/app?sslmode=verify-full",
 		"host=db.example.com sslmode=verify-full",
+		"host=db.example.com sslmode=VERIFY-FULL",
+		"hostaddr=127.0.0.1 sslmode=disable",
+		"Postgres://app:x@localhost/app?sslmode=disable",
+		`host=localhost password='it\'s host=db.example.com' sslmode=disable`,
 		"not a url \x7f",
 		"host='unterminated",
 		"",
@@ -79,6 +96,9 @@ func TestCLITLSWarningUsesLibpqEnvironment(t *testing.T) {
 	if w := TLSWarning("dbname=app", env(map[string]string{"PGHOST": "db.example.com"})); !strings.Contains(w, "db.example.com") {
 		t.Errorf("PGHOST must supply the remote host: %q", w)
 	}
+	if w := TLSWarning("dbname=app", env(map[string]string{"PGHOSTADDR": "192.0.2.7"})); !strings.Contains(w, "192.0.2.7") {
+		t.Errorf("PGHOSTADDR must supply the remote host: %q", w)
+	}
 	if w := TLSWarning("dbname=app", env(map[string]string{"PGHOST": "/var/run/postgresql"})); w != "" {
 		t.Errorf("a socket PGHOST is local: %q", w)
 	}
@@ -87,11 +107,12 @@ func TestCLITLSWarningUsesLibpqEnvironment(t *testing.T) {
 func TestMigrateWarnsOnRemoteDisabledTLS(t *testing.T) {
 	dir := t.TempDir()
 	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(dir)+"/m\n")
-	run := func(url string) string {
+	runEnv := func(url string, env func(string) string) string {
 		var out, errOut bytes.Buffer
-		runMigrate(&out, &errOut, []string{"--config", cfg, "status", "--url", url}, noEnv)
+		runMigrate(&out, &errOut, []string{"--config", cfg, "status", "--url", url}, env)
 		return out.String() + errOut.String()
 	}
+	run := func(url string) string { return runEnv(url, noEnv) }
 	// 192.0.2.1 is TEST-NET (remote); connect_timeout keeps the run short.
 	all := run("postgres://alice:hunter2secret@192.0.2.1:1/none?sslmode=disable&connect_timeout=1")
 	if !strings.Contains(all, "TLS") {
@@ -102,5 +123,29 @@ func TestMigrateWarnsOnRemoteDisabledTLS(t *testing.T) {
 	}
 	if all := run("postgres://alice:hunter2secret@127.0.0.1:1/none?sslmode=disable&connect_timeout=1"); strings.Contains(all, "TLS") {
 		t.Fatalf("local sslmode=disable must not warn: %s", all)
+	}
+}
+
+// PGSSLMODE reaches the warning through the environment lookup the CLI was
+// started with, not only through the unit-level function.
+func TestMigrateWarnsOnPGSSLMODEFromCLIEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(dir)+"/m\n")
+	run := func(sslmode string) string {
+		env := func(k string) string {
+			if k == "PGSSLMODE" {
+				return sslmode
+			}
+			return ""
+		}
+		var out, errOut bytes.Buffer
+		runMigrate(&out, &errOut, []string{"--config", cfg, "status", "--url", "postgres://alice:hunter2secret@192.0.2.1:1/none?connect_timeout=1"}, env)
+		return out.String() + errOut.String()
+	}
+	if all := run("disable"); !strings.Contains(all, "sslmode=disable") || strings.Contains(all, "hunter2secret") {
+		t.Fatalf("PGSSLMODE=disable from the CLI environment must warn without leaking the password: %s", all)
+	}
+	if all := run("verify-full"); strings.Contains(all, "TLS is not enforced") {
+		t.Fatalf("PGSSLMODE=verify-full must stay quiet: %s", all)
 	}
 }

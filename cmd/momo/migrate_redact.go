@@ -13,14 +13,15 @@ import (
 // is disable, allow or prefer, or is not set at all (libpq then defaults to
 // prefer, which falls back to plaintext). raw is a postgres:// URL or a
 // key=value string; the sslmode comes from it, else from PGSSLMODE, and a host
-// missing from it is taken from PGHOST. env looks up an environment variable.
+// missing from it is taken from PGHOST and PGHOSTADDR (hostaddr counts as a
+// host too). The URL scheme is matched without regard to case. env looks up an environment variable.
 // A host that is localhost, 127.0.0.1, ::1 or a unix socket path, or no host at
 // all, stays quiet. require and verify-ca stay quiet too, but the warning
 // recommends verify-full, the only mode that checks the server's name.
 // It names the hosts only, never the URL, so it carries no credentials.
 // Redaction lives in migrate.RedactURLs; this file adds no second copy.
 func TLSWarning(raw string, env func(string) string) string {
-	hosts, mode, ok := connHostsAndMode(raw)
+	host, hostaddr, mode, ok := connHostsAndMode(raw)
 	if !ok {
 		return ""
 	}
@@ -39,8 +40,17 @@ func TLSWarning(raw string, env func(string) string) string {
 	default:
 		return ""
 	}
-	if hosts == "" {
-		hosts = env("PGHOST")
+	if host == "" {
+		host = env("PGHOST")
+	}
+	if hostaddr == "" {
+		hostaddr = env("PGHOSTADDR")
+	}
+	// libpq connects to hostaddr when it is set, and to host otherwise, so a
+	// remote address in either one counts.
+	hosts := host
+	if hostaddr != "" {
+		hosts += "," + hostaddr
 	}
 	var remote []string
 	for _, h := range strings.Split(hosts, ",") {
@@ -65,33 +75,30 @@ func TLSWarning(raw string, env func(string) string) string {
 		": credentials and data can cross the network unencrypted; use sslmode=verify-full"
 }
 
-// connHostsAndMode extracts the host list and the sslmode from a postgres URL
+// connHostsAndMode extracts the host, hostaddr and sslmode from a postgres URL
 // or a key=value string. ok is false when raw is neither.
-func connHostsAndMode(raw string) (hosts, mode string, ok bool) {
-	if strings.HasPrefix(raw, "postgres://") || strings.HasPrefix(raw, "postgresql://") {
+func connHostsAndMode(raw string) (host, hostaddr, mode string, ok bool) {
+	lower := strings.ToLower(raw)
+	if strings.HasPrefix(lower, "postgres://") || strings.HasPrefix(lower, "postgresql://") {
 		u, err := url.Parse(raw)
 		if err != nil {
-			return "", "", false
+			return "", "", "", false
 		}
 		q := u.Query()
-		hosts = u.Host
-		if i := strings.LastIndex(hosts, "@"); i >= 0 {
-			hosts = hosts[i+1:]
+		host = u.Host
+		if i := strings.LastIndex(host, "@"); i >= 0 {
+			host = host[i+1:]
 		}
 		if h := q.Get("host"); h != "" {
-			hosts = h
+			host = h
 		}
-		return hosts, q.Get("sslmode"), true
+		return host, q.Get("hostaddr"), q.Get("sslmode"), true
 	}
 	kv, ok := parseKeyValue(raw)
 	if !ok {
-		return "", "", false
+		return "", "", "", false
 	}
-	hosts = kv["host"]
-	if hosts == "" {
-		hosts = kv["hostaddr"]
-	}
-	return hosts, kv["sslmode"], true
+	return kv["host"], kv["hostaddr"], kv["sslmode"], true
 }
 
 // parseKeyValue parses a libpq key=value connection string: values may be

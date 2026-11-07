@@ -92,24 +92,37 @@ Two independent checks, both SHA-256 of the file bytes:
 
 ### History table
 
-`momo_migrations`. Every statement against it (read, insert, update, delete,
-the `CREATE TABLE` and the advisory-lock key's schema) names the table
-schema-qualified and quoted, for example `"app"."momo_migrations"`. The schema
-is resolved once, under the lock, before the first migration statement runs, so
-a migration that changes `search_path` cannot redirect the history writes.
+`momo_migrations`. Every statement against it (read, insert, update, delete
+and the `CREATE TABLE`) names the table schema-qualified and quoted, for
+example `"app"."momo_migrations"`. The table is resolved before the lock is
+taken, and again right after, and the advisory-lock key is built from that
+resolved schema, so a migration that changes `search_path` cannot redirect the
+history writes. If the two lookups disagree (another process created the table
+in an earlier schema in between), the lock is released and the attempt is
+repeated once; a second disagreement fails with an error asking you to retry.
 
 - An existing table is found the way earlier versions found it, through the
   session `search_path`, and its schema is then used. Installs made with the
   unqualified name keep working, and no second table is created.
-- The resolved object must be a regular table in a permanent schema. A view,
-  foreign table or temporary table named `momo_migrations` earlier on the
-  `search_path` is refused with an error naming it, never used. Anyone who
-  can create objects in a schema ahead of the real one on the `search_path`
-  could otherwise capture the history writes with the migrator's privileges;
-  keep such schemas writable only by the migrator.
-- With no table yet, it is created in `current_schema()`.
-  `Config.Schemas[0]` (`migrate.schemas`) must equal `current_schema()` or the
-  engine returns a configuration error naming both.
+- The resolved object must be a regular, permanent table, and the connecting
+  role must be its owner or a member of the owning role (`pg_has_role` with
+  `USAGE`). A view, foreign table, unlogged or temporary table, or a table
+  owned by an unrelated role, named `momo_migrations` earlier on the
+  `search_path`, is refused with a validation error naming the schema, the
+  table and the owner; it is never used. A table adopted on first install by
+  `CREATE TABLE IF NOT EXISTS` passes the same checks after the statement runs.
+- What this does and does not defend: it stops a foreign-owned or non-table
+  object that sits ahead of the real table on the `search_path` from
+  capturing the history writes. It does not stop a role you are a member of,
+  or a superuser, from owning such an object, and it cannot protect a schema
+  that other roles may write to and that is ahead of yours on the
+  `search_path` before any table exists. Keep schemas on the migrator's
+  `search_path` writable only by the migrator.
+- With no table yet, it is created in the current schema.
+  `Config.Schemas[0]` (`migrate.schemas`) must equal the current schema
+  (current_schema) or the engine returns a configuration error naming both.
+  `plan`, `status` and `drift` on a connection with no current schema and no
+  table report an empty history; `apply` and the other writers fail.
 - momo does not `SET search_path` for the migration session. Migrations are
   written against the `search_path` of the connection you give momo and may
   rely on it; qualify the history table, not the migrations. Set the
@@ -258,7 +271,9 @@ bound, and the unlock has its own.
 
 `pg_try_advisory_lock(id)` on the pinned session, polled every 200 ms until
 `--lock-wait` (default 30 s) passes. `id` = FNV-64a of
-`momo:<history schema>.momo_migrations`, so schemas are independent. On timeout
+`momo:<schema>.momo_migrations`, where `<schema>` is the schema of the resolved
+history table (the current schema when none exists yet), so schemas are
+independent. On timeout
 `apply` exits 3 with
 `migration lock is held by another process: held by pid=N application_name=X`
 (`TestApplyLockWaitTimesOutWithHolder`; waiting

@@ -88,19 +88,6 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 	return out, nil
 }
 
-// history creates the history table when it is missing and reads it. Only
-// callers that hold the migration lock may use it.
-func (e *Engine) history(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
-	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
-	if err != nil {
-		return nil, err
-	}
-	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
-		return nil, err
-	}
-	return readHistoryRows(ctx, c, tbl)
-}
-
 // undefinedTable is the SQLSTATE of a query on a table that does not exist.
 const undefinedTable = "42P01"
 
@@ -109,6 +96,9 @@ const undefinedTable = "42P01"
 // read-only and cannot race the first Apply on CREATE TABLE.
 func (e *Engine) readHistory(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
 	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if errors.Is(err, ErrNoHistoryTable) {
+		return nil, nil // nothing to read, as for a database without the table
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -222,8 +212,8 @@ func (e *Engine) Plan(ctx context.Context) ([]Pending, error) {
 
 // resolveSchemas returns the managed schemas: Config.Schemas, or the
 // connection's current_schema() when none are configured. On PostgreSQL the
-// first one must be current_schema(), because the history table is referenced
-// unqualified and lives there.
+// first one must be current_schema(), the schema a new history table is created
+// in (an existing one is found through the search_path and used wherever it is).
 func (e *Engine) resolveSchemas(ctx context.Context, c momo.PinnedConn) ([]string, error) {
 	if e.opts.dialect.Dialect().Name != dialect.Postgres {
 		return e.opts.config.Schemas, nil
@@ -251,7 +241,7 @@ func (e *Engine) resolveSchemas(ctx context.Context, c momo.PinnedConn) ([]strin
 		return []string{cur}, nil
 	}
 	if schemas[0] != cur {
-		return nil, fmt.Errorf("migrate: configuration error: Config.Schemas[0] is %q but the connection's current_schema() is %q; the history table is created unqualified in the current schema, so set search_path to %q or list %q first", schemas[0], cur, schemas[0], cur)
+		return nil, fmt.Errorf("migrate: configuration error: Config.Schemas[0] is %q but the connection's current_schema() is %q; a new history table is created in the current schema, so set search_path to %q or list %q first", schemas[0], cur, schemas[0], cur)
 	}
 	return schemas, nil
 }
@@ -363,7 +353,7 @@ func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Durat
 	if len(schemas) > 0 {
 		hs = schemas[0]
 	}
-	unlock, err := e.acquireLock(ctx, c, "momo:"+hs+".momo_migrations", wait)
+	unlock, err := e.lockHistory(ctx, c, hs, wait)
 	if err != nil {
 		return nil, err
 	}
@@ -375,6 +365,44 @@ func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Durat
 		err = joinErr(err, reset()) // runs first
 		return joinErr(err, unlock())
 	}, nil
+}
+
+// lockHistory takes the migration lock, keyed on the history table the
+// connection resolves to: its schema-qualified name when the table exists, the
+// current schema hs when it does not yet. The table is resolved before the lock
+// (a read) and again after it; if another session created or moved the table
+// in between so that the name differs, the lock is released and the attempt
+// repeats once with the new name, then fails.
+func (e *Engine) lockHistory(ctx context.Context, c momo.PinnedConn, hs string, wait time.Duration) (func() error, error) {
+	d := e.opts.dialect
+	var last string
+	for attempt := 0; attempt < 2; attempt++ {
+		tbl, err := resolveHistoryTable(ctx, c, d)
+		if err != nil {
+			return nil, err
+		}
+		key := "momo:" + hs + ".momo_migrations"
+		if k, ok := d.(historyLockKeyer); ok {
+			key = k.HistoryLockKey(tbl)
+		}
+		unlock, err := e.acquireLock(ctx, c, key, wait)
+		if err != nil {
+			return nil, err
+		}
+		again, err := resolveHistoryTable(ctx, c, d)
+		if err == nil && again == tbl {
+			return unlock, nil
+		}
+		uerr := unlock()
+		if err != nil {
+			return nil, joinErr(err, uerr)
+		}
+		last = fmt.Sprintf("%s then %s", tbl, again)
+		if uerr != nil {
+			return nil, uerr
+		}
+	}
+	return nil, fmt.Errorf("migrate: the history table moved while taking the migration lock (%s); another process is installing it, retry", last)
 }
 
 // outOfOrder refuses with ErrOutOfOrder when a pending version sorts before

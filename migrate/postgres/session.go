@@ -40,51 +40,86 @@ kind TEXT NOT NULL DEFAULT 'sql'
 // existing table is found the way earlier momo versions found it, through the
 // connection's search_path, so installs made with the unqualified name keep
 // working and no second table is created. The resolved object must be a
-// regular table in a permanent schema: a view, a foreign table or a
-// temporary table of that name is refused, because writing history through it
-// would run with the migrator's privileges against an object someone else
-// controls. When no table exists yet, the reference names current_schema(), the
-// schema the unqualified CREATE TABLE used. Every later statement uses the
-// returned reference, so a migration that changes search_path cannot redirect
-// the history writes.
+// regular table in a permanent schema, owned by the connecting role or by a
+// role it is a member of (pg_has_role USAGE): a view, a foreign table, a
+// temporary table or a table owned by an unrelated role is refused with an
+// error wrapping momo.ErrValidation, because writing history through it would
+// run with the migrator's privileges against an object someone else controls.
+// When no table exists yet, the reference names current_schema, the schema the
+// CREATE TABLE uses; when there is no current schema either, the error wraps
+// migrate.ErrNoHistoryTable. Every later statement uses the returned
+// reference, so a migration that changes search_path cannot redirect the
+// history writes.
 func (Dialect) HistoryTable(ctx context.Context, c momo.PinnedConn) (string, error) {
-	var schemaName, kind, persistence string
+	var schemaName, kind, persistence, owner string
+	var usable bool
 	found := false
-	err := forEach(ctx, c, `SELECT n.nspname::text, c.relkind::text, c.relpersistence::text
+	err := forEach(ctx, c, `SELECT n.nspname::text, c.relkind::text, c.relpersistence::text,
+ pg_catalog.pg_get_userbyid(c.relowner)::text, pg_catalog.pg_has_role(current_user, c.relowner, 'USAGE')
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE c.oid = pg_catalog.to_regclass('momo_migrations')`, nil, func(r momo.Rows) error {
 		found = true
-		return r.Scan(&schemaName, &kind, &persistence)
+		return r.Scan(&schemaName, &kind, &persistence, &owner, &usable)
 	})
 	if err != nil {
 		return "", fmt.Errorf("migrate/postgres: locate the history table: %w", err)
 	}
 	if found {
 		if (kind != "r" && kind != "p") || persistence != "p" {
-			return "", fmt.Errorf("migrate/postgres: momo_migrations resolves to %s, which is not a regular permanent table; remove it from the search_path or drop it", describeRelation(schemaName, kind, persistence))
+			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Err: fmt.Errorf("momo_migrations resolves to %s, which is not a regular permanent table; remove it from the search_path or drop it", describeRelation(schemaName, kind, persistence))}
+		}
+		if !usable {
+			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Table: "momo_migrations", Err: fmt.Errorf("the table %s.momo_migrations is owned by role %s, which the connecting role is not a member of; refusing to write migration history through it. Fix the ownership, or remove that schema from the search_path", quoteIdent(schemaName), quoteIdent(owner))}
 		}
 		return quoteIdent(schemaName) + "." + quoteIdent("momo_migrations"), nil
 	}
 	var cur string
 	if err := queryOne(ctx, c, `SELECT COALESCE(current_schema(), '')`, nil, &cur); err != nil {
-		return "", fmt.Errorf("migrate/postgres: read current_schema(): %w", err)
+		return "", fmt.Errorf("migrate/postgres: read current_schema: %w", err)
 	}
 	if cur == "" {
-		return "", errors.New("migrate/postgres: the connection has no current schema; set search_path to the schema that should hold momo_migrations")
+		return "", fmt.Errorf("%w: the connection has no current schema; set search_path to the schema that should hold momo_migrations", migrate.ErrNoHistoryTable)
 	}
 	return quoteIdent(cur) + "." + quoteIdent("momo_migrations"), nil
 }
 
+// HistoryLockKey returns the advisory-lock key for the history table reference
+// that HistoryTable returned: "momo:<schema>.momo_migrations" with the
+// unquoted schema name, the key earlier versions used for the same table.
+func (Dialect) HistoryLockKey(table string) string {
+	// table is quoteIdent(schema) + "." + quoteIdent("momo_migrations").
+	rest := strings.TrimPrefix(table, `"`)
+	var sb strings.Builder
+	for i := 0; i < len(rest); i++ {
+		if rest[i] == '"' {
+			if i+1 < len(rest) && rest[i+1] == '"' {
+				sb.WriteByte('"')
+				i++
+				continue
+			}
+			break
+		}
+		sb.WriteByte(rest[i])
+	}
+	return "momo:" + sb.String() + ".momo_migrations"
+}
+
 // describeRelation names a relation by kind for an error message.
 func describeRelation(schemaName, kind, persistence string) string {
-	what := map[string]string{"v": "view", "m": "materialized view", "f": "foreign table", "S": "sequence", "i": "index", "c": "composite type"}[kind]
+	what := map[string]string{"r": "table", "p": "partitioned table", "v": "view", "m": "materialized view", "f": "foreign table", "S": "sequence", "i": "index", "c": "composite type"}[kind]
 	if what == "" {
 		what = "relation of kind " + kind
 	}
 	if persistence == "t" {
 		what = "temporary " + what
+	} else if persistence == "u" {
+		what = "unlogged " + what
 	}
-	return "a " + what + " in schema " + quoteIdent(schemaName)
+	article := "a"
+	if strings.ContainsRune("ui", rune(what[0])) {
+		article = "an"
+	}
+	return article + " " + what + " in schema " + quoteIdent(schemaName)
 }
 
 // quoteIdent quotes a PostgreSQL identifier.
