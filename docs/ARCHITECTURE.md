@@ -142,7 +142,7 @@ name as written.
 - `QueryEvent` adds `PoolWait`, `InTx`, `NumArgs`, `Dialect`. [momo-09]
 - `WithClock` (takes a function returning the current time), `ErrBusy`, `ErrValidation`, `ErrLimitExceeded`. Sentinels are declared in `errors.go` by momo-01. [momo-05]
 - `Meta.Fields` holds one `FieldHook[T]` per column that needs a Go-side default or validator. [momo-05]
-- The `Error.Detail` method returns the driver detail as a string; driver-level redaction keeps driver detail off the `Error` text. [momo-03, momo-05]
+- The `Error.Detail` method returns the driver detail as a string; driver-level redaction keeps driver detail off the `Error` text. The compiled statement carries a sensitive-args mask used by hooks: values bound from `sensitive` columns show as `momo.RedactedArg`; raw `momo.SQL` arguments are not masked. [momo-03, momo-05]
 - `Tx.SetLocal(ctx, name, value string) error` (set_config(name, value, true), transaction-scoped) for RLS and search settings. [momo-04 Task 23]
 
 ### `dialect`
