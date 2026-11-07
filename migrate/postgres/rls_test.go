@@ -6,6 +6,7 @@ package postgres_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -15,22 +16,23 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
-// countAs counts the rows of tenant_rows visible to tx, through raw SQL.
-func countAs(t *testing.T, tx *momo.Tx) int {
-	t.Helper()
+// countAs counts the rows of tenant_rows visible to tx, through raw SQL. It
+// returns errors instead of failing the test so the surrounding transaction
+// ends and the pool can close.
+func countAs(tx *momo.Tx) (int, error) {
 	rows, err := tx.DriverTx().Query(context.Background(), `SELECT count(*) FROM tenant_rows`, nil)
 	if err != nil {
-		t.Fatal(err)
+		return 0, err
 	}
 	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
-		t.Fatalf("count returned no row: %v", rows.Err())
+		return 0, fmt.Errorf("count returned no row: %w", rows.Err())
 	}
 	var n int
 	if err := rows.Scan(&n); err != nil {
-		t.Fatal(err)
+		return 0, err
 	}
-	return n
+	return n, nil
 }
 
 // TestRowLevelSecurity: a policy applied by a migration confines a transaction
@@ -38,6 +40,9 @@ func countAs(t *testing.T, tx *momo.Tx) int {
 // does not outlive the transaction on the pooled connection.
 func TestRowLevelSecurity(t *testing.T) {
 	db := testopen.Postgres(t)
+	// The role's default privileges are installed when it is opened, so open
+	// it before the migration creates the table.
+	app := openAppRole(t)
 	ctx := context.Background()
 	const tenantIs = "tenant = current_setting('app.tenant', true)"
 	desired := &schema.Schema{Dialect: "postgres", Tables: []schema.Table{{
@@ -71,15 +76,15 @@ func TestRowLevelSecurity(t *testing.T) {
 		}
 	}
 
-	app := openAppRole(t)
 	for tenant, want := range map[string]int{"a": 1, "b": 1, "nobody": 0} {
 		var n int
 		err := app.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 			if err := tx.SetLocal(ctx, "app.tenant", tenant); err != nil {
 				return err
 			}
-			n = countAs(t, tx)
-			return nil
+			var cerr error
+			n, cerr = countAs(tx)
+			return cerr
 		})
 		if err != nil || n != want {
 			t.Fatalf("tenant %s must see %d row(s), got %d (%v)", tenant, want, n, err)
@@ -88,10 +93,11 @@ func TestRowLevelSecurity(t *testing.T) {
 
 	// Without the setting the policy hides every row.
 	err = app.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
-		if n := countAs(t, tx); n != 0 {
-			t.Errorf("a transaction without a tenant must see no rows, got %d", n)
+		n, cerr := countAs(tx)
+		if cerr == nil && n != 0 {
+			cerr = fmt.Errorf("a transaction without a tenant must see no rows, got %d", n)
 		}
-		return nil
+		return cerr
 	})
 	if err != nil {
 		t.Fatal(err)
