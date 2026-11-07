@@ -4,6 +4,7 @@ package momo_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,5 +66,21 @@ func TestKeysetMixedDirectionsGoldenSQLite(t *testing.T) {
 		if c.Args[i] != wantArgs[i] {
 			t.Fatalf("arg %d = %#v, want %#v", i, c.Args[i], wantArgs[i])
 		}
+	}
+}
+
+// Catches: an order-by alias leaking into the keyset WHERE, where a select-list
+// alias is invalid SQL; and the fix breaking plain alias ordering.
+func TestKeysetRejectsAliasOrderKey(t *testing.T) {
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	_, err := momo.Select[unitTally](pg).From(momo.TableRef{Name: "documents"}).
+		Columns(momo.CountAll()).OrderBy(momo.CountAll().As("n").Asc()).After(int64(1), int64(2)).SQL()
+	if !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "alias") {
+		t.Fatalf("want ErrValidation naming the alias, got %v", err)
+	}
+	c, err := momo.Select[unitTally](pg).From(momo.TableRef{Name: "documents"}).
+		Columns(momo.CountAll()).OrderBy(momo.CountAll().As("n").Desc()).SQL()
+	if err != nil || !strings.HasSuffix(c.SQL, `ORDER BY "n" DESC`) {
+		t.Fatalf("plain alias order must render, got %q %v", c.SQL, err)
 	}
 }

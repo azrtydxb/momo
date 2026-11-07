@@ -466,7 +466,11 @@ func (r *Relation[P, C]) writeOrder(b *Builder, cfg *loadConfig) {
 	}
 	for _, o := range cfg.order {
 		sep()
-		o.order().appendSQL(b)
+		ord := o.order()
+		if isAliasOrder(ord) {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "load", Err: errors.New("LoadPerParentLimit cannot order by a select-list alias; order by the expression itself")})
+		}
+		ord.appendSQL(b)
 	}
 	for _, c := range r.ChildCols {
 		sep()

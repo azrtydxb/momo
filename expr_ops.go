@@ -73,6 +73,12 @@ type aliasRef string
 
 func (a aliasRef) AppendSQL(b *Builder) { b.Ident(string(a)) }
 
+// isAliasOrder reports whether o orders by a select-list alias.
+func isAliasOrder(o Order) bool {
+	_, ok := o.Expr.(aliasRef)
+	return ok
+}
+
 // Asc orders by the alias ascending.
 func (a Aliased[T]) Asc() Order { return Order{Expr: aliasRef(a.alias)} }
 

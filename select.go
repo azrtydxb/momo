@@ -239,6 +239,12 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("After requires OrderBy")})
 		return nil
 	}
+	for _, o := range s.order {
+		if isAliasOrder(o) {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("keyset pagination cannot order by a select-list alias; order by the expression itself")})
+			return nil
+		}
+	}
 	keys := sq.keysetKeys()
 	if len(s.keyset) != len(keys) {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("After got %d values for %d ORDER BY keys (including the primary key tie-breaker)", len(s.keyset), len(keys))})

@@ -546,7 +546,10 @@ the comparisons of a column for `Where` and `Having`: `Eq`, `Ne`, `Lt`, `Le`,
 `Gt`, `Ge`, `EqExpr` and the other `...Expr` forms, `In`, `NotIn`, `Between`,
 `IsNull`, `IsNotNull`; plus `Asc` and `Desc`. An `.As` alias belongs in the
 select list: `OrderBy` accepts it and orders by the alias name, `GroupBy`
-rejects it with `ErrValidation`.
+rejects it with `ErrValidation`. Keyset pagination with `After` and a per-parent
+`LoadPerParentLimit` also reject an alias order key with `ErrValidation`, because
+an alias is not valid in WHERE or inside a window ORDER BY; order by the
+expression itself there.
 
 ```go
 // Alias a select-list item. As[T] is generic; Agg, Case and Func values also have .As(name).
