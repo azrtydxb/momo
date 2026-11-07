@@ -11,9 +11,13 @@ Implements plan momo-05-writes-queries Task 25: Window functions, partitioned an
 
 ## Acceptance criteria
 
-- [ ] `TestWindowFunctions` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-33, part] `TestWindowFunctions` passes for the part of S-33 this task delivers; the full criterion is verified in story 149.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] Issue 33: window functions (Over with PartitionBy, OrderBy, frames; RowNumber, Rank, DenseRank, Lag, Lead), aggregate FILTER, DISTINCT ON with the ORDER BY prefix rule, LATERAL joins and unnest/generate_series FROM sources, with ErrUnsupported on dialects that lack them
+
+- [x] `TestWindowFunctions` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-33, part] `TestWindowFunctions` passes for the part of S-33 this task delivers; the full criterion is verified in story 149.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+Commit 8eece1e on branch worktree-agent-a78cf9b5b1e09d5cf: goldens and error cases in analytics_test.go, integration tests in analytics_integration_test.go; CI run 42409618987 green.
 
