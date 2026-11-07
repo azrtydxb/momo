@@ -180,7 +180,7 @@ matrix are first-class deliverables, not afterthoughts.
 
 - `momo.New` wraps a driver and returns a DB handle; DB and Tx handles implement the sealed Querier interface.
 - Generic Select over a model type T, taking a Querier, returns an immutable `SelectQuery[T]` with `Where`, `Join/LeftJoin/CrossJoin`, `Columns`, `GroupBy`, `Having`, `OrderBy`, `Limit`, `Offset`, `After` (keyset), `With/WithRecursive`, `ForUpdate/ForShare`, `WithDeleted`, `SQL()`; terminals `All`, `One` (ErrNotFound / ErrTooManyRows), `First`, `Each`, `Iter` (iter.Seq2), `Count`, `Exists`.
-- Insert over T: `.Values(assignments...)` / `.Model(&m)` / `.Models(ms)` / `.Omit(cols...)` / `.OnConflict(cols...).DoNothing()|DoUpdate(assignments...)` / `.Returning...`; Update over T: `.Set(...)`.Where(...)`/`.Model(&m)`(version-checked) /`.AllRows()`; Delete and SoftDelete over T.
+- Insert over T: `.Values(assignments...)` / `.Model(&m)` / `.Models(ms)` / `.Omit(cols...)` / `.OnConflict(cols...).DoNothing()|DoUpdate(assignments...)` / `.Returning...`; Update over T: `Set` with `Where`, `Model` (version-checked), or `AllRows`; Delete and SoftDelete over T.
 - Typed columns: `Column[T]` (`Eq/Ne/Lt/Le/Gt/Ge/In/Between/IsNull/...`, `Set/SetExpr/SetDefault/SetExcluded`), `NullColumn[T]` (adds `SetNull`), vector columns with distance expressions.
 - Raw SQL: `momo.SQL(fragment, args...)`, `momo.TypedSQL[T]`, `momo.Exec`, raw typed query — `?` placeholders, `??` for a literal `?`.
 - Transactions: `db.Tx(ctx, opts, fn)`, `db.Begin`, `tx.Tx` (savepoint scope), `Savepoint/RollbackTo/Release`.
