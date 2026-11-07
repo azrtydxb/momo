@@ -1,6 +1,6 @@
 # Security: redact encode errors, mask sensitive args, refuse simple protocol
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-07
 Epic: momo-03-drivers-postgresql
 Sprint: 005-sprint-5-security-and-maintainability-hardening
