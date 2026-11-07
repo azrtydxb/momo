@@ -23,38 +23,44 @@ it.
 ## Generated mappings
 
 `N` is the `size` tag for `string` and the `dim` tag for vector types. A
-slice of a scalar maps to the PostgreSQL array of its element type; SQLite has
-no array columns, so the generator rejects them there. The
-generator rejects a vector field without `dim`. SQLite has no vector types.
+`vector.Vector` or `vector.HalfVector` field without `dim` is supported: it maps
+to the bare `vector` or `halfvec` type, a dimensionless column that holds
+embeddings of any size (see [vectors.md](vectors.md#dimensionless-columns)).
+`vector.SparseVector` and `vector.Bits` require `dim`. SQLite has no vector
+types.
+A slice of a scalar maps to the PostgreSQL array of its element type; SQLite
+has no array columns, so the generator rejects them there.
 
-| Go type               | PostgreSQL                 | SQLite        |
-| --------------------- | -------------------------- | ------------- |
-| `int`                 | `bigint`                   | `INTEGER`     |
-| `int8`                | `smallint`                 | `INTEGER`     |
-| `int16`               | `smallint`                 | `INTEGER`     |
-| `int32`               | `integer`                  | `INTEGER`     |
-| `int64`               | `bigint`                   | `INTEGER`     |
-| `float32`             | `real`                     | `REAL`        |
-| `float64`             | `double precision`         | `REAL`        |
-| `bool`                | `boolean`                  | `INTEGER`     |
-| `string`              | `text`                     | `TEXT`        |
-| `string with size:N`  | `character varying(N)`     | `TEXT`        |
-| `[]byte`              | `bytea`                    | `BLOB`        |
-| `time.Time`           | `timestamp with time zone` | `TEXT`        |
-| `types.UUID`          | `uuid`                     | `TEXT`        |
-| `types.Date`          | `date`                     | `TEXT`        |
-| `types.JSON[T]`       | `jsonb`                    | `TEXT`        |
-| `vector.Vector`       | `vector(N)`                | `unsupported` |
-| `vector.HalfVector`   | `halfvec(N)`               | `unsupported` |
-| `vector.SparseVector` | `sparsevec(N)`             | `unsupported` |
-| `vector.Bits`         | `bit(N)`                   | `unsupported` |
-| `[]string`            | `text[]`                   | `unsupported` |
-| `[]int16`             | `smallint[]`               | `unsupported` |
-| `[]int32`             | `integer[]`                | `unsupported` |
-| `[]int64`             | `bigint[]`                 | `unsupported` |
-| `[]bool`              | `boolean[]`                | `unsupported` |
-| `[]float32`           | `real[]`                   | `unsupported` |
-| `[]float64`           | `double precision[]`       | `unsupported` |
+| Go type                      | PostgreSQL                 | SQLite        |
+| ---------------------------- | -------------------------- | ------------- |
+| `int`                        | `bigint`                   | `INTEGER`     |
+| `int8`                       | `smallint`                 | `INTEGER`     |
+| `int16`                      | `smallint`                 | `INTEGER`     |
+| `int32`                      | `integer`                  | `INTEGER`     |
+| `int64`                      | `bigint`                   | `INTEGER`     |
+| `float32`                    | `real`                     | `REAL`        |
+| `float64`                    | `double precision`         | `REAL`        |
+| `bool`                       | `boolean`                  | `INTEGER`     |
+| `string`                     | `text`                     | `TEXT`        |
+| `string with size:N`         | `character varying(N)`     | `TEXT`        |
+| `[]byte`                     | `bytea`                    | `BLOB`        |
+| `time.Time`                  | `timestamp with time zone` | `TEXT`        |
+| `types.UUID`                 | `uuid`                     | `TEXT`        |
+| `types.Date`                 | `date`                     | `TEXT`        |
+| `types.JSON[T]`              | `jsonb`                    | `TEXT`        |
+| `vector.Vector`              | `vector(N)`                | `unsupported` |
+| `vector.HalfVector`          | `halfvec(N)`               | `unsupported` |
+| `vector.SparseVector`        | `sparsevec(N)`             | `unsupported` |
+| `vector.Bits`                | `bit(N)`                   | `unsupported` |
+| `vector.Vector (no dim)`     | `vector`                   | `unsupported` |
+| `vector.HalfVector (no dim)` | `halfvec`                  | `unsupported` |
+| `[]string`                   | `text[]`                   | `unsupported` |
+| `[]int16`                    | `smallint[]`               | `unsupported` |
+| `[]int32`                    | `integer[]`                | `unsupported` |
+| `[]int64`                    | `bigint[]`                 | `unsupported` |
+| `[]bool`                     | `boolean[]`                | `unsupported` |
+| `[]float32`                  | `real[]`                   | `unsupported` |
+| `[]float64`                  | `double precision[]`       | `unsupported` |
 
 On SQLite, `bool` is stored as 0 or 1, and `time.Time`, `types.UUID`,
 `types.Date` and `types.JSON[T]` are stored as text. The SQLite column is what

@@ -316,7 +316,7 @@ func FindOrCreate[T any, PT Modeler[T]](ctx context.Context, q Querier, key []Co
 		if ci < 0 {
 			return false, &Error{Kind: ErrValidation, Op: "find or create", Table: meta.Table, Column: k.ColumnName(), Err: errors.New("key column is not mapped by the model")}
 		}
-		preds[i] = binOp{k, " = ", argExpr{meta.Value(m, ci)}}
+		preds[i] = binOp{k, " = ", argExpr{v: meta.Value(m, ci), flags: meta.Columns[ci].Flags}}
 	}
 	if d := q.Dialect(); !d.OnConflict || !d.Returning {
 		return false, &Error{Kind: ErrUnsupported, Op: "find or create", Table: meta.Table, Err: errors.New("FindOrCreate needs ON CONFLICT and RETURNING")}

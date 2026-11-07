@@ -15,11 +15,14 @@ Issue #31 delivered the array half of this task: scalar slices map to PostgreSQL
 
 ## Acceptance criteria
 
-- [ ] `TestArrayOperatorsGolden` pins the SQL and the single array bind of each operator on PostgreSQL, including the empty and hostile-value cases; `TestArrayOperatorsUnsupportedOffPostgres` asserts ErrUnsupported on SQLite and MySQL.
-- [ ] `TestArrayOperatorsLive` and `TestArrayOperatorsBindHostileValues` assert result rows on PostgreSQL for contains, contained-by, overlaps and `= ANY`.
-- [ ] `TestGeneratorTypeMapFullTable` and `TestSliceFieldsMapToArrayColumns` show `[]string` maps to `text[]` (also `[]int16`, `[]int32`, `[]int64`, `[]bool`, `[]float32`, `[]float64`) and SQLite returns ErrUnsupported.
-- [ ] `TestArrayColumnsMigrationRoundTrip` shows array columns diff, apply and inspect back to an empty second diff; `TestTypeMapping` round-trips every new row through a live column.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestArrayOperatorsGolden` pins the SQL and the single array bind of each operator on PostgreSQL, including the empty and hostile-value cases; `TestArrayOperatorsUnsupportedOffPostgres` asserts ErrUnsupported on SQLite and MySQL.
+- [x] `TestArrayOperatorsLive` and `TestArrayOperatorsBindHostileValues` assert result rows on PostgreSQL for contains, contained-by, overlaps and `= ANY`.
+- [x] `TestGeneratorTypeMapFullTable` and `TestSliceFieldsMapToArrayColumns` show `[]string` maps to `text[]` (also `[]int16`, `[]int32`, `[]int64`, `[]bool`, `[]float32`, `[]float64`) and SQLite returns ErrUnsupported.
+- [x] `TestArrayColumnsMigrationRoundTrip` shows array columns diff, apply and inspect back to an empty second diff; `TestTypeMapping` round-trips every new row through a live column.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Verified on GitHub Actions, workflow ci-agent run 42411030882 on 5e7a038, conclusion success (unit and integration postgres jobs ran every test named above).
+- Earlier runs failed on test-fixture mistakes only (nullable tag, projection column count); fixed in c682aea and 5e7a038.
+- The commit hook ran the gate clean on every commit.
