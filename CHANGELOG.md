@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/azrtydxb/momo/compare/v0.2.0...v0.3.0) (2026-11-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* momo.As is generic and takes Expression[T]; Aliased is Aliased[T] with unexported fields. Column[T].Excluded returns ExcludedExpr[T]. The PostgreSQL inspector reports serial columns as Identity serial instead of by_default, so a model declaring pk,identity for a BIGSERIAL column must switch to the serial tag.
+* ApplyOptions.ForceUnlock and momo migrate apply --force-unlock are removed; they were a no-op on every dialect.
+
+### Features
+
+* sprint 3 PostgreSQL hardening and adopted transactions ([#12](https://github.com/azrtydxb/momo/issues/12)) ([d215dad](https://github.com/azrtydxb/momo/commit/d215dadee6cf5a1721efa15becdf2312fc909c9f)), closes [#11](https://github.com/azrtydxb/momo/issues/11)
+* sprint 4 adoption gaps for porting kuvryn-license ([#21](https://github.com/azrtydxb/momo/issues/21)) ([468dd0a](https://github.com/azrtydxb/momo/commit/468dd0afc8437ac60d1ec832a8ae4405cdccd666)), closes [#13](https://github.com/azrtydxb/momo/issues/13) [#14](https://github.com/azrtydxb/momo/issues/14) [#15](https://github.com/azrtydxb/momo/issues/15) [#16](https://github.com/azrtydxb/momo/issues/16) [#17](https://github.com/azrtydxb/momo/issues/17) [#19](https://github.com/azrtydxb/momo/issues/19) [#20](https://github.com/azrtydxb/momo/issues/20)
+
 ## 0.2.0 (2026-11-06)
 
 Conditional upserts, the AI coder guide and runnable examples. Supported backend: PostgreSQL with pgvector (pgx driver). [Changes since 0.1.0](https://github.com/azrtydxb/momo/compare/v0.1.0...v0.2.0).
