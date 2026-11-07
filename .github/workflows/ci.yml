@@ -3,7 +3,7 @@ name: ci
 
 on:
   push:
-    branches: [main, "sprint-*", "worktree-agent-*"]
+    branches: [main, "sprint-*"]
   pull_request: {}
   workflow_dispatch: {}
 
