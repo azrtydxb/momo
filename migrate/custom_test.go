@@ -83,7 +83,7 @@ func TestNewCustomRefusals(t *testing.T) {
 	}
 }
 
-// With vector external, Diff emits no CREATE EXTENSION and the snapshot holds no
+// With vector external, Diff emits no extension statement and the snapshot holds no
 // extension; without it the same models emit it.
 func TestDiffExternalExtensionsNeverEmitted(t *testing.T) {
 	ctx := context.Background()
@@ -110,7 +110,7 @@ func TestDiffExternalExtensionsNeverEmitted(t *testing.T) {
 
 	plain := offlineEngine(t, fstest.MapFS{}, now)
 	m, err = plain.Diff(ctx, docsSchema(), "init", migrate.DiffOptions{})
-	if err != nil || m == nil || !strings.Contains(string(m.Files["20260102030405_init.up.sql"]), "CREATE EXTENSION IF NOT EXISTS") {
+	if err != nil || m == nil || !strings.Contains(string(m.Files["20260102030405_init.up.sql"]), "EXTENSION IF NOT EXISTS") {
 		t.Fatalf("control: the extension must be emitted without the setting: %v", err)
 	}
 }

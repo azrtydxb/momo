@@ -659,19 +659,19 @@ database:
 
 - `CREATE EXTENSION IF NOT EXISTS vector` **succeeds** when the extension
   already exists (PostgreSQL only emits a notice; it checks existence before
-  privileges). So the `CREATE EXTENSION IF NOT EXISTS` that a generated
-  migration emits is harmless for that role once a superuser has installed
-  pgvector. When the extension does not exist the statement fails
-  (`TestAppRoleCreateExtensionIfNotExists`), and so does the migration: install
-  it first as a privileged role.
-- `baseline` as that role also needs to write the history table. The role cannot
-  create it in a schema it only has `USAGE` on: the first `baseline` fails with
-  a `permission denied` error before it records anything
-  (`TestBaselineAsAppRoleWithoutHistoryTable`). Create the table as a
-  privileged role (the first `baseline` or `apply` run with it does it) and make the
-  migrator role its owner, `ALTER TABLE momo_migrations OWNER TO app_role`: momo
-  refuses a history table owned by an unrelated role (see History table). Or run
-  the first `baseline` as the owner role and use the app role afterwards.
+  privileges). So the statement that a generated migration emits is harmless for
+  that role once a superuser has installed pgvector
+  (`TestAppRoleExtensionIfNotExists`). When the extension is not installed the
+  statement needs a privileged role, as before.
+- `baseline` and `apply` run `CREATE TABLE IF NOT EXISTS` for the history table.
+  PostgreSQL checks `CREATE` on the schema before it looks for the table, so a
+  role with only `USAGE` on the schema is refused with `permission denied for
+schema` even when it owns an existing `momo_migrations`
+  (`TestBaselineAsAppRoleNeedsCreateOnSchema`). The migrator role needs `CREATE`
+  on its schema: `GRANT CREATE ON SCHEMA app TO app_role`.
+- With `CREATE` on the schema but not on the database, `baseline` works for a
+  snapshot without table text (`TestBaselineAsAppRole`) and fails with
+  `ErrCanonicalizePrivilege` otherwise (section 7).
 - `drift` as that role runs, but without `CREATE` on the database it cannot
   canonicalize declared text and may show false `changed` entries (section 1).
 
@@ -757,8 +757,8 @@ step on a copy of production.
    again, so the initial snapshot is the schema as it is at the freeze.
 7. **Baseline each environment.** In each environment run
    `momo migrate baseline --version <init version>` once, then
-   `momo migrate drift` (expect `no drift`). The history table must be owned by
-   the role that runs `apply` (section 7). From then on `apply` runs only newer
+   `momo migrate drift` (expect `no drift`). The role that runs `apply` needs
+   `CREATE` on the schema and must own the history table (section 7). From then on `apply` runs only newer
    migrations. A database created from scratch runs the init migration; it needs
    the external extension installed first.
 8. **Hand off.** Schema changes go through `diff`; backfills and other data

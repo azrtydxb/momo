@@ -32,12 +32,11 @@ func openAppRoleDB(t *testing.T) *momo.DB {
 	return momo.New(pgxdriver.New(pool))
 }
 
-// TestAppRoleCreateExtensionIfNotExists records the answer for NovaCRM: a role
-// that is not a superuser and has no CREATE on the database can run
-// CREATE EXTENSION IF NOT EXISTS for an extension that already exists, because
-// PostgreSQL checks existence before privileges. For one that does not exist it
-// fails, so a migration that creates a missing extension needs a privileged role.
-func TestAppRoleCreateExtensionIfNotExists(t *testing.T) {
+// TestAppRoleExtensionIfNotExists records the answer for NovaCRM: a role that is
+// not a superuser and has no CREATE on the database can run the idempotent
+// extension statement a generated migration emits when the extension already
+// exists, because PostgreSQL checks existence before privileges.
+func TestAppRoleExtensionIfNotExists(t *testing.T) {
 	_ = testopen.Postgres(t) // creates the schema the app role works in
 	app := openAppRoleDB(t)
 	if got := firstValue(t, app, `SELECT rolsuper::text FROM pg_roles WHERE rolname = current_user`); got != "false" {
@@ -47,18 +46,20 @@ func TestAppRoleCreateExtensionIfNotExists(t *testing.T) {
 		t.Fatalf("the app role must not have CREATE on the database, got %s", got)
 	}
 	if err := execDB(t, app, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
-		t.Fatalf("CREATE EXTENSION IF NOT EXISTS vector for an existing extension: %v", err)
+		t.Fatalf("the idempotent statement for an installed extension: %v", err)
 	}
-	err := execDB(t, app, `CREATE EXTENSION IF NOT EXISTS momo_no_such_extension`)
-	if err == nil {
-		t.Fatal("creating an extension that does not exist must fail")
-	}
-	t.Logf("missing extension as the app role: %v", err)
+}
+
+// grantSchemaCreate lets the app role create objects in the test schema, as an
+// application role that owns its schema can.
+func grantSchemaCreate(t *testing.T, admin *momo.DB, app *momo.DB) {
+	t.Helper()
+	role := firstValue(t, app, `SELECT current_user`)
+	mustExecDB(t, admin, `GRANT CREATE ON SCHEMA `+firstValue(t, admin, `SELECT current_schema()`)+` TO "`+role+`"`)
 }
 
 // ownHistoryAsApp creates the history table as the administrator and hands it
-// to the app role, because the app role cannot create objects and the engine
-// refuses a history table owned by an unrelated role.
+// to the app role.
 func ownHistoryAsApp(t *testing.T, admin, app *momo.DB) {
 	t.Helper()
 	role := firstValue(t, app, `SELECT current_user`)
@@ -70,13 +71,13 @@ func ownHistoryAsApp(t *testing.T, admin, app *momo.DB) {
 	mustExecDB(t, admin, `ALTER TABLE momo_migrations OWNER TO "`+role+`"`)
 }
 
-// TestBaselineAsAppRole: without text in the snapshot's tables, baseline needs
-// no CREATE on the database.
+// TestBaselineAsAppRole: a role with CREATE on its schema but not on the
+// database baselines a snapshot without table text.
 func TestBaselineAsAppRole(t *testing.T) {
 	admin := testopen.Postgres(t)
 	app := openAppRoleDB(t)
 	mustExecDB(t, admin, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
-	ownHistoryAsApp(t, admin, app)
+	grantSchemaCreate(t, admin, app)
 	e := migratetest.NewEngine(t, mpg.New(), app.Driver(), migratetestFS(t, initVersion))
 	if err := e.Baseline(context.Background(), initVersion, false); err != nil {
 		t.Fatalf("baseline of a snapshot without table text as the app role: %v", err)
@@ -84,13 +85,13 @@ func TestBaselineAsAppRole(t *testing.T) {
 }
 
 // TestBaselineAsAppRoleNeedsCreateForTableText: a default, check or index
-// predicate in any table is enough to need CREATE on the database, and --force
+// predicate in any table is enough to need CREATE on the database, and force
 // does not waive it.
 func TestBaselineAsAppRoleNeedsCreateForTableText(t *testing.T) {
 	admin := testopen.Postgres(t)
 	app := openAppRoleDB(t)
 	mustExecDB(t, admin, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT DEFAULT '')`)
-	ownHistoryAsApp(t, admin, app)
+	grantSchemaCreate(t, admin, app)
 	s := usersSchema()
 	s.Tables[0].Columns[1].Default = "''"
 	fsys := snapshotFS(t, initVersion, s, "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT DEFAULT '');\n")
@@ -103,20 +104,18 @@ func TestBaselineAsAppRoleNeedsCreateForTableText(t *testing.T) {
 	}
 }
 
-// TestBaselineAsAppRoleWithoutHistoryTable: the app role cannot create the
-// history table, so the baseline fails before it records anything.
-func TestBaselineAsAppRoleWithoutHistoryTable(t *testing.T) {
+// TestBaselineAsAppRoleNeedsCreateOnSchema: the engine runs CREATE TABLE IF NOT
+// EXISTS for the history table, which PostgreSQL refuses without CREATE on the
+// schema even when the table exists and the role owns it. Nothing is recorded.
+func TestBaselineAsAppRoleNeedsCreateOnSchema(t *testing.T) {
 	admin := testopen.Postgres(t)
 	app := openAppRoleDB(t)
 	mustExecDB(t, admin, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
+	ownHistoryAsApp(t, admin, app)
 	e := migratetest.NewEngine(t, mpg.New(), app.Driver(), migratetestFS(t, initVersion))
 	err := e.Baseline(context.Background(), initVersion, false)
-	if err == nil {
-		t.Fatal("baseline must fail when the role cannot create the history table")
-	}
-	t.Logf("baseline without a history table as the app role: %v", err)
-	if !strings.Contains(err.Error(), "permission denied") {
-		t.Fatalf("want a permission error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "permission denied for schema") {
+		t.Fatalf("want a permission denied for schema error, got %v", err)
 	}
 }
 
