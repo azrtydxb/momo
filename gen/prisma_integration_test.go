@@ -58,9 +58,10 @@ func prismaModels(t *testing.T, typeDefaults map[string]string) *schema.Schema {
 }
 
 // TestPrismaDatabaseDiffsClean catches a preset or type default that does not
-// match a database Prisma created: any difference in a table, column, type,
-// key or index name makes the diff non-empty. The second half proves the diff
-// is sensitive, by showing the default timestamptz does produce a change.
+// match a database Prisma created: the live schema is inspected and diffed
+// against the models, and any difference in a table, column, type, key or
+// index name is a change. The second half proves the diff is sensitive, by
+// showing the default timestamptz does produce changes.
 func TestPrismaDatabaseDiffsClean(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
@@ -70,16 +71,24 @@ func TestPrismaDatabaseDiffsClean(t *testing.T) {
 		}
 	}
 	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), migratetest.EmptyFS())
+	live, err := e.Inspect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	desired := prismaModels(t, map[string]string{"time.Time": "timestamp(3)"})
-	mig, err := e.Diff(ctx, desired, "noop", migrate.DiffOptions{})
-	if err != nil || mig != nil {
-		t.Fatalf("a Prisma database must diff clean against the prisma preset: %v %v", mig, err)
+	// The test databases always have the vector extension; the models do not
+	// manage extensions, so take the live ones to keep them out of the diff.
+	desired.Extensions = live.Extensions
+	changes, _, err := migrate.Diff(live, desired, migrate.DiffOptions{})
+	if err != nil || len(changes) != 0 {
+		t.Fatalf("a Prisma database must diff clean against the prisma preset: %v\n%v\n%s", changes, err, migratetest.Diff(live, desired))
 	}
 
 	withoutDefault := prismaModels(t, nil)
-	mig, err = e.Diff(ctx, withoutDefault, "tz", migrate.DiffOptions{})
-	if err != nil || mig == nil {
-		t.Fatalf("timestamptz models must differ from timestamp(3) columns: %v %v", mig, err)
+	withoutDefault.Extensions = live.Extensions
+	changes, _, err = migrate.Diff(live, withoutDefault, migrate.DiffOptions{})
+	if err != nil || len(changes) == 0 {
+		t.Fatalf("timestamptz models must differ from timestamp(3) columns: %v %v", changes, err)
 	}
 }
