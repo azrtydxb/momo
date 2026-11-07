@@ -93,10 +93,16 @@ func (e *Error) Error() string {
 	return sb.String()
 }
 
-// Detail returns the underlying error text, or "" when there is none.
+// Detail returns the underlying error text, or "" when there is none. A
+// driver error that redacts its own Error text (because the server message
+// quotes row values) exposes the full text through a Detail method, which is
+// preferred here.
 func (e *Error) Detail() string {
 	if e.Err == nil {
 		return ""
+	}
+	if d, ok := e.Err.(interface{ Detail() string }); ok {
+		return d.Detail()
 	}
 	return e.Err.Error()
 }
