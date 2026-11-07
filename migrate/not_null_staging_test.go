@@ -259,3 +259,68 @@ func TestEnforceNotNullDoesNotAuthorizeNewColumns(t *testing.T) {
 		t.Fatalf("a NOT NULL add must still need --stage, got %v", err)
 	}
 }
+
+// A staged NOT NULL column and a concurrent unique index in one diff: the
+// split keeps the column nullable in both snapshots, puts the index only in
+// the no-transaction tail, and the chain validates.
+func TestStagedColumnWithConcurrentIndexSplit(t *testing.T) {
+	ctx := context.Background()
+	files := initFiles(t)
+	desired := docsSchema()
+	desired.Tables[0].Columns = append(desired.Tables[0].Columns, schema.Column{Name: "tenant", Type: "BIGINT"})
+	desired.Tables[0].Indexes = append(desired.Tables[0].Indexes, schema.Index{Name: "docs_tenant", Unique: true, Concurrently: true, Parts: []schema.IndexPart{{Column: "tenant"}}})
+
+	e := offlineEngine(t, mapFS(files), time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC))
+	m, err := e.Diff(ctx, desired, "add_tenant", migrate.DiffOptions{Stage: true})
+	if err != nil || m == nil || m.Next == nil {
+		t.Fatal(m, err)
+	}
+	snap := func(name string) *schema.Schema {
+		s, err := migrate.ReadSnapshot(bytes.NewReader(m.Files[name]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s.Schema
+	}
+	head, tail := snap(m.Version+"_add_tenant.snapshot.json"), snap(m.Next.Version+"_add_tenant_no_tx.snapshot.json")
+	for n, s := range map[string]*schema.Schema{"head": head, "tail": tail} {
+		if c := findColumn(s, "docs", "tenant"); c == nil || !c.Nullable {
+			t.Fatalf("%s: tenant must be nullable: %+v", n, c)
+		}
+	}
+	hasIx := func(s *schema.Schema) bool {
+		for _, ix := range s.Tables[0].Indexes {
+			if ix.Name == "docs_tenant" {
+				return true
+			}
+		}
+		return false
+	}
+	if hasIx(head) || !hasIx(tail) {
+		t.Fatalf("index must be only in the tail snapshot: head=%v tail=%v", hasIx(head), hasIx(tail))
+	}
+	headUp, tailUp := string(m.Files[m.Version+"_add_tenant.up.sql"]), string(m.Files[m.Next.Version+"_add_tenant_no_tx.up.sql"])
+	if !strings.Contains(headUp, "ADD COLUMN") || strings.Contains(headUp, "NOT NULL") || strings.Contains(headUp, "CONCURRENTLY") {
+		t.Fatalf("head SQL:\n%s", headUp)
+	}
+	if !strings.Contains(tailUp, "CREATE UNIQUE INDEX CONCURRENTLY") || !strings.Contains(tailUp, "no-transaction") {
+		t.Fatalf("tail SQL:\n%s", tailUp)
+	}
+	fsys := withMigrations(files, m)
+	if rep, err := migrate.ValidateOffline(fsys); err != nil || len(rep.Problems) > 0 {
+		t.Fatalf("head/tail chain must validate: %v %v", err, rep)
+	}
+	if ch, err := migrate.Chain(fsys); err != nil || len(ch) != 3 || ch[2].ParentVersion != ch[1].Version {
+		t.Fatalf("chain: %v %v", ch, err)
+	}
+	// Follow-up enforces NOT NULL only.
+	e3 := offlineEngine(t, fsys, time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC))
+	m3, err := e3.Diff(ctx, desired, "enforce", migrate.DiffOptions{EnforceNotNull: true})
+	if err != nil || m3 == nil {
+		t.Fatal(m3, err)
+	}
+	up := upOf(m3)
+	if !strings.Contains(up, "SET NOT NULL") || strings.Contains(up, "INDEX") {
+		t.Fatalf("follow-up:\n%s", up)
+	}
+}
