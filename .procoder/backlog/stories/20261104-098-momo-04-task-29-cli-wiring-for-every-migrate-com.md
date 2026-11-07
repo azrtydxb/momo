@@ -46,3 +46,8 @@ Implements plan momo-04-migrations Task 29: CLI wiring for every migrate command
 - Symlinks (LOW): `walkFiles` follows a symlink to a file and refuses a symlink to a directory with `migrations: <path> is a symlink to a directory; not supported` (before: `read linkdir: is a directory`, exit 3). Documented in the walk's doc comment and in `momo migrate help`. `TestWalkSymlinks` and `TestMigrateValidateRefusesDirectorySymlink` (validate exit 1 with the problem line; hash exit 3); the check removed fails both.
 - Hash report (INFO): `momo migrate hash` lists `changed:`, `added:` and `removed:` files against the momo.sum being replaced before it writes (nothing on a first run). `TestMigrateHashReportsChanges`; removing the report call fails it.
 - Compatibility note: the dotfile skip of the previous round changes the content of momo.sum compared with sums written before it (dotfiles and dot directories were hashed then). No sum has been published yet, so nothing needs migrating; a directory hashed by an earlier build shows its dotfiles as `removed:` on the next `momo migrate hash`.
+
+### `new --custom` (2026-11-08, issue 37)
+
+- `momo migrate new --custom <name>` is built (`Engine.NewCustom`, `cmd/momo/migrate.go`): it writes an empty hand-written up file, a snapshot copied from the latest one and the extended momo.sum. Tests: `TestNewCustomWritesChainedFiles`, `TestNewCustomRefusals`, usage cases in `TestMigrateUsageErrors`. CI run 42410529827 on c2107a55807362186f9eaba839d070654722dfb7 is green.
+- Story stays OPEN: S-10 (every documented command wired) still lacks `rebase`, `lint` and `rollback`, which exit 2 "not available yet" because Engine.Rebase, Engine.Lint and down migrations do not exist; S-26 (Windows job) is also untouched.
