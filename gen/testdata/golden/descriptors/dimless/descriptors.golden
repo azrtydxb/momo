@@ -57,6 +57,4 @@ func ColumnByName(name string) (momo.ColumnRef, error) {
 }
 
 // ColumnNames lists the allowlisted names in declaration order.
-func ColumnNames() []string {
-	return []string{"id", "dims", "embedding"}
-}
+func ColumnNames() []string { return []string{"id", "dims", "embedding"} }

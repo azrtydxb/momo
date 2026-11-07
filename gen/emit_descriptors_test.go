@@ -97,7 +97,6 @@ func TestEmitDescriptorsDimensionlessVector(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !ok {
-		t.Logf("GOT:\n%s", src)
 		t.Fatal("descriptors differ from golden; review and rerun with -update")
 	}
 }
