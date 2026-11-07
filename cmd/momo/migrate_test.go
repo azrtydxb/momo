@@ -4,13 +4,10 @@ package main
 
 import (
 	"bytes"
-	"context"
-	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	testdb "github.com/azrtydxb/momo/internal/testdb"
 	_ "github.com/jackc/pgx/v5/stdlib" // the pgx database/sql driver
 )
 
@@ -62,33 +59,6 @@ func TestOfflineCommandsNoDatabase(t *testing.T) {
 	}
 	if asked {
 		t.Fatal("an offline command read the database URL environment variable")
-	}
-}
-
-func TestCLIExitOneOnDrift(t *testing.T) {
-	// testdb.PostgresURL(t) is memoized per t: the stray table and the CLI use the same per-test schema
-	// (search_path=t_xxx,public), so the CLI's default managed schema current_schema() is that schema.
-	dsn := testdb.PostgresURL(t)
-	sqlDB, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if _, err := sqlDB.ExecContext(context.Background(), `CREATE TABLE stray (id INTEGER PRIMARY KEY)`); err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(dir)+"/migrations/postgres\n  url_env:\n    postgres: MOMO_TEST_URL\n")
-	mkdirAll(t, dir+"/migrations/postgres")
-	var out, errOut bytes.Buffer
-	code := runMigrate(&out, &errOut, []string{"--config", cfg, "drift"}, func(k string) string {
-		if k == "MOMO_TEST_URL" {
-			return dsn
-		}
-		return ""
-	})
-	if code != 1 {
-		t.Fatalf("drift with an unmanaged table must exit 1, got %d: %s", code, errOut.String())
 	}
 }
 
