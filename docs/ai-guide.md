@@ -31,7 +31,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
-- Hybrid (full text plus vector) search, `MERGE` builder and window-function API
+- Hybrid (full text plus vector) search and the `MERGE` builder
   do not exist. Use `momo.SQL` / `momo.TypedSQL` for those.
 
 Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/quickstart/).

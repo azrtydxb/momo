@@ -59,7 +59,9 @@ type selectCore struct {
 	keysOnly bool
 	// preloads holds the Loader[T] values added by Preload (copy-on-write).
 	preloads []any
-	err      error
+	// distinctOn holds the DISTINCT ON expressions (see DistinctOn).
+	distinctOn []Expr
+	err        error
 }
 
 // SelectQuery builds and runs a SELECT whose rows scan into T.
@@ -455,7 +457,9 @@ func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 		b.writeByte(' ')
 	}
 	b.WriteString("SELECT ")
-	if s.distinct {
+	if len(s.distinctOn) > 0 {
+		sq.renderDistinctOn(b)
+	} else if s.distinct {
 		b.WriteString("DISTINCT ")
 	}
 	if s.cols == nil {
@@ -825,7 +829,9 @@ func (sq SelectQuery[T]) Count(ctx context.Context) (int64, error) {
 	inner := sq
 	// The count covers the whole filtered set: neither the ordering nor the
 	// page cursor applies.
-	inner.s.order = nil
+	if len(inner.s.distinctOn) == 0 { // DISTINCT ON keeps its ORDER BY: it picks the rows
+		inner.s.order = nil
+	}
 	inner.s.keyset = nil
 	c, err := compile(sq.q.Dialect(), func(b *Builder) {
 		b.WriteString("SELECT COUNT(*) FROM ")
