@@ -294,8 +294,8 @@ not a Momo model; `fk` missing or naming a missing field; `many2many` without
 reverse), or on a kind other than `has_one`/`has_many`; `polytype` column not a
 field of the target; many-to-many to the model's own type; `momo.Model` embedded
 by pointer; a generic model; `size` on a non-string; `dim` on a non-vector;
-sparsevec or bit field without `dim`; `scale` without `precision`; `notnull` on a pointer;
-nullable primary key; unknown tag option; Go type with no SQL mapping.
+sparsevec or bit field without `dim`; `scale` without `precision`; `notnull` on
+a pointer; nullable primary key; unknown tag option; Go type with no SQL mapping.
 
 What the generator emits per model `Task` (package `task`):
 

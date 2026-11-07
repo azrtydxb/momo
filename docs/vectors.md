@@ -50,7 +50,8 @@ which the root package re-exports as `momo.ErrInvalidVector`.
 Value rules, enforced before a value reaches the server:
 
 - The length must equal the column dimension declared on the
-  `VectorColumn`.
+  `VectorColumn`, unless the column is dimensionless (see
+  [Dimensionless columns](#dimensionless-columns)).
 - NaN and Inf are rejected.
 - A halfvec component must satisfy |x| <= 65504.
 - A dimension above 16000 is rejected for vector and halfvec.
@@ -111,8 +112,9 @@ and is the default; `Desc()` orders farthest first.
 product so that ascending order means closest. Passing a dense vector to a
 bit builder, or the reverse, does not compile (`testdata/compilefail`).
 
-The query vector is a bound argument. A dimension mismatch, NaN or an
-out-of-range value is a build error wrapping `ErrValidation`, reported by
+The query vector is a bound argument. A dimension mismatch (except on a
+dimensionless column, see [Dimensionless columns](#dimensionless-columns)),
+NaN or an out-of-range value is a build error wrapping `ErrValidation`, reported by
 `SQL()` or by the first execution, never a server error. A metric the dialect
 lacks is a build error wrapping `ErrUnsupported`. The metrics per dialect come
 from `dialect.Dialect.Vector`:
