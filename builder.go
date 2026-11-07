@@ -25,7 +25,15 @@ type Builder struct {
 	d    *dialect.Dialect
 	buf  []byte
 	args []any
-	err  error
+	// sens lists the indexes in args bound from FlagSensitive columns; argSens
+	// marks the next Arg calls as such. Hooks and loggers see a placeholder.
+	sens    []int
+	argSens bool
+	// sensSeen counts sensitive columns rendered so far; a predicate compares it
+	// before and after rendering its left operand to learn whether the operand
+	// reads a sensitive column, directly or inside an expression.
+	sensSeen int
+	err      error
 	// unqualified renders columns without their table qualifier. It is
 	// set while rendering SET targets, INSERT column lists, ON CONFLICT
 	// targets and RETURNING lists.
@@ -152,7 +160,39 @@ func (b *Builder) Arg(v any) {
 		return
 	}
 	b.args = append(b.args, v)
+	if b.argSens {
+		b.sens = append(b.sens, len(b.args)-1)
+	}
 	b.buf = b.d.AppendPlaceholder(b.buf, len(b.args))
+}
+
+// argFor binds v like Arg and records it as sensitive when flags carries
+// FlagSensitive, so QueryEvent.Args shows RedactedArg instead of the value.
+func (b *Builder) argFor(flags uint16, v any) {
+	prev := b.argSens
+	b.argSens = prev || flags&FlagSensitive != 0
+	b.Arg(v)
+	b.argSens = prev
+}
+
+// renderSens renders e and reports whether it read a sensitive column. The
+// result is the flag to bind the other operands of the predicate with.
+func (b *Builder) renderSens(e Expr, flags uint16) uint16 {
+	n := b.sensSeen
+	e.AppendSQL(b)
+	if b.sensSeen != n {
+		flags |= FlagSensitive
+	}
+	return flags
+}
+
+// exprFor renders e with every argument it binds recorded as sensitive when
+// flags carries FlagSensitive, for an expression assigned to such a column.
+func (b *Builder) exprFor(flags uint16, e Expr) {
+	prev := b.argSens
+	b.argSens = prev || flags&FlagSensitive != 0
+	e.AppendSQL(b)
+	b.argSens = prev
 }
 
 // SetErr records the first build error; rendering continues but the
@@ -196,6 +236,9 @@ func (b *Builder) unsupported(feature string) {
 type Compiled struct {
 	SQL  string
 	Args []any
+	// sens indexes the Args bound from sensitive columns; hooks get RedactedArg
+	// for them. The values sent to the database are not changed.
+	sens []int
 }
 
 func (c Compiled) String() string {
@@ -218,7 +261,7 @@ func compile(d *dialect.Dialect, render func(*Builder)) (Compiled, error) {
 	if b.err != nil {
 		return Compiled{}, b.err
 	}
-	return Compiled{SQL: string(b.buf), Args: b.args}, nil
+	return Compiled{SQL: string(b.buf), Args: b.args, sens: b.sens}, nil
 }
 
 // sqliteLiteral renders the value that would be bound (after DialectValuer

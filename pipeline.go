@@ -213,7 +213,7 @@ func (e *execer) batch(b Batcher, stmts []stmt) ([]Rows, error) {
 	evs := make([]*QueryEvent, len(stmts))
 	for i, s := range stmts {
 		cs[i] = s.c
-		ctxs[i], evs[i] = e.before(s.ctx, "select", s.table, s.rel, s.c.SQL, s.c.Args)
+		ctxs[i], evs[i] = e.before(s.ctx, "select", s.table, s.rel, s.c.SQL, s.c.Args, s.c.sens)
 	}
 	rows, err := b.SendBatch(ctxs[0], cs)
 	if err == nil && len(rows) != len(stmts) {

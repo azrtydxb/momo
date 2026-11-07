@@ -250,20 +250,20 @@ func (a ArithExpr[T]) AppendSQL(b *Builder) {
 // Add is e + v, for example in a SET: quota.SetExpr(momo.Add(quota, 5)).
 // Go methods cannot constrain a type parameter, so arithmetic is a function
 // that accepts numeric T only; a string column does not compile.
-func Add[T Numeric](e Expression[T], v T) ArithExpr[T] { return arith[T](e, " + ", argExpr{v}) }
+func Add[T Numeric](e Expression[T], v T) ArithExpr[T] { return arith[T](e, " + ", argExpr{v: v}) }
 
 // AddExpr is e + other, for example answers + EXCLUDED.answers:
 // answers.SetExpr(momo.AddExpr(answers, answers.Excluded())).
 func AddExpr[T Numeric](e, other Expression[T]) ArithExpr[T] { return arith[T](e, " + ", other) }
 
 // Sub is e - v.
-func Sub[T Numeric](e Expression[T], v T) ArithExpr[T] { return arith[T](e, " - ", argExpr{v}) }
+func Sub[T Numeric](e Expression[T], v T) ArithExpr[T] { return arith[T](e, " - ", argExpr{v: v}) }
 
 // SubExpr is e - other.
 func SubExpr[T Numeric](e, other Expression[T]) ArithExpr[T] { return arith[T](e, " - ", other) }
 
 // Mul is e * v.
-func Mul[T Numeric](e Expression[T], v T) ArithExpr[T] { return arith[T](e, " * ", argExpr{v}) }
+func Mul[T Numeric](e Expression[T], v T) ArithExpr[T] { return arith[T](e, " * ", argExpr{v: v}) }
 
 // MulExpr is e * other.
 func MulExpr[T Numeric](e, other Expression[T]) ArithExpr[T] { return arith[T](e, " * ", other) }

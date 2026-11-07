@@ -50,7 +50,8 @@ which the root package re-exports as `momo.ErrInvalidVector`.
 Value rules, enforced before a value reaches the server:
 
 - The length must equal the column dimension declared on the
-  `VectorColumn`.
+  `VectorColumn`, unless the column is dimensionless (see
+  [Dimensionless columns](#dimensionless-columns)).
 - NaN and Inf are rejected.
 - A halfvec component must satisfy |x| <= 65504.
 - A dimension above 16000 is rejected for vector and halfvec.
@@ -111,8 +112,9 @@ and is the default; `Desc()` orders farthest first.
 product so that ascending order means closest. Passing a dense vector to a
 bit builder, or the reverse, does not compile (`testdata/compilefail`).
 
-The query vector is a bound argument. A dimension mismatch, NaN or an
-out-of-range value is a build error wrapping `ErrValidation`, reported by
+The query vector is a bound argument. A dimension mismatch (except on a
+dimensionless column, see [Dimensionless columns](#dimensionless-columns)),
+NaN or an out-of-range value is a build error wrapping `ErrValidation`, reported by
 `SQL()` or by the first execution, never a server error. A metric the dialect
 lacks is a build error wrapping `ErrUnsupported`. The metrics per dialect come
 from `dialect.Dialect.Vector`:
@@ -188,6 +190,37 @@ returns the opclass for a column type and metric (`ExampleValidateVectorIndex`).
   rely on the server default of 100.
 - An index covers one plain column. Expression parts are rejected.
 - Vector indexes exist only on PostgreSQL. Another dialect gets an error.
+
+### Dimensionless columns
+
+A `vector.Vector` or `vector.HalfVector` field without a `dim` tag maps to the
+bare `vector` or `halfvec` type. Use it for a store whose embedding size
+depends on the configured model: each row carries its size in a `dims`
+column, and every search filters on it.
+
+```go
+type KbChunk struct {
+	momo.Model `momo:"table:kb_chunks"`
+	ID         int64         `momo:"pk,identity"`
+	Dims       int
+	Embedding  vector.Vector // no dim: any size
+}
+```
+
+- Generation emits a plain `vector` column and a `momo.VectorColumn` whose
+  `Dim()` is zero. `sparsevec` and `bit` still require `dim`.
+- A distance argument of any size is accepted; it is checked against its own
+  size, so NaN, Inf and an empty vector are still rejected. The column never
+  catches a size mismatch itself.
+- pgvector fails a distance between two sizes, so filter on `dims` in the same
+  query: `Where(chunk.Dims.Eq(len(q)))` plus `OrderBy(momo.CosineDistance(chunk.Embedding, q).Asc())`.
+- The migration round-trips the bare type and the next diff is empty.
+- Limit: pgvector cannot build an hnsw or ivfflat index on a dimensionless
+  column. Momo refuses one, with an error that wraps
+  `schema.ErrInvalidVectorIndex` and names the column. Searches run as a
+  sequential scan over the filtered rows. An expression or partial index such
+  as `((embedding::vector(1536))) WHERE dims = 1536` is not supported yet:
+  expression parts are rejected.
 
 ## Migrations
 
