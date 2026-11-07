@@ -108,7 +108,7 @@ func TestArrayOperatorsBindHostileValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, err := momo.Select[arrRow](db).From(momo.TableRef{Name: "arr_docs"}).
-		Columns(arrLiveID).Where(momo.ArrayContains(arrLiveTags, evil, "a,b", `"q"`)).Count(ctx)
+		Columns(arrLiveID, arrLiveTitle, arrLiveTags).Where(momo.ArrayContains(arrLiveTags, evil, "a,b", `"q"`)).Count(ctx)
 	if err != nil || n != 1 {
 		t.Fatalf("count = %d, %v", n, err)
 	}
