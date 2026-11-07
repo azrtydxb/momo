@@ -38,7 +38,7 @@ func logValues(t *testing.T, db *momo.DB) string {
 }
 
 func insertLog(ctx context.Context, q momo.Querier, v string) error {
-	_, err := momo.Exec(ctx, q, `INSERT INTO gm_log (v) VALUES ($1)`, v)
+	_, err := momo.Exec(ctx, q, `INSERT INTO gm_log (v) VALUES (?)`, v)
 	return err
 }
 

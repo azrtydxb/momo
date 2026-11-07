@@ -36,7 +36,8 @@ func TestGoMigrationFieldsAreChecked(t *testing.T) {
 
 func TestGoMigrationIdentityIsStable(t *testing.T) {
 	a := GoMigration{Version: "20260101000000", Name: "fill", Checksum: "v1", Up: goNoop}
-	if a.identity() != a.identity() || len(a.identity()) != 64 {
+	again := a
+	if a.identity() != again.identity() || len(a.identity()) != 64 {
 		t.Fatalf("identity must be a stable sha256 hex, got %q", a.identity())
 	}
 	b, c, d := a, a, a
