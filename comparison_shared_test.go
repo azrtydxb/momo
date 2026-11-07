@@ -96,7 +96,8 @@ func TestLibraryErrorsAreMatchable(t *testing.T) {
 			t.Fatal(err)
 		}
 		for i, ln := range strings.Split(string(src), "\n") {
-			if strings.Contains(ln, `errors.New("momo:`) {
+			// A package-level sentinel used as an Error Kind is matchable.
+			if strings.Contains(ln, `errors.New("momo:`) && !strings.HasPrefix(ln, "var err") {
 				t.Errorf("%s:%d: bare momo error without a sentinel kind: %s", f, i+1, strings.TrimSpace(ln))
 			}
 		}
