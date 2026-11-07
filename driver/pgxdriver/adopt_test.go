@@ -267,9 +267,15 @@ func TestUnwrapMomoBegunTxThenLegacyStatement(t *testing.T) {
 	if n := countRows(t, smdb); n != 1 {
 		t.Fatalf("rows = %d, want 1 (momo committed)", n)
 	}
+}
+
+// TestUnwrapMomoBegunPgxTxThenLegacyStatement is the pgxpool half; it is a
+// separate test because each test gets one schema and both create adopt_t.
+func TestUnwrapMomoBegunPgxTxThenLegacyStatement(t *testing.T) {
+	ctx := context.Background()
 
 	_, pmdb := adoptPgxDB(t)
-	err = pmdb.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+	err := pmdb.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 		ptx, ok := UnwrapPgxTx(tx)
 		if !ok {
 			t.Fatal("UnwrapPgxTx false on a pool tx")
