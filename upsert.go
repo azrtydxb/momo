@@ -22,8 +22,9 @@ import (
 // The version column is neither advanced nor checked on conflict: an upsert
 // overwrites the existing row without optimistic-lock detection. Explicit
 // identity values inserted with OVERRIDING SYSTEM VALUE do not advance the
-// PostgreSQL identity sequence, so later generated identities may collide
-// with them; the caller must setval the sequence.
+// PostgreSQL identity sequence, and explicit serial ids do not advance the
+// serial sequence either, so later generated keys may collide with them; the
+// caller must setval the sequence.
 //
 // When the conflict target is the primary key and every model carries a
 // non-zero identity value, the identity column joins the INSERT column list

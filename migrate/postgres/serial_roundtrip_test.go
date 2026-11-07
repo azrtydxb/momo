@@ -119,3 +119,43 @@ func TestSerialInsertReturnsGeneratedKey(t *testing.T) {
 		}
 	}
 }
+
+// TestSerialExplicitIDUpsert checks that an explicit id on a serial column is
+// accepted with OVERRIDING SYSTEM VALUE and written, and that the sequence
+// stays behind until the caller advances it with setval.
+func TestSerialExplicitIDUpsert(t *testing.T) {
+	db := testopen.Postgres(t)
+	applyStatements(t, db, planStatements(t, &schema.Schema{Dialect: "postgres"}, serialModelSchema(), migrate.DiffOptions{}))
+	ctx := context.Background()
+
+	for _, name := range []string{"first", "second"} {
+		if _, err := momo.Upsert[serialRow](db).Models([]serialRow{{ID: 100, Name: name}}).Exec(ctx); err != nil {
+			t.Fatalf("upsert %s: %v", name, err)
+		}
+	}
+	var n int
+	var name string
+	queryOne(t, db, `SELECT count(*) FROM serial_rows WHERE id = 100`, &n)
+	queryOne(t, db, `SELECT name FROM serial_rows WHERE id = 100`, &name)
+	if n != 1 || name != "second" {
+		t.Fatalf("explicit id 100: %d rows, name %q, want 1 row named second", n, name)
+	}
+
+	// The explicit id did not advance the sequence: the next generated key is 1.
+	var seq int64
+	queryOne(t, db, `SELECT nextval(pg_get_serial_sequence('serial_rows', 'id'))`, &seq)
+	if seq != 1 {
+		t.Fatalf("sequence advanced to %d by an explicit id, want 1", seq)
+	}
+	mustExec(t, db.Driver(), `SELECT setval(pg_get_serial_sequence('serial_rows', 'id'), 100)`)
+	row := serialRow{Name: "after"}
+	rows, err := momo.Insert[serialRow](db).Model(&row).ReturningAll().Rows(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got serialRow
+	if !rows.Next() || rows.ScanModel(&got) != nil || got.ID != 101 {
+		t.Fatalf("after setval the next id must be 101, got %+v (%v)", got, rows.Err())
+	}
+}

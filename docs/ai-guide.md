@@ -699,7 +699,7 @@ res, err := momo.Insert[models.Lock](q).
   is the proven fallback. Write the literals in the index exactly as Momo renders them: integers as `2`, floats in plain decimal with `.0` for whole numbers (`2.0`) for magnitudes from 1e-6 up to 1e21, and exponent form (`1e-07`, `1e+21`) outside that range; otherwise use `momo.SQL`. The values appear in the SQL text, so they show up in
   logs and traces.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
-  Explicit identity values do not advance the sequence: `setval` it yourself.
+  Explicit identity or serial values do not advance the sequence: `setval` it yourself.
 
 Raw SQL (escape hatches; the SQL text must be a constant, pass user input only
 as arguments):

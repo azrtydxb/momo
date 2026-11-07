@@ -535,7 +535,7 @@ func renderAlterColumn(c migrate.Change) ([]migrate.Statement, error) {
 	}
 	if before.Identity != after.Identity {
 		if before.Identity == "serial" || after.Identity == "serial" {
-			return nil, fmt.Errorf("column %q: converting between serial (%q to %q) needs a hand-written migration", after.Name, before.Identity, after.Identity)
+			return nil, serialConversionError(before, after)
 		}
 		switch after.Identity {
 		case "":
@@ -843,4 +843,24 @@ func renderCreateTrigger(c migrate.Change) ([]migrate.Statement, error) {
 		s += " WHEN (" + t.When + ")"
 	}
 	return one(s + " EXECUTE FUNCTION " + fn + "(" + strings.Join(args, ", ") + ")"), nil
+}
+
+// serialConversionError explains a refused change between serial and identity.
+// When identity is the only difference between the two columns, the message
+// names the tag to change; that is the usual case of a database adopted with
+// the identity tag although its ids are serial.
+func serialConversionError(before, after schema.Column) error {
+	b, a := before, after
+	b.Identity, a.Identity = "", ""
+	other := before
+	if before.Identity == "serial" {
+		other = after
+	}
+	if b == a && (other.Identity == "by_default" || other.Identity == "always") {
+		if before.Identity == "serial" {
+			return fmt.Errorf("column %q is a serial column in the database but the model declares identity: change the tag to serial (or write a migration converting it)", after.Name)
+		}
+		return fmt.Errorf("column %q is an identity column in the database but the model declares serial: change the tag to identity (or write a migration converting it)", after.Name)
+	}
+	return fmt.Errorf("column %q: converting between serial (%q to %q) needs a hand-written migration", after.Name, before.Identity, after.Identity)
 }

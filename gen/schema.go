@@ -202,6 +202,9 @@ func (b *schemaBuilder) applySerial(f *Field, col *schema.Column) {
 	case f.Tags.Default != "":
 		b.diag(f.Pos, fmt.Sprintf("field %s: serial conflicts with default", f.GoName))
 		return
+	case col.Nullable:
+		b.diag(f.Pos, fmt.Sprintf("field %s: serial columns are always NOT NULL; use a non-nullable Go type without the nullable tag", f.GoName))
+		return
 	}
 	for _, d := range b.dialects {
 		if d != dialect.Postgres {

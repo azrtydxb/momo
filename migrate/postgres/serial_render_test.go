@@ -46,12 +46,36 @@ func TestRenderSerialNeedsIntegerType(t *testing.T) {
 }
 
 func TestRenderSerialConversionRefused(t *testing.T) {
-	for _, pair := range [][2]string{{"by_default", "serial"}, {"serial", "by_default"}, {"", "serial"}, {"serial", ""}} {
-		before := &schema.Column{Name: "id", Type: "bigint", Identity: pair[0]}
-		after := &schema.Column{Name: "id", Type: "bigint", Identity: pair[1]}
-		_, err := mpg.Dialect{}.Render([]migrate.Change{{Kind: migrate.AlterColumn, Table: "t", Name: "id", Before: before, After: after}})
-		if err == nil || !strings.Contains(err.Error(), "hand-written migration") {
-			t.Fatalf("%q to %q: want a refusal, got %v", pair[0], pair[1], err)
+	cases := []struct {
+		before, after schema.Column
+		want          string
+	}{
+		{
+			schema.Column{Name: "id", Type: "bigint", Identity: "serial"},
+			schema.Column{Name: "id", Type: "bigint", Identity: "by_default"},
+			`column "id" is a serial column in the database but the model declares identity: change the tag to serial (or write a migration converting it)`,
+		},
+		{
+			schema.Column{Name: "id", Type: "bigint", Identity: "by_default"},
+			schema.Column{Name: "id", Type: "bigint", Identity: "serial"},
+			`column "id" is an identity column in the database but the model declares serial: change the tag to identity (or write a migration converting it)`,
+		},
+		{
+			schema.Column{Name: "id", Type: "bigint"},
+			schema.Column{Name: "id", Type: "bigint", Identity: "serial"},
+			"needs a hand-written migration",
+		},
+		{
+			schema.Column{Name: "id", Type: "bigint", Identity: "serial"},
+			schema.Column{Name: "id", Type: "integer", Identity: "by_default"},
+			"needs a hand-written migration",
+		},
+	}
+	for _, tc := range cases {
+		before, after := tc.before, tc.after
+		_, err := mpg.Dialect{}.Render([]migrate.Change{{Kind: migrate.AlterColumn, Table: "t", Name: "id", Before: &before, After: &after}})
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%+v to %+v: want %q, got %v", tc.before, tc.after, tc.want, err)
 		}
 	}
 }

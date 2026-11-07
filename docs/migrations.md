@@ -593,12 +593,21 @@ that. Without that privilege it fails with an error naming it. It takes the
 lock and refuses on dirty or checksum problems like `apply`.
 
 A database that uses `serial` or `bigserial` ids is adopted with the `serial`
-tag, as in `pk,serial` on an `int64` field. The tag renders `smallserial`, `serial`
-or `bigserial` by the Go integer width, and inspection reads a column whose
-default is `nextval` of a sequence owned by the column back as the same
-serial column, so the snapshot matches and `diff` stays empty. Turning an
-existing column into or out of serial is refused by `diff` with
-an error that asks for a hand-written migration. `serial` is PostgreSQL only.
+tag, as in `pk,serial` on an `int64` field. The tag renders `smallserial`,
+`serial` or `bigserial` by the Go integer width. Inspection reads a column
+whose default is `nextval` of a sequence owned by the column back as the same
+serial column, so the snapshot matches and `diff` stays empty. `serial` is
+PostgreSQL only; other dialects refuse it. Turning an existing column into or
+out of serial is refused by `diff`, with an error that asks for a
+hand-written migration.
+
+Upgrade note: inspection used to report a serial column as `identity`. If you
+adopted a serial database with `pk,identity` on the model, or kept a snapshot
+taken from one, `diff` now stops with `column "id" is a serial column in the
+database but the model declares identity`. Change the tag to `pk,serial` and
+regenerate the snapshot; or write a migration that converts the column to
+identity. Momo does not treat the two as equal, because a new environment
+would then be built with identity while production keeps its serial.
 
 `AutoMigrate` is a Go API for development and tests. It applies additive
 changes only, writes no history and no files, and returns the rest as
