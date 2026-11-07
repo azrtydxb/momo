@@ -87,7 +87,7 @@ func TestPrismaDatabaseDiffsClean(t *testing.T) {
 
 	withoutDefault := prismaModels(t, nil)
 	withoutDefault.Extensions = live.Extensions
-	changes, _, err = migrate.Diff(live, withoutDefault, migrate.DiffOptions{})
+	changes, _, err = migrate.Diff(live, withoutDefault, migrate.DiffOptions{AllowDestructive: true})
 	if err != nil || len(changes) == 0 {
 		t.Fatalf("timestamptz models must differ from timestamp(3) columns: %v %v", changes, err)
 	}
