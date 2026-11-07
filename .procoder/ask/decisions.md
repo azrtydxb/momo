@@ -141,3 +141,9 @@ Decision (2026-11-07): merge PR #28 into kuvryn-license main once CI is green.
 - Leave Scout's settings alone; the user updates the key
 
 Decision (2026-11-07): replace the key. Scout's default provider now uses the current fastllm key (…9f8c); the stored …4a1c key was rejected. The models were online throughout.
+
+## GitHub repository security settings for azrtydxb/momo (security audit M4)
+
+- Enable private vulnerability reporting, secret scanning with push protection, and protect main (require the CI checks, no force push, no deletion) (recommended)
+- Enable private vulnerability reporting and secret scanning only; leave main unprotected
+- Leave the repository settings as they are
