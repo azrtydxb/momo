@@ -68,6 +68,7 @@ func Diff(from, to *schema.Schema, opts DiffOptions) (changes []Change, hints []
 	if d.d == "" {
 		d.d = from.Dialect
 	}
+	d.errs = append(d.errs, serialOutsidePostgres(to, d.d)...)
 	d.run(from, to)
 	for _, k := range sortedMapKeys(opts.RenameTables) {
 		if !d.usedRT[k] {
@@ -1141,4 +1142,23 @@ func stagedSnapshot(desired, from *schema.Schema, changes []Change, opts DiffOpt
 		return desired
 	}
 	return &out
+}
+
+// serialOutsidePostgres reports each serial column of s when the target
+// dialect is not PostgreSQL. A serial column is a PostgreSQL sequence default;
+// no other renderer knows it, so a snapshot that carries one is refused
+// rather than rendered as a plain integer.
+func serialOutsidePostgres(s *schema.Schema, d dialect.Name) []error {
+	if d == "" || d == dialect.Postgres {
+		return nil
+	}
+	var errs []error
+	for _, t := range s.Tables {
+		for _, c := range t.Columns {
+			if c.Identity == "serial" {
+				errs = append(errs, fmt.Errorf("migrate: column %s.%s is serial, which is supported on postgres only, not %s; use identity", t.Name, c.Name, d))
+			}
+		}
+	}
+	return errs
 }

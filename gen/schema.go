@@ -178,11 +178,50 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 		col.Identity = "by_default"
 	}
 	col.Type = b.columnType(f, core)
+	if tg.Serial {
+		b.applySerial(f, &col)
+	}
 	if tg.Enum != "" {
 		col.Enum = tg.Enum
 		b.enumUses = append(b.enumUses, enumUse{name: tg.Enum, pos: f.Pos})
 	}
 	return col
+}
+
+// serialTypes are the integer column types a serial column can have.
+var serialTypes = map[string]bool{"smallint": true, "integer": true, "bigint": true}
+
+// applySerial marks col as a serial column, a sequence-backed integer whose
+// DEFAULT is nextval of a sequence owned by the column. It is PostgreSQL
+// only; it excludes identity, an explicit default, and non-integer types.
+func (b *schemaBuilder) applySerial(f *Field, col *schema.Column) {
+	switch {
+	case f.Tags.Identity:
+		b.diag(f.Pos, fmt.Sprintf("field %s: serial conflicts with identity", f.GoName))
+		return
+	case f.Tags.Default != "":
+		b.diag(f.Pos, fmt.Sprintf("field %s: serial conflicts with default", f.GoName))
+		return
+	case col.Nullable:
+		b.diag(f.Pos, fmt.Sprintf("field %s: serial columns are always NOT NULL; use a non-nullable Go type without the nullable tag", f.GoName))
+		return
+	}
+	for _, d := range b.dialects {
+		if d != dialect.Postgres {
+			b.diag(f.Pos, fmt.Sprintf("field %s: serial is not supported on %s; use identity", f.GoName, d))
+			return
+		}
+	}
+	if b.primary != dialect.Postgres {
+		b.diag(f.Pos, fmt.Sprintf("field %s: serial is not supported on %s; use identity", f.GoName, b.primary))
+		return
+	}
+	if !serialTypes[schema.NormalizeType(b.primary, col.Type)] {
+		b.diag(f.Pos, fmt.Sprintf("field %s: serial needs an integer column, not %s", f.GoName, col.Type))
+		return
+	}
+	col.Identity = "serial"
+	col.Type = schema.NormalizeType(b.primary, col.Type)
 }
 
 // vectorKinds maps the pgvector Go type names to their SQL type.

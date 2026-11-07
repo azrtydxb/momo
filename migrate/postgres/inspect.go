@@ -290,7 +290,7 @@ func (in *inspector) column(ctx context.Context, rel uint32, x rawColumn) (schem
 			return col, err
 		}
 		if serial {
-			col.Identity, def = "by_default", ""
+			col.Identity, def = "serial", ""
 		}
 	}
 	col.Default = def
