@@ -19,6 +19,8 @@ type options struct {
 	lockWait    time.Duration
 	lockWaitSet bool
 	noSum       bool
+	// goMigrations are the migrations registered with WithGoMigrations.
+	goMigrations []GoMigration
 	// lockTimeout and statementTimeout, when non-nil, were given explicitly
 	// (possibly as zero) and override the Config values.
 	lockTimeout, statementTimeout *time.Duration

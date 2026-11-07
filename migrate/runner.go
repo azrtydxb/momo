@@ -15,6 +15,9 @@ import (
 // RunEnv is what RunMigration needs: the pinned connection every statement and
 // history write runs on, the dialect, and the clock.
 type RunEnv struct {
+	// Driver is the driver the Go migration handles are built on. Only a
+	// migration of kind "go" needs it.
+	Driver  momo.Driver
 	Conn    momo.PinnedConn
 	Dialect Dialect
 	Clock   func() time.Time
@@ -64,6 +67,12 @@ func runMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (A
 		kind = "sql"
 	}
 	rec := HistoryRow{Version: p.Version, Name: p.Name, Checksum: p.Checksum, ApplyID: applyID, Kind: kind, AppliedAt: start}
+	if p.Go != nil {
+		if p.NoTx {
+			return runGoNoTx(ctx, env, h, rec, p, start)
+		}
+		return runTransactional(ctx, env, h, rec, p, start)
+	}
 	if p.NoTx || hasNoTx(p.Statements) {
 		return runNonTransactional(ctx, env, h, rec, p, start)
 	}
@@ -111,7 +120,12 @@ func runTransactional(ctx context.Context, env RunEnv, h historyWriter, rec Hist
 	if err := h.insert(ctx, tx, rec); err != nil {
 		return failed(err)
 	}
-	n, err := execAll(ctx, tx, p.Statements, nil)
+	var n int
+	if p.Go != nil {
+		err = callGo(ctx, env, p, tx)
+	} else {
+		n, err = execAll(ctx, tx, p.Statements, nil)
+	}
 	if err != nil {
 		return failed(err)
 	}
@@ -136,18 +150,7 @@ func runNonTransactional(ctx context.Context, env RunEnv, h historyWriter, rec H
 	n := 0
 	for _, s := range p.Statements {
 		if _, err := env.Conn.Exec(ctx, s.SQL, nil); err != nil {
-			cause := fmt.Errorf("statement %d: %w", n+1, redact(err))
-			_, ms := elapsed(env, start)
-			// The caller's context may be the reason for the failure, so the
-			// failure record is written on a context that outlives it.
-			fctx, cancel := failureContext(ctx)
-			defer cancel()
-			if herr := env.recordOnFailure(fctx, func(x execer) error {
-				return h.finish(fctx, x, p.Version, StatusFailed, n, RedactURLs(cause.Error()), ms)
-			}); herr != nil {
-				cause = errors.Join(cause, fmt.Errorf("record failed: %w", herr))
-			}
-			return Applied{Statements: n}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, cause)
+			return failNonTx(ctx, env, h, p, n, fmt.Errorf("statement %d: %w", n+1, redact(err)), start)
 		}
 		n++
 		if err := h.progress(ctx, env.Conn, p.Version, n); err != nil {
@@ -159,6 +162,42 @@ func runNonTransactional(ctx context.Context, env RunEnv, h historyWriter, rec H
 		return Applied{Statements: n}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
 	}
 	return Applied{Version: p.Version, Statements: n, Duration: d}, nil
+}
+
+// failNonTx records a failed no-transaction migration: the row stays failed,
+// which is dirty until resolved.
+func failNonTx(ctx context.Context, env RunEnv, h historyWriter, p Pending, n int, cause error, start time.Time) (Applied, error) {
+	_, ms := elapsed(env, start)
+	// The caller's context may be the reason for the failure, so the failure
+	// record is written on a context that outlives it.
+	fctx, cancel := failureContext(ctx)
+	defer cancel()
+	if herr := env.recordOnFailure(fctx, func(x execer) error {
+		return h.finish(fctx, x, p.Version, StatusFailed, n, RedactURLs(cause.Error()), ms)
+	}); herr != nil {
+		cause = errors.Join(cause, fmt.Errorf("record failed: %w", herr))
+	}
+	return Applied{Statements: n}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, cause)
+}
+
+// runGoNoTx runs a Go migration without a transaction. It writes a running row,
+// calls the function and then marks the row applied; an error leaves it failed.
+func runGoNoTx(ctx context.Context, env RunEnv, h historyWriter, rec HistoryRow, p Pending, start time.Time) (Applied, error) {
+	if err := h.deleteRolledBack(ctx, env.Conn, p.Version); err != nil {
+		return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+	}
+	rec.Status = StatusRunning
+	if err := h.insert(ctx, env.Conn, rec); err != nil {
+		return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+	}
+	if err := callGo(ctx, env, p, nil); err != nil {
+		return failNonTx(ctx, env, h, p, 0, redact(err), start)
+	}
+	d, ms := elapsed(env, start)
+	if err := h.finish(ctx, env.Conn, p.Version, StatusApplied, 0, "", ms); err != nil {
+		return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+	}
+	return Applied{Version: p.Version, Duration: d}, nil
 }
 
 // execAll runs stmts in order and returns how many succeeded. after is called

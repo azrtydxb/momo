@@ -114,6 +114,8 @@ type Pending struct {
 	Statements []Statement
 	NoTx       bool
 	Checksum   string // hex sha256 of the up file, recorded in the history row
+	// Go is the migration to run when Kind is "go"; nil for SQL.
+	Go *GoMigration
 }
 
 // State is the status of one migration version: "pending", "applied", "dirty", "mismatch" or "missing".
