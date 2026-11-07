@@ -92,9 +92,29 @@ Two independent checks, both SHA-256 of the file bytes:
 
 ### History table
 
-`momo_migrations`, created unqualified, so it lives in the first schema of the
-session `search_path`. `Config.Schemas[0]` (`migrate.schemas`) must equal
-`current_schema()` or the engine returns a configuration error naming both.
+`momo_migrations`. Every statement against it (read, insert, update, delete,
+the `CREATE TABLE` and the advisory-lock key's schema) names the table
+schema-qualified and quoted, for example `"app"."momo_migrations"`. The schema
+is resolved once, under the lock, before the first migration statement runs, so
+a migration that changes `search_path` cannot redirect the history writes.
+
+- An existing table is found the way earlier versions found it, through the
+  session `search_path`, and its schema is then used. Installs made with the
+  unqualified name keep working, and no second table is created.
+- The resolved object must be a regular table in a permanent schema. A view,
+  foreign table or temporary table named `momo_migrations` earlier on the
+  `search_path` is refused with an error naming it, never used. Anyone who
+  can create objects in a schema ahead of the real one on the `search_path`
+  could otherwise capture the history writes with the migrator's privileges;
+  keep such schemas writable only by the migrator.
+- With no table yet, it is created in `current_schema()`.
+  `Config.Schemas[0]` (`migrate.schemas`) must equal `current_schema()` or the
+  engine returns a configuration error naming both.
+- momo does not `SET search_path` for the migration session. Migrations are
+  written against the `search_path` of the connection you give momo and may
+  rely on it; qualify the history table, not the migrations. Set the
+  `search_path` in the connection URL, and pin it per role with
+  `ALTER ROLE` on the migrator role.
 
 | Column               | Type             | Meaning                                                                                   |
 | -------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
@@ -626,14 +646,35 @@ changes only, writes no history and no files, and returns the rest as
   by `***` before it is stored (`TestHistoryErrorIsRedacted`).
 - A warning on stderr (not a failure) when a command that needs a database is
   given a URL with `sslmode=disable` and any non-local host:
-  `TLS is disabled (sslmode=disable) for remote host H: credentials and data cross the network unencrypted; use sslmode=require or stronger`.
-  It names the hosts only.
-  `localhost`, `127.0.0.1`, `::1` and unix socket paths do not warn. Use
+  `TLS is not enforced (sslmode=disable) for remote host H: credentials and data can cross the network unencrypted; use sslmode=verify-full`.
+  It names the hosts only. It also fires when the URL or key=value string has
+  no `sslmode` (libpq then uses `prefer`, which falls back to plaintext), for
+  `allow` and `prefer`, for key=value connection strings, and when `sslmode`
+  comes from `PGSSLMODE`; a host missing from the string is read from
+  `PGHOST`. `localhost`, `127.0.0.1`, `::1`, unix socket paths and no host at
+  all do not warn, and neither do `require`, `verify-ca` and `verify-full`.
+  `require` encrypts but does not check the server's identity, so use
   `sslmode=verify-full` against a real server.
 - Do not pass the URL with `--url` on shared hosts (momo warns); use
   `migrate.url_env`, `MOMO_DATABASE_URL` or `--url -` (stdin).
 - Review `*.up.sql` in code review like any code: `apply` runs it as the
   connected role, and `momo.sum` only detects change, not intent.
+- Tamper detection is against accidental edits, not an attacker.
+  `momo migrate hash` rewrites `momo.sum` to match whatever is on disk, and
+  `momo migrate rehash --accept` stores the checksum of whatever file is on
+  disk in the history row. Both trust the files completely: anyone who can edit the
+  migration files and run those commands can make an edited migration pass
+  every check. Protect the migration directory with code review and write
+  access control, and the database with the migrator role's grants; `momo.sum`
+  does not.
+- `drift` and `baseline` execute model DDL on the target database. To compare
+  declared text with what the database reports, they create a scratch schema
+  and run the declared definitions (defaults, checks, index predicates, view
+  queries, function bodies, policy and trigger expressions) in a transaction
+  that is rolled back. That needs `CREATE` on the database, runs SQL taken
+  from your snapshots and models, and takes locks while it runs. Run them
+  against a scratch database restored from a backup, or a clone, rather than
+  production.
 
 ## Upgrading: generated file header
 

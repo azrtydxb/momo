@@ -130,7 +130,11 @@ func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, vers
 			}
 		}
 	}()
-	w := historyWriter{d: e.opts.dialect}
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if err != nil {
+		return err
+	}
+	w := historyWriter{d: e.opts.dialect, tbl: tbl}
 	now := e.opts.clock().UTC()
 	for _, f := range files {
 		if f.Kind != "up" || f.Version > version || have[f.Version] {

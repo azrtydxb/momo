@@ -91,10 +91,14 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 // history creates the history table when it is missing and reads it. Only
 // callers that hold the migration lock may use it.
 func (e *Engine) history(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
-	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if err != nil {
 		return nil, err
 	}
-	return ReadHistory(ctx, c)
+	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
+		return nil, err
+	}
+	return readHistoryRows(ctx, c, tbl)
 }
 
 // undefinedTable is the SQLSTATE of a query on a table that does not exist.
@@ -104,7 +108,16 @@ const undefinedTable = "42P01"
 // has none yet has an empty history. Plan and Status use it so they stay
 // read-only and cannot race the first Apply on CREATE TABLE.
 func (e *Engine) readHistory(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
-	hist, err := ReadHistory(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if err != nil {
+		return nil, err
+	}
+	return e.readHistoryAt(ctx, c, tbl)
+}
+
+// readHistoryAt is readHistory for a history table reference resolved earlier.
+func (e *Engine) readHistoryAt(ctx context.Context, c momo.PinnedConn, tbl string) ([]HistoryRow, error) {
+	hist, err := readHistoryRows(ctx, c, tbl)
 	var s interface{ SQLState() string }
 	if errors.As(err, &s) && s.SQLState() == undefinedTable {
 		return nil, nil
@@ -415,11 +428,15 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 
 	// Read the history without creating it: a database that has none has an
 	// empty history, and an Apply with nothing to do must write nothing.
-	hist, err := e.readHistory(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkHistoryFormat(ctx, c); err != nil {
+	hist, err := e.readHistoryAt(ctx, c, tbl)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkHistoryFormat(ctx, c, tbl); err != nil {
 		return nil, err
 	}
 	if err := dirtyError(hist); err != nil {
@@ -447,7 +464,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	// The history table is created under the lock, so two first-time callers
 	// cannot race on CREATE TABLE. EnsureHistory also refuses a table written
 	// with a newer format.
-	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
+	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
 		return nil, err
 	}
 	var b [4]byte
@@ -455,7 +472,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		return nil, fmt.Errorf("migrate: apply id: %w", err)
 	}
 	rep = &Report{ApplyID: e.opts.clock().UTC().Format(applyIDLayout) + "-" + hex.EncodeToString(b[:])}
-	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin}
+	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin, HistoryTable: tbl}
 	for _, p := range pending {
 		if o.To != "" && p.Version > o.To {
 			break
@@ -561,7 +578,14 @@ func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState
 		return err
 	}
 	defer func() { err = end(err) }()
-	hist, err := e.history(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if err != nil {
+		return err
+	}
+	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
+		return err
+	}
+	hist, err := readHistoryRows(ctx, c, tbl)
 	if err != nil {
 		return err
 	}
@@ -578,10 +602,10 @@ func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState
 	var q string
 	var args []any
 	if state == ResolveApplied {
-		q = fmt.Sprintf(`UPDATE momo_migrations SET status = %s, error = '' WHERE version = %s AND status IN ('running', 'failed')`, ph(d, 1), ph(d, 2))
+		q = fmt.Sprintf(`UPDATE %s SET status = %s, error = '' WHERE version = %s AND status IN ('running', 'failed')`, tbl, ph(d, 1), ph(d, 2))
 		args = []any{StatusApplied, version}
 	} else {
-		q = fmt.Sprintf(`DELETE FROM momo_migrations WHERE version = %s AND status IN ('running', 'failed')`, ph(d, 1))
+		q = fmt.Sprintf(`DELETE FROM %s WHERE version = %s AND status IN ('running', 'failed')`, tbl, ph(d, 1))
 		args = []any{version}
 	}
 	if _, err := c.Exec(ctx, q, args); err != nil {
