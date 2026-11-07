@@ -19,7 +19,7 @@ GitHub issue #29, found by the NovaCRM port. A pgvector column declared without 
 
 ## Evidence
 
-CI run 42409354133 (workflow ci-agent) on 7ba44fe: success.
+CI run 42410769232 (workflow ci-agent) on 663a2db (review-fix round, merged with sprint-5): success. Earlier run 42409354133 on 7ba44fe: success.
 
 - Docs: docs/TYPE_MAPPING.md, docs/ai-guide.md, docs/capabilities.md and docs/vectors.md (new Dimensionless columns section).
 - Golden: gen TestEmitDescriptorsDimensionlessVector and TestDimensionlessVectorColumns.
