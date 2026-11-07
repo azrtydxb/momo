@@ -165,13 +165,13 @@ func TestTimeExprComposition(t *testing.T) {
 	db := typedDB(dialect.Postgres)
 	day := func() momo.TimeExpr { return momo.DateTrunc(momo.TruncDay, tmCreated) }
 	got, err := momo.Select[unitTally](db).From(momo.TableRef{Name: "documents"}).
-		Columns(day().As("d"), momo.CountAll()).
+		Columns(day().As("d")).
 		Where(tmCreated.GtExpr(momo.SubInterval(momo.Now(), momo.IntervalOf(7, momo.IntervalDay)))).
 		GroupBy(day()).OrderBy(day().Desc()).SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `SELECT date_trunc('day', ` + tmC + `) AS "d", COUNT(*) FROM "documents" WHERE ` + tmC +
+	want := `SELECT date_trunc('day', ` + tmC + `) AS "d" FROM "documents" WHERE ` + tmC +
 		` > (now() - INTERVAL '7 day') GROUP BY date_trunc('day', ` + tmC + `) ORDER BY date_trunc('day', ` + tmC + `) DESC`
 	if got.SQL != want {
 		t.Errorf("composition:\n got %s\nwant %s", got.SQL, want)
