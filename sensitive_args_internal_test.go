@@ -20,7 +20,7 @@ func TestSensitiveTupleInAndPKPredicateMarkArgs(t *testing.T) {
 		"primary key":         {updPKEq{"t", "id", "s1", FlagPK | FlagSensitive}, []int{0}},
 		"plain primary key":   {updPKEq{"t", "id", 1, FlagPK}, nil},
 	}
-	for _, d := range []*dialect.Dialect{dialect.Postgres, dialect.SQLite} {
+	for _, d := range []*dialect.Dialect{dialect.For(dialect.Postgres), dialect.For(dialect.SQLite)} {
 		for name, c := range cases {
 			t.Run(string(d.Name)+"/"+name, func(t *testing.T) {
 				comp, err := compile(d, func(b *Builder) { c.p.AppendSQL(b) })
