@@ -19,6 +19,7 @@ import (
 type jsonPayload = map[string]any
 
 var (
+	jsonDoc    = momo.NewColumn[types.JSON[jsonPayload]]("events", "after", 0)
 	jsonAfter  = momo.NewColumn[types.JSON[jsonPayload]]("events", "after", momo.FlagSensitive)
 	jsonBefore = momo.NewNullColumn[types.JSON[jsonPayload]]("events", "before", 0)
 )
@@ -38,41 +39,41 @@ func TestJSONOperatorsGolden(t *testing.T) {
 		want string
 		args []any
 	}{
-		{"pg text eq", dialect.Postgres, momo.JSONText(jsonAfter, "via").Eq("api"),
+		{"pg text eq", dialect.Postgres, momo.JSONText(jsonDoc, "via").Eq("api"),
 			`("events"."after" ->> 'via') = $1`, []any{"api"}},
-		{"pg numeric key is a key", dialect.Postgres, momo.JSONText(jsonAfter, "0").Eq("x"),
+		{"pg numeric key is a key", dialect.Postgres, momo.JSONText(jsonDoc, "0").Eq("x"),
 			`("events"."after" ->> '0') = $1`, []any{"x"}},
-		{"pg key with dot is bound", dialect.Postgres, momo.JSONText(jsonAfter, "a.b").Eq("x"),
+		{"pg key with dot is bound", dialect.Postgres, momo.JSONText(jsonDoc, "a.b").Eq("x"),
 			`("events"."after" ->> $1) = $2`, []any{"a.b", "x"}},
 		{"pg text on nullable", dialect.Postgres, momo.JSONText(jsonBefore, "a'b").Ne("x"),
 			`("events"."before" ->> $1) <> $2`, []any{"a'b", "x"}},
-		{"pg text in", dialect.Postgres, momo.JSONText(jsonAfter, "via").In("a", "b"),
+		{"pg text in", dialect.Postgres, momo.JSONText(jsonDoc, "via").In("a", "b"),
 			`("events"."after" ->> 'via') IN ($1, $2)`, []any{"a", "b"}},
-		{"pg text is null", dialect.Postgres, momo.JSONText(jsonAfter, "via").IsNull(),
+		{"pg text is null", dialect.Postgres, momo.JSONText(jsonDoc, "via").IsNull(),
 			`("events"."after" ->> 'via') IS NULL`, nil},
-		{"pg path", dialect.Postgres, momo.JSONPath(jsonAfter, "a", "0", "b").Eq("x"),
+		{"pg path", dialect.Postgres, momo.JSONPath(jsonDoc, "a", "0", "b").Eq("x"),
 			`("events"."after" #>> '{a,0,b}') = $1`, []any{"x"}},
-		{"pg path unsafe element is bound", dialect.Postgres, momo.JSONPath(jsonAfter, "a", "b,c").Eq("x"),
+		{"pg path unsafe element is bound", dialect.Postgres, momo.JSONPath(jsonDoc, "a", "b,c").Eq("x"),
 			`("events"."after" #>> $1) = $2`, []any{[]string{"a", "b,c"}, "x"}},
-		{"pg contains", dialect.Postgres, momo.JSONContains(jsonAfter, map[string]any{"via": "api"}),
+		{"pg contains", dialect.Postgres, momo.JSONContains(jsonDoc, map[string]any{"via": "api"}),
 			`("events"."after" @> CAST($1 AS jsonb))`, []any{`{"via":"api"}`}},
-		{"pg has key", dialect.Postgres, momo.JSONHasKey(jsonAfter, "via"),
+		{"pg has key", dialect.Postgres, momo.JSONHasKey(jsonDoc, "via"),
 			`("events"."after" ? $1)`, []any{"via"}},
-		{"sqlite text", dialect.SQLite, momo.JSONText(jsonAfter, "via").Eq("api"),
+		{"sqlite text", dialect.SQLite, momo.JSONText(jsonDoc, "via").Eq("api"),
 			`CAST(json_extract("events"."after", '$."via"') AS TEXT) = ?`, []any{"api"}},
-		{"sqlite numeric key stays an object key", dialect.SQLite, momo.JSONText(jsonAfter, "0").Eq("x"),
+		{"sqlite numeric key stays an object key", dialect.SQLite, momo.JSONText(jsonDoc, "0").Eq("x"),
 			`CAST(json_extract("events"."after", '$."0"') AS TEXT) = ?`, []any{"x"}},
-		{"sqlite has numeric key is an object key", dialect.SQLite, momo.JSONHasKey(jsonAfter, "0"),
+		{"sqlite has numeric key is an object key", dialect.SQLite, momo.JSONHasKey(jsonDoc, "0"),
 			`(json_type("events"."after", ?) IS NOT NULL)`, []any{`$."0"`}},
-		{"sqlite path", dialect.SQLite, momo.JSONPath(jsonAfter, "a", "0", "b").Eq("x"),
+		{"sqlite path", dialect.SQLite, momo.JSONPath(jsonDoc, "a", "0", "b").Eq("x"),
 			`CAST(json_extract("events"."after", '$."a"[0]."b"') AS TEXT) = ?`, []any{"x"}},
-		{"sqlite has key", dialect.SQLite, momo.JSONHasKey(jsonAfter, "via"),
+		{"sqlite has key", dialect.SQLite, momo.JSONHasKey(jsonDoc, "via"),
 			`(json_type("events"."after", ?) IS NOT NULL)`, []any{`$."via"`}},
-		{"mysql text", dialect.MySQL, momo.JSONText(jsonAfter, "via").Eq("api"),
+		{"mysql text", dialect.MySQL, momo.JSONText(jsonDoc, "via").Eq("api"),
 			"JSON_UNQUOTE(JSON_EXTRACT(`events`.`after`, '$.\"via\"')) = ?", []any{"api"}},
-		{"mysql contains", dialect.MySQL, momo.JSONContains(jsonAfter, []string{"a"}),
+		{"mysql contains", dialect.MySQL, momo.JSONContains(jsonDoc, []string{"a"}),
 			"JSON_CONTAINS(`events`.`after`, CAST(? AS JSON))", []any{`["a"]`}},
-		{"mysql has key", dialect.MySQL, momo.JSONHasKey(jsonAfter, "via"),
+		{"mysql has key", dialect.MySQL, momo.JSONHasKey(jsonDoc, "via"),
 			"JSON_CONTAINS_PATH(`events`.`after`, 'one', ?)", []any{`$."via"`}},
 	}
 	for _, c := range cases {
@@ -96,7 +97,7 @@ func TestJSONOperatorsGolden(t *testing.T) {
 
 // Catches: the extraction unusable in ORDER BY or the select list.
 func TestJSONTextOrderAndColumns(t *testing.T) {
-	e := momo.JSONText(jsonAfter, "via")
+	e := momo.JSONText(jsonDoc, "via")
 	got, err := momo.Select[unitTally](typedDB(dialect.Postgres)).From(momo.TableRef{Name: "events"}).
 		Columns(e).OrderBy(e.Desc()).SQL()
 	if err != nil {
@@ -132,17 +133,17 @@ func TestJSONOperatorErrors(t *testing.T) {
 		p    momo.Predicate
 		kind error
 	}{
-		{"empty key", dialect.Postgres, momo.JSONText(jsonAfter, "").Eq("x"), momo.ErrValidation},
-		{"empty path", dialect.Postgres, momo.JSONPath(jsonAfter).Eq("x"), momo.ErrValidation},
-		{"quote on sqlite", dialect.SQLite, momo.JSONText(jsonAfter, `a"b`).Eq("x"), momo.ErrValidation},
-		{"quote on postgres is fine", dialect.Postgres, momo.JSONText(jsonAfter, `a"b`).Eq("x"), nil},
-		{"control char on mysql", dialect.MySQL, momo.JSONText(jsonAfter, "a\nb").Eq("x"), momo.ErrValidation},
-		{"control char on sqlite", dialect.SQLite, momo.JSONHasKey(jsonAfter, "a\x01b"), momo.ErrValidation},
-		{"backslash on sqlite", dialect.SQLite, momo.JSONText(jsonAfter, `a\b`).Eq("x"), momo.ErrValidation},
-		{"backslash on mysql is escaped", dialect.MySQL, momo.JSONText(jsonAfter, `a\b`).Eq("x"), nil},
-		{"has key empty", dialect.Postgres, momo.JSONHasKey(jsonAfter, ""), momo.ErrValidation},
-		{"contains on sqlite", dialect.SQLite, momo.JSONContains(jsonAfter, jsonPayload{"a": 1}), momo.ErrUnsupported},
-		{"unencodable value", dialect.Postgres, momo.JSONContains(jsonAfter, make(chan int)), momo.ErrValidation},
+		{"empty key", dialect.Postgres, momo.JSONText(jsonDoc, "").Eq("x"), momo.ErrValidation},
+		{"empty path", dialect.Postgres, momo.JSONPath(jsonDoc).Eq("x"), momo.ErrValidation},
+		{"quote on sqlite", dialect.SQLite, momo.JSONText(jsonDoc, `a"b`).Eq("x"), momo.ErrValidation},
+		{"quote on postgres is fine", dialect.Postgres, momo.JSONText(jsonDoc, `a"b`).Eq("x"), nil},
+		{"control char on mysql", dialect.MySQL, momo.JSONText(jsonDoc, "a\nb").Eq("x"), momo.ErrValidation},
+		{"control char on sqlite", dialect.SQLite, momo.JSONHasKey(jsonDoc, "a\x01b"), momo.ErrValidation},
+		{"backslash on sqlite", dialect.SQLite, momo.JSONText(jsonDoc, `a\b`).Eq("x"), momo.ErrValidation},
+		{"backslash on mysql is escaped", dialect.MySQL, momo.JSONText(jsonDoc, `a\b`).Eq("x"), nil},
+		{"has key empty", dialect.Postgres, momo.JSONHasKey(jsonDoc, ""), momo.ErrValidation},
+		{"contains on sqlite", dialect.SQLite, momo.JSONContains(jsonDoc, jsonPayload{"a": 1}), momo.ErrUnsupported},
+		{"unencodable value", dialect.Postgres, momo.JSONContains(jsonDoc, make(chan int)), momo.ErrValidation},
 	}
 	for _, c := range cases {
 		_, err := jsonWhere(c.d, c.p)
@@ -161,14 +162,14 @@ func TestJSONOperatorErrors(t *testing.T) {
 // Catches: a backslash in a MySQL key left unescaped, and a numeric
 // JSONPath element not turned into an array index.
 func TestJSONPathEscapingAndIndexes(t *testing.T) {
-	got, err := jsonWhere(dialect.MySQL, momo.JSONText(jsonAfter, `a\b`).Eq("x"))
+	got, err := jsonWhere(dialect.MySQL, momo.JSONText(jsonDoc, `a\b`).Eq("x"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if want := []any{`$."a\\b"`, "x"}; !reflect.DeepEqual(got.Args, want) {
 		t.Errorf("mysql args = %#v, want %#v", got.Args, want)
 	}
-	got, err = jsonWhere(dialect.MySQL, momo.JSONPath(jsonAfter, "a", "1").Eq("x"))
+	got, err = jsonWhere(dialect.MySQL, momo.JSONPath(jsonDoc, "a", "1").Eq("x"))
 	if err != nil {
 		t.Fatal(err)
 	}
