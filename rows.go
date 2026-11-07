@@ -37,11 +37,14 @@ import (
 // and must return the same pointer every time.
 var tupleMetas sync.Map // reflect.Type -> *Meta[T]
 
-func tupleMeta[T any](n int, ptr func(m *T, i int) any) *Meta[T] {
-	key := reflect.TypeFor[T]()
-	if v, ok := tupleMetas.Load(key); ok {
+func loadTupleMeta[T any]() *Meta[T] {
+	if v, ok := tupleMetas.Load(reflect.TypeFor[T]()); ok {
 		return v.(*Meta[T])
 	}
+	return nil
+}
+
+func storeTupleMeta[T any](n int, ptr func(m *T, i int) any) *Meta[T] {
 	cols := make([]ColumnMeta, n)
 	for i := range cols {
 		cols[i].Name = "c" + strconv.Itoa(i+1)
@@ -53,7 +56,7 @@ func tupleMeta[T any](n int, ptr func(m *T, i int) any) *Meta[T] {
 		// A tuple has no identity, version, soft-delete or timestamp column.
 		Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
 	}
-	v, _ := tupleMetas.LoadOrStore(key, m)
+	v, _ := tupleMetas.LoadOrStore(reflect.TypeFor[T](), m)
 	return v.(*Meta[T])
 }
 
@@ -65,7 +68,10 @@ type Row1[A any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row1[A]) MomoMeta() *Meta[Row1[A]] {
-	return tupleMeta(1, func(m *Row1[A], i int) any {
+	if m := loadTupleMeta[Row1[A]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(1, func(m *Row1[A], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
@@ -83,7 +89,10 @@ type Row2[A, B any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row2[A, B]) MomoMeta() *Meta[Row2[A, B]] {
-	return tupleMeta(2, func(m *Row2[A, B], i int) any {
+	if m := loadTupleMeta[Row2[A, B]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(2, func(m *Row2[A, B], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
@@ -104,7 +113,10 @@ type Row3[A, B, C any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row3[A, B, C]) MomoMeta() *Meta[Row3[A, B, C]] {
-	return tupleMeta(3, func(m *Row3[A, B, C], i int) any {
+	if m := loadTupleMeta[Row3[A, B, C]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(3, func(m *Row3[A, B, C], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
@@ -128,7 +140,10 @@ type Row4[A, B, C, D any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row4[A, B, C, D]) MomoMeta() *Meta[Row4[A, B, C, D]] {
-	return tupleMeta(4, func(m *Row4[A, B, C, D], i int) any {
+	if m := loadTupleMeta[Row4[A, B, C, D]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(4, func(m *Row4[A, B, C, D], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
@@ -155,7 +170,10 @@ type Row5[A, B, C, D, E any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row5[A, B, C, D, E]) MomoMeta() *Meta[Row5[A, B, C, D, E]] {
-	return tupleMeta(5, func(m *Row5[A, B, C, D, E], i int) any {
+	if m := loadTupleMeta[Row5[A, B, C, D, E]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(5, func(m *Row5[A, B, C, D, E], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
@@ -185,7 +203,10 @@ type Row6[A, B, C, D, E, F any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row6[A, B, C, D, E, F]) MomoMeta() *Meta[Row6[A, B, C, D, E, F]] {
-	return tupleMeta(6, func(m *Row6[A, B, C, D, E, F], i int) any {
+	if m := loadTupleMeta[Row6[A, B, C, D, E, F]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(6, func(m *Row6[A, B, C, D, E, F], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
@@ -218,7 +239,10 @@ type Row7[A, B, C, D, E, F, G any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row7[A, B, C, D, E, F, G]) MomoMeta() *Meta[Row7[A, B, C, D, E, F, G]] {
-	return tupleMeta(7, func(m *Row7[A, B, C, D, E, F, G], i int) any {
+	if m := loadTupleMeta[Row7[A, B, C, D, E, F, G]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(7, func(m *Row7[A, B, C, D, E, F, G], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
@@ -254,7 +278,10 @@ type Row8[A, B, C, D, E, F, G, H any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row8[A, B, C, D, E, F, G, H]) MomoMeta() *Meta[Row8[A, B, C, D, E, F, G, H]] {
-	return tupleMeta(8, func(m *Row8[A, B, C, D, E, F, G, H], i int) any {
+	if m := loadTupleMeta[Row8[A, B, C, D, E, F, G, H]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(8, func(m *Row8[A, B, C, D, E, F, G, H], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
@@ -293,7 +320,10 @@ type Row9[A, B, C, D, E, F, G, H, I any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row9[A, B, C, D, E, F, G, H, I]) MomoMeta() *Meta[Row9[A, B, C, D, E, F, G, H, I]] {
-	return tupleMeta(9, func(m *Row9[A, B, C, D, E, F, G, H, I], i int) any {
+	if m := loadTupleMeta[Row9[A, B, C, D, E, F, G, H, I]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(9, func(m *Row9[A, B, C, D, E, F, G, H, I], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
@@ -335,7 +365,10 @@ type Row10[A, B, C, D, E, F, G, H, I, J any] struct {
 
 // MomoMeta returns the shared metadata of this instantiation.
 func (*Row10[A, B, C, D, E, F, G, H, I, J]) MomoMeta() *Meta[Row10[A, B, C, D, E, F, G, H, I, J]] {
-	return tupleMeta(10, func(m *Row10[A, B, C, D, E, F, G, H, I, J], i int) any {
+	if m := loadTupleMeta[Row10[A, B, C, D, E, F, G, H, I, J]](); m != nil {
+		return m
+	}
+	return storeTupleMeta(10, func(m *Row10[A, B, C, D, E, F, G, H, I, J], i int) any {
 		switch i {
 		case 0:
 			return &m.C1
