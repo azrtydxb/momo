@@ -58,6 +58,8 @@ var mappingRows = []mappingRow{
 	{goType: "vector.HalfVector", pg: "halfvec(N)", sqlite: "unsupported", src: srcGenerator, mapType: "vector.HalfVector", tags: tags.Tags{Dim: 3}},
 	{goType: "vector.SparseVector", pg: "sparsevec(N)", sqlite: "unsupported", src: srcGenerator, mapType: "vector.SparseVector", tags: tags.Tags{Dim: 3}},
 	{goType: "vector.Bits", pg: "bit(N)", sqlite: "unsupported", src: srcGenerator, mapType: "vector.Bits", tags: tags.Tags{Dim: 3}},
+	{goType: "vector.Vector (no dim)", pg: "vector", sqlite: "unsupported", src: srcGenerator, mapType: "vector.Vector"},
+	{goType: "vector.HalfVector (no dim)", pg: "halfvec", sqlite: "unsupported", src: srcGenerator, mapType: "vector.HalfVector"},
 	{goType: "types.TimeOfDay", pg: "time", sqlite: "TEXT", src: srcCodec, codecType: types.TimeOfDay{}.SQLType},
 	{goType: "types.Hstore", pg: "hstore", sqlite: "TEXT", src: srcCodec, codecType: types.Hstore{}.SQLType},
 	{goType: "types.TSVector", pg: "tsvector", sqlite: "TEXT", src: srcCodec, codecType: types.TSVector("").SQLType},
