@@ -118,3 +118,19 @@ Decision (2026-11-07): hold. v0.3.0 is released only when the gaps found by the 
 - Open and merge when CI is green and reviews are addressed, without asking
 
 Decision (2026-11-07): "keep merging, no need to ask me" — open and merge without asking; releases are a separate decision (see above).
+
+## Finishing the kuvryn-license port and timing v0.3.0
+
+- Finish the port in kuvryn-license-momo (store/momo), CI-only verification (recommended)
+- Leave the port to the user
+- Release v0.3.0 after the port runs on momo main (recommended)
+- Release v0.3.0 now
+
+Decision (2026-11-07): finish the port in kuvryn-license-momo on branch store/momo; release v0.3.0 only after kuvryn-license runs fully on momo main.
+
+## Merge kuvryn-license PR #28 (finish the momo port) once CI is green
+
+- Merge PR #28 into kuvryn-license main when CI is green (recommended): main deploys, start-up migrations are unchanged
+- Leave PR #28 as a draft for the user to merge
+
+Decision (2026-11-07): merge PR #28 into kuvryn-license main once CI is green.
