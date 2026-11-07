@@ -30,7 +30,7 @@ type sqlPinned struct {
 	conn  *sql.Conn
 	calls int                      // Query, Exec and Begin calls executing now
 	rows  map[*pinnedRows]struct{} // Rows not yet closed or exhausted
-	txs   map[*sql.Tx]struct{}     // transactions begun here and not yet finished
+	txs   map[aborter]struct{}     // transactions begun here and not yet finished
 }
 
 func (p *sqlPinned) live() (*sql.Conn, error) {
