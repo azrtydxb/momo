@@ -105,7 +105,7 @@ func (u UpdateQuery[T]) planSoftDelete() ([]Assignment, []Predicate, error) {
 	}
 	// The live-row filter is added after the guard: it is not a caller filter.
 	where = append(where, softDeletePred(m, m.Table, false))
-	sets := []Assignment{{col: m.Columns[m.SoftDelete].Name, kind: setValue, val: softDeleteValue(m.SoftDeleteKind, u.q.conn().now())}}
+	sets := []Assignment{{col: m.Columns[m.SoftDelete].Name, kind: setValue, val: softDeleteValue(m.SoftDeleteKind, u.q.conn().now()), flags: m.Columns[m.SoftDelete].Flags}}
 	return sets, where, nil
 }
 

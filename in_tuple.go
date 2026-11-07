@@ -23,6 +23,54 @@ type inTuple struct {
 	table string
 	cols  []string
 	keys  [][]any
+	// flags are optional column flags by position in cols; a sensitive column
+	// keeps its key values out of hook events.
+	flags []uint16
+}
+
+// flagAt returns the flags of the column at position i, or 0.
+func (x inTuple) flagAt(i int) uint16 { return flagAt(x.flags, i) }
+
+// keyFlags returns the flags of the named columns of m, or nil when m is nil.
+func keyFlags[T any](m *Meta[T], cols []string) []uint16 {
+	if m == nil {
+		return nil
+	}
+	var out []uint16
+	for i, c := range cols {
+		ci := columnIndexOf(m, c)
+		if ci < 0 || m.Columns[ci].Flags&FlagSensitive == 0 {
+			continue
+		}
+		if out == nil {
+			out = make([]uint16, len(cols))
+		}
+		out[i] = m.Columns[ci].Flags
+	}
+	return out
+}
+
+// flagAt returns fl[i], or 0 when fl is shorter.
+func flagAt(fl []uint16, i int) uint16 {
+	if i < len(fl) {
+		return fl[i]
+	}
+	return 0
+}
+
+// parentKeyFlags are the flags of the parent columns the relation joins on.
+func (r Relation[P, C]) parentKeyFlags() []uint16 { return keyFlags(r.ParentMeta, r.ParentCols) }
+
+// childKeyFlags are the flags of the child columns the relation joins on.
+func (r Relation[P, C]) childKeyFlags() []uint16 { return keyFlags(r.ChildMeta, r.ChildCols) }
+
+// ownerFlags are the flags of the columns that hold the parent key: the join
+// table columns referencing the parent for ManyToMany, else the child columns.
+func (r Relation[P, C]) ownerFlags() []uint16 {
+	if r.Through != nil {
+		return r.parentKeyFlags()
+	}
+	return r.childKeyFlags()
 }
 
 func (x inTuple) AppendSQL(b *Builder) {
@@ -53,7 +101,7 @@ func (x inTuple) AppendSQL(b *Builder) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			b.Arg(k[0])
+			b.argFor(x.flagAt(0), k[0])
 		}
 		b.WriteString(")")
 		return
@@ -76,7 +124,7 @@ func (x inTuple) AppendSQL(b *Builder) {
 				if j > 0 {
 					b.WriteString(", ")
 				}
-				b.Arg(v)
+				b.argFor(x.flagAt(j), v)
 			}
 			b.WriteString(")")
 		}
@@ -95,7 +143,7 @@ func (x inTuple) AppendSQL(b *Builder) {
 			}
 			b.QualifiedIdent(x.table, c)
 			b.WriteString(" = ")
-			b.Arg(k[j])
+			b.argFor(x.flagAt(j), k[j])
 		}
 		b.WriteString(")")
 	}
