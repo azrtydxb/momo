@@ -180,9 +180,11 @@ func TestJSONPathEscapingAndIndexes(t *testing.T) {
 // Catches: a value, key or path bound from a sensitive JSON column reaching
 // hooks in the clear, and a non-sensitive column being masked.
 func TestJSONOperatorsMaskSensitiveColumn(t *testing.T) {
-	secret := "hunter2-json"
+	secret := "hunter2json" // plain-shaped, so only sensitivity keeps it out of the SQL text
 	preds := map[string]momo.Predicate{
 		"text eq":    momo.JSONText(jsonAfter, "via").Eq(secret),
+		"plain key":  momo.JSONText(jsonAfter, secret).IsNull(),
+		"plain path": momo.JSONPath(jsonAfter, secret, "b").IsNull(),
 		"unsafe key": momo.JSONText(jsonAfter, secret+".x").IsNull(),
 		"path":       momo.JSONPath(jsonAfter, "a", secret+".x").IsNull(),
 		"contains":   momo.JSONContains(jsonAfter, map[string]any{"k": secret}),
@@ -196,6 +198,9 @@ func TestJSONOperatorsMaskSensitiveColumn(t *testing.T) {
 		seen := false
 		for _, e := range rec.Events() {
 			seen = seen || len(e.Args) > 0
+			if strings.Contains(e.SQL, secret) {
+				t.Errorf("%s: statement text holds the secret: %s", name, e.SQL)
+			}
 			for _, a := range e.Args {
 				if s, ok := a.(string); ok && strings.Contains(s, secret) {
 					t.Errorf("%s: hook saw %q", name, s)

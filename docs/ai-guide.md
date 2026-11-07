@@ -1219,8 +1219,10 @@ Pitfalls:
 - JSON extraction in GROUP BY: a key that is not plain letters, digits and
   underscores is a bound parameter, and PostgreSQL treats the parameter in the
   select list and the one in GROUP BY as different expressions and rejects the
-  query. Plain keys are inlined and group fine; for any other key group on a
-  SQL fragment with a literal key.
+  query. Plain keys are inlined and group fine, except on a sensitive column,
+  whose keys are always bound so they stay masked; for those and any other key
+  group on a SQL fragment with a literal key. Inlined keys vary the statement
+  text per key, so pass only keys from a fixed set, not user input.
 - Filtered search: with iterative scan off, an ANN index returns its nearest
   candidates and applies `Where` afterwards, so a selective filter can return FEWER
   than `Limit` rows even when enough match. Set `HNSWIterativeScan`

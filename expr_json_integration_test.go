@@ -81,6 +81,25 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 		check("has key with JSON null value", ids(momo.JSONHasKey(doc, "gone")), 2)
 		check("key bound as data", ids(momo.JSONHasKey(doc, "via' OR '1'='1")))
 
+		// A numeric key is never an array index outside JSONPath.
+		check("text key 1 on an array", ids(momo.JSONText(doc, "1").Eq("b")))
+		check("has key 1 on an array", ids(momo.JSONHasKey(doc, "1")))
+		check("path element 1 on an array", ids(momo.JSONPath(doc, "1").Eq("b")), 6)
+
+		// Grouping by an extraction: a plain key works, any other key fails
+		// on PostgreSQL because each clause binds its own parameter.
+		group := func(key string) ([]strCount, error) {
+			e := momo.JSONText(doc, key)
+			return momo.Select[strCount](db).From(momo.TableRef{Name: "jsonev"}).
+				Columns(e, momo.CountAll()).Where(momo.JSONHasKey(doc, "via")).GroupBy(e).OrderBy(momo.Asc(e)).All(ctx)
+		}
+		if g, err := group("via"); err != nil || len(g) != 2 || g[0].S != "api" || g[0].N != 1 || g[1].S != "web" || g[1].N != 1 {
+			t.Errorf("group by plain key = %+v, %v", g, err)
+		}
+		if _, err := group("a.b"); err == nil {
+			t.Error("group by a bound key succeeded; the documented caveat no longer holds")
+		}
+
 		// Keys that look like indexes, paths or operators are plain object keys.
 		check("numeric object key", ids(momo.JSONText(doc, "0").Eq("zero")), 5)
 		check("backslash key", ids(momo.JSONText(doc, `a\b`).Eq("bs")), 5)

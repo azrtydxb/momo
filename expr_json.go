@@ -50,10 +50,14 @@ import (
 // works. Any other key is a bound parameter, and PostgreSQL then rejects a
 // grouped extraction (the parameters differ per clause); group on a SQL
 // fragment with a literal key in that case. JSONHasKey and JSONContains always
-// bind.
+// bind. Inlined keys make the statement text vary per key, so a key taken from
+// user input grows the prepared-statement cache and pg_stat_statements; pass
+// only keys from a fixed set.
 //
-// Masking. When the column operand is sensitive, every bound key, path and
-// containment value is recorded as sensitive, so hooks see RedactedArg.
+// Masking. When the column operand is sensitive, every key, path and
+// containment value is bound and recorded as sensitive, so hooks see
+// RedactedArg; sensitivity beats inlining, so grouping by an extraction of a
+// sensitive column fails like a non-plain key does.
 
 // jsonFlags keeps the sensitive flag of the column operand and marks the
 // result nullable, since an extraction is NULL for a missing key.
@@ -126,7 +130,7 @@ func plainKey(keys []string) bool {
 // argOrLiteral writes lit as a quoted literal when keys are plain, otherwise
 // binds v with flags.
 func (e JSONTextExpr) argOrLiteral(b *Builder, flags uint16, lit string, v any) {
-	if plainKey(e.keys) {
+	if plainKey(e.keys) && flags&FlagSensitive == 0 {
 		b.WriteString("'" + lit + "'")
 		return
 	}
@@ -268,9 +272,11 @@ type jsonHasKey struct {
 	key string
 }
 
-// JSONHasKey is true when the top-level object in c has member key, even when
-// its value is JSON null: col ? 'key' on PostgreSQL (which also matches a
-// string element of a top-level array). key is always a bound parameter.
+// JSONHasKey is true when c has member key, even when its value is JSON null:
+// col ? 'key' on PostgreSQL. PostgreSQL's operator also matches a string
+// element of a top-level array and a top-level scalar string equal to key. A
+// SQL NULL column yields NULL, so Not drops those rows too. key is always a
+// bound parameter and is always an object key, never an array index.
 func JSONHasKey[T any](c Expression[types.JSON[T]], key string) Predicate {
 	return jsonHasKey{c, key}
 }

@@ -130,7 +130,7 @@ The `dialect/dialect.go` flags for the unusable dialects, for planning only:
 | User-facing window function API     | no                                 | no                                                  | write window functions with `TypedSQL` or `SQL`                                                                                                           |
 | Window functions used internally    | yes: row numbering over partitions | not usable yet                                      | `LoadPerParentLimit` only                                                                                                                                 |
 
-JSON operators: keys and values are bound, except that a plain key (letters, digits, underscore) in `JSONText` and `JSONPath` is inlined so a grouped extraction works. An extraction is NULL for a missing key and for JSON null, while a SQL NULL column and the JSON literal null stay distinct on the column itself; see `expr_json.go`.
+JSON operators: keys and values are bound, except that a plain key (letters, digits, underscore) in `JSONText` and `JSONPath` is inlined so a grouped extraction works (never on a sensitive column, whose keys stay bound and masked). An extraction is NULL for a missing key and for JSON null, while a SQL NULL column and the JSON literal null stay distinct on the column itself; see `expr_json.go`.
 
 ## Relations
 
