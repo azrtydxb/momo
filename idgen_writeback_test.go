@@ -77,7 +77,8 @@ func TestIDGenValuesFillsID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Args) != 2 || !reCUID.MatchString(c.Args[0].(string)) {
+	// The assigned column comes first, the generated default after it.
+	if len(c.Args) != 2 || c.Args[0] != "a" || !reCUID.MatchString(c.Args[1].(string)) {
 		t.Fatalf("args = %v", c.Args)
 	}
 }
