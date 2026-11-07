@@ -559,15 +559,25 @@ Searching with user input safely. `Like` and `ILike` always render
 `ESCAPE '!'` on every dialect, matching `EscapeLike`. Wildcards (`%`, `_`) in
 the pattern still work; only a `!` makes the next character literal, so a
 hand-written literal `!` is written `!!`. Never concatenate raw user text into
-a pattern: use `momo.ContainsLiteral(col, userText)` for a case-sensitive
-substring search, or `momo.ILike(col, "%"+momo.EscapeLike(userText)+"%")` for a
-case-insensitive one (PostgreSQL only). A user typing `%` then matches only a
-literal percent sign, never every row. A backslash is not an escape character.
+a pattern. For a case-sensitive substring search use `momo.ContainsLiteral`
+with the column and the user text. For a case-insensitive one (PostgreSQL
+only), pass `ILike` a pattern built as a percent sign, the user text run
+through `momo.EscapeLike`, and another percent sign. A user typing `%` then
+matches only a literal percent sign, never every row.
+
+A backslash is not an escape character. Without an ESCAPE clause PostgreSQL and
+MySQL treat `\` as the LIKE escape; in momo a pattern such as `\%`
+means a literal backslash followed by a wildcard. Replace hand-escaped
+patterns with `momo.EscapeLike`, or write `!%` for a literal percent sign.
 
 `In` and `NotIn` bind one parameter per value. A list over the dialect bind
 limit (PostgreSQL 65535, MySQL 65535, SQLite 32766, or a lower `WithMaxParams`)
-fails at build time with `ErrValidation`, not at the driver. Cap or chunk
-request-supplied lists yourself; an empty `In` renders a constant false. Other builder methods: `Distinct`, `Join`,
+fails at build time with `ErrValidation`, not at the driver. The check counts
+the binds rendered before the list; binds rendered after it are left to the
+driver. Cap or chunk request-supplied lists yourself; an empty `In` renders a
+constant false.
+
+Other builder methods: `Distinct`, `Join`,
 `LeftJoin`, `CrossJoin`, `GroupBy`, `Having`, `ForUpdate(opt...)`
 (`"NOWAIT"`, `"SKIP LOCKED"`), `ForShare`, `With`, `WithRecursive`, `Union`,
 `FromSubquery`, `Each(ctx, fn)`, `Iter(ctx)` (`iter.Seq2[T, error]`).

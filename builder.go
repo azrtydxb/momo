@@ -174,7 +174,9 @@ func (b *Builder) Args() []any { return b.args }
 
 // checkBindCap reports whether n more bind parameters fit under the dialect's
 // limit. When they do not it records an ErrValidation build error, so the
-// caller gets a typed error at build time instead of a driver failure. Inline
+// caller gets a typed error at build time instead of a driver failure. Only
+// binds rendered before the call are counted; binds rendered after it (later
+// predicates, HAVING) are left to the driver's own limit check. Inline
 // literal rendering (SQLite conflict targets) binds nothing and always fits.
 func (b *Builder) checkBindCap(n int, what string) bool {
 	m := b.d.MaxParams

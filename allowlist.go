@@ -37,8 +37,8 @@ func (a Allowlist) Column(name string) (ColumnRef, error) {
 
 // EscapeLike escapes %, _ and the escape character ! (each is prefixed with !)
 // so the result matches literally inside a LIKE pattern rendered with
-// ESCAPE '!', which Like, ILike and ContainsLiteral always emit. The escape character is deliberately not a backslash: the
-// meaning of a backslash in a string literal depends on server settings
+// ESCAPE '!', which Like, ILike and ContainsLiteral always emit. The escape
+// character is deliberately not a backslash: the meaning of a backslash in a string literal depends on server settings
 // (MySQL NO_BACKSLASH_ESCAPES, PostgreSQL standard_conforming_strings), that
 // of ! does not.
 func EscapeLike(s string) string {
