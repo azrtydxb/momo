@@ -77,9 +77,15 @@ func (h *relRecorder) AfterQuery(_ context.Context, e *QueryEvent) {
 
 // secRelation builds a relation whose join columns are sensitive on both sides.
 func secRelation(kind RelationKind) Relation[secParent, secChild] {
-	pm := &Meta[secParent]{Table: "parents", Columns: []ColumnMeta{{Name: "id", Flags: FlagPK | FlagSensitive}}, SoftDelete: -1,
+	return secRelationWith(kind, FlagSensitive, FlagSensitive)
+}
+
+// secRelationWith sets the flags of the parent key column and of the child
+// join column, so a test can make only one side sensitive.
+func secRelationWith(kind RelationKind, parentFlag, childFlag uint16) Relation[secParent, secChild] {
+	pm := &Meta[secParent]{Table: "parents", Columns: []ColumnMeta{{Name: "id", Flags: FlagPK | parentFlag}}, SoftDelete: -1,
 		Value: func(p *secParent, _ int) any { return p.ID }}
-	cm := &Meta[secChild]{Table: "kids", SoftDelete: -1, Columns: []ColumnMeta{{Name: "id", Flags: FlagPK}, {Name: "owner", Flags: FlagSensitive}},
+	cm := &Meta[secChild]{Table: "kids", SoftDelete: -1, Columns: []ColumnMeta{{Name: "id", Flags: FlagPK}, {Name: "owner", Flags: childFlag}},
 		Value: func(c *secChild, i int) any {
 			if i == 0 {
 				return c.ID
@@ -188,6 +194,64 @@ func TestAssociationWritesMaskSensitiveKeys(t *testing.T) {
 				}
 				if secrets == 0 {
 					t.Fatal("no statement carried the key to the driver")
+				}
+			})
+		}
+	}
+}
+
+// TestJoinTableAsymmetricKeysMaskOnlyTheSensitiveSide uses a sensitive column
+// on one side of a many-to-many relation only: each statement must mask the
+// value at the sensitive column's position and leave the other visible.
+func TestJoinTableAsymmetricKeysMaskOnlyTheSensitiveSide(t *testing.T) {
+	ctx := context.Background()
+	const parentVal, childVal = "parent-key-value", "child-key-value"
+	sides := map[string]struct {
+		parentFlag, childFlag uint16
+		masked, visible       string
+	}{
+		"plain parent, sensitive child": {0, FlagSensitive, childVal, parentVal},
+		"sensitive parent, plain child": {FlagSensitive, 0, parentVal, childVal},
+	}
+	ops := map[string]func(r Relation[secParent, secChild], db *DB) error{
+		"link": func(r Relation[secParent, secChild], db *DB) error {
+			return r.Link(ctx, db, &secParent{ID: parentVal}, &secChild{ID: 7, Owner: childVal})
+		},
+		"unlink": func(r Relation[secParent, secChild], db *DB) error {
+			return r.Unlink(ctx, db, &secParent{ID: parentVal}, &secChild{ID: 7, Owner: childVal})
+		},
+		"replace": func(r Relation[secParent, secChild], db *DB) error {
+			return r.Replace(ctx, db, &secParent{ID: parentVal}, &secChild{ID: 7, Owner: childVal})
+		},
+	}
+	for sideName, side := range sides {
+		for opName, op := range ops {
+			t.Run(sideName+"/"+opName, func(t *testing.T) {
+				drv := &relDriver{d: dialect.For(dialect.Postgres)}
+				rec := &relRecorder{}
+				db := New(drv, WithHook(rec), WithArgLogging())
+				if err := op(secRelationWith(ManyToMany, side.parentFlag, side.childFlag), db); err != nil {
+					t.Fatal(err)
+				}
+				maskedSeen := false
+				for _, e := range rec.events {
+					sent := drv.calls[e.SQL]
+					for i, a := range sent {
+						switch a {
+						case side.masked:
+							maskedSeen = true
+							if e.Args[i] != RedactedArg {
+								t.Errorf("%s: %v leaked at %d", e.SQL, e.Args[i], i)
+							}
+						case side.visible:
+							if e.Args[i] != a {
+								t.Errorf("%s: the plain key was masked at %d", e.SQL, i)
+							}
+						}
+					}
+				}
+				if !maskedSeen {
+					t.Fatal("the sensitive key never reached the driver")
 				}
 			})
 		}
