@@ -405,9 +405,9 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 					b.WriteString(", ")
 				}
 				if vals != nil {
-					b.Arg(vals[r][i])
+					b.argFor(q.meta.Columns[cols[i]].Flags, vals[r][i])
 				} else {
-					b.Arg(q.modelValue(&q.models[r], cols[i], now, fp))
+					b.argFor(q.meta.Columns[cols[i]].Flags, q.modelValue(&q.models[r], cols[i], now, fp))
 				}
 			}
 			b.writeByte(')')
@@ -600,7 +600,7 @@ func (q InsertQuery[T]) modelValue(m *T, ci int, now time.Time, fp fieldPlan[T])
 func (q InsertQuery[T]) appendValue(b *Builder, a Assignment) {
 	switch a.kind {
 	case setValue:
-		b.Arg(a.val)
+		b.argFor(columnFlags(q.meta.Columns, a.col), a.val)
 	case setExpr:
 		a.expr.AppendSQL(b)
 	case setNull:

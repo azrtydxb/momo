@@ -249,7 +249,7 @@ func (u UpdateQuery[T]) appendAssignment(b *Builder, a Assignment) {
 	b.WriteString(" = ")
 	switch a.kind {
 	case setValue:
-		b.Arg(a.val)
+		b.argFor(columnFlags(u.meta.Columns, a.col), a.val)
 	case setExpr:
 		a.expr.AppendSQL(b)
 	case setNull:

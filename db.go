@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -183,7 +184,26 @@ func (e *execer) wrapErr(op, table string, err error) error {
 	return err
 }
 
-func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []any) (context.Context, *QueryEvent) {
+// RedactedArg replaces, in QueryEvent.Args, every value bound from a column
+// tagged sensitive. Only the copy handed to hooks is masked.
+const RedactedArg = "[redacted]"
+
+// maskArgs returns a copy of args with the sensitive positions replaced, so a
+// hook can neither read those values nor mutate the slice sent to the driver.
+func maskArgs(args []any, sens []int) []any {
+	if args == nil {
+		return nil
+	}
+	out := slices.Clone(args)
+	for _, i := range sens {
+		if i >= 0 && i < len(out) {
+			out[i] = RedactedArg
+		}
+	}
+	return out
+}
+
+func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []any, sens []int) (context.Context, *QueryEvent) {
 	if len(e.db.hooks) == 0 {
 		return ctx, nil
 	}
@@ -195,7 +215,7 @@ func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []
 		Start: time.Now(), Rows: -1, pool: slot,
 	}
 	if e.db.logArgs {
-		ev.Args = args
+		ev.Args = maskArgs(args, sens)
 	}
 	for _, h := range e.db.hooks {
 		ctx = h.BeforeQuery(ctx, ev)
@@ -217,7 +237,7 @@ func (e *execer) after(ctx context.Context, ev *QueryEvent, rows int64, err erro
 }
 
 func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64, error) {
-	ctx, ev := e.before(ctx, op, table, "", c.SQL, c.Args)
+	ctx, ev := e.before(ctx, op, table, "", c.SQL, c.Args, c.sens)
 	n, err := e.q.Exec(ctx, c.SQL, c.Args)
 	err = e.wrapErr(op, table, err)
 	if err != nil {
@@ -229,7 +249,7 @@ func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64,
 
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
-	ctx, ev := e.before(ctx, op, table, rel, c.SQL, c.Args)
+	ctx, ev := e.before(ctx, op, table, rel, c.SQL, c.Args, c.sens)
 	rows, err := e.q.Query(ctx, c.SQL, c.Args)
 	if err != nil {
 		err = e.wrapErr(op, table, err)
@@ -319,7 +339,7 @@ func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
 		return nil, &Error{Kind: ErrUnsupported, Op: "begin", Err: errors.New("transactions are not available on a pinned connection")}
 	}
 	drv := db.Driver()
-	ctx2, ev := db.ex.before(ctx, "begin", "", "", "BEGIN", nil)
+	ctx2, ev := db.ex.before(ctx, "begin", "", "", "BEGIN", nil, nil)
 	dtx, err := drv.Begin(ctx2, opts)
 	db.ex.after(ctx2, ev, -1, err)
 	if err != nil {
@@ -369,7 +389,7 @@ func (tx *Tx) Commit(ctx context.Context) error {
 	if !tx.done.CompareAndSwap(false, true) {
 		return ErrTxDone
 	}
-	ctx, ev := tx.ex.before(ctx, "commit", "", "", "COMMIT", nil)
+	ctx, ev := tx.ex.before(ctx, "commit", "", "", "COMMIT", nil, nil)
 	err := tx.dtx.Commit(ctx)
 	tx.ex.after(ctx, ev, -1, err)
 	return tx.ex.wrapErr("commit", "", err)
@@ -387,7 +407,7 @@ func (tx *Tx) Rollback(ctx context.Context) error {
 	if !tx.done.CompareAndSwap(false, true) {
 		return ErrTxDone
 	}
-	ctx, ev := tx.ex.before(ctx, "rollback", "", "", "ROLLBACK", nil)
+	ctx, ev := tx.ex.before(ctx, "rollback", "", "", "ROLLBACK", nil, nil)
 	err := tx.dtx.Rollback(ctx)
 	tx.ex.after(ctx, ev, -1, err)
 	return tx.ex.wrapErr("rollback", "", err)

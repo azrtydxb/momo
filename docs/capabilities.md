@@ -219,6 +219,12 @@ session advisory lock.
 | Injected clock                             | yes                                                                                                     | `WithClock`                                                                           |
 | Ready-made slog or OpenTelemetry hook      | no such package in the repository                                                                       | implement `Hook`                                                                      |
 
+### Secrets in errors, hooks and connections
+
+- Argument masking: with `WithArgLogging`, a value bound from a column tagged `sensitive` (an insert value, or a `Set` assignment on insert, update and upsert) reaches hooks as `momo.RedactedArg`, not the value. The database still receives the real value. `QueryEvent.Args` is always a copy, so a hook cannot change the bound arguments. Known gap: a value compared in a `Where` predicate, for example `Secret.Eq` with a literal, is not masked; do not enable argument logging where predicates carry secrets.
+- Encode errors: the pgx driver withholds the text of pgx client-side encode failures, which quote the bound value, on every path (pool, transactions, pinned and adopted connections, the database/sql adapter, rows). The message keeps the argument position, such as `args[2]`; the original error stays reachable with `errors.Is`, `errors.As` and `Unwrap`.
+- Simple protocol: `pgxdriver.WithExecMode`, `FromConnConfig` and `FromSQLDB` refuse simple protocol, which interpolates values client-side, with `ErrUnsupported`. `FromConnConfig` checks the config it is given. `FromSQLDB` cannot read the pgx config of an opaque `*sql.DB`, so it checks the first connection it uses, on the first statement, not at construction.
+
 ## PgBouncer and TLS
 
 | Feature                        | PostgreSQL                                                                      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
