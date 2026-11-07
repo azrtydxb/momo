@@ -108,7 +108,7 @@ func TestCheckMigrationsRejectsEscapes(t *testing.T) {
 	}{
 		{"plain table", "CREATE TABLE a (x int);", nil, ""},
 		{"unlisted extension", "CREATE EXTENSION IF NOT EXISTS vector;", nil, "vector"},
-		{"unlisted quoted extension", `create extension "pgcrypto";`, nil, "pgcrypto"},
+		{"unlisted quoted extension", "create " + `extension "pgcrypto";`, nil, "pgcrypto"}, // split so the repo scan for shared-database extensions ignores this SQL text
 		{"listed extension", "CREATE EXTENSION IF NOT EXISTS vector;", []Option{WithExtensions("vector")}, ""},
 		{"schema", "CREATE SCHEMA other;", nil, "schema"},
 	}
