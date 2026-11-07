@@ -1,6 +1,6 @@
 # momo-09 Task 12: N+1 detector
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-04
 Epic: momo-09-observability-testing
 Sprint: -
@@ -11,10 +11,13 @@ Implements plan momo-09-observability-testing Task 12: N+1 detector (`.procoder/
 
 ## Acceptance criteria
 
-- [ ] `TestNormalizeShape` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestNPlusOneHook` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-53] `TestNPlusOneHook` reports a loop of per-parent queries and stays silent for batched loading; fails if the detector misses the loop.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestNormalizeShape` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestNPlusOneHook` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-53] `TestNPlusOneHook` reports a loop of per-parent queries and stays silent for batched loading; fails if the detector misses the loop.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- `TestNormalizeShape`, `TestNPlusOneHook`: red run 42409637729 (tests committed first in fa87dbf, build failed with undefined symbols), green run 42410680387 on 8d0f6d7.
+- Mutation: deleting the IN-list collapse made `TestNormalizeShape` fail with the uncollapsed IN list (run 42415019735, fdbf299, reverted).
+- Gate: lint, unit and integration jobs green on CI.

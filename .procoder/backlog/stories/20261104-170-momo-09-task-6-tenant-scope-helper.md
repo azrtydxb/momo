@@ -1,6 +1,6 @@
 # momo-09 Task 6: Tenant scope helper
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-04
 Epic: momo-09-observability-testing
 Sprint: -
@@ -11,8 +11,10 @@ Implements plan momo-09-observability-testing Task 6: Tenant scope helper (`.pro
 
 ## Acceptance criteria
 
-- [ ] `TestTenantFilter` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestTenantFilter` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- `TestTenantFilter`: red run 42409637729 (tests committed first in fa87dbf, build failed with undefined symbols), green run 42410680387 on 8d0f6d7.
+- Gate: lint, unit and integration jobs green on CI; commits fa87dbf, d5f35dd, 8d0f6d7.

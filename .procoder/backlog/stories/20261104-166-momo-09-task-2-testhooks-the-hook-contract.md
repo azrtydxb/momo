@@ -17,3 +17,4 @@ Implements plan momo-09-observability-testing Task 2: TestHooks, the hook contra
 
 ## Evidence
 
+- `TestHooks` (obs_hooks_test.go) passes on CI (run 42410680387). Mutations run 42411352506: logging args unconditionally failed with `Args = [Ada] NumArgs = 1, want nil and 1`; dropping the row counter failed with `Rows = 0, want 4`. Criteria left open: the plan's test passes at once, so red-first cannot be shown, and the FlagSensitive redaction subtest is omitted because momo.Redacted does not exist yet (sensitive-arg masking is owned by another agent).
