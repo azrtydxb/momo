@@ -37,15 +37,23 @@ import (
 // a JSON boolean reads as 1 or 0 instead of true or false, and MySQL returns
 // the text null for a JSON null.
 //
-// Path elements. JSONText takes one object key. In JSONPath, an element made
-// only of digits addresses an array index on SQLite and MySQL, and an array
-// index or an object key on PostgreSQL; any other element is an object key.
-// A key may not be empty, and on SQLite and MySQL may not contain a double
-// quote.
+// Path elements. JSONText and JSONHasKey take one object key, always an
+// object member even when it is numeric. In JSONPath, an element made only of
+// digits addresses an array index on SQLite and MySQL, and an array index or an
+// object key on PostgreSQL; any other element is an object key. A key may not
+// be empty, and on SQLite and MySQL may not contain a double quote, a control
+// character, or (SQLite) a backslash; MySQL escapes a backslash.
 //
-// Because the key is a bound parameter, PostgreSQL sees ($1) in the select
-// list and ($2) in GROUP BY as different expressions and rejects a grouped
-// extraction; group on a SQL fragment with a literal key instead.
+// A key or path made only of letters, digits and underscores is written into
+// the SQL as a quoted literal in JSONText and JSONPath, so the same extraction
+// in the select list and in GROUP BY is the same expression and grouping
+// works. Any other key is a bound parameter, and PostgreSQL then rejects a
+// grouped extraction (the parameters differ per clause); group on a SQL
+// fragment with a literal key in that case. JSONHasKey and JSONContains always
+// bind.
+//
+// Masking. When the column operand is sensitive, every bound key, path and
+// containment value is recorded as sensitive, so hooks see RedactedArg.
 
 // jsonFlags keeps the sensitive flag of the column operand and marks the
 // result nullable, since an extraction is NULL for a missing key.
@@ -69,8 +77,10 @@ func jsonKeysValid(b *Builder, keys []string, quoteLimited bool) bool {
 			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("JSON key is empty")})
 			return false
 		}
-		if quoteLimited && strings.ContainsRune(k, '"') {
-			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("JSON key %q contains a double quote, which %s paths cannot express", k, b.d.Name)})
+		if quoteLimited && strings.IndexFunc(k, func(r rune) bool {
+			return r == '"' || r < 0x20 || r == 0x7f || (r == '\\' && b.d.Name != dialect.MySQL)
+		}) >= 0 {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("JSON key %q contains a character %s paths cannot express (double quote, control character or backslash)", k, b.d.Name)})
 			return false
 		}
 	}
@@ -78,17 +88,49 @@ func jsonKeysValid(b *Builder, keys []string, quoteLimited bool) bool {
 }
 
 // jsonPathString renders keys as a SQLite or MySQL JSON path: $."a"[0]."b".
-func jsonPathString(keys []string) string {
+// With index set, an all-digit element is an array index; otherwise every
+// element is a quoted object key. MySQL reads a backslash in a quoted label as
+// an escape, so it is doubled.
+func jsonPathString(d dialect.Name, keys []string, index bool) string {
 	var sb strings.Builder
 	sb.WriteByte('$')
 	for _, k := range keys {
-		if isDigits(k) {
+		if index && isDigits(k) {
 			sb.WriteString("[" + k + "]")
 			continue
+		}
+		if d == dialect.MySQL {
+			k = strings.ReplaceAll(k, `\`, `\\`)
 		}
 		sb.WriteString(`."` + k + `"`)
 	}
 	return sb.String()
+}
+
+// plainKey reports whether every key is non-empty letters, digits and
+// underscores, which is safe to write as a SQL literal.
+func plainKey(keys []string) bool {
+	for _, k := range keys {
+		if k == "" {
+			return false
+		}
+		for _, r := range k {
+			if r != '_' && (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+				return false
+			}
+		}
+	}
+	return len(keys) > 0
+}
+
+// argOrLiteral writes lit as a quoted literal when keys are plain, otherwise
+// binds v with flags.
+func (e JSONTextExpr) argOrLiteral(b *Builder, flags uint16, lit string, v any) {
+	if plainKey(e.keys) {
+		b.WriteString("'" + lit + "'")
+		return
+	}
+	b.argFor(flags, v)
 }
 
 func isDigits(s string) bool {
@@ -145,26 +187,28 @@ func (e JSONTextExpr) AppendSQL(b *Builder) {
 	switch b.d.Name {
 	case dialect.Postgres:
 		b.WriteString("(")
-		e.src.AppendSQL(b)
+		fl := b.renderSens(e.src, flagsOf(e.src))
 		if e.path {
 			b.WriteString(" #>> ")
-			b.Arg(e.keys)
+			e.argOrLiteral(b, fl, "{"+strings.Join(e.keys, ",")+"}", e.keys)
 		} else {
 			b.WriteString(" ->> ")
-			b.Arg(e.keys[0])
+			e.argOrLiteral(b, fl, e.keys[0], e.keys[0])
 		}
 		b.WriteString(")")
 	case dialect.SQLite:
 		b.WriteString("CAST(json_extract(")
-		e.src.AppendSQL(b)
+		fl := b.renderSens(e.src, flagsOf(e.src))
 		b.WriteString(", ")
-		b.Arg(jsonPathString(e.keys))
+		path := jsonPathString(b.d.Name, e.keys, e.path)
+		e.argOrLiteral(b, fl, path, path)
 		b.WriteString(") AS TEXT)")
 	case dialect.MySQL:
 		b.WriteString("JSON_UNQUOTE(JSON_EXTRACT(")
-		e.src.AppendSQL(b)
+		fl := b.renderSens(e.src, flagsOf(e.src))
 		b.WriteString(", ")
-		b.Arg(jsonPathString(e.keys))
+		path := jsonPathString(b.d.Name, e.keys, e.path)
+		e.argOrLiteral(b, fl, path, path)
 		b.WriteString("))")
 	default:
 		b.unsupported("JSON text extraction")
@@ -204,15 +248,15 @@ func (p jsonContains) AppendSQL(b *Builder) {
 	switch b.d.Name {
 	case dialect.Postgres:
 		b.WriteString("(")
-		p.src.AppendSQL(b)
+		fl := b.renderSens(p.src, flagsOf(p.src))
 		b.WriteString(" @> CAST(")
-		b.Arg(string(enc))
+		b.argFor(fl, string(enc))
 		b.WriteString(" AS jsonb))")
 	case dialect.MySQL:
 		b.WriteString("JSON_CONTAINS(")
-		p.src.AppendSQL(b)
+		fl := b.renderSens(p.src, flagsOf(p.src))
 		b.WriteString(", CAST(")
-		b.Arg(string(enc))
+		b.argFor(fl, string(enc))
 		b.WriteString(" AS JSON))")
 	default:
 		b.unsupported("JSONContains")
@@ -226,7 +270,7 @@ type jsonHasKey struct {
 
 // JSONHasKey is true when the top-level object in c has member key, even when
 // its value is JSON null: col ? 'key' on PostgreSQL (which also matches a
-// string element of a top-level array). key is bound as a parameter.
+// string element of a top-level array). key is always a bound parameter.
 func JSONHasKey[T any](c Expression[types.JSON[T]], key string) Predicate {
 	return jsonHasKey{c, key}
 }
@@ -243,21 +287,21 @@ func (p jsonHasKey) AppendSQL(b *Builder) {
 	switch b.d.Name {
 	case dialect.Postgres:
 		b.WriteString("(")
-		p.src.AppendSQL(b)
+		fl := b.renderSens(p.src, flagsOf(p.src))
 		b.WriteString(" ? ")
-		b.Arg(p.key)
+		b.argFor(fl, p.key)
 		b.WriteString(")")
 	case dialect.SQLite:
 		b.WriteString("(json_type(")
-		p.src.AppendSQL(b)
+		fl := b.renderSens(p.src, flagsOf(p.src))
 		b.WriteString(", ")
-		b.Arg(jsonPathString([]string{p.key}))
+		b.argFor(fl, jsonPathString(b.d.Name, []string{p.key}, false))
 		b.WriteString(") IS NOT NULL)")
 	case dialect.MySQL:
 		b.WriteString("JSON_CONTAINS_PATH(")
-		p.src.AppendSQL(b)
+		fl := b.renderSens(p.src, flagsOf(p.src))
 		b.WriteString(", 'one', ")
-		b.Arg(jsonPathString([]string{p.key}))
+		b.argFor(fl, jsonPathString(b.d.Name, []string{p.key}, false))
 		b.WriteString(")")
 	default:
 		b.unsupported("JSONHasKey")

@@ -37,6 +37,9 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 			{2, `{"via":"web","gone":null}`},
 			{3, nil},
 			{4, `null`},
+			{5, `{"0":"zero","a\\b":"bs","q?":"x","a.b":"dot"}`},
+			{6, `["a","b"]`},
+			{7, `"a"`},
 		}
 		for _, r := range rows {
 			if _, err := momo.Exec(ctx, db, "INSERT INTO jsonev (id, doc) VALUES (?, CAST(? AS jsonb))", r.id, r.doc); err != nil {
@@ -78,9 +81,24 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 		check("has key with JSON null value", ids(momo.JSONHasKey(doc, "gone")), 2)
 		check("key bound as data", ids(momo.JSONHasKey(doc, "via' OR '1'='1")))
 
+		// Keys that look like indexes, paths or operators are plain object keys.
+		check("numeric object key", ids(momo.JSONText(doc, "0").Eq("zero")), 5)
+		check("backslash key", ids(momo.JSONText(doc, `a\b`).Eq("bs")), 5)
+		check("question mark key", ids(momo.JSONText(doc, "q?").Eq("x")), 5)
+		check("dotted key", ids(momo.JSONText(doc, "a.b").Eq("dot")), 5)
+		check("has key question mark", ids(momo.JSONHasKey(doc, "q?")), 5)
+		check("has key backslash", ids(momo.JSONHasKey(doc, `a\b`)), 5)
+		check("path with dotted element", ids(momo.JSONPath(doc, "a.b").Eq("dot")), 5)
+		check("path array index", ids(momo.JSONPath(doc, "1").Eq("b")), 6)
+
+		// Containment with array and scalar top-level values.
+		check("contains array", ids(momo.JSONContains(doc, []string{"a"})), 6)
+		check("contains scalar", ids(momo.JSONContains(doc, "a")), 6, 7)
+		check("has key on array and scalar", ids(momo.JSONHasKey(doc, "a")), 6, 7)
+
 		// SQL NULL, JSON null and a missing key all extract as NULL.
-		check("extracted text is NULL", ids(momo.JSONText(doc, "via").IsNull()), 3, 4)
-		check("missing key and JSON null member are both NULL", ids(momo.JSONText(doc, "gone").IsNull()), 1, 2, 3, 4)
+		check("extracted text is NULL", ids(momo.JSONText(doc, "via").IsNull()), 3, 4, 5, 6, 7)
+		check("missing key and JSON null member are both NULL", ids(momo.JSONText(doc, "gone").IsNull()), 1, 2, 3, 4, 5, 6, 7)
 		check("SQL NULL column", ids(doc.IsNull()), 3)
 		check("JSON null column", ids(doc.Eq(types.JSON[any]{})), 4)
 

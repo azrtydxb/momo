@@ -5,10 +5,14 @@ package momo_test
 import (
 	"errors"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -35,27 +39,37 @@ func TestJSONOperatorsGolden(t *testing.T) {
 		args []any
 	}{
 		{"pg text eq", dialect.Postgres, momo.JSONText(jsonAfter, "via").Eq("api"),
-			`("events"."after" ->> $1) = $2`, []any{"via", "api"}},
+			`("events"."after" ->> 'via') = $1`, []any{"api"}},
+		{"pg numeric key is a key", dialect.Postgres, momo.JSONText(jsonAfter, "0").Eq("x"),
+			`("events"."after" ->> '0') = $1`, []any{"x"}},
+		{"pg key with dot is bound", dialect.Postgres, momo.JSONText(jsonAfter, "a.b").Eq("x"),
+			`("events"."after" ->> $1) = $2`, []any{"a.b", "x"}},
 		{"pg text on nullable", dialect.Postgres, momo.JSONText(jsonBefore, "a'b").Ne("x"),
 			`("events"."before" ->> $1) <> $2`, []any{"a'b", "x"}},
 		{"pg text in", dialect.Postgres, momo.JSONText(jsonAfter, "via").In("a", "b"),
-			`("events"."after" ->> $1) IN ($2, $3)`, []any{"via", "a", "b"}},
+			`("events"."after" ->> 'via') IN ($1, $2)`, []any{"a", "b"}},
 		{"pg text is null", dialect.Postgres, momo.JSONText(jsonAfter, "via").IsNull(),
-			`("events"."after" ->> $1) IS NULL`, []any{"via"}},
+			`("events"."after" ->> 'via') IS NULL`, nil},
 		{"pg path", dialect.Postgres, momo.JSONPath(jsonAfter, "a", "0", "b").Eq("x"),
-			`("events"."after" #>> $1) = $2`, []any{[]string{"a", "0", "b"}, "x"}},
+			`("events"."after" #>> '{a,0,b}') = $1`, []any{"x"}},
+		{"pg path unsafe element is bound", dialect.Postgres, momo.JSONPath(jsonAfter, "a", "b,c").Eq("x"),
+			`("events"."after" #>> $1) = $2`, []any{[]string{"a", "b,c"}, "x"}},
 		{"pg contains", dialect.Postgres, momo.JSONContains(jsonAfter, map[string]any{"via": "api"}),
 			`("events"."after" @> CAST($1 AS jsonb))`, []any{`{"via":"api"}`}},
 		{"pg has key", dialect.Postgres, momo.JSONHasKey(jsonAfter, "via"),
 			`("events"."after" ? $1)`, []any{"via"}},
 		{"sqlite text", dialect.SQLite, momo.JSONText(jsonAfter, "via").Eq("api"),
-			`CAST(json_extract("events"."after", ?) AS TEXT) = ?`, []any{`$."via"`, "api"}},
+			`CAST(json_extract("events"."after", '$."via"') AS TEXT) = ?`, []any{"api"}},
+		{"sqlite numeric key stays an object key", dialect.SQLite, momo.JSONText(jsonAfter, "0").Eq("x"),
+			`CAST(json_extract("events"."after", '$."0"') AS TEXT) = ?`, []any{"x"}},
+		{"sqlite has numeric key is an object key", dialect.SQLite, momo.JSONHasKey(jsonAfter, "0"),
+			`(json_type("events"."after", ?) IS NOT NULL)`, []any{`$."0"`}},
 		{"sqlite path", dialect.SQLite, momo.JSONPath(jsonAfter, "a", "0", "b").Eq("x"),
-			`CAST(json_extract("events"."after", ?) AS TEXT) = ?`, []any{`$."a"[0]."b"`, "x"}},
+			`CAST(json_extract("events"."after", '$."a"[0]."b"') AS TEXT) = ?`, []any{"x"}},
 		{"sqlite has key", dialect.SQLite, momo.JSONHasKey(jsonAfter, "via"),
 			`(json_type("events"."after", ?) IS NOT NULL)`, []any{`$."via"`}},
 		{"mysql text", dialect.MySQL, momo.JSONText(jsonAfter, "via").Eq("api"),
-			"JSON_UNQUOTE(JSON_EXTRACT(`events`.`after`, ?)) = ?", []any{`$."via"`, "api"}},
+			"JSON_UNQUOTE(JSON_EXTRACT(`events`.`after`, '$.\"via\"')) = ?", []any{"api"}},
 		{"mysql contains", dialect.MySQL, momo.JSONContains(jsonAfter, []string{"a"}),
 			"JSON_CONTAINS(`events`.`after`, CAST(? AS JSON))", []any{`["a"]`}},
 		{"mysql has key", dialect.MySQL, momo.JSONHasKey(jsonAfter, "via"),
@@ -74,7 +88,7 @@ func TestJSONOperatorsGolden(t *testing.T) {
 		if got.SQL != want {
 			t.Errorf("%s:\n got %s\nwant %s", c.name, got.SQL, want)
 		}
-		if !reflect.DeepEqual(got.Args, c.args) {
+		if !(len(got.Args) == 0 && len(c.args) == 0) && !reflect.DeepEqual(got.Args, c.args) {
 			t.Errorf("%s: args = %#v, want %#v", c.name, got.Args, c.args)
 		}
 	}
@@ -88,7 +102,7 @@ func TestJSONTextOrderAndColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `SELECT ("events"."after" ->> $1) FROM "events" ORDER BY ("events"."after" ->> $2) DESC`
+	want := `SELECT ("events"."after" ->> 'via') FROM "events" ORDER BY ("events"."after" ->> 'via') DESC`
 	if got.SQL != want {
 		t.Errorf("got  %s\nwant %s", got.SQL, want)
 	}
@@ -122,6 +136,10 @@ func TestJSONOperatorErrors(t *testing.T) {
 		{"empty path", dialect.Postgres, momo.JSONPath(jsonAfter).Eq("x"), momo.ErrValidation},
 		{"quote on sqlite", dialect.SQLite, momo.JSONText(jsonAfter, `a"b`).Eq("x"), momo.ErrValidation},
 		{"quote on postgres is fine", dialect.Postgres, momo.JSONText(jsonAfter, `a"b`).Eq("x"), nil},
+		{"control char on mysql", dialect.MySQL, momo.JSONText(jsonAfter, "a\nb").Eq("x"), momo.ErrValidation},
+		{"control char on sqlite", dialect.SQLite, momo.JSONHasKey(jsonAfter, "a\x01b"), momo.ErrValidation},
+		{"backslash on sqlite", dialect.SQLite, momo.JSONText(jsonAfter, `a\b`).Eq("x"), momo.ErrValidation},
+		{"backslash on mysql is escaped", dialect.MySQL, momo.JSONText(jsonAfter, `a\b`).Eq("x"), nil},
 		{"has key empty", dialect.Postgres, momo.JSONHasKey(jsonAfter, ""), momo.ErrValidation},
 		{"contains on sqlite", dialect.SQLite, momo.JSONContains(jsonAfter, jsonPayload{"a": 1}), momo.ErrUnsupported},
 		{"unencodable value", dialect.Postgres, momo.JSONContains(jsonAfter, make(chan int)), momo.ErrValidation},
@@ -136,6 +154,69 @@ func TestJSONOperatorErrors(t *testing.T) {
 		}
 		if !errors.Is(err, c.kind) {
 			t.Errorf("%s: err = %v, want %v", c.name, err, c.kind)
+		}
+	}
+}
+
+// Catches: a backslash in a MySQL key left unescaped, and a numeric
+// JSONPath element not turned into an array index.
+func TestJSONPathEscapingAndIndexes(t *testing.T) {
+	got, err := jsonWhere(dialect.MySQL, momo.JSONText(jsonAfter, `a\b`).Eq("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []any{`$."a\\b"`, "x"}; !reflect.DeepEqual(got.Args, want) {
+		t.Errorf("mysql args = %#v, want %#v", got.Args, want)
+	}
+	got, err = jsonWhere(dialect.MySQL, momo.JSONPath(jsonAfter, "a", "1").Eq("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "JSON_UNQUOTE(JSON_EXTRACT(`events`.`after`, '$.\"a\"[1]')) = ?"; !strings.HasSuffix(got.SQL, want) {
+		t.Errorf("mysql path = %s", got.SQL)
+	}
+}
+
+// Catches: a value, key or path bound from a sensitive JSON column reaching
+// hooks in the clear, and a non-sensitive column being masked.
+func TestJSONOperatorsMaskSensitiveColumn(t *testing.T) {
+	secret := "hunter2-json"
+	preds := map[string]momo.Predicate{
+		"text eq":    momo.JSONText(jsonAfter, "via").Eq(secret),
+		"unsafe key": momo.JSONText(jsonAfter, secret+".x").IsNull(),
+		"path":       momo.JSONPath(jsonAfter, "a", secret+".x").IsNull(),
+		"contains":   momo.JSONContains(jsonAfter, map[string]any{"k": secret}),
+		"has key":    momo.JSONHasKey(jsonAfter, secret),
+		"in":         momo.JSONText(jsonAfter, "via").In(secret, "b"),
+	}
+	for name, p := range preds {
+		rec := &obstest.Recorder{}
+		db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(rec), momo.WithArgLogging())
+		_, _ = momo.Select[unitTally](db).From(momo.TableRef{Name: "events"}).Columns(momo.CountAll()).Where(p).All(t.Context())
+		seen := false
+		for _, e := range rec.Events() {
+			seen = seen || len(e.Args) > 0
+			for _, a := range e.Args {
+				if s, ok := a.(string); ok && strings.Contains(s, secret) {
+					t.Errorf("%s: hook saw %q", name, s)
+				}
+				if ss, ok := a.([]string); ok && strings.Contains(strings.Join(ss, ","), secret) {
+					t.Errorf("%s: hook saw %v", name, ss)
+				}
+			}
+		}
+		if !seen {
+			t.Errorf("%s: no hook event with arguments", name)
+		}
+	}
+
+	rec := &obstest.Recorder{}
+	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(rec), momo.WithArgLogging())
+	_, _ = momo.Select[unitTally](db).From(momo.TableRef{Name: "events"}).Columns(momo.CountAll()).
+		Where(momo.JSONText(jsonBefore, "via").Eq("visible")).All(t.Context())
+	for _, e := range rec.Events() {
+		if len(e.Args) > 0 && !slices.Contains(e.Args, any("visible")) {
+			t.Errorf("non-sensitive column was masked: %v", e.Args)
 		}
 	}
 }

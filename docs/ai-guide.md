@@ -195,6 +195,15 @@ Nullability and column rules:
   `time.Time` is `timestamptz`, `types.UUID` is `uuid`, `types.JSON[T]` is
   `jsonb`). `uint64`, maps and unknown types have no mapping: add `type:<sql>`
   or a codec.
+- JSON columns: `JSONText`, `JSONPath`, `JSONContains` and `JSONHasKey` (file
+  `expr_json.go`) are typed predicates over a `types.JSON[T]` column; the
+  extractions are string expressions usable in `Where`, `OrderBy` and `Columns`.
+  An extraction is NULL for a missing key and for JSON null alike, a SQL NULL
+  column is tested with `IsNull` on the column, and the JSON literal null is
+  matched by comparing the column with a `types.JSON` whose value is nil.
+  `JSONHasKey` is true for a key whose value is JSON null. A numeric key in
+  `JSONText` or `JSONHasKey` is an object key; only `JSONPath` elements made of
+  digits can be array indexes. PostgreSQL only is usable today.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
@@ -1207,6 +1216,11 @@ or a missing extension: `ErrUnsupported`.
 
 Pitfalls:
 
+- JSON extraction in GROUP BY: a key that is not plain letters, digits and
+  underscores is a bound parameter, and PostgreSQL treats the parameter in the
+  select list and the one in GROUP BY as different expressions and rejects the
+  query. Plain keys are inlined and group fine; for any other key group on a
+  SQL fragment with a literal key.
 - Filtered search: with iterative scan off, an ANN index returns its nearest
   candidates and applies `Where` afterwards, so a selective filter can return FEWER
   than `Limit` rows even when enough match. Set `HNSWIterativeScan`
