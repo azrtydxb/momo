@@ -185,8 +185,9 @@ func quotedSchema(t *testing.T, c momo.PinnedConn, name string) {
 // engine between two lookups. Release resets the search_path.
 type hookDriver struct {
 	momo.Driver
-	path string
-	flip map[int]string
+	path  string
+	flip  map[int]string
+	locks *[]int64 // when set, collects the id of every advisory-lock attempt
 }
 
 func (d hookDriver) Pin(ctx context.Context) (momo.PinnedConn, error) {
@@ -198,12 +199,13 @@ func (d hookDriver) Pin(ctx context.Context) (momo.PinnedConn, error) {
 		_ = c.Release()
 		return nil, err
 	}
-	return &hookConn{PinnedConn: c, flip: d.flip}, nil
+	return &hookConn{PinnedConn: c, flip: d.flip, locks: d.locks}, nil
 }
 
 type hookConn struct {
 	momo.PinnedConn
 	flip    map[int]string
+	locks   *[]int64
 	lookups int
 }
 
@@ -214,6 +216,11 @@ func (c *hookConn) Query(ctx context.Context, sql string, args []any) (momo.Rows
 			if _, err := c.PinnedConn.Exec(ctx, `SET search_path = `+p, nil); err != nil {
 				return nil, err
 			}
+		}
+	}
+	if c.locks != nil && strings.Contains(sql, "pg_try_advisory_lock") && len(args) == 1 {
+		if id, ok := args[0].(int64); ok {
+			*c.locks = append(*c.locks, id)
 		}
 	}
 	return c.PinnedConn.Query(ctx, sql, args)
@@ -317,8 +324,9 @@ func TestHistoryTableQuotedSchemaNames(t *testing.T) {
 	}
 }
 
-// A table owned by a role the connecting role is not a member of is refused,
-// both when it is found and when EnsureHistory checks it.
+// A table owned by a role whose privileges the connecting role does not hold is
+// refused, both when it is found and when EnsureHistory checks it. A superuser
+// connecting role trusts only tables owned by itself or by another superuser.
 func TestHistoryTableRefusesForeignOwner(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
@@ -364,11 +372,92 @@ func TestHistoryTableRefusesForeignOwner(t *testing.T) {
 			}
 		}
 	}
+	// The superuser migrator holds every role's privileges, but still refuses
+	// a table owned by an ordinary role.
 	if _, err := c.Exec(ctx, `RESET ROLE`, nil); err != nil {
 		t.Fatal(err)
 	}
+	_, err := mpg.New().HistoryTable(ctx, c)
+	if !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), owner) || !strings.Contains(err.Error(), "superuser") {
+		t.Fatalf("a superuser must refuse a table owned by a non-superuser, got %v", err)
+	}
+	if err := migrate.EnsureHistory(ctx, c, mpg.New()); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("EnsureHistory must refuse it for a superuser too, got %v", err)
+	}
+	// Owned by another superuser: accepted. Owned by the superuser itself: accepted.
+	super := "momo_sup_" + testdb.Schema(t)
+	if _, err := c.Exec(ctx, `CREATE ROLE `+qi(super)+` NOLOGIN SUPERUSER`, nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = c.Exec(context.Background(), `DROP OWNED BY `+qi(super), nil)
+		_, _ = c.Exec(context.Background(), `DROP ROLE IF EXISTS `+qi(super), nil)
+	})
+	if _, err := c.Exec(ctx, `ALTER TABLE `+qi(s)+`.momo_migrations OWNER TO `+qi(super), nil); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := mpg.New().HistoryTable(ctx, c); err != nil {
-		t.Fatalf("a superuser is a member of every role, got %v", err)
+		t.Fatalf("a table owned by another superuser must be accepted, got %v", err)
+	}
+	if _, err := c.Exec(ctx, `ALTER TABLE `+qi(s)+`.momo_migrations OWNER TO current_user`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mpg.New().HistoryTable(ctx, c); err != nil {
+		t.Fatalf("a table owned by the connecting superuser must be accepted, got %v", err)
+	}
+}
+
+// With an empty search_path there is no current schema: the read-only calls
+// report an empty history, the writers fail with a clear message.
+func TestHistoryNoCurrentSchema(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	fsys := fstest.MapFS{"20260101000000_a.up.sql": {Data: []byte("SELECT 1;")}}
+	e := migratetest.NewEngine(t, mpg.New(), hookDriver{Driver: db.Driver(), path: `''`}, fsys)
+	pend, err := e.Plan(ctx)
+	if err != nil || len(pend) != 1 {
+		t.Fatalf("Plan = %v, %v; want one pending migration", pend, err)
+	}
+	st, err := e.Status(ctx)
+	if err != nil || len(st) != 1 {
+		t.Fatalf("Status = %v, %v; want one pending version", st, err)
+	}
+	c, err := hookDriver{Driver: db.Driver(), path: `''`}.Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Release() }()
+	if _, err := mpg.New().HistoryTable(ctx, c); !errors.Is(err, migrate.ErrNoHistoryTable) {
+		t.Fatalf("want ErrNoHistoryTable, got %v", err)
+	}
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil || !strings.Contains(err.Error(), "no current schema") {
+		t.Fatalf("Apply must fail naming the missing current schema, got %v", err)
+	}
+}
+
+// The table appearing in another schema between the CREATE TABLE and the
+// re-resolve in ensureHistory is reported, not written through.
+func TestEnsureHistoryDetectsMoveAfterCreate(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	c := pinned(t, db)
+	old := historySchemas(t, c, "after")[0]
+	cur := testdb.Schema(t)
+	setPath(t, c, qi(old))
+	if err := migrate.EnsureHistory(ctx, c, mpg.New()); err != nil {
+		t.Fatal(err)
+	}
+	setPath(t, c, qi(cur))
+	fsys := fstest.MapFS{"20260101000000_a.up.sql": {Data: []byte("CREATE TABLE a (x int);")}}
+	// Lookups: 1 and 2 around the lock, 3 in Apply, 4 right after the CREATE.
+	flip := map[int]string{4: qi(old) + ", " + qi(cur)}
+	e := migratetest.NewEngine(t, mpg.New(), hookDriver{Driver: db.Driver(), path: qi(cur), flip: flip}, fsys)
+	_, err := e.Apply(ctx, migrate.ApplyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "after it was created") {
+		t.Fatalf("want the moved-after-create error, got %v", err)
+	}
+	if n := historyCount(t, c, qi(old)+".momo_migrations"); n != 0 {
+		t.Fatalf("nothing may be written through the other table, got %d rows", n)
 	}
 }
 
@@ -440,9 +529,13 @@ func TestHistoryLockRetriesWhenTableMoves(t *testing.T) {
 	// Lookups: 1 before the lock (path cur: no table, name in cur), 2 after it
 	// (flipped to old first: name differs), 3 and 4 on the retry (no flip).
 	flip := map[int]string{2: qi(old) + ", " + qi(cur)}
-	e := migratetest.NewEngine(t, mpg.New(), hookDriver{Driver: db.Driver(), path: qi(cur), flip: flip}, fsys)
+	var locks []int64
+	e := migratetest.NewEngine(t, mpg.New(), hookDriver{Driver: db.Driver(), path: qi(cur), flip: flip, locks: &locks}, fsys)
 	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
 		t.Fatalf("one move must be retried: %v", err)
+	}
+	if len(locks) != 2 || locks[0] == locks[1] {
+		t.Fatalf("want two lock attempts on different keys (the retry), got %v", locks)
 	}
 	if n := historyCount(t, c, qi(old)+".momo_migrations"); n != 1 {
 		t.Fatalf("want the row in the table that appeared, got %d", n)

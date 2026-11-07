@@ -105,16 +105,20 @@ repeated once; a second disagreement fails with an error asking you to retry.
   session `search_path`, and its schema is then used. Installs made with the
   unqualified name keep working, and no second table is created.
 - The resolved object must be a regular, permanent table, and the connecting
-  role must be its owner or a member of the owning role (`pg_has_role` with
-  `USAGE`). A view, foreign table, unlogged or temporary table, or a table
+  role must be its owner or hold the privileges of the owning role
+  (`pg_has_role` with `USAGE`, so a role with NOINHERIT does not qualify). A
+  superuser holds every role's privileges, so a superuser migrator
+  additionally requires the owner to be itself or another superuser; a table
+  owned by an ordinary role is refused, because its triggers and rules would
+  run with superuser rights. A view, foreign table, unlogged or temporary table, or a table
   owned by an unrelated role, named `momo_migrations` earlier on the
   `search_path`, is refused with a validation error naming the schema, the
   table and the owner; it is never used. A table adopted on first install by
   `CREATE TABLE IF NOT EXISTS` passes the same checks after the statement runs.
 - What this does and does not defend: it stops a foreign-owned or non-table
   object that sits ahead of the real table on the `search_path` from
-  capturing the history writes. It does not stop a role you are a member of,
-  or a superuser, from owning such an object, and it cannot protect a schema
+  capturing the history writes. It does not stop a role whose privileges you hold,
+  or another superuser, from owning such an object, and it cannot protect a schema
   that other roles may write to and that is ahead of yours on the
   `search_path` before any table exists. Keep schemas on the migrator's
   `search_path` writable only by the migrator.

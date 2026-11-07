@@ -41,7 +41,8 @@ kind TEXT NOT NULL DEFAULT 'sql'
 // connection's search_path, so installs made with the unqualified name keep
 // working and no second table is created. The resolved object must be a
 // regular table in a permanent schema, owned by the connecting role or by a
-// role it is a member of (pg_has_role USAGE): a view, a foreign table, a
+// role whose privileges it holds (pg_has_role USAGE; a superuser connecting
+// role also requires the owner to be itself or a superuser): a view, a foreign table, a
 // temporary table or a table owned by an unrelated role is refused with an
 // error wrapping momo.ErrValidation, because writing history through it would
 // run with the migrator's privileges against an object someone else controls.
@@ -52,14 +53,23 @@ kind TEXT NOT NULL DEFAULT 'sql'
 // history writes.
 func (Dialect) HistoryTable(ctx context.Context, c momo.PinnedConn) (string, error) {
 	var schemaName, kind, persistence, owner string
-	var usable bool
+	var usable, superTrust bool
 	found := false
+	// usable: the connecting role holds the privileges of the owner. A
+	// superuser holds those of every role, so for a superuser migrator that
+	// is not enough: superTrust is false when current_user is a superuser and
+	// the owner is neither current_user nor a superuser, because a table (and
+	// its triggers and rules) planted by an ordinary role would run with
+	// superuser rights.
 	err := forEach(ctx, c, `SELECT n.nspname::text, c.relkind::text, c.relpersistence::text,
- pg_catalog.pg_get_userbyid(c.relowner)::text, pg_catalog.pg_has_role(current_user, c.relowner, 'USAGE')
+ pg_catalog.pg_get_userbyid(c.relowner)::text, pg_catalog.pg_has_role(current_user, c.relowner, 'USAGE'),
+ NOT COALESCE((SELECT me.rolsuper FROM pg_catalog.pg_roles me WHERE me.rolname = current_user), false)
+  OR c.relowner = (SELECT me.oid FROM pg_catalog.pg_roles me WHERE me.rolname = current_user)
+  OR COALESCE((SELECT o.rolsuper FROM pg_catalog.pg_roles o WHERE o.oid = c.relowner), false)
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE c.oid = pg_catalog.to_regclass('momo_migrations')`, nil, func(r momo.Rows) error {
 		found = true
-		return r.Scan(&schemaName, &kind, &persistence, &owner, &usable)
+		return r.Scan(&schemaName, &kind, &persistence, &owner, &usable, &superTrust)
 	})
 	if err != nil {
 		return "", fmt.Errorf("migrate/postgres: locate the history table: %w", err)
@@ -69,7 +79,10 @@ WHERE c.oid = pg_catalog.to_regclass('momo_migrations')`, nil, func(r momo.Rows)
 			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Err: fmt.Errorf("momo_migrations resolves to %s, which is not a regular permanent table; remove it from the search_path or drop it", describeRelation(schemaName, kind, persistence))}
 		}
 		if !usable {
-			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Table: "momo_migrations", Err: fmt.Errorf("the table %s.momo_migrations is owned by role %s, which the connecting role is not a member of; refusing to write migration history through it. Fix the ownership, or remove that schema from the search_path", quoteIdent(schemaName), quoteIdent(owner))}
+			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Table: "momo_migrations", Err: fmt.Errorf("the table %s.momo_migrations is owned by role %s, and the connecting role does not hold the privileges of that role; refusing to write migration history through it. Fix the ownership, or remove that schema from the search_path", quoteIdent(schemaName), quoteIdent(owner))}
+		}
+		if !superTrust {
+			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Table: "momo_migrations", Err: fmt.Errorf("the table %s.momo_migrations is owned by role %s, which is not a superuser, and the connecting role is a superuser; a superuser only trusts a history table that it or another superuser owns, because the table's triggers and rules would run with superuser rights. Fix the ownership, or remove that schema from the search_path", quoteIdent(schemaName), quoteIdent(owner))}
 		}
 		return quoteIdent(schemaName) + "." + quoteIdent("momo_migrations"), nil
 	}
