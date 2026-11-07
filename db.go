@@ -392,7 +392,7 @@ func (tx *Tx) DriverTx() DriverTx { return tx.dtx }
 // matching ErrAdoptedTx and does nothing.
 func (tx *Tx) Commit(ctx context.Context) error {
 	if tx.depth > 0 {
-		return errors.New("momo: Commit called on a savepoint scope; return from the Tx callback instead")
+		return newError(ErrValidation, "commit", "", errors.New("Commit called on a savepoint scope; return from the Tx callback instead"))
 	}
 	if tx.adopted {
 		return &Error{Kind: ErrAdoptedTx, Op: "commit"}
@@ -410,7 +410,7 @@ func (tx *Tx) Commit(ctx context.Context) error {
 // matching ErrAdoptedTx and does nothing.
 func (tx *Tx) Rollback(ctx context.Context) error {
 	if tx.depth > 0 {
-		return errors.New("momo: Rollback called on a savepoint scope; return an error from the Tx callback instead")
+		return newError(ErrValidation, "rollback", "", errors.New("Rollback called on a savepoint scope; return an error from the Tx callback instead"))
 	}
 	if tx.adopted {
 		return &Error{Kind: ErrAdoptedTx, Op: "rollback"}

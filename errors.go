@@ -107,6 +107,22 @@ func (e *Error) Is(target error) bool { return target == e.Kind }
 // Unwrap returns the underlying error.
 func (e *Error) Unwrap() error { return e.Err }
 
+// newError builds the structured error every library failure goes through,
+// so context (operation, table) is added in one place.
+func newError(kind error, op, table string, err error) *Error {
+	return &Error{Kind: kind, Op: op, Table: table, Err: err}
+}
+
+// validation builds an ErrValidation error whose detail is formatted.
+func validation(op, table, format string, args ...any) *Error {
+	return newError(ErrValidation, op, table, fmt.Errorf(format, args...))
+}
+
+// noQuerier is the ErrValidation error of a query built without a Querier.
+func noQuerier(op, table string) *Error {
+	return newError(ErrValidation, op, table, errors.New("query has no Querier"))
+}
+
 // ErrorClassifier converts a raw driver error into a structured *Error when
 // it recognizes it, and returns err unchanged otherwise. Drivers implement
 // it; the root package stays free of driver imports.

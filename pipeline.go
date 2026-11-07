@@ -218,7 +218,7 @@ func (e *execer) batch(b Batcher, stmts []stmt) ([]Rows, error) {
 	rows, err := b.SendBatch(ctxs[0], cs)
 	if err == nil && len(rows) != len(stmts) {
 		closeRows(rows)
-		err = errors.New("momo: driver returned the wrong number of batch results")
+		err = newError(ErrValidation, "exec", "", errors.New("driver returned the wrong number of batch results"))
 	}
 	if err != nil {
 		err = e.wrapErr("select", "", err)

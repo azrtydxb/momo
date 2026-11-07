@@ -236,7 +236,7 @@ func indexFrom(s, sub string, from int) int {
 // ------------------------------------------------------------ rendering
 
 func rawErr(format string, a ...any) *Error {
-	return &Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf(format, a...)}
+	return validation("build", "", format, a...)
 }
 
 // appendRaw renders a raw fragment. '?' binds the next positional argument
