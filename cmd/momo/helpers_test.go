@@ -39,7 +39,7 @@ func copyModule(t *testing.T, src string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gomod := "module example.test/example\n\ngo 1.26.0\n\nrequire github.com/azrtydxb/momo v0.0.0\n\nreplace github.com/azrtydxb/momo => " + repo + "\n"
+	gomod := "module example.test/example\n\ngo 1.26.10\n\nrequire github.com/azrtydxb/momo v0.0.0\n\nreplace github.com/azrtydxb/momo => " + repo + "\n"
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(gomod), 0o600); err != nil {
 		t.Fatal(err)
 	}
