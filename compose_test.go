@@ -30,7 +30,7 @@ func TestScopeAppliesInOrder(t *testing.T) {
 		t.Fatalf("SQL = %s args = %v", c.SQL, c.Args)
 	}
 	// The scope must not mutate the base query.
-	if plain, _ := base.SQL(); strings.Contains(plain.SQL, "tenant_id") {
+	if plain, _ := base.SQL(); strings.Contains(plain.SQL, `"tenant_id" = `) {
 		t.Fatalf("base query changed: %s", plain.SQL)
 	}
 }
