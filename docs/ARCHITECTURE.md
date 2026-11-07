@@ -201,7 +201,7 @@ whose milestone has landed.
 
 ## Integration test harness
 
-See "Ownership decisions (round 2)". `internal/testdb` (momo-01) returns URLs and paths only. `internal/testdb/testopen` (momo-03) opens a `*momo.DB` per dialect and provides `Each`. When a URL is unset, the test fails if `MOMO_REQUIRE_INTEGRATION=1` (set in CI for every landed milestone) and skips otherwise. Only these helpers call `t.Skip`. The `//go:build integration` tag is optional per test file; the harness skip/require rule is the gate. CI and `make test-integration` always run `go test -tags integration -race ./...` with `MOMO_REQUIRE_INTEGRATION=1`. `make db-up` starts `docker compose -f internal/testdb/compose.yaml up -d` with pinned images.
+See "Ownership decisions (round 2)". `internal/testdb` (momo-01) returns URLs and paths only. `internal/testdb/testopen` (momo-03) opens a `*momo.DB` per dialect and provides `Each`. When a URL is unset, the test fails if `MOMO_REQUIRE_INTEGRATION=1` (set in CI for every landed milestone) and skips otherwise. Only these helpers call `t.Skip`. Every test file that uses these helpers carries the `//go:build integration` tag, enforced by `TestIntegrationTagConvention` in `internal/repocheck`; untagged builds (`make test`, the macOS and Windows jobs) therefore contain no database test. The harness skip/require rule still decides skip versus fail inside a tagged run. CI and `make test-integration` always run `go test -tags integration -race ./...` with `MOMO_REQUIRE_INTEGRATION=1`. `make db-up` starts `docker compose -f internal/testdb/compose.yaml up -d` with pinned images.
 
 ### Per-test isolation
 

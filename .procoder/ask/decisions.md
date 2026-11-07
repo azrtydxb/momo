@@ -134,3 +134,11 @@ Decision (2026-11-07): finish the port in kuvryn-license-momo on branch store/mo
 - Leave PR #28 as a draft for the user to merge
 
 Decision (2026-11-07): merge PR #28 into kuvryn-license main once CI is green.
+
+## NovaCRM adoption gaps (issues #27 to #34)
+
+- Plan them as sprint 6 after a NovaCRM gap audit, pulling the docs/code mismatch #29 into sprint 5 (recommended)
+- Add them to sprint 5 now
+- Leave them in the backlog
+
+Decision (2026-11-07): "do it" — audit NovaCRM (read-only) into .procoder/research/novacrm-gap-audit.md, pull #29 into sprint 5, plan the rest as sprint 6 once sprint 5 merges.
