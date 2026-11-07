@@ -70,7 +70,7 @@ var nodeMeta = &momo.Meta[Node]{
 
 func (*Node) MomoMeta() *momo.Meta[Node] { return nodeMeta }
 
-var pairK = momo.ColumnOf[int64]("s", "k")
+var pairK = momo.ColumnOf[int64]("s", "tenant_id")
 
 func typedDB(name dialect.Name) *momo.DB { return momo.New(fakedriver.New(name)) }
 
@@ -117,7 +117,7 @@ func TestAliasReferencedFromOuterQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `SELECT "s"."k", "s"."n" FROM ` + inner + ` AS "s" WHERE "s"."n" > $1`
+	want := `SELECT "s"."tenant_id", "s"."n" FROM ` + inner + ` AS "s" WHERE "s"."n" > $1`
 	if got.SQL != want || len(got.Args) != 1 {
 		t.Errorf("subquery:\n got %s %v\nwant %s", got.SQL, got.Args, want)
 	}
@@ -127,7 +127,7 @@ func TestAliasReferencedFromOuterQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = `WITH "s" AS ` + inner + ` SELECT "s"."k", "s"."n" FROM "s"`
+	want = `WITH "s" AS ` + inner + ` SELECT "s"."tenant_id", "s"."n" FROM "s"`
 	if got.SQL != want {
 		t.Errorf("cte:\n got %s\nwant %s", got.SQL, want)
 	}
@@ -185,12 +185,12 @@ func TestStringFunctionsGolden(t *testing.T) {
 		{dialect.MySQL, momo.CurrentSchema(), `DATABASE()`},
 	}
 	for _, c := range cases {
-		got, err := momo.Select[unitTally](typedDB(c.d)).Columns(c.e).SQL()
+		got, err := momo.Select[unitTally](typedDB(c.d)).From(momo.TableRef{Name: "documents"}).Columns(c.e).SQL()
 		if err != nil {
 			t.Errorf("%s %s: %v", c.d, c.want, err)
 			continue
 		}
-		if want := "SELECT " + c.want; got.SQL != want {
+		if want := quoteFor(c.d, "SELECT "+c.want+` FROM "documents"`); got.SQL != want {
 			t.Errorf("%s:\n got %s\nwant %s", c.d, got.SQL, want)
 		}
 	}
@@ -198,7 +198,7 @@ func TestStringFunctionsGolden(t *testing.T) {
 
 // Catches: current_schema() silently rendered where SQLite has no schemas.
 func TestCurrentSchemaRefusedOnSQLite(t *testing.T) {
-	_, err := momo.Select[unitTally](typedDB(dialect.SQLite)).Columns(momo.CurrentSchema()).SQL()
+	_, err := momo.Select[unitTally](typedDB(dialect.SQLite)).From(momo.TableRef{Name: "documents"}).Columns(momo.CurrentSchema()).SQL()
 	if !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("current_schema on SQLite = %v, want ErrUnsupported", err)
 	}
@@ -207,7 +207,7 @@ func TestCurrentSchemaRefusedOnSQLite(t *testing.T) {
 // Catches: a function name reaching the SQL text unchecked.
 func TestFuncNameValidation(t *testing.T) {
 	for _, bad := range []string{"", "lower; DROP TABLE x", "a b", "1x", "a..b", "f(", `"q"`} {
-		_, err := momo.Select[unitTally](typedDB(dialect.Postgres)).
+		_, err := momo.Select[unitTally](typedDB(dialect.Postgres)).From(momo.TableRef{Name: "documents"}).
 			Columns(momo.Func[string](bad, DocTitle)).SQL()
 		if !errors.Is(err, momo.ErrValidation) {
 			t.Errorf("name %q err = %v, want ErrValidation", bad, err)
@@ -220,15 +220,15 @@ func TestFuncNameValidation(t *testing.T) {
 func TestCaseGolden(t *testing.T) {
 	db := typedDB(dialect.Postgres)
 	run := func(e momo.Expr) (momo.Compiled, error) {
-		return momo.Select[unitTally](db).Columns(e).SQL()
+		return momo.Select[unitTally](db).From(momo.TableRef{Name: "documents"}).Columns(e).SQL()
 	}
 	got, err := run(momo.Case[string]().When(DocPublished.Eq(true), "yes").When(DocTenantID.Gt(5), "big").Else("no"))
-	want := `SELECT CASE WHEN "documents"."published" = $1 THEN $2 WHEN "documents"."tenant_id" > $3 THEN $4 ELSE $5 END`
+	want := `SELECT CASE WHEN "documents"."published" = $1 THEN $2 WHEN "documents"."tenant_id" > $3 THEN $4 ELSE $5 END FROM "documents"`
 	if err != nil || got.SQL != want || len(got.Args) != 5 {
 		t.Errorf("case:\n got %s %v (%v)\nwant %s", got.SQL, got.Args, err, want)
 	}
 	got, err = run(momo.Case[string]().WhenExpr(DocPublished.Eq(true), DocTitle).As("t"))
-	want = `SELECT CASE WHEN "documents"."published" = $1 THEN "documents"."title" END AS "t"`
+	want = `SELECT CASE WHEN "documents"."published" = $1 THEN "documents"."title" END AS "t" FROM "documents"`
 	if err != nil || got.SQL != want {
 		t.Errorf("case without else:\n got %s (%v)\nwant %s", got.SQL, err, want)
 	}
