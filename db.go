@@ -106,6 +106,9 @@ type DB struct {
 	pinned   bool             // set by OnConn: statements run on one pinned connection
 	// fieldHooks holds the []FieldHook[T] of WithFieldHooks keyed by *Meta[T].
 	fieldHooks map[any]any
+	// replicas are the read-replica drivers of WithReplicas, reached only
+	// through Replica. A handle derived from a DB never carries them.
+	replicas []Driver
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and
@@ -217,6 +220,7 @@ func (e *execer) after(ctx context.Context, ev *QueryEvent, rows int64, err erro
 }
 
 func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64, error) {
+	markWrite(ctx)
 	ctx, ev := e.before(ctx, op, table, "", c.SQL, c.Args)
 	n, err := e.q.Exec(ctx, c.SQL, c.Args)
 	err = e.wrapErr(op, table, err)
@@ -229,6 +233,9 @@ func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64,
 
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
+	if op != "select" && op != "explain" { // a write with RETURNING
+		markWrite(ctx)
+	}
 	ctx, ev := e.before(ctx, op, table, rel, c.SQL, c.Args)
 	rows, err := e.q.Query(ctx, c.SQL, c.Args)
 	if err != nil {
