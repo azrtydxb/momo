@@ -3,7 +3,11 @@
 package momo_test
 
 import (
+	"database/sql"
+	"database/sql/driver"
 	"errors"
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,7 +94,7 @@ func TestConflictWhereGoldenSQL(t *testing.T) {
 		}, ins + `$1, $2, $3) ON CONFLICT ("name") WHERE "live" = $4 DO UPDATE SET "holder" = EXCLUDED."holder"`, 4},
 		{"target where do nothing, sqlite", dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
 			return leaseTake(q).Where(leaseLive.Eq(true)).DoNothing()
-		}, ins + `?, ?, ?) ON CONFLICT ("name") WHERE "live" = ? DO NOTHING`, 4},
+		}, ins + `?, ?, ?) ON CONFLICT ("name") WHERE "live" = 1 DO NOTHING`, 3},
 		{"both wheres, pg", dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
 			return leaseTake(q).Where(leaseLive.Eq(true)).DoUpdate(leaseHolder.SetExcluded()).Where(leaseUntil.LtExpr(leaseUntil.Excluded()))
 		}, ins + `$1, $2, $3) ON CONFLICT ("name") WHERE "live" = $4 DO UPDATE SET "holder" = EXCLUDED."holder" WHERE "jobs_lock"."until" < EXCLUDED."until"`, 4},
@@ -99,7 +103,7 @@ func TestConflictWhereGoldenSQL(t *testing.T) {
 		}, ins + `$1, $2, $3) ON CONFLICT ("name") DO UPDATE SET "holder" = EXCLUDED."holder", "until" = EXCLUDED."until" WHERE ("jobs_lock"."holder" = $4 AND "jobs_lock"."live" = $5 AND "jobs_lock"."until" > $6)`, 6},
 		{"multiple target wheres AND, sqlite", dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
 			return leaseTake(q).Where(leaseLive.Eq(true)).Where(leaseHolder.Ne("x")).DoNothing()
-		}, ins + `?, ?, ?) ON CONFLICT ("name") WHERE ("live" = ? AND "holder" <> ?) DO NOTHING`, 5},
+		}, ins + `?, ?, ?) ON CONFLICT ("name") WHERE ("live" = 1 AND "holder" <> 'x') DO NOTHING`, 3},
 		{"where then returning, pg", dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
 			return takeSet(q).Where(leaseHolder.Eq("h")).Returning(leaseHolder)
 		}, ins + `$1, $2, $3) ON CONFLICT ("name") DO UPDATE SET "holder" = EXCLUDED."holder", "until" = EXCLUDED."until" WHERE "jobs_lock"."holder" = $4 RETURNING "holder"`, 4},
@@ -215,5 +219,299 @@ func TestExcludedRendersEXCLUDEDColumn(t *testing.T) {
 	nemb := momo.NewNullVectorColumn[vector.Vector]("items", "embedding", 3, 0)
 	if got, want := render(nemb.Excluded()), `EXCLUDED."embedding"`; got != want {
 		t.Fatalf("NullVectorColumn.Excluded = %s, want %s", got, want)
+	}
+}
+
+var leasePrio = momo.NewColumn[int]("jobs_lock", "prio", 0)
+
+// Catches: SQLite binding a target-predicate value (the index text never
+// matches a placeholder), a bool rendered as true/false instead of 1/0, an
+// unescaped quote in a string literal, and PostgreSQL losing its bind
+// parameters to the inline rendering.
+func TestConflictTargetSQLiteLiterals(t *testing.T) {
+	cases := []struct {
+		name  string
+		d     dialect.Name
+		where momo.Predicate
+		want  string
+		nargs int
+	}{
+		{"bool true", dialect.SQLite, leaseLive.Eq(true), `WHERE "live" = 1`, 3},
+		{"bool false", dialect.SQLite, leaseLive.Eq(false), `WHERE "live" = 0`, 3},
+		{"integer", dialect.SQLite, leasePrio.Gt(-7), `WHERE "prio" > -7`, 3},
+		{"string", dialect.SQLite, leaseHolder.Eq("a"), `WHERE "holder" = 'a'`, 3},
+		{"string with quote", dialect.SQLite, leaseHolder.Eq("o'x'; DROP"), `WHERE "holder" = 'o''x''; DROP'`, 3},
+		{"in and not", dialect.SQLite, momo.Not(leasePrio.In(1, 2)), `WHERE NOT ("prio" IN (1, 2))`, 3},
+		{"between and is null", dialect.SQLite, momo.And(leasePrio.Between(1, 9), leaseHolder.IsNull()), `WHERE ("prio" BETWEEN 1 AND 9 AND "holder" IS NULL)`, 3},
+		{"postgres still binds", dialect.Postgres, leaseLive.Eq(true), `WHERE "live" = $4`, 4},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := compileFor(t, c.d, func(q momo.Querier) momo.InsertQuery[Lease] {
+				return leaseTake(q).Where(c.where).DoNothing()
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(got.SQL, c.want) {
+				t.Fatalf("SQL %s\n does not contain %s", got.SQL, c.want)
+			}
+			if len(got.Args) != c.nargs {
+				t.Fatalf("args = %d %v, want %d", len(got.Args), got.Args, c.nargs)
+			}
+		})
+	}
+}
+
+// Catches: inline literals leaking into the DO UPDATE WHERE or the VALUES
+// list on SQLite (values there must stay bound).
+func TestConflictActionStaysBoundOnSQLite(t *testing.T) {
+	got, err := compileFor(t, dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+		return leaseTake(q).Where(leaseLive.Eq(true)).DoUpdate(leaseHolder.SetExcluded()).Where(leaseHolder.Eq("h"))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `INSERT INTO "jobs_lock" ("name", "holder", "until") VALUES (?, ?, ?) ON CONFLICT ("name") WHERE "live" = 1 DO UPDATE SET "holder" = EXCLUDED."holder" WHERE "jobs_lock"."holder" = ?`
+	if got.SQL != want || len(got.Args) != 4 {
+		t.Fatalf("SQL\n got: %s (%d args)\nwant: %s (4 args)", got.SQL, len(got.Args), want)
+	}
+}
+
+// Catches: Excluded() accepted in the conflict-target predicate (the
+// database rejects it with an opaque error), including when nested.
+func TestConflictTargetExcludedIsValidation(t *testing.T) {
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
+		for name, p := range map[string]momo.Predicate{
+			"direct": leaseUntil.LtExpr(leaseUntil.Excluded()),
+			"nested": momo.And(leaseLive.Eq(true), momo.Not(leaseUntil.LeExpr(leaseUntil.Excluded()))),
+		} {
+			t.Run(string(d)+"/"+name, func(t *testing.T) {
+				_, err := compileFor(t, d, func(q momo.Querier) momo.InsertQuery[Lease] {
+					return leaseTake(q).Where(p).DoNothing()
+				})
+				if !errors.Is(err, momo.ErrValidation) {
+					t.Fatalf("err = %v, want ErrValidation", err)
+				}
+			})
+		}
+	}
+	// The action predicate keeps accepting it.
+	if _, err := compileFor(t, dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
+		return leaseTake(q).DoUpdate(leaseHolder.SetExcluded()).Where(leaseUntil.LtExpr(leaseUntil.Excluded()))
+	}); err != nil {
+		t.Fatalf("Excluded in the action predicate: %v", err)
+	}
+}
+
+// Catches: nested junctions, Not, In, Between and IsNull losing parentheses
+// or their table qualifier in the DO UPDATE WHERE.
+func TestConflictActionWhereNestedGolden(t *testing.T) {
+	got, err := compileFor(t, dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
+		return leaseTake(q).DoUpdate(leaseHolder.SetExcluded()).Where(
+			momo.Or(
+				momo.Not(momo.And(leaseHolder.In("a", "b"), leaseUntil.Between(leaseNow, leaseNow.Add(1)))),
+				momo.And(leaseLive.IsNull(), leasePrio.NotIn(1))))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `INSERT INTO "jobs_lock" ("name", "holder", "until") VALUES ($1, $2, $3) ON CONFLICT ("name") DO UPDATE SET "holder" = EXCLUDED."holder" WHERE (NOT (("jobs_lock"."holder" IN ($4, $5) AND "jobs_lock"."until" BETWEEN $6 AND $7)) OR ("jobs_lock"."live" IS NULL AND "jobs_lock"."prio" NOT IN ($8)))`
+	if got.SQL != want || len(got.Args) != 8 {
+		t.Fatalf("SQL\n got: %s (%d args)\nwant: %s (8 args)", got.SQL, len(got.Args), want)
+	}
+}
+
+// Catches: a chunked Models upsert numbering the target and action predicate
+// arguments from the wrong offset, or sizing chunks without reserving room
+// for them (two predicate binds per chunk).
+func TestConflictWhereChunkedArgNumbering(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv, momo.WithMaxParams(10))
+	rows := []Lease{{Name: "a"}, {Name: "b"}, {Name: "c"}}
+	_, err := momo.Insert[Lease](db).Models(rows).
+		OnConflict(leaseName).Where(leaseLive.Eq(true)).
+		DoUpdate(leaseHolder.SetExcluded()).Where(leaseHolder.Ne("x")).Exec(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const head = `INSERT INTO "jobs_lock" ("name", "holder", "until", "live") VALUES `
+	const tail = ` DO UPDATE SET "holder" = EXCLUDED."holder" WHERE "jobs_lock"."holder" <> `
+	want := []string{
+		head + `($1, $2, $3, $4), ($5, $6, $7, $8) ON CONFLICT ("name") WHERE "live" = $9` + tail + `$10`,
+		head + `($1, $2, $3, $4) ON CONFLICT ("name") WHERE "live" = $5` + tail + `$6`,
+	}
+	var got []string
+	for _, c := range drv.Calls() {
+		if strings.HasPrefix(c.SQL, "INSERT") {
+			got = append(got, c.SQL)
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("statements = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("chunk %d\n got: %s\nwant: %s", i, got[i], want[i])
+		}
+	}
+}
+
+// Catches: ConflictQuery.Where / InsertQuery.Where appending into a shared
+// backing array, so two queries derived from one base overwrite each other.
+func TestConflictWhereDoesNotAlias(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.Postgres))
+	// Three predicates leave spare capacity in the backing array, which is
+	// what makes an unclipped append alias; the action is chosen only after
+	// both siblings exist, so neither has been cloned yet.
+	baseTarget := leaseTake(db).Where(leaseLive.Eq(true)).Where(leaseLive.Ne(false)).Where(leaseUntil.IsNotNull())
+	ta := baseTarget.Where(leaseHolder.Eq("A"))
+	tb := baseTarget.Where(leaseHolder.Eq("B"))
+	a, b := ta.DoNothing(), tb.DoNothing()
+	baseAction := leaseTake(db).DoUpdate(leaseHolder.SetExcluded()).Where(leaseLive.Eq(true)).Where(leaseLive.Ne(false)).Where(leaseUntil.IsNotNull())
+	c := baseAction.Where(leaseHolder.Eq("A"))
+	d := baseAction.Where(leaseHolder.Eq("B"))
+	for name, tc := range map[string]struct {
+		q    momo.InsertQuery[Lease]
+		want string
+	}{"target a": {a, "A"}, "target b": {b, "B"}, "action a": {c, "A"}, "action b": {d, "B"}} {
+		got, err := tc.q.SQL()
+		if err != nil {
+			t.Fatal(name, err)
+		}
+		if len(got.Args) < 1 || got.Args[len(got.Args)-1] != tc.want {
+			t.Fatalf("%s: args = %v, want last %q", name, got.Args, tc.want)
+		}
+	}
+}
+
+// status is a named string whose bound form differs from its Go value.
+type status string
+
+func (s status) Value() (driver.Value, error) { return strings.ToUpper(string(s)), nil }
+
+// badStatus is a Valuer whose bound form cannot be rendered inline.
+type badStatus string
+
+func (badStatus) Value() (driver.Value, error) { return time.Unix(0, 0).UTC(), nil }
+
+var (
+	leaseRatio  = momo.NewColumn[float64]("jobs_lock", "ratio", 0)
+	leaseBlob   = momo.NewColumn[[]byte]("jobs_lock", "blob", 0)
+	leasePtr    = momo.NewColumn[*string]("jobs_lock", "ptr", 0)
+	leaseNull   = momo.NewColumn[sql.NullString]("jobs_lock", "nul", 0)
+	leaseStatus = momo.NewColumn[status]("jobs_lock", "status", 0)
+	leaseBad    = momo.NewColumn[badStatus]("jobs_lock", "bad", 0)
+)
+
+// Catches: a target-predicate value SQLite cannot match inline staying bound
+// and reproducing the "does not match any PRIMARY KEY or UNIQUE constraint"
+// failure, instead of failing the build with ErrValidation.
+func TestConflictTargetSQLiteUnrenderableIsValidation(t *testing.T) {
+	str := "x"
+	cases := map[string]momo.Predicate{
+		"time":            leaseUntil.Le(leaseNow),
+		"nan":             leaseRatio.Gt(math.NaN()),
+		"inf":             leaseRatio.Lt(math.Inf(1)),
+		"bytes":           leaseBlob.Eq([]byte("a")),
+		"pointer":         leasePtr.Eq(&str),
+		"sql null (NULL)": leaseNull.Eq(sql.NullString{}),
+		"string with NUL": leaseHolder.Eq("a\x00b"),
+		"valuer to time":  leaseBad.Eq("b"),
+	}
+	for name, p := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := compileFor(t, dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+				return leaseTake(q).Where(p).DoNothing()
+			})
+			if !errors.Is(err, momo.ErrValidation) {
+				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "ON CONFLICT target") {
+				t.Fatalf("err = %v, want it to name the ON CONFLICT target", err)
+			}
+		})
+		t.Run(name+"/postgres binds", func(t *testing.T) {
+			if _, err := compileFor(t, dialect.Postgres, func(q momo.Querier) momo.InsertQuery[Lease] {
+				return leaseTake(q).Where(p).DoNothing()
+			}); err != nil {
+				t.Fatalf("postgres: %v", err)
+			}
+		})
+	}
+}
+
+// Catches: floats rendered inexactly or as integer literals, and a named
+// type rendered from its Go value instead of the value it binds as.
+func TestConflictTargetSQLiteFloatAndValuer(t *testing.T) {
+	cases := []struct {
+		name  string
+		where momo.Predicate
+		want  string
+	}{
+		{"float", leaseRatio.Gt(1.5), `WHERE "ratio" > 1.5`},
+		{"whole float stays a real", leaseRatio.Gt(2), `WHERE "ratio" > 2.0`},
+		{"exponent float", leaseRatio.Lt(1e21), `WHERE "ratio" < 1e+21`},
+		{"million is plain decimal", leaseRatio.Gt(1e6), `WHERE "ratio" > 1000000.0`},
+		{"large fraction", leaseRatio.Gt(123456789.5), `WHERE "ratio" > 123456789.5`},
+		{"small float", leaseRatio.Gt(0.001), `WHERE "ratio" > 0.001`},
+		{"smallest plain", leaseRatio.Gt(1e-6), `WHERE "ratio" > 0.000001`},
+		{"tiny float uses exponent", leaseRatio.Gt(1e-7), `WHERE "ratio" > 1e-07`},
+		{"zero", leaseRatio.Gt(0), `WHERE "ratio" > 0.0`},
+		{"valuer", leaseStatus.Eq("a"), `WHERE "status" = 'A'`},
+		{"sql null (valid)", leaseNull.Eq(sql.NullString{String: "a", Valid: true}), `WHERE "nul" = 'a'`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := compileFor(t, dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+				return leaseTake(q).Where(c.where).DoNothing()
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(got.SQL, c.want) || len(got.Args) != 3 {
+				t.Fatalf("SQL %s (%d args), want %s and 3 args", got.SQL, len(got.Args), c.want)
+			}
+		})
+	}
+}
+
+type failingValuer string
+
+var errValuer = errors.New("valuer broke")
+
+func (failingValuer) Value() (driver.Value, error) { return nil, errValuer }
+
+// Catches: a rejection that names only the type, hiding why a string or float
+// cannot be inlined, and a Valuer error that loses its original cause or the
+// ON CONFLICT target context.
+func TestConflictTargetSQLiteErrorReasons(t *testing.T) {
+	col := momo.NewColumn[failingValuer]("jobs_lock", "fv", 0)
+	cases := []struct {
+		name  string
+		where momo.Predicate
+		want  string
+	}{
+		{"NUL", leaseHolder.Eq("a\x00b"), "NUL byte"},
+		{"NaN", leaseRatio.Gt(math.NaN()), "NaN or Inf"},
+		{"Inf", leaseRatio.Gt(math.Inf(-1)), "NaN or Inf"},
+		{"NULL", leaseNull.Eq(sql.NullString{}), "NULL"},
+		{"valuer error", col.Eq("x"), "ON CONFLICT target"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := compileFor(t, dialect.SQLite, func(q momo.Querier) momo.InsertQuery[Lease] {
+				return leaseTake(q).Where(c.where).DoNothing()
+			})
+			if !errors.Is(err, momo.ErrValidation) {
+				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("err = %q, want it to contain %q", err, c.want)
+			}
+			if c.name == "valuer error" && !errors.Is(err, errValuer) {
+				t.Fatalf("err = %v, want the Valuer error wrapped", err)
+			}
+		})
 	}
 }

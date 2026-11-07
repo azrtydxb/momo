@@ -31,12 +31,15 @@ const (
 	maxHNSWEfSearch      = 1000
 	maxHNSWMaxScanTuples = 2147483647 // INT_MAX
 	maxIVFFlatProbes     = 32768
+
+	minHNSWScanMemMultiplier = 1
+	maxHNSWScanMemMultiplier = 1000
 )
 
 // SearchSettings applies pgvector session settings for one transaction only.
 // Zero values mean "do not change the server default".
 //
-// HNSWIterativeScan, HNSWMaxScanTuples, IVFFlatIterativeScan and
+// HNSWIterativeScan, HNSWMaxScanTuples, HNSWScanMemMultiplier, IVFFlatIterativeScan and
 // IVFFlatMaxProbes need pgvector 0.8.0 or newer. SetSearch checks the
 // installed extension version when any of them is set and returns
 // ErrUnsupported on an older one, because an older server may accept the unknown setting as a
@@ -49,19 +52,30 @@ type SearchSettings struct {
 	// every other index lookup in the same transaction also fall back to
 	// sequential scans. Keep the transaction short and dedicated to the exact
 	// query.
-	ExactSearch          bool
-	HNSWEfSearch         int           // hnsw.ef_search, 1..1000
-	HNSWIterativeScan    IterativeScan // hnsw.iterative_scan (pgvector >= 0.8)
-	HNSWMaxScanTuples    int           // hnsw.max_scan_tuples, 1..2147483647 (pgvector >= 0.8; server default 20000)
-	IVFFlatProbes        int           // ivfflat.probes, 1..32768
-	IVFFlatIterativeScan IterativeScan // ivfflat.iterative_scan: off or relaxed_order only (pgvector >= 0.8)
-	IVFFlatMaxProbes     int           // ivfflat.max_probes, 1..32768 (pgvector >= 0.8)
+	ExactSearch       bool
+	HNSWEfSearch      int           // hnsw.ef_search, 1..1000
+	HNSWIterativeScan IterativeScan // hnsw.iterative_scan (pgvector >= 0.8)
+	HNSWMaxScanTuples int           // hnsw.max_scan_tuples, 1..2147483647 (pgvector >= 0.8; server default 20000)
+	// HNSWScanMemMultiplier sets hnsw.scan_mem_multiplier: the memory an
+	// iterative HNSW scan may use, as a multiple of work_mem. The unit is a
+	// plain multiplier (not bytes), the accepted range is 1 to 1000 and zero
+	// leaves the server default alone. It needs pgvector 0.8.0 or newer;
+	// SetSearch returns ErrUnsupported on an older extension.
+	HNSWScanMemMultiplier float64
+	IVFFlatProbes         int           // ivfflat.probes, 1..32768
+	IVFFlatIterativeScan  IterativeScan // ivfflat.iterative_scan: off or relaxed_order only (pgvector >= 0.8)
+	IVFFlatMaxProbes      int           // ivfflat.max_probes, 1..32768 (pgvector >= 0.8)
 }
+
+// hnsw.scan_mem_multiplier arrived with the iterative scans in pgvector 0.8.0
+// (CHANGELOG "0.8.0: Added support for iterative index scans"; src/hnsw.c at
+// tag v0.8.0 defines it with range 1..1000, and v0.7.4 does not), so the same
+// 0.8.0 gate covers it.
 
 // usesIterativeGUCs reports whether s sets a parameter that exists only in
 // pgvector 0.8.0 and newer.
 func (s SearchSettings) usesIterativeGUCs() bool {
-	return s.HNSWIterativeScan != "" || s.HNSWMaxScanTuples != 0 ||
+	return s.HNSWIterativeScan != "" || s.HNSWMaxScanTuples != 0 || s.HNSWScanMemMultiplier != 0 ||
 		s.IVFFlatIterativeScan != "" || s.IVFFlatMaxProbes != 0
 }
 
@@ -95,7 +109,7 @@ func (tx *Tx) requireIterativeSupport(ctx context.Context) error {
 		return &Error{Kind: ErrUnsupported, Op: "search settings", Err: err}
 	}
 	if !ok {
-		return &Error{Kind: ErrUnsupported, Op: "search settings", Err: fmt.Errorf("iterative scan, max_scan_tuples and max_probes need pgvector 0.8.0 or newer, found %s (after upgrading the package, run ALTER EXTENSION vector UPDATE)", vs[0])}
+		return &Error{Kind: ErrUnsupported, Op: "search settings", Err: fmt.Errorf("iterative scan, max_scan_tuples, scan_mem_multiplier and max_probes need pgvector 0.8.0 or newer, found %s (after upgrading the package, run ALTER EXTENSION vector UPDATE)", vs[0])}
 	}
 	return nil
 }
@@ -118,6 +132,9 @@ func (s SearchSettings) Validate() error {
 	if s.HNSWMaxScanTuples < 0 || s.HNSWMaxScanTuples > maxHNSWMaxScanTuples {
 		return searchInvalid("hnsw.max_scan_tuples %d is outside 1..%d", s.HNSWMaxScanTuples, maxHNSWMaxScanTuples)
 	}
+	if m := s.HNSWScanMemMultiplier; m != 0 && !(m >= minHNSWScanMemMultiplier && m <= maxHNSWScanMemMultiplier) {
+		return searchInvalid("hnsw.scan_mem_multiplier %v is outside %d..%d", m, minHNSWScanMemMultiplier, maxHNSWScanMemMultiplier)
+	}
 	if s.IVFFlatProbes < 0 || s.IVFFlatProbes > maxIVFFlatProbes {
 		return searchInvalid("ivfflat.probes %d is outside 1..%d", s.IVFFlatProbes, maxIVFFlatProbes)
 	}
@@ -135,8 +152,9 @@ func (s SearchSettings) Validate() error {
 type settingPair struct{ Name, Value string }
 
 // searchSettingPairs returns the non-zero settings in this fixed order: enable_indexscan,
-// enable_bitmapscan, hnsw.ef_search, hnsw.iterative_scan, hnsw.max_scan_tuples, ivfflat.probes,
-// ivfflat.iterative_scan, ivfflat.max_probes. Integers are formatted with strconv.Itoa.
+// enable_bitmapscan, hnsw.ef_search, hnsw.iterative_scan, hnsw.max_scan_tuples,
+// hnsw.scan_mem_multiplier, ivfflat.probes, ivfflat.iterative_scan, ivfflat.max_probes. Integers are
+// formatted with strconv.Itoa and the multiplier without exponent notation.
 func searchSettingPairs(s SearchSettings) []settingPair {
 	var out []settingPair
 	if s.ExactSearch {
@@ -150,6 +168,9 @@ func searchSettingPairs(s SearchSettings) []settingPair {
 	}
 	if s.HNSWMaxScanTuples != 0 {
 		out = append(out, settingPair{"hnsw.max_scan_tuples", strconv.Itoa(s.HNSWMaxScanTuples)})
+	}
+	if s.HNSWScanMemMultiplier != 0 {
+		out = append(out, settingPair{"hnsw.scan_mem_multiplier", strconv.FormatFloat(s.HNSWScanMemMultiplier, 'f', -1, 64)})
 	}
 	if s.IVFFlatProbes != 0 {
 		out = append(out, settingPair{"ivfflat.probes", strconv.Itoa(s.IVFFlatProbes)})

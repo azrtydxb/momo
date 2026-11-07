@@ -3,6 +3,7 @@
 package momo
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -143,6 +144,10 @@ func (c Column[T]) Excluded() Expression[T] { return excludedExpr[T]{c.name} }
 type excludedExpr[T any] struct{ name string }
 
 func (e excludedExpr[T]) AppendSQL(b *Builder) {
+	if b.conflictTarget {
+		b.SetErr(&Error{Kind: ErrValidation, Op: "insert", Err: fmt.Errorf("Excluded() column %q is not valid in the ON CONFLICT target predicate; use it in the DO UPDATE Where", e.name)})
+		return
+	}
 	b.WriteString("EXCLUDED.")
 	b.Ident(e.name)
 }

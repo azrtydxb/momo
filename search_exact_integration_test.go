@@ -129,3 +129,27 @@ func TestSearchSettingsPgBouncer(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchScanMemMultiplierScoped(t *testing.T) {
+	ctx := context.Background()
+	db := momo.New(pgxdriver.New(singleConnPool(t)))
+	mustExecPG(t, db, "CREATE EXTENSION IF NOT EXISTS vector")
+	// pgvector registers its settings when the library loads, which a vector
+	// expression triggers; before that current_setting has no such parameter.
+	if _, err := momo.Scalars[string](ctx, db, "SELECT '[1]'::vector::text"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := momo.Scalars[string](ctx, db, "SELECT current_setting('hnsw.scan_mem_multiplier')")
+	if err != nil || len(before) != 1 {
+		t.Fatalf("reading the default: %v %v", before, err)
+	}
+	err = db.WithSearch(ctx, momo.SearchSettings{HNSWIterativeScan: momo.IterativeRelaxedOrder, HNSWScanMemMultiplier: 2.5}, func(tx *momo.Tx) error {
+		return checkSetting(ctx, tx, "hnsw.scan_mem_multiplier", "2.5")
+	})
+	if err != nil {
+		t.Fatalf("inside WithSearch: %v", err)
+	}
+	if err := checkSetting(ctx, db, "hnsw.scan_mem_multiplier", before[0]); err != nil {
+		t.Fatalf("setting leaked after the transaction: %v", err)
+	}
+}

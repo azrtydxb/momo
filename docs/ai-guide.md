@@ -686,10 +686,15 @@ res, err := momo.Insert[models.Lock](q).
 - `OnConflict(cols...).Where(preds...)` renders `ON CONFLICT (cols) WHERE ...` for a
   partial unique index (unqualified columns); PostgreSQL rejects the statement
   without it. It needs target columns (`ErrValidation` otherwise). Multiple `Where`
-  calls AND. MySQL: both are `ErrUnsupported`. Do not use `Excluded()` in the
-  target predicate; PostgreSQL rejects it.
-- SQLite matches the target predicate against the index text, so a bound value
-  never matches: write it as raw SQL, for example `momo.SQL("live = 1")`.
+  calls AND. MySQL: both are `ErrUnsupported`. `Excluded()` in the target
+  predicate is `ErrValidation` (use it in the `DoUpdate` `Where`). On SQLite the
+  target predicate renders bool, integer, finite float and string values inline
+  (`"live" = 1`), because SQLite matches it against the index text; a value
+  that cannot be inlined (time, bytes, pointer, NULL, NaN, a string with a NUL
+  byte) is `ErrValidation`, and a type with `Value()` is inlined as that value.
+  This is golden-tested but not yet run against a real SQLite; `momo.SQL("live = 1")`
+  is the proven fallback. Write the literals in the index exactly as Momo renders them: integers as `2`, floats in plain decimal with `.0` for whole numbers (`2.0`) for magnitudes from 1e-6 up to 1e21, and exponent form (`1e-07`, `1e+21`) outside that range; otherwise use `momo.SQL`. The values appear in the SQL text, so they show up in
+  logs and traces.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
   Explicit identity values do not advance the sequence: `setval` it yourself.
 
@@ -1003,9 +1008,10 @@ PgBouncer):
 
 ```go
 err := db.WithSearch(ctx, momo.SearchSettings{
-	HNSWEfSearch:      100,                          // 1..1000 (default 40; at least your LIMIT)
-	HNSWIterativeScan: momo.IterativeRelaxedOrder,   // pgvector >= 0.8: filtered searches
-	HNSWMaxScanTuples: 20000,                        // pgvector >= 0.8
+	HNSWEfSearch:          100,                        // 1..1000 (default 40; at least your LIMIT)
+	HNSWIterativeScan:     momo.IterativeRelaxedOrder, // pgvector >= 0.8: filtered searches
+	HNSWMaxScanTuples:     20000,                      // pgvector >= 0.8
+	HNSWScanMemMultiplier: 2,                          // pgvector >= 0.8; 1..1000 x work_mem
 }, func(tx *momo.Tx) error {
 	// run EVERY vector query for this search on tx, not db
 	_, err := momo.Select[models.Item](tx).
@@ -1019,10 +1025,10 @@ Fields: `ExactSearch` (turns off index AND bitmap scans for the whole transactio
 exact results, but every other index lookup in that transaction also goes
 sequential, so keep it short and dedicated), `HNSWEfSearch`,
 `HNSWIterativeScan` (`IterativeOff`, `IterativeRelaxedOrder`,
-`IterativeStrictOrder`), `HNSWMaxScanTuples`, `IVFFlatProbes`,
+`IterativeStrictOrder`), `HNSWMaxScanTuples`, `HNSWScanMemMultiplier` (float, 1..1000), `IVFFlatProbes`,
 `IVFFlatIterativeScan` (`IterativeOff`, `IterativeRelaxedOrder` only),
 `IVFFlatMaxProbes`. Zero leaves the server default. Out of range:
-`ErrValidation`. Iterative/max-scan/max-probes fields on pgvector older than 0.8.0
+`ErrValidation`. Iterative/max-scan/scan-mem/max-probes fields on pgvector older than 0.8.0
 or a missing extension: `ErrUnsupported`.
 
 Pitfalls:

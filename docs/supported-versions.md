@@ -55,12 +55,12 @@ Integration tests (real PostgreSQL, pgvector, PgBouncer) run on Linux only.
 
 ## pgvector
 
-| Item                                                                                 | Value                                                                                                                                                                                             |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tested version                                                                       | 0.8.7 (pinned; `TestPgvectorVersionPinned` fails on any other version in CI)                                                                                                                      |
-| Iterative scan, `hnsw.max_scan_tuples`, `ivfflat.max_probes`                         | 0.8.0 or newer; enforced: `SetSearch` returns `ErrUnsupported` on an older or missing extension                                                                                                   |
-| `vector`, `halfvec`, `sparsevec`, `bit` types and the l1, hamming, jaccard operators | no version check in Momo. Upstream pgvector added halfvec, sparsevec, l1 and jaccard in 0.7.0; that is not asserted by this repository, so treat 0.7.0 as an unverified lower bound and use 0.8.x |
-| Installation                                                                         | server-side package or image; Momo never runs `CREATE EXTENSION` at connect time; a migration creates it and a missing extension surfaces as `ErrUnsupported`                                     |
+| Item                                                                                     | Value                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tested version                                                                           | 0.8.7 (pinned; `TestPgvectorVersionPinned` fails on any other version in CI)                                                                                                                      |
+| Iterative scan, `hnsw.max_scan_tuples`, `hnsw.scan_mem_multiplier`, `ivfflat.max_probes` | 0.8.0 or newer; enforced: `SetSearch` returns `ErrUnsupported` on an older or missing extension                                                                                                   |
+| `vector`, `halfvec`, `sparsevec`, `bit` types and the l1, hamming, jaccard operators     | no version check in Momo. Upstream pgvector added halfvec, sparsevec, l1 and jaccard in 0.7.0; that is not asserted by this repository, so treat 0.7.0 as an unverified lower bound and use 0.8.x |
+| Installation                                                                             | server-side package or image; Momo never runs `CREATE EXTENSION` at connect time; a migration creates it and a missing extension surfaces as `ErrUnsupported`                                     |
 
 ## PgBouncer
 
