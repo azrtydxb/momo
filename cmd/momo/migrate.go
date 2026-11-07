@@ -125,15 +125,12 @@ type cli struct {
 	dialectName string
 }
 
-// redactURL removes passwords and DSNs from msg (see migrate.RedactURLs).
-func redactURL(msg string, secrets ...string) string { return migrate.RedactURLs(msg, secrets...) }
-
 func (l *cli) say(format string, args ...any) {
-	_, _ = fmt.Fprintf(l.out, "%s\n", redactURL(fmt.Sprintf(format, args...), l.secrets...))
+	_, _ = fmt.Fprintf(l.out, "%s\n", migrate.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
 }
 
 func (l *cli) errf(code int, format string, args ...any) int {
-	_, _ = fmt.Fprintf(l.errOut, "momo: %s\n", redactURL(fmt.Sprintf(format, args...), l.secrets...))
+	_, _ = fmt.Fprintf(l.errOut, "momo: %s\n", migrate.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
 	return code
 }
 
@@ -180,7 +177,7 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 			_, _ = fmt.Fprint(out, migrateUsage)
 			return exitOK
 		}
-		_, _ = fmt.Fprintf(errOut, "momo: %s\n\n%s", redactURL(err.Error()), migrateUsage)
+		_, _ = fmt.Fprintf(errOut, "momo: %s\n\n%s", migrate.RedactURLs(err.Error()), migrateUsage)
 		return exitUsage
 	}
 	rest := gfs.Args()
@@ -357,7 +354,7 @@ func (l *cli) databaseURL() (string, error) {
 	case "-":
 		if f, ok := migrateStdin.(*os.File); ok {
 			if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
-				return "", errors.New("--url -: standard input is a terminal; pipe the URL in, for example: printf '%s' \"$URL\" | momo migrate status --url -")
+				return "", errors.New("--url -: standard input is a terminal or a character device such as /dev/null; pipe the URL in, for example: printf '%s' \"$URL\" | momo migrate status --url -")
 			}
 		}
 		b, err := io.ReadAll(io.LimitReader(migrateStdin, 1<<16))
@@ -384,7 +381,7 @@ func (l *cli) databaseURL() (string, error) {
 	}
 	l.secrets = append(l.secrets, u)
 	if w := TLSWarning(u); w != "" {
-		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", redactURL(w, l.secrets...))
+		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))
 	}
 	if parsed, err := url.Parse(u); err == nil && parsed.User != nil {
 		if pw, ok := parsed.User.Password(); ok {

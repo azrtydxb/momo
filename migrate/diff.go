@@ -754,7 +754,10 @@ var riskNotes = map[ChangeKind]string{
 func (d *differ) emitRisky(c Change) {
 	if note, ok := riskNotes[c.Kind]; ok {
 		c.Risky = true
-		d.hint(fmt.Sprintf("risky: %s %s: %s", c.Kind, qualified(c.Schema, c.Table, c.Name), note))
+		// The notes name PostgreSQL locks and CONCURRENTLY builds.
+		if d.d == dialect.Postgres {
+			d.hint(fmt.Sprintf("risky: %s %s: %s", c.Kind, qualified(c.Schema, c.Table, c.Name), note))
+		}
 	}
 	d.emit(c)
 }

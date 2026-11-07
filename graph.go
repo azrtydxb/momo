@@ -67,20 +67,28 @@ func (x includedRel[P, C]) after(ctx context.Context, tx *Tx, p *P) error {
 	r := x.r
 	switch r.Kind {
 	case HasOne:
-		if c := r.GetOne(p); c != nil {
-			return r.insertChildren(ctx, tx, p, []*C{c})
+		c := r.GetOne(p)
+		if c == nil {
+			return nil
 		}
+		key, err := r.childKey(p)
+		if err != nil {
+			return err
+		}
+		if err := r.bindChild(p, c, key); err != nil {
+			return err
+		}
+		return insertModel(ctx, tx, r.ChildMeta, c)
 	case HasMany:
 		cs := r.GetMany(p)
-		key, ok := r.ParentKey(p)
-		if !ok {
-			return graphErr(r.Child.Name, r.Name+": parent key is NULL")
+		key, err := r.childKey(p)
+		if err != nil {
+			return err
 		}
 		for i := range cs {
-			if any(&cs[i]) == any(p) {
-				return graphErr(r.Child.Name, r.Name+": the parent lists itself as its own child (cycle)")
+			if err := r.bindChild(p, &cs[i], key); err != nil {
+				return err
 			}
-			r.SetChildKey(&cs[i], key)
 		}
 		return insertModels(ctx, tx, r.ChildMeta, cs)
 	case ManyToMany:
@@ -100,23 +108,23 @@ func (x includedRel[P, C]) after(ctx context.Context, tx *Tx, p *P) error {
 	return nil
 }
 
-// insertChildren writes the parent's key (and a polymorphic discriminator) into
-// each child, then inserts it. HasMany does not use it: it inserts its slice
-// with the chunked bulk path (insertModels).
-func (r Relation[P, C]) insertChildren(ctx context.Context, tx *Tx, p *P, cs []*C) error {
+// childKey returns the parent's key, which HasOne and HasMany copy into their
+// children.
+func (r Relation[P, C]) childKey(p *P) ([]any, error) {
 	key, ok := r.ParentKey(p)
 	if !ok {
-		return graphErr(r.Child.Name, r.Name+": parent key is NULL")
+		return nil, graphErr(r.Child.Name, r.Name+": parent key is NULL")
 	}
-	for _, c := range cs {
-		if any(c) == any(p) {
-			return graphErr(r.Child.Name, r.Name+": the parent lists itself as its own child (cycle)")
-		}
-		r.SetChildKey(c, key)
-		if err := insertModel(ctx, tx, r.ChildMeta, c); err != nil {
-			return err
-		}
+	return key, nil
+}
+
+// bindChild rejects a child that is the parent itself, then writes the
+// parent's key (and a polymorphic discriminator) into it.
+func (r Relation[P, C]) bindChild(p *P, c *C, key []any) error {
+	if any(c) == any(p) {
+		return graphErr(r.Child.Name, r.Name+": the parent lists itself as its own child (cycle)")
 	}
+	r.SetChildKey(c, key)
 	return nil
 }
 

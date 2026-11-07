@@ -11,7 +11,7 @@ import (
 // TLSWarning returns a non-empty warning when raw is a URL with sslmode=disable
 // and any of its hosts is not localhost, 127.0.0.1, ::1 or a unix socket path.
 // It names the hosts only, never the URL, so it carries no credentials.
-// Redaction lives in redactURL (migrate.go); this file adds no second copy.
+// Redaction lives in migrate.RedactURLs; this file adds no second copy.
 func TLSWarning(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {

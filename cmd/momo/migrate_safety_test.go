@@ -123,8 +123,8 @@ func TestMigrateURLStdinTerminalRefused(t *testing.T) {
 	migrateStdin = null
 	t.Cleanup(func() { migrateStdin = old })
 	var out, errOut bytes.Buffer
-	if code := runMigrate(&out, &errOut, []string{"--config", safetyConfig(t), "status", "--url", "-"}, noEnv); code != 2 || !strings.Contains(errOut.String(), "terminal") {
-		t.Fatalf("exit %d, want 2 naming the terminal: %s", code, errOut.String())
+	if code := runMigrate(&out, &errOut, []string{"--config", safetyConfig(t), "status", "--url", "-"}, noEnv); code != 2 || !strings.Contains(errOut.String(), "terminal") || !strings.Contains(errOut.String(), "/dev/null") {
+		t.Fatalf("exit %d, want 2 naming the terminal and /dev/null: %s", code, errOut.String())
 	}
 }
 
