@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	_ "github.com/jackc/pgx/v5/stdlib" // the pgx database/sql driver
+
 	testdb "github.com/azrtydxb/momo/internal/testdb"
 )
 
