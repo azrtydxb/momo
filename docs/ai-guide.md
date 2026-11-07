@@ -876,8 +876,38 @@ ids, err := momo.Scalars[int64](ctx, q, `SELECT id FROM tasks WHERE done = ?`, t
   becomes ambiguous with a joined table. A column qualified by a table that is not
   in the statement's FROM/JOIN is `ErrValidation` at build time.
 - On PostgreSQL write `? |` with a space for a bind followed by OR; `?|` and `?&`
-  are operators. Do not mix `?`/`@name` with native `$n` in one fragment.
+  are operators. On PostgreSQL a fragment may use native `$n` placeholders instead
+  (see "Porting pgx and sqlc SQL" below); do not mix them with `?`/`@name`.
 - Returned results of raw queries bypass soft-delete, hooks and timestamps.
+
+#### Porting pgx and sqlc SQL
+
+On the PostgreSQL dialect, raw SQL (`Exec`, `Scalars`, `SQL`, `TypedSQL`,
+`RawSubquery`) accepts PostgreSQL's native `$1, $2, ...` placeholders, so a
+statement written for pgx or sqlc moves over unchanged:
+
+```go
+// pgx / sqlc:   pool.Exec(ctx, "UPDATE tasks SET done = $1 WHERE owner = $2 OR creator = $2", true, uid)
+affected, err := momo.Exec(ctx, q, "UPDATE tasks SET done = $1 WHERE owner = $2 OR creator = $2", true, uid)
+```
+
+Rules:
+
+- `$n` binds positional argument n of that call. A reused `$n` (here `$2`) binds
+  the argument once. An `In`, `Ident` or `Expr` argument is rendered again at each
+  use. Momo renumbers: inside a larger statement (`TypedSQL` or `RawSubquery`
+  after earlier `Where` binds) `$1` still means the fragment's first argument.
+- One style per fragment. Mixing `$n` with `?`, `@name` or `Named` is
+  `ErrValidation`.
+- Every `$n` needs an argument (`$3` with two arguments, or `$0`, is
+  `ErrValidation`) and every argument must be used (a gap such as `$1, $3` is
+  `ErrValidation`), so a typo fails at build time.
+- A `$n` inside a string literal, quoted identifier, comment or dollar-quoted body
+  is text, not a placeholder.
+- Other dialects: `$n` is `ErrUnsupported` at build time. Port such statements to
+  `?` (or `@name`) when the code must run on SQLite or MySQL.
+- sqlc `sqlc.arg(name)` / `@name` styles: use `momo.Named("name", v)` with `@name`.
+- Typed casts keep working: `$1::int` is fine.
 
 `SelectQuery.SQL()` returns `Compiled{SQL, Args}` without running. `Explain(ctx)`
 runs `EXPLAIN` (never `ANALYZE`) and returns plan text; it binds parameters and

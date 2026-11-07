@@ -636,6 +636,13 @@ func (rawExpr) isRaw() bool            { return true }
 // error), Ident(name) renders a quoted identifier, and @name binds Named(name,
 // value). A ? or @name inside a string literal, quoted identifier, comment or
 // dollar-quoted string is text, as are the PostgreSQL operators ?| ?& @? @@ @>.
+//
+// On PostgreSQL, native $n placeholders bind positional argument n instead
+// of ?, and a reused $n shares one bind. A fragment uses one style: mixing
+// $n with ? or @name is ErrValidation, a $n with no argument or an argument
+// no $n uses is ErrValidation, and a $n on another dialect is ErrUnsupported.
+// The number is the position within this fragment's own arguments, not the
+// final statement's, so a fragment embedded after other binds is renumbered.
 func SQL(sql string, args ...any) Predicate { return rawExpr{sql, slices.Clone(args)} }
 
 // TypedSQL is SQL with a declared result type, for use in projections and
