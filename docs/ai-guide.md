@@ -589,10 +589,20 @@ are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
 `"SKIP LOCKED"`), `ForShare`, `LockOf` (names the tables a lock covers, for
-example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim), `With`, `WithRecursive`, `Union`,
+example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim; the names must be
+table or alias names, not CTEs), `With`, `WithRecursive`, `Union`,
 `FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
-context; it returns `iter.Seq2[T, error]`). Aggregates: `momo.CountAll`,
+context; it returns `iter.Seq2[T, error]`). `Count` and `Exists` wrap the whole
+statement, so they keep a lock clause and lock the rows they count. Aggregates: `momo.CountAll`,
 `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
+
+Advisory locks (PostgreSQL, inside a transaction): `tx.AdvisoryXactLock(ctx, key)`
+waits for a transaction-scoped lock on an int64 key, `tx.TryAdvisoryXactLock`
+returns whether it was granted, and the `String` variants
+(`AdvisoryXactLockString`, `TryAdvisoryXactLockString`) hash a text key with
+`hashtext`. The lock ends at commit or rollback. The same names on `*DB` fail
+with `ErrValidation`; other dialects fail with `ErrUnsupported`. Never store a
+hashed key, it can change across PostgreSQL major versions.
 
 Typed expressions (no `momo.SQL` needed). Computed values (`Func`, `Substr`,
 `Lower`, `Upper`, `Length`, `Case`, `Add`/`Sub`/`Mul`, `Cast`, `Concat`,

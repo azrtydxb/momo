@@ -64,10 +64,6 @@ func (db *DB) TryAdvisoryXactLockString(context.Context, string) (bool, error) {
 	return false, errAdvisoryOutsideTx()
 }
 
-// errInternal marks a failure that is neither the caller's mistake nor a
-// driver error: the server answered in a shape momo does not expect.
-var errInternal = errors.New("momo: unexpected server response")
-
 func errAdvisoryOutsideTx() error {
 	return &Error{Kind: ErrValidation, Op: "advisory lock", Err: errors.New("a transaction-level advisory lock outside a transaction is released immediately; call it on a *Tx from Begin or DB.Tx")}
 }
@@ -96,7 +92,7 @@ func advisoryTry(ctx context.Context, tx *Tx, sql string, key any) (bool, error)
 		return false, err
 	}
 	if len(got) != 1 {
-		return false, &Error{Kind: errInternal, Op: "advisory lock", Err: errors.New("pg_try_advisory_xact_lock returned no row")}
+		return false, &Error{Kind: ErrUnsupported, Op: "advisory lock", Err: errors.New("pg_try_advisory_xact_lock returned no row")}
 	}
 	return got[0], nil
 }

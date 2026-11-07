@@ -298,12 +298,17 @@ func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] {
 	return sq
 }
 
-// ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED".
+// ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED";
+// naming both is an ErrValidation, repeating one is not. A row lock cannot be
+// combined with DISTINCT, GROUP BY or HAVING: the build fails with
+// ErrValidation. Count and Exists wrap the whole statement, so they keep the
+// lock clause and lock the rows they count.
 func (sq SelectQuery[T]) ForUpdate(opt ...string) SelectQuery[T] {
 	return sq.withLock("FOR UPDATE", opt)
 }
 
-// ForShare adds FOR SHARE (PostgreSQL).
+// ForShare adds FOR SHARE (PostgreSQL). Options and restrictions are those of
+// ForUpdate.
 func (sq SelectQuery[T]) ForShare(opt ...string) SelectQuery[T] { return sq.withLock("FOR SHARE", opt) }
 
 func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
@@ -311,7 +316,7 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 	for _, o := range opt {
 		switch o {
 		case "NOWAIT", "SKIP LOCKED":
-			if sq.s.lockWait != "" {
+			if sq.s.lockWait != "" && sq.s.lockWait != " "+o {
 				sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("lock options NOWAIT and SKIP LOCKED are mutually exclusive")}
 			}
 			sq.s.lockWait = " " + o
@@ -641,10 +646,19 @@ func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
 	if len(s.lockOf) == 0 {
 		return true
 	}
+	ctes := make(map[string]struct{}, len(s.with))
+	for _, c := range s.with {
+		ctes[c.name] = struct{}{}
+	}
 	known := map[string]struct{}{}
 	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
 		if _, sub := src.(subquerySource); sub {
 			continue
+		}
+		if tr, ok := src.(TableRef); ok && tr.Schema == "" {
+			if _, isCTE := ctes[tr.Name]; isCTE {
+				continue // a WITH query cannot be locked
+			}
 		}
 		if q, ok := src.(interface{ Qualifier() string }); ok {
 			known[q.Qualifier()] = struct{}{}
@@ -652,7 +666,7 @@ func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
 	}
 	for _, t := range s.lockOf {
 		if _, ok := known[t]; !ok {
-			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("LockOf names %q, which is not a table or alias in the FROM or JOIN sources", t)})
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("LockOf names %q, which is not a table or alias in the FROM or JOIN sources (a CTE or subquery cannot be locked)", t)})
 			return false
 		}
 	}
