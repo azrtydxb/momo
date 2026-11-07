@@ -4,6 +4,7 @@ package momo
 
 import (
 	"errors"
+	"math"
 	"slices"
 	"testing"
 )
@@ -20,6 +21,11 @@ func TestSearchSettingsValidation(t *testing.T) {
 		{IVFFlatProbes: 32769},
 		{IVFFlatMaxProbes: 32769},
 		{HNSWMaxScanTuples: 2147483648},
+		{HNSWScanMemMultiplier: 0.99},
+		{HNSWScanMemMultiplier: 1000.01},
+		{HNSWScanMemMultiplier: -1},
+		{HNSWScanMemMultiplier: math.NaN()},
+		{HNSWScanMemMultiplier: math.Inf(1)},
 	}
 	for _, s := range bad {
 		if err := s.Validate(); !errors.Is(err, ErrValidation) {
@@ -30,6 +36,8 @@ func TestSearchSettingsValidation(t *testing.T) {
 		{},
 		{HNSWEfSearch: 1000, HNSWIterativeScan: IterativeStrictOrder, HNSWMaxScanTuples: 2147483647},
 		{IVFFlatProbes: 32768, IVFFlatMaxProbes: 32768},
+		{HNSWScanMemMultiplier: 1},
+		{HNSWScanMemMultiplier: 1000},
 		{IVFFlatIterativeScan: IterativeRelaxedOrder, IVFFlatProbes: 3, IVFFlatMaxProbes: 9},
 	}
 	for _, s := range good {
@@ -40,13 +48,15 @@ func TestSearchSettingsValidation(t *testing.T) {
 }
 
 func TestSearchSQL(t *testing.T) {
-	got := searchSettingPairs(SearchSettings{ExactSearch: true, HNSWEfSearch: 100, HNSWIterativeScan: IterativeRelaxedOrder, HNSWMaxScanTuples: 5000})
+	got := searchSettingPairs(SearchSettings{ExactSearch: true, HNSWEfSearch: 100, HNSWIterativeScan: IterativeRelaxedOrder, HNSWMaxScanTuples: 5000, HNSWScanMemMultiplier: 2.5, IVFFlatProbes: 4})
 	want := []settingPair{
 		{"enable_indexscan", "off"},
 		{"enable_bitmapscan", "off"},
 		{"hnsw.ef_search", "100"},
 		{"hnsw.iterative_scan", "relaxed_order"},
 		{"hnsw.max_scan_tuples", "5000"},
+		{"hnsw.scan_mem_multiplier", "2.5"},
+		{"ivfflat.probes", "4"},
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("pairs = %v, want %v", got, want)
@@ -71,6 +81,15 @@ func TestPgvectorAtLeast08(t *testing.T) {
 	for _, v := range []string{"", "x", "0.x.1", "8"} {
 		if _, err := pgvectorAtLeast08(v); err == nil {
 			t.Errorf("%q: want an error", v)
+		}
+	}
+}
+
+func TestSearchScanMemMultiplierFormat(t *testing.T) {
+	for v, want := range map[float64]string{1: "1", 1000: "1000", 2.5: "2.5", 1e2: "100", 1.25: "1.25"} {
+		got := searchSettingPairs(SearchSettings{HNSWScanMemMultiplier: v})
+		if len(got) != 1 || got[0].Name != "hnsw.scan_mem_multiplier" || got[0].Value != want {
+			t.Errorf("%v: pairs = %v, want value %q", v, got, want)
 		}
 	}
 }

@@ -128,7 +128,7 @@ Other constructors:
 
 ```go
 sqlDB, drv := pgxdriver.FromConnConfig(cfg, opts...) // cfg *pgx.ConnConfig; returns (*sql.DB, momo.Driver)
-drv = pgxdriver.FromSQLDB(sqlDB)                     // sqlDB must be backed by pgx stdlib
+drv = pgxdriver.FromSQLDB(sqlDB)                     // sqlDB must be backed by pgx stdlib; for an existing *sql.Tx see SQLTx, AdoptTx and UnwrapSQLTx in section Transactions
 ```
 
 `database/sql` paths have no Batch or COPY path (relation loading falls back to
@@ -243,7 +243,7 @@ Config methods: `Index`, `IndexExpr`, `Unique`, `Check`, `Enum`, `Default`,
 `Comment`, `Collate`, `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`,
 `PartitionOf`. Index chain: `Where(pred)`, `Method(m)`, `With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
-`Concurrently()` (see the migration known issue: it is ignored by `diff`).
+`Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
 
 Many-to-many needs `join:` with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry `join:` too):
@@ -307,13 +307,14 @@ What the generator emits per model `Task` (package `task`):
   names (`task := ...` shadows the package). Name variables differently or
   alias the import.
 
-### Projections (hand-written metadata in v0.1.0)
+### Projections
 
-A projection reads a column subset or aggregate into a non-table struct. The
-generator does NOT emit projection metadata in v0.1.0, so write `MomoMeta` by
-hand. A projection has no identity, version, soft-delete or timestamp column, so
-every such index is `-1`. `Columns` order must equal struct field order and the
-`Columns(...)` list of the query.
+A projection reads a column subset or aggregate into a non-table struct. Embed
+`momo.Projection` by value; `momo generate` emits its `MomoMeta` into
+`momo_gen.go` (every exported field, in declaration order; column name from the
+naming rule or a `momo:"column:..."` tag). NEVER hand-write `MomoMeta` for a
+projection. The `Columns(...)` list of the query must equal the struct field
+order.
 
 ```go
 type Card struct {
@@ -322,24 +323,6 @@ type Card struct {
 	Title string
 	Score int64
 }
-
-func (*Card) MomoMeta() *momo.Meta[Card] { return &cardMeta }
-
-var cardMeta = momo.Meta[Card]{
-	Columns: []momo.ColumnMeta{{Name: "id"}, {Name: "title"}, {Name: "score"}},
-	Ptr: func(m *Card, i int) any {
-		switch i {
-		case 0:
-			return &m.ID
-		case 1:
-			return &m.Title
-		default:
-			return &m.Score
-		}
-	},
-	Value:    func(*Card, int) any { return nil },
-	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
-}
 ```
 
 Use it like this:
@@ -347,17 +330,22 @@ Use it like this:
 ```go
 cards := momo.Select[models.Card](q).From(article.Table).
 	Columns(article.ID, article.Title, article.Score).
-	Where(article.DeletedAt.IsNull()). // REQUIRED when the articles table has a soft-delete column
 	OrderBy(article.ID.Asc()).
 	All(ctx)
 ```
 
-A projection does NOT get the automatic soft-delete filter. The filter is chosen
-from the result type's metadata, and a projection's `SoftDelete` is `-1`, so
-`SELECT id, title, score FROM articles` returns soft-deleted rows. When the
-table has a soft-delete column, add `Where(<table>.DeletedAt.IsNull())` yourself
-(for a `bool` marker, `Eq(false)`). This applies to every projection, including
-the vector `Hit` in section 9.
+When `From` is a plain generated table (`article.Table`) with a soft-delete
+column (timestamp, unix or bool), the live-row filter is added automatically,
+exactly as for a model; `WithDeleted()` and `OnlyDeleted()` work too. Do NOT add
+`Where(<table>.DeletedAt.IsNull())` yourself. A `Join` does not change this:
+the `From` table is filtered and joined tables are not. To alias use
+`article.Table.As("a")`, which keeps the filter. The filter is NOT added when
+`From` is a subquery or CTE, or a hand-built `momo.TableRef{Name:..., Alias:...}`
+(it has no soft-delete column): filter those yourself.
+
+If a package still has a hand-written projection `MomoMeta` from before the
+generator emitted it, delete it (method and `Meta` variable); the generated one
+redeclares it.
 
 A projection cannot be inserted, updated or deleted (it embeds `Projection`, not
 `Model`). Computed columns (a distance, `momo.CountAll()`) are valid entries in
@@ -392,16 +380,23 @@ momo migrate drift                      # live DB vs latest applied snapshot
 - `diff` compares models with the latest snapshot, never with the database.
   Prints `no changes` and writes nothing when equal.
 - Never edit an applied migration file, even cosmetically: `apply` refuses on the
-  changed checksum. The manual checksum-update route for a cosmetic edit is in
-  [migrations.md](migrations.md) section 4; prefer a new migration.
+  changed checksum. For a cosmetic edit you accept: `momo migrate hash`, then
+  `momo migrate rehash --version V --accept` (without `--accept` it only shows
+  the two checksums); see [migrations.md](migrations.md) section 4. Prefer a new
+  migration.
 - Renames are never guessed: a rename looks like drop plus add and is refused.
   Say it explicitly: `--rename-column table.old=new`, `--rename-table old=new`.
 - Destructive changes (`drop_table`, `drop_column`, `drop_enum`, a column type
   change) are refused without `--allow-destructive`. Type changes rewrite the
   table under `ACCESS EXCLUSIVE` and fail on rows that do not cast.
 - A `NOT NULL` column without a default on a table that exists in the snapshot is
-  refused (`ErrStagedRequired`). Give it a `default:`.
-- URL: `--url`, else `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
+  refused (`ErrStagedRequired`). Give it a `default:`, or stage it: `diff --stage`,
+  apply, backfill, check `SELECT count(*) FROM t WHERE c IS NULL` is 0, then
+  `diff --enforce-not-null`. The flag enforces every nullable column the model
+  has as NOT NULL, not only staged ones; with NULLs left, `apply` fails (exit 3)
+  and rolls back cleanly (not dirty): backfill and `apply` again.
+- URL: `--url` (warns: visible in the process list; `--url -` reads stdin), else
+  `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
   Exit codes: 0 ok, 1 findings, 2 usage/config, 3 database/lock/execution error.
   An invalid migration name (`diff Bad-Name`) exits 3, not 2.
 - Hand-written SQL migration: create `<version>_<name>.up.sql` (no
@@ -453,53 +448,50 @@ Production checklist:
 
 Known issues in v0.1.0, as rules (each is a filed bug):
 
-- DON'T use `--stage`. The column is recorded NOT NULL in the snapshot while the
-  database has it nullable, so `diff` never emits `SET NOT NULL` and the printed
-  hint (re-run `diff`) is wrong. WORKAROUND: give the column a `default:`, or add
-  the column nullable, backfill, and write your own migration with
-  `ALTER TABLE t ALTER COLUMN c SET NOT NULL;` (same for an existing column made
-  NOT NULL).
-- DON'T rely on `Concurrently()` in `MomoConfig`: `diff` ignores it and writes a
-  plain `CREATE INDEX` that blocks writes. WORKAROUND for large tables: edit the
-  generated file to `CREATE INDEX CONCURRENTLY`, add `-- momo:no-transaction`,
-  keep it as its own migration with only that statement, run `momo migrate hash`.
+- For large tables declare `Concurrently()` on the index in `MomoConfig`: `diff`
+  writes `CREATE INDEX CONCURRENTLY` in its own `-- momo:no-transaction`
+  migration (a trailing `<name>_no_tx` file when the diff also has other DDL).
+  Without it the index is a plain `CREATE INDEX` that blocks writes.
   A failed concurrent build leaves an INVALID index: `drift` reports it; drop it with
   `DROP INDEX CONCURRENTLY IF EXISTS`, then `resolve --rolled-back` and re-apply.
 - `-- momo:no-transaction` applies to the WHOLE file: every statement loses
   atomicity and a mid-file failure leaves earlier statements committed (dirty).
-  `diff` marks the whole file when it contains a concurrent index, so a first
-  migration with a concurrent index creates its tables outside a transaction.
-  Keep such files to one statement.
-- `-- momo:destructive` is never enforced: `apply` runs a hand-written `DROP`
-  without confirmation. Review every `.up.sql` like code.
-- DON'T assume dropping an index or constraint, adding `UNIQUE`/`CHECK`, or any
-  hand-written change is flagged; none is. Adding `UNIQUE`/`CHECK` fails on
-  existing violating data.
-- `apply` does NOT run chain or fork checks. Two branches that both added a
-  migration are not caught by `apply`; `validate` catches it. Always run
-  `validate` in CI. Pending = every file without a history row, so a
-  late-merged older file is applied after newer ones.
+  `diff` never mixes modes: it splits concurrent indexes, `ADD UNIQUE` and
+  `VALIDATE CONSTRAINT` into a trailing no-transaction migration and keeps the
+  transactional DDL in the first file. Keep hand-written no-transaction files
+  to one statement.
+- `-- momo:destructive` is informational: `diff` writes it, `apply` does not
+  read it, so a hand-written `DROP` applies without confirmation. The only
+  guard is `diff --allow-destructive`. Review every `.up.sql` like code.
+- `diff` prints `risky:` hints for dropping an index, primary key, unique, check
+  or foreign key and for adding `UNIQUE`/`CHECK`; these need no flag.
+  `ADD CHECK` is emitted `NOT VALID` with a later `VALIDATE CONSTRAINT`, and
+  `ADD UNIQUE` as `CREATE UNIQUE INDEX CONCURRENTLY` plus `USING INDEX`. Both
+  can still fail on existing violating data. Hand-written changes are not flagged.
 - NEVER edit an applied migration. `apply` and `status` refuse
-  (`ErrChecksumMismatch`) and `momo migrate hash` does NOT fix it (the history row
-  keeps the old checksum). WORKAROUND: `git checkout -- <file>` and write a new
-  migration. Editing a still-pending migration is fine; then run `hash`. `hash`
-  accepts every edit, so read its `changed:/added:/removed:` list first.
+  (`ErrChecksumMismatch`) and `momo migrate hash` alone does NOT fix it (the
+  history row keeps the old checksum). Preferred: `git checkout -- <file>` and
+  write a new migration. A cosmetic edit you accept: `hash`, then
+  `momo migrate rehash --version V --accept`. Editing a still-pending migration
+  is fine; then run `hash`. `hash` accepts every edit, so read its
+  `changed:/added:/removed:` list first.
+- `apply` refuses a forked snapshot chain (same error as `validate`) and a pending
+  version older than the latest applied one (`ErrOutOfOrder`); both exit 1, as
+  does a broken chain (`ErrChainInvalid`). There is no `rebase` command: delete
+  the late migration's `.up.sql` and `.snapshot.json`, run
+  `momo migrate diff <name>` to regenerate it with a new version, then
+  `momo migrate hash` (a pending file needs no `rehash`); see [migrations.md](migrations.md) section 2. Still
+  run `validate` in CI.
 - There is no rollback and no down migrations. Undo with a new forward
   migration. `resolve --rolled-back` runs no SQL.
-- `--force-unlock` does nothing on PostgreSQL. A stuck lock: find the session in
-  `pg_stat_activity` and `pg_terminate_backend` it.
-- `migrate.lock_timeout: 0s` and `statement_timeout: 0s` cannot disable the
-  timeout (0 means default / untouched).
-- `apply` creates the history table (`momo_migrations`) and a meta row even when
-  nothing is pending.
-- A `NOT NULL` column with a volatile default (for example `random()`) rewrites
-  the table with no warning. Constant defaults are cheap.
-- The staging refusal fires for ANY table already in the snapshot, empty or not,
-  although its message says "populated". A rename-candidate exception also skips
-  staging for NOT NULL columns: review the SQL of any `diff` that used a rename
-  flag.
-- History `error` text is not URL-redacted and `--url` is visible in the process
-  list: use `migrate.url_env`, not `--url`.
+- There is no `--force-unlock` (an unknown flag, exit 2). The migration lock is a
+  session advisory lock, freed when its holder disconnects. A stuck lock: find
+  the session in `pg_stat_activity` and `pg_terminate_backend` it.
+- `migrate.lock_timeout: 0s` and `statement_timeout: 0s` disable the timeouts
+  (`SET ... = 0`); leave the key out for the defaults (5 s, untouched).
+- `apply` with nothing pending writes nothing, not even the history table.
+- `--url` is visible in the process list (momo warns): use `migrate.url_env`,
+  `MOMO_DATABASE_URL` or `--url -`. URLs in history `error` text are redacted.
 - `momo_migrations` lives in the first schema of `search_path`;
   `migrate.schemas[0]` must equal `current_schema()` or the engine errors.
 - Dropped extensions and schemas are not dropped in the database.
@@ -649,10 +641,17 @@ dead, _ := momo.Select[models.Task](q).OnlyDeleted().All(ctx)
   `ErrValidation`. Use `SoftDelete` or `ForceDelete`.
 - The soft-delete filter applies automatically to `Select`, `Count`, relation
   loads and `Has`/`HasNo` of a model. It does NOT apply to raw SQL (`momo.SQL`,
-  `momo.Exec`, `momo.Scalars`) or to projections (see "Projections" in section
-  4): add `deleted_at IS NULL` / `<table>.DeletedAt.IsNull()` yourself.
-- A soft-deleted row still occupies its unique keys. `FindOrCreate` returns the
-  soft-deleted row. Use partial unique indexes (`Where("deleted_at IS NULL")`) if
+  `momo.Exec`, `momo.Scalars`), or to a projection whose `From` is a subquery or
+  a hand-built `TableRef` (see "Projections" in section 4): add
+  `deleted_at IS NULL` / `<table>.DeletedAt.IsNull()` yourself. A projection
+  read `From` a generated table (also with joins) is filtered automatically.
+- A soft-deleted row still occupies its unique keys. `FindOrCreate` does not
+  treat it as found: with a unique constraint that covers deleted rows the
+  insert conflicts and it returns `ErrUniqueViolation` (it never returns or
+  restores the deleted row). A partial unique index would release the key, but
+  `FindOrCreate` cannot target one (its `ON CONFLICT (key)` has no predicate;
+  use `Insert` + `OnConflict(key).Where(...)`). Use partial unique indexes
+  (`Where("deleted_at IS NULL")`) if
   keys must be reusable.
 - `Delete.Model(&m)` deletes by primary key (`ErrNotFound` if missing).
 
@@ -689,10 +688,15 @@ res, err := momo.Insert[models.Lock](q).
 - `OnConflict(cols...).Where(preds...)` renders `ON CONFLICT (cols) WHERE ...` for a
   partial unique index (unqualified columns); PostgreSQL rejects the statement
   without it. It needs target columns (`ErrValidation` otherwise). Multiple `Where`
-  calls AND. MySQL: both are `ErrUnsupported`. Do not use `Excluded()` in the
-  target predicate; PostgreSQL rejects it.
-- SQLite matches the target predicate against the index text, so a bound value
-  never matches: write it as raw SQL, for example `momo.SQL("live = 1")`.
+  calls AND. MySQL: both are `ErrUnsupported`. `Excluded()` in the target
+  predicate is `ErrValidation` (use it in the `DoUpdate` `Where`). On SQLite the
+  target predicate renders bool, integer, finite float and string values inline
+  (`"live" = 1`), because SQLite matches it against the index text; a value
+  that cannot be inlined (time, bytes, pointer, NULL, NaN, a string with a NUL
+  byte) is `ErrValidation`, and a type with `Value()` is inlined as that value.
+  This is golden-tested but not yet run against a real SQLite; `momo.SQL("live = 1")`
+  is the proven fallback. Write the literals in the index exactly as Momo renders them: integers as `2`, floats in plain decimal with `.0` for whole numbers (`2.0`) for magnitudes from 1e-6 up to 1e21, and exponent form (`1e-07`, `1e+21`) outside that range; otherwise use `momo.SQL`. The values appear in the SQL text, so they show up in
+  logs and traces.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
   Explicit identity values do not advance the sequence: `setval` it yourself.
 
@@ -758,6 +762,22 @@ err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
   `tx.Savepoint(ctx, name)`, `tx.RollbackTo(ctx, name)`, `tx.Release(ctx, name)`.
 - Manual control: `tx, err := db.Begin(ctx, opts)`, `tx.Commit(ctx)`,
   `tx.Rollback(ctx)`; a finished `*Tx` returns `ErrTxDone`. Prefer `db.Tx`.
+- Incremental adoption in a `database/sql` or pgx codebase, both directions:
+  - Adopt a transaction the caller began: `mtx := db.AdoptTx(pgxdriver.SQLTx(sqlTx))`
+    for a `*sql.Tx` (database must be pgx-stdlib backed, `FromSQLDB`), or
+    `db.AdoptTx(pgxdriver.PgxTx(pgxTx, opts...))` for a `pgx.Tx` (pgxpool driver; `opts` are the options of `New`, such as `WithExecMode`; an unsupported exec mode returns `ErrUnsupported` on use, as with `New`). An adopted `pgx.Tx` keeps Batch and `COPY`; an adopted `*sql.Tx` has neither. Statements,
+    hooks, error classification and savepoints (`mtx.Tx`) work as usual. `Commit`
+    and `Rollback` on `mtx` return `ErrAdoptedTx` and do nothing: the caller
+    commits or rolls back its own transaction. After that, `mtx` statements
+    return `ErrTxDone`. A nil argument panics.
+  - Expose the handle behind a `*Tx` to legacy helpers:
+    `pgxdriver.UnwrapSQLTx(tx)` returns `(*sql.Tx, bool)` and
+    `pgxdriver.UnwrapPgxTx(tx)` returns `(pgx.Tx, bool)`; `false` when the `Tx`
+    belongs to the other driver kind. Works for `db.Tx` callbacks, adopted
+    transactions and savepoint scopes (the outer transaction). Finish a
+    momo-begun transaction through momo, never through the unwrapped handle.
+  - Mixing is safe: a legacy `SELECT ... FOR UPDATE` helper and momo statements
+    can alternate on the same transaction.
 - Do not call blocking network I/O inside `fn`.
 - Retry the WHOLE `db.Tx` on `ErrSerialization` (PostgreSQL 40001 serialization
   failure and 40P01 deadlock). Only when `fn` has no side effects outside the
@@ -807,7 +827,8 @@ Decision table:
 | Need                                                        | API                                                                                                                                                                                                                    |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Children for rows you already fetched                       | `momo.Load(ctx, q, parents, rel, opts...)`: one statement per relation, not per parent                                                                                                                                 |
-| Several relations for the same parents                      | `momo.LoadAll(ctx, q, parents, rel1, rel2.Scope(...), rel3.Then(...))`                                                                                                                                                 |
+| Several relations for the same parents                      | `momo.LoadAll(ctx, q, parents, rel1, rel2.Scope(opts...), rel3.Then(nested...))`                                                                                                                                       |
+| Filter, order and nest one relation                         | `rel.Scope(where, orderBy).Then(nested)` with `LoadWhere` and `LoadOrderBy` options                                                                                                                                    |
 | Load as part of a query (`All`/`One`/`First`)               | a select query's `.Preload(rel, ...)`                                                                                                                                                                                  |
 | Belongs-to with no extra round trip                         | `Preload(rel.Joined())`: LEFT JOIN in the parent statement                                                                                                                                                             |
 | Only some children, ordered, top-N per parent, soft-deleted | `rel.Scope(opts...)` with `LoadWhere`, `LoadOrderBy`, `LoadPerParentLimit`, `LoadWithDeleted`, `LoadOnlyDeleted` (each generic over the child type, as in the example below; `Load` accepts the same options directly) |
@@ -847,11 +868,13 @@ Rules and limits:
 - `Load`/`LoadAll`/`Preload` clear the association first, so a parent with no
   children is empty (nil), never stale. NULL-key parents get an empty
   association. Parent order never changes.
-- `Scope(...)` and `Then(...)` CANNOT be combined on one relation (each returns a
-  loader without the other). WORKAROUND: load the scoped relation first, then
-  call `Load` on the children held inside each parent:
-  `for i := range authors { err = momo.Load(ctx, db, authors[i].Documents, document.Comments) }`.
-  Pass the slice stored in the parent, not a flattened copy.
+- `Scope(...)` and `Then(...)` combine: both return a `RelationLoader` with
+  `Scope` and `Then` methods, so
+  `document.Comments.Scope(approvedOnly).Then(comment.Author)` (with
+  `approvedOnly` a `momo.LoadWhere[models.Comment]` option) filters the comments
+  and loads each one's author in one loader. The options
+  apply to that relation's children only; nested loaders carry their own; the
+  nested level runs over the surviving children only (one statement per level).
 - `Joined()` is belongs-to only, and only when the child key is the child's
   primary key or a single unique column. Has-one, has-many, many-to-many give
   `ErrUnsupported`. `momo.Load(ctx, db, docs, X.Joined())` does not compile
@@ -893,10 +916,14 @@ Rules and limits:
   belongs-to children first, has-one/has-many after the parent, many-to-many
   children inserted then linked; hooks, timestamps and defaults run. On a `*Tx` it
   runs in a savepoint. Nil parent, a model as its own child, or a NULL key that
-  must be copied: `ErrValidation`. Use `Link` for existing rows.
+  must be copied: `ErrValidation`. Has-many and many-to-many children go in as
+  chunked bulk inserts (1000 children = one statement). A dialect without
+  `RETURNING` gives `ErrUnsupported` before a transaction opens. DON'T list a
+  many-to-many relation whose children are already stored: they are inserted
+  again and fail with `ErrUniqueViolation`; use `Link` for existing rows.
 - `FindOrCreate` needs a UNIQUE constraint on exactly the key columns. It
-  overwrites your struct with the stored row when it exists and counts
-  soft-deleted rows. Under REPEATABLE READ/SERIALIZABLE the re-select can return
+  overwrites your struct with the stored row when it exists; a soft-deleted
+  row is not found, it fails with `ErrUniqueViolation`. Under REPEATABLE READ/SERIALIZABLE the re-select can return
   `ErrNotFound`: retry the transaction. Empty key or unmapped column:
   `ErrValidation`.
 - Tag-declared relations need a single-column primary key on both models.
@@ -965,11 +992,10 @@ Nearest-neighbour query; `Asc()` is nearest first:
 
 ```go
 distance := momo.CosineDistance(item.Embedding, query) // query is vector.Vector of dim 1536
-hits, err := momo.Select[models.Hit](q). // projection with Title string, Distance float64 (section 4)
+hits, err := momo.Select[models.Hit](q). // projection with Title string, Distance float64 (section 4); soft-deleted items are filtered automatically
 	From(item.Table).
 	Columns(item.Title, distance).
 	Where(item.Category.Eq("news")).
-	// if Item is soft-deletable (a projection skips the soft-delete filter): Where(item.DeletedAt.IsNull()).
 	OrderBy(distance.Asc()). // distance only: see the tie-break note below
 	Limit(10).
 	All(ctx)
@@ -979,10 +1005,9 @@ items, err := momo.Select[models.Item](q).
 	OrderBy(momo.CosineDistance(item.Embedding, query).Asc()).Limit(5).All(ctx)
 ```
 
-- `Hit` is a hand-written projection (section 4); its meta is
-  `Columns: []momo.ColumnMeta{{Name: "title"}, {Name: "distance"}}`, `Ptr`
-  returning `&m.Title` then `&m.Distance`, and every index `-1`. The name
-  `distance` is only a label for the computed column.
+- `Hit` is a projection (section 4); the generator emits its meta. The select
+  list is positional, so the field name `Distance` only labels the computed
+  column.
 - A vector literal is `vector.Vector{0.1, 0.2, 0.3}` (`vector.Vector` is
   `[]float32`; its length must equal `dim`).
 - `InnerProductDistance` is pgvector `<#>`: the NEGATIVE inner product, so
@@ -1001,9 +1026,10 @@ PgBouncer):
 
 ```go
 err := db.WithSearch(ctx, momo.SearchSettings{
-	HNSWEfSearch:      100,                          // 1..1000 (default 40; at least your LIMIT)
-	HNSWIterativeScan: momo.IterativeRelaxedOrder,   // pgvector >= 0.8: filtered searches
-	HNSWMaxScanTuples: 20000,                        // pgvector >= 0.8
+	HNSWEfSearch:          100,                        // 1..1000 (default 40; at least your LIMIT)
+	HNSWIterativeScan:     momo.IterativeRelaxedOrder, // pgvector >= 0.8: filtered searches
+	HNSWMaxScanTuples:     20000,                      // pgvector >= 0.8
+	HNSWScanMemMultiplier: 2,                          // pgvector >= 0.8; 1..1000 x work_mem
 }, func(tx *momo.Tx) error {
 	// run EVERY vector query for this search on tx, not db
 	_, err := momo.Select[models.Item](tx).
@@ -1017,10 +1043,10 @@ Fields: `ExactSearch` (turns off index AND bitmap scans for the whole transactio
 exact results, but every other index lookup in that transaction also goes
 sequential, so keep it short and dedicated), `HNSWEfSearch`,
 `HNSWIterativeScan` (`IterativeOff`, `IterativeRelaxedOrder`,
-`IterativeStrictOrder`), `HNSWMaxScanTuples`, `IVFFlatProbes`,
+`IterativeStrictOrder`), `HNSWMaxScanTuples`, `HNSWScanMemMultiplier` (float, 1..1000), `IVFFlatProbes`,
 `IVFFlatIterativeScan` (`IterativeOff`, `IterativeRelaxedOrder` only),
 `IVFFlatMaxProbes`. Zero leaves the server default. Out of range:
-`ErrValidation`. Iterative/max-scan/max-probes fields on pgvector older than 0.8.0
+`ErrValidation`. Iterative/max-scan/scan-mem/max-probes fields on pgvector older than 0.8.0
 or a missing extension: `ErrUnsupported`.
 
 Pitfalls:
@@ -1065,24 +1091,25 @@ case errors.Is(err, momo.ErrUniqueViolation):
 `me.Column` is empty for unique, foreign-key and check violations (PostgreSQL
 reports a column only for NOT NULL). Use `Constraint` for those three.
 
-| Error                    | When                                                                                                                                                                                                                                                                                                      | What to do                               |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `ErrNotFound`            | `One`, `First`, `Update.Model`, `Delete.Model` matched no row; `FindOrCreate` re-select miss. `All`/`Each`/`Iter` never return it                                                                                                                                                                         | map to 404 or create                     |
-| `ErrTooManyRows`         | `One` matched more than one row; has-one load matched several children                                                                                                                                                                                                                                    | fix the filter or the data               |
-| `ErrUniqueViolation`     | unique key or primary key violated (SQLSTATE 23505)                                                                                                                                                                                                                                                       | conflict; `Constraint` names it          |
-| `ErrForeignKeyViolation` | FK violated (23503)                                                                                                                                                                                                                                                                                       | missing parent or children still exist   |
-| `ErrCheckViolation`      | CHECK failed (23514)                                                                                                                                                                                                                                                                                      | business rule                            |
-| `ErrNotNullViolation`    | NULL into NOT NULL (23502); has-one/has-many `Unlink`/`Replace` on a NOT NULL FK                                                                                                                                                                                                                          | fix the data or nullability              |
-| `ErrSerialization`       | serialization failure or deadlock (40001, 40P01)                                                                                                                                                                                                                                                          | retry the whole transaction with backoff |
-| `ErrBusy`                | lock not available (55P03)                                                                                                                                                                                                                                                                                | retry later                              |
-| `ErrOptimisticLock`      | `Update.Model` on a versioned model with a stale version                                                                                                                                                                                                                                                  | reload, reapply, retry                   |
-| `ErrUnfilteredMutation`  | `Update`/`Delete` without `Where` and without `AllRows()`                                                                                                                                                                                                                                                 | add a filter                             |
-| `ErrValidation`          | bad input detected before the database: wrong vector dim, `After` count, empty `Models`, writing a reserved/read-only column, plain `Delete` on a soft-delete model, negative `Limit`, `Link` with NULL key, bad `SearchSettings`, qualifier not in FROM                                                  | programmer or input error; fix the call  |
-| `ErrUnsupported`         | dialect or driver cannot do it: `Each`/`Iter` with `Preload`; `Joined` shape; `LoadPerParentLimit` on to-one; belongs-to helpers; keyset on nullable key; `IndexedBy`; iterative search on pgvector < 0.8; simple protocol exec mode; non-standard isolation; transactions on a pinned conn; SQLite/MySQL | redesign the call; not retryable         |
-| `ErrTxDone`              | `*Tx` already committed or rolled back                                                                                                                                                                                                                                                                    | do not reuse a finished `Tx`             |
-| `ErrLimitExceeded`       | configured limit exceeded (for example one row has more columns than the bind limit)                                                                                                                                                                                                                      | split or raise the limit                 |
-| `ErrPinnedBusy`          | `Release` on a pinned connection that is still executing                                                                                                                                                                                                                                                  | wait and release again                   |
-| `ErrInvalidVector`       | a vector value failed validation (same value as `vector.ErrInvalidVector`)                                                                                                                                                                                                                                | fix the vector                           |
+| Error                    | When                                                                                                                                                                                                                                                                                                      | What to do                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `ErrNotFound`            | `One`, `First`, `Update.Model`, `Delete.Model` matched no row; `FindOrCreate` re-select miss. `All`/`Each`/`Iter` never return it                                                                                                                                                                         | map to 404 or create                                |
+| `ErrTooManyRows`         | `One` matched more than one row; has-one load matched several children                                                                                                                                                                                                                                    | fix the filter or the data                          |
+| `ErrUniqueViolation`     | unique key or primary key violated (SQLSTATE 23505)                                                                                                                                                                                                                                                       | conflict; `Constraint` names it                     |
+| `ErrForeignKeyViolation` | FK violated (23503)                                                                                                                                                                                                                                                                                       | missing parent or children still exist              |
+| `ErrCheckViolation`      | CHECK failed (23514)                                                                                                                                                                                                                                                                                      | business rule                                       |
+| `ErrNotNullViolation`    | NULL into NOT NULL (23502); has-one/has-many `Unlink`/`Replace` on a NOT NULL FK                                                                                                                                                                                                                          | fix the data or nullability                         |
+| `ErrSerialization`       | serialization failure or deadlock (40001, 40P01)                                                                                                                                                                                                                                                          | retry the whole transaction with backoff            |
+| `ErrBusy`                | lock not available (55P03)                                                                                                                                                                                                                                                                                | retry later                                         |
+| `ErrOptimisticLock`      | `Update.Model` on a versioned model with a stale version                                                                                                                                                                                                                                                  | reload, reapply, retry                              |
+| `ErrUnfilteredMutation`  | `Update`/`Delete` without `Where` and without `AllRows()`                                                                                                                                                                                                                                                 | add a filter                                        |
+| `ErrValidation`          | bad input detected before the database: wrong vector dim, `After` count, empty `Models`, writing a reserved/read-only column, plain `Delete` on a soft-delete model, negative `Limit`, `Link` with NULL key, bad `SearchSettings`, qualifier not in FROM                                                  | programmer or input error; fix the call             |
+| `ErrUnsupported`         | dialect or driver cannot do it: `Each`/`Iter` with `Preload`; `Joined` shape; `LoadPerParentLimit` on to-one; belongs-to helpers; keyset on nullable key; `IndexedBy`; iterative search on pgvector < 0.8; simple protocol exec mode; non-standard isolation; transactions on a pinned conn; SQLite/MySQL | redesign the call; not retryable                    |
+| `ErrAdoptedTx`           | `Commit` or `Rollback` on a `*Tx` from `AdoptTx`; the caller owns that transaction                                                                                                                                                                                                                        | finish the transaction with the caller's own handle |
+| `ErrTxDone`              | `*Tx` already committed or rolled back                                                                                                                                                                                                                                                                    | do not reuse a finished `Tx`                        |
+| `ErrLimitExceeded`       | configured limit exceeded (for example one row has more columns than the bind limit)                                                                                                                                                                                                                      | split or raise the limit                            |
+| `ErrPinnedBusy`          | `Release` on a pinned connection that is still executing                                                                                                                                                                                                                                                  | wait and release again                              |
+| `ErrInvalidVector`       | a vector value failed validation (same value as `vector.ErrInvalidVector`)                                                                                                                                                                                                                                | fix the vector                                      |
 
 Driver errors Momo does not classify keep their original type: reach them with
 `errors.As(err, &pgErr)`. Data exceptions (SQLSTATE class 22, for example
@@ -1156,7 +1183,8 @@ Examples: every `examples/*/example_test.go`, harness
    (`go install github.com/azrtydxb/momo/cmd/momo@v0.1.0`).
 3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run
    `momo generate` after every model change and commit the generated files.
-4. Never edit `*_gen.go`. Never hand-write `MomoMeta` for a table model.
+4. Never edit `*_gen.go`. Never hand-write `MomoMeta` for a table model or a
+   projection.
 5. Non-pointer field = NOT NULL; pointer = NULL-able. Use `SetNull()` only on
    pointer fields.
 6. Use `Insert.Model` to store the struct as-is (zeros included); `Insert.Values`
@@ -1166,8 +1194,10 @@ Examples: every `examples/*/example_test.go`, harness
    retry. `Set` updates do not touch the version.
 8. Never call `AllRows()` to get past `ErrUnfilteredMutation`; add a `Where`.
 9. Soft-delete models: `SoftDelete`/`ForceDelete`, not `Delete`. Raw SQL and
-   projections (`Select[Card]`, the vector `Hit`) do not get the soft-delete
-   filter: add `Where(<table>.DeletedAt.IsNull())` yourself.
+   projections whose `From` is a subquery or a hand-built `TableRef` do not get
+   the soft-delete filter: add `Where(<table>.DeletedAt.IsNull())` yourself. A
+   projection read `From` a generated table (`Select[Card]`, the vector `Hit`)
+   is filtered automatically; do not add the predicate.
 10. Page with `OrderBy` + `After` and a unique tie-break; pass one value per
     effective ORDER BY key (primary key included).
 11. Pass user input only as arguments to `momo.SQL`/`TypedSQL`/`Exec`/`Scalars`;
@@ -1176,7 +1206,8 @@ Examples: every `examples/*/example_test.go`, harness
     `ErrSerialization` with jittered backoff; never retry inside it.
 13. Check errors with `errors.Is` against the `momo.Err*` sentinels.
 14. Load relations explicitly (`Load`, `LoadAll`, `Preload`); never assume a field
-    is populated. `Scope` and `Then` cannot be combined on one relation.
+    is populated. `Scope` and `Then` chain on one relation:
+    `rel.Scope(opts...).Then(nested...)`.
 15. `Joined()` is belongs-to only; `Link`/`Unlink`/`Replace`/`Count` are not for
     belongs-to; helpers skip hooks and `UpdatedAt`.
 16. `FindOrCreate` and `OnConflict` need a matching UNIQUE constraint; many-to-many
@@ -1190,14 +1221,17 @@ Examples: every `examples/*/example_test.go`, harness
     tables.
 19. Migrations: `diff`, review SQL, commit all files, `apply`. Never edit an
     applied migration; undo with a new one. No rollback exists.
-20. Don't use `--stage`; give NOT NULL additions a default or write the
-    `SET NOT NULL` migration by hand.
-21. Don't rely on `Concurrently()` or `-- momo:destructive`; hand-edit large-table
-    index builds into their own `-- momo:no-transaction` migration.
+20. NOT NULL additions without a default: `diff --stage`, apply, backfill, check
+    no NULLs remain, then `diff --enforce-not-null` (or give the column a
+    default).
+21. Declare `Concurrently()` on large-table indexes. `-- momo:destructive` is
+    informational; only `diff --allow-destructive` guards drops.
 22. CI must run `momo generate --check`, `momo migrate validate` and the
-    `diff ci_probe | grep -qx 'no changes'` probe; `apply` does not detect forks.
+    `diff ci_probe | grep -qx 'no changes'` probe; `apply` also refuses forks and
+    out-of-order versions, but fail the pull request earlier.
 23. Run `momo migrate` over a direct connection, URL from the environment, never
-    `--url`. Use `sslmode=verify-full` for remote databases.
+    `--url` (or `--url -` for stdin). Use `sslmode=verify-full` for remote
+    databases.
 24. Behind PgBouncer keep the default exec mode; never select the simple
     protocol.
 25. Test against real PostgreSQL with pgvector; do not mock `momo.Querier`.

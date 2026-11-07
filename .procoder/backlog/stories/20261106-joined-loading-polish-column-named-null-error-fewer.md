@@ -1,9 +1,9 @@
 # Joined loading polish: column-named NULL error, fewer allocations, coverage
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-06
 Epic: momo-06-relations
-Sprint: -
+Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
 
 ## Description
 
@@ -18,17 +18,23 @@ test.
 
 ## Acceptance criteria
 
-- [ ] A matched joined child with NULL in a non-nullable column returns an
+- [x] A matched joined child with NULL in a non-nullable column returns an
       error naming the child column (`joinBinding.assign` wraps with
       `ChildMeta.Columns[i].Name`); an integration test asserts the name.
-- [ ] Per-row `**T` holders are allocated once per binder and reset per
+- [x] Per-row `**T` holders are allocated once per binder and reset per
       row without sharing pointees; a benchmark shows fewer allocations
       per joined row than before (record before/after numbers).
-- [ ] Integration test: two different `Joined()` relations in one query
+- [x] Integration test: two different `Joined()` relations in one query
       load correctly.
-- [ ] Integration test: non-pointer `types.UUID` and `types.Date` child
+- [x] Integration test: non-pointer `types.UUID` and `types.Date` child
       fields and a value-receiver `sql.Scanner` field load through
       `Joined()` identically to plain `Load`.
-- [ ] Unit test for `scanNull` with named slice, map and interface kinds.
+- [x] Unit test for `scanNull` with named slice, map and interface kinds.
 
 ## Evidence
+
+- Criterion 1: `TestJoinBinderNullColumnIsNamed` (unit) proved the error is ErrValidation with Column "count" and Table set; integration `TestJoinLoadNullColumnErrorNamesColumn` asserts `column=name` (CI run 42304152615, green).
+- Criterion 2: `BenchmarkJoinBinderRow` went from 13 to 8 allocs/op (1165 to 714 ns/op, 192 to 152 B/op) with the holders and scratch child built once per binder; `TestJoinBinderRowsDoNotShare` proved consecutive rows share no child and no pointee (mutation: handing out the scratch child fails it).
+- Criterion 3: `TestJoinLoadTwoRelationsInOneQuery` (CI run 42304152615).
+- Criterion 4: `TestJoinLoadValueTypesMatchPlainLoad` loads non-pointer `types.UUID`, `types.Date` and a value-receiver Scanner through `Joined()` and compares with plain load (CI run 42304152615).
+- Criterion 5: `TestScanNullNamedKinds` covers named slice, map and interface kinds (plus the existing unnamed cases).

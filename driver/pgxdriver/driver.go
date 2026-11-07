@@ -169,9 +169,15 @@ type pgxTx struct {
 	// users of the pool), so connection-level calls such as SendBatch check
 	// done first.
 	done atomic.Bool
+	// modeErr is the error WithExecMode recorded for a rejected mode (set only
+	// by PgxTx); every statement, batch and COPY on this transaction returns it.
+	modeErr error
 }
 
 func (t *pgxTx) Query(ctx context.Context, sql string, args []any) (momo.Rows, error) {
+	if t.modeErr != nil {
+		return nil, t.modeErr
+	}
 	rows, err := t.tx.Query(ctx, sql, t.d.withMode(args)...)
 	if err != nil {
 		return nil, txErr("select", err)
@@ -180,6 +186,9 @@ func (t *pgxTx) Query(ctx context.Context, sql string, args []any) (momo.Rows, e
 }
 
 func (t *pgxTx) Exec(ctx context.Context, sql string, args []any) (int64, error) {
+	if t.modeErr != nil {
+		return 0, t.modeErr
+	}
 	tag, err := t.tx.Exec(ctx, sql, t.d.withMode(args)...)
 	if err != nil {
 		return 0, txErr("exec", err)

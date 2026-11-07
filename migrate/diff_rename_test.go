@@ -185,6 +185,11 @@ func TestDiffOutputIsByteEqual(t *testing.T) {
 	from := renameFixture()
 	to := renameFixture()
 	renameColumn(to, "users", "email", "mail")
+	for i, c := range to.Tables[1].Columns {
+		if c.Name == "mail" {
+			to.Tables[1].Columns[i].Nullable = true
+		}
+	}
 	to.Tables = append(to.Tables, schema.Table{Name: "zz", Columns: []schema.Column{{Name: "id", Type: "bigint"}}})
 	to.Enums = []schema.Enum{{Name: "e", Values: []string{"a", "b"}}}
 	to.Views = []schema.View{{Name: "v", Query: "select 1"}}

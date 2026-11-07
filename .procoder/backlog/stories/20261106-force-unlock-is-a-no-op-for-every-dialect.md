@@ -1,9 +1,9 @@
 # --force-unlock is a no-op for every dialect
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-06
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
 Type: bug
 Severity: s4
 
@@ -15,12 +15,13 @@ Expected: remove the flag, or rename it and make it explicit that advisory locks
 
 ## Acceptance criteria
 
-- [ ] the flag is removed or does what its name says for PostgreSQL
-- [ ] help text and docs/migrations.md match behaviour
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] the flag is removed or does what its name says for PostgreSQL
+- [x] help text and docs/migrations.md match behaviour
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
+- The flag and ApplyOptions.ForceUnlock are removed. TestMigrateForceUnlockIsRemoved: `apply --force-unlock` exits 2 as an unknown flag, and the usage text no longer lists it. The integration subtest in TestMigrateApplyLockWait is changed to the same assertion.
+- Usage text (and docs/migrations.md, docs/ai-guide.md, docs/capabilities.md) now say the lock is a session advisory lock freed on disconnect, with the pg_terminate_backend route; TestMigrateForceUnlockIsRemoved checks the usage names it.
+- Red first: the old binary accepted --force-unlock and exited 3 on a held lock.
 

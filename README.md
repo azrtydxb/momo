@@ -296,7 +296,7 @@ func readAndChange(ctx context.Context, q momo.Querier, authorID int64) error {
 The full example, with the model and the partial-index form, is in
 [docs/ai-guide.md](docs/ai-guide.md) under upserts.
 
-To conflict on a partial unique index, give the index predicate with `OnConflict(cols...).Where(...)` before `DoNothing` or `DoUpdate`. Both forms work on PostgreSQL; MySQL returns `ErrUnsupported`. On SQLite the target predicate must match the index text, so write it as raw SQL, for example `momo.SQL("live = 1")`.
+To conflict on a partial unique index, give the index predicate with `OnConflict(cols...).Where(...)` before `DoNothing` or `DoUpdate`. Both forms work on PostgreSQL; MySQL returns `ErrUnsupported`. On SQLite, bool, integer, finite float and string values in the target predicate render inline (`"live" = 1`) because SQLite matches the predicate against the index text; any other value, and `Excluded()`, is `ErrValidation`. This is golden-tested but not yet run against a real SQLite, so `momo.SQL("live = 1")` remains the proven fallback. The values appear in the SQL text, so they show up in logs and traces.
 
 ### 6. Load relations
 
@@ -413,18 +413,12 @@ DATABASE_URL='postgres://user:password@localhost:5432/app?sslmode=disable' go ru
 
 A projection reads a subset of columns or an aggregate into a struct that is
 not a table. Embed `momo.Projection` and select it with `From` and `Columns`;
-see [examples/projection-pagination](examples/projection-pagination/) and the
-`Hit` type in [examples/vector-search](examples/vector-search/). In v0.1.0 the
-generator does not emit projections, so you write the `MomoMeta` by hand. A projection has no identity, version, soft-delete or timestamp column, so set
-`Identity`, `Version`, `SoftDelete`, `CreatedAt` and `UpdatedAt` to -1 in its
-`Meta`. The `Card` type in the projection example shows the whole thing.
-
-A projection does not get the automatic soft-delete filter (its `SoftDelete` is
-`-1`). When the table has a soft-delete column, add the filter yourself, for
-example `.Where(article.DeletedAt.IsNull())`.
-
-Generating this is tracked in the backlog story
-[Generate Meta for projection structs](.procoder/backlog/stories/20261106-generate-meta-for-projection-structs.md).
+`momo generate` writes its `MomoMeta`, so there is nothing to maintain by hand.
+When `From` is a table with a soft-delete column, soft-deleted rows are
+excluded automatically, as for a model; `WithDeleted()` and `OnlyDeleted()`
+work the same way. See [docs/projections.md](docs/projections.md),
+[examples/projection-pagination](examples/projection-pagination/) and the
+`Hit` type in [examples/vector-search](examples/vector-search/).
 
 ## Command line
 

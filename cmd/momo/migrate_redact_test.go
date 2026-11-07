@@ -9,11 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/azrtydxb/momo/migrate"
 )
 
-// TestRedactURL tests redactURL directly with fake errors that carry raw
+// TestRedactURL tests migrate.RedactURLs directly with fake errors that carry raw
 // passwords, as an unmasked driver or a wrapped error would. The driver masks
-// passwords itself, so end-to-end tests cannot tell redactURL from a no-op.
+// passwords itself, so end-to-end tests cannot tell migrate.RedactURLs from a no-op.
 func TestRedactURL(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -90,14 +92,14 @@ func TestRedactURL(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			wrapped := fmt.Errorf("outer: %w", errors.New(c.msg))
-			got := redactURL(wrapped.Error(), c.secrets...)
+			got := migrate.RedactURLs(wrapped.Error(), c.secrets...)
 			for _, leak := range c.leaks {
 				if strings.Contains(got, leak) {
-					t.Errorf("redactURL leaked %q: %s", leak, got)
+					t.Errorf("RedactURLs leaked %q: %s", leak, got)
 				}
 			}
 			if !strings.Contains(got, c.keeps) {
-				t.Errorf("redactURL lost context %q: %s", c.keeps, got)
+				t.Errorf("RedactURLs lost context %q: %s", c.keeps, got)
 			}
 		})
 	}
@@ -106,7 +108,7 @@ func TestRedactURL(t *testing.T) {
 // TestRedactURLEmptySecretIsIgnored guards the secrets loop: an empty secret
 // would otherwise replace the gaps between every rune.
 func TestRedactURLEmptySecretIsIgnored(t *testing.T) {
-	if got := redactURL("plain message", ""); got != "plain message" {
+	if got := migrate.RedactURLs("plain message", ""); got != "plain message" {
 		t.Fatalf("got %q", got)
 	}
 }

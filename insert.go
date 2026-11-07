@@ -191,7 +191,17 @@ func (q InsertQuery[T]) OnConflict(cols ...ColumnRef) ConflictQuery[T] {
 // It needs target columns in OnConflict (otherwise the build fails with
 // ErrValidation) and works with both DoNothing and DoUpdate. Columns render
 // without a table qualifier, as the database requires in an index
-// predicate. MySQL has no ON CONFLICT and fails with ErrUnsupported.
+// predicate. On SQLite, bool, integer and string values render inline
+// (SQLite matches the predicate against the index text, so a bound value
+// never matches), which also puts them in logs and traces. Only bool,
+// integer, finite float and string values (after Value()) can be inlined;
+// any other value fails with ErrValidation. SQLite compares the literal
+// text with the index, so write index literals as Momo renders them:
+// integers as 2, floats in plain decimal with .0 for whole numbers (2.0) for magnitudes from
+// 1e-6 up to 1e21, and exponent form (1e-07, 1e+21) outside that range;
+// otherwise use momo.SQL. Excluded() in the predicate
+// fails with ErrValidation. MySQL has no ON CONFLICT and fails with
+// ErrUnsupported.
 func (c ConflictQuery[T]) Where(preds ...Predicate) ConflictQuery[T] {
 	c.where = append(slices.Clip(c.where), preds...)
 	return c
@@ -642,9 +652,9 @@ func (q InsertQuery[T]) renderConflict(b *Builder) {
 			return
 		}
 		prev := b.unqualified
-		b.unqualified = true
+		b.unqualified, b.conflictTarget = true, true
 		renderWhere(b, q.i.targetWhere)
-		b.unqualified = prev
+		b.unqualified, b.conflictTarget = prev, false
 	}
 	if q.i.conflict == conflictNothing {
 		b.WriteString(" DO NOTHING")

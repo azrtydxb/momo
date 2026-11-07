@@ -1,9 +1,9 @@
 # Combine scoped options and nested loaders on one relation
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-06
 Epic: momo-06-relations
-Sprint: -
+Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
 
 ## Description
 
@@ -22,16 +22,22 @@ Done means a single loader can carry a where, an order and nested loaders, with 
 
 ## Acceptance criteria
 
-- [ ] An integration test loads `document.Comments` with `LoadWhere(approved = true)`, `LoadOrderBy(id desc)` and a nested load of each comment's parent document (or another nested relation) in one loader. It asserts the filtered, ordered comments and the nested value on every returned comment.
-- [ ] The same test asserts the statement count: one for the top level plus one for the nested level, however many comments match.
-- [ ] Nested loads run only over the filtered children: a comment excluded by `LoadWhere` is never used as a nested parent (assert via a recording `ParentKey` or the statement's bound keys).
-- [ ] Combining works at a nested level too: `document.Author.Then(author.FirstDocument.<combined form>(...))`, with the scope applying to the deepest relation only.
-- [ ] Existing `Scope(opts...)` and `Then(loaders...)` call sites compile unchanged and all current load tests still pass.
-- [ ] Calling the combined form with no options or no nested loaders behaves like the plain `Relation`, `Scope` or `Then`.
-- [ ] An error or cancelled context at the nested level of a combined loader is returned from `LoadAll`, not swallowed (mutation check as in `TestNestedLoadErrorPropagates` and `TestNestedLoadHonoursContext`).
-- [ ] `procoder check` gate is clean and the change is committed.
+- [x] An integration test loads `document.Comments` with `LoadWhere(approved = true)`, `LoadOrderBy(id desc)` and a nested load of each comment's parent document (or another nested relation) in one loader. It asserts the filtered, ordered comments and the nested value on every returned comment.
+- [x] The same test asserts the statement count: one for the top level plus one for the nested level, however many comments match.
+- [x] Nested loads run only over the filtered children: a comment excluded by `LoadWhere` is never used as a nested parent (assert via a recording `ParentKey` or the statement's bound keys).
+- [x] Combining works at a nested level too: `document.Author.Then(author.FirstDocument.<combined form>(...))`, with the scope applying to the deepest relation only.
+- [x] Existing `Scope(opts...)` and `Then(loaders...)` call sites compile unchanged and all current load tests still pass.
+- [x] Calling the combined form with no options or no nested loaders behaves like the plain `Relation`, `Scope` or `Then`.
+- [x] An error or cancelled context at the nested level of a combined loader is returned from `LoadAll`, not swallowed (mutation check as in `TestNestedLoadErrorPropagates` and `TestNestedLoadHonoursContext`).
+- [x] `procoder check` gate is clean and the change is committed.
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
+- Criterion 1: `TestScopeThenFiltersOrdersAndNestsIntegration` (where, order and nested Tag in one loader; CI run 42304152615), plus unit `TestScopeThenCombinesOptionsAndNestedLoads` on the fake driver (mutation: Then dropping the scope, or the loader dropping nested loads, fails it).
+- Criterion 2: the same integration test asserts exactly 2 statements; the unit test asserts 2 calls.
+- Criterion 3: the integration test records `ParentKey` of the nested relation and asserts the excluded tagging's tag (id 3) is never a nested parent.
+- Criterion 4: `TestScopeThenAtNestedLevelIntegration` (`document.Author.Then(author.FirstDocument.Scope(...).Then(document.Comments.Scope(...)))`, scope on the deepest relation only).
+- Criterion 5: `load_topn_test.go` now uses `Scope(...).Then(...)` in place of the removed `ScopeThen` hook; all existing load tests pass (CI run 42304152615).
+- Criterion 6: `TestScopeThenEmptyBehavesLikePlainRelation` (Scope(), Then(), Scope().Then(), Then().Scope() equal the plain relation).
+- Criterion 7: `TestScopeThenNestedLoadErrorPropagates` and `TestScopeThenNestedLoadHonoursContext` (mutation: dropping nested loads fails both).
+- Criterion 8: gate checks and the commit; CI run 42304152615 green.

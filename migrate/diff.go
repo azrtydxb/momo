@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -34,16 +35,20 @@ import (
 // opts.AllowDestructive is false; ErrStagedRequired when a NOT NULL column
 // without default is added to (or an existing column becomes NOT NULL on) an
 // existing table and opts.Stage is false. With opts.Stage the NOT NULL part is
-// left out and a hint describes the remaining steps.
+// left out and a hint describes the remaining steps; Engine.Diff records the
+// column as nullable in the new snapshot, so a later Diff with
+// opts.EnforceNotNull emits the SET NOT NULL once the data is backfilled.
 //
 // Drops are never paired with adds into renames: only opts.RenameTables and
 // opts.RenameColumns produce renames. A hint names likely rename candidates.
 //
-// One deliberate exception to the staging rule: an added NOT NULL column that
-// is a rename candidate (same table and type as a dropped column) is not
-// reported as ErrStagedRequired, because the hint already tells the user to
-// pass the rename flag. Applying the result without the flag would fail on a
-// populated table, which is why the hint is always emitted.
+// An added NOT NULL column that is a rename candidate (same table and type as
+// a dropped column) follows the staging rule like any other; its refusal names
+// the rename flag.
+//
+// An ADD COLUMN on an existing table whose default calls a volatile function
+// (random(), gen_random_uuid(), ...) gets a risk hint: PostgreSQL rewrites the
+// table under ACCESS EXCLUSIVE.
 func Diff(from, to *schema.Schema, opts DiffOptions) (changes []Change, hints []string, err error) {
 	if from == nil {
 		from = &schema.Schema{}
@@ -104,6 +109,7 @@ type differ struct {
 	usedRC      map[string]bool
 	tblRen      map[string]string            // from table key -> to table key
 	colRen      map[string]map[string]string // from table key -> old column -> new column
+	gone        map[string]bool              // columns the table being diffed loses
 }
 
 func (d *differ) emit(c Change) {
@@ -375,7 +381,7 @@ func (d *differ) createTable(t *schema.Table) {
 	d.emit(Change{Kind: CreateTable, Schema: t.Schema, Table: t.Name, Name: t.Name, After: cp(*t)})
 	for i := range t.Indexes {
 		ix := &t.Indexes[i]
-		d.emit(Change{Kind: CreateIndex, Schema: t.Schema, Table: t.Name, Name: ix.Name, After: cp(*ix)})
+		d.emit(Change{Kind: CreateIndex, Schema: t.Schema, Table: t.Name, Name: ix.Name, After: cp(*ix), Partitioned: t.Partition != nil})
 	}
 	if rls := effectiveRLS(t.RLS); rls != (schema.RLS{}) {
 		d.emit(Change{Kind: SetRLS, Schema: t.Schema, Table: t.Name, Name: t.Name, After: cp(rls)})
@@ -398,12 +404,13 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	if fn.WithoutRowID != tn.WithoutRowID {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes WITHOUT ROWID; write a custom migration", tn.Name))
 	}
+	d.gone = goneColumns(fn, tn)
 	d.columns(fn, tn, fo, to, renameTo)
 	d.primaryKey(fn, tn, to)
 	d.uniques(fn, tn, to)
 	d.checks(fn, tn, to)
 	d.foreignKeys(fn, tn, to)
-	d.indexes(fn, tn, to)
+	d.indexes(fn, tn, fo, to)
 	if effectiveRLS(fn.RLS) != effectiveRLS(tn.RLS) {
 		d.emit(Change{Kind: SetRLS, Schema: to.Schema, Table: to.Name, Name: to.Name, Before: cp(effectiveRLS(fo.RLS)), After: cp(effectiveRLS(to.RLS))})
 	}
@@ -427,6 +434,28 @@ func colByName(t *schema.Table) map[string]*schema.Column {
 		m[t.Columns[i].Name] = &t.Columns[i]
 	}
 	return m
+}
+
+// volatileFuncs are the built-in and common extension functions whose use in
+// a column default makes ADD COLUMN rewrite the table.
+var volatileFuncs = []string{
+	"random", "random_normal", "setseed", "clock_timestamp", "timeofday",
+	"gen_random_uuid", "uuidv4", "uuidv7", "uuid_generate_v1", "uuid_generate_v1mc", "uuid_generate_v4",
+	"gen_random_bytes", "nextval", "txid_current", "pg_current_xact_id",
+}
+
+var volatileCall = regexp.MustCompile(`(?i)\b(` + strings.Join(volatileFuncs, "|") + `)\s*\(`)
+
+var quotedLiteral = regexp.MustCompile(`'(?:[^']|'')*'`)
+
+// volatileDefault returns the name of the first known volatile function the
+// default expression calls, or "" when it calls none.
+func volatileDefault(expr string) string {
+	expr = quotedLiteral.ReplaceAllString(expr, "''")
+	if m := volatileCall.FindStringSubmatch(expr); m != nil {
+		return strings.ToLower(m[1])
+	}
+	return ""
 }
 
 func needsStaging(c *schema.Column) bool {
@@ -479,16 +508,23 @@ func (d *differ) columns(fn, tn, fo, to *schema.Table, renameTo map[string]strin
 			continue
 		}
 		col := toO[c.Name]
-		if needsStaging(&c) && !candidate[c.Name] {
+		if needsStaging(&c) {
 			if !d.opts.Stage {
-				d.staged = append(d.staged, fmt.Sprintf("%s.%s", to.Name, c.Name))
+				entry := fmt.Sprintf("%s.%s", to.Name, c.Name)
+				if candidate[c.Name] {
+					entry += " (possible rename: pass --rename-column)"
+				}
+				d.staged = append(d.staged, entry)
 			} else {
 				staged := *col
 				staged.Nullable = true
 				d.emit(Change{Kind: AddColumn, Schema: to.Schema, Table: to.Name, Name: c.Name, After: &staged})
-				d.hint(fmt.Sprintf("staged: %s.%s was added as nullable; backfill it, then run ALTER TABLE %s ALTER COLUMN %s SET NOT NULL (re-run migrate diff after the backfill)", to.Name, c.Name, to.Name, c.Name))
+				d.hint(fmt.Sprintf("staged: %s.%s was added as nullable; backfill it, then run migrate diff with --enforce-not-null to emit ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", to.Name, c.Name, to.Name, c.Name))
 				continue
 			}
+		}
+		if v := volatileDefault(col.Default); v != "" && d.d == dialect.Postgres {
+			d.hint(fmt.Sprintf("risk: %s.%s adds a column with the volatile default %s(); PostgreSQL rewrites the table under ACCESS EXCLUSIVE; add the column nullable, backfill in batches, then set the default", to.Name, c.Name, v))
 		}
 		d.emit(Change{Kind: AddColumn, Schema: to.Schema, Table: to.Name, Name: c.Name, After: cp(*col)})
 	}
@@ -518,13 +554,13 @@ func (d *differ) alterColumn(t *schema.Table, a, b *schema.Column, ao, bo *schem
 		return
 	}
 	after := *bo
-	if a.Nullable && !b.Nullable && needsStaging(b) {
+	if a.Nullable && !b.Nullable && needsStaging(b) && !d.opts.EnforceNotNull {
 		if !d.opts.Stage {
 			d.staged = append(d.staged, fmt.Sprintf("%s.%s", t.Name, b.Name))
 		} else {
 			after.Nullable = true
 			nb.Nullable = true
-			d.hint(fmt.Sprintf("staged: %s.%s stays nullable; backfill it, then run ALTER TABLE %s ALTER COLUMN %s SET NOT NULL (re-run migrate diff after the backfill)", t.Name, b.Name, t.Name, b.Name))
+			d.hint(fmt.Sprintf("staged: %s.%s stays nullable; backfill it, then run migrate diff with --enforce-not-null to emit ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", t.Name, b.Name, t.Name, b.Name))
 			if !columnAttrsDiffer(&na, &nb) {
 				return
 			}
@@ -540,8 +576,8 @@ func (d *differ) primaryKey(fn, tn, to *schema.Table) {
 		return
 	}
 	name := to.Name + "_pkey"
-	if len(fn.PrimaryKey) > 0 {
-		d.emit(Change{Kind: DropPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, Before: slices.Clone(fn.PrimaryKey)})
+	if len(fn.PrimaryKey) > 0 && usesGone(d.gone, fn.PrimaryKey) == goneNo {
+		d.emitRisky(Change{Kind: DropPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, Before: slices.Clone(fn.PrimaryKey)})
 	}
 	if len(tn.PrimaryKey) > 0 {
 		d.emit(Change{Kind: AddPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, After: slices.Clone(tn.PrimaryKey)})
@@ -550,12 +586,14 @@ func (d *differ) primaryKey(fn, tn, to *schema.Table) {
 
 func (d *differ) uniques(fn, tn, to *schema.Table) {
 	diffNamed(d, fn.Uniques, tn.Uniques, to, func(u schema.Unique) string { return u.Name },
-		func(a, b schema.Unique) bool { return slices.Equal(a.Columns, b.Columns) }, DropUnique, AddUnique)
+		func(a, b schema.Unique) bool { return slices.Equal(a.Columns, b.Columns) }, DropUnique, AddUnique,
+		func(u schema.Unique) goneUse { return usesGone(d.gone, u.Columns) })
 }
 
 func (d *differ) checks(fn, tn, to *schema.Table) {
 	diffNamed(d, fn.Checks, tn.Checks, to, func(c schema.Check) string { return c.Name },
-		func(a, b schema.Check) bool { return a.Expr == b.Expr }, DropCheck, AddCheck)
+		func(a, b schema.Check) bool { return a.Expr == b.Expr }, DropCheck, AddCheck,
+		func(c schema.Check) goneUse { return usesGone(d.gone, nil, c.Expr) })
 }
 
 func (d *differ) foreignKeys(fn, tn, to *schema.Table) {
@@ -564,7 +602,7 @@ func (d *differ) foreignKeys(fn, tn, to *schema.Table) {
 			return slices.Equal(a.Columns, b.Columns) && a.RefTable == b.RefTable &&
 				slices.Equal(a.RefColumns, b.RefColumns) &&
 				fkAction(a.OnDelete) == fkAction(b.OnDelete) && fkAction(a.OnUpdate) == fkAction(b.OnUpdate)
-		}, DropFK, AddFK)
+		}, DropFK, AddFK, func(f schema.ForeignKey) goneUse { return usesGone(d.gone, f.Columns) })
 }
 
 func fkAction(a string) string {
@@ -575,9 +613,31 @@ func fkAction(a string) string {
 	return a
 }
 
-func (d *differ) indexes(fn, tn, to *schema.Table) {
+// indexes diffs the table's indexes. Normalization clears Concurrently, so the
+// emitted changes take it back from the caller's original indexes (fo, to):
+// the renderer needs it to write CREATE INDEX CONCURRENTLY. indexEqual
+// ignores Concurrently, so toggling it alone is no change.
+func (d *differ) indexes(fn, tn, fo, to *schema.Table) {
+	start := len(d.changes)
 	diffNamed(d, fn.Indexes, tn.Indexes, to, func(i schema.Index) string { return i.Name },
-		indexEqual, DropIndex, CreateIndex)
+		indexEqual, DropIndex, CreateIndex, func(i schema.Index) goneUse {
+			cols, exprs := []string{}, []string{i.Where}
+			for _, p := range i.Parts {
+				cols, exprs = append(cols, p.Column), append(exprs, p.Expr)
+			}
+			return usesGone(d.gone, cols, exprs...)
+		})
+	for _, c := range d.changes[start:] {
+		src, payload := to.Indexes, c.After
+		if c.Kind == DropIndex {
+			src, payload = fo.Indexes, c.Before
+		}
+		if ix, ok := payload.(*schema.Index); ok {
+			if o, found := lookup(src, func(i schema.Index) string { return i.Name }, ix.Name); found {
+				ix.Concurrently = o.Concurrently
+			}
+		}
+	}
 }
 
 func indexEqual(a, b schema.Index) bool {
@@ -595,23 +655,111 @@ func indexEqual(a, b schema.Index) bool {
 // already normalized and sorted by name. A changed object is a drop followed
 // by an add; a dropped one is a drop; a new one is an add. The emitted Before
 // and After values are the normalized objects.
-func diffNamed[T any](d *differ, from, to []T, t *schema.Table, name func(T) string, equal func(a, b T) bool, drop, add ChangeKind) {
+//
+// onGone classifies a dropped object against the columns this diff drops from
+// the table. PostgreSQL removes an index or constraint together with a column
+// it names, so an explicit drop after DROP COLUMN would fail: goneYes skips
+// the drop. goneMaybe (an expression that may mention a dropped column) keeps
+// the drop but makes it DROP ... IF EXISTS, which is right either way. Drops
+// and adds record whether the table is partitioned (Change.Partitioned).
+func diffNamed[T any](d *differ, from, to []T, t *schema.Table, name func(T) string, equal func(a, b T) bool, drop, add ChangeKind, onGone func(T) goneUse) {
 	byName := make(map[string]T, len(from))
 	for _, o := range from {
 		byName[name(o)] = o
 	}
 	for _, o := range from {
 		nw, ok := lookup(to, name, name(o))
-		if !ok || !equal(o, nw) {
-			d.emit(Change{Kind: drop, Schema: t.Schema, Table: t.Name, Name: name(o), Before: cp(o)})
+		if ok && equal(o, nw) {
+			continue
+		}
+		if use := onGone(o); use != goneYes {
+			d.emitRisky(Change{Kind: drop, Schema: t.Schema, Table: t.Name, Name: name(o), Before: cp(o), Partitioned: t.Partition != nil, IfExists: use == goneMaybe})
 		}
 	}
 	for _, n := range to {
 		o, ok := byName[name(n)]
 		if !ok || !equal(o, n) {
-			d.emit(Change{Kind: add, Schema: t.Schema, Table: t.Name, Name: name(n), After: cp(n)})
+			d.emitRisky(Change{Kind: add, Schema: t.Schema, Table: t.Name, Name: name(n), After: cp(n), Partitioned: t.Partition != nil})
 		}
 	}
+}
+
+// goneColumns returns the columns of the snapshot table fn that the desired
+// table tn no longer has. fn must already carry the renamed columns, so a
+// renamed column is not gone.
+func goneColumns(fn, tn *schema.Table) map[string]bool {
+	keep := map[string]bool{}
+	for _, c := range tn.Columns {
+		keep[c.Name] = true
+	}
+	gone := map[string]bool{}
+	for _, c := range fn.Columns {
+		if !keep[c.Name] {
+			gone[c.Name] = true
+		}
+	}
+	return gone
+}
+
+// goneUse is how a dropped object relates to the columns dropped with it.
+type goneUse int
+
+const (
+	goneNo    goneUse = iota // unrelated: drop it normally
+	goneYes                  // names a dropped column: DROP COLUMN removes it
+	goneMaybe                // an expression that might mention one
+)
+
+// usesGone classifies an object by the columns it lists (cols) and the
+// expressions it holds (exprs). A listed column is certain. An expression is
+// only a "maybe": telling a column reference from a string literal, a function
+// or type name, or a quoted identifier is not reliable, so any mention of a
+// dropped column's name, case-insensitively and anywhere in the text, counts.
+// Too wide a net only makes the drop idempotent.
+func usesGone(gone map[string]bool, cols []string, exprs ...string) goneUse {
+	if len(gone) == 0 {
+		return goneNo
+	}
+	for _, c := range cols {
+		if gone[c] {
+			return goneYes
+		}
+	}
+	for _, e := range exprs {
+		le := strings.ToLower(e)
+		for g := range gone {
+			if e != "" && strings.Contains(le, strings.ToLower(g)) {
+				return goneMaybe
+			}
+		}
+	}
+	return goneNo
+}
+
+// riskNotes names the changes that are not destructive but are risky on a
+// large table, with what to expect. They are reported as "risky:" hints.
+var riskNotes = map[ChangeKind]string{
+	DropIndex:      "queries that used the index slow down, and the drop takes an ACCESS EXCLUSIVE lock on the table",
+	DropPrimaryKey: "the table loses its key and its index; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	DropUnique:     "uniqueness is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	DropCheck:      "the rule is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	DropFK:         "referential integrity is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	AddUnique:      "built with CREATE UNIQUE INDEX CONCURRENTLY and adopted with USING INDEX in a no-transaction migration; fails on duplicate rows and then leaves an INVALID index to drop",
+	AddCheck:       "added NOT VALID, then validated by a full scan in a no-transaction migration; the validation fails if existing rows violate it",
+}
+
+// emitRisky emits c, marking it Risky and adding a hint when its kind is in
+// riskNotes. Only changes to existing tables come through here: the
+// constraints of a dropped or new table are not risky on their own.
+func (d *differ) emitRisky(c Change) {
+	if note, ok := riskNotes[c.Kind]; ok {
+		c.Risky = true
+		// The notes name PostgreSQL locks and CONCURRENTLY builds.
+		if d.d == dialect.Postgres {
+			d.hint(fmt.Sprintf("risky: %s %s: %s", c.Kind, qualified(c.Schema, c.Table, c.Name), note))
+		}
+	}
+	d.emit(c)
 }
 
 func lookup[T any](xs []T, name func(T) string, n string) (T, bool) {
@@ -913,4 +1061,84 @@ func rewriteIdents(expr string, m map[string]string) string {
 		i++
 	}
 	return sb.String()
+}
+
+// stagedSnapshot returns desired with every still-staged column recorded as
+// nullable, the way the database has it, so a later Diff with
+// opts.EnforceNotNull can emit SET NOT NULL after the backfill. A column is
+// staged when this diff stages it (add_column or alter_column whose After is
+// nullable while the model says NOT NULL), or when from already has it
+// nullable, the model has it NOT NULL without a default and EnforceNotNull is
+// off: a diff that carries an earlier staged column along must not record it
+// as NOT NULL. desired is never modified; it is returned as is when nothing
+// is staged.
+func stagedSnapshot(desired, from *schema.Schema, changes []Change, opts DiffOptions) *schema.Schema {
+	type key struct{ schema, table, column string }
+	staged := map[key]bool{}
+	for _, c := range changes {
+		if c.Kind != AddColumn && c.Kind != AlterColumn {
+			continue
+		}
+		if col, ok := c.After.(*schema.Column); ok && col.Nullable {
+			staged[key{c.Schema, c.Table, c.Name}] = true
+		}
+	}
+	if !opts.EnforceNotNull && from != nil {
+		// Map the previous names through this diff's renames.
+		tableRen := map[[2]string]string{}
+		colRen := map[key]string{}
+		for _, c := range changes {
+			switch c.Kind {
+			case RenameTable:
+				tableRen[[2]string{c.Schema, c.Table}] = c.Name
+			case RenameColumn:
+				if old, ok := c.Before.(*schema.Column); ok {
+					colRen[key{c.Schema, c.Table, old.Name}] = c.Name
+				}
+			}
+		}
+		for _, t := range from.Tables {
+			name := t.Name
+			if n, ok := tableRen[[2]string{t.Schema, t.Name}]; ok {
+				name = n
+			}
+			for _, col := range t.Columns {
+				if !col.Nullable {
+					continue
+				}
+				colName := col.Name
+				if n, ok := colRen[key{t.Schema, name, col.Name}]; ok {
+					colName = n
+				}
+				staged[key{t.Schema, name, colName}] = true
+			}
+		}
+	}
+	if len(staged) == 0 {
+		return desired
+	}
+	out := *desired
+	out.Tables = slices.Clone(desired.Tables)
+	changed := false
+	for i := range out.Tables {
+		t := &out.Tables[i]
+		var cols []schema.Column
+		for j, col := range t.Columns {
+			if col.Nullable || !needsStaging(&col) || !staged[key{t.Schema, t.Name, col.Name}] {
+				continue
+			}
+			if cols == nil {
+				cols = slices.Clone(t.Columns)
+			}
+			cols[j].Nullable = true
+			changed = true
+		}
+		if cols != nil {
+			t.Columns = cols
+		}
+	}
+	if !changed {
+		return desired
+	}
+	return &out
 }

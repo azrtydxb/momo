@@ -13,8 +13,12 @@ type Kind string
 
 // Statement is one SQL statement of a migration.
 type Statement struct {
-	SQL  string
-	NoTx bool // statement must run outside a transaction (CREATE INDEX CONCURRENTLY)
+	SQL string
+	// NoTx marks a statement that must run outside a transaction (CREATE INDEX
+	// CONCURRENTLY) or should not hold the locks of the transactional DDL
+	// before it (VALIDATE CONSTRAINT). Engine.Diff writes such statements to a
+	// trailing no-transaction migration, apart from the transactional ones.
+	NoTx bool
 	Hint string
 }
 
@@ -66,7 +70,19 @@ type Change struct {
 	Before      any    // *schema.Column, *schema.Index, *schema.View, ... (kind-specific)
 	After       any
 	Destructive bool
-	Rebuild     bool // SQLite: requires 12-step rebuild
+	// Risky marks a change that is not destructive but can take long or heavy
+	// locks, scan the table, or fail on existing data: dropping an index or
+	// constraint, adding a unique or check constraint. Diff reports each as a
+	// "risky:" hint; it never needs --allow-destructive.
+	Risky bool
+	// Partitioned is set on a change to a partitioned table. PostgreSQL rejects
+	// CREATE INDEX CONCURRENTLY there, so the renderer avoids it.
+	Partitioned bool
+	// IfExists asks a drop to be idempotent (DROP ... IF EXISTS): Diff sets it
+	// when it cannot tell whether a column dropped in the same diff already
+	// took the object with it.
+	IfExists bool
+	Rebuild  bool // SQLite: requires 12-step rebuild
 }
 
 // Migration is one migration version.
@@ -79,10 +95,15 @@ type Migration struct {
 	Down        []Statement
 	NoTx        bool
 	Destructive bool
-	Changes     []Change
-	Snapshot    *schema.Schema
-	Files       map[string][]byte // relative file name -> content, for the CLI to write
-	Hints       []string
+	// Next is the trailing no-transaction migration that Engine.Diff splits off
+	// when the diff holds statements that must run outside a transaction next
+	// to transactional ones; nil otherwise. Files of the first migration also
+	// hold Next's files, so writing Files writes the pair.
+	Next     *Migration
+	Changes  []Change
+	Snapshot *schema.Schema
+	Files    map[string][]byte // relative file name -> content, for the CLI to write
+	Hints    []string
 }
 
 // Pending is a migration that has not been applied yet.
@@ -121,9 +142,8 @@ type Report struct {
 
 // ApplyOptions controls Apply.
 type ApplyOptions struct {
-	To          string // empty: all pending
-	ForceUnlock bool
-	LockWait    time.Duration // default 30s
+	To       string        // empty: all pending
+	LockWait time.Duration // default 30s
 }
 
 // ResolveState is the state a dirty migration is resolved to: "applied" or "rolled_back".
@@ -207,7 +227,15 @@ type DiffOptions struct {
 	RenameColumns    map[string]string // "table.old" -> "new"
 	AllowDestructive bool
 	Stage            bool
-	Name             string // not used; name is passed to Diff
+	// EnforceNotNull emits SET NOT NULL for every existing column that the
+	// snapshot has as nullable and the model has as NOT NULL without a
+	// default: the follow-up to a staged change, run after the backfill. It
+	// does not know which columns were staged, so a column the user made
+	// NOT NULL by hand-editing the model is enforced too. New NOT NULL
+	// columns stay refused (ErrStagedRequired). Confirm no NULLs remain
+	// first, or the migration fails when applied.
+	EnforceNotNull bool
+	Name           string // not used; name is passed to Diff
 }
 
 // Config is the engine configuration.
@@ -217,13 +245,23 @@ type Config struct {
 	// (Plan/Apply/Status/Diff/Drift/Inspect each resolve it once per call). An app with search_path=app
 	// therefore migrates `app` by default. Schemas[0] hosts the history table and must equal
 	// current_schema(); otherwise the engine returns a configuration error naming both.
-	Schemas          []string
-	LockTimeout      time.Duration // default 5s, PostgreSQL only
-	StatementTimeout time.Duration // default 0 (unset)
-	Exclude          []string      // glob patterns for unmanaged objects (drift)
+	Schemas []string
+	// LockTimeout is the PostgreSQL lock_timeout of the migration session;
+	// zero keeps the 5s default. WithLockTimeout(0) disables it.
+	LockTimeout time.Duration
+	// StatementTimeout is the PostgreSQL statement_timeout of the migration
+	// session; zero leaves the server setting. WithStatementTimeout(0) sets it
+	// to 0 explicitly.
+	StatementTimeout time.Duration
+	Exclude          []string // glob patterns for unmanaged objects (drift)
 }
 
 // SessionOptions are the per-session timeouts a Dialect applies in Setup.
+//
+// A timeout above zero is applied. A zero timeout leaves the setting alone
+// unless its Set field is true, in which case the dialect sets it to zero
+// (PostgreSQL treats 0 as off).
 type SessionOptions struct {
-	LockTimeout, StatementTimeout time.Duration
+	LockTimeout, StatementTimeout       time.Duration
+	LockTimeoutSet, StatementTimeoutSet bool
 }

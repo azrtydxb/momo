@@ -1,9 +1,9 @@
 # Rename-candidate exception skips staging for NOT NULL columns
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-06
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
 Type: bug
 Severity: s4
 
@@ -15,12 +15,12 @@ Expected: the rename-candidate path still stages (or refuses) NOT NULL additions
 
 ## Acceptance criteria
 
-- [ ] diff on a rename candidate with a NOT NULL add and --allow-destructive emits a staged or refused add, never plain NOT NULL on an existing table
-- [ ] a test pins the rule
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] diff on a rename candidate with a NOT NULL add and --allow-destructive emits a staged or refused add, never plain NOT NULL on an existing table
+- [x] a test pins the rule
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
-
+- TestStagingRefusalOfARenameCandidate: a NOT NULL add that is a rename candidate is refused with and without AllowDestructive, and with Stage the add is nullable, never plain NOT NULL.
+- TestStagingRefusalOfARenameCandidate pins the rule; the explicit --rename-column path still passes without staging.
+- Mutation: restoring the candidate exception makes TestStagingRefusalOfARenameCandidate fail.

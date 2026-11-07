@@ -76,6 +76,26 @@ func (e *descEmitter) tableRef(m *Model) string {
 	return s + "}"
 }
 
+// baseTableRef is tableRef for the Table variable: it also names the
+// soft-delete column, so a projection read FROM the table is filtered.
+func (e *descEmitter) baseTableRef(m *Model) string {
+	s := strings.TrimSuffix(e.tableRef(m), "}")
+	for _, f := range m.Fields {
+		if f.Tags.SoftDelete == "" {
+			continue
+		}
+		s += ", SoftDelete: " + strconv.Quote(f.Column)
+		switch f.Tags.SoftDelete {
+		case "unix":
+			s += ", SoftDeleteKind: momo.SoftDeleteUnix"
+		case "bool":
+			s += ", SoftDeleteKind: momo.SoftDeleteBool"
+		}
+		break
+	}
+	return s + "}"
+}
+
 // fieldVar walks the index path of f through the model struct and returns the
 // Go selector and the field's variable.
 func fieldVar(m *Model, f *Field) (string, *types.Var) {
@@ -240,7 +260,7 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	var body strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&body, format, a...) }
 
-	w("// Table is the base table reference.\nvar Table = %s\n\n", e.tableRef(m))
+	w("// Table is the base table reference.\nvar Table = %s\n\n", e.baseTableRef(m))
 	w("// Columns is one alias's set of column descriptors.\ntype Columns struct {\n")
 	for _, c := range cols {
 		w("\t%s %s\n", c.name, c.typ)

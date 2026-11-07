@@ -80,6 +80,46 @@ func TestSearchIterativeNeedsPgvector08(t *testing.T) {
 	}
 }
 
+func TestSearchScanMemMultiplierNeedsPgvector08(t *testing.T) {
+	for _, tc := range []struct {
+		version string
+		ok      bool
+	}{{"0.7.4", false}, {"0.8.0", true}} {
+		drv := fakedriver.New(dialect.Postgres)
+		drv.SetRows([][]any{{tc.version}})
+		db := momo.New(drv)
+		tx, err := db.Begin(t.Context(), momo.TxOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = tx.SetSearch(t.Context(), momo.SearchSettings{HNSWScanMemMultiplier: 2})
+		if tc.ok {
+			if err != nil {
+				t.Fatalf("%s: %v", tc.version, err)
+			}
+			found := false
+			for _, c := range drv.Calls() {
+				if strings.Contains(c.SQL, "set_config") && slices.Equal(c.Args, []any{"hnsw.scan_mem_multiplier", "2"}) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("%s: no set_config(hnsw.scan_mem_multiplier, 2) among %v", tc.version, drv.Calls())
+			}
+		}
+		if !tc.ok {
+			if !errors.Is(err, momo.ErrUnsupported) {
+				t.Fatalf("%s: err = %v, want ErrUnsupported", tc.version, err)
+			}
+			for _, c := range drv.Calls() {
+				if strings.Contains(c.SQL, "set_config") {
+					t.Fatalf("set_config issued despite unsupported version: %q", c.SQL)
+				}
+			}
+		}
+	}
+}
+
 func TestSearchNoVersionQueryWithoutIterativeFields(t *testing.T) {
 	drv := fakedriver.New(dialect.Postgres)
 	db := momo.New(drv)

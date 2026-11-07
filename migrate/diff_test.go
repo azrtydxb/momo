@@ -30,7 +30,7 @@ func kinds(cs []Change) []ChangeKind {
 func TestNoRenameGuessing(t *testing.T) {
 	from := base()
 	to := base()
-	to.Tables[0].Columns[1] = schema.Column{Name: "mail", Type: "text"}
+	to.Tables[0].Columns[1] = schema.Column{Name: "mail", Type: "text", Nullable: true}
 	changes, hints, err := Diff(from, to, DiffOptions{AllowDestructive: true})
 	if err != nil {
 		t.Fatal(err)

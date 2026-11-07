@@ -8,6 +8,7 @@ contributor guide, supported versions, performance).
 - [Guide for AI coding agents](ai-guide.md): one self-contained file for an agent using Momo in an application: setup, modeling, migrations, queries, relations, vectors, errors, testing, known pitfalls and rules. Also indexed by `llms.txt` at the repository root.
 - [Go to SQL type mapping](TYPE_MAPPING.md): column type per Go type, edge values, null handling.
 - [Vector search](vectors.md): pgvector types, metrics, limits, search settings and the binary codec.
+- [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, the soft-delete filter.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
@@ -24,5 +25,5 @@ Runnable programs, each tested end to end in CI. See [the examples index](../exa
 - [projection-pagination](../examples/projection-pagination/): column subsets, keyset pagination with a tie-break, counting.
 - [vector-search](../examples/vector-search/): HNSW index, nearest-neighbour queries, filters, search settings.
 - [upgrade-database](../examples/upgrade-database/): change a model after production: add a column with a default, add an index, rename a column, apply with data kept, generate --check and drift.
-- [custom-sql-migration](../examples/custom-sql-migration/): hand-written SQL migrations beside generated ones: backfill, DO $$ splitting, -- momo:no-transaction, CONCURRENTLY workaround, momo.sum checksums.
+- [custom-sql-migration](../examples/custom-sql-migration/): hand-written SQL migrations beside generated ones: backfill, DO $$ splitting, -- momo:no-transaction, a hand-written CONCURRENTLY index, momo.sum checksums.
 - [adopt-existing-schema](../examples/adopt-existing-schema/): put a plain-SQL database under Momo with migrate baseline (no model generation from a database in v0.1.0).

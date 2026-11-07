@@ -10,6 +10,36 @@ import (
 
 type namedBytes []byte
 
+type (
+	namedSlice []string
+	namedMap   map[string]int
+	namedIface interface{ String() string }
+	namedStr   string
+)
+
+func (namedStr) String() string { return "" }
+
+// TestScanNullNamedKinds covers named slice, map and interface types: they take
+// their zero value like the unnamed kinds.
+func TestScanNullNamedKinds(t *testing.T) {
+	s := namedSlice{"a"}
+	if err := scanNull(&s); err != nil || s != nil {
+		t.Fatalf("named slice: err=%v v=%v", err, s)
+	}
+	m := namedMap{"a": 1}
+	if err := scanNull(&m); err != nil || m != nil {
+		t.Fatalf("named map: err=%v v=%v", err, m)
+	}
+	var i namedIface = namedStr("x")
+	if err := scanNull(&i); err != nil || i != nil {
+		t.Fatalf("named interface: err=%v v=%v", err, i)
+	}
+	var n namedStr
+	if err := scanNull(&n); err == nil {
+		t.Fatal("NULL into a named string must fail")
+	}
+}
+
 // TestScanNullMatchedJoinColumn pins how a NULL in a matched joined row is
 // stored: nullable destinations take their zero value, a non-nullable one is
 // an ErrValidation rather than a silent zero.

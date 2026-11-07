@@ -6,8 +6,9 @@ A list screen over a table of articles whose `body` column is large.
 
 - A projection is a struct that embeds `momo.Projection` and maps to a chosen set
   of columns. `momo.Select[models.Card]` with `From(article.Table)` and
-  `Columns(...)` reads only those columns, so the database never sends `body`. The generator does not emit
-  projections yet, so `models/models.go` writes their short `MomoMeta` by hand.
+  `Columns(...)` reads only those columns, so the database never sends `body`. The generator writes their
+  `MomoMeta` into `models/momo_gen.go`; `models/models.go` holds only the
+  struct.
 - Keyset pagination: `OrderBy(score desc, id asc)` and `After(score, id)`, where
   the values are those of the last row of the previous page. It stays fast and
   stable on deep pages and while rows are inserted, which `Offset` does not.
@@ -17,33 +18,14 @@ A list screen over a table of articles whose `body` column is large.
   cross a page boundary.
 - Fetch `size+1` rows to know whether another page exists without a `COUNT`.
 - A composite index in `MomoConfig` that matches the order serves the query.
-- A projection skips the soft-delete filter. The articles table is not
-  soft-deletable; on one that is, add `.Where(<table>.DeletedAt.IsNull())`.
+- A projection read `From` a soft-deletable table is filtered like a model.
+  The articles table is not soft-deletable, so nothing is filtered here.
 - Counting: `Count` ignores ordering and the cursor, `Exists` is `Count` with a
   limit of one, and an aggregate projection with `GroupBy` and `Having` counts
   per group.
 
-A minimal hand-written projection `MomoMeta`. A projection has no identity,
-version, soft-delete or timestamp column, so those five fields are -1:
-
-```go
-func (*Card) MomoMeta() *momo.Meta[Card] { return &cardMeta }
-
-var cardMeta = momo.Meta[Card]{
-	Columns: []momo.ColumnMeta{{Name: "id"}, {Name: "title"}},
-	Ptr: func(m *Card, i int) any {
-		if i == 0 {
-			return &m.ID
-		}
-		return &m.Title
-	},
-	Value:    func(*Card, int) any { return nil },
-	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
-}
-```
-
-Generating this is tracked in the backlog story
-[Generate Meta for projection structs](../../.procoder/backlog/stories/20261106-generate-meta-for-projection-structs.md).
+See [docs/projections.md](../../docs/projections.md) for how a projection is
+declared and what the generator writes.
 
 ## Run
 

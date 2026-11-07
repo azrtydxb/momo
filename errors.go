@@ -41,6 +41,11 @@ var (
 	// ErrTxDone: the transaction was already committed or rolled back.
 	ErrTxDone = errors.New("momo: transaction already finished")
 
+	// ErrAdoptedTx: Commit or Rollback was called on a Tx from DB.AdoptTx.
+	// The caller owns that transaction and finishes it itself; nothing was
+	// committed or rolled back.
+	ErrAdoptedTx = errors.New("momo: transaction is owned by the caller")
+
 	// ErrValidation: a value failed validation before reaching the database.
 	ErrValidation = errors.New("momo: validation failed")
 	// ErrBusy: the database is busy or locked and could not serve the request.

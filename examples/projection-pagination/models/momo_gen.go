@@ -85,3 +85,64 @@ var articleTable = schema.Table{
 		},
 	},
 }
+
+func (*Card) MomoMeta() *momo.Meta[Card] { return &cardMeta }
+
+var cardMeta = momo.Meta[Card]{
+	Columns: []momo.ColumnMeta{
+		{Name: "id"},
+		{Name: "title"},
+		{Name: "score"},
+	},
+	Ptr: func(m *Card, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.Title
+		case 2:
+			return &m.Score
+		}
+		return nil
+	},
+	Value: func(m *Card, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.Title
+		case 2:
+			return m.Score
+		}
+		return nil
+	},
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}
+
+func (*ScoreCount) MomoMeta() *momo.Meta[ScoreCount] { return &scoreCountMeta }
+
+var scoreCountMeta = momo.Meta[ScoreCount]{
+	Columns: []momo.ColumnMeta{
+		{Name: "score"},
+		{Name: "articles"},
+	},
+	Ptr: func(m *ScoreCount, i int) any {
+		switch i {
+		case 0:
+			return &m.Score
+		case 1:
+			return &m.Articles
+		}
+		return nil
+	},
+	Value: func(m *ScoreCount, i int) any {
+		switch i {
+		case 0:
+			return m.Score
+		case 1:
+			return m.Articles
+		}
+		return nil
+	},
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}

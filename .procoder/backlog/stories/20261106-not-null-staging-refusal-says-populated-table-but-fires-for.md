@@ -1,9 +1,9 @@
 # NOT NULL staging refusal says populated table but fires for any existing table
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-06
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
 Type: bug
 Severity: s4
 
@@ -15,12 +15,12 @@ Expected: wording says existing table, or the check queries for rows.
 
 ## Acceptance criteria
 
-- [ ] the message does not claim the table is populated unless the check verified it
-- [ ] a test pins the message for an existing empty table
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] the message does not claim the table is populated unless the check verified it
+- [x] a test pins the message for an existing empty table
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
-
+- TestStagingRefusalDoesNotClaimTheTableIsPopulated: the ErrStagedRequired message says existing table, never populated.
+- TestStagingRefusalDoesNotClaimTheTableIsPopulated: pins the message for an existing table (diff never reads rows, so any existing table, empty or not, gets it).
+- The same test failed before the change (message said populated table) and passes after.

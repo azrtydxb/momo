@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing/fstest"
@@ -36,11 +35,11 @@ const exitDatabase = 3 // database, lock or execution error
 const migrateUsage = `Usage: momo migrate [--config momo.yaml] [--dir path] [--dialect name] <command> [flags]
 
 Commands:
-  diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage]
+  diff <name> [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage] [--enforce-not-null]
               write a migration for the difference between the models and the
               latest snapshot (offline; refuses to overwrite files)
   plan        list the pending migrations (needs a database)
-  apply [--to N] [--force-unlock] [--lock-wait 30s]   apply pending migrations (needs a database)
+  apply [--to N] [--lock-wait 30s]   apply pending migrations (needs a database)
   status      show the state of every migration (needs a database)
   validate [--db]   check the migration directory (offline; --db also checks the database)
   hash        recompute momo.sum from the files in the directory and write it (offline;
@@ -49,16 +48,22 @@ Commands:
   baseline --version N [--force]   record migrations as applied without running them (needs a database)
   drift       compare the live database with the latest applied snapshot (needs a database)
   resolve --version N --applied|--rolled-back   settle a dirty migration (needs a database)
+  rehash --version N [--accept]   show, and with --accept store, the new checksum of an
+              applied migration whose file was edited (needs a database; run hash first)
 
---force-unlock takes over a lock row left by a dead process (the SQLite lock table).
-A PostgreSQL advisory lock is released when its holder's connection ends, so a
-held lock there cannot be forced: apply waits for --lock-wait and exits 3.
+The PostgreSQL migration lock is a session advisory lock: it is released when its
+holder's connection ends, and there is no flag to force it. When apply keeps
+exiting 3 with "held by pid=N", find that session in pg_stat_activity and end it
+with pg_terminate_backend(N) once you know it is dead. apply waits for --lock-wait.
 
 Not available yet: rebase, lint, rollback, new.
 
 The database URL comes from --url, else the environment variable named by
 migrate.url_env.<dialect> in momo.yaml, else MOMO_DATABASE_URL. Offline
 commands never read it. The URL and its password are never printed.
+Prefer the environment variable or "--url -", which reads the URL from standard
+input: a --url value is visible to every user in the process list, and momo
+warns when it sees one.
 
 Exit codes:
   0  success
@@ -94,6 +99,9 @@ func runMigrateCmd(args []string, stdout, stderr io.Writer) int {
 // version diff produces predictable.
 var migrateClock = time.Now
 
+// migrateStdin is where "--url -" reads the database URL; tests replace it.
+var migrateStdin io.Reader = os.Stdin
+
 // common holds the flags every migrate subcommand accepts.
 type common struct{ config, dir, dialect, url string }
 
@@ -102,7 +110,7 @@ func (c *common) register(fs *flag.FlagSet) {
 	fs.StringVar(&c.config, "c", c.config, "path to momo.yaml")
 	fs.StringVar(&c.dir, "dir", c.dir, "migration directory (overrides migrate.dir)")
 	fs.StringVar(&c.dialect, "dialect", c.dialect, "dialect (default: the single configured one)")
-	fs.StringVar(&c.url, "url", c.url, "database URL (default: from the environment)")
+	fs.StringVar(&c.url, "url", c.url, "database URL; '-' reads it from stdin (default: from the environment; --url is visible in the process list)")
 }
 
 // cli is one invocation: its writers, its environment and the secrets to
@@ -117,38 +125,12 @@ type cli struct {
 	dialectName string
 }
 
-var (
-	urlUserinfo = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://)[^/?#\s]*@`)
-	urlInText   = regexp.MustCompile(`(?i)\b(?:postgres(?:ql)?|mysql|mariadb)://[^\s"']+`)
-	// kvPassword matches a key=value DSN password: password=x, password='a b'.
-	kvPassword = regexp.MustCompile(`(?i)\b(password|passwd|pwd)(\s*=\s*)('[^']*'|"[^"]*"|[^\s'"&]+)`)
-)
-
-// redactURL removes passwords and DSNs from msg: every secret given, the
-// userinfo of any URL, any URL-looking text that carries a query, and the
-// value of a password= key in a key=value DSN.
-func redactURL(msg string, secrets ...string) string {
-	for _, s := range secrets {
-		if s != "" {
-			msg = strings.ReplaceAll(msg, s, "***")
-		}
-	}
-	msg = urlUserinfo.ReplaceAllString(msg, "${1}***@")
-	msg = urlInText.ReplaceAllStringFunc(msg, func(m string) string {
-		if i := strings.IndexAny(m, "?"); i >= 0 {
-			return m[:i] + "?***"
-		}
-		return m
-	})
-	return kvPassword.ReplaceAllString(msg, "${1}${2}***")
-}
-
 func (l *cli) say(format string, args ...any) {
-	_, _ = fmt.Fprintf(l.out, "%s\n", redactURL(fmt.Sprintf(format, args...), l.secrets...))
+	_, _ = fmt.Fprintf(l.out, "%s\n", migrate.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
 }
 
 func (l *cli) errf(code int, format string, args ...any) int {
-	_, _ = fmt.Fprintf(l.errOut, "momo: %s\n", redactURL(fmt.Sprintf(format, args...), l.secrets...))
+	_, _ = fmt.Fprintf(l.errOut, "momo: %s\n", migrate.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
 	return code
 }
 
@@ -195,7 +177,7 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 			_, _ = fmt.Fprint(out, migrateUsage)
 			return exitOK
 		}
-		_, _ = fmt.Fprintf(errOut, "momo: %s\n\n%s", redactURL(err.Error()), migrateUsage)
+		_, _ = fmt.Fprintf(errOut, "momo: %s\n\n%s", migrate.RedactURLs(err.Error()), migrateUsage)
 		return exitUsage
 	}
 	rest := gfs.Args()
@@ -221,6 +203,7 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 		"drift":    l.driftCmd,
 		"resolve":  l.resolveCmd,
 		"hash":     l.hashCmd,
+		"rehash":   l.rehashCmd,
 	}[name]
 	if run == nil {
 		// The word is user input and may be a pasted URL: it goes through errf.
@@ -345,23 +328,46 @@ func (l *cli) dialectImpl() (migrate.Dialect, error) {
 func (l *cli) engineOptions(d migrate.Dialect, extra ...migrate.Option) ([]migrate.Option, error) {
 	m := l.file.Migrate
 	cfg := migrate.Config{Schemas: m.Schemas, Exclude: m.Exclude}
+	var timeouts []migrate.Option
 	var err error
 	if m.LockTimeout != "" {
 		if cfg.LockTimeout, err = time.ParseDuration(m.LockTimeout); err != nil {
 			return nil, err
 		}
+		// A key that is present wins, including 0s, which turns the timeout off.
+		timeouts = append(timeouts, migrate.WithLockTimeout(cfg.LockTimeout))
 	}
 	if m.StatementTimeout != "" {
 		if cfg.StatementTimeout, err = time.ParseDuration(m.StatementTimeout); err != nil {
 			return nil, err
 		}
+		timeouts = append(timeouts, migrate.WithStatementTimeout(cfg.StatementTimeout))
 	}
-	return append([]migrate.Option{migrate.WithDialect(d), migrate.WithConfig(cfg), migrate.WithClock(migrateClock)}, extra...), nil
+	opts := append([]migrate.Option{migrate.WithDialect(d), migrate.WithConfig(cfg), migrate.WithClock(migrateClock)}, timeouts...)
+	return append(opts, extra...), nil
 }
 
 // databaseURL resolves the URL of a command that needs a database.
 func (l *cli) databaseURL() (string, error) {
 	u := l.c.url
+	switch u {
+	case "-":
+		if f, ok := migrateStdin.(*os.File); ok {
+			if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+				return "", errors.New("--url -: standard input is a terminal or a character device such as /dev/null; pipe the URL in, for example: printf '%s' \"$URL\" | momo migrate status --url -")
+			}
+		}
+		b, err := io.ReadAll(io.LimitReader(migrateStdin, 1<<16))
+		if err != nil {
+			return "", fmt.Errorf("read the database URL from stdin: %w", err)
+		}
+		if u = strings.TrimSpace(string(b)); u == "" {
+			return "", errors.New("--url -: standard input holds no database URL")
+		}
+	case "":
+	default:
+		_, _ = fmt.Fprintln(l.errOut, "momo: warning: --url puts the database URL in the process list, where other users can read it; use MOMO_DATABASE_URL, migrate.url_env or --url - (stdin) instead")
+	}
 	if u == "" {
 		if name := l.file.Migrate.URLEnv[l.dialectName]; name != "" {
 			u = l.env(name)
@@ -375,7 +381,7 @@ func (l *cli) databaseURL() (string, error) {
 	}
 	l.secrets = append(l.secrets, u)
 	if w := TLSWarning(u); w != "" {
-		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", redactURL(w, l.secrets...))
+		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))
 	}
 	if parsed, err := url.Parse(u); err == nil && parsed.User != nil {
 		if pw, ok := parsed.User.Password(); ok {
@@ -423,7 +429,8 @@ func (l *cli) openEngine(ctx context.Context, extra ...migrate.Option) (*migrate
 func (l *cli) failure(err error) int {
 	switch {
 	case errors.Is(err, migrate.ErrDestructive), errors.Is(err, migrate.ErrStagedRequired),
-		errors.Is(err, migrate.ErrBaselineMismatch), errors.Is(err, migrate.ErrBranchConflict):
+		errors.Is(err, migrate.ErrBaselineMismatch), errors.Is(err, migrate.ErrBranchConflict),
+		errors.Is(err, migrate.ErrOutOfOrder), errors.Is(err, migrate.ErrChainInvalid):
 		return l.errf(exitFindings, "%v", err)
 	case errors.Is(err, migrate.ErrNoSnapshot):
 		return l.errf(exitUsage, "%v", err)
@@ -491,10 +498,8 @@ func (l *cli) planCmd(fs *flag.FlagSet) func([]string) int {
 
 func (l *cli) applyCmd(fs *flag.FlagSet) func([]string) int {
 	var to string
-	var force bool
 	var wait string
 	fs.StringVar(&to, "to", "", "apply up to and including this version")
-	fs.BoolVar(&force, "force-unlock", false, "take over a lock row left by a dead process (SQLite); no effect on a PostgreSQL advisory lock")
 	fs.StringVar(&wait, "lock-wait", "", "how long to wait for the migration lock (default 30s)")
 	var waitD time.Duration
 	extra := func() ([]migrate.Option, error) {
@@ -509,7 +514,7 @@ func (l *cli) applyCmd(fs *flag.FlagSet) func([]string) int {
 		return []migrate.Option{migrate.WithLockWait(d)}, nil
 	}
 	return l.withEngine(fs, extra, func(ctx context.Context, e *migrate.Engine, _ []string) int {
-		rep, err := e.Apply(ctx, migrate.ApplyOptions{To: to, ForceUnlock: force, LockWait: waitD})
+		rep, err := e.Apply(ctx, migrate.ApplyOptions{To: to, LockWait: waitD})
 		if err != nil {
 			return l.failure(err)
 		}
@@ -631,6 +636,42 @@ func (l *cli) resolveCmd(fs *flag.FlagSet) func([]string) int {
 	})
 }
 
+// rehashCmd shows, and with --accept stores, the checksum of an applied
+// migration whose file was edited. Without --accept it changes nothing.
+func (l *cli) rehashCmd(fs *flag.FlagSet) func([]string) int {
+	var version string
+	var accept bool
+	fs.StringVar(&version, "version", "", "the applied migration version whose edited file to accept")
+	fs.BoolVar(&accept, "accept", false, "store the file's checksum in the history row (default: only show it)")
+	check := func() ([]migrate.Option, error) {
+		if version == "" {
+			return nil, errors.New("rehash needs --version")
+		}
+		return nil, nil
+	}
+	return l.withEngine(fs, check, func(ctx context.Context, e *migrate.Engine, _ []string) int {
+		r, err := e.Rehash(ctx, version, accept)
+		if err != nil {
+			return l.failure(err)
+		}
+		if !r.Changed {
+			l.say("%s %s: the file matches the recorded checksum; nothing to do", r.Version, r.Name)
+			return exitOK
+		}
+		l.say("%s %s: recorded checksum %s", r.Version, r.Name, r.Recorded)
+		l.say("%s %s: file checksum     %s", r.Version, r.Name, r.Current)
+		if !r.Accepted {
+			l.say("nothing changed: the file was edited after it was applied; review the edit (it is not run again), then pass --accept to store the new checksum for %s only", r.Version)
+			return exitFindings
+		}
+		l.say("accepted: the history checksum of %s now matches the file", r.Version)
+		if r.SumStale {
+			l.say("note: the file still differs from %s; run momo migrate hash", migrate.SumFileName)
+		}
+		return exitOK
+	})
+}
+
 // hashCmd recomputes momo.sum over the files of the migration directory and
 // writes it atomically. It is the remedy for a missing or stale momo.sum
 // after the files were reviewed.
@@ -742,11 +783,12 @@ func (l *cli) validateCmd(fs *flag.FlagSet) func([]string) int {
 
 func (l *cli) diffCmd(fs *flag.FlagSet) func([]string) int {
 	renameTables, renameColumns := pairs{}, pairs{}
-	var allow, stage bool
+	var allow, stage, enforce bool
 	fs.Var(renameTables, "rename-table", "old=new table rename (repeatable)")
 	fs.Var(renameColumns, "rename-column", "table.old=new column rename (repeatable)")
 	fs.BoolVar(&allow, "allow-destructive", false, "allow drops and rewrites")
 	fs.BoolVar(&stage, "stage", false, "stage NOT NULL columns without a default")
+	fs.BoolVar(&enforce, "enforce-not-null", false, "emit SET NOT NULL for a staged, backfilled column")
 	return func(args []string) int {
 		pos, stop := l.setup(fs, args)
 		if stop != nil {
@@ -776,7 +818,7 @@ func (l *cli) diffCmd(fs *flag.FlagSet) func([]string) int {
 		ctx, cancel := interruptContext()
 		defer cancel()
 		m, err := e.Diff(ctx, desired, pos[0], migrate.DiffOptions{
-			RenameTables: renameTables, RenameColumns: renameColumns, AllowDestructive: allow, Stage: stage,
+			RenameTables: renameTables, RenameColumns: renameColumns, AllowDestructive: allow, Stage: stage, EnforceNotNull: enforce,
 		})
 		if err != nil {
 			return l.failure(err)

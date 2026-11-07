@@ -140,3 +140,100 @@ func TestEmitMetaSoftDeleteKind(t *testing.T) {
 		t.Fatalf("bool filter:\n got %s\nwant %s", q.SQL, want)
 	}
 }
+
+func TestEmitMetaProjectionGolden(t *testing.T) {
+	g, diags, err := Load([]string{"./projection"}, Config{Dir: fixturesDir(t)})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("load: %v %v", err, diags)
+	}
+	if len(g.Projections) != 2 || len(g.Models) != 3 {
+		t.Fatalf("models %d projections %d", len(g.Models), len(g.Projections))
+	}
+	if len(g.Schema.Tables) != 3 {
+		t.Fatalf("a projection must not get a table: %+v", g.Schema.Tables)
+	}
+	src, ds := EmitMeta(g.Models, g)
+	if len(ds) != 0 {
+		t.Fatalf("emit diagnostics: %v", ds)
+	}
+	formatted, err := format.Source(src)
+	if err != nil || !bytes.Equal(formatted, src) {
+		t.Fatalf("output is not valid gofmt-clean Go: %v", err)
+	}
+	ok, err := golden.Diff("testdata/golden/meta/projection/momo_gen.go", src, *update)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("projection meta differs from golden; review and rerun with -update")
+	}
+	s := strings.Join(strings.Fields(string(src)), " ")
+	for _, want := range []string{
+		`{Name: "id"}, {Name: "title"}, {Name: "points"}, {Name: "made_at"}`,
+		`{Name: "score"}, {Name: "articles"}, {Name: "http_code"}`,
+		"Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	for _, bad := range []string{"hidden", "Extra"} {
+		if strings.Contains(s, bad) {
+			t.Errorf("unexported or skipped field %s is mapped", bad)
+		}
+	}
+}
+
+func TestProjectionOnlyPackageEmits(t *testing.T) {
+	g, diags, err := Load([]string{"./projectiononly"}, Config{Dir: fixturesDir(t)})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("load: %v %v", err, diags)
+	}
+	w := NewWriter(WriterOptions{ModuleRoot: fixturesDir(t)})
+	if err := Emit(g, w); err != nil {
+		t.Fatal(err)
+	}
+	outs := w.Outputs()
+	if len(outs) != 1 {
+		t.Fatalf("outputs = %v", outs)
+	}
+	src := string(outs[0].Data)
+	if strings.Contains(src, "schema") || !strings.Contains(src, "func (*Count) MomoMeta()") {
+		t.Fatalf("unexpected output:\n%s", src)
+	}
+}
+
+func TestProjectionUnsupportedFieldNamesStructAndField(t *testing.T) {
+	_, diags, err := Load([]string{"./projectionbad"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 1 || !strings.Contains(diags[0].Msg, "projection Odd") || !strings.Contains(diags[0].Msg, "field Value") ||
+		!strings.Contains(diags[0].Msg, "complex128") || diags[0].Pos.Line != 10 {
+		t.Fatalf("diags: %v", diags)
+	}
+}
+
+// TestDescriptorTableCarriesSoftDelete proves the generated Table names the
+// soft-delete column and its kind, which is how a projection read from it is
+// filtered.
+func TestDescriptorTableCarriesSoftDelete(t *testing.T) {
+	g, diags, err := Load([]string{"./projection"}, Config{Dir: fixturesDir(t)})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("load: %v %v", err, diags)
+	}
+	want := map[string]string{
+		"Widget":     `var Table = momo.TableRef{Name: "widgets", SoftDelete: "deleted_at"}`,
+		"UnixWidget": `var Table = momo.TableRef{Name: "unix_widgets", SoftDelete: "gone_at", SoftDeleteKind: momo.SoftDeleteUnix}`,
+		"BoolWidget": `var Table = momo.TableRef{Name: "bool_widgets", SoftDelete: "removed", SoftDeleteKind: momo.SoftDeleteBool}`,
+	}
+	for _, m := range g.Models {
+		src, ds := EmitDescriptors(m, g)
+		if len(ds) != 0 {
+			t.Fatalf("emit diagnostics: %v", ds)
+		}
+		if !strings.Contains(string(src), want[m.GoName]) {
+			t.Errorf("%s: Table lacks its soft-delete column and kind, want %s in:\n%s", m.GoName, want[m.GoName], src)
+		}
+	}
+}

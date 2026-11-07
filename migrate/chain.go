@@ -59,9 +59,9 @@ func loadChain(files []File) ([]chainEntry, []error) {
 		for _, other := range kids[1:] {
 			a, b := byVersion[kids[0]].path, byVersion[other].path
 			if parent == "" {
-				problems = append(problems, fmt.Errorf("%w: %s and %s both have no parent; run momo migrate rebase", ErrBranchConflict, a, b))
+				problems = append(problems, fmt.Errorf("%w: %s and %s both have no parent; rebase one branch by hand (see docs/migrations.md)", ErrBranchConflict, a, b))
 			} else {
-				problems = append(problems, fmt.Errorf("%w: %s and %s both have parent %s; run momo migrate rebase", ErrBranchConflict, a, b, parent))
+				problems = append(problems, fmt.Errorf("%w: %s and %s both have parent %s; rebase one branch by hand (see docs/migrations.md)", ErrBranchConflict, a, b, parent))
 			}
 		}
 	}

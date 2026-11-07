@@ -4,6 +4,7 @@ Status: open
 Created: 2026-11-06
 Epic: momo-05-writes-queries
 Sprint: -
+Carried: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query — SQLite integration criterion needs a SQLite driver and test opener, which arrive with the SQLite milestone; inline rendering, ErrValidation and docs are done and golden-tested
 
 ## Description
 
@@ -20,12 +21,21 @@ predicate gets a database error instead of `ErrValidation`.
 - [ ] On SQLite, the target predicate renders literal values (bool, integer,
       string) inline instead of binding them, and a SQLite integration test
       upserts against a partial unique index with a typed predicate.
-- [ ] `Excluded()` inside the target predicate is `ErrValidation` at build
+- [x] `Excluded()` inside the target predicate is `ErrValidation` at build
       time; a unit test covers it.
-- [ ] Golden tests cover nested `Not`/`And`/`Or`/`In`/`Between`/`IsNull` in the
+- [x] Golden tests cover nested `Not`/`And`/`Or`/`In`/`Between`/`IsNull` in the
       action predicate, a chunked `Models` upsert with both predicates (argument
       numbering), and that `base.Where(a)` and `base.Where(b)` do not alias.
 - [ ] The README, `docs/capabilities.md` and `docs/ai-guide.md` drop the SQLite
       workaround once the first criterion is done.
 
 ## Evidence
+
+Open: there is no SQLite driver in go.mod and no SQLite integration opener, so the first criterion's integration test cannot be written yet.
+
+- Criterion 1 (open): `TestConflictTargetSQLiteLiterals` and `TestConflictActionStaysBoundOnSQLite` prove the rendering (bool 1/0, integer, string with quote doubling, In/Between/IsNull/Not; PostgreSQL still binds; VALUES and the action predicate stay bound). No SQLite integration opener exists and go.mod has no SQLite driver (adding one needs a dependency decision), so the integration test is not written and this criterion stays unticked.
+- Criterion 2: `TestConflictTargetExcludedIsValidation` (postgres and sqlite, direct and nested) returns ErrValidation; mutation `if false` in `excludedExpr.AppendSQL` fails it.
+- Criterion 3: `TestConflictActionWhereNestedGolden` (Not/And/Or/In/NotIn/Between/IsNull), `TestConflictWhereChunkedArgNumbering` (MaxParams 10: two chunks, args $9/$10 then $5/$6) and `TestConflictWhereDoesNotAlias` (mutating either `slices.Clip` fails it).
+- Criterion 4 (open, depends on criterion 1): README, docs/capabilities.md and docs/ai-guide.md describe the inline rendering, the Excluded rule and the exact literal forms, and keep `momo.SQL("live = 1")` as the proven fallback until a real SQLite run exists.
+- Review fix 2: `TestConflictTargetSQLiteFloatAndValuer` pins 1e6 as `1000000.0`, 123456789.5, 0.001, 1e-6 and 1e-7 (`1e-07`); `TestConflictTargetSQLiteErrorReasons` pins the NUL, NaN/Inf and NULL reasons and the wrapped Valuer error.
+- Review fix: `TestConflictTargetSQLiteUnrenderableIsValidation` (time, NaN, Inf, bytes, pointer, NULL, NUL string, Valuer to time) and `TestConflictTargetSQLiteFloatAndValuer` (floats, Valuer inlined as its bound value) cover the values that cannot or must be inlined.

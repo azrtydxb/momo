@@ -37,6 +37,9 @@ func NewEngine(drv momo.Driver, dir fs.FS, opts ...Option) (*Engine, error) {
 	if o.dialect == nil {
 		return nil, errors.New("migrate: NewEngine requires migrate.WithDialect(...)")
 	}
+	if o.lockTimeout != nil && *o.lockTimeout < 0 || o.statementTimeout != nil && *o.statementTimeout < 0 {
+		return nil, errors.New("migrate: a lock or statement timeout cannot be negative")
+	}
 	return &Engine{drv: drv, dir: dir, opts: o}, nil
 }
 
@@ -319,6 +322,19 @@ func joinErr(err, cleanup error) error {
 	return errors.Join(err, cleanup)
 }
 
+// sessionOptions merges Config with the explicit WithLockTimeout and
+// WithStatementTimeout values, which win and keep a zero.
+func (e *Engine) sessionOptions() SessionOptions {
+	s := SessionOptions{LockTimeout: e.opts.config.LockTimeout, StatementTimeout: e.opts.config.StatementTimeout}
+	if d := e.opts.lockTimeout; d != nil {
+		s.LockTimeout, s.LockTimeoutSet = *d, true
+	}
+	if d := e.opts.statementTimeout; d != nil {
+		s.StatementTimeout, s.StatementTimeoutSet = *d, true
+	}
+	return s
+}
+
 // session resolves the managed schemas, takes the migration lock (waiting up to
 // wait) and applies the session timeouts. The returned end joins its argument
 // with the outcome of the cleanup: it resets the session timeouts first and
@@ -338,7 +354,7 @@ func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Durat
 	if err != nil {
 		return nil, err
 	}
-	reset, err := e.opts.dialect.Setup(ctx, c, SessionOptions{LockTimeout: e.opts.config.LockTimeout, StatementTimeout: e.opts.config.StatementTimeout})
+	reset, err := e.opts.dialect.Setup(ctx, c, e.sessionOptions())
 	if err != nil {
 		return nil, joinErr(err, unlock())
 	}
@@ -348,14 +364,37 @@ func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Durat
 	}, nil
 }
 
+// outOfOrder refuses with ErrOutOfOrder when a pending version sorts before
+// the latest applied one: running it now would apply it after newer
+// migrations, against a snapshot chain that no longer matches. It happens when
+// two branches each add a migration and are merged.
+func outOfOrder(hist []HistoryRow, pending []Pending) error {
+	latest := ""
+	for _, r := range hist {
+		if r.Status == StatusApplied && r.Version > latest {
+			latest = r.Version
+		}
+	}
+	for _, p := range pending {
+		if p.Version < latest {
+			return fmt.Errorf("%w: pending version %s is older than applied version %s; rebase it after %s", ErrOutOfOrder, p.Version, latest, latest)
+		}
+	}
+	return nil
+}
+
 // Apply runs the pending migrations in version order, each with its own
 // history row, and stops at the first failure.
 //
 // It takes the migration lock (waiting up to ApplyOptions.LockWait, then
 // WithLockWait, then 30s, and returning ErrLocked naming the holder), applies
-// the session timeouts, creates the history table, refuses with ErrDirty while
-// a migration is running or failed and with ErrChecksumMismatch when an applied
-// or listed file was edited, and then runs the pending migrations up to
+// the session timeouts, refuses with ErrDirty while a migration is running or
+// failed, with ErrChecksumMismatch when an applied or listed file was edited,
+// with ErrBranchConflict (or another chain error, as Chain reports it) when the
+// snapshots do not form one linear chain, and with ErrOutOfOrder when a pending
+// version is older than the latest applied one. When nothing is pending it
+// returns an empty report and writes nothing, not even the history table;
+// otherwise it creates the history table and runs the pending migrations up to
 // ApplyOptions.To. The session timeouts are reset and the lock released on every
 // path, in that order, detached from ctx; a failure of either is joined to the
 // returned error.
@@ -374,10 +413,13 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	}
 	defer func() { err = end(err) }()
 
-	// The history table is created under the lock, so two first-time callers
-	// cannot race on CREATE TABLE.
-	hist, err := e.history(ctx, c)
+	// Read the history without creating it: a database that has none has an
+	// empty history, and an Apply with nothing to do must write nothing.
+	hist, err := e.readHistory(ctx, c)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkHistoryFormat(ctx, c); err != nil {
 		return nil, err
 	}
 	if err := dirtyError(hist); err != nil {
@@ -386,8 +428,26 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	if err := e.verifyChecksums(hist); err != nil {
 		return nil, err
 	}
+	if _, err := Chain(e.dir); err != nil {
+		if errors.Is(err, ErrBranchConflict) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %w", ErrChainInvalid, err)
+	}
 	pending, err := e.pendingFrom(hist)
 	if err != nil {
+		return nil, err
+	}
+	if err := outOfOrder(hist, pending); err != nil {
+		return nil, err
+	}
+	if len(pending) == 0 {
+		return &Report{}, nil
+	}
+	// The history table is created under the lock, so two first-time callers
+	// cannot race on CREATE TABLE. EnsureHistory also refuses a table written
+	// with a newer format.
+	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
 		return nil, err
 	}
 	var b [4]byte
@@ -402,7 +462,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		}
 		a, err := RunMigration(ctx, env, p, rep.ApplyID)
 		if err != nil {
-			return rep, e.classify(err)
+			return rep, redactErr(e.classify(err))
 		}
 		rep.Applied = append(rep.Applied, a)
 	}
@@ -612,6 +672,14 @@ var migrationName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // engine clock in UTC (NextVersion), moved to the second after the latest
 // existing version when the clock is not already past it, so versions only grow.
 //
+// When the rendered plan mixes transactional statements with statements that
+// must run outside a transaction (CREATE INDEX CONCURRENTLY, the unique index
+// of an added UNIQUE, the VALIDATE CONSTRAINT of an added CHECK), Diff splits
+// it: the returned Migration holds the transactional part and Next is a
+// trailing "<name>_no_tx" migration, one second later, that carries
+// -- momo:no-transaction. Files holds the files of both. A plan of only
+// such statements is the single no-transaction migration.
+//
 // Diff does not touch the database: it reads the directory and renders through
 // the dialect. It orders the changes with OrderWithViews and returns the
 // ordering error (a dependency cycle) instead of falling back to the unordered
@@ -657,33 +725,55 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 		return nil, err
 	}
 	m := &Migration{Version: version, Name: name, Kind: "sql", Parent: parent, Up: stmts, Changes: ordered, Snapshot: &to, Hints: hints}
-	for _, c := range ordered {
-		m.Destructive = m.Destructive || c.Destructive
+	// A staged NOT NULL column stays nullable in the snapshot; the split below
+	// only moves index and constraint changes, so it starts from that schema.
+	staged := stagedSnapshot(&to, from, changes, opts)
+	m.Snapshot = staged
+	finishMigration(m)
+	// Statements that must run outside a transaction share a file with
+	// transactional ones only when that is all there is: a mixed plan is split
+	// so the transactional DDL stays atomic.
+	if hasNoTx(stmts) && slices.ContainsFunc(stmts, func(s Statement) bool { return !s.NoTx }) {
+		head, _, ok, err := e.splitNoTx(version, name, parent, ordered, staged, hints)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			m = head
+		}
 	}
-	for _, s := range stmts {
-		m.NoTx = m.NoTx || s.NoTx
+	files := []*Migration{m}
+	if m.Next != nil {
+		files = append(files, m.Next)
 	}
-	if m.Files, err = e.migrationFiles(m); err != nil {
+	if m.Files, err = e.migrationFiles(files...); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-// migrationFiles renders the up file, the snapshot and the extended momo.sum
-// of m, keyed by relative file name.
-func (e *Engine) migrationFiles(m *Migration) (map[string][]byte, error) {
-	upName := m.Version + "_" + m.Name + ".up.sql"
-	snapName := m.Version + "_" + m.Name + ".snapshot.json"
-	var snapBuf bytes.Buffer
-	if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: m.Version, ParentVersion: m.Parent, Schema: m.Snapshot}); err != nil {
-		return nil, err
+// migrationFiles renders the up file, the snapshot of each migration in ms and
+// the extended momo.sum, keyed by relative file name.
+func (e *Engine) migrationFiles(ms ...*Migration) (map[string][]byte, error) {
+	added := memFS{}
+	var names []string
+	out := map[string][]byte{}
+	for _, m := range ms {
+		upName := m.Version + "_" + m.Name + ".up.sql"
+		snapName := m.Version + "_" + m.Name + ".snapshot.json"
+		var snapBuf bytes.Buffer
+		if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: m.Version, ParentVersion: m.Parent, Schema: m.Snapshot}); err != nil {
+			return nil, err
+		}
+		added[upName], added[snapName] = renderUp(m), snapBuf.Bytes()
+		names = append(names, snapName, upName)
+		out[upName], out[snapName] = added[upName], added[snapName]
 	}
-	added := memFS{upName: renderUp(m), snapName: snapBuf.Bytes()}
 	existing, err := e.existingSum()
 	if err != nil {
 		return nil, err
 	}
-	sum, err := AppendSum(existing, added, []string{snapName, upName})
+	sum, err := AppendSum(existing, added, names)
 	if err != nil {
 		return nil, err
 	}
@@ -691,7 +781,8 @@ func (e *Engine) migrationFiles(m *Migration) (map[string][]byte, error) {
 	if err := sum.Write(&sumBuf); err != nil {
 		return nil, err
 	}
-	return map[string][]byte{upName: added[upName], snapName: added[snapName], SumFileName: sumBuf.Bytes()}, nil
+	out[SumFileName] = sumBuf.Bytes()
+	return out, nil
 }
 
 // existingSum reads momo.sum from the directory; a directory without one gets

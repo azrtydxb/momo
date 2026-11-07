@@ -40,6 +40,12 @@ type execer interface {
 // statements_applied after each one; an error leaves the row failed, which is
 // dirty until resolved.
 func RunMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (Applied, error) {
+	a, err := runMigration(ctx, env, p, applyID)
+	// The history row is redacted; so is the message of the returned error.
+	return a, redactErr(err)
+}
+
+func runMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (Applied, error) {
 	h := historyWriter{d: env.Dialect}
 	start := env.Clock()
 	kind := string(p.Kind)
@@ -81,7 +87,7 @@ func runTransactional(ctx context.Context, env RunEnv, h historyWriter, rec Hist
 		if rbErr := tx.Rollback(fctx); rbErr != nil {
 			cause = errors.Join(cause, fmt.Errorf("rollback: %w", rbErr))
 		}
-		rec.Status, rec.Error = StatusRolledBack, cause.Error()
+		rec.Status, rec.Error = StatusRolledBack, RedactURLs(cause.Error())
 		if err := env.recordOnFailure(fctx, func(x execer) error { return h.upsert(fctx, x, rec) }); err != nil {
 			cause = errors.Join(cause, fmt.Errorf("record rolled_back: %w", err))
 		}
@@ -126,7 +132,7 @@ func runNonTransactional(ctx context.Context, env RunEnv, h historyWriter, rec H
 			fctx, cancel := failureContext(ctx)
 			defer cancel()
 			if herr := env.recordOnFailure(fctx, func(x execer) error {
-				return h.finish(fctx, x, p.Version, StatusFailed, n, cause.Error(), ms)
+				return h.finish(fctx, x, p.Version, StatusFailed, n, RedactURLs(cause.Error()), ms)
 			}); herr != nil {
 				cause = errors.Join(cause, fmt.Errorf("record failed: %w", herr))
 			}
