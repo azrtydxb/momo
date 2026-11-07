@@ -1,6 +1,6 @@
 # Full-text search: tsvector type and FTS expressions (#30)
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-07
 Epic: momo-05-writes-queries
 Sprint: -
