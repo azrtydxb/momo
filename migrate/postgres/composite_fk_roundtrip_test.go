@@ -50,6 +50,7 @@ func TestCompositePKForeignKeyNoDiff(t *testing.T) {
 	}
 	got := inspectNow(t, db)
 	want := compositeFKSchema(t)
+	want.Extensions = []schema.Extension{{Name: "vector"}} // the test database has it installed; inspection reports every extension
 	if err := mpg.New().Canonicalize(ctx, pinned(t, db), want); err != nil {
 		t.Fatalf("canonicalize: %v", err)
 	}
