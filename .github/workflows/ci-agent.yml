@@ -1,0 +1,103 @@
+# Lean CI for worktree-agent-* work branches. These branches merge into a
+# sprint branch, whose pushes and pull request run the full ci.yml matrix
+# (both Go versions, both PostgreSQL majors, windows, macos, bench). Many
+# agent branches push at once, so they run one Go version and one PostgreSQL
+# major to keep the shared Actions queue moving.
+name: ci-agent
+
+on:
+  push:
+    branches: ["worktree-agent-*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "ci-agent-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - run: make fmt-check
+      - run: make vet
+      - run: make staticcheck
+      - run: make gosec
+      - run: make tidy-check
+
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - run: make test
+      - run: make test-compilefail
+      - run: make test-race
+
+  fuzz-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - run: make test-fuzz
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        dialect: [postgres]
+    env:
+      PG_URL: postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
+      PG_APP_URL: postgres://momo_app:momo_app@127.0.0.1:5432/postgres?sslmode=disable
+      PGBOUNCER_URL: postgres://postgres:momo@127.0.0.1:6432/postgres?sslmode=disable
+    services:
+      postgres:
+        image: "pgvector/pgvector:0.8.7-pg17"
+        env:
+          POSTGRES_PASSWORD: momo
+          POSTGRES_USER: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-retries 30
+      pgbouncer:
+        image: "edoburu/pgbouncer:v1.26.1-p0"
+        env:
+          DATABASE_URL: "postgres://postgres:momo@postgres:5432"
+          POOL_MODE: transaction
+          AUTH_TYPE: scram-sha-256
+          DEFAULT_POOL_SIZE: "4"
+          MAX_CLIENT_CONN: "200"
+          MAX_PREPARED_STATEMENTS: "0"
+          IGNORE_STARTUP_PARAMETERS: extra_float_digits
+        ports: ["6432:5432"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - run: make test-integration-${{ matrix.dialect }}

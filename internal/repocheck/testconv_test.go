@@ -134,3 +134,18 @@ func TestFuzzTargetsListed(t *testing.T) {
 		}
 	}
 }
+
+// reviewRoundSuffix matches test file names that record when a test was
+// written (a review round, a polish pass) instead of what it tests.
+var reviewRoundSuffix = regexp.MustCompile(`_(review|polish|more|fixes|repair|hardening)(_[a-z]+)*_test\.go$`)
+
+// TestNoReviewRoundTestFiles refuses test files named after review rounds.
+// Tests live in the file named for the production file or feature they
+// cover; a new case goes there, not into a file of its own.
+func TestNoReviewRoundTestFiles(t *testing.T) {
+	walkTestFiles(t, func(rel, _ string) {
+		if reviewRoundSuffix.MatchString(rel) {
+			t.Errorf("%s is named after a review round; move its tests into the file named for the feature they test", rel)
+		}
+	})
+}
