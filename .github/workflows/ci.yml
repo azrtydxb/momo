@@ -150,7 +150,11 @@ jobs:
       matrix:
         go: ["1.26", "1.27"]
         pg: ["0.8.7-pg17", "0.8.7-pg16"]
-        dialect: [postgres] # M2: add sqlite; M3: add mysql84, mysql97, mariadb
+        dialect: [postgres, sqlite] # M3: add mysql84, mysql97, mariadb
+        exclude:
+          # SQLite needs no server, so one PostgreSQL image is enough.
+          - dialect: sqlite
+            pg: "0.8.7-pg16"
     env:
       PG_URL: postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
       PG_APP_URL: postgres://momo_app:momo_app@127.0.0.1:5432/postgres?sslmode=disable

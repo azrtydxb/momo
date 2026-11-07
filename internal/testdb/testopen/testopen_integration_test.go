@@ -21,25 +21,29 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestEachRunsPostgres(t *testing.T) {
+func TestEachRunsBothDialects(t *testing.T) {
 	testdb.PostgresURL(t) // skip or fail through testdb before counting subtests
 	var ran []dialect.Name
 	Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		ran = append(ran, d)
-		rows, err := db.Driver().Query(context.Background(), "SELECT 1", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := rows.Close(); err != nil {
+		if _, err := momo.Exec(context.Background(), db, "SELECT 1"); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if len(ran) != len(openers) {
-		t.Fatalf("Each ran %d dialects, registered %d", len(ran), len(openers))
+	if len(ran) != 2 || ran[0] != dialect.Postgres || ran[1] != dialect.SQLite {
+		t.Fatalf("Each ran %v, want [postgres sqlite]", ran)
 	}
-	if len(ran) == 0 || ran[0] != dialect.Postgres {
-		t.Fatalf("Each ran %v, want postgres first", ran)
-	}
+}
+
+func TestEachNamesSubtestAfterDialect(t *testing.T) {
+	Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		if !strings.HasSuffix(t.Name(), "/"+string(d)) {
+			t.Fatalf("subtest %q is not named after dialect %q", t.Name(), d)
+		}
+		if db.Dialect().Name != d {
+			t.Fatalf("db dialect %q, subtest dialect %q", db.Dialect().Name, d)
+		}
+	})
 }
 
 // countHook counts statements reaching the hook.
@@ -51,6 +55,17 @@ func (c *countHook) BeforeQuery(ctx context.Context, e *momo.QueryEvent) context
 }
 
 func (c *countHook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {}
+
+func TestOptionsReachSQLite(t *testing.T) {
+	hook := &countHook{}
+	db := SQLite(t, momo.WithHook(hook))
+	if _, err := momo.Exec(context.Background(), db, "SELECT 1"); err != nil {
+		t.Fatal(err)
+	}
+	if hook.n != 1 {
+		t.Fatalf("WithHook passed to SQLite did not reach the database: %d events", hook.n)
+	}
+}
 
 func TestOptionsReachDB(t *testing.T) {
 	hook := &countHook{}
@@ -101,8 +116,10 @@ func TestEachSubtestsAreIsolated(t *testing.T) {
 	var dbs []*momo.DB
 	for range 2 {
 		Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-			schemas = append(schemas, currentSchema(t, db))
 			dbs = append(dbs, db)
+			if d == dialect.Postgres {
+				schemas = append(schemas, currentSchema(t, db))
+			}
 			if _, err := momo.Exec(context.Background(), db, "CREATE TABLE iso (id int)"); err != nil {
 				t.Fatalf("a table from another subtest leaked into this schema: %v", err)
 			}
@@ -122,7 +139,7 @@ func TestEachSubtestsAreIsolated(t *testing.T) {
 // TestRequireFailsWithoutURL runs the Each test in a child process with the
 // URL unset and MOMO_REQUIRE_INTEGRATION=1: it must fail, not skip.
 func TestRequireFailsWithoutURL(t *testing.T) {
-	cmd := exec.Command(os.Args[0], "-test.run=^TestEachRunsPostgres$", "-test.v")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestEachRunsBothDialects$", "-test.v")
 	cmd.Env = append(os.Environ(), "MOMO_REQUIRE_INTEGRATION=1", "MOMO_TEST_POSTGRES_URL=")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -156,6 +173,9 @@ func TestEachPoolRecordsPoolWait(t *testing.T) {
 	testdb.PostgresURL(t) // skip or fail through testdb before asserting on the hook
 	hook := &poolWaitHook{}
 	Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		if d != dialect.Postgres {
+			t.Skip("pool wait is recorded by the pgx pool instrumentation only")
+		}
 		pinner, ok := db.Driver().(momo.Pinner)
 		if !ok {
 			t.Skip("driver cannot pin connections")
