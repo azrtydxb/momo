@@ -37,6 +37,7 @@ func TestCosineDistanceDimensionlessColumn(t *testing.T) {
 	}
 	col := momo.NewVectorColumn[vector.Vector]("docs", "emb", 0, 0)
 	dims := momo.ColumnOf[int64]("docs", "dims")
+	pool := pgPool(t) // opened on the test's own schema, not a subtest's
 	cases := []struct {
 		name string
 		q    vector.Vector
@@ -56,7 +57,7 @@ func TestCosineDistanceDimensionlessColumn(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := queryIDs(t, pgPool(t), c); !slices.Equal(got, tc.want) {
+			if got := queryIDs(t, pool, c); !slices.Equal(got, tc.want) {
 				t.Fatalf("order = %v, want %v", got, tc.want)
 			}
 		})
