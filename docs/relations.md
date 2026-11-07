@@ -312,7 +312,9 @@ counts, err := momo.LoadCounts(ctx, db, docs, document.Comments,
   soft-delete default with `LoadWithDeleted` and `LoadOnlyDeleted`.
   `LoadOrderBy` is ignored; `LoadPerParentLimit` fails with `ErrValidation`.
 - Many-to-many counts join-table rows, like `Count`. The far table is joined
-  only when it has a soft-delete column or a `LoadWhere` filter applies.
+  when it has a soft-delete column and `LoadWithDeleted` is not set, or when a
+  `LoadWhere` filter applies. Otherwise nothing is joined, so join rows whose
+  far row no longer exists (dangling rows) are counted too.
 - Parent keys are chunked under the dialect bind limit (see Chunking), and a
   relation hook sees one event per call.
 

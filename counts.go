@@ -80,12 +80,16 @@ func LoadCounts[P, C any](ctx context.Context, q Querier, parents []P, rel Relat
 // count to the parents that share the key.
 func (r Relation[P, C]) runCounts(ctx context.Context, q Querier, qs []Compiled, groups map[string][]int, out []int64, ev *RelationEvent) error {
 	rel := r.Parent.Name + "." + r.Name
+	table := r.Child.Name
+	if r.Through != nil {
+		table = r.Through.Table.Name // the counted table, as Count labels it
+	}
 	nk := len(r.ParentCols)
 	for _, c := range qs {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		rows, err := q.conn().query(ctx, "select", r.Child.Name, rel, c)
+		rows, err := q.conn().query(ctx, "select", table, rel, c)
 		if err != nil {
 			return err
 		}

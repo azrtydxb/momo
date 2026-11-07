@@ -33,6 +33,10 @@ func TestLoadCounts(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		// An image of another owner type sharing document 3's owner id must not count.
+		if _, err := momo.Exec(ctx, db, `INSERT INTO images (id, owner_type, owner_id, url) VALUES (3, 'author', 3, 'u3')`); err != nil {
+			t.Fatal(err)
+		}
 		// Documents 1..4, a repeated document and one with no rows at all.
 		docs := []models.Document{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}, {ID: 1}, {ID: 99}}
 
@@ -56,6 +60,9 @@ func TestLoadCounts(t *testing.T) {
 		got, err = momo.LoadCounts(ctx, db, docs, document.Comments,
 			momo.LoadWhere[models.Comment](comment.Approved.Eq(true)))
 		check("filtered", got, err, "[2 0 1 0 2 0]")
+
+		got, err = momo.LoadCounts(ctx, db, docs, document.Images)
+		check("polymorphic", got, err, "[1 0 0 0 1 0]")
 
 		got, err = momo.LoadCounts(ctx, db, docs, document.Notes)
 		check("soft-delete default", got, err, "[1 0 1 0 1 0]")

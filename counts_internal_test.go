@@ -78,3 +78,83 @@ func TestCountQueriesChunkOnBindLimit(t *testing.T) {
 		}
 	}
 }
+
+// A polymorphic relation adds the discriminator predicate and one argument.
+func TestCountQueriesPolymorphicDiscriminator(t *testing.T) {
+	rel := ckidsRel()
+	rel.Discriminator = &Discriminator{Column: "kind", Value: "doc"}
+	qs, err := rel.countQueries(dialect.For(dialect.Postgres), [][]any{{1, 1}}, &loadConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(qs[0].SQL, `"ckids"."kind" = $3`) || !strings.HasSuffix(qs[0].SQL, `GROUP BY "ckids"."tenant", "ckids"."code"`) {
+		t.Fatalf("discriminator predicate missing: %s", qs[0].SQL)
+	}
+	if len(qs[0].Args) != 3 || qs[0].Args[2] != "doc" {
+		t.Fatalf("args %v, want the two key parts and the discriminator value", qs[0].Args)
+	}
+}
+
+func TestCountQueriesHasOneGolden(t *testing.T) {
+	rel := ckidsRel()
+	rel.Kind = HasOne
+	rel.GetOne = func(p *cpar) *ckid { return nil }
+	rel.SetOne = func(p *cpar, c *ckid) {}
+	if err := rel.validate(); err != nil {
+		t.Fatal(err)
+	}
+	qs, err := rel.countQueries(dialect.For(dialect.Postgres), [][]any{{1, 1}}, &loadConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `SELECT "ckids"."tenant", "ckids"."code", COUNT(*) FROM "ckids" WHERE ("ckids"."tenant", "ckids"."code") IN (($1, $2)) GROUP BY "ckids"."tenant", "ckids"."code"`
+	if qs[0].SQL != want {
+		t.Fatalf("got %s\nwant %s", qs[0].SQL, want)
+	}
+}
+
+// A filter that binds an argument shrinks the key budget, so no chunk goes
+// over the bind limit.
+func TestCountQueriesFilterArgsStayUnderBindLimit(t *testing.T) {
+	d := *dialect.For(dialect.Postgres)
+	d.MaxParams = 26
+	var keys [][]any
+	for i := 1; i <= 12; i++ {
+		keys = append(keys, []any{i, i})
+	}
+	cfg := &loadConfig{where: []Predicate{binOp{qcol{"ckids", "seq"}, " = ", argExpr{v: 5}}}}
+	rel := ckidsRel()
+	qs, err := rel.countQueries(&d, keys, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(qs) != 3 { // 26 - 16 reserved - 1 filter = 9 binds: 4 two-column tuples
+		t.Fatalf("got %d statements, want 3", len(qs))
+	}
+	for i, q := range qs {
+		if len(q.Args) > d.MaxParams {
+			t.Fatalf("statement %d binds %d args over the limit %d", i, len(q.Args), d.MaxParams)
+		}
+	}
+}
+
+// The key arguments of a count statement are marked sensitive on the side that
+// holds the key, so hooks see the placeholder.
+func TestCountQueriesMarkSensitiveKeys(t *testing.T) {
+	for name, kind := range map[string]RelationKind{"has many child key": HasMany, "many to many parent key": ManyToMany} {
+		t.Run(name, func(t *testing.T) {
+			r := secRelation(kind)
+			qs, err := r.countQueries(dialect.For(dialect.Postgres), [][]any{{relSecret}}, &loadConfig{})
+			if err != nil || len(qs) != 1 {
+				t.Fatalf("countQueries: %v %d", err, len(qs))
+			}
+			masked := maskArgs(qs[0].Args, qs[0].sens)
+			if len(masked) != 1 || masked[0] != RedactedArg {
+				t.Fatalf("hook args %v, want [%s]", masked, RedactedArg)
+			}
+			if qs[0].Args[0] != relSecret {
+				t.Fatalf("the driver must still get the key: %v", qs[0].Args)
+			}
+		})
+	}
+}
