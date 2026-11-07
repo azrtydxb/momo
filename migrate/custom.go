@@ -8,6 +8,10 @@ import (
 	"fmt"
 )
 
+// ErrInvalidName is returned (wrapped) by NewCustom for a migration name that
+// does not match the allowed form.
+var ErrInvalidName = errors.New("migrate: invalid migration name")
+
 // customUpTemplate is the body of a new hand-written up file. It holds no
 // statement and no -- momo:generated line, so the migration is custom.
 const customUpTemplate = `-- Hand-written migration. Write the SQL below; end each statement with a semicolon.
@@ -25,7 +29,7 @@ const customUpTemplate = `-- Hand-written migration. Write the SQL below; end ea
 // copy; run Diff first.
 func (e *Engine) NewCustom(name string) (*Migration, error) {
 	if !migrationName.MatchString(name) {
-		return nil, fmt.Errorf("migrate: migration name %q must match %s", name, migrationName)
+		return nil, fmt.Errorf("%w: %q must match %s", ErrInvalidName, name, migrationName)
 	}
 	snap, err := LatestSnapshot(e.dir)
 	if errors.Is(err, ErrNoSnapshot) {

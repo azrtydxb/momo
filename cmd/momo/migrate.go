@@ -876,7 +876,7 @@ func (l *cli) newCmd(fs *flag.FlagSet) func([]string) int {
 		}
 		m, err := e.NewCustom(pos[0])
 		if err != nil {
-			if strings.Contains(err.Error(), "must match") {
+			if errors.Is(err, migrate.ErrInvalidName) {
 				return l.errf(exitUsage, "%v", err)
 			}
 			return l.failure(err)

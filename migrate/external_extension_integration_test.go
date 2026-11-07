@@ -55,7 +55,7 @@ func TestAppRoleExtensionIfNotExists(t *testing.T) {
 func grantSchemaCreate(t *testing.T, admin *momo.DB, app *momo.DB) {
 	t.Helper()
 	role := firstValue(t, app, `SELECT current_user`)
-	mustExecDB(t, admin, `GRANT CREATE ON SCHEMA `+firstValue(t, admin, `SELECT current_schema()`)+` TO "`+role+`"`)
+	mustExecDB(t, admin, `GRANT CREATE ON SCHEMA "`+firstValue(t, admin, `SELECT current_schema()`)+`" TO "`+role+`"`)
 }
 
 // ownHistoryAsApp creates the history table as the administrator and hands it
@@ -84,23 +84,49 @@ func TestBaselineAsAppRole(t *testing.T) {
 	}
 }
 
-// TestBaselineAsAppRoleNeedsCreateForTableText: a default, check or index
-// predicate in any table is enough to need CREATE on the database, and force
-// does not waive it.
+// TestBaselineAsAppRoleNeedsCreateForTableText: any table text PostgreSQL
+// rewrites (a default, a generated column, a check, an index predicate or an
+// index expression) needs CREATE on the database, and force does not waive it.
 func TestBaselineAsAppRoleNeedsCreateForTableText(t *testing.T) {
-	admin := testopen.Postgres(t)
-	app := openAppRoleDB(t)
-	mustExecDB(t, admin, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT DEFAULT '')`)
-	grantSchemaCreate(t, admin, app)
-	s := usersSchema()
-	s.Tables[0].Columns[1].Default = "''"
-	fsys := snapshotFS(t, initVersion, s, "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT DEFAULT '');\n")
-	e := migratetest.NewEngine(t, mpg.New(), app.Driver(), fsys)
-	for _, force := range []bool{false, true} {
-		err := e.Baseline(context.Background(), initVersion, force)
-		if !errors.Is(err, migrate.ErrCanonicalizePrivilege) {
-			t.Fatalf("force=%v: want ErrCanonicalizePrivilege, got %v", force, err)
-		}
+	cases := []struct {
+		name  string
+		ddl   string // the users table in the live database
+		apply func(*schema.Table)
+	}{
+		{"default", `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT DEFAULT '')`,
+			func(tb *schema.Table) { tb.Columns[1].Default = "''" }},
+		{"generated column", `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, dbl INTEGER GENERATED ALWAYS AS (id * 2) STORED)`,
+			func(tb *schema.Table) {
+				tb.Columns = append(tb.Columns, schema.Column{Name: "dbl", Type: "INTEGER", Nullable: true, Generated: "id * 2"})
+			}},
+		{"check constraint", `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, CONSTRAINT users_id_pos CHECK (id > 0))`,
+			func(tb *schema.Table) { tb.Checks = []schema.Check{{Name: "users_id_pos", Expr: "id > 0"}} }},
+		{"index predicate", `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT); CREATE INDEX users_email_part ON users (email) WHERE email IS NOT NULL`,
+			func(tb *schema.Table) {
+				tb.Indexes = []schema.Index{{Name: "users_email_part", Parts: []schema.IndexPart{{Column: "email"}}, Where: "email IS NOT NULL"}}
+			}},
+		{"index expression", `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT); CREATE INDEX users_email_lower ON users (lower(email))`,
+			func(tb *schema.Table) {
+				tb.Indexes = []schema.Index{{Name: "users_email_lower", Parts: []schema.IndexPart{{Expr: "lower(email)"}}}}
+			}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			admin := testopen.Postgres(t)
+			app := openAppRoleDB(t)
+			for _, stmt := range strings.Split(c.ddl, "; ") {
+				mustExecDB(t, admin, stmt)
+			}
+			grantSchemaCreate(t, admin, app)
+			s := usersSchema()
+			c.apply(&s.Tables[0])
+			e := migratetest.NewEngine(t, mpg.New(), app.Driver(), snapshotFS(t, initVersion, s, c.ddl+";\n"))
+			for _, force := range []bool{false, true} {
+				if err := e.Baseline(context.Background(), initVersion, force); !errors.Is(err, migrate.ErrCanonicalizePrivilege) {
+					t.Fatalf("force=%v: want ErrCanonicalizePrivilege, got %v", force, err)
+				}
+			}
+		})
 	}
 }
 
@@ -158,5 +184,36 @@ func TestExternalExtensionsHiddenFromBaselineAndDrift(t *testing.T) {
 	}
 	if rep.Clean() {
 		t.Fatal("drift without the setting must report the vector extension as unmanaged")
+	}
+}
+
+// TestAutoMigrateSkipsExternalExtension: AutoMigrate creates the table but not
+// an extension listed in ExternalExtensions, and creates it without the setting.
+// It runs in a scratch database because it creates a database-wide extension.
+func TestAutoMigrateSkipsExternalExtension(t *testing.T) {
+	desired := func() *schema.Schema {
+		return &schema.Schema{Dialect: "postgres", Extensions: []schema.Extension{{Name: "hstore"}}, Tables: []schema.Table{
+			{Name: "things", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}}, PrimaryKey: []string{"id"}},
+		}}
+	}
+	installed := func(db *momo.DB) bool {
+		return firstValue(t, db, `SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'hstore')::text`) == "true"
+	}
+	for _, external := range []bool{true, false} {
+		db := testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_autoext_"))
+		var opts []migrate.Option
+		if external {
+			opts = append(opts, migrate.WithConfig(migrate.Config{ExternalExtensions: []string{"hstore"}}))
+		}
+		e := migratetest.NewEngine(t, mpg.New(), db.Driver(), migratetest.EmptyFS(), opts...)
+		if _, err := e.AutoMigrate(context.Background(), desired()); err != nil {
+			t.Fatalf("external=%v: %v", external, err)
+		}
+		if !tableExists(t, db, "things") {
+			t.Fatalf("external=%v: the table must be created", external)
+		}
+		if got := installed(db); got == external {
+			t.Fatalf("external=%v: hstore installed = %v", external, got)
+		}
 	}
 }

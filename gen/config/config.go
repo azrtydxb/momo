@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
-	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -84,11 +84,20 @@ func Load(path string) (*File, error) {
 	return &f, nil
 }
 
+// extensionName is the form of an entry in migrate.external_extensions: the
+// name as pg_extension spells it, lower case, with no schema qualifier.
+var extensionName = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
+
 func (m *MigrateConfig) validate() error {
+	seen := map[string]bool{}
 	for _, x := range m.ExternalExtensions {
-		if strings.TrimSpace(x) == "" {
-			return errors.New("migrate.external_extensions: an extension name must not be empty")
+		if !extensionName.MatchString(x) {
+			return fmt.Errorf("migrate.external_extensions: %q is not an extension name: use the lower-case name without spaces, quotes or a schema qualifier", x)
 		}
+		if seen[x] {
+			return fmt.Errorf("migrate.external_extensions: %q is listed twice", x)
+		}
+		seen[x] = true
 	}
 	for _, k := range []struct{ key, val string }{
 		{"migrate.lock_timeout", m.LockTimeout},

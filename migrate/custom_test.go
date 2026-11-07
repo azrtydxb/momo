@@ -77,8 +77,8 @@ func TestNewCustomRefusals(t *testing.T) {
 	}
 	e = offlineEngine(t, initDir(t), time.Now())
 	for _, name := range []string{"Bad Name", "", "1abc", "a-b"} {
-		if _, err := e.NewCustom(name); err == nil || !strings.Contains(err.Error(), "must match") {
-			t.Fatalf("name %q: want a name error, got %v", name, err)
+		if _, err := e.NewCustom(name); !errors.Is(err, migrate.ErrInvalidName) {
+			t.Fatalf("name %q: want ErrInvalidName, got %v", name, err)
 		}
 	}
 }

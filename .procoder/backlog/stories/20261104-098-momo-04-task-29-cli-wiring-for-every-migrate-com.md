@@ -4,7 +4,7 @@ Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: -
-Carried: 002-generator-from-go-structs-with-its-type-prerequisites — S-10 needs CLI commands rebase, lint, rollback and new, which are not built; S-26 needs the SQLite+sqlite-vec packages on the Windows job. Carried until those land.
+Carried: 002-generator-from-go-structs-with-its-type-prerequisites — S-10 needs CLI commands rebase, lint, rollback and new, which are not built; [update 2026-11-08: `new --custom` is built since issue 37, so only rebase, lint and rollback are missing]; S-26 needs the SQLite+sqlite-vec packages on the Windows job. Carried until those land.
 
 ## Description
 
@@ -27,7 +27,7 @@ Implements plan momo-04-migrations Task 29: CLI wiring for every migrate command
 - Red first: with only the tests written, `go vet` and `go test ./cmd/momo` failed with `undefined: runMigrate`. Green after `cmd/momo/migrate.go`: `MOMO_REQUIRE_INTEGRATION=1 ... go test -tags integration -race -count=1 ./cmd/...` is `ok` (TestCLIContracts, TestOfflineCommandsNoDatabase, TestCLIExitOneOnDrift against the running PostgreSQL, plus TestMigrateLifecycle, TestMigrateDiffRefusesOverwrite, TestMigrateBaselineAndResolve, TestMigrateUsageErrors, TestMigrateRedactsURL).
 - Deviation, tests: the plan's momo.yaml snippets lack `version: 1`, which `config.Load` requires, so the tests add it.
 - Ticked, `TestWindowsPaths` (2026-11-05): decision was to follow the plan, so migrations may live in nested directories. `Discover`, `ComputeSum`, `VerifySum` and `AppendSum` now walk the tree with `fs.WalkDir`, with slash-separated paths, the root `momo.sum` skipped, and files ordered by version. The second subtest is restored as written in the plan (it asserts `archive/2026/20260101000000_init.up.sql` is recorded); only the file modes are the gosec-clean 0o750 and 0o600. It failed first (nested file not recorded) and passes now: `go test ./cmd/momo -run TestWindowsPaths -count=1 -v` is PASS for both subtests, and `GOOS=windows go vet ./cmd/momo/` is clean. Added tests: `TestDiscoverWalksNestedDirectoriesOrderedByVersion`, `TestDiscoverRejectsVersionInTwoDirectories`, `TestSumWalksNestedDirectories`, and the integration test `TestMovingAppliedMigrationIntoArchiveKeepsHistory` (apply, move into archive/2026, refresh momo.sum: Plan and Status show nothing pending, the checksum gate passes).
-- NOT ticked, S-10: wired diff, plan, apply, status, validate [--db], baseline, drift and resolve with exit codes 0/1/2/3. `rebase`, `lint`, `rollback` and `new --custom` have no engine support yet (Engine.Rebase, Engine.Lint, down migrations and custom-migration creation do not exist) and return exit 2 "not available yet"; the plan does not explicitly allow that, so the criterion stays open until those engine stories land.
+- NOT ticked, S-10: wired diff, plan, apply, status, validate [--db], baseline, drift and resolve with exit codes 0/1/2/3. `rebase`, `lint`, `rollback` and `new --custom` have no engine support yet [update 2026-11-08: `new --custom` now has it, see the section at the end] (Engine.Rebase, Engine.Lint, down migrations and custom-migration creation do not exist) and return exit 2 "not available yet"; the plan does not explicitly allow that, so the criterion stays open until those engine stories land.
 - NOT ticked, S-26: the windows-latest CI job was not run or changed here.
 
 ### Review fixes (2026-11-05)

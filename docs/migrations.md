@@ -665,15 +665,13 @@ database:
   statement needs a privileged role, as before.
 - `baseline` and `apply` run `CREATE TABLE IF NOT EXISTS` for the history table.
   PostgreSQL checks `CREATE` on the schema before it looks for the table, so a
-  role with only `USAGE` on the schema is refused with `permission denied for
-schema` even when it owns an existing `momo_migrations`
-  (`TestBaselineAsAppRoleNeedsCreateOnSchema`). The migrator role needs `CREATE`
+  role with only `USAGE` on the schema is refused with the error
+  `permission denied for schema` even when it owns an existing
+  `momo_migrations` (`TestBaselineAsAppRoleNeedsCreateOnSchema`). The migrator role needs `CREATE`
   on its schema: `GRANT CREATE ON SCHEMA app TO app_role`.
 - With `CREATE` on the schema but not on the database, `baseline` works for a
   snapshot without table text (`TestBaselineAsAppRole`) and fails with
   `ErrCanonicalizePrivilege` otherwise (section 7).
-- `drift` as that role runs, but without `CREATE` on the database it cannot
-  canonicalize declared text and may show false `changed` entries (section 1).
 
 ### Extensions managed outside momo
 
@@ -739,8 +737,9 @@ step on a copy of production.
 3. **Write the initial migration.** `momo migrate diff init` against an empty
    directory. Do not apply it. Read the generated SQL: it is what a new
    environment would run, and it must build the schema you have.
-4. **Rehearse the baseline** on a copy: `momo migrate baseline --version
-<init version>` as a role with `CREATE` on the database (section 7). Exit 1
+4. **Rehearse the baseline** on a copy, with
+   `momo migrate baseline --version <init version>`, as a role with `CREATE` on
+   the database (section 7). Exit 1
    lists the differing object kinds. Fix the models or `exclude` until it is
    clean. Do not use `--force` to skip a difference you have not read.
 5. **Dual-writer period: momo watches, it does not write.** While Prisma still
@@ -758,7 +757,7 @@ step on a copy of production.
 7. **Baseline each environment.** In each environment run
    `momo migrate baseline --version <init version>` once, then
    `momo migrate drift` (expect `no drift`). The role that runs `apply` needs
-   `CREATE` on the schema and must own the history table (section 7). From then on `apply` runs only newer
+   `CREATE` on the schema (section 7). From then on `apply` runs only newer
    migrations. A database created from scratch runs the init migration; it needs
    the external extension installed first.
 8. **Hand off.** Schema changes go through `diff`; backfills and other data
