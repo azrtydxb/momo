@@ -142,6 +142,9 @@ func (sq SelectQuery[T]) CrossJoin(src TableSource) SelectQuery[T] {
 
 // GroupBy sets GROUP BY expressions.
 func (sq SelectQuery[T]) GroupBy(es ...Expr) SelectQuery[T] {
+	for _, e := range es {
+		rejectAliased(&sq.s.err, "GROUP BY", e)
+	}
 	sq.s.groupBy = append(slices.Clip(sq.s.groupBy), es...)
 	return sq
 }

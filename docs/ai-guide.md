@@ -539,8 +539,14 @@ combinators `momo.And`, `momo.Or`, `momo.Not`, `momo.Like`, `momo.ILike`,
 Aggregates: `momo.CountAll()`, `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`,
 `Max`.
 
-Typed expressions (no `momo.SQL` needed), all usable in `Columns`, `Where`,
-`GroupBy`, `OrderBy` and `SetExpr`:
+Typed expressions (no `momo.SQL` needed). Computed values (`Func`, `Substr`,
+`Lower`, `Upper`, `Length`, `Case`, `Add`/`Sub`/`Mul`, `Cast`, `Concat`,
+`CoalesceExpr`) work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr`, and carry
+the comparisons of a column for `Where` and `Having`: `Eq`, `Ne`, `Lt`, `Le`,
+`Gt`, `Ge`, `EqExpr` and the other `...Expr` forms, `In`, `NotIn`, `Between`,
+`IsNull`, `IsNotNull`; plus `Asc` and `Desc`. An `.As` alias belongs in the
+select list: `OrderBy` accepts it and orders by the alias name, `GroupBy`
+rejects it with `ErrValidation`.
 
 ```go
 // Alias a select-list item. As[T] is generic; Agg, Case and Func values also have .As(name).
@@ -557,6 +563,9 @@ momo.Select[Pair](q).With("s", inner).From(momo.CTE("s")).Columns(pairK, n.Ref("
 // Strings: Substr(e, from, length), SubstrFrom, Lower, Upper, Length. Positions are
 // literals, so the same expression works in SELECT and GROUP BY.
 momo.Substr(doc.Title, 1, 10)
+// Filter and order on a computed value:
+//   Where(momo.Substr(doc.Title, 1, 3).Eq("abc"), momo.Length(doc.Title).Ge(3))
+//   OrderBy(momo.Lower(doc.Title).Desc(), momo.Add(doc.Hits, 0).Asc())
 // COALESCE over expressions (Coalesce takes a bound fallback value instead):
 momo.CoalesceExpr(site.Name, site.LicenseID)          // coalesce(a, b, ...)
 // CAST: T is the result type you choose, the SQL type name is validated

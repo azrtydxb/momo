@@ -634,9 +634,6 @@ func (a Aliased[T]) AppendSQL(b *Builder) {
 	b.Ident(a.alias)
 }
 
-// Name returns the alias.
-func (a Aliased[T]) Name() string { return a.alias }
-
 // Ref is the typed column through which an outer query reads this alias from
 // a subquery (FromSubquery alias) or CTE (name) called source. Momo cannot
 // check that source exposes the alias.
