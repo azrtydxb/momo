@@ -1,0 +1,57 @@
+# Fast CI for worktree-agent-* story branches: lint, unit and race on the newest
+# Go. The full matrix (both Go versions, compile-fail, fuzz, bench, govulncheck,
+# Windows, macOS, integration) runs in ci.yml on main, sprint-* and pull requests.
+# Twenty agent branches at 17 jobs each flooded the org's GitHub-hosted runners.
+name: agent-ci
+
+on:
+  push:
+    branches: ["worktree-agent-*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "agent-ci-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - run: make fmt-check
+      - run: make vet
+      - run: make staticcheck
+      - run: make gosec
+      - run: make tidy-check
+
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+      - run: make test
+
+  race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+      - run: make test-race
