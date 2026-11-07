@@ -91,6 +91,23 @@ func postgres(t string, tg tags.Tags) string {
 	if strings.HasPrefix(t, "types.JSON[") && strings.HasSuffix(t, "]") {
 		return "jsonb"
 	}
+	if elem, ok := strings.CutPrefix(t, "[]"); ok && elem != "byte" && elem != "uint8" {
+		if elemSQL := postgresElem(elem, tg); elemSQL != "" {
+			return elemSQL + "[]"
+		}
+	}
+	return ""
+}
+
+// postgresElem is the PostgreSQL element type of a slice column: the scalar
+// Go types that have a plain array type. Sized strings keep their length
+// (character varying(N)[]). Nested slices, byte slices and codec types are
+// not arrays.
+func postgresElem(elem string, tg tags.Tags) string {
+	switch elem {
+	case "string", "int16", "int32", "int64", "bool", "float32", "float64":
+		return postgres(elem, tg)
+	}
 	return ""
 }
 

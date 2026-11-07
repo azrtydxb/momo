@@ -22,7 +22,9 @@ it.
 
 ## Generated mappings
 
-`N` is the `size` tag for `string` and the `dim` tag for vector types. The
+`N` is the `size` tag for `string` and the `dim` tag for vector types. A
+slice of a scalar maps to the PostgreSQL array of its element type; SQLite has
+no array columns, so the generator rejects them there. The
 generator rejects a vector field without `dim`. SQLite has no vector types.
 
 | Go type               | PostgreSQL                 | SQLite        |
@@ -46,6 +48,13 @@ generator rejects a vector field without `dim`. SQLite has no vector types.
 | `vector.HalfVector`   | `halfvec(N)`               | `unsupported` |
 | `vector.SparseVector` | `sparsevec(N)`             | `unsupported` |
 | `vector.Bits`         | `bit(N)`                   | `unsupported` |
+| `[]string`            | `text[]`                   | `unsupported` |
+| `[]int16`             | `smallint[]`               | `unsupported` |
+| `[]int32`             | `integer[]`                | `unsupported` |
+| `[]int64`             | `bigint[]`                 | `unsupported` |
+| `[]bool`              | `boolean[]`                | `unsupported` |
+| `[]float32`           | `real[]`                   | `unsupported` |
+| `[]float64`           | `double precision[]`       | `unsupported` |
 
 On SQLite, `bool` is stored as 0 or 1, and `time.Time`, `types.UUID`,
 `types.Date` and `types.JSON[T]` are stored as text. The SQLite column is what
@@ -74,7 +83,6 @@ document because nothing generates one.
 | Go type                 | PostgreSQL  | SQLite |
 | ----------------------- | ----------- | ------ |
 | `time.Time (timestamp)` | `timestamp` | `n/a`  |
-| `[]string`              | `text[]`    | `n/a`  |
 | `string (decimal)`      | `numeric`   | `n/a`  |
 
 ## Edge values and behavior

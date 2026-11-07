@@ -125,6 +125,12 @@ func liveCases(t *testing.T) map[string]liveCase {
 		"time.Time (timestamp)": roundTripAll(timeEq, pre1970, time.Date(2026, 1, 1, 12, 0, 0, 123456000, time.UTC)),
 		"[]string": roundTripAll[[]string](nil,
 			[]string{"a", "b,c", `w"q`, "NULL", ""}, []string{}),
+		"[]int16":   roundTripAll[[]int16](nil, []int16{math.MaxInt16, math.MinInt16}, []int16{}),
+		"[]int32":   roundTripAll[[]int32](nil, []int32{math.MaxInt32, math.MinInt32}, []int32{}),
+		"[]int64":   roundTripAll[[]int64](nil, []int64{math.MaxInt64, math.MinInt64}, []int64{}),
+		"[]bool":    roundTripAll[[]bool](nil, []bool{true, false}, []bool{}),
+		"[]float32": roundTripAll[[]float32](nil, []float32{math.MaxFloat32, -1.5}, []float32{}),
+		"[]float64": roundTripAll[[]float64](nil, []float64{math.MaxFloat64, -1.5}, []float64{}),
 		"string (decimal)": roundTripAll[string](nil,
 			"12345678901234567890.123456789", "-0.000000000000000001", "NaN"),
 	}
