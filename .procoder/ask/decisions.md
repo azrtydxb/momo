@@ -132,3 +132,5 @@ Decision (2026-11-07): finish the port in kuvryn-license-momo on branch store/mo
 
 - Merge PR #28 into kuvryn-license main when CI is green (recommended): main deploys, start-up migrations are unchanged
 - Leave PR #28 as a draft for the user to merge
+
+Decision (2026-11-07): merge PR #28 into kuvryn-license main once CI is green.
