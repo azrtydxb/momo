@@ -1,6 +1,6 @@
 # Migration safety and recovery
 
-Momo v0.1.0, PostgreSQL only. Every statement here was checked against
+Momo v0.3.0, PostgreSQL only. Every statement here was checked against <!-- x-release-please-version -->
 `migrate/`, `cmd/momo/`, `schema/` and `dialect/`; the tests that pin a
 behavior are named. For the first run see README, [Create and apply the
 migration](../README.md#3-create-and-apply-the-migration).
@@ -42,12 +42,12 @@ set `migrate.dir.postgres` or `--dir`). `diff` writes exactly three files:
 
 ### Format versions
 
-| Artifact         | Field                                 | v0.1.0 value | Newer than this binary        |
-| ---------------- | ------------------------------------- | ------------ | ----------------------------- |
-| Snapshot wrapper | `format_version`                      | 1            | read error, "upgrade momo"    |
-| Embedded schema  | `schema.format_version`               | 1            | read error, "upgrade momo"    |
-| `momo.sum`       | header `# momo.sum format=N`          | 1            | read error                    |
-| History table    | `checksum` of the row `__momo_meta__` | 1            | apply refuses, "upgrade momo" |
+| Artifact         | Field                                 | v0.3.0 value | Newer than this binary <!-- x-release-please-version --> |
+| ---------------- | ------------------------------------- | ------------ | -------------------------------------------------------- |
+| Snapshot wrapper | `format_version`                      | 1            | read error, "upgrade momo"                               |
+| Embedded schema  | `schema.format_version`               | 1            | read error, "upgrade momo"                               |
+| `momo.sum`       | header `# momo.sum format=N`          | 1            | read error                                               |
+| History table    | `checksum` of the row `__momo_meta__` | 1            | apply refuses, "upgrade momo"                            |
 
 A snapshot without `format_version` is rejected.
 
@@ -244,7 +244,7 @@ needs no `rehash`:
 If the older migration was already applied somewhere, do not rewrite it: leave
 the chain as it is and add a new migration for the difference.
 
-Not built in v0.1.0 (story 098): `rebase`, `lint`, `rollback`, `new`. Each exits
+Not built yet (story 098): `rebase`, `lint`, `rollback`, `new`. Each exits
 2 with `migrate <name> is not available yet`. There are no down migrations: undo
 a change with a new forward migration.
 
@@ -339,7 +339,7 @@ transaction pooling the advisory lock, the `SET lock_timeout` and the
 `search_path` belong to a server connection that the next statement may not
 reuse, so the lock does not protect and the timeouts can leak or not apply.
 The driver's default query mode is PgBouncer-safe for application queries; the
-migration engine through PgBouncer is **not tested** in v0.1.0. A startup
+migration engine through PgBouncer is **not tested** in v0.3.0. A startup <!-- x-release-please-version -->
 `search_path` is also not reliable through a pooler, so set the schema on the
 role or on a direct connection.
 
@@ -587,7 +587,7 @@ checked.
 
 Worked example: `examples/custom-sql-migration`.
 
-There is no `momo migrate new --custom` in v0.1.0. You can still add hand-written
+There is no `momo migrate new --custom` yet. You can still add hand-written
 SQL by creating the files yourself:
 
 1. Choose a version greater than the latest and a name:
@@ -707,7 +707,7 @@ recognises that form, so orphan detection keeps working.
 After upgrading, run `momo generate` once. Until then `momo generate --check`
 reports the header change in every generated file.
 
-## Known issues in v0.1.0
+## Known issues
 
 Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
 

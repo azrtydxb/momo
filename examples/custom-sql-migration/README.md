@@ -2,7 +2,7 @@
 
 ## What this shows
 
-Hand-written SQL migrations next to generated ones. Momo v0.1.0 supports them
+Hand-written SQL migrations next to generated ones. Momo v0.3.0 supports them <!-- x-release-please-version -->
 as plain files: there is no `momo migrate new --custom` command yet (it reports
 "not available yet"), so you create the files yourself.
 
@@ -49,8 +49,8 @@ Do this before the next `momo migrate diff`, which builds on the latest snapshot
   for statements PostgreSQL refuses in a transaction, such as `VACUUM` and
   `CREATE INDEX CONCURRENTLY`, and put one statement in the file. The directive
   applies to the whole file: every statement in it loses atomicity, and a
-  failure part-way leaves the earlier statements committed (see "Known issues in
-  v0.1.0" in `docs/migrations.md`, which also covers recovery).
+  failure part-way leaves the earlier statements committed (see "Known issues" in
+  `docs/migrations.md`, which also covers recovery).
 - **Directives.** An unknown `-- momo:` directive is an error. The others are
   `destructive` (allows a drop in a generated migration) and `generated`.
 
