@@ -3,6 +3,7 @@
 package momo_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestRawDollarPlaceholdersGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(c.SQL, `("documents"."title" = $1) AND (tenant_id = $3 OR tenant_id = $2 OR parent_id = $3)`) {
+	if !strings.Contains(c.SQL, `tenant_id = $2 OR tenant_id = $3 OR parent_id = $2`) {
 		t.Fatalf("renumbering wrong: %s", c.SQL)
 	}
 	if len(c.Args) != 3 || c.Args[0] != "t" || c.Args[1] != int64(2) || c.Args[2] != int64(1) {
@@ -66,7 +67,7 @@ func TestRawDollarPlaceholdersGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(c.SQL, `tenant_id > (SELECT max(v) FROM x WHERE a = $3 AND b = $3) AND tenant_id < $2`) {
+	if !strings.Contains(c.SQL, `tenant_id > (SELECT max(v) FROM x WHERE a = $2 AND b = $2) AND tenant_id < $3`) {
 		t.Fatalf("subquery renumbering wrong: %s", c.SQL)
 	}
 

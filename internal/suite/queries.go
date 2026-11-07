@@ -249,7 +249,7 @@ func rawDollarPlaceholders(t *testing.T, db *momo.DB, caps Caps) {
 	// Embedded after a WHERE bind: the fragment's $1 is statement bind $2.
 	rows, err := momo.Select[Document](db).
 		Where(DocTenantID.Eq(1)).
-		Where(momo.SQL("title = $2 OR title = $1", "a", "b")).
+		Where(momo.SQL("(title = $2 OR title = $1)", "a", "b")).
 		OrderBy(DocTitle.Asc()).All(ctx)
 	if err != nil || len(rows) != 2 {
 		t.Fatalf("$n after a bind: rows=%d err=%v", len(rows), err)
