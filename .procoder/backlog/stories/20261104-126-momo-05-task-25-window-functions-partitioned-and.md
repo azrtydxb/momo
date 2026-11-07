@@ -1,6 +1,6 @@
 # momo-05 Task 25: Window functions, partitioned and ordered (S-33, window part only)
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: -
