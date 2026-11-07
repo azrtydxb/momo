@@ -10,6 +10,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/relfixture"
 )
 
 type lrChild struct{ PID, Seq int64 }
@@ -147,4 +148,19 @@ func TestLoadRunsEveryChunkOnThePassedTx(t *testing.T) {
 	if len(h.events) != 1 || h.events[0].Queries != 2 || h.events[0].Err != nil {
 		t.Fatalf("events: %+v", h.events)
 	}
+}
+
+// cancelHook cancels the context handed to the relation named name, as the
+// relation starts. The level above has fully run by then.
+type cancelHook struct {
+	*relfixture.Hook
+	name   string
+	cancel context.CancelFunc
+}
+
+func (c *cancelHook) BeforeRelation(ctx context.Context, e *momo.RelationEvent) context.Context {
+	if e.Name == c.name {
+		c.cancel()
+	}
+	return ctx
 }
