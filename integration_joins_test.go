@@ -13,8 +13,6 @@ import (
 	"github.com/azrtydxb/momo/internal/suite"
 )
 
-type pair struct{ L, R string }
-
 // pairRow is a projection of two aliased title columns.
 type pairRow struct {
 	momo.Projection

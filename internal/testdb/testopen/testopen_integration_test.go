@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,6 +41,16 @@ func TestEachRunsPostgres(t *testing.T) {
 		t.Fatalf("Each ran %v, want postgres first", ran)
 	}
 }
+
+// countHook counts statements reaching the hook.
+type countHook struct{ n int }
+
+func (c *countHook) BeforeQuery(ctx context.Context, e *momo.QueryEvent) context.Context {
+	c.n++
+	return ctx
+}
+
+func (c *countHook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {}
 
 func TestOptionsReachDB(t *testing.T) {
 	hook := &countHook{}
@@ -119,6 +130,22 @@ func TestRequireFailsWithoutURL(t *testing.T) {
 	}
 	if strings.Contains(string(out), "SKIP") {
 		t.Fatalf("child skipped:\n%s", out)
+	}
+}
+
+// poolWaitHook keeps the largest PoolWait it sees.
+type poolWaitHook struct{ maxNS atomic.Int64 }
+
+func (h *poolWaitHook) BeforeQuery(ctx context.Context, e *momo.QueryEvent) context.Context {
+	return ctx
+}
+
+func (h *poolWaitHook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
+	for {
+		cur := h.maxNS.Load()
+		if int64(e.PoolWait) <= cur || h.maxNS.CompareAndSwap(cur, int64(e.PoolWait)) {
+			return
+		}
 	}
 }
 

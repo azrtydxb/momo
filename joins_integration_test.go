@@ -14,6 +14,8 @@ import (
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 )
 
+type pair struct{ L, R string }
+
 func TestJoinsAliasesSelfJoin(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
