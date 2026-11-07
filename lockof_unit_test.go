@@ -5,6 +5,7 @@ package momo_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -46,10 +47,16 @@ func TestLockOfGolden(t *testing.T) {
 	}
 
 	for name, err := range map[string]error{
-		"sqlite":  buildErr(join(sq).ForUpdate().LockOf("d")),
-		"no lock": buildErr(join(pg).LockOf("d")),
-		"empty":   buildErr(join(pg).ForUpdate().LockOf()),
-		"blank":   buildErr(join(pg).ForUpdate().LockOf("")),
+		"sqlite":                    buildErr(join(sq).ForUpdate().LockOf("d")),
+		"no lock":                   buildErr(join(pg).LockOf("d")),
+		"empty":                     buildErr(join(pg).ForUpdate().LockOf()),
+		"blank":                     buildErr(join(pg).ForUpdate().LockOf("")),
+		"unknown":                   buildErr(join(pg).ForUpdate().LockOf("nope")),
+		"model name, not the alias": buildErr(join(pg).ForUpdate().LockOf("documents")),
+		"subquery":                  buildErr(momo.Select[unitDocument](pg).From(momo.FromSubquery(momo.RawSubquery("SELECT 1"), "c")).ForUpdate().LockOf("c")),
+		"distinct":                  buildErr(join(pg).Distinct().ForUpdate().LockOf("d")),
+		"group by":                  buildErr(join(pg).GroupBy(DocTenantID.As("d")).ForUpdate()),
+		"both wait options":         buildErr(join(pg).ForUpdate("NOWAIT", "SKIP LOCKED")),
 	} {
 		want := momo.ErrValidation
 		if name == "sqlite" {
@@ -58,6 +65,11 @@ func TestLockOfGolden(t *testing.T) {
 		if !errors.Is(err, want) {
 			t.Errorf("%s: err = %v, want %v", name, err, want)
 		}
+	}
+
+	// A later ForUpdate without options clears an earlier wait mode.
+	if c, err := join(pg).ForUpdate("NOWAIT").ForUpdate().SQL(); err != nil || strings.HasSuffix(c.SQL, "NOWAIT") {
+		t.Errorf("later ForUpdate kept the wait mode: %q, %v", c.SQL, err)
 	}
 
 	// Immutability: LockOf must not change the base query.

@@ -311,6 +311,9 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 	for _, o := range opt {
 		switch o {
 		case "NOWAIT", "SKIP LOCKED":
+			if sq.s.lockWait != "" {
+				sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("lock options NOWAIT and SKIP LOCKED are mutually exclusive")}
+			}
 			sq.s.lockWait = " " + o
 		default:
 			sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("unknown lock option %q (want NOWAIT or SKIP LOCKED)", o)}
@@ -328,7 +331,10 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 // quoted as an identifier. The names render after the lock mode and before
 // NOWAIT or SKIP LOCKED, whatever the call order. Without a ForUpdate or
 // ForShare the build fails with ErrValidation; like them, LockOf returns
-// ErrUnsupported on SQLite.
+// ErrUnsupported on SQLite. Each name must be the table or alias of the FROM or
+// a joined table, else the build fails with ErrValidation naming it. A lock
+// cannot be combined with DISTINCT, GROUP BY or HAVING (ErrValidation); other
+// invalid combinations, such as aggregates or UNION, are left to the server.
 func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
 	if len(tables) == 0 {
 		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("LockOf needs at least one table")}
@@ -602,6 +608,13 @@ func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 			b.unsupported(s.lock)
 			return
 		}
+		if s.distinct || len(s.groupBy) > 0 || len(s.having) > 0 {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("%s cannot be combined with DISTINCT, GROUP BY or HAVING", s.lock)})
+			return
+		}
+		if !sq.checkLockOf(b) {
+			return
+		}
 		b.writeByte(' ')
 		b.WriteString(s.lock)
 		for i, t := range s.lockOf {
@@ -614,8 +627,36 @@ func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 		}
 		b.WriteString(s.lockWait)
 	} else if len(s.lockOf) > 0 {
-		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("LockOf needs ForUpdate or ForShare")})
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("LockOf needs ForUpdate or ForShare")})
 	}
+}
+
+// checkLockOf reports whether every LockOf name is the qualifier of the FROM
+// table or of a joined table. A subquery, CTE or unaliased source has no
+// lockable name, and naming one is a validation error here rather than a
+// server error. Aggregates in the select list and set operations around this
+// select are not detected; the server rejects those.
+func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
+	s := sq.s
+	if len(s.lockOf) == 0 {
+		return true
+	}
+	known := map[string]struct{}{}
+	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
+		if _, sub := src.(subquerySource); sub {
+			continue
+		}
+		if q, ok := src.(interface{ Qualifier() string }); ok {
+			known[q.Qualifier()] = struct{}{}
+		}
+	}
+	for _, t := range s.lockOf {
+		if _, ok := known[t]; !ok {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("LockOf names %q, which is not a table or alias in the FROM or JOIN sources", t)})
+			return false
+		}
+	}
+	return true
 }
 
 func joinSources(js []join) []TableSource {

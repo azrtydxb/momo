@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 )
@@ -75,52 +74,51 @@ func TestLockOfSkipLockedClaim(t *testing.T) {
 }
 
 func TestAdvisoryXactLockContention(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		ctx := context.Background()
+	db := testopen.Postgres(t)
+	ctx := context.Background()
 
-		holder, err := db.Begin(ctx, momo.TxOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = holder.Rollback(ctx) }()
-		if err := holder.AdvisoryXactLock(ctx, 9001); err != nil {
-			t.Fatal(err)
-		}
-		if err := holder.AdvisoryXactLockString(ctx, "catalog:7"); err != nil {
-			t.Fatal(err)
-		}
-		// The holder's own try succeeds again: advisory locks are re-entrant
-		// within a session.
-		if ok, err := holder.TryAdvisoryXactLock(ctx, 9001); err != nil || !ok {
-			t.Fatalf("re-entrant try = %v, %v; want true", ok, err)
-		}
+	holder, err := db.Begin(ctx, momo.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Rollback(ctx) }()
+	if err := holder.AdvisoryXactLock(ctx, 9001); err != nil {
+		t.Fatal(err)
+	}
+	if err := holder.AdvisoryXactLockString(ctx, "catalog:7"); err != nil {
+		t.Fatal(err)
+	}
+	// The holder's own try succeeds again: advisory locks are re-entrant
+	// within a session.
+	if ok, err := holder.TryAdvisoryXactLock(ctx, 9001); err != nil || !ok {
+		t.Fatalf("re-entrant try = %v, %v; want true", ok, err)
+	}
 
-		rival, err := db.Begin(ctx, momo.TxOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = rival.Rollback(ctx) }()
-		if ok, err := rival.TryAdvisoryXactLock(ctx, 9001); err != nil || ok {
-			t.Fatalf("rival try on a held int key = %v, %v; want false", ok, err)
-		}
-		if ok, err := rival.TryAdvisoryXactLockString(ctx, "catalog:7"); err != nil || ok {
-			t.Fatalf("rival try on a held string key = %v, %v; want false", ok, err)
-		}
-		if ok, err := rival.TryAdvisoryXactLockString(ctx, "catalog:8"); err != nil || !ok {
-			t.Fatalf("rival try on a free string key = %v, %v; want true", ok, err)
-		}
+	rival, err := db.Begin(ctx, momo.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rival.Rollback(ctx) }()
+	if ok, err := rival.TryAdvisoryXactLock(ctx, 9001); err != nil || ok {
+		t.Fatalf("rival try on a held int key = %v, %v; want false", ok, err)
+	}
+	if ok, err := rival.TryAdvisoryXactLockString(ctx, "catalog:7"); err != nil || ok {
+		t.Fatalf("rival try on a held string key = %v, %v; want false", ok, err)
+	}
+	if ok, err := rival.TryAdvisoryXactLockString(ctx, "catalog:8"); err != nil || !ok {
+		t.Fatalf("rival try on a free string key = %v, %v; want true", ok, err)
+	}
 
-		// Commit releases the holder's locks.
-		if err := holder.Commit(ctx); err != nil {
-			t.Fatal(err)
-		}
-		if ok, err := rival.TryAdvisoryXactLock(ctx, 9001); err != nil || !ok {
-			t.Fatalf("rival try after the holder committed = %v, %v; want true", ok, err)
-		}
+	// Commit releases the holder's locks.
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := rival.TryAdvisoryXactLock(ctx, 9001); err != nil || !ok {
+		t.Fatalf("rival try after the holder committed = %v, %v; want true", ok, err)
+	}
 
-		// Outside a transaction the call is refused.
-		if err := db.AdvisoryXactLock(ctx, 1); !errors.Is(err, momo.ErrValidation) {
-			t.Fatalf("AdvisoryXactLock on the DB = %v, want ErrValidation", err)
-		}
-	})
+	// Outside a transaction the call is refused.
+	if err := db.AdvisoryXactLock(ctx, 1); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("AdvisoryXactLock on the DB = %v, want ErrValidation", err)
+	}
 }

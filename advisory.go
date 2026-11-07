@@ -22,8 +22,11 @@ func (tx *Tx) AdvisoryXactLock(ctx context.Context, key int64) error {
 
 // AdvisoryXactLockString is AdvisoryXactLock with a text key, hashed by the
 // server with hashtext into a 32-bit key. Distinct strings can collide, which
-// only costs extra serialization, never a missed lock. Use the int64 form
-// when the key space is large enough for collisions to matter.
+// only costs extra serialization, never a missed lock. String and int64 keys
+// share one bigint key space, so a string collides with the int64 key equal
+// to its hashtext value. hashtext is not guaranteed to give the same result
+// across PostgreSQL major versions: never store a hashed key, and use the
+// int64 form when the key space is large enough for collisions to matter.
 func (tx *Tx) AdvisoryXactLockString(ctx context.Context, key string) error {
 	return advisoryLock(ctx, tx, "SELECT pg_advisory_xact_lock(hashtext(?))", key)
 }
@@ -61,6 +64,10 @@ func (db *DB) TryAdvisoryXactLockString(context.Context, string) (bool, error) {
 	return false, errAdvisoryOutsideTx()
 }
 
+// errInternal marks a failure that is neither the caller's mistake nor a
+// driver error: the server answered in a shape momo does not expect.
+var errInternal = errors.New("momo: unexpected server response")
+
 func errAdvisoryOutsideTx() error {
 	return &Error{Kind: ErrValidation, Op: "advisory lock", Err: errors.New("a transaction-level advisory lock outside a transaction is released immediately; call it on a *Tx from Begin or DB.Tx")}
 }
@@ -89,7 +96,7 @@ func advisoryTry(ctx context.Context, tx *Tx, sql string, key any) (bool, error)
 		return false, err
 	}
 	if len(got) != 1 {
-		return false, &Error{Kind: ErrValidation, Op: "advisory lock", Err: errors.New("pg_try_advisory_xact_lock returned no row")}
+		return false, &Error{Kind: errInternal, Op: "advisory lock", Err: errors.New("pg_try_advisory_xact_lock returned no row")}
 	}
 	return got[0], nil
 }
