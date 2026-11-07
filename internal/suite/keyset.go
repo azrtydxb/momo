@@ -25,7 +25,7 @@ func KeysetPaginationMixedDirections(t *testing.T, db *momo.DB, caps Caps) {
 	seen := map[int64]bool{}
 	pages := 0
 	var trace [][]int64
-	q := momo.Select[Document](db).OrderBy(DocVersion.Desc(), DocTenantID.Asc()).Limit(3)
+	q := momo.Select[Document](db).OrderBy(DocVersion.Desc(), DocTenantID.Asc(), DocID.Asc()).Limit(3) // the first page needs the tie-breaker too: without it row order within equal keys is unspecified
 	page := q
 	for {
 		rows, err := page.All(ctx)
