@@ -1,6 +1,6 @@
 # IDs: Go-side id generators (cuid, uuid, ulid) declared in the model
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-07
 Epic: momo-05-writes-queries
 Sprint: 005-sprint-5-security-and-maintainability-hardening
@@ -11,15 +11,14 @@ GitHub issue #35, found by the NovaCRM port (gap audit item N1). Prisma database
 
 ## Acceptance criteria
 
-- [ ] the idgen tag and MomoConfig IDGen call are parsed and emitted as Meta.IDGens; conflicting, non-string or badly named declarations are generator diagnostics (gen tests)
-- [ ] Model, Models, Upsert and every chunk of a bulk insert fill a zero id and keep an assigned one (unit test on the fake driver)
-- [ ] the generated id is written back into the passed struct or slice element, for string, named string and *string fields (unit test)
-- [ ] cuid, uuid and ulid ids have the documented format and are unique across thousands of calls; ulids sort in creation order (unit test)
-- [ ] WithIDGenerator registers a custom generator and can replace a built-in; an unknown generator and an empty id are ErrValidation (unit test)
-- [ ] rows inserted with zero ids read back by the written-back ids on a real database (integration test on CI)
-- [ ] docs/ai-guide.md and docs/capabilities.md describe the feature
+- [x] the idgen tag and MomoConfig IDGen call are parsed and emitted as Meta.IDGens; conflicting, non-string or badly named declarations are generator diagnostics (gen tests)
+- [x] Model, Models, Upsert and every chunk of a bulk insert fill a zero id and keep an assigned one (unit test on the fake driver)
+- [x] the generated id is written back into the passed struct or slice element, for string, named string and *string fields (unit test)
+- [x] cuid, uuid and ulid ids have the documented format and are unique across thousands of calls; ulids sort in creation order (unit test)
+- [x] WithIDGenerator registers a custom generator and can replace a built-in; an unknown generator and an empty id are ErrValidation (unit test)
+- [x] rows inserted with zero ids read back by the written-back ids on a real database (integration test on CI)
+- [x] docs/ai-guide.md and docs/capabilities.md describe the feature
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
+GitHub Actions run 42409383050 on cf4ba59 (merged with origin/sprint-5): unit, lint, fuzz-smoke and integration (postgres) all success. Unit tests in idgen_test.go, gen/idgen_test.go and gen/tags/tags_test.go cover criteria 1 to 5; idgen_integration_test.go (TestIDGenLive) covers criterion 6; docs/ai-guide.md and docs/capabilities.md cover criterion 7.
