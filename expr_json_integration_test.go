@@ -79,7 +79,8 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 		check("key bound as data", ids(momo.JSONHasKey(doc, "via' OR '1'='1")))
 
 		// SQL NULL, JSON null and a missing key all extract as NULL.
-		check("extracted text is NULL", ids(momo.JSONText(doc, "via").IsNull()), 2, 3, 4)
+		check("extracted text is NULL", ids(momo.JSONText(doc, "via").IsNull()), 3, 4)
+		check("missing key and JSON null member are both NULL", ids(momo.JSONText(doc, "gone").IsNull()), 1, 2, 3, 4)
 		check("SQL NULL column", ids(doc.IsNull()), 3)
 		check("JSON null column", ids(doc.Eq(types.JSON[any]{})), 4)
 
