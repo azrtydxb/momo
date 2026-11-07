@@ -558,7 +558,11 @@ func (r Relation[P, C]) joinKeys(p *P, cs []*C) ([]any, [][]any, error) {
 func (r Relation[P, C]) insertJoinChunk(ctx context.Context, q Querier, pkey []any, ckeys [][]any) error {
 	d := q.Dialect()
 	cols := append(append([]string{}, r.Through.ParentCols...), r.Through.ChildCols...)
-	colFlags := append(append([]uint16{}, r.ownerFlags()...), r.childKeyFlags()...)
+	// keyFlags returns nil when no key column is sensitive, so each side is
+	// copied to its own position instead of being appended.
+	colFlags := make([]uint16, len(cols))
+	copy(colFlags, r.ownerFlags())
+	copy(colFlags[len(r.Through.ParentCols):], r.childKeyFlags())
 	st, err := compile(d, func(b *Builder) {
 		b.WriteString("INSERT INTO ")
 		r.Through.Table.appendFrom(b)
