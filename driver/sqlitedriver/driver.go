@@ -67,10 +67,8 @@ func (d *sqlDriver) Begin(ctx context.Context, opts momo.TxOptions) (momo.Driver
 		_ = conn.Close()
 		return nil, err
 	}
-	return &sqlTx{tx: tx, onDone: func() {
-		resetQueryOnly(conn)
-		_ = conn.Close()
-	}}, nil
+	tx.onDone = func() { _ = conn.Close() }
+	return tx, nil
 }
 
 func checkIsolation(opts momo.TxOptions) error {
@@ -83,20 +81,6 @@ func checkIsolation(opts momo.TxOptions) error {
 		Op:   "begin",
 		Err:  errors.New("sqlitedriver: SQLite is serializable; other isolation levels are not supported"),
 	}
-}
-
-// beginReadOnly turns query_only on for conn, then begins a transaction on it.
-// The caller resets the pragma when the transaction ends.
-func beginReadOnly(ctx context.Context, conn *sql.Conn) (*sql.Tx, error) {
-	if _, err := conn.ExecContext(ctx, "PRAGMA query_only=ON"); err != nil {
-		return nil, ClassifyError(err)
-	}
-	tx, err := beginTx(ctx, conn.BeginTx, momo.TxOptions{})
-	if err != nil {
-		resetQueryOnly(conn)
-		return nil, err
-	}
-	return tx, nil
 }
 
 // resetQueryOnly turns query_only off again. A failure leaves the connection
@@ -168,7 +152,7 @@ func rowsAffected(res sql.Result) (int64, error) {
 type sqlRows struct{ r *sql.Rows }
 
 func (r sqlRows) Next() bool             { return r.r.Next() }
-func (r sqlRows) Scan(dest ...any) error { return ClassifyError(r.r.Scan(dest...)) }
+func (r sqlRows) Scan(dest ...any) error { return ClassifyError(r.r.Scan(wrapDests(dest)...)) }
 func (r sqlRows) Err() error             { return ClassifyError(r.r.Err()) }
 func (r sqlRows) Close() error           { return ClassifyError(r.r.Close()) }
 

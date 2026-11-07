@@ -120,30 +120,44 @@ func (p *sqlPinned) Begin(ctx context.Context, opts momo.TxOptions) (momo.Driver
 		return nil, err
 	}
 	defer p.done()
-	var tx *sql.Tx
 	if opts.ReadOnly {
-		tx, err = beginReadOnly(ctx, c)
-	} else {
-		tx, err = beginTx(ctx, c.BeginTx, opts)
+		tx, err := beginReadOnly(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		tx.onDone = func() { p.forget(tx) }
+		p.track(tx)
+		return tx, nil
 	}
+	tx, err := beginTx(ctx, c.BeginTx, opts)
 	if err != nil {
 		return nil, err
 	}
+	st := &sqlTx{tx: tx}
+	st.onDone = func() { p.forget(st) }
+	p.track(st)
+	return st, nil
+}
+
+func (p *sqlPinned) track(t aborter) {
 	p.mu.Lock()
 	if p.txs == nil {
-		p.txs = make(map[*sql.Tx]struct{})
+		p.txs = make(map[aborter]struct{})
 	}
-	p.txs[tx] = struct{}{}
+	p.txs[t] = struct{}{}
 	p.mu.Unlock()
-	return &sqlTx{tx: tx, onDone: func() {
-		p.mu.Lock()
-		delete(p.txs, tx)
-		p.mu.Unlock()
-		if opts.ReadOnly {
-			resetQueryOnly(c)
-		}
-	}}, nil
 }
+
+func (p *sqlPinned) forget(t aborter) {
+	p.mu.Lock()
+	delete(p.txs, t)
+	p.mu.Unlock()
+}
+
+// aborter is a transaction Release can roll back.
+type aborter interface{ abort() }
+
+func (t *sqlTx) abort() { _ = t.tx.Rollback() }
 
 // take marks the connection released after closing open Rows. It returns nil,
 // nil when already released and a busy error while a call is executing.
@@ -169,7 +183,7 @@ func (p *sqlPinned) take() (*sql.Conn, error) {
 	// Each open *sql.Tx holds the Conn's close lock, so Conn.Close would block
 	// forever: roll them back first.
 	for tx := range txs {
-		_ = tx.Rollback()
+		tx.abort()
 	}
 	return c, nil
 }

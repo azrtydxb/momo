@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/relfixture"
 	"github.com/azrtydxb/momo/internal/relfixture/models"
 	"github.com/azrtydxb/momo/internal/relfixture/store"
@@ -49,8 +50,13 @@ func TestEagerLoadLargeCompositeKeySet(t *testing.T) {
 				t.Fatalf("store %d has no region, got %+v", i, stores[i].Region)
 			}
 		}
-		// n-1 distinct non-nil keys, 2000 per statement.
-		want := (n - 1 + 1999) / 2000
+		// n-1 distinct non-nil keys, 2000 per statement (400 on SQLite, whose
+		// OR chains are limited by expression depth).
+		per := 2000
+		if db.Dialect().Name == dialect.SQLite {
+			per = 400
+		}
+		want := (n - 1 + per - 1) / per
 		if len(h.After) != want {
 			t.Fatalf("want %d statements, got %d", want, len(h.After))
 		}
