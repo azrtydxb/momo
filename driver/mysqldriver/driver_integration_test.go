@@ -133,7 +133,7 @@ func TestPinAndTransaction(t *testing.T) {
 			ctx := context.Background()
 			db := s.open(t)
 			mustExecMySQL(t, db, "CREATE TABLE tx_t (id bigint PRIMARY KEY)")
-			err := db.Tx(ctx, func(tx *momo.Tx) error {
+			err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 				_, err := momo.Exec(ctx, tx, "INSERT INTO tx_t VALUES (1)")
 				return err
 			})
