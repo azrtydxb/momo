@@ -30,6 +30,12 @@ DSN: `postgres://user:password@host:5432/dbname?sslmode=verify-full`. Use
 With `database/sql`: `pgxdriver.FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)`
 or `pgxdriver.FromSQLDB(db *sql.DB)`. These have no Batch or COPY path.
 
+Existing transactions: `db.AdoptTx(pgxdriver.SQLTx(sqlTx))` and
+`db.AdoptTx(pgxdriver.PgxTx(pgxTx))` run momo inside a transaction the caller
+began (Commit and Rollback return `ErrAdoptedTx`; the caller finishes it), and
+`pgxdriver.UnwrapSQLTx(tx)` or `pgxdriver.UnwrapPgxTx(tx)` give legacy code the
+`*sql.Tx` or `pgx.Tx` behind a `*momo.Tx`.
+
 Vectors need the pgvector `vector` extension in the database. The generated
 migration emits `CREATE EXTENSION IF NOT EXISTS "vector"` when a model has a
 vector column (see `vectors.md`).

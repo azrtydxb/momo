@@ -762,6 +762,22 @@ err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
   `tx.Savepoint(ctx, name)`, `tx.RollbackTo(ctx, name)`, `tx.Release(ctx, name)`.
 - Manual control: `tx, err := db.Begin(ctx, opts)`, `tx.Commit(ctx)`,
   `tx.Rollback(ctx)`; a finished `*Tx` returns `ErrTxDone`. Prefer `db.Tx`.
+- Incremental adoption in a `database/sql` or pgx codebase, both directions:
+  - Adopt a transaction the caller began: `mtx := db.AdoptTx(pgxdriver.SQLTx(sqlTx))`
+    for a `*sql.Tx` (database must be pgx-stdlib backed, `FromSQLDB`), or
+    `db.AdoptTx(pgxdriver.PgxTx(pgxTx))` for a `pgx.Tx` (pgxpool driver). Statements,
+    hooks, error classification and savepoints (`mtx.Tx`) work as usual. `Commit`
+    and `Rollback` on `mtx` return `ErrAdoptedTx` and do nothing: the caller
+    commits or rolls back its own transaction. After that, `mtx` statements
+    return `ErrTxDone`. A nil argument panics.
+  - Expose the handle behind a `*Tx` to legacy helpers:
+    `pgxdriver.UnwrapSQLTx(tx)` returns `(*sql.Tx, bool)` and
+    `pgxdriver.UnwrapPgxTx(tx)` returns `(pgx.Tx, bool)`; `false` when the `Tx`
+    belongs to the other driver kind. Works for `db.Tx` callbacks, adopted
+    transactions and savepoint scopes (the outer transaction). Finish a
+    momo-begun transaction through momo, never through the unwrapped handle.
+  - Mixing is safe: a legacy `SELECT ... FOR UPDATE` helper and momo statements
+    can alternate on the same transaction.
 - Do not call blocking network I/O inside `fn`.
 - Retry the WHOLE `db.Tx` on `ErrSerialization` (PostgreSQL 40001 serialization
   failure and 40P01 deadlock). Only when `fn` has no side effects outside the
@@ -1089,6 +1105,7 @@ reports a column only for NOT NULL). Use `Constraint` for those three.
 | `ErrUnfilteredMutation`  | `Update`/`Delete` without `Where` and without `AllRows()`                                                                                                                                                                                                                                                 | add a filter                             |
 | `ErrValidation`          | bad input detected before the database: wrong vector dim, `After` count, empty `Models`, writing a reserved/read-only column, plain `Delete` on a soft-delete model, negative `Limit`, `Link` with NULL key, bad `SearchSettings`, qualifier not in FROM                                                  | programmer or input error; fix the call  |
 | `ErrUnsupported`         | dialect or driver cannot do it: `Each`/`Iter` with `Preload`; `Joined` shape; `LoadPerParentLimit` on to-one; belongs-to helpers; keyset on nullable key; `IndexedBy`; iterative search on pgvector < 0.8; simple protocol exec mode; non-standard isolation; transactions on a pinned conn; SQLite/MySQL | redesign the call; not retryable         |
+| `ErrAdoptedTx`           | `Commit` or `Rollback` on a `*Tx` from `AdoptTx`; the caller owns that transaction, finish it with the caller's own handle                                                                                                                                                                                |
 | `ErrTxDone`              | `*Tx` already committed or rolled back                                                                                                                                                                                                                                                                    | do not reuse a finished `Tx`             |
 | `ErrLimitExceeded`       | configured limit exceeded (for example one row has more columns than the bind limit)                                                                                                                                                                                                                      | split or raise the limit                 |
 | `ErrPinnedBusy`          | `Release` on a pinned connection that is still executing                                                                                                                                                                                                                                                  | wait and release again                   |
