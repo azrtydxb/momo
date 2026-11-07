@@ -139,3 +139,5 @@ Decision (2026-11-07): merge PR #28 into kuvryn-license main once CI is green.
 
 - Replace Scout's provider key (…4a1c) with the current fastllm key (…9f8c) and rerun the DEEP scan (recommended)
 - Leave Scout's settings alone; the user updates the key
+
+Decision (2026-11-07): replace the key. Scout's default provider now uses the current fastllm key (…9f8c); the stored …4a1c key was rejected. The models were online throughout.
