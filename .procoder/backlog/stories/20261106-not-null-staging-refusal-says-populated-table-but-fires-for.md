@@ -1,6 +1,6 @@
 # NOT NULL staging refusal says populated table but fires for any existing table
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-06
 Epic: momo-04-migrations-core-postgresql
 Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query

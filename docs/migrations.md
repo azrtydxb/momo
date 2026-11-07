@@ -622,4 +622,4 @@ changes only, writes no history and no files, and returns the rest as
 
 Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
 
-- s4: Rename-candidate exception skips staging for NOT NULL columns (`20261106-rename-candidate-exception-skips-staging-for-not-null`)
+None open. Fixed issues are listed in the changelog.

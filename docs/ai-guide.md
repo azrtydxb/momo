@@ -490,8 +490,6 @@ Known issues in v0.1.0, as rules (each is a filed bug):
 - `migrate.lock_timeout: 0s` and `statement_timeout: 0s` disable the timeouts
   (`SET ... = 0`); leave the key out for the defaults (5 s, untouched).
 - `apply` with nothing pending writes nothing, not even the history table.
-- A rename-candidate exception skips staging for NOT NULL columns: review the
-  SQL of any `diff` that used a rename flag.
 - `--url` is visible in the process list (momo warns): use `migrate.url_env`,
   `MOMO_DATABASE_URL` or `--url -`. URLs in history `error` text are redacted.
 - `momo_migrations` lives in the first schema of `search_path`;
