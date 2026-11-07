@@ -1,6 +1,6 @@
 # Index Concurrently() is ignored by migrate diff
 
-Status: open
+Status: done 2026-11-06
 Created: 2026-11-06
 Epic: momo-04-migrations-core-postgresql
 Sprint: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query
@@ -31,12 +31,16 @@ becoming no-transaction), then run `momo migrate hash` to refresh momo.sum.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] a diff of a model index declared with `Concurrently()` emits `CREATE INDEX CONCURRENTLY` and the file carries `-- momo:no-transaction`
-- [ ] the concurrent index is emitted in its own migration file, not mixed with other statements (related s3 story: diff-marks-a-whole-file-no-transaction-when-it-has-a)
-- [ ] a diff with no `Concurrently()` change still reports no changes (idempotent against the snapshot)
-- [ ] docs/migrations.md section 5 and its known-issues entry are updated when fixed
+- [x] a regression test pins the fix: red before the change, green after
+- [x] a diff of a model index declared with `Concurrently()` emits `CREATE INDEX CONCURRENTLY` and the file carries `-- momo:no-transaction`
+- [x] the concurrent index is emitted in its own migration file, not mixed with other statements (related s3 story: diff-marks-a-whole-file-no-transaction-when-it-has-a)
+- [x] a diff with no `Concurrently()` change still reports no changes (idempotent against the snapshot)
+- [x] docs/migrations.md section 5 and its known-issues entry are updated when fixed
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- TestDiffConcurrentlyReachesRenderer (migrate/diff_lockfree_test.go): red before (plain CREATE INDEX), green after; fails when the Concurrently restore in differ.indexes is removed.
+- TestDiffConcurrentlyReachesRenderer: the single file carries -- momo:no-transaction and CREATE INDEX CONCURRENTLY "docs_id_title".
+- TestDiffSplitsConcurrentIndexFromTransactionalDDL: the concurrent index is alone in the trailing _no_tx file, no CREATE TABLE in it.
+- TestDiffConcurrentlyReachesRenderer and TestDiffSplitsConcurrentIndexFromTransactionalDDL: a repeated diff against the written snapshots returns nil.
+- docs/migrations.md (transactions, section 5 large-table indexes, known issues), docs/ai-guide.md and docs/capabilities.md updated; workaround removed.

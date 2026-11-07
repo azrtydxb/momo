@@ -225,11 +225,15 @@ func TestDiffNoTransactionHeader(t *testing.T) {
 	d.Tables[0].Indexes[0].Concurrently = true
 	e := offlineEngine(t, fstest.MapFS{}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	m, err := e.Diff(ctx, d, "init", migrate.DiffOptions{})
-	if err != nil || m == nil {
+	if err != nil || m == nil || m.Next == nil {
 		t.Fatal(m, err)
 	}
-	up := string(m.Files["20260101000000_init.up.sql"])
-	if !m.NoTx || !strings.Contains(up, "-- momo:no-transaction\n") {
+	// The table is transactional; only the trailing file carries the directive.
+	if m.NoTx || strings.Contains(string(m.Files["20260101000000_init.up.sql"]), "no-transaction") {
+		t.Fatalf("the head must stay transactional:\n%s", m.Files["20260101000000_init.up.sql"])
+	}
+	up := string(m.Files["20260101000001_init_no_tx.up.sql"])
+	if !m.Next.NoTx || !strings.Contains(up, "-- momo:no-transaction\n") {
 		t.Fatalf("no-transaction header missing:\n%s", up)
 	}
 	if strings.Index(up, "momo:generated") > strings.Index(up, "momo:no-transaction") {

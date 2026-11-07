@@ -13,8 +13,12 @@ type Kind string
 
 // Statement is one SQL statement of a migration.
 type Statement struct {
-	SQL  string
-	NoTx bool // statement must run outside a transaction (CREATE INDEX CONCURRENTLY)
+	SQL string
+	// NoTx marks a statement that must run outside a transaction (CREATE INDEX
+	// CONCURRENTLY) or should not hold the locks of the transactional DDL
+	// before it (VALIDATE CONSTRAINT). Engine.Diff writes such statements to a
+	// trailing no-transaction migration, apart from the transactional ones.
+	NoTx bool
 	Hint string
 }
 
@@ -66,7 +70,19 @@ type Change struct {
 	Before      any    // *schema.Column, *schema.Index, *schema.View, ... (kind-specific)
 	After       any
 	Destructive bool
-	Rebuild     bool // SQLite: requires 12-step rebuild
+	// Risky marks a change that is not destructive but can take long or heavy
+	// locks, scan the table, or fail on existing data: dropping an index or
+	// constraint, adding a unique or check constraint. Diff reports each as a
+	// "risky:" hint; it never needs --allow-destructive.
+	Risky bool
+	// Partitioned is set on a change to a partitioned table. PostgreSQL rejects
+	// CREATE INDEX CONCURRENTLY there, so the renderer avoids it.
+	Partitioned bool
+	// IfExists asks a drop to be idempotent (DROP ... IF EXISTS): Diff sets it
+	// when it cannot tell whether a column dropped in the same diff already
+	// took the object with it.
+	IfExists bool
+	Rebuild  bool // SQLite: requires 12-step rebuild
 }
 
 // Migration is one migration version.
@@ -79,10 +95,15 @@ type Migration struct {
 	Down        []Statement
 	NoTx        bool
 	Destructive bool
-	Changes     []Change
-	Snapshot    *schema.Schema
-	Files       map[string][]byte // relative file name -> content, for the CLI to write
-	Hints       []string
+	// Next is the trailing no-transaction migration that Engine.Diff splits off
+	// when the diff holds statements that must run outside a transaction next
+	// to transactional ones; nil otherwise. Files of the first migration also
+	// hold Next's files, so writing Files writes the pair.
+	Next     *Migration
+	Changes  []Change
+	Snapshot *schema.Schema
+	Files    map[string][]byte // relative file name -> content, for the CLI to write
+	Hints    []string
 }
 
 // Pending is a migration that has not been applied yet.

@@ -109,6 +109,7 @@ type differ struct {
 	usedRC      map[string]bool
 	tblRen      map[string]string            // from table key -> to table key
 	colRen      map[string]map[string]string // from table key -> old column -> new column
+	gone        map[string]bool              // columns the table being diffed loses
 }
 
 func (d *differ) emit(c Change) {
@@ -380,7 +381,7 @@ func (d *differ) createTable(t *schema.Table) {
 	d.emit(Change{Kind: CreateTable, Schema: t.Schema, Table: t.Name, Name: t.Name, After: cp(*t)})
 	for i := range t.Indexes {
 		ix := &t.Indexes[i]
-		d.emit(Change{Kind: CreateIndex, Schema: t.Schema, Table: t.Name, Name: ix.Name, After: cp(*ix)})
+		d.emit(Change{Kind: CreateIndex, Schema: t.Schema, Table: t.Name, Name: ix.Name, After: cp(*ix), Partitioned: t.Partition != nil})
 	}
 	if rls := effectiveRLS(t.RLS); rls != (schema.RLS{}) {
 		d.emit(Change{Kind: SetRLS, Schema: t.Schema, Table: t.Name, Name: t.Name, After: cp(rls)})
@@ -403,12 +404,13 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	if fn.WithoutRowID != tn.WithoutRowID {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes WITHOUT ROWID; write a custom migration", tn.Name))
 	}
+	d.gone = goneColumns(fn, tn)
 	d.columns(fn, tn, fo, to, renameTo)
 	d.primaryKey(fn, tn, to)
 	d.uniques(fn, tn, to)
 	d.checks(fn, tn, to)
 	d.foreignKeys(fn, tn, to)
-	d.indexes(fn, tn, to)
+	d.indexes(fn, tn, fo, to)
 	if effectiveRLS(fn.RLS) != effectiveRLS(tn.RLS) {
 		d.emit(Change{Kind: SetRLS, Schema: to.Schema, Table: to.Name, Name: to.Name, Before: cp(effectiveRLS(fo.RLS)), After: cp(effectiveRLS(to.RLS))})
 	}
@@ -574,8 +576,8 @@ func (d *differ) primaryKey(fn, tn, to *schema.Table) {
 		return
 	}
 	name := to.Name + "_pkey"
-	if len(fn.PrimaryKey) > 0 {
-		d.emit(Change{Kind: DropPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, Before: slices.Clone(fn.PrimaryKey)})
+	if len(fn.PrimaryKey) > 0 && usesGone(d.gone, fn.PrimaryKey) == goneNo {
+		d.emitRisky(Change{Kind: DropPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, Before: slices.Clone(fn.PrimaryKey)})
 	}
 	if len(tn.PrimaryKey) > 0 {
 		d.emit(Change{Kind: AddPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, After: slices.Clone(tn.PrimaryKey)})
@@ -584,12 +586,14 @@ func (d *differ) primaryKey(fn, tn, to *schema.Table) {
 
 func (d *differ) uniques(fn, tn, to *schema.Table) {
 	diffNamed(d, fn.Uniques, tn.Uniques, to, func(u schema.Unique) string { return u.Name },
-		func(a, b schema.Unique) bool { return slices.Equal(a.Columns, b.Columns) }, DropUnique, AddUnique)
+		func(a, b schema.Unique) bool { return slices.Equal(a.Columns, b.Columns) }, DropUnique, AddUnique,
+		func(u schema.Unique) goneUse { return usesGone(d.gone, u.Columns) })
 }
 
 func (d *differ) checks(fn, tn, to *schema.Table) {
 	diffNamed(d, fn.Checks, tn.Checks, to, func(c schema.Check) string { return c.Name },
-		func(a, b schema.Check) bool { return a.Expr == b.Expr }, DropCheck, AddCheck)
+		func(a, b schema.Check) bool { return a.Expr == b.Expr }, DropCheck, AddCheck,
+		func(c schema.Check) goneUse { return usesGone(d.gone, nil, c.Expr) })
 }
 
 func (d *differ) foreignKeys(fn, tn, to *schema.Table) {
@@ -598,7 +602,7 @@ func (d *differ) foreignKeys(fn, tn, to *schema.Table) {
 			return slices.Equal(a.Columns, b.Columns) && a.RefTable == b.RefTable &&
 				slices.Equal(a.RefColumns, b.RefColumns) &&
 				fkAction(a.OnDelete) == fkAction(b.OnDelete) && fkAction(a.OnUpdate) == fkAction(b.OnUpdate)
-		}, DropFK, AddFK)
+		}, DropFK, AddFK, func(f schema.ForeignKey) goneUse { return usesGone(d.gone, f.Columns) })
 }
 
 func fkAction(a string) string {
@@ -609,9 +613,31 @@ func fkAction(a string) string {
 	return a
 }
 
-func (d *differ) indexes(fn, tn, to *schema.Table) {
+// indexes diffs the table's indexes. Normalization clears Concurrently, so the
+// emitted changes take it back from the caller's original indexes (fo, to):
+// the renderer needs it to write CREATE INDEX CONCURRENTLY. indexEqual
+// ignores Concurrently, so toggling it alone is no change.
+func (d *differ) indexes(fn, tn, fo, to *schema.Table) {
+	start := len(d.changes)
 	diffNamed(d, fn.Indexes, tn.Indexes, to, func(i schema.Index) string { return i.Name },
-		indexEqual, DropIndex, CreateIndex)
+		indexEqual, DropIndex, CreateIndex, func(i schema.Index) goneUse {
+			cols, exprs := []string{}, []string{i.Where}
+			for _, p := range i.Parts {
+				cols, exprs = append(cols, p.Column), append(exprs, p.Expr)
+			}
+			return usesGone(d.gone, cols, exprs...)
+		})
+	for _, c := range d.changes[start:] {
+		src, payload := to.Indexes, c.After
+		if c.Kind == DropIndex {
+			src, payload = fo.Indexes, c.Before
+		}
+		if ix, ok := payload.(*schema.Index); ok {
+			if o, found := lookup(src, func(i schema.Index) string { return i.Name }, ix.Name); found {
+				ix.Concurrently = o.Concurrently
+			}
+		}
+	}
 }
 
 func indexEqual(a, b schema.Index) bool {
@@ -629,23 +655,108 @@ func indexEqual(a, b schema.Index) bool {
 // already normalized and sorted by name. A changed object is a drop followed
 // by an add; a dropped one is a drop; a new one is an add. The emitted Before
 // and After values are the normalized objects.
-func diffNamed[T any](d *differ, from, to []T, t *schema.Table, name func(T) string, equal func(a, b T) bool, drop, add ChangeKind) {
+//
+// onGone classifies a dropped object against the columns this diff drops from
+// the table. PostgreSQL removes an index or constraint together with a column
+// it names, so an explicit drop after DROP COLUMN would fail: goneYes skips
+// the drop. goneMaybe (an expression that may mention a dropped column) keeps
+// the drop but makes it DROP ... IF EXISTS, which is right either way. Drops
+// and adds record whether the table is partitioned (Change.Partitioned).
+func diffNamed[T any](d *differ, from, to []T, t *schema.Table, name func(T) string, equal func(a, b T) bool, drop, add ChangeKind, onGone func(T) goneUse) {
 	byName := make(map[string]T, len(from))
 	for _, o := range from {
 		byName[name(o)] = o
 	}
 	for _, o := range from {
 		nw, ok := lookup(to, name, name(o))
-		if !ok || !equal(o, nw) {
-			d.emit(Change{Kind: drop, Schema: t.Schema, Table: t.Name, Name: name(o), Before: cp(o)})
+		if ok && equal(o, nw) {
+			continue
+		}
+		if use := onGone(o); use != goneYes {
+			d.emitRisky(Change{Kind: drop, Schema: t.Schema, Table: t.Name, Name: name(o), Before: cp(o), Partitioned: t.Partition != nil, IfExists: use == goneMaybe})
 		}
 	}
 	for _, n := range to {
 		o, ok := byName[name(n)]
 		if !ok || !equal(o, n) {
-			d.emit(Change{Kind: add, Schema: t.Schema, Table: t.Name, Name: name(n), After: cp(n)})
+			d.emitRisky(Change{Kind: add, Schema: t.Schema, Table: t.Name, Name: name(n), After: cp(n), Partitioned: t.Partition != nil})
 		}
 	}
+}
+
+// goneColumns returns the columns of the snapshot table fn that the desired
+// table tn no longer has. fn must already carry the renamed columns, so a
+// renamed column is not gone.
+func goneColumns(fn, tn *schema.Table) map[string]bool {
+	keep := map[string]bool{}
+	for _, c := range tn.Columns {
+		keep[c.Name] = true
+	}
+	gone := map[string]bool{}
+	for _, c := range fn.Columns {
+		if !keep[c.Name] {
+			gone[c.Name] = true
+		}
+	}
+	return gone
+}
+
+// goneUse is how a dropped object relates to the columns dropped with it.
+type goneUse int
+
+const (
+	goneNo    goneUse = iota // unrelated: drop it normally
+	goneYes                  // names a dropped column: DROP COLUMN removes it
+	goneMaybe                // an expression that might mention one
+)
+
+// usesGone classifies an object by the columns it lists (cols) and the
+// expressions it holds (exprs). A listed column is certain. An expression is
+// only a "maybe": telling a column reference from a string literal, a function
+// or type name, or a quoted identifier is not reliable, so any mention of a
+// dropped column's name, case-insensitively and anywhere in the text, counts.
+// Too wide a net only makes the drop idempotent.
+func usesGone(gone map[string]bool, cols []string, exprs ...string) goneUse {
+	if len(gone) == 0 {
+		return goneNo
+	}
+	for _, c := range cols {
+		if gone[c] {
+			return goneYes
+		}
+	}
+	for _, e := range exprs {
+		le := strings.ToLower(e)
+		for g := range gone {
+			if e != "" && strings.Contains(le, strings.ToLower(g)) {
+				return goneMaybe
+			}
+		}
+	}
+	return goneNo
+}
+
+// riskNotes names the changes that are not destructive but are risky on a
+// large table, with what to expect. They are reported as "risky:" hints.
+var riskNotes = map[ChangeKind]string{
+	DropIndex:      "queries that used the index slow down, and the drop takes an ACCESS EXCLUSIVE lock on the table",
+	DropPrimaryKey: "the table loses its key and its index; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	DropUnique:     "uniqueness is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	DropCheck:      "the rule is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	DropFK:         "referential integrity is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	AddUnique:      "built with CREATE UNIQUE INDEX CONCURRENTLY and adopted with USING INDEX in a no-transaction migration; fails on duplicate rows and then leaves an INVALID index to drop",
+	AddCheck:       "added NOT VALID, then validated by a full scan in a no-transaction migration; the validation fails if existing rows violate it",
+}
+
+// emitRisky emits c, marking it Risky and adding a hint when its kind is in
+// riskNotes. Only changes to existing tables come through here: the
+// constraints of a dropped or new table are not risky on their own.
+func (d *differ) emitRisky(c Change) {
+	if note, ok := riskNotes[c.Kind]; ok {
+		c.Risky = true
+		d.hint(fmt.Sprintf("risky: %s %s: %s", c.Kind, qualified(c.Schema, c.Table, c.Name), note))
+	}
+	d.emit(c)
 }
 
 func lookup[T any](xs []T, name func(T) string, n string) (T, bool) {

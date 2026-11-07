@@ -56,13 +56,12 @@ Do this before the next `momo migrate diff`, which builds on the latest snapshot
 
 ## CONCURRENTLY
 
-In v0.1.0 `momo migrate diff` writes a plain `CREATE UNIQUE INDEX`, which blocks
-writes while it builds, even if the model asks for `Concurrently()`. This is a
-known bug (story `20261106-index-concurrently-is-ignored-by-migrate-diff`), and the edit below is the workaround. For a large
-table, edit the generated file as in `..._unique_email_norm.up.sql`: add
-`CONCURRENTLY` and the `-- momo:no-transaction` directive, keep the snapshot, then
-run `momo migrate hash` to refresh `momo.sum`. Because the file is edited
-generated output, it keeps its `-- momo:generated` line and its snapshot; only
+`momo migrate diff` writes `CREATE INDEX CONCURRENTLY` in its own
+`-- momo:no-transaction` migration when the model index declares
+`Concurrently()`. `..._unique_email_norm.up.sql` shows the same shape written by
+hand: a unique index built `CONCURRENTLY` with the `-- momo:no-transaction`
+directive. If you edit generated output like this, keep its `-- momo:generated`
+line and its snapshot, then run `momo migrate hash` to refresh `momo.sum`; only
 the hand-written files lack both. If a concurrent build fails, PostgreSQL leaves an
 invalid index behind; `momo migrate drift` reports it.
 
