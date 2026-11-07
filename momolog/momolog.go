@@ -66,7 +66,7 @@ func (h *hook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
 		slog.Duration("duration", e.Duration),
 		slog.Int64("rows", e.Rows),
 	)
-	if e.Args != nil {
+	if h.values && e.Args != nil {
 		attrs = append(attrs, slog.Any("args", e.Args))
 	}
 	if e.Err != nil {

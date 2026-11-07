@@ -43,6 +43,7 @@ var (
 // sizes share a shape while per-row statements repeat it.
 func normalizeShape(sql string) string {
 	s := shapePGPlaceholder.ReplaceAllString(sql, "?")
+	s = shapeInList.ReplaceAllString(s, "(?)")
 	return shapeTupleList.ReplaceAllString(s, "(?)")
 }
 
