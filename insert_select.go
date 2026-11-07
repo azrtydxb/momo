@@ -1,0 +1,218 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package momo
+
+import (
+	"errors"
+	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
+)
+
+// ExprSelect is a SELECT of explicit expressions that needs no result type:
+// a FROM-less list of values or parameters with an optional WHERE, or a
+// plain SELECT over one source. It is a Subquery, so it is the row source of
+// InsertQuery.FromSelect and also works as an EXISTS operand:
+//
+//	momo.SelectExprs(momo.Value(1)).From(meters).Where(meter.Legacy.Eq(true))
+//
+// ExprSelect is an immutable value: every method returns a new one.
+type ExprSelect struct {
+	cols  []Expr
+	from  TableSource
+	where []Predicate
+}
+
+// SelectExprs starts a SELECT of the given expressions with no FROM clause.
+// Add a source with From and conditions with Where. Pass every literal as a
+// momo.Value so it is bound as a parameter and nothing is concatenated into
+// the SQL text.
+func SelectExprs(cols ...Expr) ExprSelect {
+	return ExprSelect{cols: slices.Clone(cols)}
+}
+
+// From sets the FROM source. Without it the SELECT has no FROM clause, which
+// PostgreSQL and SQLite accept and MySQL accepts only as FROM DUAL (added
+// automatically when a WHERE is present).
+func (s ExprSelect) From(src TableSource) ExprSelect { s.from = src; return s }
+
+// Where adds predicates combined with AND. On a FROM-less select the WHERE
+// guards the single row, so the select yields zero rows when it is false.
+func (s ExprSelect) Where(ps ...Predicate) ExprSelect {
+	s.where = append(slices.Clip(s.where), ps...)
+	return s
+}
+
+func (ExprSelect) isSubquery() {}
+
+// selectArity reports the number of columns the select yields.
+func (s ExprSelect) selectArity() (int, bool) { return len(s.cols), true }
+
+// AppendSQL renders the select in parentheses, for use as a subquery.
+func (s ExprSelect) AppendSQL(b *Builder) {
+	b.writeByte('(')
+	s.render(b)
+	b.writeByte(')')
+}
+
+// render writes the bare SELECT; INSERT ... SELECT and set operations use it.
+func (s ExprSelect) render(b *Builder) {
+	var names []string
+	if q, ok := s.from.(interface{ Qualifier() string }); ok {
+		names = append(names, q.Qualifier())
+	}
+	b.withScope(names, func() {
+		if len(s.cols) == 0 {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("SelectExprs: no expressions")})
+			return
+		}
+		b.WriteString("SELECT ")
+		appendList(b, s.cols)
+		where := s.where
+		if s.from != nil {
+			b.WriteString(" FROM ")
+			s.from.appendFrom(b)
+			if t, ok := s.from.(TableRef); ok && t.SoftDelete != "" {
+				where = append(slices.Clip(where), softMarkerPred{t.Qualifier(), t.SoftDelete, t.SoftDeleteKind, false})
+			}
+		} else if len(where) > 0 && b.d.Name == dialect.MySQL {
+			b.WriteString(" FROM DUAL")
+		}
+		if len(where) > 0 {
+			b.WriteString(" WHERE ")
+			appendAnd(b, where)
+		}
+	})
+}
+
+// arityOf reports how many columns a subquery yields, when momo can tell.
+func arityOf(q Subquery) (int, bool) {
+	a, ok := q.(interface{ selectArity() (int, bool) })
+	if !ok {
+		return 0, false
+	}
+	return a.selectArity()
+}
+
+func (sq SelectQuery[T]) selectArity() (int, bool) {
+	if sq.s.cols != nil {
+		return len(sq.s.cols), true
+	}
+	if sq.meta.Table == "" {
+		return 0, false
+	}
+	return len(sq.meta.Columns), true
+}
+
+// FromSelect makes the rows of a SELECT the source of the INSERT, rendering
+// INSERT INTO t (cols) SELECT ... in one atomic statement. cols are the typed
+// target columns of T, in the order of the select list; the select must
+// yield exactly that many columns, otherwise the build fails with
+// ErrValidation (a RawSubquery or set operation has no known width, so the
+// database checks it).
+//
+// The select is the row source, for example a FROM-less select guarded by
+// NOT EXISTS so the row is inserted only when none exists yet:
+//
+//	momo.Insert[Meter](db).
+//		FromSelect(
+//			momo.SelectExprs(momo.Value(p), momo.Value(id), momo.Value("distinct")).
+//				Where(momo.NotExists(momo.SelectExprs(momo.Value(1)).From(meterTable).Where(meter.Product.Eq(p)))),
+//			meter.Product, meter.ID, meter.Kind).
+//		OnConflict(meter.Product, meter.ID).DoNothing().
+//		Exec(ctx)
+//
+// FromSelect composes with OnConflict (DoNothing, DoUpdate and their Where),
+// with Returning, ReturningAll and Rows, and with Upsert[T], whose default
+// DO UPDATE list then covers the listed columns only. The bind parameters of
+// the select come first, then those of the ON CONFLICT part; each dialect
+// numbers them in order. Exec reports the rows inserted (0 when the select
+// yields no row or every row conflicts).
+//
+// Only the listed columns are written. Nothing is injected: the automatic
+// created-at and updated-at timestamps, Go-side defaults and field
+// validators do not apply, so list those columns and select their values
+// yourself. A column that is an identity, read-only, or otherwise not
+// writable by INSERT is refused with ErrValidation, as are an unmapped or
+// repeated column, an empty list, and combining FromSelect with Model,
+// Models, Values, ValuesRows or Omit. Calling FromSelect again replaces the
+// source. On SQLite a SELECT with a FROM clause followed by ON CONFLICT
+// needs a WHERE (SQLite parses the ON as a join otherwise); a FROM-less
+// select does not.
+func (q InsertQuery[T]) FromSelect(sel Subquery, cols ...ColumnRef) InsertQuery[T] {
+	if sel == nil {
+		return q.fail(q.verr("", "FromSelect: nil select"))
+	}
+	names := make([]string, len(cols))
+	for i, c := range cols {
+		names[i] = c.ColumnName()
+	}
+	q.i.sel, q.i.selCols = sel, names
+	return q
+}
+
+// renderFromSelect renders INSERT INTO t (cols) SELECT ... plus the conflict
+// and RETURNING clauses.
+func (q InsertQuery[T]) renderFromSelect(b *Builder) {
+	switch {
+	case len(q.models) > 0 || q.i.hasValues || q.i.hasRows:
+		b.SetErr(q.verr("", "FromSelect cannot be combined with Model, Models, Values or ValuesRows"))
+		return
+	case len(q.i.omit) > 0:
+		b.SetErr(q.verr("", "Omit cannot be combined with FromSelect: list only the columns to write"))
+		return
+	case len(q.i.selCols) == 0:
+		b.SetErr(q.verr("", "FromSelect: no target columns"))
+		return
+	}
+	for i, n := range q.i.selCols {
+		ci := q.column(n)
+		switch {
+		case ci < 0:
+			b.SetErr(q.verr(n, "FromSelect: column %q is not mapped by %s", n, q.meta.Table))
+			return
+		case !q.writable(ci):
+			b.SetErr(q.verr(n, "FromSelect: column %q is identity or read-only and is never written", n))
+			return
+		case slices.Contains(q.i.selCols[:i], n):
+			b.SetErr(q.verr(n, "FromSelect: column %q listed twice", n))
+			return
+		}
+	}
+	if n, ok := arityOf(q.i.sel); ok && n != len(q.i.selCols) {
+		b.SetErr(q.verr("", "FromSelect: select yields %d columns but %d target columns are listed", n, len(q.i.selCols)))
+		return
+	}
+	fp, err := newFieldPlan(q.q, q.meta)
+	if err != nil {
+		b.SetErr(err)
+		return
+	}
+	if err := q.validateConflictSet(fp); err != nil {
+		b.SetErr(err)
+		return
+	}
+	b.WriteString("INSERT INTO ")
+	if q.meta.Schema != "" {
+		b.Ident(q.meta.Schema)
+		b.writeByte('.')
+	}
+	b.Ident(q.meta.Table)
+	b.WriteString(" (")
+	for i, n := range q.i.selCols {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.Ident(n)
+	}
+	b.WriteString(") ")
+	if r, ok := q.i.sel.(interface{ render(*Builder) }); ok {
+		r.render(b) // bare: SQLite rejects a parenthesized SELECT here
+	} else {
+		q.i.sel.AppendSQL(b)
+	}
+	q.renderConflict(b)
+	renderReturning(b, q.meta, q.i.returning, func(col string) error {
+		return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
+	})
+}

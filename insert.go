@@ -48,7 +48,10 @@ type insertCore struct {
 	// query, withIdentity puts the identity column in a model INSERT list.
 	upsert       bool
 	withIdentity bool
-	err          error
+	// sel and selCols are the row source and target columns of FromSelect.
+	sel     Subquery
+	selCols []string
+	err     error
 }
 
 // InsertQuery builds and runs an INSERT into T's table.
@@ -282,6 +285,10 @@ func (q InsertQuery[T]) render(b *Builder) {
 }
 
 func (q InsertQuery[T]) renderStatement(b *Builder) {
+	if q.i.sel != nil {
+		q.renderFromSelect(b)
+		return
+	}
 	d := b.Dialect()
 	modelMode := len(q.models) > 0
 	valuesMode := q.i.hasValues || q.i.hasRows

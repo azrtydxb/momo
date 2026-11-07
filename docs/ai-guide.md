@@ -678,6 +678,42 @@ res, err := momo.Insert[models.Lock](q).
 // Compare with the proposed row: lock.Until.LtExpr(lock.Until.Excluded())
 ```
 
+Insert from a SELECT (`INSERT ... SELECT`), including a FROM-less select guarded by
+`WHERE NOT EXISTS`, as one atomic statement:
+
+```go
+// INSERT INTO meters (product, id, kind, ...) SELECT $1, $2, 'distinct', ...
+//   WHERE NOT EXISTS (SELECT 1 FROM meters WHERE product = $7 AND legacy)
+//   ON CONFLICT (product, id) DO NOTHING
+row := momo.SelectExprs(momo.Value(product), momo.Value(id), momo.Value("distinct"), momo.Value(now)).
+	Where(momo.NotExists(
+		momo.SelectExprs(momo.TypedSQL[int]("1")).From(meterTable). // constant 1, not a bound value
+			Where(meter.Product.Eq(product), meter.Legacy.Eq(true))))
+res, err := momo.Insert[models.Meter](q).
+	FromSelect(row, meter.Product, meter.ID, meter.Kind, meter.CreatedAt). // explicit typed target columns
+	OnConflict(meter.Product, meter.ID).DoNothing().
+	Exec(ctx) // res.RowsAffected: 1 inserted, 0 skipped
+```
+
+- `FromSelect(sub, cols...)` takes any `Subquery`: `SelectExprs(...)` (a FROM-less or
+  single-source select of expressions, with `From` and `Where`) or a `Select[T]`
+  query. The select list must have as many columns as `cols` (`ErrValidation`
+  otherwise; a `RawSubquery` is checked by the database).
+- Only the listed columns are written. Nothing is injected: no automatic
+  created_at/updated_at, no Go-side defaults, no field validators. List those columns
+  and select their values. Identity, read-only and non-writable columns, unmapped or
+  repeated columns, and mixing with `Model`/`Values`/`Omit` are `ErrValidation`.
+- Composes with `OnConflict` (`DoNothing`, `DoUpdate`, both `Where`s), `Returning`,
+  `ReturningAll`, `Rows` and `Upsert[T]` (default DO UPDATE set = the listed
+  columns). Placeholders number across the select first, then ON CONFLICT (`$n` on
+  PostgreSQL, `?` on SQLite/MySQL). For the constant in `EXISTS (SELECT 1 ...)` use
+  `momo.TypedSQL` with the SQL text `1`, as in the example: PostgreSQL cannot infer
+  the type of a bound `Value` there.
+- SQLite needs a `WHERE` on a select that has a FROM clause and is followed by
+  `ON CONFLICT`; a FROM-less select does not. MySQL has no `ON CONFLICT`
+  (`ErrUnsupported`) but a plain `FromSelect` works; a FROM-less select with a
+  `WHERE` renders `FROM DUAL`.
+
 - Upsert never overwrites pk, version, soft-delete or created_at columns, and does
   not advance or check the version (no optimistic-lock detection).
 - `InsertQuery.Where` is the DO UPDATE condition: valid only after `DoUpdate` or on
