@@ -34,6 +34,11 @@ type Predicate = Expression[bool]
 type ColumnRef interface {
 	Expr
 	ColumnName() string
+	// ParseEq parses raw with the column's Go type and returns the equality
+	// predicate; a value that does not parse is an ErrValidation error.
+	ParseEq(raw string) (Predicate, error)
+	// ParseCmp is ParseEq for op eq, ne, lt, le, gt or ge.
+	ParseCmp(op, raw string) (Predicate, error)
 }
 
 // ---------------------------------------------------------------- columns
