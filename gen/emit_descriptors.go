@@ -166,7 +166,7 @@ var flagOrder = []struct {
 	{"FlagPK", func(f *Field) bool { return f.Tags.PK }},
 	{"FlagUnique", func(f *Field) bool { return f.Tags.Unique }},
 	{"FlagNullable", func(f *Field) bool { return f.Nullable || f.Tags.Nullable }},
-	{"FlagIdentity", func(f *Field) bool { return f.Tags.Identity }},
+	{"FlagIdentity", func(f *Field) bool { return f.Tags.Identity || f.Tags.Serial }},
 	{"FlagReadOnly", func(f *Field) bool { return f.Access == ReadOnly }},
 	{"FlagVersion", func(f *Field) bool { return f.Tags.Version }},
 	{"FlagSoftDelete", func(f *Field) bool { return f.Tags.SoftDelete != "" }},

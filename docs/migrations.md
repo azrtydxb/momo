@@ -592,6 +592,14 @@ snapshot has views, functions, triggers or policies; `--force` does not waive
 that. Without that privilege it fails with an error naming it. It takes the
 lock and refuses on dirty or checksum problems like `apply`.
 
+A database that uses `serial` or `bigserial` ids is adopted with the `serial`
+tag, as in `pk,serial` on an `int64` field. The tag renders `smallserial`, `serial`
+or `bigserial` by the Go integer width, and inspection reads a column whose
+default is `nextval` of a sequence owned by the column back as the same
+serial column, so the snapshot matches and `diff` stays empty. Turning an
+existing column into or out of serial is refused by `diff` with
+an error that asks for a hand-written migration. `serial` is PostgreSQL only.
+
 `AutoMigrate` is a Go API for development and tests. It applies additive
 changes only, writes no history and no files, and returns the rest as
 `Skipped`. Do not mix it with versioned migrations on one schema.

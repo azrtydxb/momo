@@ -165,7 +165,10 @@ type Column struct {
 	Default string `json:"default,omitempty"`
 	// Identity is set for generated identity columns: "always" or
 	// "by_default" on PostgreSQL; on SQLite an INTEGER PRIMARY KEY rowid
-	// alias is reported as "by_default".
+	// alias is reported as "by_default". "serial" marks a PostgreSQL
+	// serial column: Type stays the plain integer type and the column's
+	// DEFAULT is nextval of a sequence it owns, which is rendered as
+	// smallserial, serial or bigserial and never appears in Default.
 	Identity string `json:"identity,omitempty"`
 	// Generated is a stored generated-column expression.
 	Generated string `json:"generated,omitempty"`

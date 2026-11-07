@@ -297,11 +297,25 @@ func columnType(col schema.Column) string {
 	return col.Type
 }
 
-func columnDef(col schema.Column) string {
+// serialTypeNames maps an integer type to the serial pseudo-type that creates
+// a sequence owned by the column and a nextval default.
+var serialTypeNames = map[string]string{
+	"smallint": "smallserial", "integer": "serial", "bigint": "bigserial",
+}
+
+func columnDef(col schema.Column) (string, error) {
 	var b strings.Builder
 	b.WriteString(ident(col.Name))
 	b.WriteByte(' ')
-	b.WriteString(columnType(col))
+	if col.Identity == "serial" {
+		st, ok := serialTypeNames[col.Type]
+		if !ok {
+			return "", fmt.Errorf("column %q: serial needs smallint, integer or bigint, not %q", col.Name, col.Type)
+		}
+		b.WriteString(st)
+	} else {
+		b.WriteString(columnType(col))
+	}
 	if col.Collate != "" {
 		b.WriteString(" COLLATE " + ident(col.Collate))
 	}
@@ -319,7 +333,7 @@ func columnDef(col schema.Column) string {
 	if !col.Nullable {
 		b.WriteString(" NOT NULL")
 	}
-	return b.String()
+	return b.String(), nil
 }
 
 func uniqueDef(u schema.Unique) string {
@@ -405,7 +419,11 @@ func renderCreateTable(c migrate.Change) ([]migrate.Statement, error) {
 	}
 	var parts []string
 	for _, col := range t.Columns {
-		parts = append(parts, columnDef(col))
+		def, err := columnDef(col)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, def)
 	}
 	if len(t.PrimaryKey) > 0 {
 		parts = append(parts, "CONSTRAINT "+ident(t.Name+"_pkey")+" PRIMARY KEY ("+identList(t.PrimaryKey)+")")
@@ -445,7 +463,11 @@ func renderAddColumn(c migrate.Change) ([]migrate.Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " ADD COLUMN " + columnDef(col))
+	def, err := columnDef(col)
+	if err != nil {
+		return nil, err
+	}
+	out := one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " ADD COLUMN " + def)
 	if col.Comment != "" {
 		s, err := commentStmt(c.Schema, c.Table, col.Name, col.Comment)
 		if err != nil {
@@ -512,6 +534,9 @@ func renderAlterColumn(c migrate.Change) ([]migrate.Statement, error) {
 		}
 	}
 	if before.Identity != after.Identity {
+		if before.Identity == "serial" || after.Identity == "serial" {
+			return nil, fmt.Errorf("column %q: converting between serial (%q to %q) needs a hand-written migration", after.Name, before.Identity, after.Identity)
+		}
 		switch after.Identity {
 		case "":
 			add(pre + "DROP IDENTITY IF EXISTS")
