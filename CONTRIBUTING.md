@@ -13,6 +13,10 @@
 - `make test-compilefail`: compile-fail tests for the typed API
 - `make test-integration`: integration tests against real databases
 
+Every test that needs a database lives in a file that starts with the `//go:build integration` tag, next to the SPDX line, and gets its database from `internal/testdb` or `testopen`. `make test`, and the macOS and Windows CI jobs, build without the tag and so run unit tests only; they cannot skip a database test silently because they never compile one. `make test-integration` sets `MOMO_REQUIRE_INTEGRATION=1`, so an unset database URL fails the run. `TestIntegrationTagConvention` in `internal/repocheck` fails when a file that uses these helpers lacks the tag.
+
+Fuzz targets are listed in `FUZZ_TARGETS` in the Makefile and `make test-fuzz` runs each one for `FUZZTIME`, an execution count. `TestFuzzTargetsListed` fails when a `Fuzz` function is missing from the list.
+
 Dialect coverage is expressed as subtests from `testopen.Each`, one per dialect built into this version; integration tests have no name suffix. `make test-integration-<dialect>` sets that dialect's URL variables and runs the whole suite.
 
 ## Commit messages and PR titles
