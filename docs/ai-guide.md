@@ -539,6 +539,45 @@ combinators `momo.And`, `momo.Or`, `momo.Not`, `momo.Like`, `momo.ILike`,
 Aggregates: `momo.CountAll()`, `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`,
 `Max`.
 
+Typed expressions (no `momo.SQL` needed), all usable in `Columns`, `Where`,
+`GroupBy`, `OrderBy` and `SetExpr`:
+
+```go
+// Alias a select-list item. As[T] is generic; Agg, Case and Func values also have .As(name).
+// Column.As is the TABLE alias, so alias a column with momo.As[int64](col, "name").
+n := momo.CountAll().As("n")                  // COUNT(*) AS "n"
+inner := momo.Select[Pair](q).From(momo.TableRef{Name: "docs"}).
+	Columns(doc.TenantID, n).GroupBy(doc.TenantID)
+// Subquery in FROM: read the alias back with a typed reference.
+momo.Select[Pair](q).From(momo.FromSubquery(inner, "s")).
+	Columns(pairK, n.Ref("s")).Where(n.Ref("s").Gt(1))
+// CTE, no positional column names needed:
+momo.Select[Pair](q).With("s", inner).From(momo.CTE("s")).Columns(pairK, n.Ref("s"))
+
+// Strings: Substr(e, from, length), SubstrFrom, Lower, Upper, Length. Positions are
+// literals, so the same expression works in SELECT and GROUP BY.
+momo.Substr(doc.Title, 1, 10)
+// Any other function: Func[T](name, args...). name is validated (identifier,
+// optionally schema.qualified); an Expr arg renders inline, other values are bound.
+momo.Func[string]("btrim", doc.Title)
+// current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
+momo.CurrentSchema()
+
+// CASE; branches share the type T. Else/ElseExpr optional (NULL otherwise).
+momo.Case[string]().
+	WhenExpr(node.Hostname.Excluded().Ne(""), node.Hostname.Excluded()).
+	ElseExpr(node.Hostname)
+
+// Arithmetic on numeric columns: Add, Sub, Mul (bound value) and AddExpr, SubExpr,
+// MulExpr (expression). Numeric only; a string column does not compile.
+node.Hits.SetExpr(momo.Add(node.Hits, 5))                         // hits = (hits + $1)
+node.Hits.SetExpr(momo.AddExpr(node.Hits, node.Hits.Excluded()))  // upsert accumulate
+```
+
+An alias must be a plain identifier (letters, digits, `_`, `$`, not starting with a
+digit, at most 63 bytes); anything else is `ErrValidation`. Reserved words are fine
+because aliases are quoted.
+
 - DO order every paginated or `First` query; without `OrderBy` row order is
   unspecified.
 - `Each` and `Iter` stream rows and return `ErrUnsupported` when the query has
@@ -598,7 +637,8 @@ res, err := momo.Update[models.Task](q).
 	Where(task.ID.Eq(id)).
 	Exec(ctx) // res.RowsAffected
 // Atomic arithmetic (no read-modify-write race):
-//   .Set(account.Balance.SetExpr(momo.TypedSQL[int64]("balance + ?", delta)))
+//   .Set(account.Balance.SetExpr(momo.Add(account.Balance, delta)))
+// (Sub, Mul, AddExpr with col.Excluded() in an upsert, Case, Substr: see section 6 "Typed expressions".)
 // Other assignments: col.SetDefault(), col.SetExcluded() (upsert), nullCol.SetNull().
 
 // Whole row from a struct (writes every writable column, zero values included):
