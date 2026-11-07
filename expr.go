@@ -62,6 +62,11 @@ func (r colRef) AppendSQL(b *Builder) {
 // Flags returns the column flags, which decide argument masking.
 func (r colRef) Flags() uint16 { return r.flags }
 
+// ColumnName and Table let the reference satisfy ColumnRef wherever a
+// comparison or ordering operand is inspected.
+func (r colRef) ColumnName() string { return r.name }
+func (r colRef) Table() string      { return r.table }
+
 // colCore is the comparison, ordering and metadata set shared by Column and
 // the permission wrappers (ReadOnlyColumn and friends). It embeds exprOps,
 // which holds the one implementation of the comparison methods, bound to the

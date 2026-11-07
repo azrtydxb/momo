@@ -57,7 +57,7 @@ func (c CreateOnlyColumn[T]) As(alias string) CreateOnlyColumn[T] {
 // Set assigns v on insert. The result is an InsertAssignment, which only
 // Insert accepts.
 func (c CreateOnlyColumn[T]) Set(v T) InsertAssignment {
-	return InsertAssignment{Column[T]{c.colCore}.Set(v)}
+	return InsertAssignment{Column[T](c).Set(v)}
 }
 
 // ImmutableColumn is the descriptor of a column that is set on insert and
@@ -78,7 +78,7 @@ func (c ImmutableColumn[T]) As(alias string) ImmutableColumn[T] {
 // Set assigns v on insert. The result is an InsertAssignment, which only
 // Insert accepts.
 func (c ImmutableColumn[T]) Set(v T) InsertAssignment {
-	return InsertAssignment{Column[T]{c.colCore}.Set(v)}
+	return InsertAssignment{Column[T](c).Set(v)}
 }
 
 // Excluded is the value proposed for insertion, for an upsert condition.
