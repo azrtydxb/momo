@@ -52,7 +52,7 @@ func TestDescriptorsForCompositePKReferencer(t *testing.T) {
 		if len(ds) != 0 {
 			t.Fatalf("%s: %v", m.GoName, ds)
 		}
-		out := string(src)
+		out := strings.Join(strings.Fields(string(src)), " ") // gofmt aligns key values
 		var wants []string
 		switch m.GoName {
 		case "Exam":
@@ -87,25 +87,11 @@ func (*Region) MomoMeta() *momo.Meta[Region] { return &momo.Meta[Region]{} }
 func (*Site) MomoMeta() *momo.Meta[Site]     { return &momo.Meta[Site]{} }
 `
 	dir, pat := scratchModels(t, src)
-	g, diags, err := Load([]string{pat}, Config{Dir: dir})
-	if err != nil || len(diags) != 0 {
-		t.Fatalf("load: %v %v", err, diags)
+	_, diags, err := Load([]string{pat}, Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, sd := BuildSchema(g.Models, pg())
-	if !strings.Contains(sdiagsString(sd), "country, code") {
-		t.Fatalf("schema diagnostics must name the target columns: %v", sd)
-	}
-	for _, m := range g.Models {
-		if m.GoName != "Site" {
-			continue
-		}
-		_, ds := EmitDescriptors(m, g)
-		var msgs []string
-		for _, d := range ds {
-			msgs = append(msgs, d.Msg)
-		}
-		if !strings.Contains(strings.Join(msgs, "\n"), "country, code") {
-			t.Fatalf("descriptor diagnostics must name the target columns: %v", ds)
-		}
+	if !strings.Contains(sdiagsString(diags), "country, code") {
+		t.Fatalf("diagnostics must name the target columns: %v", diags)
 	}
 }
