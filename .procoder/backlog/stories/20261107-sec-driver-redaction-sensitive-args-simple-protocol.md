@@ -11,12 +11,16 @@ Security audit M2, M3 and a Low: pgx client-side encode errors quoting bound val
 
 ## Acceptance criteria
 
-- [ ] Query and Exec errors are scrubbed of bound values like COPY and batch errors (test)
-- [ ] Hooks receive a masked value for arguments bound from sensitive fields (test)
-- [ ] FromSQLDB and FromConnConfig refuse or override simple protocol with a clear error or documented behaviour (test)
-- [ ] docs state the guarantees
+- [x] Query and Exec errors are scrubbed of bound values like COPY and batch errors (test)
+- [x] Hooks receive a masked value for arguments bound from sensitive fields (test)
+- [x] FromSQLDB and FromConnConfig refuse or override simple protocol with a clear error or documented behaviour (test)
+- [x] docs state the guarantees
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
+CI run 42402073664 (ci.yml, SHA caf220e) concluded success; the integration jobs run with MOMO_REQUIRE_INTEGRATION=1 per the Makefile.
+
+- Query and Exec errors scrubbed: TestClassifyErrorRedactsEncodeErrors, TestRowsAndTxErrorsAreRedacted (unit, no database) and TestQueryAndExecEncodeErrorsAreRedacted (integration, pool and database/sql adapter) pass; errors.Is on the cause still holds.
+- Hooks get a masked value: TestHooksSeeMaskedSensitiveInsertArgs, TestHooksSeeMaskedSensitiveUpdateArgs and TestHookCannotMutateBoundArgs pass; the fake driver still receives the real value.
+- Simple protocol refused: TestFromConnConfigRefusesSimpleProtocol (unit) and TestFromSQLDBRefusesSimpleProtocolOnFirstUse (integration) return ErrUnsupported; TestFromSQLDBAcceptsExtendedProtocol passes.
+- Docs: section "Secrets in errors, hooks and connections" in docs/capabilities.md.
