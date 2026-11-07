@@ -1,6 +1,6 @@
 # Raw SQL: accept PostgreSQL $n placeholders
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-08
 Epic: momo-05-writes-queries
 Sprint: 005-sprint-5-security-and-maintainability-hardening
@@ -21,4 +21,5 @@ GitHub issue #45, found by the Kuvryn Owl port from sqlc and pgx: 598 raw SQL li
 - [x] integration test on CI runs `$n` statements on PostgreSQL and asserts ErrUnsupported on the other dialects (suite.RawArgs)
 
 ## Evidence
+
 CI run 42414061640 on ecc70c7 (unit, integration postgres) green: unit tests, golden tests, FuzzScanRaw and suite.RawArgs all passed.
