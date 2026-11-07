@@ -168,6 +168,7 @@ func (*StatusDocument) MomoMeta() *momo.Meta[StatusDocument] { return StatusDocu
 
 const (
 	documentsDDLPostgres = `CREATE TABLE documents (id bigint generated always as identity primary key, tenant_id bigint not null, title text not null, body text, status text default 'draft', version bigint not null default 1, deleted_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now(), secret text not null default '')`
+	documentsDDLMySQL    = "CREATE TABLE documents (id bigint auto_increment primary key, tenant_id bigint not null, title varchar(255) not null, body text, status varchar(64) default 'draft', version bigint not null default 1, deleted_at datetime(6) null, created_at datetime(6) not null default current_timestamp(6), updated_at datetime(6) not null default current_timestamp(6), secret varchar(255) not null default '')"
 	documentsDDLSQLite   = `CREATE TABLE documents (id integer primary key, tenant_id integer not null, title text not null, body text, status text default 'draft', version integer not null default 1, deleted_at text, created_at text not null default (strftime('%Y-%m-%d %H:%M:%f','now')), updated_at text not null default (strftime('%Y-%m-%d %H:%M:%f','now')), secret text not null default '')`
 )
 
@@ -180,6 +181,8 @@ func CreateDocuments(t testing.TB, db *momo.DB, caps Caps) {
 		ddl = documentsDDLPostgres
 	case dialect.SQLite:
 		ddl = documentsDDLSQLite
+	case dialect.MySQL:
+		ddl = documentsDDLMySQL
 	default:
 		t.Fatalf("suite: no documents DDL for dialect %q", caps.Dialect)
 	}
