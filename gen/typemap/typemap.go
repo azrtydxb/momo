@@ -80,13 +80,13 @@ func postgres(t string, tg tags.Tags) string {
 	case "types.Date":
 		return "date"
 	case "vector.Vector":
-		return withDim("vector", tg)
+		return withDim("vector", tg, true)
 	case "vector.HalfVector":
-		return withDim("halfvec", tg)
+		return withDim("halfvec", tg, true)
 	case "vector.SparseVector":
-		return withDim("sparsevec", tg)
+		return withDim("sparsevec", tg, false)
 	case "vector.Bits":
-		return withDim("bit", tg)
+		return withDim("bit", tg, false)
 	}
 	if strings.HasPrefix(t, "types.JSON[") && strings.HasSuffix(t, "]") {
 		return "jsonb"
@@ -114,9 +114,14 @@ func sqlite(t string, _ tags.Tags) string {
 	return ""
 }
 
-// withDim renders a dimensioned type; the dim tag is required.
-func withDim(name string, tg tags.Tags) string {
+// withDim renders a dimensioned type. The dim tag is required unless bare is
+// true, in which case a missing dim gives the dimensionless type (a vector or
+// halfvec column that holds any size).
+func withDim(name string, tg tags.Tags, bare bool) string {
 	if tg.Dim <= 0 {
+		if bare {
+			return name
+		}
 		return ""
 	}
 	return fmt.Sprintf("%s(%d)", name, tg.Dim)
