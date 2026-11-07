@@ -639,6 +639,23 @@ momo.Func[string]("btrim", doc.Title)
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 momo.CurrentSchema()
 
+// Dates and times (PostgreSQL; SQLite and MySQL render equivalents). Fields and
+// units are constants checked against an allowlist; anything else is ErrValidation.
+momo.Extract(momo.ExtractEpoch, doc.CreatedAt)         // float64, also Year, Month, Day, Hour, Minute, Second, Quarter, Dow, ISODow, Doy
+momo.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is bound; PostgreSQL only, else ErrUnsupported
+momo.DateTrunc(momo.TruncDay, doc.CreatedAt)           // Second..Year, weeks start on Monday
+momo.Now()                                             // also CurrentTimestamp(); the database clock, not WithClock
+// Intervals are an operand of AddInterval/SubInterval, not an expression of their own.
+momo.SubInterval(momo.Now(), momo.IntervalOf(7, momo.IntervalDay))              // literal count
+momo.AddInterval(doc.CreatedAt, momo.IntervalExpr(momo.Value(int64(n)), momo.IntervalHour)) // bound or column count
+
+// JoinSQL composes raw fragments with their args (Prisma.join). The separator is a fixed
+// literal from an allowlist: "," or " " (parts as written), " AND ", " OR ", "||", "+"
+// (parts and the whole parenthesised). A part is any Expr, usually momo.SQL(...).
+var conds []momo.Expr
+conds = append(conds, momo.SQL("status = ?", status))
+q.Where(momo.JoinSQL(" AND ", conds...))               // JoinTypedSQL[T] declares a result type
+
 // CASE; branches share the type T. Else/ElseExpr optional (NULL otherwise).
 momo.Case[string]().
 	WhenExpr(node.Hostname.Excluded().Ne(""), node.Hostname.Excluded()).
