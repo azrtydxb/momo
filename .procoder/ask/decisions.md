@@ -148,3 +148,5 @@ Decision (2026-11-07): "do it" — audit NovaCRM (read-only) into .procoder/rese
 - Close #41 as superseded by sprint-5 commit 126646b (ci-agent.yml with lint, unit/compile-fail/race, fuzz smoke and PostgreSQL integration) (recommended)
 - Keep #41: it is the user's own work from another session; leave it open
 - Merge #41 into main and drop 126646b from sprint-5
+
+Decision (2026-11-08): close #41 as superseded by 126646b on sprint-5.
