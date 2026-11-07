@@ -232,3 +232,103 @@ func Mul[T Numeric](e Expression[T], v T) ArithExpr[T] { return ArithExpr[T]{e, 
 
 // MulExpr is e * other.
 func MulExpr[T Numeric](e, other Expression[T]) ArithExpr[T] { return ArithExpr[T]{e, " * ", other} }
+
+// ------------------------------------------- coalesce, cast, concatenation
+
+// CoalesceExpr is COALESCE(a, b, more...): the first non-NULL expression.
+// Unlike Coalesce, whose fallback is a bound value, every argument is an
+// expression of the same type T, for example CoalesceExpr(site, licenseID).
+func CoalesceExpr[T any](a, b Expression[T], more ...Expression[T]) FuncExpr[T] {
+	args := make([]any, 0, 2+len(more))
+	args = append(args, a, b)
+	for _, m := range more {
+		args = append(args, m)
+	}
+	return Func[T]("coalesce", args...)
+}
+
+// CastExpr is CAST(expr AS type) with a caller-chosen result type T.
+type CastExpr[T any] struct {
+	e       Expr
+	sqlType string
+}
+
+// Cast is CAST(e AS sqlType). T is the Go type of the result; Momo cannot
+// verify that it matches sqlType. sqlType is not portable (MySQL casts to
+// SIGNED, not bigint) and is validated: words of letters, digits and
+// underscores separated by single spaces, with an optional (n) or (n,m)
+// suffix, such as bigint, double precision or numeric(10,2). Anything else
+// fails the build with ErrValidation.
+func Cast[T any](e Expr, sqlType string) CastExpr[T] { return CastExpr[T]{e, sqlType} }
+
+// As names the expression in a select list.
+func (c CastExpr[T]) As(alias string) Aliased[T] { return As[T](c, alias) }
+
+func (CastExpr[T]) resultType() T { var z T; return z }
+
+func (c CastExpr[T]) AppendSQL(b *Builder) {
+	if err := validTypeName(c.sqlType); err != nil {
+		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("cast type %q: %w", c.sqlType, err)})
+		return
+	}
+	b.WriteString("CAST(")
+	c.e.AppendSQL(b)
+	b.WriteString(" AS ")
+	b.WriteString(c.sqlType)
+	b.writeByte(')')
+}
+
+// validTypeName accepts "word word(1,2)" shaped SQL type names.
+func validTypeName(s string) error {
+	base, suffix, hasParen := strings.Cut(s, "(")
+	if hasParen {
+		nums, ok := strings.CutSuffix(suffix, ")")
+		if !ok || nums == "" {
+			return errors.New("malformed length suffix")
+		}
+		for _, n := range strings.Split(nums, ",") {
+			if n == "" || strings.Trim(n, "0123456789") != "" {
+				return errors.New("length suffix must be digits")
+			}
+		}
+	}
+	if base == "" {
+		return errors.New("name is empty")
+	}
+	for _, w := range strings.Split(base, " ") {
+		if err := validName(w); err != nil || strings.Contains(w, "$") {
+			return errors.New("must be words of letters, digits and underscores")
+		}
+	}
+	return nil
+}
+
+// ConcatExpr is string concatenation.
+type ConcatExpr struct{ parts []Expression[string] }
+
+// Concat joins two or more string expressions: (a || b) on PostgreSQL and
+// SQLite, CONCAT(a, b) on MySQL. A NULL part makes the result NULL; wrap
+// nullable parts in CoalesceExpr.
+func Concat(a, b Expression[string], more ...Expression[string]) ConcatExpr {
+	return ConcatExpr{append([]Expression[string]{a, b}, more...)}
+}
+
+// As names the expression in a select list.
+func (c ConcatExpr) As(alias string) Aliased[string] { return As[string](c, alias) }
+
+func (ConcatExpr) resultType() string { return "" }
+
+func (c ConcatExpr) AppendSQL(b *Builder) {
+	open, sep, closing := "(", " || ", ")"
+	if b.d.Name == dialect.MySQL {
+		open, sep = "CONCAT(", ", "
+	}
+	b.WriteString(open)
+	for i, p := range c.parts {
+		if i > 0 {
+			b.WriteString(sep)
+		}
+		p.AppendSQL(b)
+	}
+	b.WriteString(closing)
+}

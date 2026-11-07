@@ -557,6 +557,13 @@ momo.Select[Pair](q).With("s", inner).From(momo.CTE("s")).Columns(pairK, n.Ref("
 // Strings: Substr(e, from, length), SubstrFrom, Lower, Upper, Length. Positions are
 // literals, so the same expression works in SELECT and GROUP BY.
 momo.Substr(doc.Title, 1, 10)
+// COALESCE over expressions (Coalesce takes a bound fallback value instead):
+momo.CoalesceExpr(site.Name, site.LicenseID)          // coalesce(a, b, ...)
+// CAST: T is the result type you choose, the SQL type name is validated
+// (words, optional (n) or (n,m)); names are not portable (MySQL: signed).
+momo.Cast[int64](momo.Sum(usage.Answers), "bigint")
+// Concat: (a || b) on PostgreSQL/SQLite, CONCAT(a, b) on MySQL; NULL in, NULL out.
+momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
 // Any other function: Func[T](name, args...). name is validated (identifier,
 // optionally schema.qualified); an Expr arg renders inline, other values are bound.
 momo.Func[string]("btrim", doc.Title)
