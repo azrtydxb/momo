@@ -275,7 +275,7 @@ func TestHooksSeeMaskedSensitiveModelKeys(t *testing.T) {
 		return nil
 	})
 	predicateCase(t, "model delete primary key", 1, nil, func(ctx context.Context, db *momo.DB) error {
-		_, _ = momo.Delete[vault](db).Model(&vault{Token: sensitiveValue, Version: 1}).Exec(ctx)
+		_, _ = momo.Delete[vault](db).Model(&vault{Token: sensitiveValue, Version: sensitiveVersion}).Exec(ctx)
 		return nil
 	})
 	predicateCase(t, "keyset on a sensitive order key", 2, nil, func(ctx context.Context, db *momo.DB) error {
@@ -287,7 +287,7 @@ func TestHooksSeeMaskedSensitiveModelKeys(t *testing.T) {
 		return err
 	})
 	predicateCase(t, "find or create key", -1, nil, func(ctx context.Context, db *momo.DB) error {
-		_, _ = momo.FindOrCreate[vault](ctx, db, []momo.ColumnRef{vaultToken}, &vault{Token: sensitiveValue, Version: 1})
+		_, _ = momo.FindOrCreate[vault](ctx, db, []momo.ColumnRef{vaultToken}, &vault{Token: sensitiveValue, Version: sensitiveVersion})
 		return nil
 	})
 }
