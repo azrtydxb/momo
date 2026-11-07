@@ -3,6 +3,9 @@
 package gen
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -93,5 +96,32 @@ func (*Site) MomoMeta() *momo.Meta[Site]     { return &momo.Meta[Site]{} }
 	}
 	if !strings.Contains(sdiagsString(diags), "country, code") {
 		t.Fatalf("diagnostics must name the target columns: %v", diags)
+	}
+}
+
+// TestCompositeFKGeneratedCodeBuilds writes the generated meta and every
+// generated descriptor package for the compositefk fixture into the module and
+// compiles them, so a descriptor that does not build is caught here.
+func TestCompositeFKGeneratedCodeBuilds(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join(fixturesDir(t), "compositefk", "models.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, pat := scratchModels(t, string(fixture))
+	g, diags, err := Load([]string{pat}, Config{Dir: dir})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("load: %v %v", err, diags)
+	}
+	w := NewWriter(WriterOptions{ModuleRoot: dir})
+	if err := Emit(g, w); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "build", "./...")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generated code for the composite key fixture must build: %v\n%s", err, out)
 	}
 }

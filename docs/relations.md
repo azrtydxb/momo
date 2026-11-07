@@ -467,7 +467,10 @@ What this means in practice:
 - **Has-one and has-many `Unlink` and `Replace` need a nullable foreign key**,
   because they clear it. On a NOT NULL column they fail with
   `ErrNotNullViolation`, with a message saying so. Delete the children instead
-  if they cannot exist without a parent.
+  if they cannot exist without a parent. For the same reason they cannot be
+  used when the child's foreign key column is part of its primary key (for
+  example `exams` keyed by `license_id, exam_id`): the database rejects the
+  NULL. Delete those children instead.
 - **`Replace` is a transaction.** On a `*DB` it opens one, on a `*Tx` it runs in
   a savepoint. With no children it clears the set in one statement. Otherwise
   it reads the current child keys, diffs them in Go against the requested set,
