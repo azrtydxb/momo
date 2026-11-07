@@ -147,3 +147,5 @@ Decision (2026-11-07): replace the key. Scout's default provider now uses the cu
 - Enable private vulnerability reporting, secret scanning with push protection, and protect main (require the CI checks, no force push, no deletion) (recommended)
 - Enable private vulnerability reporting and secret scanning only; leave main unprotected
 - Leave the repository settings as they are
+
+Decision (2026-11-07): all three. Private vulnerability reporting and secret scanning with push protection are enabled; main requires lint, unit, race, the integration matrix, compile-fail, govulncheck, windows, macos and the PR title check, with no force push or deletion. fuzz-smoke and bench-smoke stay optional (fuzz-smoke has a known timeout flake). Admins are exempt so release-please PRs, which get no CI runs, can still merge.
