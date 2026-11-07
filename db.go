@@ -138,6 +138,9 @@ type Tx struct {
 	dtx   DriverTx
 	done  *atomic.Bool // shared with savepoint scopes of the same transaction
 	depth int          // savepoint nesting depth for Tx.Tx
+	// adopted marks a Tx bound to a transaction the caller began (AdoptTx):
+	// Commit and Rollback refuse and leave the transaction to its owner.
+	adopted bool
 }
 
 func (tx *Tx) Dialect() *dialect.Dialect { return tx.ex.d }
@@ -327,10 +330,41 @@ func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
 	return tx, nil
 }
 
-// Commit commits the transaction.
+// AdoptTx binds a Tx to dtx, a driver transaction the caller already began
+// and keeps ownership of. Statements, hooks, error classification, the
+// dialect and savepoints (Tx.Tx, Savepoint, ...) behave as on a Tx begun by
+// DB.Begin, but Commit and Rollback on the returned Tx (not on a savepoint
+// scope, which still releases and rolls back its savepoint) return an error
+// matching ErrAdoptedTx and never touch dtx: the caller commits or rolls back
+// its own transaction. Obtain a dtx from the driver package, for example
+// pgxdriver.SQLTx or pgxdriver.PgxTx. Once the caller finishes the
+// transaction, further statements fail with the driver's finished-transaction
+// error (ErrTxDone). AdoptTx panics when dtx is nil, a programming error like
+// a nil Driver in New. It does not fire begin hooks: momo did not begin it.
+func (db *DB) AdoptTx(dtx DriverTx) *Tx {
+	if dtx == nil {
+		panic("momo: AdoptTx called with a nil DriverTx")
+	}
+	tx := &Tx{dtx: dtx, done: new(atomic.Bool), adopted: true}
+	tx.ex = execer{db: db, q: dtx, d: db.ex.d, classify: db.ex.classify, inTx: true, owner: tx}
+	return tx
+}
+
+// DriverTx returns the driver-level transaction behind tx, for driver
+// packages that unwrap it (pgxdriver.UnwrapSQLTx, pgxdriver.UnwrapPgxTx). A
+// savepoint scope returns the same outer transaction. Calling Commit or
+// Rollback on it directly bypasses Momo's bookkeeping; prefer the unwrap
+// helpers of the driver package.
+func (tx *Tx) DriverTx() DriverTx { return tx.dtx }
+
+// Commit commits the transaction. On a Tx from AdoptTx it returns an error
+// matching ErrAdoptedTx and does nothing.
 func (tx *Tx) Commit(ctx context.Context) error {
 	if tx.depth > 0 {
 		return errors.New("momo: Commit called on a savepoint scope; return from the Tx callback instead")
+	}
+	if tx.adopted {
+		return &Error{Kind: ErrAdoptedTx, Op: "commit"}
 	}
 	if !tx.done.CompareAndSwap(false, true) {
 		return ErrTxDone
@@ -341,10 +375,14 @@ func (tx *Tx) Commit(ctx context.Context) error {
 	return tx.ex.wrapErr("commit", "", err)
 }
 
-// Rollback aborts the transaction.
+// Rollback aborts the transaction. On a Tx from AdoptTx it returns an error
+// matching ErrAdoptedTx and does nothing.
 func (tx *Tx) Rollback(ctx context.Context) error {
 	if tx.depth > 0 {
 		return errors.New("momo: Rollback called on a savepoint scope; return an error from the Tx callback instead")
+	}
+	if tx.adopted {
+		return &Error{Kind: ErrAdoptedTx, Op: "rollback"}
 	}
 	if !tx.done.CompareAndSwap(false, true) {
 		return ErrTxDone
@@ -404,7 +442,7 @@ func (tx *Tx) Tx(ctx context.Context, fn func(tx *Tx) error) error {
 	if err := tx.Savepoint(ctx, name); err != nil {
 		return err
 	}
-	inner := &Tx{dtx: tx.dtx, done: tx.done, depth: tx.depth + 1}
+	inner := &Tx{dtx: tx.dtx, done: tx.done, depth: tx.depth + 1, adopted: tx.adopted}
 	inner.ex = tx.ex
 	ok := false
 	defer func() {
