@@ -154,7 +154,6 @@ type model struct {
 	used    map[string]bool
 	stmts   []string
 	imports map[string]bool
-	marker  []string
 }
 
 // field is one persisted column.

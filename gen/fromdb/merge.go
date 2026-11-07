@@ -111,10 +111,11 @@ func readFile(path string) ([]byte, error) {
 	return b, nil
 }
 
-// Apply carries out the actions. A conflict writes the regenerated version
-// next to the file with the .new suffix and leaves the file alone. It returns
-// the paths it wrote.
-func Apply(dir string, actions []Action) ([]string, error) {
+// Apply carries out the actions through write, which stores one file. A
+// conflict writes the regenerated version next to the file with the .new
+// suffix and leaves the file alone. It returns the paths it wrote. The caller
+// supplies write so that this package never touches the filesystem itself.
+func Apply(dir string, actions []Action, write func(path string, content []byte) error) ([]string, error) {
 	var written []string
 	for _, a := range actions {
 		var name string
@@ -127,44 +128,10 @@ func Apply(dir string, actions []Action) ([]string, error) {
 			continue
 		}
 		p := filepath.Join(dir, name)
-		if err := writeAtomic(p, a.Content); err != nil {
+		if err := write(p, a.Content); err != nil {
 			return written, err
 		}
 		written = append(written, p)
 	}
 	return written, nil
-}
-
-// writeAtomic writes through a temporary file in the same directory, so a
-// crash never leaves a half-written model.
-func writeAtomic(path string, content []byte) (err error) {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 -- model source directories are committed, not secret
-		return fmt.Errorf("fromdb: create %s: %w", dir, err)
-	}
-	tmp, err := os.CreateTemp(dir, ".momo-*.tmp")
-	if err != nil {
-		return fmt.Errorf("fromdb: write %s: %w", path, err)
-	}
-	name := tmp.Name()
-	defer func() {
-		if err != nil {
-			_ = os.Remove(name)
-		}
-	}()
-	if _, err = tmp.Write(content); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("fromdb: write %s: %w", path, err)
-	}
-	if err = tmp.Chmod(0o644); err != nil { // #nosec G302 -- model source files are committed and read by the team
-		_ = tmp.Close()
-		return fmt.Errorf("fromdb: write %s: %w", path, err)
-	}
-	if err = tmp.Close(); err != nil {
-		return fmt.Errorf("fromdb: write %s: %w", path, err)
-	}
-	if err = os.Rename(name, path); err != nil {
-		return fmt.Errorf("fromdb: write %s: %w", path, err)
-	}
-	return nil
 }

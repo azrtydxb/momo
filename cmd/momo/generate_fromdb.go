@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/token"
 	"io"
 	"os"
@@ -98,7 +99,7 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 		}
 		return exitOK
 	}
-	if _, err := fromdb.Apply(outDir, actions); err != nil {
+	if _, err := fromdb.Apply(outDir, actions, writeModelFile); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
 	l.excludeHint()
@@ -251,4 +252,38 @@ func (l *cli) writeInitSnapshot(ctx context.Context, e *migrate.Engine, snap *sc
 	}
 	l.say("next: run momo generate, then momo migrate baseline --version %s", last.Version)
 	return exitOK
+}
+
+// writeModelFile writes through a temporary file in the same directory, so a
+// crash never leaves a half-written model.
+func writeModelFile(path string, content []byte) (err error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 -- model source directories are committed, not secret
+		return fmt.Errorf("create %s: %w", dir, err)
+	}
+	tmp, err := os.CreateTemp(dir, ".momo-*.tmp")
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	name := tmp.Name()
+	defer func() {
+		if err != nil {
+			_ = os.Remove(name)
+		}
+	}()
+	if _, err = tmp.Write(content); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err = tmp.Chmod(0o644); err != nil { // #nosec G302 -- model source files are committed and read by the team
+		_ = tmp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err = tmp.Close(); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err = os.Rename(name, path); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
 }

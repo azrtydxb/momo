@@ -277,7 +277,7 @@ func TestPlanApplyKeepsHandEdits(t *testing.T) {
 			t.Fatalf("first run: %+v", a)
 		}
 	}
-	if _, err := Apply(dir, actions); err != nil {
+	if _, err := Apply(dir, actions, writeFile); err != nil {
 		t.Fatal(err)
 	}
 	if actions, _ = Plan(dir, res.Files, false); len(actions) != 2 || actions[0].Kind != ActionUnchanged || actions[1].Kind != ActionUnchanged {
@@ -309,7 +309,7 @@ func TestPlanApplyKeepsHandEdits(t *testing.T) {
 	if kinds["orders_model.go"] != ActionUpdate || kinds["users_model.go"] != ActionConflict {
 		t.Fatalf("kinds = %v", kinds)
 	}
-	written, err := Apply(dir, actions)
+	written, err := Apply(dir, actions, writeFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,4 +358,8 @@ func TestPlanRefusesHandWrittenFile(t *testing.T) {
 	if kindOf(actions, "users_model.go") != ActionConflict {
 		t.Fatalf("a file this command did not write must conflict: %+v", actions)
 	}
+}
+
+func writeFile(path string, content []byte) error {
+	return os.WriteFile(path, content, 0o600)
 }

@@ -283,7 +283,7 @@ func TestTagMisuseIsDiagnosed(t *testing.T) {
 		{"size on int", "int64", "size:5", "size is only valid on string"},
 		{"dim on string", "string", "dim:3", "dim is only valid on a vector"},
 		{"sparsevec without dim", "vector.SparseVector", "", "sparsevec requires dim"},
-		{"precision on string", "string", "precision:5,scale:1", "precision is only valid on float or decimal"},
+		{"precision on bool", "bool", "precision:5,scale:1", "precision is only valid on float or decimal"},
 		{"scale without precision", "float64", "scale:2", "scale requires precision"},
 		{"notnull vs pointer", "*string", "notnull", "notnull conflicts with a nullable"},
 		{"notnull vs nullable", "string", "notnull,nullable", "notnull conflicts with a nullable"},
