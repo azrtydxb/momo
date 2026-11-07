@@ -1232,8 +1232,8 @@ Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-s
 
 Momo errors are `*momo.Error{Kind, Op, Table, Column, Constraint, Err}`. Check
 with `errors.Is(err, momo.ErrX)` (matches `Kind`) and reach the driver error with
-`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns driver detail
-that `Error()` hides. Never string-match error text.
+`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns the raw driver detail
+(for PostgreSQL the key text) that `Error()` hides. Never string-match error text.
 
 ```go
 switch {
