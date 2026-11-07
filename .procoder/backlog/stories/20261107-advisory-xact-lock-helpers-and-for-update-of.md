@@ -1,6 +1,6 @@
 # Advisory xact lock helpers and FOR UPDATE OF
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-07
 Epic: momo-05-writes-queries
 Sprint: -
@@ -11,12 +11,14 @@ GitHub issue #32. A port of NovaCRM needs two locking constructs that today go t
 
 ## Acceptance criteria
 
-- [ ] Tx.AdvisoryXactLock, AdvisoryXactLockString, TryAdvisoryXactLock and TryAdvisoryXactLockString exist and render the pg_advisory_xact_lock family, string keys through hashtext.
-- [ ] The same names on DB fail with ErrValidation; non-PostgreSQL transactions fail with ErrUnsupported.
-- [ ] SelectQuery.LockOf renders FOR UPDATE or FOR SHARE OF with quoted names before NOWAIT or SKIP LOCKED, in any call order; empty names and LockOf without a lock mode fail with ErrValidation; SQLite fails with ErrUnsupported.
-- [ ] Unit goldens cover the rendering and the refusals.
-- [ ] Integration test on PostgreSQL: two connections, SKIP LOCKED job claim through a join with OF, NOWAIT busy, and advisory lock contention.
-- [ ] Docs list the new API and its dialect behaviour.
+- [x] Tx.AdvisoryXactLock, AdvisoryXactLockString, TryAdvisoryXactLock and TryAdvisoryXactLockString exist and render the pg_advisory_xact_lock family, string keys through hashtext.
+- [x] The same names on DB fail with ErrValidation; non-PostgreSQL transactions fail with ErrUnsupported.
+- [x] SelectQuery.LockOf renders FOR UPDATE or FOR SHARE OF with quoted names before NOWAIT or SKIP LOCKED, in any call order; empty names and LockOf without a lock mode fail with ErrValidation; SQLite fails with ErrUnsupported.
+- [x] Unit goldens cover the rendering and the refusals.
+- [x] Integration test on PostgreSQL: two connections, SKIP LOCKED job claim through a join with OF, NOWAIT busy, and advisory lock contention.
+- [x] Docs list the new API and its dialect behaviour.
 
 ## Evidence
+
+CI run 42409402654 on d9487a1 (ci-agent): unit, lint, fuzz-smoke and integration (postgres) all success. lockof_unit_test.go covers SQL strings and refusals; lockof_integration_test.go covers the two-transaction SKIP LOCKED claim, NOWAIT busy and advisory contention. Docs updated in capabilities.md and ai-guide.md.
 
