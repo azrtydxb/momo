@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/azrtydxb/momo/migrate"
 )
 
 // TestRedactURL tests redactURL directly with fake errors that carry raw
@@ -90,7 +92,7 @@ func TestRedactURL(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			wrapped := fmt.Errorf("outer: %w", errors.New(c.msg))
-			got := redactURL(wrapped.Error(), c.secrets...)
+			got := migrate.RedactURLs(wrapped.Error(), c.secrets...)
 			for _, leak := range c.leaks {
 				if strings.Contains(got, leak) {
 					t.Errorf("redactURL leaked %q: %s", leak, got)
@@ -106,7 +108,7 @@ func TestRedactURL(t *testing.T) {
 // TestRedactURLEmptySecretIsIgnored guards the secrets loop: an empty secret
 // would otherwise replace the gaps between every rune.
 func TestRedactURLEmptySecretIsIgnored(t *testing.T) {
-	if got := redactURL("plain message", ""); got != "plain message" {
+	if got := migrate.RedactURLs("plain message", ""); got != "plain message" {
 		t.Fatalf("got %q", got)
 	}
 }
