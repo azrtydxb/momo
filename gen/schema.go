@@ -202,9 +202,6 @@ func (b *schemaBuilder) applySerial(f *Field, col *schema.Column) {
 	case f.Tags.Default != "":
 		b.diag(f.Pos, fmt.Sprintf("field %s: serial conflicts with default", f.GoName))
 		return
-	case !serialTypes[schema.NormalizeType(b.primary, col.Type)]:
-		b.diag(f.Pos, fmt.Sprintf("field %s: serial needs an integer column, not %s", f.GoName, col.Type))
-		return
 	}
 	for _, d := range b.dialects {
 		if d != dialect.Postgres {
@@ -214,6 +211,10 @@ func (b *schemaBuilder) applySerial(f *Field, col *schema.Column) {
 	}
 	if b.primary != dialect.Postgres {
 		b.diag(f.Pos, fmt.Sprintf("field %s: serial is not supported on %s; use identity", f.GoName, b.primary))
+		return
+	}
+	if !serialTypes[schema.NormalizeType(b.primary, col.Type)] {
+		b.diag(f.Pos, fmt.Sprintf("field %s: serial needs an integer column, not %s", f.GoName, col.Type))
 		return
 	}
 	col.Identity = "serial"
