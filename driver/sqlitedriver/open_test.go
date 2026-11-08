@@ -47,7 +47,7 @@ func TestBuildDSNKeepsSafetiesOn(t *testing.T) {
 			t.Errorf("DSN %q lacks %q", got, want)
 		}
 	}
-	if strings.Contains(got, "_timeout=") {
+	if strings.Contains(got, "&_timeout=") || strings.Contains(got, "?_timeout=") {
 		t.Errorf("DSN %q still carries the alias next to _busy_timeout", got)
 	}
 }
