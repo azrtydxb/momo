@@ -1557,6 +1557,31 @@ What to mock and what not:
 Examples: every `examples/*/example_test.go`, harness
 [examples/internal/exampletest](../examples/internal/exampletest/exampletest.go).
 
+### Observability and scoping helpers
+
+- `momolog.New(logger, opts...)` returns a `momo.Hook` that logs one record per
+  statement (op, table, relation, sql, duration, rows, err). Options: `Level`,
+  `SlowOver` (statements slower than the duration log at WARN) and `Values`.
+  Argument values are logged only with `Values(true)` and `momo.WithArgLogging`
+  together.
+- `momo.WithQueryScope(ctx)` groups statements for `momo.NewNPlusOneHook(threshold,
+report)`, a development hook that reports once per statement shape per scope
+  when the shape runs more than the threshold. Contexts without a scope are not
+  tracked; a scope tracks at most 1024 shapes; a panic in the report function is
+  recovered. A single batched relation load runs one statement per relation and does not trigger it.
+- `momo.WithTenant(ctx, tenant)` and `momo.TenantFilter(ctx, column)` add a
+  `column = tenant` predicate. This is an application-side convenience and NOT a
+  security boundary. It applies only where you add it to a `Where`: not to
+  Update or Delete, not to the tenant column of an Insert, not to Preload, Load
+  or LoadCounts, joins, subqueries or raw SQL. A missing tenant, or one whose Go
+  type is not exactly the column type, fails the build with `ErrValidation`
+  (also under Not and Or). The zero value is a real tenant. Enforce isolation
+  with PostgreSQL row-level security: it is configured by your own
+  `WithTxSetup` function, which reads whatever your code put in the context. To
+  drive both from `WithTenant`, read the tenant there and call
+  `SetConfigLocal`. Without `WithImplicitTx`, non-transactional queries get no
+  setting.
+
 ## 12. Rules for AI agents
 
 1. v0.3.0 is PostgreSQL + pgvector via pgx only. Never target SQLite or MySQL. <!-- x-release-please-version -->
