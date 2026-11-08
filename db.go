@@ -24,7 +24,7 @@ type Querier interface {
 
 // QueryEvent describes one statement for observability hooks.
 type QueryEvent struct {
-	Op    string // "select", "insert", "update", "delete", "exec", "query", "raw", "explain", "begin", "commit", "rollback", "savepoint"
+	Op    string // "select", "insert", "update", "delete", "exec", "raw", "explain", "begin", "commit", "rollback", "savepoint"
 	Table string // model table when known
 	// Relation is set while eager-loading a relation ("documents.author").
 	Relation string
@@ -301,7 +301,7 @@ func (e *execer) execInsertID(ctx context.Context, op, table string, c Compiled)
 
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
-	if op != "select" && op != "explain" { // a write with RETURNING
+	if op != "select" && op != "explain" && op != "raw" { // a write with RETURNING; raw SQL is routed by its own text
 		markWrite(ctx)
 	}
 	if e.unscopable() {

@@ -164,7 +164,7 @@ func (e *execer) implicitQuery(ctx context.Context, op, table, rel string, c Com
 		}
 		return nil, err
 	}
-	return &txRows{Rows: rows, tx: tx, ctx: ctx, write: op != "select"}, nil
+	return &txRows{Rows: rows, tx: tx, ctx: ctx, write: op != "select" && op != "explain"}, nil
 }
 
 // txRows ends the implicit transaction behind a read: it commits when the

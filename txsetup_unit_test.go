@@ -10,6 +10,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/internal/relfixture/models"
 	"github.com/azrtydxb/momo/internal/relfixture/tag"
 	"github.com/azrtydxb/momo/internal/suite"
@@ -184,5 +185,48 @@ func TestImplicitTxUpdateRowsMustBeReadToTheEnd(t *testing.T) {
 	drv, err = read(true)
 	if err != nil || drv.Commits() != 1 || drv.Rollbacks() != 0 {
 		t.Fatalf("read to the end: err = %v commits = %d rollbacks = %d, want nil, 1 and 0", err, drv.Commits(), drv.Rollbacks())
+	}
+}
+
+// A deferred ModelRows.Close that runs during a panic still closes the cursor
+// when the handle is not an implicit-transaction one, and the hook still gets
+// its AfterQuery.
+func TestModelRowsCloseUnderPanicReleasesCursorOnPlainHandle(t *testing.T) {
+	rec := &obstest.Recorder{}
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1)}})
+	db := momo.New(drv, momo.WithHook(rec))
+	var got any
+	func() {
+		defer func() { got = recover() }()
+		rows, err := momo.Insert[suite.Document](db).Model(&suite.Document{TenantID: 1, Title: "x"}).ReturningAll().Rows(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close() //nolint:errcheck // the deferred close is the code under test
+		panic("mid-iteration")
+	}()
+	if got != "mid-iteration" {
+		t.Fatalf("recovered %v, want the original panic", got)
+	}
+	if drv.Closed() != 1 {
+		t.Fatalf("closed cursors = %d, want 1: the cursor and its connection leaked", drv.Closed())
+	}
+	if n := len(rec.Events()); n == 0 {
+		t.Fatal("AfterQuery never fired for the abandoned statement")
+	}
+}
+
+// Raw SQL read through Scalars reaches hooks as op "raw".
+func TestRawReadsReportOpRaw(t *testing.T) {
+	rec := &obstest.Recorder{}
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1)}})
+	if _, err := momo.Scalars[int64](t.Context(), momo.New(drv, momo.WithHook(rec)), "SELECT 1"); err != nil {
+		t.Fatal(err)
+	}
+	evs := rec.Events()
+	if len(evs) == 0 || evs[len(evs)-1].Op != "raw" {
+		t.Fatalf("events = %+v, want op raw", evs)
 	}
 }

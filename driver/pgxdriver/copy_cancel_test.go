@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -34,6 +35,9 @@ func TestCopyCancelReportsContextError(t *testing.T) {
 			_, err := copyFromSource(ctx, errSender{raw}, "t", []string{"id"}, pgx.CopyFromRows(nil))
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("err = %v, want context.Canceled", err)
+			}
+			if strings.Contains(err.Error(), "network connection") || strings.Contains(err.Error(), "deadline") {
+				t.Fatalf("the raw network error text leaked through the redaction: %v", err)
 			}
 		})
 	}

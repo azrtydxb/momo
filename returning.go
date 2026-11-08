@@ -147,6 +147,10 @@ func (r *ModelRows[T]) Close() error {
 	if p := recover(); p != nil {
 		if a, ok := r.rows.(interface{ abort() }); ok {
 			a.abort()
+		} else {
+			// Not an implicit transaction: still release the cursor, the
+			// connection and the AfterQuery report while the panic unwinds.
+			_ = r.rows.Close()
 		}
 		panic(p)
 	}
