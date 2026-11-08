@@ -88,6 +88,56 @@ func run(ctx context.Context) error {
 }
 ```
 
+## Handle errors
+
+Momo classifies database errors into sentinels. Compare with `errors.Is`, never
+with error text. This program violates a primary key on purpose and branches on
+`momo.ErrUniqueViolation`; the transaction rolls back when the function returns
+the error, so the table disappears with it.
+
+<!-- docscheck:run -->
+
+```go
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/driver/pgxdriver"
+)
+
+func main() {
+	ctx := context.Background()
+	pool, err := pgxdriver.NewPool(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pool.Close()
+	db := momo.New(pgxdriver.New(pool))
+
+	err = db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE tags (name text PRIMARY KEY)"); err != nil {
+			return err
+		}
+		for range 2 {
+			if _, err := momo.Exec(ctx, tx, "INSERT INTO tags (name) VALUES (?)", "go"); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if !errors.Is(err, momo.ErrUniqueViolation) {
+		log.Fatalf("want a unique violation, got %v", err)
+	}
+	fmt.Println("duplicate rejected")
+}
+```
+
 Every Go block in these docs is checked in CI: a block is either a complete
 `package main` program that must compile, a program marked as runnable (this
 one runs against PostgreSQL on every build), or an explicitly marked fragment

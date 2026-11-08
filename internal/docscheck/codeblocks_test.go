@@ -96,18 +96,46 @@ func docBlocks(t *testing.T, root string) []docBlock {
 	return out
 }
 
-// parsesAsGo reports whether src is a Go file body or a statement list.
+var declStart = regexp.MustCompile(`^(import|type|func|var|const)\b`)
+
+// splitDecls separates the blank-line-delimited paragraphs of src that start
+// with a declaration keyword from the rest, so a snippet that shows
+// declarations followed by statements parses as a file plus a function body.
+func splitDecls(src string) (decls, body string) {
+	var d, b []string
+	for _, para := range strings.Split(src, "\n\n") {
+		if declStart.MatchString(strings.TrimSpace(para)) {
+			d = append(d, para)
+		} else {
+			b = append(b, para)
+		}
+	}
+	return strings.Join(d, "\n\n"), strings.Join(b, "\n\n")
+}
+
+// parsesAsGo reports whether src parses as Go in one of the shapes a
+// documentation snippet takes: a file body, a statement list, declarations
+// followed by statements, or the fields of a struct.
 func parsesAsGo(src string) error {
+	decls, body := splitDecls(src)
+	shapes := []string{
+		"package p\n" + src,
+		"package p\nfunc _() {\n" + src + "\n}\n",
+		"package p\n" + decls + "\nfunc _() {\n" + body + "\n}\n",
+		"package p\ntype _ struct {\n" + src + "\n}\n",
+	}
 	fset := token.NewFileSet()
-	_, err := parser.ParseFile(fset, "block.go", "package p\n"+src, parser.SkipObjectResolution)
-	if err == nil {
-		return nil
+	var first error
+	for _, s := range shapes {
+		_, err := parser.ParseFile(fset, "block.go", s, parser.SkipObjectResolution)
+		if err == nil {
+			return nil
+		}
+		if first == nil {
+			first = err
+		}
 	}
-	_, err2 := parser.ParseFile(fset, "block.go", "package p\nfunc _() {\n"+src+"\n}\n", parser.SkipObjectResolution)
-	if err2 == nil {
-		return nil
-	}
-	return err
+	return first
 }
 
 func isProgram(src string) bool {
