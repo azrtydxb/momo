@@ -21,9 +21,11 @@ import (
 )
 
 // TestMySQLOnlineDDL: the -- momo:ddl directive appends ALGORITHM and LOCK to
-// the ALTER TABLE after it. An instant add column succeeds on a table with
-// 100000 rows; a change the server cannot do instantly is rejected, and the
-// history records no applied statement.
+// the ALTER TABLE after it. An instant add column and an in-place add column
+// with LOCK=NONE succeed on a table with 100000 rows; a change the server cannot
+// do instantly is rejected, and the history records no applied statement.
+// MySQL accepts LOCK=NONE with ALGORITHM=INPLACE but not with INSTANT, which
+// takes no lock to begin with.
 func TestMySQLOnlineDDL(t *testing.T) {
 	ctx := context.Background()
 	db := testopen.MySQL84(t)
@@ -32,16 +34,18 @@ func TestMySQLOnlineDDL(t *testing.T) {
 
 	dir := t.TempDir()
 	writeFile(t, dir, "20260101000000_add_note.up.sql",
-		"-- momo:ddl ALGORITHM=INSTANT, LOCK=NONE\nALTER TABLE big ADD COLUMN note varchar(40) NULL;\n")
-	writeFile(t, dir, "20260101000001_bad_alter.up.sql",
+		"-- momo:ddl ALGORITHM=INSTANT\nALTER TABLE big ADD COLUMN note varchar(40) NULL;\n")
+	writeFile(t, dir, "20260101000001_add_tag.up.sql",
+		"-- momo:ddl ALGORITHM=INPLACE, LOCK=NONE\nALTER TABLE big ADD COLUMN tag varchar(40) NULL;\n")
+	writeFile(t, dir, "20260101000002_bad_alter.up.sql",
 		"-- momo:ddl ALGORITHM=INSTANT\nALTER TABLE big MODIFY COLUMN id bigint unsigned;\n")
 
 	eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(dir))
-	if _, err := eng.Apply(ctx, migrate.ApplyOptions{To: "20260101000000"}); err != nil {
-		t.Fatalf("instant add column: %v", err)
+	if _, err := eng.Apply(ctx, migrate.ApplyOptions{To: "20260101000001"}); err != nil {
+		t.Fatalf("online add column: %v", err)
 	}
-	if _, err := momo.Exec(ctx, db, "SELECT note FROM big LIMIT 1"); err != nil {
-		t.Fatalf("column note missing after the directive migration: %v", err)
+	if _, err := momo.Exec(ctx, db, "SELECT note, tag FROM big LIMIT 1"); err != nil {
+		t.Fatalf("columns note and tag missing after the directive migrations: %v", err)
 	}
 
 	_, err := eng.Apply(ctx, migrate.ApplyOptions{})
@@ -54,7 +58,7 @@ func TestMySQLOnlineDDL(t *testing.T) {
 	if !errors.As(err, &me) || !strings.Contains(me.Message, "ALGORITHM=INSTANT is not supported") {
 		t.Fatalf("unsupported instant change: err = %v, cause = %v", err, me)
 	}
-	if got := appliedStatements(t, db, "20260101000001"); got != 0 {
+	if got := appliedStatements(t, db, "20260101000002"); got != 0 {
 		t.Fatalf("statements_applied for the rejected migration = %d, want 0", got)
 	}
 }

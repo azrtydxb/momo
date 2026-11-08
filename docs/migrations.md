@@ -1057,8 +1057,9 @@ statement waits for a metadata lock, in whole seconds. A statement timeout
 becomes `max_statement_time` on MariaDB; on MySQL it is refused with
 `momo.ErrUnsupported`, because `max_execution_time` bounds SELECT only.
 
-**Online DDL.** A line `-- momo:ddl ALGORITHM=INSTANT, LOCK=NONE` directly
-before an `ALTER TABLE` statement appends those options to it. The server
+**Online DDL.** A line `-- momo:ddl ALGORITHM=INPLACE, LOCK=NONE` directly
+before an `ALTER TABLE` statement appends those options to it. MySQL rejects
+`LOCK=NONE` together with `ALGORITHM=INSTANT`; use `ALGORITHM=INSTANT` alone. The server
 rejects the statement when it cannot honour them, so a change that would copy
 the table fails instead of running slowly. Without the directive momo adds no
 `ALGORITHM` or `LOCK` clause. Only `ALGORITHM=` and `LOCK=` options are
