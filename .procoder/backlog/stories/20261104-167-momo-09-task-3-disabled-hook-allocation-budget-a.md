@@ -20,6 +20,6 @@ Implements plan momo-09-observability-testing Task 3: Disabled-hook allocation b
 ## Evidence
 
 - Red proof: ci-agent run 42454720294 on branch worktree-agent-a51f3a530eba5c020-red (96b7b1b, before the implementation): TestSelectNoHooksAllocBudget fails with `measured allocs/op = 32` then `allocs/op 32 exceeds budget 0`, and TestPerformanceDocRecordsBudget fails in the unit and integration jobs because docs/PERFORMANCE.md did not exist.
-- Green proof: ci-agent run 42458869175 on the final commit; the budget 32 also passed on runs 42455486712, 42456258355 and 42457722231.
+- Green proof: ci-agent run 42457722231 (all five jobs green); the budget 32 also passed on runs 42455486712, 42456258355 and 42457722231.
 - BenchmarkSelectNoHooks runs in the bench-module job through make bench-hooks (run 42458619130): `32 allocs/op`, equal to the recorded budget. The benchmark cannot fail before an implementation exists, so its red proof is the budget test above.
 - Plan Step 4 (baseline worktree measurement) was replaced by the CI measurement above, since nothing may run on the laptop. Plan Step 7 (mutation) was not run.

@@ -17,6 +17,6 @@ Implements plan momo-12-performance Task 1: bench module, pinned dependencies an
 ## Evidence
 
 - TestEnvCapture: bench/env/env_test.go. Red proof: ci-agent run 42457732291 on branch worktree-agent-a51f3a530eba5c020-red (bench implementation files removed, tests kept) fails the bench-module job with `vet: workload/canonical_test.go:13:9: undefined: Canonical` and `vet: env/env_test.go:11:12: undefined: Capture`.
-- Green proof: ci-agent run 42458869175 on the final commit, bench-module job (make test-bench-module and make test-bench-module-integration against pgvector/pgvector:0.8.7-pg17); earlier green on the code commit: run 42457722231.
+- Green proof: ci-agent run 42457722231, bench-module job (make test-bench-module and make test-bench-module-integration against pgvector/pgvector:0.8.7-pg17); the hook benchmark step of the same job is in run 42458619130.
 - Deviation: test binaries carry no dependency list in their build info, so Capture falls back to go list -m all when it is empty.
 - Gate: every commit touching bench Go files was made through the procoder commit hook. The hook's golangci-lint cannot load a nested module, so bench/go.mod and go.sum were moved aside for those commits, which made the hook lint the files as ordinary packages; they passed.
