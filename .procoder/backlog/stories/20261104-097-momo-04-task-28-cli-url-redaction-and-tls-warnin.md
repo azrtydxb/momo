@@ -1,6 +1,6 @@
 # momo-04 Task 28: CLI URL redaction and TLS warning
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: -
@@ -12,10 +12,10 @@ Implements plan momo-04-migrations Task 28: CLI URL redaction and TLS warning (`
 
 ## Acceptance criteria
 
-- [ ] `TestCLIRedactsURL` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestCLIRedactsURL` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestCLITLSWarning` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-46] `TestCLIRedactsURL` runs failing CLI commands with a password-bearing URL and asserts the password never appears in output; `TestCLITLSWarning` asserts the warning for sslmode=disable on a remote host; fails if a URL is echoed.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
@@ -26,5 +26,6 @@ Implements plan momo-04-migrations Task 28: CLI URL redaction and TLS warning (`
 
 Red evidence: ci-agent run 42453837637 (throwaway branch, commit a900207, branch since deleted) with TLSWarning disabled failed TestCLITLSWarning and TestCLITLSWarningUsesLibpqEnvironment, so that criterion is shown red.
 
-Left open: with migrate.RedactURLs made a no-op in the same run, TestCLIRedactsURL did not fail (the password-bearing URL never reaches the output on that path), so no run shows it red and its "failed before the implementation" line is not ticked. The test may not catch a missing redaction; it needs a stronger assertion before this story can close.
+TestCLIRedactsURL was rewritten to pass a password-bearing URL as a stray argument, a bad rename-table value and a command name, because the earlier unreachable-host case never put the URL into an error and could not observe a missing redaction.
 
+CI run 42455880624 on be1cc36 (ci-agent) concluded success. Red evidence: ci-agent run 42455889339 on throwaway branch (commit ce6d727, RedactURLs made a no-op, tests kept, branch since deleted) failed --- FAIL: TestCLIRedactsURL in unit and integration.
