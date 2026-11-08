@@ -81,7 +81,9 @@ The `dialect/dialect.go` flags for the unusable dialects, for planning only:
   `IsolationLevels`, `WindowFunctions`. No `Returning` and no `OnConflict` on
   either; MariaDB alone has `InsertReturning` (`INSERT ... RETURNING`, not
   UPDATE or DELETE). Vector metadata: MariaDB lists L2 and cosine and a vector
-  index, MySQL lists none; the driver reports no vector support yet.
+  index, MySQL lists none. The driver reports vector support on MariaDB only; every
+  distance builder on MySQL returns `ErrUnsupported`, and on MariaDB only L2
+  and cosine on `vector.Vector` render (see vectors.md).
 
 ## Core queries
 
@@ -172,7 +174,11 @@ PostgreSQL only. Behavior and error table: [relations.md](relations.md).
 
 ## Vectors
 
-PostgreSQL with the pgvector extension only. Detail: [vectors.md](vectors.md).
+PostgreSQL with the pgvector extension, plus MariaDB 11.8 (float32 vectors,
+Euclidean and cosine distance, `VECTOR INDEX`) and MySQL 9.x (storage only,
+distance is `ErrUnsupported`). The MySQL column in the table below is for
+PostgreSQL features only; the MariaDB and MySQL vector support is in
+[vectors.md](vectors.md#mariadb-and-mysql).
 
 | Feature                                                                | PostgreSQL                                                                                                                | SQLite                   | MySQL            |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ---------------- |
@@ -285,12 +291,27 @@ CREATE POLICY tenant_isolation ON documents
 Connect as a role without `BYPASSRLS` that does not own the tables (or use
 `FORCE`, as above): superusers and `BYPASSRLS` roles skip every policy.
 
-| Feature                       | Behavior                                                                                                                                                                                                                                                                                                                                                                 |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `WithTxSetup`                 | The function runs right after every transaction momo begins: `DB.Begin`, `DB.Tx`, and the transactions momo opens itself (chunked inserts, graph creation, relation writes, `WithSearch`, implicit transactions). It runs once per real transaction, not per savepoint, and not for `AdoptTx` (the caller began that transaction). An error rolls back and is returned.  |
-| `WithImplicitTx`              | Auto-commit statements on a `*DB` (`Select`, `Insert`, `Update`, `Delete`, `Exec`, `Scalars`, relation loads) each run in a short transaction, so the setup applies. `Iter`, `Each` and `Rows` hold the transaction until exhausted or closed, then commit; a scan or driver error or a cancelled context rolls back. Close early-abandoned rows to free the connection. |
-| `SetConfigLocal`              | `set_config(key, value, true)`: the setting ends with the transaction. The same as `Tx.SetLocal`.                                                                                                                                                                                                                                                                        |
-| Not used on an implicit `*DB` | Pipelined relation loading (`Batch`) and the `COPY` fast path, because they bypass the setup. `BatcherOf` and `CopierOf` report none for such a `*DB`; use a `Tx` for them.                                                                                                                                                                                              |
+| Feature                       | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WithTxSetup`                 | The function runs right after every transaction momo begins: `DB.Begin`, `DB.Tx`, and the transactions momo opens itself (chunked inserts, graph creation, relation writes, `WithSearch`, implicit transactions). It runs once per real transaction, not per savepoint, and not for `AdoptTx` (the caller began that transaction). An error rolls back and is returned.                                                                                       |
+| `WithImplicitTx`              | Auto-commit statements on a `*DB` (`Select`, `Insert`, `Update`, `Delete`, `Exec`, `Scalars`, relation loads) each run in a short transaction, so the setup applies. `Iter`, `Each` and `Rows` hold the transaction until exhausted or closed, then commit; a scan or driver error rolls back, and so does a cancelled context for a write or a read abandoned early (a fully drained read still commits). Close early-abandoned rows to free the connection. |
+| `SetConfigLocal`              | `set_config(key, value, true)`: the setting ends with the transaction. The same as `Tx.SetLocal`.                                                                                                                                                                                                                                                                                                                                                             |
+| Not used on an implicit `*DB` | Pipelined relation loading (`Batch`) and the `COPY` fast path, because they bypass the setup. `BatcherOf` and `CopierOf` report none for such a `*DB`; use a `Tx` for them.                                                                                                                                                                                                                                                                                   |
+
+A behaviour change for `WithImplicitTx` on an unpinned `*DB` only: the rows of
+an `Insert`, `Update` or `Delete` with RETURNING (`Rows`) must be read to the
+end before `Close`. A write closed unread, or after reading only the first row
+(for example `UpdateQuery.Rows` or `DeleteQuery.Rows` users who read one row and
+close), is rolled back and `Close` returns `ErrValidation`; this includes a
+panic that unwinds through the loop. Handles without `WithImplicitTx`, a `Tx`
+and a pinned `OnConn` handle are unaffected, and `FindOrCreate`, `UpsertByPK`
+and `CreateGraph` read to the end themselves.
+
+Without `WithImplicitTx`, auto-commit statements on a `*DB` run outside any
+transaction, so the setup never applies to them and they are unscoped. Use
+`WithImplicitTx` (or `DB.Tx`) whenever the setup enforces a security boundary.
+Statements run through `db.Driver()` bypass momo and its hooks entirely, so
+they are never scoped either.
 
 The setup does not cover everything. `AdoptTx` transactions are the caller's,
 so apply the setting yourself. `momo migrate` and Go migrations run outside the

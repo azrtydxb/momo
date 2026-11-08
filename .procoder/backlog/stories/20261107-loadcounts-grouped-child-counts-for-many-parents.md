@@ -19,10 +19,10 @@ Relation.Count is one statement per parent and CountOrder only orders, so a list
 
 ## Evidence
 
-CI run 42411116016 green on f2196e6 (lint, fuzz-smoke, unit, integration postgres).
+CI run 42411116016 green on commit f2196e6 (lint, fuzz-smoke, unit, integration postgres).
 
 - One statement, order, zero for no children, repeated parent: TestLoadCounts (integration).
-- Composite, has-many, many-to-many, belongs-to unsupported: TestCountQueriesGolden, TestLoadCounts., TestCountQueriesHasOneGolden, TestCountQueriesPolymorphicDiscriminator, polymorphic case in TestLoadCounts (other owner_type not counted).
+- Composite, has-many, many-to-many, belongs-to unsupported: TestCountQueriesGolden, TestLoadCounts, TestCountQueriesHasOneGolden, TestCountQueriesPolymorphicDiscriminator, polymorphic case in TestLoadCounts (other owner_type not counted).
 - Soft delete and filter: TestLoadCounts, TestCountQueriesManyToManyFilterJoins.
-- Chunking: TestCountQueriesChunkOnBindLimit, TestLoadCountsChunks., TestCountQueriesFilterArgsStayUnderBindLimit; TestCountQueriesMarkSensitiveKeys pins key masking.
+- Chunking: TestCountQueriesChunkOnBindLimit, TestLoadCountsChunks, TestCountQueriesFilterArgsStayUnderBindLimit, TestCountQueriesManyFilterArgsShrinkTheKeyBudget (more than 16 filter binds) and TestCountQueriesScopeLeavesNoRoomForKey (ErrValidation); TestCountQueriesMarkSensitiveKeys and TestCountQueriesMaskOnlyTheKeyHoldingSide pin key masking, including one-sided flags.
 - Docs: docs/relations.md, Counting children for many parents.

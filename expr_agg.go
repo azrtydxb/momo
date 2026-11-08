@@ -76,16 +76,18 @@ func (a AggExpr[T]) OrderBy(o ...Order) AggExpr[T] {
 
 // WithinGroup sets the WITHIN GROUP (ORDER BY ...) of an ordered-set
 // aggregate. Only PostgreSQL has them; other dialects fail the build with
-// ErrUnsupported.
+// ErrUnsupported. It is allowed only on PercentileCont and PercentileDisc;
+// any other aggregate fails the build with ErrValidation (use OrderBy for the
+// order inside the call).
 func (a AggExpr[T]) WithinGroup(o ...Order) AggExpr[T] {
 	a.spec.within = append(slices.Clip(a.spec.within), o...)
 	return newAgg[T](a.spec)
 }
 
 // Filter restricts the rows the aggregate sees: agg(...) FILTER (WHERE p),
-// rendered after any WITHIN GROUP. It has the same shape as Agg.Filter, so
-// StringAgg(...).OrderBy(...).Filter(p) works, in either order. PostgreSQL
-// and SQLite support it; MySQL fails the build with ErrUnsupported.
+// rendered after any WITHIN GROUP. It can be combined with OrderBy in either
+// order: StringAgg(...).OrderBy(...).Filter(p). PostgreSQL and SQLite support
+// it; MySQL fails the build with ErrUnsupported.
 func (a AggExpr[T]) Filter(p Predicate) AggExpr[T] {
 	a.spec.filter, a.spec.filtered = p, true
 	return newAgg[T](a.spec)
@@ -133,8 +135,7 @@ func (s aggSpec) appendSQL(b *Builder) {
 
 // appendFilter renders " FILTER (WHERE p)". A nil predicate fails the build
 // with ErrValidation instead of silently leaving the aggregate unfiltered;
-// MySQL has no FILTER clause. It is the one place that renders the clause so
-// other aggregate types can share it.
+// MySQL has no FILTER clause. AggExpr.Filter is its only caller.
 func appendFilter(b *Builder, p Predicate) {
 	if p == nil {
 		aggErr(b, errors.New("Filter needs a predicate"))
@@ -256,7 +257,9 @@ func sqlStringLiteral(b *Builder, what, s string) (string, bool) {
 // order given by OrderBy: string_agg on PostgreSQL, group_concat on SQLite
 // and GROUP_CONCAT ... SEPARATOR on MySQL (which truncates at
 // group_concat_max_len). The separator is rendered as a literal and must not
-// contain a backslash. Without a matching row the result is NULL.
+// contain a backslash. Without a matching row, and for a group whose values
+// are all NULL, the result is NULL: wrap it in CoalesceExpr with a literal
+// (for example an empty string) when the group may be empty.
 func StringAgg(e Expression[string], sep string) AggExpr[string] {
 	return newAgg[string](aggSpec{kind: aggString, args: []any{e}, sep: sep})
 }
@@ -264,6 +267,8 @@ func StringAgg(e Expression[string], sep string) AggExpr[string] {
 // ArrayAgg collects the values of e into an array, in the order given by
 // OrderBy: array_agg(e ORDER BY ...). PostgreSQL only; other dialects fail
 // the build with ErrUnsupported. Without a matching row the result is NULL.
+// array_agg keeps NULL elements, so for a nullable column use a pointer
+// element type (ArrayAgg[*string]); a non-pointer T fails to scan a NULL.
 func ArrayAgg[T any](e Expression[T]) AggExpr[[]T] {
 	return newAgg[[]T](aggSpec{kind: aggArray, args: []any{e}})
 }
@@ -280,7 +285,9 @@ func JSONBAgg[T any](e Expr) AggExpr[types.JSON[[]T]] {
 
 // PercentileCont is percentile_cont(fraction) WITHIN GROUP (ORDER BY ...):
 // the interpolated value at fraction (0 to 1) of the ordered input. The
-// ordering comes from WithinGroup, which is required. PostgreSQL only.
+// ordering comes from WithinGroup, which is required. PostgreSQL only. The
+// result is NULL for an empty group: wrap it in CoalesceExpr when the group
+// may be empty.
 func PercentileCont(fraction float64) AggExpr[float64] {
 	return percentile[float64]("percentile_cont", fraction)
 }

@@ -30,6 +30,13 @@ func TestDialectValues(t *testing.T) {
 	if pg == nil {
 		t.Fatal("postgres value must be passed through to the driver")
 	}
+	my, err := v.DialectValue(dialect.MySQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if my != "[1,2]" {
+		t.Fatalf("mysql encoding = %#v, want the text form [1,2]", my)
+	}
 	bits, err := (Bits{Len: 8, Data: []byte{0x80}}).DialectValue(dialect.SQLite)
 	if err != nil {
 		t.Fatal(err)
@@ -49,12 +56,13 @@ func TestDialectValues(t *testing.T) {
 func TestDialectValuesMatrix(t *testing.T) {
 	pgOnly := map[dialect.Name]bool{dialect.Postgres: true}
 	pgSQLite := map[dialect.Name]bool{dialect.Postgres: true, dialect.SQLite: true}
+	pgSQLiteMySQL := map[dialect.Name]bool{dialect.Postgres: true, dialect.SQLite: true, dialect.MySQL: true}
 	types := []struct {
 		name string
 		fn   func(dialect.Name) (any, error)
 		ok   map[dialect.Name]bool
 	}{
-		{"vector", Vector{1}.DialectValue, pgSQLite},
+		{"vector", Vector{1}.DialectValue, pgSQLiteMySQL},
 		{"halfvec", HalfVector{1}.DialectValue, pgOnly},
 		{"sparsevec", SparseVector{Dim: 2, Indices: []int32{0}, Values: []float32{1}}.DialectValue, pgOnly},
 		{"bit", Bits{Len: 8, Data: []byte{1}}.DialectValue, pgSQLite},

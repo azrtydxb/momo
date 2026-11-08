@@ -4,6 +4,8 @@ An interceptor is a function attached to one `*momo.DB` handle with `momo.WithIn
 
 ## What an interceptor sees
 
+<!-- docscheck:fragment -->
+
 ```go
 type Operation struct {
     Kind  string      // "select", "insert", "upsert", "update", "delete"
@@ -29,6 +31,8 @@ Interceptors receive the statement's context, so a tenant usually comes from `ct
 
 Build one handle per tenant (or per request) and give it the tenant predicate. The tenant comes from the handle's own configuration, so a statement cannot choose another one.
 
+<!-- docscheck:fragment -->
+
 ```go
 func tenantDB(drv momo.Driver, tenantID int64) *momo.DB {
     return momo.New(drv, momo.WithInterceptor(func(ctx context.Context, op *momo.Operation) error {
@@ -51,12 +55,25 @@ Inserts are not filtered by a predicate: the tenant column of a new row is the m
 A read-only handle denies every write:
 
 ```go
-readOnly := momo.New(drv, momo.WithInterceptor(func(ctx context.Context, op *momo.Operation) error {
-    if op.Kind != "select" {
-        return fmt.Errorf("handle is read-only: %s on %s", op.Kind, op.Table)
-    }
-    return nil
-}))
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/azrtydxb/momo"
+)
+
+func readOnly(drv momo.Driver) *momo.DB {
+	return momo.New(drv, momo.WithInterceptor(func(ctx context.Context, op *momo.Operation) error {
+		if op.Kind != "select" {
+			return fmt.Errorf("handle is read-only: %s on %s", op.Kind, op.Table)
+		}
+		return nil
+	}))
+}
+
+func main() { _ = readOnly }
 ```
 
 ## Scope

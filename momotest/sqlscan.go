@@ -17,7 +17,8 @@ import "bytes"
 // where missing a real statement would be silent. A body that is not valid SQL
 // on its own, such as the text don't, ends inside a string when scanned; its
 // raw text is kept then, so an apostrophe in a body can never hide what follows
-// the closing delimiter.
+// the closing delimiter. String literals inside a body are stripped like any
+// other, so an EXECUTE string is not inspected.
 func stripSQL(sql []byte) []byte {
 	out, _ := scanSQL(sql)
 	return out

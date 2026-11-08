@@ -242,6 +242,13 @@ func TestGenerateFromDBNames(t *testing.T) {
 	if got := pascal(splitWords("HTTPServer_url"), "X"); got != "HTTPServerURL" {
 		t.Errorf("HTTPServer_url = %q", got)
 	}
+	// A name that starts with a letter that has no upper case is not exported
+	// by Go, so it gets an X in front.
+	for in, want := range map[string]string{"\u65e5\u672c": "X\u65e5\u672c", "\u00df": "X\u00df"} {
+		if got := pascal(splitWords(in), "F"); got != want {
+			t.Errorf("pascal(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 func TestConfigValidate(t *testing.T) {
@@ -297,6 +304,11 @@ func TestPlanApplyKeepsHandEdits(t *testing.T) {
 	// Hand-edited, but the database did not change: a re-run stays quiet.
 	if quiet, err := Plan(dir, res.Files, false); err != nil || kindOf(quiet, "users_model.go") != ActionUnchanged {
 		t.Fatalf("an edited file with an unchanged database must not conflict: %+v %v", quiet, err)
+	}
+	// --overwrite does not change that: it replaces a file the database
+	// changed, never a hand edit the database did not call for.
+	if quiet, err := Plan(dir, res.Files, true); err != nil || kindOf(quiet, "users_model.go") != ActionUnchanged {
+		t.Fatalf("--overwrite must keep an edited file whose table did not change: %+v %v", quiet, err)
 	}
 	s := sampleSchema()
 	s.Tables[0].Columns = append(s.Tables[0].Columns, schema.Column{Name: "shipped_at", Type: "timestamp with time zone", Nullable: true})
@@ -413,12 +425,18 @@ func TestGenerateFromDBHostileNames(t *testing.T) {
 		t.Errorf("a default with quotes must go through the companion:\n%s", sel)
 	}
 
-	bad := &schema.Schema{Dialect: dialect.Postgres, Tables: []schema.Table{
-		{Name: "t", Columns: []schema.Column{{Name: "a,b", Type: "text"}}},
-		{Name: "u", Columns: []schema.Column{{Name: "bad\xffname", Type: "text"}}},
-	}}
-	res, err = Generate(bad, Options{Package: "models"})
-	if err != nil || !res.Failed() {
-		t.Fatalf("a comma in a column name cannot be a tag: %v %v", err, res.Findings)
+	// Each unrepresentable name gets a schema of its own, so one failing name
+	// cannot hide that the other is accepted.
+	for name, c := range map[string]struct {
+		col  string
+		fail bool
+	}{"comma": {"a,b", true}, "invalid utf-8": {"bad\xffname", false}} {
+		bad := &schema.Schema{Dialect: dialect.Postgres, Tables: []schema.Table{
+			{Name: "t", Columns: []schema.Column{{Name: c.col, Type: "text"}}},
+		}}
+		res, err = Generate(bad, Options{Package: "models"})
+		if err != nil || res.Failed() != c.fail {
+			t.Errorf("%s in a column name: failed = %v, want %v (%v %v)", name, res.Failed(), c.fail, err, res.Findings)
+		}
 	}
 }
