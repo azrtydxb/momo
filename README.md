@@ -11,7 +11,8 @@ the last snapshot and writes the SQL.
 
 Status: v0.3.0, pre-v1, with no compatibility promise between releases. This <!-- x-release-please-version -->
 release supports PostgreSQL with pgvector. SQLite is usable through the cgo
-driver `driver/sqlitedriver` (not on Windows) without migrations or vector
+driver `driver/sqlitedriver` (not on Windows) or through the pure-Go driver
+`driver/sqlitepure` (no cgo, no vectors), without migrations or vector
 builders yet; MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver for queries
 and writes (no migrations or vectors yet). Momo
 needs Go 1.26 or newer (see `go.mod` for the exact patch floor, 1.26.10).
