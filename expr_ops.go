@@ -48,6 +48,10 @@ func (unboundExpr) AppendSQL(b *Builder) {
 	b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("expression was not built with its constructor")})
 }
 
+// resultType makes an embedding struct an Expression[T]. A host that declares
+// its own resultType shadows this one.
+func (Ops[T]) resultType() T { var z T; return z }
+
 func (o Ops[T]) e() Expr {
 	if o.self == nil {
 		return unboundExpr{}

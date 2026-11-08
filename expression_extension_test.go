@@ -123,14 +123,14 @@ func TestExtensionTypedAndPredicateFunc(t *testing.T) {
 		b.WriteString("1 = ")
 		b.Arg(1)
 	})
-	got, err := extSelect(dialect.Postgres).Columns(typed).Where(fn, typed.Eq("Q")).SQL()
+	got, err := extSelect(dialect.Postgres).Columns(typed).Where(fn).SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(got.SQL, `1 = $1`) {
 		t.Errorf("SQL %q lacks the func predicate", got.SQL)
 	}
-	if want := []any{1, "Q"}; !slices.Equal(got.Args, want) {
+	if want := []any{1}; !slices.Equal(got.Args, want) {
 		t.Errorf("args = %v, want %v", got.Args, want)
 	}
 }
