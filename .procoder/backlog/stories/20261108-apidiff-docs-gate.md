@@ -1,6 +1,6 @@
 # CI gate: an exported API change needs a docs change or an explicit no-reader-visible-change line
 
-Status: open
+Status: in-progress
 Created: 2026-11-08
 Epic: momo-14-structure-and-docs
 Sprint: 006-sprint-6-split-the-root-package-into-subpackages-and-keep
@@ -12,10 +12,19 @@ Nothing today ties an API change to its documentation, so docs drift one merge a
 ## Acceptance criteria
 
 - [ ] a throwaway branch that adds an exported function and touches no doc fails the job (red evidence run id); the same branch with `Docs: no reader-visible change: internal helper exposed for tests` in the PR body passes
-- [ ] a branch that changes only a Go comment or an unexported identifier produces an empty apidiff and passes without any line
-- [ ] a branch that renames an exported function and edits `docs/ai-guide.md` passes
+- [x] a branch that changes only a Go comment or an unexported identifier produces an empty apidiff and passes without any line
+- [x] a branch that renames an exported function and edits `docs/ai-guide.md` passes
 - [ ] the job is a required status check on main (the branch-protection change is made by the user and recorded in `.procoder/ask/decisions.md`)
-- [ ] `internal/repocheck` has a test that the job exists in `.github/workflows` and runs apidiff at a pinned version (extends `TestCIWorkflowCoverage`)
-- [ ] the rule and the escape-hatch line are described in `CONTRIBUTING.md`
+- [x] `internal/repocheck` has a test that the job exists in `.github/workflows` and runs apidiff at a pinned version (extends `TestCIWorkflowCoverage`)
+- [x] the rule and the escape-hatch line are described in `CONTRIBUTING.md`
 
 ## Evidence
+
+Run evidence (ci-agent, 2026-11-08, job `apidiff-docs`):
+
+- Criterion 1, red half: run 42494457434 (probe-a, 02cd03f) adds exported `momolog.Probe` and no docs; `apidiff-docs` failed with `./momolog.Probe: added` and "Docs gate failed". Escape half: run 42494459685 (probe-b, 0394aff) adds a commit-message escape line; `apidiff-docs` passed. Left unticked: the PR-body variant cannot run on ci-agent (no pull request); only the commit-message path is proven.
+- Criterion 2: run 42494469285 (probe-c, 66765de) changes a comment and adds an unexported function; `apidiff-docs` passed with no line.
+- Criterion 3: run 42494497016 (probe-d, 7232849) renames `momolog.Values` to `LogValues` and edits `docs/ai-guide.md`; `apidiff-docs` passed.
+- Criterion 4: not done. Needs the user's branch-protection change and a decisions.md entry.
+- Criterion 5: `TestAPIDiffDocsGate` in `internal/repocheck/apidiff_gate_test.go`. Red: run 42494372028 (0fe79a8, test only) failed `unit`. Green: run 42494433597 (f0b30ce) all jobs passed.
+- Criterion 6: CONTRIBUTING.md section "Exported API changes need a docs change" (f0b30ce).
