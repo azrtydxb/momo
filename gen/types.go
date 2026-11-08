@@ -25,6 +25,11 @@ type Config struct {
 	Dir string
 	// Naming derives table and column names; nil means naming.Momo{}.
 	Naming naming.Namer
+	// TypeDefaults overrides the default SQL column type of a Go type. The
+	// only supported key is "time.Time", whose default is timestamptz on
+	// PostgreSQL (for example "timestamp(3)" for a Prisma database). An
+	// explicit type tag on a field still wins. Other dialects ignore it.
+	TypeDefaults map[string]string
 	// Dialects limits generated dialect output; nil means all dialects.
 	Dialects []dialect.Name
 	// Tags are build tags applied while loading packages.
