@@ -18,3 +18,6 @@ Extend `TestImportGraph` in `internal/repocheck/importgraph_test.go` (it current
 - [ ] the test uses `go list` through `os/exec` like the current one and does not need the integration database
 
 ## Evidence
+
+- Red: ci-agent run 42494353060 on throwaway branch worktree-agent-a5cbf86e0b86d9a97-red (headSha abe7617), with a blank import of the root planted in internal/golden: `TestInternalNeverImportsRoot` failed in unit, postgres, mysql97 and mariadb ("internal/golden depends on the root"). Branch deleted.
+- Green: ci-agent run 42494363907, headSha 70f5f97, all jobs success. Covers all five criteria: `TestInternalNeverImportsRoot`, `TestFeaturePackagesImportOnlyAllowed` (reads role `feature` from internal/repocheck/testdata/packages.txt, currently empty; `TestArchitectureRulesCatchViolations` plants a violation per rule), `TestKnownPackages` (names packages.txt in the error), `TestImportGraph` untouched, go list through os/exec, no database.
