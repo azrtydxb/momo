@@ -278,12 +278,80 @@ func TestTagsWithoutSchemaEffectAreAccepted(t *testing.T) {
 	}
 }
 
+// TestDimensionlessVectorColumns: a vector field without dim is supported and
+// maps to the bare pgvector type, with the extension declared. An ANN index on
+// such a column is refused with an error that names the column.
+func TestDimensionlessVectorColumns(t *testing.T) {
+	m := mdl("Chunk", "kb_chunks",
+		fld("ID", "int64", "pk,identity"),
+		fld("Dims", "int", ""),
+		fld("Embedding", "vector.Vector", ""),
+		fld("Maybe", "*vector.Vector", ""),
+		fld("Half", "vector.HalfVector", ""),
+	)
+	s, diags := build(t, pg(), m)
+	if len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	for col, typ := range map[string]string{"embedding": "vector", "maybe": "vector", "half": "halfvec"} {
+		if got := mustCol(t, s, "kb_chunks", col); got.Type != typ {
+			t.Errorf("%s: type %q, want %q", col, got.Type, typ)
+		}
+	}
+	if len(s.Extensions) != 1 || s.Extensions[0].Name != "vector" {
+		t.Errorf("extensions=%+v", s.Extensions)
+	}
+
+	for _, method := range []string{"hnsw", "ivfflat"} {
+		idx := schema.Index{
+			Name: "kb_chunks_emb_" + method, Method: method,
+			Parts: []schema.IndexPart{{Column: "embedding", OpClass: "vector_cosine_ops"}},
+			With:  []schema.KV{{Key: "lists", Value: "10"}, {Key: "m", Value: "16"}},
+		}
+		if method == "hnsw" {
+			idx.With = idx.With[1:]
+		} else {
+			idx.With = idx.With[:1]
+		}
+		bad := mdl("Chunk", "kb_chunks",
+			fld("ID", "int64", "pk,identity"),
+			fld("Embedding", "vector.Vector", ""),
+		)
+		bad.Config.Indexes = []schema.Index{idx}
+		_, ds := build(t, pg(), bad)
+		got := sdiagsString(ds)
+		if !strings.Contains(got, `column "embedding" has no dimensions`) {
+			t.Errorf("%s: diagnostics do not name the dimensionless column:\n%s", method, got)
+		}
+	}
+}
+
+// TestPrecisionOnDecimalString: a string without size that carries a numeric
+// takes precision and scale.
+func TestPrecisionOnDecimalString(t *testing.T) {
+	m := mdl("Price", "prices",
+		fld("ID", "int64", "pk"),
+		fld("Amount", "string", "precision:12,scale:2"),
+		fld("Whole", "string", "precision:5"),
+	)
+	s, diags := build(t, pg(), m)
+	if len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	if got := mustCol(t, s, "prices", "amount"); got.Type != "numeric(12,2)" {
+		t.Errorf("amount: %q", got.Type)
+	}
+	if got := mustCol(t, s, "prices", "whole"); got.Type != "numeric(5)" {
+		t.Errorf("whole: %q", got.Type)
+	}
+}
+
 func TestTagMisuseIsDiagnosed(t *testing.T) {
 	cases := []struct{ name, goType, tag, want string }{
 		{"size on int", "int64", "size:5", "size is only valid on string"},
 		{"dim on string", "string", "dim:3", "dim is only valid on a vector"},
 		{"sparsevec without dim", "vector.SparseVector", "", "sparsevec requires dim"},
-		{"precision on string", "string", "precision:5,scale:1", "precision is only valid on float or decimal"},
+		{"precision on bool", "bool", "precision:5,scale:1", "precision is only valid on float or decimal"},
 		{"scale without precision", "float64", "scale:2", "scale requires precision"},
 		{"notnull vs pointer", "*string", "notnull", "notnull conflicts with a nullable"},
 		{"notnull vs nullable", "string", "notnull,nullable", "notnull conflicts with a nullable"},

@@ -93,7 +93,7 @@ func (x correlated) AppendSQL(b *Builder) {
 		}
 		if r.disc != nil {
 			b.WriteString(" AND ")
-			binOp{qcol{relAlias, r.disc.Column}, " = ", argExpr{r.disc.Value}}.AppendSQL(b)
+			binOp{qcol{relAlias, r.disc.Column}, " = ", argExpr{v: r.disc.Value}}.AppendSQL(b)
 		}
 		if r.soft != nil {
 			b.WriteString(" AND ")
@@ -167,7 +167,7 @@ func (r Relation[P, C]) From(parents SelectQuery[P]) SelectQuery[C] {
 	keys.s.keysOnly = true
 	var where Predicate = tupleInSubquery{table: r.Child.Qualifier(), cols: r.ChildCols, sub: keys}
 	if r.Discriminator != nil {
-		where = And(binOp{qcol{r.Child.Qualifier(), r.Discriminator.Column}, " = ", argExpr{r.Discriminator.Value}}, where)
+		where = And(binOp{qcol{r.Child.Qualifier(), r.Discriminator.Column}, " = ", argExpr{v: r.Discriminator.Value}}, where)
 	}
 	return selectFrom(parents.q, r.ChildMeta, r.Child).Where(where)
 }

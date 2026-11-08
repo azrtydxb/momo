@@ -1,6 +1,6 @@
 # momo-11 Task 6: Type mapping for generate --from-db
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-04
 Epic: momo-11-adoption
 Sprint: -
@@ -11,9 +11,10 @@ Implements plan momo-11-adoption Task 6: Type mapping for generate --from-db (`.
 
 ## Acceptance criteria
 
-- [ ] `TestGenerateFromDBMapping` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestGenerateFromDBUnmapped` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestGenerateFromDBMapping` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestGenerateFromDBUnmapped` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+CI run 42410506839 on 7ef00ed (all jobs green): TestGenerateFromDBMapping and TestGenerateFromDBUnmapped in gen/fromdb pass; issue #27.
