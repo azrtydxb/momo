@@ -2,6 +2,9 @@
 
 scalar Time
 
+# Int64 is a 64-bit integer encoded as a string.
+scalar Int64
+
 type PageInfo {
   hasNextPage: Boolean!
   endCursor: String
@@ -19,14 +22,14 @@ input StringFilter {
   contains: String
 }
 
-input IntFilter {
-  eq: Int
-  ne: Int
-  in: [Int!]
-  lt: Int
-  lte: Int
-  gt: Int
-  gte: Int
+input Int64Filter {
+  eq: Int64
+  ne: Int64
+  in: [Int64!]
+  lt: Int64
+  lte: Int64
+  gt: Int64
+  gte: Int64
 }
 
 input TimeFilter {
@@ -41,7 +44,7 @@ input TimeFilter {
 
 type Comment {
   id: ID!
-  documentId: Int!
+  documentId: Int64!
   body: String!
 }
 
@@ -59,8 +62,8 @@ input CommentFilter {
   and: [CommentFilter!]
   or: [CommentFilter!]
   not: CommentFilter
-  id: IntFilter
-  documentId: IntFilter
+  id: Int64Filter
+  documentId: Int64Filter
   body: StringFilter
 }
 
@@ -77,7 +80,7 @@ input CommentOrder {
 
 type Document {
   id: ID!
-  tenantId: Int!
+  tenantId: Int64!
   title: String!
   body: String!
   status: String!
@@ -101,8 +104,8 @@ input DocumentFilter {
   and: [DocumentFilter!]
   or: [DocumentFilter!]
   not: DocumentFilter
-  id: IntFilter
-  tenantId: IntFilter
+  id: Int64Filter
+  tenantId: Int64Filter
   title: StringFilter
   body: StringFilter
   status: StringFilter
@@ -142,7 +145,7 @@ input TagFilter {
   and: [TagFilter!]
   or: [TagFilter!]
   not: TagFilter
-  id: IntFilter
+  id: Int64Filter
   name: StringFilter
 }
 
@@ -175,7 +178,7 @@ input TenantFilter {
   and: [TenantFilter!]
   or: [TenantFilter!]
   not: TenantFilter
-  id: IntFilter
+  id: Int64Filter
   name: StringFilter
 }
 
