@@ -31,7 +31,8 @@ API to document yet:
 - Hybrid search: PostgreSQL full-text plus vector search fused by reciprocal
   rank (planned options `TextCandidates`, `VectorCandidates` and `RRFK`, with
   k=60 as the default) does not exist yet.
-- MySQL and MariaDB: no vector support.
+- MySQL and MariaDB: see "MariaDB and MySQL" below. The migration engine for
+  MySQL does not exist yet, so no tool creates VECTOR columns or indexes.
 
 ## Value types
 
@@ -63,6 +64,8 @@ Value rules, enforced before a value reaches the server:
 The `Example` functions `ExampleVector`, `ExampleHalfVector`,
 `ExampleSparseVector` and `ExampleBits` in `vector/example_test.go` show the
 validation and the text forms:
+
+<!-- docscheck:fragment -->
 
 ```go
 v := vector.Vector{1, 2.5, -3}
@@ -119,6 +122,8 @@ NaN or an out-of-range value is a build error wrapping `ErrValidation`, reported
 lacks is a build error wrapping `ErrUnsupported`. The metrics per dialect come
 from `dialect.Dialect.Vector`:
 
+<!-- docscheck:fragment -->
+
 ```go
 for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 	caps := dialect.For(name).Vector
@@ -129,6 +134,8 @@ for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 ```
 
 A nearest-neighbour query (`ExampleCosineDistance`):
+
+<!-- docscheck:fragment -->
 
 ```go
 c, err := momo.Select[example.Document](db).
@@ -152,6 +159,8 @@ The generator maps `vector.Vector`, `vector.HalfVector`,
 `sparsevec` and `bit` columns. The `dim` tag sets the dimension, and
 sparsevec and bit require it:
 
+<!-- docscheck:fragment -->
+
 ```go
 Embedding vector.Vector `momo:"dim:1536"`
 ```
@@ -160,6 +169,8 @@ Generation adds `CREATE EXTENSION vector` to the schema when a vector column
 or index is present. An ANN index needs an operator class, and pgvector's
 hnsw has no default one, so declare vector indexes in `MomoConfig` (the
 reference model is `internal/testmodels/example/models.go`):
+
+<!-- docscheck:fragment -->
 
 ```go
 func (d *Document) MomoConfig(c *momo.Config) {
@@ -197,6 +208,8 @@ A `vector.Vector` or `vector.HalfVector` field without a `dim` tag maps to the
 bare `vector` or `halfvec` type. Use it for a store whose embedding size
 depends on the configured model: each row carries its size in a `dims`
 column, and every search filters on it.
+
+<!-- docscheck:fragment -->
 
 ```go
 type KbChunk struct {
@@ -266,6 +279,8 @@ a placeholder.
 Use `DB.WithSearch` for a block, or `Tx.SetSearch` inside a transaction you
 already have (`ExampleDB_WithSearch`, `ExampleTx_SetSearch`):
 
+<!-- docscheck:fragment -->
+
 ```go
 settings := momo.SearchSettings{
 	HNSWEfSearch:      100,
@@ -316,6 +331,8 @@ the parameters and returns the plan text. It does not execute the query. Run
 it inside the transaction whose settings you want to see
 (`ExampleSelectQuery_Explain`):
 
+<!-- docscheck:fragment -->
+
 ```go
 plan, err := momo.Select[example.Document](db).
 	OrderBy(momo.L2Distance(document.Embedding, query).Asc()).
@@ -349,6 +366,8 @@ in `driver/pgxdriver`:
 
 `ExampleConfigureVectors` shows the setup:
 
+<!-- docscheck:fragment -->
+
 ```go
 cfg, err := pgxpool.ParseConfig("postgres://localhost/app")
 pgxdriver.ConfigureVectors(cfg)
@@ -369,4 +388,39 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
   authoritative for `Len`. See "Not yet available" for the driver status.
 - `SetSearch` on SQLite: `ExactSearch` alone is a no-op, every search is
   already exact, and any other field is `ErrUnsupported`.
-- MariaDB VECTOR INDEX is approximate; MySQL and MariaDB are not supported yet.
+- MariaDB VECTOR INDEX is approximate; see "MariaDB and MySQL" below.
+
+## MariaDB and MySQL
+
+MariaDB 11.8 supports float32 vectors through `mysqldriver`. MySQL 9.x
+stores them but cannot compare them.
+
+| Capability                     | MariaDB 11.8                                                  | MySQL 9.7        | MySQL 8.4              |
+| ------------------------------ | ------------------------------------------------------------- | ---------------- | ---------------------- |
+| Column type                    | `VECTOR(N)`                                                   | `VECTOR(N)`      | none: `ErrUnsupported` |
+| `vector.Vector` write and read | yes                                                           | yes              | no                     |
+| `L2Distance`                   | `VEC_DISTANCE_EUCLIDEAN(col, VEC_FromText(?))`                | `ErrUnsupported` | `ErrUnsupported`       |
+| `CosineDistance`               | `VEC_DISTANCE_COSINE(col, VEC_FromText(?))`                   | `ErrUnsupported` | `ErrUnsupported`       |
+| Other metrics, other types     | `ErrUnsupported` (inner product, L1, halfvec, sparsevec, bit) | `ErrUnsupported` | `ErrUnsupported`       |
+| ANN index                      | `VECTOR INDEX`, approximate                                   | none             | none                   |
+| `Capabilities().Vectors`       | true                                                          | false            | false                  |
+
+MySQL Community has no distance function (the distance functions belong to
+HeatWave), so a distance query on MySQL fails at build time with
+`ErrUnsupported`. Momo never falls back to a scan or to a Go-side sort.
+
+A `vector.Vector` bound on MySQL or MariaDB travels as its text form wrapped
+in `VEC_FromText` (MariaDB) or `STRING_TO_VECTOR` (MySQL), on every typed bind
+path: insert, update, equality and distance. Stored vectors scan back from the
+server's binary float32 form. A column marked sensitive masks the vector in
+hook events exactly as on PostgreSQL.
+
+A MariaDB `VECTOR INDEX` needs a `NOT NULL` `vector(N)` column and accepts
+`M` from 3 to 200 and `DISTANCE` of `euclidean` or `cosine`. It serves only
+the metric it was built with, and an `ORDER BY` distance with `LIMIT` uses
+it. To get the exact nearest neighbours from the same table, add `+ 0` to the
+distance in a raw query, which keeps the server from using the index.
+`schema.ValidateMariaDBVectorIndex` checks a declaration and
+`schema.MariaDBVectorIndexClause` renders it. `momo.MySQLVectorType` gives the
+column type for a server version and refuses MySQL 8.4 and MariaDB before
+11.7 with a diagnostic that names the version.

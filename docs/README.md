@@ -1,20 +1,37 @@
 # Momo documentation
 
-Index of project documentation. Each entry is added when the document is
-written; see `.procoder/specs/momo.md` scope item S-21 for the full list
-(architecture, API, capability matrix, migration safety and recovery,
-contributor guide, supported versions, performance).
+Momo is a Go ORM that generates typed column and relation descriptors from
+plain Go structs, keeps SQL explicit and inspectable, builds pgvector support
+into the core API, and ships its own migration engine that writes reviewable
+SQL. It supports PostgreSQL with pgvector; [capabilities](capabilities.md)
+states exactly what else exists and what does not. Pages are written from the
+code and checked in CI: every Go block compiles, and the examples run against
+PostgreSQL.
 
+New here? Start with [getting started](getting-started.md).
+
+## Pages
+
+- [Getting started](getting-started.md): requirements, install, a first program that talks to PostgreSQL, and where the typed API starts.
 - [Guide for AI coding agents](ai-guide.md): one self-contained file for an agent using Momo in an application: setup, modeling, migrations, queries, relations, vectors, errors, testing, known pitfalls and rules. Also indexed by `llms.txt` at the repository root.
 - [Go to SQL type mapping](TYPE_MAPPING.md): column type per Go type, edge values, null handling.
 - [Vector search](vectors.md): pgvector types, metrics, limits, search settings and the binary codec.
+- [MySQL and MariaDB](mysql.md): supported servers, DSN requirements, the capability matrix, write and locking differences, error mapping, and what is not available yet.
 - [Full-text search](fulltext.md): the tsvector column type, the match, query, rank and headline builders, and a hybrid vector plus text ranking pattern.
 - [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, tuple rows (`Row1` to `Row10`), the soft-delete filter.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
+- [Read replicas](replicas.md): `WithReplicas`, which statements go to a replica, reading your own writes, and what happens when a replica is down.
 - [Testing applications](testing.md): the `momotest` kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.
+- [Interceptors](PRIVACY_RULES.md): application-level per-handle rules that add predicates or deny typed statements, the tenant recipe, and the paths they do not cover (not a security boundary).
+- [Static check for raw SQL](momovet.md): the momovet analyzer that reports non-constant SQL passed to the raw-SQL functions.
+- [Interceptors](PRIVACY_RULES.md): `WithInterceptor` statement rules per handle, a tenant-handle recipe, and every path an interceptor does not cover.
+- [momovet](momovet.md): the static analyzer that reports raw SQL built with `+` or a format call.
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
 - [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI, and the stability policy.
+- [Using these docs with an AI coding agent](agents.md): where an agent should read, canonical patterns and a copy-paste AGENTS.md snippet.
+- [Architecture](ARCHITECTURE.md): the package layering, dependency rules and contracts the code follows.
+- [Contributing](contributing.md): prerequisites, test commands, commit messages and file headers.
 
 ## Examples
 

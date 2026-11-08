@@ -265,6 +265,11 @@ func runInsert[T any](ctx context.Context, q Querier, iq InsertQuery[T], m *T) (
 			return false, err
 		}
 		inserted = true
+		// A single-model INSERT returns at most one row. Read to the end
+		// anyway: the rows of a write on a WithImplicitTx handle must be read
+		// completely, or the write is rolled back.
+		for rows.Next() {
+		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()

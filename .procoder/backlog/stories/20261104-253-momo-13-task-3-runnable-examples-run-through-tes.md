@@ -17,3 +17,4 @@ Implements plan momo-13-docs-release Task 3: Runnable examples, run through test
 
 ## Evidence
 
+- Left open: this repository runs its examples through per-example tests built on examples/internal/exampletest, not a single TestExamples over testopen.Each, and only the PostgreSQL entry exists. TestExamplesAreWired (internal/repocheck) already fails when an example has no test. No code was changed here.

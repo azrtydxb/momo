@@ -124,6 +124,26 @@ func newConfig(opts []Option) *config {
 
 var errSkip = errors.New("momotest: server URL not set")
 
+// dialectsEnv optionally narrows RequireEnv to a comma-separated list of
+// dialects (postgres, mysql84, mysql97, mariadb), so a CI job that provides
+// only a MySQL or MariaDB server does not fail here for the missing
+// PostgreSQL URL. Unset or empty means every dialect is required.
+const dialectsEnv = "MOMO_INTEGRATION_DIALECTS"
+
+// postgresRequired reports whether a missing PostgreSQL URL must fail the run,
+// given the value of dialectsEnv.
+func postgresRequired(list string) bool {
+	if strings.TrimSpace(list) == "" {
+		return true
+	}
+	for _, d := range strings.Split(list, ",") {
+		if strings.EqualFold(strings.TrimSpace(d), "postgres") {
+			return true
+		}
+	}
+	return false
+}
+
 // resolve returns the value of env, errSkip when it is unset and require is
 // false, and a descriptive error when it is unset and require is true.
 func resolve(env string, lookup func(string) (string, bool), require bool) (string, error) {
@@ -140,7 +160,7 @@ func resolve(env string, lookup func(string) (string, bool), require bool) (stri
 // variable is unset.
 func (c *config) serverURL(t testing.TB) string {
 	t.Helper()
-	v, err := resolve(c.env, os.LookupEnv, os.Getenv(RequireEnv) == "1")
+	v, err := resolve(c.env, os.LookupEnv, os.Getenv(RequireEnv) == "1" && (c.env != DefaultEnv || postgresRequired(os.Getenv(dialectsEnv))))
 	switch {
 	case errors.Is(err, errSkip):
 		t.Skip(err.Error() + ": " + c.env)
@@ -286,7 +306,9 @@ var (
 // stripSQL), so a comment that mentions the words does not trip it and a
 // comment between the keywords does not hide them. Dollar-quoted bodies are
 // checked as code: a DO block that creates an extension is caught, at the price
-// of flagging a dollar-quoted string that merely contains such text.
+// of flagging a dollar-quoted string that merely contains such text. String
+// literals inside a body are stripped like any other, so an EXECUTE string such
+// as DO $$ BEGIN EXECUTE 'CREATE EXTENSION x'; END $$ is not inspected.
 func (c *config) checkMigrations() error {
 	if c.migrations == nil {
 		return nil

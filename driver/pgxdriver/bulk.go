@@ -37,7 +37,20 @@ func copyFrom(ctx context.Context, s copySender, table string, cols []string, ro
 func copyFromSource(ctx context.Context, s copySender, table string, cols []string, src pgx.CopyFromSource) (int64, error) {
 	n, err := s.CopyFrom(ctx, pgx.Identifier(strings.Split(table, ".")), cols, src)
 	if err != nil {
-		return 0, copyErr(err)
+		// pgx reports a cancelled COPY as whatever its writer goroutine hit
+		// first: the context error, an i/o timeout from the deadline it set
+		// to interrupt the write, or "use of closed network connection" once
+		// that goroutine closed the socket. Which one wins is a race, so a
+		// raw network error under a finished context becomes the context
+		// error. A server error is kept: the database really refused the copy.
+		var pe *pgconn.PgError
+		redacted := copyErr(err)
+		if cerr := ctx.Err(); cerr != nil && !errors.Is(err, cerr) && !errors.As(err, &pe) {
+			// The redaction ran on the original error first, so the text kept
+			// here is the redacted one.
+			redacted = fmt.Errorf("pgx: copy stopped: %w: %w", cerr, redacted)
+		}
+		return 0, redacted
 	}
 	return n, nil
 }

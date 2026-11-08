@@ -114,7 +114,10 @@ func (joinExpr) isRaw() bool      { return true }
 // For AND, OR, || and + every part and the whole join are parenthesised,
 // which keeps operator precedence intact; a comma or a space writes the
 // parts as they are. On MySQL, where || is logical OR, a "||" join renders
-// CONCAT of the parenthesised parts. A join of no parts renders 1 = 1 for
+// CONCAT of the parenthesised parts. A NULL part makes a "||" join NULL on
+// every dialect (wrap nullable parts in COALESCE), and on PostgreSQL every
+// part of a "||" join must already be text: cast other types, for example
+// SQL("?::text", n) or SQL("CAST(n AS text)"). A join of no parts renders 1 = 1 for
 // AND and 1 = 0 for OR, like And and Or; with any other separator, or with
 // a nil part, the build fails with ErrValidation. Use JoinTypedSQL when the
 // join must carry a Go type.

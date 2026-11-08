@@ -27,6 +27,10 @@ import (
 //
 // When fn returns an error the transaction is rolled back and Begin (or the
 // call that needed the transaction) returns that error; nothing else runs.
+// Without WithImplicitTx, auto-commit statements on a *DB do not run in a
+// transaction, so fn never runs for them and they are unscoped: enable
+// WithImplicitTx whenever the setup enforces a security boundary. Statements
+// issued through db.Driver() bypass momo entirely and are never scoped either.
 // fn must not commit or roll back tx. Use transaction-local settings only
 // (SetConfigLocal, Tx.SetLocal): a session-level SET would outlive the
 // transaction and, behind PgBouncer in transaction mode, leak to another
@@ -129,6 +133,25 @@ func (e *execer) implicitExec(ctx context.Context, op, table string, c Compiled)
 	return n, nil
 }
 
+// implicitExecInsertID is implicitExec for an insert whose generated key is wanted.
+func (e *execer) implicitExecInsertID(ctx context.Context, op, table string, c Compiled) (int64, int64, error) {
+	tx, err := e.db.Begin(ctx, TxOptions{})
+	if err != nil {
+		return -1, 0, err
+	}
+	n, id, err := tx.ex.execInsertID(ctx, op, table, c)
+	if err != nil {
+		if rb := tx.Rollback(context.WithoutCancel(ctx)); rb != nil && !errors.Is(rb, ErrTxDone) {
+			err = errors.Join(err, rb)
+		}
+		return -1, 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return -1, 0, err
+	}
+	return n, id, nil
+}
+
 func (e *execer) implicitQuery(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
 	tx, err := e.db.Begin(ctx, TxOptions{})
 	if err != nil {
@@ -141,18 +164,22 @@ func (e *execer) implicitQuery(ctx context.Context, op, table, rel string, c Com
 		}
 		return nil, err
 	}
-	return &txRows{Rows: rows, tx: tx, ctx: ctx}, nil
+	return &txRows{Rows: rows, tx: tx, ctx: ctx, write: op != "select" && op != "explain"}, nil
 }
 
 // txRows ends the implicit transaction behind a read: it commits when the
 // rows are exhausted or closed cleanly and rolls back when anything failed.
 // The outcome (a commit failure, or the context error that forced a rollback)
 // is reported by Err and by every Close, so a write with RETURNING is never
-// silently discarded.
+// silently discarded. A fully drained pure read is the exception: it
+// committed nothing that a late cancellation could lose, so a context that was
+// cancelled after the last row does not turn it into an error.
 type txRows struct {
 	Rows
 	tx      *Tx
 	ctx     context.Context
+	write   bool // the statement may change data: anything but a typed select (raw SQL may write)
+	drained bool // Next reached the end without an error
 	once    sync.Once
 	scanErr error
 	endErr  error
@@ -173,6 +200,10 @@ func (r *txRows) Scan(dest ...any) (err error) {
 	return err
 }
 
+// abort rolls the transaction back; ModelRows calls it when a panic unwinds
+// through its Close.
+func (r *txRows) abort() { r.rollback() }
+
 func (r *txRows) rollback() {
 	r.once.Do(func() {
 		_ = r.Rows.Close()
@@ -185,6 +216,7 @@ func (r *txRows) Next() bool {
 		return true
 	}
 	// Exhausted (or failed): release the rows, then end the transaction.
+	r.drained = r.Rows.Err() == nil
 	_ = r.Close()
 	return false
 }
@@ -211,7 +243,13 @@ func (r *txRows) Close() error {
 		if err == nil {
 			err = r.scanErr
 		}
-		if err == nil {
+		if err == nil && r.write && !r.drained {
+			// Closed before the rows were read to the end. A panic that unwinds
+			// through the caller looks the same, whichever way Close is
+			// deferred, so a write that was not fully read is never committed.
+			err = &Error{Kind: ErrValidation, Op: "write", Err: errors.New("rows of a write were closed before they were read to the end; the write was rolled back")}
+		}
+		if err == nil && (r.write || !r.drained) {
 			err = r.ctx.Err()
 		}
 		if err != nil {
@@ -221,7 +259,11 @@ func (r *txRows) Close() error {
 			r.endErr = err
 			return
 		}
-		r.endErr = r.tx.Commit(r.ctx)
+		commitCtx := r.ctx
+		if !r.write && r.drained {
+			commitCtx = context.WithoutCancel(r.ctx)
+		}
+		r.endErr = r.tx.Commit(commitCtx)
 	})
 	return r.endErr
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -70,6 +71,12 @@ func schemaExists(t *testing.T, name string) bool {
 // TestNewParallelIsolation runs many parallel tests that each insert the same
 // unique name: they only succeed if every test has its own schema.
 func TestNewParallelIsolation(t *testing.T) {
+	// A MySQL or MariaDB job lists its own dialect and has no PostgreSQL URL:
+	// every subtest would skip and the count below would be 0.
+	if os.Getenv(momotest.DefaultEnv) == "" && os.Getenv("MOMO_INTEGRATION_DIALECTS") != "" &&
+		!strings.Contains(strings.ToLower(os.Getenv("MOMO_INTEGRATION_DIALECTS")), "postgres") {
+		t.Skip("PostgreSQL is not in MOMO_INTEGRATION_DIALECTS")
+	}
 	schemas := make(chan string, 8)
 	t.Run("group", func(t *testing.T) {
 		for i := range 8 {

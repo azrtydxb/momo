@@ -3,5 +3,7 @@ digraph momo {
     rankdir=LR;
     node [shape=plaintext];
     "we\"ird<t>" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0"><TR><TD COLSPAN="3"><B>we&#34;ird&lt;t&gt;</B></TD></TR><TR><TD ALIGN="LEFT">a b</TD><TD ALIGN="LEFT">int[]</TD><TD>PK</TD></TR><TR><TD ALIGN="LEFT">q&#34;&lt;&gt;&amp;z</TD><TD ALIGN="LEFT">text</TD><TD></TD></TR></TABLE>>];
+    "%% x --> }" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0"><TR><TD COLSPAN="3"><B>%% x --&gt; }</B></TD></TR><TR><TD ALIGN="LEFT">c\d</TD><TD ALIGN="LEFT">t</TD><TD></TD></TR></TABLE>>];
     "we\"ird<t>" -> "p r" [label="l\"1 \n2", arrowhead=tee, arrowtail=crow, dir=both];
+    "%% x --> }" -> "we\"ird<t>" [label="back\\slash x y z", arrowhead=tee, arrowtail=crow, dir=both];
 }

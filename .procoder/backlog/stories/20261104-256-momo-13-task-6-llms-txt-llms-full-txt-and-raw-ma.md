@@ -17,3 +17,5 @@ Implements plan momo-13-docs-release Task 6: llms.txt, llms-full.txt and raw Mar
 
 ## Evidence
 
+- tools/docs/llms_hook.py writes llms.txt, llms-full.txt and a raw .md twin per nav page; TestLLMsTxt (build tag docs) passes in the docs workflow, run 42456103295, against the strict mkdocs build.
+- Left open: TestLLMsTxt cannot be shown to have failed before the implementation (it needs a built site and the docs workflow did not exist), and the S-23 criterion also names the deployment of /dev/ and /vX.Y/ plus /latest/, which can only be observed after docs.yml reaches main.
