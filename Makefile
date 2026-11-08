@@ -63,7 +63,7 @@ test-bench-module:
 	cd bench && $(GO) vet ./... && $(GO) vet -tags integration ./... && $(GO) test -count=1 ./... && $(GO) mod tidy -diff
 
 test-bench-module-integration:
-	cd bench && BENCH_PG_URL='$(PG_URL)' $(GO) test -tags integration -count=1 ./...
+	cd bench && BENCH_PG_URL='$(PG_URL)' $(GO) test -tags integration -p 1 -count=1 ./...
 
 bench-env:
 	cd bench && $(GO) run ./cmd/envcapture
