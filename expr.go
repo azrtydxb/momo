@@ -96,7 +96,16 @@ func (c colCore[T]) withAlias(alias string) colCore[T] {
 }
 
 func (c colCore[T]) AppendSQL(b *Builder) { c.ref().AppendSQL(b) }
-func (c colCore[T]) resultType() T        { var z T; return z }
+
+// Asc orders by the column ascending. The order item is the column itself,
+// a ColumnRef, so keyset pagination recognizes a primary-key column.
+func (c colCore[T]) Asc() Order { return Order{Expr: c} }
+
+// Desc orders by the column descending.
+func (c colCore[T]) Desc() Order { return Order{Expr: c, Desc: true} }
+
+func (c colCore[T]) order() Order  { return Order{Expr: c} }
+func (c colCore[T]) resultType() T { var z T; return z }
 
 // AsExpr returns the column as an Expression[T], so a projection list reads
 // explicitly: DocTitle.As("l").AsExpr().
