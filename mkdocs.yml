@@ -50,6 +50,7 @@ nav:
       - Full-text search: fulltext.md
       - MySQL and MariaDB: mysql.md
       - Migrations: migrations.md
+      - Importing from other ORMs: importers.md
       - Read replicas: replicas.md
       - Testing applications: testing.md
       - Interceptors: PRIVACY_RULES.md

@@ -7,6 +7,18 @@ updates:
     cooldown:
       default-days: 7
   - package-ecosystem: gomod
+    directory: /bench
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: gomod
+    directory: /internal/namingrec
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: gomod
     directory: /internal/integration
     schedule:
       interval: weekly

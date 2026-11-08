@@ -20,7 +20,6 @@ const (
 	ZeroValueHandling Kind = "zero-value-handling"
 	ImplicitSave      Kind = "implicit-save"
 	GoDefault         Kind = "go-default"
-	DBDefault         Kind = "db-default"
 	Unsupported       Kind = "unsupported"
 	RenamedType       Kind = "renamed-type"
 	DroppedField      Kind = "dropped-field"

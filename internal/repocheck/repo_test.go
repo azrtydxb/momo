@@ -66,22 +66,43 @@ func TestGeneratedMarkerIsScoped(t *testing.T) {
 	}
 }
 
-// TestDependabotCoversFixtureModules fails when a nested compat module is
-// missing from dependabot.yml: its dependencies would never be updated.
+// TestDependabotCoversFixtureModules fails when a nested Go module (any go.mod
+// below the root, outside testdata and tool directories) is missing from
+// dependabot.yml: its dependencies would never be updated.
 func TestDependabotCoversFixtureModules(t *testing.T) {
 	root := repoRoot(t)
 	b, err := os.ReadFile(filepath.Join(root, ".github", "dependabot.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	mods, err := filepath.Glob(filepath.Join(root, "internal", "compat", "*", "go.mod"))
+	var mods []string
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", ".claude", "testdata", "node_modules", "vendor":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() == "go.mod" && filepath.Dir(p) != root {
+			mods = append(mods, filepath.Dir(p))
+		}
+		return nil
+	})
 	if err != nil || len(mods) == 0 {
-		t.Fatalf("no fixture modules found: %v", err)
+		t.Fatalf("no nested modules found: %v", err)
 	}
 	for _, m := range mods {
-		dir := filepath.Base(filepath.Dir(m))
-		if !strings.Contains(string(b), "directory: /internal/compat/"+dir+"\n") {
-			t.Errorf("dependabot.yml does not list /internal/compat/%s", dir)
+		rel, err := filepath.Rel(root, m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := "/" + filepath.ToSlash(rel)
+		if !strings.Contains(string(b), "directory: "+dir+"\n") {
+			t.Errorf("dependabot.yml does not list %s", dir)
 		}
 	}
 }

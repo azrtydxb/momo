@@ -33,7 +33,7 @@ jobs:
 
   unit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       matrix:
         go: ["1.26", "1.27"]

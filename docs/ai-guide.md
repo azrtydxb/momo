@@ -33,12 +33,14 @@ Deeper docs: [README](../README.md), [relations](relations.md),
   (modernc.org/sqlite; no cgo, no vectors, `sqlitepure.Config` is the same type
   as `sqlitedriver.Config`), but `momo migrate` exits 2 for SQLite and the
   vector builders work on `sqlitedriver` only (`sqlitepure` reports
-  `Vectors=false`). MySQL and MariaDB have a driver package of
-  their own; check the MySQL column of docs/capabilities.md before relying on a
+  `Vectors=false`). SQLite and MySQL migrations exist as libraries
+  (`migrate/sqlite`, `migrate/mysql` with `migrate.NewEngine`), not as CLI
+  commands. MySQL and MariaDB have a driver package of
+  their own (MySQL stores vectors only; MariaDB has distance functions); check the MySQL column of docs/capabilities.md before relying on a
   feature. Keep `dialects:` at `[postgres]` for generated migrations.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only in the CLI. No `migrate rollback`, `new`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
-- No command turns a database into models. Write models by hand.
+- `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
 - Reciprocal-rank-fusion hybrid search
   does not exist. Use `momo.SQL` / `momo.TypedSQL` for it. Full-text search
   (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
@@ -1702,7 +1704,7 @@ report)`, a development hook that reports once per statement shape per scope
 
 ## 12. Rules for AI agents
 
-1. v0.3.0 is PostgreSQL + pgvector via pgx first; SQLite runs through the cgo driver `sqlitedriver` (not on Windows) or the pure-Go `sqlitepure` (no vectors); neither has migrations, and the vector builders work on `sqlitedriver` only, and MySQL and MariaDB support is described in docs/capabilities.md. <!-- x-release-please-version -->
+1. v0.3.0 is PostgreSQL + pgvector via pgx first; SQLite runs through the cgo driver `sqlitedriver` (not on Windows) or the pure-Go `sqlitepure` (no vectors); `momo migrate` is PostgreSQL-only (SQLite and MySQL migrations are library only: `migrate/sqlite`, `migrate/mysql`); the vector builders work on `sqlitedriver` only (via sqlite-vec); MySQL stores vectors only and MariaDB has distance functions; see docs/capabilities.md. <!-- x-release-please-version -->
 2. Install the CLI at the same version as the library
    (`go install github.com/azrtydxb/momo/cmd/momo@v0.3.0`). <!-- x-release-please-version -->
 3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run
