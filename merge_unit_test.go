@@ -335,3 +335,31 @@ func TestTruncateStatements(t *testing.T) {
 		t.Fatalf("commits = %d, want the two statements in one transaction", seq.Commits())
 	}
 }
+
+// Catches: an interceptor's tenant predicate being dropped from a bulk update,
+// and a MERGE running with a predicate it cannot apply.
+func TestInterceptorsOnBulkUpdateAndMerge(t *testing.T) {
+	tenant := func(_ context.Context, op *momo.Operation) error {
+		op.Where = append(op.Where, suite.DocTenantID.Eq(7))
+		return nil
+	}
+	drv := newVersioned(170000)
+	db := momo.New(drv, momo.WithInterceptor(tenant))
+	c, err := bulkQ(db, []any{int64(2), "new"}).SQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(c.SQL, `"documents"."tenant_id" = $`) || !slices.Contains(c.Args, any(int64(7))) {
+		t.Fatalf("bulk update lost the interceptor predicate:\n%s %v", c.SQL, c.Args)
+	}
+	if _, err := mergeInsertQuery(db).Exec(t.Context()); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("Merge with an interceptor predicate = %v, want ErrValidation", err)
+	}
+	if len(drv.Calls()) != 0 {
+		t.Fatalf("calls = %v, want none", drv.Calls())
+	}
+	deny := momo.New(newVersioned(170000), momo.WithInterceptor(func(context.Context, *momo.Operation) error { return errors.New("no") }))
+	if _, err := mergeInsertQuery(deny).Exec(t.Context()); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("denied Merge = %v, want ErrValidation", err)
+	}
+}

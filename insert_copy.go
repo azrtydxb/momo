@@ -32,6 +32,9 @@ func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 	if q.q == nil {
 		return Result{}, noQuerier("copy", q.meta.Table)
 	}
+	if _, err := runInterceptors(ctx, q.q, "insert", q.meta.Table); err != nil {
+		return Result{}, err
+	}
 	names, rows, err := q.copyRows(ms)
 	if err != nil {
 		return Result{}, err

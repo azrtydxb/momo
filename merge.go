@@ -147,7 +147,29 @@ func (m MergeQuery[T]) SQL() (Compiled, error) {
 	if m.q == nil {
 		return Compiled{}, noQuerier("merge", m.meta.Table)
 	}
+	if err := m.intercept(context.Background()); err != nil {
+		return Compiled{}, err
+	}
 	return compile(m.q.Dialect(), m.render)
+}
+
+// intercept runs the handle's interceptors for the MERGE (kind "upsert" when it
+// can update existing rows, otherwise "insert"). An interceptor may deny it. A
+// predicate it adds cannot be applied to a MERGE without changing which rows
+// match, so that fails closed with ErrValidation.
+func (m MergeQuery[T]) intercept(ctx context.Context) error {
+	kind := "insert"
+	if m.hasMatched {
+		kind = "upsert"
+	}
+	extra, err := runInterceptors(ctx, m.q, kind, m.meta.Table)
+	if err != nil {
+		return err
+	}
+	if len(extra) > 0 {
+		return m.verr("", "an interceptor added predicates, which MERGE cannot apply; deny the operation instead")
+	}
+	return nil
 }
 
 // mergeInsert is the validated insert side of a MERGE.
@@ -355,7 +377,13 @@ func (m MergeQuery[T]) renderInsert(b *Builder, ins InsertQuery[T], p mergeInser
 
 // prepare compiles the statement, then applies the server-version gate.
 func (m MergeQuery[T]) prepare(ctx context.Context) (Compiled, error) {
-	c, err := m.SQL()
+	if m.q == nil {
+		return Compiled{}, noQuerier("merge", m.meta.Table)
+	}
+	if err := m.intercept(ctx); err != nil {
+		return Compiled{}, err
+	}
+	c, err := compile(m.q.Dialect(), m.render)
 	if err != nil {
 		return Compiled{}, err
 	}
@@ -601,9 +629,9 @@ func (u UpdateQuery[T]) bulkSQL() (Compiled, error) {
 			b.QualifiedIdent(target.Qualifier(), u.meta.Columns[p.key].Name)
 			b.WriteString(" = ")
 			b.QualifiedIdent(src, u.meta.Columns[p.key].Name)
-			if len(u.where) > 0 {
+			if len(u.where)+len(u.extra) > 0 {
 				b.WriteString(" AND ")
-				appendAnd(b, u.where)
+				appendAnd(b, append(slices.Clone(u.where), u.extra...))
 			}
 		})
 		renderReturning(b, u.meta, u.returning, func(col string) error {
