@@ -299,9 +299,32 @@ func (m MergeQuery[T]) render(b *Builder) {
 			m.renderInsert(b, ins, ip)
 		}
 	})
-	renderReturning(b, m.meta, m.returning, func(col string) error {
-		return m.verr(col, "Returning: column %q is not mapped by %s", col, m.meta.Table)
-	})
+	m.renderReturning(b, target)
+}
+
+// renderReturning writes RETURNING with the columns qualified by the target
+// table: the source usually has columns of the same names (src.id), so a bare
+// name would be ambiguous in MERGE.
+func (m MergeQuery[T]) renderReturning(b *Builder, target TableRef) {
+	if !m.returning.active() {
+		return
+	}
+	if !b.Dialect().Returning {
+		b.unsupported("RETURNING")
+		return
+	}
+	idx, bad := returningIndexes(m.meta, m.returning)
+	if bad != "" {
+		b.SetErr(m.verr(bad, "Returning: column %q is not mapped by %s", bad, m.meta.Table))
+		return
+	}
+	b.WriteString(" RETURNING ")
+	for i, ci := range idx {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.QualifiedIdent(target.Qualifier(), m.meta.Columns[ci].Name)
+	}
 }
 
 func (m MergeQuery[T]) renderInsert(b *Builder, ins InsertQuery[T], p mergeInsert) {

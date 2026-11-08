@@ -58,7 +58,7 @@ func TestMergeRendersMatchedAndNotMatched(t *testing.T) {
 		` WHEN MATCHED THEN UPDATE SET "title" = $`,
 		`"version" = "documents"."version" + 1`,
 		` WHEN NOT MATCHED THEN INSERT ("id", "tenant_id", "title", "created_at", "updated_at") OVERRIDING SYSTEM VALUE VALUES (src.id, src.tenant_id, src.title, $`,
-		` RETURNING "id"`)
+		` RETURNING "documents"."id"`)
 	if strings.Index(c.SQL, "WHEN MATCHED") > strings.Index(c.SQL, "WHEN NOT MATCHED") {
 		t.Errorf("WHEN MATCHED must come first:\n%s", c.SQL)
 	}
