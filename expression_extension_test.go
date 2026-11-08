@@ -106,7 +106,7 @@ func TestExtensionOpsCustomExpressions(t *testing.T) {
 		t.Errorf("args = %v, want %v", got.Args, want)
 	}
 
-	in, err := extSelect(dialect.Postgres).Where(extUpperOf(suite.DocTitle).In("A", "B")).SQL()
+	in, err := extSelect(dialect.Postgres).Columns(suite.DocTitle).Where(extUpperOf(suite.DocTitle).In("A", "B")).SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
