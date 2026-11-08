@@ -297,12 +297,17 @@ func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] {
 	return sq
 }
 
-// ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED".
+// ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED";
+// naming both is an ErrValidation, repeating one is not. A row lock cannot be
+// combined with DISTINCT, GROUP BY or HAVING: the build fails with
+// ErrValidation. Count and Exists wrap the whole statement, so they keep the
+// lock clause and lock the rows they count.
 func (sq SelectQuery[T]) ForUpdate(opt ...string) SelectQuery[T] {
 	return sq.withLock("FOR UPDATE", opt)
 }
 
-// ForShare adds FOR SHARE (PostgreSQL).
+// ForShare adds FOR SHARE (PostgreSQL). Options and restrictions are those of
+// ForUpdate.
 func (sq SelectQuery[T]) ForShare(opt ...string) SelectQuery[T] { return sq.withLock("FOR SHARE", opt) }
 
 func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
@@ -310,7 +315,7 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 	for _, o := range opt {
 		switch o {
 		case "NOWAIT", "SKIP LOCKED":
-			if sq.s.lockWait != "" {
+			if sq.s.lockWait != "" && sq.s.lockWait != " "+o {
 				sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("lock options NOWAIT and SKIP LOCKED are mutually exclusive")}
 			}
 			sq.s.lockWait = " " + o
@@ -750,9 +755,9 @@ func (r rawSubquery) render(b *Builder) { b.appendRaw(r.sql, r.args) }
 //
 // Safety contract: as for SQL, sql is inserted verbatim and must be a
 // trusted constant; '?' binds the next argument and "??" is a literal '?'.
-// Momo cannot check which tables the fragment references. Only '?'
-// placeholders bind; never write native '$1' style placeholders, which would
-// collide with momo's own numbering. For a scalar subquery as a typed
+// Momo cannot check which tables the fragment references. On PostgreSQL a
+// native $n placeholder binds the nth argument of this fragment (see SQL), so
+// pgx and sqlc statements port unchanged; momo renumbers it. For a scalar subquery as a typed
 // comparison operand use TypedSQL[T]("?", sub): the subquery renders its own
 // parentheses.
 func RawSubquery(sql string, args ...any) Subquery {
