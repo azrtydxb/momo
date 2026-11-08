@@ -31,8 +31,9 @@ set `migrate.dir.postgres` or `--dir`). `diff` writes exactly three files:
   past the latest existing version, `diff` uses the second after it, so
   versions only grow.
 - `name` must match `^[a-z][a-z0-9_]*$`.
-- `.down.sql` files are accepted by the file scanner and hashed, but never run.
-  There is no rollback (section 2).
+- `.down.sql` files are optional and hand-written (`diff` never generates one).
+  They are hashed in `momo.sum`, and `apply` never runs them. Only
+  `Engine.Rollback` runs them (section 2).
 - Files whose name starts with `.` are ignored everywhere (`.DS_Store`,
   `.momo-*.tmp`). A symlink to a directory inside the migration directory is an
   error. Moving an applied file into a subdirectory is fine: history is keyed by
@@ -247,9 +248,31 @@ If the older migration was already applied somewhere, do not rewrite it: leave
 the chain as it is and add a new migration for the difference.
 
 `momo migrate new --custom <name>` writes an empty hand-written migration
-(section 6). Not built yet (story 098): `rebase`, `lint`, `rollback`. Each exits
-2 with `migrate <name> is not available yet`. There are no down migrations: undo
-a change with a new forward migration.
+(section 6). Not wired into the CLI yet (story 098): `rebase`, `lint`,
+`rollback`. Each exits 2 with `migrate <name> is not available yet`. The engine
+already has two of them, for Go callers:
+
+- `Engine.Rollback(ctx, RollbackOptions{Group: false})` runs the `.down.sql` of
+  the last applied migration (the applied row with the greatest `applied_at`);
+  with `Group: true` it runs the downs of every row that shares the greatest
+  `apply_id`, in descending version order. It takes the same lock and session
+  timeouts as `Apply`, refuses a dirty database or a checksum mismatch, and
+  returns `ErrNoDown` before running anything when any selected version has no
+  down file. A transactional down runs in one transaction together with the
+  history update; the row becomes `rolled_back`, so the version is pending
+  again and the next `apply` runs it anew. A down with `-- momo:no-transaction`
+  runs statement by statement and, if one fails, leaves the row `failed`
+  (dirty, settle it with `resolve`). A rollback undoes schema, not data: write
+  the down so that it can run on a populated table (`TestRollbackGroup`,
+  `TestRollbackNoDown`).
+- `Engine.Rebase(ctx, target, desired, name)` takes the directory of the target
+  branch (from `git`, Momo has no git dependency). It lists every file of the
+  branch's migrations that the target lacks, refuses with the file name when one
+  has no `-- momo:generated` header, and regenerates one migration on top of
+  the target's latest snapshot. It first validates the target (momo.sum, chain,
+  snapshots) and refuses a broken one, and it refuses a branch migration that
+  has a hand-written `.down.sql`, naming the file. It writes nothing: the
+  caller deletes the returned files and writes the new ones (`TestMigrateRebase`).
 
 There is no `--force-unlock`: the PostgreSQL lock is a session advisory lock that
 the server frees when its holder's connection ends (section 3). `--lock-wait`
@@ -389,6 +412,34 @@ Statements before the failing one are committed. The row is `failed`, with
      `momo migrate hash`, `apply`.
 4. `resolve` takes the migration lock and errors when the version has no
    `running` or `failed` row.
+
+### A down migration fails (`Engine.Rollback`)
+
+A transactional down that fails rolls back with its history update: the schema
+is unchanged and the row stays `applied`, so the database is not dirty
+(`TestRollbackTransactionalFailureLeavesRowApplied`). Fix the down and run
+`Rollback` again; if you edit the file, run `momo migrate hash` first.
+
+A down with `-- momo:no-transaction` commits statement by statement. When one
+fails the row becomes `failed` with `statements_applied = n` and an error that
+starts with `down:`, and every later `apply` or `Rollback` stops with
+`ErrDirty` (`TestRollbackNoTxFailureLeavesRowFailed`). Both resolve states are
+valid; choose by what the database looks like after you repair it:
+
+- `resolve applied` (`ResolveApplied`): the migration is still in effect. Use
+  it when the failed down changed nothing that matters or you undid its
+  partial work. The row becomes `applied`, the error is cleared, and the
+  version can be rolled back again (`TestResolveAppliedAfterFailedDown`).
+- `resolve rolled_back` (`ResolveRolledBack`): the migration is gone. Use it
+  when you finished the down by hand. The row is deleted, the version is
+  pending, and the next `apply` runs the up file again
+  (`TestResolveRolledBackAfterFailedDown`).
+
+`Rollback` verifies momo.sum first, down files included: an edited or added
+`.down.sql` is refused with `ErrChecksumMismatch` naming the file even when the
+matching up file is no longer in the directory
+(`TestRollbackChecksumMismatch`). It takes the migration lock like `apply`
+(`TestRollbackTakesTheLock`).
 
 ### Invalid index after a failed `CREATE INDEX CONCURRENTLY`
 
@@ -628,6 +679,8 @@ templates an application ships in Go) is a `migrate.GoMigration`. It is
 registered on the engine with `migrate.WithGoMigrations` and is ordered with the
 SQL files by version, so it runs once, under the same lock, with a history row
 (`kind = 'go'`) like any other migration.
+
+<!-- docscheck:fragment -->
 
 ```go
 g := migrate.GoMigration{

@@ -15,6 +15,8 @@ Imports: `github.com/azrtydxb/momo` (core), `github.com/azrtydxb/momo/driver/pgx
 
 Open a pool and wrap it, as the README does (the caller closes the pool):
 
+<!-- docscheck:fragment -->
+
 ```go
 pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)
 if err != nil { return err }
@@ -249,6 +251,8 @@ Row-level security (RLS) policies usually read a setting such as
 setting at the start of every transaction from a scope carried in the
 `context.Context`, so a statement that forgot its scope matches no rows.
 `WithTxSetup` and `WithImplicitTx` build that into the `*DB`:
+
+<!-- docscheck:fragment -->
 
 ```go
 db := momo.New(pgxdriver.New(pool),

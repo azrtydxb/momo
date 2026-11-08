@@ -70,6 +70,16 @@ func (q InsertQuery[T]) execOne(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if q.wantsGeneratedKey() {
+		n, id, err := q.q.conn().execInsertID(ctx, "insert", q.meta.Table, c)
+		if err != nil {
+			return Result{}, err
+		}
+		if n > 0 && id != 0 {
+			q.assignGeneratedKey(id)
+		}
+		return Result{RowsAffected: n, InsertID: id}, nil
+	}
 	n, err := q.q.conn().exec(ctx, "insert", q.meta.Table, c)
 	if err != nil {
 		return Result{}, err

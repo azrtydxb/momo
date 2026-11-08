@@ -37,7 +37,7 @@ func TestVectorCapsMatrix(t *testing.T) {
 	}{
 		{Postgres, true, all, []string{"hnsw", "ivfflat"}},
 		{SQLite, true, []Metric{MetricL2, MetricL1, MetricCosine, MetricHamming}, nil},
-		{MySQL, false, nil, nil},
+		{MySQL, true, nil, nil},
 	}
 	for _, c := range cases {
 		caps := For(c.name).Vector

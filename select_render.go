@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -265,6 +266,11 @@ func (s *selectCore) writeLimitOffset(b *Builder) {
 		if s.limit < 0 && b.d.Name == dialect.SQLite {
 			b.WriteString(" LIMIT -1")
 		}
+		if s.limit < 0 && b.d.Name == dialect.MySQL {
+			// MySQL and MariaDB reject a bare OFFSET; this is their documented
+			// "all remaining rows" limit.
+			b.WriteString(" LIMIT 18446744073709551615")
+		}
 		b.WriteString(" OFFSET ")
 		b.Arg(s.offset)
 	}
@@ -290,6 +296,10 @@ func (sq SelectQuery[T]) writeLock(b *Builder) {
 		return
 	}
 	if !sq.checkLockOf(b) {
+		return
+	}
+	if b.d.Name == dialect.MySQL {
+		renderMySQLLock(b, b.d.Flavor, s.lock == "FOR SHARE", s.lockOf, strings.TrimSpace(s.lockWait))
 		return
 	}
 	b.writeByte(' ')

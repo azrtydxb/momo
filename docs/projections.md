@@ -6,6 +6,8 @@ A projection is a result type that is not a table: a subset of a table's columns
 
 Embed `momo.Projection` by value in a struct. Every exported field is one column of the select list, in declaration order.
 
+<!-- docscheck:fragment -->
+
 ```go
 type Card struct {
 	momo.Projection
@@ -26,6 +28,8 @@ type Card struct {
 
 ## Reading
 
+<!-- docscheck:fragment -->
+
 ```go
 cards, err := momo.Select[models.Card](q).
 	From(article.Table).
@@ -41,6 +45,8 @@ Keyset pagination over a projection lists the unique tie-break key in `OrderBy` 
 ## Tuple rows: no struct per shape
 
 For an aggregate, a join or a few columns that you read in one place, skip the struct and the generated metadata: `momo.Row1` to `momo.Row10` are generic projections with fields `C1` to `Cn`. `Columns` is scanned positionally, so expression `i` fills `Ci`.
+
+<!-- docscheck:fragment -->
 
 ```go
 // a count per key

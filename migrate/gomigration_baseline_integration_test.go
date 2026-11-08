@@ -7,6 +7,8 @@ package migrate_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"testing"
@@ -50,7 +52,10 @@ func TestBaselineRecordsRegisteredGoMigrations(t *testing.T) {
 		t.Fatalf("baseline: %v", err)
 	}
 	row := historyRow(t, db, goVerGo)
-	if row.Kind != "go" || row.Status != migrate.StatusApplied || row.Checksum == "" || row.ApplyID != migrate.BaselineApplyID {
+	// The checksum of a go row is the migration identity: sha256 of "go", the
+	// version, the name and the Checksum string, NUL separated.
+	idSum := sha256.Sum256([]byte("go\x00" + g.Version + "\x00" + g.Name + "\x00" + g.Checksum))
+	if row.Kind != "go" || row.Status != migrate.StatusApplied || row.Checksum != hex.EncodeToString(idSum[:]) || row.ApplyID != migrate.BaselineApplyID {
 		t.Fatalf("want an applied baseline go row, got %+v", row)
 	}
 	if plan, err := e.Plan(ctx); err != nil || len(plan) != 0 {

@@ -18,6 +18,7 @@ func (db *DB) OnConn(pc PinnedConn) *DB {
 	*nd = *db
 	nd.drv = pinnedDriver{Driver: db.drv, pc: pc}
 	nd.pinned = true
+	nd.replicas = nil
 	nd.ex = execer{db: nd, q: pc, d: db.ex.d, classify: db.ex.classify, owner: nd}
 	return nd
 }

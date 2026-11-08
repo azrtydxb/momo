@@ -268,8 +268,9 @@ func TestUpsertCaseAndArithmeticGolden(t *testing.T) {
 			t.Errorf("%s:\n got %s %v (%v)\nwant %s", c.d, got.SQL, got.Args, err, c.want)
 		}
 	}
-	if _, err := nodeUpsert(typedDB(dialect.MySQL)).SQL(); !errors.Is(err, momo.ErrUnsupported) {
-		t.Errorf("upsert on MySQL = %v, want ErrUnsupported", err)
+	my, err := nodeUpsert(typedDB(dialect.MySQL)).SQL()
+	if err != nil || !strings.Contains(my.SQL, "ON DUPLICATE KEY UPDATE") || strings.Contains(my.SQL, "EXCLUDED") {
+		t.Errorf("upsert on MySQL = %s, %v, want ON DUPLICATE KEY UPDATE without EXCLUDED", my.SQL, err)
 	}
 }
 
