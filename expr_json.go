@@ -15,8 +15,9 @@ import (
 // JSON operators over types.JSON[T] columns (jsonb on PostgreSQL).
 //
 // The column operand is any Expression of types.JSON[T]: a Column, a
-// NullColumn, or an aliased column. Every key, path element and containment
-// value is a bound parameter, never SQL text. The expressions carry the
+// NullColumn, or an aliased column. Containment values and JSONHasKey keys are
+// always bound parameters, and so are JSONText and JSONPath keys, except that a
+// plain key on a non-sensitive column is inlined (see below). The expressions carry the
 // column's FlagSensitive, so a sensitive JSON column stays sensitive through
 // extraction (see their Flags methods).
 //
@@ -168,13 +169,15 @@ func newJSONText(src Expr, keys []string, path bool) JSONTextExpr {
 
 // JSONText is the text of member key of the JSON object in c: col ->> 'key'
 // on PostgreSQL. Compare it with the string methods, for example
-// JSONText(after, "via").Eq("api"). key is bound as a parameter.
+// JSONText(after, "via").Eq("api"). key is a bound parameter, or an inlined
+// literal when it is plain and the column is not sensitive.
 func JSONText[T any](c Expression[types.JSON[T]], key string) JSONTextExpr {
 	return newJSONText(c, []string{key}, false)
 }
 
 // JSONPath is the text at the nested path keys of the JSON value in c:
-// col #>> '{a,b}' on PostgreSQL. keys are bound as a single parameter there.
+// col #>> '{a,b}' on PostgreSQL. keys are one bound array parameter there, or an inlined literal when every
+// element is plain and the column is not sensitive.
 func JSONPath[T any](c Expression[types.JSON[T]], keys ...string) JSONTextExpr {
 	return newJSONText(c, append([]string(nil), keys...), true)
 }

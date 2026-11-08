@@ -192,6 +192,8 @@ func TestJSONOperatorsMaskSensitiveColumn(t *testing.T) {
 		"has key":    momo.JSONHasKey(jsonAfter, secret),
 		"in":         momo.JSONText(jsonAfter, "via").In(secret, "b"),
 	}
+	// A wrapper without Flags still masks, because rendering the column does.
+	preds["through Coalesce"] = momo.JSONText(momo.Coalesce(jsonAfter, types.JSON[jsonPayload]{}), secret).Eq(secret)
 	for name, p := range preds {
 		rec := &obstest.Recorder{}
 		db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(rec), momo.WithArgLogging())

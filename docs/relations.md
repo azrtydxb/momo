@@ -291,6 +291,36 @@ db := momo.New(drv, momo.WithMaxParams(100))
 If a scope alone binds so many arguments that no key fits under the limit, the
 load fails with `ErrValidation` before any statement runs.
 
+### Counting children for many parents
+
+`Relation.Count` counts one parent per statement. To show a count next to each
+row of a list, `LoadCounts` counts all parents at once: one grouped
+`SELECT key, COUNT(*) ... GROUP BY key` per bind-limit chunk.
+
+```go
+counts, err := momo.LoadCounts(ctx, db, docs, document.Comments,
+	momo.LoadWhere[models.Comment](comment.Approved.Eq(true)))
+// counts[i] is the number of approved comments of docs[i]
+```
+
+- The result has one entry per parent, in parent order. A parent with no
+  children or a NULL key counts zero; parents sharing a key share the count.
+- Has-one, has-many (including polymorphic) and many-to-many relations are
+  supported, with composite keys. Belongs-to fails with `ErrUnsupported`, as
+  `Count` does.
+- The load options that narrow the children apply: `LoadWhere`, and the
+  soft-delete default with `LoadWithDeleted` and `LoadOnlyDeleted`.
+  `LoadOrderBy` is ignored; `LoadPerParentLimit` fails with `ErrValidation`.
+- Many-to-many counts join-table rows, like `Count`. The far table is joined
+  when it has a soft-delete column and `LoadWithDeleted` is not set, or when a
+  `LoadWhere` filter applies. Otherwise nothing is joined, so join rows whose
+  far row no longer exists (dangling rows) are counted too.
+- Parent keys are chunked under the dialect bind limit (see Chunking), and a
+  relation hook sees one event per call.
+
+To order or filter parents by their child count inside a query, use
+`CountOrder` (section 5).
+
 ## 3. Preload and single-query loading
 
 `SelectQuery.Preload` attaches loaders to a query. `All`, `One` and `First` run
