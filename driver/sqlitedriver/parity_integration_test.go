@@ -145,7 +145,7 @@ func TestSQLiteVectorParity(t *testing.T) {
 			}
 		}
 		for _, c := range cases {
-			sel, err := momo.Select[parityDoc](pg).OrderBy(c.dist.Asc(), id.Asc()).Limit(vectorparity.TopK).Columns(id).SQL()
+			sel, err := momo.Select[parityDoc](pg).OrderBy(c.dist.Asc(), id.Asc()).Limit(vectorparity.TopK).SQL()
 			if err != nil {
 				t.Fatalf("%s: %v", c.name, err)
 			}
@@ -156,7 +156,8 @@ func TestSQLiteVectorParity(t *testing.T) {
 			var ids []int64
 			for rows.Next() {
 				var n int64
-				if err := rows.Scan(&n); err != nil {
+				var emb vector.Vector
+				if err := rows.Scan(&n, &emb); err != nil {
 					t.Fatalf("%s: %v", c.name, err)
 				}
 				ids = append(ids, n)
