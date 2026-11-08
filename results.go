@@ -97,7 +97,7 @@ func MapRows(ctx context.Context, q Querier, sql string, args ...any) ([]map[str
 	if err != nil {
 		return nil, err
 	}
-	r, err := q.conn().query(ctx, "select", "", "", c)
+	r, err := q.conn().query(ctx, "raw", "", "", c)
 	if err != nil {
 		return nil, err
 	}

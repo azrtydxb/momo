@@ -173,6 +173,8 @@ func ReturningRendersAndScans(t *testing.T, db *momo.DB, caps Caps) {
 	if err := rows.ScanModel(&doc); err != nil {
 		t.Fatal(err)
 	}
+	for rows.Next() { // read to the end, as a write on an implicit-transaction handle needs
+	}
 	if err := rows.Close(); err != nil {
 		t.Fatal(err)
 	}

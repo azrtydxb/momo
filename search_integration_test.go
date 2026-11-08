@@ -67,6 +67,10 @@ func TestFilteredANNIterativeScan(t *testing.T) {
 	db := momo.New(pgxdriver.New(singleConnPool(t)))
 	for _, stmt := range []string{
 		"CREATE EXTENSION IF NOT EXISTS vector",
+		// A parallel HNSW build inserts in a nondeterministic order, which gave
+		// a different graph (and a different recall) from run to run. One worker
+		// with the fixed seed below builds the same graph every time.
+		"SET max_parallel_maintenance_workers = 0",
 		"CREATE TABLE items (id bigint PRIMARY KEY, grp text NOT NULL, emb vector(8) NOT NULL)",
 		"SELECT setseed(0.42)",
 		"INSERT INTO items SELECT g, CASE WHEN g % 100 = 0 THEN 'rare' ELSE 'common' END, ARRAY(SELECT random()::real FROM generate_series(1, 8))::vector FROM generate_series(1, 20000) AS g",
@@ -78,6 +82,13 @@ func TestFilteredANNIterativeScan(t *testing.T) {
 	count := func(name string, s momo.SearchSettings) int64 {
 		var n int64
 		err := db.WithSearch(ctx, s, func(tx *momo.Tx) error {
+			// The test is about the HNSW scan, so the planner must not choose an
+			// exact sequential scan (which returns 10 rows with the setting off).
+			for _, stmt := range []string{"SET LOCAL enable_seqscan = off", "SET LOCAL enable_bitmapscan = off"} {
+				if _, err := momo.Exec(ctx, tx, stmt); err != nil {
+					return err
+				}
+			}
 			if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE "+name+" AS SELECT id FROM items WHERE grp = 'rare' ORDER BY emb <-> (SELECT emb FROM items WHERE id = 1) LIMIT 10"); err != nil {
 				return err
 			}
@@ -91,7 +102,7 @@ func TestFilteredANNIterativeScan(t *testing.T) {
 		return n
 	}
 	off := count("hits_off", momo.SearchSettings{})
-	on := count("hits_on", momo.SearchSettings{HNSWIterativeScan: momo.IterativeRelaxedOrder, HNSWMaxScanTuples: 20000})
+	on := count("hits_on", momo.SearchSettings{HNSWIterativeScan: momo.IterativeRelaxedOrder, HNSWMaxScanTuples: 1_000_000})
 	if off >= 10 {
 		t.Fatalf("iterative scan off returned %d rows, want fewer than 10", off)
 	}
