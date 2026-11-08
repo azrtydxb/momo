@@ -31,7 +31,10 @@ import (
 // value is JSON null and false for a missing key.
 //
 // Dialects. PostgreSQL uses the jsonb operators ->>, #>>, @> and ?. SQLite
-// renders json_extract and json_type (JSONContains is ErrUnsupported). MySQL
+// renders json_extract and json_type. JSONContains is ErrUnsupported on SQLite
+// by design: it has no containment operator, and json_each walks one level of
+// members, which cannot reproduce the recursive subset rule of @> (nested
+// objects, arrays inside arrays), so no partial emulation is offered. MySQL
 // renders JSON_UNQUOTE(JSON_EXTRACT), JSON_CONTAINS and JSON_CONTAINS_PATH.
 // SQLite runs against a real database through driver/sqlitedriver (cgo, not
 // Windows); MySQL is not usable in this release and its SQL is golden-tested
