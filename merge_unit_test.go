@@ -238,7 +238,7 @@ func TestBulkUpdateRendersKeyedValuesList(t *testing.T) {
 	hasAll(t, c.SQL,
 		`UPDATE "documents" SET "title" = "momo_v"."title"`,
 		`"version" = "documents"."version" + 1`,
-		` FROM (SELECT "id", "title" FROM "documents" WHERE false UNION ALL VALUES ($`,
+		` FROM (SELECT "id", "title" FROM "documents" WHERE false UNION ALL SELECT $`,
 		`) AS "momo_v" WHERE "documents"."id" = "momo_v"."id" AND `)
 	if strings.Contains(c.SQL, "new") || strings.Contains(c.SQL, "other") {
 		t.Errorf("a value was inlined:\n%s", c.SQL)

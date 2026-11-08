@@ -551,9 +551,9 @@ func (u UpdateQuery[T]) bulkSQL() (Compiled, error) {
 				b.QualifiedIdent(target.Qualifier(), u.meta.Columns[vi].Name)
 				b.WriteString(" + 1")
 			}
-			// The empty SELECT gives the VALUES list the column types of the
-			// table: an unknown-typed bind parameter takes the type of the
-			// other UNION branch.
+			// The empty SELECT gives the rows the column types of the table: an
+			// unknown-typed bind parameter in a UNION branch takes the type of
+			// the other branch (a VALUES list would resolve it to text).
 			b.WriteString(" FROM (SELECT ")
 			for i, n := range names {
 				if i > 0 {
@@ -563,18 +563,14 @@ func (u UpdateQuery[T]) bulkSQL() (Compiled, error) {
 			}
 			b.WriteString(" FROM ")
 			target.appendFrom(b)
-			b.WriteString(" WHERE false UNION ALL VALUES ")
-			for r, row := range u.bulk.rows {
-				if r > 0 {
-					b.WriteString(", ")
-				}
-				b.writeByte('(')
+			b.WriteString(" WHERE false")
+			for _, row := range u.bulk.rows {
+				b.WriteString(" UNION ALL SELECT ")
 				b.argFor(u.meta.Columns[p.key].Flags, row[0])
 				for j, ci := range p.cols {
 					b.WriteString(", ")
 					b.argFor(u.meta.Columns[ci].Flags, row[1+j])
 				}
-				b.writeByte(')')
 			}
 			b.WriteString(") AS ")
 			b.Ident(src)
