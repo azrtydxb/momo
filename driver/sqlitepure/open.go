@@ -40,7 +40,10 @@ const driverName = "sqlite"
 // is at least 3.35.0, so a refused connection is reported here.
 //
 // dsn is a file path or a "file:" URI. The query string may carry only
-// _txlock, mode and cache; the transaction lock in it overrides cfg. The busy
+// _txlock, mode and cache; the transaction lock in it overrides cfg. This
+// allowlist is narrower than the one of sqlitedriver (mattn): _busy_timeout,
+// _timeout, _loc and _cache_size are refused here, and the busy timeout comes
+// from cfg.BusyTimeout alone. The busy
 // timeout, journal mode, synchronous and foreign keys always come from cfg and
 // the adapter, so a DSN cannot switch them off, and a "_pragma" parameter is
 // refused for the same reason. The mode and cache parameters are SQLite URI

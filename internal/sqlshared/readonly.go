@@ -109,7 +109,10 @@ func (t *roTx) finish(ctx context.Context, stmt, op string) error {
 }
 
 // ExecStmtHook lets a test make a statement that ends a read-only transaction
-// (COMMIT or ROLLBACK) fail. It is for tests only and is nil otherwise.
+// (COMMIT or ROLLBACK) fail. It is for tests only and is nil otherwise. It is a
+// plain package variable, read without synchronisation by every read-only
+// transaction in the process, so a test that sets it must not run in parallel
+// with any other test that uses a SQLite driver, and must reset it to nil.
 var ExecStmtHook func(stmt string) error
 
 func (t *roTx) run(ctx context.Context, stmt string) error {
