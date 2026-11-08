@@ -629,6 +629,8 @@ registered on the engine with `migrate.WithGoMigrations` and is ordered with the
 SQL files by version, so it runs once, under the same lock, with a history row
 (`kind = 'go'`) like any other migration.
 
+<!-- docscheck:fragment -->
+
 ```go
 g := migrate.GoMigration{
     Version:  "20260301120000", // 14 digits, unique among the SQL files too

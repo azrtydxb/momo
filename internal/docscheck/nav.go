@@ -19,7 +19,7 @@ import (
 // document order, relative to docs/. Entries that are not Markdown pages, such
 // as external links, are skipped.
 func NavPages(root string) ([]string, error) {
-	b, err := os.ReadFile(filepath.Join(root, "mkdocs.yml")) //nolint:gosec // fixed file name under the repository root
+	b, err := os.ReadFile(filepath.Join(root, "mkdocs.yml")) // #nosec G304 -- fixed file name under the repository root
 	if err != nil {
 		return nil, err
 	}

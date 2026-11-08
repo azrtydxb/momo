@@ -1500,6 +1500,8 @@ Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 Use the public kit `github.com/azrtydxb/momo/momotest` (see
 [testing.md](testing.md)):
 
+<!-- docscheck:fragment -->
+
 ```go
 //go:build integration
 

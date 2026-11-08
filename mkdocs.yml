@@ -49,6 +49,7 @@ nav:
       - Vector search: vectors.md
       - Full-text search: fulltext.md
       - Migrations: migrations.md
+      - Testing applications: testing.md
   - Reference:
       - Capabilities: capabilities.md
       - Supported versions: supported-versions.md

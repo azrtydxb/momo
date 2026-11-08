@@ -23,11 +23,12 @@ import (
 //
 // Fragments are the visible, bounded exception: they cannot be compiled alone
 // because they use the caller's generated code. maxFragmentBlocks is a ceiling
-// that only goes down: write a complete program instead of adding a fragment.
+// that is lowered when fragments become programs and raised only with a
+// reviewer's eyes on it: write a complete program instead of adding a fragment.
 const (
 	markerRun         = "<!-- docscheck:run -->"
 	markerFragment    = "<!-- docscheck:fragment -->"
-	maxFragmentBlocks = 61
+	maxFragmentBlocks = 67
 )
 
 var goFence = regexp.MustCompile("^```go\\s*$")

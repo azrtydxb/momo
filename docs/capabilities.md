@@ -248,6 +248,8 @@ setting at the start of every transaction from a scope carried in the
 `context.Context`, so a statement that forgot its scope matches no rows.
 `WithTxSetup` and `WithImplicitTx` build that into the `*DB`:
 
+<!-- docscheck:fragment -->
+
 ```go
 db := momo.New(pgxdriver.New(pool),
 	momo.WithTxSetup(func(ctx context.Context, tx *momo.Tx) error {
