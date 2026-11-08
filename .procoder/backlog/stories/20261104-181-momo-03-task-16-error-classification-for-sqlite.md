@@ -1,6 +1,6 @@
 # momo-03 Task 16: Error classification for SQLite (mattn) with redaction-safe causes
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-03-drivers-sqlite
 Sprint: -
@@ -11,10 +11,11 @@ Implements plan momo-03-drivers Task 16: Error classification for SQLite (mattn)
 
 ## Acceptance criteria
 
-- [ ] `TestClassifyUniqueKeepsCause` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestClassifyBusy` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestClassifyPassesThroughUnknown` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestClassifyUniqueKeepsCause` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestClassifyBusy` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestClassifyPassesThroughUnknown` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+Red: red run 42453697635 (unit job, sqlitedriver stubbed on throwaway branch) failed TestClassifyUniqueKeepsCause, TestClassifyBusy, TestClassifyPassesThroughUnknown. Green: green run 42410524015 on be3aa13 (ci-agent: lint, unit, fuzz-smoke, integration). The procoder check gate was clean at each commit.

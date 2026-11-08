@@ -1,6 +1,6 @@
 # momo-03 Task 18: SQLite transaction isolation and read-only transactions
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-03-drivers-sqlite
 Sprint: -
@@ -11,9 +11,10 @@ Implements plan momo-03-drivers Task 18: SQLite transaction isolation and read-o
 
 ## Acceptance criteria
 
-- [ ] `TestSQLiteIsolationRules` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestSQLiteReadOnlyTransaction` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestSQLiteIsolationRules` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestSQLiteReadOnlyTransaction` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+Red: red run 42453078374 (integration job, sqlitedriver stubbed on throwaway branch) failed TestSQLiteIsolationRules, TestSQLiteReadOnlyTransaction, TestSQLitePinnedReadOnlyTransaction. Green: green run 42410524015 on be3aa13 (ci-agent: lint, unit, fuzz-smoke, integration). The procoder check gate was clean at each commit.
