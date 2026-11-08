@@ -1,0 +1,1 @@
+CrEaTe ExTeNsIoN IF NOT EXISTS Foo;

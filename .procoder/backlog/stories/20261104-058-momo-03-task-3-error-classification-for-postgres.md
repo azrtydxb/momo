@@ -18,7 +18,7 @@ Implements plan momo-03-drivers Task 3: Error classification for PostgreSQL (pgx
 ## Evidence
 
 - FAIL before implementation: `go test ./driver/pgxdriver/ -run TestClassify` -> `undefined: ClassifyError` (build failed).
-- PASS after: `go test -race -count=1 ./driver/pgxdriver/` -> ok. Also covered: full SQLSTATE mapping, passthrough, runtime-built secret absent from Error()/%v/%+v/Detail().
+- PASS after: `go test -race -count=1 ./driver/pgxdriver/` -> ok. Also covered: full SQLSTATE mapping, passthrough, runtime-built secret absent from Error()/%v/%+v. Correction: Detail() returns the raw driver detail by design (spec S-41, story 127) and so contains the secret; it is the explicit unmasked accessor.
 - Mutation check: copying pe.Detail into the wrapped message made TestClassifyUniqueRedactsDetail FAIL; reverted, PASS.
 - Gate: `go build`, `go vet`, `go test -race -count=1 ./...`, `make tidy-check` pass; procoder check: 0 blocking findings.
 - Commit: feat(pgx): classify PostgreSQL errors without leaking detail

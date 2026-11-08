@@ -40,6 +40,9 @@ func NewEngine(drv momo.Driver, dir fs.FS, opts ...Option) (*Engine, error) {
 	if o.lockTimeout != nil && *o.lockTimeout < 0 || o.statementTimeout != nil && *o.statementTimeout < 0 {
 		return nil, errors.New("migrate: a lock or statement timeout cannot be negative")
 	}
+	if err := checkGoMigrations(o.goMigrations); err != nil {
+		return nil, err
+	}
 	return &Engine{drv: drv, dir: dir, opts: o}, nil
 }
 
@@ -65,6 +68,9 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := goCollisions(e.opts.goMigrations, files); err != nil {
+		return nil, err
+	}
 	name := string(e.opts.dialect.Dialect().Name)
 	var out []Pending
 	for _, f := range files {
@@ -85,6 +91,8 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 		}
 		out = append(out, Pending{Version: f.Version, Name: f.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: sum.Files[f.Path]})
 	}
+	out = append(out, e.goPending(done)...)
+	sortPending(out)
 	return out, nil
 }
 
@@ -184,10 +192,17 @@ func (e *Engine) verifyChecksums(hist []HistoryRow) error {
 			byVersion[f.Version] = f
 		}
 	}
+	if err := goCollisions(e.opts.goMigrations, files); err != nil {
+		return err
+	}
+	goMigs := e.goByVersion()
 	for _, r := range hist {
 		f, ok := byVersion[r.Version]
 		if r.Status == StatusApplied && ok && sum.Files[f.Path] != r.Checksum {
 			return fmt.Errorf("%w: %s changed after version %s was applied", ErrChecksumMismatch, f.Path, r.Version)
+		}
+		if g, ok := goMigs[r.Version]; ok && r.Status == StatusApplied && g.identity() != r.Checksum {
+			return fmt.Errorf("%w: Go migration %s_%s changed (name or Checksum) after version %s was applied", ErrChecksumMismatch, g.Version, g.Name, r.Version)
 		}
 	}
 	return nil
@@ -303,6 +318,9 @@ func (e *Engine) checkTo(to string) error {
 		if f.Kind == "up" && f.Version == to {
 			return nil
 		}
+	}
+	if _, ok := e.goByVersion()[to]; ok {
+		return nil
 	}
 	return fmt.Errorf("migrate: --to %s: no migration with that version in the directory", to)
 }
@@ -486,6 +504,9 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	if err := outOfOrder(hist, pending); err != nil {
 		return nil, err
 	}
+	if err := e.checkGoRunnable(pending, hist, o.To); err != nil {
+		return nil, err
+	}
 	if len(pending) == 0 {
 		return &Report{}, nil
 	}
@@ -500,7 +521,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		return nil, fmt.Errorf("migrate: apply id: %w", err)
 	}
 	rep = &Report{ApplyID: e.opts.clock().UTC().Format(applyIDLayout) + "-" + hex.EncodeToString(b[:])}
-	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin, HistoryTable: tbl}
+	env := RunEnv{Driver: e.drv, DB: e.opts.goDB, Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin, HistoryTable: tbl}
 	for _, p := range pending {
 		if o.To != "" && p.Version > o.To {
 			break
@@ -530,6 +551,9 @@ func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
 	}
 	files, err := Discover(e.dir)
 	if err != nil {
+		return nil, err
+	}
+	if err := goCollisions(e.opts.goMigrations, files); err != nil {
 		return nil, err
 	}
 	sum, err := ComputeSum(e.dir)
@@ -570,6 +594,22 @@ func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
 		}
 		if st.State == "pending" && bad[f.Path] {
 			st.State = "mismatch"
+		}
+		out = append(out, st)
+	}
+	for _, g := range e.opts.goMigrations {
+		seen[g.Version] = true
+		st := VersionStatus{Version: g.Version, Name: g.Name, State: "pending", Checksum: g.identity()}
+		if r, ok := rows[g.Version]; ok {
+			st.Checksum, st.Error = r.Checksum, r.Error
+			switch {
+			case r.dirty():
+				st.State = "dirty"
+			case r.Status == StatusApplied && r.Checksum == g.identity():
+				st.State = "applied"
+			case r.Status == StatusApplied:
+				st.State = "mismatch"
+			}
 		}
 		out = append(out, st)
 	}
@@ -760,6 +800,9 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	}
 	version, err := NextVersion(e.opts.clock, e.dir)
 	if err != nil {
+		return nil, err
+	}
+	if err := e.checkGoSnapshots(); err != nil {
 		return nil, err
 	}
 	changes, hints, err := Diff(from, &to, opts)
