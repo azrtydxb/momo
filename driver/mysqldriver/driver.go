@@ -70,8 +70,12 @@ func Open(dsn string, flavor dialect.Flavor) (*sql.DB, momo.Driver, error) {
 	return db, New(db, flavor), nil
 }
 
-// New wraps an opened *sql.DB. The DSN must set parseTime=true and loc=UTC
-// (use ConfigureDSN); multiStatements stays false. The adapter never opens
+// New wraps an opened *sql.DB. The DSN must come from ConfigureDSN (or set
+// parseTime=true, loc=UTC, clientFoundRows=true, multiStatements=false and,
+// above all, interpolateParams=false): New cannot see the DSN of a *sql.DB it
+// is given, and a DSN with interpolateParams=true makes the driver write bound
+// values into the SQL text on the client, which defeats parameter binding and
+// the redaction of sensitive arguments. The adapter never opens
 // connections itself and the caller closes db. An unknown flavor yields a
 // driver whose every call returns momo.ErrUnsupported.
 func New(db *sql.DB, flavor dialect.Flavor) momo.Driver {

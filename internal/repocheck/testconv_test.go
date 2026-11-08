@@ -55,7 +55,7 @@ func walkTestFiles(t *testing.T, fn func(rel, content string)) {
 
 var (
 	// dbHelperImport matches an import of a package that hands out databases.
-	dbHelperImport = regexp.MustCompile(`"github\.com/azrtydxb/momo/(internal/testdb|internal/testdb/testopen|examples/internal/exampletest)"`)
+	dbHelperImport = regexp.MustCompile(`"github\.com/azrtydxb/momo/(momotest|internal/testdb|internal/testdb/testopen|examples/internal/exampletest)"`)
 	// dbHelperUse matches a use of the relfixture helpers that open a database;
 	// the rest of relfixture (Hook, Counting, WithoutBatch) needs none.
 	dbHelperUse = regexp.MustCompile(`\brelfixture\.(Each|SeedBasic|CreateSchema|PostgresDriver)\b`)

@@ -24,8 +24,13 @@ type ValidateReport struct{ Problems []string }
 //  6. every migration has a snapshot, and a custom (not generated)
 //     migration's snapshot equals its parent's.
 //
+// Go migrations have no file, so only the application knows them: pass the
+// ones registered with WithGoMigrations and each is checked like a custom
+// migration (a snapshot that equals its parent's, a version no SQL file
+// shares). Without them a snapshot that has no up file is not checked.
+//
 // It returns an error only when the directory cannot be read.
-func ValidateOffline(fsys fs.FS) (*ValidateReport, error) {
+func ValidateOffline(fsys fs.FS, goMigrations ...GoMigration) (*ValidateReport, error) {
 	if _, err := fs.ReadDir(fsys, "."); err != nil {
 		return nil, fmt.Errorf("migrate: read migration directory: %w", err)
 	}
@@ -88,6 +93,7 @@ func ValidateOffline(fsys fs.FS) (*ValidateReport, error) {
 			add("%s: custom migration %s must not change the schema, but its snapshot differs from its parent's %s", e.path, f.Path, parent.path)
 		}
 	}
+	validateGo(goMigrations, files, snapshots, add)
 	return rep, nil
 }
 

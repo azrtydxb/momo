@@ -31,7 +31,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
-- Reciprocal-rank-fusion hybrid search, `MERGE` builder and window-function API
+- Reciprocal-rank-fusion hybrid search, `MERGE` builder
   do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
   (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
   query builders) exists on PostgreSQL; combine it with a vector distance in
@@ -81,8 +81,42 @@ migrate:
 ```
 
 `naming:` is optional: `momo` (default: snake_case columns, plural snake_case
-tables), `gorm`, `bun`, `ent`. Pick one and never change it: a change renames
-columns.
+tables), `gorm`, `bun`, `ent`, `prisma`. Pick one and never change it: a change
+renames columns.
+
+`naming: prisma` matches a database that Prisma created: the table is the model
+name as written and quoted (`KbChunk`), the column is camelCase (`createdAt`,
+`accountId`; an `ID` word at the end becomes `Id`, and a trailing `IDs` becomes
+`Ids`, so `UserIDs` is `userIds`), and the constraint and index names are
+`<Table>_pkey`, `<Table>_<col>_fkey`, `<Table>_<col>_key` (unique) and
+`<Table>_<col>_idx`. Those names come out of the table and column names, so no
+tag is needed for single-column keys and indexes.
+
+Limits of the preset:
+
+- A composite `@@index` or `@@unique` is named by Prisma from all its columns
+  (`<Table>_<a>_<b>_idx`). Name such an index explicitly in `MomoConfig` or with
+  an `index:`/`unique:` tag name.
+- The implicit many-to-many table is named `_AToB` (model names in alphabetical
+  order), but its `A` and `B` columns and its foreign key names are not
+  reproduced. Declare that table with an explicit join model instead.
+- A column name that does not follow the camelCase rule needs a `column:` tag.
+
+Prisma maps `DateTime` to `timestamp(3)`, so add a `types:` section:
+
+```yaml
+naming: prisma
+types:
+  time.Time: timestamp(3)
+```
+
+`types:` overrides the default PostgreSQL column type of a Go type. Only
+`time.Time` is supported, and the value must be `timestamp`, `timestamptz`,
+`time` or `timetz` with an optional precision 0-6 and an optional
+`with`/`without time zone` (anything else is refused, as it is written into
+DDL). A `type:` tag on a field still wins. It applies when the first entry of
+`dialects` is PostgreSQL (or `dialects` is empty); with SQLite first it is
+ignored. Without it `time.Time` is `timestamp with time zone`.
 
 Generate:
 
@@ -198,6 +232,15 @@ Nullability and column rules:
   `time.Time` is `timestamptz`, `types.UUID` is `uuid`, `types.JSON[T]` is
   `jsonb`). `uint64`, maps and unknown types have no mapping: add `type:<sql>`
   or a codec.
+- JSON columns: `JSONText`, `JSONPath`, `JSONContains` and `JSONHasKey` (file
+  `expr_json.go`) are typed predicates over a `types.JSON[T]` column; the
+  extractions are string expressions usable in `Where`, `OrderBy` and `Columns`.
+  An extraction is NULL for a missing key and for JSON null alike, a SQL NULL
+  column is tested with `IsNull` on the column, and the JSON literal null is
+  matched by comparing the column with a `types.JSON` whose value is nil.
+  `JSONHasKey` is true for a key whose value is JSON null. A numeric key in
+  `JSONText` or `JSONHasKey` is an object key; only `JSONPath` elements made of
+  digits can be array indexes. PostgreSQL only is usable today.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
@@ -212,7 +255,7 @@ Tag reference (all lower case):
 | `serial`                                                                  | PostgreSQL `smallserial`/`serial`/`bigserial` id by Go int width (sequence owned by the column, `DEFAULT nextval`); omitted from inserts and read back with `RETURNING` like `identity`; excludes `identity` and `default`; refused on other dialects |
 | `column:<name>`                                                           | column name                                                                                                                                                                                                                                           |
 | `size:<n>`                                                                | `varchar(n)`; strings only                                                                                                                                                                                                                            |
-| `precision:<p>`, `scale:<s>`                                              | numeric precision (float/decimal only); `scale` needs `precision`                                                                                                                                                                                     |
+| `precision:<p>`, `scale:<s>`                                              | numeric precision (float, decimal, or a string without `size` that carries a numeric); `scale` needs `precision`                                                                                                                                      |
 | `dim:<n>`                                                                 | vector dimension; optional on vector and halfvec (none: dimensionless column), required on sparsevec and bit, invalid elsewhere                                                                                                                       |
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                              |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
@@ -568,6 +611,16 @@ combinators `momo.And`, `momo.Or`, `momo.Not`, `momo.Like`, `momo.ILike`,
 `momo.EscapeLike(s)` escapes user text for `Like`. Find NULLs with `IsNull()`;
 `Eq(nil)` is not expressible.
 
+Array columns (PostgreSQL only). A `[]string` field is generated as `text[]`;
+`[]int16`, `[]int32`, `[]int64`, `[]bool`, `[]float32` and `[]float64` map to
+`smallint[]`, `integer[]`, `bigint[]`, `boolean[]`, `real[]` and
+`double precision[]`. The predicates are generic functions over a typed
+column: `momo.ArrayContains(col, vals...)` (`@>`), `momo.ArrayContainedBy`
+(`<@`), `momo.ArrayOverlaps` (`&&`) and `momo.AnyOf(scalarCol, vals...)`
+(`= ANY($n)`). Each binds the values as one array parameter, so the bind count
+does not grow with the list. `ArrayOverlaps` and `AnyOf` with no values are
+false. On SQLite they fail the build with `ErrUnsupported`; use `In` there.
+
 Searching with user input safely. `Like` and `ILike` always render
 `ESCAPE '!'` on every dialect, matching `EscapeLike`. Wildcards (`%`, `_`) in
 the pattern still work; only a `!` makes the next character literal, so a
@@ -591,13 +644,31 @@ The check counts the binds rendered before the list; binds rendered after it
 are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 `In` renders a constant false and an empty `NotIn` a constant true.
 
+Two independent caps apply to a typed `In` or `NotIn` list. `WithMaxInList(n)`
+limits the number of values per list and fails the build with
+`ErrLimitExceeded`; it is for request-supplied lists. The bind limit above is
+the database ceiling for the whole statement and fails with `ErrValidation`.
+Both are checked at build time, the list cap first, so the stricter one wins.
+`SelectQuery.MaxRows(n)` is the matching cap on results: `All` and `Pluck`
+return `ErrLimitExceeded` instead of more than n rows, never a truncated slice.
+
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
 `"SKIP LOCKED"`), `ForShare`, `LockOf` (names the tables a lock covers, for
-example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim), `With`, `WithRecursive`, `Union`,
+example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim; the names must be
+table or alias names, not CTEs), `With`, `WithRecursive`, `Union`,
 `FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
-context; it returns `iter.Seq2[T, error]`). Aggregates: `momo.CountAll`,
+context; it returns `iter.Seq2[T, error]`). `Count` and `Exists` wrap the whole
+statement, so they keep a lock clause and lock the rows they count. Aggregates: `momo.CountAll`,
 `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
+
+Advisory locks (PostgreSQL, inside a transaction): `tx.AdvisoryXactLock(ctx, key)`
+waits for a transaction-scoped lock on an int64 key, `tx.TryAdvisoryXactLock`
+returns whether it was granted, and the `String` variants
+(`AdvisoryXactLockString`, `TryAdvisoryXactLockString`) hash a text key with
+`hashtext`. The lock ends at commit or rollback. The same names on `*DB` fail
+with `ErrValidation`; other dialects fail with `ErrUnsupported`. Never store a
+hashed key, it can change across PostgreSQL major versions.
 
 Typed expressions (no `momo.SQL` needed). Computed values (`Func`, `Substr`,
 `Lower`, `Upper`, `Length`, `Case`, `Add`/`Sub`/`Mul`, `Cast`, `Concat`,
@@ -642,6 +713,16 @@ momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
 // Any other function: Func[T](name, args...). name is validated (identifier,
 // optionally schema.qualified); an Expr arg renders inline, other values are bound.
 momo.Func[string]("btrim", doc.Title)
+// Aggregates with their own ORDER BY (AggExpr[T]); chain OrderBy, inside the call.
+momo.StringAgg(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
+momo.ArrayAgg[string](label).OrderBy(label.Asc())       // []string, PostgreSQL only
+// Ordered-set aggregates (PostgreSQL): WithinGroup is required.
+momo.PercentileCont(0.5).WithinGroup(run.DurationMs.Asc())      // float64
+momo.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
+// JSON: T is the Go type the result decodes into (types.JSON[T]). Keys and
+// separators are literals and must not contain a backslash.
+item := momo.JSONBBuildObject[Item](momo.JSONField("label", label), momo.JSONField("n", n))
+momo.CoalesceExpr(momo.JSONBAgg[Item](item).OrderBy(label.Asc()), momo.EmptyJSONArray[Item]())
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 momo.CurrentSchema()
 
@@ -1271,6 +1352,13 @@ or a missing extension: `ErrUnsupported`.
 
 Pitfalls:
 
+- JSON extraction in GROUP BY: a key that is not plain letters, digits and
+  underscores is a bound parameter, and PostgreSQL treats the parameter in the
+  select list and the one in GROUP BY as different expressions and rejects the
+  query. Plain keys are inlined and group fine, except on a sensitive column,
+  whose keys are always bound so they stay masked; for those and any other key
+  group on a SQL fragment with a literal key. Inlined keys vary the statement
+  text per key, so pass only keys from a fixed set, not user input.
 - Filtered search: with iterative scan off, an ANN index returns its nearest
   candidates and applies `Where` afterwards, so a selective filter can return FEWER
   than `Limit` rows even when enough match. Set `HNSWIterativeScan`
@@ -1297,8 +1385,8 @@ Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-s
 
 Momo errors are `*momo.Error{Kind, Op, Table, Column, Constraint, Err}`. Check
 with `errors.Is(err, momo.ErrX)` (matches `Kind`) and reach the driver error with
-`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns driver detail
-that `Error()` hides. Never string-match error text.
+`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns the raw driver detail
+(for PostgreSQL the key text) that `Error()` hides. `Detail()` is unmasked and can quote sensitive values: never log it or return it to a client. Never string-match error text.
 
 ```go
 switch {
@@ -1355,8 +1443,22 @@ Rules:
 Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`.
 
-Pattern used by the examples (the harness is internal to the Momo module; copy
-the idea, not the package):
+Use the public kit `github.com/azrtydxb/momo/momotest` (see
+[testing.md](testing.md)):
+
+```go
+//go:build integration
+
+db := momotest.New(t, momotest.WithMigrations(app.Migrations()))  // schema per test, dropped after
+tx := momotest.NewTx(t, momotest.WithMigrations(app.Migrations())) // rolled back after; Commit refused
+momotest.Seed(t, tx, momotest.Insert(&org), momotest.Insert(&user))
+```
+
+It reads `MOMO_TEST_POSTGRES_URL` (skip when unset, fail when
+`MOMO_REQUIRE_INTEGRATION=1`), is safe with `t.Parallel` and `-race`, and
+`WithExtensions("vector")` creates the extension first. What it does, if you
+need to do it by hand (the examples' own harness is internal to the Momo
+module):
 
 1. Read an admin URL from an env var (the examples use `MOMO_TEST_POSTGRES_URL`);
    `t.Skip` when it is unset (and `t.Fatal` when your CI sets a require flag).
@@ -1396,6 +1498,31 @@ What to mock and what not:
 
 Examples: every `examples/*/example_test.go`, harness
 [examples/internal/exampletest](../examples/internal/exampletest/exampletest.go).
+
+### Observability and scoping helpers
+
+- `momolog.New(logger, opts...)` returns a `momo.Hook` that logs one record per
+  statement (op, table, relation, sql, duration, rows, err). Options: `Level`,
+  `SlowOver` (statements slower than the duration log at WARN) and `Values`.
+  Argument values are logged only with `Values(true)` and `momo.WithArgLogging`
+  together.
+- `momo.WithQueryScope(ctx)` groups statements for `momo.NewNPlusOneHook(threshold,
+report)`, a development hook that reports once per statement shape per scope
+  when the shape runs more than the threshold. Contexts without a scope are not
+  tracked; a scope tracks at most 1024 shapes; a panic in the report function is
+  recovered. A single batched relation load runs one statement per relation and does not trigger it.
+- `momo.WithTenant(ctx, tenant)` and `momo.TenantFilter(ctx, column)` add a
+  `column = tenant` predicate. This is an application-side convenience and NOT a
+  security boundary. It applies only where you add it to a `Where`: not to
+  Update or Delete, not to the tenant column of an Insert, not to Preload, Load
+  or LoadCounts, joins, subqueries or raw SQL. A missing tenant, or one whose Go
+  type is not exactly the column type, fails the build with `ErrValidation`
+  (also under Not and Or). The zero value is a real tenant. Enforce isolation
+  with PostgreSQL row-level security: it is configured by your own
+  `WithTxSetup` function, which reads whatever your code put in the context. To
+  drive both from `WithTenant`, read the tenant there and call
+  `SetConfigLocal`. Without `WithImplicitTx`, non-transactional queries get no
+  setting.
 
 ## 12. Rules for AI agents
 

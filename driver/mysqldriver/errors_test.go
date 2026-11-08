@@ -27,6 +27,7 @@ func TestMySQLErrorClassification(t *testing.T) {
 		{4025, "CONSTRAINT `positive` failed for `app`.`checked`", momo.ErrCheckViolation, "positive"},
 		{1213, "Deadlock found when trying to get lock", momo.ErrSerialization, ""},
 		{1205, "Lock wait timeout exceeded", momo.ErrBusy, ""},
+		{1020, "Record has changed since last read in table 'counters'", momo.ErrSerialization, ""},
 	}
 	for _, c := range cases {
 		err := classifier{}.ClassifyError(&mysql.MySQLError{Number: c.num, Message: c.msg})
@@ -119,5 +120,20 @@ func TestConfigureDSN(t *testing.T) {
 	}
 	if cfg.Params["time_zone"] != "'+00:00'" {
 		t.Fatalf("time_zone param = %q", cfg.Params["time_zone"])
+	}
+}
+
+// Catches: the table of a schema-qualified statement being read as the schema.
+func TestTableOfSchemaQualifiedStatement(t *testing.T) {
+	cases := map[string]string{
+		"INSERT INTO `app`.`users` (`a`) VALUES (?)": "users",
+		"UPDATE app.users SET a = 1":                 "users",
+		"DELETE FROM `users` WHERE id = 1":           "users",
+		"INSERT INTO users (a) VALUES (1)":           "users",
+	}
+	for stmt, want := range cases {
+		if got := tableOf(stmt); got != want {
+			t.Errorf("tableOf(%q) = %q, want %q", stmt, got, want)
+		}
 	}
 }

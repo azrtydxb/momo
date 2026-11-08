@@ -45,6 +45,7 @@ var kinds = map[uint16]error{
 	3819: momo.ErrCheckViolation,      // ER_CHECK_CONSTRAINT_VIOLATED (MySQL)
 	4025: momo.ErrCheckViolation,      // ER_CONSTRAINT_FAILED (MariaDB)
 	1213: momo.ErrSerialization,       // ER_LOCK_DEADLOCK
+	1020: momo.ErrSerialization,       // ER_CHECKREAD (MariaDB innodb_snapshot_isolation: the row changed after the snapshot)
 	1205: momo.ErrBusy,                // ER_LOCK_WAIT_TIMEOUT
 	3572: momo.ErrBusy,                // ER_LOCK_NOWAIT
 }
@@ -55,7 +56,7 @@ var (
 	reCheckName  = regexp.MustCompile(`(?i)check constraint '([^']+)'|CONSTRAINT [` + "`" + `']?([^` + "`" + `' ]+)[` + "`" + `']? failed`)
 	reFKTable    = regexp.MustCompile("fails \\(`[^`]+`\\.`([^`]+)`")
 	reStmtVerb   = regexp.MustCompile(`(?is)^\s*(insert|replace|update|delete|select)\b`)
-	reStmtTable  = regexp.MustCompile("(?is)^\\s*(?:INSERT\\s+(?:IGNORE\\s+)?INTO|REPLACE\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+`?([A-Za-z0-9_$]+)`?")
+	reStmtTable  = regexp.MustCompile("(?is)^\\s*(?:INSERT\\s+(?:IGNORE\\s+)?INTO|REPLACE\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+(?:`?[A-Za-z0-9_$]+`?\\.)?`?([A-Za-z0-9_$]+)`?")
 )
 
 type classifier struct{}
@@ -111,7 +112,7 @@ func classify(err error, stmt string) error {
 		out.Table = tableOf(stmt)
 	}
 	out.Op = opOf(stmt)
-	return out
+	return momo.WithDetail(out, se.Message)
 }
 
 // tableOf returns the table a statement writes to, or "" when it cannot tell.

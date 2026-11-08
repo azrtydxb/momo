@@ -11,6 +11,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -212,5 +213,50 @@ func TestMySQLUpsertTargetsAndRowsAffected(t *testing.T) {
 				t.Fatalf("after DoNothing: %+v, %v, want hits 2", got, err)
 			}
 		})
+	}
+}
+
+// Catches: the generated-key insert bypassing WithTxSetup and WithImplicitTx,
+// which would run a tenant-scoped insert outside its setup.
+func TestMySQLGeneratedKeyInsertRunsTxSetup(t *testing.T) {
+	for _, s := range servers {
+		t.Run(s.name, func(t *testing.T) {
+			ctx := context.Background()
+			setups := 0
+			db := s.open(t, momo.WithImplicitTx(), momo.WithTxSetup(func(context.Context, *momo.Tx) error {
+				setups++
+				return nil
+			}))
+			mustExecMySQL(t, db, "CREATE TABLE keys_t (id bigint PRIMARY KEY AUTO_INCREMENT, name varchar(40) NOT NULL)")
+			setups = 0
+			row := keyRow{Name: "one"}
+			if _, err := momo.Insert[keyRow](db).Model(&row).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if setups != 1 || row.ID == 0 {
+				t.Fatalf("setups = %d, id = %d, want one setup and a written-back id", setups, row.ID)
+			}
+		})
+	}
+}
+
+// Catches: a pinned connection, which cannot run WithTxSetup, still executing a
+// generated-key insert (fail open).
+func TestMySQLGeneratedKeyInsertFailsClosedOnPinnedConn(t *testing.T) {
+	ctx := context.Background()
+	db := testopen.MySQL84(t, momo.WithTxSetup(func(context.Context, *momo.Tx) error { return nil }))
+	mustExecMySQL(t, db, "CREATE TABLE keys_t (id bigint PRIMARY KEY AUTO_INCREMENT, name varchar(40) NOT NULL)")
+	pc, err := db.Driver().(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pc.Release() }()
+	row := keyRow{Name: "one"}
+	_, err = momo.Insert[keyRow](db.OnConn(pc)).Model(&row).Exec(ctx)
+	if !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("err = %v, want ErrUnsupported", err)
+	}
+	if row.ID != 0 {
+		t.Fatalf("a failed insert wrote back id %d", row.ID)
 	}
 }

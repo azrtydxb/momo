@@ -44,3 +44,18 @@ func TestMariaDBLockOfUnsupported(t *testing.T) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}
 }
+
+// Catches: a bare OFFSET reaching MySQL or MariaDB, where it is a syntax error.
+func TestMySQLBareOffsetGetsLimit(t *testing.T) {
+	s := selectCore{limit: -1, offset: 5}
+	b := NewBuilder(dialect.MySQLFlavor(dialect.FlavorMySQL))
+	s.writeLimitOffset(b)
+	if got, want := b.String(), " LIMIT 18446744073709551615 OFFSET ?"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	pg := NewBuilder(dialect.For(dialect.Postgres))
+	s.writeLimitOffset(pg)
+	if got, want := pg.String(), " OFFSET $1"; got != want {
+		t.Fatalf("postgres got %q, want %q", got, want)
+	}
+}

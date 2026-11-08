@@ -19,8 +19,10 @@ const mysqlRowAlias = "momo_new"
 // the row alias (MySQL, when the rows come from VALUES) and
 // ON DUPLICATE KEY UPDATE with one assignment per set. MariaDB has no row
 // alias that is verified on 11.8, so its assignments use VALUES(col). With
-// doNothing it writes the no-op assignment firstKey = firstKey, which is how
-// MySQL skips a conflicting row. value renders the right-hand side of one
+// doNothing it writes the no-op assignment firstKey = table.firstKey, which is
+// how MySQL skips a conflicting row. With clientFoundRows the statement then
+// reports RowsAffected 1 for a skipped row (it matched) as well as for an
+// inserted one, so a count of 1 does not tell the two apart. value renders the right-hand side of one
 // assignment.
 func renderMySQLUpsert(b *Builder, flavor dialect.Flavor, table, firstKey string, sets []Assignment, doNothing, fromValues bool, value func(*Builder, Assignment)) {
 	if flavor == dialect.FlavorMySQL && fromValues {

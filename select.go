@@ -47,6 +47,7 @@ type selectCore struct {
 	// joinLoads holds the joined loaders added by Preload (copy-on-write).
 	joinLoads   []any
 	limit       int64 // -1: none
+	maxRows     int   // 0: no cap; collecting reads fail past it (MaxRows)
 	offset      int64
 	lock        string
 	lockWait    string   // " NOWAIT" or " SKIP LOCKED", or empty
@@ -59,7 +60,9 @@ type selectCore struct {
 	keysOnly bool
 	// preloads holds the Loader[T] values added by Preload (copy-on-write).
 	preloads []any
-	err      error
+	// distinctOn holds the DISTINCT ON expressions (see DistinctOn).
+	distinctOn []Expr
+	err        error
 }
 
 // SelectQuery builds and runs a SELECT whose rows scan into T.
@@ -297,12 +300,17 @@ func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] {
 	return sq
 }
 
-// ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED".
+// ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED";
+// naming both is an ErrValidation, repeating one is not. A row lock cannot be
+// combined with DISTINCT, GROUP BY or HAVING: the build fails with
+// ErrValidation. Count and Exists wrap the whole statement, so they keep the
+// lock clause and lock the rows they count.
 func (sq SelectQuery[T]) ForUpdate(opt ...string) SelectQuery[T] {
 	return sq.withLock("FOR UPDATE", opt)
 }
 
-// ForShare adds FOR SHARE (PostgreSQL).
+// ForShare adds FOR SHARE (PostgreSQL). Options and restrictions are those of
+// ForUpdate.
 func (sq SelectQuery[T]) ForShare(opt ...string) SelectQuery[T] { return sq.withLock("FOR SHARE", opt) }
 
 func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
@@ -310,7 +318,7 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 	for _, o := range opt {
 		switch o {
 		case "NOWAIT", "SKIP LOCKED":
-			if sq.s.lockWait != "" {
+			if sq.s.lockWait != "" && sq.s.lockWait != " "+o {
 				sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("lock options NOWAIT and SKIP LOCKED are mutually exclusive")}
 			}
 			sq.s.lockWait = " " + o
@@ -332,7 +340,7 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 // ForShare the build fails with ErrValidation; like them, LockOf returns
 // ErrUnsupported on SQLite. Each name must be the table or alias of the FROM or
 // a joined table, else the build fails with ErrValidation naming it. A lock
-// cannot be combined with DISTINCT, GROUP BY or HAVING (ErrValidation); other
+// cannot be combined with DISTINCT, DISTINCT ON, GROUP BY or HAVING (ErrValidation); other
 // invalid combinations, such as aggregates or UNION, are left to the server.
 func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
 	if len(tables) == 0 {
@@ -527,6 +535,9 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 	}
 	var zero T
 	for r.Next() {
+		if sq.s.maxRows > 0 && len(out) >= sq.s.maxRows {
+			return nil, sq.maxRowsError()
+		}
 		out = append(out, zero)
 		if err := sc.scan(r, &out[len(out)-1]); err != nil {
 			return nil, err
@@ -669,7 +680,9 @@ func (sq SelectQuery[T]) Count(ctx context.Context) (int64, error) {
 	inner := sq
 	// The count covers the whole filtered set: neither the ordering nor the
 	// page cursor applies.
-	inner.s.order = nil
+	if len(inner.s.distinctOn) == 0 { // DISTINCT ON keeps its ORDER BY: it picks the rows
+		inner.s.order = nil
+	}
 	inner.s.keyset = nil
 	c, err := compile(sq.q.Dialect(), func(b *Builder) {
 		b.WriteString("SELECT COUNT(*) FROM ")
