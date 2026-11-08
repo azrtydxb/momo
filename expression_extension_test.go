@@ -78,8 +78,8 @@ func (extNeedsPG) AppendSQL(b *momo.Builder) {
 	b.WriteString("needs_pg()")
 }
 
-func extSelect(d dialect.Name) momo.SelectQuery[suite.Document] {
-	return momo.Select[suite.Document](momo.New(fakedriver.New(d)))
+func extSelect(d dialect.Name) momo.SelectQuery[unitTally] {
+	return momo.Select[unitTally](momo.New(fakedriver.New(d))).From(momo.TableRef{Name: "documents"})
 }
 
 // Catches: the extension types not satisfying Expression[T] from outside the

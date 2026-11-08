@@ -7,7 +7,6 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
-	"github.com/azrtydxb/momo/internal/testmodels/example"
 )
 
 // shout renders upper(src). Embedding momo.Ops[string] makes it an
@@ -61,7 +60,7 @@ func ExampleOps() {
 	db := momo.New(pgxdriver.New(nil))
 	title := momo.NewColumn[string]("documents", "title", 0)
 
-	c, err := momo.Select[example.Document](db).
+	c, err := momo.Select[unitTally](db).
 		From(momo.TableRef{Name: "documents"}).
 		Columns(newShout(title)).
 		Where(newStartsWith(title, "ab")).
@@ -86,7 +85,7 @@ func ExamplePredicateFunc() {
 		b.WriteString(" IS TRUE")
 	})
 
-	c, err := momo.Select[example.Document](db).
+	c, err := momo.Select[unitTally](db).
 		From(momo.TableRef{Name: "documents"}).
 		Columns(momo.NewColumn[string]("documents", "title", 0)).
 		Where(active).

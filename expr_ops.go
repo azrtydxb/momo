@@ -49,7 +49,10 @@ func (unboundExpr) AppendSQL(b *Builder) {
 }
 
 // resultType makes an embedding struct an Expression[T]. A host that declares
-// its own resultType shadows this one.
+// its own resultType shadows this one. Only code outside the package reaches
+// it, through the Expression[T] interface.
+//
+//lint:ignore U1000 satisfies Expression[T] for embedders outside the package
 func (Ops[T]) resultType() T { var z T; return z }
 
 func (o Ops[T]) e() Expr {
