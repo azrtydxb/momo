@@ -286,7 +286,9 @@ var (
 // stripSQL), so a comment that mentions the words does not trip it and a
 // comment between the keywords does not hide them. Dollar-quoted bodies are
 // checked as code: a DO block that creates an extension is caught, at the price
-// of flagging a dollar-quoted string that merely contains such text.
+// of flagging a dollar-quoted string that merely contains such text. String
+// literals inside a body are stripped like any other, so an EXECUTE string such
+// as DO $$ BEGIN EXECUTE 'CREATE EXTENSION x'; END $$ is not inspected.
 func (c *config) checkMigrations() error {
 	if c.migrations == nil {
 		return nil

@@ -302,7 +302,7 @@ func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] {
 
 // ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED";
 // naming both is an ErrValidation, repeating one is not. A row lock cannot be
-// combined with DISTINCT, GROUP BY or HAVING: the build fails with
+// combined with DISTINCT [ON], GROUP BY or HAVING: the build fails with
 // ErrValidation. Count and Exists wrap the whole statement, so they keep the
 // lock clause and lock the rows they count.
 func (sq SelectQuery[T]) ForUpdate(opt ...string) SelectQuery[T] {
