@@ -4,6 +4,7 @@ package momo
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -78,10 +79,76 @@ func (q InsertQuery[T]) writeUnnest(b *Builder, d *dialect.Dialect, p insertPlan
 				col[r] = q.modelValue(&q.models[r], ci, p.now, p.fp)
 			}
 		}
-		b.argFor(q.meta.Columns[ci].Flags, col)
+		b.argFor(q.meta.Columns[ci].Flags, typedColumn(col))
 		b.WriteString("::")
 		b.WriteString(typ)
 		b.WriteString("[]")
 	}
 	b.writeByte(')')
+}
+
+// typedColumn turns the values of one column into a typed slice that pgx can
+// encode as a PostgreSQL array: []int64 for int64 values, []*string when some
+// values are NULL, and so on. A column of values this does not know stays a
+// []any, which pgx may reject for the array type; use Models for such a model.
+func typedColumn(vals []any) any {
+	for _, v := range vals {
+		switch v.(type) {
+		case nil:
+			continue
+		case int64, *int64:
+			return columnOf[int64](vals)
+		case int32, *int32:
+			return columnOf[int32](vals)
+		case int16, *int16:
+			return columnOf[int16](vals)
+		case int, *int:
+			return columnOf[int](vals)
+		case float64, *float64:
+			return columnOf[float64](vals)
+		case float32, *float32:
+			return columnOf[float32](vals)
+		case bool, *bool:
+			return columnOf[bool](vals)
+		case string, *string:
+			return columnOf[string](vals)
+		case time.Time, *time.Time:
+			return columnOf[time.Time](vals)
+		case []byte:
+			return columnOf[[]byte](vals)
+		}
+		break
+	}
+	return vals
+}
+
+// columnOf returns []T when every value is a T, and []*T when some value is a
+// *T or NULL, so a NULL stays a NULL. If a value is neither it returns vals.
+func columnOf[T any](vals []any) any {
+	plain := make([]T, len(vals))
+	allPlain := true
+	for i, v := range vals {
+		x, ok := v.(T)
+		if !ok {
+			allPlain = false
+			break
+		}
+		plain[i] = x
+	}
+	if allPlain {
+		return plain
+	}
+	ptrs := make([]*T, len(vals))
+	for i, v := range vals {
+		switch x := v.(type) {
+		case nil:
+		case T:
+			ptrs[i] = &x
+		case *T:
+			ptrs[i] = x
+		default:
+			return vals
+		}
+	}
+	return ptrs
 }

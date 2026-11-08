@@ -4,6 +4,7 @@ package momo_test
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -28,9 +29,12 @@ func TestUnnestRendersOneArrayParameterPerColumn(t *testing.T) {
 		t.Fatalf("%d args, want one array per written column (2): %v", len(c.Args), c.Args)
 	}
 	for i, a := range c.Args {
-		col, ok := a.([]any)
-		if !ok || len(col) != len(ms) {
-			t.Fatalf("arg %d = %#v, want a []any with one value per row", i, a)
+		v := reflect.ValueOf(a)
+		if v.Kind() != reflect.Slice || v.Len() != len(ms) {
+			t.Fatalf("arg %d = %#v, want a slice with one value per row", i, a)
+		}
+		if _, untyped := a.([]any); untyped {
+			t.Fatalf("arg %d is a []any; pgx needs a typed slice for an array parameter", i)
 		}
 	}
 }
