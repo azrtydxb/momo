@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/vector"
 )
 
 // Customer is one row of bench_customers.
@@ -30,4 +31,13 @@ type Order struct {
 	AmountCents int64     `momo:"column:amount_cents,notnull"`
 	Status      string    `momo:"notnull"`
 	CreatedAt   time.Time `momo:"column:created_at,notnull"`
+}
+
+// Item is one row of topk_items, the table of the vector benchmarks. The
+// benchmark creates the table and its HNSW index itself; the dimension must
+// match the 384 the benchmark generates.
+type Item struct {
+	momo.Model `momo:"table:topk_items"`
+	ID         int64         `momo:"pk"`
+	Embedding  vector.Vector `momo:"dim:384,notnull"`
 }
