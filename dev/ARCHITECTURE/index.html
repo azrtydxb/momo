@@ -1,0 +1,1873 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/dev/ARCHITECTURE/">
+      
+      
+        <link rel="prev" href="../supported-versions/">
+      
+      
+        <link rel="next" href="../contributing/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Architecture - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#momo-architecture-and-contracts" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#layering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packages-and-core-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packages and core names
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Packages and core names">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dialect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dialect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#momo-root-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momo (root runtime)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        vector
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drivers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        migrate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        gen
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other packages
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#planned-not-implemented" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned, not implemented
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contract-additions-round-1-from-plan-reviews" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contract additions (round 1, from plan reviews)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Contract additions (round 1, from plan reviews)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#root-momo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root momo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dialect_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dialect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drivers_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drivers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migrate_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        migrate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generator-companion-momoconfig-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generator companion (MomoConfig) methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-harness-internaltestdb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test harness (internal/testdb)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#public-test-kit-momotest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public test kit (momotest)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delivery-order-user-decision-2026-11-04-postgresql-and-pgvector-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery order (user decision 2026-11-04: PostgreSQL and pgvector first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ownership-decisions-round-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ownership decisions (round 2)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-test-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration test harness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integration test harness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-test-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-test isolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#layering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packages-and-core-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packages and core names
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Packages and core names">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dialect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dialect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#momo-root-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momo (root runtime)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        vector
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drivers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        migrate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        gen
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other packages
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#planned-not-implemented" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned, not implemented
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contract-additions-round-1-from-plan-reviews" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contract additions (round 1, from plan reviews)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Contract additions (round 1, from plan reviews)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#root-momo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root momo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dialect_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dialect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drivers_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drivers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migrate_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        migrate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generator-companion-momoconfig-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generator companion (MomoConfig) methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-harness-internaltestdb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test harness (internal/testdb)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#public-test-kit-momotest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public test kit (momotest)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delivery-order-user-decision-2026-11-04-postgresql-and-pgvector-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery order (user decision 2026-11-04: PostgreSQL and pgvector first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ownership-decisions-round-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ownership decisions (round 2)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-test-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration test harness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integration test harness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-test-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-test isolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="momo-architecture-and-contracts">Momo architecture and contracts<a class="headerlink" href="#momo-architecture-and-contracts" title="Permanent link">&para;</a></h1>
+<p>This is the contract for every implementation plan under <code>.procoder/plans/</code>.
+Plans and code use the names below exactly; changing a name means changing
+this file first. Requirements live in <code>.procoder/specs/momo.md</code> (cited as S-n).</p>
+<p>The package and contract sections exist in the code today, except what the
+section "Planned, not implemented" lists. PostgreSQL through pgx has the only
+migration dialect; drivers also exist for SQLite (<code>driver/sqlitedriver</code>, cgo,
+not on Windows) and for MySQL and MariaDB (<code>driver/mysqldriver</code>), with no
+migrations or vector builders on those. Anything listed as planned has no code yet, and
+no other document may describe it as available. The sections "Delivery order"
+and "Ownership decisions" are roadmap and plan bookkeeping, not status: they
+describe intended order and ownership, and do not show what has been built.</p>
+<h2 id="layering">Layering<a class="headerlink" href="#layering" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>              cmd/momo (CLI)
+                 │
+   ┌─────────────┼──────────────┐
+   gen (plugin interface; gen/viz and gen/apiquery ship)
+   │     migrate ── migrate/postgres
+   │        │
+   └──── schema ◄──────────────┐
+            ▲                  │
+   momo (root runtime) ── dialect, vector, types
+            ▲
+   driver/pgxdriver
+</code></pre></div>
+<p>Dependency rules (enforced by <code>TestImportGraph</code>, which runs <code>go list -deps</code>):</p>
+<ol>
+<li><code>momo</code>, <code>dialect</code>, <code>schema</code>, <code>vector</code>, <code>types</code> import only the standard
+   library and each other. No driver, no x/tools, no YAML.</li>
+<li><code>driver/*</code> import <code>momo</code> plus their database driver only.</li>
+<li><code>gen</code>, <code>migrate/*</code>, <code>cmd/*</code> may import x/tools, YAML and drivers.
+   Application binaries that import only <code>momo</code> + one driver never link them.</li>
+<li>Generated code imports only <code>momo</code>, <code>vector</code>, <code>types</code>, <code>schema</code> and the
+   model package.</li>
+</ol>
+<h2 id="packages-and-core-names">Packages and core names<a class="headerlink" href="#packages-and-core-names" title="Permanent link">&para;</a></h2>
+<h3 id="dialect"><code>dialect</code><a class="headerlink" href="#dialect" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>type Name string</code>; constants <code>Postgres = "postgres"</code>, <code>SQLite = "sqlite"</code>, <code>MySQL = "mysql"</code>.</li>
+<li><code>type Flavor string</code>; <code>FlavorMySQL = "mysql"</code>, <code>FlavorMariaDB = "mariadb"</code> (set on MySQL dialects only).</li>
+<li><code>type Dialect struct</code> with fields <code>Name</code>, <code>Flavor</code>, <code>MaxParams</code>, and capability booleans
+  <code>Returning, OnConflict, OnDuplicateKey, Locking, NullsOrdering, DefaultInUpdate, DefaultInValues, RecursiveCTE, RowValues, Savepoints, IsolationLevels, TransactionalDDL, ILike, Merge, WindowFunctions</code>.</li>
+<li><code>func For(n Name) *Dialect</code>, <code>func MySQLFlavor(f Flavor) *Dialect</code>.</li>
+<li>Methods: <code>AppendPlaceholder(b []byte, n int) []byte</code>, <code>AppendIdent(b []byte, ident string) []byte</code> (MySQL uses backticks), <code>QuoteIdent(string) string</code>.</li>
+</ul>
+<h3 id="schema"><code>schema</code><a class="headerlink" href="#schema" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Types as in <code>schema/schema.go</code>: <code>Schema{FormatVersion, Dialect, Schemas, Extensions, Enums, Tables, Views, Functions, Triggers, Policies}</code>, <code>Table</code>, <code>Column</code>, <code>Unique</code>, <code>Index</code>, <code>IndexPart</code>, <code>KV</code>, <code>ForeignKey</code>, <code>Check</code>.</li>
+<li><code>const FormatVersion = 1</code>. <code>func Load(r io.Reader) (*Schema, error)</code> refuses <code>format_version</code> &gt; <code>FormatVersion</code> with <code>ErrNewerFormat</code>.</li>
+<li><code>normalize.go</code>: <code>func NormalizeType(d dialect.Name, t string) string</code>, <code>func NormalizeExpr(d dialect.Name, e string) string</code>, <code>func Equal(a, b *Schema) bool</code>.</li>
+</ul>
+<h3 id="momo-root-runtime"><code>momo</code> (root runtime)<a class="headerlink" href="#momo-root-runtime" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Handles: <code>type DB</code>, <code>type Tx</code>, sealed <code>type Querier interface{ Dialect() *dialect.Dialect; conn() *execer }</code>. <code>func New(drv Driver, opts ...Option) *DB</code>.</li>
+<li>Driver contract: <code>Driver</code>, <code>DriverTx</code>, <code>Rows</code>, <code>TxOptions{Isolation sql.IsolationLevel; ReadOnly bool}</code>; optional <code>ErrorClassifier{ClassifyError(error) error}</code>, <code>Pinner{Pin(ctx) (PinnedConn, error)}</code>, <code>Copier{CopyFrom(ctx, table string, cols []string, rows [][]any) (int64, error)}</code>, <code>Batcher{SendBatch(ctx, []Compiled) ([]Rows, error)}</code>, <code>PoolStater{PoolStats() PoolStats}</code>.</li>
+<li>SQL building: <code>Builder</code>, <code>Compiled{SQL string; Args []any}</code>, <code>Expr</code>, <code>Expression[T]</code>, <code>Predicate = Expression[bool]</code>, <code>ColumnRef</code>, <code>Orderable</code>, <code>Order</code>, <code>Nulls</code>, <code>Subquery</code>, <code>TableSource</code>, <code>TableRef{Name, Alias, Schema}</code>.</li>
+<li>Aliases and joins: <code>Column.As(alias)</code> re-qualifies a column; <code>AsExpr()</code> returns it as an <code>Expression[T]</code>. Each SELECT records the qualifiers its FROM and JOIN sources expose, and a column qualified by any other table is an <code>ErrValidation</code> at build time (a reference to an enclosing SELECT, as in a correlated subquery, is allowed).</li>
+<li>Columns: <code>Column[T]</code>, <code>NullColumn[T]</code>, <code>VectorColumn[V]</code>, constructors <code>NewColumn[T] (table, name string, flags uint16)</code>, <code>NewNullColumn[T]</code>, <code>NewVectorColumn[V]</code>. Flags <code>FlagPK, FlagUnique, FlagNullable, FlagIdentity, FlagReadOnly, FlagVersion, FlagSoftDelete, FlagHasDefault, FlagCreateOnly, FlagImmutable, FlagSensitive, FlagCreatedAt, FlagUpdatedAt</code>.</li>
+<li>Writes: <code>Assignment</code> (from <code>Column.Set/SetExpr/SetDefault/SetExcluded</code>, <code>NullColumn.SetNull</code>).</li>
+<li>Metadata: <code>Model</code> and <code>Projection</code> markers, <code>ColumnMeta{Name; Flags uint16}</code>, <code>Meta[T]{Table, Schema string; Columns; Ptr func(*T,int) any; Value func(*T,int) any; TableSchema *schema.Table; Identity, Version, SoftDelete int; SoftDeleteKind; CreatedAt, UpdatedAt int; PK []int; Fields []FieldHook[T]}</code>, <code>Modeler[T]</code> (<code>*T</code> with <code>MomoMeta() *Meta[T]</code>).</li>
+<li>Queries: <code>Select[T, PT Modeler[T]] (q Querier) SelectQuery[T]</code>, <code>Insert[T, PT] (q) InsertQuery[T]</code>, <code>Update[T, PT] (q) UpdateQuery[T]</code>, <code>Delete[T, PT] (q) DeleteQuery[T]</code>, <code>SoftDelete[T, PT] (q) UpdateQuery[T]</code>, <code>Exec(ctx, q, sql, args...) (int64, error)</code>. There is no typed raw query; <code>RawSubquery</code> and the placeholders below cover raw SQL inside a statement.
+  All query values are immutable; methods return modified copies.</li>
+<li>Subqueries and CTEs: <code>SelectQuery</code> is a <code>Subquery</code> (IN, EXISTS, select-list scalar); <code>With</code> and <code>WithRecursive</code> add CTEs whose names are in scope for the whole statement, so a recursive CTE can reference itself; <code>Union(all, ...)</code>, <code>FromSubquery(q, alias)</code> and <code>CTE(name)</code> cover set operations and ad-hoc sources; <code>RawSubquery(sql, args...)</code> is the raw-SELECT escape hatch (verbatim trusted SQL, <code>?</code> binds). Scope checks never reject these shapes.</li>
+<li>Terminals on <code>SelectQuery[T]</code>: <code>All, One, First, Each, Iter, Count, Exists, SQL</code>; on mutations: <code>Exec(ctx) (Result, error)</code>, <code>SQL()</code>. <code>type Result struct{ RowsAffected int64 }</code>.</li>
+<li>Relations (see <a href="../relations/">relations.md</a>): generated <code>Relation[P, C]</code> descriptors (<code>relation.go</code>; the generator emits one value per relation field, with key accessors, <code>Through</code> for many-to-many and <code>Discriminator</code> for polymorphic relations). Loading: <code>Load[P, C]</code> (parents, one relation, then <code>opts ...LoadOption[C]</code>) and <code>LoadAll[P]</code> (parents, then <code>loaders ...Loader[P]</code>), both taking a context and a <code>Querier</code> first and returning an error. <code>Loader[P]</code> is a sealed interface implemented by <code>Relation</code> itself, <code>RelationLoader</code> (returned by <code>Relation.Scope(opts ...LoadOption[C])</code> and <code>Relation.Then(nested ...Loader[C])</code>, which chain: <code>rel.Scope(...).Then(...)</code>) and <code>Relation.Joined()</code>; options are <code>LoadWhere</code>, <code>LoadOrderBy</code>, <code>LoadPerParentLimit</code>, <code>LoadWithDeleted</code>, <code>LoadOnlyDeleted</code>. <code>SelectQuery.Preload(loaders ...Loader[T])</code> runs the loads after the rows are read, and joined loaders fold into the parent statement. On a Batcher connection (pgx) the statements of one <code>LoadAll</code> level are pipelined in one round trip. Predicates and traversal: <code>Has</code>, <code>HasFrom</code>, <code>HasNo</code>, <code>CountOrder(Direction)</code>, <code>From</code>. Writes: <code>Link</code>, <code>Unlink</code>, <code>Replace</code>, <code>Count</code>, <code>Include</code> with <code>CreateGraph</code>, <code>FindOrCreate</code>, <code>UpsertByPK</code>. Observability: <code>RelationHook</code> and <code>RelationEvent</code>. <code>With</code> stays the CTE method.</li>
+<li>Transactions: <code>DB.Tx(ctx, TxOptions, func(*Tx) error) error</code>, <code>DB.Begin</code>, <code>Tx.Commit/Rollback/Tx/Savepoint/RollbackTo/Release</code>; <code>DB.AdoptTx(DriverTx)</code> binds a Tx to a caller-owned transaction (Commit and Rollback return <code>ErrAdoptedTx</code>), <code>Tx.DriverTx()</code> exposes the driver transaction.</li>
+<li>Observability: <code>Hook</code>, an interface with <code>BeforeQuery</code> (takes a context and a query event, returns a context) and <code>AfterQuery</code> (takes a context and a query event), <code>QueryEvent</code>, options <code>WithHook</code>, <code>WithArgLogging</code>, <code>WithClock</code> (takes a function returning the current time), <code>WithMaxParams</code>.</li>
+<li>Errors (<code>errors.go</code>): <code>Error{Kind, Op, Table, Column, Constraint, Err}</code> plus <code>Detail() string</code>; sentinels <code>ErrNotFound, ErrTooManyRows, ErrUniqueViolation, ErrForeignKeyViolation, ErrCheckViolation, ErrNotNullViolation, ErrSerialization, ErrOptimisticLock, ErrUnsupported, ErrUnfilteredMutation, ErrTxDone, ErrAdoptedTx, ErrInvalidVector (= vector.ErrInvalidVector), ErrValidation, ErrBusy, ErrLimitExceeded</code>. Migration sentinels live in <code>migrate</code>: <code>ErrChecksumMismatch, ErrDirty, ErrLocked, ErrDestructive, ErrBranchConflict</code>.</li>
+<li>Placeholders in raw SQL: <code>?</code> positional, <code>??</code> literal <code>?</code>, <code>@name</code> named (via <code>momo.Named</code>), <code>momo.In(slice)</code> expands, <code>momo.Ident(name)</code> quotes.</li>
+</ul>
+<h3 id="vector"><code>vector</code><a class="headerlink" href="#vector" title="Permanent link">&para;</a></h3>
+<p><code>Vector []float32</code>, <code>HalfVector []float32</code>, <code>SparseVector{Dim int; Indices []int32; Values []float32}</code>, <code>Bits{Len int; Data []byte}</code>; each implements <code>sql.Scanner</code>, <code>driver.Valuer</code>, <code>momo.DialectValuer</code>, <code>Validate(dim int) error</code>. <code>var ErrInvalidVector</code>.</p>
+<p>Vector fields declare their dimension with the field tag <code>dim:&lt;n&gt;</code> (e.g. <code>momo:"embedding,dim:1536"</code>). The Go type selects the SQL type: <code>vector</code>, <code>halfvec</code>, <code>sparsevec</code> or <code>bit</code>.</p>
+<h3 id="types"><code>types</code><a class="headerlink" href="#types" title="Permanent link">&para;</a></h3>
+<p><code>JSON[T]</code>, <code>Date</code>, <code>TimeOfDay</code>, <code>UUID</code>, <code>Hstore</code>; each a codec (<code>sql.Scanner</code> + <code>driver.Valuer</code> + <code>SQLType(dialect.Name) string</code>).</p>
+<h3 id="drivers">Drivers<a class="headerlink" href="#drivers" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>driver/pgxdriver</code>: <code>New(pool *pgxpool.Pool, opts ...Option) momo.Driver</code>; <code>FromSQLDB(db *sql.DB) momo.Driver</code> (pgx stdlib); option <code>WithExecMode(pgx.QueryExecMode)</code>; <code>SQLTx(*sql.Tx)</code> and <code>PgxTx(pgx.Tx, opts ...Option)</code> wrap a caller-owned transaction for <code>DB.AdoptTx</code>; <code>UnwrapSQLTx(*momo.Tx)</code> and <code>UnwrapPgxTx(*momo.Tx)</code> return the real transaction.</li>
+</ul>
+<h3 id="migrate"><code>migrate</code><a class="headerlink" href="#migrate" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Directory format: <code>&lt;YYYYMMDDHHMMSS&gt;_&lt;name&gt;.up.sql</code>, optional <code>.down.sql</code>, <code>&lt;version&gt;_&lt;name&gt;.snapshot.json</code>, <code>momo.sum</code>. Directives: <code>-- momo:no-transaction</code>, <code>-- momo:destructive</code>, <code>-- momo:split</code>. Migrations are forward only: <code>apply</code> never runs a <code>.down.sql</code> file; only <code>Engine.Rollback</code> does.</li>
+<li>Go API: <code>type Engine struct</code>; <code>NewEngine(drv momo.Driver, dir fs.FS, opts ...Option) (*Engine, error)</code>; methods <code>Diff(ctx, desired *schema.Schema, name string, opts DiffOptions) (*Migration, error)</code>, <code>Plan(ctx) ([]Pending, error)</code>, <code>Apply(ctx, ApplyOptions) (*Report, error)</code>, <code>Status(ctx)</code>, <code>Baseline(ctx, version string, force bool)</code>, <code>Drift(ctx) (*DriftReport, error)</code>, <code>Resolve(ctx, version string, state ResolveState)</code>, <code>Rehash</code>, <code>Inspect</code>, <code>AutoMigrate(ctx, desired *schema.Schema) (*AutoReport, error)</code>; the package function <code>ValidateOffline</code> checks a directory without a database.</li>
+<li>The PostgreSQL implementation in <code>migrate/postgres</code> satisfies <code>migrate.Dialect</code> (<code>Dialect</code>, <code>Inspect</code>, <code>Render</code>, <code>HistoryDDL</code>, <code>Setup</code>, <code>Lock</code>; see the additions below).</li>
+<li>The history table <code>momo_migrations</code> is defined by the dialect's <code>HistoryDDL</code>.</li>
+</ul>
+<h3 id="gen"><code>gen</code><a class="headerlink" href="#gen" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>gen.Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error)</code> → <code>Graph{Models []*Model; Schema *schema.Schema}</code>; <code>gen.Emit(g *Graph, w *Writer) error</code>; <code>Writer</code> is the only file writer (refuses non-generated targets, gofmt, deterministic).</li>
+<li>Plugin interface: <code>type Plugin interface{ Name() string; Generate(g *Graph, w *Writer) error }</code>.</li>
+<li>Generated files start with <code>// Code generated by momo (format 1). DO NOT EDIT.</code> (no momo release version, so upgrading momo does not rewrite generated files; older files that carry a version are still recognised); per-package <code>momo_gen.go</code> in the model package, per-model subpackage <code>&lt;lowercase model name&gt;/momo_gen.go</code>.</li>
+<li><code>Writer.Text(path, data)</code> buffers non-Go generated text (Mermaid, DOT, protobuf, GraphQL schema, YAML) under the same refusal rules as <code>File</code> without formatting; the first line of <code>data</code> must be the generated header in the comment style of the format (<code>//</code>, <code>%%</code> or <code>#</code>). <code>Writer.Scaffold(path, data)</code> writes a file only when it does not exist yet: a starting point the user owns, with no header, never overwritten.</li>
+<li><code>gen/viz</code>: <code>Edge</code>, <code>EdgesFromGraph</code>, <code>EdgesFromSchema</code>, <code>Tables</code>, <code>TablesFromSchema</code>, <code>Mermaid</code>, <code>DOT</code>, <code>Render</code> and <code>Plugin{Format, Out}</code> (name <code>viz</code>, writes <code>schema.mmd</code> or <code>schema.dot</code>). <code>momo viz [--format mermaid|dot] [--snapshot file] [--out file]</code> draws the models or a migration snapshot; it is a CLI command, not yet selectable from <code>momo.yaml</code>.</li>
+<li><code>gen/graphql.SDL(g)</code>, <code>gen/grpc.Proto(g, lock, pkg)</code> with the field-number <code>Lock</code> (<code>LoadLock</code>, <code>Assign</code>, <code>Marshal</code>) and <code>gen/openapi.Document(g, opts)</code>: pure functions from the model graph to GraphQL SDL, a <code>.proto</code> file and an OpenAPI 3.1 JSON document. They are not yet gen.Plugin implementations and not selectable from <code>momo.yaml</code> or the CLI. The lock is JSON, so it cannot carry the generated header; writing it needs a Writer method that does not exist yet. The lock records retired field names in <code>reserved_names</code> next to the retired numbers; a lock written before that field existed still loads, but a momo build older than the field drops <code>reserved_names</code> when it rewrites the lock, so do not mix builds on one lock.</li>
+<li><code>gen/apiquery</code>: request-side helpers shared by the API generators: <code>EncodeCursor</code>/<code>DecodeCursor</code> (opaque base64url keyset cursors), <code>ClampLimit</code> with <code>DefaultLimit</code> 50 and <code>MaxLimit</code> 200, and <code>ParseFilter</code> (a <code>Filter</code> of column, operator and text value resolved through a generated <code>ColumnByName</code>).</li>
+<li>Config file <code>momo.yaml</code> (parsed in <code>gen/config</code>, shared with the CLI).</li>
+<li><code>migrate:</code> section: type <code>config.MigrateConfig</code> owned by momo-02, semantics by momo-04.</li>
+</ul>
+<h3 id="other-packages">Other packages<a class="headerlink" href="#other-packages" title="Permanent link">&para;</a></h3>
+<p><code>cmd/momo</code> (the CLI: generate and migrate) and <code>momotest</code> (the public test kit for applications: a schema or a rolled-back transaction per test with the project migrations applied, and fixture seeding; see <a href="../testing/">testing.md</a>). Every other package once listed here is under "Planned, not implemented".</p>
+<h2 id="planned-not-implemented">Planned, not implemented<a class="headerlink" href="#planned-not-implemented" title="Permanent link">&para;</a></h2>
+<p>None of the names below exist in the code. They are design intent from the
+plans and may change or be dropped; do not call them from code or describe
+them as available in user documentation.</p>
+<ul>
+<li>Query options and limits: <code>MaxRows</code>, <code>WithMaxInList</code>, and a typed raw query <code>Raw[T, PT]</code> returning <code>RawQuery[T]</code>.</li>
+<li>Interceptors: <code>Interceptor</code>, <code>Operation</code>, <code>WithInterceptor</code>.</li>
+<li>Read replicas and unit of work: <code>WithReplicas</code>, <code>DB.Replica</code>, <code>NewUnitOfWork</code>, <code>AllowStaleReads</code>; see docs/replicas.md.</li>
+<li>Generated per-model hook sets: <code>Meta.Hooks</code> as <code>HookSet[T]</code> (today <code>Meta.Fields</code> carries <code>FieldHook[T]</code> only).</li>
+<li>Read-only view models: marker <code>View</code> (tag <code>momo:"view:&lt;name&gt;[,materialized]"</code>), <code>WritableModeler[T]</code>, <code>MomoWritable</code>, and <code>RefreshMaterializedView</code>.</li>
+<li>Migration engine: <code>Engine.Lint</code>, <code>Engine.Rebase</code>, an online <code>Engine.Validate</code>, and the <code>-- momo:sqlite-foreign-keys-off</code> directive.</li>
+<li>Other databases: <code>driver/sqlitedriver</code>, <code>driver/sqlitepure</code>, <code>driver/mysqldriver</code>, <code>migrate/sqlite</code>, <code>migrate/mysql</code> and <code>migrate/importers/{atlas,bun,goose,golangmigrate}</code>. Their <code>testopen</code> entries come with them.</li>
+<li>Tooling packages: <code>momolog</code> (slog hook), <code>momovet</code> and <code>cmd/momovet</code> (analyzer), <code>importer/{gorm,bun,ent}</code> (see <a href="../importers/">importers</a>) and the plugins and handlers of <code>gen/graphql</code>, <code>gen/grpc</code> and <code>gen/openapi</code> (their schema, protobuf and document emitters exist; see Other packages).</li>
+<li>Separate modules: <code>otelmomo</code> (OpenTelemetry) and <code>bench</code>.</li>
+</ul>
+<h2 id="contract-additions-round-1-from-plan-reviews">Contract additions (round 1, from plan reviews)<a class="headerlink" href="#contract-additions-round-1-from-plan-reviews" title="Permanent link">&para;</a></h2>
+<p>Each name below is owned by the plan in brackets; that plan's <code>Interfaces:</code>
+block is the source of truth for its exact signature. Other plans consume the
+name as written.</p>
+<h3 id="root-momo">Root <code>momo</code><a class="headerlink" href="#root-momo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>PinnedConn</code> interface: <code>Query</code>, <code>Exec</code> (same signatures as <code>Driver</code>), <code>Begin(ctx, TxOptions) (DriverTx, error)</code>, <code>Release() error</code>; obtained through <code>Pinner.Pin(ctx)</code>. <code>Release</code> closes Rows still open, then returns the connection (a repeat after success is a nil no-op); while a Query, Exec or Begin is executing in another goroutine it returns an error matching <code>ErrPinnedBusy</code> and releases nothing. Pinned connections of drivers that can destroy a session also implement the optional <code>Discarder{Discard() error}</code>: it closes the underlying connection and then releases it so the pool destroys it (open Rows closed first; <code>ErrPinnedBusy</code> while a call is in flight; nil when already released or discarded). Callers that cannot restore session state (failed advisory unlock or <code>RESET</code>) call it instead of leaving a dirty connection in the pool. <code>PoolStats</code> struct (acquired, idle, total, wait count, wait duration). <code>Capabilities</code> / <code>CapabilityReporter</code>. Exact <code>Copier</code> and <code>Batcher</code> signatures. [momo-03 Task 1]</li>
+<li><code>func (db *DB) OnConn(pc PinnedConn) *DB</code>: a DB bound to one pinned connection that keeps db's hooks, classifier and options. Used for non-transactional Go migrations and session-scoped work. [momo-03]</li>
+<li><code>testopen.Each</code> takes the test, a callback, and optional momo options; it passes the options to every available dialect's DB (PostgreSQL and SQLite; SQLite is skipped in a build without cgo or on Windows). [momo-03]</li>
+<li><code>WithMaxParams(n)</code> lowers the per-statement bind limit for chunking tests and for databases configured with lower limits. [momo-06]</li>
+<li><code>Batcher</code> is implemented by the pgx driver and by pgx transactions. The pgx pool tracer calls the observability recorder for pool wait (<code>RecordPoolWait</code>, owned by momo-09). [momo-03 implements, momo-09 defines] Batch results are buffered eagerly and without bound: <code>SendBatch</code> reads every row of every statement into memory before it returns (so the connection is free and rows can be read in any order), and a failed batch returns one error naming the statement index, never its arguments. With the default <code>QueryExecMode</code> Exec the batch is sent as unnamed extended-protocol statements, so no prepared statement is created (PgBouncer-safe); pgx has no per-batch mode, so any other <code>WithExecMode</code> is accepted only when it equals the pool connection default, else <code>ErrUnsupported</code>. Pinned connections and <code>OnConn</code> handles run COPY and batch on the pinned session.</li>
+<li><code>QueryEvent</code> adds <code>PoolWait</code>, <code>InTx</code>, <code>NumArgs</code>, <code>Dialect</code>. [momo-09]</li>
+<li><code>WithClock</code> (takes a function returning the current time), <code>ErrBusy</code>, <code>ErrValidation</code>, <code>ErrLimitExceeded</code>. Sentinels are declared in <code>errors.go</code> by momo-01. [momo-05]</li>
+<li><code>Meta.Fields</code> holds one <code>FieldHook[T]</code> per column that needs a Go-side default or validator. [momo-05]</li>
+<li>The <code>Error.Detail</code> method returns the driver detail as a string; driver-level redaction keeps driver detail off the <code>Error</code> text. The compiled statement carries a sensitive-args mask used by hooks: values bound from <code>sensitive</code> columns show as <code>momo.RedactedArg</code>; raw <code>momo.SQL</code> arguments are not masked. [momo-03, momo-05]</li>
+<li><code>Tx.SetLocal(ctx, name, value string) error</code> (set_config(name, value, true), transaction-scoped) for RLS and search settings. [momo-04 Task 23]</li>
+</ul>
+<h3 id="dialect_1"><code>dialect</code><a class="headerlink" href="#dialect_1" title="Permanent link">&para;</a></h3>
+<p><code>dialect.Dialect</code> carries these capability flags: <code>Returning</code>, <code>InsertReturning</code>, <code>OnConflict</code>, <code>OnDuplicateKey</code>, <code>Locking</code>, <code>NullsOrdering</code>, <code>DefaultInUpdate</code>, <code>DefaultInValues</code>, <code>RecursiveCTE</code>, <code>RowValues</code>, <code>Savepoints</code>, <code>IsolationLevels</code>, <code>TransactionalDDL</code>, <code>ILike</code>, <code>Merge</code>, <code>WindowFunctions</code>, plus <code>Vector</code> (<code>VectorCaps</code>), <code>MaxParams</code> and <code>MaxInList</code>. There are no <code>JSON</code>, <code>Arrays</code>, <code>UpdateFrom</code> or <code>MergeReturning</code> flags. The public <code>momo.Merge</code> builder exists (<code>MergeQuery[T]</code>, with <code>Returning</code>); it gates at run time on the server version the driver reports (<code>ServerVersioner</code>, or <code>SELECT server_version_num</code> on a <code>Tx</code>): PostgreSQL 15 or later for <code>MERGE</code>, PostgreSQL 17 or later for <code>MERGE ... RETURNING</code>, else <code>ErrUnsupported</code>. [momo-05]</p>
+<h3 id="drivers_1">Drivers<a class="headerlink" href="#drivers_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>pgxdriver.WithExecMode</code> defaults to <code>pgx.QueryExecModeExec</code> (unnamed statements, server-side binding, PgBouncer-safe). <code>QueryExecModeCacheStatement</code> is opt-in, as are <code>QueryExecModeCacheDescribe</code> and <code>QueryExecModeDescribeExec</code>. <code>QueryExecModeSimpleProtocol</code> is rejected, because values must always be bound server-side. PgBouncer transaction pooling uses <code>QueryExecModeExec</code>. <code>pgxdriver.FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)</code>. [momo-03]</li>
+</ul>
+<h3 id="migrate_1"><code>migrate</code><a class="headerlink" href="#migrate_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>migrate.Dialect</code> adds <code>Dialect() *dialect.Dialect</code>, <code>HistoryDDL() []string</code>, <code>Setup(ctx, momo.PinnedConn, SessionOptions) (reset func() error, err error)</code>. <code>Lock</code> also reports the holder. There is no global registry: <code>NewEngine</code> requires <code>migrate.WithDialect(d)</code>, and the CLI selects the dialect statically. [momo-04]</li>
+<li>The history table adds <code>apply_id</code> (groups the migrations of one apply run) and <code>kind</code> (<code>sql</code>, or <code>go</code> for a <code>GoMigration</code>). Transactional migrations write their history row inside the migration transaction. Only non-transactional <code>failed</code>/<code>running</code> rows are dirty. [momo-04]</li>
+<li>Snapshots are stored as a wrapper <code>{format_version, parent, schema}</code>. [momo-04 Task 6]</li>
+<li><code>migrate.GoMigration</code> (fields <code>Version</code>, <code>Name</code>, <code>Up</code>, <code>UpNoTx</code>, <code>Checksum</code>) and the option <code>migrate.WithGoMigrations</code>: Go migrations are ordered with the SQL files by version and recorded with <code>kind = 'go'</code>. <code>Up</code> takes a <code>*momo.Tx</code> and runs in the migration transaction; <code>UpNoTx</code> takes a <code>*momo.DB</code> on the pinned connection through <code>OnConn</code>, with the dirty/resolve semantics of a no-transaction SQL file. The recorded checksum is a hash of version, name and the optional <code>Checksum</code> string (code cannot be hashed). A version shared with a SQL file is an error. They exist only in the application's process, so the <code>momo</code> CLI cannot run them; they are forward-only. <code>ValidateOffline</code> takes the registered migrations as extra arguments to check their snapshots. <code>migrate.WithGoMigrationDB</code> supplies the application's <code>*momo.DB</code> for them. Apply returns <code>ErrGoMigrationUnregistered</code> when a snapshot-only version (a Go migration the engine does not have) would be passed by later SQL. <code>RefuseGoRollback</code> and <code>ErrGoMigrationNotReversible</code> are for the rollback code to refuse rows of kind <code>go</code>. See docs/migrations.md section 6a. [issue 43]</li>
+</ul>
+<h3 id="generator-companion-momoconfig-methods">Generator companion (<code>MomoConfig</code>) methods<a class="headerlink" href="#generator-companion-momoconfig-methods" title="Permanent link">&para;</a></h3>
+<p><code>Index, IndexExpr, Unique, Check, Enum, Default, Comment, Collate</code> take literals and field references. There is no <code>Table</code> method: the table name comes from the marker tag <code>momo:"table:&lt;name&gt;"</code> (momo-02 Task 7). <code>View, Function, Trigger, Policy, RLS, Partition, PartitionOf</code> each take one composite literal of the matching structured schema type owned by momo-04 Task 1 (<code>schema.View</code> covers materialized views through its <code>Materialized</code> field). momo-02 parses them statically; any other form is a diagnostic.</p>
+<h3 id="test-harness-internaltestdb">Test harness (<code>internal/testdb</code>)<a class="headerlink" href="#test-harness-internaltestdb" title="Permanent link">&para;</a></h3>
+<p>The harness returns connection strings only, so driver packages can use it without import cycles: <code>PostgresURL</code>, <code>PostgresAppRoleURL</code>, <code>PgBouncerURL</code>, <code>SQLitePath</code>, <code>MySQL84URL</code>, <code>MySQL97URL</code>, <code>MariaDBURL</code> and <code>Schema</code>, each taking the <code>*testing.T</code>. <code>internal/testdb/testopen</code> opens PostgreSQL (<code>testopen.Postgres(t)</code>, <code>testopen.PostgresIn</code>) and SQLite (<code>testopen.SQLite(t)</code>, through <code>driver/sqlitedriver</code>) as a <code>*momo.DB</code> for packages above the drivers, and <code>testopen.Each</code> runs a test once per registered dialect; there is no MySQL opener yet. A missing PostgreSQL URL fails the test when <code>MOMO_REQUIRE_INTEGRATION=1</code> and skips it otherwise (testdb does that check). <code>testopen.SQLite</code> skips when the build has only the stub driver (no cgo, or Windows). Tests that cannot run on a dialect skip that subtest with a stated reason. [momo-01]</p>
+<h3 id="public-test-kit-momotest">Public test kit (<code>momotest</code>)<a class="headerlink" href="#public-test-kit-momotest" title="Permanent link">&para;</a></h3>
+<p><code>momotest</code> is the public counterpart for applications; it is independent of <code>internal/testdb</code> (it does not require pgvector). <code>momotest.New(t, opts...)</code> returns a <code>*momo.DB</code> on a per-test schema <code>momotest_&lt;16 hex&gt;</code> with the project migrations applied (<code>WithMigrations(fs.FS)</code>, run through <code>migrate.Engine</code> with <code>WithoutSum</code>), dropped in <code>t.Cleanup</code> after the pool is closed. <code>momotest.NewTx(t, opts...)</code> returns a <code>*momo.Tx</code> from <code>DB.AdoptTx</code> on a template schema named <code>momotest_tpl_&lt;hash of the migration files and extensions&gt;</code>, built once under a PostgreSQL advisory lock and marked ready with a schema comment, so a half-built template left by a killed run is rebuilt; the transaction is rolled back in <code>t.Cleanup</code>. <code>momotest.Seed</code>, <code>Insert</code> and <code>Graph</code> insert fixtures in order inside one transaction or savepoint. The URL comes from <code>MOMO_TEST_POSTGRES_URL</code> (<code>WithEnv</code> changes it), with the skip and <code>MOMO_REQUIRE_INTEGRATION=1</code> behavior of <code>testdb</code>. See <a href="../testing/">testing.md</a>.</p>
+<h2 id="delivery-order-user-decision-2026-11-04-postgresql-and-pgvector-first">Delivery order (user decision 2026-11-04: PostgreSQL and pgvector first)<a class="headerlink" href="#delivery-order-user-decision-2026-11-04-postgresql-and-pgvector-first" title="Permanent link">&para;</a></h2>
+<p>This is a roadmap, not a status report. Milestones are executed in this order. Tests are written once and are
+dialect-parameterized. The harness runs a dialect only once that dialect's
+driver task has landed, so a later milestone extends coverage without
+rewriting tests.</p>
+<ol>
+<li><strong>M1: PostgreSQL + pgvector, end to end.</strong> momo-01; momo-02; momo-03
+   PostgreSQL tasks (pgx adapter, classification, transactions, pinned
+   connections, COPY/batch, FromSQLDB, PgBouncer, replicas); momo-04 core
+   engine plus PostgreSQL tasks, with engine tests running on PostgreSQL;
+   momo-05 on PostgreSQL; momo-06 on PostgreSQL; momo-07 pgvector tasks and
+   hybrid search; momo-09 hooks, momotest and OTel.</li>
+<li><strong>M2: SQLite + sqlite-vec parity.</strong> momo-03 SQLite tasks; momo-04 SQLite
+   inspection, rendering and rebuild; momo-07 sqlite-vec task. Adding SQLite
+   to <code>testopen.Each</code> turns on every existing parameterized test for SQLite.</li>
+<li><strong>M3: MySQL/MariaDB.</strong> momo-08.</li>
+<li><strong>M4: Ecosystem, adoption, performance, docs site.</strong> momo-10, momo-11,
+   momo-12, momo-13.</li>
+</ol>
+<p><code>testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name))</code> runs a subtest named after each dialect available in this build. Each driver milestone adds its entry. In CI, the requirement that every
+dialect's URL is set (MOMO_REQUIRE_INTEGRATION=1) applies only to dialects
+whose milestone has landed.</p>
+<h2 id="ownership-decisions-round-2">Ownership decisions (round 2)<a class="headerlink" href="#ownership-decisions-round-2" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>internal/testdb</code> (momo-01) provides URLs only: <code>PostgresURL</code>, <code>PostgresAppRoleURL</code>, <code>PgBouncerURL</code>, <code>SQLitePath</code>, <code>Schema</code>, <code>MySQL84URL</code>, <code>MySQL97URL</code>, <code>MariaDBURL</code>. The env vars are <code>MOMO_TEST_POSTGRES_URL</code>, <code>MOMO_TEST_POSTGRES_APP_URL</code>, <code>MOMO_TEST_PGBOUNCER_URL</code>, <code>MOMO_TEST_MYSQL84_URL</code>, <code>MOMO_TEST_MYSQL97_URL</code> and <code>MOMO_TEST_MARIADB_URL</code>.</li>
+<li><code>internal/testdb/testopen</code> (momo-03; it imports drivers) provides <code>Postgres(t, opts ...momo.Option)</code> and <code>PostgresIn</code> returning <code>*momo.DB</code>, plus <code>Each</code>. Dialect coverage is expressed by subtests named after the dialect, never by <code>_Postgres</code>-style test-name suffixes.</li>
+<li><code>internal/suite</code> (momo-05) holds the shared feature suites, with <code>suite.Caps</code> and <code>suite.CapabilitiesOf(d *dialect.Dialect) Caps</code>.</li>
+<li>Fixtures: the root <code>momo_test</code> package has one unit fixture, owned by momo-01 in <code>unit_fixtures_test.go</code> as type <code>unitDocument</code>. The integration fixtures live in <code>internal/suite</code> (<code>suite.Document</code>, ...).</li>
+<li>Keyset pagination (<code>After</code>) is implemented by momo-01, including the rule that nullable keys return ErrUnsupported. momo-05 only adds integration tests.</li>
+<li>Schema base types and <code>FormatVersion</code> belong to momo-01. The managed-object types (<code>Namespace</code>, <code>View</code>, <code>Function</code>, <code>Trigger</code>, <code>Policy</code>, partitions, RLS flags) belong to momo-04 Task 1. They are structured definitions, and the MomoConfig companion methods in momo-02 take the same structured arguments.</li>
+<li>Cross-cutting spec tests with one owner: <code>TestWindowsPaths</code> (S-26) is owned by momo-04 in the CLI task. It asserts forward slashes in both the generator import/output paths (momo-02 API) and the migration file paths. Momo-01 only checks that the windows-latest CI job exists.</li>
+<li>Docs pages are owned by feature plans: <code>docs/migrations.md</code> (momo-04), <code>docs/vectors.md</code> (momo-07). <code>docs/mysql.md</code> and <code>docs/PERFORMANCE.md</code> do not exist yet. momo-13 owns the site, nav and the remaining pages.</li>
+</ul>
+<h2 id="integration-test-harness">Integration test harness<a class="headerlink" href="#integration-test-harness" title="Permanent link">&para;</a></h2>
+<p>See "Ownership decisions (round 2)". <code>internal/testdb</code> (momo-01) returns URLs and paths only. <code>internal/testdb/testopen</code> (momo-03) opens a <code>*momo.DB</code> per dialect and provides <code>Each</code>. When a URL is unset, the test fails if <code>MOMO_REQUIRE_INTEGRATION=1</code> (set in CI for every landed milestone) and skips otherwise. Only these helpers call <code>t.Skip</code>. Every test file that uses these helpers carries the <code>//go:build integration</code> tag, enforced by <code>TestIntegrationTagConvention</code> in <code>internal/repocheck</code>; untagged builds (<code>make test</code>, the macOS and Windows jobs) therefore contain no database test. The harness skip/require rule still decides skip versus fail inside a tagged run. CI and <code>make test-integration</code> always run <code>go test -tags integration -race ./...</code> with <code>MOMO_REQUIRE_INTEGRATION=1</code>. <code>make db-up</code> starts <code>docker compose -f internal/testdb/compose.yaml up -d</code> with pinned images.</p>
+<h3 id="per-test-isolation">Per-test isolation<a class="headerlink" href="#per-test-isolation" title="Permanent link">&para;</a></h3>
+<p><code>go test ./...</code> runs packages in parallel against one server, so every test gets its own namespace and tests may use fixed table names such as <code>docs</code>.</p>
+<ol>
+<li><code>testdb.PostgresURL(t)</code> connects to <code>MOMO_TEST_POSTGRES_URL</code> with <code>github.com/jackc/pgx/v5</code> directly (not a Momo driver, so no import cycle), creates schema <code>t_&lt;16 hex chars from crypto/rand&gt;</code>, and returns the base URL with <code>search_path=t_xxx,public</code> (a pgx runtime parameter). It is memoized per <code>*testing.T</code> (<code>sync.Map</code> keyed by <code>t</code>), so <code>testopen.Postgres(t)</code> and raw <code>PostgresURL(t)</code> calls in one test share one schema; a subtest calling it with its own <code>t</code> gets its own schema unless it uses the parent's <code>db</code>. <code>t.Cleanup</code> runs <code>DROP SCHEMA ... CASCADE</code> (error: <code>t.Errorf</code>). Once per process (<code>sync.Once</code> plus <code>pg_advisory_lock(7_000_001)</code>) it runs <code>CREATE EXTENSION IF NOT EXISTS vector SCHEMA public</code>, so <code>vector</code> types resolve through <code>public</code>.</li>
+<li><code>PostgresAppRoleURL(t)</code> uses the same schema as <code>PostgresURL(t)</code> for that <code>t</code> (it calls it first) and adds, run as the administrator, <code>GRANT USAGE ON SCHEMA t_xxx TO &lt;app role&gt;</code>, <code>ALTER DEFAULT PRIVILEGES IN SCHEMA t_xxx GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO &lt;app role&gt;</code> and <code>ALTER DEFAULT PRIVILEGES IN SCHEMA t_xxx GRANT USAGE, SELECT ON SEQUENCES TO &lt;app role&gt;</code> (tables the administrator creates in that schema are covered; the app role has no <code>CREATE</code>, so <code>CREATE TABLE</code> fails with SQLSTATE 42501). The role credentials come from <code>MOMO_TEST_POSTGRES_APP_URL</code>, with <code>search_path</code> appended the same way.</li>
+<li><code>PgBouncerURL(t)</code> uses the same schema and appends <code>search_path</code> the same way. The test PgBouncer image cannot track <code>search_path</code>, so a startup <code>search_path</code> is not reliable through the pooler. <code>PgBouncerURLFor(t, dbname)</code> returns the pooler URL for another database (no <code>search_path</code>; the pooler routes every database name) and <code>ScratchDatabase(t, prefix)</code> creates and later drops such a database, so the pooled shared suite runs in a scratch database of its own.</li>
+<li><code>SQLitePath(t)</code> is <code>filepath.Join(t.TempDir(), "momo.db")</code>.</li>
+<li><code>MySQL84URL</code>, <code>MySQL97URL</code> and <code>MariaDBURL</code> create database <code>t_&lt;16 hex&gt;</code> through <code>github.com/go-sql-driver/mysql</code> directly, return the DSN with that dbname, drop it in <code>t.Cleanup</code>, and are memoized per <code>t</code>.</li>
+<li>Tests never <code>CREATE</code> or <code>DROP</code> schemas or databases themselves and need not use unique table names; <code>DROP TABLE IF EXISTS</code> is unnecessary but harmless.</li>
+<li>Migration-engine tests that inspect the database introspect <code>current_schema()</code> only, unless a test explicitly manages extra namespaces. Those namespace names derive from the per-test schema name: <code>testdb.Schema(t)</code> returns <code>t_xxx</code>.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

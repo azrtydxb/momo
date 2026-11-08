@@ -1,0 +1,2477 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/dev/capabilities/">
+      
+      
+        <link rel="prev" href="../momovet/">
+      
+      
+        <link rel="next" href="../PERFORMANCE/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Capabilities - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#getting-connected" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Capabilities
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#getting-connected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting connected
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dialect-and-driver-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dialect and driver status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core queries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writes-transactions-drivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes, transactions, drivers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#row-locking-ctes-subqueries-window-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Row locking, CTEs, subqueries, window functions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vectors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generator-and-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generator and CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hooks-and-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hooks and events
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Hooks and events">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#secrets-in-errors-hooks-and-connections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets in errors, hooks and connections
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-tenant-row-level-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-tenant row-level security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pgbouncer-and-tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PgBouncer and TLS
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-returns-errunsupported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What returns ErrUnsupported
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#getting-connected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting connected
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dialect-and-driver-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dialect and driver status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core queries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writes-transactions-drivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes, transactions, drivers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#row-locking-ctes-subqueries-window-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Row locking, CTEs, subqueries, window functions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vectors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generator-and-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generator and CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hooks-and-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hooks and events
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Hooks and events">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#secrets-in-errors-hooks-and-connections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets in errors, hooks and connections
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-tenant-row-level-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-tenant row-level security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pgbouncer-and-tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PgBouncer and TLS
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-returns-errunsupported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What returns ErrUnsupported
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>Capabilities</h1>
+
+<p>What Momo supports, per database. PostgreSQL (through pgx) is fully usable.
+SQLite is usable through <code>driver/sqlitedriver</code> (mattn go-sqlite3 and
+sqlite-vec; it needs cgo and does not build on Windows): queries, writes,
+transactions, the shared integration suite and the vector builders (float32
+and bit vectors with sqlite-vec) run on it. It also has a migration dialect,
+<code>migrate/sqlite</code> (inspector, rendering, table rebuild and lock, see
+<a href="../migrations/#3a-sqlite">migrations.md</a>), that you use as a library through
+<code>migrate.NewEngine</code>; the <code>momo migrate</code> command does not select it yet. The
+pure-Go driver <code>driver/sqlitepure</code> (modernc.org/sqlite) runs the same queries,
+writes and transactions without cgo and on Windows; it has no sqlite-vec, so it
+reports <code>Vectors=false</code> and a statement that calls a <code>vec_</code> function fails with
+<code>ErrUnsupported</code>. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
+(<code>driver/mysqldriver</code>): queries, writes, locking and transactions run and are
+covered by the integration suite. The library migration dialect <code>migrate/mysql</code>
+exists (inspector, drift, apply), but the <code>momo migrate</code> command is
+PostgreSQL-only; MySQL vector search is storage only and MariaDB has distance
+functions (see <a href="../mysql/">MySQL and MariaDB</a>).</p>
+<p>Legend: yes = implemented for PostgreSQL and covered by the integration suite
+(<code>make test-integration-postgres</code>, which also runs every dialect-neutral test
+on SQLite through <code>testopen.Each</code>). no = not provided. <code>ErrUnsupported</code> = the
+call exists and fails with <code>momo.ErrUnsupported</code>.</p>
+<h2 id="getting-connected">Getting connected<a class="headerlink" href="#getting-connected" title="Permanent link">&para;</a></h2>
+<p>Imports: <code>github.com/azrtydxb/momo</code> (core), <code>github.com/azrtydxb/momo/driver/pgxdriver</code>
+(PostgreSQL driver), and <code>github.com/azrtydxb/momo/vector</code> for vector types.</p>
+<p>Open a pool and wrap it, as the README does (the caller closes the pool):</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">NewPool</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">url</span><span class="p">)</span><span class="w"> </span><span class="c1">// (ctx, string) (*pgxpool.Pool, error)</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="p">}</span>
+<span class="k">defer</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+<span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">))</span><span class="w"> </span><span class="c1">// New(pool, opts ...Option) momo.Driver</span>
+</code></pre></div>
+<p>DSN: <code>postgres://user:password@host:5432/dbname?sslmode=verify-full</code>. Use
+<code>sslmode=disable</code> for local development only.</p>
+<p>With <code>database/sql</code>: <code>pgxdriver.FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)</code>
+or <code>pgxdriver.FromSQLDB(db *sql.DB)</code>. These have no Batch or COPY path.</p>
+<p>Existing transactions: <code>db.AdoptTx(pgxdriver.SQLTx(sqlTx))</code> and
+<code>db.AdoptTx(pgxdriver.PgxTx(pgxTx))</code> run momo inside a transaction the caller
+began (Commit and Rollback return <code>ErrAdoptedTx</code>; the caller finishes it), and
+<code>pgxdriver.UnwrapSQLTx(tx)</code> or <code>pgxdriver.UnwrapPgxTx(tx)</code> give legacy code the
+<code>*sql.Tx</code> or <code>pgx.Tx</code> behind a <code>*momo.Tx</code>. Committing or rolling back the
+unwrapped handle of a momo-begun transaction is not allowed; momo still owns it.
+An adopted <code>pgx.Tx</code> keeps Batch (relation loading pipelines) and <code>COPY</code>; <code>COPY</code>
+is always binary, so vector columns need the pgvector codec on the caller's
+connection (<code>ConfigureVectors</code> on the pool, or your own AfterConnect). An
+adopted <code>*sql.Tx</code> has neither. <code>PgxTx</code> accepts the options of <code>New</code>; an exec
+mode that <code>WithExecMode</code> rejects makes every statement, batch and <code>COPY</code> on the
+adopted transaction return <code>ErrUnsupported</code>, as with <code>New</code>.</p>
+<p>Vectors need the pgvector <code>vector</code> extension in the database. The generated
+migration emits <code>CREATE EXTENSION IF NOT EXISTS "vector"</code> when a model has a
+vector column (see <code>vectors.md</code>).</p>
+<p>PgBouncer (transaction pooling): <code>pgxdriver.New</code> defaults to
+<code>pgx.QueryExecModeExec</code> (unnamed statements), and the CI PgBouncer tests open a
+pool and use <code>New(pool)</code> with that default, so no setting is needed. With
+<code>FromConnConfig</code> the exec mode is <code>cfg.DefaultQueryExecMode</code>, which pgx
+defaults to <code>CacheStatement</code> (not PgBouncer-safe), so set
+<code>cfg.DefaultQueryExecMode = pgx.QueryExecModeExec</code> before calling it; its
+<code>opts</code> have no effect.</p>
+<h2 id="dialect-and-driver-status">Dialect and driver status<a class="headerlink" href="#dialect-and-driver-status" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>PostgreSQL (pgx)</th>
+<th>SQLite</th>
+<th>MySQL / MariaDB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Usable</td>
+<td>yes</td>
+<td>queries, writes, vectors, library migrations: yes (cgo, not Windows)</td>
+<td>queries, writes, library migrations: yes; CLI: no</td>
+</tr>
+<tr>
+<td>Driver package</td>
+<td><code>driver/pgxdriver</code> (pgx v5 pool, <code>FromSQLDB</code>)</td>
+<td><code>driver/sqlitedriver</code> (mattn go-sqlite3, sqlite-vec)</td>
+<td><code>driver/mysqldriver</code></td>
+</tr>
+<tr>
+<td><code>dialect.For(name)</code> metadata</td>
+<td>yes</td>
+<td>yes (data only)</td>
+<td>yes (data only)</td>
+</tr>
+<tr>
+<td>Migration dialect (<code>migrate</code>)</td>
+<td><code>migrate/postgres</code></td>
+<td><code>migrate/sqlite</code> (library only)</td>
+<td><code>migrate/mysql</code> (library only)</td>
+</tr>
+<tr>
+<td><code>momo migrate</code> on this dialect</td>
+<td>works</td>
+<td>exit 2, the CLI builds only the PostgreSQL dialect</td>
+<td>exit 2, the CLI builds only the PostgreSQL dialect</td>
+</tr>
+<tr>
+<td>CI integration matrix</td>
+<td>PostgreSQL 16 and 17, pgvector 0.8.7</td>
+<td>runs inside the PostgreSQL job (no server needed)</td>
+<td>MySQL 8.4.13, MySQL 9.7.4, MariaDB 11.8.9</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>dialect/dialect.go</code> flags for the unusable dialects, for planning only:</p>
+<ul>
+<li>SQLite: <code>Returning</code>, <code>OnConflict</code>, <code>NullsOrdering</code>, <code>RecursiveCTE</code>,
+  <code>RowValues</code>, <code>Savepoints</code>, <code>TransactionalDDL</code>, <code>WindowFunctions</code>; vector
+  storage with l2, l1, cosine, hamming and no ANN index. No row locking, no
+  <code>DEFAULT</code> in <code>VALUES</code>.</li>
+<li>MySQL and MariaDB: <code>OnDuplicateKey</code>, <code>Locking</code>, <code>DefaultInUpdate</code>,
+  <code>DefaultInValues</code>, <code>RecursiveCTE</code>, <code>RowValues</code>, <code>Savepoints</code>,
+  <code>IsolationLevels</code>, <code>WindowFunctions</code>. No <code>Returning</code> and no <code>OnConflict</code> on
+  either; MariaDB alone has <code>InsertReturning</code> (<code>INSERT ... RETURNING</code>, not
+  UPDATE or DELETE). Vector metadata: MariaDB lists L2 and cosine and a vector
+  index, MySQL lists none. The driver reports vector support on MariaDB only; every
+  distance builder on MySQL returns <code>ErrUnsupported</code>, and on MariaDB only L2
+  and cosine on <code>vector.Vector</code> render (see vectors.md).</li>
+</ul>
+<h2 id="core-queries">Core queries<a class="headerlink" href="#core-queries" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PostgreSQL</th>
+<th>SQLite / MySQL</th>
+<th>API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Insert one / many</td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>Insert[T]</code>: <code>.Model(&amp;m)</code>, <code>.Models(ms)</code>, <code>.Values</code>, <code>.ValuesRows</code>, <code>.Omit</code>, <code>.Exec</code></td>
+</tr>
+<tr>
+<td>Insert chunking over the bind limit</td>
+<td>yes, atomic (one transaction, or a savepoint inside a <code>Tx</code>); <code>MaxParams</code> 65535</td>
+<td>SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet</td>
+<td><code>Models</code> + <code>Exec</code>; <code>WithMaxParams(n)</code> lowers the limit; one row over the limit: <code>ErrLimitExceeded</code></td>
+</tr>
+<tr>
+<td>Insert as one <code>unnest</code> statement</td>
+<td>yes: <code>Insert[T].Unnest()</code> sends one array parameter per column, so the bind count does not grow with the rows and <code>MaxParams</code> / <code>WithMaxParams</code> do not apply (one statement, no chunking)</td>
+<td><code>ErrUnsupported</code> on SQLite and MySQL</td>
+<td><code>Model</code> / <code>Models</code> only (<code>Values</code>, <code>ValuesRows</code> and <code>FromSelect</code> give <code>ErrValidation</code>); needs the table schema in the generated metadata, or <code>ErrValidation</code>. Int, float, bool, string, <code>time.Time</code> and <code>[]byte</code> columns bind as typed arrays (<code>[]*T</code> when a value is NULL); other element types (uuid, json, decimal, named enums) fall back to <code>[]any</code>, which pgx may reject, so use plain <code>Models</code> for such a model. <code>OnConflict</code>, <code>Upsert</code> and <code>Returning</code> work as for <code>Models</code>; interceptors, <code>BeforeInsert</code>, field validators, automatic timestamps and id generators run as for <code>Models</code>. A <code>FlagSensitive</code> column's array is <code>RedactedArg</code> in <code>QueryEvent.Args</code>. Not the package-level FROM source <code>momo.Unnest</code></td>
+</tr>
+<tr>
+<td>Select</td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>Select[T]</code>: <code>Where</code>, <code>OrderBy</code>, <code>Limit</code>, <code>Offset</code>, <code>Distinct</code>, <code>All</code>, <code>One</code>, <code>First</code>, <code>Count</code>, <code>Exists</code></td>
+</tr>
+<tr>
+<td>Update, Delete</td>
+<td>yes; without <code>Where</code> they fail with <code>ErrUnfilteredMutation</code> unless <code>.AllRows()</code></td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>Update[T].Set(...)</code>, <code>Delete[T]</code></td>
+</tr>
+<tr>
+<td>Soft delete</td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>SoftDelete</code>, <code>ForceDelete</code>, <code>WithDeleted</code>, <code>OnlyDeleted</code>; field tag <code>soft_delete:</code></td>
+</tr>
+<tr>
+<td>Optimistic lock, automatic timestamps</td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td>version column (<code>ErrOptimisticLock</code>); <code>created_at</code>, <code>updated_at</code> tags</td>
+</tr>
+<tr>
+<td>Typed predicates</td>
+<td>yes</td>
+<td>SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet</td>
+<td>generated columns: <code>Eq</code>, <code>In</code>, <code>IsNull</code>, <code>Lt</code>, ...; <code>And</code>, <code>Or</code>, <code>Not</code>, <code>Like</code> and <code>ILike</code> (always <code>ESCAPE '!'</code>, see <code>EscapeLike</code>), <code>ContainsLiteral</code>, <code>Exists</code>; <code>In</code> over the bind limit is <code>ErrValidation</code></td>
+</tr>
+<tr>
+<td>Array columns and operators</td>
+<td>yes: <code>[]string</code> maps to <code>text[]</code>, also <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>, <code>[]float32</code>, <code>[]float64</code>; one bind per slice</td>
+<td><code>ErrUnsupported</code> at build time</td>
+<td><code>ArrayContains</code> (<code>@&gt;</code>), <code>ArrayContainedBy</code> (<code>&lt;@</code>), <code>ArrayOverlaps</code> (<code>&amp;&amp;</code>), <code>AnyOf</code> (<code>= ANY</code>)</td>
+</tr>
+<tr>
+<td>Joins</td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>Join</code>, <code>LeftJoin</code>, <code>CrossJoin</code>, <code>From</code></td>
+</tr>
+<tr>
+<td>Aggregates, <code>GroupBy</code>, <code>Having</code></td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>CountAll</code>, <code>CountOf</code>, <code>CountDistinct</code>, <code>Sum</code>, <code>Avg</code>, <code>Min</code>, <code>Max</code></td>
+</tr>
+<tr>
+<td>Projections (non-model result types)</td>
+<td>yes</td>
+<td>SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet</td>
+<td>struct embedding <code>momo.Projection</code> with <code>Columns(...)</code>, or generic tuple rows <code>Row1</code> to <code>Row10</code>; metadata is generated; soft-deleted rows of the <code>From</code> table are filtered</td>
+</tr>
+<tr>
+<td>Serial ids</td>
+<td>yes: <code>serial</code> tag, <code>smallserial</code>, <code>serial</code> or <code>bigserial</code> by Go int width</td>
+<td>refused</td>
+<td>omitted from inserts and read back with <code>RETURNING</code>; a <code>FromSelect</code> into the table cannot supply ids</td>
+</tr>
+<tr>
+<td>Keyset pagination</td>
+<td>yes, non-nullable keys only</td>
+<td>SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet</td>
+<td><code>OrderBy(...).After(values...)</code>; the primary key is appended as tie-breaker; nullable key: <code>ErrUnsupported</code>; wrong value count: <code>ErrValidation</code></td>
+</tr>
+<tr>
+<td>Streaming</td>
+<td>yes</td>
+<td>SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet</td>
+<td><code>Each(ctx, fn)</code>, <code>Iter(ctx)</code> (<code>iter.Seq2</code>); both <code>ErrUnsupported</code> when the query has <code>Preload</code></td>
+</tr>
+<tr>
+<td>Raw SQL</td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.SQL</code>, <code>TypedSQL</code>, <code>RawSubquery</code>, <code>Named</code>, <code>In</code>, <code>Ident</code></td>
+</tr>
+<tr>
+<td><code>EXPLAIN</code></td>
+<td>yes (<code>EXPLAIN</code>, never <code>ANALYZE</code>)</td>
+<td>MySQL: <code>ErrUnsupported</code></td>
+<td><code>SelectQuery.Explain(ctx)</code></td>
+</tr>
+<tr>
+<td><code>IndexedBy</code> hint</td>
+<td><code>ErrUnsupported</code>; SQLite syntax, run on SQLite in v0.3.0 through <code>sqlitedriver</code></td>
+<td>MySQL: <code>ErrUnsupported</code></td>
+<td><code>SelectQuery.IndexedBy</code> <!-- x-release-please-version --></td>
+</tr>
+</tbody>
+</table>
+<h2 id="writes-transactions-drivers">Writes, transactions, drivers<a class="headerlink" href="#writes-transactions-drivers" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PostgreSQL</th>
+<th>SQLite / MySQL</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RETURNING</code></td>
+<td>yes (<code>Returning: true</code>)</td>
+<td>MySQL: no; MariaDB: <code>INSERT ... RETURNING</code> only (<code>InsertReturning</code>)</td>
+<td><code>.Returning(cols...)</code>, <code>.ReturningAll()</code> on insert, update, delete; read with <code>.Rows(ctx)</code>. Identity read-back in <code>CreateGraph</code> needs it.</td>
+</tr>
+<tr>
+<td><code>INSERT ... SELECT</code></td>
+<td>yes: <code>Insert[T].FromSelect</code> with <code>SelectExprs</code> (FROM-less or one source, with <code>Where</code>) or <code>Select[T]</code> as the source; composes with <code>OnConflict</code>, <code>Returning</code>, <code>Upsert[T]</code></td>
+<td>SQLite yes (<code>WHERE true</code> is added to a <code>SelectExprs</code> or <code>Select[T]</code> source with FROM and no WHERE before <code>ON CONFLICT</code>); MySQL plain insert only (no <code>ON CONFLICT</code>; FROM-less with WHERE renders <code>FROM DUAL</code>)</td>
+<td>Target columns are explicit typed columns of T; a select-list count mismatch is <code>ErrValidation</code>. No model hooks, automatic timestamps, Go-side defaults or validators are applied: list those columns yourself. The soft-delete filter on a <code>SelectExprs</code> source needs a <code>TableRef</code> that carries the soft-delete marker.</td>
+</tr>
+<tr>
+<td>Upsert / <code>ON CONFLICT</code></td>
+<td>yes (<code>OnConflict: true</code>)</td>
+<td>MySQL and MariaDB: <code>ON DUPLICATE KEY UPDATE</code> through the same calls, with the conflict target limited to the only unique key of the table (otherwise <code>ErrUnsupported</code>); see <a href="../mysql/">mysql.md</a></td>
+<td><code>Upsert[T]</code> (target = primary key) or <code>Insert[T].OnConflict(cols...).DoNothing()</code> / <code>.DoUpdate(assigns...)</code> with <code>SetExcluded</code>. Upsert neither advances nor checks the version column. <code>OnConflict(...).Where(preds)</code> (partial-index target) and <code>.DoUpdate(...).Where(preds)</code> (conditional update, <code>col.Excluded()</code>): PostgreSQL yes; SQLite: bool, integer, finite float and string values in the target predicate render inline so they match the index text (golden-tested, not yet run against a real SQLite; <code>momo.SQL("live = 1")</code> is the proven fallback; the values show up in logs and traces; write index literals as Momo renders them, integers as <code>2</code> and floats in plain decimal with <code>.0</code> for whole numbers for magnitudes from 1e-6 up to 1e21 and exponent form (<code>1e-07</code>, <code>1e+21</code>) outside that range, otherwise use <code>momo.SQL</code>), any other value or <code>Excluded()</code> there is <code>ErrValidation</code>; MySQL <code>ErrUnsupported</code>.</td>
+</tr>
+<tr>
+<td>Graph writes</td>
+<td>yes</td>
+<td>SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet</td>
+<td><code>CreateGraph</code>, <code>FindOrCreate</code> (needs <code>ON CONFLICT</code>), <code>UpsertByPK</code></td>
+</tr>
+<tr>
+<td><code>Merge</code>, <code>BulkUpdate</code>, <code>Truncate</code></td>
+<td>yes: <code>Merge</code> is PostgreSQL 15 or later and <code>.Returning</code> needs 17 or later (<code>ErrUnsupported</code> on an older server or a driver without <code>ServerVersioner</code>); <code>BulkUpdate</code> updates only the listed keys (PostgreSQL); <code>Truncate</code> is <code>TRUNCATE TABLE</code></td>
+<td><code>Merge</code> and <code>BulkUpdate</code>: <code>ErrUnsupported</code>. <code>Truncate</code>: SQLite runs <code>DELETE FROM</code> and resets the autoincrement counter; MySQL runs <code>TRUNCATE TABLE</code> (refused inside a transaction)</td>
+<td><code>Merge</code> returns <code>ErrValidation</code> when an interceptor adds predicates (deny the kind instead). <code>Truncate</code> runs interceptors with the kind <code>truncate</code>, has no <code>RESTART IDENTITY</code> or <code>CASCADE</code>, and is refused inside a MySQL transaction. <code>Merge</code> does not run field validators on the inserted values</td>
+</tr>
+<tr>
+<td>Bulk <code>COPY</code></td>
+<td>yes: <code>Insert[T].Copy</code> (after <code>Omit</code>, with the models as its argument) on the pgx driver; also <code>momo.CopierOf(querier)</code> for the driver call</td>
+<td>SQLite and MySQL: <code>Copy</code> returns <code>ErrUnsupported</code> (neither <code>sqlitedriver</code> nor <code>mysqldriver</code> has a <code>Copier</code>)</td>
+<td><code>Copy</code> runs the insert interceptors (deny only) and <code>BeforeInsert</code> over a copy of the models; it skips <code>OnConflict</code>, <code>Returning</code> and chunking, and it counts as a write for <code>NewUnitOfWork</code>. On a <code>*DB</code> with <code>WithImplicitTx</code> it runs in its own transaction; on a pinned handle with <code>WithTxSetup</code> it fails closed. Not available through <code>FromSQLDB</code></td>
+</tr>
+<tr>
+<td>Batch (several statements, one round trip)</td>
+<td>driver level: <code>momo.BatcherOf(querier)</code>; relation loading uses it automatically</td>
+<td>SQLite: no (<code>sqlitedriver</code> has no <code>Batcher</code>); MySQL: no (<code>mysqldriver</code> has no <code>Batcher</code>)</td>
+<td>not available through <code>FromSQLDB</code></td>
+</tr>
+<tr>
+<td>Transactions</td>
+<td>yes: <code>db.Tx(ctx, opts, fn)</code>, <code>db.Begin</code>; read uncommitted, read committed, repeatable read, serializable; read-only</td>
+<td>SQLite and MySQL: commit, rollback and panic cases run in the shared suite (<code>suite.RunAll</code>); SQLite accepts the default and serializable isolation only (other levels <code>ErrUnsupported</code>) and runs read-only transactions through <code>PRAGMA query_only</code> (<code>sqlitedriver</code> tests)</td>
+<td>any other <code>sql.IsolationLevel</code>: <code>ErrUnsupported</code> (Op "begin")</td>
+</tr>
+<tr>
+<td>Savepoints</td>
+<td>yes: <code>Tx.Savepoint</code>, <code>RollbackTo</code>, <code>Release</code></td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td>a dialect without savepoints: <code>ErrUnsupported</code> (Op "savepoint")</td>
+</tr>
+<tr>
+<td>Pinned connection</td>
+<td>yes: <code>db.OnConn(pc)</code></td>
+<td>SQLite and MySQL: the drivers implement <code>Pinner</code> (driver tests); <code>db.OnConn</code> itself is exercised by a MySQL test (generated keys) and not by a SQLite test</td>
+<td>no transactions on a pinned <code>*DB</code>: <code>Begin</code>, <code>Tx</code>, <code>Replace</code> and <code>CreateGraph</code> fail with <code>ErrUnsupported</code> (Op "begin"), chunked <code>Insert</code> with Op "insert"; <code>Link</code>, <code>Unlink</code> and <code>Count</code> work</td>
+</tr>
+<tr>
+<td><code>SET col = DEFAULT</code>, <code>VALUES (DEFAULT)</code></td>
+<td>yes</td>
+<td>SQLite: no <code>DEFAULT</code> in <code>VALUES</code></td>
+<td>a multi-row insert that is default in some rows only fails with <code>ErrUnsupported</code> where the dialect cannot express it</td>
+</tr>
+</tbody>
+</table>
+<h2 id="row-locking-ctes-subqueries-window-functions">Row locking, CTEs, subqueries, window functions<a class="headerlink" href="#row-locking-ctes-subqueries-window-functions" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PostgreSQL</th>
+<th>SQLite / MySQL</th>
+<th>API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FOR UPDATE</code></td>
+<td>yes (<code>Locking: true</code>)</td>
+<td>SQLite: <code>ErrUnsupported</code>; MySQL and MariaDB: yes (<code>NOWAIT</code>, <code>SKIP LOCKED</code>; <code>FOR SHARE</code> renders as <code>LOCK IN SHARE MODE</code> on MariaDB)</td>
+<td><code>ForUpdate()</code></td>
+</tr>
+<tr>
+<td><code>FOR UPDATE NOWAIT</code> / <code>SKIP LOCKED</code></td>
+<td>yes</td>
+<td>same</td>
+<td><code>ForUpdate("NOWAIT")</code>, <code>ForUpdate("SKIP LOCKED")</code></td>
+</tr>
+<tr>
+<td><code>FOR SHARE</code></td>
+<td>yes</td>
+<td>same</td>
+<td><code>ForShare()</code></td>
+</tr>
+<tr>
+<td><code>FOR UPDATE OF &lt;table&gt;</code></td>
+<td>yes; names are quoted aliases or table names</td>
+<td>SQLite: <code>ErrUnsupported</code>; MySQL: yes; MariaDB: <code>ErrUnsupported</code></td>
+<td><code>ForUpdate("SKIP LOCKED").LockOf("d", "t")</code>; without a lock mode, an unknown or CTE name, <code>NOWAIT</code> together with <code>SKIP LOCKED</code>, or DISTINCT, GROUP BY or HAVING: <code>ErrValidation</code>; <code>Count</code> and <code>Exists</code> keep the lock clause</td>
+</tr>
+<tr>
+<td>Advisory transaction locks</td>
+<td>yes: <code>pg_advisory_xact_lock</code>, <code>pg_try_advisory_xact_lock</code>, text keys through <code>hashtext</code></td>
+<td><code>ErrUnsupported</code></td>
+<td><code>Tx.AdvisoryXactLock</code>, <code>AdvisoryXactLockString</code>, <code>TryAdvisoryXactLock</code>, <code>TryAdvisoryXactLockString</code>; the same names on <code>DB</code> fail with <code>ErrValidation</code> (a transaction lock outside a transaction is meaningless). String and int64 keys share one bigint key space, and <code>hashtext</code> is not stable across PostgreSQL major versions, so never store a hashed key</td>
+</tr>
+<tr>
+<td>CTE</td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>With(name, subquery, cols...)</code>; <code>CTE(name)</code> as table source</td>
+</tr>
+<tr>
+<td>Recursive CTE</td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>WithRecursive(...)</code>; <code>Union(all, qs...)</code> builds the body</td>
+</tr>
+<tr>
+<td>Subqueries</td>
+<td>yes</td>
+<td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
+<td><code>Exists</code>, <code>NotExists</code>, <code>FromSubquery(q, alias)</code>, <code>IN</code> subquery, <code>RawSubquery</code></td>
+</tr>
+<tr>
+<td>Select-list alias</td>
+<td>yes</td>
+<td>SQLite yes; MySQL runs in the shared suite (<code>suite.RunAll</code>) only where that suite covers it</td>
+<td><code>momo.As</code> and <code>.As</code> on aggregates and expressions name the item; <code>Aliased.Ref(source)</code> reads that name from a subquery or CTE</td>
+</tr>
+<tr>
+<td>Typed <code>substr</code>, <code>CASE</code>, arithmetic</td>
+<td>yes</td>
+<td>SQLite yes; MySQL runs in the shared suite (<code>suite.RunAll</code>) only where that suite covers it</td>
+<td><code>Substr</code>, <code>Lower</code>, <code>Upper</code>, <code>Length</code> (MySQL: <code>char_length</code>), <code>Func[T]</code>, <code>Case[T]()</code>, <code>Add</code>/<code>Sub</code>/<code>Mul</code> and <code>...Expr</code>, <code>CoalesceExpr</code>, <code>Cast[T]</code>, <code>Concat</code></td>
+</tr>
+<tr>
+<td>Aggregate ORDER BY, <code>WITHIN GROUP</code>, <code>string_agg</code>, <code>array_agg</code>, <code>jsonb_agg</code></td>
+<td>yes</td>
+<td><code>StringAgg</code> yes (SQLite 3.44+ for ORDER BY; MySQL <code>GROUP_CONCAT ... SEPARATOR</code>); <code>JSONBAgg</code>/<code>JSONBBuildObject</code> map to <code>json_group_array</code>/<code>json_object</code> and <code>JSON_ARRAYAGG</code>/<code>JSON_OBJECT</code> (no ORDER BY on MySQL); <code>ArrayAgg</code>, <code>WithinGroup</code>, <code>PercentileCont</code>/<code>PercentileDisc</code>: <code>ErrUnsupported</code></td>
+<td><code>Aggregate[T]</code>, <code>.OrderBy</code>, <code>.WithinGroup</code>, <code>.Filter</code>, <code>StringAgg</code>, <code>ArrayAgg[T]</code>, <code>JSONBAgg[T]</code>, <code>JSONBBuildObject[T]</code>, <code>JSONField</code>, <code>ToJSONB[T]</code>, <code>EmptyJSONArray[T]</code>, <code>PercentileCont</code>, <code>PercentileDisc[T]</code></td>
+</tr>
+<tr>
+<td><code>current_schema()</code></td>
+<td>yes</td>
+<td>MySQL maps to <code>DATABASE()</code>; SQLite <code>ErrUnsupported</code></td>
+<td><code>CurrentSchema()</code></td>
+</tr>
+<tr>
+<td>JSON operators on <code>types.JSON[T]</code></td>
+<td>yes</td>
+<td>SQLite: no containment; MySQL runs in the shared suite (<code>suite.RunAll</code>) only where that suite covers it</td>
+<td><code>JSONText</code>, <code>JSONPath</code>, <code>JSONContains</code>, <code>JSONHasKey</code></td>
+</tr>
+<tr>
+<td>Date and time expressions</td>
+<td>yes</td>
+<td>SQLite, MySQL equivalents; AtTimeZone PG only</td>
+<td><code>Extract</code>, <code>AtTimeZone</code>, <code>DateTrunc</code>, <code>Now</code>, <code>CurrentTimestamp</code>, <code>IntervalOf</code>, <code>IntervalExpr</code>, <code>AddInterval</code>, <code>SubInterval</code></td>
+</tr>
+<tr>
+<td>Raw fragment composition</td>
+<td>yes</td>
+<td>yes</td>
+<td><code>JoinSQL</code>, <code>JoinTypedSQL</code></td>
+</tr>
+<tr>
+<td>Window functions</td>
+<td>yes</td>
+<td>SQLite: yes; MySQL: runs in the shared suite (<code>suite.RunAll</code>) only where that suite covers it</td>
+<td><code>Over</code> builds the window: <code>PartitionBy</code>, <code>OrderBy</code>, frame methods <code>Rows</code>, <code>Range</code>, <code>Groups</code> with <code>UnboundedPreceding</code>, <code>Preceding</code>, <code>CurrentRow</code>, <code>Following</code>, <code>UnboundedFollowing</code>. Attach it with <code>Agg.Over</code>, <code>AggExpr.Over</code> (not with an inner ORDER BY or WITHIN GROUP) or <code>RowNumber</code>, <code>Rank</code>, <code>DenseRank</code>, <code>Lag</code>, <code>Lead</code>, <code>FirstValue</code>, <code>LastValue</code> followed by <code>.Over</code>. A missing ORDER BY on a ranking or offset function, a frame on a ranking function and a malformed frame fail with <code>ErrValidation</code>; <code>Groups</code> on MySQL fails with <code>ErrUnsupported</code></td>
+</tr>
+<tr>
+<td>Aggregate <code>FILTER</code> clause</td>
+<td>yes</td>
+<td>SQLite: yes; MySQL: <code>ErrUnsupported</code></td>
+<td><code>Agg.Filter</code> returns a <code>FilteredAgg</code> usable in a select list, HAVING and <code>Over</code></td>
+</tr>
+<tr>
+<td><code>DISTINCT ON</code></td>
+<td>yes</td>
+<td><code>ErrUnsupported</code></td>
+<td><code>SelectQuery.DistinctOn</code>; the leading ORDER BY items must be the DISTINCT ON expressions in any order, and an OrderBy is required, otherwise <code>ErrValidation</code> at build time</td>
+</tr>
+<tr>
+<td>Set-returning FROM sources</td>
+<td>yes</td>
+<td><code>ErrUnsupported</code></td>
+<td><code>Unnest</code> over bound arrays built with <code>UnnestValues</code> or <code>UnnestValuesAs</code> (one column each, optional <code>WithOrdinality</code>); <code>GenerateSeries</code> over integers and <code>GenerateTimeSeries</code> over timestamps. They work as FROM, as Join and inside a CTE body</td>
+</tr>
+<tr>
+<td><code>LATERAL</code> joins</td>
+<td>yes</td>
+<td>MySQL 8: yes; SQLite and MariaDB: <code>ErrUnsupported</code></td>
+<td><code>Lateral</code> wraps a subquery as a Join, LeftJoin (with <code>SQL</code> true as the ON condition) or CrossJoin source</td>
+</tr>
+<tr>
+<td>Window functions used internally</td>
+<td>yes: row numbering over partitions</td>
+<td>SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet</td>
+<td><code>LoadPerParentLimit</code> only</td>
+</tr>
+</tbody>
+</table>
+<p>JSON operators: keys and values are bound, except that a plain key (letters, digits, underscore) in <code>JSONText</code> and <code>JSONPath</code> is inlined so a grouped extraction works (never on a sensitive column, whose keys stay bound and masked). An extraction is NULL for a missing key and for JSON null, while a SQL NULL column and the JSON literal null stay distinct on the column itself; see <code>expr_json.go</code>.</p>
+<h2 id="relations">Relations<a class="headerlink" href="#relations" title="Permanent link">&para;</a></h2>
+<p>PostgreSQL only. Behavior and error table: <a href="../relations/">relations.md</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PostgreSQL</th>
+<th>API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kinds</td>
+<td>yes</td>
+<td><code>belongs_to</code>, <code>has_one</code>, <code>has_many</code>, <code>many2many</code> (tag <code>rel:</code>); polymorphic through <code>Discriminator</code></td>
+</tr>
+<tr>
+<td>Foreign keys on composite-PK columns</td>
+<td>yes: <code>belongs_to</code> with <code>fk:</code> naming a column inside the referencing model's composite primary key</td>
+<td><code>momo:"belongs_to,fk:LicenseID"</code>; the target needs a single-column primary key</td>
+</tr>
+<tr>
+<td>Load one or several</td>
+<td>yes; one statement per relation per bind-limit chunk</td>
+<td><code>Load</code>, <code>LoadAll</code></td>
+</tr>
+<tr>
+<td>Load through a query</td>
+<td>yes for <code>All</code>, <code>One</code>, <code>First</code></td>
+<td><code>SelectQuery.Preload(...)</code></td>
+</tr>
+<tr>
+<td>Load options</td>
+<td>yes</td>
+<td><code>Relation.Scope(...)</code> with <code>LoadWhere</code>, <code>LoadOrderBy</code>, <code>LoadPerParentLimit</code>, <code>LoadWithDeleted</code>, <code>LoadOnlyDeleted</code></td>
+</tr>
+<tr>
+<td>Top-N per parent</td>
+<td>has-many and many-to-many; belongs-to and has-one: <code>ErrUnsupported</code></td>
+<td><code>LoadPerParentLimit(n)</code></td>
+</tr>
+<tr>
+<td>Nested loads</td>
+<td>yes</td>
+<td><code>Relation.Then(...)</code></td>
+</tr>
+<tr>
+<td>Single-query load</td>
+<td>belongs-to with a unique child key only; others <code>ErrUnsupported</code></td>
+<td><code>Relation.Joined()</code> passed to <code>Preload</code> (LEFT JOIN)</td>
+</tr>
+<tr>
+<td>Pipelined loading</td>
+<td>yes, automatic when the driver is a <code>Batcher</code> (pgx pool, transaction, pinned connection); sequential on other drivers such as <code>FromSQLDB</code>, and when the driver rejects the batch (Op "batch")</td>
+<td>nothing to configure</td>
+</tr>
+<tr>
+<td>Predicates</td>
+<td>yes</td>
+<td><code>Has</code>, <code>HasFrom</code>, <code>HasNo</code>, <code>CountOrder</code></td>
+</tr>
+<tr>
+<td>Traversal</td>
+<td>yes; many-to-many: <code>ErrValidation</code></td>
+<td><code>Relation.From(parentQuery)</code></td>
+</tr>
+<tr>
+<td>Association helpers</td>
+<td>yes; belongs-to: <code>ErrUnsupported</code></td>
+<td><code>Link</code>, <code>Unlink</code>, <code>Replace</code>, <code>Count</code></td>
+</tr>
+<tr>
+<td>Graph writes</td>
+<td>yes</td>
+<td><code>Include</code> with <code>CreateGraph</code>, <code>FindOrCreate</code>, <code>UpsertByPK</code></td>
+</tr>
+<tr>
+<td>Hooks</td>
+<td>yes</td>
+<td><code>RelationHook</code>, <code>RelationEvent</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="vectors">Vectors<a class="headerlink" href="#vectors" title="Permanent link">&para;</a></h2>
+<p>PostgreSQL with the pgvector extension, plus MariaDB 11.8 (float32 vectors,
+Euclidean and cosine distance, <code>VECTOR INDEX</code>) and MySQL 9.x (storage only,
+distance is <code>ErrUnsupported</code>). The MySQL column in the table below
+covers MySQL only; for MariaDB see
+<a href="../vectors/#mariadb-and-mysql">vectors.md</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PostgreSQL</th>
+<th>SQLite</th>
+<th>MySQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Value types</td>
+<td><code>vector.Vector</code> (<code>vector(n)</code>, 1 to 16000), <code>HalfVector</code> (<code>halfvec</code>), <code>SparseVector</code> (<code>sparsevec</code>), <code>Bits</code> (<code>bit(n)</code>)</td>
+<td><code>vector.Vector</code> (float32 BLOB with a length CHECK, <code>SQLiteVectorType</code>) and <code>Bits</code> (<code>SQLiteBitsType</code>); <code>HalfVector</code> and <code>SparseVector</code>: <code>ErrUnsupported</code></td>
+<td>no</td>
+</tr>
+<tr>
+<td>Dimensionless columns</td>
+<td><code>vector</code>, <code>halfvec</code> without <code>dim</code>: any size, filter by a dims column; no ANN index (refused)</td>
+<td>not tested on SQLite; <code>SQLiteVectorType</code> needs a dimension for its length CHECK (<code>ErrUnsupported</code> for zero)</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Metrics (builders)</td>
+<td>l2 <code>&lt;-&gt;</code>, inner product <code>&lt;#&gt;</code>, cosine <code>&lt;=&gt;</code>, l1 <code>&lt;+&gt;</code>, hamming <code>&lt;~&gt;</code>, jaccard <code>&lt;%&gt;</code>; hamming and jaccard take bit columns</td>
+<td>l2 <code>vec_distance_l2</code>, l1, cosine, hamming (bit columns, <code>vec_bit</code>); inner product and jaccard: <code>ErrUnsupported</code></td>
+<td>no</td>
+</tr>
+<tr>
+<td>ANN indexes</td>
+<td><code>hnsw</code>, <code>ivfflat</code>; limits and opclasses in vectors.md; <code>ivfflat</code> does not support sparsevec</td>
+<td>none: brute force; the dialect lists no index method</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Search settings</td>
+<td><code>SearchSettings</code>, <code>DB.WithSearch</code>, <code>Tx.SetSearch</code>, <code>Tx.SetLocal</code>; transaction scoped</td>
+<td><code>ExactSearch</code> is a no-op (every search is exact); any other field: <code>ErrUnsupported</code></td>
+<td><code>ErrUnsupported</code></td>
+</tr>
+<tr>
+<td>Iterative scan, <code>max_scan_tuples</code>, <code>scan_mem_multiplier</code>, <code>max_probes</code></td>
+<td>yes, pgvector 0.8.0 or newer (else <code>ErrUnsupported</code>)</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Exact search</td>
+<td><code>SearchSettings.ExactSearch</code></td>
+<td>always: sqlite-vec compares every row</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Binary wire codec</td>
+<td>opt-in: <code>pgxdriver.ConfigureVectors</code>, <code>WithVectorFormat(VectorBinary)</code></td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Plan inspection</td>
+<td><code>SelectQuery.Explain</code></td>
+<td>SQLite: not verified (no test)</td>
+<td><code>ErrUnsupported</code></td>
+</tr>
+<tr>
+<td>Full-text search (<code>tsvector</code>, <code>@@</code>, rank, headline), see fulltext.md</td>
+<td>yes, builders and <code>types.TSVector</code></td>
+<td>no</td>
+<td><code>ErrUnsupported</code></td>
+</tr>
+<tr>
+<td>Hybrid search (full text plus vector, RRF)</td>
+<td>no</td>
+<td>no</td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<h2 id="migrations">Migrations<a class="headerlink" href="#migrations" title="Permanent link">&para;</a></h2>
+<p>PostgreSQL only. <code>diff</code>, <code>validate</code> (without <code>--db</code>) and <code>hash</code> run offline;
+the other commands need a database. Run <code>momo migrate</code> over a direct
+PostgreSQL connection, not a transaction-mode pooler: the migration lock is a
+session advisory lock.</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PostgreSQL</th>
+<th>CLI / API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Diff models to SQL (offline)</td>
+<td>yes</td>
+<td><code>momo migrate diff &lt;name&gt;</code>; <code>migrate.Diff</code></td>
+</tr>
+<tr>
+<td>Rename hints</td>
+<td>yes</td>
+<td><code>--rename-table a=b</code>, <code>--rename-column t.a=b</code></td>
+</tr>
+<tr>
+<td>Destructive change guard</td>
+<td>yes; <code>diff</code> refuses without <code>--allow-destructive</code>; <code>apply</code> does not check</td>
+<td>directive <code>-- momo:destructive</code></td>
+</tr>
+<tr>
+<td>Apply</td>
+<td>yes, forward only; <code>--to N</code>, <code>--lock-wait</code></td>
+<td><code>momo migrate apply</code>; <code>Engine.Apply</code></td>
+</tr>
+<tr>
+<td>Pending list</td>
+<td>yes</td>
+<td><code>momo migrate plan</code>; <code>Engine.Plan</code></td>
+</tr>
+<tr>
+<td>Status per version</td>
+<td>yes; states <code>pending</code>, <code>applied</code>, <code>dirty</code>, <code>mismatch</code>, <code>missing</code></td>
+<td><code>momo migrate status</code>; <code>Engine.Status</code></td>
+</tr>
+<tr>
+<td>Concurrent index</td>
+<td>yes; <code>Concurrently()</code> makes <code>migrate diff</code> write <code>CREATE INDEX CONCURRENTLY</code> in its own <code>-- momo:no-transaction</code> migration, split from transactional DDL; a failed build leaves an invalid index that <code>drift</code> reports</td>
+<td><code>CREATE INDEX CONCURRENTLY</code></td>
+</tr>
+<tr>
+<td>Transactional DDL</td>
+<td>yes; a migration runs in a transaction unless it carries <code>-- momo:no-transaction</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Migration lock</td>
+<td>session advisory lock; <code>--lock-wait</code> bounds the wait; a held advisory lock cannot be forced and there is no <code>--force-unlock</code>: it is freed when its holder disconnects (end the session with <code>pg_terminate_backend</code>)</td>
+<td></td>
+</tr>
+<tr>
+<td>Checksums</td>
+<td>yes, file <code>momo.sum</code></td>
+<td><code>momo migrate hash</code>, <code>rehash</code>, <code>validate</code>; <code>ErrChecksumMismatch</code></td>
+</tr>
+<tr>
+<td>Validate</td>
+<td>yes, offline or with <code>--db</code></td>
+<td><code>momo migrate validate [--db]</code></td>
+</tr>
+<tr>
+<td>Drift detection</td>
+<td>yes: <code>Changed</code>, <code>Missing</code>, <code>Unmanaged</code>; <code>Unverified</code> lists view, trigger and policy text that is not compared</td>
+<td><code>momo migrate drift</code>; <code>Engine.Drift</code></td>
+</tr>
+<tr>
+<td>Baseline an existing database</td>
+<td>yes</td>
+<td><code>momo migrate baseline --version N [--force]</code></td>
+</tr>
+<tr>
+<td>Settle a dirty migration</td>
+<td>yes</td>
+<td><code>momo migrate resolve --version N --applied</code> or <code>--rolled-back</code></td>
+</tr>
+<tr>
+<td>Additive auto-migrate</td>
+<td>yes; never drops or alters types; skipped changes are reported</td>
+<td><code>Engine.AutoMigrate</code></td>
+</tr>
+<tr>
+<td>Rollback</td>
+<td><strong>not built</strong>: no down files, no <code>rollback</code> command; undo with a new migration. <code>resolve --rolled-back</code> only records that you undid a dirty migration by hand; it runs no SQL</td>
+<td></td>
+</tr>
+<tr>
+<td><code>rebase</code>, <code>lint</code>, <code>new</code></td>
+<td><strong>not built</strong> (story 098)</td>
+<td>the CLI prints "Not available yet: rebase, lint, rollback, new"</td>
+</tr>
+</tbody>
+</table>
+<h2 id="generator-and-cli">Generator and CLI<a class="headerlink" href="#generator-and-cli" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momo generate</code></td>
+<td>yes; flags <code>-c momo.yaml</code>, <code>--check</code> (exit 1 when generated files are stale); <code>--from-db</code> writes models and the init snapshot from a PostgreSQL database</td>
+</tr>
+<tr>
+<td>Generated output</td>
+<td>typed column descriptors, <code>Meta</code>, relation descriptors, permission-typed columns (<code>read_only</code>, <code>create_only</code>, <code>immutable</code>), vector columns</td>
+</tr>
+<tr>
+<td>Custom generator plugins</td>
+<td>Go API only (<code>gen.Emit</code> with plugins); the binary ships and loads none</td>
+</tr>
+<tr>
+<td><code>momo migrate</code></td>
+<td><code>diff</code>, <code>plan</code>, <code>apply</code>, <code>status</code>, <code>validate</code>, <code>hash</code>, <code>rehash</code>, <code>baseline</code>, <code>drift</code>, <code>resolve</code>; flags <code>--dir</code> (migration directory, overrides <code>migrate.dir</code>) and, on <code>diff</code>, <code>--stage</code> (stage NOT NULL columns without a default) and <code>--enforce-not-null</code> (emit SET NOT NULL after the backfill, see <a href="../migrations/#not-null-columns">migrations.md</a>)</td>
+</tr>
+<tr>
+<td><code>momo help [command]</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Not built</td>
+<td><code>momo migrate rebase</code>, <code>lint</code>, <code>rollback</code>, <code>new</code> (story 098)</td>
+</tr>
+<tr>
+<td>Exit codes</td>
+<td>0 success; 1 findings (stale files, drift, validation problems, refusals); 2 usage or configuration error; 3 database, lock or execution error (<code>migrate</code> only)</td>
+</tr>
+<tr>
+<td>Database URL</td>
+<td><code>--url</code> (warns; <code>--url -</code> reads stdin), else <code>migrate.url_env.&lt;dialect&gt;</code> in <code>momo.yaml</code>, else <code>MOMO_DATABASE_URL</code></td>
+</tr>
+<tr>
+<td>Dialect selection</td>
+<td><code>--dialect</code>, else the only configured dialect, else <code>postgres</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="hooks-and-events">Hooks and events<a class="headerlink" href="#hooks-and-events" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PostgreSQL</th>
+<th>API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Query hook</td>
+<td>yes; runs synchronously and must be safe for concurrent use; <code>BeforeQuery</code> may return a derived context</td>
+<td><code>Hook</code>, <code>QueryEvent</code> (pool wait, in-transaction, argument count, dialect), <code>WithHook</code></td>
+</tr>
+<tr>
+<td>Argument logging</td>
+<td>opt-in</td>
+<td><code>WithArgLogging</code></td>
+</tr>
+<tr>
+<td>Relation hook</td>
+<td>yes</td>
+<td><code>RelationHook</code>, <code>RelationEvent</code></td>
+</tr>
+<tr>
+<td>Field hooks (Go-side defaults, validators)</td>
+<td>yes</td>
+<td><code>FieldHook[T]</code>, <code>WithFieldHooks</code></td>
+</tr>
+<tr>
+<td>Client-generated ids (cuid, uuid, ulid)</td>
+<td>yes</td>
+<td>tag <code>idgen:&lt;name&gt;</code>, <code>Config.IDGen</code>, <code>WithIDGenerator</code>, <code>Meta.IDGens</code></td>
+</tr>
+<tr>
+<td>Pool wait tracing</td>
+<td>yes</td>
+<td><code>pgxdriver.InstrumentPool(cfg)</code>, <code>momo.RecordPoolWait</code></td>
+</tr>
+<tr>
+<td>Injected clock</td>
+<td>yes</td>
+<td><code>WithClock</code></td>
+</tr>
+<tr>
+<td>slog hook</td>
+<td>yes</td>
+<td><code>momolog.New</code> with <code>Level</code>, <code>SlowOver</code>, <code>Values</code>; values logged only with <code>Values(true)</code> and <code>WithArgLogging</code></td>
+</tr>
+<tr>
+<td>OpenTelemetry hook</td>
+<td>no such package in the repository</td>
+<td>implement <code>Hook</code></td>
+</tr>
+<tr>
+<td>N+1 detector (development)</td>
+<td>yes; counts statement shapes per scope, reports once past the threshold; at most 1024 shapes per scope; a panic in the report function is recovered</td>
+<td><code>WithQueryScope</code>, <code>NewNPlusOneHook</code></td>
+</tr>
+<tr>
+<td>Tenant filter</td>
+<td>application-side convenience, NOT a security boundary; a missing or mistyped tenant fails the build with <code>ErrValidation</code>; not applied automatically to Update, Delete, Insert, Preload, Load, LoadCounts, joins, subqueries or raw SQL; reads its tenant only from <code>WithTenant</code>; row-level security is configured by your own <code>WithTxSetup</code> function (call <code>SetConfigLocal</code> there with the tenant), and without <code>WithImplicitTx</code> non-transactional queries get no setting</td>
+<td><code>WithTenant</code>, <code>TenantFilter</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="secrets-in-errors-hooks-and-connections">Secrets in errors, hooks and connections<a class="headerlink" href="#secrets-in-errors-hooks-and-connections" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Argument masking: with <code>WithArgLogging</code>, a value bound from a column tagged <code>sensitive</code> reaches hooks as <code>momo.RedactedArg</code>, not the value. This covers insert values, <code>Set</code> and <code>SetExpr</code> assignments on insert, update and upsert (every argument inside an expression assigned to a sensitive column), the primary-key and version predicates of a model update or delete, keyset <code>After</code> values, and WHERE predicates in which a sensitive column is one operand: the comparison methods, <code>EqExpr</code> and the other expression comparisons, <code>In</code>, <code>NotIn</code>, <code>Between</code>, <code>Like</code>, <code>ILike</code>, <code>ContainsLiteral</code>, <code>ArrayContains</code>, <code>ArrayContainedBy</code>, <code>ArrayOverlaps</code>, <code>AnyOf</code>, and the same methods on an expression that reads a sensitive column such as <code>Lower</code> of it. Relation loading, <code>Link</code>, <code>Unlink</code>, <code>Replace</code> and <code>Count</code> mask key values bound to sensitive key columns, including join-table columns that map to them. The database still receives the real value. <code>QueryEvent.Args</code> is always a copy, so a hook cannot replace or reorder the bound arguments. The copy is deep for <code>[]byte</code> and <code>json.RawMessage</code> values only, so changing those in place does not reach the driver; other mutable argument types are shared. Known gaps: arguments passed to raw <code>momo.SQL</code> or <code>momo.TypedSQL</code> fragments are not masked, because Momo cannot tell which column they belong to; SQLite renders values in an ON CONFLICT target predicate as SQL literals, so such a value appears in <code>QueryEvent.SQL</code>. Do not enable argument logging where raw fragments or conflict-target predicates carry secrets. <code>Error.Detail()</code> is also unmasked: it returns the raw driver detail, which for a PostgreSQL constraint violation quotes the offending key values, including sensitive ones. Do not log it or return it to clients; <code>Error()</code> is the safe text.</li>
+<li>Encode errors: the pgx driver withholds the text of pgx client-side encode failures, which quote the bound value, on every path (pool, transactions, pinned and adopted connections, the database/sql adapter, rows). The message keeps the argument position, such as <code>args[2]</code>; the original error stays reachable with <code>errors.Is</code>, <code>errors.As</code> and <code>Unwrap</code>. That unwrapped cause still contains the bound value, so code that logs every link of an error chain must not print the causes.</li>
+<li>Simple protocol: <code>pgxdriver.WithExecMode</code>, <code>FromConnConfig</code> and <code>FromSQLDB</code> refuse simple protocol, which interpolates values client-side, with <code>ErrUnsupported</code>. <code>FromConnConfig</code> checks the config it is given. <code>FromSQLDB</code> cannot read the pgx config of an opaque <code>*sql.DB</code>, so it checks the first connection it uses, on the first statement, not at construction. Only that first connection is checked: a custom connector that varies the exec mode per connection is not checked.</li>
+</ul>
+<h2 id="multi-tenant-row-level-security">Multi-tenant row-level security<a class="headerlink" href="#multi-tenant-row-level-security" title="Permanent link">&para;</a></h2>
+<p>Row-level security (RLS) policies usually read a setting such as
+<code>current_setting('app.tenant_id', true)</code>. The fail-closed pattern sets that
+setting at the start of every transaction from a scope carried in the
+<code>context.Context</code>, so a statement that forgot its scope matches no rows.
+<code>WithTxSetup</code> and <code>WithImplicitTx</code> build that into the <code>*DB</code>:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">),</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">WithTxSetup</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Tx</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">id</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">tenantFrom</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="c1">// no scope: nothing is set, the policy matches no rows</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">SetConfigLocal</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span><span class="w"> </span><span class="s">"app.tenant_id"</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}),</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">WithImplicitTx</span><span class="p">(),</span>
+<span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="k">ALTER</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">documents</span><span class="w"> </span><span class="n">ENABLE</span><span class="w"> </span><span class="k">ROW</span><span class="w"> </span><span class="k">LEVEL</span><span class="w"> </span><span class="k">SECURITY</span><span class="p">;</span>
+<span class="k">ALTER</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">documents</span><span class="w"> </span><span class="k">FORCE</span><span class="w"> </span><span class="k">ROW</span><span class="w"> </span><span class="k">LEVEL</span><span class="w"> </span><span class="k">SECURITY</span><span class="p">;</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="n">POLICY</span><span class="w"> </span><span class="n">tenant_isolation</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">documents</span>
+<span class="w">  </span><span class="k">USING</span><span class="w"> </span><span class="p">(</span><span class="n">tenant_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullif</span><span class="p">(</span><span class="n">current_setting</span><span class="p">(</span><span class="s1">'app.tenant_id'</span><span class="p">,</span><span class="w"> </span><span class="k">true</span><span class="p">),</span><span class="w"> </span><span class="s1">''</span><span class="p">)::</span><span class="nb">bigint</span><span class="p">)</span>
+<span class="w">  </span><span class="k">WITH</span><span class="w"> </span><span class="k">CHECK</span><span class="w"> </span><span class="p">(</span><span class="n">tenant_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullif</span><span class="p">(</span><span class="n">current_setting</span><span class="p">(</span><span class="s1">'app.tenant_id'</span><span class="p">,</span><span class="w"> </span><span class="k">true</span><span class="p">),</span><span class="w"> </span><span class="s1">''</span><span class="p">)::</span><span class="nb">bigint</span><span class="p">);</span>
+</code></pre></div>
+<p>Connect as a role without <code>BYPASSRLS</code> that does not own the tables (or use
+<code>FORCE</code>, as above): superusers and <code>BYPASSRLS</code> roles skip every policy.</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WithTxSetup</code></td>
+<td>The function runs right after every transaction momo begins: <code>DB.Begin</code>, <code>DB.Tx</code>, and the transactions momo opens itself (chunked inserts, graph creation, relation writes, <code>WithSearch</code>, implicit transactions). It runs once per real transaction, not per savepoint, and not for <code>AdoptTx</code> (the caller began that transaction). An error rolls back and is returned.</td>
+</tr>
+<tr>
+<td><code>WithImplicitTx</code></td>
+<td>Auto-commit statements on a <code>*DB</code> (<code>Select</code>, <code>Insert</code>, <code>Update</code>, <code>Delete</code>, <code>Exec</code>, <code>Scalars</code>, relation loads) each run in a short transaction, so the setup applies. <code>Iter</code>, <code>Each</code> and <code>Rows</code> hold the transaction until exhausted or closed, then commit; a scan or driver error rolls back, and so does a cancelled context for a write or a read abandoned early (a fully drained read still commits). Close early-abandoned rows to free the connection.</td>
+</tr>
+<tr>
+<td><code>SetConfigLocal</code></td>
+<td><code>set_config(key, value, true)</code>: the setting ends with the transaction. The same as <code>Tx.SetLocal</code>.</td>
+</tr>
+<tr>
+<td>Not used on an implicit <code>*DB</code></td>
+<td>Pipelined relation loading (<code>Batch</code>) and the raw driver <code>COPY</code> path, because they bypass the setup (<code>Insert[T].Copy</code> instead runs in its own transaction). <code>BatcherOf</code> and <code>CopierOf</code> report none for such a <code>*DB</code>; use a <code>Tx</code> for them.</td>
+</tr>
+</tbody>
+</table>
+<p>A behaviour change for <code>WithImplicitTx</code> on an unpinned <code>*DB</code> only: the rows of
+an <code>Insert</code>, <code>Update</code> or <code>Delete</code> with RETURNING (<code>Rows</code>) must be read to the
+end before <code>Close</code>. A write closed unread, or after reading only the first row
+(for example <code>UpdateQuery.Rows</code> or <code>DeleteQuery.Rows</code> users who read one row and
+close), is rolled back and <code>Close</code> returns <code>ErrValidation</code>; this includes a
+panic that unwinds through the loop. Handles without <code>WithImplicitTx</code>, a <code>Tx</code>
+and a pinned <code>OnConn</code> handle are unaffected, and <code>FindOrCreate</code>, <code>UpsertByPK</code>
+and <code>CreateGraph</code> read to the end themselves.</p>
+<p>Without <code>WithImplicitTx</code>, auto-commit statements on a <code>*DB</code> run outside any
+transaction, so the setup never applies to them and they are unscoped. Use
+<code>WithImplicitTx</code> (or <code>DB.Tx</code>) whenever the setup enforces a security boundary.
+Statements run through <code>db.Driver()</code> bypass momo and its hooks entirely, so
+they are never scoped either.</p>
+<p>The setup does not cover everything. <code>AdoptTx</code> transactions are the caller's,
+so apply the setting yourself. <code>momo migrate</code> and Go migrations run outside the
+<code>*DB</code> options, so they are never scoped; run them as a role that may bypass
+the policies. A handle from <code>OnConn</code> cannot begin a transaction, so on a <code>*DB</code>
+configured with <code>WithTxSetup</code> its statements fail with <code>ErrUnsupported</code>
+instead of running unscoped, and it reports no COPY or Batch path. A panic in
+a setup function rolls the transaction back before it propagates, and a panic
+in an <code>Each</code> or <code>Iter</code> callback rolls back the implicit transaction. If the
+context is cancelled before a streaming implicit write is closed, the write is
+rolled back and <code>Close</code> and <code>Err</code> return the context error.</p>
+<p>Behind PgBouncer in transaction mode use only transaction-local settings
+(<code>SetConfigLocal</code>), never a session-level <code>SET</code>: the session belongs to
+whichever client PgBouncer hands the backend to next. <code>TestImplicitTxPgBouncer</code>
+runs concurrent tenants through PgBouncer and checks no scope leaks.</p>
+<h2 id="pgbouncer-and-tls">PgBouncer and TLS<a class="headerlink" href="#pgbouncer-and-tls" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PostgreSQL</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PgBouncer, transaction pooling</td>
+<td>yes, with the default exec mode</td>
+<td>The default <code>pgx.QueryExecModeExec</code> sends unnamed statements and binds server-side. <code>TestPgBouncerNoNamedPreparedStatements</code> checks on the wire that no named prepared statement is created. <code>WithExecMode</code> also accepts <code>CacheStatement</code>, <code>CacheDescribe</code>, <code>DescribeExec</code>; the simple protocol is rejected with <code>ErrUnsupported</code>. Do not run <code>momo migrate</code> through a transaction pooler. A <code>search_path</code> set at connection start does not reliably survive pooling; <code>SearchSettings</code> and <code>Tx.SetLocal</code> use transaction-local <code>set_config</code>, which does.</td>
+</tr>
+<tr>
+<td>TLS</td>
+<td>yes, as configured by the pgx connection string (<code>sslmode</code>, <code>sslrootcert</code>, ...)</td>
+<td><code>NewPool(ctx, url)</code> hands the URL to pgx. Momo adds no TLS options. <code>momo migrate</code> prints a TLS warning when the URL has <code>sslmode=disable</code> and a non-loopback host. Use <code>sslmode=verify-full</code> for remote databases.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-returns-errunsupported">What returns <code>ErrUnsupported</code><a class="headerlink" href="#what-returns-errunsupported" title="Permanent link">&para;</a></h2>
+<p>All match <code>errors.Is(err, momo.ErrUnsupported)</code>. Build-time errors surface from
+<code>SQL()</code> or at first execution.</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Anything on SQLite; <code>momo migrate</code> on MySQL</td>
+<td>The CLI builds only the PostgreSQL dialect, so <code>momo migrate</code> exits 2 on both (use the library dialects <code>migrate/sqlite</code> and <code>migrate/mysql</code>)</td>
+</tr>
+<tr>
+<td><code>Upsert</code>, <code>OnConflict</code>, <code>FindOrCreate</code></td>
+<td><code>Upsert</code>, <code>OnConflict</code>: a dialect with neither <code>ON CONFLICT</code> nor <code>ON DUPLICATE KEY</code>; on MySQL also a target that is not the only unique key, and a <code>Where</code> on the conflict clause. <code>FindOrCreate</code>: a dialect without <code>ON CONFLICT</code> and <code>RETURNING</code>, which is MySQL and MariaDB</td>
+</tr>
+<tr>
+<td><code>CreateGraph</code></td>
+<td><code>*Tx</code> on a dialect without savepoints; dialect without <code>RETURNING</code> (rejected before the transaction opens)</td>
+</tr>
+<tr>
+<td><code>ForUpdate</code>, <code>ForShare</code></td>
+<td>dialect without row locks (SQLite metadata)</td>
+</tr>
+<tr>
+<td><code>IndexedBy</code></td>
+<td>PostgreSQL and MySQL</td>
+</tr>
+<tr>
+<td><code>After</code></td>
+<td>a nullable <code>OrderBy</code> key</td>
+</tr>
+<tr>
+<td><code>SetDefault</code>, multi-row insert with default in some rows</td>
+<td>dialect without <code>DEFAULT</code> support for that shape</td>
+</tr>
+<tr>
+<td><code>db.Begin</code>, <code>db.Tx</code>, <code>Replace</code>, <code>CreateGraph</code>, chunked insert</td>
+<td><code>*DB</code> pinned with <code>OnConn</code> (Op "begin"; chunked insert: Op "insert"); unknown <code>Querier</code>; isolation level outside the four standard ones</td>
+</tr>
+<tr>
+<td><code>Tx.Savepoint</code></td>
+<td>dialect without savepoints (Op "savepoint")</td>
+</tr>
+<tr>
+<td><code>Each</code>, <code>Iter</code></td>
+<td>the query has <code>Preload</code></td>
+</tr>
+<tr>
+<td><code>Joined()</code></td>
+<td>not belongs-to, child key not unique, <code>GroupBy</code>, <code>Having</code>, row locks, <code>Each</code>, <code>Iter</code>, or combined with <code>Load</code>, <code>LoadAll</code>, <code>Scope</code>, <code>Then</code></td>
+</tr>
+<tr>
+<td><code>LoadPerParentLimit</code></td>
+<td>belongs-to or has-one relation</td>
+</tr>
+<tr>
+<td><code>Link</code>, <code>Unlink</code>, <code>Replace</code>, <code>Count</code></td>
+<td>belongs-to relation</td>
+</tr>
+<tr>
+<td>Vector builders</td>
+<td>metric the dialect lacks (inner product and Jaccard on SQLite), or the driver reports <code>Vectors: false</code></td>
+</tr>
+<tr>
+<td><code>SetSearch</code>, <code>WithSearch</code></td>
+<td>pgvector missing or older than 0.8.0 when an iterative, <code>max_scan_tuples</code>, <code>scan_mem_multiplier</code> or <code>max_probes</code> field is set; any non-<code>ExactSearch</code> field on SQLite; transaction-scoped settings on a non-PostgreSQL dialect</td>
+</tr>
+<tr>
+<td><code>SelectQuery.Explain</code></td>
+<td>MySQL and MariaDB</td>
+</tr>
+<tr>
+<td>Migration inspect or apply</td>
+<td>missing extension (for example <code>vector</code>): the error names it; unsupported object on inspect</td>
+</tr>
+<tr>
+<td><code>pgxdriver.WithExecMode</code></td>
+<td>simple protocol or any unlisted mode: every query returns it</td>
+</tr>
+<tr>
+<td><code>pgxdriver.FromSQLDB</code></td>
+<td>nil <code>db</code>, or a <code>db</code> not backed by the pgx stdlib driver (every Query, Exec, Begin and Pin then fails). A valid <code>FromSQLDB</code> driver can Pin, but the pinned connection has no Batch or COPY</td>
+</tr>
+<tr>
+<td>Generator type mapping</td>
+<td>Go type with no SQL mapping on the dialect (<code>gen/typemap</code>)</td>
+</tr>
+<tr>
+<td>Batch, <code>COPY</code></td>
+<td>a pinned connection without a batch or COPY path (Op "batch", "copy"); <code>WithExecMode</code> differing from the connection's default exec mode makes the pgx batch fail (Op "batch"). Relation loading falls back to sequential on its own in both cases; a <code>FromSQLDB</code> pinned connection has no <code>Batcher</code> and loads sequentially</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,2392 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/dev/relations/">
+      
+      
+        <link rel="prev" href="../projections/">
+      
+      
+        <link rel="next" href="../vectors/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Relations - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#relations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Relations
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-declaring-relations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Declaring relations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Declaring relations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generating-relation-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generating relation code
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-eager-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Eager loading
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Eager loading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scoping-a-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scoping a load
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-loads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested loads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#chunking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#counting-children-for-many-parents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Counting children for many parents
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-preload-and-single-query-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Preload and single-query loading
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Preload and single-query loading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#joined" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Joined
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-pipelined-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Pipelined loading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-relation-predicates-and-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Relation predicates and traversal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-association-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Association helpers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-graph-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Graph writes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Graph writes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#creategraph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CreateGraph
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#findorcreate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FindOrCreate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upsertbypk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UpsertByPK
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-errors-and-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Errors and limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-declaring-relations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Declaring relations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Declaring relations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generating-relation-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generating relation code
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-eager-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Eager loading
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Eager loading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scoping-a-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scoping a load
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-loads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested loads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#chunking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#counting-children-for-many-parents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Counting children for many parents
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-preload-and-single-query-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Preload and single-query loading
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Preload and single-query loading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#joined" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Joined
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-pipelined-loading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Pipelined loading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-relation-predicates-and-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Relation predicates and traversal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-association-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Association helpers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-graph-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Graph writes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Graph writes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#creategraph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CreateGraph
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#findorcreate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FindOrCreate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upsertbypk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UpsertByPK
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-errors-and-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Errors and limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="relations">Relations<a class="headerlink" href="#relations" title="Permanent link">&para;</a></h1>
+<p>This guide covers how Momo models relations between tables: declaring them,
+loading them, filtering by them, writing them, and observing them. Every
+snippet uses the real API. The models are a small document store: <code>Document</code>
+belongs to an <code>Author</code>, has many <code>Comment</code>s, and is tagged with many <code>Tag</code>s.</p>
+<p>Relation operations are methods and functions on the generated <code>Relation[P, C]</code>
+descriptor, where <code>P</code> is the parent model and <code>C</code> the child model. A descriptor
+is immutable and safe for concurrent use.</p>
+<ul>
+<li><a href="#1-declaring-relations">Declaring relations</a></li>
+<li><a href="#2-eager-loading">Eager loading</a></li>
+<li><a href="#3-preload-and-single-query-loading">Preload and single-query loading</a></li>
+<li><a href="#4-pipelined-loading">Pipelined loading</a></li>
+<li><a href="#5-relation-predicates-and-traversal">Relation predicates and traversal</a></li>
+<li><a href="#6-association-helpers">Association helpers</a></li>
+<li><a href="#7-graph-writes">Graph writes</a></li>
+<li><a href="#8-observability">Observability</a></li>
+<li><a href="#9-errors-and-limitations">Errors and limitations</a></li>
+</ul>
+<h2 id="1-declaring-relations">1. Declaring relations<a class="headerlink" href="#1-declaring-relations" title="Permanent link">&para;</a></h2>
+<p>A relation is a field on the parent model. Its tag names the kind, and the Go
+type of the field decides the shape:</p>
+<table>
+<thead>
+<tr>
+<th>Tag</th>
+<th>Field type</th>
+<th>Foreign key lives on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>belongs_to</code></td>
+<td><code>*Target</code></td>
+<td>the parent</td>
+</tr>
+<tr>
+<td><code>has_one</code></td>
+<td><code>*Target</code></td>
+<td>the child</td>
+</tr>
+<tr>
+<td><code>has_many</code></td>
+<td><code>[]Target</code></td>
+<td>the child</td>
+</tr>
+<tr>
+<td><code>many2many</code></td>
+<td><code>[]Target</code></td>
+<td>a join table</td>
+</tr>
+</tbody>
+</table>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="kd">type</span><span class="w"> </span><span class="nx">Author</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:authors"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">int64</span><span class="w"> </span><span class="s">`momo:"pk,identity"`</span>
+<span class="w">    </span><span class="nx">Name</span><span class="w">       </span><span class="kt">string</span>
+
+<span class="w">    </span><span class="nx">Documents</span><span class="w"> </span><span class="p">[]</span><span class="nx">Document</span><span class="w"> </span><span class="s">`momo:"has_many,fk:AuthorID"`</span>
+<span class="p">}</span>
+
+<span class="kd">type</span><span class="w"> </span><span class="nx">Document</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:documents"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">int64</span><span class="w"> </span><span class="s">`momo:"pk,identity"`</span>
+<span class="w">    </span><span class="nx">AuthorID</span><span class="w">   </span><span class="o">*</span><span class="kt">int64</span>
+<span class="w">    </span><span class="nx">Title</span><span class="w">      </span><span class="kt">string</span>
+
+<span class="w">    </span><span class="nx">Author</span><span class="w">   </span><span class="o">*</span><span class="nx">Author</span><span class="w">   </span><span class="s">`momo:"belongs_to,fk:AuthorID"`</span>
+<span class="w">    </span><span class="nx">Comments</span><span class="w"> </span><span class="p">[]</span><span class="nx">Comment</span><span class="w"> </span><span class="s">`momo:"has_many,fk:DocumentID"`</span>
+<span class="w">    </span><span class="nx">Tags</span><span class="w">     </span><span class="p">[]</span><span class="nx">Tag</span><span class="w">     </span><span class="s">`momo:"many2many,join:taggings"`</span>
+<span class="p">}</span>
+
+<span class="kd">type</span><span class="w"> </span><span class="nx">Comment</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:comments"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">int64</span><span class="w"> </span><span class="s">`momo:"pk,identity"`</span>
+<span class="w">    </span><span class="nx">DocumentID</span><span class="w"> </span><span class="kt">int64</span>
+<span class="w">    </span><span class="nx">Body</span><span class="w">       </span><span class="kt">string</span>
+<span class="w">    </span><span class="nx">Approved</span><span class="w">   </span><span class="kt">bool</span>
+<span class="p">}</span>
+
+<span class="kd">type</span><span class="w"> </span><span class="nx">Tag</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:tags"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">int64</span><span class="w"> </span><span class="s">`momo:"pk,identity"`</span>
+<span class="w">    </span><span class="nx">Name</span><span class="w">       </span><span class="kt">string</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The generated code lives in one package per model (<code>author</code>, <code>document</code>,
+<code>comment</code>, <code>tag</code>), imported next to the <code>models</code> package.</p>
+<h3 id="generating-relation-code">Generating relation code<a class="headerlink" href="#generating-relation-code" title="Permanent link">&para;</a></h3>
+<p>Run <code>momo generate</code> in the module that holds your models (or add
+<code>//go:generate momo generate</code> to a source file and run <code>go generate ./...</code>).
+It reads <code>momo.yaml</code> and writes the descriptors into the model packages. Commit
+the generated files, and use <code>momo generate --check</code> in CI to catch stale ones.
+The README walks through the setup in
+<a href="https://github.com/azrtydxb/momo/blob/main/README.md#2-configure-and-generate">Configure and generate</a>. The join
+tables and foreign keys come from <code>momo migrate diff</code> and <code>momo migrate apply</code>,
+see <a href="https://github.com/azrtydxb/momo/blob/main/README.md#3-create-and-apply-the-migration">Create and apply the migration</a>.</p>
+<p>Tag options for relations:</p>
+<ul>
+<li><code>fk:&lt;Field&gt;</code> is required for <code>belongs_to</code>, <code>has_one</code> and <code>has_many</code>. For
+  <code>belongs_to</code> it names the foreign-key field on the parent (the model that
+  declares the relation). For <code>has_one</code> and <code>has_many</code> it names the field on
+  the child.</li>
+<li><code>join:&lt;table&gt;</code> is required for <code>many2many</code>. The join columns are named after
+  each model and its primary key column, for example <code>document_id</code> and
+  <code>tag_id</code>. Rules:</li>
+<li>Set <code>join:</code> (same table) on every many2many side you declare. The
+    reverse side is optional, but a reverse side declared without <code>join:</code>
+    makes the generator report a diagnostic.</li>
+<li>A many-to-many to the model's own type is not supported.</li>
+<li>Both models need a primary key.</li>
+<li>The join table has exactly two key columns, named <code>&lt;model&gt;_&lt;pkcol&gt;</code>. Extra
+    join-table columns are not modelled by this guide; use an explicit join
+    model such as a <code>Tagging</code> struct for those.</li>
+<li><code>polytype:&lt;column&gt;</code> together with <code>polyvalue:&lt;value&gt;</code> makes a <code>has_one</code> or
+  <code>has_many</code> polymorphic: the child row belongs to the parent only when its
+  type column equals the value.</li>
+<li><code>on_delete</code>, <code>on_update</code> and <code>no_constraint</code> affect only the foreign key
+  emitted for <code>belongs_to</code>. <code>has_one</code> and <code>has_many</code> create no constraint, and
+  many-to-many join tables always get two foreign keys with
+  <code>ON DELETE CASCADE</code>.</li>
+</ul>
+<p><code>momo generate</code> reads these tags and writes one descriptor per relation field
+into the model's package. The descriptor holds the relation name and kind, the
+parent and child tables, the key columns, <code>Through</code> for the join table of a
+many-to-many relation, <code>Discriminator</code> for a polymorphic one, and the typed
+functions that read and write keys and the field itself. You refer to a
+relation as <code>&lt;model package&gt;.&lt;Field&gt;</code>:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">document</span><span class="p">.</span><span class="nx">Author</span><span class="w">   </span><span class="c1">// belongs-to: momo.Relation[models.Document, models.Author]</span>
+<span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="w"> </span><span class="c1">// has-many</span>
+<span class="nx">document</span><span class="p">.</span><span class="nx">Tags</span><span class="w">     </span><span class="c1">// many-to-many</span>
+</code></pre></div>
+<p>The generator reports a diagnostic, and writes nothing for that package, when:</p>
+<ul>
+<li>a relation has more than one kind, or the field type does not match the kind;</li>
+<li>the target is not a Momo model;</li>
+<li><code>fk</code> is missing, or names a field that does not exist;</li>
+<li><code>many2many</code> has no <code>join:</code>, or a declared reverse side has no <code>join:</code>;</li>
+<li><code>polytype</code> is given without <code>polyvalue</code> or the other way round, or
+  <code>polytype</code> is used on a relation that is not <code>has_one</code> or <code>has_many</code>;</li>
+<li>the <code>polytype</code> column is not a field of the target.</li>
+</ul>
+<p>A <code>belongs_to</code> is keyed by its own <code>fk</code> field against the target's primary
+key, so the referencing model may have any primary key, including a composite
+one that contains the foreign key column. For example <code>exams</code> with primary key
+<code>(license_id, exam_id)</code> can declare <code>License *License</code> with
+<code>momo:"belongs_to,fk:LicenseID"</code>, which emits a foreign key
+from <code>license_id</code> to the <code>licenses</code> table's <code>license_id</code> column and matches a live
+database that already has that constraint. The target of a <code>belongs_to</code> must
+have a single-column primary key: a foreign key to a composite target key is
+refused with a diagnostic that names the target's key columns. A <code>has_one</code> or
+<code>has_many</code> needs a single-column primary key on the parent, and the child may
+have a composite key. <code>many2many</code> needs a single-column primary key on both
+models. Other composite-key relations work with hand-written descriptors but
+cannot be expressed with tags.</p>
+<p>Generated relation field values (<code>Document.Comments</code>) are only ever written by
+Momo when you load them or list them for <code>CreateGraph</code>. A plain <code>Insert</code> or
+<code>Update</code> never touches a relation field.</p>
+<h2 id="2-eager-loading">2. Eager loading<a class="headerlink" href="#2-eager-loading" title="Permanent link">&para;</a></h2>
+<p><code>momo.Load</code> loads one relation for a slice of parents and assigns the result
+onto each element. <code>momo.LoadAll</code> loads several.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">docs</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span><span class="nx">Limit</span><span class="p">(</span><span class="mi">20</span><span class="p">).</span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="p">}</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Load</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">docs</span><span class="p">,</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="p">}</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadAll</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">docs</span><span class="p">,</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Author</span><span class="p">,</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Tags</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The cost is one statement per relation (per bind-limit chunk, see
+<a href="#chunking">Chunking</a>), not one per parent. Parent order and length never
+change. Parents with a NULL key get an empty association: a nil pointer or a
+nil slice.</p>
+<p>Behavior to rely on:</p>
+<ul>
+<li>Associations are cleared before anything is assigned. A parent that matches
+  no children ends up empty rather than stale, and a load that fails part-way
+  leaves empty associations, never partial ones.</li>
+<li>Soft-deleted children are excluded by default when the child model has a
+  soft-delete column, as in <code>Select</code>.</li>
+<li>A to-one child shared by several parents is copied shallowly for each
+  parent. Pointers inside the child, including relations loaded with <code>Then</code>,
+  are shared among those copies.</li>
+<li>A has-one relation that matches more than one child for a parent fails with
+  <code>ErrTooManyRows</code>.</li>
+<li>With no parents, <code>LoadAll</code> returns nil and runs nothing.</li>
+</ul>
+<h3 id="scoping-a-load">Scoping a load<a class="headerlink" href="#scoping-a-load" title="Permanent link">&para;</a></h3>
+<p><code>Relation.Scope</code> takes load options for the child statement:</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LoadWhere[C]</code></td>
+<td>extra predicates on the child table</td>
+</tr>
+<tr>
+<td><code>LoadOrderBy[C]</code></td>
+<td>child order; the relation key and child primary key are always appended as tie-breakers, so order is stable</td>
+</tr>
+<tr>
+<td><code>LoadPerParentLimit[C]</code></td>
+<td>keep at most <code>n</code> children per parent (top-N)</td>
+</tr>
+<tr>
+<td><code>LoadWithDeleted[C]</code></td>
+<td>include soft-deleted children</td>
+</tr>
+<tr>
+<td><code>LoadOnlyDeleted[C]</code></td>
+<td>only soft-deleted children</td>
+</tr>
+</tbody>
+</table>
+<p><code>Load</code> accepts the same options directly after the relation. Use <code>Scope</code> when
+you pass the relation to <code>LoadAll</code> or <code>Preload</code>:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Load</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">docs</span><span class="p">,</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadWhere</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Comment</span><span class="p">](</span><span class="nx">comment</span><span class="p">.</span><span class="nx">Approved</span><span class="p">.</span><span class="nx">Eq</span><span class="p">(</span><span class="kc">true</span><span class="p">)),</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadOrderBy</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Comment</span><span class="p">](</span><span class="nx">comment</span><span class="p">.</span><span class="nx">ID</span><span class="p">.</span><span class="nx">Desc</span><span class="p">()),</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadPerParentLimit</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Comment</span><span class="p">](</span><span class="mi">3</span><span class="p">),</span>
+<span class="p">)</span>
+
+<span class="nx">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadAll</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">docs</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">document</span><span class="p">.</span><span class="nx">Author</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">.</span><span class="nx">Scope</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadPerParentLimit</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Comment</span><span class="p">](</span><span class="mi">3</span><span class="p">)),</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>LoadWhere</code> filters before the per-parent limit is applied, so "the three
+newest approved comments" is what the example above loads.</p>
+<p><code>LoadPerParentLimit</code> uses a window function, so the load stays one statement
+per chunk. It needs PostgreSQL, MySQL 8, MariaDB 10.2 or SQLite 3.25 or later.
+It applies to has-many and many-to-many relations only. On belongs-to and
+has-one it fails with <code>ErrUnsupported</code>, and a negative <code>n</code> fails with
+<code>ErrValidation</code>, both before any statement runs. Zero means unlimited. For a
+many-to-many relation whose child has a primary key, duplicated join-table rows
+share a rank and cannot use up the limit. Without a child primary key, each
+duplicated row takes a rank and can count against the limit.</p>
+<p><code>LoadWithDeleted</code> and <code>LoadOnlyDeleted</code> replace each other: the last one given
+wins. They have no effect on a child model without a soft-delete column.</p>
+<h3 id="nested-loads">Nested loads<a class="headerlink" href="#nested-loads" title="Permanent link">&para;</a></h3>
+<p><code>Relation.Then</code> loads relations on the children, in one pass over all children
+of the level above:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadAll</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">authors</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">author</span><span class="p">.</span><span class="nx">Documents</span><span class="p">.</span><span class="nx">Then</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">),</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>Nested loads run over the children that were kept, so combined with a
+per-parent limit they only load for the survivors.</p>
+<p><code>Scope</code> and <code>Then</code> combine on one relation. Both return a <code>RelationLoader</code>,
+which has <code>Scope</code> and <code>Then</code> methods itself, so a filtered, ordered relation
+with nested loads is one loader ("approved comments, newest first, each with
+its author"):</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadAll</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">documents</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">.</span><span class="nx">Scope</span><span class="p">(</span>
+<span class="w">        </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadWhere</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Comment</span><span class="p">](</span><span class="nx">comment</span><span class="p">.</span><span class="nx">Approved</span><span class="p">.</span><span class="nx">Eq</span><span class="p">(</span><span class="kc">true</span><span class="p">)),</span>
+<span class="w">        </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadOrderBy</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Comment</span><span class="p">](</span><span class="nx">comment</span><span class="p">.</span><span class="nx">ID</span><span class="p">.</span><span class="nx">Desc</span><span class="p">()),</span>
+<span class="w">    </span><span class="p">).</span><span class="nx">Then</span><span class="p">(</span><span class="nx">comment</span><span class="p">.</span><span class="nx">Author</span><span class="p">),</span>
+<span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>API note: <code>Relation.Scope</code> and <code>Relation.Then</code> used to return <code>Loader[P]</code>
+  and now return <code>RelationLoader[P, C]</code>, which implements <code>Loader[P]</code>. Passing
+  them to <code>Load</code>, <code>LoadAll</code>, <code>Preload</code> or <code>Then</code>, or assigning them to a
+  <code>Loader[P]</code>, compiles unchanged. Only code that declares a variable with the
+  inferred type and then assigns a different loader to it needs a
+  <code>var l momo.Loader[P]</code> declaration.</li>
+<li><code>Scope(...).Then(...)</code> and <code>Then(...).Scope(...)</code> are the same loader. Calling
+  either more than once accumulates: predicates AND together, order items
+  append, a later <code>LoadPerParentLimit</code> replaces an earlier one, nested loaders
+  append. A <code>RelationLoader</code> is a value, so a base loader can be shared.</li>
+<li>The options apply to this relation's children only. Nested loaders carry
+  their own options, so <code>author.Documents.Then(document.Comments.Scope(...))</code>
+  scopes the comments, not the documents.</li>
+<li>The nested level runs once over exactly the children that survived the
+  options, so the statement count stays one per bind-limit chunk at the top
+  and one per level below it. A child excluded by <code>LoadWhere</code> is never a
+  nested parent.</li>
+<li>With no options and no nested loaders a <code>RelationLoader</code> behaves like the
+  plain relation. An error or cancelled context at the nested level is
+  returned from <code>LoadAll</code>.</li>
+</ul>
+<h3 id="chunking">Chunking<a class="headerlink" href="#chunking" title="Permanent link">&para;</a></h3>
+<p>Parent keys are sent as bind parameters, and every dialect caps how many a
+statement may carry. Momo splits the parent keys into chunks that fit under the
+dialect's limit and runs one statement per chunk, so a load of any size works.
+<code>WithMaxParams(n)</code> lowers the limit for a <code>DB</code>. Use it for tests that want to
+exercise chunking with small data, or for databases configured below the
+dialect's default:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">drv</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">WithMaxParams</span><span class="p">(</span><span class="mi">100</span><span class="p">))</span>
+</code></pre></div>
+<p>If a scope alone binds so many arguments that no key fits under the limit, the
+load fails with <code>ErrValidation</code> before any statement runs.</p>
+<h3 id="counting-children-for-many-parents">Counting children for many parents<a class="headerlink" href="#counting-children-for-many-parents" title="Permanent link">&para;</a></h3>
+<p><code>Relation.Count</code> counts one parent per statement. To show a count next to each
+row of a list, <code>LoadCounts</code> counts all parents at once: one grouped
+<code>SELECT key, COUNT(*) ... GROUP BY key</code> per bind-limit chunk.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">counts</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadCounts</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">docs</span><span class="p">,</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadWhere</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Comment</span><span class="p">](</span><span class="nx">comment</span><span class="p">.</span><span class="nx">Approved</span><span class="p">.</span><span class="nx">Eq</span><span class="p">(</span><span class="kc">true</span><span class="p">)))</span>
+<span class="c1">// counts[i] is the number of approved comments of docs[i]</span>
+</code></pre></div>
+<ul>
+<li>The result has one entry per parent, in parent order. A parent with no
+  children or a NULL key counts zero; parents sharing a key share the count.</li>
+<li>Has-one, has-many (including polymorphic) and many-to-many relations are
+  supported, with composite keys. Belongs-to fails with <code>ErrUnsupported</code>, as
+  <code>Count</code> does.</li>
+<li>The load options that narrow the children apply: <code>LoadWhere</code>, and the
+  soft-delete default with <code>LoadWithDeleted</code> and <code>LoadOnlyDeleted</code>.
+  <code>LoadOrderBy</code> is ignored; <code>LoadPerParentLimit</code> fails with <code>ErrValidation</code>.</li>
+<li>Many-to-many counts join-table rows, like <code>Count</code>. The far table is joined
+  when it has a soft-delete column and <code>LoadWithDeleted</code> is not set, or when a
+  <code>LoadWhere</code> filter applies. Otherwise nothing is joined, so join rows whose
+  far row no longer exists (dangling rows) are counted too.</li>
+<li>Parent keys are chunked under the dialect bind limit (see Chunking), and a
+  relation hook sees one event per call.</li>
+</ul>
+<p>To order or filter parents by their child count inside a query, use
+<code>CountOrder</code> (section 5).</p>
+<h2 id="3-preload-and-single-query-loading">3. Preload and single-query loading<a class="headerlink" href="#3-preload-and-single-query-loading" title="Permanent link">&para;</a></h2>
+<p><code>SelectQuery.Preload</code> attaches loaders to a query. <code>All</code>, <code>One</code> and <code>First</code> run
+them after the rows are read, with the same statements <code>LoadAll</code> would use.
+Preload returns a copy, so a base query can be reused, and a query with no
+result rows runs no relation statement. Inside a transaction the loads run in
+that transaction.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">docs</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">Preload</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Author</span><span class="p">,</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">.</span><span class="nx">Scope</span><span class="p">(</span>
+<span class="w">        </span><span class="nx">momo</span><span class="p">.</span><span class="nx">LoadPerParentLimit</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Comment</span><span class="p">](</span><span class="mi">3</span><span class="p">))).</span>
+<span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">20</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+</code></pre></div>
+<p><code>Each</code> and <code>Iter</code> stream rows without collecting them, so they cannot batch
+relation loads. With preloads they return <code>ErrUnsupported</code>.</p>
+<h3 id="joined">Joined<a class="headerlink" href="#joined" title="Permanent link">&para;</a></h3>
+<p><code>Relation.Joined()</code> folds a belongs-to relation into the parent statement as a
+LEFT JOIN, so it costs no extra round trip. Pass it to <code>Preload</code>. It does not
+work with <code>Load</code>, <code>LoadAll</code>, <code>Scope</code> or <code>Then</code>. A matched joined child with
+NULL in a column its Go field cannot hold fails with <code>ErrValidation</code> and an
+error naming the child column (<code>column=...</code>).</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">docs</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">Preload</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Author</span><span class="p">.</span><span class="nx">Joined</span><span class="p">(),</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">20</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+</code></pre></div>
+<p>Here <code>Author</code> arrives with the document rows, and <code>Comments</code> is still loaded
+with a second statement. Restrictions:</p>
+<ul>
+<li>To-one belongs-to only, and only when the relation's child key is the child's
+  primary key or a single unique column. That is what guarantees the join
+  cannot multiply parent rows, so <code>Limit</code>, <code>Offset</code>, <code>OrderBy</code> and <code>Where</code> of
+  the parent query keep their meaning. Has-one, has-many and many-to-many fail
+  with <code>ErrUnsupported</code> when the query runs.</li>
+<li>Not with <code>GroupBy</code>, <code>Having</code> or row locking on the same query (<code>FOR UPDATE</code>
+  cannot lock the nullable side of an outer join), and not with <code>Each</code> or
+  <code>Iter</code>. All of these return <code>ErrUnsupported</code>.</li>
+<li>If the query sets its own select list with <code>Columns</code>, it must have one
+  expression per mapped field, or the query fails with <code>ErrValidation</code>.</li>
+<li>The parent's columns are qualified by the parent table in the select list, so
+  a raw, unqualified column name in the parent's <code>Where</code> can become ambiguous
+  with the joined table's columns. Qualify raw column names.</li>
+<li>Semantics match <code>Load</code> for belongs-to: a NULL foreign key, or a key that
+  matches no child, leaves the field nil (never a zero struct), soft-deleted
+  children are excluded by a condition in the <code>ON</code> clause so the parent row
+  survives, and each parent gets its own copy of a shared child.</li>
+<li>A joined load runs no statement of its own, so it emits no <code>RelationEvent</code>.
+  The parent statement is reported to the query hook as usual.</li>
+</ul>
+<h2 id="4-pipelined-loading">4. Pipelined loading<a class="headerlink" href="#4-pipelined-loading" title="Permanent link">&para;</a></h2>
+<p><code>LoadAll</code> (and so <code>Load</code> and <code>Preload</code>) works in levels: the top level holds
+the relations you listed, and each <code>Then</code> adds a level. On a connection whose
+driver implements <code>Batcher</code>, which the pgx driver does on the pool, on a
+transaction and on a pinned connection, all statements of a level, including
+every bind-limit chunk, are sent in one round trip. Other drivers (the
+<code>database/sql</code> adapters, SQLite, MySQL) load sequentially. The result is the
+same either way. There is nothing to enable and no per-call opt-out.</p>
+<p>Two differences to know about:</p>
+<ul>
+<li>Memory. A pipelined level buffers all of its child rows before assigning any,
+  so peak memory is roughly twice that of sequential loading, which holds one
+  relation's rows at a time. Large child sets with a per-parent limit or a
+  <code>LoadWhere</code> stay cheap; an unscoped load of a huge has-many does not.</li>
+<li>Hook event order. Sequential loading interleaves each relation's events with
+  its statements. A pipelined level reports <code>BeforeRelation</code> for every
+  relation, then <code>BeforeQuery</code> for every statement and one round trip, then
+  <code>AfterQuery</code> per statement as result sets are read, then nested loads,
+  assignment and <code>AfterRelation</code> per relation. The batch runs under the context
+  of the first statement's hooks, so cancelling that context stops the whole
+  batch, and a statement's <code>AfterQuery</code> duration includes its wait for the
+  batch.</li>
+</ul>
+<p>A batch is all or nothing: if one statement fails, every relation's
+<code>AfterRelation</code> reports the error and the parents keep the empty associations.
+If the driver rejects the batch before sending anything (<code>ErrUnsupported</code> with
+<code>Op</code> <code>"batch"</code>), Momo falls back to sequential loading for that level.</p>
+<h2 id="5-relation-predicates-and-traversal">5. Relation predicates and traversal<a class="headerlink" href="#5-relation-predicates-and-traversal" title="Permanent link">&para;</a></h2>
+<p>Relations also filter and order queries without loading anything.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="c1">// Documents with at least one approved comment.</span>
+<span class="nx">withApproved</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">Where</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">.</span><span class="nx">Has</span><span class="p">(</span><span class="nx">comment</span><span class="p">.</span><span class="nx">Approved</span><span class="p">.</span><span class="nx">As</span><span class="p">(</span><span class="s">"momo_r"</span><span class="p">).</span><span class="nx">Eq</span><span class="p">(</span><span class="kc">true</span><span class="p">)))</span>
+
+<span class="c1">// Documents without any comments.</span>
+<span class="nx">quiet</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span><span class="nx">Where</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">.</span><span class="nx">HasNo</span><span class="p">())</span>
+
+<span class="c1">// Documents ordered by number of comments, most-commented first.</span>
+<span class="nx">busy</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">.</span><span class="nx">CountOrder</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">DirDesc</span><span class="p">),</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">ID</span><span class="p">.</span><span class="nx">Asc</span><span class="p">())</span>
+</code></pre></div>
+<ul>
+<li><code>Has(scope...)</code> renders <code>EXISTS (...)</code> over the child table, correlated with
+  the parent through the relation's key columns. It is always a subquery, never
+  a join, so it cannot duplicate parent rows.</li>
+<li><code>HasNo(scope...)</code> renders <code>NOT EXISTS</code>.</li>
+<li><code>HasFrom(parentAlias, scope...)</code> is <code>Has</code> with an explicit parent alias.
+  Self-referencing relations need it: when the outer query aliases the parent
+  table, pass that alias so the subquery correlates with the right instance.</li>
+<li><code>CountOrder(dir)</code> orders parents by their number of children, using a
+  correlated <code>COUNT(*)</code>. <code>dir</code> is <code>momo.DirAsc</code> or <code>momo.DirDesc</code>.</li>
+<li>Soft-deleted children do not count. For many-to-many relations the join table
+  gets no soft-delete filter: only the child table's marker applies.</li>
+</ul>
+<p>Scope predicates must name the child through the alias <code>momo_r</code>, because the
+subquery owns that alias. Build them with <code>As</code> on the generated column:
+<code>comment.Approved.As("momo_r").Eq(true)</code>. A predicate that uses the column
+without the alias refers to the outer query's table.</p>
+<p><code>Relation.From(parents)</code> goes the other way: it returns a <code>SelectQuery[C]</code> of
+the children whose key is in the key set of the given parent query. The parent
+query is embedded as a subquery, so no parent row is fetched:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">comments</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">.</span><span class="nx">From</span><span class="p">(</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">models</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span><span class="nx">Where</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">ID</span><span class="p">.</span><span class="nx">Eq</span><span class="p">(</span><span class="kt">int64</span><span class="p">(</span><span class="mi">1</span><span class="p">))))</span>
+<span class="nx">rows</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">comments</span><span class="p">.</span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+</code></pre></div>
+<p><code>From</code> does not support many-to-many relations. The returned query fails with
+<code>ErrValidation</code> when it runs.</p>
+<h2 id="6-association-helpers">6. Association helpers<a class="headerlink" href="#6-association-helpers" title="Permanent link">&para;</a></h2>
+<p><code>Link</code>, <code>Unlink</code>, <code>Replace</code> and <code>Count</code> write and count the link itself, with
+no model in between:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">doc</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">models</span><span class="p">.</span><span class="nx">Document</span><span class="p">{</span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span>
+<span class="nx">tags</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="o">*</span><span class="nx">models</span><span class="p">.</span><span class="nx">Tag</span><span class="p">{{</span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="nx">ID</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">}}</span>
+
+<span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Tags</span><span class="p">.</span><span class="nx">Link</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">tags</span><span class="p">...)</span><span class="w">    </span><span class="c1">// add pairs</span>
+<span class="nx">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Tags</span><span class="p">.</span><span class="nx">Unlink</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">tags</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span><span class="w">   </span><span class="c1">// remove one pair</span>
+<span class="nx">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Tags</span><span class="p">.</span><span class="nx">Replace</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">tags</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="w">  </span><span class="c1">// make this the whole set</span>
+<span class="nx">n</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">document</span><span class="p">.</span><span class="nx">Tags</span><span class="p">.</span><span class="nx">Count</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">doc</span><span class="p">)</span><span class="w">         </span><span class="c1">// how many are linked</span>
+</code></pre></div>
+<p>They only need the keys of the parent and children. They never modify the
+values you pass in.</p>
+<p><strong>They write SQL directly.</strong> Model hooks, field hooks and an <code>UpdatedAt</code>
+column are not touched. Use the model's own update path when those must run.</p>
+<p>Statement contract, per relation kind (one statement per chunk; a small call is
+one statement):</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Has-one, has-many</th>
+<th>Many-to-many</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Link</code></td>
+<td><code>UPDATE child SET fk = ? WHERE pk IN (...)</code>; a polymorphic relation also sets the discriminator</td>
+<td><code>INSERT</code> into the join table that skips existing pairs (<code>ON CONFLICT DO NOTHING</code>; MySQL <code>ON DUPLICATE KEY UPDATE</code> with a no-op); relies on a primary or unique key over the join columns</td>
+</tr>
+<tr>
+<td><code>Unlink</code></td>
+<td><code>UPDATE child SET fk = NULL WHERE fk = ? AND pk IN (...)</code>; a polymorphic relation also adds the discriminator predicate</td>
+<td><code>DELETE FROM join WHERE parent cols = ? AND (child cols) IN (...)</code></td>
+</tr>
+<tr>
+<td><code>Replace</code></td>
+<td>diff, then unlink the removed and link the added</td>
+<td>same</td>
+</tr>
+<tr>
+<td><code>Count</code></td>
+<td><code>SELECT COUNT(*)</code> over the children</td>
+<td>counts join rows, joined to the far table when it has a soft-delete column</td>
+</tr>
+</tbody>
+</table>
+<p>What this means in practice:</p>
+<ul>
+<li><strong>Join tables need a unique key.</strong> Many-to-many <code>Link</code> relies on a primary or
+  unique key over the join columns to detect an existing pair. Join tables
+  generated from <code>many2many</code> tags already have a composite primary key over the
+  two columns, plus two foreign keys with <code>ON DELETE CASCADE</code>. A hand-written
+  join table needs a primary or unique key too, or <code>Link</code> inserts duplicate
+  rows.</li>
+<li><strong>Has-one and has-many <code>Unlink</code> and <code>Replace</code> need a nullable foreign key</strong>,
+  because they clear it. On a NOT NULL column they fail with
+  <code>ErrNotNullViolation</code>, with a message saying so. Delete the children instead
+  if they cannot exist without a parent. For the same reason they cannot be
+  used when the child's foreign key column is part of its primary key (for
+  example <code>exams</code> keyed by <code>license_id, exam_id</code>): the database rejects the
+  NULL. Delete those children instead.</li>
+<li><strong><code>Replace</code> is a transaction.</strong> On a <code>*DB</code> it opens one, on a <code>*Tx</code> it runs in
+  a savepoint. With no children it clears the set in one statement. Otherwise
+  it reads the current child keys, diffs them in Go against the requested set,
+  unlinks only the removed keys and links only the added ones, in chunks, so
+  kept children are not rewritten and a set of any size works.</li>
+<li><strong><code>Replace</code> locks the parent row</strong> (<code>SELECT 1 ... FOR UPDATE</code>) on PostgreSQL
+  and MySQL, so concurrent <code>Replace</code> calls on the same parent run one after the
+  other. SQLite serialises writers and skips the lock. The lock is a row lock:
+  a parent that does not exist locks nothing. On a <code>*Tx</code> the lock is held until
+  the caller's transaction ends. <code>Link</code> and <code>Unlink</code> take no parent lock and
+  can interleave with a concurrent <code>Replace</code>.</li>
+<li><strong>Belongs-to is not linkable.</strong> Every helper returns <code>ErrUnsupported</code>. Set the
+  foreign key on the parent and update it.</li>
+<li><strong><code>Link</code>, <code>Unlink</code> and <code>Replace</code> return <code>ErrValidation</code></strong> when the parent key
+  is NULL, or, for many-to-many, when a child key is NULL. <code>Link</code> and <code>Unlink</code>
+  with no children are no-ops that issue no statement. <code>Count</code> of a parent with
+  a NULL key is zero.</li>
+<li><strong>Chunks and transactions.</strong> When <code>Link</code> or <code>Unlink</code> needs more than one chunk
+  and the Querier is a <code>*DB</code>, the chunks run in one transaction, so the call is
+  atomic. On a <code>*Tx</code> they run in your transaction without a savepoint. If a
+  later chunk fails, the earlier chunks stay applied until you roll back.
+  Chunk size follows the dialect bind limit, see <code>WithMaxParams</code>.</li>
+</ul>
+<h2 id="7-graph-writes">7. Graph writes<a class="headerlink" href="#7-graph-writes" title="Permanent link">&para;</a></h2>
+<p>Graph writes are explicit. Nothing saves a relation you did not name.</p>
+<h3 id="creategraph">CreateGraph<a class="headerlink" href="#creategraph" title="Permanent link">&para;</a></h3>
+<p><code>CreateGraph</code> inserts a parent and the children of the relations you list, in
+one transaction. List relations with <code>Relation.Include()</code>:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">doc</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">models</span><span class="p">.</span><span class="nx">Document</span><span class="p">{</span>
+<span class="w">    </span><span class="nx">Title</span><span class="p">:</span><span class="w">    </span><span class="s">"Hello"</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">Author</span><span class="p">:</span><span class="w">   </span><span class="o">&amp;</span><span class="nx">models</span><span class="p">.</span><span class="nx">Author</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"Ada"</span><span class="p">},</span>
+<span class="w">    </span><span class="nx">Comments</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="nx">models</span><span class="p">.</span><span class="nx">Comment</span><span class="p">{{</span><span class="nx">Body</span><span class="p">:</span><span class="w"> </span><span class="s">"first"</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="nx">Body</span><span class="p">:</span><span class="w"> </span><span class="s">"second"</span><span class="p">}},</span>
+<span class="p">}</span>
+<span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">CreateGraph</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">doc</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">document</span><span class="p">.</span><span class="nx">Author</span><span class="p">.</span><span class="nx">Include</span><span class="p">(),</span>
+<span class="w">    </span><span class="nx">document</span><span class="p">.</span><span class="nx">Comments</span><span class="p">.</span><span class="nx">Include</span><span class="p">(),</span>
+<span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>Listed belongs-to children are inserted first and their key is copied into
+  the parent. Listed has-one and has-many children are inserted after the
+  parent, with the parent's key (read back with <code>RETURNING</code> when it is
+  generated) copied into each child, and the discriminator set for a
+  polymorphic relation. Many-to-many children are inserted and then linked
+  through the join table. Relations are processed in the order listed.</li>
+<li>The graph is one level deep. Children's own relations are not followed, so a
+  self-referencing relation or an in-memory cycle cannot recurse. A model that
+  appears as its own child fails with <code>ErrValidation</code>.</li>
+<li>Every row goes through the ordinary insert path, so field hooks, automatic
+  timestamps, Go-side defaults and validation run as for a plain <code>Insert</code>.</li>
+<li>Many-to-many children are always inserted, not looked up. A child that is
+  already stored is inserted again and fails with <code>ErrUniqueViolation</code>, which
+  undoes the whole graph. Link existing rows with <code>Link</code> instead.</li>
+<li>Has-many and many-to-many children are inserted with the chunked bulk insert:
+  one multi-row statement per bind-limit chunk, so 1000 children cost one
+  statement, not 1000. A has-one or belongs-to child is a single insert.</li>
+<li>The bulk insert's <code>RETURNING</code> rows are matched to the children in insertion
+  order. If the database returns fewer or more rows than were inserted (a
+  <code>BEFORE INSERT</code> trigger that skips a row, say), the graph fails with
+  <code>ErrValidation</code> and is undone instead of leaving children without keys.</li>
+<li>A dialect without <code>RETURNING</code> (MySQL) returns <code>ErrUnsupported</code> before a
+  transaction is opened.</li>
+<li>On a <code>*DB</code> the graph runs in a new transaction. On a <code>*Tx</code> it runs in a
+  savepoint, so a failure undoes the whole graph and leaves your transaction
+  usable. A dialect without savepoints returns <code>ErrUnsupported</code> there.</li>
+</ul>
+<h3 id="findorcreate">FindOrCreate<a class="headerlink" href="#findorcreate" title="Permanent link">&para;</a></h3>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">a</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">models</span><span class="p">.</span><span class="nx">Author</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"Ada"</span><span class="p">}</span>
+<span class="nx">created</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">FindOrCreate</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="nx">momo</span><span class="p">.</span><span class="nx">ColumnRef</span><span class="p">{</span><span class="nx">author</span><span class="p">.</span><span class="nx">Name</span><span class="p">},</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">a</span><span class="p">)</span>
+</code></pre></div>
+<p><code>FindOrCreate</code> inserts the model unless a row with the same key columns exists.
+Afterwards the model holds the stored row, and <code>created</code> says whether this call
+inserted it.</p>
+<ul>
+<li><strong>The key columns need a unique constraint.</strong> The statement is
+  <code>INSERT ... ON CONFLICT (key) DO NOTHING</code>, so the constraint decides the
+  winner and concurrent callers never create duplicates; the losers re-select
+  the winner's row. Without a constraint on exactly those columns the database
+  rejects the statement. Dialects without <code>ON CONFLICT</code> or <code>RETURNING</code> return
+  <code>ErrUnsupported</code> before any statement runs.</li>
+<li>When the row exists, all mapped columns of the model are overwritten by the
+  stored values, and its relation fields are reset.</li>
+<li>A soft-deleted row is not "found". <code>FindOrCreate</code> never returns or restores a
+  row you deleted, and it does not create a second row with the same key: the
+  unique constraint still holds the soft-deleted row's key, so the insert
+  conflicts and the call fails with <code>ErrUniqueViolation</code> (the deleted row is
+  left untouched, and your model is not overwritten). This holds when the
+  unique constraint covers soft-deleted rows, the case <code>FindOrCreate</code>
+  supports. A partial unique index (<code>WHERE deleted_at IS NULL</code>) would let a new
+  row in, but <code>FindOrCreate</code> cannot target it: its <code>ON CONFLICT (key)</code> has no
+  index predicate, so the database rejects the statement. For keys that
+  soft-deleted rows release, use <code>Insert</code> with <code>OnConflict(key).Where(...)</code>
+  and <code>DoNothing</code>, then re-select. To reuse the old row, restore it first; to
+  create a new one, use a different key. A model without a
+  soft-delete column is unaffected. This is the least surprising choice:
+  returning the deleted row would hand back data the application removed, and
+  restoring it would undo a delete silently.</li>
+<li>Isolation. Under READ COMMITTED the conflicting insert waits for a concurrent
+  transaction and the re-select then sees its row. Under REPEATABLE READ or
+  SERIALIZABLE, the re-select can miss a row committed after the snapshot and
+  return <code>ErrNotFound</code>. Retry the transaction in that case.</li>
+<li>An empty key, a key column the model does not map, or a nil model returns
+  <code>ErrValidation</code>.</li>
+</ul>
+<h3 id="upsertbypk">UpsertByPK<a class="headerlink" href="#upsertbypk" title="Permanent link">&para;</a></h3>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">UpsertByPK</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">a</span><span class="p">)</span>
+</code></pre></div>
+<p><code>UpsertByPK</code> inserts the model, or updates the row with the same primary key:
+<code>INSERT ... ON CONFLICT (pk) DO UPDATE SET col = EXCLUDED.col</code>. It is the
+one-call form of <code>Upsert(q).Model(m)</code>. Generated columns are read back into the
+model. The primary key, version, soft-delete and created-at columns are never
+overwritten. Use the <code>Upsert</code> builder directly when the conflict target is a
+different unique key, or when you want to choose which columns update.</p>
+<h2 id="8-observability">8. Observability<a class="headerlink" href="#8-observability" title="Permanent link">&para;</a></h2>
+<p>A hook registered with <code>WithHook</code> that also implements <code>RelationHook</code> receives
+one event per relation load:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="kd">type</span><span class="w"> </span><span class="nx">relLogger</span><span class="w"> </span><span class="kd">struct</span><span class="p">{</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Hook</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="c1">// embed a Hook for the query events</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">relLogger</span><span class="p">)</span><span class="w"> </span><span class="nx">BeforeRelation</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">RelationEvent</span><span class="p">)</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">ctx</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">relLogger</span><span class="p">)</span><span class="w"> </span><span class="nx">AfterRelation</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">RelationEvent</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"%s.%s %s: %d parents, %d children, %d queries, %s, err=%v"</span><span class="p">,</span>
+<span class="w">        </span><span class="nx">e</span><span class="p">.</span><span class="nx">Parent</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Kind</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Parents</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Children</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Queries</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Duration</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">drv</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">WithHook</span><span class="p">(</span><span class="nx">relLogger</span><span class="p">{</span><span class="nx">queryHook</span><span class="p">}))</span>
+</code></pre></div>
+<p><code>RelationEvent</code> fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Parent</code>, <code>Name</code></td>
+<td>parent table and relation name</td>
+</tr>
+<tr>
+<td><code>Kind</code></td>
+<td>belongs-to, has-one, has-many or many-to-many</td>
+</tr>
+<tr>
+<td><code>Parents</code></td>
+<td>number of parents the load ran for</td>
+</tr>
+<tr>
+<td><code>Queries</code></td>
+<td>child statements compiled for the load; a failed load may have run fewer</td>
+</tr>
+<tr>
+<td><code>Children</code></td>
+<td>children loaded; set only when the statements succeeded, zero on error</td>
+</tr>
+<tr>
+<td><code>Duration</code></td>
+<td>filled before <code>AfterRelation</code></td>
+</tr>
+<tr>
+<td><code>Err</code></td>
+<td>the load's error</td>
+</tr>
+</tbody>
+</table>
+<p>Events fire only for loads that execute statements. They do not fire when there
+are no parents, when the load fails while being prepared (validation or
+unsupported options), or for joined loads. <code>BeforeRelation</code> may return a derived
+context, which later hooks and the load's statements see. For event order under
+pipelining, see <a href="#4-pipelined-loading">Pipelined loading</a>.</p>
+<h2 id="9-errors-and-limitations">9. Errors and limitations<a class="headerlink" href="#9-errors-and-limitations" title="Permanent link">&para;</a></h2>
+<p>Errors are <code>*momo.Error</code> values. Test them with <code>errors.Is(err, momo.ErrX)</code>.
+The <code>Op</code> field names the operation.</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Error</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Load</code>, <code>LoadAll</code>, <code>Preload</code></td>
+<td><code>ErrValidation</code></td>
+<td>negative <code>LoadPerParentLimit</code>; invalid descriptor; scope binds too many arguments for the bind limit</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrUnsupported</code></td>
+<td><code>LoadPerParentLimit</code> on belongs-to or has-one; <code>Each</code> or <code>Iter</code> on a query with preloads</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrTooManyRows</code></td>
+<td>has-one matched more than one child for a parent</td>
+</tr>
+<tr>
+<td><code>Joined</code></td>
+<td><code>ErrUnsupported</code></td>
+<td>not belongs-to, child key not unique, <code>GroupBy</code>, <code>Having</code>, locks, <code>Each</code>, <code>Iter</code>; used with <code>Load</code>, <code>LoadAll</code>, <code>Scope</code> or <code>Then</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrValidation</code></td>
+<td>select list does not have one expression per mapped field</td>
+</tr>
+<tr>
+<td><code>Has</code>, <code>HasNo</code>, <code>CountOrder</code></td>
+<td>none of their own</td>
+<td>an error in the scope predicate surfaces when the query runs</td>
+</tr>
+<tr>
+<td><code>From</code></td>
+<td><code>ErrValidation</code></td>
+<td>many-to-many relation</td>
+</tr>
+<tr>
+<td><code>Link</code>, <code>Unlink</code>, <code>Replace</code>, <code>Count</code></td>
+<td><code>ErrUnsupported</code></td>
+<td>belongs-to</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrValidation</code></td>
+<td><code>Link</code>, <code>Unlink</code>, <code>Replace</code>: NULL parent key, or NULL child key on many-to-many. <code>Count</code> with a NULL parent key returns 0, no error</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrNotNullViolation</code></td>
+<td>has-one or has-many <code>Unlink</code> or <code>Replace</code> on a NOT NULL foreign key</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrUniqueViolation</code></td>
+<td>has-one <code>Link</code> that would break a unique foreign key on the child</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrTxDone</code></td>
+<td>the <code>*Tx</code> passed in is already committed or rolled back</td>
+</tr>
+<tr>
+<td><code>CreateGraph</code></td>
+<td><code>ErrValidation</code></td>
+<td>nil parent, a model listed as its own child, a NULL key that must be copied</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrUnsupported</code></td>
+<td><code>*Tx</code> on a dialect without savepoints; identity read-back on a dialect without <code>RETURNING</code></td>
+</tr>
+<tr>
+<td><code>FindOrCreate</code></td>
+<td><code>ErrValidation</code></td>
+<td>nil model, empty key, unmapped key column</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrNotFound</code></td>
+<td>re-select misses the winner's row under REPEATABLE READ or SERIALIZABLE</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrUniqueViolation</code></td>
+<td>the key is held by a soft-deleted row</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ErrUnsupported</code></td>
+<td>dialect without <code>ON CONFLICT</code> or <code>RETURNING</code></td>
+</tr>
+<tr>
+<td><code>UpsertByPK</code></td>
+<td><code>ErrValidation</code></td>
+<td>nil model</td>
+</tr>
+</tbody>
+</table>
+<p>Database errors (unique, foreign key, check, not-null violations, serialization
+failures) are classified the same way as for any other statement.</p>
+<p>Known limitations and follow-ups:</p>
+<ul>
+<li>A tag-declared <code>belongs_to</code> needs a single-column primary key on its target
+  (the referencing model's key may be composite); <code>has_one</code> and <code>has_many</code>
+  need one on the parent; <code>many2many</code> needs one on both models. Other
+  composite keys work with hand-written descriptors but cannot be expressed
+  with tags.</li>
+<li><code>Joined</code> covers belongs-to only. Has-one is not joinable.</li>
+<li>Pipelining has no public opt-out and doubles peak memory for a level.</li>
+<li><code>Link</code>, <code>Unlink</code> and <code>Replace</code> bypass model and field hooks and <code>UpdatedAt</code>.</li>
+<li><code>Replace</code> serialises concurrent callers only when the parent row exists, and
+  <code>Link</code> and <code>Unlink</code> are never serialised against it.</li>
+<li><code>CreateGraph</code> is one level deep and always inserts; it does not match
+  existing rows.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,51 @@
+# Momo documentation
+
+Momo is a Go ORM that generates typed column and relation descriptors from
+plain Go structs, keeps SQL explicit and inspectable, builds pgvector support
+into the core API, and ships its own migration engine that writes reviewable
+SQL. It supports PostgreSQL with pgvector; [capabilities](capabilities.md)
+states exactly what else exists and what does not. Pages are written from the
+code and checked in CI: every Go block compiles, and the examples run against
+PostgreSQL.
+
+New here? Start with [getting started](getting-started.md).
+
+## Pages
+
+- [Getting started](getting-started.md): requirements, install, a first program that talks to PostgreSQL, and where the typed API starts.
+- [Guide for AI coding agents](ai-guide.md): one self-contained file for an agent using Momo in an application: setup, modeling, migrations, queries, relations, vectors, errors, testing, known pitfalls and rules. Also indexed by `llms.txt` at the repository root.
+- [Go to SQL type mapping](TYPE_MAPPING.md): column type per Go type, edge values, null handling.
+- [Vector search](vectors.md): pgvector types, metrics, limits, search settings and the binary codec.
+- [MySQL and MariaDB](mysql.md): supported servers, DSN requirements, the capability matrix, write and locking differences, error mapping, and what is not available yet.
+- [Full-text search](fulltext.md): the tsvector column type, the match, query, rank and headline builders, and a hybrid vector plus text ranking pattern.
+- [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, tuple rows (`Row1` to `Row10`), the soft-delete filter.
+- [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
+- [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
+- [Importing models from other ORMs](importers.md): the GORM, Bun and Ent readers (static, they never execute your code), the import report and what each report kind means; the `momo import` command is not wired yet.
+- [Read replicas](replicas.md): `WithReplicas`, which statements go to a replica, reading your own writes, and what happens when a replica is down.
+- [Testing applications](testing.md): the `momotest` kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.
+- [Interceptors](PRIVACY_RULES.md): application-level per-handle rules that add predicates or deny typed statements, the tenant recipe, and the paths they do not cover (not a security boundary).
+- [Static check for raw SQL](momovet.md): the momovet analyzer that reports non-constant SQL passed to the raw-SQL functions.
+- [Interceptors](PRIVACY_RULES.md): `WithInterceptor` statement rules per handle, a tenant-handle recipe, and every path an interceptor does not cover.
+- [momovet](momovet.md): the static analyzer that reports raw SQL built with `+` or a format call.
+- [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
+- [Performance](PERFORMANCE.md): the measured hook-overhead allocation budget and the layout of the comparison benchmark suite.
+- [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI for v0.3.0, and the stability policy. <!-- x-release-please-version -->
+- [Using these docs with an AI coding agent](agents.md): where an agent should read, canonical patterns and a copy-paste AGENTS.md snippet.
+- [Architecture](ARCHITECTURE.md): the package layering, dependency rules and contracts the code follows.
+- [Contributing](contributing.md): prerequisites, test commands, commit messages and file headers.
+
+## Examples
+
+Runnable programs, each tested end to end in CI. See [the examples index](../examples/README.md) for the layout and how to add one.
+
+- [quickstart](../examples/quickstart/): the root README loop: models, generate, CRUD, relations, vector search, a transaction.
+- [crud-zero-null](../examples/crud-zero-null/): insert, update, delete; zero value versus NULL versus default; soft delete.
+- [transactions](../examples/transactions/): Tx, rollback, savepoints, read-only and isolation, retry on serialization failure.
+- [testing](../examples/testing/): momotest: a database or a rolled-back transaction per test, migrations applied, seeded fixtures, parallel tests.
+- [relations](../examples/relations/): has-many, belongs-to, many-to-many; Load, Preload, Joined, Has, Link, CreateGraph.
+- [projection-pagination](../examples/projection-pagination/): column subsets, keyset pagination with a tie-break, counting.
+- [vector-search](../examples/vector-search/): HNSW index, nearest-neighbour queries, filters, search settings.
+- [upgrade-database](../examples/upgrade-database/): change a model after production: add a column with a default, add an index, rename a column, apply with data kept, generate --check and drift.
+- [custom-sql-migration](../examples/custom-sql-migration/): hand-written SQL migrations beside generated ones: backfill, DO $$ splitting, -- momo:no-transaction, a hand-written CONCURRENTLY index, momo.sum checksums.
+- [adopt-existing-schema](../examples/adopt-existing-schema/): put a plain-SQL database under Momo with migrate baseline (`momo generate --from-db` can then write the models from the database).
