@@ -6,7 +6,6 @@ package sqlitedriver
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/sqlshared"
@@ -31,7 +30,7 @@ func ClassifyError(err error) error {
 	}
 	var kind error
 	switch se.ExtendedCode {
-	case sqlite3.ErrConstraintUnique, sqlite3.ErrConstraintPrimaryKey:
+	case sqlite3.ErrConstraintUnique, sqlite3.ErrConstraintPrimaryKey, sqlite3.ErrConstraintRowID:
 		kind = momo.ErrUniqueViolation
 	case sqlite3.ErrConstraintForeignKey:
 		kind = momo.ErrForeignKeyViolation
@@ -48,33 +47,21 @@ func ClassifyError(err error) error {
 		switch se.Code {
 		case sqlite3.ErrBusy, sqlite3.ErrLocked:
 			kind = momo.ErrBusy
+		case sqlite3.ErrConstraint:
+			// A bare SQLITE_CONSTRAINT, or an extended code not listed above, is
+			// classified by its message prefix, as sqlitepure does.
+			kind = sqlshared.ConstraintKind(se.Error())
 		}
 	}
 	if kind == nil {
 		return err
 	}
 	msg := se.Error()
-	table, column := constraintTarget(msg)
+	table, column := sqlshared.ConstraintTarget(msg)
 	return &momo.Error{
 		Kind:   kind,
 		Table:  table,
 		Column: column,
 		Err:    sqlshared.DriverError{Cause: err, Msg: msg},
 	}
-}
-
-// constraintTarget parses "UNIQUE constraint failed: table.column" into its
-// table and column. It returns empty strings for any other message; for a
-// multi-column constraint (a comma-separated list) it returns the first.
-func constraintTarget(msg string) (table, column string) {
-	i := strings.LastIndex(msg, ": ")
-	if i < 0 || !strings.Contains(msg[:i], "constraint failed") {
-		return "", ""
-	}
-	target, _, _ := strings.Cut(msg[i+2:], ",")
-	table, column, ok := strings.Cut(strings.TrimSpace(target), ".")
-	if !ok {
-		return "", ""
-	}
-	return table, column
 }

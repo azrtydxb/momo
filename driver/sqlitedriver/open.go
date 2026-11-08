@@ -38,7 +38,11 @@ func register() {
 // the database so a refused connection is reported here.
 //
 // dsn is a file path or a "file:" URI. The query string may carry only the
-// parameters on allowedDSNKeys. The busy timeout and the transaction lock in
+// parameters on allowedDSNKeys, each given once; a repeated parameter, a
+// _txlock other than immediate, deferred or exclusive, a _busy_timeout or
+// _timeout that is not a non-negative integer, a _cache_size that is not an
+// integer (a negative one is a size in KiB) and a _loc that is neither "auto"
+// nor a time zone name are refused with momo.ErrValidation. The busy timeout and the transaction lock in
 // it override cfg; foreign keys, WAL and synchronous always come from cfg and
 // the adapter. The mode and cache parameters are SQLite URI parameters, which
 // SQLite sees only for a "file:" DSN, so any other DSN carrying them is
@@ -79,6 +83,12 @@ func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
 	return db, newDriver(db), nil
 }
 
+// dsnInvalid is a momo.ErrValidation for a DSN parameter. The message never
+// quotes the offending value.
+func dsnInvalid(format string, args ...any) error {
+	return &momo.Error{Kind: momo.ErrValidation, Op: "open", Err: fmt.Errorf("sqlitedriver: "+format, args...)}
+}
+
 func buildDSN(dsn string, cfg Config) (string, error) {
 	base, rawQuery, _ := strings.Cut(dsn, "?")
 	if base == "" {
@@ -114,12 +124,37 @@ func buildDSN(dsn string, cfg Config) (string, error) {
 		if !allowedDSNKeys[key] {
 			return "", fmt.Errorf("sqlitedriver: DSN parameter %q is not allowed; the adapter sets foreign keys, journal mode and synchronous itself (use Config), and other parameters are refused", key)
 		}
-		if key == "mode" || key == "cache" {
+		if len(vals) != 1 {
+			return "", dsnInvalid("DSN parameter %s is given more than once", key)
+		}
+		switch key {
+		case "mode", "cache":
 			if !strings.HasPrefix(base, "file:") {
 				return "", fmt.Errorf("sqlitedriver: DSN parameter %s needs a \"file:\" DSN; SQLite does not see the query of a plain path", key)
 			}
-			if !allowedDSNValues[key][q.Get(key)] || len(vals) != 1 {
+			if !allowedDSNValues[key][vals[0]] {
 				return "", fmt.Errorf("sqlitedriver: DSN parameter %s has an unsupported value", key)
+			}
+		case "_txlock":
+			switch strings.ToLower(vals[0]) {
+			case "immediate", "deferred", "exclusive":
+			default:
+				return "", dsnInvalid("DSN parameter _txlock has an unsupported value")
+			}
+		case "_busy_timeout", "_timeout":
+			if n, err := strconv.ParseInt(vals[0], 10, 64); err != nil || n < 0 {
+				return "", dsnInvalid("DSN parameter %s must be a non-negative integer (milliseconds)", key)
+			}
+		case "_cache_size":
+			// Negative is valid: SQLite reads it as a size in KiB.
+			if _, err := strconv.ParseInt(vals[0], 10, 64); err != nil {
+				return "", dsnInvalid("DSN parameter _cache_size must be an integer")
+			}
+		case "_loc":
+			if vals[0] != "auto" {
+				if _, err := time.LoadLocation(vals[0]); err != nil {
+					return "", dsnInvalid("DSN parameter _loc must be \"auto\" or a time zone name")
+				}
 			}
 		}
 	}

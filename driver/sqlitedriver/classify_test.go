@@ -44,6 +44,7 @@ func TestClassifyKinds(t *testing.T) {
 		want error
 	}{
 		{sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintPrimaryKey}, momo.ErrUniqueViolation},
+		{sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintRowID}, momo.ErrUniqueViolation},
 		{sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintForeignKey}, momo.ErrForeignKeyViolation},
 		{sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintCheck}, momo.ErrCheckViolation},
 		{sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintNotNull}, momo.ErrNotNullViolation},
@@ -52,23 +53,6 @@ func TestClassifyKinds(t *testing.T) {
 	} {
 		if got := ClassifyError(c.in); !errors.Is(got, c.want) {
 			t.Errorf("ClassifyError(%d) = %v, want kind %v", c.in.ExtendedCode, got, c.want)
-		}
-	}
-}
-
-func TestConstraintTarget(t *testing.T) {
-	for msg, want := range map[string][2]string{
-		"UNIQUE constraint failed: users.email":     {"users", "email"},
-		"NOT NULL constraint failed: u.name":        {"u", "name"},
-		"UNIQUE constraint failed: a.x, a.y":        {"a", "x"},
-		"FOREIGN KEY constraint failed":             {"", ""},
-		"CHECK constraint failed: positive_balance": {"", ""},
-		"database is locked":                        {"", ""},
-		"something: users.email":                    {"", ""},
-	} {
-		table, column := constraintTarget(msg)
-		if table != want[0] || column != want[1] {
-			t.Errorf("constraintTarget(%q) = %q, %q; want %q, %q", msg, table, column, want[0], want[1])
 		}
 	}
 }

@@ -189,26 +189,35 @@ type sqlRows struct {
 func (r sqlRows) Next() bool             { return r.r.Next() }
 func (r sqlRows) Scan(dest ...any) error { return r.h.scanErr(r.r.Scan(wrapDests(dest)...)) }
 
-// scanErr hides the text of a conversion failure: database/sql quotes the
-// stored value in it ("converting driver.Value type string ("...")"). Only
-// errors that look like a conversion failure are masked; cancellation, a
-// closed Rows and driver errors pass through. The cause stays reachable
-// through errors.Unwrap, as with pgxdriver data exceptions.
+// scanErr hides the text of a conversion failure; see MaskConversionErr.
 func (h *Hooks) scanErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	c := h.Classify("", err)
+	return MaskConversionErr(h.Classify("", err), "sqlite: cannot convert the column value to the destination type", h.IsDriverErr)
+}
+
+// MaskConversionErr hides the text of a database/sql conversion failure:
+// database/sql quotes the stored value in it ("converting driver.Value type
+// string ("...")"). c must already be classified by the driver. Only errors
+// that look like a conversion failure are masked; cancellation, a closed Rows,
+// a *momo.Error and errors for which isDriverErr reports true pass through.
+// The cause stays reachable through errors.Unwrap, as with pgxdriver data
+// exceptions. msg is the fixed text of the masked error.
+func MaskConversionErr(c error, msg string, isDriverErr func(error) bool) error {
+	if c == nil {
+		return nil
+	}
 	var me *momo.Error
-	if h.IsDriverErr(c) || errors.As(c, &me) ||
+	if isDriverErr(c) || errors.As(c, &me) ||
 		errors.Is(c, context.Canceled) || errors.Is(c, context.DeadlineExceeded) || errors.Is(c, sql.ErrNoRows) {
 		return c
 	}
-	msg := c.Error()
-	if !strings.Contains(msg, "converting") && !strings.Contains(msg, "Scan error on column") {
+	text := c.Error()
+	if !strings.Contains(text, "converting") && !strings.Contains(text, "Scan error on column") {
 		return c
 	}
-	return DriverError{Cause: c, Msg: "sqlite: cannot convert the column value to the destination type"}
+	return DriverError{Cause: c, Msg: msg}
 }
 
 func (r sqlRows) Err() error   { return r.h.Classify("", r.r.Err()) }
