@@ -193,3 +193,17 @@ func TestConvertAppliedEmptyVersusNil(t *testing.T) {
 		t.Fatalf("an empty non-nil Applied means nothing was applied; got %v", err)
 	}
 }
+
+func TestWriteImportOntoExistingEmptyDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "migrations")
+	if err := os.Mkdir(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	conv := []Converted{{Version: "20260101000000", Name: "init", Up: []byte("SELECT 1;\n")}}
+	if err := WriteImport(dir, conv, nil); err != nil {
+		t.Fatalf("an existing empty directory is a valid target: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "20260101000000_init.up.sql")); err != nil {
+		t.Fatal(err)
+	}
+}

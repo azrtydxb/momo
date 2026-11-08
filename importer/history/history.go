@@ -160,15 +160,6 @@ func fileName(name string) string {
 // version ("" for the first). It runs nothing on any other database; scratch
 // must start empty.
 func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []Converted) ([]migrate.SnapshotFile, error) {
-	pinner, ok := scratch.Driver().(momo.Pinner)
-	if !ok {
-		return nil, errors.New("history: the scratch database driver cannot pin a connection")
-	}
-	pc, err := pinner.Pin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("history: pin scratch connection: %w", err)
-	}
-	defer func() { _ = pc.Release() }()
 	eng, err := migrate.NewEngine(scratch.Driver(), fstest.MapFS{}, migrate.WithDialect(d), migrate.WithoutSum())
 	if err != nil {
 		return nil, err
@@ -188,7 +179,9 @@ func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []C
 			return nil, fmt.Errorf("history: %s: %w", c.Origin, err)
 		}
 		for i, s := range stmts {
-			if _, err := pc.Exec(ctx, s, nil); err != nil {
+			// No connection is held between calls, so a single-connection pool
+			// works: each statement and the Inspect take it in turn.
+			if _, err := momo.Exec(ctx, scratch, s); err != nil {
 				return nil, fmt.Errorf("history: %s statement %d on the scratch database: %w", c.Origin, i+1, err)
 			}
 		}
@@ -213,7 +206,8 @@ var (
 // momo.sum for the directory. Everything is validated first and written to a
 // temporary directory beside outDir, which is then renamed into place, so a
 // failure leaves nothing behind and a retry works. outDir must not exist or
-// must be empty; existing files are never overwritten.
+// must be empty; existing files are never overwritten. Parent directories
+// created with MkdirAll are left in place when the import fails.
 func WriteImport(outDir string, conv []Converted, snaps []migrate.SnapshotFile) error {
 	byVersion := map[string]Converted{}
 	for _, c := range conv {
@@ -305,7 +299,11 @@ func WriteImport(outDir string, conv []Converted, snaps []migrate.SnapshotFile) 
 	if err := os.Chmod(stage, 0o750); err != nil { // #nosec G302 -- a directory; 0750 like the other generated directories
 		return fmt.Errorf("history: %w", err)
 	}
-	// Renaming onto an empty directory replaces it; onto a missing path it creates it.
+	// Windows cannot rename onto an existing directory, so remove the empty one
+	// first (os.Remove refuses a directory that is not empty).
+	if err := os.Remove(outDir); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("history: %w", err)
+	}
 	if err := os.Rename(stage, outDir); err != nil {
 		return fmt.Errorf("history: %w", err)
 	}

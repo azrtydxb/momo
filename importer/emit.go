@@ -10,6 +10,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -79,8 +80,9 @@ func render(models []Model, pkg string) ([]byte, error) {
 	var body bytes.Buffer
 	seenModels := map[string]bool{}
 	for _, m := range models {
-		if !token.IsIdentifier(m.Name) || m.Name == "_" || m.Name == "momo" {
-			return nil, fmt.Errorf("importer: %s: %q cannot be a model type name (it must be an identifier other than _ and momo, the import name)", m.Source, m.Name)
+		_, importName := stdImports[m.Name]
+		if !token.IsIdentifier(m.Name) || m.Name == "_" || m.Name == "momo" || importName || types.Universe.Lookup(m.Name) != nil {
+			return nil, fmt.Errorf("importer: %s: %q cannot be a model type name (it must be an identifier that is not _, a predeclared identifier, or an import name such as momo, time, sql or json)", m.Source, m.Name)
 		}
 		if seenModels[m.Name] {
 			return nil, fmt.Errorf("importer: %s: model %s is declared twice", m.Source, m.Name)
@@ -106,10 +108,11 @@ func render(models []Model, pkg string) ([]byte, error) {
 			if f.GoType == "" {
 				return nil, fmt.Errorf("importer: %s: field %s.%s has no Go type", f.Source, m.Name, f.Name)
 			}
-			if err := checkTypeExpr(f.GoType); err != nil {
+			goType, err := checkTypeExpr(f.GoType)
+			if err != nil {
 				return nil, fmt.Errorf("importer: %s: field %s.%s: %w", f.Source, m.Name, f.Name, err)
 			}
-			if err := collectImports(f.GoType, imports); err != nil {
+			if err := collectImports(goType, imports); err != nil {
 				return nil, fmt.Errorf("importer: %s: field %s.%s: %w", f.Source, m.Name, f.Name, err)
 			}
 			tag, err := fieldTag(f)
@@ -119,7 +122,7 @@ func render(models []Model, pkg string) ([]byte, error) {
 			if tag != "" {
 				tag = " `momo:" + strconv.Quote(tag) + "`"
 			}
-			fmt.Fprintf(&body, "\t%s %s%s\n", f.Name, f.GoType, tag)
+			fmt.Fprintf(&body, "\t%s %s%s\n", f.Name, goType, tag)
 		}
 		body.WriteString("}\n\n")
 	}
@@ -218,15 +221,23 @@ func fieldTag(f Field) (string, error) {
 // pointers, selectors, slices, arrays with a literal length, maps and generic
 // instantiations. Anything else (a call, an operator, a second declaration)
 // would put arbitrary source into the model file.
-func checkTypeExpr(goType string) error {
+//
+// It returns the type printed from the parsed expression, which is what the
+// emitter writes: trailing comments and odd spacing in the input never reach
+// the model file.
+func checkTypeExpr(goType string) (string, error) {
 	e, err := parser.ParseExpr(goType)
 	if err != nil {
-		return fmt.Errorf("type %q does not parse: %w", goType, err)
+		return "", fmt.Errorf("type %q does not parse: %w", goType, err)
 	}
 	if !isTypeExpr(e) {
-		return fmt.Errorf("%q is not a type expression", goType)
+		return "", fmt.Errorf("%q is not a type expression", goType)
 	}
-	return nil
+	var buf bytes.Buffer
+	if err := format.Node(&buf, token.NewFileSet(), e); err != nil {
+		return "", fmt.Errorf("type %q cannot be printed: %w", goType, err)
+	}
+	return buf.String(), nil
 }
 
 func isTypeExpr(e ast.Expr) bool {

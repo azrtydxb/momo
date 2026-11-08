@@ -141,3 +141,47 @@ func TestEmitRejectsUnsafeStructure(t *testing.T) {
 		t.Fatal("Emit accepted package _")
 	}
 }
+
+func TestEmitRejectionTable(t *testing.T) {
+	root := t.TempDir()
+	cases := []struct {
+		name   string
+		mutate func(*[]Model)
+		pkg    string
+	}{
+		{"duplicate model", func(m *[]Model) { *m = append(*m, (*m)[0]) }, "models"},
+		{"duplicate field", func(m *[]Model) { (*m)[0].Fields[2].Name = "Email" }, "models"},
+		{"field named Model", func(m *[]Model) { (*m)[0].Fields[2].Name = "Model" }, "models"},
+		{"package underscore", func(*[]Model) {}, "_"},
+		{"call as type", func(m *[]Model) { (*m)[0].Fields[1].GoType = "f()" }, "models"},
+		{"operator as type", func(m *[]Model) { (*m)[0].Fields[1].GoType = "a+b" }, "models"},
+		{"model named time", func(m *[]Model) { (*m)[0].Name = "time" }, "models"},
+		{"model named sql", func(m *[]Model) { (*m)[0].Name = "sql" }, "models"},
+		{"model named string", func(m *[]Model) { (*m)[0].Name = "string" }, "models"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ms := sampleModels()
+			tc.mutate(&ms)
+			w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+			if err := Emit(ms, &Report{}, w, filepath.Join(root, "models"), tc.pkg); err == nil {
+				t.Fatal("Emit accepted unsafe input")
+			}
+		})
+	}
+}
+
+// A trailing comment in a type must not swallow the struct tag.
+func TestEmitPrintsTheParsedType(t *testing.T) {
+	root := t.TempDir()
+	ms := sampleModels()
+	ms[0].Fields[1].GoType = "string // x"
+	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	if err := Emit(ms, &Report{}, w, filepath.Join(root, "models"), "models"); err != nil {
+		t.Fatal(err)
+	}
+	out := string(w.Outputs()[0].Data)
+	if strings.Contains(out, "// x") || !strings.Contains(out, "`momo:\"column:email,type:varchar(255),notnull,unique\"`") {
+		t.Fatalf("the comment leaked into the model or swallowed the tag:\n%s", out)
+	}
+}
