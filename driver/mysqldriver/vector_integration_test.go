@@ -42,19 +42,11 @@ func (d *vecDoc) MomoMeta() *momo.Meta[vecDoc] { return &vecDocMeta }
 // serverVersion returns SELECT VERSION().
 func serverVersion(t *testing.T, q momo.Querier) string {
 	t.Helper()
-	rows, err := momo.MapRows(context.Background(), q, "SELECT VERSION() AS v")
-	if err != nil || len(rows) != 1 {
-		t.Fatalf("VERSION(): %v, %d rows", err, len(rows))
+	v, err := momo.Scalars[string](context.Background(), q, "SELECT VERSION()")
+	if err != nil || len(v) != 1 {
+		t.Fatalf("VERSION(): %v, %d rows", err, len(v))
 	}
-	switch v := rows[0]["v"].(type) {
-	case string:
-		return v
-	case []byte:
-		return string(v)
-	default:
-		t.Fatalf("VERSION() is %T", v)
-	}
-	return ""
+	return v[0]
 }
 
 func vecText(t *testing.T, v vector.Vector) string {
@@ -64,19 +56,6 @@ func vecText(t *testing.T, v vector.Vector) string {
 		t.Fatal(err)
 	}
 	return s.(string)
-}
-
-func rowIDs(t *testing.T, rows []map[string]any) []int64 {
-	t.Helper()
-	ids := make([]int64, 0, len(rows))
-	for _, r := range rows {
-		id, ok := r["id"].(int64)
-		if !ok {
-			t.Fatalf("id is %T, want int64", r["id"])
-		}
-		ids = append(ids, id)
-	}
-	return ids
 }
 
 // TestMariaDBVectorParity holds MariaDB to the exact nearest neighbours that
@@ -109,11 +88,11 @@ func TestMariaDBVectorParity(t *testing.T) {
 	}
 
 	// Exact path: "+ 0" keeps the server from using the index.
-	rows, err := momo.MapRows(ctx, db, "SELECT id FROM docs ORDER BY VEC_DISTANCE_COSINE(emb, VEC_FromText(?)) + 0, id LIMIT 10", vecText(t, query))
+	exact, err := momo.Scalars[int64](ctx, db, "SELECT id FROM docs ORDER BY VEC_DISTANCE_COSINE(emb, VEC_FromText(?)) + 0, id LIMIT 10", vecText(t, query))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := rowIDs(t, rows); !slices.Equal(got, want) {
+	if got := exact; !slices.Equal(got, want) {
 		t.Fatalf("exact path: mariadb %v, reference %v", got, want)
 	}
 
@@ -124,9 +103,7 @@ func TestMariaDBVectorParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan, err := momo.MapRows(ctx, db, "EXPLAIN "+c.SQL, c.Args...); err == nil {
-		t.Logf("EXPLAIN: %v", plan)
-	}
+	t.Logf("indexed query: %s", c.SQL)
 	got, err := sel.All(ctx)
 	if err != nil {
 		t.Fatal(err)

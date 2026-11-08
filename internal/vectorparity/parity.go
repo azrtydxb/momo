@@ -28,7 +28,7 @@ const (
 
 // Vectors returns the deterministic dataset. Element i has id i+1.
 func Vectors() []vector.Vector {
-	r := rand.New(rand.NewSource(seed)) //nolint:gosec // reproducible test data, not a secret
+	r := rand.New(rand.NewSource(seed)) // #nosec G404 -- reproducible test data, not a secret
 	out := make([]vector.Vector, Count)
 	for i := range out {
 		out[i] = make(vector.Vector, Dim)
