@@ -108,6 +108,9 @@ type DB struct {
 	pinned   bool             // set by OnConn: statements run on one pinned connection
 	// fieldHooks holds the []FieldHook[T] of WithFieldHooks keyed by *Meta[T].
 	fieldHooks map[any]any
+	// replicas are the read-replica drivers of WithReplicas, reached only
+	// through Replica. A handle derived from a DB never carries them.
+	replicas []Driver
 	// idGens holds the id generators of WithIDGenerator by name.
 	idGens map[string]func() string
 	// txSetup runs after every transaction momo begins (WithTxSetup).
@@ -254,6 +257,7 @@ func (e *execer) after(ctx context.Context, ev *QueryEvent, rows int64, err erro
 }
 
 func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64, error) {
+	markWrite(ctx)
 	if e.unscopable() {
 		return -1, errPinnedSetup(op, table)
 	}
@@ -296,6 +300,9 @@ func (e *execer) execInsertID(ctx context.Context, op, table string, c Compiled)
 
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
+	if op != "select" && op != "explain" { // a write with RETURNING
+		markWrite(ctx)
+	}
 	if e.unscopable() {
 		return nil, errPinnedSetup(op, table)
 	}

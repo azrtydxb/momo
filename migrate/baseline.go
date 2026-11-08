@@ -40,7 +40,10 @@ const BaselineApplyID = "baseline"
 // For every migration with a version not after version that has no history row
 // (a rolled_back row counts as none) it inserts a row with status applied,
 // statements_applied 0, the checksum of the file and apply_id "baseline", in one
-// transaction. It takes the migration lock and refuses, like Apply, while a
+// transaction. A registered Go migration (WithGoMigrations) gets a row of kind
+// go whose checksum is the migration's identity, not a file hash; a version
+// that has a snapshot but no up file and no registered Go migration makes it
+// return ErrGoMigrationUnregistered, naming the snapshot, and records nothing. It takes the migration lock and refuses, like Apply, while a
 // migration is dirty or a file differs from its checksum. The snapshot files are
 // not rewritten; a later Diff compares the models with the snapshot as written.
 func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err error) {
