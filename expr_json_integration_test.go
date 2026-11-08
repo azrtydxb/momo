@@ -42,6 +42,7 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 			{5, `{"0":"zero","a\\b":"bs","q?":"x","a.b":"dot"}`},
 			{6, `["a","b"]`},
 			{7, `"a"`},
+			{8, `{"flag":true,"off":false,"num":1.5}`},
 		}
 		for _, r := range rows {
 			insert := "INSERT INTO jsonev (id, doc) VALUES (?, CAST(? AS jsonb))"
@@ -83,7 +84,8 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 		check("text in", ids(momo.JSONText(doc, "via").In("api", "web")), 1, 2)
 		check("path", ids(momo.JSONPath(doc, "n", "x", "1").Eq("q")), 1)
 		if sqlite {
-			// SQLite has no containment operator.
+			// SQLite has no containment operator, and json_each cannot express
+			// the recursive @> rule, so JSONContains stays ErrUnsupported there.
 			_, err := momo.Select[kvRow](db).From(momo.TableRef{Name: "jsonev"}).Columns(id, id).
 				Where(momo.JSONContains(doc, map[string]any{"via": "web"})).All(ctx)
 			if !errors.Is(err, momo.ErrUnsupported) {
@@ -93,6 +95,15 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 			check("contains object", ids(momo.JSONContains(doc, map[string]any{"via": "web"})), 2)
 			check("contains array member", ids(momo.JSONContains(doc, map[string]any{"tags": []string{"a"}})), 1)
 		}
+		// A JSON boolean reads as true or false on PostgreSQL and as 1 or 0 on
+		// SQLite, whose json_extract returns an integer; numbers read the same.
+		yes, no := "true", "false"
+		if sqlite {
+			yes, no = "1", "0"
+		}
+		check("boolean true as text", ids(momo.JSONText(doc, "flag").Eq(yes)), 8)
+		check("boolean false as text", ids(momo.JSONText(doc, "off").Eq(no)), 8)
+		check("number as text", ids(momo.JSONText(doc, "num").Eq("1.5")), 8)
 		check("has key", ids(momo.JSONHasKey(doc, "via")), 1, 2)
 		check("has key with JSON null value", ids(momo.JSONHasKey(doc, "gone")), 2)
 		check("key bound as data", ids(momo.JSONHasKey(doc, "via' OR '1'='1")))
@@ -146,8 +157,8 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 		}
 
 		// SQL NULL, JSON null and a missing key all extract as NULL.
-		check("extracted text is NULL", ids(momo.JSONText(doc, "via").IsNull()), 3, 4, 5, 6, 7)
-		check("missing key and JSON null member are both NULL", ids(momo.JSONText(doc, "gone").IsNull()), 1, 2, 3, 4, 5, 6, 7)
+		check("extracted text is NULL", ids(momo.JSONText(doc, "via").IsNull()), 3, 4, 5, 6, 7, 8)
+		check("missing key and JSON null member are both NULL", ids(momo.JSONText(doc, "gone").IsNull()), 1, 2, 3, 4, 5, 6, 7, 8)
 		check("SQL NULL column", ids(doc.IsNull()), 3)
 		check("JSON null column", ids(doc.Eq(types.JSON[any]{})), 4)
 
