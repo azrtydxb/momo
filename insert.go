@@ -3,8 +3,6 @@
 package momo
 
 import (
-	"errors"
-	"fmt"
 	"slices"
 	"time"
 )
@@ -60,9 +58,15 @@ type InsertQuery[T any] struct {
 	meta   *Meta[T]
 	i      insertCore
 	models []T
-	// ptr is the model of a single Model call, so a generated key can be
-	// written back after the insert; nil for any other shape.
-	ptr *T
+	// back holds, per model, the caller's value that generated ids are
+	// written back to (nil for none); see generateIDs.
+	back []*T
+	// idsDone marks that generateIDs has run, and reconcile that Exec reads
+	// the stored ids back after a conflict that may keep an existing row.
+	idsDone, reconcile bool
+	// pend collects the write-backs of execReconcile, applied once the
+	// statement (all chunks) has committed.
+	pend *[]func()
 	// clock, when set, is the statement time shared by every chunk of a
 	// chunked bulk insert; otherwise the DB clock is read per statement.
 	clock time.Time
@@ -86,7 +90,9 @@ func (q InsertQuery[T]) fail(err error) InsertQuery[T] {
 }
 
 func (q InsertQuery[T]) verr(col, format string, args ...any) error {
-	return &Error{Kind: ErrValidation, Op: "insert", Table: q.meta.Table, Column: col, Err: fmt.Errorf(format, args...)}
+	e := validation("insert", q.meta.Table, format, args...)
+	e.Column = col
+	return e
 }
 
 // Model adds one model, writing every column except identity, read-only and
@@ -95,11 +101,8 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 	if m == nil {
 		return q.fail(q.verr("", "Model(nil)"))
 	}
-	q.ptr = nil
-	if len(q.models) == 0 {
-		q.ptr = m
-	}
 	q.models = append(slices.Clip(q.models), *m)
+	q.back = append(slices.Clip(q.back), m)
 	return q
 }
 
@@ -109,8 +112,10 @@ func (q InsertQuery[T]) Models(ms []T) InsertQuery[T] {
 	if len(ms) == 0 {
 		return q.fail(q.verr("", "Models: no rows"))
 	}
-	q.ptr = nil
 	q.models = append(slices.Clip(q.models), ms...)
+	for i := range ms {
+		q.back = append(slices.Clip(q.back), &ms[i])
+	}
 	return q
 }
 
@@ -265,7 +270,7 @@ func (q InsertQuery[T]) writable(i int) bool {
 // SQL compiles the statement without executing it.
 func (q InsertQuery[T]) SQL() (Compiled, error) {
 	if q.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
+		return Compiled{}, noQuerier("insert", q.meta.Table)
 	}
 	return compile(q.q.Dialect(), q.render)
 }

@@ -108,6 +108,8 @@ type DB struct {
 	pinned   bool             // set by OnConn: statements run on one pinned connection
 	// fieldHooks holds the []FieldHook[T] of WithFieldHooks keyed by *Meta[T].
 	fieldHooks map[any]any
+	// idGens holds the id generators of WithIDGenerator by name.
+	idGens map[string]func() string
 	// txSetup runs after every transaction momo begins (WithTxSetup).
 	txSetup []func(ctx context.Context, tx *Tx) error
 	// implicitTx runs auto-commit statements in a short transaction (WithImplicitTx).
@@ -444,7 +446,7 @@ func (tx *Tx) DriverTx() DriverTx { return tx.dtx }
 // matching ErrAdoptedTx and does nothing.
 func (tx *Tx) Commit(ctx context.Context) error {
 	if tx.depth > 0 {
-		return errors.New("momo: Commit called on a savepoint scope; return from the Tx callback instead")
+		return newError(ErrValidation, "commit", "", errors.New("Commit called on a savepoint scope; return from the Tx callback instead"))
 	}
 	if tx.adopted {
 		return &Error{Kind: ErrAdoptedTx, Op: "commit"}
@@ -462,7 +464,7 @@ func (tx *Tx) Commit(ctx context.Context) error {
 // matching ErrAdoptedTx and does nothing.
 func (tx *Tx) Rollback(ctx context.Context) error {
 	if tx.depth > 0 {
-		return errors.New("momo: Rollback called on a savepoint scope; return an error from the Tx callback instead")
+		return newError(ErrValidation, "rollback", "", errors.New("Rollback called on a savepoint scope; return an error from the Tx callback instead"))
 	}
 	if tx.adopted {
 		return &Error{Kind: ErrAdoptedTx, Op: "rollback"}

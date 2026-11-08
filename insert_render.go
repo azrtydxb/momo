@@ -20,7 +20,10 @@ func (q InsertQuery[T]) render(b *Builder) {
 		b.SetErr(q.verr("", "%T has no table", *new(T)))
 		return
 	}
-	q, err := q.resolveUpsert()
+	q, err := q.generateIDs(false) // a preview; plan has done this for Exec and Rows
+	if err == nil {
+		q, err = q.resolveUpsert()
+	}
 	if err != nil {
 		b.SetErr(err)
 		return
@@ -129,7 +132,7 @@ func (q InsertQuery[T]) resolve(d *dialect.Dialect, mode insertMode) (insertPlan
 			return p, err
 		}
 	} else {
-		if p.cols, p.rowAssigns, err = q.valueRows(d, p.now, p.fp); err != nil {
+		if p.cols, p.rowAssigns, err = q.valueRowsSafe(d, p.now, p.fp); err != nil {
 			return p, err
 		}
 		p.rows = len(p.rowAssigns)

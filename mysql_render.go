@@ -180,9 +180,21 @@ func (q InsertQuery[T]) appendValueTo(b *Builder, a Assignment) { q.appendValue(
 // clause, whose identity column the statement leaves to the server.
 func (q InsertQuery[T]) wantsGeneratedKey() bool {
 	id := q.meta.Identity
-	return q.ptr != nil && len(q.models) == 1 && q.q != nil && q.q.Dialect().OnDuplicateKey &&
+	return len(q.back) == 1 && q.back[0] != nil && len(q.models) == 1 && q.q != nil && q.q.Dialect().OnDuplicateKey &&
 		!q.i.upsert && q.i.conflict == conflictNone && id >= 0 && id < len(q.meta.Columns) &&
-		q.meta.Ptr != nil && q.meta.Columns[id].Flags&FlagIdentity != 0
+		q.meta.Ptr != nil && q.meta.Columns[id].Flags&FlagIdentity != 0 && !q.isIDGenColumn(id)
+}
+
+// isIDGenColumn reports whether column ci takes a Go-side generated id. Those
+// ids are written back by generateIDs and always win: LAST_INSERT_ID is read
+// only for a key the database generates.
+func (q InsertQuery[T]) isIDGenColumn(ci int) bool {
+	for _, g := range q.meta.IDGens {
+		if g.Column == ci {
+			return true
+		}
+	}
+	return false
 }
 
 // assignGeneratedKey stores id in the identity field of the model passed to
@@ -193,7 +205,7 @@ func (q InsertQuery[T]) wantsGeneratedKey() bool {
 // INSERT ... RETURNING; MySQL has no equivalent and Returning is
 // ErrUnsupported there.
 func (q InsertQuery[T]) assignGeneratedKey(id int64) {
-	p := q.meta.Ptr(q.ptr, q.meta.Identity)
+	p := q.meta.Ptr(q.back[0], q.meta.Identity)
 	if p == nil {
 		return
 	}

@@ -75,7 +75,7 @@ type Relation[P, C any] struct {
 }
 
 func (r *Relation[P, C]) invalid(msg string) error {
-	return &Error{Kind: ErrValidation, Op: "relation", Table: r.Child.Name, Err: errors.New(r.Name + ": " + msg)}
+	return newError(ErrValidation, "relation", r.Child.Name, errors.New(r.Name+": "+msg))
 }
 
 // validate checks the descriptor's shape. Every loader calls it before SQL is built.

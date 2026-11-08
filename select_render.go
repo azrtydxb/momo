@@ -116,7 +116,7 @@ func (sq SelectQuery[T]) writeSelectList(b *Builder) bool {
 		return true
 	}
 	if len(s.cols) != len(sq.meta.Columns) && !s.keysOnly {
-		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("select list has %d expressions but result type maps %d fields", len(s.cols), len(sq.meta.Columns))})
+		b.SetErr(newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("select list has %d expressions but result type maps %d fields", len(s.cols), len(sq.meta.Columns))))
 		return false
 	}
 	for i, e := range s.cols {
@@ -141,7 +141,7 @@ func (s *selectCore) writeFrom(b *Builder, table string) bool {
 		return true
 	}
 	if _, ok := s.from.(TableRef); !ok {
-		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: table, Err: errors.New("IndexedBy needs a plain table as the FROM source")})
+		b.SetErr(newError(ErrValidation, "build", table, errors.New("IndexedBy needs a plain table as the FROM source")))
 		return false
 	}
 	if b.d.Name != dialect.SQLite {
@@ -283,7 +283,7 @@ func (sq SelectQuery[T]) writeLock(b *Builder) {
 	s := &sq.s
 	if s.lock == "" {
 		if len(s.lockOf) > 0 {
-			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("LockOf needs ForUpdate or ForShare")})
+			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf needs ForUpdate or ForShare")))
 		}
 		return
 	}
@@ -292,7 +292,7 @@ func (sq SelectQuery[T]) writeLock(b *Builder) {
 		return
 	}
 	if s.distinct || len(s.distinctOn) > 0 || len(s.groupBy) > 0 || len(s.having) > 0 {
-		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("%s cannot be combined with DISTINCT, GROUP BY or HAVING", s.lock)})
+		b.SetErr(newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("%s cannot be combined with DISTINCT, GROUP BY or HAVING", s.lock)))
 		return
 	}
 	if !sq.checkLockOf(b) {
@@ -348,7 +348,7 @@ func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
 	}
 	for _, t := range s.lockOf {
 		if _, ok := known[t]; !ok {
-			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("LockOf names %q, which is not a table or alias in the FROM or JOIN sources (a CTE or subquery cannot be locked)", t)})
+			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("LockOf names %q, which is not a table or alias in the FROM or JOIN sources (a CTE or subquery cannot be locked)", t)))
 			return false
 		}
 	}
