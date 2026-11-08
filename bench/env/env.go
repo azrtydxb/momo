@@ -77,6 +77,16 @@ func Capture() (Environment, error) {
 			}
 		}
 	}
+	if len(e.ModuleVersions) <= 1 {
+		// Test binaries carry no dependency list in their build info; ask the
+		// go command, which reads the pinned go.mod of the bench module.
+		for _, line := range strings.Split(output(exec.Command("go", "list", "-m", "all")), "\n") {
+			f := strings.Fields(line)
+			if len(f) >= 2 {
+				e.ModuleVersions[f[0]] = f[1]
+			}
+		}
+	}
 	return e, nil
 }
 
