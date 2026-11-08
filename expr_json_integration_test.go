@@ -127,11 +127,11 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 			}
 		} else {
 			check("backslash key", ids(momo.JSONText(doc, `a\b`).Eq("bs")), 5)
+			check("has key backslash", ids(momo.JSONHasKey(doc, `a\b`)), 5)
 		}
 		check("question mark key", ids(momo.JSONText(doc, "q?").Eq("x")), 5)
 		check("dotted key", ids(momo.JSONText(doc, "a.b").Eq("dot")), 5)
 		check("has key question mark", ids(momo.JSONHasKey(doc, "q?")), 5)
-		check("has key backslash", ids(momo.JSONHasKey(doc, `a\b`)), 5)
 		check("path with dotted element", ids(momo.JSONPath(doc, "a.b").Eq("dot")), 5)
 		check("path array index", ids(momo.JSONPath(doc, "1").Eq("b")), 6)
 

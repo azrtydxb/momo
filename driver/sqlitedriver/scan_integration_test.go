@@ -88,6 +88,10 @@ func TestScanErrorHidesValue(t *testing.T) {
 	if u, ok := err.(interface{ Unwrap() error }); !ok || u.Unwrap() == nil {
 		t.Fatalf("the cause is not reachable: %T", err)
 	}
+	// The pool has one connection: release it before the next query.
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
 	var tm time.Time
 	rows2, err := drv.Query(ctx, "SELECT 'secret-user-value'", nil)
 	if err != nil {
