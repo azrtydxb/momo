@@ -40,6 +40,12 @@ func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 	if q.q == nil {
 		return Result{}, noQuerier("copy", q.meta.Table)
 	}
+	if err := q.copyShape(ms); err != nil {
+		return Result{}, err
+	}
+	if err := q.precheck(); err != nil {
+		return Result{}, err
+	}
 	if _, err := runInterceptors(ctx, q.q, "insert", q.meta.Table); err != nil {
 		return Result{}, err
 	}
@@ -71,14 +77,9 @@ func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 	if !bypassesTx(q.q) {
 		return run(q.q)
 	}
-	// An implicit-transaction DB (or a pinned one with a setup) must not take
-	// the driver COPY path directly: it would skip WithTxSetup. Run it in a
-	// transaction that has been set up, or fail closed when none can begin.
-	if db := q.q.(*DB); !db.pinned {
-		if _, ok := db.ex.q.(Copier); !ok {
-			return Result{}, q.noCopy()
-		}
-	}
+	// An implicit-transaction DB must not take the driver COPY path directly: it
+	// would skip WithTxSetup. Run it in a transaction that has been set up. A
+	// pinned handle with a setup already failed closed in precheck.
 	var res Result
 	err = runAtomic(ctx, q.q, "copy", q.meta.Table, func(sq Querier) error {
 		var err error
@@ -96,21 +97,49 @@ func (q InsertQuery[T]) noCopy() error {
 		Err: errors.New("the driver has no COPY path (momo.Copier)")}
 }
 
-// copyRows resolves and validates the COPY column list and the value rows.
-func (q InsertQuery[T]) copyRows(ms []T) ([]string, [][]any, error) {
+// copyShape rejects a query Copy cannot honour, before anything else runs.
+func (q InsertQuery[T]) copyShape(ms []T) error {
 	i := q.i
 	switch {
 	case i.err != nil:
-		return nil, nil, i.err
+		return i.err
 	case q.meta.Table == "":
-		return nil, nil, q.verr("", "%T has no table", *new(T))
+		return q.verr("", "%T has no table", *new(T))
 	case len(ms) == 0:
-		return nil, nil, q.verr("", "Copy: no rows")
+		return q.verr("", "Copy: no rows")
 	case len(q.models) > 0 || i.hasValues || i.hasRows || i.sel != nil:
-		return nil, nil, q.verr("", "Copy takes its rows as an argument and cannot be combined with Model, Models, Values, ValuesRows or FromSelect")
+		return q.verr("", "Copy takes its rows as an argument and cannot be combined with Model, Models, Values, ValuesRows or FromSelect")
 	case i.conflict != conflictNone || i.upsert || i.returning.active():
-		return nil, nil, q.verr("", "Copy cannot be combined with OnConflict, Upsert or Returning")
+		return q.verr("", "Copy cannot be combined with OnConflict, Upsert or Returning")
 	}
+	return nil
+}
+
+// precheck fails with ErrUnsupported when the handle cannot COPY at all, before
+// interceptors, hooks, the write mark or a transaction.
+func (q InsertQuery[T]) precheck() error {
+	switch h := q.q.(type) {
+	case *DB:
+		if h.pinned {
+			if len(h.txSetup) > 0 {
+				return errPinnedSetup("copy", q.meta.Table)
+			}
+			if _, ok := h.ex.q.(Copier); !ok {
+				return q.noCopy()
+			}
+		} else if !hasCopier(h.ex.q) {
+			return q.noCopy()
+		}
+	case *Tx:
+		if _, ok := h.dtx.(Copier); !ok {
+			return q.noCopy()
+		}
+	}
+	return nil
+}
+
+// copyRows resolves and validates the COPY column list and the value rows.
+func (q InsertQuery[T]) copyRows(ms []T) ([]string, [][]any, error) {
 	fp, err := newFieldPlan(q.q, q.meta)
 	if err != nil {
 		return nil, nil, err

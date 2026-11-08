@@ -5,6 +5,7 @@ package momo_test
 import (
 	"context"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -425,5 +426,97 @@ func TestTruncateInterceptorsAndMySQLTransaction(t *testing.T) {
 	}
 	if c := my.Calls(); len(c) != 1 || !strings.HasPrefix(c[0].SQL, "TRUNCATE TABLE ") {
 		t.Fatalf("MySQL calls = %+v", c)
+	}
+}
+
+// Catches: the tenant recipe in docs/PRIVACY_RULES.md letting truncate through
+// (a copied recipe would wipe every tenant's rows), or the doc and this test
+// drifting apart.
+func TestTenantRecipeDeniesTruncate(t *testing.T) {
+	recipe := func(tenantID int64) momo.Option {
+		return momo.WithInterceptor(func(_ context.Context, op *momo.Operation) error {
+			if op.Table != "documents" {
+				return nil
+			}
+			switch op.Kind {
+			case "select", "update", "delete":
+				op.Where = append(op.Where, suite.DocTenantID.Eq(tenantID))
+			case "upsert":
+				return errors.New("upsert is not allowed on a tenant handle")
+			case "truncate":
+				return errors.New("truncate is not allowed on a tenant handle")
+			}
+			return nil
+		})
+	}
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv, recipe(7))
+	if err := momo.Truncate[suite.Document](t.Context(), db); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("Truncate on a tenant handle = %v, want ErrValidation", err)
+	}
+	if len(drv.Calls()) != 0 {
+		t.Fatalf("calls = %v, want none", drv.Calls())
+	}
+	doc, err := os.ReadFile("docs/PRIVACY_RULES.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `case "truncate":` + "\n" + `            return errors.New("truncate is not allowed on a tenant handle")`
+	if !strings.Contains(string(doc), want) {
+		t.Fatal("the tenant recipe in docs/PRIVACY_RULES.md must deny the truncate kind, as this test's recipe does")
+	}
+}
+
+// Catches: a replica handle over a primary with no COPY path or version
+// reporting running hooks and interceptors, marking a write or opening a
+// transaction before failing, instead of failing up front with ErrUnsupported.
+func TestReplicaHandleOverPrimaryWithoutCopyOrVersion(t *testing.T) {
+	rec := &obstest.Recorder{}
+	prim := fakedriver.New(dialect.Postgres)
+	rep := fakedriver.New(dialect.Postgres)
+	rep.SetRows([][]any{{int64(0)}})
+	intercepted := 0
+	db := momo.New(prim, momo.WithReplicas(rep), momo.WithHook(rec),
+		momo.WithInterceptor(func(context.Context, *momo.Operation) error { intercepted++; return nil }))
+	rd, err := db.Replica(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setHooks(t, momo.HookSet[hookedDoc]{BeforeInsert: func(context.Context, *hookedDoc) error {
+		t.Error("BeforeInsert ran for a Copy that cannot run")
+		return nil
+	}})
+	ctx := momo.NewUnitOfWork(t.Context())
+	if _, err := momo.Insert[hookedDoc](rd).Copy(ctx, []hookedDoc{{Title: "a"}}); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("Copy = %v, want ErrUnsupported", err)
+	}
+	if intercepted != 0 {
+		t.Fatalf("interceptors ran %d times for a Copy that cannot run", intercepted)
+	}
+	if _, err := mergeInsertQuery(rd).Exec(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("Merge = %v, want ErrUnsupported", err)
+	}
+	if len(rec.Events()) != 0 || len(prim.Calls()) != 0 || prim.Commits() != 0 {
+		t.Fatalf("hook events %d, primary calls %d, commits %d, want none", len(rec.Events()), len(prim.Calls()), prim.Commits())
+	}
+	// No write was recorded, so a read in the same unit of work still uses the replica.
+	if _, err := momo.Select[suite.Document](rd).Count(ctx); err != nil || len(rep.Calls()) != 1 {
+		t.Fatalf("read: %v, replica calls %d, want one replica read", err, len(rep.Calls()))
+	}
+}
+
+// Catches: the query shape being checked after the interceptors and BeforeInsert
+// ran, so a rejected Copy still had side effects.
+func TestCopyChecksShapeBeforeInterceptorsAndHooks(t *testing.T) {
+	called := false
+	setHooks(t, momo.HookSet[hookedDoc]{BeforeInsert: func(context.Context, *hookedDoc) error { called = true; return nil }})
+	drv := newCopyDriver(dialect.Postgres)
+	db := momo.New(drv, momo.WithInterceptor(func(context.Context, *momo.Operation) error { called = true; return nil }))
+	q := momo.Insert[hookedDoc](db).OnConflict(hookedID).DoNothing()
+	if _, err := q.Copy(t.Context(), []hookedDoc{{Title: "a"}}); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("Copy with OnConflict = %v, want ErrValidation", err)
+	}
+	if called || len(drv.log.Events()) != 0 {
+		t.Fatalf("interceptor or hook ran (%v) or COPY ran (%v) for a rejected query", called, drv.log.Events())
 	}
 }

@@ -660,7 +660,10 @@ func (u UpdateQuery[T]) bulkSQL() (Compiled, error) {
 // in a savepoint.
 //
 // MySQL TRUNCATE is DDL and commits implicitly, so inside a Tx it is refused
-// with ErrUnsupported. The handle's interceptors run first with the kind
+// with ErrUnsupported. On a MySQL DB made with WithImplicitTx the statement is
+// still wrapped in the implicit BEGIN and COMMIT, and MySQL commits it at
+// once, so that transaction (and any WithTxSetup setting in it) ends with the
+// TRUNCATE; the wrapper is harmless but gives no atomicity. The handle's interceptors run first with the kind
 // "truncate" and can deny it; a predicate they add is ignored, so a
 // tenant-scoped handle should deny the kind.
 func Truncate[T any, PT Modeler[T]](ctx context.Context, q Querier) error {

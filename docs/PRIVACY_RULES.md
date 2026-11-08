@@ -46,6 +46,8 @@ func tenantDB(drv momo.Driver, tenantID int64) *momo.DB {
             op.Where = append(op.Where, DocTenantID.Eq(tenantID))
         case "upsert":
             return errors.New("upsert is not allowed on a tenant handle")
+        case "truncate":
+            return errors.New("truncate is not allowed on a tenant handle")
         }
         return nil
     }))
