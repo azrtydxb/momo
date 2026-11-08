@@ -125,7 +125,7 @@ them as available in user documentation.
 - Read-only view models: marker `View` (tag `momo:"view:<name>[,materialized]"`), `WritableModeler[T]`, `MomoWritable`, and `RefreshMaterializedView`.
 - Migration engine: `Engine.Lint`, `Engine.Rebase`, an online `Engine.Validate`, and the `-- momo:sqlite-foreign-keys-off` directive.
 - Other databases: `driver/sqlitedriver`, `driver/sqlitepure`, `driver/mysqldriver`, `migrate/sqlite`, `migrate/mysql` and `migrate/importers/{atlas,bun,goose,golangmigrate}`. Their `testopen` entries come with them.
-- Tooling packages: `momolog` (slog hook), `momovet` and `cmd/momovet` (analyzer), `importer/{bun,ent}` and the plugins and handlers of `gen/graphql`, `gen/grpc` and `gen/openapi` (their schema, protobuf and document emitters exist; see Other packages).
+- Tooling packages: `momolog` (slog hook), `momovet` and `cmd/momovet` (analyzer), `importer/{gorm,bun,ent}` (see [importers](importers.md)) and the plugins and handlers of `gen/graphql`, `gen/grpc` and `gen/openapi` (their schema, protobuf and document emitters exist; see Other packages).
 - Separate modules: `otelmomo` (OpenTelemetry) and `bench`.
 
 ## Contract additions (round 1, from plan reviews)
@@ -149,7 +149,7 @@ name as written.
 
 ### `dialect`
 
-Only the `Merge` capability flag exists on `dialect.Dialect` beyond the base set. The flags `JSON`, `Arrays`, `UpdateFrom` and `MergeReturning` are planned. Server-version-dependent capabilities, such as PostgreSQL MERGE (>= 15) and MERGE ... RETURNING (>= 17), are meant to be gated at runtime from the driver's reported server version. [momo-05]
+`dialect.Dialect` carries these capability flags: `Returning`, `InsertReturning`, `OnConflict`, `OnDuplicateKey`, `Locking`, `NullsOrdering`, `DefaultInUpdate`, `DefaultInValues`, `RecursiveCTE`, `RowValues`, `Savepoints`, `IsolationLevels`, `TransactionalDDL`, `ILike`, `Merge`, `WindowFunctions`, plus `Vector` (`VectorCaps`), `MaxParams` and `MaxInList`. There are no `JSON`, `Arrays`, `UpdateFrom` or `MergeReturning` flags. The public `momo.Merge` builder exists (`MergeQuery[T]`, with `Returning`); it gates at run time on the server version the driver reports (`ServerVersioner`, or `SELECT server_version_num` on a `Tx`): PostgreSQL 15 or later for `MERGE`, PostgreSQL 17 or later for `MERGE ... RETURNING`, else `ErrUnsupported`. [momo-05]
 
 ### Drivers
 

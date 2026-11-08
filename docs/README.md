@@ -21,6 +21,7 @@ New here? Start with [getting started](getting-started.md).
 - [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, tuple rows (`Row1` to `Row10`), the soft-delete filter.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
+- [Importing models from other ORMs](importers.md): the GORM, Bun and Ent readers (static, they never execute your code), the import report and what each report kind means; the `momo import` command is not wired yet.
 - [Read replicas](replicas.md): `WithReplicas`, which statements go to a replica, reading your own writes, and what happens when a replica is down.
 - [Testing applications](testing.md): the `momotest` kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.
 - [Interceptors](PRIVACY_RULES.md): application-level per-handle rules that add predicates or deny typed statements, the tenant recipe, and the paths they do not cover (not a security boundary).
@@ -47,4 +48,4 @@ Runnable programs, each tested end to end in CI. See [the examples index](../exa
 - [vector-search](../examples/vector-search/): HNSW index, nearest-neighbour queries, filters, search settings.
 - [upgrade-database](../examples/upgrade-database/): change a model after production: add a column with a default, add an index, rename a column, apply with data kept, generate --check and drift.
 - [custom-sql-migration](../examples/custom-sql-migration/): hand-written SQL migrations beside generated ones: backfill, DO $$ splitting, -- momo:no-transaction, a hand-written CONCURRENTLY index, momo.sum checksums.
-- [adopt-existing-schema](../examples/adopt-existing-schema/): put a plain-SQL database under Momo with migrate baseline (no model generation from a database in v0.3.0). <!-- x-release-please-version -->
+- [adopt-existing-schema](../examples/adopt-existing-schema/): put a plain-SQL database under Momo with migrate baseline (`momo generate --from-db` can then write the models from the database).
