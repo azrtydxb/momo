@@ -1,6 +1,6 @@
 # momo-13 Task 2: MkDocs configuration, navigation and version selector
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-13-docs-release
 Sprint: -
@@ -11,9 +11,12 @@ Implements plan momo-13-docs-release Task 2: MkDocs configuration, navigation an
 
 ## Acceptance criteria
 
-- [ ] `TestMkdocsNavPagesExist` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestEveryDocPageInNav` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestMkdocsNavPagesExist` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestEveryDocPageInNav` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- red run 42454971851 (work branch suffixed -red, sha 222fa09, tests with a NavPages stub): FAIL TestMkdocsNavPagesExist and TestEveryDocPageInNav
+- green: docs workflow run 42456103295 (sha 9b46480d8ec2f3944100975376d197a31720171c, success) and the unit and integration jobs of ci-agent run 42456103287 on the same sha, where TestMkdocsNavPagesExist and TestEveryDocPageInNav passes
+- mkdocs.yml has a nav over the real pages (README, getting-started, ai-guide, agents, TYPE_MAPPING, projections, relations, vectors, fulltext, migrations, testing, capabilities, supported-versions, ARCHITECTURE, contributing); mkdocs build --strict is green in the docs workflow; the mike version provider is configured. The capability matrix is the existing capabilities.md.

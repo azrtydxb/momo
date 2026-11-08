@@ -15,6 +15,8 @@ Imports: `github.com/azrtydxb/momo` (core), `github.com/azrtydxb/momo/driver/pgx
 
 Open a pool and wrap it, as the README does (the caller closes the pool):
 
+<!-- docscheck:fragment -->
+
 ```go
 pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)
 if err != nil { return err }
@@ -228,6 +230,7 @@ session advisory lock.
 | Argument logging                           | opt-in                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `WithArgLogging`                                                                                              |
 | Relation hook                              | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `RelationHook`, `RelationEvent`                                                                               |
 | Field hooks (Go-side defaults, validators) | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `FieldHook[T]`, `WithFieldHooks`                                                                              |
+| Client-generated ids (cuid, uuid, ulid)    | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | tag `idgen:<name>`, `Config.IDGen`, `WithIDGenerator`, `Meta.IDGens`                                          |
 | Pool wait tracing                          | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `pgxdriver.InstrumentPool(cfg)`, `momo.RecordPoolWait`                                                        |
 | Injected clock                             | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `WithClock`                                                                                                   |
 | slog hook                                  | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `momolog.New` with `Level`, `SlowOver`, `Values`; values logged only with `Values(true)` and `WithArgLogging` |
@@ -248,6 +251,8 @@ Row-level security (RLS) policies usually read a setting such as
 setting at the start of every transaction from a scope carried in the
 `context.Context`, so a statement that forgot its scope matches no rows.
 `WithTxSetup` and `WithImplicitTx` build that into the `*DB`:
+
+<!-- docscheck:fragment -->
 
 ```go
 db := momo.New(pgxdriver.New(pool),

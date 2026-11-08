@@ -1,10 +1,18 @@
 # Momo documentation
 
-Index of project documentation. Each entry is added when the document is
-written; see `.procoder/specs/momo.md` scope item S-21 for the full list
-(architecture, API, capability matrix, migration safety and recovery,
-contributor guide, supported versions, performance).
+Momo is a Go ORM that generates typed column and relation descriptors from
+plain Go structs, keeps SQL explicit and inspectable, builds pgvector support
+into the core API, and ships its own migration engine that writes reviewable
+SQL. It supports PostgreSQL with pgvector; [capabilities](capabilities.md)
+states exactly what else exists and what does not. Pages are written from the
+code and checked in CI: every Go block compiles, and the examples run against
+PostgreSQL.
 
+New here? Start with [getting started](getting-started.md).
+
+## Pages
+
+- [Getting started](getting-started.md): requirements, install, a first program that talks to PostgreSQL, and where the typed API starts.
 - [Guide for AI coding agents](ai-guide.md): one self-contained file for an agent using Momo in an application: setup, modeling, migrations, queries, relations, vectors, errors, testing, known pitfalls and rules. Also indexed by `llms.txt` at the repository root.
 - [Go to SQL type mapping](TYPE_MAPPING.md): column type per Go type, edge values, null handling.
 - [Vector search](vectors.md): pgvector types, metrics, limits, search settings and the binary codec.
@@ -16,6 +24,9 @@ contributor guide, supported versions, performance).
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
 - [Performance](PERFORMANCE.md): the measured hook-overhead allocation budget and the layout of the comparison benchmark suite.
 - [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI, and the stability policy.
+- [Using these docs with an AI coding agent](agents.md): where an agent should read, canonical patterns and a copy-paste AGENTS.md snippet.
+- [Architecture](ARCHITECTURE.md): the package layering, dependency rules and contracts the code follows.
+- [Contributing](contributing.md): prerequisites, test commands, commit messages and file headers.
 
 ## Examples
 

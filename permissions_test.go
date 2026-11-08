@@ -28,6 +28,28 @@ func TestPermissionTypesMirrorColumn(t *testing.T) {
 	}
 }
 
+// TestPermissionWrappersAreNotConvertible guards the write permissions. Go
+// allows a conversion exactly when reflect says the types are convertible, so
+// a conversion such as Column[T] applied to a read-only column would compile
+// and reach Set if two wrappers shared an underlying type.
+func TestPermissionWrappersAreNotConvertible(t *testing.T) {
+	types := map[string]reflect.Type{
+		"Column":             reflect.TypeOf(Column[string]{}),
+		"NullColumn":         reflect.TypeOf(NullColumn[string]{}),
+		"ReadOnlyColumn":     reflect.TypeOf(ReadOnlyColumn[string]{}),
+		"NullReadOnlyColumn": reflect.TypeOf(NullReadOnlyColumn[string]{}),
+		"CreateOnlyColumn":   reflect.TypeOf(CreateOnlyColumn[string]{}),
+		"ImmutableColumn":    reflect.TypeOf(ImmutableColumn[string]{}),
+	}
+	for fromName, from := range types {
+		for toName, to := range types {
+			if fromName != toName && from.ConvertibleTo(to) {
+				t.Errorf("%s converts to %s, which bypasses the write permission", fromName, toName)
+			}
+		}
+	}
+}
+
 // predicateMethods lists the exported methods of the pointer method set that are not write methods.
 func predicateMethods(t reflect.Type) []string {
 	pt := reflect.PointerTo(t)

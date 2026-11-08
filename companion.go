@@ -46,6 +46,12 @@ func (c *Config) Comment(field any, text string) {}
 // executed for its effect.
 func (c *Config) Collate(field any, collation string) {}
 
+// IDGen declares a Go-side id generator for a string field: an insert fills the
+// field when it holds the zero value. The name is a string literal: cuid, uuid
+// or ulid, or one registered with WithIDGenerator. Read statically by the
+// generator; never executed for its effect.
+func (c *Config) IDGen(field any, name string) {}
+
 // View declares a view or materialized view. The argument must be a
 // composite literal; read statically by the generator, never executed.
 func (c *Config) View(v schema.View) {}

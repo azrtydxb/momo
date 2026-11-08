@@ -19,6 +19,10 @@ Fuzz targets are listed in `FUZZ_TARGETS` in the Makefile and `make test-fuzz` r
 
 Dialect coverage is expressed as subtests from `testopen.Each`, one per dialect built into this version; integration tests have no name suffix. `make test-integration-<dialect>` sets that dialect's URL variables and runs the whole suite.
 
+## Documentation pages and Go code blocks
+
+A new page under `docs/` must be added to the `nav` in `mkdocs.yml` and linked from `docs/README.md`; `TestEveryDocPageInNav` and `TestDocsIndexLinksEveryPage` fail otherwise. Every Go block in `docs/` is checked by `TestDocsCodeBlocks`: write a complete `package main` program (it is compiled), or, for a snippet that cannot stand alone, put the comment `<!-- docscheck:fragment -->` on the line before the fence (it must still parse as Go). The number of fragments is capped by `maxFragmentBlocks` in `internal/docscheck/codeblocks_test.go`, so prefer a program. A block marked `<!-- docscheck:run -->` is also executed against PostgreSQL.
+
 ## Commit messages and PR titles
 
 Commit messages and PR titles use Conventional Commits: `feat`, `fix`, `perf`,
