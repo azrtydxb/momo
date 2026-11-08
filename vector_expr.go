@@ -39,11 +39,12 @@ type DistanceExpr struct {
 	dim         int
 	metric      dialect.Metric
 	arg         any
+	flags       uint16
 }
 
 func newDistance[V VectorValue](src VectorSource[V], m dialect.Metric, v V) DistanceExpr {
 	c := src.vectorColumn()
-	return DistanceExpr{table: c.Table(), name: c.ColumnName(), dim: c.Dim(), metric: m, arg: v}
+	return DistanceExpr{table: c.Table(), name: c.ColumnName(), dim: c.Dim(), metric: m, arg: v, flags: c.Flags()}
 }
 
 // L2Distance is the Euclidean distance (pgvector <->).
@@ -132,11 +133,14 @@ func (e DistanceExpr) AppendSQL(b *Builder) {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: e.table, Column: e.name, Err: err})
 		return
 	}
+	if e.flags&FlagSensitive != 0 {
+		b.sensSeen++ // an enclosing predicate masks its other operands too
+	}
 	if b.d.Name == dialect.Postgres {
 		b.WriteString("(")
 		b.QualifiedIdent(e.table, e.name)
 		b.WriteString(" " + pgOperators[e.metric] + " ")
-		b.Arg(e.arg)
+		b.argFor(e.flags, e.arg)
 		b.WriteString(")")
 		return
 	}
@@ -158,7 +162,7 @@ func (e DistanceExpr) AppendSQL(b *Builder) {
 	if bitOperands {
 		b.WriteString("vec_bit(")
 	}
-	b.Arg(e.arg)
+	b.argFor(e.flags, e.arg)
 	if bitOperands {
 		b.WriteString(")")
 	}

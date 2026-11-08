@@ -4,7 +4,9 @@ package momo
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -28,9 +30,10 @@ type NamedArg struct {
 // executable comments are treated as ordinary comments. On PostgreSQL the
 // operators ?| and ?& are operators, not binds followed by | or &: write
 // "? |" with a space for a bind followed by OR. A "<@" on PostgreSQL is the
-// containment operator, never an @name. A bare native $n placeholder on
-// PostgreSQL is left alone only when the fragment has no ? or @name bind;
-// mixing them is a build error. An unterminated string, quoted identifier,
+// containment operator, never an @name. On PostgreSQL a native $n binds
+// positional argument n (a reused $n shares one bind); a fragment uses one
+// style, so mixing $n with ? or @name is a build error, and so is a $n
+// off PostgreSQL. An unterminated string, quoted identifier,
 // block comment or dollar quote is a build error.
 func Named(name string, value any) NamedArg { return NamedArg{Name: name, Value: value} }
 
@@ -56,9 +59,10 @@ func Ident(name string) any { return identArg{name} }
 type rawTokKind uint8
 
 const (
-	rawText  rawTokKind = iota // copied verbatim
-	rawParam                   // a positional '?'
-	rawNamed                   // an @name; text is the name
+	rawText   rawTokKind = iota // copied verbatim
+	rawParam                    // a positional '?'
+	rawNamed                    // an @name; text is the name
+	rawDollar                   // a native $n; text is the digits
 )
 
 type rawTok struct {
@@ -78,8 +82,10 @@ func isIdentStart(c byte) bool {
 // scanRaw splits sql into verbatim text and placeholders. A '?' or '@name'
 // inside a string literal, quoted identifier, comment or PostgreSQL
 // dollar-quoted string is text, as are the PostgreSQL operators ?| ?& @? @@
-// and @>. "??" yields a literal '?'.
-func scanRaw(sql string, d *dialect.Dialect) (toks []rawTok, native bool, err error) {
+// and @>. "??" yields a literal '?'. A native $n outside those is a rawDollar
+// token on every dialect, so appendRaw can bind it on PostgreSQL and reject
+// it elsewhere.
+func scanRaw(sql string, d *dialect.Dialect) (toks []rawTok, err error) {
 	unterminated := func(what string) {
 		if err == nil {
 			err = rawErr("raw SQL %q has an unterminated %s", sql, what)
@@ -153,6 +159,8 @@ func scanRaw(sql string, d *dialect.Dialect) (toks []rawTok, native bool, err er
 			if depth > 0 {
 				unterminated("block comment")
 			}
+		case c == '$' && !pg && i+1 < len(sql) && sql[i+1] >= '0' && sql[i+1] <= '9' && (i == 0 || !isIdentByte(sql[i-1], d)):
+			i = scanDollarParam(sql, i, &start, &toks)
 		case c == '$' && pg && (i == 0 || !isIdentByte(sql[i-1], d)):
 			j := i + 1
 			if j < len(sql) && isIdentStart(sql[j]) {
@@ -162,9 +170,10 @@ func scanRaw(sql string, d *dialect.Dialect) (toks []rawTok, native bool, err er
 			}
 			if j >= len(sql) || sql[j] != '$' {
 				if i+1 < len(sql) && sql[i+1] >= '0' && sql[i+1] <= '9' {
-					native = true
+					i = scanDollarParam(sql, i, &start, &toks)
+				} else {
+					i++ // a lone dollar
 				}
-				i++ // $1 or a lone dollar
 				break
 			}
 			tag := sql[i : j+1]
@@ -220,7 +229,22 @@ func scanRaw(sql string, d *dialect.Dialect) (toks []rawTok, native bool, err er
 		}
 	}
 	flush(len(sql))
-	return toks, native, err
+	return toks, err
+}
+
+// scanDollarParam consumes a $n at i, flushing the verbatim run before it,
+// and returns the index after the digits.
+func scanDollarParam(sql string, i int, start *int, toks *[]rawTok) int {
+	j := i + 1
+	for j < len(sql) && sql[j] >= '0' && sql[j] <= '9' {
+		j++
+	}
+	if i > *start {
+		*toks = append(*toks, rawTok{rawText, sql[*start:i]})
+	}
+	*toks = append(*toks, rawTok{rawDollar, sql[i+1 : j]})
+	*start = j
+	return j
 }
 
 func indexFrom(s, sub string, from int) int {
@@ -262,9 +286,12 @@ func (b *Builder) appendRaw(sql string, args []any) {
 		}
 		named[na.Name] = na.Value
 	}
-	toks, native, err := scanRaw(sql, b.d)
+	toks, err := scanRaw(sql, b.d)
 	if err != nil {
 		b.SetErr(err)
+		return
+	}
+	if b.appendRawDollar(sql, toks, pos, named != nil) {
 		return
 	}
 	used := map[string]bool{}
@@ -274,10 +301,6 @@ func (b *Builder) appendRaw(sql string, args []any) {
 		case rawText:
 			b.buf = append(b.buf, tok.text...)
 		case rawParam:
-			if native {
-				b.SetErr(rawErr("raw SQL %q mixes native $n placeholders with ? binds", sql))
-				return
-			}
 			if n >= len(pos) {
 				b.SetErr(rawErr("raw SQL %q has more placeholders than the %d arguments given", sql, len(pos)))
 				return
@@ -285,10 +308,6 @@ func (b *Builder) appendRaw(sql string, args []any) {
 			b.appendRawArg(pos[n])
 			n++
 		case rawNamed:
-			if native {
-				b.SetErr(rawErr("raw SQL %q mixes native $n placeholders with @%s binds", sql, tok.text))
-				return
-			}
 			used[tok.text] = true
 			v, ok := named[tok.text]
 			if !ok {
@@ -315,6 +334,70 @@ func (b *Builder) appendRaw(sql string, args []any) {
 	if n != len(pos) {
 		b.SetErr(rawErr("raw SQL %q has %d placeholders but %d arguments were given", sql, n, len(pos)))
 	}
+}
+
+// appendRawDollar renders a fragment written with native $n placeholders and
+// reports whether it handled the fragment (true also on error). $n binds
+// positional argument n; a reused $n shares one bind for a plain value and
+// re-renders an Expr, In or Ident argument. One style per statement: a ? or
+// @name beside a $n, or a Named argument, is ErrValidation; a $n off
+// PostgreSQL is ErrUnsupported; an out-of-range $n or an unused argument is
+// ErrValidation.
+func (b *Builder) appendRawDollar(sql string, toks []rawTok, pos []any, hasNamed bool) bool {
+	has, other := false, false
+	for _, tok := range toks {
+		switch tok.kind {
+		case rawDollar:
+			has = true
+		case rawParam, rawNamed:
+			other = true
+		}
+	}
+	if !has {
+		return false
+	}
+	if b.d.Name != dialect.Postgres {
+		b.SetErr(newError(ErrUnsupported, "build", "", fmt.Errorf("raw SQL %q uses a $n placeholder, which only PostgreSQL supports; write ? instead", sql)))
+		return true
+	}
+	if other || hasNamed {
+		b.SetErr(rawErr("raw SQL %q mixes native $n placeholders with ? or @name binds", sql))
+		return true
+	}
+	bound := make(map[int]int, len(pos)) // $n -> bind number of its plain value
+	used := make([]bool, len(pos))
+	for _, tok := range toks {
+		if tok.kind == rawText {
+			b.buf = append(b.buf, tok.text...)
+			continue
+		}
+		n, err := strconv.Atoi(tok.text)
+		if err != nil || n < 1 || n > len(pos) {
+			b.SetErr(rawErr("raw SQL %q uses $%s but %d arguments were given", sql, tok.text, len(pos)))
+			return true
+		}
+		used[n-1] = true
+		if k, ok := bound[n]; ok {
+			b.buf = b.d.AppendPlaceholder(b.buf, k)
+			continue
+		}
+		b.appendRawArg(pos[n-1])
+		if b.err != nil {
+			return true
+		}
+		switch pos[n-1].(type) {
+		case Expr, inArg, identArg:
+		default:
+			bound[n] = len(b.args)
+		}
+	}
+	for i, u := range used {
+		if !u {
+			b.SetErr(rawErr("raw SQL %q never uses argument $%d", sql, i+1))
+			return true
+		}
+	}
+	return true
 }
 
 func (b *Builder) appendRawArg(v any) {

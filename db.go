@@ -332,7 +332,8 @@ func (r *hookedRows) Close() error {
 }
 
 // Exec runs a raw statement. See SQL for the placeholder and safety
-// contract: '?' placeholders, "??" for a literal '?'.
+// contract: '?' placeholders, "??" for a literal '?', and on PostgreSQL
+// native $n placeholders.
 func Exec(ctx context.Context, q Querier, sql string, args ...any) (int64, error) {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	if err != nil {

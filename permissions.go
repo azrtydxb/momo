@@ -11,74 +11,97 @@ type InsertAssignment struct{ a Assignment }
 // ColumnName returns the assigned column.
 func (a InsertAssignment) ColumnName() string { return a.a.col }
 
+// The marker types below give each permission wrapper a distinct underlying
+// type. Without them every wrapper would be struct{ colCore[T] }, so Go would
+// allow converting a read-only or immutable column to Column and calling Set,
+// which the wrappers exist to prevent.
+type (
+	readOnlyMark     struct{}
+	nullReadOnlyMark struct{}
+	createOnlyMark   struct{}
+	immutableMark    struct{}
+)
+
 // ReadOnlyColumn is the descriptor of a read-only column (DB generated or
 // computed). It has predicate and ordering methods only; no write method
 // exists, so a Set on it does not compile.
-type ReadOnlyColumn[T any] struct{ colCore[T] }
+type ReadOnlyColumn[T any] struct {
+	colCore[T]
+	_ readOnlyMark
+}
 
 // NewReadOnlyColumn is used by generated code.
 func NewReadOnlyColumn[T any](table, name string, flags uint16) ReadOnlyColumn[T] {
-	return ReadOnlyColumn[T]{newColCore[T](table, name, flags)}
+	return ReadOnlyColumn[T]{colCore: newColCore[T](table, name, flags)}
 }
 
 // As returns the same column qualified by a table alias.
 func (c ReadOnlyColumn[T]) As(alias string) ReadOnlyColumn[T] {
-	return ReadOnlyColumn[T]{c.withAlias(alias)}
+	return ReadOnlyColumn[T]{colCore: c.withAlias(alias)}
 }
 
 // NullReadOnlyColumn is the descriptor of a nullable read-only column. It
 // has predicate and ordering methods only.
-type NullReadOnlyColumn[T any] struct{ colCore[T] }
+type NullReadOnlyColumn[T any] struct {
+	colCore[T]
+	_ nullReadOnlyMark
+}
 
 // NewNullReadOnlyColumn is used by generated code.
 func NewNullReadOnlyColumn[T any](table, name string, flags uint16) NullReadOnlyColumn[T] {
-	return NullReadOnlyColumn[T]{newColCore[T](table, name, flags|FlagNullable)}
+	return NullReadOnlyColumn[T]{colCore: newColCore[T](table, name, flags|FlagNullable)}
 }
 
 // As returns the same column qualified by a table alias.
 func (c NullReadOnlyColumn[T]) As(alias string) NullReadOnlyColumn[T] {
-	return NullReadOnlyColumn[T]{c.withAlias(alias)}
+	return NullReadOnlyColumn[T]{colCore: c.withAlias(alias)}
 }
 
 // CreateOnlyColumn is the descriptor of a column writable in INSERT only. Its
 // Set returns an InsertAssignment, which Update.Set does not accept.
-type CreateOnlyColumn[T any] struct{ colCore[T] }
+type CreateOnlyColumn[T any] struct {
+	colCore[T]
+	_ createOnlyMark
+}
 
 // NewCreateOnlyColumn is used by generated code.
 func NewCreateOnlyColumn[T any](table, name string, flags uint16) CreateOnlyColumn[T] {
-	return CreateOnlyColumn[T]{newColCore[T](table, name, flags)}
+	return CreateOnlyColumn[T]{colCore: newColCore[T](table, name, flags)}
 }
 
 // As returns the same column qualified by a table alias.
 func (c CreateOnlyColumn[T]) As(alias string) CreateOnlyColumn[T] {
-	return CreateOnlyColumn[T]{c.withAlias(alias)}
+	return CreateOnlyColumn[T]{colCore: c.withAlias(alias)}
 }
 
 // Set assigns v on insert. The result is an InsertAssignment, which only
 // Insert accepts.
 func (c CreateOnlyColumn[T]) Set(v T) InsertAssignment {
-	return InsertAssignment{Column[T](c).Set(v)}
+	return InsertAssignment{Column[T]{c.colCore}.Set(v)}
 }
 
 // ImmutableColumn is the descriptor of a column that is set on insert and
 // never changed. Its Set returns an InsertAssignment, which Update.Set does
 // not accept.
-type ImmutableColumn[T any] struct{ colCore[T] }
+type ImmutableColumn[T any] struct {
+	colCore[T]
+	_ immutableMark
+}
 
 // NewImmutableColumn is used by generated code.
 func NewImmutableColumn[T any](table, name string, flags uint16) ImmutableColumn[T] {
-	return ImmutableColumn[T]{newColCore[T](table, name, flags)}
+	return ImmutableColumn[T]{colCore: newColCore[T](table, name, flags)}
 }
 
 // As returns the same column qualified by a table alias.
 func (c ImmutableColumn[T]) As(alias string) ImmutableColumn[T] {
-	return ImmutableColumn[T]{c.withAlias(alias)}
+	return ImmutableColumn[T]{colCore: c.withAlias(alias)}
 }
 
 // Set assigns v on insert. The result is an InsertAssignment, which only
 // Insert accepts.
 func (c ImmutableColumn[T]) Set(v T) InsertAssignment {
-	return InsertAssignment{Column[T](c).Set(v)}
+	return InsertAssignment{Column[T]{c.colCore}.Set(v)}
 }
 
 // Excluded is the value proposed for insertion, for an upsert condition.

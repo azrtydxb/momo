@@ -4,7 +4,9 @@ package momo
 
 import (
 	"errors"
-	"os"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -79,29 +81,55 @@ func TestAggComparisonRendersAgainstTheAggregate(t *testing.T) {
 	}
 }
 
-// TestLibraryErrorsAreMatchable sweeps the non-test sources: a library error
-// must be built through newError, validation or a sentinel, never as a bare
-// errors.New("momo: ...") that errors.Is cannot match.
+// TestLibraryErrorsAreMatchable parses the non-test sources and flags a bare
+// library error: an errors.New or fmt.Errorf call (without a %w verb) whose
+// message starts with "momo:". Such an error has no Kind, so errors.Is cannot
+// match it; build it through newError, validation or noQuerier instead.
+// Package-level sentinels (var declarations) are matchable and allowed.
 func TestLibraryErrorsAreMatchable(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
+	fset := token.NewFileSet()
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") || f == "errors.go" {
 			continue
 		}
-		src, err := os.ReadFile(f)
+		file, err := parser.ParseFile(fset, f, nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for i, ln := range strings.Split(string(src), "\n") {
-			// A package-level sentinel used as an Error Kind is matchable.
-			if strings.Contains(ln, `errors.New("momo:`) && !strings.HasPrefix(ln, "var err") {
-				t.Errorf("%s:%d: bare momo error without a sentinel kind: %s", f, i+1, strings.TrimSpace(ln))
+		for _, decl := range file.Decls {
+			if gd, ok := decl.(*ast.GenDecl); ok && gd.Tok == token.VAR {
+				continue
 			}
+			ast.Inspect(decl, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok && isBareMomoError(call) {
+					t.Errorf("%s: bare momo error without a sentinel kind", fset.Position(call.Pos()))
+				}
+				return true
+			})
 		}
 	}
+}
+
+// isBareMomoError reports whether call is errors.New or fmt.Errorf with a
+// "momo:" message and no %w verb.
+func isBareMomoError(call *ast.CallExpr) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || len(call.Args) == 0 {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	if !(pkg.Name == "errors" && sel.Sel.Name == "New") && !(pkg.Name == "fmt" && sel.Sel.Name == "Errorf") {
+		return false
+	}
+	lit, ok := call.Args[0].(*ast.BasicLit)
+	return ok && strings.HasPrefix(lit.Value, `"momo:`) && !strings.Contains(lit.Value, "%w")
 }
 
 func TestNoQuerierErrorMatchesValidation(t *testing.T) {
