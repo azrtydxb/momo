@@ -27,6 +27,7 @@ const (
 	DroppedIndex      Kind = "dropped-index"
 	Naming            Kind = "naming"
 	VersionMapped     Kind = "version-mapped"
+	GoSideRule        Kind = "go-side-rule" // a validator, immutable field or hook the source ORM runs in Go
 )
 
 // Change is one reported difference between the source ORM and Momo.
