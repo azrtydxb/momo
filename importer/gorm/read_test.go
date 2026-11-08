@@ -341,6 +341,66 @@ type Note struct {
 	}
 }
 
+// Each of these is a place where gorm's own rules differ from a first guess.
+func TestReadFollowsGormTagSemantics(t *testing.T) {
+	models, rep := readSource(t, `package m
+
+import (
+	"database/sql"
+	"time"
+
+	"gorm.io/gorm"
+)
+
+type A struct {
+	ID    uint `+"`gorm:\"primaryKey;autoIncrement\"`"+`
+	Other uint `+"`gorm:\"autoIncrement\"`"+`
+	Age   int  `+"`gorm:\"size:16\"`"+`
+	Big   uint `+"`gorm:\"size:31\"`"+`
+	At    time.Time `+"`gorm:\"precision:3\"`"+`
+	NAt   sql.NullTime `+"`gorm:\"precision:6\"`"+`
+	NS    sql.NullString `+"`gorm:\"size:40\"`"+`
+	NF    sql.NullFloat64 `+"`gorm:\"precision:10;scale:2\"`"+`
+	CreatedAt time.Time
+	UpdatedAt int64
+	Typed uint `+"`gorm:\"primaryKey;autoIncrement;type:bigint\"`"+`
+}
+
+type C struct {
+	TenantID uint `+"`gorm:\"primaryKey\"`"+`
+	Seq      uint `+"`gorm:\"primaryKey;autoIncrement\"`"+`
+}
+
+type P struct {
+	gorm.Model `+"`gorm:\"embeddedPrefix:p_\"`"+`
+}
+`)
+	a, c, p := models[0], models[1], models[2]
+	if f := field(t, a, "Other"); !f.Serial {
+		t.Fatalf("a bare autoIncrement switches it on for a non-key field: %+v", f)
+	}
+	if f := field(t, c, "Seq"); !f.Serial || field(t, c, "TenantID").Serial {
+		t.Fatalf("a composite key keeps the serial only where autoIncrement was written: %+v", c.Fields)
+	}
+	for name, want := range map[string]string{
+		"Age": "smallint", "Big": "integer", "At": "timestamptz(3)", "NAt": "timestamptz(6)",
+		"NS": "varchar(40)", "NF": "numeric(10,2)",
+	} {
+		if got := field(t, a, name).SQLType; got != want {
+			t.Errorf("%s: %s, want %s", name, got, want)
+		}
+	}
+	if got := len(rep.Of(importer.GoDefault)); got != 4 {
+		t.Fatalf("CreatedAt, UpdatedAt and the two from gorm.Model are set in Go by name: %d\n%s", got, rep)
+	}
+	if got := len(rep.Of(importer.Naming)); got != 1 {
+		t.Fatalf("type: on an auto-increment column is reported: %d\n%s", got, rep)
+	}
+	if f := field(t, p, "DeletedAt"); f.Column != "p_deleted_at" || f.IndexName != "idx_ps_p_deleted_at" {
+		t.Fatalf("embeddedPrefix on gorm.Model: %+v", f)
+	}
+}
+
 func TestSplitTagHonoursEscapedSemicolons(t *testing.T) {
 	got := splitTag(`default:a\;b;not null`)
 	if len(got) != 2 || got[0] != "default:a;b" || got[1] != "not null" {
