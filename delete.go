@@ -29,6 +29,9 @@ type DeleteQuery[T any] struct {
 	force bool
 	// returning is the RETURNING list, read with Rows.
 	returning returningSet
+	// extra holds the predicates interceptors added; plan appends them after
+	// the unfiltered-mutation guard, so they never count as a caller filter.
+	extra []Predicate
 }
 
 // Delete starts a DELETE from T's table.
@@ -92,15 +95,28 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 	if !hasEffectiveFilter(where) && !d.allRows {
 		return nil, d.fail(ErrUnfilteredMutation, nil)
 	}
-	return where, nil
+	return append(where, d.extra...), nil
 }
 
 // SQL renders the statement without executing it. Guardrail violations are
 // reported here, before anything can reach the database.
+//
+// Interceptors run with a background context here; the execution methods pass
+// the statement's own context.
 func (d DeleteQuery[T]) SQL() (Compiled, error) {
+	return d.compileCtx(context.Background())
+}
+
+// compileCtx renders the statement after running the interceptors with ctx.
+func (d DeleteQuery[T]) compileCtx(ctx context.Context) (Compiled, error) {
 	if d.q == nil {
 		return Compiled{}, errors.New("momo: query has no Querier")
 	}
+	extra, err := runInterceptors(ctx, d.q, "delete", d.meta.Table)
+	if err != nil {
+		return Compiled{}, err
+	}
+	d.extra = extra
 	where, err := d.plan()
 	if err != nil {
 		return Compiled{}, err
@@ -125,7 +141,10 @@ func (d DeleteQuery[T]) SQL() (Compiled, error) {
 
 // Exec runs the DELETE.
 func (d DeleteQuery[T]) Exec(ctx context.Context) (Result, error) {
-	c, err := d.SQL()
+	if err := d.beforeWrite(ctx); err != nil {
+		return Result{}, err
+	}
+	c, err := d.compileCtx(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -142,7 +161,10 @@ func (d DeleteQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if !d.returning.active() {
 		return nil, d.fail(ErrValidation, errors.New("Rows needs a Returning list"))
 	}
-	c, err := d.SQL()
+	if err := d.beforeWrite(ctx); err != nil {
+		return nil, err
+	}
+	c, err := d.compileCtx(ctx)
 	if err != nil {
 		return nil, err
 	}

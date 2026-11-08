@@ -408,17 +408,25 @@ func (sq SelectQuery[T]) WithRecursive(name string, q Subquery, cols ...string) 
 }
 
 // SQL compiles the query without executing it.
+//
+// Interceptors run with a background context here; the execution methods pass
+// the statement's own context.
 func (sq SelectQuery[T]) SQL() (Compiled, error) {
-	c, _, err := sq.compileJoined()
+	c, _, err := sq.compileJoined(context.Background())
 	return c, err
 }
 
 // compileJoined compiles sq with its joined relations expanded and returns
-// the scanner for the resulting rows, expanding the joins once.
-func (sq SelectQuery[T]) compileJoined() (Compiled, scanner[T], error) {
+// the scanner for the resulting rows, expanding the joins once. The
+// interceptors of the handle run first, with ctx.
+func (sq SelectQuery[T]) compileJoined(ctx context.Context) (Compiled, scanner[T], error) {
 	sc := scanner[T]{meta: sq.meta}
 	if sq.q == nil {
 		return Compiled{}, sc, errors.New("momo: query has no Querier")
+	}
+	sq, err := sq.intercept(ctx)
+	if err != nil {
+		return Compiled{}, sc, err
 	}
 	run, ls, err := sq.expandJoins()
 	if err != nil {
@@ -481,7 +489,7 @@ func appendList(b *Builder, es []Expr) {
 
 // rows runs the query and returns its rows with the scanner for them.
 func (sq SelectQuery[T]) rows(ctx context.Context) (Rows, scanner[T], error) {
-	c, sc, err := sq.compileJoined()
+	c, sc, err := sq.compileJoined(ctx)
 	if err != nil {
 		return nil, sc, err
 	}
@@ -536,6 +544,9 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 		if err := sc.scan(r, &out[len(out)-1]); err != nil {
 			return nil, err
 		}
+		if err := afterLoad(ctx, sq.meta, &out[len(out)-1]); err != nil {
+			return nil, err
+		}
 	}
 	if err := r.Err(); err != nil {
 		return nil, err
@@ -576,6 +587,9 @@ func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 	if err := r.Close(); err != nil {
 		return zero, err
 	}
+	if err := afterLoad(ctx, sq.meta, &m); err != nil {
+		return zero, err
+	}
 	if len(sq.s.preloads) > 0 {
 		rows := []T{m}
 		if err := sq.runPreloads(ctx, rows); err != nil {
@@ -611,6 +625,9 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 		}
 		m = zero
 		if err := sc.scan(r, &m); err != nil {
+			return err
+		}
+		if err := afterLoad(ctx, sq.meta, &m); err != nil {
 			return err
 		}
 		if err := fn(&m); err != nil {
@@ -651,6 +668,10 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 				yield(zero, err)
 				return
 			}
+			if err := afterLoad(ctx, sq.meta, &m); err != nil {
+				yield(zero, err)
+				return
+			}
 			if !yield(m, nil) {
 				return
 			}
@@ -671,7 +692,10 @@ func (sq SelectQuery[T]) Count(ctx context.Context) (int64, error) {
 	if sq.q == nil {
 		return 0, errors.New("momo: query has no Querier")
 	}
-	inner := sq
+	inner, err := sq.intercept(ctx)
+	if err != nil {
+		return 0, err
+	}
 	// The count covers the whole filtered set: neither the ordering nor the
 	// page cursor applies.
 	inner.s.order = nil

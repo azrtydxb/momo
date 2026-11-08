@@ -112,6 +112,9 @@ type DB struct {
 	txSetup []func(ctx context.Context, tx *Tx) error
 	// implicitTx runs auto-commit statements in a short transaction (WithImplicitTx).
 	implicitTx bool
+	// interceptors run before every typed statement of this handle and of the
+	// transactions begun from it (WithInterceptor).
+	interceptors []Interceptor
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and

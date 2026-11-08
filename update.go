@@ -35,6 +35,9 @@ type UpdateQuery[T any] struct {
 	// softDelete marks the query as a SoftDelete statement.
 	softDelete bool
 	count      func(ctx context.Context, q Querier, ps []Predicate) (int64, error)
+	// extra holds the predicates interceptors added; plan appends them after
+	// the unfiltered-mutation guard, so they never count as a caller filter.
+	extra []Predicate
 }
 
 // Update starts an UPDATE of T's table.
@@ -197,15 +200,32 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	if !hasEffectiveFilter(where) && !u.allRows {
 		return nil, nil, u.fail(ErrUnfilteredMutation, nil)
 	}
-	return sets, where, nil
+	return sets, append(where, u.extra...), nil
 }
 
 // SQL renders the statement without executing it. Guardrail violations are
 // reported here, before anything can reach the database.
+//
+// Interceptors run with a background context here; the execution methods pass
+// the statement's own context.
 func (u UpdateQuery[T]) SQL() (Compiled, error) {
+	return u.compileCtx(context.Background())
+}
+
+// compileCtx renders the statement after running the interceptors with ctx.
+func (u UpdateQuery[T]) compileCtx(ctx context.Context) (Compiled, error) {
 	if u.q == nil {
 		return Compiled{}, errors.New("momo: query has no Querier")
 	}
+	kind := "update"
+	if u.softDelete {
+		kind = "delete"
+	}
+	extra, err := runInterceptors(ctx, u.q, kind, u.meta.Table)
+	if err != nil {
+		return Compiled{}, err
+	}
+	u.extra = extra
 	sets, where, err := u.plan()
 	if err != nil {
 		return Compiled{}, err
@@ -270,7 +290,10 @@ func (u UpdateQuery[T]) appendAssignment(b *Builder, a Assignment) {
 // looks the row up inside the same transaction (one is started when q is a
 // *DB) to tell ErrOptimisticLock from ErrNotFound.
 func (u UpdateQuery[T]) Exec(ctx context.Context) (Result, error) {
-	c, err := u.SQL()
+	if err := u.beforeWrite(ctx); err != nil {
+		return Result{}, err
+	}
+	c, err := u.compileCtx(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -316,7 +339,10 @@ func (u UpdateQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if u.versioned() {
 		return nil, u.fail(ErrValidation, errors.New("Rows is not supported with a version-checked Model update; use Exec"))
 	}
-	c, err := u.SQL()
+	if err := u.beforeWrite(ctx); err != nil {
+		return nil, err
+	}
+	c, err := u.compileCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
