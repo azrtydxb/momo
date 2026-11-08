@@ -81,8 +81,42 @@ migrate:
 ```
 
 `naming:` is optional: `momo` (default: snake_case columns, plural snake_case
-tables), `gorm`, `bun`, `ent`. Pick one and never change it: a change renames
-columns.
+tables), `gorm`, `bun`, `ent`, `prisma`. Pick one and never change it: a change
+renames columns.
+
+`naming: prisma` matches a database that Prisma created: the table is the model
+name as written and quoted (`KbChunk`), the column is camelCase (`createdAt`,
+`accountId`; an `ID` word at the end becomes `Id`, and a trailing `IDs` becomes
+`Ids`, so `UserIDs` is `userIds`), and the constraint and index names are
+`<Table>_pkey`, `<Table>_<col>_fkey`, `<Table>_<col>_key` (unique) and
+`<Table>_<col>_idx`. Those names come out of the table and column names, so no
+tag is needed for single-column keys and indexes.
+
+Limits of the preset:
+
+- A composite `@@index` or `@@unique` is named by Prisma from all its columns
+  (`<Table>_<a>_<b>_idx`). Name such an index explicitly in `MomoConfig` or with
+  an `index:`/`unique:` tag name.
+- The implicit many-to-many table is named `_AToB` (model names in alphabetical
+  order), but its `A` and `B` columns and its foreign key names are not
+  reproduced. Declare that table with an explicit join model instead.
+- A column name that does not follow the camelCase rule needs a `column:` tag.
+
+Prisma maps `DateTime` to `timestamp(3)`, so add a `types:` section:
+
+```yaml
+naming: prisma
+types:
+  time.Time: timestamp(3)
+```
+
+`types:` overrides the default PostgreSQL column type of a Go type. Only
+`time.Time` is supported, and the value must be `timestamp`, `timestamptz`,
+`time` or `timetz` with an optional precision 0-6 and an optional
+`with`/`without time zone` (anything else is refused, as it is written into
+DDL). A `type:` tag on a field still wins. It applies when the first entry of
+`dialects` is PostgreSQL (or `dialects` is empty); with SQLite first it is
+ignored. Without it `time.Time` is `timestamp with time zone`.
 
 Generate:
 
