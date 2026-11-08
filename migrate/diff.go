@@ -399,8 +399,33 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	if !reflect.DeepEqual(fn.Partition, tn.Partition) || !reflect.DeepEqual(fn.PartitionOf, tn.PartitionOf) {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes its partitioning; this cannot be altered in place, write a custom migration", tn.Name))
 	}
-	if fn.WithoutRowID != tn.WithoutRowID {
+	// WITHOUT ROWID, STRICT and AUTOINCREMENT are properties of a SQLite table
+	// that a model cannot declare yet, so a table that has one in the database
+	// and not in the model keeps it (a rebuild writes it back). Asking for one
+	// the table lacks is a change that needs a custom migration.
+	if tn.WithoutRowID && !fn.WithoutRowID {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes WITHOUT ROWID; write a custom migration", tn.Name))
+	}
+	if tn.Strict && !fn.Strict {
+		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes STRICT; write a custom migration", tn.Name))
+	}
+	if tn.Autoincrement && !fn.Autoincrement {
+		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes AUTOINCREMENT; write a custom migration", tn.Name))
+	}
+	if fn.WithoutRowID && !tn.WithoutRowID {
+		// The table keeps WITHOUT ROWID, which has no rowid alias, so an
+		// INTEGER key the normalizer made "by_default" for a rowid table is
+		// not a difference from the table's own column.
+		c := *tn
+		c.WithoutRowID = true
+		c.Columns = slices.Clone(tn.Columns)
+		live := colByName(fn)
+		for i := range c.Columns {
+			if oc, ok := live[c.Columns[i].Name]; ok && c.Columns[i].Identity == "by_default" && oc.Identity == "" {
+				c.Columns[i].Identity = ""
+			}
+		}
+		tn = &c
 	}
 	d.gone = goneColumns(fn, tn)
 	d.columns(fn, tn, fo, to, renameTo)

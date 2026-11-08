@@ -4,8 +4,10 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -218,7 +220,7 @@ func runGoNoTx(ctx context.Context, env RunEnv, h historyWriter, rec HistoryRow,
 func execAll(ctx context.Context, x execer, stmts []Statement, after func(n int) error) (int, error) {
 	n := 0
 	for _, s := range stmts {
-		if _, err := x.Exec(ctx, s.SQL, nil); err != nil {
+		if err := execStatement(ctx, x, s); err != nil {
 			return n, fmt.Errorf("statement %d: %w", n+1, err)
 		}
 		n++
@@ -229,6 +231,166 @@ func execAll(ctx context.Context, x execer, stmts []Statement, after func(n int)
 		}
 	}
 	return n, nil
+}
+
+// execStatement runs one statement. Two SQLite rebuild statements get special
+// treatment, recognised by their hint or, for a statement read back from a
+// migration file where hints are gone, by their text: PRAGMA foreign_key_check
+// fails the statement when it returns a row, and a statement hinted
+// "dependent:<type>:<name>" (a view or trigger recreated after a rebuild) wraps
+// its failure in ErrRebuildBlocked.
+func execStatement(ctx context.Context, x execer, s Statement) error {
+	if isForeignKeyCheck(s) {
+		stmt, ok := foreignKeyCheckSQL(s.SQL)
+		if !ok {
+			stmt = "PRAGMA foreign_key_check"
+		}
+		return checkForeignKeys(ctx, x, stmt)
+	}
+	if looksLikeForeignKeyCheck(s.SQL) {
+		return &momo.Error{Kind: momo.ErrValidation, Op: "migrate", Err: errors.New("unrecognised PRAGMA foreign_key_check statement; write it as one statement, PRAGMA [schema.]foreign_key_check[(table)], so that a violation fails the migration")}
+	}
+	_, err := x.Exec(ctx, s.SQL, nil)
+	if err != nil {
+		if rest, ok := strings.CutPrefix(s.Hint, "dependent:"); ok {
+			return fmt.Errorf("%w: %s: %w", ErrRebuildBlocked, strings.Replace(rest, ":", " ", 1), err)
+		}
+	}
+	return err
+}
+
+// foreignKeyCheckRE matches PRAGMA foreign_key_check in the forms SQLite
+// accepts: with an optional schema (main.foreign_key_check) and an optional
+// table argument (foreign_key_check(tbl), foreign_key_check("tbl")).
+var foreignKeyCheckRE = regexp.MustCompile(`(?is)^pragma\s+(?:(?:[A-Za-z_]\w*|"[^"]+")\s*\.\s*)?foreign_key_check\s*(?:\(\s*(?:[A-Za-z_]\w*|"[^"]+"|'[^']+')?\s*\))?$`)
+
+// foreignKeyCheckSQL returns the statement text without comments (leading,
+// trailing or between words) and without surrounding whitespace and a
+// trailing semicolon, and reports whether it is a PRAGMA foreign_key_check. A
+// migration file keeps the comments around a statement, so they must not hide
+// it.
+func foreignKeyCheckSQL(sql string) (string, bool) {
+	s := strings.TrimRight(strings.TrimSpace(stripSQLComments(sql)), "; \t\r\n")
+	return s, foreignKeyCheckRE.MatchString(s)
+}
+
+// stripSQLComments replaces each -- line comment and /* */ block comment outside
+// quotes with one space. An unterminated block comment runs to the end.
+func stripSQLComments(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		switch c := s[i]; {
+		case c == '\'' || c == '"' || c == '`':
+			j := i + 1
+			for j < len(s) {
+				if s[j] == c {
+					if j+1 < len(s) && s[j+1] == c {
+						j += 2
+						continue
+					}
+					break
+				}
+				j++
+			}
+			if j < len(s) {
+				j++
+			}
+			b.WriteString(s[i:j])
+			i = j
+		case c == '-' && i+1 < len(s) && s[i+1] == '-':
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+			b.WriteByte(' ')
+		case c == '/' && i+1 < len(s) && s[i+1] == '*':
+			end := strings.Index(s[i+2:], "*/")
+			if end < 0 {
+				i = len(s)
+			} else {
+				i += end + 4
+			}
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String()
+}
+
+// looksLikeForeignKeyCheck reports whether sql uses foreign_key_check in any way
+// other than the forms foreignKeyCheckSQL accepts: a PRAGMA statement that names
+// it, or the pragma_foreign_key_check table-valued function in a query. Such a
+// statement would run with its rows discarded, so it must fail instead. Comments
+// and string literals are ignored.
+func looksLikeForeignKeyCheck(sql string) bool {
+	s := strings.ToLower(strings.TrimSpace(stripStringLiterals(stripSQLComments(sql))))
+	if !strings.Contains(s, "foreign_key_check") {
+		return false
+	}
+	return strings.HasPrefix(s, "pragma") || strings.Contains(s, "pragma_foreign_key_check")
+}
+
+// stripStringLiterals empties each single-quoted literal, keeping the quotes.
+func stripStringLiterals(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\'' {
+			b.WriteByte(s[i])
+			continue
+		}
+		b.WriteString("''")
+		for i++; i < len(s); i++ {
+			if s[i] == '\'' {
+				if i+1 < len(s) && s[i+1] == '\'' {
+					i++
+					continue
+				}
+				break
+			}
+		}
+	}
+	return b.String()
+}
+
+// isForeignKeyCheck reports whether s is the PRAGMA foreign_key_check that ends
+// a SQLite table rebuild.
+func isForeignKeyCheck(s Statement) bool {
+	if s.Hint == "fk-check" {
+		return true
+	}
+	_, ok := foreignKeyCheckSQL(s.SQL)
+	return ok
+}
+
+// checkForeignKeys runs the PRAGMA foreign_key_check statement q and fails on
+// the first violation, naming the child table, its rowid and the parent table.
+func checkForeignKeys(ctx context.Context, x execer, stmt string) error {
+	q, ok := x.(interface {
+		Query(ctx context.Context, sql string, args []any) (momo.Rows, error)
+	})
+	if !ok {
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate", Err: errors.New("PRAGMA foreign_key_check needs a connection or transaction that can run a query")}
+	}
+	rows, err := q.Query(ctx, stmt, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return rows.Err()
+	}
+	var child, parentTable sql.NullString
+	var rowid, fkid sql.NullInt64
+	if err := rows.Scan(&child, &rowid, &parentTable, &fkid); err != nil {
+		return err
+	}
+	table, parent := child.String, parentTable.String
+	where := "a row"
+	if rowid.Valid {
+		where = fmt.Sprintf("row %d", rowid.Int64)
+	}
+	return &momo.Error{Kind: momo.ErrForeignKeyViolation, Op: "migrate", Table: table, Err: fmt.Errorf("foreign_key_check: %s of table %q has no matching row in %q; the transaction is rolled back and the table is unchanged", where, table, parent)}
 }
 
 // RunStatements runs stmts in one transaction on c and rolls it back on the

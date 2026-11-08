@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
@@ -154,11 +155,18 @@ func checkHistoryFormat(ctx context.Context, c momo.PinnedConn, tbl string) erro
 	return nil
 }
 
-// isUndefinedTable reports whether err is the "table does not exist" error of
-// PostgreSQL (42P01) or MySQL and MariaDB (42S02).
+// isUndefinedTable reports whether err says a table does not exist:
+// PostgreSQL's "relation does not exist" (SQLSTATE 42P01), MySQL's and
+// MariaDB's (42S02), or SQLite's "no such table: momo_migrations", which has no SQLSTATE and is
+// recognised by its message.
 func isUndefinedTable(err error) bool {
 	var s interface{ SQLState() string }
-	return errors.As(err, &s) && (s.SQLState() == undefinedTable || s.SQLState() == undefinedTableMySQL)
+	if errors.As(err, &s) && (s.SQLState() == undefinedTable || s.SQLState() == undefinedTableMySQL) {
+		return true
+	}
+	// SQLite has no SQLSTATE; its message names the table, and only a missing
+	// history table counts, not any other table a statement named.
+	return err != nil && (strings.Contains(err.Error(), "no such table: "+historyTable) || strings.Contains(err.Error(), "no such table: main."+historyTable))
 }
 
 // ReadHistory returns the migration rows of the history table ordered by

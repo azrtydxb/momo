@@ -15,6 +15,7 @@ FUZZ_TARGETS += ./schema:FuzzSchemaSort
 FUZZ_TARGETS += ./schema:FuzzNormalizeType
 FUZZ_TARGETS += ./types:FuzzHstore
 FUZZ_TARGETS += ./migrate:FuzzSplitStatements
+FUZZ_TARGETS += ./migrate/sqlite:FuzzParseDDL
 FUZZ_TARGETS += ./schema:FuzzNormalize
 FUZZ_TARGETS += ./vector:FuzzVectorDecode
 FUZZ_TARGETS += ./vector:FuzzSparseDecode

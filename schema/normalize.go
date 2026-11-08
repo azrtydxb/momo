@@ -708,6 +708,9 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 			}
 		}
 		normalizeIndexes(d, t.Columns, t.Indexes)
+		if d == dialect.SQLite {
+			normalizeSQLiteIdentity(t)
+		}
 	}
 	for i := range c.Views {
 		v := &c.Views[i]
@@ -721,6 +724,7 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 	}
 	for i := range c.Triggers {
 		c.Triggers[i].When = NormalizeExpr(d, c.Triggers[i].When)
+		c.Triggers[i].Definition = normalizeDefinition(d, c.Triggers[i].Definition)
 	}
 	for i := range c.Policies {
 		c.Policies[i].Using = NormalizeExpr(d, c.Policies[i].Using)
@@ -728,4 +732,50 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 	}
 	c.Sort()
 	return &c, nil
+}
+
+// normalizeSQLiteIdentity gives SQLite's one kind of generated key a single
+// spelling. SQLite has no GENERATED ... AS IDENTITY: an INTEGER column that is
+// the whole primary key of a rowid table is the rowid, assigned when an insert
+// gives no value, which is what "by_default" means. So on SQLite that column is
+// "by_default" whether the model said so or not (inspection reports it that
+// way), and "always", which SQLite cannot enforce, is "by_default" too. It is
+// idempotent.
+func normalizeSQLiteIdentity(t *Table) {
+	for i := range t.Columns {
+		if t.Columns[i].Identity == "always" {
+			t.Columns[i].Identity = "by_default"
+		}
+	}
+	if t.WithoutRowID || len(t.PrimaryKey) != 1 {
+		return
+	}
+	for i := range t.Columns {
+		col := &t.Columns[i]
+		if col.Name == t.PrimaryKey[0] && col.Identity == "" && NormalizeType(dialect.SQLite, col.Type) == "INTEGER" {
+			col.Identity = "by_default"
+		}
+	}
+}
+
+// normalizeDefinition canonicalises a SQLite trigger's CREATE TRIGGER text so
+// that the text a model declares and the text sqlite_schema stores compare
+// equal: whitespace and case outside quotes are normalised as for an
+// expression, and a trailing semicolon and IF NOT EXISTS (which SQLite does
+// not store) are dropped. Other dialects have no Definition and it is returned
+// as it is. It is idempotent.
+func normalizeDefinition(d dialect.Name, def string) string {
+	if d != dialect.SQLite || def == "" {
+		return def
+	}
+	for {
+		n := strings.TrimRight(strings.TrimSpace(NormalizeExpr(d, def)), "; \t\r\n")
+		if rest, ok := strings.CutPrefix(n, "create trigger if not exists "); ok {
+			n = "create trigger " + rest
+		}
+		if n == def {
+			return n
+		}
+		def = n
+	}
 }
