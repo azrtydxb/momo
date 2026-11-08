@@ -165,7 +165,7 @@ Only the `Merge` capability flag exists on `dialect.Dialect` beyond the base set
 
 ### Test harness (`internal/testdb`)
 
-The harness returns connection strings only, so driver packages can use it without import cycles: `PostgresURL`, `PostgresAppRoleURL`, `PgBouncerURL`, `SQLitePath`, `MySQL84URL`, `MySQL97URL`, `MariaDBURL` and `Schema`, each taking the `*testing.T`. `internal/testdb/testopen` opens PostgreSQL as a `*momo.DB` (`testopen.Postgres(t)`, `testopen.PostgresIn`) for packages above the drivers; only PostgreSQL has a driver, so there is no `testopen.SQLite` or MySQL opener yet. In both packages, a missing URL fails the test when `MOMO_REQUIRE_INTEGRATION=1` and skips it otherwise; no test calls `t.Skip` directly. [momo-01]
+The harness returns connection strings only, so driver packages can use it without import cycles: `PostgresURL`, `PostgresAppRoleURL`, `PgBouncerURL`, `SQLitePath`, `MySQL84URL`, `MySQL97URL`, `MariaDBURL` and `Schema`, each taking the `*testing.T`. `internal/testdb/testopen` opens PostgreSQL (`testopen.Postgres(t)`, `testopen.PostgresIn`) and SQLite (`testopen.SQLite(t)`, through `driver/sqlitedriver`) as a `*momo.DB` for packages above the drivers, and `testopen.Each` runs a test once per registered dialect; there is no MySQL opener yet. A missing PostgreSQL URL fails the test when `MOMO_REQUIRE_INTEGRATION=1` and skips it otherwise (testdb does that check). `testopen.SQLite` skips when the build has only the stub driver (no cgo, or Windows). Tests that cannot run on a dialect skip that subtest with a stated reason. [momo-01]
 
 ## Delivery order (user decision 2026-11-04: PostgreSQL and pgvector first)
 

@@ -19,6 +19,37 @@ func TestCheckVersion(t *testing.T) {
 	}
 }
 
+func TestBuildDSNAliasesAndForbiddenKeys(t *testing.T) {
+	got, err := buildDSN("x.db?_fk=0&_timeout=7&_journal=DELETE&_sync=OFF", Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dup := range []string{"_foreign_keys", "_busy_timeout", "_journal_mode", "_synchronous"} {
+		if strings.Contains(got, dup+"=") {
+			t.Errorf("DSN %q sets %s although its alias was given", got, dup)
+		}
+	}
+	for _, key := range []string{"_writable_schema", "_trusted_schema", "_query_only", "_ignore_check_constraints", "_auth"} {
+		if _, err := buildDSN("x.db?"+key+"=1", Config{}); err == nil {
+			t.Errorf("DSN key %s accepted", key)
+		}
+	}
+}
+
+func TestBuildDSNInMemory(t *testing.T) {
+	for _, dsn := range []string{":memory:", "file::memory:", "file:m?mode=memory"} {
+		if _, err := buildDSN(dsn, Config{MaxOpenConns: 2}); err == nil {
+			t.Errorf("%q with two connections accepted: each connection would see its own empty database", dsn)
+		}
+		if _, err := buildDSN(dsn, Config{}); err != nil {
+			t.Errorf("%q with one connection refused: %v", dsn, err)
+		}
+	}
+	if _, err := buildDSN("x.db", Config{MaxOpenConns: 4}); err != nil {
+		t.Errorf("a file with four connections refused: %v", err)
+	}
+}
+
 func TestBuildDSN(t *testing.T) {
 	got, err := buildDSN("file:x.db?_busy_timeout=9", Config{BusyTimeout: time.Second, Synchronous: "FULL", TxLock: "deferred"})
 	if err != nil {

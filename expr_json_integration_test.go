@@ -6,6 +6,7 @@ package momo_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -20,13 +21,11 @@ import (
 // NULL, JSON null and a missing key.
 func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		if d == dialect.SQLite {
-			t.Skip("the JSON operators render PostgreSQL jsonb; SQLite JSON support is not implemented yet")
-		}
+		sqlite := d == dialect.SQLite
 		ctx := context.Background()
 		for _, stmt := range []string{
 			"DROP TABLE IF EXISTS jsonev",
-			"CREATE TABLE jsonev (id bigint PRIMARY KEY, doc jsonb)",
+			"CREATE TABLE jsonev (id bigint PRIMARY KEY, doc " + map[bool]string{true: "text", false: "jsonb"}[sqlite] + ")",
 		} {
 			if _, err := momo.Exec(ctx, db, stmt); err != nil {
 				t.Fatal(err)
@@ -45,7 +44,12 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 			{7, `"a"`},
 		}
 		for _, r := range rows {
-			if _, err := momo.Exec(ctx, db, "INSERT INTO jsonev (id, doc) VALUES (?, CAST(? AS jsonb))", r.id, r.doc); err != nil {
+			insert := "INSERT INTO jsonev (id, doc) VALUES (?, CAST(? AS jsonb))"
+			if sqlite {
+				// CAST(x AS jsonb) would be a numeric cast on SQLite; the column is text.
+				insert = "INSERT INTO jsonev (id, doc) VALUES (?, ?)"
+			}
+			if _, err := momo.Exec(ctx, db, insert, r.id, r.doc); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -78,8 +82,17 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 		check("text eq", ids(momo.JSONText(doc, "via").Eq("api")), 1)
 		check("text in", ids(momo.JSONText(doc, "via").In("api", "web")), 1, 2)
 		check("path", ids(momo.JSONPath(doc, "n", "x", "1").Eq("q")), 1)
-		check("contains object", ids(momo.JSONContains(doc, map[string]any{"via": "web"})), 2)
-		check("contains array member", ids(momo.JSONContains(doc, map[string]any{"tags": []string{"a"}})), 1)
+		if sqlite {
+			// SQLite has no containment operator.
+			_, err := momo.Select[kvRow](db).From(momo.TableRef{Name: "jsonev"}).Columns(id, id).
+				Where(momo.JSONContains(doc, map[string]any{"via": "web"})).All(ctx)
+			if !errors.Is(err, momo.ErrUnsupported) {
+				t.Errorf("JSONContains on SQLite = %v, want ErrUnsupported", err)
+			}
+		} else {
+			check("contains object", ids(momo.JSONContains(doc, map[string]any{"via": "web"})), 2)
+			check("contains array member", ids(momo.JSONContains(doc, map[string]any{"tags": []string{"a"}})), 1)
+		}
 		check("has key", ids(momo.JSONHasKey(doc, "via")), 1, 2)
 		check("has key with JSON null value", ids(momo.JSONHasKey(doc, "gone")), 2)
 		check("key bound as data", ids(momo.JSONHasKey(doc, "via' OR '1'='1")))
@@ -99,13 +112,22 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 		if g, err := group("via"); err != nil || len(g) != 2 || g[0].S != "api" || g[0].N != 1 || g[1].S != "web" || g[1].N != 1 {
 			t.Errorf("group by plain key = %+v, %v", g, err)
 		}
-		if _, err := group("a.b"); err == nil {
+		if _, err := group("a.b"); err == nil && !sqlite {
 			t.Error("group by a bound key succeeded; the documented caveat no longer holds")
 		}
 
 		// Keys that look like indexes, paths or operators are plain object keys.
 		check("numeric object key", ids(momo.JSONText(doc, "0").Eq("zero")), 5)
-		check("backslash key", ids(momo.JSONText(doc, `a\b`).Eq("bs")), 5)
+		if sqlite {
+			// SQLite JSON paths cannot carry a backslash, so the key is refused.
+			_, err := momo.Select[kvRow](db).From(momo.TableRef{Name: "jsonev"}).Columns(id, id).
+				Where(momo.JSONText(doc, `a\b`).Eq("bs")).All(ctx)
+			if !errors.Is(err, momo.ErrValidation) {
+				t.Errorf("backslash key on SQLite = %v, want ErrValidation", err)
+			}
+		} else {
+			check("backslash key", ids(momo.JSONText(doc, `a\b`).Eq("bs")), 5)
+		}
 		check("question mark key", ids(momo.JSONText(doc, "q?").Eq("x")), 5)
 		check("dotted key", ids(momo.JSONText(doc, "a.b").Eq("dot")), 5)
 		check("has key question mark", ids(momo.JSONHasKey(doc, "q?")), 5)
@@ -114,9 +136,14 @@ func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 		check("path array index", ids(momo.JSONPath(doc, "1").Eq("b")), 6)
 
 		// Containment with array and scalar top-level values.
-		check("contains array", ids(momo.JSONContains(doc, []string{"a"})), 6)
-		check("contains scalar", ids(momo.JSONContains(doc, "a")), 6, 7)
-		check("has key on array and scalar", ids(momo.JSONHasKey(doc, "a")), 6, 7)
+		if sqlite {
+			// json_type of a member path is NULL on arrays and scalars.
+			check("has key on array and scalar", ids(momo.JSONHasKey(doc, "a")))
+		} else {
+			check("contains array", ids(momo.JSONContains(doc, []string{"a"})), 6)
+			check("contains scalar", ids(momo.JSONContains(doc, "a")), 6, 7)
+			check("has key on array and scalar", ids(momo.JSONHasKey(doc, "a")), 6, 7)
+		}
 
 		// SQL NULL, JSON null and a missing key all extract as NULL.
 		check("extracted text is NULL", ids(momo.JSONText(doc, "via").IsNull()), 3, 4, 5, 6, 7)

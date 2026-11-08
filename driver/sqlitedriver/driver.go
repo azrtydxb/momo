@@ -12,6 +12,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/mattn/go-sqlite3"
 )
 
 type sqlDriver struct{ db *sql.DB }
@@ -152,9 +153,27 @@ func rowsAffected(res sql.Result) (int64, error) {
 type sqlRows struct{ r *sql.Rows }
 
 func (r sqlRows) Next() bool             { return r.r.Next() }
-func (r sqlRows) Scan(dest ...any) error { return ClassifyError(r.r.Scan(wrapDests(dest)...)) }
-func (r sqlRows) Err() error             { return ClassifyError(r.r.Err()) }
-func (r sqlRows) Close() error           { return ClassifyError(r.r.Close()) }
+func (r sqlRows) Scan(dest ...any) error { return scanErr(r.r.Scan(wrapDests(dest)...)) }
+
+// scanErr hides the text of a conversion failure: database/sql quotes the
+// stored value in it ("converting driver.Value type string ("...")"). The
+// cause stays reachable through errors.Unwrap, as with pgxdriver data
+// exceptions.
+func scanErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	c := ClassifyError(err)
+	var se sqlite3.Error
+	var me *momo.Error
+	if errors.As(c, &se) || errors.As(c, &me) {
+		return c
+	}
+	err = c
+	return driverError{cause: err, msg: "sqlitedriver: cannot convert the column value to the destination type"}
+}
+func (r sqlRows) Err() error   { return ClassifyError(r.r.Err()) }
+func (r sqlRows) Close() error { return ClassifyError(r.r.Close()) }
 
 // sqlTx adapts *sql.Tx to momo.DriverTx.
 type sqlTx struct {

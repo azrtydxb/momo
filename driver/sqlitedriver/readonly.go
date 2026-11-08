@@ -90,6 +90,11 @@ func (t *roTx) finish(ctx context.Context, stmt, op string) error {
 	ectx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resetTimeout)
 	defer cancel()
 	_, err := t.conn.ExecContext(ectx, stmt)
+	if err != nil && stmt == "COMMIT" {
+		// A failed COMMIT can leave the transaction open (SQLITE_BUSY); end it so
+		// the connection returns to the pool in autocommit mode.
+		_, _ = t.conn.ExecContext(ectx, "ROLLBACK")
+	}
 	resetQueryOnly(t.conn)
 	if t.onDone != nil {
 		t.onDone()

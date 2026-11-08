@@ -7,6 +7,7 @@ package testopen
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,10 @@ func openPostgres(t *testing.T, url string, opts ...momo.Option) *momo.DB {
 func SQLite(t *testing.T, opts ...momo.Option) *momo.DB {
 	t.Helper()
 	sqldb, drv, err := sqlitedriver.Open(testdb.SQLitePath(t), sqlitedriver.Config{})
+	if errors.Is(err, momo.ErrUnsupported) {
+		// A build without cgo, or for Windows, has only the stub driver.
+		t.Skipf("testopen: SQLite needs cgo and a non-Windows build: %v", err)
+	}
 	if err != nil {
 		t.Fatalf("testopen: open sqlite: %v", err)
 	}

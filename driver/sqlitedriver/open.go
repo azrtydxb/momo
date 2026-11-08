@@ -89,19 +89,55 @@ func buildDSN(dsn string, cfg Config) (string, error) {
 	default:
 		return "", fmt.Errorf("sqlitedriver: unknown transaction lock %q", lock)
 	}
-	defaults := [][2]string{
-		{"_busy_timeout", strconv.FormatInt(busy.Milliseconds(), 10)},
-		{"_journal_mode", "WAL"},
-		{"_synchronous", synchronous},
-		{"_foreign_keys", "on"},
-		{"_txlock", lock},
+	for key := range q {
+		if forbiddenDSNKeys[strings.ToLower(key)] {
+			return "", fmt.Errorf("sqlitedriver: DSN parameter %q weakens the connection and is not allowed", key)
+		}
 	}
-	for _, kv := range defaults {
-		if !q.Has(kv[0]) {
-			q.Set(kv[0], kv[1])
+	if isMemory(base, q) && cfg.MaxOpenConns > 1 {
+		return "", errors.New("sqlitedriver: an in-memory database is private to one connection, so MaxOpenConns must be 1 (or use a file)")
+	}
+	defaults := []struct {
+		key, value string
+		aliases    []string
+	}{
+		{"_busy_timeout", strconv.FormatInt(busy.Milliseconds(), 10), []string{"_timeout"}},
+		{"_journal_mode", "WAL", []string{"_journal"}},
+		{"_synchronous", synchronous, []string{"_sync"}},
+		{"_foreign_keys", "on", []string{"_fk"}},
+		{"_txlock", lock, nil},
+	}
+	for _, d := range defaults {
+		present := q.Has(d.key)
+		for _, a := range d.aliases {
+			present = present || q.Has(a)
+		}
+		if !present {
+			q.Set(d.key, d.value)
 		}
 	}
 	return base + "?" + q.Encode(), nil
+}
+
+// forbiddenDSNKeys are mattn parameters that switch off a safety the adapter
+// relies on: schema writes, schema triggers and views, read-only mode, CHECK
+// enforcement and the authentication extension.
+var forbiddenDSNKeys = map[string]bool{
+	"_writable_schema":          true,
+	"_trusted_schema":           true,
+	"_query_only":               true,
+	"_ignore_check_constraints": true,
+	"_auth":                     true,
+	"_auth_user":                true,
+	"_auth_pass":                true,
+	"_auth_crypt":               true,
+	"_auth_salt":                true,
+}
+
+// isMemory reports whether the DSN names an in-memory database, which exists
+// per connection.
+func isMemory(base string, q url.Values) bool {
+	return base == "" || base == ":memory:" || base == "file::memory:" || q.Get("mode") == "memory"
 }
 
 // The oldest SQLite the dialect description assumes (RETURNING).
@@ -124,8 +160,12 @@ func checkVersion(v string) error {
 // SQLite answers "not authorized" when extension loading is disabled; a
 // missing extension file fails differently, so only that message proves it.
 func checkLoadExtensionError(err error) error {
-	if err != nil && strings.Contains(err.Error(), "not authorized") {
-		return nil
+	if err != nil {
+		msg := err.Error()
+		// "no such function" is a SQLite built without extension loading.
+		if strings.Contains(msg, "not authorized") || strings.Contains(msg, "no such function: load_extension") {
+			return nil
+		}
 	}
 	return errors.New("sqlitedriver: load_extension is enabled on this connection; momo refuses it")
 }

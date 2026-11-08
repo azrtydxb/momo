@@ -5,6 +5,8 @@
 package sqlitedriver
 
 import (
+	"database/sql"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,6 +45,39 @@ func TestTimeScanners(t *testing.T) {
 	}
 	if err := (timePtrScanner{&p}).Scan("2026-11-07 20:10:12.123"); err != nil || p == nil || !p.Equal(want) {
 		t.Errorf("value into **time.Time = %v, %v", p, err)
+	}
+}
+
+func TestNullTimeScanners(t *testing.T) {
+	want := time.Date(2026, 11, 7, 20, 10, 12, 123000000, time.UTC)
+	var nt sql.NullTime
+	var ng sql.Null[time.Time]
+	for _, d := range wrapDests([]any{&nt, &ng}) {
+		sc, ok := d.(sql.Scanner)
+		if !ok {
+			t.Fatalf("%T was not replaced by a scanner", d)
+		}
+		if err := sc.Scan("2026-11-07 20:10:12.123"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !nt.Valid || !nt.Time.Equal(want) || !ng.Valid || !ng.V.Equal(want) {
+		t.Fatalf("NullTime = %+v, Null[time.Time] = %+v", nt, ng)
+	}
+	for _, d := range wrapDests([]any{&nt, &ng}) {
+		if err := d.(sql.Scanner).Scan(nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if nt.Valid || ng.Valid {
+		t.Fatalf("NULL left Valid set: %+v %+v", nt, ng)
+	}
+}
+
+func TestParseTimeErrorHidesInput(t *testing.T) {
+	_, err := parseTime("secret-user-value")
+	if err == nil || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("err = %v; it must fail without echoing the text", err)
 	}
 }
 

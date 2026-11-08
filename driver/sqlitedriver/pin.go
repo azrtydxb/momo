@@ -200,7 +200,8 @@ func (p *sqlPinned) Release() error {
 
 // Discard closes the underlying connection so database/sql destroys it
 // instead of reusing a session whose state could not be restored. See
-// momo.Discarder.
+// momo.Discarder. Discarding the connection of an in-memory database destroys
+// that database.
 func (p *sqlPinned) Discard() error {
 	c, err := p.take()
 	if c == nil {

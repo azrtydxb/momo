@@ -48,6 +48,10 @@ func ClassifyError(err error) error {
 		kind = momo.ErrCheckViolation
 	case sqlite3.ErrConstraintNotNull:
 		kind = momo.ErrNotNullViolation
+	case sqlite3.ErrBusySnapshot:
+		// A read transaction could not upgrade to a write on a changed snapshot;
+		// retrying the whole transaction is the cure, as for a serialization failure.
+		kind = momo.ErrSerialization
 	}
 	if kind == nil {
 		switch se.Code {

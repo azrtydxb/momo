@@ -6,6 +6,7 @@ package momo_test
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -42,16 +43,15 @@ func (*tmTime) MomoMeta() *momo.Meta[tmTime] { return &tmTimeMeta }
 // the database's now (tenant 2).
 func seedTimeDocs(t *testing.T, db *momo.DB) {
 	t.Helper()
-	if db.Dialect().Name == dialect.SQLite {
-		// The seeds use a PostgreSQL timestamp literal and the expectations are
-		// PostgreSQL's extract and date_trunc semantics; SQLite strftime support
-		// for these expressions is not implemented yet.
-		t.Skip("time expressions are not implemented for SQLite yet")
-	}
 	ctx := context.Background()
 	suite.CreateDocuments(t, db, suite.CapsOf(db))
+	// SQLite stores momo's own text format, which strftime parses.
+	old := "'2024-03-15 13:45:30+00'"
+	if db.Dialect().Name == dialect.SQLite {
+		old = "'2024-03-15 13:45:30.000'"
+	}
 	for _, s := range []string{
-		"INSERT INTO documents (tenant_id, title, created_at) VALUES (1, 'old', '2024-03-15 13:45:30+00')",
+		"INSERT INTO documents (tenant_id, title, created_at) VALUES (1, 'old', " + old + ")",
 		"INSERT INTO documents (tenant_id, title) VALUES (2, 'new')",
 	} {
 		if _, err := momo.Exec(ctx, db, s); err != nil {
@@ -102,6 +102,14 @@ func TestExtractIntegration(t *testing.T) {
 		} {
 			if got := floatOf(t, db, 1, momo.Extract(c.field, src)); math.Abs(got-c.want) > 1e-6 {
 				t.Errorf("Extract %s = %v, want %v", c.field, got, c.want)
+			}
+		}
+		if d == dialect.SQLite {
+			_, err := momo.Select[tmFloat](db).From(momo.TableRef{Name: "documents"}).
+				Columns(momo.Extract(momo.ExtractHour, momo.AtTimeZone(suite.DocCreatedAt, "Asia/Tokyo"))).
+				Where(suite.DocTenantID.Eq(1)).One(context.Background())
+			if !errors.Is(err, momo.ErrUnsupported) {
+				t.Errorf("AtTimeZone on SQLite = %v, want ErrUnsupported", err)
 			}
 		}
 		if d == dialect.Postgres {
@@ -214,9 +222,6 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 			t.Errorf("+90 bound minutes = %v", got)
 		}
 
-		if d != dialect.Postgres {
-			return
-		}
 		now := timeOf(t, db, 1, momo.Now())
 		if diff := time.Since(now); diff < -time.Minute || diff > time.Minute {
 			t.Errorf("Now() = %v, far from the wall clock", now)

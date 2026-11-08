@@ -48,6 +48,7 @@ func TestClassifyKinds(t *testing.T) {
 		{sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintCheck}, momo.ErrCheckViolation},
 		{sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintNotNull}, momo.ErrNotNullViolation},
 		{sqlite3.Error{Code: sqlite3.ErrLocked, ExtendedCode: sqlite3.ErrLocked.Extend(0)}, momo.ErrBusy},
+		{sqlite3.Error{Code: sqlite3.ErrBusy, ExtendedCode: sqlite3.ErrBusySnapshot}, momo.ErrSerialization},
 	} {
 		if got := ClassifyError(c.in); !errors.Is(got, c.want) {
 			t.Errorf("ClassifyError(%d) = %v, want kind %v", c.in.ExtendedCode, got, c.want)

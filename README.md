@@ -10,7 +10,9 @@ migrations are built in as well: `momo migrate diff` compares your structs with
 the last snapshot and writes the SQL.
 
 Status: v0.3.0, pre-v1, with no compatibility promise between releases. This <!-- x-release-please-version -->
-release supports PostgreSQL with pgvector. SQLite and MySQL are planned. Momo
+release supports PostgreSQL with pgvector. SQLite is usable through the cgo
+driver `driver/sqlitedriver` (not on Windows) without migrations or vector
+builders yet; MySQL is planned. Momo
 needs Go 1.26 or newer (see `go.mod` for the exact patch floor, 1.26.10).
 
 ## Install

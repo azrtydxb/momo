@@ -1,11 +1,16 @@
-What Momo v0.3.0 supports, per database. Only PostgreSQL (through pgx) is <!-- x-release-please-version -->
-usable. SQLite and MySQL exist as dialect metadata in `dialect/` only: there is
-no driver package for either (`driver/` holds `pgxdriver` only), `momo migrate`
-rejects them, and nothing opens a connection to them. Treat every SQLite and
-MySQL cell below as **not usable yet**, whatever the metadata says.
+What Momo v0.3.0 supports, per database. PostgreSQL (through pgx) is usable <!-- x-release-please-version -->
+and the reference. SQLite is usable through `driver/sqlitedriver` (mattn
+go-sqlite3 and sqlite-vec; it needs cgo and does not build on Windows); the
+SQLite column below was written before that driver existed, so a SQLite cell
+that says **not usable yet** means the feature is not verified on SQLite, not
+that SQLite cannot open. Migrations (`momo migrate`), the pure-Go driver and
+sqlite-vec vector builders are not done for SQLite. MySQL exists as dialect
+metadata in `dialect/` only: there is no driver package for it, and every MySQL
+cell is **not usable yet**.
 
 Legend: yes = implemented for PostgreSQL and covered by the integration suite
-(`make test-integration-postgres`). no = not provided. `ErrUnsupported` = the
+(`make test-integration-postgres`, which also runs every dialect-neutral test
+on SQLite through `testopen.Each`). no = not provided. `ErrUnsupported` = the
 call exists and fails with `momo.ErrUnsupported`.
 
 ## Getting connected
@@ -55,14 +60,14 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 
 ## Dialect and driver status
 
-| Item                           | PostgreSQL (pgx)                              | SQLite                                                     | MySQL / MariaDB                                  |
-| ------------------------------ | --------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------ |
-| Usable in v0.3.0               | yes                                           | not usable yet                                             | not usable yet <!-- x-release-please-version --> |
-| Driver package                 | `driver/pgxdriver` (pgx v5 pool, `FromSQLDB`) | none                                                       | none                                             |
-| `dialect.For(name)` metadata   | yes                                           | yes (data only)                                            | yes (data only)                                  |
-| Migration dialect (`migrate`)  | `migrate/postgres`                            | none                                                       | none                                             |
-| `momo migrate` on this dialect | works                                         | exit 2, "migrations for dialect ... are not available yet" | same                                             |
-| CI integration matrix          | PostgreSQL 16 and 17, pgvector 0.8.7          | not in matrix                                              | not in matrix                                    |
+| Item                           | PostgreSQL (pgx)                              | SQLite                                                            | MySQL / MariaDB                                  |
+| ------------------------------ | --------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------ |
+| Usable in v0.3.0               | yes                                           | yes, through `sqlitedriver` (cgo, not Windows); no migrations yet | not usable yet <!-- x-release-please-version --> |
+| Driver package                 | `driver/pgxdriver` (pgx v5 pool, `FromSQLDB`) | `driver/sqlitedriver` (mattn go-sqlite3, sqlite-vec)              | none                                             |
+| `dialect.For(name)` metadata   | yes                                           | yes (data only)                                                   | yes (data only)                                  |
+| Migration dialect (`migrate`)  | `migrate/postgres`                            | none                                                              | none                                             |
+| `momo migrate` on this dialect | works                                         | exit 2, "migrations for dialect ... are not available yet"        | same                                             |
+| CI integration matrix          | PostgreSQL 16 and 17, pgvector 0.8.7          | not in matrix                                                     | not in matrix                                    |
 
 The `dialect/dialect.go` flags for the unusable dialects, for planning only:
 
@@ -94,7 +99,7 @@ The `dialect/dialect.go` flags for the unusable dialects, for planning only:
 | Streaming                             | yes                                                                                                                            | not usable yet                 | `Each(ctx, fn)`, `Iter(ctx)` (`iter.Seq2`); both `ErrUnsupported` when the query has `Preload`                                                                                                               |
 | Raw SQL                               | yes                                                                                                                            | not usable yet                 | `momo.Exec`, `momo.Scalars`, `momo.SQL`, `TypedSQL`, `RawSubquery`, `Named`, `In`, `Ident`                                                                                                                   |
 | `EXPLAIN`                             | yes (`EXPLAIN`, never `ANALYZE`)                                                                                               | MySQL: `ErrUnsupported`        | `SelectQuery.Explain(ctx)`                                                                                                                                                                                   |
-| `IndexedBy` hint                      | `ErrUnsupported`; SQLite syntax, and SQLite is not usable in v0.3.0, so no database runs it                                    | MySQL: `ErrUnsupported`        | `SelectQuery.IndexedBy` <!-- x-release-please-version -->                                                                                                                                                    |
+| `IndexedBy` hint                      | `ErrUnsupported`; SQLite syntax, run on SQLite through `sqlitedriver` (see `TestHintsByDialect`)                               | MySQL: `ErrUnsupported`        | `SelectQuery.IndexedBy` <!-- x-release-please-version -->                                                                                                                                                    |
 
 ## Writes, transactions, drivers
 
