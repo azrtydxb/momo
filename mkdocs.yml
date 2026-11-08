@@ -52,6 +52,8 @@ nav:
       - Migrations: migrations.md
       - Read replicas: replicas.md
       - Testing applications: testing.md
+      - Interceptors: PRIVACY_RULES.md
+      - momovet raw-SQL check: momovet.md
   - Reference:
       - Capabilities: capabilities.md
       - Supported versions: supported-versions.md
