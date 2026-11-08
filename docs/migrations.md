@@ -1,6 +1,6 @@
 # Migration safety and recovery
 
-Momo v0.1.0, PostgreSQL only. Every statement here was checked against
+Momo v0.3.0, PostgreSQL only. Every statement here was checked against <!-- x-release-please-version -->
 `migrate/`, `cmd/momo/`, `schema/` and `dialect/`; the tests that pin a
 behavior are named. For the first run see README, [Create and apply the
 migration](../README.md#3-create-and-apply-the-migration).
@@ -42,12 +42,12 @@ set `migrate.dir.postgres` or `--dir`). `diff` writes exactly three files:
 
 ### Format versions
 
-| Artifact         | Field                                 | v0.1.0 value | Newer than this binary        |
-| ---------------- | ------------------------------------- | ------------ | ----------------------------- |
-| Snapshot wrapper | `format_version`                      | 1            | read error, "upgrade momo"    |
-| Embedded schema  | `schema.format_version`               | 1            | read error, "upgrade momo"    |
-| `momo.sum`       | header `# momo.sum format=N`          | 1            | read error                    |
-| History table    | `checksum` of the row `__momo_meta__` | 1            | apply refuses, "upgrade momo" |
+| Artifact         | Field                                 | v0.3.0 value | Newer than this binary <!-- x-release-please-version --> |
+| ---------------- | ------------------------------------- | ------------ | -------------------------------------------------------- |
+| Snapshot wrapper | `format_version`                      | 1            | read error, "upgrade momo"                               |
+| Embedded schema  | `schema.format_version`               | 1            | read error, "upgrade momo"                               |
+| `momo.sum`       | header `# momo.sum format=N`          | 1            | read error                                               |
+| History table    | `checksum` of the row `__momo_meta__` | 1            | apply refuses, "upgrade momo"                            |
 
 A snapshot without `format_version` is rejected.
 
@@ -92,9 +92,46 @@ Two independent checks, both SHA-256 of the file bytes:
 
 ### History table
 
-`momo_migrations`, created unqualified, so it lives in the first schema of the
-session `search_path`. `Config.Schemas[0]` (`migrate.schemas`) must equal
-`current_schema()` or the engine returns a configuration error naming both.
+`momo_migrations`. Every statement against it (read, insert, update, delete
+and the `CREATE TABLE`) names the table schema-qualified and quoted, for
+example `"app"."momo_migrations"`. The table is resolved before the lock is
+taken, and again right after, and the advisory-lock key is built from that
+resolved schema, so a migration that changes `search_path` cannot redirect the
+history writes. If the two lookups disagree (another process created the table
+in an earlier schema in between), the lock is released and the attempt is
+repeated once; a second disagreement fails with an error asking you to retry.
+
+- An existing table is found the way earlier versions found it, through the
+  session `search_path`, and its schema is then used. Installs made with the
+  unqualified name keep working, and no second table is created.
+- The resolved object must be a regular, permanent table, and the connecting
+  role must be its owner or hold the privileges of the owning role
+  (`pg_has_role` with `USAGE`, so a role with NOINHERIT does not qualify). A
+  superuser holds every role's privileges, so a superuser migrator
+  additionally requires the owner to be itself or another superuser; a table
+  owned by an ordinary role is refused, because its triggers and rules would
+  run with superuser rights. A view, foreign table, unlogged or temporary table, or a table
+  owned by an unrelated role, named `momo_migrations` earlier on the
+  `search_path`, is refused with a validation error naming the schema, the
+  table and the owner; it is never used. A table adopted on first install by
+  `CREATE TABLE IF NOT EXISTS` passes the same checks after the statement runs.
+- What this does and does not defend: it stops a foreign-owned or non-table
+  object that sits ahead of the real table on the `search_path` from
+  capturing the history writes. It does not stop a role whose privileges you hold,
+  or another superuser, from owning such an object, and it cannot protect a schema
+  that other roles may write to and that is ahead of yours on the
+  `search_path` before any table exists. Keep schemas on the migrator's
+  `search_path` writable only by the migrator.
+- With no table yet, it is created in the current schema.
+  `Config.Schemas[0]` (`migrate.schemas`) must equal the current schema
+  (current_schema) or the engine returns a configuration error naming both.
+  `plan`, `status` and `drift` on a connection with no current schema and no
+  table report an empty history; `apply` and the other writers fail.
+- momo does not `SET search_path` for the migration session. Migrations are
+  written against the `search_path` of the connection you give momo and may
+  rely on it; qualify the history table, not the migrations. Set the
+  `search_path` in the connection URL, and pin it per role with
+  `ALTER ROLE` on the migrator role.
 
 | Column               | Type             | Meaning                                                                                   |
 | -------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
@@ -170,6 +207,7 @@ Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
 | `status`                                                                                                              | yes             | One line per version: `applied`, `pending`, `dirty`, `mismatch`, `missing`. Read-only.        | any version not `applied`/`pending`                                                             |
 | `validate [--db]`                                                                                                     | no (`--db` yes) | Directory checks (below); `--db` adds `status`.                                               | any problem or unhealthy status                                                                 |
 | `hash`                                                                                                                | no              | Recompute `momo.sum`, list files it accepts as `changed:`/`added:`/`removed:`, write it.      | never                                                                                           |
+| `new --custom <name>`                                                                                                 | no              | Write an empty hand-written migration (section 6).                                            | a file would be overwritten                                                                     |
 | `baseline --version N [--force]`                                                                                      | yes             | Record migrations through N as applied without running them (section 7).                      | database differs from snapshot                                                                  |
 | `drift`                                                                                                               | yes             | Section 1.                                                                                    | any change, missing or unmanaged                                                                |
 | `resolve --version N --applied` or `--rolled-back`                                                                    | yes             | Settle a dirty migration (section 4).                                                         | never                                                                                           |
@@ -207,7 +245,8 @@ needs no `rehash`:
 If the older migration was already applied somewhere, do not rewrite it: leave
 the chain as it is and add a new migration for the difference.
 
-Not built in v0.1.0 (story 098): `rebase`, `lint`, `rollback`, `new`. Each exits
+`momo migrate new --custom <name>` writes an empty hand-written migration
+(section 6). Not built yet (story 098): `rebase`, `lint`, `rollback`. Each exits
 2 with `migrate <name> is not available yet`. There are no down migrations: undo
 a change with a new forward migration.
 
@@ -224,7 +263,8 @@ URL from standard input (`printf '%s' "$URL" | momo migrate apply --url -`): a
 warning on stderr when it sees one.
 
 `momo.yaml` `migrate:` keys: `dir`, `url_env` (maps keyed by dialect),
-`schemas`, `lock_timeout`, `statement_timeout` (Go durations), `exclude`.
+`schemas`, `lock_timeout`, `statement_timeout` (Go durations), `exclude`,
+`external_extensions` (section 7).
 
 ## 3. Apply semantics on PostgreSQL
 
@@ -238,7 +278,9 @@ bound, and the unlock has its own.
 
 `pg_try_advisory_lock(id)` on the pinned session, polled every 200 ms until
 `--lock-wait` (default 30 s) passes. `id` = FNV-64a of
-`momo:<history schema>.momo_migrations`, so schemas are independent. On timeout
+`momo:<schema>.momo_migrations`, where `<schema>` is the schema of the resolved
+history table (the current schema when none exists yet), so schemas are
+independent. On timeout
 `apply` exits 3 with
 `migration lock is held by another process: held by pid=N application_name=X`
 (`TestApplyLockWaitTimesOutWithHolder`; waiting
@@ -300,7 +342,7 @@ transaction pooling the advisory lock, the `SET lock_timeout` and the
 `search_path` belong to a server connection that the next statement may not
 reuse, so the lock does not protect and the timeouts can leak or not apply.
 The driver's default query mode is PgBouncer-safe for application queries; the
-migration engine through PgBouncer is **not tested** in v0.1.0. A startup
+migration engine through PgBouncer is **not tested** in v0.3.0. A startup <!-- x-release-please-version -->
 `search_path` is also not reliable through a pooler, so set the schema on the
 role or on a direct connection.
 
@@ -543,13 +585,24 @@ checked.
   declare) needs a role allowed to create it. A missing package or privilege is
   reported, with exit 3, as
   `extension "x" is not installed (install its server package and run CREATE EXTENSION as a role that may)`.
+  If a superuser creates the extension by hand, list it in
+  `migrate.external_extensions` so no migration emits it (section 7).
 
 ## 6. Custom SQL migrations
 
 Worked example: `examples/custom-sql-migration`.
 
-There is no `momo migrate new --custom` in v0.1.0. You can still add hand-written
-SQL by creating the files yourself:
+`momo migrate new --custom <name>` (offline) writes the three files for an
+empty hand-written migration: `<version>_<name>.up.sql` (comments only, no
+`-- momo:generated`), `<version>_<name>.snapshot.json` (a copy of the latest
+snapshot with the new version and that snapshot as its parent) and the extended
+`momo.sum`. The name follows the `diff` rule (lowercase letters, digits and
+underscores, starting with a letter). It needs an existing snapshot to copy:
+run `diff` first (exit 2 otherwise), and it never overwrites a file (exit 1).
+Write the SQL in the up file, then run `momo migrate hash` (the file changed
+after `momo.sum` was written) and `momo migrate validate`.
+
+You can also create the files yourself:
 
 1. Choose a version greater than the latest and a name:
    `20260301120000_backfill_slug.up.sql`. Do not put `-- momo:generated` in it.
@@ -571,26 +624,150 @@ will try to generate the same change again.
 
 Worked example: `examples/adopt-existing-schema`.
 
-Momo has no command that turns a database into models or a snapshot.
-(`migrate.Engine.Inspect` returns the live schema as a Go value, but nothing
-in the CLI writes it.) Procedure:
+`momo generate --from-db` reads a live PostgreSQL database and writes the
+models and the init snapshot, so nothing has to be written by hand first.
 
-1. Write the models so they match the database.
-2. `momo migrate diff init` against the empty directory writes the initial
-   migration and snapshot. Do not apply it.
+1. Run `momo generate --from-db DATABASE_URL`. The value is a database URL, `-`
+   to read the URL from standard input, or the name of an environment variable
+   that holds it; prefer the last two, because a URL on the command line is
+   visible in the process list. It inspects the schemas named by
+   `migrate.schemas` (default: the current schema), writes one
+   `<table>_model.go` per table into the model package (`--out`, else
+   `introspect.out`, else the first local entry of `packages`, else `./models`)
+   and, when the migration directory has no snapshot, the init migration and
+   snapshot. Do not apply the init migration.
+2. Run `momo generate`, which writes the generated code for the new models.
 3. `momo migrate baseline --version <init version>`. It checks the live
    database against that snapshot, including view, policy and trigger text, and
    exits 1 with `differing object kinds: ...` on a mismatch, then records every
    migration up to that version as `applied` with `statements_applied = 0` and
    `apply_id = baseline`, without running them. `--force` records anyway; use it
    only after reviewing the mismatch. Schema objects outside the models, such as
-   extra extensions, count as a mismatch: add them to `migrate.exclude`.
+   extra extensions, count as a mismatch: add them to `migrate.exclude`. The
+   run prints a hint for the extensions and skipped tables it found.
 4. From then on use `diff` and `apply`.
 
-`baseline` needs `CREATE` on the database for the canonicalization step when the
-snapshot has views, functions, triggers or policies; `--force` does not waive
-that. Without that privilege it fails with an error naming it. It takes the
-lock and refuses on dirty or checksum problems like `apply`.
+The models carry exact table and column names (a `table` or `column` tag is
+written wherever the naming preset would derive another name), Go types,
+nullability (a pointer, or the `nullable` tag for slices), defaults, `size`,
+`precision` and `scale`, enums, primary keys, identity and serial columns,
+single-column indexes as tags, other indexes, unique constraints, checks and
+comments in the `MomoConfig` method, and every foreign key the generator can
+derive as a `belongs_to` field with its `on_delete` and `on_update` actions.
+`numeric` columns are Go strings (the `decimal-as-string` note); an
+`introspect.types` rule picks a decimal type instead.
+
+A column type with no Go mapping is an error and nothing is written; add a rule
+to the `introspect` section of `momo.yaml`. Constraints the models cannot
+declare are left out of the models and the snapshot and printed as warnings, so
+the two agree and the baseline reports them: composite foreign keys, foreign
+keys whose name is not table, column and `_fkey`, foreign keys that do not
+reference a single-column primary key, unique expression indexes, generated
+columns, `generated always` identity (modeled as by default), and PostgreSQL
+schemas other than the current one.
+
+### The introspect section
+
+`momo.yaml` holds what the database cannot say, and it is applied again on every
+run:
+
+```yaml
+introspect:
+  package: models # default: the directory name
+  out: ./models # default: the first local entry of packages
+  skip: ["_prisma_*"] # table globs: no model, not in the snapshot
+  types: # SQL type to Go type, for every column of that type
+    inet: { go: string }
+    numeric(12,2):
+      { go: decimal.Decimal, import: github.com/shopspring/decimal }
+  columns: # first to last; later rules win, tags add up
+    - match: "*.updated_at" # glob over table.column
+      tags: [updated_at]
+    - match: "users.settings"
+      go: "types.JSON[Settings]"
+      name: Prefs # Go field name
+  tables:
+    users: { name: Account, tags: ["soft_delete:timestamp"] }
+```
+
+A rule's `tags` are momo tag options; one with the key of a generated option
+replaces it. A Go type needs no `import` for `types.`, `vector.`, `time.`,
+`json.` or `sql.`. Add skipped tables to `migrate.exclude` too, so the baseline
+ignores the live tables.
+
+### Running it again
+
+The schema keeps changing during a port. A re-run rewrites the model files that
+nobody edited. Each file starts with a header that holds the hash of its body:
+when the body still matches, the file is regenerated freely. A file with hand
+edits, or one that `--from-db` did not write, is never replaced. A hand-edited
+file stays quiet while the database has not changed its model; it conflicts
+only when the regenerated model differs. The run writes
+the regenerated version next to it as `<file>.new`, prints
+`conflict: <file>`, and exits 1; merge the two by hand and delete the `.new`
+file, or run again with `--overwrite` to take the regenerated one. A file whose
+table is gone is printed as `orphan` and never deleted. `--check` writes
+nothing, prints `stale: <file>` for each difference and exits 1. The init
+snapshot is written once: when the migration directory already has a snapshot,
+use `diff` for later schema changes. Put code of your own in other files and
+rules in the `introspect` section, and a re-run stays quiet.
+
+`baseline` needs `CREATE` on the database for the canonicalization step when
+the snapshot has views, functions, triggers or policies, **or any table with
+text PostgreSQL rewrites**: a column default or generation expression, a check
+constraint, an index predicate or an index expression. A snapshot of plain
+tables, columns, keys and plain indexes needs no such privilege
+(`TestBaselineAsAppRole`). `--force` does not waive it: the error is
+`ErrCanonicalizePrivilege`, naming the privilege, and nothing is recorded
+(`TestBaselineAsAppRoleNeedsCreateForTableText`). Run the baseline once as a
+role that has `CREATE` on the database (for example the owner role), or grant it
+for that run. It takes the lock and refuses on dirty or checksum problems like
+`apply`.
+
+### Roles and extensions (verified)
+
+Checked on CI with a role that is not a superuser and has no `CREATE` on the
+database:
+
+- `CREATE EXTENSION IF NOT EXISTS vector` **succeeds** when the extension
+  already exists (PostgreSQL only emits a notice; it checks existence before
+  privileges). So the statement that a generated migration emits is harmless for
+  that role once a superuser has installed pgvector
+  (`TestAppRoleExtensionIfNotExists`). When the extension is not installed the
+  statement needs a privileged role, as before.
+- `baseline` and `apply` run `CREATE TABLE IF NOT EXISTS` for the history table.
+  PostgreSQL checks `CREATE` on the schema before it looks for the table, so a
+  role with only `USAGE` on the schema is refused with the error
+  `permission denied for schema` even when it owns an existing
+  `momo_migrations` (`TestBaselineAsAppRoleNeedsCreateOnSchema`). The migrator role needs `CREATE`
+  on its schema: `GRANT CREATE ON SCHEMA app TO app_role`.
+- With `CREATE` on the schema but not on the database, `baseline` works for a
+  snapshot without table text (`TestBaselineAsAppRole`) and fails with
+  `ErrCanonicalizePrivilege` otherwise (section 7).
+
+### Extensions managed outside momo
+
+Set `migrate.external_extensions` in `momo.yaml` for an extension that a
+superuser installs by hand:
+
+```yaml
+migrate:
+  external_extensions: [vector]
+```
+
+Names are exact. For each listed extension momo
+
+- never emits `CREATE EXTENSION` from `diff` (or `AutoMigrate`), even when a
+  model has a `vector` column, and keeps it out of the snapshot it writes;
+- does not report it from `drift`, and does not count it as a mismatch in
+  `baseline`, even though the live database has it.
+
+The migrations then no longer create the extension, so a new environment must
+get it before the first `apply`. Use it only when that is the intent. It differs
+from `migrate.exclude`, which hides unmanaged objects of every kind from drift
+and baseline but does not stop `diff` from emitting `CREATE EXTENSION` for a
+model that needs it. If a snapshot already declares the extension, the setting
+hides it on both sides, so no drop or create is generated either.
 
 A database that uses `serial` or `bigserial` ids is adopted with the `serial`
 tag, as in `pk,serial` on an `int64` field. The tag renders `smallserial`,
@@ -613,6 +790,56 @@ would then be built with identity while production keeps its serial.
 changes only, writes no history and no files, and returns the rest as
 `Skipped`. Do not mix it with versioned migrations on one schema.
 
+## 7a. Cutover from Prisma `db push` to momo
+
+Playbook for a database whose schema is changed by `prisma db push` and
+hand-written idempotent SQL files (`DO $$ ... IF NOT EXISTS` guards, `GRANT`
+lines, a hand-created extension), moving to momo owning the DDL. Rehearse every
+step on a copy of production.
+
+1. **Models first.** Write the momo models so they match the live database
+   (section 7). Columns Prisma generates in the client, such as cuid ids, are
+   not in the database; model them as plain columns.
+2. **Declare what you do not own.** Put the extension a superuser installs in
+   `migrate.external_extensions`. Put tables, views and functions that stay
+   outside the models (an analytics schema, an audit table, Prisma's
+   `_prisma_migrations`) in `migrate.exclude`. Roles, grants and sequences
+   outside a column are not part of the schema model; they stay in hand-written
+   SQL.
+3. **Write the initial migration.** `momo migrate diff init` against an empty
+   directory. Do not apply it. Read the generated SQL: it is what a new
+   environment would run, and it must build the schema you have.
+4. **Rehearse the baseline** on a copy, with
+   `momo migrate baseline --version <init version>`, as a role with `CREATE` on
+   the database (section 7). Exit 1
+   lists the differing object kinds. Fix the models or `exclude` until it is
+   clean. Do not use `--force` to skip a difference you have not read.
+5. **Dual-writer period: momo watches, it does not write.** While Prisma still
+   pushes, the database moves under momo. Do not baseline production yet and do
+   not apply migrations. Run `momo migrate drift` against a baselined copy, or
+   the rehearsal in step 4 against production, on a schedule. A table Prisma
+   added shows as `unmanaged:`, a new column in a managed table as
+   `changed: ... not in snapshot`, and an altered column as `changed:`. Each is
+   a task: put it in the models, or in `exclude`. Drift cannot see changed view,
+   trigger or policy text (section 1).
+6. **Freeze `db push`.** Stop `prisma db push` in every environment (remove it
+   from the deploy). Update the models to the final live state and, since
+   nothing was applied, delete the unapplied `init` files and run `diff init`
+   again, so the initial snapshot is the schema as it is at the freeze.
+7. **Baseline each environment.** In each environment run
+   `momo migrate baseline --version <init version>` once, then
+   `momo migrate drift` (expect `no drift`). The role that runs `apply` needs
+   `CREATE` on the schema (section 7). From then on `apply` runs only newer
+   migrations. A database created from scratch runs the init migration; it needs
+   the external extension installed first.
+8. **Hand off.** Schema changes go through `diff`; backfills and other data
+   changes through `momo migrate new --custom`, which replaces the hand-written
+   SQL files. Leave guards such as `IF NOT EXISTS` out of new files: the
+   history says what ran.
+
+Undo: baseline only writes history rows, so drop the `momo_migrations` table to
+return to the state before step 7; nothing else changed.
+
 ## 8. Security
 
 - `momo` redacts connection strings from everything it prints (stdout, stderr,
@@ -626,14 +853,35 @@ changes only, writes no history and no files, and returns the rest as
   by `***` before it is stored (`TestHistoryErrorIsRedacted`).
 - A warning on stderr (not a failure) when a command that needs a database is
   given a URL with `sslmode=disable` and any non-local host:
-  `TLS is disabled (sslmode=disable) for remote host H: credentials and data cross the network unencrypted; use sslmode=require or stronger`.
-  It names the hosts only.
-  `localhost`, `127.0.0.1`, `::1` and unix socket paths do not warn. Use
+  `TLS is not enforced (sslmode=disable) for remote host H: credentials and data can cross the network unencrypted; use sslmode=verify-full`.
+  It names the hosts only. It also fires when the URL or key=value string has
+  no `sslmode` (libpq then uses `prefer`, which falls back to plaintext), for
+  `allow` and `prefer`, for key=value connection strings, and when `sslmode`
+  comes from `PGSSLMODE`; a host missing from the string is read from
+  `PGHOST`. `localhost`, `127.0.0.1`, `::1`, unix socket paths and no host at
+  all do not warn, and neither do `require`, `verify-ca` and `verify-full`.
+  `require` encrypts but does not check the server's identity, so use
   `sslmode=verify-full` against a real server.
 - Do not pass the URL with `--url` on shared hosts (momo warns); use
   `migrate.url_env`, `MOMO_DATABASE_URL` or `--url -` (stdin).
 - Review `*.up.sql` in code review like any code: `apply` runs it as the
   connected role, and `momo.sum` only detects change, not intent.
+- Tamper detection is against accidental edits, not an attacker.
+  `momo migrate hash` rewrites `momo.sum` to match whatever is on disk, and
+  `momo migrate rehash --accept` stores the checksum of whatever file is on
+  disk in the history row. Both trust the files completely: anyone who can edit the
+  migration files and run those commands can make an edited migration pass
+  every check. Protect the migration directory with code review and write
+  access control, and the database with the migrator role's grants; `momo.sum`
+  does not.
+- `drift` and `baseline` execute model DDL on the target database. To compare
+  declared text with what the database reports, they create a scratch schema
+  and run the declared definitions (defaults, checks, index predicates, view
+  queries, function bodies, policy and trigger expressions) in a transaction
+  that is rolled back. That needs `CREATE` on the database, runs SQL taken
+  from your snapshots and models, and takes locks while it runs. Run them
+  against a scratch database restored from a backup, or a clone, rather than
+  production.
 
 ## Upgrading: generated file header
 
@@ -647,7 +895,7 @@ recognises that form, so orphan detection keeps working.
 After upgrading, run `momo generate` once. Until then `momo generate --check`
 reports the header change in every generated file.
 
-## Known issues in v0.1.0
+## Known issues
 
 Each is filed as a bug story in `.procoder/backlog/stories/<id>.md`.
 

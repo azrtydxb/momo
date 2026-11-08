@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"iter"
 	"slices"
-
-	"github.com/azrtydxb/momo/dialect"
 )
 
 // Subquery is a query usable as an expression: IN (...), EXISTS (...),
@@ -51,6 +49,8 @@ type selectCore struct {
 	limit       int64 // -1: none
 	offset      int64
 	lock        string
+	lockWait    string   // " NOWAIT" or " SKIP LOCKED", or empty
+	lockOf      []string // tables named by OF, copy-on-write
 	indexedBy   string
 	withDeleted bool
 	onlyDeleted bool
@@ -197,13 +197,14 @@ type keysetKey struct {
 	expr     Expr
 	desc     bool
 	nullable bool
+	flags    uint16 // column flags; a sensitive key masks its keyset value
 }
 
 func (sq SelectQuery[T]) keysetKeys() []keysetKey {
 	s := &sq.s
 	keys := make([]keysetKey, 0, len(s.order)+len(sq.meta.PK))
 	for _, o := range s.order {
-		k := keysetKey{expr: o.Expr, desc: o.Desc}
+		k := keysetKey{expr: o.Expr, desc: o.Desc, flags: flagsOf(o.Expr)}
 		if f, ok := o.Expr.(interface{ Flags() uint16 }); ok {
 			k.nullable = f.Flags()&FlagNullable != 0
 		}
@@ -225,7 +226,7 @@ func (sq SelectQuery[T]) keysetKeys() []keysetKey {
 			break
 		}
 		if !present {
-			keys = append(keys, keysetKey{expr: qcol{q, c.Name}, nullable: c.Flags&FlagNullable != 0})
+			keys = append(keys, keysetKey{expr: qcol{q, c.Name}, nullable: c.Flags&FlagNullable != 0, flags: c.Flags})
 		}
 	}
 	return keys
@@ -260,13 +261,13 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 	for i := range keys {
 		parts := make([]Predicate, 0, i+1)
 		for j := 0; j < i; j++ {
-			parts = append(parts, binOp{keys[j].expr, " = ", argExpr{s.keyset[j]}})
+			parts = append(parts, binOp{keys[j].expr, " = ", argExpr{v: s.keyset[j], flags: keys[j].flags}})
 		}
 		op := " > "
 		if keys[i].desc {
 			op = " < "
 		}
-		parts = append(parts, binOp{keys[i].expr, op, argExpr{s.keyset[i]}})
+		parts = append(parts, binOp{keys[i].expr, op, argExpr{v: s.keyset[i], flags: keys[i].flags}})
 		if len(parts) == 1 {
 			disjuncts[i] = parts[0]
 		} else {
@@ -296,24 +297,58 @@ func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] {
 	return sq
 }
 
-// ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED".
+// ForUpdate adds FOR UPDATE (PostgreSQL). Options: "NOWAIT", "SKIP LOCKED";
+// naming both is an ErrValidation, repeating one is not. A row lock cannot be
+// combined with DISTINCT, GROUP BY or HAVING: the build fails with
+// ErrValidation. Count and Exists wrap the whole statement, so they keep the
+// lock clause and lock the rows they count.
 func (sq SelectQuery[T]) ForUpdate(opt ...string) SelectQuery[T] {
 	return sq.withLock("FOR UPDATE", opt)
 }
 
-// ForShare adds FOR SHARE (PostgreSQL).
+// ForShare adds FOR SHARE (PostgreSQL). Options and restrictions are those of
+// ForUpdate.
 func (sq SelectQuery[T]) ForShare(opt ...string) SelectQuery[T] { return sq.withLock("FOR SHARE", opt) }
 
 func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
+	sq.s.lockWait = ""
 	for _, o := range opt {
 		switch o {
 		case "NOWAIT", "SKIP LOCKED":
-			l += " " + o
+			if sq.s.lockWait != "" && sq.s.lockWait != " "+o {
+				sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("lock options NOWAIT and SKIP LOCKED are mutually exclusive")}
+			}
+			sq.s.lockWait = " " + o
 		default:
 			sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("unknown lock option %q (want NOWAIT or SKIP LOCKED)", o)}
 		}
 	}
 	sq.s.lock = l
+	return sq
+}
+
+// LockOf narrows the row lock of ForUpdate or ForShare to the named tables
+// (FOR UPDATE OF t1, t2). A joined select needs it to lock only the claimed
+// side: a LEFT JOIN cannot lock its nullable side, and a job-claim join
+// locks the job table and leaves the parent alone. Each name is the
+// qualifier the table has in the query, its alias when it has one, and is
+// quoted as an identifier. The names render after the lock mode and before
+// NOWAIT or SKIP LOCKED, whatever the call order. Without a ForUpdate or
+// ForShare the build fails with ErrValidation; like them, LockOf returns
+// ErrUnsupported on SQLite. Each name must be the table or alias of the FROM or
+// a joined table, else the build fails with ErrValidation naming it. A lock
+// cannot be combined with DISTINCT, GROUP BY or HAVING (ErrValidation); other
+// invalid combinations, such as aggregates or UNION, are left to the server.
+func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
+	if len(tables) == 0 {
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("LockOf needs at least one table")}
+		return sq
+	}
+	if slices.Contains(tables, "") {
+		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("LockOf table name must not be empty")}
+		return sq
+	}
+	sq.s.lockOf = slices.Clone(tables)
 	return sq
 }
 
@@ -394,192 +429,6 @@ func (sq SelectQuery[T]) compileJoined() (Compiled, scanner[T], error) {
 	}
 	c, err := compile(sq.q.Dialect(), run.render)
 	return c, sc, err
-}
-
-func (sq SelectQuery[T]) render(b *Builder) { sq.renderBare(b, false) }
-
-// renderBare is render; onConflictFollows ends a select that has a FROM and
-// no WHERE in WHERE true so SQLite does not read ON CONFLICT as a join.
-func (sq SelectQuery[T]) renderBare(b *Builder, onConflictFollows bool) {
-	s := &sq.s
-	if s.err != nil {
-		b.SetErr(s.err)
-		return
-	}
-	names := make([]string, 0, 1+len(s.joins)+len(s.with))
-	for _, c := range s.with {
-		names = append(names, c.name)
-	}
-	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
-		if q, ok := src.(interface{ Qualifier() string }); ok {
-			names = append(names, q.Qualifier())
-		}
-	}
-	// FromSubquery and CTE bodies render inside this scope, so they can see
-	// the sibling FROM names. That is more lenient than SQL, which allows it
-	// only with LATERAL, but it is safe: it never hides a wrong table.
-	b.withScope(names, func() { sq.renderBody(b, onConflictFollows) })
-}
-
-func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
-	s := &sq.s
-	if len(s.with) > 0 {
-		b.WriteString("WITH ")
-		for _, c := range s.with {
-			if c.recursive {
-				if !b.d.RecursiveCTE {
-					b.unsupported("WITH RECURSIVE")
-				}
-				b.WriteString("RECURSIVE ")
-				break
-			}
-		}
-		for i, c := range s.with {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			b.Ident(c.name)
-			if len(c.cols) > 0 {
-				b.WriteString(" (")
-				for j, col := range c.cols {
-					if j > 0 {
-						b.WriteString(", ")
-					}
-					b.Ident(col)
-				}
-				b.writeByte(')')
-			}
-			b.WriteString(" AS ")
-			c.q.AppendSQL(b)
-		}
-		b.writeByte(' ')
-	}
-	b.WriteString("SELECT ")
-	if s.distinct {
-		b.WriteString("DISTINCT ")
-	}
-	if s.cols == nil {
-		if sq.meta.Table == "" {
-			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("projection query needs Columns")})
-			return
-		}
-		q := sq.qualifier()
-		for i, c := range sq.meta.Columns {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			b.QualifiedIdent(q, c.Name)
-		}
-	} else {
-		if len(s.cols) != len(sq.meta.Columns) && !s.keysOnly {
-			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("select list has %d expressions but result type maps %d fields", len(s.cols), len(sq.meta.Columns))})
-			return
-		}
-		for i, e := range s.cols {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			e.AppendSQL(b)
-		}
-	}
-	if s.from != nil {
-		b.WriteString(" FROM ")
-		s.from.appendFrom(b)
-		if s.indexedBy != "" {
-			if _, ok := s.from.(TableRef); !ok {
-				b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("IndexedBy needs a plain table as the FROM source")})
-				return
-			}
-			if b.d.Name != dialect.SQLite {
-				b.unsupported("INDEXED BY")
-				return
-			}
-			b.WriteString(" INDEXED BY ")
-			b.Ident(s.indexedBy)
-		}
-	}
-	for _, j := range s.joins {
-		b.writeByte(' ')
-		b.WriteString(j.kind)
-		b.writeByte(' ')
-		j.src.appendFrom(b)
-		if len(j.on) > 0 {
-			b.WriteString(" ON ")
-			appendAnd(b, j.on)
-		}
-	}
-	where := s.where
-	if s.keyset != nil {
-		if p := sq.keysetPredicate(b); p != nil {
-			where = append([]Predicate{p}, where...)
-		}
-	}
-	if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted {
-		where = append(slices.Clip(where), softDeletePred(sq.meta, sq.qualifier(), s.onlyDeleted))
-	}
-	if sq.meta.Table == "" && !s.withDeleted {
-		// A projection has no soft-delete column of its own: the filter
-		// comes from the table it reads FROM. Joined tables are left alone,
-		// as for a model.
-		if t, ok := s.from.(TableRef); ok && t.SoftDelete != "" {
-			where = append(slices.Clip(where), softMarkerPred{t.Qualifier(), t.SoftDelete, t.SoftDeleteKind, s.onlyDeleted})
-		}
-	}
-	if len(where) > 0 {
-		b.WriteString(" WHERE ")
-		appendAnd(b, where)
-	} else if s.from != nil && onConflictFollows {
-		b.WriteString(" WHERE true")
-	}
-	if len(s.groupBy) > 0 {
-		b.WriteString(" GROUP BY ")
-		appendList(b, s.groupBy)
-	}
-	if len(s.having) > 0 {
-		b.WriteString(" HAVING ")
-		appendAnd(b, s.having)
-	}
-	if s.keyset != nil && len(s.order) > 0 {
-		// A keyset query orders by the effective keys, directions explicit.
-		b.WriteString(" ORDER BY ")
-		for i, k := range sq.keysetKeys() {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			if i < len(s.order) {
-				s.order[i].appendSQL(b)
-			} else {
-				Order{Expr: k.expr, Desc: k.desc}.appendSQL(b)
-			}
-		}
-	} else if len(s.order) > 0 {
-		b.WriteString(" ORDER BY ")
-		for i, o := range s.order {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			o.appendSQL(b)
-		}
-	}
-	if s.limit >= 0 {
-		b.WriteString(" LIMIT ")
-		b.Arg(s.limit)
-	}
-	if s.offset > 0 {
-		if s.limit < 0 && b.d.Name == dialect.SQLite {
-			b.WriteString(" LIMIT -1")
-		}
-		b.WriteString(" OFFSET ")
-		b.Arg(s.offset)
-	}
-	if s.lock != "" {
-		if !b.d.Locking {
-			b.unsupported(s.lock)
-			return
-		}
-		b.writeByte(' ')
-		b.WriteString(s.lock)
-	}
 }
 
 func joinSources(js []join) []TableSource {
@@ -906,9 +755,9 @@ func (r rawSubquery) render(b *Builder) { b.appendRaw(r.sql, r.args) }
 //
 // Safety contract: as for SQL, sql is inserted verbatim and must be a
 // trusted constant; '?' binds the next argument and "??" is a literal '?'.
-// Momo cannot check which tables the fragment references. Only '?'
-// placeholders bind; never write native '$1' style placeholders, which would
-// collide with momo's own numbering. For a scalar subquery as a typed
+// Momo cannot check which tables the fragment references. On PostgreSQL a
+// native $n placeholder binds the nth argument of this fragment (see SQL), so
+// pgx and sqlc statements port unchanged; momo renumbers it. For a scalar subquery as a typed
 // comparison operand use TypedSQL[T]("?", sub): the subquery renders its own
 // parentheses.
 func RawSubquery(sql string, args ...any) Subquery {

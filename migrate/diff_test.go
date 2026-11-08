@@ -307,3 +307,105 @@ func TestDiffFunctionViewChanges(t *testing.T) {
 		t.Fatalf("normalized equal queries are no diff: %v %v", cs, err)
 	}
 }
+
+func TestDiffObjectsOrderAndPayloads(t *testing.T) {
+	trg := func(name, timing string) schema.Trigger {
+		return schema.Trigger{Table: "users", Name: name, Timing: timing, Events: []string{"INSERT"}, Function: "f"}
+	}
+	d := &differ{}
+	diffObjects(d, triggerSpec,
+		[]schema.Trigger{trg("same", "BEFORE"), trg("changed", "BEFORE"), trg("gone", "AFTER")},
+		[]schema.Trigger{trg("new", "AFTER"), trg("same", "BEFORE"), trg("changed", "AFTER")},
+		[]schema.Trigger{trg("same", "BEFORE"), trg("changed", "BEFORE"), trg("gone", "AFTER")},
+		[]schema.Trigger{trg("new", "AFTER"), trg("same", "BEFORE"), trg("changed", "AFTER")})
+	tr := func(name, timing string) *schema.Trigger { v := trg(name, timing); return &v }
+	want := []Change{
+		{Kind: CreateTrigger, Table: "users", Name: "new", After: tr("new", "AFTER")},
+		{Kind: DropTrigger, Table: "users", Name: "changed", Before: tr("changed", "BEFORE")},
+		{Kind: CreateTrigger, Table: "users", Name: "changed", After: tr("changed", "AFTER")},
+		{Kind: DropTrigger, Table: "users", Name: "gone", Before: tr("gone", "AFTER")},
+	}
+	if !reflect.DeepEqual(d.changes, want) {
+		t.Fatalf("trigger changes = %+v, want %+v", d.changes, want)
+	}
+
+	pol := func(name, using string) schema.Policy {
+		return schema.Policy{Table: "users", Name: name, Command: "ALL", Permissive: true, Using: using}
+	}
+	p := &differ{}
+	diffObjects(p, policySpec,
+		[]schema.Policy{pol("changed", "true"), pol("gone", "true")},
+		[]schema.Policy{pol("changed", "false"), pol("new", "true")},
+		[]schema.Policy{pol("changed", "true"), pol("gone", "true")},
+		[]schema.Policy{pol("changed", "false"), pol("new", "true")})
+	pp := func(name, using string) *schema.Policy { v := pol(name, using); return &v }
+	wantP := []Change{
+		{Kind: DropPolicy, Table: "users", Name: "changed", Before: pp("changed", "true")},
+		{Kind: CreatePolicy, Table: "users", Name: "changed", After: pp("changed", "false")},
+		{Kind: CreatePolicy, Table: "users", Name: "new", After: pp("new", "true")},
+		{Kind: DropPolicy, Table: "users", Name: "gone", Before: pp("gone", "true")},
+	}
+	if !reflect.DeepEqual(p.changes, wantP) {
+		t.Fatalf("policy changes = %+v, want %+v", p.changes, wantP)
+	}
+
+	f := &differ{}
+	fn := func(body string) schema.Function {
+		return schema.Function{Name: "f", Returns: "integer", Language: "sql", Body: body}
+	}
+	diffObjects(f, functionSpec, []schema.Function{fn("select 1")}, []schema.Function{fn("select 2")},
+		[]schema.Function{fn("select 1")}, []schema.Function{fn("select 2")})
+	b, a := fn("select 1"), fn("select 2")
+	wantF := []Change{{Kind: ReplaceFunction, Name: "f", Before: &b, After: &a}}
+	if !reflect.DeepEqual(f.changes, wantF) {
+		t.Fatalf("function changes = %+v, want %+v", f.changes, wantF)
+	}
+}
+
+func TestDiffTriggerPolicyChanges(t *testing.T) {
+	from := base()
+	from.Triggers = []schema.Trigger{
+		{Table: "users", Name: "t_same", Timing: "BEFORE", Events: []string{"INSERT"}, Function: "f"},
+		{Table: "users", Name: "t_changed", Timing: "BEFORE", Events: []string{"INSERT"}, Function: "f"},
+		{Table: "users", Name: "t_gone", Timing: "AFTER", Events: []string{"DELETE"}, Function: "f"},
+	}
+	from.Policies = []schema.Policy{
+		{Table: "users", Name: "p_same", Command: "ALL", Permissive: true, Using: "true"},
+		{Table: "users", Name: "p_changed", Command: "ALL", Permissive: true, Using: "true"},
+		{Table: "users", Name: "p_gone", Command: "SELECT", Permissive: true, Using: "true"},
+	}
+	from.Functions = []schema.Function{{Name: "f_gone", Returns: "integer", Language: "sql", Body: "select 1"}}
+	to := base()
+	to.Triggers = []schema.Trigger{
+		{Table: "users", Name: "t_same", Timing: "BEFORE", Events: []string{"INSERT"}, Function: "f"},
+		{Table: "users", Name: "t_changed", Timing: "AFTER", Events: []string{"INSERT"}, Function: "f"},
+		{Table: "users", Name: "t_new", Timing: "AFTER", Events: []string{"UPDATE"}, Function: "f"},
+	}
+	to.Policies = []schema.Policy{
+		{Table: "users", Name: "p_same", Command: "ALL", Permissive: true, Using: "true"},
+		{Table: "users", Name: "p_changed", Command: "ALL", Permissive: true, Using: "false"},
+		{Table: "users", Name: "p_new", Command: "SELECT", Permissive: true, Using: "true"},
+	}
+	to.Functions = []schema.Function{{Name: "f_new", Returns: "integer", Language: "sql", Body: "select 1"}}
+	changes, _, err := Diff(from, to, DiffOptions{AllowDestructive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, c := range changes {
+		switch c.Kind {
+		case CreateTrigger, DropTrigger, CreatePolicy, DropPolicy, CreateFunction, DropFunction:
+			got[string(c.Kind)+" "+c.Table+"."+c.Name]++
+		}
+	}
+	want := map[string]int{
+		"create_trigger users.t_changed": 1, "drop_trigger users.t_changed": 1,
+		"create_trigger users.t_new": 1, "drop_trigger users.t_gone": 1,
+		"create_policy users.p_changed": 1, "drop_policy users.p_changed": 1,
+		"create_policy users.p_new": 1, "drop_policy users.p_gone": 1,
+		"create_function .f_new": 1, "drop_function .f_gone": 1,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("changes = %v, want %v", got, want)
+	}
+}

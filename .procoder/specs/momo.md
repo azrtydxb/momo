@@ -154,7 +154,7 @@ matrix are first-class deliverables, not afterthoughts.
 
 ## Constraints
 
-- Go: minimum 1.26 in go.mod; CI tests 1.26 and 1.27. Dependencies pinned in go.mod/go.sum.
+- Go: minimum 1.26.10 in go.mod; CI tests 1.26 and 1.27. Dependencies pinned in go.mod/go.sum.
 - SQLite driver: mattn/go-sqlite3 v1.14.52 (cgo) with sqlite-vec v0.1.6 statically linked via github.com/asg017/sqlite-vec-go-bindings/cgo; SQLite builds require cgo and a C toolchain. The database/sql adapter itself stays driver-agnostic.
 - PostgreSQL driver: jackc/pgx v5 (pinned) via pgxpool, plus pgx stdlib for *sql.DB adoption.
 - MySQL/MariaDB: github.com/go-sql-driver/mysql (pinned); supported servers MySQL 8.4 LTS, MySQL 9.7 LTS and MariaDB 11.8 LTS (no innovation releases). Vector capability: MariaDB 11.8 full search with VECTOR INDEX; MySQL 9.7 VECTOR storage only, distance queries return ErrUnsupported (DISTANCE() is HeatWave/MySQL AI only); MySQL 8.4 has no vector columns; CI uses official MySQL and MariaDB service containers.
@@ -180,7 +180,7 @@ matrix are first-class deliverables, not afterthoughts.
 
 - `momo.New` wraps a driver and returns a DB handle; DB and Tx handles implement the sealed Querier interface.
 - Generic Select over a model type T, taking a Querier, returns an immutable `SelectQuery[T]` with `Where`, `Join/LeftJoin/CrossJoin`, `Columns`, `GroupBy`, `Having`, `OrderBy`, `Limit`, `Offset`, `After` (keyset), `With/WithRecursive`, `ForUpdate/ForShare`, `WithDeleted`, `SQL()`; terminals `All`, `One` (ErrNotFound / ErrTooManyRows), `First`, `Each`, `Iter` (iter.Seq2), `Count`, `Exists`.
-- Insert over T: `.Values(assignments...)` / `.Model(&m)` / `.Models(ms)` / `.Omit(cols...)` / `.OnConflict(cols...).DoNothing()|DoUpdate(assignments...)` / `.Returning...`; Update over T: `.Set(...)`.Where(...)` / `.Model(&m)` (version-checked) / `.AllRows()`; Delete and SoftDelete over T.
+- Insert over T: `.Values(assignments...)` / `.Model(&m)` / `.Models(ms)` / `.Omit(cols...)` / `.OnConflict(cols...).DoNothing()|DoUpdate(assignments...)` / `.Returning...`; Update over T: `Set` with `Where`, `Model` (version-checked), or `AllRows`; Delete and SoftDelete over T.
 - Typed columns: `Column[T]` (`Eq/Ne/Lt/Le/Gt/Ge/In/Between/IsNull/...`, `Set/SetExpr/SetDefault/SetExcluded`), `NullColumn[T]` (adds `SetNull`), vector columns with distance expressions.
 - Raw SQL: `momo.SQL(fragment, args...)`, `momo.TypedSQL[T]`, `momo.Exec`, raw typed query — `?` placeholders, `??` for a literal `?`.
 - Transactions: `db.Tx(ctx, opts, fn)`, `db.Begin`, `tx.Tx` (savepoint scope), `Savepoint/RollbackTo/Release`.
@@ -194,20 +194,20 @@ matrix are first-class deliverables, not afterthoughts.
 
 **CLI `momo`**
 
-| Command | Needs DB | Contract |
-|---|---|---|
-| `momo generate` | no | regenerate code for configured/current packages; refuses to overwrite non-generated files |
-| `momo generate --check` | no | exit 1 and list files if output would change |
-| `momo migrate diff <name> [--rename-table a=b] [--rename-column t.a=b] [--allow-destructive]` | no | diff models vs latest snapshot, write `<timestamp>_name.up.sql` (+ snapshot, + checksum entry); refuses destructive changes without the flag |
-| `momo migrate plan` | yes | print pending migrations and their SQL; changes nothing |
-| `momo migrate apply [--to N]` | yes | apply pending under lock; refuses if dirty or checksums mismatch |
-| `momo migrate status` | yes | applied / pending / dirty / mismatched per version |
-| `momo migrate validate [--db]` | no (yes with --db) | offline: checksums, numbering, snapshot chain; with --db also history vs files |
-| `momo migrate baseline --version N` | yes | record 1..N as applied without running, after verifying schema matches snapshot N (override with --force) |
-| `momo migrate drift` | yes | inspected DB vs latest applied snapshot; reports changed, missing and unmanaged objects; exit 1 on drift |
-| `momo migrate rebase [--onto <branch-or-version>]` | no | regenerate this branch's unapplied migrations on top of the latest snapshot of the target, refusing if they contain hand-written SQL that cannot be regenerated |
-| `momo migrate lint` | no | report blocking/rewriting operations in pending migrations with severity and safer alternatives; exit 1 on errors |
-| `momo migrate resolve --version N --applied\|--rolled-back` | yes | operator records manual recovery of a dirty migration |
+| Command                                                                                       | Needs DB           | Contract                                                                                                                                                        |
+| --------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `momo generate`                                                                               | no                 | regenerate code for configured/current packages; refuses to overwrite non-generated files                                                                       |
+| `momo generate --check`                                                                       | no                 | exit 1 and list files if output would change                                                                                                                    |
+| `momo migrate diff <name> [--rename-table a=b] [--rename-column t.a=b] [--allow-destructive]` | no                 | diff models vs latest snapshot, write `<timestamp>_name.up.sql` (+ snapshot, + checksum entry); refuses destructive changes without the flag                    |
+| `momo migrate plan`                                                                           | yes                | print pending migrations and their SQL; changes nothing                                                                                                         |
+| `momo migrate apply [--to N]`                                                                 | yes                | apply pending under lock; refuses if dirty or checksums mismatch                                                                                                |
+| `momo migrate status`                                                                         | yes                | applied / pending / dirty / mismatched per version                                                                                                              |
+| `momo migrate validate [--db]`                                                                | no (yes with --db) | offline: checksums, numbering, snapshot chain; with --db also history vs files                                                                                  |
+| `momo migrate baseline --version N`                                                           | yes                | record 1..N as applied without running, after verifying schema matches snapshot N (override with --force)                                                       |
+| `momo migrate drift`                                                                          | yes                | inspected DB vs latest applied snapshot; reports changed, missing and unmanaged objects; exit 1 on drift                                                        |
+| `momo migrate rebase [--onto <branch-or-version>]`                                            | no                 | regenerate this branch's unapplied migrations on top of the latest snapshot of the target, refusing if they contain hand-written SQL that cannot be regenerated |
+| `momo migrate lint`                                                                           | no                 | report blocking/rewriting operations in pending migrations with severity and safer alternatives; exit 1 on errors                                               |
+| `momo migrate resolve --version N --applied\|--rolled-back`                                   | yes                | operator records manual recovery of a dirty migration                                                                                                           |
 
 **Files**: `migrations/<dialect>/<YYYYMMDDHHMMSS>_<name>.up.sql` (UTC timestamp version), optional `.down.sql`, `<version>_<name>.snapshot.json` recording its parent version, a checksum file (named momo.sum). SQL file directives: `-- momo:no-transaction`, `-- momo:destructive`. Project config: a YAML file named momo.yaml at the module root ( parsed with go.yaml.in/yaml/v3) listing model packages, per-dialect migration directories, database URL environment variables and unmanaged-object exclude patterns; CLI flags override it.
 
@@ -365,4 +365,3 @@ matrix are first-class deliverables, not afterthoughts.
 - [ ] [S-95] `TestDocsCodeBlocks` covers the guide pages and `TestMigrationGuidesComplete` asserts each guide has sections for models, queries, relations, hooks, transactions, migrations and errors; fails if a guide section is missing.
 
 ## Open questions
-

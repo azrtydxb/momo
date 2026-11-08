@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/gen/fromdb"
 	"github.com/azrtydxb/momo/gen/naming"
 )
 
@@ -25,19 +27,23 @@ type File struct {
 	Naming   string                    `yaml:"naming"`
 	Dialects []string                  `yaml:"dialects"`
 	Tags     []string                  `yaml:"tags"`
+	Types    map[string]string         `yaml:"types"`
 	Migrate  MigrateConfig             `yaml:"migrate"`
 	Plugins  map[string]map[string]any `yaml:"plugins"`
+	// Introspect steers `momo generate --from-db`.
+	Introspect fromdb.Config `yaml:"introspect"`
 }
 
 // MigrateConfig is the single schema of the migrate: section. Its semantics
 // are owned by the migrations plan; this package validates the shape only.
 type MigrateConfig struct {
-	Dir              map[string]string `yaml:"dir"`               // dialect -> directory
-	URLEnv           map[string]string `yaml:"url_env"`           // dialect -> environment variable name
-	Schemas          []string          `yaml:"schemas"`           // default: the connection's current_schema()
-	LockTimeout      string            `yaml:"lock_timeout"`      // Go duration string, default "5s"
-	StatementTimeout string            `yaml:"statement_timeout"` // Go duration string, default unset
-	Exclude          []string          `yaml:"exclude"`           // glob patterns for unmanaged objects
+	Dir                map[string]string `yaml:"dir"`                 // dialect -> directory
+	URLEnv             map[string]string `yaml:"url_env"`             // dialect -> environment variable name
+	Schemas            []string          `yaml:"schemas"`             // default: the connection's current_schema()
+	LockTimeout        string            `yaml:"lock_timeout"`        // Go duration string, default "5s"
+	StatementTimeout   string            `yaml:"statement_timeout"`   // Go duration string, default unset
+	Exclude            []string          `yaml:"exclude"`             // glob patterns for unmanaged objects
+	ExternalExtensions []string          `yaml:"external_extensions"` // extensions created outside momo: never emitted, never reported
 }
 
 // Load reads and validates the momo.yaml at path.
@@ -71,6 +77,9 @@ func Load(path string) (*File, error) {
 			return nil, fmt.Errorf("%s: naming: %w", path, err)
 		}
 	}
+	if err := validateTypes(f.Types); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	for _, d := range f.Dialects {
 		if dialect.For(dialect.Name(d)) == nil {
 			return nil, fmt.Errorf("%s: dialects: unknown dialect %q", path, d)
@@ -79,10 +88,42 @@ func Load(path string) (*File, error) {
 	if err := f.Migrate.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := f.Introspect.Validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return &f, nil
 }
 
+// validateTypes checks the types: section. Only the default of time.Time can
+// be overridden, and the replacement must be a date/time SQL type that
+// gen.ValidTimeType accepts, because it is written into DDL.
+func validateTypes(types map[string]string) error {
+	for k, v := range types {
+		if k != "time.Time" {
+			return fmt.Errorf("types: %q cannot be overridden; only time.Time is supported", k)
+		}
+		if !gen.ValidTimeType(v) {
+			return fmt.Errorf("types: %s: %q is not a timestamp type; use timestamp, timestamptz, time or timetz with an optional precision 0-6 and an optional with/without time zone", k, v)
+		}
+	}
+	return nil
+}
+
+// extensionName is the form of an entry in migrate.external_extensions: the
+// name as pg_extension spells it, lower case, with no schema qualifier.
+var extensionName = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
+
 func (m *MigrateConfig) validate() error {
+	seen := map[string]bool{}
+	for _, x := range m.ExternalExtensions {
+		if !extensionName.MatchString(x) {
+			return fmt.Errorf("migrate.external_extensions: %q is not an extension name: use the lower-case name without spaces, quotes or a schema qualifier", x)
+		}
+		if seen[x] {
+			return fmt.Errorf("migrate.external_extensions: %q is listed twice", x)
+		}
+		seen[x] = true
+	}
 	for _, k := range []struct{ key, val string }{
 		{"migrate.lock_timeout", m.LockTimeout},
 		{"migrate.statement_timeout", m.StatementTimeout},
@@ -130,5 +171,5 @@ func ToConfig(f *File, dir string) (gen.Config, error) {
 		}
 		dialects = append(dialects, dialect.Name(d))
 	}
-	return gen.Config{Dir: dir, Naming: namer, Dialects: dialects, Tags: f.Tags}, nil
+	return gen.Config{Dir: dir, Naming: namer, Dialects: dialects, Tags: f.Tags, TypeDefaults: f.Types}, nil
 }
