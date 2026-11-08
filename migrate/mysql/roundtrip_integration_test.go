@@ -205,8 +205,8 @@ func TestMySQLMigrationRoundTrip(t *testing.T) {
 	}
 }
 
-// parentsTable is the referenced table of the foreign key tests: a unique key
-// on (a, b) serves keys on (a, b) and on (a).
+// parentsTable is the referenced table of the foreign key tests: unique keys on
+// (a) and on (a, b) for the keys that reference them.
 func parentsTable() schema.Table {
 	return schema.Table{
 		Name:       "parents",
@@ -216,7 +216,9 @@ func parentsTable() schema.Table {
 			{Name: "a", Type: "int"},
 			{Name: "b", Type: "int"},
 		},
-		Uniques: []schema.Unique{{Name: "parents_ab", Columns: []string{"a", "b"}}},
+		// MySQL 8.4 and later insist that a key references a unique key of
+		// exactly its columns, so each key below gets one.
+		Uniques: []schema.Unique{{Name: "parents_a", Columns: []string{"a"}}, {Name: "parents_ab", Columns: []string{"a", "b"}}},
 	}
 }
 
