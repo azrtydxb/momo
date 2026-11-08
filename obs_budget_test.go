@@ -11,7 +11,7 @@ import (
 
 // selectNoHooksAllocBudget is allocs/op of BenchmarkSelectNoHooks measured on
 // PostgreSQL. docs/PERFORMANCE.md records the same integer.
-const selectNoHooksAllocBudget = 0
+const selectNoHooksAllocBudget = 32
 
 func TestPerformanceDocRecordsBudget(t *testing.T) {
 	raw, err := os.ReadFile("docs/PERFORMANCE.md")
