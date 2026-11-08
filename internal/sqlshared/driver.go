@@ -15,10 +15,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/sqlmask"
 )
 
 // Hooks carries what differs between the two SQLite drivers.
@@ -189,35 +189,12 @@ type sqlRows struct {
 func (r sqlRows) Next() bool             { return r.r.Next() }
 func (r sqlRows) Scan(dest ...any) error { return r.h.scanErr(r.r.Scan(wrapDests(dest)...)) }
 
-// scanErr hides the text of a conversion failure; see MaskConversionErr.
+// scanErr hides the text of a conversion failure; see sqlmask.ConversionErr.
 func (h *Hooks) scanErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	return MaskConversionErr(h.Classify("", err), "sqlite: cannot convert the column value to the destination type", h.IsDriverErr)
-}
-
-// MaskConversionErr hides the text of a database/sql conversion failure:
-// database/sql quotes the stored value in it ("converting driver.Value type
-// string ("...")"). c must already be classified by the driver. Only errors
-// that look like a conversion failure are masked; cancellation, a closed Rows,
-// a *momo.Error and errors for which isDriverErr reports true pass through.
-// The cause stays reachable through errors.Unwrap, as with pgxdriver data
-// exceptions. msg is the fixed text of the masked error.
-func MaskConversionErr(c error, msg string, isDriverErr func(error) bool) error {
-	if c == nil {
-		return nil
-	}
-	var me *momo.Error
-	if isDriverErr(c) || errors.As(c, &me) ||
-		errors.Is(c, context.Canceled) || errors.Is(c, context.DeadlineExceeded) || errors.Is(c, sql.ErrNoRows) {
-		return c
-	}
-	text := c.Error()
-	if !strings.Contains(text, "converting") && !strings.Contains(text, "Scan error on column") {
-		return c
-	}
-	return DriverError{Cause: c, Msg: msg}
+	return sqlmask.ConversionErr(h.Classify("", err), "sqlite: cannot convert the column value to the destination type", h.IsDriverErr)
 }
 
 func (r sqlRows) Err() error   { return r.h.Classify("", r.r.Err()) }

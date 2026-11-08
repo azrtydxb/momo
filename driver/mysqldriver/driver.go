@@ -15,7 +15,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
-	"github.com/azrtydxb/momo/internal/sqlshared"
+	"github.com/azrtydxb/momo/internal/sqlmask"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -257,10 +257,10 @@ func (r sqlRows) Next() bool             { return r.r.Next() }
 func (r sqlRows) Scan(dest ...any) error { return scanErr(classify(r.r.Scan(dest...), r.stmt)) }
 
 // scanErr hides the text of a conversion failure, which quotes the stored
-// value; see sqlshared.MaskConversionErr. Server errors pass through: classify
+// value; see sqlmask.ConversionErr. Server errors pass through: classify
 // already redacts them.
 func scanErr(err error) error {
-	return sqlshared.MaskConversionErr(err, "mysql: cannot convert the column value to the destination type", func(err error) bool {
+	return sqlmask.ConversionErr(err, "mysql: cannot convert the column value to the destination type", func(err error) bool {
 		var se *mysql.MySQLError
 		return errors.As(err, &se)
 	})

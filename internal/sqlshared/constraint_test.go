@@ -3,7 +3,6 @@
 package sqlshared
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -41,24 +40,5 @@ func TestConstraintKind(t *testing.T) {
 		if got := ConstraintKind(msg); got != want {
 			t.Errorf("ConstraintKind(%q) = %v, want %v", msg, got, want)
 		}
-	}
-}
-
-func TestMaskConversionErrHidesQuotedValue(t *testing.T) {
-	never := func(error) bool { return false }
-	in := errors.New(`sql: Scan error on column index 0, name "x": converting driver.Value type string ("secret-value") to a int: invalid syntax`)
-	got := MaskConversionErr(in, "fixed", never)
-	if got.Error() != "fixed" || !errors.Is(got, in) {
-		t.Fatalf("got %q; want the fixed text with the cause reachable", got)
-	}
-	other := errors.New("boom")
-	if MaskConversionErr(other, "fixed", never) != other {
-		t.Error("an unrelated error was masked")
-	}
-	if MaskConversionErr(in, "fixed", func(error) bool { return true }) != in {
-		t.Error("a driver error was masked")
-	}
-	if MaskConversionErr(nil, "fixed", never) != nil {
-		t.Error("nil became an error")
 	}
 }

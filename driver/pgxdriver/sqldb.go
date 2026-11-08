@@ -12,7 +12,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
-	"github.com/azrtydxb/momo/internal/sqlshared"
+	"github.com/azrtydxb/momo/internal/sqlmask"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -243,9 +243,9 @@ func (r sqlRows) Next() bool             { return r.r.Next() }
 func (r sqlRows) Scan(dest ...any) error { return scanErr(ClassifyError(r.r.Scan(dest...))) }
 
 // scanErr hides the text of a conversion failure, which quotes the stored
-// value; see sqlshared.MaskConversionErr. Server errors pass through.
+// value; see sqlmask.ConversionErr. Server errors pass through.
 func scanErr(err error) error {
-	return sqlshared.MaskConversionErr(err, "pgx: cannot convert the column value to the destination type", func(err error) bool {
+	return sqlmask.ConversionErr(err, "pgx: cannot convert the column value to the destination type", func(err error) bool {
 		var pe *pgconn.PgError
 		return errors.As(err, &pe)
 	})
