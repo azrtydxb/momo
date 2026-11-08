@@ -38,7 +38,7 @@ MYSQL84_URL ?= root:momo@tcp(127.0.0.1:3306)/
 MYSQL97_URL ?= root:momo@tcp(127.0.0.1:3307)/
 MARIADB_URL ?= root:momo@tcp(127.0.0.1:3308)/
 
-.PHONY: bench bench-baseline bench-suite-smoke bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
+.PHONY: bench-gate bench bench-baseline bench-suite-smoke bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -101,6 +101,15 @@ bench-suite-smoke:
 # Rewrites bench/baseline/allocs.txt from the allocation-gate benchmarks.
 bench-baseline:
 	./bench/scripts/run.sh baseline
+
+# The allocation gate CI runs on pull requests (.github/workflows/bench-gate.yml),
+# runnable against any PostgreSQL: allocs/op versus bench/baseline/allocs.txt.
+BENCHSTAT = go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e
+bench-gate:
+	@set -e; out=$$(mktemp -d); \
+	(cd bench && BENCH_PG_URL='$(PG_URL)' $(GO) test -tags integration -run='^$$' -bench='BenchmarkAllocs_' -benchmem -count=6 ./... | tee $$out/new.txt); \
+	$(BENCHSTAT) -filter '.unit:allocs/op' bench/baseline/allocs.txt $$out/new.txt | tee $$out/delta.txt; \
+	(cd bench && $(GO) run ./cmd/benchgate -max-percent 5 $$out/delta.txt)
 
 bench-env:
 	cd bench && $(GO) run ./cmd/envcapture
