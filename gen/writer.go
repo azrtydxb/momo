@@ -69,6 +69,14 @@ func resolveExisting(path string) (string, error) {
 // contained reports whether path, with symlinks resolved, lies under the
 // resolved module root.
 func (w *Writer) contained(path string) (bool, error) {
+	// A symbolic link that points nowhere cannot be resolved, so the walk
+	// below would treat it as a path that does not exist yet and approve it
+	// by its parent. Where it would lead is unknown, so refuse it.
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		if _, err := filepath.EvalSymlinks(path); err != nil {
+			return false, nil
+		}
+	}
 	root, err := resolveExisting(w.options.ModuleRoot)
 	if err != nil {
 		return false, err

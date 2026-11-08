@@ -20,6 +20,7 @@ New here? Start with [getting started](getting-started.md).
 - [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, tuple rows (`Row1` to `Row10`), the soft-delete filter.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
+- [Read replicas](replicas.md): `WithReplicas`, which statements go to a replica, reading your own writes, and what happens when a replica is down.
 - [Testing applications](testing.md): the `momotest` kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
 - [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI, and the stability policy.
