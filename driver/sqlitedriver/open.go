@@ -81,6 +81,9 @@ func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
 
 func buildDSN(dsn string, cfg Config) (string, error) {
 	base, rawQuery, _ := strings.Cut(dsn, "?")
+	if base == "" {
+		return "", &momo.Error{Kind: momo.ErrValidation, Op: "open", Err: errors.New("sqlitedriver: the DSN names no database; pass a file path, a \"file:\" URI or \":memory:\"")}
+	}
 	q, err := url.ParseQuery(rawQuery)
 	if err != nil {
 		return "", fmt.Errorf("sqlitedriver: parse DSN query: %w", err)
@@ -172,7 +175,7 @@ func isMemory(base string, q url.Values) bool {
 	if strings.HasPrefix(base, "file:") {
 		return base == "file::memory:" || q.Get("mode") == "memory"
 	}
-	return base == "" || base == ":memory:"
+	return base == ":memory:"
 }
 
 // The oldest SQLite the dialect description assumes (RETURNING).

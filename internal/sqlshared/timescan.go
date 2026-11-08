@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build cgo && !windows
-
-package sqlitedriver
+package sqlshared
 
 import (
 	"database/sql"
@@ -29,7 +27,7 @@ var timeLayouts = []string{
 	"2006-01-02",
 }
 
-var errUnparsableTime = errors.New("sqlitedriver: cannot parse the stored text as a time")
+var errUnparsableTime = errors.New("sqlite: cannot parse the stored text as a time")
 
 func parseTime(s string) (time.Time, error) {
 	for _, l := range timeLayouts {
@@ -57,7 +55,7 @@ func timeValue(src any) (t time.Time, ok bool, err error) {
 	case int64:
 		return time.Unix(v, 0).UTC(), true, nil
 	}
-	return time.Time{}, false, fmt.Errorf("sqlitedriver: cannot scan %T into a time", src)
+	return time.Time{}, false, fmt.Errorf("sqlite: cannot scan %T into a time", src)
 }
 
 type timeScanner struct{ dst *time.Time }
@@ -68,7 +66,7 @@ func (s timeScanner) Scan(src any) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("sqlitedriver: NULL cannot be scanned into time.Time")
+		return fmt.Errorf("sqlite: NULL cannot be scanned into time.Time")
 	}
 	*s.dst = t
 	return nil

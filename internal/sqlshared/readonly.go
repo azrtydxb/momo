@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build cgo && !windows
-
-package sqlitedriver
+package sqlshared
 
 import (
 	"context"
@@ -14,27 +12,28 @@ import (
 
 // beginReadOnly turns query_only on for conn and starts a deferred
 // transaction on it with a plain BEGIN. database/sql cannot be used here:
-// mattn begins every sql.Tx with the DSN's _txlock (immediate by default), and
-// BEGIN IMMEDIATE fails under query_only. roTx resets the pragma when the
-// transaction ends.
-func beginReadOnly(ctx context.Context, conn *sql.Conn) (*roTx, error) {
+// the SQLite drivers begin every sql.Tx with the DSN's _txlock (immediate by
+// default), and BEGIN IMMEDIATE fails under query_only. roTx resets the pragma
+// when the transaction ends.
+func (h *Hooks) beginReadOnly(ctx context.Context, conn *sql.Conn) (*roTx, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, ClassifyError(err)
+		return nil, h.Classify("begin", err)
 	}
 	if _, err := conn.ExecContext(ctx, "PRAGMA query_only=ON"); err != nil {
-		return nil, ClassifyError(err)
+		return nil, h.Classify("begin", err)
 	}
 	if _, err := conn.ExecContext(ctx, "BEGIN DEFERRED"); err != nil {
 		resetQueryOnly(conn)
-		return nil, ClassifyError(err)
+		return nil, h.Classify("begin", err)
 	}
-	return &roTx{conn: conn}, nil
+	return &roTx{conn: conn, h: h}, nil
 }
 
 // roTx is a read-only transaction driven with BEGIN and COMMIT statements on
 // one *sql.Conn.
 type roTx struct {
 	conn   *sql.Conn
+	h      *Hooks
 	mu     sync.Mutex
 	done   bool
 	onDone func() // called once, after the transaction ended; may be nil
@@ -55,9 +54,9 @@ func (t *roTx) Query(ctx context.Context, q string, args []any) (momo.Rows, erro
 	}
 	rows, err := t.conn.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, ClassifyError(err)
+		return nil, t.h.Classify("select", err)
 	}
-	return sqlRows{rows}, nil
+	return sqlRows{r: rows, h: t.h}, nil
 }
 
 func (t *roTx) Exec(ctx context.Context, q string, args []any) (int64, error) {
@@ -66,9 +65,9 @@ func (t *roTx) Exec(ctx context.Context, q string, args []any) (int64, error) {
 	}
 	res, err := t.conn.ExecContext(ctx, q, args...)
 	if err != nil {
-		return 0, ClassifyError(err)
+		return 0, t.h.Classify("exec", err)
 	}
-	return rowsAffected(res)
+	return t.h.rowsAffected(res)
 }
 
 func (t *roTx) Commit(ctx context.Context) error   { return t.finish(ctx, "COMMIT", "commit") }
@@ -99,21 +98,25 @@ func (t *roTx) finish(ctx context.Context, stmt, op string) error {
 			if t.onDone != nil {
 				t.onDone()
 			}
-			return ClassifyError(err)
+			return t.h.Classify(op, err)
 		}
 	}
 	resetQueryOnly(t.conn)
 	if t.onDone != nil {
 		t.onDone()
 	}
-	return ClassifyError(err)
+	return t.h.Classify(op, err)
 }
 
-// execStmtHook lets a test make a statement of the transaction end fail.
-var execStmtHook func(stmt string) error
+// ExecStmtHook lets a test make a statement that ends a read-only transaction
+// (COMMIT or ROLLBACK) fail. It is for tests only and is nil otherwise. It is a
+// plain package variable, read without synchronisation by every read-only
+// transaction in the process, so a test that sets it must not run in parallel
+// with any other test that uses a SQLite driver, and must reset it to nil.
+var ExecStmtHook func(stmt string) error
 
 func (t *roTx) run(ctx context.Context, stmt string) error {
-	if h := execStmtHook; h != nil {
+	if h := ExecStmtHook; h != nil {
 		if err := h(stmt); err != nil {
 			return err
 		}

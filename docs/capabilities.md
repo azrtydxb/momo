@@ -2,8 +2,12 @@ What Momo supports, per database. PostgreSQL (through pgx) is fully usable.
 SQLite is usable through `driver/sqlitedriver` (mattn go-sqlite3 and
 sqlite-vec; it needs cgo and does not build on Windows): queries, writes,
 transactions, the shared integration suite and the vector builders (float32
-and bit vectors with sqlite-vec) run on it, but migrations (`momo migrate`), the
-inspector and a pure-Go driver are **not available yet**. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
+and bit vectors with sqlite-vec) run on it, but migrations (`momo migrate`) and
+the inspector are **not available yet**. The pure-Go driver
+`driver/sqlitepure` (modernc.org/sqlite) runs the same queries, writes and
+transactions without cgo and on Windows; it has no sqlite-vec, so it reports
+`Vectors=false` and a statement that calls a `vec_` function fails with
+`ErrUnsupported`. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
 (`driver/mysqldriver`): queries, writes, locking and transactions run and are
 covered by the integration suite. The library migration dialect `migrate/mysql`
 exists (inspector, drift, apply), but the `momo migrate` command is
