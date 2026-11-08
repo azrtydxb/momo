@@ -11,8 +11,11 @@ Implements plan momo-13-docs-release Task 7: Agent usage guide and the AGENTS.md
 
 ## Acceptance criteria
 
-- [ ] `TestAgentGuideSnippet` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestAgentGuideSnippet` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- red run 42454971851 (work branch suffixed -red, sha 222fa09, tests with a NavPages stub): FAIL TestAgentGuideSnippet
+- green: docs workflow run 42456103295 (sha 9b46480d8ec2f3944100975376d197a31720171c, success) and the unit and integration jobs of ci-agent run 42456103287 on the same sha, where TestAgentGuideSnippet passes
+- docs/agents.md carries the AGENTS.md snippet between markers; each rule is taken from section 12 of ai-guide.md.
