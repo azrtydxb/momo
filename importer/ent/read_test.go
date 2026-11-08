@@ -670,6 +670,12 @@ type Deeper struct{ *Derived }
 
 func TestReadMapsHugeMaxLenToText(t *testing.T) {
 	models, rep := readSource(t, `
+const (
+	nameLen = 100
+	hugeLen = 1 << 25
+	sumLen  = hugeLen + nameLen
+)
+
 type S struct{ ent.Schema }
 
 func (S) Fields() []ent.Field {
@@ -677,22 +683,32 @@ func (S) Fields() []ent.Field {
 		field.String("small").MaxLen(100),
 		field.String("huge").MaxLen(20000000),
 		field.String("typed").MaxLen(20000000).SchemaType(map[string]string{dialect.Postgres: "citext"}),
+		field.String("shifted").MaxLen(1 << 20),
+		field.String("shiftedhuge").MaxLen(1 << 25),
+		field.String("named").MaxLen(nameLen),
+		field.String("namedhuge").MaxLen(hugeLen),
+		field.String("sum").MaxLen((hugeLen + 1) * 2 - 2),
+		field.String("chained").MaxLen(sumLen),
 		field.String("dyn").MaxLen(limit),
+		field.String("call").MaxLen(compute(3)),
 	}
 }
 `)
 	s := model(t, models, "S")
-	if got := field(t, s, "Small").SQLType; got != "varchar" {
-		t.Errorf("small MaxLen: %q", got)
+	for name, want := range map[string]string{
+		"Small": "varchar", "Huge": "text", "Typed": "citext", "Shifted": "varchar", "Shiftedhuge": "text",
+		"Named": "varchar", "Namedhuge": "text", "Sum": "text", "Chained": "text", "Dyn": "varchar", "Call": "varchar",
+	} {
+		if got := field(t, s, name).SQLType; got != want {
+			t.Errorf("%s is %s, want %s (Ent creates text above 10485760)", name, got, want)
+		}
 	}
-	if got := field(t, s, "Huge").SQLType; got != "text" {
-		t.Errorf("Ent creates text above 10485760: %q", got)
+	if rep.Has(importer.Unsupported) {
+		t.Fatalf("an unreadable MaxLen is reported, not unsupported: %s", rep)
 	}
-	if got := field(t, s, "Typed").SQLType; got != "citext" {
-		t.Errorf("SchemaType wins: %q", got)
-	}
-	if got := rep.Of(importer.Unsupported); len(got) != 1 || got[0].Field != "Dyn" {
-		t.Fatalf("a MaxLen that is not a literal is reported: %s", rep)
+	got := rep.Of(importer.RenamedType)
+	if len(got) != 2 || got[0].Field != "Dyn" || got[1].Field != "Call" {
+		t.Fatalf("the two sizes that cannot be folded are reported: %s", rep)
 	}
 }
 

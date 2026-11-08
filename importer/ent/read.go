@@ -73,7 +73,7 @@ func Read(dir string) ([]importer.Model, *importer.Report, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("importer/ent: %w", err)
 	}
-	r := &reader{fset: token.NewFileSet(), rep: &importer.Report{}, types: map[string]*typeInfo{}, methods: map[string]map[string]method{}}
+	r := &reader{fset: token.NewFileSet(), rep: &importer.Report{}, types: map[string]*typeInfo{}, consts: map[string]ast.Expr{}, methods: map[string]map[string]method{}}
 	for _, e := range entries {
 		n := e.Name()
 		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
@@ -127,6 +127,7 @@ type reader struct {
 	methods map[string]map[string]method // type name -> method name -> declaration
 	fks     []*fk
 	structs []structInfo
+	consts  map[string]ast.Expr // package-level constants with one value each
 }
 
 // structInfo is a struct of the package with the local types it embeds.
@@ -169,6 +170,12 @@ func (r *reader) collect(f *ast.File) {
 		switch d := d.(type) {
 		case *ast.GenDecl:
 			for _, s := range d.Specs {
+				if vs, ok := s.(*ast.ValueSpec); ok && d.Tok == token.CONST && len(vs.Names) == len(vs.Values) {
+					for i, n := range vs.Names {
+						r.consts[n.Name] = vs.Values[i]
+					}
+					continue
+				}
 				ts, ok := s.(*ast.TypeSpec)
 				if !ok {
 					continue
@@ -761,21 +768,61 @@ func (r *reader) readField(e *entity, el elem) {
 const maxVarchar = 10 << 20
 
 // maxLen maps a field.String MaxLen above maxVarchar to text, as
-// dialect/sql/schema/postgres.go does. A MaxLen that is not an integer literal
-// cannot be compared with the limit and is reported.
+// dialect/sql/schema/postgres.go does. The size is folded from integer
+// literals, parentheses, + - * <<, and constants of the package; a size that
+// cannot be folded keeps the varchar and is reported.
 func (r *reader) maxLen(fd *fieldDef, model string, m call) {
 	if len(m.args) == 1 {
-		if lit, ok := m.args[0].(*ast.BasicLit); ok && lit.Kind == token.INT {
-			if n, err := strconv.ParseInt(strings.ReplaceAll(lit.Value, "_", ""), 0, 64); err == nil {
-				if n > maxVarchar && !fd.schemaTyped {
-					fd.ft.sqlType = "text"
-				}
-				return
+		if n, ok := r.constInt(m.args[0], 0); ok {
+			if n > maxVarchar && !fd.schemaTyped {
+				fd.ft.sqlType = "text"
+			}
+			return
+		}
+	}
+	r.rep.Add(importer.Change{Kind: importer.RenamedType, Source: r.pos(m.pos), Model: model, Field: pascal(fd.name),
+		Message: "the MaxLen size could not be read (only integer literals, + - * <<, parentheses and constants of the package are folded), so the column is a varchar; Ent creates text above 10485760"})
+}
+
+// constInt folds a constant integer expression. depth guards against
+// constants that refer to each other.
+func (r *reader) constInt(e ast.Expr, depth int) (int64, bool) {
+	if depth > 16 {
+		return 0, false
+	}
+	switch x := e.(type) {
+	case *ast.BasicLit:
+		if x.Kind != token.INT {
+			return 0, false
+		}
+		n, err := strconv.ParseInt(strings.ReplaceAll(x.Value, "_", ""), 0, 64)
+		return n, err == nil
+	case *ast.ParenExpr:
+		return r.constInt(x.X, depth+1)
+	case *ast.Ident:
+		if v, ok := r.consts[x.Name]; ok {
+			return r.constInt(v, depth+1)
+		}
+	case *ast.BinaryExpr:
+		a, aok := r.constInt(x.X, depth+1)
+		b, bok := r.constInt(x.Y, depth+1)
+		if !aok || !bok {
+			return 0, false
+		}
+		switch x.Op {
+		case token.ADD:
+			return a + b, true
+		case token.SUB:
+			return a - b, true
+		case token.MUL:
+			return a * b, true
+		case token.SHL:
+			if b >= 0 && b < 62 {
+				return a << uint(b), true
 			}
 		}
 	}
-	r.unsupported(m.pos, model, pascal(fd.name), "MaxLen is not an integer literal; Ent creates text instead of varchar above 10485760, which the importer cannot check")
-	fd.ok = false
+	return 0, false
 }
 
 // schemaType reads the postgres entry of a SchemaType map literal.
