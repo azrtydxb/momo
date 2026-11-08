@@ -146,6 +146,9 @@ type DialectValuer interface {
 
 // Arg appends a bind placeholder and records v as its argument.
 func (b *Builder) Arg(v any) {
+	if isNilVectorPointer(v) {
+		v = nil // a nil pointer would panic in the promoted DialectValue
+	}
 	if dv, ok := v.(DialectValuer); ok {
 		enc, err := dv.DialectValue(b.d.Name)
 		if err != nil {

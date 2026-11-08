@@ -6,13 +6,13 @@ necessarily broken.
 
 ## Module
 
-| Item        | Value                                                                                                                                                                                                                                    |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Module path | `github.com/azrtydxb/momo`                                                                                                                                                                                                               |
-| Version     | v0.3.0 (tags use a `v` prefix) <!-- x-release-please-version -->                                                                                                                                                                         |
-| Install     | `go get github.com/azrtydxb/momo@v0.3.0` <!-- x-release-please-version -->                                                                                                                                                               |
-| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path)                                                                                                                                                               |
-| Databases   | PostgreSQL with pgvector; MySQL 8.4, MySQL 9.7 and MariaDB 11.8 for queries and writes (no migrations or vectors yet); SQLite for queries and writes through the cgo driver or the pure-Go driver (no migrations or vector builders yet) |
+| Item        | Value                                                                                                                                                                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module path | `github.com/azrtydxb/momo`                                                                                                                                                                                                                                |
+| Version     | v0.3.0 (tags use a `v` prefix) <!-- x-release-please-version -->                                                                                                                                                                                          |
+| Install     | `go get github.com/azrtydxb/momo@v0.3.0` <!-- x-release-please-version -->                                                                                                                                                                                |
+| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path)                                                                                                                                                                                |
+| Databases   | PostgreSQL with pgvector; MySQL 8.4, MySQL 9.7 and MariaDB 11.8 for queries and writes (no migrations or vectors yet); SQLite for queries and writes through the cgo driver or the pure-Go driver (no migrations; vector builders on the cgo driver only) |
 
 ## Go
 
