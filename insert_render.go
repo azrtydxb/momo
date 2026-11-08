@@ -78,6 +78,7 @@ type insertPlan[T any] struct {
 }
 
 func (q InsertQuery[T]) renderStatement(b *Builder) {
+	b.insertStmt = true
 	mode, err := q.mode()
 	if err != nil {
 		b.SetErr(err)
@@ -398,8 +399,7 @@ func (q InsertQuery[T]) appendValue(b *Builder, a Assignment) {
 	case setDefault:
 		b.WriteString("DEFAULT")
 	case setExcluded:
-		b.WriteString("EXCLUDED.")
-		b.Ident(a.col)
+		b.writeExcluded(a.col)
 	}
 }
 
@@ -415,6 +415,10 @@ func (q InsertQuery[T]) renderConflict(b *Builder) {
 		return
 	}
 	if q.i.conflict == conflictNone {
+		return
+	}
+	if b.Dialect().OnDuplicateKey {
+		q.renderMySQLConflict(b)
 		return
 	}
 	if !b.Dialect().OnConflict {
