@@ -282,6 +282,7 @@ func (e *execer) execInsertID(ctx context.Context, op, table string, c Compiled)
 		n, err := e.exec(ctx, op, table, c)
 		return n, 0, err
 	}
+	markWrite(ctx) // read-your-writes: later reads in this unit of work stay on the primary
 	if e.unscopable() {
 		return -1, 0, errPinnedSetup(op, table)
 	}
