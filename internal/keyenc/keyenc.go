@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo
+// Package keyenc encodes relation key tuples as comparable strings. It
+// imports nothing from the momo root package.
+package keyenc
 
 import (
 	"database/sql/driver"
@@ -12,7 +14,7 @@ import (
 	"time"
 )
 
-// keyString encodes a relation key tuple as a comparable string. Each
+// String encodes a relation key tuple as a comparable string. Each
 // component is type-tagged so 1 and "1" differ, strings and bytes carry their
 // length so a component containing the 0x1f separator cannot be confused with
 // two components, and values are normalized so that a key built from a struct
@@ -20,7 +22,7 @@ import (
 // read back from the driver (int64, []byte, string, driver.Valuer output).
 // Integers share one tag: an unsigned value that fits in int64 encodes like
 // the signed value, larger ones keep a distinct tag.
-func keyString(vals []any) string {
+func String(vals []any) string {
 	var sb strings.Builder
 	for i, v := range vals {
 		if i > 0 {

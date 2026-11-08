@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/chunk"
 	"github.com/azrtydxb/momo/internal/testdb"
 )
 
@@ -56,12 +57,12 @@ func TestTupleInPostgres(t *testing.T) {
 	if n := count(inTuple{table: "c", cols: []string{"a"}}); n != 0 {
 		t.Fatalf("empty must match nothing: %d", n)
 	}
-	// A full-budget statement executes: keysPerStatement single-column keys
+	// A full-budget statement executes: KeysPerStatement single-column keys
 	// bind exactly the server's limit or fewer. (Composite row-value lists of
 	// that size exceed PostgreSQL's parser stack depth, so only the
 	// single-column list is exercised at the full budget.)
 	d := dialect.For(dialect.Postgres)
-	per := keysPerStatement(d, 1, 0)
+	per := chunk.KeysPerStatement(d, 1, 0)
 	keys := make([][]any, per)
 	for i := range keys {
 		keys[i] = []any{int64(i + 1)}
@@ -93,7 +94,7 @@ func TestTupleInPostgresCompositeCapAndEmbedding(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := dialect.For(dialect.Postgres)
-	n := keysPerStatement(d, 2, 0)
+	n := chunk.KeysPerStatement(d, 2, 0)
 	if n != 2000 {
 		t.Fatalf("composite budget: %d", n)
 	}

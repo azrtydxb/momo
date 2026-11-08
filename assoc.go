@@ -6,6 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/azrtydxb/momo/internal/chunk"
+	"github.com/azrtydxb/momo/internal/keyenc"
 )
 
 // Association helpers write the link between a parent and its children
@@ -169,12 +172,12 @@ func (r Relation[P, C]) replaceIn(ctx context.Context, tx *Tx, pkey []any, want 
 	}
 	wantSet := make(map[string]struct{}, len(want))
 	for _, k := range want {
-		wantSet[keyString(k)] = struct{}{}
+		wantSet[keyenc.String(k)] = struct{}{}
 	}
 	haveSet := make(map[string]struct{}, len(have))
 	var removed, added [][]any
 	for _, k := range have {
-		s := keyString(k)
+		s := keyenc.String(k)
 		if _, dup := haveSet[s]; dup {
 			continue
 		}
@@ -185,7 +188,7 @@ func (r Relation[P, C]) replaceIn(ctx context.Context, tx *Tx, pkey []any, want 
 	}
 	seen := make(map[string]struct{}, len(want))
 	for _, k := range want {
-		s := keyString(k)
+		s := keyenc.String(k)
 		if _, dup := seen[s]; dup {
 			continue
 		}
@@ -424,7 +427,7 @@ func (r Relation[P, C]) discArgs() int {
 // chunkSize is how many key tuples (ncols binds each) fit in one statement
 // alongside reserved other binds.
 func (r Relation[P, C]) chunkSize(q Querier, ncols, reserved int) int {
-	return keysPerStatement(q.Dialect(), ncols, reserved)
+	return chunk.KeysPerStatement(q.Dialect(), ncols, reserved)
 }
 
 // runChunks splits keys into chunks of size n and runs fn once per chunk. When
@@ -435,12 +438,7 @@ func (r Relation[P, C]) runChunks(ctx context.Context, q Querier, keys [][]any, 
 		return nil
 	}
 	run := func(x Querier) error {
-		for i := 0; i < len(keys); i += n {
-			if err := fn(x, keys[i:min(i+n, len(keys))]); err != nil {
-				return err
-			}
-		}
-		return nil
+		return chunk.Each(len(keys), n, func(lo, hi int) error { return fn(x, keys[lo:hi]) })
 	}
 	if db, ok := q.(*DB); ok && len(keys) > n {
 		return db.Tx(ctx, TxOptions{}, func(tx *Tx) error { return run(tx) })

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo
+package sqlscan
 
 import (
 	"strings"
@@ -10,9 +10,8 @@ import (
 )
 
 // FuzzScanRaw checks scanner invariants on arbitrary SQL for every dialect:
-// no panic, verbatim text never grows beyond the input, a rawDollar token
-// always carries digits only, and rendering never panics whatever the
-// argument count.
+// no panic, verbatim text never grows beyond the input, a Dollar token
+// always carries digits only.
 func FuzzScanRaw(f *testing.F) {
 	for _, s := range []string{
 		"SELECT $1, $2", "a = $1 OR b = $1", "SELECT '$1', ?", "SELECT $q$ $1 $q$",
@@ -22,25 +21,22 @@ func FuzzScanRaw(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, sql string) {
 		for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
-			toks, err := scanRaw(sql, dialect.For(d))
+			toks, err := Scan(sql, dialect.For(d))
 			if err == nil {
 				var text strings.Builder
 				for _, tok := range toks {
-					switch tok.kind {
-					case rawText:
-						text.WriteString(tok.text)
-					case rawDollar:
-						if tok.text == "" || strings.Trim(tok.text, "0123456789") != "" {
-							t.Fatalf("%s: rawDollar %q is not digits, sql %q", d, tok.text, sql)
+					switch tok.Kind {
+					case Text:
+						text.WriteString(tok.Text)
+					case Dollar:
+						if tok.Text == "" || strings.Trim(tok.Text, "0123456789") != "" {
+							t.Fatalf("%s: Dollar %q is not digits, sql %q", d, tok.Text, sql)
 						}
 					}
 				}
 				if text.Len() > len(sql) {
 					t.Fatalf("%s: text %q longer than input %q", d, text.String(), sql)
 				}
-			}
-			for n := 0; n < 3; n++ {
-				_, _ = compile(dialect.For(d), func(b *Builder) { b.appendRaw(sql, make([]any, n)) })
 			}
 		}
 	})

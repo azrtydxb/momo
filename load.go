@@ -11,6 +11,8 @@ import (
 	"strconv"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/chunk"
+	"github.com/azrtydxb/momo/internal/keyenc"
 )
 
 // pending is one relation's load in progress: its child statements, the parent
@@ -52,7 +54,7 @@ func (r *Relation[P, C]) prepareWith(q Querier, parents []P, cfg *loadConfig, ne
 		if !ok || hasNilPart(vals) {
 			continue // NULL in any component means no key
 		}
-		k := keyString(vals)
+		k := keyenc.String(vals)
 		if _, seen := pd.groups[k]; !seen {
 			pd.keys = append(pd.keys, vals)
 		}
@@ -149,7 +151,7 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 				for i, ci := range m.PK {
 					pk[i] = m.Value(&c, ci)
 				}
-				id := keyString(holders) + "\x00" + keyString(pk)
+				id := keyenc.String(holders) + "\x00" + keyenc.String(pk)
 				if _, dup := pd.seen[id]; dup {
 					continue // duplicated join row: one child per (parent, child) pair
 				}
@@ -168,7 +170,7 @@ func (pd *pending[P, C]) consume(rows Rows) error {
 			}
 			key = k
 		}
-		owners := pd.groups[keyString(key)]
+		owners := pd.groups[keyenc.String(key)]
 		if len(owners) == 0 {
 			continue
 		}
@@ -259,7 +261,7 @@ func (r *Relation[P, C]) childQueries(q Querier, keys [][]any, cfg *loadConfig) 
 			Err: fmt.Errorf("%s: scope binds %d arguments, leaving no room for a key under the %d-parameter limit", r.Name, scopeArgs, d.MaxParams)}
 	}
 	reserved := 16 + scopeArgs
-	budget := keysPerStatement(d, ncols, reserved)
+	budget := chunk.KeysPerStatement(d, ncols, reserved)
 	var out []Compiled
 	for start := 0; start < len(keys); start += budget {
 		end := min(start+budget, len(keys))
@@ -509,7 +511,7 @@ func scanChild[P, C any](r *Relation[P, C], rows Rows, c *C) error {
 
 // hasNilPart reports whether any key component is NULL. A composite key with a
 // NULL component never matches a row, so it is treated as no key. NULL follows
-// keyString: an untyped nil, a nil pointer, or a driver.Valuer whose Value is
+// keyenc.String: an untyped nil, a nil pointer, or a driver.Valuer whose Value is
 // nil (sql.NullInt64{} and friends).
 func hasNilPart(vals []any) bool {
 	for _, v := range vals {
@@ -520,7 +522,7 @@ func hasNilPart(vals []any) bool {
 	return false
 }
 
-// isNullKeyPart reports whether v is a NULL key component in keyString's sense.
+// isNullKeyPart reports whether v is a NULL key component in keyenc.String's sense.
 func isNullKeyPart(v any) bool {
 	switch x := v.(type) {
 	case nil:
