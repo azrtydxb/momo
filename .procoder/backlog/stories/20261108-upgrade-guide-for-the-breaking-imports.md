@@ -11,11 +11,19 @@ The split breaks every user who calls a moved identifier (section 3 of `.procode
 
 ## Acceptance criteria
 
-- [ ] `TestUpgradingCoversMoves` fails when a `moves/<package>.txt` pair is absent from `docs/upgrading.md` and when the page lists a pair with no `moves` file (red evidence from a throwaway branch)
+- [x] `TestUpgradingCoversMoves` fails when a `moves/<package>.txt` pair is absent from `docs/upgrading.md` and when the page lists a pair with no `moves` file (red evidence from a throwaway branch)
 - [ ] every move story's pairs are present at release time: the test is green on the sprint-6 head after the last move, with one `moves` file per moved package
 - [ ] the fixture program that uses every moved identifier through the old names is rewritten by the documented recipe and compiles against the new packages (CI job output)
-- [ ] the page states which things did not move and why: `Func`, the vector column types, the `Hook` interfaces, the `Agg` basics, `Tx.SetLocal`
+- [x] the page states which things did not move and why: `Func`, the vector column types, the `Hook` interfaces, the `Agg` basics, `Tx.SetLocal`
 - [ ] the page links to the release's CHANGELOG entry, carries the 0.4.0 version only inside a heading that the version test treats as historical, and is indexed from `docs/README.md`
-- [ ] `docs/upgrading.md` has a short note on pre-v1 policy (`docs/supported-versions.md` stability section) so a reader knows more breaks can follow
+- [x] `docs/upgrading.md` has a short note on pre-v1 policy (`docs/supported-versions.md` stability section) so a reader knows more breaks can follow
 
 ## Evidence
+
+Step 1 only (skeleton and moves check); the story stays open until step 6.
+
+- Criterion 1: red run 42494821840 on probe commit b9430270a639a1e215b9f5dd5f6b33f2ada5bbd4 (throwaway branch, deleted): TestUpgradingCoversMoves failed with `docs/upgrading.md lacks the row | momo.ArrayContains | .../arrayop | arrayop.Contains |` (moves file with no row) and `lists a move that no testdata/moves file records: momo.Stale` (row with no moves file). TestUpgradingDiffDetectsDrift pins the comparison in memory. Green: run 42498774870 on 7e303a02c92551bc758aa300a84b4d3aa373c198.
+- Criterion 4: docs/upgrading.md "What did not move" lists Func/FuncExpr, the vector column types, the hook interfaces, the basic aggregates and Tx.SetLocal with reasons; each identifier exists in the root package (expr_funcs.go, vector_column.go, db.go, relhook.go, expr.go, search.go).
+- Criterion 6: docs/upgrading.md opens with the pre-v1 note linking supported-versions.md#stability-policy.
+- Not ticked: 2 (needs the move stories), 3 (fixture and recipe come later), 5 (CHANGELOG link at release). The page is already indexed from docs/README.md and README.md, and is in the mkdocs nav so TestEveryDocPageInNav passes. Format of testdata/moves/<package>.txt: one `<old> <new>` pair per line.
+
