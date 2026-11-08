@@ -115,7 +115,7 @@ type Post struct {
 	Key   uuid.UUID
 	Tags  []Tag `+"`gorm:\"many2many:post_tags\"`"+`
 	Rank  int   `+"`gorm:\"index:idx_rank;uniqueIndex:idx_rank\"`"+`
-	Stamp string `+"`gorm:\"default:now\"`"+`
+	Stamp int `+"`gorm:\"default:now\"`"+`
 	Hidden string `+"`gorm:\"-\"`"+`
 	_ gorm.Model
 }

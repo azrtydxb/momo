@@ -477,7 +477,7 @@ func (r *reader) finishModel(m *importer.Model) {
 			if name == "" {
 				continue
 			}
-			if prev, dup := seen[name]; dup {
+			if prev, dup := seen[name]; dup && prev != f.Name {
 				r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: f.Source, Model: m.Name, Field: f.Name, Message: "index " + name + " spans " + prev + " and " + f.Name + "; composite indexes are not imported, declare them in the companion file"})
 			}
 			seen[name] = f.Name
