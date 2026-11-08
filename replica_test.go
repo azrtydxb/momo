@@ -173,6 +173,45 @@ func TestReplicaRoutesWritesAndLocksToPrimary(t *testing.T) {
 		`SELECT $q$ x $q$`,
 		`CALL do_work()`,
 		``,
+		// Not a plain read, whatever it starts with.
+		`EXPLAIN ANALYZE CREATE TABLE x AS SELECT 1`,
+		`EXPLAIN (ANALYZE, VERBOSE) REFRESH MATERIALIZED VIEW v`,
+		`EXPLAIN ANALYZE EXECUTE p`,
+		`EXPLAIN INSERT INTO t VALUES (1)`,
+		`EXPLAIN`,
+		`SELECT 1; DROP TABLE t`,
+		`SELECT 1; SELECT 2`,
+		`CREATE TABLE x (a int)`,
+		`DROP TABLE x`,
+		`ALTER TABLE x ADD COLUMN b int`,
+		`TRUNCATE x`,
+		`REFRESH MATERIALIZED VIEW v`,
+		`EXECUTE p`,
+		`LISTEN ch`,
+		`NOTIFY ch`,
+		`LOCK TABLE t`,
+		`DECLARE c CURSOR FOR SELECT 1`,
+		`GRANT SELECT ON t TO u`,
+		`REVOKE SELECT ON t FROM u`,
+		`VACUUM t`,
+		`ANALYZE t`,
+		`CLUSTER t`,
+		`REINDEX TABLE t`,
+		`COMMENT ON TABLE t IS 'x'`,
+		`SECURITY LABEL ON TABLE t IS 'x'`,
+		`IMPORT FOREIGN SCHEMA s FROM SERVER v INTO d`,
+		`SET search_path = x`,
+		`SELECT lo_import('/etc/passwd')`,
+		`SELECT lo_export(1, '/tmp/x')`,
+		`SELECT lo_unlink(1)`,
+		`SELECT dblink_exec('c', 'DELETE FROM t')`,
+		`SELECT pg_reload_conf()`,
+		`SELECT pg_switch_wal()`,
+		`SELECT pg_logical_emit_message(true, 'p', 'm')`,
+		`SELECT pg_terminate_backend(1)`,
+		`SELECT pg_cancel_backend(1)`,
+		`SELECT 'unterminated`,
+		`SELECT 1 /* unterminated`,
 	}
 	for _, q := range primary {
 		bp, br := pReads, rReads
@@ -191,6 +230,12 @@ func TestReplicaRoutesWritesAndLocksToPrimary(t *testing.T) {
 		`SELECT substring(a FROM 1 FOR 2) FROM t`,
 		`EXPLAIN SELECT 1`,
 		`SELECT id FROM t ORDER BY embedding <=> $1 LIMIT 5`,
+		`EXPLAIN (ANALYZE, VERBOSE) SELECT 1`,
+		`EXPLAIN ANALYZE VERBOSE SELECT 1`,
+		`TABLE t`,
+		`SELECT 1;`,
+		`SELECT 1; -- trailing comment`,
+		`SELECT "do", "comment" FROM "create"`,
 	}
 	for _, q := range replica {
 		bp, br := pReads, rReads
@@ -280,4 +325,29 @@ func TestReplicaFailureFallsBackToPrimary(t *testing.T) {
 			t.Fatal("a cancelled context must not be retried on the primary")
 		}
 	})
+}
+
+// A statement that goes to the primary because it is not a plain read counts
+// as a write of the unit of work, so later reads see its effects.
+func TestReplicaNonReadMarksUnitOfWork(t *testing.T) {
+	var pReads, rReads int
+	prim := countingDriver{Driver: replicaStubDriver{}, reads: &pReads}
+	rep := countingDriver{Driver: replicaStubDriver{}, reads: &rReads}
+	rd, _ := New(prim, WithReplicas(rep)).Replica(0)
+	uow := NewUnitOfWork(context.Background())
+	readOnceSQL(uow, t, rd.conn(), `SELECT nextval('s')`)
+	br := rReads
+	readOnceSQL(uow, t, rd.conn(), `SELECT 1`)
+	if rReads != br {
+		t.Fatal("a read after SELECT nextval in the same unit of work must use the primary")
+	}
+}
+
+// WithImplicitTx runs every statement on the primary, so a Replica handle is
+// refused instead of silently never using the replica.
+func TestReplicaRefusedWithImplicitTx(t *testing.T) {
+	db := New(replicaStubDriver{}, WithReplicas(replicaStubDriver{}), WithImplicitTx())
+	if _, err := db.Replica(0); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("err = %v, want ErrUnsupported", err)
+	}
 }

@@ -57,11 +57,20 @@ func (e *Engine) Rebase(ctx context.Context, target fs.FS, desired *schema.Schem
 		return nil, nil, fmt.Errorf("migrate: the target directory is not a valid migration chain, fix it before rebasing: %s", strings.Join(rep.Problems, "; "))
 	}
 	inTarget := map[string]bool{}
+	targetBody := map[string]string{}
 	for _, f := range tfiles {
 		inTarget[f.Version] = true
+		if f.Kind == "up" {
+			targetBody[f.Version] = string(f.Body)
+		}
 	}
 	mine := map[string]bool{}
 	for _, f := range branch {
+		if f.Kind == "up" && inTarget[f.Version] {
+			if tb, ok := targetBody[f.Version]; ok && tb != string(f.Body) {
+				return nil, nil, fmt.Errorf("migrate: version %s is %s on this branch but has different content on the target; a version both sides have must be identical, so the branch file was edited or the versions collided; fix that before rebasing", f.Version, f.Path)
+			}
+		}
 		if f.Kind == "up" && !inTarget[f.Version] {
 			dirs, err := ParseDirectives(f.Body)
 			if err != nil {

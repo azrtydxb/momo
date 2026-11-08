@@ -25,12 +25,23 @@ func WithReplicas(replicas ...Driver) Option {
 // Writes, transactions, INSERT/UPDATE/DELETE ... RETURNING, locking reads
 // (FOR UPDATE and FOR SHARE), and any statement that readOnlySQL cannot prove
 // read-only, such as a WITH that contains DML or a call to nextval, always go
-// to the primary. If the replica cannot be reached when a read starts, that
-// read runs on the primary; there is no retry once rows have been returned. It returns ErrUnsupported
-// when replica i is not configured.
+// to the primary, and count as a write of the unit of work. If the replica
+// cannot be reached when a read starts, that read runs on the primary; there
+// is no retry once rows have been returned.
+//
+// It returns ErrUnsupported when replica i is not configured, and when the DB
+// was built with WithImplicitTx: that option runs every statement in its own
+// primary transaction, so a Replica handle could never use the replica, and
+// failing is clearer than silently reading the primary. A read on the replica
+// runs outside any transaction, so WithTxSetup does not apply to it; do not
+// rely on a setting that WithTxSetup installs (for example a row-level-security
+// tenant) for replica reads.
 func (db *DB) Replica(i int) (*DB, error) {
 	if i < 0 || i >= len(db.replicas) {
 		return nil, &Error{Kind: ErrUnsupported, Op: "replica", Err: errors.New("no such read replica configured")}
+	}
+	if db.implicitTx {
+		return nil, &Error{Kind: ErrUnsupported, Op: "replica", Err: errors.New("WithImplicitTx runs every statement on the primary; a read replica handle cannot be combined with it")}
 	}
 	nd := new(DB)
 	*nd = *db
@@ -90,7 +101,14 @@ type routingDriver struct {
 // errors raised after rows were returned, and every other kind of error,
 // reach the caller unchanged.
 func (r routingDriver) Query(ctx context.Context, sql string, args []any) (Rows, error) {
-	if !readOnlySQL(sql) || (uowWritten(ctx) && !staleOK(ctx)) {
+	if !readOnlySQL(sql) {
+		// Not provably a read (INSERT ... RETURNING, SELECT nextval, a locking
+		// read): run it on the primary and count it as a write, so later reads
+		// of the same unit of work see its effects.
+		markWrite(ctx)
+		return r.Driver.Query(ctx, sql, args)
+	}
+	if uowWritten(ctx) && !staleOK(ctx) {
 		return r.Driver.Query(ctx, sql, args)
 	}
 	rows, err := r.replica.Query(ctx, sql, args)
@@ -125,33 +143,45 @@ func connectionClassError(err error) bool {
 	return false
 }
 
-// readOnlyFirst lists the statements that may start a read.
-var readOnlyFirst = map[string]bool{"select": true, "with": true, "values": true, "explain": true}
+// readOnlyStart lists the statements that may start a read, after any EXPLAIN
+// options.
+var readOnlyStart = map[string]bool{"select": true, "with": true, "values": true, "table": true}
+
+// explainOptions are skipped between EXPLAIN and the statement it explains.
+var explainOptions = map[string]bool{"analyze": true, "analyse": true, "verbose": true}
 
 // writeWords make a statement a write wherever they appear as a word outside
-// literals, quoted identifiers and comments.
+// literals, quoted identifiers and comments. The list is deliberately wide: a
+// false positive only costs a read on the primary.
 var writeWords = map[string]bool{
+	// data changes and commands
 	"insert": true, "update": true, "delete": true, "merge": true, "into": true, "copy": true,
+	"create": true, "drop": true, "alter": true, "truncate": true, "refresh": true, "execute": true,
+	"call": true, "do": true, "listen": true, "notify": true, "lock": true, "declare": true,
+	"grant": true, "revoke": true, "vacuum": true, "analyze": true, "analyse": true, "cluster": true,
+	"reindex": true, "comment": true, "security": true, "import": true,
+	// functions with side effects
 	"nextval": true, "setval": true, "lastval": true, "set_config": true, "pg_notify": true,
 	"txid_current": true, "pg_terminate_backend": true, "pg_cancel_backend": true,
+	"lo_import": true, "lo_export": true, "lo_unlink": true, "dblink_exec": true,
+	"pg_reload_conf": true, "pg_switch_wal": true, "pg_logical_emit_message": true,
 }
 
-// readOnlySQL is a conservative classifier: it returns true only for a
-// statement that starts with SELECT, WITH, VALUES or EXPLAIN and contains no
-// data-changing keyword (INSERT, UPDATE, DELETE, MERGE, INTO, COPY), no row
-// lock clause (FOR UPDATE, FOR SHARE, FOR NO KEY UPDATE, FOR KEY SHARE), no
-// sequence or session-state function (nextval, setval, lastval, set_config,
-// advisory locks) and no dollar-quoted body. Anything it cannot read with
-// confidence is a write, so the statement goes to the primary. A false
-// negative on the replica side would send a write to a read-only server; a
-// false positive only costs a read on the primary.
-func readOnlySQL(sql string) bool {
-	first := true
-	prev := ""
+type sqlToken struct {
+	word string // lower-cased identifier or keyword; empty for anything else
+	punc byte   // the character of a punctuation token; 0 for words and literals
+}
+
+// tokenizeSQL splits sql into words, punctuation and opaque literals. String
+// literals, quoted identifiers and comments are dropped (a literal becomes an
+// empty token). It reports false for text it cannot read with confidence:
+// an unterminated literal or comment, or a dollar-quoted body.
+func tokenizeSQL(sql string) ([]sqlToken, bool) {
+	var out []sqlToken
 	for i := 0; i < len(sql); {
 		c := sql[i]
 		switch {
-		case c == '\'' || c == '"':
+		case c == '\'' || c == '"' || c == '`':
 			j := i + 1
 			for j < len(sql) {
 				if sql[j] == c {
@@ -164,13 +194,10 @@ func readOnlySQL(sql string) bool {
 				j++
 			}
 			if j >= len(sql) {
-				return false // unterminated
+				return nil, false
 			}
+			out = append(out, sqlToken{})
 			i = j + 1
-			if first { // a statement cannot start with a literal
-				return false
-			}
-			prev = ""
 		case c == '-' && i+1 < len(sql) && sql[i+1] == '-':
 			for i < len(sql) && sql[i] != '\n' {
 				i++
@@ -191,44 +218,115 @@ func readOnlySQL(sql string) bool {
 				}
 			}
 			if depth > 0 {
-				return false
+				return nil, false
 			}
-		case c == '$':
-			if i+1 < len(sql) && (sql[i+1] == '$' || sql[i+1] == '_' || unicode.IsLetter(rune(sql[i+1]))) {
-				return false // dollar-quoted body: cannot be inspected
-			}
-			i++
+		case c == '$' && i+1 < len(sql) && (sql[i+1] == '$' || sql[i+1] == '_' || unicode.IsLetter(rune(sql[i+1]))):
+			return nil, false // dollar-quoted body: cannot be inspected
 		case c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z':
 			j := i
 			for j < len(sql) && (sql[j] == '_' || sql[j] == '$' || sql[j] >= 'a' && sql[j] <= 'z' || sql[j] >= 'A' && sql[j] <= 'Z' || sql[j] >= '0' && sql[j] <= '9') {
 				j++
 			}
-			w := strings.ToLower(sql[i:j])
+			out = append(out, sqlToken{word: strings.ToLower(sql[i:j])})
 			i = j
-			if first {
-				if !readOnlyFirst[w] {
-					return false
-				}
-				first = false
-			}
-			if writeWords[w] || strings.HasPrefix(w, "pg_advisory") || strings.HasPrefix(w, "pg_try_advisory") {
-				return false
-			}
-			if prev == "for" && (w == "update" || w == "share" || w == "no" || w == "key") {
-				return false
-			}
-			prev = w
-		default:
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			i++
-			if c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != '(' {
-				if first {
-					return false
-				}
-			}
-			if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
-				prev = ""
-			}
+		default:
+			out = append(out, sqlToken{punc: c})
+			i++
 		}
 	}
-	return !first
+	return out, true
+}
+
+// readOnlySQL is a conservative classifier. It returns true only for one
+// statement that starts with SELECT, WITH, VALUES or TABLE (after any
+// parentheses), or with EXPLAIN, its options and then one of those, and that
+// contains no word from writeWords, no FOR UPDATE, FOR SHARE, FOR NO KEY
+// UPDATE or FOR KEY SHARE clause, no advisory-lock function and no
+// dollar-quoted body. A semicolon followed by anything else (a second
+// statement) makes it false. Whatever it cannot read with confidence is a
+// write, so the statement goes to the primary: a wrong answer true would send
+// a write to a read-only server, a wrong answer false only costs a read on the
+// primary.
+//
+// It cannot see inside a user-defined function: a SELECT that calls a function
+// that writes looks like a read. Run such a call on the primary handle or in a
+// transaction.
+func readOnlySQL(sql string) bool {
+	toks, ok := tokenizeSQL(sql)
+	if !ok {
+		return false
+	}
+	for len(toks) > 0 && toks[len(toks)-1].punc == ';' { // trailing semicolons
+		toks = toks[:len(toks)-1]
+	}
+	for _, t := range toks {
+		if t.punc == ';' {
+			return false // a second statement
+		}
+	}
+	i := 0
+	skipParens := func() {
+		for i < len(toks) && toks[i].punc == '(' {
+			i++
+		}
+	}
+	skipParens()
+	if i >= len(toks) || toks[i].word == "" {
+		return false
+	}
+	if toks[i].word == "explain" {
+		i++
+		for i < len(toks) {
+			switch {
+			case toks[i].punc == '(': // EXPLAIN (ANALYZE, VERBOSE, ...)
+				depth := 0
+				for ; i < len(toks); i++ {
+					if toks[i].punc == '(' {
+						depth++
+					} else if toks[i].punc == ')' {
+						depth--
+						if depth == 0 {
+							i++
+							break
+						}
+					}
+				}
+				if depth != 0 {
+					return false
+				}
+				continue
+			case explainOptions[toks[i].word]:
+				i++
+				continue
+			}
+			break
+		}
+		skipParens()
+		if i >= len(toks) {
+			return false
+		}
+	}
+	if !readOnlyStart[toks[i].word] {
+		return false
+	}
+	prev := ""
+	for ; i < len(toks); i++ {
+		w := toks[i].word
+		if w == "" {
+			if toks[i].punc != 0 {
+				prev = ""
+			}
+			continue
+		}
+		if writeWords[w] || strings.HasPrefix(w, "pg_advisory") || strings.HasPrefix(w, "pg_try_advisory") {
+			return false
+		}
+		if prev == "for" && (w == "share" || w == "no" || w == "key") {
+			return false
+		}
+		prev = w
+	}
+	return true
 }

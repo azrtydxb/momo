@@ -191,3 +191,22 @@ func withoutSnapshots(dir fstest.MapFS) fstest.MapFS {
 	}
 	return out
 }
+
+// A version that both sides have but with different content is refused: it is
+// not this branch's migration, and regenerating around it would hide an edit.
+func TestMigrateRebaseRefusesSameVersionDifferentContent(t *testing.T) {
+	ctx := context.Background()
+	day := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	root, rm := diffInto(t, fstest.MapFS{}, rebaseSchema(), "root", day)
+	branch := withFiles(root, nil)
+	up := rm.Version + "_root.up.sql"
+	branch[up] = &fstest.MapFile{Data: append(append([]byte{}, root[up].Data...), []byte("\n-- edited on the branch\n")...)}
+
+	removed, mig, err := offlineEngine(t, branch, day.Add(time.Hour)).Rebase(ctx, root, rebaseSchema(), "x")
+	if err == nil || mig != nil || removed != nil {
+		t.Fatalf("want a refusal, got %v %+v %v", removed, mig, err)
+	}
+	if !strings.Contains(err.Error(), rm.Version) || !strings.Contains(err.Error(), "different content") {
+		t.Fatalf("the error must name the version and the content difference: %v", err)
+	}
+}
