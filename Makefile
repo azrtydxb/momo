@@ -20,6 +20,9 @@ FUZZ_TARGETS += ./driver/sqlitedriver:FuzzParseTime
 FUZZ_TARGETS += ./driver/sqlitedriver:FuzzConstraintTarget
 FUZZ_TARGETS += ./driver/sqlitedriver:FuzzCheckVersion
 FUZZ_TARGETS += ./driver/sqlitedriver:FuzzBuildDSN
+FUZZ_TARGETS += ./driver/sqlitepure:FuzzPureParseTime
+FUZZ_TARGETS += ./driver/sqlitepure:FuzzPureConstraintTarget
+FUZZ_TARGETS += ./driver/sqlitepure:FuzzPureBuildDSN
 FUZZ_TARGETS += ./gen/testdata/golden/descriptors/document:FuzzColumnByName
 FUZZ_TARGETS += .:FuzzEscapeLike
 FUZZ_TARGETS += ./types:FuzzUUIDScan
@@ -42,7 +45,7 @@ MYSQL84_URL ?= root:momo@tcp(127.0.0.1:3306)/
 MYSQL97_URL ?= root:momo@tcp(127.0.0.1:3307)/
 MARIADB_URL ?= root:momo@tcp(127.0.0.1:3308)/
 
-.PHONY: test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-sqlite test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
+.PHONY: test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-sqlite test-sqlitepure test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -80,6 +83,11 @@ test-integration-mariadb:
 # runs every dialect-neutral test on SQLite. mattn/go-sqlite3 needs cgo.
 test-integration-sqlite:
 	CGO_ENABLED=1 $(GO) test -tags integration -race -count=1 ./...
+
+# S-89: the pure-Go SQLite adapter builds and passes its suite with cgo off.
+# -race needs cgo, so the race run of this package is in test-integration.
+test-sqlitepure:
+	CGO_ENABLED=0 $(GO) test -tags integration -count=1 ./driver/sqlitepure/...
 
 bench-smoke:
 	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...

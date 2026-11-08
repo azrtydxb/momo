@@ -46,6 +46,7 @@ jobs:
           go-version: ${{ matrix.go }}
           cache-dependency-path: "**/go.sum"
       - run: make test
+      - run: make test-sqlitepure
 
   compile-fail:
     runs-on: ubuntu-latest

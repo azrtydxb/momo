@@ -46,6 +46,7 @@ jobs:
           go-version: "1.26"
           cache-dependency-path: "**/go.sum"
       - run: make test
+      - run: make test-sqlitepure
       - run: make test-compilefail
       - run: make test-race
 
