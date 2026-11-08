@@ -356,10 +356,6 @@ func TestAnalyticsErrors(t *testing.T) {
 			_, err := momo.Select[unitDocument](pg).DistinctOn(DocTenantID, DocTitle).OrderBy(DocTenantID.Asc()).SQL()
 			return err
 		}, momo.ErrValidation},
-		{"distinct on the same item twice", func() error {
-			_, err := momo.Select[unitDocument](pg).DistinctOn(DocTenantID, DocTenantID).OrderBy(DocTenantID.Asc(), DocID.Asc()).SQL()
-			return err
-		}, momo.ErrValidation},
 		{"distinct on without expressions", func() error {
 			_, err := momo.Select[unitDocument](pg).DistinctOn().SQL()
 			return err

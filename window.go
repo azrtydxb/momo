@@ -145,8 +145,10 @@ func (w WindowSpec) OrderBy(items ...Orderable) WindowSpec {
 // Rows sets a ROWS BETWEEN start AND end frame.
 func (w WindowSpec) Rows(start, end FrameBound) WindowSpec { return w.withFrame("ROWS", start, end) }
 
-// Range sets a RANGE BETWEEN start AND end frame. An offset bound needs an
-// ORDER BY.
+// Range sets a RANGE BETWEEN start AND end frame. An offset bound needs
+// exactly one ORDER BY item, and the offset is an integer literal, so it
+// suits integer (or numeric) ordering columns; interval offsets for
+// timestamp ordering are not expressible.
 func (w WindowSpec) Range(start, end FrameBound) WindowSpec { return w.withFrame("RANGE", start, end) }
 
 // Groups sets a GROUPS BETWEEN start AND end frame (PostgreSQL and SQLite;
@@ -261,8 +263,9 @@ func Lag[T any](e Expression[T], offset int) WindowFunc[T] {
 }
 
 // LagDefault is lag(e, offset, def): def replaces the NULL of a missing row.
+// def is masked in logs and traces when e is a sensitive column.
 func LagDefault[T any](e Expression[T], offset int, def T) WindowFunc[T] {
-	return offsetFn[T]("lag", e, offset, argExpr{def})
+	return offsetFn[T]("lag", e, offset, argExpr{v: def, flags: flagsOf(e)})
 }
 
 // Lead is lead(e, offset): the value offset rows after the current row.
@@ -272,7 +275,7 @@ func Lead[T any](e Expression[T], offset int) WindowFunc[T] {
 
 // LeadDefault is lead(e, offset, def).
 func LeadDefault[T any](e Expression[T], offset int, def T) WindowFunc[T] {
-	return offsetFn[T]("lead", e, offset, argExpr{def})
+	return offsetFn[T]("lead", e, offset, argExpr{v: def, flags: flagsOf(e)})
 }
 
 func offsetFn[T any](name string, e Expr, offset int, def Expr) WindowFunc[T] {
@@ -287,7 +290,8 @@ func offsetFn[T any](name string, e Expr, offset int, def Expr) WindowFunc[T] {
 	return f
 }
 
-// FirstValue is first_value(e) over the window frame.
+// FirstValue is first_value(e) over the window frame. It requires an ORDER BY
+// in the window on purpose: without one the first row is arbitrary.
 func FirstValue[T any](e Expression[T]) WindowFunc[T] {
 	return WindowFunc[T]{call: fn{name: "first_value", args: []Expr{e}}, name: "first_value", needOrder: true}
 }

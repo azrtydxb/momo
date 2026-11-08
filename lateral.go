@@ -29,6 +29,9 @@ func Lateral(q Subquery, alias string) TableSource { return lateralSource{q, ali
 
 func (s lateralSource) Qualifier() string { return s.alias }
 
+// notLockable marks a source LockOf cannot name.
+func (lateralSource) notLockable() {}
+
 func (s lateralSource) appendFrom(b *Builder) {
 	if b.d.Name == dialect.SQLite || (b.d.Name == dialect.MySQL && b.d.Flavor == dialect.FlavorMariaDB) {
 		b.unsupported("LATERAL")

@@ -38,7 +38,17 @@ func (sq SelectQuery[T]) renderDistinctOn(b *Builder) {
 		b.unsupported("DISTINCT ON")
 		return
 	}
-	n := len(s.distinctOn)
+	// A repeated expression adds nothing: keep the first of each.
+	var exprs []Expr
+	var seen []renderedExpr
+	for _, e := range s.distinctOn {
+		r := renderExpr(b.d, e)
+		if !slices.ContainsFunc(seen, r.equal) {
+			seen = append(seen, r)
+			exprs = append(exprs, e)
+		}
+	}
+	n := len(exprs)
 	fail := func(msg string, args ...any) {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf(msg, args...)})
 	}
@@ -53,7 +63,7 @@ func (sq SelectQuery[T]) renderDistinctOn(b *Builder) {
 		lead[i] = renderExpr(b.d, s.order[i].Expr)
 	}
 	used := make([]bool, n)
-	for _, e := range s.distinctOn {
+	for _, e := range exprs {
 		want := renderExpr(b.d, e)
 		found := false
 		for i, l := range lead {
@@ -68,7 +78,7 @@ func (sq SelectQuery[T]) renderDistinctOn(b *Builder) {
 		}
 	}
 	b.WriteString("DISTINCT ON (")
-	appendList(b, s.distinctOn)
+	appendList(b, exprs)
 	b.WriteString(") ")
 }
 

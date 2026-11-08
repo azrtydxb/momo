@@ -278,6 +278,54 @@ func TestTagsWithoutSchemaEffectAreAccepted(t *testing.T) {
 	}
 }
 
+// TestDimensionlessVectorColumns: a vector field without dim is supported and
+// maps to the bare pgvector type, with the extension declared. An ANN index on
+// such a column is refused with an error that names the column.
+func TestDimensionlessVectorColumns(t *testing.T) {
+	m := mdl("Chunk", "kb_chunks",
+		fld("ID", "int64", "pk,identity"),
+		fld("Dims", "int", ""),
+		fld("Embedding", "vector.Vector", ""),
+		fld("Maybe", "*vector.Vector", ""),
+		fld("Half", "vector.HalfVector", ""),
+	)
+	s, diags := build(t, pg(), m)
+	if len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	for col, typ := range map[string]string{"embedding": "vector", "maybe": "vector", "half": "halfvec"} {
+		if got := mustCol(t, s, "kb_chunks", col); got.Type != typ {
+			t.Errorf("%s: type %q, want %q", col, got.Type, typ)
+		}
+	}
+	if len(s.Extensions) != 1 || s.Extensions[0].Name != "vector" {
+		t.Errorf("extensions=%+v", s.Extensions)
+	}
+
+	for _, method := range []string{"hnsw", "ivfflat"} {
+		idx := schema.Index{
+			Name: "kb_chunks_emb_" + method, Method: method,
+			Parts: []schema.IndexPart{{Column: "embedding", OpClass: "vector_cosine_ops"}},
+			With:  []schema.KV{{Key: "lists", Value: "10"}, {Key: "m", Value: "16"}},
+		}
+		if method == "hnsw" {
+			idx.With = idx.With[1:]
+		} else {
+			idx.With = idx.With[:1]
+		}
+		bad := mdl("Chunk", "kb_chunks",
+			fld("ID", "int64", "pk,identity"),
+			fld("Embedding", "vector.Vector", ""),
+		)
+		bad.Config.Indexes = []schema.Index{idx}
+		_, ds := build(t, pg(), bad)
+		got := sdiagsString(ds)
+		if !strings.Contains(got, `column "embedding" has no dimensions`) {
+			t.Errorf("%s: diagnostics do not name the dimensionless column:\n%s", method, got)
+		}
+	}
+}
+
 func TestTagMisuseIsDiagnosed(t *testing.T) {
 	cases := []struct{ name, goType, tag, want string }{
 		{"size on int", "int64", "size:5", "size is only valid on string"},

@@ -210,7 +210,7 @@ Tag reference (all lower case):
 | `column:<name>`                                                           | column name                                                                                                                                                                                                                                           |
 | `size:<n>`                                                                | `varchar(n)`; strings only                                                                                                                                                                                                                            |
 | `precision:<p>`, `scale:<s>`                                              | numeric precision (float/decimal only); `scale` needs `precision`                                                                                                                                                                                     |
-| `dim:<n>`                                                                 | vector dimension; required for vector fields, invalid elsewhere                                                                                                                                                                                       |
+| `dim:<n>`                                                                 | vector dimension; optional on vector and halfvec (none: dimensionless column), required on sparsevec and bit, invalid elsewhere                                                                                                                       |
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                              |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                         |
@@ -294,8 +294,8 @@ not a Momo model; `fk` missing or naming a missing field; `many2many` without
 reverse), or on a kind other than `has_one`/`has_many`; `polytype` column not a
 field of the target; many-to-many to the model's own type; `momo.Model` embedded
 by pointer; a generic model; `size` on a non-string; `dim` on a non-vector;
-vector field without `dim`; `scale` without `precision`; `notnull` on a pointer;
-nullable primary key; unknown tag option; Go type with no SQL mapping.
+sparsevec or bit field without `dim`; `scale` without `precision`; `notnull` on
+a pointer; nullable primary key; unknown tag option; Go type with no SQL mapping.
 
 What the generator emits per model `Task` (package `task`):
 
@@ -588,7 +588,8 @@ are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
-`"SKIP LOCKED"`), `ForShare`, `With`, `WithRecursive`, `Union`,
+`"SKIP LOCKED"`), `ForShare`, `LockOf` (names the tables a lock covers, for
+example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim), `With`, `WithRecursive`, `Union`,
 `FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
 context; it returns `iter.Seq2[T, error]`). Aggregates: `momo.CountAll`,
 `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
@@ -1111,7 +1112,8 @@ func (i *Item) MomoConfig(c *momo.Config) {
 }
 ```
 
-Column types (the Go type picks the SQL type; `dim` is required):
+Column types (the Go type picks the SQL type; `dim` is required for sparsevec and bit,
+optional for vector and halfvec):
 
 | Go type               | SQL            | Distance builders                                                     |
 | --------------------- | -------------- | --------------------------------------------------------------------- |
@@ -1136,6 +1138,14 @@ Index rules (`MomoConfig`; validated by the generator, error wraps
 
 - A `vector` column above 2000 dims cannot have an ANN index; store it as
   `HalfVector` (up to 4000 for an index).
+- Dimensionless columns: a `vector.Vector` or `vector.HalfVector` field without
+  `dim` maps to bare `vector` or `halfvec` and holds embeddings of any size
+  (NovaCRM `KbChunk.embedding`). Its descriptor has `Dim()` zero, so a distance
+  argument of any size is accepted and still checked for NaN and Inf. Store a
+  `dims` column and always filter on it before ordering by distance, since
+  pgvector errors when it compares two sizes. hnsw and ivfflat on such a column
+  are refused (error wraps `schema.ErrInvalidVectorIndex`, names the column), as
+  are expression parts; it is searched by sequential scan.
 - `hnsw` params: `m` 2..100 (16), `ef_construction` 4..1000 (64, at least 2*m).
   `ivfflat` REQUIRES `With("lists", "N")` (1..32768).
 - An index covers one plain column; expression parts are rejected.
@@ -1370,8 +1380,11 @@ Examples: every `examples/*/example_test.go`, harness
     join tables need a unique key. A partial unique index needs
     `OnConflict(cols).Where(indexPredicate)`; a conditional DO UPDATE uses
     `.DoUpdate(...).Where(...)`.
-17. Vector columns need `dim:<n>`; hnsw/ivfflat indexes need an explicit opclass
-    matching the distance function used in queries; ivfflat needs `lists`.
+17. Vector columns take `dim:<n>`; leave it off a `vector` or `halfvec` field only
+    for a dimensionless column (embedding size depends on the model, rows
+    filtered by a dims column; no hnsw/ivfflat index on it). hnsw/ivfflat indexes
+    need an explicit opclass matching the distance function used in queries;
+    ivfflat needs `lists`.
 18. Run vector queries that need tuning inside `db.WithSearch` and use `tx`
     there; use iterative scan for filtered ANN searches; expect seq scans on small
     tables.

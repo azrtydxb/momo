@@ -45,7 +45,9 @@ type UnnestCol[T any] struct {
 // text, int64 and int bigint, int32 integer, int16 smallint, float64 double
 // precision, float32 real, bool boolean, time.Time timestamptz, []byte bytea
 // and a 16-byte array uuid (a pointer to any of these allows NULL elements;
-// named types follow their underlying kind). Any other T fails the build
+// named types follow their underlying kind). The array is bound as one
+// parameter and is not masked in logs or traces, even for sensitive values;
+// do not unnest secrets. Any other T fails the build
 // with ErrValidation; use UnnestValuesAs to name the type.
 func UnnestValues[T any](name string, vals []T) UnnestCol[T] {
 	t, err := arrayElemSQLType(reflect.TypeFor[T]())
@@ -141,6 +143,9 @@ func (u UnnestSource) WithOrdinality(name string) UnnestSource {
 
 // Qualifier is the alias the source's columns are qualified with.
 func (u UnnestSource) Qualifier() string { return u.alias }
+
+// notLockable marks a source LockOf cannot name.
+func (UnnestSource) notLockable() {}
 
 func (u UnnestSource) appendFrom(b *Builder) {
 	if !srfPostgresOnly(b, "unnest") {
@@ -244,8 +249,8 @@ func GenerateSeries[T SeriesInt](alias, col string, start, stop T, step ...T) Se
 }
 
 // GenerateTimeSeries is generate_series over timestamptz: start, start+step,
-// ... up to stop. step is a whole number of microseconds; zero (or less than
-// one microsecond) fails the build with ErrValidation. PostgreSQL only.
+// ... up to stop. step is truncated to whole microseconds; a step that
+// truncates to zero fails the build with ErrValidation. PostgreSQL only.
 func GenerateTimeSeries(alias, col string, start, stop time.Time, step time.Duration) Series[time.Time] {
 	s := Series[time.Time]{alias: alias, col: col, sqlType: "timestamptz", start: start, stop: stop, micros: true}
 	if step.Microseconds() == 0 {
@@ -261,6 +266,9 @@ func (s Series[T]) Column() Column[T] { return ColumnOf[T](s.alias, s.col) }
 
 // Qualifier is the alias the source's column is qualified with.
 func (s Series[T]) Qualifier() string { return s.alias }
+
+// notLockable marks a source LockOf cannot name.
+func (Series[T]) notLockable() {}
 
 func (s Series[T]) appendFrom(b *Builder) {
 	if !srfPostgresOnly(b, "generate_series") {
