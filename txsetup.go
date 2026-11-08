@@ -185,6 +185,15 @@ type txRows struct {
 	endErr  error
 }
 
+// Columns forwards to the wrapped rows when they report column names, so
+// MapRows works under WithImplicitTx.
+func (r *txRows) Columns() ([]string, error) {
+	if c, ok := r.Rows.(ColumnNamer); ok {
+		return c.Columns()
+	}
+	return nil, nil
+}
+
 func (r *txRows) Scan(dest ...any) (err error) {
 	defer func() {
 		// A panic while reading rolls the transaction back, never commits.

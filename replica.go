@@ -128,6 +128,17 @@ func (r routingDriver) CopyFrom(ctx context.Context, table string, cols []string
 	return c.CopyFrom(ctx, table, cols, rows)
 }
 
+// ExecInsertID forwards to the primary, so a MySQL Replica handle still reports
+// the generated key. A primary without InsertIDExecer runs a plain Exec and
+// reports the key as 0, as without a Replica.
+func (r routingDriver) ExecInsertID(ctx context.Context, sql string, args []any) (int64, int64, error) {
+	if x, ok := r.Driver.(InsertIDExecer); ok {
+		return x.ExecInsertID(ctx, sql, args)
+	}
+	n, err := r.Driver.Exec(ctx, sql, args)
+	return n, 0, err
+}
+
 // ServerVersion forwards to the primary, whose version gates MERGE.
 func (r routingDriver) ServerVersion(ctx context.Context) (int, error) {
 	v, ok := r.Driver.(ServerVersioner)
