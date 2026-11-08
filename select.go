@@ -218,7 +218,10 @@ func (sq SelectQuery[T]) keysetKeys() []keysetKey {
 		c := sq.meta.Columns[i]
 		present := false
 		for _, o := range s.order {
-			r, ok := o.Expr.(ColumnRef)
+			// Only the column name matters here, so ask for that alone: an
+			// order item such as Batches' pkRef names a column without being a
+			// full ColumnRef.
+			r, ok := o.Expr.(interface{ ColumnName() string })
 			if !ok || r.ColumnName() != c.Name {
 				continue
 			}
