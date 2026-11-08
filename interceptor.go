@@ -10,7 +10,7 @@ import (
 // Operation is what an interceptor sees and may change before a typed
 // statement compiles.
 type Operation struct {
-	// Kind is "select", "insert", "upsert", "update" or "delete". A
+	// Kind is "select", "insert", "upsert", "update", "delete" or "truncate". A
 	// SoftDelete is a "delete". An Upsert, or an Insert with OnConflict
 	// DoUpdate, is an "upsert": ON CONFLICT DO UPDATE can overwrite an
 	// existing row, so a tenant rule must deny it or constrain it (for
@@ -40,7 +40,8 @@ type Operation struct {
 // and the like); subqueries and other sources rendered inside a statement
 // (subquery operands, UPDATE ... FROM, the FromSelect source of an insert);
 // raw SQL of any kind (Exec, MapRows, Scalars, SQL fragments and RawSubquery);
-// bulk loading with COPY; and anything run on the driver directly. SQL runs
+// the raw driver CopyFrom (Insert.Copy does run the insert interceptors, deny
+// only); and anything run on the driver directly. SQL runs
 // interceptors with a background context for Select, Update, SoftDelete and
 // Delete; InsertQuery.SQL (also for an Upsert) runs neither interceptors nor
 // hooks. The internal count that tells a stale version from a missing row
