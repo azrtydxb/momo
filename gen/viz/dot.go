@@ -51,6 +51,7 @@ func DOT(tables []schema.Table, edges []Edge) []byte {
 
 // dotID quotes s as a DOT string.
 func dotID(s string) string {
+	s = strings.ReplaceAll(s, "\r", " ")
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	s = strings.ReplaceAll(s, "\n", `\n`)

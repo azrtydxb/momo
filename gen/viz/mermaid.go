@@ -26,7 +26,7 @@ func Mermaid(tables []schema.Table, edges []Edge) []byte {
 		marks := keyMarks(t)
 		b.WriteString("    " + mermaidName(t.Name) + " {\n")
 		for _, c := range t.Columns {
-			b.WriteString("        " + mermaidType(c.Type) + " " + mermaidName(c.Name))
+			b.WriteString("        " + mermaidType(c.Type) + " " + mermaidType(c.Name))
 			if m := marks[c.Name]; len(m) > 0 {
 				b.WriteString(" " + strings.Join(m, ", "))
 			}
@@ -70,6 +70,7 @@ func mermaidType(sqlType string) string {
 // mermaidName returns an entity or attribute name, quoted when it holds a
 // character outside letters, digits, underscore and hyphen.
 func mermaidName(name string) string {
+	name = oneLine(name)
 	plain := name != ""
 	for i := 0; i < len(name); i++ {
 		c := name[i]
@@ -83,6 +84,13 @@ func mermaidName(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, "#quot;") + `"`
 }
 
+// oneLine replaces line breaks, which would end a Mermaid statement, with a
+// space.
+func oneLine(s string) string {
+	return strings.NewReplacer("\r", " ", "\n", " ").Replace(s)
+}
+
 func mermaidLabel(label string) string {
+	label = oneLine(label)
 	return `"` + strings.ReplaceAll(label, `"`, "#quot;") + `"`
 }

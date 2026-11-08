@@ -190,7 +190,9 @@ func (w *Writer) Text(path string, data []byte) error {
 // Scaffold buffers data as the content of path only when path does not exist
 // yet. A scaffold is a starting point the user owns, not a generated file: it
 // carries no header and is never overwritten, so a later run leaves the
-// user's edits alone. Go source is not formatted.
+// user's edits alone. Any existing path is skipped, including a generated
+// file, a directory and a symbolic link, and nothing reports that it was
+// skipped. Go source is not formatted.
 func (w *Writer) Scaffold(path string, data []byte) error {
 	path, err := w.confine(path)
 	if err != nil {
