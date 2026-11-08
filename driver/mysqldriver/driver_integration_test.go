@@ -144,11 +144,22 @@ func TestPinAndTransaction(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := pc.Exec(ctx, "SELECT GET_LOCK('momo_t', 1)", nil); err != nil {
+			rows, err := pc.Query(ctx, "SELECT GET_LOCK('momo_t', 1)", nil)
+			if err != nil {
 				t.Fatal(err)
 			}
+			var got int64
+			if !rows.Next() || rows.Scan(&got) != nil || got != 1 {
+				t.Fatalf("GET_LOCK on the pinned connection = %d, want 1", got)
+			}
+			_ = rows.Close()
 			if err := pc.(momo.Discarder).Discard(); err != nil {
 				t.Fatal(err)
+			}
+			// The discarded session is gone, so its lock is free for another one.
+			free, err := momo.Scalars[int64](ctx, db, "SELECT GET_LOCK('momo_t', 5)")
+			if err != nil || len(free) != 1 || free[0] != 1 {
+				t.Fatalf("lock after Discard = %v, %v, want it released", free, err)
 			}
 			if err := pc.Release(); err != nil {
 				t.Fatalf("Release after Discard = %v, want nil", err)

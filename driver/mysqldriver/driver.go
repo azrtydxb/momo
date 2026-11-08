@@ -19,10 +19,25 @@ import (
 )
 
 // ConfigureDSN parses dsn and sets the connection parameters Momo relies on:
-// parseTime=true and loc=UTC so DATETIME and TIMESTAMP scan into time.Time in
-// UTC, and clientFoundRows=true so an UPDATE reports the rows it matched, not
-// only the rows whose values changed (optimistic locking and not-found
-// detection depend on it). multiStatements is forced off.
+//
+//   - parseTime=true and loc=UTC so DATETIME and TIMESTAMP scan into time.Time
+//     in UTC, and the session time_zone is set to +00:00 so TIMESTAMP columns
+//     and NOW() agree with that;
+//   - clientFoundRows=true so an UPDATE reports the rows it matched, not only
+//     the rows whose values changed (optimistic locking and not-found
+//     detection depend on it). The same flag changes the RowsAffected of an
+//     upsert: ON DUPLICATE KEY UPDATE reports 1 for an inserted row and also 1
+//     for an existing row set to its current values, and 2 for an existing row
+//     that changed. Do not read a count of 1 as proof of an insert;
+//   - interpolateParams=false and multiStatements=false: values always travel
+//     as bound parameters of a server-side prepared statement and never become
+//     SQL text. A DSN that sets either is overridden, not rejected.
+//
+// Transport security is the DSN's business and defaults to none: go-sql-driver
+// uses tls=false unless the DSN sets tls (true, skip-verify, preferred or a
+// registered config), so credentials and rows cross the network in clear text.
+// Set tls=true (or a registered config) for any server that is not on the same
+// host.
 func ConfigureDSN(dsn string) (*mysql.Config, error) {
 	cfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
@@ -31,7 +46,12 @@ func ConfigureDSN(dsn string) (*mysql.Config, error) {
 	cfg.ParseTime = true
 	cfg.Loc = time.UTC
 	cfg.ClientFoundRows = true
+	cfg.InterpolateParams = false
 	cfg.MultiStatements = false
+	if cfg.Params == nil {
+		cfg.Params = map[string]string{}
+	}
+	cfg.Params["time_zone"] = "'+00:00'"
 	return cfg, nil
 }
 

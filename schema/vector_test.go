@@ -4,6 +4,7 @@ package schema
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -107,6 +108,26 @@ func TestVectorIndexRulesMore(t *testing.T) {
 		}
 		if !c.ok && !errors.Is(err, ErrInvalidVectorIndex) {
 			t.Errorf("%s: err = %v, want ErrInvalidVectorIndex", c.name, err)
+		}
+	}
+}
+
+// TestVectorIndexRefusesDimensionlessColumn: an ANN index on a column
+// declared without dimensions is refused and the error names the column.
+func TestVectorIndexRefusesDimensionlessColumn(t *testing.T) {
+	tbl := &Table{Name: "kb_chunks", Columns: []Column{{Name: "embedding", Type: "vector"}}}
+	for _, idx := range []Index{
+		{Name: "kb_hnsw", Method: "hnsw", Parts: []IndexPart{{Column: "embedding", OpClass: "vector_cosine_ops"}}},
+		{Name: "kb_ivf", Method: "ivfflat", Parts: []IndexPart{{Column: "embedding", OpClass: "vector_cosine_ops"}}, With: []KV{{"lists", "10"}}},
+	} {
+		err := ValidateVectorIndex(dialect.Postgres, tbl, idx)
+		if !errors.Is(err, ErrInvalidVectorIndex) {
+			t.Fatalf("%s: err = %v, want ErrInvalidVectorIndex", idx.Method, err)
+		}
+		for _, want := range []string{`column "embedding"`, "no dimensions", idx.Name} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: error %q lacks %q", idx.Method, err, want)
+			}
 		}
 	}
 }

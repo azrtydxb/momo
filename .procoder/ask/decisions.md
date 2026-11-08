@@ -142,3 +142,21 @@ Decision (2026-11-07): merge PR #28 into kuvryn-license main once CI is green.
 - Leave them in the backlog
 
 Decision (2026-11-07): "do it" — audit NovaCRM (read-only) into .procoder/research/novacrm-gap-audit.md, pull #29 into sprint 5, plan the rest as sprint 6 once sprint 5 merges.
+
+## PR #41 (ci/agent-branch-fast-ci): a duplicate lean-CI change opened against main
+
+- Close #41 as superseded by sprint-5 commit 126646b (ci-agent.yml with lint, unit/compile-fail/race, fuzz smoke and PostgreSQL integration) (recommended)
+- Keep #41: it is the user's own work from another session; leave it open
+- Merge #41 into main and drop 126646b from sprint-5
+
+Decision (2026-11-08): close #41 as superseded by 126646b on sprint-5.
+
+## Story criteria that cannot be met: "failed before the implementation" and a local `procoder check`
+
+Stories 068, 097, 091-093, 112, 127, 131, 132 and 133 each carry a criterion that the test failed before the code existed, plus a local gate run. Laptop test runs are forbidden, and the code was written before the tests ran on CI.
+
+- Prove red on CI: for each story, push a throwaway branch with the implementation reverted, record the failing run id as the red evidence, then close (recommended)
+- Waive both criteria for these stories with a note; the commit hook's gate run counts as the gate
+- Carry the stories open until a later sprint
+
+Decision (2026-11-08): prove red on CI — for each such story, push a throwaway worktree-agent-*-red branch with the implementation reverted, cite the failing run as red evidence, then close.

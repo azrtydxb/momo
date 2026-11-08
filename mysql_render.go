@@ -67,43 +67,50 @@ func (b *Builder) writeExcluded(col string) {
 	}
 }
 
-// checkMySQLConflictTarget returns ErrUnsupported unless target equals the
-// primary key or the only unique key of ts. MySQL's ON DUPLICATE KEY UPDATE
-// fires for a conflict on any unique key and cannot name one, so a target
-// that is one of several unique keys would silently also update rows that
-// conflict on the others. A nil ts (a model without a schema) accepts only
-// the primary key, which the caller passes through target.
+// checkMySQLConflictTarget returns ErrUnsupported unless target is the only
+// unique key of the table, the primary key included. MySQL's
+// ON DUPLICATE KEY UPDATE fires for a conflict on any unique key and cannot
+// name one, so with a second unique key the statement would also update the
+// row that conflicts on the key the caller did not name. With no schema (a
+// hand-written Meta) the unique keys are unknown: only a target equal to pk is
+// accepted, and the caller owns the claim that the table has no other unique
+// key.
 func checkMySQLConflictTarget(ts *schema.Table, target []string, pk []string) error {
 	if len(target) == 0 {
 		return nil
 	}
-	if sameStrings(target, pk) {
+	if ts == nil {
+		if sameStrings(target, pk) {
+			return nil
+		}
+		return mysqlTargetError(target, "the table has no schema, so only the primary key can be targeted")
+	}
+	var uniques [][]string
+	if len(ts.PrimaryKey) > 0 {
+		uniques = append(uniques, ts.PrimaryKey)
+	}
+	for _, u := range ts.Uniques {
+		uniques = append(uniques, u.Columns)
+	}
+	for _, ix := range ts.Indexes {
+		if !ix.Unique {
+			continue
+		}
+		cols := make([]string, 0, len(ix.Parts))
+		for _, p := range ix.Parts {
+			cols = append(cols, p.Column)
+		}
+		uniques = append(uniques, cols)
+	}
+	if len(uniques) == 1 && sameStrings(target, uniques[0]) {
 		return nil
 	}
-	if ts != nil {
-		if sameStrings(target, ts.PrimaryKey) && len(ts.PrimaryKey) > 0 {
-			return nil
-		}
-		var uniques [][]string
-		for _, u := range ts.Uniques {
-			uniques = append(uniques, u.Columns)
-		}
-		for _, ix := range ts.Indexes {
-			if !ix.Unique {
-				continue
-			}
-			cols := make([]string, 0, len(ix.Parts))
-			for _, p := range ix.Parts {
-				cols = append(cols, p.Column)
-			}
-			uniques = append(uniques, cols)
-		}
-		if len(uniques) == 1 && sameStrings(target, uniques[0]) {
-			return nil
-		}
-	}
+	return mysqlTargetError(target, fmt.Sprintf("the table has %d unique keys and the target must be the only one", len(uniques)))
+}
+
+func mysqlTargetError(target []string, why string) error {
 	return &Error{Kind: ErrUnsupported, Op: "insert", Err: fmt.Errorf(
-		"MySQL ON DUPLICATE KEY UPDATE cannot target %v: it fires for any unique key, so the target must be the primary key or the only unique key", target)}
+		"MySQL ON DUPLICATE KEY UPDATE cannot target %v: it fires for any unique key; %s", target, why)}
 }
 
 // renderMySQLConflict renders the conflict clause of an INSERT for the MySQL
@@ -132,6 +139,10 @@ func (q InsertQuery[T]) renderMySQLConflict(b *Builder) {
 			key = pk[0]
 		case len(q.meta.Columns) > 0:
 			key = q.meta.Columns[0].Name
+		}
+		if key == "" {
+			b.SetErr(q.verr("", "DoNothing needs a column to leave unchanged, and %s maps none", q.meta.Table))
+			return
 		}
 		renderMySQLUpsert(b, b.d.Flavor, key, nil, true, fromValues, q.appendValueTo)
 		return
@@ -172,7 +183,12 @@ func (q InsertQuery[T]) wantsGeneratedKey() bool {
 }
 
 // assignGeneratedKey stores id in the identity field of the model passed to
-// Model. Field types other than the integer kinds are left alone.
+// Model. Field types other than the integer kinds are left alone. Only the
+// single Model path writes a key back: a multi-row insert has no reliable ids
+// (they depend on innodb_autoinc_lock_mode), so it neither returns nor writes
+// them. MariaDB callers who need them use Returning, which renders
+// INSERT ... RETURNING; MySQL has no equivalent and Returning is
+// ErrUnsupported there.
 func (q InsertQuery[T]) assignGeneratedKey(id int64) {
 	p := q.meta.Ptr(q.ptr, q.meta.Identity)
 	if p == nil {
@@ -189,22 +205,6 @@ func (q InsertQuery[T]) assignGeneratedKey(id int64) {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		ev.SetUint(uint64(id)) // #nosec G115 -- an auto-increment key is positive
 	}
-}
-
-// mysqlMultiRowNeedsKeys reports whether a multi-row model insert asks MySQL
-// for generated keys it cannot return: ids of a multi-row statement depend on
-// innodb_autoinc_lock_mode and are not guaranteed contiguous, so Momo refuses
-// instead of guessing. A multi-row insert whose rows all carry an explicit
-// identity value is allowed (resolveMySQLIdentity writes those values).
-func (q InsertQuery[T]) mysqlMultiRowNeedsKeys() bool {
-	id := q.meta.Identity
-	if len(q.models) < 2 || id < 0 || id >= len(q.meta.Columns) || q.i.withIdentity || q.q == nil || !q.q.Dialect().OnDuplicateKey ||
-		q.meta.Columns[id].Flags&FlagIdentity == 0 {
-		return false
-	}
-	return slices.ContainsFunc(q.models, func(m T) bool {
-		return reflect.ValueOf(q.meta.Value(&m, id)).IsZero()
-	})
 }
 
 // resolveMySQLIdentity makes a multi-row model insert on MySQL write the

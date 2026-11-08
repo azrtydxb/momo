@@ -4,8 +4,8 @@ package dialect
 
 // mysqlBase holds the capabilities shared by both flavors. RETURNING,
 // ON CONFLICT, NULLS FIRST/LAST, ILIKE, MERGE and transactional DDL are
-// absent: NULL ordering is emulated with an IS NULL sort key and ILIKE with
-// LOWER().
+// absent: requesting NULLS FIRST or LAST fails with ErrUnsupported, and
+// callers that need case-insensitive matching write LOWER() themselves.
 var mysqlBase = Dialect{
 	Name: MySQL, MaxParams: 65535,
 	OnDuplicateKey: true, Locking: true, DefaultInUpdate: true, DefaultInValues: true,

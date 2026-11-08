@@ -80,6 +80,26 @@ func TestValueErrorsAreRedacted(t *testing.T) {
 	}
 }
 
+// Catches: a server error with no mapping (1525 incorrect DATETIME value, 1367
+// illegal value, 1406 data too long) rendering the value the server quotes.
+func TestUnmappedServerErrorsAreRedacted(t *testing.T) {
+	for _, num := range []uint16{1525, 1300, 1367, 1406, 9999} {
+		msg := "Incorrect DATETIME value: 'secret-value'"
+		err := classify(&mysql.MySQLError{Number: num, Message: msg}, "SELECT 1")
+		if strings.Contains(err.Error(), "secret-value") {
+			t.Errorf("%d: Error() leaked the value: %v", num, err)
+		}
+		var se *mysql.MySQLError
+		if !errors.As(err, &se) || se.Number != num {
+			t.Errorf("%d: server error not reachable with errors.As", num)
+		}
+		d, ok := err.(interface{ Detail() string })
+		if !ok || d.Detail() != msg {
+			t.Errorf("%d: Detail() does not return the server message", num)
+		}
+	}
+}
+
 func TestNewRejectsUnknownFlavor(t *testing.T) {
 	d := New(nil, "oracle")
 	if _, err := d.Exec(t.Context(), "SELECT 1", nil); !errors.Is(err, momo.ErrUnsupported) {
@@ -87,12 +107,17 @@ func TestNewRejectsUnknownFlavor(t *testing.T) {
 	}
 }
 
+// Catches: a DSN that turns on client-side interpolation, which would put bound
+// values into the SQL text, or multi-statement execution.
 func TestConfigureDSN(t *testing.T) {
-	cfg, err := ConfigureDSN("u:p@tcp(h:3306)/d?multiStatements=true")
+	cfg, err := ConfigureDSN("u:p@tcp(h:3306)/d?multiStatements=true&interpolateParams=true")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.ParseTime || !cfg.ClientFoundRows || cfg.MultiStatements || cfg.Loc.String() != "UTC" {
+	if !cfg.ParseTime || !cfg.ClientFoundRows || cfg.MultiStatements || cfg.InterpolateParams || cfg.Loc.String() != "UTC" {
 		t.Fatalf("config = %+v", cfg)
+	}
+	if cfg.Params["time_zone"] != "'+00:00'" {
+		t.Fatalf("time_zone param = %q", cfg.Params["time_zone"])
 	}
 }

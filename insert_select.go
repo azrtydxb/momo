@@ -75,43 +75,20 @@ func (s ExprSelect) renderBare(b *Builder, onConflictFollows bool) {
 		}
 		b.WriteString("SELECT ")
 		appendList(b, s.cols)
-		where := s.where
-		if s.from != nil {
-			b.WriteString(" FROM ")
-			s.from.appendFrom(b)
-			if t, ok := s.from.(TableRef); ok && t.SoftDelete != "" {
-				where = append(slices.Clip(where), softMarkerPred{t.Qualifier(), t.SoftDelete, t.SoftDeleteKind, false})
+		// FROM, the soft-delete marker and WHERE are rendered by the same
+		// selectCore methods as a SelectQuery, so they exist once.
+		core := selectCore{from: s.from, where: s.where}
+		where := core.where
+		if core.from != nil {
+			core.writeFrom(b, "")
+			if p, ok := core.sourceSoftDelete(); ok {
+				where = append(slices.Clip(where), p)
 			}
 		} else if len(where) > 0 && b.d.Name == dialect.MySQL {
 			b.WriteString(" FROM DUAL")
 		}
-		switch {
-		case len(where) > 0:
-			b.WriteString(" WHERE ")
-			appendAnd(b, where)
-		case s.from != nil && onConflictFollows:
-			b.WriteString(" WHERE true")
-		}
+		core.writeWhere(b, where, onConflictFollows)
 	})
-}
-
-// arityOf reports how many columns a subquery yields, when momo can tell.
-func arityOf(q Subquery) (int, bool) {
-	a, ok := q.(interface{ selectArity() (int, bool) })
-	if !ok {
-		return 0, false
-	}
-	return a.selectArity()
-}
-
-func (sq SelectQuery[T]) selectArity() (int, bool) {
-	if sq.s.cols != nil {
-		return len(sq.s.cols), true
-	}
-	if sq.meta.Table == "" {
-		return 0, false
-	}
-	return len(sq.meta.Columns), true
 }
 
 // FromSelect makes the rows of a SELECT the source of the INSERT, rendering

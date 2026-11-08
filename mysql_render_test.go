@@ -36,20 +36,34 @@ func TestMySQLUpsertRendering(t *testing.T) {
 }
 
 func TestMySQLConflictTargetRule(t *testing.T) {
-	ts := &schema.Table{Name: "users", PrimaryKey: []string{"id"},
-		Uniques: []schema.Unique{{Name: "users_email", Columns: []string{"email"}}}}
 	pk := []string{"id"}
-	if err := checkMySQLConflictTarget(ts, []string{"email"}, pk); err != nil {
+	only := &schema.Table{Name: "users", PrimaryKey: []string{"id"}}
+	if err := checkMySQLConflictTarget(only, []string{"id"}, pk); err != nil {
+		t.Fatalf("sole primary key target rejected: %v", err)
+	}
+	onlyUnique := &schema.Table{Name: "users", Uniques: []schema.Unique{{Name: "users_email", Columns: []string{"email"}}}}
+	if err := checkMySQLConflictTarget(onlyUnique, []string{"email"}, pk); err != nil {
 		t.Fatalf("sole unique target rejected: %v", err)
 	}
-	if err := checkMySQLConflictTarget(ts, []string{"id"}, pk); err != nil {
-		t.Fatalf("primary key target rejected: %v", err)
+	// Catches: a target accepted although the primary key is a second unique key
+	// the statement would also fire on.
+	both := &schema.Table{Name: "users", PrimaryKey: []string{"id"},
+		Uniques: []schema.Unique{{Name: "users_email", Columns: []string{"email"}}}}
+	for _, target := range [][]string{{"email"}, {"id"}} {
+		if err := checkMySQLConflictTarget(both, target, pk); !errors.Is(err, ErrUnsupported) {
+			t.Errorf("PK plus unique key, target %v: err = %v, want ErrUnsupported", target, err)
+		}
 	}
-	ts.Uniques = append(ts.Uniques, schema.Unique{Name: "users_handle", Columns: []string{"handle"}})
-	if err := checkMySQLConflictTarget(ts, []string{"email"}, pk); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("second unique key: err = %v, want ErrUnsupported", err)
+	// A unique index counts like a unique constraint.
+	withIndex := &schema.Table{Name: "users", PrimaryKey: []string{"id"},
+		Indexes: []schema.Index{{Name: "ix", Unique: true, Parts: []schema.IndexPart{{Column: "handle"}}}}}
+	if err := checkMySQLConflictTarget(withIndex, []string{"id"}, pk); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("PK plus unique index: err = %v, want ErrUnsupported", err)
+	}
+	if err := checkMySQLConflictTarget(nil, []string{"id"}, pk); err != nil {
+		t.Errorf("no schema, primary key target: %v", err)
 	}
 	if err := checkMySQLConflictTarget(nil, []string{"email"}, pk); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("no schema, non-key target: err = %v, want ErrUnsupported", err)
+		t.Errorf("no schema, non-key target: err = %v, want ErrUnsupported", err)
 	}
 }

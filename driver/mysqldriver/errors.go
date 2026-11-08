@@ -29,6 +29,11 @@ func (e driverError) Unwrap() error  { return e.cause }
 // kinds maps server error numbers to momo sentinels. MySQL and MariaDB share
 // the numbers except the check constraint failure, which MariaDB reports as
 // 4025 where MySQL reports 3819.
+//
+// momo.Error.Constraint differs between servers because it is parsed from the
+// server message: MySQL 8 names a unique key "table.index" (users.email),
+// MariaDB names only the index (email); foreign keys carry the constraint
+// name on both, and a NOT NULL violation carries none.
 var kinds = map[uint16]error{
 	1062: momo.ErrUniqueViolation,     // ER_DUP_ENTRY
 	1451: momo.ErrForeignKeyViolation, // ER_ROW_IS_REFERENCED_2
@@ -42,16 +47,6 @@ var kinds = map[uint16]error{
 	1213: momo.ErrSerialization,       // ER_LOCK_DEADLOCK
 	1205: momo.ErrBusy,                // ER_LOCK_WAIT_TIMEOUT
 	3572: momo.ErrBusy,                // ER_LOCK_NOWAIT
-}
-
-// valueErrors are data errors whose message quotes a bound value. They keep
-// their driver type but render without the server text.
-var valueErrors = map[uint16]bool{
-	1264: true, // ER_WARN_DATA_OUT_OF_RANGE
-	1265: true, // WARN_DATA_TRUNCATED
-	1292: true, // ER_TRUNCATED_WRONG_VALUE
-	1366: true, // ER_TRUNCATED_WRONG_VALUE_FOR_FIELD
-	1411: true, // ER_WRONG_VALUE_FOR_TYPE
 }
 
 var (
@@ -86,10 +81,10 @@ func classify(err error, stmt string) error {
 	}
 	kind, ok := kinds[se.Number]
 	if !ok {
-		if valueErrors[se.Number] {
-			return driverError{cause: err, msg: fmt.Sprintf("mysql: data error %d", se.Number), detail: se.Message}
-		}
-		return err
+		// Any server error can quote a bound value (1525, 1300, 1367, 1406 and
+		// others do), so every unmapped code is redacted too: Error shows the
+		// code, Detail the server text, and errors.As still reaches the cause.
+		return driverError{cause: err, msg: fmt.Sprintf("mysql: error %d", se.Number), detail: se.Message}
 	}
 	out := &momo.Error{
 		Kind: kind,
