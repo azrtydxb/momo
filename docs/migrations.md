@@ -675,9 +675,14 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
   migrations compiles unchanged, but a function value of the old type no longer
   matches.
 - **Forward only.** A Go migration has no down step. A rollback of the group
-  that contains one refuses it, with `ErrGoMigrationNotReversible`
-  (`migrate.RefuseGoRollback` takes the history rows to roll back and returns
-  it for the first row of kind `go`); fix forward with a new migration.
+  that contains one refuses it: `Engine.Rollback` (landing from the M1
+  migrations branch) calls `migrate.RefuseGoRollback` with the history rows to
+  roll back, which returns `ErrGoMigrationNotReversible` for the first row of
+  kind `go`; fix forward with a new migration.
+- **Baseline.** `Baseline` through a version records a `go` row (checksum =
+  the identity) for every registered Go migration up to it. An engine without
+  that registration, the CLI included, refuses to baseline past a snapshot-only
+  version with `ErrGoMigrationUnregistered`, because it cannot record the row.
 - **Hooks and options.** Without `migrate.WithGoMigrationDB`, `Up` and `UpNoTx`
   get a bare `momo.New` of the engine's driver: none of the application's
   hooks, field hooks, clock or other options. Pass the application's `*momo.DB`
@@ -692,7 +697,11 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
   later SQL and the application's engine would then fail with `ErrOutOfOrder`
   for the Go migration for good. Once the Go migration is applied, the CLI is
   unblocked; a database that has one in its history shows it as `missing` to
-  the CLI. The
+  the CLI. The check keys on the snapshot file, so a Go migration whose
+  snapshot file is missing is invisible to the CLI: run `ValidateOffline` with
+  your Go migrations in a test of the application, which reports that.
+  The same refusal fires for an up file that was removed and left its snapshot,
+  so when you squash old migrations remove their snapshots too. The
   application runs the engine itself, at start or in a small
   `cmd/migrate` of its own:
 
