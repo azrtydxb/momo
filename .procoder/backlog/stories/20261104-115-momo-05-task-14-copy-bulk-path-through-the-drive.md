@@ -11,7 +11,7 @@ Implements plan momo-05-writes-queries Task 14: COPY bulk path through the drive
 
 ## Acceptance criteria
 
-- [ ] `TestCopyInsert` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestCopyInsert` exists as written in the plan, failed before the implementation, and passes now
 - [ ] [S-5] [S-9] `TestBulkInsertChunking` inserts more rows than one statement's parameter limit and counts them; `TestCopyInsert` (PostgreSQL) writes rows via COPY, including a count above one statement's parameter limit; `TestBulkInsertChunking` (bulk_test.go, which predates this story) fails if chunk size ignores the dialect limit.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
@@ -24,6 +24,6 @@ Done (not ticked, see below):
 
 Remains open, with the reason:
 
-- Criterion 1 (failed before the implementation): the red run 42455500991 (implementation reverted) failed to compile on `undefined: mergeGate` and `momo.Merge` first; the Go compiler stopped at 10 errors, so the log does not show the missing `Copy` method. No red evidence for `TestCopyInsert` exists, so the box stays unticked. A new throwaway red run with only the Copy implementation reverted would close it.
+- Criterion 1 is ticked: red run 42462295742 (throwaway branch, only insert_copy.go removed) failed to compile with `ins(db).Copy undefined` in copy_test.go and insert_copy_unit_test.go; green run 42462290717 on 12b5c776b6d5b18562aa78396848de1375a2b60c passes TestCopyInsert and the unit tests (lint, unit, fuzz-smoke, PostgreSQL, MySQL and MariaDB integration all success).
 - Criterion 2: `TestBulkInsertChunking` predates this story, so no red is possible for it, and no mutation run (chunk size ignoring the limit) was made. Unticked.
 - Criterion 3: the story close gate must pass once 1 and 2 are settled.
