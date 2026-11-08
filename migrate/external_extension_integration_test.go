@@ -145,6 +145,25 @@ func TestBaselineAsAppRoleNeedsCreateOnSchema(t *testing.T) {
 	}
 }
 
+// TestApplyAsAppRoleNeedsCreateOnSchema: apply runs the same CREATE TABLE IF NOT
+// EXISTS for the history table before the first pending migration, so it is
+// refused without CREATE on the schema even when the role owns the table, and
+// nothing is recorded or run. docs/migrations.md states this for apply as well
+// as baseline.
+func TestApplyAsAppRoleNeedsCreateOnSchema(t *testing.T) {
+	admin := testopen.Postgres(t)
+	app := openAppRoleDB(t)
+	ownHistoryAsApp(t, admin, app)
+	e := migratetest.NewEngine(t, mpg.New(), app.Driver(), migratetestFS(t, initVersion))
+	_, err := e.Apply(context.Background(), migrate.ApplyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "permission denied for schema") {
+		t.Fatalf("want a permission denied for schema error, got %v", err)
+	}
+	if got := firstValue(t, admin, `SELECT count(*)::text FROM momo_migrations`); got != "0" {
+		t.Fatalf("a refused apply recorded %s history row(s), want 0", got)
+	}
+}
+
 // noVectorSnapshot is usersSchema without the vector extension, which the live
 // database has.
 func noVectorSnapshot() *schema.Schema {
