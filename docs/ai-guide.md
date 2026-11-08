@@ -6,6 +6,8 @@ DON'T, the call either fails, silently does the wrong thing, or is a known bug.
 
 Imports used throughout:
 
+<!-- docscheck:fragment -->
+
 ```go
 import (
 	"github.com/azrtydxb/momo"                    // core: DB, Tx, Select, Insert, Update, Delete, errors
@@ -120,6 +122,8 @@ ignored. Without it `time.Time` is `timestamp with time zone`.
 
 Generate:
 
+<!-- docscheck:fragment -->
+
 ```go
 //go:generate momo generate
 ```
@@ -144,6 +148,8 @@ Details: README "Configure and generate". Example: [quickstart](../examples/quic
 
 ## 3. Connecting
 
+<!-- docscheck:fragment -->
+
 ```go
 func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
 	pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)
@@ -166,6 +172,8 @@ func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
   whole duration.
 
 Other constructors:
+
+<!-- docscheck:fragment -->
 
 ```go
 sqlDB, drv := pgxdriver.FromConnConfig(cfg, opts...) // cfg *pgx.ConnConfig; returns (*sql.DB, momo.Driver)
@@ -198,6 +206,8 @@ A model is a struct that embeds `momo.Model` BY VALUE. The tag on that embedded
 field names the table. The tag grammar is `momo:"opt,opt:value,..."`; a value
 cannot contain a comma. An unknown, duplicate or malformed option is a generator
 diagnostic and nothing is written for that package.
+
+<!-- docscheck:fragment -->
 
 ```go
 type Account struct {
@@ -260,6 +270,7 @@ Tag reference (all lower case):
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                              |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                         |
+| `idgen:<name>`                                                            | client-generated string id (`cuid`, `uuid`, `ulid` or a name registered with `WithIDGenerator`); filled on insert when the field is empty                                                                                                             |
 | `version`                                                                 | optimistic-lock column (integer type)                                                                                                                                                                                                                 |
 | `created_at[:unix\|unixmilli\|unixnano]`, `updated_at`                    | automatic timestamps; field type `time.Time`, `*time.Time`, `int64` or `*int64`                                                                                                                                                                       |
 | `soft_delete:timestamp\|unix\|bool`                                       | soft-delete marker; Go type `*time.Time`, `*int64` or `bool`                                                                                                                                                                                          |
@@ -273,6 +284,8 @@ Tag reference (all lower case):
 indexes, checks, enums, views, triggers, policies. The generator reads this
 method statically and never runs it; arguments are `&receiver.Field` pointers and
 string literals only.
+
+<!-- docscheck:fragment -->
 
 ```go
 func (a *Account) MomoConfig(c *momo.Config) {
@@ -298,6 +311,8 @@ Config methods: `Index`, `IndexExpr`, `Unique`, `Check`, `Enum`, `Default`,
 
 Many-to-many needs `join:` with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry `join:` too):
+
+<!-- docscheck:fragment -->
 
 ```go
 type Document struct {
@@ -358,6 +373,88 @@ What the generator emits per model `Task` (package `task`):
   names (`task := ...` shadows the package). Name variables differently or
   alias the import.
 
+### Client-generated ids
+
+Databases that keep ids as text and generate them in the client (Prisma
+`@default(cuid())`) have no column default to lean on. Declare the generator
+on the field, with the tag or in `MomoConfig`:
+
+```go
+package main
+
+import "github.com/azrtydxb/momo"
+
+func main() {}
+
+type Contact struct {
+	momo.Model `momo:"table:contacts"`
+	ID         string `momo:"pk,idgen:cuid"`
+	Name       string
+}
+
+type Note struct {
+	momo.Model `momo:"table:notes"`
+	ID         string `momo:"pk"`
+}
+
+func (n *Note) MomoConfig(c *momo.Config) { c.IDGen(&n.ID, "ulid") }
+```
+
+- Built-in generators: `cuid` (25 characters in the layout Prisma writes, so old
+  and new ids look alike), `uuid` (random, version 4, 36 characters) and `ulid`
+  (26 characters, sortable by creation time). Register your own, or replace a
+  built-in, with `momo.New(drv, momo.WithIDGenerator("short", fn))` and tag
+  `idgen:short`. Names are lowercase; the `MomoConfig` form takes a string
+  literal.
+- The generator fires when an insert writes the field and it holds the Go zero
+  value: `Model`, `Models`, `Upsert` and every chunk of a bulk insert. An id you
+  assigned is kept. The generated id is stored in your struct (the model you
+  passed, or the slice element), so read `m.ID` after `Exec` or `Rows`.
+- The field must be a `string` kind (named string types and `*string` work). Any
+  other type, a name given twice (tag and `MomoConfig`) or `identity`/`serial`
+  on the same field is refused by the generator. A name that is neither built in
+  nor registered fails the insert with `ErrValidation`.
+- A column named in `Omit` always takes a fresh generated id, which is bound
+  and written back like any other. `Values` and `ValuesRows` that leave the id
+  out get one too. `SQL()` shows a generated id in the arguments but does not
+  store it in the model.
+- On an `OnConflict` upsert whose target is not the primary key, the row in the
+  database may keep its own id. `Exec` then asks the database for the stored id
+  and writes that into the model (a `DoUpdate` that hit an existing row gives
+  that row's id). A model whose row `DoNothing` skipped keeps the id it had,
+  usually empty. This needs `RETURNING`; without it (MySQL) the id is not
+  written back for such statements. `Rows` never writes back there: read the id
+  from the returned rows.
+- When the id is written back up front (every statement except the conflict
+  case above), it stays in your struct also when the insert fails. Retrying the
+  same struct reuses the id, and so do all rows of a failed chunked insert. Clear
+  the field to get a new one. In the conflict case the model is updated only
+  after a successful statement.
+- In the conflict case, rows are matched to models on the conflict-target
+  columns (or on the generated id for `DoNothing` without a target), so those
+  columns must read back exactly as you wrote them; `citext`, `char(n)` and
+  `numeric` columns may not. A returned row that matches no model fails with
+  `ErrValidation` and the write is rolled back; only a pinned `OnConn` handle,
+  which cannot open a transaction, keeps it. If two models share a target
+  value, the first one is matched. A non-primary-key generated column (such as a
+  `public_id`) counts as a conflict case too, because the kept row has its own;
+  the default `DO UPDATE` set of `Upsert` leaves such a column out, so a
+  conflict never replaces the stored value, even one you assigned; to overwrite
+  it, pass an explicit `DoUpdate` that sets it. A single-statement insert that
+  reads ids back runs in its own transaction (or savepoint), so a mismatch rolls
+  the write back, and the models are updated only after the whole insert has
+  committed. Inside your own `Tx` that means after the savepoint is released,
+  not after your outer commit: if you roll the outer transaction back, the
+  models still hold the ids of rows that no longer exist.
+- The generator is a client-side convenience, not a secret. A `cuid` is built
+  from the time, a counter and a process fingerprint, so it is guessable: do not
+  use it for tokens or anything that must be unpredictable. Use `uuid` (random,
+  version 4) or your own generator for that.
+- A generator that returns an empty id, panics, or is registered with a nil
+  function fails the insert with `ErrValidation`. The `ulid` generator does the
+  same in the unlikely case that it runs out of ids within one millisecond.
+- The tag adds no database default: the column stays `text primary key`.
+
 ### Projections
 
 A projection reads a column subset or aggregate into a non-table struct. Embed
@@ -366,6 +463,8 @@ A projection reads a column subset or aggregate into a non-table struct. Embed
 naming rule or a `momo:"column:..."` tag). NEVER hand-write `MomoMeta` for a
 projection. The `Columns(...)` list of the query must equal the struct field
 order.
+
+<!-- docscheck:fragment -->
 
 ```go
 type Card struct {
@@ -377,6 +476,8 @@ type Card struct {
 ```
 
 Use it like this:
+
+<!-- docscheck:fragment -->
 
 ```go
 cards := momo.Select[models.Card](q).From(article.Table).
@@ -406,6 +507,8 @@ computed column in `Columns` of the meta (for example `distance`) is only a labe
 Tuple rows: for an aggregate, join or few-column read use `momo.Row1` to
 `momo.Row10` instead of declaring a projection (no struct, no generated meta).
 `Columns` is scanned positionally into the fields `C1` to `Cn`:
+
+<!-- docscheck:fragment -->
 
 ```go
 counts, err := momo.Select[momo.Row2[string, int64]](q).From(article.Table).
@@ -590,6 +693,8 @@ column, wrong shape) surface at `SQL()` or at the terminal call.
 
 Select:
 
+<!-- docscheck:fragment -->
+
 ```go
 tasks, err := momo.Select[models.Task](q).
 	Where(task.Done.Eq(false), task.Priority.Ge(2)). // several predicates are ANDed
@@ -685,6 +790,8 @@ mismatch. Otherwise group by position or alias in an outer query. Keyset paginat
 an alias is not valid in WHERE or inside a window ORDER BY; order by the
 expression itself there.
 
+<!-- docscheck:fragment -->
+
 ```go
 // Alias a select-list item. As[T] is generic; Agg, Case and Func values also have .As(name).
 // Column.As is the TABLE alias, so alias a column with momo.As[int64](col, "name").
@@ -768,6 +875,8 @@ because aliases are quoted.
 
 Keyset pagination (do not use `Offset` for deep pages):
 
+<!-- docscheck:fragment -->
+
 ```go
 var size int64 = 20 // Limit takes int64
 q := momo.Select[models.Task](db).OrderBy(task.Priority.Desc()) // PK is appended as tie-breaker
@@ -784,6 +893,8 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
 [projection-pagination](../examples/projection-pagination/).
 
 Insert:
+
+<!-- docscheck:fragment -->
 
 ```go
 t := models.Task{Title: "write guide"} // Priority 0, Done false, Note NULL
@@ -811,6 +922,8 @@ return rows2.Err()
 - `Insert.Models([]T{})` (empty) is `ErrValidation`.
 
 Update:
+
+<!-- docscheck:fragment -->
 
 ```go
 // Set writes exactly the given values, including 0, false, "" ; other columns untouched.
@@ -849,6 +962,8 @@ _, err = momo.Update[models.Task](q).Model(&cur).Exec(ctx)
 
 Delete and soft delete:
 
+<!-- docscheck:fragment -->
+
 ```go
 _, err := momo.Delete[models.Task](q).Where(task.ID.Eq(id)).Exec(ctx)   // hard delete
 _, err = momo.SoftDelete[models.Task](q).Where(task.ID.Eq(id)).Exec(ctx) // stamps the soft_delete column
@@ -879,6 +994,8 @@ dead, _ := momo.Select[models.Task](q).OnlyDeleted().All(ctx)
 
 Upsert (PostgreSQL `ON CONFLICT`):
 
+<!-- docscheck:fragment -->
+
 ```go
 // Conflict target = primary key; DO UPDATE assigns every writable column from EXCLUDED.
 _, err := momo.Upsert[models.Task](q).Model(&t).Exec(ctx)
@@ -902,6 +1019,8 @@ res, err := momo.Insert[models.Lock](q).
 
 Insert from a SELECT (`INSERT ... SELECT`), including a FROM-less select guarded by
 `WHERE NOT EXISTS`, as one atomic statement:
+
+<!-- docscheck:fragment -->
 
 ```go
 // INSERT INTO meters (product, id, kind, ...) SELECT $1, $2, 'distinct', ...
@@ -965,6 +1084,8 @@ res, err := momo.Insert[models.Meter](q).
 Raw SQL (escape hatches; the SQL text must be a constant, pass user input only
 as arguments):
 
+<!-- docscheck:fragment -->
+
 ```go
 // Predicate fragment:           ?  binds the next argument, ?? is a literal ?, @name binds momo.Named("name", v)
 momo.Select[models.Task](q).Where(momo.SQL(`lower("tasks"."title") LIKE ?`, "%go%"))
@@ -991,6 +1112,8 @@ ids, err := momo.Scalars[int64](ctx, q, `SELECT id FROM tasks WHERE done = ?`, t
 On the PostgreSQL dialect, raw SQL (`Exec`, `Scalars`, `SQL`, `TypedSQL`,
 `RawSubquery`) accepts PostgreSQL's native `$1, $2, ...` placeholders, so a
 statement written for pgx or sqlc moves over unchanged:
+
+<!-- docscheck:fragment -->
 
 ```go
 // pgx / sqlc:   pool.Exec(ctx, "UPDATE tasks SET done = $1 WHERE owner = $2 OR creator = $2", true, uid)
@@ -1026,6 +1149,8 @@ Examples: [crud-zero-null](../examples/crud-zero-null/),
 [projection-pagination](../examples/projection-pagination/).
 
 ## 7. Transactions
+
+<!-- docscheck:fragment -->
 
 ```go
 err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
@@ -1074,6 +1199,8 @@ err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 - Retry the WHOLE `db.Tx` on `ErrSerialization` (PostgreSQL 40001 serialization
   failure and 40P01 deadlock). Only when `fn` has no side effects outside the
   database. Copy of `examples/transactions`:
+
+<!-- docscheck:fragment -->
 
 ```go
 func retrySerializable(ctx context.Context, db *momo.DB, fn func(tx *momo.Tx) error) error {
@@ -1133,6 +1260,8 @@ Decision table:
 | Insert a parent and NEW children together                   | `momo.CreateGraph(ctx, q, &parent, rel1.Include(), rel2.Include())`                                                                                                                                                    |
 | Get-or-insert on a unique key                               | `momo.FindOrCreate(ctx, q, []momo.ColumnRef{author.Name}, &a)` returns `(created bool, err)`                                                                                                                           |
 | Insert or update by primary key                             | `momo.UpsertByPK(ctx, q, &m)`                                                                                                                                                                                          |
+
+<!-- docscheck:fragment -->
 
 ```go
 docs, err := momo.Select[models.Document](db).
@@ -1230,6 +1359,8 @@ Details: [relations.md](relations.md). Example: [relations](../examples/relation
 
 ## 9. Vectors
 
+<!-- docscheck:fragment -->
+
 ```go
 type Item struct {
 	momo.Model `momo:"table:items"`
@@ -1291,6 +1422,8 @@ Index rules (`MomoConfig`; validated by the generator, error wraps
 
 Nearest-neighbour query; `Asc()` is nearest first:
 
+<!-- docscheck:fragment -->
+
 ```go
 distance := momo.CosineDistance(item.Embedding, query) // query is vector.Vector of dim 1536
 hits, err := momo.Select[models.Hit](q). // projection with Title string, Distance float64 (section 4); soft-deleted items are filtered automatically
@@ -1324,6 +1457,8 @@ items, err := momo.Select[models.Item](q).
 
 Search settings (transaction-scoped; revert at commit or rollback; safe behind
 PgBouncer):
+
+<!-- docscheck:fragment -->
 
 ```go
 err := db.WithSearch(ctx, momo.SearchSettings{
@@ -1388,6 +1523,8 @@ with `errors.Is(err, momo.ErrX)` (matches `Kind`) and reach the driver error wit
 `errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns the raw driver detail
 (for PostgreSQL the key text) that `Error()` hides. `Detail()` is unmasked and can quote sensitive values: never log it or return it to a client. Never string-match error text.
 
+<!-- docscheck:fragment -->
+
 ```go
 switch {
 case errors.Is(err, momo.ErrNotFound):
@@ -1446,6 +1583,8 @@ Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 Use the public kit `github.com/azrtydxb/momo/momotest` (see
 [testing.md](testing.md)):
 
+<!-- docscheck:fragment -->
+
 ```go
 //go:build integration
 
@@ -1465,6 +1604,8 @@ module):
 2. Create a scratch database per test (`CREATE DATABASE t_<random>` over a plain
    pgx connection), connect `pgxdriver.NewPool` to it, drop it in `t.Cleanup`.
 3. Apply your real migrations from code:
+
+<!-- docscheck:fragment -->
 
 ```go
 import (

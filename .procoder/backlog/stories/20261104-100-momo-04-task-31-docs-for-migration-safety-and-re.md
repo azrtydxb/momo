@@ -18,3 +18,5 @@ Implements plan momo-04-migrations Task 31: Docs for migration safety and recove
 
 ## Evidence
 
+- docs/migrations.md already covers files and formats, commands and exit codes, locks, transactional and no-transaction migrations, dirty-migration recovery with migrate resolve, destructive changes, baseline, drift, branch conflicts and roles, and docs/README.md indexes it. TestMigrationsGuideSections (internal/docscheck) pins those sections; it passed on the red run because the guide already existed, so it is a guard, not a red-to-green proof.
+- Left open: Step 2 also names SQLite table rebuilds and the SQLite momo_migration_lock, which do not exist in the code (docs/capabilities.md: migrations are PostgreSQL only), and --force-unlock was removed, so those parts cannot be written.

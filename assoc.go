@@ -370,7 +370,7 @@ func (r Relation[P, C]) notLinkable(op string) error {
 }
 
 func (r Relation[P, C]) assocErr(table, msg string) error {
-	return &Error{Kind: ErrValidation, Op: "assoc", Table: table, Err: errors.New(r.Name + ": " + msg)}
+	return newError(ErrValidation, "assoc", table, errors.New(r.Name+": "+msg))
 }
 
 // parentKey returns the non-NULL parent key.
