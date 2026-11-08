@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"slices"
+	"strings"
 
 	"github.com/azrtydxb/momo/schema"
 )
@@ -21,6 +22,11 @@ import (
 // does not have. Every one of them must carry the -- momo:generated header,
 // because only generated SQL can be regenerated: Rebase refuses with an error
 // naming the file when one is hand-written, and changes nothing.
+//
+// A branch migration that has a hand-written .down.sql is refused too, naming
+// that file, because the down would be left behind or lost when the version
+// changes. The target directory is validated first (momo.sum, chain, snapshots)
+// and a problem there is returned before anything is diffed.
 //
 // removed lists, sorted, every file of the branch migrations (up, down and
 // snapshot) that the caller should delete. mig is the single new migration
@@ -41,6 +47,15 @@ func (e *Engine) Rebase(ctx context.Context, target fs.FS, desired *schema.Schem
 	if err != nil {
 		return nil, nil, fmt.Errorf("migrate: target: %w", err)
 	}
+	// A broken target (bad momo.sum, a fork, a missing snapshot) would make the
+	// regenerated migration build on sand, so validate it before diffing.
+	rep, err := ValidateOffline(target)
+	if err != nil {
+		return nil, nil, fmt.Errorf("migrate: target: %w", err)
+	}
+	if len(rep.Problems) > 0 {
+		return nil, nil, fmt.Errorf("migrate: the target directory is not a valid migration chain, fix it before rebasing: %s", strings.Join(rep.Problems, "; "))
+	}
 	inTarget := map[string]bool{}
 	for _, f := range tfiles {
 		inTarget[f.Version] = true
@@ -56,6 +71,11 @@ func (e *Engine) Rebase(ctx context.Context, target fs.FS, desired *schema.Schem
 				return nil, nil, fmt.Errorf("migrate: %s has no -- momo:generated header, so it cannot be regenerated; move its statements into a new migration by hand and delete it before rebasing", f.Path)
 			}
 			mine[f.Version] = true
+		}
+	}
+	for _, f := range branch {
+		if f.Kind == "down" && mine[f.Version] {
+			return nil, nil, fmt.Errorf("migrate: %s is a hand-written down for a migration Rebase would regenerate under a new version; rebasing would orphan or drop it. Move its statements into the down of the regenerated migration by hand and delete the file before rebasing", f.Path)
 		}
 	}
 	for _, f := range branch {

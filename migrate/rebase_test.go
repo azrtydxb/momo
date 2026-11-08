@@ -3,7 +3,9 @@
 package migrate_test
 
 import (
+	"bytes"
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -70,9 +72,38 @@ func TestMigrateRebase(t *testing.T) {
 		t.Fatalf("regenerated version %s must come after the target head %s", mig.Version, tsnap.Version)
 	}
 
+	// The regenerated files carry the branch's column and not the target's, a
+	// snapshot of the merged model, and a momo.sum for target plus new files.
+	var up, snap string
+	for name, data := range mig.Files {
+		switch {
+		case strings.HasSuffix(name, ".up.sql"):
+			up = string(data)
+		case strings.HasSuffix(name, ".snapshot.json"):
+			snap = string(data)
+		}
+	}
+	if !regexp.MustCompile(`(?i)add column\s+"?a"?\b`).MatchString(up) || regexp.MustCompile(`(?i)add column\s+"?b"?\b`).MatchString(up) {
+		t.Fatalf("the regenerated up must add column a only (b is already on the target):\n%s", up)
+	}
+	if !strings.Contains(snap, `"a"`) || !strings.Contains(snap, `"b"`) {
+		t.Fatalf("the regenerated snapshot must hold both columns:\n%s", snap)
+	}
+	sumBytes, ok := mig.Files[migrate.SumFileName]
+	if !ok {
+		t.Fatalf("the regenerated files must include %s, got %v", migrate.SumFileName, mig.Files)
+	}
+	sum, err := migrate.ParseSum(bytes.NewReader(sumBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// The target plus the regenerated files is one valid chain, and the model
 	// round-trips with no further change.
 	merged := withFiles(target, mig.Files)
+	if bad := migrate.VerifySum(merged, sum); len(bad) != 0 {
+		t.Fatalf("momo.sum does not cover target plus new files exactly: %v", bad)
+	}
 	rep, err := migrate.ValidateOffline(merged)
 	if err != nil {
 		t.Fatal(err)
@@ -110,4 +141,53 @@ func TestMigrateRebaseNothingToDo(t *testing.T) {
 	if err != nil || mig != nil || len(removed) != 0 {
 		t.Fatalf("identical branch and target: removed=%v mig=%+v err=%v", removed, mig, err)
 	}
+}
+
+// A branch migration with a hand-written down cannot be regenerated without
+// orphaning the down, so Rebase refuses and names the down file.
+func TestMigrateRebaseRefusesHandWrittenDown(t *testing.T) {
+	ctx := context.Background()
+	day := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	root, _ := diffInto(t, fstest.MapFS{}, rebaseSchema(), "root", day)
+	branch, mine := diffInto(t, root, rebaseSchema(schema.Column{Name: "a", Type: "TEXT", Nullable: true}), "add_a", day.Add(time.Hour))
+	down := mine.Version + "_add_a.down.sql"
+	branch[down] = &fstest.MapFile{Data: []byte("ALTER TABLE t DROP COLUMN a;\n")}
+
+	removed, mig, err := offlineEngine(t, branch, day.Add(3*time.Hour)).Rebase(ctx, root, rebaseSchema(), "x")
+	if err == nil || mig != nil || removed != nil {
+		t.Fatalf("want a refusal, got %v %+v %v", removed, mig, err)
+	}
+	if !strings.Contains(err.Error(), down) {
+		t.Fatalf("the error must name the down file: %v", err)
+	}
+}
+
+// A target whose chain is broken is refused before any diff.
+func TestMigrateRebaseValidatesTarget(t *testing.T) {
+	ctx := context.Background()
+	day := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	root, _ := diffInto(t, fstest.MapFS{}, rebaseSchema(), "root", day)
+	branch, _ := diffInto(t, root, rebaseSchema(schema.Column{Name: "a", Type: "TEXT", Nullable: true}), "add_a", day.Add(time.Hour))
+
+	badSum := withFiles(root, nil)
+	badSum[migrate.SumFileName] = &fstest.MapFile{Data: []byte("not a sum file\n")}
+	for name, target := range map[string]fstest.MapFS{"bad momo.sum": badSum, "missing snapshot": withoutSnapshots(root)} {
+		removed, mig, err := offlineEngine(t, branch, day.Add(3*time.Hour)).Rebase(ctx, target, rebaseSchema(), "x")
+		if err == nil || mig != nil || removed != nil {
+			t.Fatalf("%s: want a refusal, got %v %+v %v", name, removed, mig, err)
+		}
+		if !strings.Contains(err.Error(), "target") {
+			t.Fatalf("%s: the error must say the target is at fault: %v", name, err)
+		}
+	}
+}
+
+func withoutSnapshots(dir fstest.MapFS) fstest.MapFS {
+	out := fstest.MapFS{}
+	for k, v := range dir {
+		if !strings.HasSuffix(k, ".snapshot.json") {
+			out[k] = v
+		}
+	}
+	return out
 }

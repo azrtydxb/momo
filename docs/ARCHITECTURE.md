@@ -114,7 +114,7 @@ them as available in user documentation.
 
 - Query options and limits: `MaxRows`, `WithMaxInList`, and a typed raw query `Raw[T, PT]` returning `RawQuery[T]`.
 - Interceptors: `Interceptor`, `Operation`, `WithInterceptor`.
-- Read replicas and unit of work: `WithReplicas`, `DB.Reader()`, `NewUnitOfWork`, `AllowStaleReads`.
+- Read replicas and unit of work: `WithReplicas`, `DB.Replica`, `NewUnitOfWork`, `AllowStaleReads`; see docs/replicas.md.
 - Generated per-model hook sets: `Meta.Hooks` as `HookSet[T]` (today `Meta.Fields` carries `FieldHook[T]` only).
 - Read-only view models: marker `View` (tag `momo:"view:<name>[,materialized]"`), `WritableModeler[T]`, `MomoWritable`, and `RefreshMaterializedView`.
 - Go migrations: `GoMigration` and `WithGoMigrations`.

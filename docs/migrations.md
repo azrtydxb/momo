@@ -268,8 +268,10 @@ already has two of them, for Go callers:
   branch (from `git`, Momo has no git dependency). It lists every file of the
   branch's migrations that the target lacks, refuses with the file name when one
   has no `-- momo:generated` header, and regenerates one migration on top of
-  the target's latest snapshot. It writes nothing: the caller deletes the
-  returned files and writes the new ones (`TestMigrateRebase`).
+  the target's latest snapshot. It first validates the target (momo.sum, chain,
+  snapshots) and refuses a broken one, and it refuses a branch migration that
+  has a hand-written `.down.sql`, naming the file. It writes nothing: the
+  caller deletes the returned files and writes the new ones (`TestMigrateRebase`).
 
 There is no `--force-unlock`: the PostgreSQL lock is a session advisory lock that
 the server frees when its holder's connection ends (section 3). `--lock-wait`
@@ -409,6 +411,34 @@ Statements before the failing one are committed. The row is `failed`, with
      `momo migrate hash`, `apply`.
 4. `resolve` takes the migration lock and errors when the version has no
    `running` or `failed` row.
+
+### A down migration fails (`Engine.Rollback`)
+
+A transactional down that fails rolls back with its history update: the schema
+is unchanged and the row stays `applied`, so the database is not dirty
+(`TestRollbackTransactionalFailureLeavesRowApplied`). Fix the down and run
+`Rollback` again; if you edit the file, run `momo migrate hash` first.
+
+A down with `-- momo:no-transaction` commits statement by statement. When one
+fails the row becomes `failed` with `statements_applied = n` and an error that
+starts with `down:`, and every later `apply` or `Rollback` stops with
+`ErrDirty` (`TestRollbackNoTxFailureLeavesRowFailed`). Both resolve states are
+valid; choose by what the database looks like after you repair it:
+
+- `resolve applied` (`ResolveApplied`): the migration is still in effect. Use
+  it when the failed down changed nothing that matters or you undid its
+  partial work. The row becomes `applied`, the error is cleared, and the
+  version can be rolled back again (`TestResolveAppliedAfterFailedDown`).
+- `resolve rolled_back` (`ResolveRolledBack`): the migration is gone. Use it
+  when you finished the down by hand. The row is deleted, the version is
+  pending, and the next `apply` runs the up file again
+  (`TestResolveRolledBackAfterFailedDown`).
+
+`Rollback` verifies momo.sum first, down files included: an edited or added
+`.down.sql` is refused with `ErrChecksumMismatch` naming the file even when the
+matching up file is no longer in the directory
+(`TestRollbackChecksumMismatch`). It takes the migration lock like `apply`
+(`TestRollbackTakesTheLock`).
 
 ### Invalid index after a failed `CREATE INDEX CONCURRENTLY`
 

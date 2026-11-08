@@ -5,6 +5,9 @@ package momo
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
+	"syscall"
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -137,4 +140,144 @@ func TestReplicaUnsupportedWithoutReplicas(t *testing.T) {
 	if _, err := New(replicaStubDriver{}).Replica(0); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}
+}
+
+// TestReplicaRoutesWritesAndLocksToPrimary: a Replica handle used without any
+// unit of work still sends every statement that is not provably a plain read
+// to the primary, because the replica is read-only.
+func TestReplicaRoutesWritesAndLocksToPrimary(t *testing.T) {
+	var pReads, rReads int
+	prim := countingDriver{Driver: replicaStubDriver{}, reads: &pReads}
+	rep := countingDriver{Driver: replicaStubDriver{}, reads: &rReads}
+	rd, err := New(prim, WithReplicas(rep)).Replica(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	primary := []string{
+		`INSERT INTO t (a) VALUES ($1) RETURNING id`,
+		`UPDATE t SET a = $1 WHERE id = $2 RETURNING id`,
+		`DELETE FROM t WHERE id = $1 RETURNING id`,
+		`SELECT id FROM t WHERE id = $1 FOR UPDATE`,
+		`SELECT id FROM t FOR SHARE`,
+		`SELECT id FROM t FOR NO KEY UPDATE SKIP LOCKED`,
+		`SELECT id FROM t FOR KEY SHARE`,
+		`WITH ins AS (INSERT INTO t (a) VALUES (1) RETURNING id) SELECT id FROM ins`,
+		`WITH d AS (DELETE FROM t RETURNING id) SELECT count(*) FROM d`,
+		`SELECT nextval('t_id_seq')`,
+		`select NEXTVAL('s')`,
+		`SELECT set_config('app.tenant', $1, true)`,
+		`SELECT pg_advisory_xact_lock(1)`,
+		`SELECT * INTO u FROM t`,
+		`/* hint */ INSERT INTO t DEFAULT VALUES RETURNING id`,
+		`SELECT $q$ x $q$`,
+		`CALL do_work()`,
+		``,
+	}
+	for _, q := range primary {
+		bp, br := pReads, rReads
+		readOnceSQL(ctx, t, rd.conn(), q)
+		if pReads != bp+1 || rReads != br {
+			t.Errorf("%q must run on the primary: primary %d -> %d, replica %d -> %d", q, bp, pReads, br, rReads)
+		}
+	}
+	replica := []string{
+		`SELECT id FROM t WHERE id = $1`,
+		`select "update", 'for update' from t -- INSERT`,
+		`WITH x AS (SELECT 1) SELECT * FROM x`,
+		`/* INSERT */ SELECT 1`,
+		`(SELECT 1) UNION (SELECT 2)`,
+		`VALUES (1), (2)`,
+		`SELECT substring(a FROM 1 FOR 2) FROM t`,
+		`EXPLAIN SELECT 1`,
+		`SELECT id FROM t ORDER BY embedding <=> $1 LIMIT 5`,
+	}
+	for _, q := range replica {
+		bp, br := pReads, rReads
+		readOnceSQL(ctx, t, rd.conn(), q)
+		if rReads != br+1 || pReads != bp {
+			t.Errorf("%q must run on the replica: primary %d -> %d, replica %d -> %d", q, bp, pReads, br, rReads)
+		}
+	}
+}
+
+func readOnceSQL(ctx context.Context, t *testing.T, e *execer, sql string) {
+	t.Helper()
+	rows, err := e.q.Query(ctx, sql, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = rows.Close()
+}
+
+type failingReplica struct {
+	replicaStubDriver
+	err   error
+	calls *int
+}
+
+func (f failingReplica) Query(context.Context, string, []any) (Rows, error) {
+	*f.calls++
+	return nil, f.err
+}
+
+type stateErr struct{ code string }
+
+func (e stateErr) Error() string    { return "sqlstate " + e.code }
+func (e stateErr) SQLState() string { return e.code }
+
+// TestReplicaFailureFallsBackToPrimary: a connection-class error from the
+// replica when a read starts re-runs the read on the primary; other errors,
+// and a cancelled caller context, are returned as they are.
+func TestReplicaFailureFallsBackToPrimary(t *testing.T) {
+	down := []error{
+		&net.OpError{Op: "dial", Err: syscall.ECONNREFUSED},
+		fmt.Errorf("acquire: %w", syscall.ECONNRESET),
+		stateErr{"08006"},
+		stateErr{"57P01"},
+		stateErr{"53300"},
+	}
+	for _, cause := range down {
+		var pReads, rCalls int
+		prim := countingDriver{Driver: replicaStubDriver{}, reads: &pReads}
+		rd, err := New(prim, WithReplicas(failingReplica{err: cause, calls: &rCalls})).Replica(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := rd.conn().q.Query(context.Background(), "SELECT 1", nil)
+		if err != nil {
+			t.Fatalf("%v: want fallback to the primary, got %v", cause, err)
+		}
+		_ = rows.Close()
+		if rCalls != 1 || pReads != 1 {
+			t.Fatalf("%v: replica calls %d, primary reads %d, want 1 and 1", cause, rCalls, pReads)
+		}
+	}
+
+	t.Run("an error that is not connection-class is returned", func(t *testing.T) {
+		var pReads, rCalls int
+		boom := stateErr{"42601"} // syntax error
+		prim := countingDriver{Driver: replicaStubDriver{}, reads: &pReads}
+		rd, _ := New(prim, WithReplicas(failingReplica{err: boom, calls: &rCalls})).Replica(0)
+		if _, err := rd.conn().q.Query(context.Background(), "SELECT 1", nil); !errors.Is(err, boom) {
+			t.Fatalf("err = %v, want the replica's error", err)
+		}
+		if pReads != 0 {
+			t.Fatal("a non-connection error must not be retried on the primary")
+		}
+	})
+
+	t.Run("a cancelled caller context is not retried", func(t *testing.T) {
+		var pReads, rCalls int
+		prim := countingDriver{Driver: replicaStubDriver{}, reads: &pReads}
+		rd, _ := New(prim, WithReplicas(failingReplica{err: context.Canceled, calls: &rCalls})).Replica(0)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if _, err := rd.conn().q.Query(ctx, "SELECT 1", nil); err == nil {
+			t.Fatal("want the cancellation error")
+		}
+		if pReads != 0 {
+			t.Fatal("a cancelled context must not be retried on the primary")
+		}
+	})
 }
