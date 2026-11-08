@@ -604,7 +604,7 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 	var m, zero T
 	for {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("momo: select cancelled: %w", err)
+			return &Error{Kind: ErrCancelled, Op: "select", Table: sq.meta.Table, Err: err}
 		}
 		if !r.Next() {
 			break
@@ -640,7 +640,7 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 		defer r.Close()
 		for {
 			if err := ctx.Err(); err != nil {
-				yield(zero, fmt.Errorf("momo: select cancelled: %w", err))
+				yield(zero, &Error{Kind: ErrCancelled, Op: "select", Table: sq.meta.Table, Err: err})
 				return
 			}
 			if !r.Next() {

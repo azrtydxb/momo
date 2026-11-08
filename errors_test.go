@@ -3,11 +3,15 @@
 package momo_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -16,7 +20,7 @@ var allSentinels = []error{
 	momo.ErrForeignKeyViolation, momo.ErrCheckViolation, momo.ErrNotNullViolation,
 	momo.ErrSerialization, momo.ErrOptimisticLock, momo.ErrUnsupported,
 	momo.ErrUnfilteredMutation, momo.ErrTxDone, momo.ErrValidation, momo.ErrBusy,
-	momo.ErrLimitExceeded, momo.ErrInvalidVector,
+	momo.ErrLimitExceeded, momo.ErrInvalidVector, momo.ErrCancelled,
 }
 
 func TestErrorSentinels(t *testing.T) {
@@ -55,5 +59,30 @@ func TestErrorIsAs(t *testing.T) {
 	}
 	if (&momo.Error{Kind: momo.ErrNotFound}).Detail() != "" {
 		t.Error("Detail() must be empty when Err is nil")
+	}
+}
+
+// A streaming read stopped by its context carries a sentinel kind and still
+// unwraps to the context error.
+func TestStreamCancelledHasKind(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1)}})
+	db := momo.New(drv)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := momo.Select[suite.Document](db).Each(ctx, func(*suite.Document) error { return nil })
+	if !errors.Is(err, momo.ErrCancelled) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("Each = %v, want ErrCancelled and context.Canceled", err)
+	}
+	for _, e := range func() []error {
+		var out []error
+		for _, err := range momo.Select[suite.Document](db).Iter(ctx) {
+			out = append(out, err)
+		}
+		return out
+	}() {
+		if !errors.Is(e, momo.ErrCancelled) || !errors.Is(e, context.Canceled) {
+			t.Fatalf("Iter yielded %v, want ErrCancelled and context.Canceled", e)
+		}
 	}
 }
