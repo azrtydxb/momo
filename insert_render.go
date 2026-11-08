@@ -89,13 +89,21 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 		return
 	}
 	d := b.Dialect()
+	if q.i.unnest {
+		if err := q.unnestCheck(d, mode); err != nil {
+			b.SetErr(err)
+			return
+		}
+	}
 	p, err := q.resolve(d, mode)
 	if err != nil {
 		b.SetErr(err)
 		return
 	}
 	q.writeInsertHead(b)
-	if len(p.cols) > 0 {
+	if len(p.cols) > 0 && q.i.unnest {
+		q.writeUnnest(b, d, p)
+	} else if len(p.cols) > 0 {
 		q.writeColumnsAndRows(b, d, p)
 	} else {
 		// No column is written: every column takes its default.
@@ -148,7 +156,7 @@ func (q InsertQuery[T]) resolve(d *dialect.Dialect, mode insertMode) (insertPlan
 	if len(p.cols) == 0 && p.rows != 1 {
 		return p, q.verr("", "no writable columns to insert")
 	}
-	if n := p.rows * len(p.cols); d.MaxParams > 0 && n > d.MaxParams && mode == modeModels {
+	if n := p.rows * len(p.cols); d.MaxParams > 0 && n > d.MaxParams && mode == modeModels && !q.i.unnest {
 		return p, &Error{Kind: ErrLimitExceeded, Op: "insert", Table: q.meta.Table,
 			Err: fmt.Errorf("%d bind parameters exceed the %s limit of %d", n, d.Name, d.MaxParams)}
 	}
