@@ -31,7 +31,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
-- Reciprocal-rank-fusion hybrid search, `MERGE` builder and window-function API
+- Reciprocal-rank-fusion hybrid search, `MERGE` builder
   do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
   (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
   query builders) exists on PostgreSQL; combine it with a vector distance in
@@ -81,8 +81,42 @@ migrate:
 ```
 
 `naming:` is optional: `momo` (default: snake_case columns, plural snake_case
-tables), `gorm`, `bun`, `ent`. Pick one and never change it: a change renames
-columns.
+tables), `gorm`, `bun`, `ent`, `prisma`. Pick one and never change it: a change
+renames columns.
+
+`naming: prisma` matches a database that Prisma created: the table is the model
+name as written and quoted (`KbChunk`), the column is camelCase (`createdAt`,
+`accountId`; an `ID` word at the end becomes `Id`, and a trailing `IDs` becomes
+`Ids`, so `UserIDs` is `userIds`), and the constraint and index names are
+`<Table>_pkey`, `<Table>_<col>_fkey`, `<Table>_<col>_key` (unique) and
+`<Table>_<col>_idx`. Those names come out of the table and column names, so no
+tag is needed for single-column keys and indexes.
+
+Limits of the preset:
+
+- A composite `@@index` or `@@unique` is named by Prisma from all its columns
+  (`<Table>_<a>_<b>_idx`). Name such an index explicitly in `MomoConfig` or with
+  an `index:`/`unique:` tag name.
+- The implicit many-to-many table is named `_AToB` (model names in alphabetical
+  order), but its `A` and `B` columns and its foreign key names are not
+  reproduced. Declare that table with an explicit join model instead.
+- A column name that does not follow the camelCase rule needs a `column:` tag.
+
+Prisma maps `DateTime` to `timestamp(3)`, so add a `types:` section:
+
+```yaml
+naming: prisma
+types:
+  time.Time: timestamp(3)
+```
+
+`types:` overrides the default PostgreSQL column type of a Go type. Only
+`time.Time` is supported, and the value must be `timestamp`, `timestamptz`,
+`time` or `timetz` with an optional precision 0-6 and an optional
+`with`/`without time zone` (anything else is refused, as it is written into
+DDL). A `type:` tag on a field still wins. It applies when the first entry of
+`dialects` is PostgreSQL (or `dialects` is empty); with SQLite first it is
+ignored. Without it `time.Time` is `timestamp with time zone`.
 
 Generate:
 
@@ -610,6 +644,14 @@ The check counts the binds rendered before the list; binds rendered after it
 are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 `In` renders a constant false and an empty `NotIn` a constant true.
 
+Two independent caps apply to a typed `In` or `NotIn` list. `WithMaxInList(n)`
+limits the number of values per list and fails the build with
+`ErrLimitExceeded`; it is for request-supplied lists. The bind limit above is
+the database ceiling for the whole statement and fails with `ErrValidation`.
+Both are checked at build time, the list cap first, so the stricter one wins.
+`SelectQuery.MaxRows(n)` is the matching cap on results: `All` and `Pluck`
+return `ErrLimitExceeded` instead of more than n rows, never a truncated slice.
+
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
 `"SKIP LOCKED"`), `ForShare`, `LockOf` (names the tables a lock covers, for
@@ -671,6 +713,16 @@ momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
 // Any other function: Func[T](name, args...). name is validated (identifier,
 // optionally schema.qualified); an Expr arg renders inline, other values are bound.
 momo.Func[string]("btrim", doc.Title)
+// Aggregates with their own ORDER BY (AggExpr[T]); chain OrderBy, inside the call.
+momo.StringAgg(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
+momo.ArrayAgg[string](label).OrderBy(label.Asc())       // []string, PostgreSQL only
+// Ordered-set aggregates (PostgreSQL): WithinGroup is required.
+momo.PercentileCont(0.5).WithinGroup(run.DurationMs.Asc())      // float64
+momo.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
+// JSON: T is the Go type the result decodes into (types.JSON[T]). Keys and
+// separators are literals and must not contain a backslash.
+item := momo.JSONBBuildObject[Item](momo.JSONField("label", label), momo.JSONField("n", n))
+momo.CoalesceExpr(momo.JSONBAgg[Item](item).OrderBy(label.Asc()), momo.EmptyJSONArray[Item]())
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 momo.CurrentSchema()
 
@@ -1333,8 +1385,8 @@ Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-s
 
 Momo errors are `*momo.Error{Kind, Op, Table, Column, Constraint, Err}`. Check
 with `errors.Is(err, momo.ErrX)` (matches `Kind`) and reach the driver error with
-`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns driver detail
-that `Error()` hides. Never string-match error text.
+`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns the raw driver detail
+(for PostgreSQL the key text) that `Error()` hides. `Detail()` is unmasked and can quote sensitive values: never log it or return it to a client. Never string-match error text.
 
 ```go
 switch {
@@ -1391,8 +1443,22 @@ Rules:
 Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`.
 
-Pattern used by the examples (the harness is internal to the Momo module; copy
-the idea, not the package):
+Use the public kit `github.com/azrtydxb/momo/momotest` (see
+[testing.md](testing.md)):
+
+```go
+//go:build integration
+
+db := momotest.New(t, momotest.WithMigrations(app.Migrations()))  // schema per test, dropped after
+tx := momotest.NewTx(t, momotest.WithMigrations(app.Migrations())) // rolled back after; Commit refused
+momotest.Seed(t, tx, momotest.Insert(&org), momotest.Insert(&user))
+```
+
+It reads `MOMO_TEST_POSTGRES_URL` (skip when unset, fail when
+`MOMO_REQUIRE_INTEGRATION=1`), is safe with `t.Parallel` and `-race`, and
+`WithExtensions("vector")` creates the extension first. What it does, if you
+need to do it by hand (the examples' own harness is internal to the Momo
+module):
 
 1. Read an admin URL from an env var (the examples use `MOMO_TEST_POSTGRES_URL`);
    `t.Skip` when it is unset (and `t.Fatal` when your CI sets a require flag).
@@ -1432,6 +1498,31 @@ What to mock and what not:
 
 Examples: every `examples/*/example_test.go`, harness
 [examples/internal/exampletest](../examples/internal/exampletest/exampletest.go).
+
+### Observability and scoping helpers
+
+- `momolog.New(logger, opts...)` returns a `momo.Hook` that logs one record per
+  statement (op, table, relation, sql, duration, rows, err). Options: `Level`,
+  `SlowOver` (statements slower than the duration log at WARN) and `Values`.
+  Argument values are logged only with `Values(true)` and `momo.WithArgLogging`
+  together.
+- `momo.WithQueryScope(ctx)` groups statements for `momo.NewNPlusOneHook(threshold,
+report)`, a development hook that reports once per statement shape per scope
+  when the shape runs more than the threshold. Contexts without a scope are not
+  tracked; a scope tracks at most 1024 shapes; a panic in the report function is
+  recovered. A single batched relation load runs one statement per relation and does not trigger it.
+- `momo.WithTenant(ctx, tenant)` and `momo.TenantFilter(ctx, column)` add a
+  `column = tenant` predicate. This is an application-side convenience and NOT a
+  security boundary. It applies only where you add it to a `Where`: not to
+  Update or Delete, not to the tenant column of an Insert, not to Preload, Load
+  or LoadCounts, joins, subqueries or raw SQL. A missing tenant, or one whose Go
+  type is not exactly the column type, fails the build with `ErrValidation`
+  (also under Not and Or). The zero value is a real tenant. Enforce isolation
+  with PostgreSQL row-level security: it is configured by your own
+  `WithTxSetup` function, which reads whatever your code put in the context. To
+  drive both from `WithTenant`, read the tenant there and call
+  `SetConfigLocal`. Without `WithImplicitTx`, non-transactional queries get no
+  setting.
 
 ## 12. Rules for AI agents
 

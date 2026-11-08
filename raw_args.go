@@ -434,6 +434,10 @@ func (b *Builder) appendIn(a inArg) {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("empty IN list in raw SQL; use the typed In which renders a constant")})
 		return
 	}
+	if m := b.d.MaxInList; m > 0 && rv.Len() > m {
+		b.SetErr(&Error{Kind: ErrLimitExceeded, Op: "build", Err: fmt.Errorf("IN list has %d values, over the limit of %d (WithMaxInList)", rv.Len(), m)})
+		return
+	}
 	if m := b.d.MaxParams; m > 0 && len(b.args)+rv.Len() > m {
 		b.SetErr(rawErr("%d bind parameters exceed the %s limit of %d", len(b.args)+rv.Len(), b.d.Name, m))
 		return
