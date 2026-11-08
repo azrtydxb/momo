@@ -22,7 +22,8 @@ const usage = `Usage: momo <command> [flags]
 Commands:
   generate  generate code for model packages, or models from a database (flags: -c momo.yaml, --check, --from-db)
   migrate   manage schema migrations (momo migrate help)
-  help      print this help ("momo help generate" for a command)
+  viz       draw an ER diagram, Mermaid or DOT (flags: --format, --snapshot, --out)
+  help     print this help ("momo help generate" for a command)
 
 Plugins: momo generate runs only the plugins built into this binary. For
 custom generator plugins use the Go API (gen.Emit with plugins).
@@ -45,6 +46,7 @@ func commands() []command {
 	return []command{
 		{"generate", runGenerate},
 		{"migrate", runMigrateCmd},
+		{"viz", runViz},
 	}
 }
 

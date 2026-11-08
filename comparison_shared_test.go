@@ -3,6 +3,7 @@
 package momo
 
 import (
+	"context"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -142,6 +143,13 @@ func isBareMomoError(call *ast.CallExpr) bool {
 	}
 	lit, ok := call.Args[0].(*ast.BasicLit)
 	return ok && strings.HasPrefix(lit.Value, `"momo:`) && !strings.Contains(lit.Value, "%w")
+}
+
+func TestCanceledErrorMatchesKindAndContext(t *testing.T) {
+	err := error(newError(ErrCanceled, "select", "t", context.Canceled))
+	if !errors.Is(err, ErrCanceled) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("got %v, want a match for ErrCanceled and context.Canceled", err)
+	}
 }
 
 func TestNoQuerierErrorMatchesValidation(t *testing.T) {

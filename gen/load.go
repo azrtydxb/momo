@@ -173,7 +173,7 @@ func collisionDiagnostics(models []*Model) []Diagnostic {
 // field. Column names are positional labels, so repeats are allowed.
 func projectionDiagnostics(projections []*Model, cfg Config) []Diagnostic {
 	var diags []Diagnostic
-	b := &schemaBuilder{namer: cfg.Naming, primary: dialect.Postgres}
+	b := &schemaBuilder{namer: cfg.Naming, typeDef: cfg.TypeDefaults, primary: dialect.Postgres}
 	if len(cfg.Dialects) > 0 {
 		b.primary = cfg.Dialects[0]
 	}

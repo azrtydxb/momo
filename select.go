@@ -47,6 +47,7 @@ type selectCore struct {
 	// joinLoads holds the joined loaders added by Preload (copy-on-write).
 	joinLoads   []any
 	limit       int64 // -1: none
+	maxRows     int   // 0: no cap; collecting reads fail past it (MaxRows)
 	offset      int64
 	lock        string
 	lockWait    string   // " NOWAIT" or " SKIP LOCKED", or empty
@@ -59,7 +60,9 @@ type selectCore struct {
 	keysOnly bool
 	// preloads holds the Loader[T] values added by Preload (copy-on-write).
 	preloads []any
-	err      error
+	// distinctOn holds the DISTINCT ON expressions (see DistinctOn).
+	distinctOn []Expr
+	err        error
 }
 
 // SelectQuery builds and runs a SELECT whose rows scan into T.
@@ -337,7 +340,7 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 // ForShare the build fails with ErrValidation; like them, LockOf returns
 // ErrUnsupported on SQLite. Each name must be the table or alias of the FROM or
 // a joined table, else the build fails with ErrValidation naming it. A lock
-// cannot be combined with DISTINCT, GROUP BY or HAVING (ErrValidation); other
+// cannot be combined with DISTINCT, DISTINCT ON, GROUP BY or HAVING (ErrValidation); other
 // invalid combinations, such as aggregates or UNION, are left to the server.
 func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
 	if len(tables) == 0 {
@@ -532,6 +535,9 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 	}
 	var zero T
 	for r.Next() {
+		if sq.s.maxRows > 0 && len(out) >= sq.s.maxRows {
+			return nil, sq.maxRowsError()
+		}
 		out = append(out, zero)
 		if err := sc.scan(r, &out[len(out)-1]); err != nil {
 			return nil, err
@@ -604,7 +610,7 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 	var m, zero T
 	for {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("momo: select cancelled: %w", err)
+			return newError(ErrCanceled, "select", sq.meta.Table, err)
 		}
 		if !r.Next() {
 			break
@@ -640,7 +646,7 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 		defer r.Close()
 		for {
 			if err := ctx.Err(); err != nil {
-				yield(zero, fmt.Errorf("momo: select cancelled: %w", err))
+				yield(zero, newError(ErrCanceled, "select", sq.meta.Table, err))
 				return
 			}
 			if !r.Next() {
@@ -674,7 +680,9 @@ func (sq SelectQuery[T]) Count(ctx context.Context) (int64, error) {
 	inner := sq
 	// The count covers the whole filtered set: neither the ordering nor the
 	// page cursor applies.
-	inner.s.order = nil
+	if len(inner.s.distinctOn) == 0 { // DISTINCT ON keeps its ORDER BY: it picks the rows
+		inner.s.order = nil
+	}
 	inner.s.keyset = nil
 	c, err := compile(sq.q.Dialect(), func(b *Builder) {
 		b.WriteString("SELECT COUNT(*) FROM ")

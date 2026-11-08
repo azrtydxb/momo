@@ -1,0 +1,47 @@
+{
+  "format_version": 1,
+  "version": "20261106132257",
+  "parent": "",
+  "schema": {
+    "format_version": 1,
+    "dialect": "postgres",
+    "tables": [
+      {
+        "name": "accounts",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "identity": "by_default"
+          },
+          {
+            "name": "owner",
+            "type": "varchar(100)"
+          },
+          {
+            "name": "balance",
+            "type": "bigint"
+          }
+        ],
+        "primary_key": ["id"],
+        "indexes": [
+          {
+            "name": "accounts_owner_key",
+            "unique": true,
+            "parts": [
+              {
+                "column": "owner"
+              }
+            ]
+          }
+        ],
+        "checks": [
+          {
+            "name": "accounts_balance_check",
+            "expr": "balance \u003e= 0"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -8,7 +8,7 @@
 
 ## Commands
 
-- `make test`: unit tests
+- `make test`: unit tests, including the separate module `internal/integration` that holds the tests needing gqlgen, gRPC, protoc or the OpenAPI validator
 - `make test-race`: unit tests with the race detector
 - `make test-compilefail`: compile-fail tests for the typed API
 - `make test-integration`: integration tests against real databases

@@ -32,6 +32,7 @@ import (
 func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 	b := &schemaBuilder{
 		namer:   cfg.Naming,
+		typeDef: cfg.TypeDefaults,
 		primary: dialect.Postgres,
 		index:   map[*Model]int{},
 		enums:   map[string]enumDecl{},
@@ -112,6 +113,7 @@ type feature struct {
 type schemaBuilder struct {
 	s        *schema.Schema
 	namer    naming.Namer
+	typeDef  map[string]string
 	primary  dialect.Name
 	dialects []dialect.Name
 	diags    []Diagnostic
@@ -313,6 +315,14 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 	goType := f.BaseType
 	if goType == "" {
 		goType = inner
+	}
+	// The type default applies to the primary dialect (the first of
+	// Config.Dialects) only, and only when it is PostgreSQL.
+	if def := b.typeDef[goType]; def != "" && b.primary == dialect.Postgres {
+		if ValidTimeType(def) {
+			return strings.TrimSpace(def)
+		}
+		b.diag(f.Pos, fmt.Sprintf("field %s: type default %q for %s is not a timestamp type; use timestamp, timestamptz, time or timetz with an optional precision 0-6", f.GoName, def, goType))
 	}
 	typ, err := typemap.Map(goType, b.primary, tg)
 	if err != nil {
