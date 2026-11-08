@@ -18,11 +18,12 @@ Implements plan momo-11-adoption Task 2: GORM static reader and fixture module (
 
 ## Evidence
 
-- `TestImportGORM` (internal/compat/gormfixture, PostgreSQL): green in ci-agent run 42457430544 on 304bcb8, zero diff between the schema GORM AutoMigrate creates and the schema the imported models describe. Red before: run 42458280952 on throwaway branch commit cbc8b20 (foreign keys dropped from the imported schema) failed with a drop_fk change; that branch is deleted.
-- `TestReadReportsImplicitSaveWithPosition`, `TestReadFixtureModels` and more in importer/gorm/read_test.go: green in the same run. They first failed in run 42456706948 (a test-input mistake and a false composite-index report, both fixed).
+- `TestImportGORM` (internal/compat/gormfixture, PostgreSQL) now emits the imported models, loads them with the real generator (gen.Load) and diffs the generated schema against the schema GORM AutoMigrate creates. Green in ci-agent run 42461526110 on b54c9fa: the only difference is the composite index the importer reports as dropped. Red before: run 42460543015 on 7691e35 failed with the real differences (GORM names a plain unique constraint uni_<table>_<column>); the first version of the test, which compared hand-built schemas, was also proven red on a throwaway branch (run 42458280952).
+- importer/gorm/read_test.go (fixture models, keys decided before columns, has-many key on the child, embedded prefixes, ignored tags and bad numbers, alias-qualified DeletedAt, escaped semicolons) and the emit tests in importer/report_test.go: green in run 42461526110.
 
 ## Deviations from the plan
 
+- Momo shapes two things differently on purpose, which the test normalises on GORM's side and the importer reports: foreign keys are named <table>_<column>_fkey, and a plain UNIQUE column becomes a unique index of the same name. Composite indexes are reported as dropped-index and not imported.
 - The fixture compares against PostgreSQL (gorm.io/driver/postgres), not SQLite: only the PostgreSQL migration dialect exists.
 - zero-value-handling is reported for non-pointer fields that have a default tag (GORM replaces the zero value with the default on create and skips zero fields in struct updates), not for every field without a default.
 - importer.Field gained Serial, UniqueIndex, IndexName and UniqueName, and importer.Model gained ForeignKeys, so index names, serial keys and constraints survive the import.
