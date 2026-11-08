@@ -139,5 +139,16 @@ func (r *ModelRows[T]) ScanModel(m *T) error {
 // Err returns the error that ended iteration, if any.
 func (r *ModelRows[T]) Err() error { return r.rows.Err() }
 
-// Close releases the cursor. It is safe to call more than once.
-func (r *ModelRows[T]) Close() error { return r.rows.Close() }
+// Close releases the cursor. It is safe to call more than once. Deferred
+// directly (defer rows.Close()), it also rolls back an implicit transaction
+// when a panic unwinds through the caller, so a RETURNING write is never
+// committed by a panicking iteration.
+func (r *ModelRows[T]) Close() error {
+	if p := recover(); p != nil {
+		if a, ok := r.rows.(interface{ abort() }); ok {
+			a.abort()
+		}
+		panic(p)
+	}
+	return r.rows.Close()
+}
