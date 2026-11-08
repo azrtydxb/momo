@@ -79,7 +79,10 @@ func runAtomic(ctx context.Context, q Querier, op, table string, fn func(Querier
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			_ = sc.finish(context.WithoutCancel(ctx), newError(ErrValidation, op, table, fmt.Errorf("panic during chunked %s: %v", op, p)))
+			// The panic is re-raised below; this error only reaches the rollback
+			// and is never returned, so it has no Kind (a panic is not a validation
+			// failure).
+			_ = sc.finish(context.WithoutCancel(ctx), fmt.Errorf("momo: panic during chunked %s: %v", op, p))
 			panic(p)
 		}
 	}()

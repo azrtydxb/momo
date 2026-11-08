@@ -105,13 +105,22 @@ func TestLibraryErrorsAreMatchable(t *testing.T) {
 				continue
 			}
 			ast.Inspect(decl, func(n ast.Node) bool {
-				if call, ok := n.(*ast.CallExpr); ok && isBareMomoError(call) {
+				if call, ok := n.(*ast.CallExpr); ok && isBareMomoError(call) && !allowedBare(f, call) {
 					t.Errorf("%s: bare momo error without a sentinel kind", fset.Position(call.Pos()))
 				}
 				return true
 			})
 		}
 	}
+}
+
+// allowedBare lists the one deliberate kind-less error: the cause handed to
+// the rollback of a chunked insert when fn panics (db_atomic.go). The panic is
+// re-raised and the error is never returned, and a panic is not a validation
+// failure, so it carries no misleading Kind.
+func allowedBare(file string, call *ast.CallExpr) bool {
+	lit, ok := call.Args[0].(*ast.BasicLit)
+	return file == "db_atomic.go" && ok && strings.HasPrefix(lit.Value, `"momo: panic during chunked`)
 }
 
 // isBareMomoError reports whether call is errors.New or fmt.Errorf with a
