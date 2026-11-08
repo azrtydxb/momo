@@ -128,7 +128,7 @@ func SubqueriesCTEsRecursive(t *testing.T, db *momo.DB, caps Caps) {
 	body := momo.Union(true,
 		momo.RawSubquery(`SELECT 1 AS n`),
 		momo.Select[intRow](db).From(momo.CTE("seq")).
-			Columns(momo.TypedSQL[int64](`"seq"."n" + 1`)).Where(seqN.Lt(5)),
+			Columns(momo.TypedSQL[int64](`seq.n + 1`)).Where(seqN.Lt(5)),
 	)
 	rows, err := momo.Select[intRow](db).
 		WithRecursive("seq", body, "n").
@@ -343,7 +343,7 @@ func WithTableNameQuoted(t *testing.T, db *momo.DB, caps Caps) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := strings.ReplaceAll(name, `"`, `""`); !strings.Contains(c.SQL, `"`+want+`"`) {
+		if want := db.Dialect().QuoteIdent(name); !strings.Contains(c.SQL, want) {
 			t.Fatalf("table name %q not quoted: %s", name, c.SQL)
 		}
 	}
@@ -352,8 +352,11 @@ func WithTableNameQuoted(t *testing.T, db *momo.DB, caps Caps) {
 		t.Fatal(err)
 	}
 	ddl := documentsDDLPostgres
-	if caps.Dialect == dialect.SQLite {
+	switch caps.Dialect {
+	case dialect.SQLite:
 		ddl = documentsDDLSQLite
+	case dialect.MySQL:
+		ddl = documentsDDLMySQL
 	}
 	if _, err := momo.Exec(ctx, db, strings.Replace(ddl, "CREATE TABLE documents", "CREATE TABLE docs_alt", 1)); err != nil {
 		t.Fatal(err)

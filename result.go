@@ -3,7 +3,12 @@
 package momo
 
 // Result reports the outcome of a write statement.
-type Result struct{ RowsAffected int64 }
+type Result struct {
+	RowsAffected int64
+	// InsertID is the auto-increment key a single-row insert generated, on
+	// dialects whose driver reports it (MySQL and MariaDB); zero otherwise.
+	InsertID int64
+}
 
 // writeKind selects the rules of columnAssignable.
 type writeKind uint8

@@ -133,6 +133,25 @@ func (e *execer) implicitExec(ctx context.Context, op, table string, c Compiled)
 	return n, nil
 }
 
+// implicitExecInsertID is implicitExec for an insert whose generated key is wanted.
+func (e *execer) implicitExecInsertID(ctx context.Context, op, table string, c Compiled) (int64, int64, error) {
+	tx, err := e.db.Begin(ctx, TxOptions{})
+	if err != nil {
+		return -1, 0, err
+	}
+	n, id, err := tx.ex.execInsertID(ctx, op, table, c)
+	if err != nil {
+		if rb := tx.Rollback(context.WithoutCancel(ctx)); rb != nil && !errors.Is(rb, ErrTxDone) {
+			err = errors.Join(err, rb)
+		}
+		return -1, 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return -1, 0, err
+	}
+	return n, id, nil
+}
+
 func (e *execer) implicitQuery(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
 	tx, err := e.db.Begin(ctx, TxOptions{})
 	if err != nil {

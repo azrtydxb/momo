@@ -64,6 +64,8 @@ The `Example` functions `ExampleVector`, `ExampleHalfVector`,
 `ExampleSparseVector` and `ExampleBits` in `vector/example_test.go` show the
 validation and the text forms:
 
+<!-- docscheck:fragment -->
+
 ```go
 v := vector.Vector{1, 2.5, -3}
 fmt.Println(v.Validate(3))      // <nil>
@@ -119,6 +121,8 @@ NaN or an out-of-range value is a build error wrapping `ErrValidation`, reported
 lacks is a build error wrapping `ErrUnsupported`. The metrics per dialect come
 from `dialect.Dialect.Vector`:
 
+<!-- docscheck:fragment -->
+
 ```go
 for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 	caps := dialect.For(name).Vector
@@ -129,6 +133,8 @@ for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 ```
 
 A nearest-neighbour query (`ExampleCosineDistance`):
+
+<!-- docscheck:fragment -->
 
 ```go
 c, err := momo.Select[example.Document](db).
@@ -152,6 +158,8 @@ The generator maps `vector.Vector`, `vector.HalfVector`,
 `sparsevec` and `bit` columns. The `dim` tag sets the dimension, and
 sparsevec and bit require it:
 
+<!-- docscheck:fragment -->
+
 ```go
 Embedding vector.Vector `momo:"dim:1536"`
 ```
@@ -160,6 +168,8 @@ Generation adds `CREATE EXTENSION vector` to the schema when a vector column
 or index is present. An ANN index needs an operator class, and pgvector's
 hnsw has no default one, so declare vector indexes in `MomoConfig` (the
 reference model is `internal/testmodels/example/models.go`):
+
+<!-- docscheck:fragment -->
 
 ```go
 func (d *Document) MomoConfig(c *momo.Config) {
@@ -197,6 +207,8 @@ A `vector.Vector` or `vector.HalfVector` field without a `dim` tag maps to the
 bare `vector` or `halfvec` type. Use it for a store whose embedding size
 depends on the configured model: each row carries its size in a `dims`
 column, and every search filters on it.
+
+<!-- docscheck:fragment -->
 
 ```go
 type KbChunk struct {
@@ -266,6 +278,8 @@ a placeholder.
 Use `DB.WithSearch` for a block, or `Tx.SetSearch` inside a transaction you
 already have (`ExampleDB_WithSearch`, `ExampleTx_SetSearch`):
 
+<!-- docscheck:fragment -->
+
 ```go
 settings := momo.SearchSettings{
 	HNSWEfSearch:      100,
@@ -316,6 +330,8 @@ the parameters and returns the plan text. It does not execute the query. Run
 it inside the transaction whose settings you want to see
 (`ExampleSelectQuery_Explain`):
 
+<!-- docscheck:fragment -->
+
 ```go
 plan, err := momo.Select[example.Document](db).
 	OrderBy(momo.L2Distance(document.Embedding, query).Asc()).
@@ -348,6 +364,8 @@ in `driver/pgxdriver`:
 - Decoders bound every length they read before they allocate.
 
 `ExampleConfigureVectors` shows the setup:
+
+<!-- docscheck:fragment -->
 
 ```go
 cfg, err := pgxpool.ParseConfig("postgres://localhost/app")

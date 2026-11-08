@@ -1,0 +1,57 @@
+site_name: momo
+site_url: https://azrtydxb.github.io/momo/
+site_description: Go ORM with typed queries, explicit SQL and a self-contained migration engine
+repo_url: https://github.com/azrtydxb/momo
+docs_dir: docs
+exclude_docs: |
+  requirements.in
+  requirements.txt
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+  palette:
+    - scheme: default
+      media: "(prefers-color-scheme: light)"
+    - scheme: slate
+      media: "(prefers-color-scheme: dark)"
+hooks:
+  - tools/docs/links_hook.py
+  - tools/docs/llms_hook.py
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - attr_list
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path:
+        - .
+      check_paths: true
+extra:
+  version:
+    provider: mike
+    default: latest
+nav:
+  - Home: README.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Agent guide: ai-guide.md
+      - Agent usage and AGENTS.md snippet: agents.md
+      - Type mapping: TYPE_MAPPING.md
+      - Projections: projections.md
+      - Relations: relations.md
+      - Vector search: vectors.md
+      - Full-text search: fulltext.md
+      - Migrations: migrations.md
+      - Testing applications: testing.md
+  - Reference:
+      - Capabilities: capabilities.md
+      - Supported versions: supported-versions.md
+      - Architecture: ARCHITECTURE.md
+  - Contributing: contributing.md

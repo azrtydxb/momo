@@ -20,3 +20,5 @@ Implements plan momo-13-docs-release Task 9: Plan gate and GitHub Pages source (
 
 ## Evidence
 
+- Steps 1 to 3 are covered by the docs workflow, run 42456103295: strict mkdocs build, TestLLMsTxt, code blocks and runnable blocks.
+- Left open: steps 4 and 5 (set the Pages source on gh-pages, check the published llms.txt) need the first mike deploy from main and repository administration rights; they cannot run before docs.yml is on main.

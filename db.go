@@ -108,6 +108,9 @@ type DB struct {
 	pinned   bool             // set by OnConn: statements run on one pinned connection
 	// fieldHooks holds the []FieldHook[T] of WithFieldHooks keyed by *Meta[T].
 	fieldHooks map[any]any
+	// replicas are the read-replica drivers of WithReplicas, reached only
+	// through Replica. A handle derived from a DB never carries them.
+	replicas []Driver
 	// idGens holds the id generators of WithIDGenerator by name.
 	idGens map[string]func() string
 	// txSetup runs after every transaction momo begins (WithTxSetup).
@@ -254,6 +257,7 @@ func (e *execer) after(ctx context.Context, ev *QueryEvent, rows int64, err erro
 }
 
 func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64, error) {
+	markWrite(ctx)
 	if e.unscopable() {
 		return -1, errPinnedSetup(op, table)
 	}
@@ -270,8 +274,36 @@ func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64,
 	return n, err
 }
 
+// execInsertID is exec for a statement whose generated key is wanted. A driver
+// without InsertIDExecer reports the key as 0.
+func (e *execer) execInsertID(ctx context.Context, op, table string, c Compiled) (int64, int64, error) {
+	x, ok := e.q.(InsertIDExecer)
+	if !ok {
+		n, err := e.exec(ctx, op, table, c)
+		return n, 0, err
+	}
+	markWrite(ctx) // read-your-writes: later reads in this unit of work stay on the primary
+	if e.unscopable() {
+		return -1, 0, errPinnedSetup(op, table)
+	}
+	if e.implicit() {
+		return e.implicitExecInsertID(ctx, op, table, c)
+	}
+	ctx, ev := e.before(ctx, op, table, "", c.SQL, c.Args, c.sens)
+	n, id, err := x.ExecInsertID(ctx, c.SQL, c.Args)
+	err = e.wrapErr(op, table, err)
+	if err != nil {
+		n, id = -1, 0
+	}
+	e.after(ctx, ev, n, err)
+	return n, id, err
+}
+
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
+	if op != "select" && op != "explain" { // a write with RETURNING
+		markWrite(ctx)
+	}
 	if e.unscopable() {
 		return nil, errPinnedSetup(op, table)
 	}
