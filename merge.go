@@ -51,14 +51,14 @@ func serverVersionOf(ctx context.Context, q Querier) (int, error) {
 		v, err := sv.ServerVersion(ctx)
 		return v, db.ex.wrapErr("merge", "", err)
 	}
-	vs, err := Scalars[int64](ctx, q, serverVersionQuery)
+	vs, err := Scalars[int](ctx, q, serverVersionQuery)
 	if err == nil && len(vs) == 0 {
 		err = &Error{Kind: ErrNotFound, Op: "merge", Err: errors.New("server_version_num returned no row")}
 	}
 	if err != nil {
 		return 0, q.conn().wrapErr("merge", "", err)
 	}
-	return int(vs[0]), nil
+	return vs[0], nil
 }
 
 // MergeQuery builds a MERGE into one model table. It is a value: every method
