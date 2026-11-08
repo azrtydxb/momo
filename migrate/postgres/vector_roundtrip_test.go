@@ -87,6 +87,44 @@ func TestVectorMigrationRoundTrip(t *testing.T) {
 	}
 }
 
+// TestDimensionlessVectorRoundTrip creates a table whose embedding columns
+// are declared without dimensions, with a dims column and a plain index on it
+// (the layout of a store whose embedding size follows the model), inspects it
+// back as the bare types and requires an empty second diff. roundTrip does the
+// diff, apply, inspect, equal and second-diff steps.
+func TestDimensionlessVectorRoundTrip(t *testing.T) {
+	desired := &schema.Schema{
+		Dialect:    "postgres",
+		Extensions: []schema.Extension{{Name: "vector"}},
+		Tables: []schema.Table{{
+			Name:       "kb_chunks",
+			PrimaryKey: []string{"id"},
+			Columns: []schema.Column{
+				{Name: "id", Type: "bigint", Identity: "by_default"},
+				{Name: "dims", Type: "integer"},
+				{Name: "embedding", Type: "vector"},
+				{Name: "maybe", Type: "vector", Nullable: true},
+				{Name: "half", Type: "halfvec"},
+			},
+			Indexes: []schema.Index{{Name: "kb_chunks_dims", Parts: []schema.IndexPart{{Column: "dims"}}}},
+		}},
+	}
+	db := testopen.Postgres(t)
+	got := roundTrip(t, db, desired)
+	tbl, ok := got.Table("kb_chunks")
+	if !ok {
+		t.Fatal("kb_chunks missing after round trip")
+	}
+	for col, typ := range map[string]string{"embedding": "vector", "maybe": "vector", "half": "halfvec"} {
+		c, ok := tbl.Column(col)
+		if !ok || c.Type != typ {
+			t.Errorf("column %s = %+v, want type %s", col, c, typ)
+		}
+	}
+	// Rows of different sizes share the column.
+	mustExec(t, db.Driver(), "INSERT INTO kb_chunks (dims, embedding, half) VALUES (3, '[1,2,3]', '[1,2,3]'), (5, '[1,2,3,4,5]', '[1,2,3,4,5]')")
+}
+
 // TestVectorIndexMatrixRoundTrip creates one table per column type and per
 // index method and operator class that pgvector accepts, then round-trips
 // all of them in one schema.

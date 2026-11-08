@@ -446,6 +446,8 @@ for usage or configuration errors, and 3 for database errors.
   agents that use Momo in an application (also indexed by [llms.txt](llms.txt)).
 - [docs/vectors.md](docs/vectors.md) covers pgvector types, distance
   metrics, index limits and search settings.
+- [docs/fulltext.md](docs/fulltext.md) covers the tsvector type, the match,
+  rank and headline builders and hybrid vector plus text ranking.
 - [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md) maps every Go type to its
   column type.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the layers and

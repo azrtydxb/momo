@@ -8,6 +8,7 @@ contributor guide, supported versions, performance).
 - [Guide for AI coding agents](ai-guide.md): one self-contained file for an agent using Momo in an application: setup, modeling, migrations, queries, relations, vectors, errors, testing, known pitfalls and rules. Also indexed by `llms.txt` at the repository root.
 - [Go to SQL type mapping](TYPE_MAPPING.md): column type per Go type, edge values, null handling.
 - [Vector search](vectors.md): pgvector types, metrics, limits, search settings and the binary codec.
+- [Full-text search](fulltext.md): the tsvector column type, the match, query, rank and headline builders, and a hybrid vector plus text ranking pattern.
 - [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, tuple rows (`Row1` to `Row10`), the soft-delete filter.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
