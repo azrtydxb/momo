@@ -358,9 +358,18 @@ func renderCreateTable(c migrate.Change) ([]migrate.Statement, error) {
 // renderDropFK drops a foreign key and the index MySQL built for it. That
 // index carries the constraint's name, is not part of the schema model and
 // would stay behind, so the next diff would show it. It is dropped only when
-// it exists and is not unique; a prepared statement decides, because DROP INDEX
-// has no IF EXISTS on MySQL. An index you declared under the name of the key
-// goes with it.
+// it exists, is not unique, and no other foreign key of the table starts with
+// the column the index starts with (MySQL then built no index of its own for
+// that key, and DROP INDEX would fail with error 1553 after the key was
+// already gone). A prepared statement decides, because DROP INDEX has no IF
+// EXISTS on MySQL. The index stays when another key needs it, and then shows
+// up as an index named like the dropped key: declare it, or drop it once
+// nothing needs it. A model cannot declare an index under the name of a
+// foreign key (ValidateSchema), so a declared index is never dropped here.
+// The prepared statement is deallocated by the last statement; when EXECUTE
+// fails the run stops with a dirty row first, which leaves the statement
+// prepared on a session that ends with the run. That is harmless: a retry
+// prepares the same name again, which replaces it.
 func renderDropFK(c migrate.Change) ([]migrate.Statement, error) {
 	t := tableRef(c.Schema, c.Table)
 	drop, err := quoteLiteral("ALTER TABLE " + t + " DROP INDEX " + ident(c.Name))
@@ -383,7 +392,7 @@ func renderDropFK(c migrate.Change) ([]migrate.Statement, error) {
 	}
 	return []migrate.Statement{
 		{SQL: "ALTER TABLE " + t + " DROP FOREIGN KEY " + ident(c.Name)},
-		{SQL: "SET @momo_drop_fk_index = (SELECT IF(COUNT(*) > 0, " + drop + ", 'DO 0') FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = " + db + " AND TABLE_NAME = " + table + " AND INDEX_NAME = " + name + " AND NON_UNIQUE = 1)"},
+		{SQL: "SET @momo_drop_fk_index = (SELECT IF(COUNT(*) > 0 AND NOT EXISTS (SELECT 1 FROM information_schema.KEY_COLUMN_USAGE k WHERE k.TABLE_SCHEMA = " + db + " AND k.TABLE_NAME = " + table + " AND k.REFERENCED_TABLE_NAME IS NOT NULL AND k.CONSTRAINT_NAME <> " + name + " AND k.ORDINAL_POSITION = 1 AND k.COLUMN_NAME IN (SELECT s2.COLUMN_NAME FROM information_schema.STATISTICS s2 WHERE s2.TABLE_SCHEMA = " + db + " AND s2.TABLE_NAME = " + table + " AND s2.INDEX_NAME = " + name + " AND s2.SEQ_IN_INDEX = 1)), " + drop + ", 'DO 0') FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = " + db + " AND TABLE_NAME = " + table + " AND INDEX_NAME = " + name + " AND NON_UNIQUE = 1)"},
 		{SQL: "PREPARE momo_drop_fk_index FROM @momo_drop_fk_index"},
 		{SQL: "EXECUTE momo_drop_fk_index"},
 		{SQL: "DEALLOCATE PREPARE momo_drop_fk_index"},

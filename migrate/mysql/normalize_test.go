@@ -64,7 +64,7 @@ func TestMySQLNormalizeExpr(t *testing.T) {
 		}
 	}
 	// Parentheses that carry meaning stay.
-	for _, keep := range []string{"(a + b) * c", "f(a > 1,2)", "a = (b + 1) * 2", "not (a > 1 or b > 2)"} {
+	for _, keep := range []string{"(a + b) * c", "f(a > 1,2)", "a = (b + 1) * 2", "not (a > 1 or b > 2)", "not (a > 1)", "c between 1 and (d < 2)", "(a between 1 and 2) and c > 0", `a = 'it\'S  X'`} {
 		if got := schema.NormalizeExpr(dialect.MySQL, keep); got != keep {
 			t.Errorf("NormalizeExpr(%q) = %q, the parentheses carry meaning", keep, got)
 		}

@@ -1077,8 +1077,10 @@ default, and the history table is left out.
   A unique key made of plain ascending columns is reported as a unique
   constraint; declare such keys as constraints.
 - The index MySQL creates for a foreign key, named after the constraint, is
-  not reported. An index you declare under the name of a foreign key on the
-  same columns is hidden the same way.
+  not reported, and the diff refuses a declared index that has the name of a
+  foreign key of its table, because the two would collide and could not be
+  told apart. An index of a database you adopt that already has such a name
+  and the key's columns is treated as the server's own.
 - `NO ACTION` is reported as an empty action. MariaDB reports its default as
   `RESTRICT`, so on MariaDB `RESTRICT` and an unwritten clause are one.
 - MariaDB stores `json` as `longtext` with a `json_valid` check named after the
@@ -1092,6 +1094,9 @@ default, and the history table is left out.
   introducers and the parentheses MySQL adds around each comparison. Other
   rewrites by the server (for example `!=` stored as `<>`) show as a
   difference of text; write the expression the way the server stores it.
+  Parentheses around a comparison are removed only between and, or and xor,
+  so `(a between 1 and 2) and c > 0` keeps them and differs from the same
+  text without them; a backslash escape inside a string is kept as written.
 - A foreign key into another database is reported as `database.table`.
 - Integer display widths (`int(11)` on MariaDB) are no difference of type.
   Identifier quotes, character set introducers and outer parentheses in stored
@@ -1108,7 +1113,11 @@ default that is not a literal or `CURRENT_TIMESTAMP` is wrapped in parentheses,
 as MySQL requires. Partial indexes, storage parameters, operator classes,
 enums, views, functions, triggers and policies have no MySQL rendering yet and
 are refused. The `hash` index method is refused: InnoDB builds it as BTREE. Dropping a
-foreign key also drops the index MySQL built for it, when one exists. An
+foreign key also drops the index MySQL built for it, when one exists, unless
+another foreign key of the table starts with the same column: that key may rely
+on the index, and dropping it would fail after the key was gone. The index then
+stays and shows as an index named like the dropped key; declare it, or drop it
+once nothing needs it. An
 AUTO_INCREMENT column must be a key in the statement that adds it, but the
 engine adds a primary key in a separate statement after the column: add such a
 column and its key in a migration you write yourself. Declare a generated

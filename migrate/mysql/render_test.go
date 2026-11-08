@@ -104,7 +104,7 @@ func TestRenderAlterStatements(t *testing.T) {
 		{"drop foreign key and its implicit index", migrate.Change{Kind: migrate.DropFK, Table: "t", Name: "f"},
 			[]string{
 				"ALTER TABLE `t` DROP FOREIGN KEY `f`",
-				"SET @momo_drop_fk_index = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE `t` DROP INDEX `f`', 'DO 0') FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't' AND INDEX_NAME = 'f' AND NON_UNIQUE = 1)",
+				"SET @momo_drop_fk_index = (SELECT IF(COUNT(*) > 0 AND NOT EXISTS (SELECT 1 FROM information_schema.KEY_COLUMN_USAGE k WHERE k.TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = 't' AND k.REFERENCED_TABLE_NAME IS NOT NULL AND k.CONSTRAINT_NAME <> 'f' AND k.ORDINAL_POSITION = 1 AND k.COLUMN_NAME IN (SELECT s2.COLUMN_NAME FROM information_schema.STATISTICS s2 WHERE s2.TABLE_SCHEMA = DATABASE() AND s2.TABLE_NAME = 't' AND s2.INDEX_NAME = 'f' AND s2.SEQ_IN_INDEX = 1)), 'ALTER TABLE `t` DROP INDEX `f`', 'DO 0') FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't' AND INDEX_NAME = 'f' AND NON_UNIQUE = 1)",
 				"PREPARE momo_drop_fk_index FROM @momo_drop_fk_index",
 				"EXECUTE momo_drop_fk_index",
 				"DEALLOCATE PREPARE momo_drop_fk_index",
@@ -163,6 +163,24 @@ func TestHistoryDDLQualifiesTheTable(t *testing.T) {
 
 // The engine finds the history table and the lock key through these.
 var (
-	_ migrate.Dialect        = mmysql.New()
-	_ migrate.HistoryLocator = mmysql.New()
+	_ migrate.Dialect         = mmysql.New()
+	_ migrate.HistoryLocator  = mmysql.New()
+	_ migrate.SchemaValidator = mmysql.New()
 )
+
+func TestValidateSchemaRefusesAnIndexNamedLikeAForeignKey(t *testing.T) {
+	tbl := schema.Table{
+		Name:        "child",
+		Columns:     []schema.Column{{Name: "p", Type: "int"}},
+		ForeignKeys: []schema.ForeignKey{{Name: "child_p", Columns: []string{"p"}, RefTable: "parent", RefColumns: []string{"id"}}},
+		Indexes:     []schema.Index{{Name: "child_p", Parts: []schema.IndexPart{{Column: "p"}}}},
+	}
+	err := mmysql.New().ValidateSchema(&schema.Schema{Tables: []schema.Table{tbl}})
+	if err == nil || !strings.Contains(err.Error(), "foreign key") {
+		t.Fatalf("ValidateSchema = %v, want it to refuse the index named like the key", err)
+	}
+	tbl.Indexes[0].Name = "child_p_idx"
+	if err := mmysql.New().ValidateSchema(&schema.Schema{Tables: []schema.Table{tbl}}); err != nil {
+		t.Fatalf("a differently named index was refused: %v", err)
+	}
+}

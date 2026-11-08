@@ -8,6 +8,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -198,6 +200,91 @@ func TestMySQLMigrationRoundTrip(t *testing.T) {
 			}
 			if again != nil {
 				t.Fatalf("a second Engine.Diff produced a migration: %+v", again.Changes)
+			}
+		})
+	}
+}
+
+// parentsTable is the referenced table of the foreign key tests: a unique key
+// on (a, b) serves keys on (a, b) and on (a).
+func parentsTable() schema.Table {
+	return schema.Table{
+		Name:       "parents",
+		PrimaryKey: []string{"id"},
+		Columns: []schema.Column{
+			{Name: "id", Type: "bigint", Identity: "by_default"},
+			{Name: "a", Type: "int"},
+			{Name: "b", Type: "int"},
+		},
+		Uniques: []schema.Unique{{Name: "parents_ab", Columns: []string{"a", "b"}}},
+	}
+}
+
+// TestMySQLIndexNamedLikeForeignKey: MySQL builds an index named like each
+// foreign key, so a declared index with that name would collide with it and
+// could not be told from it. The diff refuses the declaration.
+func TestMySQLIndexNamedLikeForeignKey(t *testing.T) {
+	for _, tg := range targets {
+		t.Run(tg.name, func(t *testing.T) {
+			db := tg.open(t)
+			eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(t.TempDir()))
+			desired := &schema.Schema{Dialect: "mysql", Tables: []schema.Table{
+				parentsTable(),
+				{
+					Name:        "pairs",
+					PrimaryKey:  []string{"id"},
+					Columns:     []schema.Column{{Name: "id", Type: "bigint", Identity: "by_default"}, {Name: "x", Type: "int"}, {Name: "y", Type: "int"}},
+					ForeignKeys: []schema.ForeignKey{{Name: "pairs_ref", Columns: []string{"x", "y"}, RefTable: "parents", RefColumns: []string{"a", "b"}}},
+					Indexes:     []schema.Index{{Name: "pairs_ref", Parts: []schema.IndexPart{{Column: "x"}, {Column: "y"}}}},
+				},
+			}}
+			_, err := eng.Diff(context.Background(), desired, "clash", migrate.DiffOptions{})
+			if err == nil || !strings.Contains(err.Error(), "foreign key") {
+				t.Fatalf("Diff = %v, want the index named like a foreign key to be refused", err)
+			}
+		})
+	}
+}
+
+// TestMySQLDropForeignKeyKeepsSharedIndex: the second key on (x) uses the index
+// MySQL built for the first key on (x, y). Dropping the first key must not drop
+// that index, or the server answers error 1553 after the key is already gone and
+// the migration cannot be retried.
+func TestMySQLDropForeignKeyKeepsSharedIndex(t *testing.T) {
+	ctx := context.Background()
+	for _, tg := range targets {
+		t.Run(tg.name, func(t *testing.T) {
+			db := tg.open(t)
+			dir := t.TempDir()
+			eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(dir))
+			pairs := schema.Table{
+				Name:       "pairs",
+				PrimaryKey: []string{"id"},
+				Columns:    []schema.Column{{Name: "id", Type: "bigint", Identity: "by_default"}, {Name: "x", Type: "int"}, {Name: "y", Type: "int"}},
+				ForeignKeys: []schema.ForeignKey{
+					{Name: "pairs_xy", Columns: []string{"x", "y"}, RefTable: "parents", RefColumns: []string{"a", "b"}},
+					{Name: "pairs_x", Columns: []string{"x"}, RefTable: "parents", RefColumns: []string{"a"}},
+				},
+			}
+			both := &schema.Schema{Dialect: "mysql", Tables: []schema.Table{parentsTable(), pairs}}
+			applyExample(t, dir, eng, both, "pairs")
+			assertLive(t, eng, both)
+
+			pairs.ForeignKeys = pairs.ForeignKeys[1:]
+			applyExample(t, dir, eng, &schema.Schema{Dialect: "mysql", Tables: []schema.Table{parentsTable(), pairs}}, "drop_xy")
+
+			live, err := eng.Inspect(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, ok := live.Table("pairs")
+			if !ok || len(got.ForeignKeys) != 1 || got.ForeignKeys[0].Name != "pairs_x" {
+				t.Fatalf("foreign keys after the drop = %+v, want only pairs_x", got)
+			}
+			// The index pairs_xy stays: pairs_x still needs it. It is no longer
+			// named like a key, so it now shows as an index.
+			if !slices.ContainsFunc(got.Indexes, func(ix schema.Index) bool { return ix.Name == "pairs_xy" }) {
+				t.Fatalf("the index pairs_xy that pairs_x relies on is gone: %+v", got.Indexes)
 			}
 		})
 	}

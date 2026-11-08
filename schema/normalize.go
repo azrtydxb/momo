@@ -141,7 +141,7 @@ func NormalizeExpr(d dialect.Name, e string) string {
 func normalizeExprOnce(d dialect.Name, e string) string {
 	var sb strings.Builder
 	var quote rune
-	escapes := false // inside an E'' string, where a backslash escapes the next character
+	escapes := false // inside an E'' string (or any MySQL string), where a backslash escapes the next character
 	skip := false
 	space := false
 	for _, r := range e {
@@ -168,7 +168,8 @@ func normalizeExprOnce(d dialect.Name, e string) string {
 			space = false
 		}
 		if r == '\'' || r == '"' {
-			escapes = r == '\'' && endsWithEscapePrefix(sb.String())
+			// MySQL strings, both quote kinds, always take backslash escapes.
+			escapes = d == dialect.MySQL || r == '\'' && endsWithEscapePrefix(sb.String())
 			quote = r
 			sb.WriteRune(r)
 			continue
@@ -361,8 +362,14 @@ func groupStrippable(s string, open, end int) bool {
 		p--
 	}
 	if p >= 0 && s[p] != '(' {
+		// NOT is not accepted: with HIGH_NOT_PRECEDENCE it binds tighter than a
+		// comparison, so "not (a > 1)" and "not a > 1" differ there.
 		switch wordEndingAt(s, p) {
-		case "and", "or", "not", "xor":
+		case "and":
+			if betweenAnd(s, open) {
+				return false // the AND of BETWEEN x AND (...)
+			}
+		case "or", "xor":
 		default:
 			return false
 		}
@@ -379,6 +386,60 @@ func groupStrippable(s string, open, end int) bool {
 		}
 	}
 	return hasBareComparison(s[open+1 : end])
+}
+
+// betweenAnd reports whether the last word before s[open] is the AND that
+// closes a BETWEEN of the same parenthesis level.
+func betweenAnd(s string, open int) bool {
+	pending := []int{0}
+	last := false
+	var quote byte
+	for i := 0; i < open; i++ {
+		c := s[i]
+		if quote != 0 {
+			switch {
+			case c == '\\' && i+1 < open:
+				i++
+			case c == quote:
+				quote = 0
+			}
+			continue
+		}
+		switch {
+		case c == ' ':
+		case c == '\'' || c == '"':
+			quote = c
+			last = false
+		case c == '(':
+			pending = append(pending, 0)
+			last = false
+		case c == ')':
+			if len(pending) > 1 {
+				pending = pending[:len(pending)-1]
+			}
+			last = false
+		case isWordByte(c):
+			if i > 0 && isWordByte(s[i-1]) {
+				continue
+			}
+			top := len(pending) - 1
+			switch wordStartingAt(s, i) {
+			case "between":
+				pending[top]++
+				last = false
+			case "and":
+				last = pending[top] > 0
+				if last {
+					pending[top]--
+				}
+			default:
+				last = false
+			}
+		default:
+			last = false
+		}
+	}
+	return last
 }
 
 func wordEndingAt(s string, p int) string {

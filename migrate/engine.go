@@ -794,6 +794,11 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
 	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
+	if v, ok := e.opts.dialect.(SchemaValidator); ok {
+		if err := v.ValidateSchema(&to); err != nil {
+			return nil, err
+		}
+	}
 	from := &schema.Schema{Dialect: to.Dialect}
 	parent := ""
 	snap, err := LatestSnapshot(e.dir)
