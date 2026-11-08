@@ -31,7 +31,8 @@ API to document yet:
 - Hybrid search: PostgreSQL full-text plus vector search fused by reciprocal
   rank (planned options `TextCandidates`, `VectorCandidates` and `RRFK`, with
   k=60 as the default) does not exist yet.
-- MySQL and MariaDB: no vector support.
+- MySQL and MariaDB: see "MariaDB and MySQL" below. The migration engine for
+  MySQL does not exist yet, so no tool creates VECTOR columns or indexes.
 
 ## Value types
 
@@ -387,4 +388,39 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
   authoritative for `Len`. See "Not yet available" for the driver status.
 - `SetSearch` on SQLite: `ExactSearch` alone is a no-op, every search is
   already exact, and any other field is `ErrUnsupported`.
-- MariaDB VECTOR INDEX is approximate; MySQL and MariaDB are not supported yet.
+- MariaDB VECTOR INDEX is approximate; see "MariaDB and MySQL" below.
+
+## MariaDB and MySQL
+
+MariaDB 11.8 supports float32 vectors through `mysqldriver`. MySQL 9.x
+stores them but cannot compare them.
+
+| Capability                     | MariaDB 11.8                                                  | MySQL 9.7        | MySQL 8.4              |
+| ------------------------------ | ------------------------------------------------------------- | ---------------- | ---------------------- |
+| Column type                    | `VECTOR(N)`                                                   | `VECTOR(N)`      | none: `ErrUnsupported` |
+| `vector.Vector` write and read | yes                                                           | yes              | no                     |
+| `L2Distance`                   | `VEC_DISTANCE_EUCLIDEAN(col, VEC_FromText(?))`                | `ErrUnsupported` | `ErrUnsupported`       |
+| `CosineDistance`               | `VEC_DISTANCE_COSINE(col, VEC_FromText(?))`                   | `ErrUnsupported` | `ErrUnsupported`       |
+| Other metrics, other types     | `ErrUnsupported` (inner product, L1, halfvec, sparsevec, bit) | `ErrUnsupported` | `ErrUnsupported`       |
+| ANN index                      | `VECTOR INDEX`, approximate                                   | none             | none                   |
+| `Capabilities().Vectors`       | true                                                          | false            | false                  |
+
+MySQL Community has no distance function (the distance functions belong to
+HeatWave), so a distance query on MySQL fails at build time with
+`ErrUnsupported`. Momo never falls back to a scan or to a Go-side sort.
+
+A `vector.Vector` bound on MySQL or MariaDB travels as its text form wrapped
+in `VEC_FromText` (MariaDB) or `STRING_TO_VECTOR` (MySQL), on every typed bind
+path: insert, update, equality and distance. Stored vectors scan back from the
+server's binary float32 form. A column marked sensitive masks the vector in
+hook events exactly as on PostgreSQL.
+
+A MariaDB `VECTOR INDEX` needs a `NOT NULL` `vector(N)` column and accepts
+`M` from 3 to 200 and `DISTANCE` of `euclidean` or `cosine`. It serves only
+the metric it was built with, and an `ORDER BY` distance with `LIMIT` uses
+it. To get the exact nearest neighbours from the same table, add `+ 0` to the
+distance in a raw query, which keeps the server from using the index.
+`schema.ValidateMariaDBVectorIndex` checks a declaration and
+`schema.MariaDBVectorIndexClause` renders it. `momo.MySQLVectorType` gives the
+column type for a server version and refuses MySQL 8.4 and MariaDB before
+11.7 with a diagnostic that names the version.

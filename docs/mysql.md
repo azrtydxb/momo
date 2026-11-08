@@ -2,7 +2,7 @@
 
 What works on MySQL and MariaDB today, and what does not. The driver is
 `driver/mysqldriver` (database/sql on `github.com/go-sql-driver/mysql`).
-Migrations, the inspector and vector search are **not available yet**; the
+Migrations and the inspector are **not available yet**; the
 sections below say so where it matters.
 
 ## Supported servers
@@ -100,12 +100,14 @@ index name.
 
 ## Vectors
 
-Not available yet. MySQL 8.4 has no vector columns. MySQL 9.7 stores `VECTOR`
+MySQL 8.4 has no vector columns. MySQL 9.7 stores `VECTOR` and reads it back,
 but offers no distance function in the Community edition (`DISTANCE()` is
-HeatWave and MySQL AI only), so a distance query is `ErrUnsupported`. MariaDB
-11.8 has `VECTOR(N)`, `VEC_DISTANCE_*` and an approximate `VECTOR INDEX`. The
-driver does not report vector support, so every vector builder returns
-`ErrUnsupported` on all three servers until the vector work lands.
+HeatWave and MySQL AI only), so every distance builder is `ErrUnsupported` on
+MySQL. MariaDB 11.8 renders `L2Distance` as `VEC_DISTANCE_EUCLIDEAN` and
+`CosineDistance` as `VEC_DISTANCE_COSINE` on `vector.Vector` columns, and its
+driver reports `Vectors`. Inner product, L1, Hamming, Jaccard and the half,
+sparse and bit types return `ErrUnsupported` on MariaDB. Details and the
+`VECTOR INDEX` rules are in [vectors.md](vectors.md#mariadb-and-mysql).
 
 ## Migrations
 

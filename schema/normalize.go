@@ -40,8 +40,17 @@ func NormalizeType(d dialect.Name, t string) string {
 	}
 	base, args, rest := s, "", ""
 	if i := strings.IndexByte(s, '('); i >= 0 {
+		var balanced bool
 		base = strings.TrimSpace(s[:i])
-		args, rest = splitArgs(s[i:])
+		args, rest, balanced = splitArgs(s[i:])
+		if !balanced {
+			// Not a type with an argument list: keep the collapsed text, so
+			// a second pass cannot read appended words as arguments.
+			if d == dialect.SQLite {
+				return strings.ToUpper(s)
+			}
+			return s
+		}
 	}
 	if d == dialect.Postgres {
 		if out, ok := postgresTime(base, args, rest); ok {
@@ -63,8 +72,8 @@ func NormalizeType(d dialect.Name, t string) string {
 
 // splitArgs splits "(args) rest" into the parenthesised argument list, with
 // whitespace inside it removed, and the trimmed text after the closing
-// parenthesis. An unbalanced list is returned whole with an empty rest.
-func splitArgs(s string) (args, rest string) {
+// parenthesis. An unbalanced list is reported with balanced false.
+func splitArgs(s string) (args, rest string, balanced bool) {
 	var sb strings.Builder
 	depth := 0
 	for i, r := range s {
@@ -78,10 +87,10 @@ func splitArgs(s string) (args, rest string) {
 		}
 		sb.WriteRune(r)
 		if depth == 0 {
-			return sb.String(), strings.TrimSpace(s[i+1:])
+			return sb.String(), strings.TrimSpace(s[i+1:]), true
 		}
 	}
-	return sb.String(), ""
+	return sb.String(), "", false
 }
 
 // postgresTime canonicalises the timestamp and time families, whose optional

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -98,6 +99,105 @@ func ValidateVectorIndex(d dialect.Name, t *Table, idx Index) error {
 		return bad("%v", err)
 	}
 	return checkWith(idx, bad)
+}
+
+// MariaDB VECTOR INDEX limits (11.8): M is the number of neighbours per HNSW
+// node and DISTANCE the metric the index serves.
+const (
+	minMariaDBM        = 3
+	maxMariaDBM        = 200
+	mariaDBIndexMethod = "vector"
+)
+
+// mariaDBDistances lists the DISTANCE values of a VECTOR INDEX.
+var mariaDBDistances = []string{"euclidean", "cosine"}
+
+// ValidateMariaDBVectorIndex checks an index whose Method is "vector"
+// against the column. MariaDB takes exactly one NOT NULL vector(N) column per
+// index, M in 3..200 and DISTANCE euclidean or cosine; it has no operator
+// classes, no partial or unique vector index, and neither hnsw nor ivfflat.
+// Errors wrap ErrInvalidVectorIndex.
+func ValidateMariaDBVectorIndex(t *Table, idx Index) error {
+	bad := func(format string, args ...any) error {
+		return fmt.Errorf("%w: index %q: %s", ErrInvalidVectorIndex, idx.Name, fmt.Sprintf(format, args...))
+	}
+	if idx.Method != mariaDBIndexMethod {
+		return bad("method %q is not a MariaDB vector index method (want %s; hnsw and ivfflat are pgvector methods)", idx.Method, mariaDBIndexMethod)
+	}
+	if len(idx.Parts) != 1 || idx.Parts[0].Column == "" {
+		return bad("a vector index takes exactly one column part, expression parts are not allowed")
+	}
+	if idx.Parts[0].OpClass != "" {
+		return bad("MariaDB has no operator classes, the distance is the DISTANCE parameter")
+	}
+	if idx.Unique || idx.Where != "" {
+		return bad("a vector index cannot be unique or partial")
+	}
+	col, ok := findColumn(t, idx.Parts[0].Column)
+	if !ok {
+		return bad("column %q is not in table %q", idx.Parts[0].Column, t.Name)
+	}
+	kind, dims, err := parseVectorType(col.Type)
+	if err != nil {
+		return bad("column %q has type %q: %v", col.Name, col.Type, err)
+	}
+	if kind != "vector" {
+		return bad("MariaDB has only the vector type, not %s", kind)
+	}
+	if dims == 0 {
+		return bad("vector column %q has no dimensions, MariaDB cannot index it", col.Name)
+	}
+	if col.Nullable {
+		return bad("column %q is nullable, MariaDB requires NOT NULL for a vector index", col.Name)
+	}
+	for _, kv := range idx.With {
+		switch kv.Key {
+		case "m":
+			m, err := strconv.Atoi(kv.Value)
+			if err != nil {
+				return bad("parameter m=%q is not an integer", kv.Value)
+			}
+			if m < minMariaDBM || m > maxMariaDBM {
+				return bad("m=%d is outside %d..%d", m, minMariaDBM, maxMariaDBM)
+			}
+		case "distance":
+			if !slices.Contains(mariaDBDistances, kv.Value) {
+				return bad("distance=%q is not one of %s", kv.Value, joinSuffixes(mariaDBDistances))
+			}
+		default:
+			return bad("parameter %q is not valid for a MariaDB vector index (allowed: m|distance)", kv.Key)
+		}
+	}
+	return nil
+}
+
+// MariaDBVectorIndexClause renders a validated index as the clause MariaDB
+// accepts inside CREATE TABLE and ALTER TABLE ... ADD, for example
+// "VECTOR INDEX `docs_emb` (`emb`) M=8 DISTANCE=cosine". M and DISTANCE are
+// written only when the index sets them. The migration engine for MySQL calls
+// this to render a vector index.
+func MariaDBVectorIndexClause(t *Table, idx Index) (string, error) {
+	if err := ValidateMariaDBVectorIndex(t, idx); err != nil {
+		return "", err
+	}
+	q := func(s string) string { return "`" + strings.ReplaceAll(s, "`", "``") + "`" }
+	var sb strings.Builder
+	sb.WriteString("VECTOR INDEX " + q(idx.Name) + " (" + q(idx.Parts[0].Column) + ")")
+	var m, dist string
+	for _, kv := range idx.With {
+		if kv.Key == "m" {
+			m = kv.Value
+		} else {
+			dist = kv.Value
+		}
+	}
+	if m != "" {
+		sb.WriteString(" M=" + m)
+	}
+	if dist != "" {
+		sb.WriteString(" DISTANCE=" + dist)
+	}
+	return sb.String(), nil
 }
 
 func findColumn(t *Table, name string) (Column, bool) {
