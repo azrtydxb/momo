@@ -10,6 +10,7 @@ import (
 	"hash/fnv"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/migrate"
@@ -89,7 +90,11 @@ func lockName(key string) string {
 	}
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(key))
-	return fmt.Sprintf("%s-%08x", key[:maxLockName-9], h.Sum32())
+	n := maxLockName - 9
+	for n > 0 && !utf8.RuneStart(key[n]) {
+		n-- // never cut a multi-byte character in half
+	}
+	return fmt.Sprintf("%s-%08x", key[:n], h.Sum32())
 }
 
 // scalar returns the first column of the first row as an integer. ok is false

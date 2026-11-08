@@ -176,7 +176,9 @@ func runRollback(ctx context.Context, env RunEnv, r HistoryRow, p Pending) (Appl
 	wrap := func(err error) error {
 		return fmt.Errorf("migrate: down %s_%s: %w", p.Version, p.Name, err)
 	}
-	if p.NoTx || hasNoTx(p.Statements) {
+	// A dialect whose DDL commits implicitly runs a down statement by
+	// statement too, and a failure leaves the row failed (dirty).
+	if p.NoTx || hasNoTx(p.Statements) || !transactionalDDL(env.Dialect) {
 		n, err := execAll(ctx, env.Conn, p.Statements, nil)
 		if err != nil {
 			cause := redact(err)

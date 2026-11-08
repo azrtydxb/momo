@@ -95,3 +95,44 @@ func TestMySQLPartialFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestMySQLFailingDown: a down migration commits statement by statement too. A
+// failure leaves the earlier statements applied and the row failed (dirty),
+// with the count of statements that ran; it is never reported as rolled back.
+func TestMySQLFailingDown(t *testing.T) {
+	ctx := context.Background()
+	db := testopen.MySQL84(t)
+	dir := t.TempDir()
+	const version = "20260101000000"
+	writeFile(t, dir, version+"_tables.up.sql", "CREATE TABLE r1 (id int);\nCREATE TABLE r2 (id int);\n")
+	writeFile(t, dir, version+"_tables.down.sql", "DROP TABLE r1;\nDROP TABLE no_such_table;\nDROP TABLE r2;\n")
+	eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(dir))
+	if _, err := eng.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.Rollback(ctx, migrate.RollbackOptions{}); err == nil {
+		t.Fatal("a failing down migration succeeded")
+	}
+	if _, err := momo.Exec(ctx, db, "SELECT 1 FROM r1 LIMIT 1"); err == nil {
+		t.Fatal("table r1 still exists; the first down statement was not committed")
+	}
+	if _, err := momo.Exec(ctx, db, "SELECT 1 FROM r2 LIMIT 1"); err != nil {
+		t.Fatalf("table r2 is gone, but the down stopped before dropping it: %v", err)
+	}
+	states, err := eng.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	for _, st := range states {
+		if st.Version == version {
+			state = string(st.State)
+		}
+	}
+	if state != "dirty" {
+		t.Fatalf("status of %s = %q, want dirty", version, state)
+	}
+	if got := appliedStatements(t, db, version); got != 1 {
+		t.Fatalf("statements_applied = %d, want 1", got)
+	}
+}

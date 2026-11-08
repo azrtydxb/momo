@@ -20,9 +20,9 @@ import (
 // Every query is a constant that binds the schema name: no identifier or value
 // is spliced into SQL text. The history table is left out.
 const (
-	qTables = `SELECT TABLE_NAME FROM information_schema.TABLES
+	qTables = `SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME <> 'momo_migrations' ORDER BY TABLE_NAME`
-	qColumns = `SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, GENERATION_EXPRESSION, COLUMN_COMMENT
+	qColumns = `SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, GENERATION_EXPRESSION, COLUMN_COMMENT, COLLATION_NAME
 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION`
 	// MySQL 8.0.13 and later report the expression of a functional key part
 	// in EXPRESSION; MariaDB has no such column.
@@ -30,7 +30,7 @@ FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDI
 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX`
 	qIndexesMariaDB = `SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, COLUMN_NAME, SUB_PART, COLLATION, INDEX_TYPE, NULL
 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX`
-	qForeignKeys = `SELECT k.TABLE_NAME, k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, r.UPDATE_RULE, r.DELETE_RULE
+	qForeignKeys = `SELECT k.TABLE_NAME, k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_SCHEMA, k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, r.UPDATE_RULE, r.DELETE_RULE
 FROM information_schema.KEY_COLUMN_USAGE k
 JOIN information_schema.REFERENTIAL_CONSTRAINTS r
   ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME AND r.TABLE_NAME = k.TABLE_NAME
@@ -60,7 +60,8 @@ FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ? ORDER BY T
 // left out; NO ACTION foreign key actions are reported empty, and on MariaDB so
 // is RESTRICT, which MariaDB reports for a clause that was never written.
 // MariaDB stores JSON as LONGTEXT with a json_valid check: that pair is
-// reported as type json. A prefix index part is reported as the column name
+// reported as type json. A column is reported with a collation only when it
+// differs from its table's default. A prefix index part is reported as the column name
 // followed by its length in parentheses ("name(10)").
 func (Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.InspectOptions) (*schema.Schema, error) {
 	db, err := currentDatabase(ctx, c)
@@ -77,7 +78,7 @@ func (Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.Insp
 	if err != nil {
 		return nil, err
 	}
-	in := &inspector{c: c, db: db, flavor: fl, byName: map[string]int{}}
+	in := &inspector{c: c, db: db, flavor: fl, byName: map[string]int{}, tableColl: map[string]string{}}
 	out := &schema.Schema{FormatVersion: schema.FormatVersion, Dialect: dialect.MySQL, Tables: []schema.Table{}}
 	if err := in.tables(ctx, out); err != nil {
 		return nil, fmt.Errorf("mysql inspect: tables: %w", err)
@@ -106,6 +107,9 @@ type inspector struct {
 	db     string
 	flavor dialect.Flavor
 	byName map[string]int // table name -> index into Schema.Tables
+	// tableColl is the default collation of each table: a column is reported
+	// with a collation only when it differs.
+	tableColl map[string]string
 }
 
 func (in *inspector) table(s *schema.Schema, name string) *schema.Table {
@@ -118,9 +122,11 @@ func (in *inspector) table(s *schema.Schema, name string) *schema.Table {
 func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 	return forEach(ctx, in.c, qTables, []any{in.db}, func(r momo.Rows) error {
 		var name string
-		if err := r.Scan(&name); err != nil {
+		var coll sql.NullString
+		if err := r.Scan(&name, &coll); err != nil {
 			return err
 		}
+		in.tableColl[name] = coll.String
 		in.byName[name] = len(out.Tables)
 		out.Tables = append(out.Tables, schema.Table{Name: name})
 		return nil
@@ -130,8 +136,8 @@ func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 func (in *inspector) columns(ctx context.Context, out *schema.Schema) error {
 	return forEach(ctx, in.c, qColumns, []any{in.db}, func(r momo.Rows) error {
 		var table, name, ctype, nullable, extra sql.NullString
-		var def, gen, comment sql.NullString
-		if err := r.Scan(&table, &name, &ctype, &nullable, &def, &extra, &gen, &comment); err != nil {
+		var def, gen, comment, coll sql.NullString
+		if err := r.Scan(&table, &name, &ctype, &nullable, &def, &extra, &gen, &comment, &coll); err != nil {
 			return err
 		}
 		t := in.table(out, table.String)
@@ -143,6 +149,9 @@ func (in *inspector) columns(ctx context.Context, out *schema.Schema) error {
 			Type:     ctype.String,
 			Nullable: strings.EqualFold(nullable.String, "YES"),
 			Comment:  comment.String,
+		}
+		if coll.Valid && coll.String != in.tableColl[table.String] {
+			col.Collate = coll.String
 		}
 		if strings.Contains(strings.ToLower(extra.String), "auto_increment") {
 			col.Identity = "by_default"
@@ -372,8 +381,8 @@ func implicitFKIndex(t *schema.Table, name string, cols []string) bool {
 
 func (in *inspector) foreignKeys(ctx context.Context, out *schema.Schema) error {
 	return forEach(ctx, in.c, qForeignKeys, []any{in.db}, func(r momo.Rows) error {
-		var table, name, col, refTable, refCol, upd, del sql.NullString
-		if err := r.Scan(&table, &name, &col, &refTable, &refCol, &upd, &del); err != nil {
+		var table, name, col, refSchema, refTable, refCol, upd, del sql.NullString
+		if err := r.Scan(&table, &name, &col, &refSchema, &refTable, &refCol, &upd, &del); err != nil {
 			return err
 		}
 		t := in.table(out, table.String)
@@ -386,8 +395,12 @@ func (in *inspector) foreignKeys(ctx context.Context, out *schema.Schema) error 
 			fk.RefColumns = append(fk.RefColumns, refCol.String)
 			return nil
 		}
+		ref := refTable.String
+		if refSchema.Valid && refSchema.String != in.db {
+			ref = refSchema.String + "." + ref // a key into another database
+		}
 		t.ForeignKeys = append(t.ForeignKeys, schema.ForeignKey{
-			Name: name.String, Columns: []string{col.String}, RefTable: refTable.String, RefColumns: []string{refCol.String},
+			Name: name.String, Columns: []string{col.String}, RefTable: ref, RefColumns: []string{refCol.String},
 			OnDelete: in.fkAction(del.String), OnUpdate: in.fkAction(upd.String),
 		})
 		return nil
@@ -451,6 +464,7 @@ func (in *inspector) jsonColumns(out *schema.Schema) {
 				m := jsonValid.FindStringSubmatch(strings.TrimSpace(ck.Expr))
 				if ck.Name == col.Name && m != nil && m[1] == col.Name {
 					col.Type = "json"
+					col.Collate = "" // MariaDB gives the alias utf8mb4_bin
 					t.Checks = append(t.Checks[:k], t.Checks[k+1:]...)
 					break
 				}

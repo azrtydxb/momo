@@ -2,8 +2,8 @@
 
 What works on MySQL and MariaDB today, and what does not. The driver is
 `driver/mysqldriver` (database/sql on `github.com/go-sql-driver/mysql`).
-Migrations and the inspector are **not available yet**; the
-sections below say so where it matters.
+The migration dialect `migrate/mysql` exists as a library; the `momo
+migrate` command is PostgreSQL-only (see [Migrations](#migrations)).
 
 ## Supported servers
 
@@ -111,7 +111,11 @@ sparse and bit types return `ErrUnsupported` on MariaDB. Details and the
 
 ## Migrations
 
-Not available yet. There is no `migrate/mysql` dialect, so `momo migrate`
-rejects MySQL and MariaDB, and the inspector and drift checks do not run on
-them. When they land, every migration will be non-transactional (DDL implies a
-commit on these servers).
+The library dialect `migrate/mysql` inspects `information_schema`, renders DDL,
+locks with `GET_LOCK` and runs every migration, up and down, statement by
+statement, because DDL commits implicitly on these servers. Build the engine
+with `migrate.WithDialect` and the `mysqldriver` driver; the inspector, drift
+check and `-- momo:ddl` online DDL options work through it. The
+`momo migrate` command still builds only the PostgreSQL dialect, so it rejects
+MySQL and MariaDB. What the dialect reports and renders is in
+[migrations.md](migrations.md#9-mysql-and-mariadb).

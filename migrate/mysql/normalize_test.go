@@ -46,10 +46,27 @@ func TestMySQLNormalizeExpr(t *testing.T) {
 		{"`qty` >= 0", "qty >= 0"},
 		{"(`name` = _utf8mb4'x')", "name = 'x'"},
 		{"json_valid(`attrs`)", "json_valid(attrs)"},
+		// Default spellings: the servers store these alike.
+		{"CURRENT_TIMESTAMP", "current_timestamp()"},
+		{"NOW()", "CURRENT_TIMESTAMP"},
+		{"localtime", "now()"},
+		{"NOW(6)", "current_timestamp(6)"},
+		{"now(0)", "current_timestamp"},
+		{"TRUE", "1"},
+		{"false", "0"},
+		// MySQL parenthesises every part of a stored CHECK.
+		{"((`level` >= 0) and ((`level` < 10) or (`level` in (20,30))))", "level >= 0 and (level < 10 or level in (20, 30))"},
+		{"(`a` > 1) or (`b` is null)", "a > 1 or b is null"},
 	}
 	for _, c := range cases {
 		if got, want := schema.NormalizeExpr(dialect.MySQL, c.a), schema.NormalizeExpr(dialect.MySQL, c.b); got != want {
 			t.Errorf("NormalizeExpr(%q) = %q, want %q (the form of %q)", c.a, got, want, c.b)
+		}
+	}
+	// Parentheses that carry meaning stay.
+	for _, keep := range []string{"(a + b) * c", "f(a > 1,2)", "a = (b + 1) * 2", "not (a > 1 or b > 2)"} {
+		if got := schema.NormalizeExpr(dialect.MySQL, keep); got != keep {
+			t.Errorf("NormalizeExpr(%q) = %q, the parentheses carry meaning", keep, got)
 		}
 	}
 	// Text in a string literal is data and stays as it is.

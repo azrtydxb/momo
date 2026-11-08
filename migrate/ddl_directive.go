@@ -24,8 +24,8 @@ var (
 //	-- momo:ddl ALGORITHM=INSTANT, LOCK=NONE
 //	ALTER TABLE big ADD COLUMN note varchar(40) NULL;
 //
-// runs as ALTER TABLE big ADD COLUMN note varchar(40) NULL, ALGORITHM=INSTANT,
-// LOCK=NONE, and the server rejects the statement when it cannot honour them.
+// runs as ALTER TABLE big ADD COLUMN note varchar(40) NULL, then a new line
+// with , ALGORITHM=INSTANT, LOCK=NONE, and the server rejects the statement when it cannot honour them.
 // A statement without the directive is returned unchanged, and no ALGORITHM or
 // LOCK clause is ever added without it. The directive is MySQL and MariaDB
 // only, belongs to an ALTER TABLE, and may appear once per statement.
@@ -43,7 +43,9 @@ func applyDDLDirective(stmt, dialectName string) (string, error) {
 	if !ddlClause.MatchString(clause) {
 		return "", fmt.Errorf("-- momo:ddl %q: want ALGORITHM=<name> and/or LOCK=<name>, separated by commas", clause)
 	}
-	return strings.TrimRight(stmt, " \t\r\n;") + ", " + clause, nil
+	// The clause starts a new line: a statement may end in a -- comment, which
+	// would swallow it on the same line.
+	return strings.TrimRight(stmt, " \t\r\n;") + "\n, " + clause, nil
 }
 
 // splitDDLDirective finds the -- momo:ddl comment in the leading trivia of

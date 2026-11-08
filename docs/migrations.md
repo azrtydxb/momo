@@ -1038,13 +1038,16 @@ return to the state before step 7; nothing else changed.
 The `migrate/mysql` package is the migration dialect for MySQL 8.4, MySQL 9.7
 and MariaDB 11.8. It reads `information_schema`, renders DDL and locks with
 `GET_LOCK`. `momo migrate` does not select it yet; build the engine with
-`migrate.WithDialect(mmysql.New())` and the `mysqldriver` driver.
+`migrate.WithDialect(mmysql.New())` and the `mysqldriver` driver; the command
+line is PostgreSQL-only.
 
 **Every migration is non-transactional.** DDL implies a commit on these
 servers, so a failure cannot be rolled back. The engine runs each statement on
 its own, records `statements_applied` after each one, and leaves a failed row
 that is dirty until you repair the database and run `resolve`. This holds with
-or without `-- momo:no-transaction`, and for Go migrations too. Write each
+or without `-- momo:no-transaction`, for Go migrations, and for `rollback`: a
+down that fails half-way leaves its earlier statements applied and the row
+failed. Write each
 migration so that a half-applied run is easy to finish by hand.
 
 **Locking.** `GET_LOCK` names are server-wide, so the lock name carries the
@@ -1080,19 +1083,36 @@ default, and the history table is left out.
   `RESTRICT`, so on MariaDB `RESTRICT` and an unwritten clause are one.
 - MariaDB stores `json` as `longtext` with a `json_valid` check named after the
   column; the pair is reported as type `json`.
+- A column is reported with a collation only when it differs from its table's
+  default; declare `Collate` on the column to pin one.
+- Defaults that the servers store alike are one default: `NOW`, `LOCALTIME`
+  and `CURRENT_TIMESTAMP`; `TRUE` and `FALSE` are `1` and `0`. `RESTRICT` and
+  `NO ACTION` are the same foreign key action.
+- Stored CHECK text is compared without the identifier quotes, character set
+  introducers and the parentheses MySQL adds around each comparison. Other
+  rewrites by the server (for example `!=` stored as `<>`) show as a
+  difference of text; write the expression the way the server stores it.
+- A foreign key into another database is reported as `database.table`.
 - Integer display widths (`int(11)` on MariaDB) are no difference of type.
   Identifier quotes, character set introducers and outer parentheses in stored
   expressions are no difference of text.
 - An index part with a prefix length is the column name followed by the length
-  in parentheses, such as `name(10)`. Index visibility, collations and
-  `ON UPDATE CURRENT_TIMESTAMP` are not part of the schema model.
+  in parentheses, such as `name(10)`. Index visibility, character sets and
+  `ON UPDATE CURRENT_TIMESTAMP` are not part of the schema model, and a
+  `MODIFY COLUMN` that a type change renders restates the column without them:
+  an `ALTER` of such a column is a migration to write by hand.
 
 **Rendering.** Tables are `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`. An identity
 column is `AUTO_INCREMENT` (`by_default`; `always` and `serial` are refused). A
 default that is not a literal or `CURRENT_TIMESTAMP` is wrapped in parentheses,
 as MySQL requires. Partial indexes, storage parameters, operator classes,
 enums, views, functions, triggers and policies have no MySQL rendering yet and
-are refused. Declare a generated column as nullable: MariaDB does not take
+are refused. The `hash` index method is refused: InnoDB builds it as BTREE. Dropping a
+foreign key also drops the index MySQL built for it, when one exists. An
+AUTO_INCREMENT column must be a key in the statement that adds it, but the
+engine adds a primary key in a separate statement after the column: add such a
+column and its key in a migration you write yourself. Declare a generated
+column as nullable: MariaDB does not take
 `NOT NULL` on one. MySQL refuses a CHECK, or a stored generated column, on a
 column that a foreign key with a referential action uses.
 

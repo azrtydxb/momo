@@ -13,11 +13,13 @@ func TestApplyDDLDirective(t *testing.T) {
 	}{
 		{"no directive", "ALTER TABLE t ADD COLUMN c int", "ALTER TABLE t ADD COLUMN c int"},
 		{"algorithm and lock", "-- momo:ddl ALGORITHM=INSTANT, LOCK=NONE\nALTER TABLE t ADD COLUMN c int",
-			"-- momo:ddl ALGORITHM=INSTANT, LOCK=NONE\nALTER TABLE t ADD COLUMN c int, ALGORITHM=INSTANT, LOCK=NONE"},
+			"-- momo:ddl ALGORITHM=INSTANT, LOCK=NONE\nALTER TABLE t ADD COLUMN c int\n, ALGORITHM=INSTANT, LOCK=NONE"},
 		{"one option", "-- momo:ddl ALGORITHM=INPLACE\nalter table t drop column c",
-			"-- momo:ddl ALGORITHM=INPLACE\nalter table t drop column c, ALGORITHM=INPLACE"},
+			"-- momo:ddl ALGORITHM=INPLACE\nalter table t drop column c\n, ALGORITHM=INPLACE"},
 		{"other comments around it", "-- why\n-- momo:ddl LOCK=NONE\n/* more */\nALTER TABLE t ADD KEY k (c);",
-			"-- why\n-- momo:ddl LOCK=NONE\n/* more */\nALTER TABLE t ADD KEY k (c), LOCK=NONE"},
+			"-- why\n-- momo:ddl LOCK=NONE\n/* more */\nALTER TABLE t ADD KEY k (c)\n, LOCK=NONE"},
+		{"statement ends in a line comment", "-- momo:ddl LOCK=NONE\nALTER TABLE t ADD c int -- note",
+			"-- momo:ddl LOCK=NONE\nALTER TABLE t ADD c int -- note\n, LOCK=NONE"},
 		{"other directives are left alone", "-- momo:generated\nCREATE TABLE t (id int)", "-- momo:generated\nCREATE TABLE t (id int)"},
 	}
 	for _, c := range cases {

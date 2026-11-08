@@ -5,6 +5,7 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -187,6 +188,17 @@ func normalizeExprOnce(d dialect.Name, e string) string {
 	return s
 }
 
+// mysqlFKAction folds RESTRICT into the default: on MySQL and MariaDB it is
+// NO ACTION by another name, and MariaDB reports it for a clause never written.
+func mysqlFKAction(a string) string {
+	switch n := strings.ToUpper(strings.Join(strings.Fields(a), " ")); n {
+	case "RESTRICT", "NO ACTION":
+		return ""
+	default:
+		return n
+	}
+}
+
 // mysqlAliases maps the alternative spellings of MySQL and MariaDB types to
 // the name information_schema reports.
 var mysqlAliases = map[string]string{
@@ -248,6 +260,13 @@ func mysqlRewrite(s string) string {
 		switch {
 		case c == '`':
 			continue
+		case c == ',':
+			// The servers print a list without the space after the comma.
+			sb.WriteByte(c)
+			for i+1 < len(s) && s[i+1] == ' ' {
+				i++
+			}
+			continue
 		case c == '\'' || c == '"':
 			quote = c
 		case c == '_' && (i == 0 || !isWordByte(s[i-1])):
@@ -258,7 +277,164 @@ func mysqlRewrite(s string) string {
 		}
 		sb.WriteByte(c)
 	}
-	return strings.TrimSpace(sb.String())
+	return mysqlDefaultForms(stripGroups(strings.TrimSpace(sb.String())))
+}
+
+var mysqlTimeNow = regexp.MustCompile(`^(?:now|current_timestamp|localtime|localtimestamp)(?:\((\d*)\))?$`)
+
+// mysqlDefaultForms maps the spellings of one default to a single form: the
+// servers store NOW(), LOCALTIME and CURRENT_TIMESTAMP alike (MariaDB prints
+// current_timestamp() for the bare keyword), and TRUE and FALSE as 1 and 0.
+func mysqlDefaultForms(s string) string {
+	switch s {
+	case "true":
+		return "1"
+	case "false":
+		return "0"
+	}
+	if m := mysqlTimeNow.FindStringSubmatch(s); m != nil {
+		if m[1] == "" || m[1] == "0" {
+			return "current_timestamp"
+		}
+		return "current_timestamp(" + m[1] + ")"
+	}
+	return s
+}
+
+// stripGroups removes parentheses the server puts around the parts of a stored
+// CHECK expression, which no model writes: "((a > 1) and (b in (1,2)))" and
+// "a > 1 and b in (1,2)" are one expression. It only removes a pair that holds
+// a bare comparison (no and/or/xor/not, no comma at its top level), is not a
+// function call or an IN list, and sits between nothing, an opening
+// parenthesis or and/or/not on its left and nothing, a closing parenthesis or
+// and/or/xor on its right; in those places a comparison binds tighter than
+// its neighbours, so the meaning cannot change.
+func stripGroups(s string) string {
+	for {
+		t, ok := stripOneGroup(s)
+		if !ok {
+			return s
+		}
+		s = strings.TrimSpace(t)
+	}
+}
+
+func stripOneGroup(s string) (string, bool) {
+	var stack []int
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			switch {
+			case c == '\\' && i+1 < len(s):
+				i++
+			case c == quote:
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			quote = c
+		case '(':
+			stack = append(stack, i)
+		case ')':
+			if len(stack) == 0 {
+				return s, false
+			}
+			open := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if groupStrippable(s, open, i) {
+				return s[:open] + s[open+1:i] + s[i+1:], true
+			}
+		}
+	}
+	return s, false
+}
+
+func groupStrippable(s string, open, end int) bool {
+	if open > 0 && isWordByte(s[open-1]) {
+		return false // f(...)
+	}
+	p := open - 1
+	for p >= 0 && s[p] == ' ' {
+		p--
+	}
+	if p >= 0 && s[p] != '(' {
+		switch wordEndingAt(s, p) {
+		case "and", "or", "not", "xor":
+		default:
+			return false
+		}
+	}
+	q := end + 1
+	for q < len(s) && s[q] == ' ' {
+		q++
+	}
+	if q < len(s) && s[q] != ')' {
+		switch wordStartingAt(s, q) {
+		case "and", "or", "xor":
+		default:
+			return false
+		}
+	}
+	return hasBareComparison(s[open+1 : end])
+}
+
+func wordEndingAt(s string, p int) string {
+	i := p
+	for i >= 0 && isWordByte(s[i]) {
+		i--
+	}
+	return s[i+1 : p+1]
+}
+
+func wordStartingAt(s string, q int) string {
+	j := q
+	for j < len(s) && isWordByte(s[j]) {
+		j++
+	}
+	return s[q:j]
+}
+
+// hasBareComparison reports whether the top level of e (outside parentheses
+// and quotes) holds a comparison and none of: a comma, a logical operator.
+func hasBareComparison(e string) bool {
+	depth, cmp := 0, false
+	var quote byte
+	for i := 0; i < len(e); i++ {
+		c := e[i]
+		if quote != 0 {
+			switch {
+			case c == '\\' && i+1 < len(e):
+				i++
+			case c == quote:
+				quote = 0
+			}
+			continue
+		}
+		switch {
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case depth != 0:
+		case c == ',' || c == '|' || c == '&':
+			return false
+		case c == '=' || c == '<' || c == '>' || c == '!':
+			cmp = true
+		case isWordByte(c) && (i == 0 || !isWordByte(e[i-1])):
+			switch wordStartingAt(e, i) {
+			case "and", "or", "xor", "not":
+				return false
+			case "in", "like", "is", "regexp", "rlike", "between":
+				cmp = true
+			}
+		}
+	}
+	return cmp
 }
 
 func isWordByte(c byte) bool {
@@ -463,6 +639,12 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 		}
 		for j := range t.Checks {
 			t.Checks[j].Expr = NormalizeExpr(d, t.Checks[j].Expr)
+		}
+		if d == dialect.MySQL {
+			for j := range t.ForeignKeys {
+				fk := &t.ForeignKeys[j]
+				fk.OnDelete, fk.OnUpdate = mysqlFKAction(fk.OnDelete), mysqlFKAction(fk.OnUpdate)
+			}
 		}
 		normalizeIndexes(d, t.Columns, t.Indexes)
 	}

@@ -110,7 +110,7 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		}
 		return one("ALTER TABLE " + t + " ADD " + def), nil
 	case migrate.DropFK:
-		return one("ALTER TABLE " + t + " DROP FOREIGN KEY " + ident(c.Name)), nil
+		return renderDropFK(c)
 	case migrate.CreateIndex:
 		ix, err := get[schema.Index](c.After)
 		if err != nil {
@@ -355,6 +355,41 @@ func renderCreateTable(c migrate.Change) ([]migrate.Statement, error) {
 	return one("CREATE TABLE " + tableRef(t.Schema, t.Name) + " (" + strings.Join(parts, ", ") + ")" + tableOptions), nil
 }
 
+// renderDropFK drops a foreign key and the index MySQL built for it. That
+// index carries the constraint's name, is not part of the schema model and
+// would stay behind, so the next diff would show it. It is dropped only when
+// it exists and is not unique; a prepared statement decides, because DROP INDEX
+// has no IF EXISTS on MySQL. An index you declared under the name of the key
+// goes with it.
+func renderDropFK(c migrate.Change) ([]migrate.Statement, error) {
+	t := tableRef(c.Schema, c.Table)
+	drop, err := quoteLiteral("ALTER TABLE " + t + " DROP INDEX " + ident(c.Name))
+	if err != nil {
+		return nil, err
+	}
+	table, err := quoteLiteral(c.Table)
+	if err != nil {
+		return nil, err
+	}
+	name, err := quoteLiteral(c.Name)
+	if err != nil {
+		return nil, err
+	}
+	db := "DATABASE()"
+	if c.Schema != "" {
+		if db, err = quoteLiteral(c.Schema); err != nil {
+			return nil, err
+		}
+	}
+	return []migrate.Statement{
+		{SQL: "ALTER TABLE " + t + " DROP FOREIGN KEY " + ident(c.Name)},
+		{SQL: "SET @momo_drop_fk_index = (SELECT IF(COUNT(*) > 0, " + drop + ", 'DO 0') FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = " + db + " AND TABLE_NAME = " + table + " AND INDEX_NAME = " + name + " AND NON_UNIQUE = 1)"},
+		{SQL: "PREPARE momo_drop_fk_index FROM @momo_drop_fk_index"},
+		{SQL: "EXECUTE momo_drop_fk_index"},
+		{SQL: "DEALLOCATE PREPARE momo_drop_fk_index"},
+	}, nil
+}
+
 func renderAlterColumn(c migrate.Change) ([]migrate.Statement, error) {
 	before, err := get[schema.Column](c.Before)
 	if err != nil {
@@ -377,6 +412,9 @@ func renderAlterColumn(c migrate.Change) ([]migrate.Statement, error) {
 		}
 		return one("ALTER TABLE " + t + " ALTER COLUMN " + ident(after.Name) + " SET DEFAULT " + defaultSQL(after.Default)), nil
 	}
+	// MODIFY COLUMN restates the whole column from the schema model, which has
+	// no ON UPDATE CURRENT_TIMESTAMP, character set or visibility: a change
+	// to such a column loses them. Write those migrations by hand.
 	def, err := columnDef(after)
 	if err != nil {
 		return nil, err
@@ -395,11 +433,10 @@ func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, 
 	}
 	var b strings.Builder
 	b.WriteString("CREATE ")
-	using := ""
 	switch strings.ToLower(ix.Method) {
 	case "", "btree":
 	case "hash":
-		using = " USING HASH"
+		return migrate.Statement{}, fmt.Errorf("index %q: InnoDB builds a HASH index as BTREE, so it would differ from the declaration forever; leave the method out", ix.Name)
 	case "fulltext":
 		if ix.Unique {
 			return migrate.Statement{}, fmt.Errorf("index %q: a FULLTEXT index cannot be unique", ix.Name)
@@ -416,7 +453,7 @@ func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, 
 	if ix.Unique {
 		b.WriteString("UNIQUE ")
 	}
-	b.WriteString("INDEX " + ident(ix.Name) + using + " ON " + tableRef(schemaName, table))
+	b.WriteString("INDEX " + ident(ix.Name) + " ON " + tableRef(schemaName, table))
 	parts := make([]string, len(ix.Parts))
 	for i, p := range ix.Parts {
 		var s string

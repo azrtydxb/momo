@@ -5,6 +5,7 @@ package mysql
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestLockName(t *testing.T) {
@@ -21,6 +22,15 @@ func TestLockName(t *testing.T) {
 	}
 	if a != lockName("momo:"+strings.Repeat("a", 80)+".one") {
 		t.Fatal("the lock name of a key must be deterministic")
+	}
+}
+
+func TestLockNameKeepsCharactersWhole(t *testing.T) {
+	// A three-byte character straddles byte 55.
+	key := "momo:" + strings.Repeat("a", 49) + strings.Repeat("\u20ac", 10)
+	got := lockName(key)
+	if len(got) > maxLockName || !utf8.ValidString(got) {
+		t.Fatalf("lockName = %q (%d bytes), want valid UTF-8 within %d bytes", got, len(got), maxLockName)
 	}
 }
 
