@@ -85,7 +85,7 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 		}
 		pks := make([]Predicate, 0, len(d.meta.PK)+len(where))
 		for _, i := range d.meta.PK {
-			pks = append(pks, updPKEq{d.meta.Table, d.meta.Columns[i].Name, d.meta.Value(d.model, i)})
+			pks = append(pks, updPKEq{d.meta.Table, d.meta.Columns[i].Name, d.meta.Value(d.model, i), d.meta.Columns[i].Flags})
 		}
 		where = append(pks, where...)
 	}

@@ -88,15 +88,6 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 	return out, nil
 }
 
-// history creates the history table when it is missing and reads it. Only
-// callers that hold the migration lock may use it.
-func (e *Engine) history(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
-	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
-		return nil, err
-	}
-	return ReadHistory(ctx, c)
-}
-
 // undefinedTable is the SQLSTATE of a query on a table that does not exist.
 const undefinedTable = "42P01"
 
@@ -104,7 +95,19 @@ const undefinedTable = "42P01"
 // has none yet has an empty history. Plan and Status use it so they stay
 // read-only and cannot race the first Apply on CREATE TABLE.
 func (e *Engine) readHistory(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
-	hist, err := ReadHistory(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if errors.Is(err, ErrNoHistoryTable) {
+		return nil, nil // nothing to read, as for a database without the table
+	}
+	if err != nil {
+		return nil, err
+	}
+	return e.readHistoryAt(ctx, c, tbl)
+}
+
+// readHistoryAt is readHistory for a history table reference resolved earlier.
+func (e *Engine) readHistoryAt(ctx context.Context, c momo.PinnedConn, tbl string) ([]HistoryRow, error) {
+	hist, err := readHistoryRows(ctx, c, tbl)
 	var s interface{ SQLState() string }
 	if errors.As(err, &s) && s.SQLState() == undefinedTable {
 		return nil, nil
@@ -209,8 +212,8 @@ func (e *Engine) Plan(ctx context.Context) ([]Pending, error) {
 
 // resolveSchemas returns the managed schemas: Config.Schemas, or the
 // connection's current_schema() when none are configured. On PostgreSQL the
-// first one must be current_schema(), because the history table is referenced
-// unqualified and lives there.
+// first one must be current_schema(), the schema a new history table is created
+// in (an existing one is found through the search_path and used wherever it is).
 func (e *Engine) resolveSchemas(ctx context.Context, c momo.PinnedConn) ([]string, error) {
 	if e.opts.dialect.Dialect().Name != dialect.Postgres {
 		return e.opts.config.Schemas, nil
@@ -238,7 +241,7 @@ func (e *Engine) resolveSchemas(ctx context.Context, c momo.PinnedConn) ([]strin
 		return []string{cur}, nil
 	}
 	if schemas[0] != cur {
-		return nil, fmt.Errorf("migrate: configuration error: Config.Schemas[0] is %q but the connection's current_schema() is %q; the history table is created unqualified in the current schema, so set search_path to %q or list %q first", schemas[0], cur, schemas[0], cur)
+		return nil, fmt.Errorf("migrate: configuration error: Config.Schemas[0] is %q but the connection's current_schema() is %q; a new history table is created in the current schema, so set search_path to %q or list %q first", schemas[0], cur, schemas[0], cur)
 	}
 	return schemas, nil
 }
@@ -350,7 +353,7 @@ func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Durat
 	if len(schemas) > 0 {
 		hs = schemas[0]
 	}
-	unlock, err := e.acquireLock(ctx, c, "momo:"+hs+".momo_migrations", wait)
+	unlock, err := e.lockHistory(ctx, c, hs, wait)
 	if err != nil {
 		return nil, err
 	}
@@ -362,6 +365,44 @@ func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Durat
 		err = joinErr(err, reset()) // runs first
 		return joinErr(err, unlock())
 	}, nil
+}
+
+// lockHistory takes the migration lock, keyed on the history table the
+// connection resolves to: its schema-qualified name when the table exists, the
+// current schema hs when it does not yet. The table is resolved before the lock
+// (a read) and again after it; if another session created or moved the table
+// in between so that the name differs, the lock is released and the attempt
+// repeats once with the new name, then fails.
+func (e *Engine) lockHistory(ctx context.Context, c momo.PinnedConn, hs string, wait time.Duration) (func() error, error) {
+	d := e.opts.dialect
+	var last string
+	for attempt := 0; attempt < 2; attempt++ {
+		tbl, err := resolveHistoryTable(ctx, c, d)
+		if err != nil {
+			return nil, err
+		}
+		key := "momo:" + hs + ".momo_migrations"
+		if k, ok := d.(historyLockKeyer); ok {
+			key = k.HistoryLockKey(tbl)
+		}
+		unlock, err := e.acquireLock(ctx, c, key, wait)
+		if err != nil {
+			return nil, err
+		}
+		again, err := resolveHistoryTable(ctx, c, d)
+		if err == nil && again == tbl {
+			return unlock, nil
+		}
+		uerr := unlock()
+		if err != nil {
+			return nil, joinErr(err, uerr)
+		}
+		last = fmt.Sprintf("%s then %s", tbl, again)
+		if uerr != nil {
+			return nil, uerr
+		}
+	}
+	return nil, fmt.Errorf("migrate: the history table moved while taking the migration lock (%s); another process is installing it, retry", last)
 }
 
 // outOfOrder refuses with ErrOutOfOrder when a pending version sorts before
@@ -415,11 +456,15 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 
 	// Read the history without creating it: a database that has none has an
 	// empty history, and an Apply with nothing to do must write nothing.
-	hist, err := e.readHistory(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkHistoryFormat(ctx, c); err != nil {
+	hist, err := e.readHistoryAt(ctx, c, tbl)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkHistoryFormat(ctx, c, tbl); err != nil {
 		return nil, err
 	}
 	if err := dirtyError(hist); err != nil {
@@ -447,7 +492,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	// The history table is created under the lock, so two first-time callers
 	// cannot race on CREATE TABLE. EnsureHistory also refuses a table written
 	// with a newer format.
-	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
+	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
 		return nil, err
 	}
 	var b [4]byte
@@ -455,7 +500,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		return nil, fmt.Errorf("migrate: apply id: %w", err)
 	}
 	rep = &Report{ApplyID: e.opts.clock().UTC().Format(applyIDLayout) + "-" + hex.EncodeToString(b[:])}
-	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin}
+	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin, HistoryTable: tbl}
 	for _, p := range pending {
 		if o.To != "" && p.Version > o.To {
 			break
@@ -561,7 +606,14 @@ func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState
 		return err
 	}
 	defer func() { err = end(err) }()
-	hist, err := e.history(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if err != nil {
+		return err
+	}
+	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
+		return err
+	}
+	hist, err := readHistoryRows(ctx, c, tbl)
 	if err != nil {
 		return err
 	}
@@ -578,10 +630,10 @@ func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState
 	var q string
 	var args []any
 	if state == ResolveApplied {
-		q = fmt.Sprintf(`UPDATE momo_migrations SET status = %s, error = '' WHERE version = %s AND status IN ('running', 'failed')`, ph(d, 1), ph(d, 2))
+		q = fmt.Sprintf(`UPDATE %s SET status = %s, error = '' WHERE version = %s AND status IN ('running', 'failed')`, tbl, ph(d, 1), ph(d, 2))
 		args = []any{StatusApplied, version}
 	} else {
-		q = fmt.Sprintf(`DELETE FROM momo_migrations WHERE version = %s AND status IN ('running', 'failed')`, ph(d, 1))
+		q = fmt.Sprintf(`DELETE FROM %s WHERE version = %s AND status IN ('running', 'failed')`, tbl, ph(d, 1))
 		args = []any{version}
 	}
 	if _, err := c.Exec(ctx, q, args); err != nil {
@@ -639,7 +691,7 @@ func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Sche
 		return t.Name == historyTable && (t.Schema == "" || t.Schema == hs)
 	})
 	invalid = dropExcludedInvalid(s, invalid, e.opts.config.Exclude)
-	return applyExclude(s, e.opts.config.Exclude), invalid, nil
+	return e.hide(s), invalid, nil
 }
 
 // dropExcludedInvalid removes from invalid the indexes of a table or view that
@@ -696,12 +748,13 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	if to.Dialect == "" {
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
+	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
 	from := &schema.Schema{Dialect: to.Dialect}
 	parent := ""
 	snap, err := LatestSnapshot(e.dir)
 	switch {
 	case err == nil:
-		from, parent = snap.Schema, snap.Version
+		from, parent = dropExternalExtensions(snap.Schema, e.opts.config.ExternalExtensions), snap.Version
 	case !errors.Is(err, ErrNoSnapshot):
 		return nil, err
 	}

@@ -23,6 +23,8 @@ func TestCodecsRoundTrip(t *testing.T) {
 		{"TimeOfDay", &TimeOfDay{Nanos: 3723000000000}, func() Codec { return &TimeOfDay{} }, int64(3723000000000)},
 		{"UUID", &UUID{1, 2, 3}, func() Codec { return &UUID{} }, UUID{1, 2, 3}},
 		{"Hstore", &Hstore{"k": ptr("v"), "n": nil}, func() Codec { return &Hstore{} }, nil},
+		{"TSVector", tsv("'cat':3 'fat':2"), func() Codec { return new(TSVector) }, "'cat':3 'fat':2"},
+		{"TSQuery", tsq("'fat' & 'cat'"), func() Codec { return new(TSQuery) }, "'fat' & 'cat'"},
 	}
 	for _, c := range cases {
 		for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
@@ -50,6 +52,9 @@ func TestCodecsRoundTrip(t *testing.T) {
 
 func ptr(s string) *string { return &s }
 
+func tsv(s string) *TSVector { v := TSVector(s); return &v }
+func tsq(s string) *TSQuery  { v := TSQuery(s); return &v }
+
 func TestCodecsSourceTypesAndErrors(t *testing.T) {
 	fresh := map[string]func() Codec{
 		"JSON":      func() Codec { return &JSON[map[string]int]{} },
@@ -57,6 +62,8 @@ func TestCodecsSourceTypesAndErrors(t *testing.T) {
 		"TimeOfDay": func() Codec { return &TimeOfDay{} },
 		"UUID":      func() Codec { return &UUID{} },
 		"Hstore":    func() Codec { return &Hstore{} },
+		"TSVector":  func() Codec { return new(TSVector) },
+		"TSQuery":   func() Codec { return new(TSQuery) },
 	}
 	good := map[string]string{
 		"JSON":      `{"a":1}`,
@@ -64,6 +71,8 @@ func TestCodecsSourceTypesAndErrors(t *testing.T) {
 		"TimeOfDay": "01:02:03.000000004",
 		"UUID":      "01020300-0000-0000-0000-000000000000",
 		"Hstore":    `"k"=>"v", "n"=>NULL`,
+		"TSVector":  "'cat':3 'fat':2",
+		"TSQuery":   "'fat' & 'cat'",
 	}
 	for name, f := range fresh {
 		if err := f().Scan(nil); err == nil {
@@ -277,5 +286,30 @@ func TestHstoreDuplicateKeysFirstWins(t *testing.T) {
 	}
 	if *h["a"] != "1" || h["b"] != nil {
 		t.Fatalf("got %v %v", *h["a"], h["b"])
+	}
+}
+
+func TestTSVectorAndQueryForms(t *testing.T) {
+	const form = `'a''b':1A 'c\\d':2B,3 'plain':4`
+	var v TSVector
+	if err := v.Scan([]byte(form)); err != nil || string(v) != form {
+		t.Fatalf("TSVector Scan([]byte) = %q, %v", v, err)
+	}
+	if got, err := v.Value(); err != nil || got != form {
+		t.Fatalf("TSVector Value = %v, %v", got, err)
+	}
+	if got, err := TSVector("").Value(); err != nil || got != "" {
+		t.Fatalf("empty TSVector Value = %v, %v", got, err)
+	}
+	const query = `'a''b' & 'c\\d':*`
+	var q TSQuery
+	if err := q.Scan([]byte(query)); err != nil || string(q) != query {
+		t.Fatalf("TSQuery Scan([]byte) = %q, %v", q, err)
+	}
+	if got, err := q.Value(); err != nil || got != query {
+		t.Fatalf("TSQuery Value = %v, %v", got, err)
+	}
+	if TSVector("").SQLType(dialect.Postgres) != "tsvector" || TSQuery("").SQLType(dialect.Postgres) != "tsquery" {
+		t.Fatal("wrong PostgreSQL column types")
 	}
 }

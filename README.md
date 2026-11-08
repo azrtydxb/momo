@@ -9,18 +9,22 @@ distance expressions, and search settings are part of the core API. Schema
 migrations are built in as well: `momo migrate diff` compares your structs with
 the last snapshot and writes the SQL.
 
-Status: v0.1.0, pre-v1, with no compatibility promise between releases. This
+Status: v0.3.0, pre-v1, with no compatibility promise between releases. This <!-- x-release-please-version -->
 release supports PostgreSQL with pgvector. SQLite and MySQL are planned. Momo
-needs Go 1.26 or newer (see `go.mod`).
+needs Go 1.26 or newer (see `go.mod` for the exact patch floor, 1.26.10).
 
 ## Install
 
 Add the library to your module and install the CLI:
 
+<!-- x-release-please-start-version -->
+
 ```sh
-go get github.com/azrtydxb/momo@v0.1.0
-go install github.com/azrtydxb/momo/cmd/momo@v0.1.0
+go get github.com/azrtydxb/momo@v0.3.0
+go install github.com/azrtydxb/momo/cmd/momo@v0.3.0
 ```
+
+<!-- x-release-please-end -->
 
 Momo expects PostgreSQL with the pgvector extension. The first migration runs
 `CREATE EXTENSION IF NOT EXISTS "vector"` for you, which needs a role that may
@@ -175,7 +179,7 @@ momo migrate apply
 another TLS mode against any database you do not reach over a trusted local
 connection.
 
-Momo v0.1.0 writes forward migrations only. There is no rollback command, so
+Momo v0.3.0 writes forward migrations only. There is no rollback command, so <!-- x-release-please-version -->
 undo a change with a new migration.
 
 Run `momo migrate help` for the other commands: `plan`, `status`, `validate`,
@@ -426,6 +430,10 @@ work the same way. See [docs/projections.md](docs/projections.md),
 
 - `momo generate [-c momo.yaml] [--check] [patterns...]` writes the generated
   code, or with `--check` lists stale files and exits 1.
+- `momo generate --from-db <url|-|ENVVAR>` inspects a PostgreSQL database and
+  writes the models and the init snapshot, so an existing schema is adopted
+  without writing the structs by hand; see
+  [adopting an existing database](docs/migrations.md#7-adopting-an-existing-database).
 - `momo migrate diff <name>` writes a migration for the difference between the
   models and the latest snapshot. It refuses destructive changes unless you
   pass `--allow-destructive`.
@@ -442,6 +450,8 @@ for usage or configuration errors, and 3 for database errors.
   agents that use Momo in an application (also indexed by [llms.txt](llms.txt)).
 - [docs/vectors.md](docs/vectors.md) covers pgvector types, distance
   metrics, index limits and search settings.
+- [docs/fulltext.md](docs/fulltext.md) covers the tsvector type, the match,
+  rank and headline builders and hybrid vector plus text ranking.
 - [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md) maps every Go type to its
   column type.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the layers and
