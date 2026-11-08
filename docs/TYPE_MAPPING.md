@@ -22,30 +22,36 @@ it.
 
 ## Generated mappings
 
-`N` is the `size` tag for `string` and the `dim` tag for vector types. The
-generator rejects a vector field without `dim`. SQLite has no vector types.
+`N` is the `size` tag for `string` and the `dim` tag for vector types. A
+`vector.Vector` or `vector.HalfVector` field without `dim` is supported: it maps
+to the bare `vector` or `halfvec` type, a dimensionless column that holds
+embeddings of any size (see [vectors.md](vectors.md#dimensionless-columns)).
+`vector.SparseVector` and `vector.Bits` require `dim`. SQLite has no vector
+types.
 
-| Go type               | PostgreSQL                 | SQLite        |
-| --------------------- | -------------------------- | ------------- |
-| `int`                 | `bigint`                   | `INTEGER`     |
-| `int8`                | `smallint`                 | `INTEGER`     |
-| `int16`               | `smallint`                 | `INTEGER`     |
-| `int32`               | `integer`                  | `INTEGER`     |
-| `int64`               | `bigint`                   | `INTEGER`     |
-| `float32`             | `real`                     | `REAL`        |
-| `float64`             | `double precision`         | `REAL`        |
-| `bool`                | `boolean`                  | `INTEGER`     |
-| `string`              | `text`                     | `TEXT`        |
-| `string with size:N`  | `character varying(N)`     | `TEXT`        |
-| `[]byte`              | `bytea`                    | `BLOB`        |
-| `time.Time`           | `timestamp with time zone` | `TEXT`        |
-| `types.UUID`          | `uuid`                     | `TEXT`        |
-| `types.Date`          | `date`                     | `TEXT`        |
-| `types.JSON[T]`       | `jsonb`                    | `TEXT`        |
-| `vector.Vector`       | `vector(N)`                | `unsupported` |
-| `vector.HalfVector`   | `halfvec(N)`               | `unsupported` |
-| `vector.SparseVector` | `sparsevec(N)`             | `unsupported` |
-| `vector.Bits`         | `bit(N)`                   | `unsupported` |
+| Go type                      | PostgreSQL                 | SQLite        |
+| ---------------------------- | -------------------------- | ------------- |
+| `int`                        | `bigint`                   | `INTEGER`     |
+| `int8`                       | `smallint`                 | `INTEGER`     |
+| `int16`                      | `smallint`                 | `INTEGER`     |
+| `int32`                      | `integer`                  | `INTEGER`     |
+| `int64`                      | `bigint`                   | `INTEGER`     |
+| `float32`                    | `real`                     | `REAL`        |
+| `float64`                    | `double precision`         | `REAL`        |
+| `bool`                       | `boolean`                  | `INTEGER`     |
+| `string`                     | `text`                     | `TEXT`        |
+| `string with size:N`         | `character varying(N)`     | `TEXT`        |
+| `[]byte`                     | `bytea`                    | `BLOB`        |
+| `time.Time`                  | `timestamp with time zone` | `TEXT`        |
+| `types.UUID`                 | `uuid`                     | `TEXT`        |
+| `types.Date`                 | `date`                     | `TEXT`        |
+| `types.JSON[T]`              | `jsonb`                    | `TEXT`        |
+| `vector.Vector`              | `vector(N)`                | `unsupported` |
+| `vector.HalfVector`          | `halfvec(N)`               | `unsupported` |
+| `vector.SparseVector`        | `sparsevec(N)`             | `unsupported` |
+| `vector.Bits`                | `bit(N)`                   | `unsupported` |
+| `vector.Vector (no dim)`     | `vector`                   | `unsupported` |
+| `vector.HalfVector (no dim)` | `halfvec`                  | `unsupported` |
 
 On SQLite, `bool` is stored as 0 or 1, and `time.Time`, `types.UUID`,
 `types.Date` and `types.JSON[T]` are stored as text. The SQLite column is what
@@ -61,6 +67,8 @@ the column; the generator's table is the fallback for everything else.
 | ----------------- | ---------- | ------ |
 | `types.TimeOfDay` | `time`     | `TEXT` |
 | `types.Hstore`    | `hstore`   | `TEXT` |
+| `types.TSVector`  | `tsvector` | `TEXT` |
+| `types.TSQuery`   | `tsquery`  | `TEXT` |
 
 `types.Hstore` needs the `hstore` extension; the vector types need `vector`
 (pgvector). Momo never runs `CREATE EXTENSION` for you.
@@ -104,11 +112,20 @@ Each statement below is asserted by a test against PostgreSQL.
 - `types.UUID`: round-trips all 16 bytes, including the all-zero UUID.
 - `types.JSON[T]`: encodes with `encoding/json`. An empty slice and a nil
   slice are different JSON (`[]` and `null`) and read back as such.
+  Query it with `JSONText`, `JSONPath`, `JSONContains` and `JSONHasKey`. A
+  nullable column holds either SQL NULL or the JSON literal null; an extraction
+  is NULL for both and for a missing key, so test the column itself with
+  `IsNull`. Grouping by an extraction works only for plain keys (letters,
+  digits, underscore) and not on a sensitive column; see the AI guide pitfalls.
 - `types.TimeOfDay`: nanoseconds since midnight, truncated to microseconds
   (PostgreSQL `time` precision); `86399999999000` is the last representable
   value, and a value outside one day is an error.
 - `types.Hstore`: a nil `*string` value is an hstore NULL; keys and values
   with quotes and backslashes are escaped.
+- `types.TSVector` and `types.TSQuery`: the server's text form, with the
+  lexemes sorted and normalized, so write values in that canonical form to
+  compare them with `==`. An empty tsvector reads back empty. Full-text
+  expressions are PostgreSQL only (see docs/fulltext.md).
 - `[]string` on `text[]`: elements containing commas, quotes, the text `NULL`,
   or empty strings round-trip; an empty slice reads back empty.
 - Decimal: carry `numeric` as a string to avoid binary floating point. Values

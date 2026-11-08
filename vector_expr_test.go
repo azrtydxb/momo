@@ -86,6 +86,30 @@ func TestVectorDistanceDimensionMismatch(t *testing.T) {
 	}
 }
 
+// TestVectorDistanceDimensionless: a column declared without dim has Dim 0
+// and takes a query vector of any size; NaN and an empty vector are still
+// refused.
+func TestVectorDistanceDimensionless(t *testing.T) {
+	pg := dialect.For(dialect.Postgres)
+	col := NewVectorColumn[vector.Vector]("docs", "emb", 0, 0)
+	for _, q := range []vector.Vector{{1, 2}, {1, 2, 3, 4, 5}} {
+		got, err := renderErr(pg, CosineDistance(col, q))
+		if want := `("docs"."emb" <=> $1)`; err != nil || got != want {
+			t.Errorf("len %d: %q, %v; want %q", len(q), got, err, want)
+		}
+	}
+	if _, err := renderErr(pg, CosineDistance(col, vector.Vector{1, float32(math.NaN())})); !errors.Is(err, vector.ErrInvalidVector) {
+		t.Errorf("NaN: err = %v, want ErrInvalidVector", err)
+	}
+	if _, err := renderErr(pg, CosineDistance(col, vector.Vector{})); !errors.Is(err, vector.ErrInvalidVector) {
+		t.Errorf("empty: err = %v, want ErrInvalidVector", err)
+	}
+	h := NewVectorColumn[vector.HalfVector]("docs", "h", 0, 0)
+	if _, err := renderErr(pg, L2Distance(h, vector.HalfVector{1, 2, 3})); err != nil {
+		t.Errorf("halfvec: %v", err)
+	}
+}
+
 func TestSQLiteVectorDistanceSQL(t *testing.T) {
 	sq := dialect.For(dialect.SQLite)
 	bits := NewVectorColumn[vector.Bits]("docs", "bits", 8, 0)

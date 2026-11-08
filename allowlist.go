@@ -63,18 +63,19 @@ func EscapeLike(s string) string {
 // dialect and the column collation (PostgreSQL LIKE is case-sensitive, SQLite
 // LIKE is ASCII case-insensitive, MySQL depends on the collation).
 func ContainsLiteral(e Expression[string], s string) Predicate {
-	return containsLiteral{e, "%" + EscapeLike(s) + "%"}
+	return containsLiteral{e, "%" + EscapeLike(s) + "%", flagsOf(e)}
 }
 
 type containsLiteral struct {
-	e Expr
-	p string
+	e     Expr
+	p     string
+	flags uint16
 }
 
 func (x containsLiteral) AppendSQL(b *Builder) {
-	x.e.AppendSQL(b)
+	fl := b.renderSens(x.e, x.flags)
 	b.WriteString(" LIKE ")
-	b.Arg(x.p)
+	b.argFor(fl, x.p)
 	b.WriteString(likeEscape)
 }
 func (containsLiteral) resultType() bool { return false }

@@ -11,7 +11,7 @@ import (
 	"github.com/azrtydxb/momo"                    // core: DB, Tx, Select, Insert, Update, Delete, errors
 	"github.com/azrtydxb/momo/driver/pgxdriver"   // PostgreSQL driver (pgx v5)
 	"github.com/azrtydxb/momo/vector"             // vector.Vector, HalfVector, SparseVector, Bits
-	"github.com/azrtydxb/momo/types"              // types.UUID, Date, JSON[T], TimeOfDay, Hstore
+	"github.com/azrtydxb/momo/types"              // types.UUID, Date, JSON[T], TimeOfDay, Hstore, TSVector, TSQuery
 	"yourmodule/models"                           // your structs
 	"yourmodule/models/task"                      // GENERATED: one package per model (lowercase model name)
 )
@@ -31,8 +31,11 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
-- Hybrid (full text plus vector) search, `MERGE` builder and window-function API
-  do not exist. Use `momo.SQL` / `momo.TypedSQL` for those.
+- Reciprocal-rank-fusion hybrid search, `MERGE` builder and window-function API
+  do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
+  (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
+  query builders) exists on PostgreSQL; combine it with a vector distance in
+  one score as shown in [fulltext.md](fulltext.md).
 
 Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/quickstart/).
 
@@ -195,6 +198,15 @@ Nullability and column rules:
   `time.Time` is `timestamptz`, `types.UUID` is `uuid`, `types.JSON[T]` is
   `jsonb`). `uint64`, maps and unknown types have no mapping: add `type:<sql>`
   or a codec.
+- JSON columns: `JSONText`, `JSONPath`, `JSONContains` and `JSONHasKey` (file
+  `expr_json.go`) are typed predicates over a `types.JSON[T]` column; the
+  extractions are string expressions usable in `Where`, `OrderBy` and `Columns`.
+  An extraction is NULL for a missing key and for JSON null alike, a SQL NULL
+  column is tested with `IsNull` on the column, and the JSON literal null is
+  matched by comparing the column with a `types.JSON` whose value is nil.
+  `JSONHasKey` is true for a key whose value is JSON null. A numeric key in
+  `JSONText` or `JSONHasKey` is an object key; only `JSONPath` elements made of
+  digits can be array indexes. PostgreSQL only is usable today.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
@@ -210,7 +222,7 @@ Tag reference (all lower case):
 | `column:<name>`                                                           | column name                                                                                                                                                                                                                                           |
 | `size:<n>`                                                                | `varchar(n)`; strings only                                                                                                                                                                                                                            |
 | `precision:<p>`, `scale:<s>`                                              | numeric precision (float/decimal only); `scale` needs `precision`                                                                                                                                                                                     |
-| `dim:<n>`                                                                 | vector dimension; required for vector fields, invalid elsewhere                                                                                                                                                                                       |
+| `dim:<n>`                                                                 | vector dimension; optional on vector and halfvec (none: dimensionless column), required on sparsevec and bit, invalid elsewhere                                                                                                                       |
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                              |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                         |
@@ -294,8 +306,8 @@ not a Momo model; `fk` missing or naming a missing field; `many2many` without
 reverse), or on a kind other than `has_one`/`has_many`; `polytype` column not a
 field of the target; many-to-many to the model's own type; `momo.Model` embedded
 by pointer; a generic model; `size` on a non-string; `dim` on a non-vector;
-vector field without `dim`; `scale` without `precision`; `notnull` on a pointer;
-nullable primary key; unknown tag option; Go type with no SQL mapping.
+sparsevec or bit field without `dim`; `scale` without `precision`; `notnull` on
+a pointer; nullable primary key; unknown tag option; Go type with no SQL mapping.
 
 What the generator emits per model `Task` (package `task`):
 
@@ -424,10 +436,10 @@ momo migrate drift                      # live DB vs latest applied snapshot
   `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
   Exit codes: 0 ok, 1 findings, 2 usage/config, 3 database/lock/execution error.
   An invalid migration name (`diff Bad-Name`) exits 3, not 2.
-- Hand-written SQL migration: create `<version>_<name>.up.sql` (no
-  `-- momo:generated` line) plus a snapshot file copied from the previous one
-  with `version` and `parent` changed; its schema must equal its parent's. Then
-  `momo migrate hash`, `momo migrate validate`. Directives (first lines):
+- Hand-written SQL migration: `momo migrate new --custom <name>` writes the up
+  file (no `-- momo:generated` line), a snapshot copied from the latest one and
+  the extended `momo.sum`; write the SQL, then `momo migrate hash` and
+  `momo migrate validate`. The snapshot schema must equal its parent's. Directives (first lines):
   `-- momo:no-transaction`, `-- momo:split`, `-- momo:destructive`
   (informational). Unknown `-- momo:` directive is an error.
 - Existing database: write models, `momo migrate diff init` (do not apply), then
@@ -437,7 +449,9 @@ momo migrate drift                      # live DB vs latest applied snapshot
 - The first migration with a vector column runs
   `CREATE EXTENSION IF NOT EXISTS "vector"`. pgvector must be installed on the server (image
   `pgvector/pgvector`), and the migration role must be allowed to create
-  extensions, otherwise apply exits 3 naming the extension.
+  extensions, otherwise apply exits 3 naming the extension. An extension a
+  superuser installs by hand goes in `migrate.external_extensions` in
+  `momo.yaml`: no migration emits it and drift ignores it.
 
 CI (every change):
 
@@ -589,10 +603,20 @@ are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
 `"SKIP LOCKED"`), `ForShare`, `LockOf` (names the tables a lock covers, for
-example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim), `With`, `WithRecursive`, `Union`,
+example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim; the names must be
+table or alias names, not CTEs), `With`, `WithRecursive`, `Union`,
 `FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
-context; it returns `iter.Seq2[T, error]`). Aggregates: `momo.CountAll`,
+context; it returns `iter.Seq2[T, error]`). `Count` and `Exists` wrap the whole
+statement, so they keep a lock clause and lock the rows they count. Aggregates: `momo.CountAll`,
 `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
+
+Advisory locks (PostgreSQL, inside a transaction): `tx.AdvisoryXactLock(ctx, key)`
+waits for a transaction-scoped lock on an int64 key, `tx.TryAdvisoryXactLock`
+returns whether it was granted, and the `String` variants
+(`AdvisoryXactLockString`, `TryAdvisoryXactLockString`) hash a text key with
+`hashtext`. The lock ends at commit or rollback. The same names on `*DB` fail
+with `ErrValidation`; other dialects fail with `ErrUnsupported`. Never store a
+hashed key, it can change across PostgreSQL major versions.
 
 Typed expressions (no `momo.SQL` needed). Computed values (`Func`, `Substr`,
 `Lower`, `Upper`, `Length`, `Case`, `Add`/`Sub`/`Mul`, `Cast`, `Concat`,
@@ -639,6 +663,25 @@ momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
 momo.Func[string]("btrim", doc.Title)
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 momo.CurrentSchema()
+
+// Dates and times (PostgreSQL; SQLite and MySQL render equivalents). Fields and
+// units are constants checked against an allowlist; anything else is ErrValidation.
+momo.Extract(momo.ExtractEpoch, doc.CreatedAt)         // float64, also Year, Month, Day, Hour, Minute, Second, Quarter, Dow, ISODow, Doy
+momo.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is a validated literal; PostgreSQL only, else ErrUnsupported
+// Local-day buckets: momo.DateTrunc(momo.TruncDay, momo.AtTimeZone(col, zone)); a bare timestamptz truncates in the session zone.
+momo.DateTrunc(momo.TruncDay, doc.CreatedAt)           // Second..Year, weeks start on Monday
+momo.Now()                                             // also CurrentTimestamp(); the database clock, not WithClock
+// Intervals are an operand of AddInterval/SubInterval, not an expression of their own.
+momo.SubInterval(momo.Now(), momo.IntervalOf(7, momo.IntervalDay))              // literal count
+momo.AddInterval(doc.CreatedAt, momo.IntervalExpr(momo.Value(int64(n)), momo.IntervalHour)) // bound or column count
+
+// JoinSQL composes raw fragments with their args (Prisma.join). The separator is a fixed
+// literal from an allowlist: "," or " " (parts as written), " AND ", " OR ", "||", "+"
+// (parts and the whole parenthesised; MySQL renders "||" as CONCAT). A part is any Expr, usually
+// momo.SQL(...). An empty AND join is 1 = 1 and an empty OR join 1 = 0, like And and Or.
+var conds []momo.Expr
+conds = append(conds, momo.SQL("status = ?", status))
+q.Where(momo.JoinSQL(" AND ", conds...))               // JoinTypedSQL[T] declares a result type
 
 // CASE; branches share the type T. Else/ElseExpr optional (NULL otherwise).
 momo.Case[string]().
@@ -877,8 +920,38 @@ ids, err := momo.Scalars[int64](ctx, q, `SELECT id FROM tasks WHERE done = ?`, t
   becomes ambiguous with a joined table. A column qualified by a table that is not
   in the statement's FROM/JOIN is `ErrValidation` at build time.
 - On PostgreSQL write `? |` with a space for a bind followed by OR; `?|` and `?&`
-  are operators. Do not mix `?`/`@name` with native `$n` in one fragment.
+  are operators. On PostgreSQL a fragment may use native `$n` placeholders instead
+  (see "Porting pgx and sqlc SQL" below); do not mix them with `?`/`@name`.
 - Returned results of raw queries bypass soft-delete, hooks and timestamps.
+
+#### Porting pgx and sqlc SQL
+
+On the PostgreSQL dialect, raw SQL (`Exec`, `Scalars`, `SQL`, `TypedSQL`,
+`RawSubquery`) accepts PostgreSQL's native `$1, $2, ...` placeholders, so a
+statement written for pgx or sqlc moves over unchanged:
+
+```go
+// pgx / sqlc:   pool.Exec(ctx, "UPDATE tasks SET done = $1 WHERE owner = $2 OR creator = $2", true, uid)
+affected, err := momo.Exec(ctx, q, "UPDATE tasks SET done = $1 WHERE owner = $2 OR creator = $2", true, uid)
+```
+
+Rules:
+
+- `$n` binds positional argument n of that call. A reused `$n` (here `$2`) binds
+  the argument once. An `In`, `Ident` or `Expr` argument is rendered again at each
+  use. Momo renumbers: inside a larger statement (`TypedSQL` or `RawSubquery`
+  after earlier `Where` binds) `$1` still means the fragment's first argument.
+- One style per fragment. Mixing `$n` with `?`, `@name` or `Named` is
+  `ErrValidation`.
+- Every `$n` needs an argument (`$3` with two arguments, or `$0`, is
+  `ErrValidation`) and every argument must be used (a gap such as `$1, $3` is
+  `ErrValidation`), so a typo fails at build time.
+- A `$n` inside a string literal, quoted identifier, comment or dollar-quoted body
+  is text, not a placeholder.
+- Other dialects: `$n` is `ErrUnsupported` at build time. Port such statements to
+  `?` (or `@name`) when the code must run on SQLite or MySQL.
+- sqlc `sqlc.arg(name)` / `@name` styles: use `momo.Named("name", v)` with `@name`.
+- Typed casts keep working: `$1::int` is fine.
 
 `SelectQuery.SQL()` returns `Compiled{SQL, Args}` without running. `Explain(ctx)`
 runs `EXPLAIN` (never `ANALYZE`) and returns plan text; it binds parameters and
@@ -1112,7 +1185,8 @@ func (i *Item) MomoConfig(c *momo.Config) {
 }
 ```
 
-Column types (the Go type picks the SQL type; `dim` is required):
+Column types (the Go type picks the SQL type; `dim` is required for sparsevec and bit,
+optional for vector and halfvec):
 
 | Go type               | SQL            | Distance builders                                                     |
 | --------------------- | -------------- | --------------------------------------------------------------------- |
@@ -1137,6 +1211,14 @@ Index rules (`MomoConfig`; validated by the generator, error wraps
 
 - A `vector` column above 2000 dims cannot have an ANN index; store it as
   `HalfVector` (up to 4000 for an index).
+- Dimensionless columns: a `vector.Vector` or `vector.HalfVector` field without
+  `dim` maps to bare `vector` or `halfvec` and holds embeddings of any size
+  (NovaCRM `KbChunk.embedding`). Its descriptor has `Dim()` zero, so a distance
+  argument of any size is accepted and still checked for NaN and Inf. Store a
+  `dims` column and always filter on it before ordering by distance, since
+  pgvector errors when it compares two sizes. hnsw and ivfflat on such a column
+  are refused (error wraps `schema.ErrInvalidVectorIndex`, names the column), as
+  are expression parts; it is searched by sequential scan.
 - `hnsw` params: `m` 2..100 (16), `ef_construction` 4..1000 (64, at least 2*m).
   `ivfflat` REQUIRES `With("lists", "N")` (1..32768).
 - An index covers one plain column; expression parts are rejected.
@@ -1208,6 +1290,13 @@ or a missing extension: `ErrUnsupported`.
 
 Pitfalls:
 
+- JSON extraction in GROUP BY: a key that is not plain letters, digits and
+  underscores is a bound parameter, and PostgreSQL treats the parameter in the
+  select list and the one in GROUP BY as different expressions and rejects the
+  query. Plain keys are inlined and group fine, except on a sensitive column,
+  whose keys are always bound so they stay masked; for those and any other key
+  group on a SQL fragment with a literal key. Inlined keys vary the statement
+  text per key, so pass only keys from a fixed set, not user input.
 - Filtered search: with iterative scan off, an ANN index returns its nearest
   candidates and applies `Where` afterwards, so a selective filter can return FEWER
   than `Limit` rows even when enough match. Set `HNSWIterativeScan`
@@ -1225,7 +1314,8 @@ Pitfalls:
   `pgxpool.NewWithConfig`, then `pgxdriver.WithVectorFormat(pgxdriver.VectorBinary)`
   with a describe-based exec mode). Default text transport is correct; skip unless
   profiling says otherwise. `NewPool` does not call `ConfigureVectors`.
-- Hybrid (full text plus vector) search does not exist.
+- Reciprocal-rank-fusion hybrid search does not exist; combine a distance and a
+  text rank in one score instead ([fulltext.md](fulltext.md)).
 
 Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-search/).
 
@@ -1371,8 +1461,11 @@ Examples: every `examples/*/example_test.go`, harness
     join tables need a unique key. A partial unique index needs
     `OnConflict(cols).Where(indexPredicate)`; a conditional DO UPDATE uses
     `.DoUpdate(...).Where(...)`.
-17. Vector columns need `dim:<n>`; hnsw/ivfflat indexes need an explicit opclass
-    matching the distance function used in queries; ivfflat needs `lists`.
+17. Vector columns take `dim:<n>`; leave it off a `vector` or `halfvec` field only
+    for a dimensionless column (embedding size depends on the model, rows
+    filtered by a dims column; no hnsw/ivfflat index on it). hnsw/ivfflat indexes
+    need an explicit opclass matching the distance function used in queries;
+    ivfflat needs `lists`.
 18. Run vector queries that need tuning inside `db.WithSearch` and use `tx`
     there; use iterative scan for filtered ANN searches; expect seq scans on small
     tables.
