@@ -35,10 +35,6 @@ var (
 	ErrOptimisticLock = errors.New("momo: optimistic lock conflict")
 	// ErrUnsupported: the dialect or driver cannot express the request.
 	ErrUnsupported = errors.New("momo: unsupported by dialect or driver")
-	// ErrCancelled: a streaming read (Each, Iter) stopped because its context
-	// ended. The error also wraps the context error, so errors.Is(err,
-	// context.Canceled) or context.DeadlineExceeded still matches.
-	ErrCancelled = errors.New("momo: operation cancelled")
 	// ErrUnfilteredMutation: an UPDATE or DELETE without a WHERE clause was
 	// attempted without calling AllRows.
 	ErrUnfilteredMutation = errors.New("momo: refusing UPDATE/DELETE without WHERE; call AllRows to confirm")
