@@ -16,5 +16,5 @@ Implements plan momo-09-observability-testing Task 7: Relation loading is report
 
 ## Evidence
 
-- `TestRelationEventsReported` passes on first run because momo-06 emits the events (plan says so, so no red-first); mutation run 42411352506 (2b503e3, reverted) failed with `want 2 relation events, got 0` after relation hooks were no longer registered; green run 42410680387.
+- `TestRelationEventsReported` passes on first run because momo-06 emits the events, so red is shown by reverting the implementation (next bullet); earlier mutation run 42411352506 (2b503e3, reverted) failed with `want 2 relation events, got 0` after relation hooks were no longer registered; green run 42410680387.
 - Red evidence: run 42453078559 on throwaway branch worktree-agent-a45fcad8c3ad6640b-red (d4c88ed, relation hook registration reverted) failed with: want 2 relation events, got 0. Green: run 42453067196 on 9e7ba2f.

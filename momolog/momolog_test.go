@@ -76,6 +76,26 @@ func TestSlogHook(t *testing.T) {
 		})
 	})
 
+	t.Run("sensitive column values are redacted even with Values and WithArgLogging", func(t *testing.T) {
+		secret := momo.NewColumn[string]("authors", "name", momo.FlagSensitive)
+		var buf bytes.Buffer
+		l := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+			relfixture.CreateSchema(t, db)
+			buf.Reset()
+			if _, err := momo.Select[models.Author](db).Where(secret.Eq("hunter2-secret")).All(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			out := buf.String()
+			if strings.Contains(out, "hunter2-secret") {
+				t.Fatalf("sensitive value leaked:\n%s", out)
+			}
+			if !strings.Contains(out, momo.RedactedArg) {
+				t.Fatalf("log lacks %q:\n%s", momo.RedactedArg, out)
+			}
+		}, momo.WithHook(momolog.New(l, momolog.Values(true))), momo.WithArgLogging())
+	})
+
 	t.Run("slow statements log at WARN, fast ones at DEBUG", func(t *testing.T) {
 		capture(t, []momolog.Option{momolog.SlowOver(time.Nanosecond)}, nil, func(t *testing.T, out string) {
 			if !strings.Contains(out, "level=WARN") {

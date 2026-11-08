@@ -18,3 +18,4 @@ Implements plan momo-09-observability-testing Task 6: Tenant scope helper (`.pro
 
 - `TestTenantFilter`: red run 42409637729 (tests committed first in fa87dbf, build failed with undefined symbols), green run 42410680387 on 8d0f6d7.
 - Gate: lint, unit and integration jobs green on CI; commits fa87dbf, d5f35dd, 8d0f6d7.
+- Fixed head: green run 42454191287 on 6a37944, after TenantFilter was changed to fail the build (ErrValidation, also under Not and Or) instead of emitting 1 = 0. Red evidence for the original test is a build failure (undefined symbols, run 42409637729).

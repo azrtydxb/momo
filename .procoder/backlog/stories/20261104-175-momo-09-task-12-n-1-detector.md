@@ -21,3 +21,4 @@ Implements plan momo-09-observability-testing Task 12: N+1 detector (`.procoder/
 - `TestNormalizeShape`, `TestNPlusOneHook`: red run 42409637729 (tests committed first in fa87dbf, build failed with undefined symbols), green run 42410680387 on 8d0f6d7.
 - Mutation: deleting the IN-list collapse made `TestNormalizeShape` fail with the uncollapsed IN list (run 42415019735, fdbf299, reverted).
 - Gate: lint, unit and integration jobs green on CI.
+- Red here is a build failure (undefined normalizeShape, NewNPlusOneHook, WithQueryScope) plus the mutation run; shape cap and recovered reporter are pinned by unit tests in nplusone_internal_test.go.

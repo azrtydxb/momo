@@ -19,3 +19,4 @@ Implements plan momo-09-observability-testing Task 11: momolog, the slog hook (`
 
 - `TestSlogHook`: red run 42412075743 (3393482, vet: undefined momolog.Option), green run 42414180063 (72bd53a).
 - Mutation: logging args without the Values option made `TestSlogHook` fail with `argument value leaked` (run 42415019735, reverted).
+- Red here is a build failure (vet: undefined momolog.Option, run 42412075743) plus the mutation run 42415019735; a FlagSensitive case asserts the value stays out of the log.
