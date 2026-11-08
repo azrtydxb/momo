@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -76,6 +77,22 @@ func TestDialectValuesMatrix(t *testing.T) {
 			if !ty.ok[d] && !errors.Is(err, ErrDialect) {
 				t.Errorf("%s on %s: err = %v, want ErrDialect", ty.name, d, err)
 			}
+		}
+	}
+}
+
+// TestSQLiteDialectValueValidates: the SQLite blob has no text form to reject
+// a bad value later, so DialectValue refuses it up front.
+func TestSQLiteDialectValueValidates(t *testing.T) {
+	nan := float32(math.NaN())
+	for name, fn := range map[string]func() (any, error){
+		"nan":       func() (any, error) { return Vector{1, nan}.DialectValue(dialect.SQLite) },
+		"empty":     func() (any, error) { return Vector{}.DialectValue(dialect.SQLite) },
+		"bits len":  func() (any, error) { return Bits{Len: 16, Data: []byte{1}}.DialectValue(dialect.SQLite) },
+		"bits tail": func() (any, error) { return Bits{Len: 4, Data: []byte{0x0F}}.DialectValue(dialect.SQLite) },
+	} {
+		if _, err := fn(); !errors.Is(err, ErrInvalidVector) {
+			t.Errorf("%s: err = %v, want ErrInvalidVector", name, err)
 		}
 	}
 }
