@@ -1,6 +1,6 @@
 # momo-04 Task 27: Rebase onto a target directory or version
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: -

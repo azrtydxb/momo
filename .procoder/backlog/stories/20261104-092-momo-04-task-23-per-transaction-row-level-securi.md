@@ -1,6 +1,6 @@
 # momo-04 Task 23: Per-transaction row-level-security scope helper
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: -

@@ -1,6 +1,6 @@
 # momo-04 Task 19: Optional authored down migrations and group rollback
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: -

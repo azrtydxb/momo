@@ -1,6 +1,6 @@
 # momo-03 Task 11: Read-replica routing with a unit of work and AllowStaleReads (S-40)
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-03-drivers-postgresql
 Sprint: -
