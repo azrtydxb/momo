@@ -345,7 +345,9 @@ func TestSQLiteAutoMigrateWithStrictTable(t *testing.T) {
 	ctx := context.Background()
 	mustExec(t, db.Driver(), `CREATE TABLE s (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, v TEXT) STRICT`)
 	mustExec(t, db.Driver(), `CREATE TABLE other (id INTEGER NOT NULL PRIMARY KEY)`)
+	mustExec(t, db.Driver(), `CREATE TABLE wr (id INTEGER NOT NULL PRIMARY KEY, v TEXT) WITHOUT ROWID`)
 	desired := &schema.Schema{Dialect: "sqlite", Tables: []schema.Table{
+		{Name: "wr", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "v", Type: "TEXT", Nullable: true}}, PrimaryKey: []string{"id"}},
 		{Name: "s", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "v", Type: "TEXT", Nullable: true}}, PrimaryKey: []string{"id"}},
 		{Name: "other", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "note", Type: "TEXT", Nullable: true}}, PrimaryKey: []string{"id"}},
 	}}

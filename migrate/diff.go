@@ -412,6 +412,21 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	if tn.Autoincrement && !fn.Autoincrement {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes AUTOINCREMENT; write a custom migration", tn.Name))
 	}
+	if fn.WithoutRowID && !tn.WithoutRowID {
+		// The table keeps WITHOUT ROWID, which has no rowid alias, so an
+		// INTEGER key the normalizer made "by_default" for a rowid table is
+		// not a difference from the table's own column.
+		c := *tn
+		c.WithoutRowID = true
+		c.Columns = slices.Clone(tn.Columns)
+		live := colByName(fn)
+		for i := range c.Columns {
+			if oc, ok := live[c.Columns[i].Name]; ok && c.Columns[i].Identity == "by_default" && oc.Identity == "" {
+				c.Columns[i].Identity = ""
+			}
+		}
+		tn = &c
+	}
 	d.gone = goneColumns(fn, tn)
 	d.columns(fn, tn, fo, to, renameTo)
 	d.primaryKey(fn, tn, to)
