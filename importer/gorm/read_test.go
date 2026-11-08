@@ -66,13 +66,28 @@ func TestReadFixtureModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(models) != 2 || models[0].Name != "Org" || models[1].Name != "User" {
-		t.Fatalf("want Org and User in source order, got %+v", models)
+	if len(models) != 4 || models[0].Name != "Org" || models[1].Name != "User" || models[2].Name != "Post" || models[3].Name != "Comment" {
+		t.Fatalf("want Org, User, Post, Comment in source order, got %+v", models)
 	}
 	if rep.Has(importer.Unsupported) {
 		t.Fatalf("the fixture must import cleanly: %s", rep)
 	}
-	org, user := models[0], models[1]
+	org, user, post, comment := models[0], models[1], models[2], models[3]
+	if f := field(t, org, "Slug"); !f.Unique || f.UniqueIndex || f.UniqueName != "" {
+		t.Fatalf("a plain unique stays a constraint: %+v", f)
+	}
+	if f := field(t, post, "CreatedBy"); f.Column != "audit_created_by" {
+		t.Fatalf("embedded with a prefix on a named field: %+v", f)
+	}
+	if len(comment.ForeignKeys) != 1 || comment.ForeignKeys[0].Name != "fk_posts_comments" || comment.ForeignKeys[0].Field != "Post" || comment.ForeignKeys[0].FKField != "PostID" {
+		t.Fatalf("has-many puts the key on the child: %+v", comment.ForeignKeys)
+	}
+	if f := field(t, comment, "Kind"); f.Index || f.IndexName != "" {
+		t.Fatalf("a composite index is not emitted on its fields: %+v", f)
+	}
+	if got := rep.Of(importer.DroppedIndex); len(got) != 1 {
+		t.Fatalf("one composite index: %s", rep)
+	}
 	if org.Table != "orgs" || user.Table != "app_users" {
 		t.Fatalf("tables: %q, %q", org.Table, user.Table)
 	}
@@ -149,5 +164,75 @@ type Doc struct {
 	}
 	if f := field(t, models[0], "Title"); f.Column != "heading" || f.Nullable {
 		t.Fatalf("column override: %+v", f)
+	}
+}
+
+func TestReadDecidesKeysBeforeColumns(t *testing.T) {
+	models, _ := readSource(t, `package m
+
+type A struct {
+	ID   uint
+	Code string `+"`gorm:\"primaryKey\"`"+`
+}
+
+type B struct {
+	TenantID uint `+"`gorm:\"primaryKey\"`"+`
+	Seq      uint `+"`gorm:\"primaryKey;autoIncrement:true\"`"+`
+	Plain    uint `+"`gorm:\"primaryKey\"`"+`
+}
+`)
+	a := models[0]
+	if field(t, a, "ID").PK || !field(t, a, "Code").PK || field(t, a, "Code").Serial {
+		t.Fatalf("an explicit primaryKey replaces the implicit ID key: %+v", a.Fields)
+	}
+	b := models[1]
+	if field(t, b, "TenantID").Serial || field(t, b, "Plain").Serial || !field(t, b, "Seq").Serial {
+		t.Fatalf("a composite key only auto-increments when asked to: %+v", b.Fields)
+	}
+}
+
+func TestReadReportsIgnoredTagsAndBadNumbers(t *testing.T) {
+	_, rep := readSource(t, `package m
+
+type P struct {
+	ID     uint
+	Skip   string `+"`gorm:\"-\"`"+`
+	Off    string `+"`gorm:\"-:migration\"`"+`
+	RO     string `+"`gorm:\"<-:false\"`"+`
+	Ser    string `+"`gorm:\"serializer:json\"`"+`
+	Size   string `+"`gorm:\"size:abc\"`"+`
+	Many   string `+"`gorm:\"index:a;index:b\"`"+`
+}
+`)
+	if len(rep.Of(importer.DroppedField)) != 3 {
+		t.Fatalf("-, -:migration and <- are each reported: %s", rep)
+	}
+	if len(rep.Of(importer.Unsupported)) != 2 {
+		t.Fatalf("serializer and the bad size are unsupported: %s", rep)
+	}
+	if len(rep.Of(importer.DroppedIndex)) != 1 {
+		t.Fatalf("the second index tag on a field is reported: %s", rep)
+	}
+}
+
+func TestReadHonoursAnImportAlias(t *testing.T) {
+	models, rep := readSource(t, `package m
+
+import g "gorm.io/gorm"
+
+type D struct {
+	g.Model
+	Gone g.DeletedAt
+}
+`)
+	if got := field(t, models[0], "Gone").GoType; got != "*time.Time" || !rep.Has(importer.RenamedType) {
+		t.Fatalf("gorm.DeletedAt behind an alias: %q, %s", got, rep)
+	}
+}
+
+func TestSplitTagHonoursEscapedSemicolons(t *testing.T) {
+	got := splitTag(`default:a\;b;not null`)
+	if len(got) != 2 || got[0] != "default:a;b" || got[1] != "not null" {
+		t.Fatalf("splitTag = %q", got)
 	}
 }

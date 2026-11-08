@@ -2,7 +2,7 @@
 
 // Package gormfixture is a small project written with GORM. The importer
 // reads its source, and its test compares the schema GORM creates with the
-// schema the imported models describe.
+// schema Momo derives from the imported models.
 package gormfixture
 
 import "gorm.io/gorm"
@@ -11,6 +11,7 @@ import "gorm.io/gorm"
 type Org struct {
 	gorm.Model
 	Name string `gorm:"size:120;not null;uniqueIndex"`
+	Slug string `gorm:"size:60;unique"`
 }
 
 // User belongs to an Org.
@@ -26,3 +27,24 @@ type User struct {
 
 // TableName names the table GORM creates for User.
 func (User) TableName() string { return "app_users" }
+
+// Audit is embedded into Post under a prefix.
+type Audit struct {
+	CreatedBy string `gorm:"size:50"`
+}
+
+// Post has many Comments; the key lives on Comment.
+type Post struct {
+	gorm.Model
+	Title    string `gorm:"size:200;not null"`
+	Audit    Audit  `gorm:"embedded;embeddedPrefix:audit_"`
+	Comments []Comment
+}
+
+// Comment holds the key of its Post and a composite index.
+type Comment struct {
+	gorm.Model
+	PostID uint   `gorm:"not null"`
+	Kind   string `gorm:"size:20;index:idx_comment_kind_body"`
+	Body   string `gorm:"size:500;index:idx_comment_kind_body"`
+}

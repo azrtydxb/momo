@@ -234,8 +234,14 @@ func fieldTag(f Field) (string, error) {
 			return "", err
 		}
 	}
-	if !f.Nullable && !f.PK {
+	// Momo reads nullability from the Go type or the nullable tag; a plain
+	// value type without notnull would otherwise be NOT NULL.
+	ptr := strings.HasPrefix(f.GoType, "*")
+	switch {
+	case !f.Nullable && !f.PK && !ptr:
 		opts = append(opts, "notnull")
+	case f.Nullable && !ptr:
+		opts = append(opts, "nullable")
 	}
 	if f.Unique || f.UniqueIndex {
 		if f.UniqueName != "" {

@@ -24,6 +24,7 @@ const (
 	Unsupported       Kind = "unsupported"
 	RenamedType       Kind = "renamed-type"
 	DroppedField      Kind = "dropped-field"
+	DroppedIndex      Kind = "dropped-index"
 	Naming            Kind = "naming"
 	VersionMapped     Kind = "version-mapped"
 )
