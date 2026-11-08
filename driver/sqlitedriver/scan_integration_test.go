@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/azrtydxb/momo/types"
 )
@@ -60,6 +61,61 @@ func TestScanTimeDestinations(t *testing.T) {
 	}
 	if date.Time.Year() != 2026 || date.Time.Month() != 11 || date.Time.Day() != 7 {
 		t.Fatalf("types.Date = %v", date.Time)
+	}
+}
+
+// TestRowsReportColumns: MapRows and other helpers need momo.ColumnNamer, on
+// pooled, transaction and pinned rows alike.
+func TestRowsReportColumns(t *testing.T) {
+	db, drv, err := Open(testdb.SQLitePath(t), Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	ctx := context.Background()
+	check := func(name string, rows momo.Rows, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		defer rows.Close()
+		cn, ok := rows.(momo.ColumnNamer)
+		if !ok {
+			t.Fatalf("%s: rows do not implement ColumnNamer", name)
+		}
+		cols, err := cn.Columns()
+		if err != nil || len(cols) != 2 || cols[0] != "a" || cols[1] != "b" {
+			t.Fatalf("%s: columns = %v, %v", name, cols, err)
+		}
+	}
+	rows, err := drv.Query(ctx, "SELECT 1 AS a, 2 AS b", nil)
+	check("pool", rows, err)
+	tx, err := drv.Begin(ctx, momo.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err = tx.Query(ctx, "SELECT 1 AS a, 2 AS b", nil)
+	check("tx", rows, err)
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ro, err := drv.Begin(ctx, momo.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err = ro.Query(ctx, "SELECT 1 AS a, 2 AS b", nil)
+	check("read-only tx", rows, err)
+	if err := ro.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := drv.(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err = p.Query(ctx, "SELECT 1 AS a, 2 AS b", nil)
+	check("pinned", rows, err)
+	if err := p.Release(); err != nil {
+		t.Fatal(err)
 	}
 }
 

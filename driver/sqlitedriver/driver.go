@@ -175,6 +175,12 @@ func scanErr(err error) error {
 func (r sqlRows) Err() error   { return ClassifyError(r.r.Err()) }
 func (r sqlRows) Close() error { return ClassifyError(r.r.Close()) }
 
+// Columns reports the result column names (momo.ColumnNamer).
+func (r sqlRows) Columns() ([]string, error) {
+	cols, err := r.r.Columns()
+	return cols, ClassifyError(err)
+}
+
 // sqlTx adapts *sql.Tx to momo.DriverTx.
 type sqlTx struct {
 	tx     *sql.Tx
