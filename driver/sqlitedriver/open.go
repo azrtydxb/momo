@@ -67,6 +67,15 @@ func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
 		_ = db.Close()
 		return nil, nil, ClassifyError(err)
 	}
+	var vecVersion string
+	if err := db.QueryRowContext(context.Background(), "SELECT vec_version()").Scan(&vecVersion); err != nil {
+		_ = db.Close()
+		return nil, nil, ClassifyError(err)
+	}
+	if err := checkVecVersion(vecVersion); err != nil {
+		_ = db.Close()
+		return nil, nil, err
+	}
 	return db, newDriver(db), nil
 }
 

@@ -1,11 +1,12 @@
 What Momo supports, per database. PostgreSQL (through pgx) is fully usable.
 SQLite is usable through `driver/sqlitedriver` (mattn go-sqlite3 and
 sqlite-vec; it needs cgo and does not build on Windows): queries, writes,
-transactions and the shared integration suite run on it. It also has a
-migration dialect, `migrate/sqlite` (inspector, rendering, table rebuild and
-lock, see [migrations.md](migrations.md#3a-sqlite)), that you use as a library
-through `migrate.NewEngine`; the `momo migrate` command does not select it yet,
-and a pure-Go driver and the vector builders are **not available yet**. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
+transactions, the shared integration suite and the vector builders (float32
+and bit vectors with sqlite-vec) run on it. It also has a migration dialect,
+`migrate/sqlite` (inspector, rendering, table rebuild and lock, see
+[migrations.md](migrations.md#3a-sqlite)), that you use as a library through
+`migrate.NewEngine`; the `momo migrate` command does not select it yet, and a
+pure-Go driver is **not available yet**. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
 (`driver/mysqldriver`): queries, writes, locking and transactions run and are
 covered by the integration suite. The library migration dialect `migrate/mysql`
 exists (inspector, drift, apply), but the `momo migrate` command is
@@ -66,14 +67,14 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 
 ## Dialect and driver status
 
-| Item                           | PostgreSQL (pgx)                              | SQLite                                                                        | MySQL / MariaDB                                    |
-| ------------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------- |
-| Usable                         | yes                                           | queries, writes, library migrations: yes (cgo, not Windows); vectors: not yet | queries, writes, library migrations: yes; CLI: no  |
-| Driver package                 | `driver/pgxdriver` (pgx v5 pool, `FromSQLDB`) | `driver/sqlitedriver` (mattn go-sqlite3, sqlite-vec)                          | `driver/mysqldriver`                               |
-| `dialect.For(name)` metadata   | yes                                           | yes (data only)                                                               | yes (data only)                                    |
-| Migration dialect (`migrate`)  | `migrate/postgres`                            | `migrate/sqlite` (library only)                                               | `migrate/mysql` (library only)                     |
-| `momo migrate` on this dialect | works                                         | exit 2, the CLI builds only the PostgreSQL dialect                            | exit 2, the CLI builds only the PostgreSQL dialect |
-| CI integration matrix          | PostgreSQL 16 and 17, pgvector 0.8.7          | runs inside the PostgreSQL job (no server needed)                             | MySQL 8.4.13, MySQL 9.7.4, MariaDB 11.8.9          |
+| Item                           | PostgreSQL (pgx)                              | SQLite                                                               | MySQL / MariaDB                                    |
+| ------------------------------ | --------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------- |
+| Usable                         | yes                                           | queries, writes, vectors, library migrations: yes (cgo, not Windows) | queries, writes, library migrations: yes; CLI: no  |
+| Driver package                 | `driver/pgxdriver` (pgx v5 pool, `FromSQLDB`) | `driver/sqlitedriver` (mattn go-sqlite3, sqlite-vec)                 | `driver/mysqldriver`                               |
+| `dialect.For(name)` metadata   | yes                                           | yes (data only)                                                      | yes (data only)                                    |
+| Migration dialect (`migrate`)  | `migrate/postgres`                            | `migrate/sqlite` (library only)                                      | `migrate/mysql` (library only)                     |
+| `momo migrate` on this dialect | works                                         | exit 2, the CLI builds only the PostgreSQL dialect                   | exit 2, the CLI builds only the PostgreSQL dialect |
+| CI integration matrix          | PostgreSQL 16 and 17, pgvector 0.8.7          | runs inside the PostgreSQL job (no server needed)                    | MySQL 8.4.13, MySQL 9.7.4, MariaDB 11.8.9          |
 
 The `dialect/dialect.go` flags for the unusable dialects, for planning only:
 
@@ -186,19 +187,19 @@ distance is `ErrUnsupported`). The MySQL column in the table below
 covers MySQL only; for MariaDB see
 [vectors.md](vectors.md#mariadb-and-mysql).
 
-| Feature                                                                | PostgreSQL                                                                                                                | SQLite                                                                                                                   | MySQL            |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------- |
-| Value types                                                            | `vector.Vector` (`vector(n)`, 1 to 16000), `HalfVector` (`halfvec`), `SparseVector` (`sparsevec`), `Bits` (`bit(n)`)      | SQLite: not available yet (the sqlite-vec scalar functions work through `sqlitedriver`, but there are no typed builders) | no               |
-| Dimensionless columns                                                  | `vector`, `halfvec` without `dim`: any size, filter by a dims column; no ANN index (refused)                              | SQLite: not available yet (the sqlite-vec scalar functions work through `sqlitedriver`, but there are no typed builders) | no               |
-| Metrics (builders)                                                     | l2 `<->`, inner product `<#>`, cosine `<=>`, l1 `<+>`, hamming `<~>`, jaccard `<%>`; hamming and jaccard take bit columns | SQLite: not available yet (the sqlite-vec scalar functions work through `sqlitedriver`, but there are no typed builders) | no               |
-| ANN indexes                                                            | `hnsw`, `ivfflat`; limits and opclasses in vectors.md; `ivfflat` does not support sparsevec                               | none planned in metadata                                                                                                 | no               |
-| Search settings                                                        | `SearchSettings`, `DB.WithSearch`, `Tx.SetSearch`, `Tx.SetLocal`; transaction scoped                                      | SQLite: not available yet (the sqlite-vec scalar functions work through `sqlitedriver`, but there are no typed builders) | `ErrUnsupported` |
-| Iterative scan, `max_scan_tuples`, `scan_mem_multiplier`, `max_probes` | yes, pgvector 0.8.0 or newer (else `ErrUnsupported`)                                                                      | no                                                                                                                       | no               |
-| Exact search                                                           | `SearchSettings.ExactSearch`                                                                                              | SQLite: not available yet (the sqlite-vec scalar functions work through `sqlitedriver`, but there are no typed builders) | no               |
-| Binary wire codec                                                      | opt-in: `pgxdriver.ConfigureVectors`, `WithVectorFormat(VectorBinary)`                                                    | no                                                                                                                       | no               |
-| Plan inspection                                                        | `SelectQuery.Explain`                                                                                                     | SQLite: not verified (no test)                                                                                           | `ErrUnsupported` |
-| Full-text search (`tsvector`, `@@`, rank, headline), see fulltext.md   | yes, builders and `types.TSVector`                                                                                        | no                                                                                                                       | `ErrUnsupported` |
-| Hybrid search (full text plus vector, RRF)                             | no                                                                                                                        | no                                                                                                                       | no               |
+| Feature                                                                | PostgreSQL                                                                                                                | SQLite                                                                                                                                                  | MySQL            |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| Value types                                                            | `vector.Vector` (`vector(n)`, 1 to 16000), `HalfVector` (`halfvec`), `SparseVector` (`sparsevec`), `Bits` (`bit(n)`)      | `vector.Vector` (float32 BLOB with a length CHECK, `SQLiteVectorType`) and `Bits` (`SQLiteBitsType`); `HalfVector` and `SparseVector`: `ErrUnsupported` | no               |
+| Dimensionless columns                                                  | `vector`, `halfvec` without `dim`: any size, filter by a dims column; no ANN index (refused)                              | not tested on SQLite; `SQLiteVectorType` needs a dimension for its length CHECK (`ErrUnsupported` for zero)                                             | no               |
+| Metrics (builders)                                                     | l2 `<->`, inner product `<#>`, cosine `<=>`, l1 `<+>`, hamming `<~>`, jaccard `<%>`; hamming and jaccard take bit columns | l2 `vec_distance_l2`, l1, cosine, hamming (bit columns, `vec_bit`); inner product and jaccard: `ErrUnsupported`                                         | no               |
+| ANN indexes                                                            | `hnsw`, `ivfflat`; limits and opclasses in vectors.md; `ivfflat` does not support sparsevec                               | none: brute force; the dialect lists no index method                                                                                                    | no               |
+| Search settings                                                        | `SearchSettings`, `DB.WithSearch`, `Tx.SetSearch`, `Tx.SetLocal`; transaction scoped                                      | `ExactSearch` is a no-op (every search is exact); any other field: `ErrUnsupported`                                                                     | `ErrUnsupported` |
+| Iterative scan, `max_scan_tuples`, `scan_mem_multiplier`, `max_probes` | yes, pgvector 0.8.0 or newer (else `ErrUnsupported`)                                                                      | no                                                                                                                                                      | no               |
+| Exact search                                                           | `SearchSettings.ExactSearch`                                                                                              | always: sqlite-vec compares every row                                                                                                                   | no               |
+| Binary wire codec                                                      | opt-in: `pgxdriver.ConfigureVectors`, `WithVectorFormat(VectorBinary)`                                                    | no                                                                                                                                                      | no               |
+| Plan inspection                                                        | `SelectQuery.Explain`                                                                                                     | SQLite: not verified (no test)                                                                                                                          | `ErrUnsupported` |
+| Full-text search (`tsvector`, `@@`, rank, headline), see fulltext.md   | yes, builders and `types.TSVector`                                                                                        | no                                                                                                                                                      | `ErrUnsupported` |
+| Hybrid search (full text plus vector, RRF)                             | no                                                                                                                        | no                                                                                                                                                      | no               |
 
 ## Migrations
 
