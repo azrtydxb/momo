@@ -10,8 +10,9 @@ regression policy are added here as the suite lands.
 
 A primary-key lookup on a database with no hooks registered must not allocate
 more than the budget below. The figure is `allocs/op` of
-`BenchmarkSelectNoHooks`, measured on PostgreSQL 17 with pgvector 0.8.7 by the
-`TestSelectNoHooksAllocBudget` run in CI. The test fails when the measured
+`BenchmarkSelectNoHooks`, measured by the `TestSelectNoHooksAllocBudget` run in CI. The full CI matrix
+(Go 1.26 and 1.27, PostgreSQL 16 and 17 with pgvector 0.8.7) measures the same
+32, so one budget covers every combination. The test fails when the measured
 value rises above the budget, so an allocation added to the disabled-hook path
 is caught. Lower the budget in the same change whenever the path gets cheaper.
 
