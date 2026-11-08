@@ -120,6 +120,7 @@ func TestMySQLVectorType(t *testing.T) {
 		{"mysql 8.0", dialect.FlavorMySQL, "8.0.40", 3, "", true},
 		{"mariadb 11.8", dialect.FlavorMariaDB, "11.8.9-MariaDB", 8, "VECTOR(8)", false},
 		{"mariadb 11.8 replication prefix", dialect.FlavorMariaDB, "5.5.5-11.8.9-MariaDB-ubu2404", 8, "VECTOR(8)", false},
+		{"mariadb 11.8 ubuntu suffix", dialect.FlavorMariaDB, "11.8.2-MariaDB-ubu2404", 8, "VECTOR(8)", false},
 		{"mariadb 11.7", dialect.FlavorMariaDB, "11.7.2-MariaDB", 8, "VECTOR(8)", false},
 		{"mariadb 10.11", dialect.FlavorMariaDB, "10.11.6-MariaDB", 8, "", true},
 		{"mariadb 11.6", dialect.FlavorMariaDB, "11.6.2-MariaDB", 8, "", true},
@@ -145,5 +146,39 @@ func TestMySQLVectorType(t *testing.T) {
 	}
 	if _, err := MySQLVectorType(dialect.FlavorMariaDB, "10.11.6-MariaDB", 3); err == nil || !strings.Contains(err.Error(), "VECTOR requires MySQL 9.0 or MariaDB 11.7") {
 		t.Fatalf("MariaDB diagnostic %v lacks the requirement text", err)
+	}
+}
+
+// A nullable vector field is a *vector.Vector: non-nil binds wrapped, nil binds
+// NULL without the wrapper.
+func TestMySQLVectorNullablePointer(t *testing.T) {
+	col := NewNullVectorColumn[vector.Vector]("docs", "emb", 3, 0)
+	v := vector.Vector{1, 2, 3}
+	for _, c := range []struct {
+		flavor dialect.Flavor
+		want   string
+	}{
+		{dialect.FlavorMariaDB, "VEC_FromText(?)"},
+		{dialect.FlavorMySQL, "STRING_TO_VECTOR(?)"},
+	} {
+		d := dialect.MySQLFlavor(c.flavor)
+		got, err := compile(d, func(b *Builder) { b.argFor(0, &v) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.SQL != c.want || len(got.Args) != 1 || got.Args[0] != "[1,2,3]" {
+			t.Fatalf("%s non-nil pointer: %q %#v, want %q with the text form", c.flavor, got.SQL, got.Args, c.want)
+		}
+		var none *vector.Vector
+		got, err = compile(d, func(b *Builder) { b.argFor(0, none) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.SQL != "?" || len(got.Args) != 1 || got.Args[0] != nil {
+			t.Fatalf("%s nil pointer: %q %#v, want a bare NULL bind", c.flavor, got.SQL, got.Args)
+		}
+	}
+	if _, err := compile(dialect.MySQLFlavor(dialect.FlavorMariaDB), col.Eq(v).AppendSQL); err != nil {
+		t.Fatal(err)
 	}
 }
