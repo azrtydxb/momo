@@ -102,39 +102,17 @@ func LoadLock(path string) (*Lock, error) {
 	return &l, nil
 }
 
-// Save writes the lock to path as indented JSON with sorted keys, through a
-// temporary file in the same directory.
-func (l *Lock) Save(path string) error {
+// Marshal returns the lock as indented JSON with sorted keys and a final
+// newline. Generator code never writes files itself: the caller hands the
+// bytes to the gen.Writer.
+func (l *Lock) Marshal() ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(l); err != nil {
-		return fmt.Errorf("grpc: encode lock: %w", err)
+		return nil, fmt.Errorf("grpc: encode lock: %w", err)
 	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 -- the lock file is committed beside the .proto
-		return fmt.Errorf("grpc: %w", err)
-	}
-	tmp, err := os.CreateTemp(dir, ".momo-lock-*.tmp")
-	if err != nil {
-		return fmt.Errorf("grpc: %w", err)
-	}
-	name := tmp.Name()
-	_, werr := tmp.Write(buf.Bytes())
-	cerr := tmp.Close()
-	if err := errors.Join(werr, cerr); err != nil {
-		_ = os.Remove(name)
-		return fmt.Errorf("grpc: write lock: %w", err)
-	}
-	if err := os.Chmod(name, 0o644); err != nil { // #nosec G302 -- committed file, not a secret
-		_ = os.Remove(name)
-		return fmt.Errorf("grpc: %w", err)
-	}
-	if err := os.Rename(name, path); err != nil {
-		_ = os.Remove(name)
-		return fmt.Errorf("grpc: %w", err)
-	}
-	return nil
+	return buf.Bytes(), nil
 }
 
 // Assign returns the field number of each column of message, recording new

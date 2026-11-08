@@ -44,7 +44,11 @@ func TestProtoLockStableNumbers(t *testing.T) {
 		t.Fatalf("new column reused a reserved number: %v", added)
 	}
 	path := filepath.Join(t.TempDir(), "momo.proto.lock")
-	if err := l.Save(path); err != nil {
+	data, err := l.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := LoadLock(path)
