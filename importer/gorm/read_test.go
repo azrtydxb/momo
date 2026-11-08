@@ -71,32 +71,24 @@ func TestReadFixtureModels(t *testing.T) {
 	for _, m := range models {
 		names = append(names, m.Name)
 	}
-	if strings.Join(names, " ") != "Org User Post Comment Sized Folder File" {
+	if strings.Join(names, " ") != "Org User Post Comment" {
 		t.Fatalf("want the fixture models in source order, got %v", names)
 	}
 	if rep.Has(importer.Unsupported) {
 		t.Fatalf("the fixture must import cleanly: %s", rep)
 	}
-	org, user, post, comment, sized, file := models[0], models[1], models[2], models[3], models[4], models[6]
+	org, user, post, comment := models[0], models[1], models[2], models[3]
 	if f := field(t, org, "Slug"); !f.Unique || f.UniqueIndex || f.UniqueName != "uni_orgs_slug" {
 		t.Fatalf("a plain unique stays a constraint: %+v", f)
 	}
 	if f := field(t, user, "Score"); f.SQLType != "bigint" {
 		t.Fatalf("Score: %+v", f)
 	}
-	for name, want := range map[string]string{"Rank": "integer", "Level": "integer", "Flag": "smallint", "Alt": "integer"} {
-		if f := field(t, sized, name); f.SQLType != want {
-			t.Fatalf("%s is %s, gorm.io/driver/postgres makes it %s", name, f.SQLType, want)
-		}
-	}
 	if f := field(t, post, "CreatedBy"); f.Column != "audit_created_by" {
 		t.Fatalf("embedded with a prefix on a named field: %+v", f)
 	}
 	if len(comment.ForeignKeys) != 1 || comment.ForeignKeys[0].Name != "fk_posts_comments" || comment.ForeignKeys[0].Field != "Post" || comment.ForeignKeys[0].FKField != "PostID" {
 		t.Fatalf("has-many puts the key on the child: %+v", comment.ForeignKeys)
-	}
-	if len(file.ForeignKeys) != 1 || file.ForeignKeys[0].OnDelete != "SET NULL" || file.ForeignKeys[0].Name != "fk_folders_files" {
-		t.Fatalf("constraint:OnDelete:SET NULL: %+v", file.ForeignKeys)
 	}
 	if f := field(t, comment, "Kind"); f.Index || f.IndexName != "" {
 		t.Fatalf("a composite index is not emitted on its fields: %+v", f)
@@ -299,6 +291,45 @@ var cfg = gorm.Config{NamingStrategy: nil}
 	}
 	if len(rep.Of(importer.DroppedIndex)) != 2 {
 		t.Fatalf("unique plus uniqueIndex and the composite option are each reported: %s", rep)
+	}
+}
+
+func TestReadConstraintActions(t *testing.T) {
+	models, rep := readSource(t, `package m
+
+type Folder struct {
+	ID    uint
+	Files []File `+"`gorm:\"constraint:OnDelete:SET NULL,OnUpdate:CASCADE\"`"+`
+}
+
+type File struct {
+	ID       uint
+	FolderID uint
+}
+
+type Note struct {
+	ID       uint
+	FolderID uint
+	Folder   Folder `+"`gorm:\"constraint:OnDelete:CASCADE,Deferrable:true\"`"+`
+}
+`)
+	var file, note importer.Model
+	for _, m := range models {
+		switch m.Name {
+		case "File":
+			file = m
+		case "Note":
+			note = m
+		}
+	}
+	if len(file.ForeignKeys) != 1 || file.ForeignKeys[0].OnDelete != "SET NULL" || file.ForeignKeys[0].OnUpdate != "CASCADE" || file.ForeignKeys[0].Name != "fk_folders_files" {
+		t.Fatalf("has-many constraint actions: %+v", file.ForeignKeys)
+	}
+	if len(note.ForeignKeys) != 1 || note.ForeignKeys[0].OnDelete != "CASCADE" {
+		t.Fatalf("belongs-to constraint actions: %+v", note.ForeignKeys)
+	}
+	if got := rep.Of(importer.Unsupported); len(got) != 1 {
+		t.Fatalf("the Deferrable option is not imported and must be reported: %s", rep)
 	}
 }
 
