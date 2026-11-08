@@ -8,18 +8,6 @@ import (
 	"testing"
 )
 
-func FuzzPureParseTime(f *testing.F) {
-	for _, s := range []string{"2026-11-07 20:10:12.123", "2026-11-07T20:10:12Z", "2026-11-07", "", "x"} {
-		f.Add(s)
-	}
-	f.Fuzz(func(t *testing.T, s string) {
-		_, err := parseTime(s)
-		if err != nil && err != errUnparsableTime {
-			t.Fatalf("the error is not the fixed one, so it may echo the input: %v", err)
-		}
-	})
-}
-
 func FuzzPureConstraintTarget(f *testing.F) {
 	for _, s := range []string{"UNIQUE constraint failed: u.email", "NOT NULL constraint failed: a.b, a.c", "", ": ", "constraint failed: "} {
 		f.Add(s)

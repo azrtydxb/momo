@@ -9,18 +9,9 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 	"github.com/mattn/go-sqlite3"
 )
-
-// driverError carries a driver error while exposing only a fixed message. The
-// cause stays reachable through errors.As and Unwrap.
-type driverError struct {
-	cause error
-	msg   string
-}
-
-func (e driverError) Error() string { return e.msg }
-func (e driverError) Unwrap() error { return e.cause }
 
 // ClassifyError maps a mattn sqlite3.Error to *momo.Error. Other errors, and
 // errors that are already *momo.Error, are returned unchanged. SQLite
@@ -68,7 +59,7 @@ func ClassifyError(err error) error {
 		Kind:   kind,
 		Table:  table,
 		Column: column,
-		Err:    driverError{cause: err, msg: msg},
+		Err:    sqlshared.DriverError{Cause: err, Msg: msg},
 	}
 }
 

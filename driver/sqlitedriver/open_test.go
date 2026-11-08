@@ -5,9 +5,12 @@
 package sqlitedriver
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/azrtydxb/momo"
 )
 
 func TestCheckVersion(t *testing.T) {
@@ -104,5 +107,19 @@ func TestBuildDSN(t *testing.T) {
 	}
 	if _, err := buildDSN("x.db", Config{TxLock: "bogus"}); err == nil {
 		t.Error("unknown txlock accepted")
+	}
+}
+
+// An empty path would make SQLite create a file named after the query string,
+// without foreign keys, WAL or the busy timeout.
+func TestBuildDSNRefusesEmptyPath(t *testing.T) {
+	for _, dsn := range []string{"", "?_txlock=immediate", "?mode=memory"} {
+		_, err := buildDSN(dsn, Config{})
+		if !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("buildDSN(%q) err = %v, want ErrValidation", dsn, err)
+		}
+	}
+	if isMemory("", nil) {
+		t.Error("an empty path counted as in-memory")
 	}
 }

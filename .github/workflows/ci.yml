@@ -131,6 +131,7 @@ jobs:
         with:
           go-version: "1.27"
       - run: go test ./...
+      - run: go test -count=1 -tags integration ./driver/sqlitepure/... ./internal/sqlshared/...
 
   macos:
     runs-on: macos-latest

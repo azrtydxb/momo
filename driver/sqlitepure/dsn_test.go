@@ -3,10 +3,13 @@
 package sqlitepure
 
 import (
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/azrtydxb/momo"
 )
 
 func TestCheckVersion(t *testing.T) {
@@ -130,13 +133,16 @@ func TestCleanMessage(t *testing.T) {
 	}
 }
 
-func TestParseTime(t *testing.T) {
-	for _, s := range []string{"2026-11-07 20:10:12.123", "2026-11-07T20:10:12Z", "2026-11-07 20:10:12.5+02:00", "2026-11-07"} {
-		if _, err := parseTime(s); err != nil {
-			t.Errorf("parseTime(%q): %v", s, err)
+// An empty path would make SQLite create a file named after the query string,
+// without foreign keys, WAL or the busy timeout.
+func TestBuildDSNRefusesEmptyPath(t *testing.T) {
+	for _, dsn := range []string{"", "?_txlock=immediate", "?mode=memory"} {
+		_, err := buildDSN(dsn, Config{})
+		if !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("buildDSN(%q) err = %v, want ErrValidation", dsn, err)
 		}
 	}
-	if _, err := parseTime("secret"); err != errUnparsableTime {
-		t.Errorf("err = %v, want the fixed error", err)
+	if isMemory("", nil) {
+		t.Error("an empty path counted as in-memory")
 	}
 }

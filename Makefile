@@ -16,11 +16,11 @@ FUZZ_TARGETS += ./schema:FuzzNormalize
 FUZZ_TARGETS += ./vector:FuzzVectorDecode
 FUZZ_TARGETS += ./vector:FuzzSparseDecode
 FUZZ_TARGETS += ./driver/pgxdriver:FuzzVectorBinaryDecode
-FUZZ_TARGETS += ./driver/sqlitedriver:FuzzParseTime
+FUZZ_TARGETS += ./internal/sqlshared:FuzzParseTime
+FUZZ_TARGETS += ./internal/sqlshared:FuzzScanErr
 FUZZ_TARGETS += ./driver/sqlitedriver:FuzzConstraintTarget
 FUZZ_TARGETS += ./driver/sqlitedriver:FuzzCheckVersion
 FUZZ_TARGETS += ./driver/sqlitedriver:FuzzBuildDSN
-FUZZ_TARGETS += ./driver/sqlitepure:FuzzPureParseTime
 FUZZ_TARGETS += ./driver/sqlitepure:FuzzPureConstraintTarget
 FUZZ_TARGETS += ./driver/sqlitepure:FuzzPureBuildDSN
 FUZZ_TARGETS += ./gen/testdata/golden/descriptors/document:FuzzColumnByName
@@ -87,7 +87,7 @@ test-integration-sqlite:
 # S-89: the pure-Go SQLite adapter builds and passes its suite with cgo off.
 # -race needs cgo, so the race run of this package is in test-integration.
 test-sqlitepure:
-	CGO_ENABLED=0 $(GO) test -count=1 -tags=integration ./driver/sqlitepure/...
+	CGO_ENABLED=0 $(GO) test -count=1 -tags=integration ./driver/sqlitepure/... ./internal/sqlshared/...
 
 bench-smoke:
 	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...

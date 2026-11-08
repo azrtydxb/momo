@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 	"modernc.org/sqlite"
 )
 
@@ -23,16 +24,6 @@ const (
 	extPK       = 1555 // SQLITE_CONSTRAINT_PRIMARYKEY
 	extUnique   = 2067 // SQLITE_CONSTRAINT_UNIQUE
 )
-
-// driverError carries a driver error while exposing only a fixed message. The
-// cause stays reachable through errors.As and Unwrap.
-type driverError struct {
-	cause error
-	msg   string
-}
-
-func (e driverError) Error() string { return e.msg }
-func (e driverError) Unwrap() error { return e.cause }
 
 // ClassifyError maps a modernc *sqlite.Error to *momo.Error. Other errors, and
 // errors that are already *momo.Error, are returned unchanged. SQLite
@@ -86,14 +77,14 @@ func classifyOp(op string, err error) error {
 		return err
 	}
 	if kind == momo.ErrUnsupported {
-		return &momo.Error{Kind: kind, Op: op, Err: driverError{cause: err, msg: msg}}
+		return &momo.Error{Kind: kind, Op: op, Err: sqlshared.DriverError{Cause: err, Msg: msg}}
 	}
 	table, column := constraintTarget(msg)
 	return &momo.Error{
 		Kind:   kind,
 		Table:  table,
 		Column: column,
-		Err:    driverError{cause: err, msg: msg},
+		Err:    sqlshared.DriverError{Cause: err, Msg: msg},
 	}
 }
 
