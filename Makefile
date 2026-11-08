@@ -38,7 +38,7 @@ MYSQL84_URL ?= root:momo@tcp(127.0.0.1:3306)/
 MYSQL97_URL ?= root:momo@tcp(127.0.0.1:3307)/
 MARIADB_URL ?= root:momo@tcp(127.0.0.1:3308)/
 
-.PHONY: bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
+.PHONY: bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -84,6 +84,10 @@ test-bench-module-integration:
 # in docs/PERFORMANCE.md.
 bench-hooks:
 	MOMO_REQUIRE_INTEGRATION=1 MOMO_TEST_POSTGRES_URL='$(PG_URL)' $(GO) test -run='^$$' -tags integration -bench='^BenchmarkSelectNoHooks$$' -benchmem -benchtime=200x .
+
+# Regenerates the Momo metadata and the Ent client for the bench module.
+bench-generate:
+	cd bench && $(GO) run github.com/azrtydxb/momo/cmd/momo generate && $(GO) run entgo.io/ent/cmd/ent generate --target ./adapters/ent/entgen ./adapters/ent/schema
 
 bench-env:
 	cd bench && $(GO) run ./cmd/envcapture
