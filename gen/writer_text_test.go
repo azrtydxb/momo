@@ -90,3 +90,43 @@ func TestWriterScaffoldNeverOverwrites(t *testing.T) {
 		t.Fatalf("scaffold overwrote the user's file: %q, %v", got, err)
 	}
 }
+
+// Catches: Scaffold writing outside the module root through "..", through a
+// symlink that leaves the root, or replacing an existing directory.
+func TestWriterScaffoldConfinement(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	outside := filepath.Join(base, "outside")
+	for _, d := range []string{root, outside, filepath.Join(root, "dir")} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := NewWriter(WriterOptions{ModuleRoot: root})
+
+	if err := w.Scaffold(filepath.Join(root, "..", "outside", "x.go"), []byte("package x\n")); err == nil {
+		t.Fatal("a path that leaves the root through .. was accepted")
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := w.Scaffold(filepath.Join(root, "link", "x.go"), []byte("package x\n")); err == nil {
+		t.Fatal("a path through a symlink that leaves the root was accepted")
+	}
+	if err := w.Scaffold(filepath.Join(root, "link"), []byte("package x\n")); err == nil {
+		t.Fatal("a symlink that leaves the root was accepted as the scaffold path")
+	}
+	// An existing directory is skipped, not replaced.
+	if err := w.Scaffold(filepath.Join(root, "dir"), []byte("package x\n")); err != nil {
+		t.Fatalf("existing directory: %v", err)
+	}
+	if changed, err := w.Commit(); err != nil || len(changed) != 0 {
+		t.Fatalf("commit = %v, %v", changed, err)
+	}
+	if fi, err := os.Stat(filepath.Join(root, "dir")); err != nil || !fi.IsDir() {
+		t.Fatalf("directory was replaced: %v", err)
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("wrote outside the root: %v", entries)
+	}
+}
