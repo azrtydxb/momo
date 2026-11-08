@@ -487,7 +487,7 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 		unsupported("the type " + goType + " has no known column type; add a type: tag option or convert the field by hand")
 		return
 	}
-	if q := qualifier(goType); q != "" && q != "time" && q != "sql" && q != "json" {
+	if q := qualifier(fld.GoType); q != "" && q != "time" && q != "sql" && q != "json" {
 		unsupported("the type " + goType + " comes from package " + q + ", which the importer cannot place in a model file")
 		return
 	}

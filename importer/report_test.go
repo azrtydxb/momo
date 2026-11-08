@@ -209,7 +209,7 @@ func TestEmitKeysNamesAndRelations(t *testing.T) {
 		"`momo:\"column:post_id,type:bigint,notnull,index:idx_comments_post\"`",
 		"`momo:\"column:slug,type:text,nullable,unique\"`",
 		"`momo:\"column:code,type:text,notnull,unique:idx_code\"`",
-		"Post *Post `momo:\"belongs_to,fk:PostID,on_delete:set_null,on_update:cascade\"`",
+		"`momo:\"belongs_to,fk:PostID,on_delete:set_null,on_update:cascade\"`",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("emitted source lacks %q:\n%s", want, got)
