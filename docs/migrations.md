@@ -466,7 +466,7 @@ removed (there is no CLI flag). The lock and statement timeouts of the session
 options do nothing on SQLite; busy handling is the driver's `busy_timeout`.
 
 **Other differences.** DDL is transactional, so one migration is one
-transaction. `AutoMigrate` rebuilds with enforcement off too. Index parts carry
+transaction. `AutoMigrate` renders through the same code; it skips changes to existing tables beyond additive ones, and turns foreign keys off if one of its additive changes still needs a rebuild (an enum column, say). Index parts carry
 no collation in the schema, so a collation on an index key is not compared.
 Collation on a column is.
 
