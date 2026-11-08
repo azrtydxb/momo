@@ -7,11 +7,13 @@ package migrate_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
+	"github.com/azrtydxb/momo"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
@@ -226,5 +228,44 @@ func TestRollbackTakesTheLock(t *testing.T) {
 	}
 	if _, err := e.Rollback(ctx, migrate.RollbackOptions{}); err != nil {
 		t.Fatalf("the lock must be free after the refused call: %v", err)
+	}
+}
+
+// A Go migration is forward-only: a rollback whose range includes one is
+// refused with ErrGoMigrationNotReversible before any down runs, for a single
+// rollback and for a group, and the history stays as it was.
+func TestRollbackRefusesGoMigration(t *testing.T) {
+	ctx := context.Background()
+	for _, group := range []bool{false, true} {
+		db := testopen.Postgres(t)
+		fsys := fstest.MapFS{
+			goVerCreate + "_create_log.up.sql":   {Data: []byte("CREATE TABLE gm_log (id serial PRIMARY KEY, v text);")},
+			goVerCreate + "_create_log.down.sql": {Data: []byte("DROP TABLE gm_log;")},
+		}
+		g := migrate.GoMigration{Version: goVerGo, Name: "backfill", Checksum: "v1", Up: func(ctx context.Context, tx *momo.Tx) error {
+			return insertLog(ctx, tx, "go")
+		}}
+		e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithGoMigrations(g))
+		if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		before, err := readHistory(ctx, t, db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = e.Rollback(ctx, migrate.RollbackOptions{Group: group})
+		if !errors.Is(err, migrate.ErrGoMigrationNotReversible) || !strings.Contains(err.Error(), goVerGo) {
+			t.Fatalf("group=%v: want ErrGoMigrationNotReversible naming %s, got %v", group, goVerGo, err)
+		}
+		if !tableExists(t, db, "gm_log") || logValues(t, db) != "go" {
+			t.Fatalf("group=%v: nothing may be rolled back", group)
+		}
+		after, err := readHistory(ctx, t, db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("group=%v: history changed:\nbefore %+v\nafter  %+v", group, before, after)
+		}
 	}
 }

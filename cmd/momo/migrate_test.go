@@ -122,6 +122,25 @@ func TestCLIRedactsURL(t *testing.T) {
 		t.Fatalf("output leaks the DSN: %s", all)
 	}
 
+	// A URL the driver cannot parse is echoed, password included, by the
+	// driver's own error (net/url quotes the raw string). The unreachable host
+	// above never reaches such an error, so only this case can observe a
+	// missing redaction: the output must show the error was reported and still
+	// hide the password.
+	out.Reset()
+	errOut.Reset()
+	bad := "postgres://bob:p4ssw0rdleak@127.0.0.1:notaport/none?sslmode=disable"
+	if code := runMigrate(&out, &errOut, []string{"--config", cfg, "status", "--url", bad}, noEnv); code == 0 {
+		t.Fatalf("an unparsable URL must fail, got exit 0: %s", out.String())
+	}
+	all := out.String() + errOut.String()
+	if !strings.Contains(all, "port") {
+		t.Fatalf("the parse error must be reported (it names the port), got %q", all)
+	}
+	if strings.Contains(all, "p4ssw0rdleak") || strings.Contains(all, bad) {
+		t.Fatalf("output leaks the DSN of an unparsable URL: %s", all)
+	}
+
 	// A missing URL names the environment variable to set.
 	out.Reset()
 	errOut.Reset()

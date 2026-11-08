@@ -157,7 +157,8 @@ history format version. `ReadHistory` and `Inspect` hide it and the table.
    missing.
 2. Refuse (`ErrDirty`, exit 3) if any row is `running` or `failed`.
 3. Refuse (`ErrChecksumMismatch`, exit 3) on a checksum problem (above).
-4. Pending = every `*.up.sql` whose version has no row other than
+4. Pending = every `*.up.sql` and every registered Go migration (section 6a)
+   whose version has no row other than
    `rolled_back`, run in ascending version order, optionally stopping after
    `--to N` (a version without a file is refused, so a typo applies nothing).
 
@@ -671,25 +672,190 @@ If the SQL changes the schema, change the models too and run `diff` afterward,
 which compares against the latest snapshot as written; otherwise the next `diff`
 will try to generate the same change again.
 
+## 6a. Go migrations
+
+A data step that SQL cannot express (a backfill that calls library code, the
+templates an application ships in Go) is a `migrate.GoMigration`. It is
+registered on the engine with `migrate.WithGoMigrations` and is ordered with the
+SQL files by version, so it runs once, under the same lock, with a history row
+(`kind = 'go'`) like any other migration.
+
+```go
+g := migrate.GoMigration{
+    Version:  "20260301120000", // 14 digits, unique among the SQL files too
+    Name:     "backfill_templates",
+    Checksum: "v1", // optional, see below
+    Up: func(ctx context.Context, tx *momo.Tx) error {
+        _, err := momo.Exec(ctx, tx, `UPDATE company SET templates_ready = true`)
+        return err
+    },
+}
+engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.WithGoMigrations(g))
+```
+
+- **Transaction.** `Up` receives a `*momo.Tx`: the migration transaction that
+  also holds the history rows. An error or a panic rolls everything back and
+  records `rolled_back` (not dirty); the next apply runs it again. The
+  function cannot commit or roll back that transaction.
+- **No transaction.** Set `UpNoTx` instead of `Up` for work that cannot run in
+  a transaction (`CREATE INDEX CONCURRENTLY`, a long backfill committed in
+  batches). It receives a `*momo.DB` bound to the migration connection
+  (`DB.OnConn`; it cannot begin a transaction). An error leaves the row
+  `failed`, which is dirty: `apply` refuses with `ErrDirty` until you finish
+  the work by hand and run `resolve` (section 4). Make the function safe to run
+  again, because `resolve --rolled-back` runs it from the start.
+- **Version.** A Go migration and a SQL file cannot share a version; `plan`,
+  `apply` and `status` fail with an error naming the file, and `NewEngine`
+  rejects two Go migrations on one version or a bad version or name.
+- **Checksum.** Go code cannot be hashed. The recorded checksum is a hash of the
+  version, the name and the optional `Checksum` string. When it differs from
+  the applied row, `apply` refuses with `ErrChecksumMismatch` and `status`
+  shows `mismatch`. Bump `Checksum` when you change what a migration does and
+  want an already-migrated database flagged; leave it empty to bind only
+  version and name.
+- **Snapshot.** A Go migration has a snapshot file like a custom SQL migration
+  (`<version>_<name>.snapshot.json`, a copy of the previous snapshot with the
+  new version and `parent` set), and no up file. It must not change the schema.
+  `migrate.ValidateOffline` checks that when you pass it the registered migrations after the directory, and that every
+  registered Go migration has a snapshot; run it from a test of the application
+  with the same migrations. `momo migrate validate` does not know the
+  application's Go migrations, so it cannot check them. `diff` compares
+  against the latest snapshot, a Go migration's included, and refuses while a
+  registered Go migration has no snapshot file yet. Note for callers:
+  `ValidateOffline` gained a variadic parameter, so a call without Go
+  migrations compiles unchanged, but a function value of the old type no longer
+  matches.
+- **Forward only.** A Go migration has no down step. A rollback of the group
+  that contains one refuses it: `Engine.Rollback` (landing from the M1
+  migrations branch) calls `migrate.RefuseGoRollback` with the history rows to
+  roll back, which returns `ErrGoMigrationNotReversible` for the first row of
+  kind `go`; fix forward with a new migration.
+- **Baseline.** `Baseline` through a version records a `go` row (checksum =
+  the identity) for every registered Go migration up to it. An engine without
+  that registration, the CLI included, refuses to baseline past a snapshot-only
+  version with `ErrGoMigrationUnregistered`, because it cannot record the row.
+- **Hooks and options.** Without `migrate.WithGoMigrationDB`, `Up` and `UpNoTx`
+  get a bare `momo.New` of the engine's driver: none of the application's
+  hooks, field hooks, clock or other options. Pass the application's `*momo.DB`
+  (same driver) to `WithGoMigrationDB` to have its options apply.
+- **The CLI cannot run them, and refuses to pass them.** `momo migrate apply`,
+  `plan` and `status` read only the directory; a Go migration lives in the
+  application's binary. The snapshot file marks its place: when the directory
+  holds a snapshot with no up file, no registered Go migration and no history
+  row, and a pending SQL migration has a later version, `apply` refuses with
+  `ErrGoMigrationUnregistered` (exit 1) before it runs anything, telling you to
+  run the application's `Engine.Apply`. Without that, the CLI would apply the
+  later SQL and the application's engine would then fail with `ErrOutOfOrder`
+  for the Go migration for good. Once the Go migration is applied, the CLI is
+  unblocked; a database that has one in its history shows it as `missing` to
+  the CLI. The check keys on the snapshot file, so a Go migration whose
+  snapshot file is missing is invisible to the CLI: run `ValidateOffline` with
+  your Go migrations in a test of the application, which reports that.
+  The same refusal fires for an up file that was removed and left its snapshot,
+  so when you squash old migrations remove their snapshots too. The
+  application runs the engine itself, at start or in a small
+  `cmd/migrate` of its own:
+
+  ```go
+  eng, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.WithGoMigrations(g))
+  if err != nil { /* ... */ }
+  if _, err := eng.Apply(ctx, migrate.ApplyOptions{}); err != nil { /* ... */ }
+  ```
+
+  Use that binary for `apply`, and keep the CLI for `diff`, `hash`, `validate`
+  and `drift`.
+
 ## 7. Adopting an existing database
 
 Worked example: `examples/adopt-existing-schema`.
 
-Momo has no command that turns a database into models or a snapshot.
-(`migrate.Engine.Inspect` returns the live schema as a Go value, but nothing
-in the CLI writes it.) Procedure:
+`momo generate --from-db` reads a live PostgreSQL database and writes the
+models and the init snapshot, so nothing has to be written by hand first.
 
-1. Write the models so they match the database.
-2. `momo migrate diff init` against the empty directory writes the initial
-   migration and snapshot. Do not apply it.
+1. Run `momo generate --from-db DATABASE_URL`. The value is a database URL, `-`
+   to read the URL from standard input, or the name of an environment variable
+   that holds it; prefer the last two, because a URL on the command line is
+   visible in the process list. It inspects the schemas named by
+   `migrate.schemas` (default: the current schema), writes one
+   `<table>_model.go` per table into the model package (`--out`, else
+   `introspect.out`, else the first local entry of `packages`, else `./models`)
+   and, when the migration directory has no snapshot, the init migration and
+   snapshot. Do not apply the init migration.
+2. Run `momo generate`, which writes the generated code for the new models.
 3. `momo migrate baseline --version <init version>`. It checks the live
    database against that snapshot, including view, policy and trigger text, and
    exits 1 with `differing object kinds: ...` on a mismatch, then records every
    migration up to that version as `applied` with `statements_applied = 0` and
    `apply_id = baseline`, without running them. `--force` records anyway; use it
    only after reviewing the mismatch. Schema objects outside the models, such as
-   extra extensions, count as a mismatch: add them to `migrate.exclude`.
+   extra extensions, count as a mismatch: add them to `migrate.exclude`. The
+   run prints a hint for the extensions and skipped tables it found.
 4. From then on use `diff` and `apply`.
+
+The models carry exact table and column names (a `table` or `column` tag is
+written wherever the naming preset would derive another name), Go types,
+nullability (a pointer, or the `nullable` tag for slices), defaults, `size`,
+`precision` and `scale`, enums, primary keys, identity and serial columns,
+single-column indexes as tags, other indexes, unique constraints, checks and
+comments in the `MomoConfig` method, and every foreign key the generator can
+derive as a `belongs_to` field with its `on_delete` and `on_update` actions.
+`numeric` columns are Go strings (the `decimal-as-string` note); an
+`introspect.types` rule picks a decimal type instead.
+
+A column type with no Go mapping is an error and nothing is written; add a rule
+to the `introspect` section of `momo.yaml`. Constraints the models cannot
+declare are left out of the models and the snapshot and printed as warnings, so
+the two agree and the baseline reports them: composite foreign keys, foreign
+keys whose name is not table, column and `_fkey`, foreign keys that do not
+reference a single-column primary key, unique expression indexes, generated
+columns, `generated always` identity (modeled as by default), and PostgreSQL
+schemas other than the current one.
+
+### The introspect section
+
+`momo.yaml` holds what the database cannot say, and it is applied again on every
+run:
+
+```yaml
+introspect:
+  package: models # default: the directory name
+  out: ./models # default: the first local entry of packages
+  skip: ["_prisma_*"] # table globs: no model, not in the snapshot
+  types: # SQL type to Go type, for every column of that type
+    inet: { go: string }
+    numeric(12,2):
+      { go: decimal.Decimal, import: github.com/shopspring/decimal }
+  columns: # first to last; later rules win, tags add up
+    - match: "*.updated_at" # glob over table.column
+      tags: [updated_at]
+    - match: "users.settings"
+      go: "types.JSON[Settings]"
+      name: Prefs # Go field name
+  tables:
+    users: { name: Account, tags: ["soft_delete:timestamp"] }
+```
+
+A rule's `tags` are momo tag options; one with the key of a generated option
+replaces it. A Go type needs no `import` for `types.`, `vector.`, `time.`,
+`json.` or `sql.`. Add skipped tables to `migrate.exclude` too, so the baseline
+ignores the live tables.
+
+### Running it again
+
+The schema keeps changing during a port. A re-run rewrites the model files that
+nobody edited. Each file starts with a header that holds the hash of its body:
+when the body still matches, the file is regenerated freely. A file with hand
+edits, or one that `--from-db` did not write, is never replaced. A hand-edited
+file stays quiet while the database has not changed its model; it conflicts
+only when the regenerated model differs. The run writes
+the regenerated version next to it as `<file>.new`, prints
+`conflict: <file>`, and exits 1; merge the two by hand and delete the `.new`
+file, or run again with `--overwrite` to take the regenerated one. A file whose
+table is gone is printed as `orphan` and never deleted. `--check` writes
+nothing, prints `stale: <file>` for each difference and exits 1. The init
+snapshot is written once: when the migration directory already has a snapshot,
+use `diff` for later schema changes. Put code of your own in other files and
+rules in the `introspect` section, and a re-run stays quiet.
 
 `baseline` needs `CREATE` on the database for the canonicalization step when
 the snapshot has views, functions, triggers or policies, **or any table with

@@ -34,8 +34,10 @@ type RollbackOptions struct {
 // pending again. A down with the no-transaction directive runs statement by
 // statement and, if one fails, leaves the row failed (dirty until resolved).
 // Like Apply it takes the migration lock, applies the session timeouts, and
-// refuses with ErrDirty or ErrChecksumMismatch. Nothing applied returns an
-// empty report.
+// refuses with ErrDirty or ErrChecksumMismatch. A selected row of kind go
+// (a Go migration, which is forward-only) makes it return
+// ErrGoMigrationNotReversible, naming the version, before any down runs. Nothing
+// applied returns an empty report.
 func (e *Engine) Rollback(ctx context.Context, o RollbackOptions) (rep *Report, err error) {
 	c, err := e.pin(ctx)
 	if err != nil {
@@ -68,6 +70,10 @@ func (e *Engine) Rollback(ctx context.Context, o RollbackOptions) (rep *Report, 
 	selected := selectRollback(hist, o.Group)
 	if len(selected) == 0 {
 		return &Report{}, nil
+	}
+	// A Go migration has no down step: refuse before any down runs or is read.
+	if err := RefuseGoRollback(selected); err != nil {
+		return nil, err
 	}
 	downs, err := e.loadDowns(selected)
 	if err != nil {
