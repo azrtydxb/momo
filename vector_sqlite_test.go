@@ -139,7 +139,7 @@ func TestSQLiteVectorColumnTypes(t *testing.T) {
 	}
 }
 
-func TestcheckVectorIndexMethod(t *testing.T) {
+func TestCheckVectorIndexMethod(t *testing.T) {
 	cases := []struct {
 		name   string
 		d      *dialect.Dialect
