@@ -20,4 +20,6 @@ Split from momo-05 Task 24 (story 125). A user with `text[]` columns needs the g
 
 ## Evidence
 
-EVIDENCE_PLACEHOLDER
+- Verified on GitHub Actions: workflow ci-agent run 42453370752 on 0913d3c, conclusion success. The unit and PostgreSQL integration jobs ran every test named above.
+- Earlier runs failed only on test-fixture mistakes and one unrelated flaky pgxdriver copy-cancel test (passed on re-run); no failure touched the array code.
+- The commit hook ran the gate clean on every commit.
