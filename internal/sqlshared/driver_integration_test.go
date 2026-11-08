@@ -151,6 +151,51 @@ func TestPragmasOnEveryPooledConnection(t *testing.T) {
 	})
 }
 
+const endlessCTE = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) SELECT count(*) FROM c"
+
+// Cancelling the context interrupts a statement that is running, and both
+// drivers report the cancellation the same way: errors.Is with
+// context.Canceled (or momo.ErrCanceled), not a bare SQLITE_INTERRUPT.
+func TestCancelInterruptsRunningStatement(t *testing.T) {
+	eachDriver(t, func(t *testing.T, o opener) {
+		_, drv := openAt(t, o, sqlitepure.Config{})
+		isCanceled := func(err error) bool {
+			return errors.Is(err, context.Canceled) || errors.Is(err, momo.ErrCanceled)
+		}
+		for _, mode := range []string{"query", "exec"} {
+			ctx, cancel := context.WithCancel(context.Background())
+			timer := time.AfterFunc(200*time.Millisecond, cancel)
+			start := time.Now()
+			var err error
+			switch mode {
+			case "exec":
+				_, err = drv.Exec(ctx, endlessCTE, nil)
+			default:
+				var rows momo.Rows
+				rows, err = drv.Query(ctx, endlessCTE, nil)
+				if err == nil {
+					for rows.Next() {
+					}
+					err = rows.Err()
+					_ = rows.Close()
+				}
+			}
+			timer.Stop()
+			cancel()
+			if err == nil || !isCanceled(err) {
+				t.Errorf("%s: err = %v, want a cancellation", mode, err)
+			}
+			if d := time.Since(start); d > 10*time.Second {
+				t.Errorf("%s: the statement ran %v after the cancel", mode, d)
+			}
+			// The connection is usable again.
+			if _, err := drv.Exec(context.Background(), "SELECT 1", nil); err != nil {
+				t.Errorf("%s: pool unusable after the cancel: %v", mode, err)
+			}
+		}
+	})
+}
+
 // The shared package must not pull in either SQLite implementation.
 func TestSharedPackageImportsNoSQLiteDriver(t *testing.T) {
 	cmd := exec.Command("go", "list", "-deps", ".")
