@@ -43,16 +43,18 @@ func TestSQLitePureGo(t *testing.T) {
 	}
 }
 
+// TestSQLitePureImportGraphHasNoCgoDriver is the import-graph check of the drivers
+// plan gate: neither this package nor pgxdriver links mattn or sqlite-vec.
 func TestSQLitePureImportGraphHasNoCgoDriver(t *testing.T) {
-	cmd := exec.Command("go", "list", "-deps", ".")
+	cmd := exec.Command("go", "list", "-deps", ".", "../pgxdriver")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list -deps: %v\n%s", err, out)
 	}
 	for _, pkg := range strings.Fields(string(out)) {
-		if strings.Contains(pkg, "mattn") || strings.Contains(pkg, "sqlite-vec") || pkg == "C" || strings.HasSuffix(pkg, "/driver/sqlitedriver") {
-			t.Errorf("the pure-Go package depends on %s", pkg)
+		if strings.Contains(pkg, "mattn/go-sqlite3") || strings.Contains(pkg, "sqlite-vec") || pkg == "C" || strings.HasSuffix(pkg, "/driver/sqlitedriver") {
+			t.Errorf("the import graph of sqlitepure or pgxdriver holds %s", pkg)
 		}
 	}
 	if !strings.Contains(string(out), "modernc.org/sqlite") {
