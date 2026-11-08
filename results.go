@@ -89,7 +89,9 @@ func FirstID[T any](ctx context.Context, sq SelectQuery[T]) (int64, error) {
 // native Go types. Two result columns with the same name are ambiguous in a
 // map, so they fail with ErrValidation: alias them in the SQL. It needs a
 // driver whose rows implement ColumnNamer and returns ErrUnsupported
-// otherwise. An empty result is a nil slice and a nil error.
+// otherwise. MapRows buffers the whole result in memory and ignores MaxRows,
+// which is a SelectQuery option; bound the SQL with LIMIT. An empty result is
+// a nil slice and a nil error.
 func MapRows(ctx context.Context, q Querier, sql string, args ...any) ([]map[string]any, error) {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	if err != nil {
@@ -143,7 +145,8 @@ func MapRows(ctx context.Context, q Querier, sql string, args ...any) ([]map[str
 }
 
 // FindAndCount returns the rows of sq (with its LIMIT and OFFSET) and the
-// total number of rows it matches without them, using two statements. The two
+// total number of rows it matches without them (and without After, ordering
+// and any row lock), using two statements. The two
 // are not one snapshot: run them in a transaction when a consistent pair is
 // required.
 func FindAndCount[T any](ctx context.Context, sq SelectQuery[T]) ([]T, int64, error) {
@@ -154,6 +157,8 @@ func FindAndCount[T any](ctx context.Context, sq SelectQuery[T]) ([]T, int64, er
 	whole := sq
 	whole.s.limit = -1
 	whole.s.offset = 0
+	whole.s.lock = ""
+	whole.s.lockWait = ""
 	total, err := whole.Count(ctx)
 	if err != nil {
 		return nil, 0, err

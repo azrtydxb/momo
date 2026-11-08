@@ -64,3 +64,27 @@ func TestWithMaxInListPanicsOnNonPositive(t *testing.T) {
 	}()
 	momo.New(fakedriver.New(dialect.Postgres), momo.WithMaxInList(0))
 }
+
+// The cap also covers In arguments of raw SQL. Fails if the check in the raw
+// In expansion is removed. An empty typed list stays a constant under a cap.
+func TestMaxInListRawAndFilter(t *testing.T) {
+	ctx := context.Background()
+	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithMaxInList(2))
+	if _, err := momo.Scalars[int64](ctx, db, "SELECT 1 WHERE x IN (?)", momo.In([]int{1, 2, 3})); !errors.Is(err, momo.ErrLimitExceeded) {
+		t.Fatalf("raw In over cap err = %v, want ErrLimitExceeded", err)
+	}
+	if _, err := momo.Scalars[int64](ctx, db, "SELECT 1 WHERE x IN (?)", momo.In([]int{1, 2})); err != nil {
+		t.Fatalf("raw In at cap: %v", err)
+	}
+	al := momo.NewAllowlist(DocTitle)
+	over, err := momo.Filter{Field: "title", Op: "in", Value: []string{"a", "b", "c"}}.Predicate(al)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := momo.Select[unitDocument](db).Where(over).SQL(); !errors.Is(err, momo.ErrLimitExceeded) {
+		t.Fatalf("Filter in over cap err = %v, want ErrLimitExceeded", err)
+	}
+	if _, err := momo.Select[unitDocument](db).Where(DocTitle.In()).SQL(); err != nil {
+		t.Fatalf("empty typed In under a cap: %v", err)
+	}
+}

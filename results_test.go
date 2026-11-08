@@ -133,6 +133,30 @@ func TestFindAndCountStatements(t *testing.T) {
 	}
 }
 
+// The count must not carry the page's row lock: SKIP LOCKED would undercount
+// it and the lock would be taken twice.
+func TestFindAndCountDropsLock(t *testing.T) {
+	fake := fakedriver.New(dialect.Postgres)
+	fake.SetRows(threeRows())
+	drv := scriptDriver{fake, func(sql string) *scriptedRows {
+		if strings.HasPrefix(sql, "SELECT COUNT(*)") {
+			return &scriptedRows{cols: []string{"count"}, rows: [][]any{{int64(3)}}}
+		}
+		return nil
+	}}
+	q := momo.Select[unitDocument](momo.New(drv)).OrderBy(DocID.Asc()).ForUpdate("SKIP LOCKED")
+	if _, _, err := momo.FindAndCount(context.Background(), q); err != nil {
+		t.Fatal(err)
+	}
+	calls := fake.Calls()
+	if !strings.Contains(calls[0].SQL, "FOR UPDATE SKIP LOCKED") {
+		t.Fatalf("page SQL = %s, want the lock", calls[0].SQL)
+	}
+	if strings.Contains(calls[1].SQL, " FOR ") {
+		t.Fatalf("count SQL = %s, must not lock", calls[1].SQL)
+	}
+}
+
 func TestMapRows(t *testing.T) {
 	ctx := context.Background()
 	script := func(cols []string, rows ...[]any) momo.Driver {
