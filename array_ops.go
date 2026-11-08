@@ -23,15 +23,15 @@ func (p pgArrayPred) AppendSQL(b *Builder) {
 		b.unsupported(p.feature)
 		return
 	}
-	p.left.AppendSQL(b)
+	fl := b.renderSens(p.left, flagsOf(p.left))
 	if p.op == "" {
 		b.WriteString(" = ANY(")
-		b.Arg(p.arg)
+		b.argFor(fl, p.arg)
 		b.WriteString(")")
 		return
 	}
 	b.WriteString(p.op)
-	b.Arg(p.arg)
+	b.argFor(fl, p.arg)
 }
 
 func (pgArrayPred) resultType() bool { return false }

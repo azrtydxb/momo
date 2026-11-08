@@ -6,6 +6,8 @@ package momo_test
 
 import (
 	"context"
+	"errors"
+	"math"
 	"reflect"
 	"testing"
 
@@ -115,5 +117,66 @@ func TestArrayOperatorsBindHostileValues(t *testing.T) {
 	left, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM arr_docs")
 	if err != nil || len(left) != 1 || left[0] != 1 {
 		t.Fatalf("table damaged: %v, %v", left, err)
+	}
+}
+
+// Catches: element types other than text failing to bind as one typed array
+// (smallint[] and bigint[] columns), including values at the type limits.
+func TestArrayContainsOnIntegerColumns(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	if _, err := momo.Exec(ctx, db, "CREATE TABLE arr_ints (id bigint PRIMARY KEY, s smallint[] NOT NULL, b bigint[] NOT NULL)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := momo.Exec(ctx, db, "INSERT INTO arr_ints VALUES (1, ?, ?), (2, ?, ?)",
+		[]int16{math.MinInt16, 7}, []int64{math.MaxInt64, 1},
+		[]int16{8}, []int64{2}); err != nil {
+		t.Fatal(err)
+	}
+	id := momo.NewColumn[int64]("arr_ints", "id", momo.FlagPK)
+	small := momo.NewColumn[[]int16]("arr_ints", "s", 0)
+	big := momo.NewColumn[[]int64]("arr_ints", "b", 0)
+	ids := func(p momo.Predicate) []int64 {
+		t.Helper()
+		rows, err := momo.Select[kvRow](db).From(momo.TableRef{Name: "arr_ints"}).
+			Columns(id, id).Where(p).OrderBy(id.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := []int64{}
+		for _, r := range rows {
+			out = append(out, r.K)
+		}
+		return out
+	}
+	for name, c := range map[string]struct {
+		pred momo.Predicate
+		want []int64
+	}{
+		"int16 contains":     {momo.ArrayContains(small, int16(math.MinInt16), 7), []int64{1}},
+		"int16 overlaps":     {momo.ArrayOverlaps(small, 7, 8), []int64{1, 2}},
+		"int64 contains":     {momo.ArrayContains(big, int64(math.MaxInt64)), []int64{1}},
+		"int64 contained by": {momo.ArrayContainedBy(big, 2, 3), []int64{2}},
+	} {
+		if got := ids(c.pred); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: ids = %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+// Catches: a nil slice silently stored as an empty array. It binds as NULL,
+// so a NOT NULL array column rejects it; docs/TYPE_MAPPING.md says so.
+func TestNilSliceIntoNotNullArrayColumn(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	if _, err := momo.Exec(ctx, db, "CREATE TABLE arr_nn (id bigint PRIMARY KEY, tags text[] NOT NULL)"); err != nil {
+		t.Fatal(err)
+	}
+	var nilTags []string
+	if _, err := momo.Exec(ctx, db, "INSERT INTO arr_nn VALUES (1, ?)", nilTags); !errors.Is(err, momo.ErrNotNullViolation) {
+		t.Fatalf("nil slice err = %v, want ErrNotNullViolation", err)
+	}
+	if _, err := momo.Exec(ctx, db, "INSERT INTO arr_nn VALUES (2, ?)", []string{}); err != nil {
+		t.Fatalf("empty slice: %v", err)
 	}
 }
