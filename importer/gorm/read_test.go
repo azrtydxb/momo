@@ -76,10 +76,15 @@ func TestReadFixtureModels(t *testing.T) {
 	if f := field(t, org, "Slug"); !f.Unique || f.UniqueIndex || f.UniqueName != "uni_orgs_slug" {
 		t.Fatalf("a plain unique stays a constraint: %+v", f)
 	}
+	for name, want := range map[string]string{"Rank": "integer", "Level": "integer", "Flag": "smallint", "Alt": "integer", "Score": "bigint"} {
+		if f := field(t, user, name); f.SQLType != want {
+			t.Fatalf("%s is %s, gorm.io/driver/postgres makes it %s", name, f.SQLType, want)
+		}
+	}
 	if f := field(t, post, "CreatedBy"); f.Column != "audit_created_by" {
 		t.Fatalf("embedded with a prefix on a named field: %+v", f)
 	}
-	if len(comment.ForeignKeys) != 1 || comment.ForeignKeys[0].Name != "fk_posts_comments" || comment.ForeignKeys[0].Field != "Post" || comment.ForeignKeys[0].FKField != "PostID" {
+	if len(comment.ForeignKeys) != 1 || comment.ForeignKeys[0].Name != "fk_posts_comments" || comment.ForeignKeys[0].Field != "Post" || comment.ForeignKeys[0].FKField != "PostID" || comment.ForeignKeys[0].OnDelete != "SET NULL" {
 		t.Fatalf("has-many puts the key on the child: %+v", comment.ForeignKeys)
 	}
 	if f := field(t, comment, "Kind"); f.Index || f.IndexName != "" {
@@ -227,6 +232,62 @@ type D struct {
 `)
 	if got := field(t, models[0], "Gone").GoType; got != "*time.Time" || !rep.Has(importer.RenamedType) {
 		t.Fatalf("gorm.DeletedAt behind an alias: %q, %s", got, rep)
+	}
+}
+
+func TestReadSizesFollowTheDialector(t *testing.T) {
+	models, _ := readSource(t, `package m
+
+import "database/sql"
+
+type S struct {
+	ID    uint8 `+"`gorm:\"primaryKey\"`"+`
+	A     int8
+	B     int16
+	C     int32
+	D     int64
+	E     uint16
+	F     uint32
+	G     uint
+	H     sql.NullInt16
+	I     sql.NullInt64
+	Big   string `+"`gorm:\"size:2000000\"`"+`
+	Huge  string `+"`gorm:\"size:20000000\"`"+`
+}
+`)
+	want := map[string]string{"ID": "smallint", "A": "smallint", "B": "smallint", "C": "integer", "D": "bigint", "E": "integer", "F": "bigint", "G": "bigint", "H": "smallint", "I": "bigint", "Big": "varchar(2000000)", "Huge": "text"}
+	for name, typ := range want {
+		if got := field(t, models[0], name).SQLType; got != typ {
+			t.Errorf("%s: %s, want %s", name, got, typ)
+		}
+	}
+}
+
+func TestReadReportsWhatItWouldGuess(t *testing.T) {
+	_, rep := readSource(t, `package m
+
+import "gorm.io/gorm"
+
+type T struct {
+	ID    uint
+	Name  *string `+"`gorm:\"not null\"`"+`
+	Memo  string  `+"`gorm:\"comment:hello;check:memo <> ''\"`"+`
+	Both  string  `+"`gorm:\"unique;uniqueIndex:idx_both\"`"+`
+	Comp  string  `+"`gorm:\"index:idx_c,composite:cx\"`"+`
+}
+
+func (T) TableName() string { return prefix() + "ts" }
+
+var cfg = gorm.Config{NamingStrategy: nil}
+`)
+	if len(rep.Of(importer.Unsupported)) != 4 {
+		t.Fatalf("want a non-literal TableName, a pointer with not null, comment and check reported: %s", rep)
+	}
+	if !rep.Has(importer.Naming) {
+		t.Fatalf("a NamingStrategy in the package must be reported: %s", rep)
+	}
+	if len(rep.Of(importer.DroppedIndex)) != 2 {
+		t.Fatalf("unique plus uniqueIndex and the composite option are each reported: %s", rep)
 	}
 }
 

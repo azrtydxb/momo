@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -117,24 +118,47 @@ func (r *reader) collect(f *ast.File) {
 				r.order = append(r.order, ts.Name.Name)
 			}
 		case *ast.FuncDecl:
-			if d.Name.Name != "TableName" || d.Recv == nil || len(d.Recv.List) != 1 || d.Body == nil || len(d.Body.List) != 1 {
+			if d.Name.Name != "TableName" || d.Recv == nil || len(d.Recv.List) != 1 {
 				continue
 			}
-			ret, ok := d.Body.List[0].(*ast.ReturnStmt)
-			if !ok || len(ret.Results) != 1 {
+			recv := recvName(d.Recv.List[0].Type)
+			if v, ok := literalReturn(d); ok {
+				r.tables[recv] = v
 				continue
 			}
-			lit, ok := ret.Results[0].(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				continue
-			}
-			v, err := strconv.Unquote(lit.Value)
-			if err != nil {
-				continue
-			}
-			r.tables[recvName(d.Recv.List[0].Type)] = v
+			r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: r.pos(d.Pos()), Model: recv,
+				Message: "TableName does not return a string literal, so the table name cannot be read; the importer would guess the default plural name"})
 		}
 	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		kv, ok := n.(*ast.KeyValueExpr)
+		if !ok {
+			return true
+		}
+		if id, ok := kv.Key.(*ast.Ident); ok && id.Name == "NamingStrategy" {
+			r.rep.Add(importer.Change{Kind: importer.Naming, Source: r.pos(kv.Pos()),
+				Message: "a gorm NamingStrategy is configured here (for example SingularTable or TablePrefix); the importer assumes GORM's default naming, so check the table and column names of the imported models"})
+		}
+		return true
+	})
+}
+
+// literalReturn returns the string literal d returns, when its body is a
+// single return of one.
+func literalReturn(d *ast.FuncDecl) (string, bool) {
+	if d.Body == nil || len(d.Body.List) != 1 {
+		return "", false
+	}
+	ret, ok := d.Body.List[0].(*ast.ReturnStmt)
+	if !ok || len(ret.Results) != 1 {
+		return "", false
+	}
+	lit, ok := ret.Results[0].(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	v, err := strconv.Unquote(lit.Value)
+	return v, err == nil
 }
 
 func recvName(e ast.Expr) string {
@@ -187,10 +211,35 @@ func (r *reader) parseTag(f *ast.Field, model string) (map[string]string, map[st
 		k, v, _ := strings.Cut(part, ":")
 		k = strings.ToUpper(strings.TrimSpace(k))
 		v = strings.TrimSpace(v)
+		if !knownKeys[k] {
+			r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: r.pos(f.Pos()), Model: model, Field: fieldNames(f),
+				Message: "the gorm tag option " + strings.ToLower(k) + " is not imported (check, comment, references and the like); declare it in Momo's companion file or convert the field by hand"})
+			continue
+		}
 		last[k] = v
 		all[k] = append(all[k], v)
 	}
 	return last, all
+}
+
+// knownKeys are the gorm tag options the reader handles or deliberately
+// reports; any other option is reported as unsupported.
+var knownKeys = map[string]bool{
+	"COLUMN": true, "TYPE": true, "SIZE": true, "PRECISION": true, "SCALE": true,
+	"PRIMARYKEY": true, "PRIMARY_KEY": true, "NOT NULL": true, "NOTNULL": true,
+	"UNIQUE": true, "INDEX": true, "UNIQUEINDEX": true, "DEFAULT": true,
+	"AUTOINCREMENT": true, "AUTOCREATETIME": true, "AUTOUPDATETIME": true,
+	"EMBEDDED": true, "EMBEDDEDPREFIX": true, "FOREIGNKEY": true, "CONSTRAINT": true,
+	"MANY2MANY": true, "POLYMORPHIC": true, "SERIALIZER": true,
+	"-": true, "->": true, "<-": true,
+}
+
+func fieldNames(f *ast.Field) string {
+	var names []string
+	for _, n := range f.Names {
+		names = append(names, n.Name)
+	}
+	return strings.Join(names, ", ")
 }
 
 func has(tag map[string]string, keys ...string) bool {
@@ -230,12 +279,22 @@ func (r *reader) classify() {
 				}
 			}
 			for _, n := range f.Names {
-				if n.Name == "ID" {
+				if n.Name == "ID" && isKeyType(f.Type) {
 					si.isMod = true
 				}
 			}
 		}
 	}
+}
+
+// isKeyType reports whether t can be a key: a named scalar or a package type
+// such as uuid.UUID, not a pointer, slice, map or inline struct.
+func isKeyType(t ast.Expr) bool {
+	switch t.(type) {
+	case *ast.Ident, *ast.SelectorExpr:
+		return true
+	}
+	return false
 }
 
 // hasExplicitPK reports whether si, or a struct it embeds, declares its key
@@ -417,11 +476,35 @@ func (r *reader) association(m *importer.Model, f *ast.Field, name string, tag m
 }
 
 var (
-	intTypes    = map[string]string{"int8": "smallint", "int16": "smallint", "uint8": "smallint", "uint16": "smallint", "int": "bigint", "int32": "bigint", "int64": "bigint", "uint": "bigint", "uint32": "bigint", "uint64": "bigint"}
-	nullTypes   = map[string]string{"sql.NullString": "text", "sql.NullInt64": "bigint", "sql.NullInt32": "bigint", "sql.NullBool": "boolean", "sql.NullFloat64": "numeric", "sql.NullTime": "timestamptz"}
+	// intBits is the size gorm gives an integer field; an unsigned field is
+	// one bit wider in gorm.io/driver/postgres DataTypeOf (size++ for Uint), so
+	// uint16 is an integer and uint8 a smallint. A sql.Null* type takes the
+	// type of its first field (NullInt32 holds an int32).
+	intBits = map[string]int{
+		"int8": 8, "int16": 16, "int32": 32, "int64": 64, "int": 64,
+		"uint8": 9, "uint16": 17, "uint32": 33, "uint64": 65, "uint": 65,
+		"sql.NullInt16": 16, "sql.NullInt32": 32, "sql.NullInt64": 64, "sql.NullByte": 9,
+	}
+	nullTypes   = map[string]string{"sql.NullString": "text", "sql.NullBool": "boolean", "sql.NullFloat64": "numeric", "sql.NullTime": "timestamptz"}
 	identOnly   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	sqlKeywords = map[string]bool{"true": true, "false": true, "null": true, "current_timestamp": true, "current_date": true, "current_time": true, "localtimestamp": true, "localtime": true}
 )
+
+// maxVarchar is the longest varchar PostgreSQL accepts; gorm writes text above it.
+const maxVarchar = 10485760
+
+// intColumn is the PostgreSQL integer type for a gorm size: up to 16 bits a
+// smallint, up to 32 an integer, otherwise a bigint. The same thresholds
+// choose smallserial, serial and bigserial for an auto-incrementing key.
+func intColumn(bits int) string {
+	switch {
+	case bits <= 16:
+		return "smallint"
+	case bits <= 32:
+		return "integer"
+	}
+	return "bigint"
+}
 
 // atoi reads a numeric tag option, reporting a value that is not a number.
 func (r *reader) atoi(m *importer.Model, field, pos string, tag map[string]string, key string) int {
@@ -465,16 +548,19 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 		fld.SQLType = tag["TYPE"]
 	case base == "bool":
 		fld.SQLType = "boolean"
-	case intTypes[base] != "":
-		fld.SQLType = intTypes[base]
+	case intBits[base] != 0:
+		fld.SQLType = intColumn(intBits[base])
 	case base == "float32" || base == "float64":
 		fld.SQLType = "numeric"
-		if prec > 0 {
+		switch {
+		case prec > 0 && scale > 0:
 			fld.SQLType = fmt.Sprintf("numeric(%d,%d)", prec, scale)
+		case prec > 0:
+			fld.SQLType = fmt.Sprintf("numeric(%d)", prec)
 		}
 	case base == "string":
 		fld.SQLType = "text"
-		if size > 0 && size <= 65535 {
+		if size > 0 && size <= maxVarchar {
 			fld.SQLType = fmt.Sprintf("varchar(%d)", size)
 		}
 	case base == "time.Time":
@@ -491,7 +577,7 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 		unsupported("the type " + goType + " comes from package " + q + ", which the importer cannot place in a model file")
 		return
 	}
-	_, isInt := intTypes[base]
+	isInt := intBits[base] != 0
 	_, hasDefault := tag["DEFAULT"]
 	auto := tag["AUTOINCREMENT"]
 	if isInt && !hasDefault && auto != "false" && (fld.PK || auto == "true") {
@@ -499,6 +585,10 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 		st.explicitAuto[n.Name] = auto == "true"
 	}
 	fld.Nullable = !(has(tag, "NOTNULL", "NOT NULL") || fld.PK)
+	if !fld.Nullable && strings.HasPrefix(fld.GoType, "*") && !fld.PK {
+		unsupported("a pointer type with not null: Momo reads nullability from the Go type, so the column would become nullable; change the field to " + strings.TrimPrefix(fld.GoType, "*"))
+		return
+	}
 	r.applyDefault(m, &fld, tag, base, pos)
 	r.applyIndexes(&fld, tag, all, m)
 	if has(tag, "AUTOCREATETIME", "AUTOUPDATETIME") {
@@ -556,16 +646,23 @@ func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all ma
 				name = "idx_" + m.Table + "_" + fld.Column
 			}
 			unique := key == "UNIQUEINDEX"
+			composite := false
 			for _, o := range strings.Split(opts, ",") {
 				switch o = strings.TrimSpace(o); {
 				case o == "":
 				case o == "unique":
 					unique = true
-				case strings.HasPrefix(o, "priority:") || strings.HasPrefix(o, "sort:") || strings.HasPrefix(o, "length:") || o == "composite" || strings.HasPrefix(o, "composite:"):
-					// ordering inside a composite index; composites are reported in finishModel
+				case strings.HasPrefix(o, "priority:"):
+					// the order of a field inside a composite index
+				case o == "composite" || strings.HasPrefix(o, "composite:"):
+					composite = true
 				default:
 					r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "index option " + o + " is not imported"})
 				}
+			}
+			if composite {
+				r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "index " + name + " is composite (composite option); composite indexes are not imported, declare it in the companion file"})
+				continue
 			}
 			if kept {
 				r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "a field carries several index tags; only the first is kept, index " + name + " is dropped"})
@@ -573,6 +670,9 @@ func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all ma
 			}
 			kept = true
 			if unique {
+				if fld.Unique && !fld.UniqueIndex {
+					r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "the field has both unique and a unique index; the unique constraint " + fld.UniqueName + " is dropped, the unique index " + name + " stays"})
+				}
 				fld.UniqueIndex, fld.Unique = true, true
 				fld.UniqueName = name
 			} else {
@@ -610,14 +710,20 @@ func (r *reader) finishModel(m *importer.Model, st *modelState) {
 			}
 		}
 	}
-	for name, idx := range users {
+	names := make([]string, 0, len(users))
+	for name := range users {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		idx := users[name]
 		if len(idx) < 2 {
 			continue
 		}
-		var names []string
+		var spans []string
 		for _, i := range idx {
 			f := &m.Fields[i]
-			names = append(names, f.Name)
+			spans = append(spans, f.Name)
 			if f.IndexName == name {
 				f.Index, f.IndexName = false, ""
 			}
@@ -627,7 +733,7 @@ func (r *reader) finishModel(m *importer.Model, st *modelState) {
 			}
 		}
 		r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: m.Fields[idx[0]].Source, Model: m.Name, Field: m.Fields[idx[0]].Name,
-			Message: "index " + name + " spans " + strings.Join(names, ", ") + "; composite indexes are not imported, declare it in the companion file"})
+			Message: "index " + name + " spans " + strings.Join(spans, ", ") + "; composite indexes are not imported, declare it in the companion file"})
 	}
 }
 
@@ -729,6 +835,9 @@ func (r *reader) addFK(from, to *importer.Model, who string, p relation, fkField
 			fk.OnDelete = strings.ToUpper(v)
 		case "onupdate":
 			fk.OnUpdate = strings.ToUpper(v)
+		case "":
+		default:
+			r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: p.pos, Model: p.model, Field: p.field, Message: "the constraint option " + strings.TrimSpace(part) + " is not imported; only OnDelete and OnUpdate are"})
 		}
 	}
 	r.rep.Add(importer.Change{Kind: importer.Naming, Source: p.pos, Model: from.Name, Field: field,
