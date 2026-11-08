@@ -31,7 +31,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
-- Reciprocal-rank-fusion hybrid search, `MERGE` builder and window-function API
+- Reciprocal-rank-fusion hybrid search, `MERGE` builder
   do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
   (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
   query builders) exists on PostgreSQL; combine it with a vector distance in
@@ -414,14 +414,18 @@ func (n *Note) MomoConfig(c *momo.Config) { c.IDGen(&n.ID, "ulid") }
   columns (or on the generated id for `DoNothing` without a target), so those
   columns must read back exactly as you wrote them; `citext`, `char(n)` and
   `numeric` columns may not. A returned row that matches no model fails with
-  `ErrValidation`; the statement has already run. If two models share a target
+  `ErrValidation` and the write is rolled back; only a pinned `OnConn` handle,
+  which cannot open a transaction, keeps it. If two models share a target
   value, the first one is matched. A non-primary-key generated column (such as a
   `public_id`) counts as a conflict case too, because the kept row has its own;
   the default `DO UPDATE` set of `Upsert` leaves such a column out, so a
-  conflict never replaces the stored value with a fresh one. A single-statement
-  insert that reads ids back runs in its own transaction (or savepoint), so a
-  mismatch rolls the write back, and the models are updated only after the
-  whole insert has committed.
+  conflict never replaces the stored value, even one you assigned; to overwrite
+  it, pass an explicit `DoUpdate` that sets it. A single-statement insert that
+  reads ids back runs in its own transaction (or savepoint), so a mismatch rolls
+  the write back, and the models are updated only after the whole insert has
+  committed. Inside your own `Tx` that means after the savepoint is released,
+  not after your outer commit: if you roll the outer transaction back, the
+  models still hold the ids of rows that no longer exist.
 - The generator is a client-side convenience, not a secret. A `cuid` is built
   from the time, a counter and a process fingerprint, so it is guessable: do not
   use it for tokens or anything that must be unpredictable. Use `uuid` (random,
@@ -716,6 +720,14 @@ dialect bind limit (PostgreSQL 65535, MySQL 65535, SQLite 32766, or a lower
 The check counts the binds rendered before the list; binds rendered after it
 are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 `In` renders a constant false and an empty `NotIn` a constant true.
+
+Two independent caps apply to a typed `In` or `NotIn` list. `WithMaxInList(n)`
+limits the number of values per list and fails the build with
+`ErrLimitExceeded`; it is for request-supplied lists. The bind limit above is
+the database ceiling for the whole statement and fails with `ErrValidation`.
+Both are checked at build time, the list cap first, so the stricter one wins.
+`SelectQuery.MaxRows(n)` is the matching cap on results: `All` and `Pluck`
+return `ErrLimitExceeded` instead of more than n rows, never a truncated slice.
 
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
@@ -1450,8 +1462,8 @@ Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-s
 
 Momo errors are `*momo.Error{Kind, Op, Table, Column, Constraint, Err}`. Check
 with `errors.Is(err, momo.ErrX)` (matches `Kind`) and reach the driver error with
-`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns driver detail
-that `Error()` hides. Never string-match error text.
+`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns the raw driver detail
+(for PostgreSQL the key text) that `Error()` hides. `Detail()` is unmasked and can quote sensitive values: never log it or return it to a client. Never string-match error text.
 
 ```go
 switch {
@@ -1508,8 +1520,22 @@ Rules:
 Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`.
 
-Pattern used by the examples (the harness is internal to the Momo module; copy
-the idea, not the package):
+Use the public kit `github.com/azrtydxb/momo/momotest` (see
+[testing.md](testing.md)):
+
+```go
+//go:build integration
+
+db := momotest.New(t, momotest.WithMigrations(app.Migrations()))  // schema per test, dropped after
+tx := momotest.NewTx(t, momotest.WithMigrations(app.Migrations())) // rolled back after; Commit refused
+momotest.Seed(t, tx, momotest.Insert(&org), momotest.Insert(&user))
+```
+
+It reads `MOMO_TEST_POSTGRES_URL` (skip when unset, fail when
+`MOMO_REQUIRE_INTEGRATION=1`), is safe with `t.Parallel` and `-race`, and
+`WithExtensions("vector")` creates the extension first. What it does, if you
+need to do it by hand (the examples' own harness is internal to the Momo
+module):
 
 1. Read an admin URL from an env var (the examples use `MOMO_TEST_POSTGRES_URL`);
    `t.Skip` when it is unset (and `t.Fatal` when your CI sets a require flag).
@@ -1549,6 +1575,31 @@ What to mock and what not:
 
 Examples: every `examples/*/example_test.go`, harness
 [examples/internal/exampletest](../examples/internal/exampletest/exampletest.go).
+
+### Observability and scoping helpers
+
+- `momolog.New(logger, opts...)` returns a `momo.Hook` that logs one record per
+  statement (op, table, relation, sql, duration, rows, err). Options: `Level`,
+  `SlowOver` (statements slower than the duration log at WARN) and `Values`.
+  Argument values are logged only with `Values(true)` and `momo.WithArgLogging`
+  together.
+- `momo.WithQueryScope(ctx)` groups statements for `momo.NewNPlusOneHook(threshold,
+report)`, a development hook that reports once per statement shape per scope
+  when the shape runs more than the threshold. Contexts without a scope are not
+  tracked; a scope tracks at most 1024 shapes; a panic in the report function is
+  recovered. A single batched relation load runs one statement per relation and does not trigger it.
+- `momo.WithTenant(ctx, tenant)` and `momo.TenantFilter(ctx, column)` add a
+  `column = tenant` predicate. This is an application-side convenience and NOT a
+  security boundary. It applies only where you add it to a `Where`: not to
+  Update or Delete, not to the tenant column of an Insert, not to Preload, Load
+  or LoadCounts, joins, subqueries or raw SQL. A missing tenant, or one whose Go
+  type is not exactly the column type, fails the build with `ErrValidation`
+  (also under Not and Or). The zero value is a real tenant. Enforce isolation
+  with PostgreSQL row-level security: it is configured by your own
+  `WithTxSetup` function, which reads whatever your code put in the context. To
+  drive both from `WithTenant`, read the tenant there and call
+  `SetConfigLocal`. Without `WithImplicitTx`, non-transactional queries get no
+  setting.
 
 ## 12. Rules for AI agents
 

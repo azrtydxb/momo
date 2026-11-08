@@ -315,7 +315,7 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		i, ok := byKey[idKey(q.meta, &got, keyCols)]
 		if !ok {
 			_ = rows.Close()
-			return Result{}, q.verr("", "idgen: a RETURNING row of %s matched no model on %s: the conflict-target columns must read back exactly as written (citext, char(n) and numeric columns may not); the statement ran", q.meta.Table, strings.Join(keyNames(q.meta, keyCols), ", "))
+			return Result{}, q.verr("", "idgen: a RETURNING row of %s matched no model on %s: the conflict-target columns must read back exactly as written (citext, char(n) and numeric columns may not); the write is rolled back unless the handle is a pinned OnConn one", q.meta.Table, strings.Join(keyNames(q.meta, keyCols), ", "))
 		}
 		if i >= len(q.back) || q.back[i] == nil {
 			continue

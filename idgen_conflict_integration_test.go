@@ -190,4 +190,62 @@ func TestIDGenConflictTargetThatDoesNotRoundTripFails(t *testing.T) {
 	if !errors.Is(err, momo.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
+	if n := idgenCount(t, db, "id_pad"); n != 0 {
+		t.Fatalf("a mismatch must roll the insert back, %d rows remain", n)
+	}
+	if m.ID != "" {
+		t.Fatalf("a mismatch must not write the id back: %q", m.ID)
+	}
+}
+
+// TestIDGenChunkedMismatchRollsBackAndKeepsModels proves the write-backs of
+// earlier chunks are not applied when a later chunk fails: the first chunk's
+// codes round-trip, the second chunk's are padded by char(8).
+func TestIDGenChunkedMismatchRollsBackAndKeepsModels(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	idgenExec(t, db, "DROP TABLE IF EXISTS id_pad",
+		"CREATE TABLE id_pad (id text primary key, code char(8) not null unique)")
+	code := momo.NewColumn[string]("id_pad", "code", momo.FlagUnique)
+	ms := []idPad{{Code: "abcdefgh"}, {Code: "bcdefghi"}, {Code: "cd"}, {Code: "de"}}
+	limited := momo.New(db.Driver(), momo.WithMaxParams(4)) // two rows per statement
+	_, err := momo.Insert[idPad](limited).Models(ms).OnConflict(code).DoNothing().Exec(ctx)
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if n := idgenCount(t, db, "id_pad"); n != 0 {
+		t.Fatalf("the failed chunk must roll every chunk back, %d rows remain", n)
+	}
+	for i, m := range ms {
+		if m.ID != "" {
+			t.Fatalf("model %d got id %q from a rolled-back insert", i, m.ID)
+		}
+	}
+	// The same chunks, all round-tripping, write every id back after commit.
+	ok := []idPad{{Code: "abcdefgh"}, {Code: "bcdefghi"}, {Code: "cdefghij"}, {Code: "defghijk"}}
+	if _, err := momo.Insert[idPad](limited).Models(ok).OnConflict(code).DoNothing().Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i, m := range ok {
+		if !reCUID.MatchString(m.ID) {
+			t.Fatalf("model %d id = %q", i, m.ID)
+		}
+	}
+}
+
+func idgenCount(t *testing.T, db *momo.DB, table string) int {
+	t.Helper()
+	rows, err := db.Driver().Query(context.Background(), "SELECT count(*) FROM "+table, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var n int
+	if !rows.Next() {
+		t.Fatal("no count row")
+	}
+	if err := rows.Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
