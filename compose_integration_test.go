@@ -49,10 +49,13 @@ func TestCompositionHelpers(t *testing.T) {
 			t.Fatalf("unknown field err = %v", err)
 		}
 		locked := momo.Select[suite.Document](db).ForUpdate("NOWAIT")
-		if _, err := locked.SQL(); err != nil && d == dialect.SQLite {
+		_, err = locked.SQL()
+		if d == dialect.SQLite {
 			if !errors.Is(err, momo.ErrUnsupported) {
-				t.Fatalf("sqlite NOWAIT err = %v", err)
+				t.Fatalf("sqlite FOR UPDATE NOWAIT err = %v, want ErrUnsupported", err)
 			}
+		} else if err != nil {
+			t.Fatalf("%s FOR UPDATE NOWAIT: %v", d, err)
 		}
 	})
 }

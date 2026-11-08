@@ -50,10 +50,12 @@ type Copier interface {
 }
 
 // ColumnNamer is implemented by Rows that can report the names of their result
-// columns, in order. MapRows needs it; a driver whose Rows lack it makes
-// MapRows return ErrUnsupported.
+// columns, in order, as the database reports them. MapRows needs it. Rows that
+// cannot report names return an empty slice and a nil error (the wrapper
+// momo puts around rows for hooks implements the interface for every driver),
+// which makes MapRows return ErrUnsupported.
 type ColumnNamer interface {
-	Columns() []string
+	Columns() ([]string, error)
 }
 
 // Batcher is implemented by drivers that send several statements in one round trip.

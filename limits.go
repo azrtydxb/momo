@@ -24,9 +24,11 @@ func (sq SelectQuery[T]) maxRowsError() error {
 	return &Error{Kind: ErrLimitExceeded, Op: "select", Table: sq.meta.Table, Err: fmt.Errorf("result has more than %d rows (MaxRows)", sq.s.maxRows)}
 }
 
-// WithMaxInList caps the number of values in one typed IN or NOT IN list at
-// n. A longer list fails the build with ErrLimitExceeded instead of reaching
-// the database. n must be positive: WithMaxInList panics otherwise, like
+// WithMaxInList caps the number of values in one typed IN or NOT IN list, and
+// in one In argument of raw SQL, at n. A longer list fails the build with
+// ErrLimitExceeded instead of reaching the database. Tuple IN lists that
+// momo builds itself for relation loading are not capped here: they are
+// chunked under the bind-parameter limit (WithMaxParams) instead. n must be positive: WithMaxInList panics otherwise, like
 // WithMaxParams. The dialect value is copied; the shared dialect is never
 // mutated.
 func WithMaxInList(n int) Option {

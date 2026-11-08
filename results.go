@@ -84,9 +84,12 @@ func FirstID[T any](ctx context.Context, sq SelectQuery[T]) (int64, error) {
 }
 
 // MapRows renders sql through the raw path (see Exec) and returns every row as
-// a map from column name to value. Values have the driver's native Go types.
-// It needs a driver whose rows implement ColumnNamer, and returns
-// ErrUnsupported otherwise. An empty result is a nil slice and a nil error.
+// a map from column name to value. Names are as the driver reports them (for
+// PostgreSQL, the folded column name or alias), and values have the driver's
+// native Go types. Two result columns with the same name are ambiguous in a
+// map, so they fail with ErrValidation: alias them in the SQL. It needs a
+// driver whose rows implement ColumnNamer and returns ErrUnsupported
+// otherwise. An empty result is a nil slice and a nil error.
 func MapRows(ctx context.Context, q Querier, sql string, args ...any) ([]map[string]any, error) {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	if err != nil {
@@ -98,15 +101,24 @@ func MapRows(ctx context.Context, q Querier, sql string, args ...any) ([]map[str
 	}
 	defer r.Close()
 	cn, ok := r.(ColumnNamer)
-	if !ok {
+	var names []string
+	if ok {
+		if names, err = cn.Columns(); err != nil {
+			return nil, err
+		}
+	}
+	if len(names) == 0 {
 		return nil, &Error{Kind: ErrUnsupported, Op: "select", Err: errors.New("the driver's rows cannot report column names")}
+	}
+	seen := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		if _, dup := seen[n]; dup {
+			return nil, &Error{Kind: ErrValidation, Op: "select", Err: errors.New("the result has two columns with the same name; alias them")}
+		}
+		seen[n] = struct{}{}
 	}
 	var out []map[string]any
 	for r.Next() {
-		names := cn.Columns()
-		if len(names) == 0 {
-			return nil, &Error{Kind: ErrUnsupported, Op: "select", Err: errors.New("the driver's rows cannot report column names")}
-		}
 		vals := make([]any, len(names))
 		ptrs := make([]any, len(names))
 		for i := range vals {
@@ -161,7 +173,7 @@ func (r pkRef) Table() string      { return r.table }
 // primary-key order, calling fn for each batch. It pages with keyset
 // pagination on the primary key, never OFFSET, so each row is visited exactly
 // once even while rows with higher keys are inserted, and a deep batch costs
-// the same as the first. sq must not set OrderBy, After, Limit or Offset:
+// the same as the first. sq must not set OrderBy, After, Limit, Offset or MaxRows:
 // Batches owns the order and the page window. An error from fn stops the
 // iteration and is returned.
 func Batches[T any](ctx context.Context, sq SelectQuery[T], n int, fn func([]T) error) error {
@@ -170,6 +182,9 @@ func Batches[T any](ctx context.Context, sq SelectQuery[T], n int, fn func([]T) 
 	}
 	if len(sq.s.order) > 0 || len(sq.s.keyset) > 0 || sq.s.limit >= 0 || sq.s.offset > 0 {
 		return &Error{Kind: ErrValidation, Op: "select", Table: sq.meta.Table, Err: errors.New("Batches owns ORDER BY, After, Limit and Offset; remove them from the query")}
+	}
+	if sq.s.maxRows > 0 {
+		return &Error{Kind: ErrValidation, Op: "select", Table: sq.meta.Table, Err: errors.New("MaxRows does not apply to Batches, which bounds every batch by its size; remove MaxRows from the query")}
 	}
 	if len(sq.meta.PK) == 0 || sq.meta.Value == nil {
 		return &Error{Kind: ErrValidation, Op: "select", Table: sq.meta.Table, Err: errors.New("Batches needs a model with a primary key")}

@@ -483,10 +483,7 @@ var (
 )
 
 // Columns reports the result column names (momo.ColumnNamer).
-func (r sqlRows) Columns() []string {
+func (r sqlRows) Columns() ([]string, error) {
 	names, err := r.r.Columns()
-	if err != nil {
-		return nil
-	}
-	return names
+	return names, ClassifyError(err)
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/obstest"
 )
 
 // Pluck selects only the given expression; the model's other columns stay out
@@ -62,14 +63,65 @@ func TestIDsAndFirstID(t *testing.T) {
 	}
 }
 
-// The total ignores LIMIT and OFFSET while the page keeps them. The scripted
-// rows are model-shaped, so the count scan itself fails; the two statements
-// are what this test inspects.
+// scriptedRows replays fixed rows and reports column names.
+type scriptedRows struct {
+	cols []string
+	rows [][]any
+	pos  int
+}
+
+func (r *scriptedRows) Next() bool                 { r.pos++; return r.pos <= len(r.rows) }
+func (r *scriptedRows) Err() error                 { return nil }
+func (r *scriptedRows) Close() error               { return nil }
+func (r *scriptedRows) Columns() ([]string, error) { return r.cols, nil }
+func (r *scriptedRows) Scan(dest ...any) error {
+	for i, d := range dest {
+		v := r.rows[r.pos-1][i]
+		switch p := d.(type) {
+		case *any:
+			*p = v
+		case *int64:
+			*p = v.(int64)
+		default:
+			return errors.New("scriptedRows: unsupported destination")
+		}
+	}
+	return nil
+}
+
+// scriptDriver answers statements for which pick returns rows and records all.
+type scriptDriver struct {
+	*fakedriver.Driver
+	pick func(sql string) *scriptedRows
+}
+
+func (d scriptDriver) Query(ctx context.Context, sql string, args []any) (momo.Rows, error) {
+	r, err := d.Driver.Query(ctx, sql, args)
+	if rs := d.pick(sql); rs != nil {
+		_ = r.Close()
+		return rs, nil
+	}
+	return r, err
+}
+
+// The page keeps LIMIT and OFFSET and returns its rows; the total ignores both.
 func TestFindAndCountStatements(t *testing.T) {
-	drv := fakedriver.New(dialect.SQLite)
-	drv.SetRows(threeRows())
-	_, _, _ = momo.FindAndCount(context.Background(), momo.Select[unitDocument](momo.New(drv)).OrderBy(DocID.Asc()).Limit(2).Offset(1))
-	calls := drv.Calls()
+	fake := fakedriver.New(dialect.SQLite)
+	fake.SetRows(threeRows())
+	drv := scriptDriver{fake, func(sql string) *scriptedRows {
+		if strings.HasPrefix(sql, "SELECT COUNT(*)") {
+			return &scriptedRows{cols: []string{"count"}, rows: [][]any{{int64(7)}}}
+		}
+		return nil
+	}}
+	page, total, err := momo.FindAndCount(context.Background(), momo.Select[unitDocument](momo.New(drv)).OrderBy(DocID.Asc()).Limit(2).Offset(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 3 || page[0].Title != "a" || total != 7 {
+		t.Fatalf("page = %v total = %d, want the scripted page and total 7", page, total)
+	}
+	calls := fake.Calls()
 	if len(calls) != 2 {
 		t.Fatalf("%d statements, want 2", len(calls))
 	}
@@ -78,6 +130,49 @@ func TestFindAndCountStatements(t *testing.T) {
 	}
 	if !strings.HasPrefix(calls[1].SQL, "SELECT COUNT(*)") || strings.Contains(calls[1].SQL, "LIMIT") || strings.Contains(calls[1].SQL, "OFFSET") {
 		t.Fatalf("count SQL = %s", calls[1].SQL)
+	}
+}
+
+func TestMapRows(t *testing.T) {
+	ctx := context.Background()
+	script := func(cols []string, rows ...[]any) momo.Driver {
+		return scriptDriver{fakedriver.New(dialect.Postgres), func(string) *scriptedRows {
+			return &scriptedRows{cols: cols, rows: rows}
+		}}
+	}
+	got, err := momo.MapRows(ctx, momo.New(script([]string{"id", "title"}, []any{int64(1), "a"}, []any{int64(2), "b"})), "SELECT id, title FROM documents")
+	if err != nil || len(got) != 2 || got[1]["title"] != "b" || got[0]["id"] != int64(1) {
+		t.Fatalf("MapRows = %v, %v", got, err)
+	}
+	// With a hook the rows are wrapped; names must still come through.
+	hooked := momo.New(script([]string{"id"}, []any{int64(1)}), momo.WithHook(&obstest.Recorder{}))
+	if got, err := momo.MapRows(ctx, hooked, "SELECT id FROM documents"); err != nil || len(got) != 1 {
+		t.Fatalf("hooked MapRows = %v, %v", got, err)
+	}
+	empty, err := momo.MapRows(ctx, momo.New(script([]string{"id"})), "SELECT id FROM documents WHERE false")
+	if err != nil || empty != nil {
+		t.Fatalf("empty result = %v, %v; want nil, nil", empty, err)
+	}
+	_, err = momo.MapRows(ctx, momo.New(script([]string{"id", "id"}, []any{int64(1), int64(2)})), "SELECT a.id, b.id FROM a, b")
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("duplicate names err = %v, want ErrValidation", err)
+	}
+	// A driver whose rows cannot name columns, bare or behind a hook wrapper.
+	for name, db := range map[string]*momo.DB{
+		"bare":   momo.New(fakedriver.New(dialect.Postgres)),
+		"hooked": momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(&obstest.Recorder{})),
+	} {
+		if _, err := momo.MapRows(ctx, db, "SELECT 1"); !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("%s: err = %v, want ErrUnsupported", name, err)
+		}
+	}
+}
+
+func TestBatchesRejectsMaxRows(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.Postgres))
+	err := momo.Batches(context.Background(), momo.Select[unitDocument](db).MaxRows(10), 2, func([]unitDocument) error { return nil })
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
 	}
 }
 

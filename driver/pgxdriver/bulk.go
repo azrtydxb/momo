@@ -256,12 +256,12 @@ func (r *bufferedRows) Scan(dest ...any) error {
 }
 
 // Columns reports the result column names (momo.ColumnNamer).
-func (r *bufferedRows) Columns() []string {
+func (r *bufferedRows) Columns() ([]string, error) {
 	names := make([]string, len(r.fields))
 	for i, f := range r.fields {
 		names[i] = f.Name
 	}
-	return names
+	return names, nil
 }
 
 func (r *bufferedRows) Err() error   { return nil }

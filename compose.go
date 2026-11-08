@@ -120,7 +120,7 @@ func fieldPredicate(col ColumnRef, op string, v any) (Predicate, error) {
 		if v == nil {
 			return nil, filterErr("a comparison needs a non-nil value; use null or notnull")
 		}
-		return binOp{col, sym, argExpr{v}}, nil
+		return binOp{col, sym, argExpr{v: v, flags: flagsOf(col)}}, nil
 	}
 	switch op {
 	case "null":
@@ -132,13 +132,13 @@ func fieldPredicate(col ColumnRef, op string, v any) (Predicate, error) {
 		if !ok {
 			return nil, filterErr("like needs a string pattern")
 		}
-		return like{e: col, p: s}, nil
+		return like{e: col, p: s, flags: flagsOf(col)}, nil
 	case "in":
 		vs, err := filterList(v)
 		if err != nil {
 			return nil, err
 		}
-		return inList[any]{col, vs, false}, nil
+		return inList[any]{e: col, vs: vs, flags: flagsOf(col)}, nil
 	}
 	return nil, filterErr("unknown filter operator")
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/obstest"
+	"github.com/azrtydxb/momo/internal/suite"
 )
 
 func TestScopeAppliesInOrder(t *testing.T) {
@@ -100,5 +102,29 @@ func TestFilterRejectsBadInput(t *testing.T) {
 	}
 	if _, err := deep.Predicate(al); !errors.Is(err, momo.ErrValidation) {
 		t.Fatalf("deep tree err = %v, want ErrValidation", err)
+	}
+}
+
+// A filter on a sensitive column must reach hooks as RedactedArg, for every
+// operator that binds a value, while the driver still gets the real value.
+// Fails if Filter builds its predicates without the column's flags.
+func TestFilterOnSensitiveColumnIsMasked(t *testing.T) {
+	al := momo.NewAllowlist(suite.DocSecret)
+	for _, f := range []momo.Filter{
+		{Field: "secret", Op: "eq", Value: sensitiveValue},
+		{Field: "secret", Op: "in", Value: []string{sensitiveValue}},
+		{Field: "secret", Op: "like", Value: sensitiveValue},
+	} {
+		p, err := f.Predicate(al)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := &obstest.Recorder{}
+		drv := fakedriver.New(dialect.Postgres)
+		db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
+		if _, err := momo.Select[suite.Document](db).Where(p).All(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		assertMasked(t, rec, drv)
 	}
 }
