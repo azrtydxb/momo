@@ -119,6 +119,9 @@ type ModelRows[T any] struct {
 	dest []any
 	// ctx is the statement's context, passed to the AfterLoad hook.
 	ctx context.Context
+	// noHooks skips the AfterLoad hook: internal reads of RETURNING rows (the
+	// id-generator reconcile) scan half-filled models that no hook may see.
+	noHooks bool
 }
 
 // Next advances to the next returned row.
@@ -137,6 +140,9 @@ func (r *ModelRows[T]) ScanModel(m *T) error {
 	}
 	if err := r.rows.Scan(r.dest...); err != nil {
 		return err
+	}
+	if r.noHooks {
+		return nil
 	}
 	return afterLoad(r.ctx, r.meta, m)
 }

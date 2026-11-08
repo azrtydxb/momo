@@ -40,9 +40,11 @@ type Operation struct {
 // and the like); subqueries and other sources rendered inside a statement
 // (subquery operands, UPDATE ... FROM, the FromSelect source of an insert);
 // raw SQL of any kind (Exec, MapRows, Scalars, SQL fragments and RawSubquery);
-// bulk loading with COPY; and anything run on the driver directly. SQL, and
-// so a statement built for inspection, runs interceptors with a background
-// context. See docs/PRIVACY_RULES.md.
+// bulk loading with COPY; and anything run on the driver directly. SQL runs
+// interceptors with a background context for Select, Update, SoftDelete and
+// Delete; InsertQuery.SQL (also for an Upsert) runs neither interceptors nor
+// hooks. The internal count that tells a stale version from a missing row
+// after a version-checked update is a Select, so select interceptors apply to it. See docs/PRIVACY_RULES.md.
 type Interceptor func(ctx context.Context, op *Operation) error
 
 // WithInterceptor attaches i to the handle. Several calls accumulate and run

@@ -13,7 +13,9 @@ import (
 //
 // A hook runs only for the builder kind it names and only when it is set:
 //   - BeforeInsert runs for each model of an Insert (Model, Models, Upsert)
-//     before the statement is built. The hook receives a copy of the model,
+//     before id generators run and before the statement is built, so it sees
+//     a zero id and an id it sets is not written back to the caller. It does
+//     not run for Values, ValuesRows or FromSelect inserts, which have no model. The hook receives a copy of the model,
 //     so it may change the values that are written without touching the
 //     caller's value.
 //   - BeforeUpdate runs for a Model update, on the caller's model.
