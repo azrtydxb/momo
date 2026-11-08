@@ -17,8 +17,8 @@ Split from plan momo-03-drivers Task 9 (`.procoder/plans/momo-03-drivers.md:990`
 
 ## Evidence
 
-CI run 42414158119 on 764d4d1 (workflow ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests ran and passed there.
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
 
-CI run 42414158119 on 764d4d1 (ci-agent) concluded success with the test passing.
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
 
 Red evidence: ci-agent run 42453837637 on throwaway branch worktree-agent-ac8514dccee058855-red (commit a900207, the code under test broken, tests kept, branch since deleted) failed: --- FAIL: TestPostgresSQLDBAdapter, with FromSQLDB reporting Vectors false so a capability differed unlisted.

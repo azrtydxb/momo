@@ -18,6 +18,8 @@ Implements plan momo-03-drivers Task 11: Read-replica routing with a unit of wor
 
 ## Evidence
 
-CI run 42414158119 on 764d4d1 (workflow ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests ran and passed there.
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
 
 Red evidence: ci-agent run 42453062663 on throwaway branch worktree-agent-ac8514dccee058855-red (commit 6f002a6, implementation reverted, tests kept, branch since deleted) failed: replica_test.go: package github.com/azrtydxb/momo FAIL [build failed]; undefined WithReplicas, NewUnitOfWork, AllowStaleReads, DB.Replica (TestReadReplicaRouting, TestReplicaUnsupportedWithoutReplicas).
+
+Mutation red evidence for the routing tests: ci-agent run 42456781179 on throwaway branch commit 9beff96 (branch deleted) failed TestReplicaRoutesWritesAndLocksToPrimary with every statement routed to the replica, and TestReplicaFailureFallsBackToPrimary with the connection-class check removed.

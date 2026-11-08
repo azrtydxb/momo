@@ -28,4 +28,6 @@ Red evidence: ci-agent run 42453837637 (throwaway branch, commit a900207, branch
 
 TestCLIRedactsURL was rewritten to pass a password-bearing URL as a stray argument, a bad rename-table value and a command name, because the earlier unreachable-host case never put the URL into an error and could not observe a missing redaction.
 
-CI run 42455880624 on be1cc36 (ci-agent) concluded success. Red evidence: ci-agent run 42455889339 on throwaway branch (commit ce6d727, RedactURLs made a no-op, tests kept, branch since deleted) failed --- FAIL: TestCLIRedactsURL in unit and integration.
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
+
+Mutation red evidence for the secrets path: ci-agent run 42456781179 on throwaway branch commit 9beff96 (branch deleted) failed TestCLISayAndErrfStripRegisteredSecrets and TestCLINoteURLRegistersPassword with l.secrets dropped from say and errf. Run 42455889339 earlier failed TestCLIRedactsURL with RedactURLs a no-op.

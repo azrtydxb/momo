@@ -17,8 +17,8 @@ Implements plan momo-04-migrations Task 22: PostgreSQL schemas and drift across 
 
 ## Evidence
 
-CI run 42414158119 on 764d4d1 (workflow ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests ran and passed there.
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
 
-CI run 42414158119 on 764d4d1 (ci-agent) concluded success with the test passing.
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
 
 Red evidence: ci-agent run 42453837637 on throwaway branch worktree-agent-ac8514dccee058855-red (commit a900207, the code under test broken, tests kept, branch since deleted) failed: --- FAIL: TestPostgresSchemas, with tableRef in migrate/postgres/render.go no longer schema-qualifying names.
