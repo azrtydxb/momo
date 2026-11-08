@@ -4,6 +4,7 @@ package momo_test
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -118,12 +119,20 @@ func TestAggregateGolden(t *testing.T) {
 func TestAggregateValidation(t *testing.T) {
 	title := DocTitle
 	bad := map[string]momo.Expr{
-		"separator backslash": momo.StringAgg(title, `a\`),
-		"json key backslash":  momo.JSONBBuildObject[item](momo.JSONField(`a\`, title)),
-		"function name":       momo.Aggregate[int64]("max; drop table x", title),
-		"no within group":     momo.PercentileCont(0.5),
-		"fraction range":      momo.PercentileCont(1.5).WithinGroup(title.Asc()),
-		"order and within":    momo.PercentileCont(0.5).WithinGroup(title.Asc()).OrderBy(title.Asc()),
+		"separator backslash":  momo.StringAgg(title, `a\`),
+		"json key backslash":   momo.JSONBBuildObject[item](momo.JSONField(`a\`, title)),
+		"function name":        momo.Aggregate[int64]("max; drop table x", title),
+		"no within group":      momo.PercentileCont(0.5),
+		"fraction range":       momo.PercentileCont(1.5).WithinGroup(title.Asc()),
+		"order and within":     momo.PercentileCont(0.5).WithinGroup(title.Asc()).OrderBy(title.Asc()),
+		"within on string_agg": momo.StringAgg(title, ",").WithinGroup(title.Asc()),
+		"within on generic":    momo.Aggregate[int64]("max", DocTenantID).WithinGroup(DocTenantID.Asc()),
+		"nil filter":           momo.StringAgg(title, ",").Filter(nil),
+		"nil json value":       momo.JSONBBuildObject[item](momo.JSONField("a", nil)),
+		"separator NUL":        momo.StringAgg(title, "a\x00b"),
+		"json key NUL":         momo.JSONBBuildObject[item](momo.JSONField("a\x00", title)),
+		"fraction NaN":         momo.PercentileCont(math.NaN()).WithinGroup(title.Asc()),
+		"fraction negative":    momo.PercentileDisc[int64](-0.1).WithinGroup(DocTenantID.Asc()),
 	}
 	for name, e := range bad {
 		if _, err := aggSQL(dialect.Postgres, e); !errors.Is(err, momo.ErrValidation) {

@@ -36,6 +36,7 @@ type aggSpec struct {
 	orderBy  []Order
 	within   []Order
 	filter   Predicate // FILTER (WHERE ...)
+	filtered bool      // Filter was called, possibly with a nil predicate
 	ordered  bool      // an ordered-set aggregate: WithinGroup is required
 	fraction float64   // rendered as the only argument when ordered
 }
@@ -56,7 +57,8 @@ func newAgg[T any](s aggSpec) AggExpr[T] {
 }
 
 // Aggregate is a typed call of the aggregate function name, rendered
-// name(args). name is validated like Func. Chain OrderBy for
+// name(args). name is validated like Func, and plain (non-Expr) arguments
+// are bound as parameters exactly as Func binds them, without masking. Chain OrderBy for
 // name(args ORDER BY ...). Momo cannot verify that T is what the function
 // returns.
 func Aggregate[T any](name string, args ...any) AggExpr[T] {
@@ -85,7 +87,7 @@ func (a AggExpr[T]) WithinGroup(o ...Order) AggExpr[T] {
 // StringAgg(...).OrderBy(...).Filter(p) works, in either order. PostgreSQL
 // and SQLite support it; MySQL fails the build with ErrUnsupported.
 func (a AggExpr[T]) Filter(p Predicate) AggExpr[T] {
-	a.spec.filter = p
+	a.spec.filter, a.spec.filtered = p, true
 	return newAgg[T](a.spec)
 }
 
@@ -124,7 +126,18 @@ func (s aggSpec) appendArgs(b *Builder) {
 
 func (s aggSpec) appendSQL(b *Builder) {
 	s.appendCall(b)
-	if s.filter == nil {
+	if s.filtered {
+		appendFilter(b, s.filter)
+	}
+}
+
+// appendFilter renders " FILTER (WHERE p)". A nil predicate fails the build
+// with ErrValidation instead of silently leaving the aggregate unfiltered;
+// MySQL has no FILTER clause. It is the one place that renders the clause so
+// other aggregate types can share it.
+func appendFilter(b *Builder, p Predicate) {
+	if p == nil {
+		aggErr(b, errors.New("Filter needs a predicate"))
 		return
 	}
 	if b.d.Name == dialect.MySQL {
@@ -132,7 +145,7 @@ func (s aggSpec) appendSQL(b *Builder) {
 		return
 	}
 	b.WriteString(" FILTER (WHERE ")
-	s.filter.AppendSQL(b)
+	p.AppendSQL(b)
 	b.writeByte(')')
 }
 
@@ -147,6 +160,9 @@ func (s aggSpec) appendCall(b *Builder) {
 		return
 	case s.ordered && (math.IsNaN(s.fraction) || s.fraction < 0 || s.fraction > 1):
 		aggErr(b, fmt.Errorf("%s fraction %v is outside 0 to 1", s.name, s.fraction))
+		return
+	case len(s.within) > 0 && !s.ordered:
+		aggErr(b, errors.New("WithinGroup applies only to ordered-set aggregates (PercentileCont, PercentileDisc); use OrderBy for the order inside the call"))
 		return
 	case len(s.within) > 0 && b.d.Name != dialect.Postgres:
 		b.unsupported("WITHIN GROUP")
@@ -256,7 +272,8 @@ func ArrayAgg[T any](e Expression[T]) AggExpr[[]T] {
 // PostgreSQL, json_group_array on SQLite, JSON_ARRAYAGG on MySQL (which has
 // no OrderBy). T is the element type the array decodes into, for example
 // JSONBAgg[Item](JSONBBuildObject[Item](...)). Without a matching row the
-// result is NULL; wrap it in CoalesceExpr with EmptyJSONArray.
+// result is NULL on PostgreSQL and MySQL and '[]' on SQLite; wrap it in
+// CoalesceExpr with EmptyJSONArray to get an empty array everywhere.
 func JSONBAgg[T any](e Expr) AggExpr[types.JSON[[]T]] {
 	return newAgg[types.JSON[[]T]](aggSpec{kind: aggJSON, args: []any{e}})
 }
@@ -320,6 +337,10 @@ func (o JSONObjectExpr[T]) AppendSQL(b *Builder) {
 	for i, p := range o.pairs {
 		if i > 0 {
 			b.WriteString(", ")
+		}
+		if p.Value == nil {
+			aggErr(b, fmt.Errorf("JSON field %q has no value expression", p.Key))
+			return
 		}
 		lit, ok := sqlStringLiteral(b, "JSON key", p.Key)
 		if !ok {
