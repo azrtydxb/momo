@@ -27,10 +27,10 @@ func DOT(tables []schema.Table, edges []Edge) []byte {
 	for _, t := range tables {
 		marks := keyMarks(t)
 		b.WriteString("    " + dotID(t.Name) + " [label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\">")
-		b.WriteString("<TR><TD COLSPAN=\"3\"><B>" + html.EscapeString(t.Name) + "</B></TD></TR>")
+		b.WriteString("<TR><TD COLSPAN=\"3\"><B>" + html.EscapeString(oneLine(t.Name)) + "</B></TD></TR>")
 		for _, c := range t.Columns {
-			b.WriteString("<TR><TD ALIGN=\"LEFT\">" + html.EscapeString(c.Name) + "</TD><TD ALIGN=\"LEFT\">" +
-				html.EscapeString(c.Type) + "</TD><TD>" + html.EscapeString(strings.Join(marks[c.Name], " ")) + "</TD></TR>")
+			b.WriteString("<TR><TD ALIGN=\"LEFT\">" + html.EscapeString(oneLine(c.Name)) + "</TD><TD ALIGN=\"LEFT\">" +
+				html.EscapeString(oneLine(c.Type)) + "</TD><TD>" + html.EscapeString(strings.Join(marks[c.Name], " ")) + "</TD></TR>")
 		}
 		b.WriteString("</TABLE>>];\n")
 	}
@@ -51,9 +51,22 @@ func DOT(tables []schema.Table, edges []Edge) []byte {
 
 // dotID quotes s as a DOT string.
 func dotID(s string) string {
-	s = strings.ReplaceAll(s, "\r", " ")
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	return `"` + s + `"`
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch {
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r == '"':
+			b.WriteString(`\"`)
+		case r == '\n':
+			b.WriteString(`\n`) // a DOT line break escape
+		case isLineControl(r):
+			b.WriteByte(' ')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
