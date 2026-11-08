@@ -186,3 +186,39 @@ func TestEmitPrintsTheParsedType(t *testing.T) {
 		t.Fatalf("the comment leaked into the model or swallowed the tag:\n%s", out)
 	}
 }
+
+func TestEmitKeysNamesAndRelations(t *testing.T) {
+	root := t.TempDir()
+	ms := []Model{{
+		Name: "Comment", Table: "comments", Source: "m.go:1:1",
+		Fields: []Field{
+			{Name: "ID", Column: "id", GoType: "uint", SQLType: "bigint", PK: true, Serial: true, Source: "m.go:2:2"},
+			{Name: "PostID", Column: "post_id", GoType: "uint", SQLType: "bigint", Index: true, IndexName: "idx_comments_post", Source: "m.go:3:2"},
+			{Name: "Slug", Column: "slug", GoType: "string", SQLType: "text", Nullable: true, Unique: true, Source: "m.go:4:2"},
+			{Name: "Code", Column: "code", GoType: "string", SQLType: "text", Unique: true, UniqueIndex: true, UniqueName: "idx_code", Source: "m.go:5:2"},
+		},
+		ForeignKeys: []ForeignKey{{Name: "fk_posts_comments", Field: "Post", RefModel: "Post", FKField: "PostID", OnDelete: "SET NULL", OnUpdate: "CASCADE"}},
+	}}
+	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	if err := Emit(ms, &Report{}, w, filepath.Join(root, "models"), "models"); err != nil {
+		t.Fatal(err)
+	}
+	got := string(w.Outputs()[0].Data)
+	for _, want := range []string{
+		"`momo:\"pk,serial,column:id,type:bigint\"`",
+		"`momo:\"column:post_id,type:bigint,notnull,index:idx_comments_post\"`",
+		"`momo:\"column:slug,type:text,nullable,unique\"`",
+		"`momo:\"column:code,type:text,notnull,unique:idx_code\"`",
+		"`momo:\"belongs_to,fk:PostID,on_delete:set_null,on_update:cascade\"`",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("emitted source lacks %q:\n%s", want, got)
+		}
+	}
+	bad := ms
+	bad[0].ForeignKeys = []ForeignKey{{Field: "Post", RefModel: "Post", FKField: "Post ID"}}
+	w = gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	if err := Emit(bad, &Report{}, w, filepath.Join(root, "models"), "models"); err == nil {
+		t.Fatal("Emit accepted a relation with a bad key field name")
+	}
+}

@@ -20,6 +20,11 @@ import (
 // carry the generated header.
 var ErrHandwritten = errors.New("refusing to overwrite a handwritten file")
 
+// ErrDanglingSymlink is returned when an output path is a symbolic link that
+// does not resolve: where it would lead is unknown, so it cannot be shown to
+// stay inside the module root.
+var ErrDanglingSymlink = errors.New("symbolic link does not resolve")
+
 // ErrCollision is returned when two different outputs map to one path.
 var ErrCollision = errors.New("two different outputs for one path")
 
@@ -74,7 +79,7 @@ func (w *Writer) contained(path string) (bool, error) {
 	// by its parent. Where it would lead is unknown, so refuse it.
 	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
 		if _, err := filepath.EvalSymlinks(path); err != nil {
-			return false, nil
+			return false, fmt.Errorf("%s: %w", path, ErrDanglingSymlink)
 		}
 	}
 	root, err := resolveExisting(w.options.ModuleRoot)
@@ -198,9 +203,11 @@ func (w *Writer) Text(path string, data []byte) error {
 // Scaffold buffers data as the content of path only when path does not exist
 // yet. A scaffold is a starting point the user owns, not a generated file: it
 // carries no header and is never overwritten, so a later run leaves the
-// user's edits alone. Any existing path is skipped, including a generated
-// file, a directory and a symbolic link, and nothing reports that it was
-// skipped. Go source is not formatted.
+// user's edits alone. Any existing path is skipped without a report, including
+// a generated file, a directory and a symbolic link that resolves inside the
+// module root. The path itself must still be inside the root: a symbolic link
+// that resolves outside it is refused, and a dangling one fails with
+// ErrDanglingSymlink. Go source is not formatted.
 func (w *Writer) Scaffold(path string, data []byte) error {
 	path, err := w.confine(path)
 	if err != nil {
