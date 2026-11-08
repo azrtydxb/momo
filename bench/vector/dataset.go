@@ -20,18 +20,45 @@ type Dataset struct {
 }
 
 // Generate returns n vectors and queries query vectors of dimension dim, all
-// normalized to unit length, from a deterministic source.
+// normalized to unit length, from a deterministic source. The vectors are
+// clustered around one center per 500 vectors, the way embeddings of real text
+// are: uniformly random vectors in hundreds of dimensions are all about equally
+// far apart, which no approximate index can search at a useful recall. Queries
+// are drawn from the same clusters.
 func Generate(n, queries, dim int, seed int64) Dataset {
 	r := rand.New(rand.NewSource(seed)) // #nosec G404 -- deterministic benchmark data
+	centers := make([][]float32, max(1, n/500))
+	for i := range centers {
+		centers[i] = unit(r, dim)
+	}
+	draw := func() []float32 {
+		c := centers[r.Intn(len(centers))]
+		noise := unit(r, dim)
+		v := make([]float32, dim)
+		var sum float64
+		for i := range v {
+			v[i] = c[i] + clusterSpread*noise[i]
+			sum += float64(v[i]) * float64(v[i])
+		}
+		norm := float32(math.Sqrt(sum))
+		for i := range v {
+			v[i] /= norm
+		}
+		return v
+	}
 	ds := Dataset{Dim: dim, Vectors: make([][]float32, n), Queries: make([][]float32, queries)}
 	for i := range ds.Vectors {
-		ds.Vectors[i] = unit(r, dim)
+		ds.Vectors[i] = draw()
 	}
 	for i := range ds.Queries {
-		ds.Queries[i] = unit(r, dim)
+		ds.Queries[i] = draw()
 	}
 	return ds
 }
+
+// clusterSpread is the length of the random offset added to a unit cluster
+// center before the vector is normalized again.
+const clusterSpread = 0.4
 
 func unit(r *rand.Rand, dim int) []float32 {
 	v := make([]float32, dim)
