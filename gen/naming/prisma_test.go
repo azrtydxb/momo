@@ -12,7 +12,7 @@ func TestPrismaPreset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for model, want := range map[string]string{"KbChunk": "KbChunk", "Account": "Account"} {
+	for model, want := range map[string]string{"KbChunk": "KbChunk", "Account": "Account", "HTTPLog": "HTTPLog", "A": "A", "": ""} {
 		if got := n.TableName(model); got != want {
 			t.Errorf("TableName(%q)=%q want %q", model, got, want)
 		}
@@ -20,6 +20,8 @@ func TestPrismaPreset(t *testing.T) {
 	for field, want := range map[string]string{
 		"CreatedAt": "createdAt", "ID": "id", "AccountID": "accountId", "Email": "email",
 		"HTTPServer": "httpServer", "TenantIDNumber": "tenantIdNumber", "Version2": "version2",
+		"UserIDs": "userIds", "IDs": "ids", "A": "a", "": "", "Version2ID": "version2Id",
+		"ID2": "id2", "Identity": "identity", "AccountIDs2": "accountIDs2",
 	} {
 		if got := n.ColumnName(field); got != want {
 			t.Errorf("ColumnName(%q)=%q want %q", field, got, want)

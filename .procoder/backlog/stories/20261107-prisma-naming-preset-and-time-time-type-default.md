@@ -20,7 +20,7 @@ means a hand-written Prisma DDL database diffs clean against the models.
 - [x] `naming.ByName("prisma")` returns a preset whose table name is the model name and whose column names are camelCase (unit test).
 - [x] Constraint and index names come out as `<Table>_pkey`, `<Table>_<col>_fkey`, `<Table>_<col>_key`, `<Table>_<col>_idx` for a prisma-named model (schema test).
 - [x] momo.yaml accepts `types: {time.Time: ...}`, rejects other keys, and the value reaches the generator (config test).
-- [x] An integration test creates the tables as Prisma would (timestamp(3), constraint names) and `migrate diff` against the prisma-preset models reports no change, while models without the type default do report one.
+- [x] An integration test creates the tables with hand-written Prisma-style DDL (timestamp(3), constraint names) and `migrate diff` against the prisma-preset models reports no change, while models without the type default do report one.
 - [x] docs/ai-guide.md and docs/TYPE_MAPPING.md document the preset and the type default.
 - [x] CI is green on the final commit including integration jobs.
 

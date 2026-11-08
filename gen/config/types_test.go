@@ -40,6 +40,11 @@ func TestTypesSection(t *testing.T) {
 	for _, body := range []string{
 		"version: 1\ntypes:\n  string: citext\n",
 		"version: 1\ntypes:\n  time.Time: \"\"\n",
+		"version: 1\ntypes:\n  time.Time: \"timestamp(3); DROP TABLE x\"\n",
+		"version: 1\ntypes:\n  time.Time: \"timestamp(3)'\"\n",
+		"version: 1\ntypes:\n  time.Time: \"\\\"timestamp\\\"\"\n",
+		"version: 1\ntypes:\n  time.Time: text\n",
+		"version: 1\ntypes:\n  time.Time: timestamp(7)\n",
 	} {
 		if _, err := Load(writeConfig(t, body)); err == nil || !strings.Contains(err.Error(), "types:") {
 			t.Errorf("Load(%q) err = %v, want a types: error", body, err)

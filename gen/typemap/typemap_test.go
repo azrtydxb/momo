@@ -62,6 +62,8 @@ func TestGeneratorTypeMapFullTable(t *testing.T) {
 		{"types.UUID", tags.Tags{}, "uuid", "TEXT"},
 		{"types.Date", tags.Tags{}, "date", "TEXT"},
 		{"vector.Vector", d3, "vector(3)", ""},
+		{"vector.Vector", tags.Tags{}, "vector", ""},
+		{"vector.HalfVector", tags.Tags{}, "halfvec", ""},
 		{"vector.HalfVector", d3, "halfvec(3)", ""},
 		{"vector.SparseVector", d3, "sparsevec(3)", ""},
 		{"vector.Bits", d3, "bit(3)", ""},
@@ -117,7 +119,8 @@ func TestGeneratorTypeMapUnsupported(t *testing.T) {
 		{"mypkg.Custom", dialect.Postgres, tags.Tags{}},
 		{"", dialect.Postgres, tags.Tags{}},
 		{"int64", dialect.MySQL, tags.Tags{}},
-		{"vector.Vector", dialect.Postgres, tags.Tags{}}, // missing dim tag
+		{"vector.SparseVector", dialect.Postgres, tags.Tags{}}, // missing dim tag
+		{"vector.Bits", dialect.Postgres, tags.Tags{}},         // missing dim tag
 		{"vector.Vector", dialect.SQLite, tags.Tags{Dim: 3}},
 	}
 	for _, c := range bad {

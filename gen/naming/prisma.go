@@ -43,6 +43,9 @@ func (Prisma) JoinTableName(owner, target string) string {
 }
 
 func prismaCamel(s string) string {
+	if s == "IDs" {
+		return "ids"
+	}
 	rs := []rune(s)
 	n := 0
 	for n < len(rs) && unicode.IsUpper(rs[n]) {
@@ -63,7 +66,9 @@ func prismaCamel(s string) string {
 		if !(unicode.IsLower(prev) || unicode.IsDigit(prev)) {
 			continue
 		}
-		if i+2 == len(rs) || unicode.IsUpper(rs[i+2]) {
+		// The word ends at the end of the name, before an upper-case letter,
+		// or before a plural s that ends the name (UserIDs becomes userIds).
+		if i+2 == len(rs) || unicode.IsUpper(rs[i+2]) || (rs[i+2] == 's' && i+3 == len(rs)) {
 			rs[i+1] = 'd'
 		}
 	}
