@@ -482,8 +482,10 @@ for usage or configuration errors, and 3 for database errors.
   rank and headline builders and hybrid vector plus text ranking.
 - [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md) maps every Go type to its
   column type.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the layers and
-  contracts.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the packages and
+  how they layer.
+- [docs/upgrading.md](docs/upgrading.md) lists breaking changes between
+  releases and how to rewrite your code.
 - [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build and test Momo.
 - [SECURITY.md](SECURITY.md) explains how to report a vulnerability.
 - [LICENSE](LICENSE) is Apache-2.0.

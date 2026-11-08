@@ -20,16 +20,16 @@ MariaDB. This page describes what is built. Every Go snippet below is an `Exampl
   `momo.ErrUnsupported` from a migration, with the extension named in the
   message. A search settings call checks the installed version the same way.
 
-## Not yet available
+## Not available
 
-These parts of the vector plan are not built on this branch, so there is no
-API to document yet:
-
-- Hybrid search: PostgreSQL full-text plus vector search fused by reciprocal
-  rank (planned options `TextCandidates`, `VectorCandidates` and `RRFK`, with
-  k=60 as the default) does not exist yet.
-- MySQL and MariaDB: see "MariaDB and MySQL" below. The migration engine for
-  MySQL does not exist yet, so no tool creates VECTOR columns or indexes.
+- Hybrid search: Momo has no built-in fusion of PostgreSQL full-text and vector
+  results. Combine a distance and a text rank yourself; see the hybrid pattern
+  in [full-text search](fulltext.md).
+- MySQL: the server stores vectors but has no distance function, so a distance
+  query fails with `ErrUnsupported`; see "MariaDB and MySQL" below. The
+  `momo migrate` command runs PostgreSQL only, and `migrate/mysql` renders its
+  statements as-is, so a MySQL or MariaDB `VECTOR` column is created by your
+  own DDL.
 
 ## Value types
 

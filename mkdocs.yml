@@ -59,5 +59,6 @@ nav:
       - Capabilities: capabilities.md
       - Performance: PERFORMANCE.md
       - Supported versions: supported-versions.md
+      - Upgrading: upgrading.md
       - Architecture: ARCHITECTURE.md
   - Contributing: contributing.md

@@ -20,7 +20,7 @@ is written as a literal in those files: a naming strategy set in another
 package, or an index added by a migration, is not visible. Each reader's
 package comment lists its limits.
 
-The `momo import` command is not wired yet (story 228). Today the readers are a
+The `momo import` command is not wired yet. Today the readers are a
 Go API: call `Read`, check the report, then `Emit`.
 
 ## The import report
