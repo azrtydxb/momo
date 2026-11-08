@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -338,6 +339,114 @@ type Note struct {
 	}
 	if got := rep.Of(importer.Unsupported); len(got) != 1 {
 		t.Fatalf("the Deferrable option is not imported and must be reported: %s", rep)
+	}
+}
+
+// Each of these is a place where gorm's own rules differ from a first guess.
+func TestReadFollowsGormTagSemantics(t *testing.T) {
+	models, rep := readSource(t, `package m
+
+import (
+	"database/sql"
+	"time"
+
+	"gorm.io/gorm"
+)
+
+type A struct {
+	ID    uint `+"`gorm:\"primaryKey;autoIncrement\"`"+`
+	Other uint `+"`gorm:\"autoIncrement\"`"+`
+	Age   int  `+"`gorm:\"size:16\"`"+`
+	Big   uint `+"`gorm:\"size:31\"`"+`
+	At    time.Time `+"`gorm:\"precision:3\"`"+`
+	NAt   sql.NullTime `+"`gorm:\"precision:6\"`"+`
+	NS    sql.NullString `+"`gorm:\"size:40\"`"+`
+	NF    sql.NullFloat64 `+"`gorm:\"precision:10;scale:2\"`"+`
+	CreatedAt time.Time
+	UpdatedAt int64
+	Typed uint `+"`gorm:\"primaryKey;autoIncrement;type:bigint\"`"+`
+}
+
+type C struct {
+	TenantID uint `+"`gorm:\"primaryKey\"`"+`
+	Seq      uint `+"`gorm:\"primaryKey;autoIncrement\"`"+`
+}
+
+type P struct {
+	gorm.Model `+"`gorm:\"embeddedPrefix:p_\"`"+`
+}
+`)
+	a, c, p := models[0], models[1], models[2]
+	if f := field(t, a, "Other"); !f.Serial {
+		t.Fatalf("a bare autoIncrement switches it on for a non-key field: %+v", f)
+	}
+	if f := field(t, c, "Seq"); !f.Serial || field(t, c, "TenantID").Serial {
+		t.Fatalf("a composite key keeps the serial only where autoIncrement was written: %+v", c.Fields)
+	}
+	for name, want := range map[string]string{
+		"Age": "smallint", "Big": "integer", "At": "timestamptz(3)", "NAt": "timestamptz(6)",
+		"NS": "varchar(40)", "NF": "numeric(10,2)",
+	} {
+		if got := field(t, a, name).SQLType; got != want {
+			t.Errorf("%s: %s, want %s", name, got, want)
+		}
+	}
+	var set []string
+	for _, c := range rep.Of(importer.GoDefault) {
+		if !modelsPosition.MatchString(c.Source) {
+			t.Errorf("GoDefault for %s.%s has no models.go position: %q", c.Model, c.Field, c.Source)
+		}
+		set = append(set, c.Model+"."+c.Field)
+	}
+	sort.Strings(set)
+	if strings.Join(set, " ") != "A.CreatedAt A.UpdatedAt P.CreatedAt P.UpdatedAt" {
+		t.Fatalf("CreatedAt and UpdatedAt are set in Go by name, also through gorm.Model: %v\n%s", set, rep)
+	}
+	if got := len(rep.Of(importer.Naming)); got != 1 {
+		t.Fatalf("type: on an auto-increment column is reported: %d\n%s", got, rep)
+	}
+	if f := field(t, p, "DeletedAt"); f.Column != "p_deleted_at" || f.IndexName != "idx_ps_deleted_at" {
+		t.Fatalf("embeddedPrefix on gorm.Model: %+v", f)
+	}
+}
+
+func TestReadGormEdgeCases(t *testing.T) {
+	models, rep := readSource(t, `package m
+
+import (
+	"database/sql"
+	"time"
+)
+
+type E struct {
+	ID        uint      `+"`gorm:\"primaryKey;autoIncrement:false\"`"+`
+	Off       uint      `+"`gorm:\"autoIncrement:\"`"+`
+	Price     float64   `+"`gorm:\"precision:10\"`"+`
+	Byte      sql.NullByte `+"`gorm:\"size:8\"`"+`
+	CreatedAt string
+	UpdatedAt time.Time
+	Named     string `+"`gorm:\"column:alias;index\"`"+`
+}
+`)
+	e := models[0]
+	if field(t, e, "ID").Serial {
+		t.Fatalf("autoIncrement:false switches the serial off: %+v", field(t, e, "ID"))
+	}
+	if field(t, e, "Off").Serial {
+		t.Fatalf("an empty autoIncrement value is off, as in gorm: %+v", field(t, e, "Off"))
+	}
+	if got := field(t, e, "Price").SQLType; got != "numeric(10)" {
+		t.Fatalf("precision without scale: %s", got)
+	}
+	if got := field(t, e, "Byte").SQLType; got != "smallint" {
+		t.Fatalf("sql.NullByte with size 8 is unsigned, so nine bits: %s", got)
+	}
+	if f := field(t, e, "Named"); f.Column != "alias" || f.IndexName != "idx_es_named" {
+		t.Fatalf("the default index name follows the Go field, not the column tag: %+v", f)
+	}
+	got := rep.Of(importer.GoDefault)
+	if len(got) != 1 || got[0].Field != "UpdatedAt" || got[0].Model != "E" || !modelsPosition.MatchString(got[0].Source) {
+		t.Fatalf("only the time-typed UpdatedAt is set in Go by name; a string CreatedAt is not: %+v", got)
 	}
 }
 

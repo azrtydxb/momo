@@ -36,8 +36,8 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only in the CLI. No `migrate rollback`, `new`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
 - No command turns a database into models. Write models by hand.
-- Reciprocal-rank-fusion hybrid search, `MERGE` builder
-  do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
+- Reciprocal-rank-fusion hybrid search
+  does not exist. Use `momo.SQL` / `momo.TypedSQL` for it. Full-text search
   (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
   query builders) exists on PostgreSQL; combine it with a vector distance in
   one score as shown in [fulltext.md](fulltext.md).
@@ -1087,6 +1087,13 @@ res, err := momo.Insert[models.Meter](q).
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
   Explicit identity or serial values do not advance the sequence: `setval` it yourself.
   A `FromSelect` into a serial table cannot supply ids at all (`ErrValidation`).
+
+Bulk and set-based writes (PostgreSQL):
+
+- `Insert[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and through `FromSQLDB`. It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
+- `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server, a driver without `ServerVersioner`, or SQLite returns `ErrUnsupported` before the statement runs. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
+- `BulkUpdate` updates only the keys in its row list, binds one parameter per value (over the limit is `ErrLimitExceeded`, it does not chunk), and keeps the version and updated-at columns current.
+- `Truncate` is `TRUNCATE TABLE` (no `RESTART IDENTITY`, no `CASCADE`), and `DELETE FROM` plus a sequence reset on SQLite. It runs the interceptors with the kind `truncate`, which a tenant-scoped handle should deny, and MySQL refuses it inside a transaction.
 
 Raw SQL (escape hatches; the SQL text must be a constant, pass user input only
 as arguments):

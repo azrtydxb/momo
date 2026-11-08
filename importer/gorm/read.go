@@ -34,6 +34,10 @@ var namer = naming.GORM{}
 // foreignKey and constraint. It recognises gorm.Model embedding and TableName
 // methods that return a string literal.
 //
+// Limit: a NamingStrategy is only detected as a composite literal key in the
+// Go files of dir. One configured in another package, or assigned after the
+// fact, is not seen; the importer assumes GORM's default naming then.
+//
 // Always reported: implicit-save for every association field (GORM saves
 // associations with their parent), zero-value-handling for every non-pointer
 // field with a default (GORM replaces a zero value with the default on create,
@@ -137,7 +141,7 @@ func (r *reader) collect(f *ast.File) {
 		}
 		if id, ok := kv.Key.(*ast.Ident); ok && id.Name == "NamingStrategy" {
 			r.rep.Add(importer.Change{Kind: importer.Naming, Source: r.pos(kv.Pos()),
-				Message: "a gorm NamingStrategy is configured here (for example SingularTable or TablePrefix); the importer assumes GORM's default naming, so check the table and column names of the imported models"})
+				Message: "a gorm NamingStrategy is configured here (for example SingularTable or TablePrefix); the importer assumes GORM's default naming, so check the table and column names of the imported models. Only literals in the files of the read directory are detected: a NamingStrategy set in another package is not"})
 		}
 		return true
 	})
@@ -211,6 +215,9 @@ func (r *reader) parseTag(f *ast.Field, model string) (map[string]string, map[st
 		k, v, _ := strings.Cut(part, ":")
 		k = strings.ToUpper(strings.TrimSpace(k))
 		v = strings.TrimSpace(v)
+		if k == "AUTOINCREMENT" && !strings.Contains(part, ":") {
+			v = "true" // gorm gives a bare key the value of its own name, which is true
+		}
 		if !knownKeys[k] {
 			r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: r.pos(f.Pos()), Model: model, Field: fieldNames(f),
 				Message: "the gorm tag option " + strings.ToLower(k) + " is not imported (check, comment, references and the like); declare it in Momo's companion file or convert the field by hand"})
@@ -421,12 +428,16 @@ func (r *reader) fields(m *importer.Model, st *modelState, si *structInfo, prefi
 func (r *reader) embedded(m *importer.Model, st *modelState, si *structInfo, f *ast.Field, tag map[string]string, prefix string, stack map[string]bool) []relation {
 	pos := r.pos(f.Pos())
 	if r.isGormSel(si, f.Type, "Model") {
+		p := prefix + tag["EMBEDDEDPREFIX"]
 		m.Fields = append(m.Fields,
-			importer.Field{Name: "ID", Column: prefix + "id", GoType: "uint", SQLType: "bigint", PK: true, Serial: true, Source: pos},
-			importer.Field{Name: "CreatedAt", Column: prefix + "created_at", GoType: "time.Time", SQLType: "timestamptz", Nullable: true, Source: pos},
-			importer.Field{Name: "UpdatedAt", Column: prefix + "updated_at", GoType: "time.Time", SQLType: "timestamptz", Nullable: true, Source: pos},
-			importer.Field{Name: "DeletedAt", Column: prefix + "deleted_at", GoType: "*time.Time", SQLType: "timestamptz", Nullable: true, Index: true, IndexName: "idx_" + m.Table + "_" + prefix + "deleted_at", Source: pos},
+			importer.Field{Name: "ID", Column: p + "id", GoType: "uint", SQLType: "bigint", PK: true, Serial: true, Source: pos},
+			importer.Field{Name: "CreatedAt", Column: p + "created_at", GoType: "time.Time", SQLType: "timestamptz", Nullable: true, Source: pos},
+			importer.Field{Name: "UpdatedAt", Column: p + "updated_at", GoType: "time.Time", SQLType: "timestamptz", Nullable: true, Source: pos},
+			importer.Field{Name: "DeletedAt", Column: p + "deleted_at", GoType: "*time.Time", SQLType: "timestamptz", Nullable: true, Index: true, IndexName: "idx_" + m.Table + "_deleted_at", Source: pos},
 		)
+		for _, name := range []string{"CreatedAt", "UpdatedAt"} {
+			r.rep.Add(importer.Change{Kind: importer.GoDefault, Source: pos, Model: m.Name, Field: name, Message: "GORM sets " + name + " (from gorm.Model) in Go on create or update; Momo needs a created_at or updated_at tag or a database default"})
+		}
 		r.rep.Add(importer.Change{Kind: importer.RenamedType, Source: pos, Model: m.Name, Field: "DeletedAt", Message: "gorm.DeletedAt becomes *time.Time; soft delete is a momo tag, and GORM's automatic soft-delete filter on queries does not carry over"})
 		return nil
 	}
@@ -485,7 +496,15 @@ var (
 		"uint8": 9, "uint16": 17, "uint32": 33, "uint64": 65, "uint": 65,
 		"sql.NullInt16": 16, "sql.NullInt32": 32, "sql.NullInt64": 64, "sql.NullByte": 9,
 	}
-	nullTypes   = map[string]string{"sql.NullString": "text", "sql.NullBool": "boolean", "sql.NullFloat64": "numeric", "sql.NullTime": "timestamptz"}
+	// kinds maps a Go type to the gorm data type it gets; a sql.Null* type
+	// takes the kind of its first field.
+	kinds = map[string]string{
+		"bool": "bool", "sql.NullBool": "bool",
+		"float32": "float", "float64": "float", "sql.NullFloat64": "float",
+		"string": "string", "sql.NullString": "string",
+		"time.Time": "time", "sql.NullTime": "time",
+		"[]byte": "bytes",
+	}
 	identOnly   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	sqlKeywords = map[string]bool{"true": true, "false": true, "null": true, "current_timestamp": true, "current_date": true, "current_time": true, "localtimestamp": true, "localtime": true}
 )
@@ -543,14 +562,23 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 	if !fld.PK && n.Name == "ID" && prefix == "" && !st.explicitPK {
 		fld.PK = true
 	}
+	bits := intBits[base]
+	if bits != 0 && size > 0 {
+		// gorm takes the size tag as the bit width of an integer, one more for an unsigned type
+		bits = size
+		if strings.HasPrefix(base, "uint") || base == "sql.NullByte" {
+			bits++
+		}
+	}
+	kind := kinds[base]
 	switch {
 	case tag["TYPE"] != "":
 		fld.SQLType = tag["TYPE"]
-	case base == "bool":
+	case bits != 0:
+		fld.SQLType = intColumn(bits)
+	case kind == "bool":
 		fld.SQLType = "boolean"
-	case intBits[base] != 0:
-		fld.SQLType = intColumn(intBits[base])
-	case base == "float32" || base == "float64":
+	case kind == "float":
 		fld.SQLType = "numeric"
 		switch {
 		case prec > 0 && scale > 0:
@@ -558,17 +586,18 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 		case prec > 0:
 			fld.SQLType = fmt.Sprintf("numeric(%d)", prec)
 		}
-	case base == "string":
+	case kind == "string":
 		fld.SQLType = "text"
 		if size > 0 && size <= maxVarchar {
 			fld.SQLType = fmt.Sprintf("varchar(%d)", size)
 		}
-	case base == "time.Time":
+	case kind == "time":
 		fld.SQLType = "timestamptz"
-	case base == "[]byte":
+		if prec > 0 {
+			fld.SQLType = fmt.Sprintf("timestamptz(%d)", prec)
+		}
+	case kind == "bytes":
 		fld.SQLType = "bytea"
-	case nullTypes[base] != "":
-		fld.SQLType = nullTypes[base]
 	default:
 		unsupported("the type " + goType + " has no known column type; add a type: tag option or convert the field by hand")
 		return
@@ -579,10 +608,17 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 	}
 	isInt := intBits[base] != 0
 	_, hasDefault := tag["DEFAULT"]
-	auto := tag["AUTOINCREMENT"]
-	if isInt && !hasDefault && auto != "false" && (fld.PK || auto == "true") {
+	autoSet := has(tag, "AUTOINCREMENT")
+	// gorm gives a bare key the value of its own name, and any value but
+	// false is true: a bare autoIncrement switches it on.
+	autoOn := autoSet && tag["AUTOINCREMENT"] != "" && !strings.EqualFold(tag["AUTOINCREMENT"], "false")
+	if isInt && !hasDefault && (autoOn || fld.PK && !autoSet) {
 		fld.Serial = true
-		st.explicitAuto[n.Name] = auto == "true"
+		st.explicitAuto[n.Name] = autoOn
+		if tag["TYPE"] != "" {
+			r.rep.Add(importer.Change{Kind: importer.Naming, Source: pos, Model: m.Name, Field: n.Name,
+				Message: "type:" + tag["TYPE"] + " on an auto-increment column: gorm replaces the type with smallserial, serial or bigserial by size; Momo keeps type:" + tag["TYPE"] + " with a serial sequence"})
+		}
 	}
 	fld.Nullable = !(has(tag, "NOTNULL", "NOT NULL") || fld.PK)
 	if !fld.Nullable && strings.HasPrefix(fld.GoType, "*") && !fld.PK {
@@ -591,6 +627,12 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 	}
 	r.applyDefault(m, &fld, tag, base, pos)
 	r.applyIndexes(&fld, tag, all, m)
+	for _, auto := range [][2]string{{"CreatedAt", "AUTOCREATETIME"}, {"UpdatedAt", "AUTOUPDATETIME"}} {
+		name, key := auto[0], auto[1]
+		if n.Name == name && !has(tag, key) && (kind == "time" || bits != 0) {
+			r.rep.Add(importer.Change{Kind: importer.GoDefault, Source: pos, Model: m.Name, Field: n.Name, Message: "GORM sets a field named " + name + " in Go on create or update without any tag; Momo needs a created_at or updated_at tag or a database default"})
+		}
+	}
 	if has(tag, "AUTOCREATETIME", "AUTOUPDATETIME") {
 		r.rep.Add(importer.Change{Kind: importer.GoDefault, Source: pos, Model: m.Name, Field: n.Name, Message: "GORM sets this timestamp in Go on create or update; Momo needs a created_at or updated_at tag or a database default"})
 	}
@@ -630,6 +672,13 @@ func (r *reader) applyDefault(m *importer.Model, fld *importer.Field, tag map[st
 	}
 }
 
+// defaultIndexName is gorm's name for an index the tag does not name:
+// idx_<table>_<snake-cased Go field name>. A column tag or an embeddedPrefix
+// does not change it.
+func defaultIndexName(m *importer.Model, fld *importer.Field) string {
+	return "idx_" + m.Table + "_" + namer.ColumnName(fld.Name)
+}
+
 // applyIndexes reads unique, index and uniqueIndex. A field can carry several
 // index tags; Momo's tags name one index per field, so the first is kept and
 // the others are reported as dropped.
@@ -643,7 +692,7 @@ func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all ma
 		for _, v := range all[key] {
 			name, opts, _ := strings.Cut(v, ",")
 			if name == "" {
-				name = "idx_" + m.Table + "_" + fld.Column
+				name = defaultIndexName(m, fld)
 			}
 			unique := key == "UNIQUEINDEX"
 			composite := false
@@ -681,7 +730,7 @@ func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all ma
 		}
 	}
 	if fld.Index && fld.IndexName == "" {
-		fld.IndexName = "idx_" + m.Table + "_" + fld.Column
+		fld.IndexName = defaultIndexName(m, fld)
 	}
 }
 
