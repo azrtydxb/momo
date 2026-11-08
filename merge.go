@@ -61,7 +61,7 @@ func serverVersionOf(ctx context.Context, q Querier) (int, error) {
 	} else {
 		err = rows.Err()
 		if err == nil {
-			err = errors.New("momo: server_version_num returned no row")
+			err = &Error{Kind: ErrNotFound, Op: "merge", Err: errors.New("server_version_num returned no row")}
 		}
 	}
 	if cerr := rows.Close(); err == nil {
@@ -145,7 +145,7 @@ func (m MergeQuery[T]) verr(col, format string, args ...any) error {
 // not the server version, which needs a connection.
 func (m MergeQuery[T]) SQL() (Compiled, error) {
 	if m.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
+		return Compiled{}, noQuerier("merge", m.meta.Table)
 	}
 	return compile(m.q.Dialect(), m.render)
 }
@@ -391,7 +391,7 @@ func (m MergeQuery[T]) Exec(ctx context.Context) (Result, error) {
 // server older than PostgreSQL 17.
 func (m MergeQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if m.q == nil {
-		return nil, errors.New("momo: query has no Querier")
+		return nil, noQuerier("merge", m.meta.Table)
 	}
 	if !m.returning.active() {
 		return nil, m.verr("", "Rows needs a Returning list")

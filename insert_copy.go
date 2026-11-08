@@ -30,7 +30,7 @@ import (
 // arguments, so no value reaches a hook.
 func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 	if q.q == nil {
-		return Result{}, errors.New("momo: query has no Querier")
+		return Result{}, noQuerier("copy", q.meta.Table)
 	}
 	names, rows, err := q.copyRows(ms)
 	if err != nil {
