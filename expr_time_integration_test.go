@@ -230,6 +230,11 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 			t.Errorf("CurrentTimestamp() = %v, behind Now() = %v", cur, now)
 		}
 
+		if d == dialect.SQLite {
+			// SQLite timestamps have millisecond resolution: let the clock move past
+			// the row that was inserted a moment ago, or "before now" can tie.
+			time.Sleep(10 * time.Millisecond)
+		}
 		recent := func(p momo.Predicate) int64 {
 			r, err := momo.Select[unitTally](db).From(momo.TableRef{Name: "documents"}).
 				Columns(momo.CountAll()).Where(p).One(ctx)
