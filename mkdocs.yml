@@ -48,6 +48,7 @@ nav:
       - Relations: relations.md
       - Vector search: vectors.md
       - Full-text search: fulltext.md
+      - MySQL and MariaDB: mysql.md
       - Migrations: migrations.md
       - Testing applications: testing.md
   - Reference:
