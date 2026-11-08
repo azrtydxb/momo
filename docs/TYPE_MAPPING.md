@@ -28,6 +28,8 @@ to the bare `vector` or `halfvec` type, a dimensionless column that holds
 embeddings of any size (see [vectors.md](vectors.md#dimensionless-columns)).
 `vector.SparseVector` and `vector.Bits` require `dim`. SQLite has no vector
 types.
+A slice of a scalar maps to the PostgreSQL array of its element type; SQLite
+has no array columns, so the generator rejects them there.
 
 | Go type                      | PostgreSQL                 | SQLite        |
 | ---------------------------- | -------------------------- | ------------- |
@@ -52,6 +54,13 @@ types.
 | `vector.Bits`                | `bit(N)`                   | `unsupported` |
 | `vector.Vector (no dim)`     | `vector`                   | `unsupported` |
 | `vector.HalfVector (no dim)` | `halfvec`                  | `unsupported` |
+| `[]string`                   | `text[]`                   | `unsupported` |
+| `[]int16`                    | `smallint[]`               | `unsupported` |
+| `[]int32`                    | `integer[]`                | `unsupported` |
+| `[]int64`                    | `bigint[]`                 | `unsupported` |
+| `[]bool`                     | `boolean[]`                | `unsupported` |
+| `[]float32`                  | `real[]`                   | `unsupported` |
+| `[]float64`                  | `double precision[]`       | `unsupported` |
 
 On SQLite, `bool` is stored as 0 or 1, and `time.Time`, `types.UUID`,
 `types.Date` and `types.JSON[T]` are stored as text. The SQLite column is what
@@ -82,7 +91,6 @@ document because nothing generates one.
 | Go type                 | PostgreSQL  | SQLite |
 | ----------------------- | ----------- | ------ |
 | `time.Time (timestamp)` | `timestamp` | `n/a`  |
-| `[]string`              | `text[]`    | `n/a`  |
 | `string (decimal)`      | `numeric`   | `n/a`  |
 
 ## Edge values and behavior
@@ -128,6 +136,20 @@ Each statement below is asserted by a test against PostgreSQL.
   expressions are PostgreSQL only (see docs/fulltext.md).
 - `[]string` on `text[]`: elements containing commas, quotes, the text `NULL`,
   or empty strings round-trip; an empty slice reads back empty.
+- Slices as arrays: only `[]string`, `[]int16`, `[]int32`, `[]int64`, `[]bool`,
+  `[]float32` and `[]float64` map. `[]int` is not mapped, because its width is
+  platform dependent; use `[]int64`. `[]string` with a `size` tag becomes
+  `character varying(N)[]`. A nil slice binds as NULL, so inserting it into a
+  `NOT NULL` array column fails with a not-null violation; pass an empty
+  non-nil slice (it stores `{}`), or give the column a `default '{}'` and omit
+  it. The array predicates bind a nil value list as an empty array, never NULL.
+- Slices as arrays: only `[]string`, `[]int16`, `[]int32`, `[]int64`, `[]bool`,
+  `[]float32` and `[]float64` map. `[]int` is not mapped, because its width is
+  platform dependent; use `[]int64`. `[]string` with a `size` tag becomes
+  `character varying(N)[]`. A nil slice binds as NULL, so inserting it into a
+  `NOT NULL` array column fails with a not-null violation; pass an empty
+  non-nil slice (it stores `{}`), or give the column a `default '{}'` and omit
+  it. The array predicates bind a nil value list as an empty array, never NULL.
 - Decimal: carry `numeric` as a string to avoid binary floating point. Values
   beyond `float64` precision round-trip exactly, and `numeric` also accepts
   `NaN`.
