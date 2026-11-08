@@ -34,7 +34,7 @@ Transport security is the DSN's business and defaults to none: add `tls=true`
 
 ## Capabilities
 
-The rows below are generated from `dialect.MySQLFlavor` and checked by
+The rows below are checked against `dialect.MySQLFlavor` by
 `TestCapabilityMatrixMatchesDialect`.
 
 | Capability       | mysql | mariadb |
@@ -61,7 +61,11 @@ no `RETURNING` at all.
   generator) always wins; `LAST_INSERT_ID` is read only for a key the database
   generates. A multi-row insert returns and writes back no keys, because the
   ids of a multi-row statement depend on `innodb_autoinc_lock_mode`. On MariaDB,
-  ask for them with `Returning`; on MySQL that is `ErrUnsupported`.
+  ask for them with `Returning`; on MySQL that is `ErrUnsupported`. The
+  `LAST_INSERT_ID` write-back does not apply to an upsert or to any insert with
+  a conflict clause (`wantsGeneratedKey` in the core is false for them), because
+  the statement may update an existing row and `LAST_INSERT_ID` then does not
+  name the row's key; read the row back with a query.
 - Upserts render as `INSERT ... VALUES ... AS momo_new ON DUPLICATE KEY UPDATE`
   on MySQL and with `VALUES(col)` on MariaDB. `DoNothing` renders a no-op
   assignment of a key column. A `Where` on a conflict clause is

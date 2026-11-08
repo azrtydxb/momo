@@ -26,10 +26,13 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 
 ## 1. Scope
 
-- v0.3.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5 only. <!-- x-release-please-version -->
-- SQLite and MySQL/MariaDB are NOT usable. There is no driver for either and
-  `momo migrate` exits 2 for them. Do not write code for them, do not set
-  `dialects:` to anything but `[postgres]`.
+- v0.3.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5; SQLite and MySQL are covered by the next bullet. <!-- x-release-please-version -->
+- PostgreSQL is the reference database. SQLite is usable through
+  `driver/sqlitedriver` (mattn go-sqlite3 and sqlite-vec; it needs cgo and does
+  not build on Windows), but `momo migrate` exits 2 for SQLite and the vector
+  builders do not target it yet. MySQL and MariaDB have a driver package of
+  their own; check the MySQL column of docs/capabilities.md before relying on a
+  feature. Keep `dialects:` at `[postgres]` for generated migrations.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only in the CLI. No `migrate rollback`, `new`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
 - No command turns a database into models. Write models by hand.
@@ -250,7 +253,8 @@ Nullability and column rules:
   matched by comparing the column with a `types.JSON` whose value is nil.
   `JSONHasKey` is true for a key whose value is JSON null. A numeric key in
   `JSONText` or `JSONHasKey` is an object key; only `JSONPath` elements made of
-  digits can be array indexes. PostgreSQL only is usable today.
+  digits can be array indexes. SQLite renders `json_extract` and `json_type`
+  (`JSONContains` is `ErrUnsupported` there); MySQL renders its JSON functions.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
@@ -1077,7 +1081,7 @@ res, err := momo.Insert[models.Meter](q).
   (`"live" = 1`), because SQLite matches it against the index text; a value
   that cannot be inlined (time, bytes, pointer, NULL, NaN, a string with a NUL
   byte) is `ErrValidation`, and a type with `Value()` is inlined as that value.
-  This is golden-tested but not yet run against a real SQLite; `momo.SQL("live = 1")`
+  This is golden-tested; the live SQLite integration test for it is skipped for now, so check it against your own SQLite database; `momo.SQL("live = 1")`
   is the proven fallback. Write the literals in the index exactly as Momo renders them: integers as `2`, floats in plain decimal with `.0` for whole numbers (`2.0`) for magnitudes from 1e-6 up to 1e21, and exponent form (`1e-07`, `1e+21`) outside that range; otherwise use `momo.SQL`. The values appear in the SQL text, so they show up in
   logs and traces.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
@@ -1687,7 +1691,7 @@ report)`, a development hook that reports once per statement shape per scope
 
 ## 12. Rules for AI agents
 
-1. v0.3.0 is PostgreSQL + pgvector via pgx only. Never target SQLite or MySQL. <!-- x-release-please-version -->
+1. v0.3.0 is PostgreSQL + pgvector via pgx first; SQLite runs through the cgo driver `sqlitedriver` (not on Windows, no migrations, no vector builders yet), and MySQL and MariaDB support is described in docs/capabilities.md. <!-- x-release-please-version -->
 2. Install the CLI at the same version as the library
    (`go install github.com/azrtydxb/momo/cmd/momo@v0.3.0`). <!-- x-release-please-version -->
 3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run

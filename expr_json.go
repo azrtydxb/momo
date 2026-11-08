@@ -33,7 +33,8 @@ import (
 // Dialects. PostgreSQL uses the jsonb operators ->>, #>>, @> and ?. SQLite
 // renders json_extract and json_type (JSONContains is ErrUnsupported). MySQL
 // renders JSON_UNQUOTE(JSON_EXTRACT), JSON_CONTAINS and JSON_CONTAINS_PATH.
-// SQLite and MySQL are not usable in this release; their SQL is golden-tested
+// SQLite runs against a real database through driver/sqlitedriver (cgo, not
+// Windows); MySQL is not usable in this release and its SQL is golden-tested
 // only. Extraction differs at the edges: SQLite casts json_extract to TEXT, so
 // a JSON boolean reads as 1 or 0 instead of true or false, and MySQL returns
 // the text null for a JSON null.

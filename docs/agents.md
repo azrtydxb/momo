@@ -45,7 +45,7 @@ uses Momo. It is the short form of the rules in section 12 of the
 ```markdown
 ## Momo (Go ORM)
 
-- PostgreSQL with pgvector is the only supported database. Do not target SQLite or MySQL.
+- PostgreSQL with pgvector is the only supported database for migrations and vector builders. SQLite (cgo driver, not on Windows) and MySQL 8.4, MySQL 9.7 and MariaDB 11.8 run queries and writes; check docs/capabilities.md before relying on a feature there.
 - Run `momo generate` after every model change and commit the generated files. Never edit generated files.
 - A non-pointer model field is NOT NULL; a pointer field is nullable.
 - Pass user input only as arguments to `momo.SQL`, `momo.TypedSQL`, `momo.Exec` and `momo.Scalars`. Never build SQL by string concatenation.

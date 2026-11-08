@@ -5,8 +5,10 @@ Plans and code use the names below exactly; changing a name means changing
 this file first. Requirements live in `.procoder/specs/momo.md` (cited as S-n).
 
 The package and contract sections exist in the code today, except what the
-section "Planned, not implemented" lists. Only PostgreSQL through pgx has a
-driver and a migration dialect. Anything listed as planned has no code yet, and
+section "Planned, not implemented" lists. PostgreSQL through pgx has the only
+migration dialect; drivers also exist for SQLite (`driver/sqlitedriver`, cgo,
+not on Windows) and for MySQL and MariaDB (`driver/mysqldriver`), with no
+migrations or vector builders on those. Anything listed as planned has no code yet, and
 no other document may describe it as available. The sections "Delivery order"
 and "Ownership decisions" are roadmap and plan bookkeeping, not status: they
 describe intended order and ownership, and do not show what has been built.
@@ -136,7 +138,7 @@ name as written.
 
 - `PinnedConn` interface: `Query`, `Exec` (same signatures as `Driver`), `Begin(ctx, TxOptions) (DriverTx, error)`, `Release() error`; obtained through `Pinner.Pin(ctx)`. `Release` closes Rows still open, then returns the connection (a repeat after success is a nil no-op); while a Query, Exec or Begin is executing in another goroutine it returns an error matching `ErrPinnedBusy` and releases nothing. Pinned connections of drivers that can destroy a session also implement the optional `Discarder{Discard() error}`: it closes the underlying connection and then releases it so the pool destroys it (open Rows closed first; `ErrPinnedBusy` while a call is in flight; nil when already released or discarded). Callers that cannot restore session state (failed advisory unlock or `RESET`) call it instead of leaving a dirty connection in the pool. `PoolStats` struct (acquired, idle, total, wait count, wait duration). `Capabilities` / `CapabilityReporter`. Exact `Copier` and `Batcher` signatures. [momo-03 Task 1]
 - `func (db *DB) OnConn(pc PinnedConn) *DB`: a DB bound to one pinned connection that keeps db's hooks, classifier and options. Used for non-transactional Go migrations and session-scoped work. [momo-03]
-- `testopen.Each` takes the test, a callback, and optional momo options; it passes the options to every available dialect's DB (PostgreSQL only today). [momo-03]
+- `testopen.Each` takes the test, a callback, and optional momo options; it passes the options to every available dialect's DB (PostgreSQL and SQLite; SQLite is skipped in a build without cgo or on Windows). [momo-03]
 - `WithMaxParams(n)` lowers the per-statement bind limit for chunking tests and for databases configured with lower limits. [momo-06]
 - `Batcher` is implemented by the pgx driver and by pgx transactions. The pgx pool tracer calls the observability recorder for pool wait (`RecordPoolWait`, owned by momo-09). [momo-03 implements, momo-09 defines] Batch results are buffered eagerly and without bound: `SendBatch` reads every row of every statement into memory before it returns (so the connection is free and rows can be read in any order), and a failed batch returns one error naming the statement index, never its arguments. With the default `QueryExecMode` Exec the batch is sent as unnamed extended-protocol statements, so no prepared statement is created (PgBouncer-safe); pgx has no per-batch mode, so any other `WithExecMode` is accepted only when it equals the pool connection default, else `ErrUnsupported`. Pinned connections and `OnConn` handles run COPY and batch on the pinned session.
 - `QueryEvent` adds `PoolWait`, `InTx`, `NumArgs`, `Dialect`. [momo-09]
@@ -166,7 +168,7 @@ Only the `Merge` capability flag exists on `dialect.Dialect` beyond the base set
 
 ### Test harness (`internal/testdb`)
 
-The harness returns connection strings only, so driver packages can use it without import cycles: `PostgresURL`, `PostgresAppRoleURL`, `PgBouncerURL`, `SQLitePath`, `MySQL84URL`, `MySQL97URL`, `MariaDBURL` and `Schema`, each taking the `*testing.T`. `internal/testdb/testopen` opens PostgreSQL as a `*momo.DB` (`testopen.Postgres(t)`, `testopen.PostgresIn`) for packages above the drivers; only PostgreSQL has a driver, so there is no `testopen.SQLite` or MySQL opener yet. In both packages, a missing URL fails the test when `MOMO_REQUIRE_INTEGRATION=1` and skips it otherwise; no test calls `t.Skip` directly. [momo-01]
+The harness returns connection strings only, so driver packages can use it without import cycles: `PostgresURL`, `PostgresAppRoleURL`, `PgBouncerURL`, `SQLitePath`, `MySQL84URL`, `MySQL97URL`, `MariaDBURL` and `Schema`, each taking the `*testing.T`. `internal/testdb/testopen` opens PostgreSQL (`testopen.Postgres(t)`, `testopen.PostgresIn`) and SQLite (`testopen.SQLite(t)`, through `driver/sqlitedriver`) as a `*momo.DB` for packages above the drivers, and `testopen.Each` runs a test once per registered dialect; there is no MySQL opener yet. A missing PostgreSQL URL fails the test when `MOMO_REQUIRE_INTEGRATION=1` and skips it otherwise (testdb does that check). `testopen.SQLite` skips when the build has only the stub driver (no cgo, or Windows). Tests that cannot run on a dialect skip that subtest with a stated reason. [momo-01]
 
 ### Public test kit (`momotest`)
 

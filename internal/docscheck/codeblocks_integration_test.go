@@ -39,6 +39,10 @@ func TestDocsRunnableBlocks(t *testing.T) {
 		t.Fatal("no docscheck:run blocks in docs/: the runnable path proves nothing")
 	}
 	testopen.Each(t, func(t *testing.T, _ *momo.DB, d dialect.Name) {
+		if d != dialect.Postgres {
+			// The runnable blocks use pgxdriver and PostgreSQL DDL.
+			t.Skipf("docs blocks are PostgreSQL-only")
+		}
 		mod := blockModule(t, root)
 		dsn := dsnFor(t, d)
 		for n, b := range runnable {
