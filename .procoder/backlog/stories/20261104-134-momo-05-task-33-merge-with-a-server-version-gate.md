@@ -13,10 +13,13 @@ Scope rule: the builder must render its statement inside a target-table scope vi
 
 ## Acceptance criteria
 
-- [ ] `TestMergeGate` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestMergeAndBulkUpdate` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-80] `TestMergeAndBulkUpdate` asserts row results on supporting dialects and ErrUnsupported elsewhere; fails if bulk update touches rows outside the VALUES list.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestMergeGate` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestMergeAndBulkUpdate` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-80] `TestMergeAndBulkUpdate` asserts row results on supporting dialects and ErrUnsupported elsewhere; fails if bulk update touches rows outside the VALUES list.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Implemented in merge.go (Merge, BulkUpdate, Truncate, mergeGate) and internal/suite/merge.go; unit tests in merge_gate_test.go and merge_unit_test.go; integration wrapper in merge_test.go.
+- Red: run 42455500991 on a throwaway branch with the implementation reverted failed to compile with undefined mergeGate (merge_gate_test.go:24), undefined momo.Merge, momo.BulkUpdate, momo.Truncate (internal/suite/merge.go).
+- Green: ci-agent run 42457519128 on 5ee617c686eae450aaaba07859320f13affb3a4f, all jobs success (lint, unit, fuzz-smoke, integration postgres), including TestMergeGate and TestMergeAndBulkUpdate. The PostgreSQL branch asserts the bulk update touches only the listed key (row 1 keeps title and version), MERGE insert and update, RETURNING on PostgreSQL 17, and Truncate; SQLite asserts ErrUnsupported.
