@@ -1208,9 +1208,15 @@ values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQ
 - `momo.VectorColumnOf`: the `VectorColumn` behind any `VectorSource`
   (read its table, name, dimension and flags for a custom distance expression).
 
-<!-- docscheck:fragment -->
-
 ```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/azrtydxb/momo"
+)
+
 type shout struct {
 	momo.Ops[string]
 	src momo.Expr
@@ -1230,7 +1236,12 @@ func (s shout) AppendSQL(b *momo.Builder) {
 
 func (s shout) Flags() uint16 { return momo.FlagsOf(s.src) }
 
-// newShout(col) now works in Columns, Where (newShout(col).Eq("X")) and OrderBy.
+// newShout(col) works in Columns, Where (newShout(col).Eq("X")) and OrderBy.
+func main() {
+	title := momo.NewColumn[string]("documents", "title", 0)
+	_ = newShout(title).Eq("X")
+	fmt.Println("ok")
+}
 ```
 
 DON'T build the SQL text from caller input with `WriteString`; use `Ident` and
