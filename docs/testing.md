@@ -40,6 +40,8 @@ everything. `WithEnv` reads a different variable.
 
 ## One database per test: New
 
+<!-- docscheck:fragment -->
+
 ```go
 func TestSignup(t *testing.T) {
 	t.Parallel()
@@ -53,6 +55,8 @@ When the test ends the pool is closed and the schema is dropped. Code under test
 may open and commit its own transactions. Use this mode when it does.
 
 ## A rollback per test: NewTx
+
+<!-- docscheck:fragment -->
 
 ```go
 func TestOverdraft(t *testing.T) {
@@ -125,6 +129,8 @@ meant to stay. `momotest` has no sweep helper: it never drops a schema it did
 not create in the current test.
 
 ## Fixtures: Seed
+
+<!-- docscheck:fragment -->
 
 ```go
 org := &models.Org{Name: "acme"}

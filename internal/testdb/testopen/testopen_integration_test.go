@@ -123,7 +123,7 @@ func TestEachSubtestsAreIsolated(t *testing.T) {
 // URL unset and MOMO_REQUIRE_INTEGRATION=1: it must fail, not skip.
 func TestRequireFailsWithoutURL(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=^TestEachRunsPostgres$", "-test.v")
-	cmd.Env = append(os.Environ(), "MOMO_REQUIRE_INTEGRATION=1", "MOMO_TEST_POSTGRES_URL=")
+	cmd.Env = append(os.Environ(), "MOMO_REQUIRE_INTEGRATION=1", "MOMO_TEST_POSTGRES_URL=", "MOMO_INTEGRATION_DIALECTS=")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("child passed or skipped, want failure:\n%s", out)

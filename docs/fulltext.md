@@ -16,6 +16,8 @@ The application normally never sets this column (leave it nil on insert and
 update: the trigger overwrites it). Keep it current with a
 trigger declared in `MomoConfig`, and index it with GIN:
 
+<!-- docscheck:fragment -->
+
 ```go
 type Article struct {
 	momo.Model `momo:"table:kb_articles"`
@@ -68,6 +70,8 @@ database error.
 A `TSExpr` has `As`, `Asc`, `Desc` and the comparison methods of any scalar
 expression, so it works in Where, OrderBy and Columns:
 
+<!-- docscheck:fragment -->
+
 ```go
 q := momo.WebsearchToTSQuery("english", userInput)
 rank := momo.TSRankCD(articleSearch, q)
@@ -104,6 +108,8 @@ Momo has no built-in fusion step (reciprocal rank fusion is not built). Combine
 the two signals in one score with the typed arithmetic helpers. The cosine
 distance is lower for better matches and the text rank is higher, so subtract a
 weighted rank from the distance and order ascending:
+
+<!-- docscheck:fragment -->
 
 ```go
 dist := momo.CosineDistance(articleEmb, queryEmbedding) // vector.Vector

@@ -1,6 +1,6 @@
 # momo-04 Task 24: Least-privilege roles: DDL refused for the application role
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: -
@@ -11,9 +11,14 @@ Implements plan momo-04-migrations Task 24: Least-privilege roles: DDL refused f
 
 ## Acceptance criteria
 
-- [ ] `TestAppRoleCannotDDL` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-47] `TestAppRoleCannotDDL` runs in integration CI, which connects as a non-superuser application role; `TestAppRoleCannotDDL` asserts DDL fails for it; fails if tests run as superuser.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestAppRoleCannotDDL` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-47] `TestAppRoleCannotDDL` runs in integration CI, which connects as a non-superuser application role; `TestAppRoleCannotDDL` asserts DDL fails for it; fails if tests run as superuser.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
+
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
+
+Red evidence: ci-agent run 42453837637 on throwaway branch worktree-agent-ac8514dccee058855-red (commit a900207, the code under test broken, tests kept, branch since deleted) failed: --- FAIL: TestAppRoleCannotDDL, with the testdb harness granting the app role CREATE on the schema.

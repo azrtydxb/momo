@@ -1,6 +1,6 @@
 # momo-04 Task 23: Per-transaction row-level-security scope helper
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: -
@@ -11,9 +11,12 @@ Implements plan momo-04-migrations Task 23: Per-transaction row-level-security s
 
 ## Acceptance criteria
 
-- [ ] `TestRowLevelSecurity` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-38] `TestRowLevelSecurity`: with a policy applied by migration, a transaction scoped to tenant A cannot read tenant B's rows even through raw SQL, and the setting does not persist on the pooled connection; fails if `set_config` is session-scoped.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestRowLevelSecurity` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-38] `TestRowLevelSecurity`: with a policy applied by migration, a transaction scoped to tenant A cannot read tenant B's rows even through raw SQL, and the setting does not persist on the pooled connection; fails if `set_config` is session-scoped.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
+
+Red evidence: ci-agent run 42453062663 on throwaway branch worktree-agent-ac8514dccee058855-red (commit 6f002a6, implementation reverted, tests kept, branch since deleted) failed: --- FAIL: TestRowLevelSecurity in migrate/postgres with SetLocal reverted to session scope (set_config is_local false).

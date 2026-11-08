@@ -46,7 +46,7 @@ func upsertUpdatable(f uint16) bool { return updModelWritable(f) }
 // validates an explicit DO UPDATE list against the update guard rules.
 func (q InsertQuery[T]) resolveUpsert() (InsertQuery[T], error) {
 	if !q.i.upsert {
-		return q, nil
+		return q.resolveMySQLIdentity(), nil
 	}
 	if q.i.conflict == conflictNone {
 		q.i.conflict = conflictUpdate

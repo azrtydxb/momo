@@ -24,6 +24,27 @@ func TestResolve(t *testing.T) {
 	}
 }
 
+func TestDialectRequired(t *testing.T) {
+	cases := []struct {
+		env, list string
+		want      bool
+	}{
+		{envPostgres, "", true},
+		{envMySQL84, "", true},
+		{envPostgres, "postgres", true},
+		{envPgBouncer, "postgres", true},
+		{envMySQL84, "postgres", false},
+		{envMariaDB, "mysql84, mariadb", true},
+		{envMySQL97, "mysql84,mariadb", false},
+		{envPostgres, "mysql84", false},
+	}
+	for _, c := range cases {
+		if got := dialectRequired(c.env, c.list); got != c.want {
+			t.Errorf("dialectRequired(%s, %q) = %v, want %v", c.env, c.list, got, c.want)
+		}
+	}
+}
+
 func TestSQLitePathIsInTempDir(t *testing.T) {
 	p := SQLitePath(t)
 	if filepath.Base(p) != "momo.db" {
