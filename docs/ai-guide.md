@@ -671,6 +671,16 @@ momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
 // Any other function: Func[T](name, args...). name is validated (identifier,
 // optionally schema.qualified); an Expr arg renders inline, other values are bound.
 momo.Func[string]("btrim", doc.Title)
+// Aggregates with their own ORDER BY (AggExpr[T]); chain OrderBy, inside the call.
+momo.StringAgg(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
+momo.ArrayAgg[string](label).OrderBy(label.Asc())       // []string, PostgreSQL only
+// Ordered-set aggregates (PostgreSQL): WithinGroup is required.
+momo.PercentileCont(0.5).WithinGroup(run.DurationMs.Asc())      // float64
+momo.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
+// JSON: T is the Go type the result decodes into (types.JSON[T]). Keys and
+// separators are literals and must not contain a backslash.
+item := momo.JSONBBuildObject[Item](momo.JSONField("label", label), momo.JSONField("n", n))
+momo.CoalesceExpr(momo.JSONBAgg[Item](item).OrderBy(label.Asc()), momo.EmptyJSONArray[Item]())
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 momo.CurrentSchema()
 
