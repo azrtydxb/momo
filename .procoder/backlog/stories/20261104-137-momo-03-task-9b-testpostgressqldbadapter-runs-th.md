@@ -1,6 +1,6 @@
 # momo-03 Task 9b: TestPostgresSQLDBAdapter runs the PostgreSQL suite through *sql.DB (S-88)
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-03-drivers-postgresql
 Sprint: -
@@ -11,7 +11,7 @@ Split from plan momo-03-drivers Task 9 (`.procoder/plans/momo-03-drivers.md:990`
 
 ## Acceptance criteria
 
-- [ ] `TestPostgresSQLDBAdapter` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestPostgresSQLDBAdapter` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-88] `TestPostgresSQLDBAdapter` runs the PostgreSQL suite through *sql.DB; fails if any capability differs without being listed in the matrix.
 - [x] `procoder check` gate is clean and the task's commit is made
 
@@ -19,4 +19,6 @@ Split from plan momo-03-drivers Task 9 (`.procoder/plans/momo-03-drivers.md:990`
 
 CI run 42414158119 on 764d4d1 (workflow ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests ran and passed there.
 
-Left open: the criterion that the test "failed before the implementation" is not shown. The code under test already existed before this story and only the test was added, so there is no implementation to revert and no red run exists. Not ticked rather than weakened.
+CI run 42414158119 on 764d4d1 (ci-agent) concluded success with the test passing.
+
+Red evidence: ci-agent run 42453837637 on throwaway branch worktree-agent-ac8514dccee058855-red (commit a900207, the code under test broken, tests kept, branch since deleted) failed: --- FAIL: TestPostgresSQLDBAdapter, with FromSQLDB reporting Vectors false so a capability differed unlisted.

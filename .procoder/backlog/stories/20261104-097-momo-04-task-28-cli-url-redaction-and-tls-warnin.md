@@ -24,3 +24,7 @@ Implements plan momo-04-migrations Task 28: CLI URL redaction and TLS warning (`
 - `TestCLITLSWarning` (unit, local/remote/socket/multi-host/IPv6) and `TestMigrateWarnsOnRemoteDisabledTLS` (CLI: warns for remote, no password leak, silent for 127.0.0.1) in `cmd/momo/migrate_tls_test.go`.
 - Mutations caught: warning call removed; only localhost exempt; sslmode check broken; socket paths not exempt.
 
+Red evidence: ci-agent run 42453837637 (throwaway branch, commit a900207, branch since deleted) with TLSWarning disabled failed TestCLITLSWarning and TestCLITLSWarningUsesLibpqEnvironment, so that criterion is shown red.
+
+Left open: with migrate.RedactURLs made a no-op in the same run, TestCLIRedactsURL did not fail (the password-bearing URL never reaches the output on that path), so no run shows it red and its "failed before the implementation" line is not ticked. The test may not catch a missing redaction; it needs a stronger assertion before this story can close.
+
