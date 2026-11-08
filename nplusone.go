@@ -17,6 +17,9 @@ type NPlusOneFinding struct {
 	Count   int
 }
 
+// maxScopeShapes bounds the memory one query scope can hold.
+const maxScopeShapes = 1024
+
 type queryScopeKey struct{}
 
 type queryScope struct {
@@ -55,8 +58,10 @@ type nPlusOneHook struct {
 // NewNPlusOneHook returns a development hook that calls report once per
 // statement shape per scope when the shape has run more than threshold times
 // (a threshold below 1 counts as 1). Transaction control and EXPLAIN
-// statements are ignored. report runs synchronously on the querying
-// goroutine and must not query the database.
+// statements are ignored. A scope tracks at most 1024 distinct shapes; later
+// new shapes in the same scope are not counted. report runs synchronously on
+// the querying goroutine and must not query the database; a panic in report
+// is recovered and dropped.
 func NewNPlusOneHook(threshold int, report func(NPlusOneFinding)) Hook {
 	if threshold < 1 {
 		threshold = 1
@@ -75,6 +80,10 @@ func (h *nPlusOneHook) BeforeQuery(ctx context.Context, e *QueryEvent) context.C
 	}
 	shape := normalizeShape(e.SQL)
 	sc.mu.Lock()
+	if _, seen := sc.counts[shape]; !seen && len(sc.counts) >= maxScopeShapes {
+		sc.mu.Unlock()
+		return ctx
+	}
 	sc.counts[shape]++
 	n := sc.counts[shape]
 	fire := n > h.threshold && !sc.reported[shape]
@@ -83,9 +92,16 @@ func (h *nPlusOneHook) BeforeQuery(ctx context.Context, e *QueryEvent) context.C
 	}
 	sc.mu.Unlock()
 	if fire {
-		h.report(NPlusOneFinding{Shape: shape, Example: e.SQL, Count: n})
+		h.safeReport(NPlusOneFinding{Shape: shape, Example: e.SQL, Count: n})
 	}
 	return ctx
 }
 
 func (h *nPlusOneHook) AfterQuery(context.Context, *QueryEvent) {}
+
+// safeReport calls report and drops a panic, so a faulty reporter cannot
+// break the query that triggered it.
+func (h *nPlusOneHook) safeReport(f NPlusOneFinding) {
+	defer func() { _ = recover() }()
+	h.report(f)
+}
