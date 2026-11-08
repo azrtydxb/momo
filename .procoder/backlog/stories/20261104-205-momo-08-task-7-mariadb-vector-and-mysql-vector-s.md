@@ -18,6 +18,7 @@ Implements plan momo-08-mysql Task 7: MariaDB VECTOR and MySQL VECTOR storage, d
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
 - Red run: branch worktree-agent-a6796cc82be02e264-red (implementation reverted, tests kept; deleted), ci-agent run 42460111115: unit failed TestMySQLVectorSQL, TestMySQLVectorBindWrapping, TestMySQLVectorSensitiveArg, TestMySQLVectorType, TestMariaDBVectorIndexRules, TestMariaDBVectorIndexClause, TestDialectValues; mysql84/mysql97/mariadb integration failed.
 - Green run: ci-agent run 42460943118 on 36d1f7e2b0f41784a703bbb9b3794b109b03d8e8: lint and fuzz-smoke success; `ok driver/mysqldriver` (TestMariaDBVectorParity, TestMySQLVectorCapability) on mysql84, mysql97 and mariadb; internal/vectorparity ok. Only internal/docscheck fails there, on docs/PRIVACY_RULES.md and docs/momovet.md merged from sprint-5 (other stories).
 - Deviations from the plan text: the helpers live in root vector_mysql.go and `momo.MySQLVectorType` (not migrate/mysql, which another agent builds); pgvector parity is checked through a shared Go reference (internal/vectorparity, TestPostgresVectorParityReference) because the MariaDB job has no PostgreSQL; TestMySQLVectorCapability uses VERSION() plus MySQLVectorType since no migrate/mysql engine exists yet.
