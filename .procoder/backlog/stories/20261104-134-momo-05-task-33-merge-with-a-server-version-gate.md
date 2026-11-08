@@ -1,6 +1,6 @@
 # momo-05 Task 33: MERGE with a server-version gate, bulk update from VALUES and Truncate (S-80)
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: -
