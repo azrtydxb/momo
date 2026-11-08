@@ -215,6 +215,9 @@ func (r *reader) parseTag(f *ast.Field, model string) (map[string]string, map[st
 		k, v, _ := strings.Cut(part, ":")
 		k = strings.ToUpper(strings.TrimSpace(k))
 		v = strings.TrimSpace(v)
+		if k == "AUTOINCREMENT" && !strings.Contains(part, ":") {
+			v = "true" // gorm gives a bare key the value of its own name, which is true
+		}
 		if !knownKeys[k] {
 			r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: r.pos(f.Pos()), Model: model, Field: fieldNames(f),
 				Message: "the gorm tag option " + strings.ToLower(k) + " is not imported (check, comment, references and the like); declare it in Momo's companion file or convert the field by hand"})
@@ -430,7 +433,7 @@ func (r *reader) embedded(m *importer.Model, st *modelState, si *structInfo, f *
 			importer.Field{Name: "ID", Column: p + "id", GoType: "uint", SQLType: "bigint", PK: true, Serial: true, Source: pos},
 			importer.Field{Name: "CreatedAt", Column: p + "created_at", GoType: "time.Time", SQLType: "timestamptz", Nullable: true, Source: pos},
 			importer.Field{Name: "UpdatedAt", Column: p + "updated_at", GoType: "time.Time", SQLType: "timestamptz", Nullable: true, Source: pos},
-			importer.Field{Name: "DeletedAt", Column: p + "deleted_at", GoType: "*time.Time", SQLType: "timestamptz", Nullable: true, Index: true, IndexName: "idx_" + m.Table + "_" + p + "deleted_at", Source: pos},
+			importer.Field{Name: "DeletedAt", Column: p + "deleted_at", GoType: "*time.Time", SQLType: "timestamptz", Nullable: true, Index: true, IndexName: "idx_" + m.Table + "_deleted_at", Source: pos},
 		)
 		for _, name := range []string{"CreatedAt", "UpdatedAt"} {
 			r.rep.Add(importer.Change{Kind: importer.GoDefault, Source: pos, Model: m.Name, Field: name, Message: "GORM sets " + name + " (from gorm.Model) in Go on create or update; Momo needs a created_at or updated_at tag or a database default"})
@@ -563,7 +566,7 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 	if bits != 0 && size > 0 {
 		// gorm takes the size tag as the bit width of an integer, one more for an unsigned type
 		bits = size
-		if strings.HasPrefix(base, "uint") {
+		if strings.HasPrefix(base, "uint") || base == "sql.NullByte" {
 			bits++
 		}
 	}
@@ -608,7 +611,7 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 	autoSet := has(tag, "AUTOINCREMENT")
 	// gorm gives a bare key the value of its own name, and any value but
 	// false is true: a bare autoIncrement switches it on.
-	autoOn := autoSet && !strings.EqualFold(tag["AUTOINCREMENT"], "false")
+	autoOn := autoSet && tag["AUTOINCREMENT"] != "" && !strings.EqualFold(tag["AUTOINCREMENT"], "false")
 	if isInt && !hasDefault && (autoOn || fld.PK && !autoSet) {
 		fld.Serial = true
 		st.explicitAuto[n.Name] = autoOn
@@ -669,6 +672,13 @@ func (r *reader) applyDefault(m *importer.Model, fld *importer.Field, tag map[st
 	}
 }
 
+// defaultIndexName is gorm's name for an index the tag does not name:
+// idx_<table>_<snake-cased Go field name>. A column tag or an embeddedPrefix
+// does not change it.
+func defaultIndexName(m *importer.Model, fld *importer.Field) string {
+	return "idx_" + m.Table + "_" + namer.ColumnName(fld.Name)
+}
+
 // applyIndexes reads unique, index and uniqueIndex. A field can carry several
 // index tags; Momo's tags name one index per field, so the first is kept and
 // the others are reported as dropped.
@@ -682,7 +692,7 @@ func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all ma
 		for _, v := range all[key] {
 			name, opts, _ := strings.Cut(v, ",")
 			if name == "" {
-				name = "idx_" + m.Table + "_" + fld.Column
+				name = defaultIndexName(m, fld)
 			}
 			unique := key == "UNIQUEINDEX"
 			composite := false
@@ -720,7 +730,7 @@ func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all ma
 		}
 	}
 	if fld.Index && fld.IndexName == "" {
-		fld.IndexName = "idx_" + m.Table + "_" + fld.Column
+		fld.IndexName = defaultIndexName(m, fld)
 	}
 }
 

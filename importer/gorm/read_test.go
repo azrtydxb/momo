@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -390,14 +391,62 @@ type P struct {
 			t.Errorf("%s: %s, want %s", name, got, want)
 		}
 	}
-	if got := len(rep.Of(importer.GoDefault)); got != 4 {
-		t.Fatalf("CreatedAt, UpdatedAt and the two from gorm.Model are set in Go by name: %d\n%s", got, rep)
+	var set []string
+	for _, c := range rep.Of(importer.GoDefault) {
+		if !modelsPosition.MatchString(c.Source) {
+			t.Errorf("GoDefault for %s.%s has no models.go position: %q", c.Model, c.Field, c.Source)
+		}
+		set = append(set, c.Model+"."+c.Field)
+	}
+	sort.Strings(set)
+	if strings.Join(set, " ") != "A.CreatedAt A.UpdatedAt P.CreatedAt P.UpdatedAt" {
+		t.Fatalf("CreatedAt and UpdatedAt are set in Go by name, also through gorm.Model: %v\n%s", set, rep)
 	}
 	if got := len(rep.Of(importer.Naming)); got != 1 {
 		t.Fatalf("type: on an auto-increment column is reported: %d\n%s", got, rep)
 	}
-	if f := field(t, p, "DeletedAt"); f.Column != "p_deleted_at" || f.IndexName != "idx_ps_p_deleted_at" {
+	if f := field(t, p, "DeletedAt"); f.Column != "p_deleted_at" || f.IndexName != "idx_ps_deleted_at" {
 		t.Fatalf("embeddedPrefix on gorm.Model: %+v", f)
+	}
+}
+
+func TestReadGormEdgeCases(t *testing.T) {
+	models, rep := readSource(t, `package m
+
+import (
+	"database/sql"
+	"time"
+)
+
+type E struct {
+	ID        uint      `+"`gorm:\"primaryKey;autoIncrement:false\"`"+`
+	Off       uint      `+"`gorm:\"autoIncrement:\"`"+`
+	Price     float64   `+"`gorm:\"precision:10\"`"+`
+	Byte      sql.NullByte `+"`gorm:\"size:8\"`"+`
+	CreatedAt string
+	UpdatedAt time.Time
+	Named     string `+"`gorm:\"column:alias;index\"`"+`
+}
+`)
+	e := models[0]
+	if field(t, e, "ID").Serial {
+		t.Fatalf("autoIncrement:false switches the serial off: %+v", field(t, e, "ID"))
+	}
+	if field(t, e, "Off").Serial {
+		t.Fatalf("an empty autoIncrement value is off, as in gorm: %+v", field(t, e, "Off"))
+	}
+	if got := field(t, e, "Price").SQLType; got != "numeric(10)" {
+		t.Fatalf("precision without scale: %s", got)
+	}
+	if got := field(t, e, "Byte").SQLType; got != "smallint" {
+		t.Fatalf("sql.NullByte with size 8 is unsigned, so nine bits: %s", got)
+	}
+	if f := field(t, e, "Named"); f.Column != "alias" || f.IndexName != "idx_es_named" {
+		t.Fatalf("the default index name follows the Go field, not the column tag: %+v", f)
+	}
+	got := rep.Of(importer.GoDefault)
+	if len(got) != 1 || got[0].Field != "UpdatedAt" || got[0].Model != "E" || !modelsPosition.MatchString(got[0].Source) {
+		t.Fatalf("only the time-typed UpdatedAt is set in Go by name; a string CreatedAt is not: %+v", got)
 	}
 }
 
