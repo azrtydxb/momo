@@ -81,7 +81,9 @@ The `dialect/dialect.go` flags for the unusable dialects, for planning only:
   `IsolationLevels`, `WindowFunctions`. No `Returning` and no `OnConflict` on
   either; MariaDB alone has `InsertReturning` (`INSERT ... RETURNING`, not
   UPDATE or DELETE). Vector metadata: MariaDB lists L2 and cosine and a vector
-  index, MySQL lists none; the driver reports no vector support yet.
+  index, MySQL lists none. The driver reports vector support on MariaDB only; every
+  distance builder on MySQL returns `ErrUnsupported`, and on MariaDB only L2
+  and cosine on `vector.Vector` render (see vectors.md).
 
 ## Core queries
 
@@ -172,7 +174,11 @@ PostgreSQL only. Behavior and error table: [relations.md](relations.md).
 
 ## Vectors
 
-PostgreSQL with the pgvector extension only. Detail: [vectors.md](vectors.md).
+PostgreSQL with the pgvector extension, plus MariaDB 11.8 (float32 vectors,
+Euclidean and cosine distance, `VECTOR INDEX`) and MySQL 9.x (storage only,
+distance is `ErrUnsupported`). The MySQL column in the table below is for
+PostgreSQL features only; the MariaDB and MySQL vector support is in
+[vectors.md](vectors.md#mariadb-and-mysql).
 
 | Feature                                                                | PostgreSQL                                                                                                                | SQLite                   | MySQL            |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ---------------- |
