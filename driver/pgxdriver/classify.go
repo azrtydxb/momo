@@ -5,6 +5,7 @@ package pgxdriver
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/azrtydxb/momo"
@@ -38,7 +39,7 @@ func ClassifyError(err error) error {
 	}
 	var pe *pgconn.PgError
 	if !errors.As(err, &pe) {
-		return err
+		return redactEncodeError(err)
 	}
 	var kind error
 	switch pe.Code {
@@ -70,4 +71,29 @@ func ClassifyError(err error) error {
 		Constraint: pe.ConstraintName,
 		Err:        driverError{cause: pe, msg: pe.Message},
 	}, pe.Detail)
+}
+
+// encodeArgRe finds the argument position in pgx's "failed to encode args[N]"
+// prefix.
+var encodeArgRe = regexp.MustCompile(`failed to encode args\[(\d+)\]`)
+
+// redactEncodeError withholds the text of a pgx client-side encode failure.
+// pgx formats the offending bound value into those messages, so rendering
+// them would leak data a caller bound. The original error stays reachable
+// through errors.Is, errors.As and Unwrap; the redacted message keeps the
+// argument position when pgx reported one. Other errors are returned as is.
+func redactEncodeError(err error) error {
+	var de driverError
+	if errors.As(err, &de) {
+		return err
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "failed to encode args[") && !strings.Contains(msg, "unable to encode ") {
+		return err
+	}
+	out := "pgx: failed to encode argument (value withheld)"
+	if m := encodeArgRe.FindStringSubmatch(msg); m != nil {
+		out = "pgx: failed to encode args[" + m[1] + "] (value withheld)"
+	}
+	return driverError{cause: err, msg: out}
 }
