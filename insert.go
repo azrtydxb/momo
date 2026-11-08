@@ -3,8 +3,6 @@
 package momo
 
 import (
-	"errors"
-	"fmt"
 	"slices"
 	"time"
 )
@@ -92,7 +90,9 @@ func (q InsertQuery[T]) fail(err error) InsertQuery[T] {
 }
 
 func (q InsertQuery[T]) verr(col, format string, args ...any) error {
-	return &Error{Kind: ErrValidation, Op: "insert", Table: q.meta.Table, Column: col, Err: fmt.Errorf(format, args...)}
+	e := validation("insert", q.meta.Table, format, args...)
+	e.Column = col
+	return e
 }
 
 // Model adds one model, writing every column except identity, read-only and
@@ -270,7 +270,7 @@ func (q InsertQuery[T]) writable(i int) bool {
 // SQL compiles the statement without executing it.
 func (q InsertQuery[T]) SQL() (Compiled, error) {
 	if q.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
+		return Compiled{}, noQuerier("insert", q.meta.Table)
 	}
 	return compile(q.q.Dialect(), q.render)
 }

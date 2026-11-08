@@ -263,7 +263,7 @@ func (r *chunkRows[T]) Next() bool {
 
 func (r *chunkRows[T]) Scan(dest ...any) error {
 	if r.cur == nil {
-		return errors.New("momo: Scan without a current row")
+		return newError(ErrValidation, "scan", "", errors.New("Scan without a current row"))
 	}
 	return r.cur.Scan(dest...)
 }
