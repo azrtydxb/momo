@@ -101,7 +101,7 @@ func (AggExpr[T]) resultType() T { var z T; return z }
 func (a AggExpr[T]) AppendSQL(b *Builder) { a.spec.appendSQL(b) }
 
 func aggErr(b *Builder, err error) {
-	b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: err})
+	b.SetErr(newError(ErrValidation, "build", "", err))
 }
 
 func appendOrders(b *Builder, orders []Order) {

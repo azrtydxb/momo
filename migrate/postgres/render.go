@@ -207,7 +207,9 @@ func tableRef(schemaName, name string) string {
 }
 
 // qualifiedName splits a name the inspector spelled relative to the current
-// schema ("name" or "schema.name") and quotes each part.
+// schema ("name" or "schema.name") and quotes each part. It cuts at the first
+// dot, so a name that itself contains a dot cannot be told from a qualified one
+// and renders as schema and name; such names are not supported.
 func qualifiedName(s string) string {
 	if ns, name, ok := strings.Cut(s, "."); ok {
 		return ident(ns) + "." + ident(name)

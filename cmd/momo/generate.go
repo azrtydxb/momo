@@ -62,7 +62,7 @@ A re-run rewrites the model files that nobody edited. A file with hand edits,
 or one that --from-db did not write, is kept: the regenerated version goes
 next to it as <file>.new, the run lists "conflict: <file>" and exits 1.
 --overwrite replaces such files, except a hand-edited file whose table did not
-change in the database: that one is kept as it is. --check writes nothing and
+change in the database: that one is kept as it is (delete the file to reset it). --check writes nothing and
 exits 1 when a file would change. A file whose table is gone is listed as "orphan" and is
 never deleted.
 

@@ -125,7 +125,7 @@ func (r *ModelRows[T]) Next() bool { return r.rows.Next() }
 // ScanModel scans the current row into the fields of m named by RETURNING.
 func (r *ModelRows[T]) ScanModel(m *T) error {
 	if m == nil {
-		return errors.New("momo: ScanModel into nil model")
+		return newError(ErrValidation, "scan", "", errors.New("ScanModel into nil model"))
 	}
 	if r.dest == nil {
 		r.dest = make([]any, len(r.idx))

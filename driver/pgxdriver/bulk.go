@@ -45,7 +45,7 @@ func copyFromSource(ctx context.Context, s copySender, table string, cols []stri
 		// error. A server error is kept: the database really refused the copy.
 		var pe *pgconn.PgError
 		if cerr := ctx.Err(); cerr != nil && !errors.Is(err, cerr) && !errors.As(err, &pe) {
-			err = fmt.Errorf("pgx: copy stopped: %w", cerr)
+			err = fmt.Errorf("pgx: copy stopped: %w: %w", cerr, err)
 		}
 		return 0, copyErr(err)
 	}

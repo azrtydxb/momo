@@ -159,7 +159,7 @@ type txRows struct {
 	Rows
 	tx      *Tx
 	ctx     context.Context
-	write   bool // the statement may change data (anything but a select)
+	write   bool // the statement may change data: anything but a typed select (raw SQL may write)
 	drained bool // Next reached the end without an error
 	once    sync.Once
 	scanErr error
@@ -223,6 +223,12 @@ func (r *txRows) Close() error {
 		}
 		if err == nil {
 			err = r.scanErr
+		}
+		if err == nil && r.write && !r.drained {
+			// Closed before the rows were read to the end. A panic that unwinds
+			// through the caller looks the same, whichever way Close is
+			// deferred, so a write that was not fully read is never committed.
+			err = &Error{Kind: ErrValidation, Op: "write", Err: errors.New("rows of a write were closed before they were read to the end; the write was rolled back")}
 		}
 		if err == nil && (r.write || !r.drained) {
 			err = r.ctx.Err()
