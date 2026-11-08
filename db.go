@@ -108,6 +108,8 @@ type DB struct {
 	pinned   bool             // set by OnConn: statements run on one pinned connection
 	// fieldHooks holds the []FieldHook[T] of WithFieldHooks keyed by *Meta[T].
 	fieldHooks map[any]any
+	// idGens holds the id generators of WithIDGenerator by name.
+	idGens map[string]func() string
 	// txSetup runs after every transaction momo begins (WithTxSetup).
 	txSetup []func(ctx context.Context, tx *Tx) error
 	// implicitTx runs auto-commit statements in a short transaction (WithImplicitTx).

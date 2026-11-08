@@ -60,6 +60,15 @@ type InsertQuery[T any] struct {
 	meta   *Meta[T]
 	i      insertCore
 	models []T
+	// back holds, per model, the caller's value that generated ids are
+	// written back to (nil for none); see generateIDs.
+	back []*T
+	// idsDone marks that generateIDs has run, and reconcile that Exec reads
+	// the stored ids back after a conflict that may keep an existing row.
+	idsDone, reconcile bool
+	// pend collects the write-backs of execReconcile, applied once the
+	// statement (all chunks) has committed.
+	pend *[]func()
 	// clock, when set, is the statement time shared by every chunk of a
 	// chunked bulk insert; otherwise the DB clock is read per statement.
 	clock time.Time
@@ -93,6 +102,7 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 		return q.fail(q.verr("", "Model(nil)"))
 	}
 	q.models = append(slices.Clip(q.models), *m)
+	q.back = append(slices.Clip(q.back), m)
 	return q
 }
 
@@ -103,6 +113,9 @@ func (q InsertQuery[T]) Models(ms []T) InsertQuery[T] {
 		return q.fail(q.verr("", "Models: no rows"))
 	}
 	q.models = append(slices.Clip(q.models), ms...)
+	for i := range ms {
+		q.back = append(slices.Clip(q.back), &ms[i])
+	}
 	return q
 }
 

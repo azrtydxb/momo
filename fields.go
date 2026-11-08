@@ -94,6 +94,11 @@ func newFieldPlan[T any](q Querier, m *Meta[T]) (fieldPlan[T], error) {
 		}
 	}
 	fp := fieldPlan[T]{hooks: hooks}
+	idDefs, err := idGenDefaults(q, m)
+	if err != nil {
+		return fieldPlan[T]{}, err
+	}
+	fp.def = idDefs
 	for _, h := range hooks {
 		if h.Column < 0 || h.Column >= len(m.Columns) {
 			return fieldPlan[T]{}, &Error{Kind: ErrValidation, Op: "fields", Table: m.Table,

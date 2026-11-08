@@ -27,8 +27,19 @@ func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	var pend []func()
+	for i := range chunks {
+		chunks[i].pend = &pend
+	}
 	if len(chunks) == 1 {
-		return chunks[0].execOne(ctx)
+		res, err := q.execSingle(ctx, chunks[0])
+		if err != nil {
+			return Result{}, err
+		}
+		for _, apply := range pend {
+			apply()
+		}
+		return res, nil
 	}
 	var total int64
 	err = runAtomic(ctx, q.q, "insert", q.meta.Table, func(sq Querier) error {
@@ -45,10 +56,16 @@ func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	for _, apply := range pend {
+		apply()
+	}
 	return Result{RowsAffected: total}, nil
 }
 
 func (q InsertQuery[T]) execOne(ctx context.Context) (Result, error) {
+	if q.reconcile {
+		return q.execReconcile(ctx)
+	}
 	c, err := q.SQL()
 	if err != nil {
 		return Result{}, err
@@ -74,6 +91,9 @@ func (q InsertQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	chunks, err := q.plan()
 	if err != nil {
 		return nil, err
+	}
+	for i := range chunks {
+		chunks[i].reconcile = false // the caller reads the stored ids from the rows
 	}
 	if len(chunks) == 1 {
 		return chunks[0].rowsOne(ctx)
@@ -107,6 +127,11 @@ func (q InsertQuery[T]) rowsOne(ctx context.Context) (*ModelRows[T], error) {
 // query itself when no split is needed (or when rendering will report the
 // error), so validation errors keep their single-statement form.
 func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
+	q, err := q.generateIDs(true)
+	if err != nil {
+		return nil, err
+	}
+	q.idsDone = true
 	one := []InsertQuery[T]{q}
 	if q.q == nil || q.i.err != nil || q.meta.Table == "" || len(q.models) < 2 {
 		return one, nil
@@ -164,6 +189,9 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		c := r
 		hi := min(lo+per, len(r.models))
 		c.models = r.models[lo:hi]
+		if len(r.back) == len(r.models) {
+			c.back = r.back[lo:hi]
+		}
 		if r.pre != nil {
 			c.pre = r.pre[lo:hi]
 		}
