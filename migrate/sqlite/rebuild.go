@@ -253,6 +253,17 @@ func (r *renderer) rebuild(table string, plan []migrate.Change) ([]migrate.State
 	target.WithoutRowID = target.WithoutRowID || old.WithoutRowID
 	target.Strict = target.Strict || old.Strict
 	target.Autoincrement = target.Autoincrement || old.Autoincrement
+	if old.WithoutRowID {
+		// A WITHOUT ROWID table has no rowid alias, so the "by_default" identity
+		// the normalizer gives an INTEGER key (and a model may carry) cannot be
+		// written. Clear it where the table has none, as the diff does.
+		target.Columns = slices.Clone(desired.Columns)
+		for i := range target.Columns {
+			if oc, ok := old.Column(target.Columns[i].Name); ok && oc.Identity == "" && target.Columns[i].Identity == "by_default" {
+				target.Columns[i].Identity = ""
+			}
+		}
+	}
 	var copyCols [][2]string
 	for _, col := range desired.Columns {
 		if col.Generated != "" {

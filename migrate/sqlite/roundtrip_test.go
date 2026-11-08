@@ -388,3 +388,35 @@ func TestSQLiteInspectDescKeyIsNotRowid(t *testing.T) {
 		t.Errorf("PRIMARY KEY is a rowid alias: %+v", col)
 	}
 }
+
+// TestSQLiteRebuildWithoutRowIDTable rebuilds a WITHOUT ROWID table whose key is
+// a single INTEGER column. A model's key carries the "by_default" identity the
+// normalizer gives an INTEGER key, which a WITHOUT ROWID table cannot have; the
+// rebuild must still render, keep the rows and keep WITHOUT ROWID.
+func TestSQLiteRebuildWithoutRowIDTable(t *testing.T) {
+	db := testopen.SQLite(t)
+	c := pinned(t, db)
+	mustExec(t, c, `CREATE TABLE wr (id INTEGER NOT NULL PRIMARY KEY, v TEXT) WITHOUT ROWID`)
+	mustExec(t, c, `INSERT INTO wr (id, v) VALUES (1, 'a'), (2, 'b')`)
+	live, err := msqlite.New().Inspect(context.Background(), c, migrate.InspectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desired := &schema.Schema{Dialect: dialect.SQLite, Tables: []schema.Table{{
+		Name:       "wr",
+		Columns:    []schema.Column{{Name: "id", Type: "INTEGER", Identity: "by_default"}, {Name: "v", Type: "TEXT", Default: "'z'"}},
+		PrimaryKey: []string{"id"},
+	}}}
+	stmts := render(t, live, desired)
+	if !strings.Contains(dump(stmts), `CREATE TABLE "new_wr"`) || !strings.Contains(dump(stmts), "WITHOUT ROWID") {
+		t.Fatalf("the change must rebuild wr and keep WITHOUT ROWID:\n%s", dump(stmts))
+	}
+	apply(t, c, stmts)
+	var n int
+	var text string
+	scanOne(t, c, `SELECT count(*) FROM wr`, &n)
+	scanOne(t, c, `SELECT sql FROM sqlite_schema WHERE name = 'wr'`, &text)
+	if n != 2 || !strings.Contains(text, "WITHOUT ROWID") || !strings.Contains(text, "DEFAULT 'z'") {
+		t.Fatalf("rows = %d (want 2); table: %s", n, text)
+	}
+}

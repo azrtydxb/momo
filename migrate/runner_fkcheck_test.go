@@ -70,6 +70,9 @@ func TestForeignKeyCheckFailsClosed(t *testing.T) {
 		"PRAGMA foreign_key_check; DROP TABLE t",
 		"PRAGMA foreign_key_check = 1",
 		"-- c\nPRAGMA foreign_key_check(a, b)",
+		"SELECT * FROM pragma_foreign_key_check",
+		"SELECT * FROM pragma_foreign_key_check('items')",
+		"select count(*) from PRAGMA_FOREIGN_KEY_CHECK where 'x' = 'x'",
 	} {
 		x := &recordingExecer{}
 		err := execStatement(context.Background(), x, Statement{SQL: sql})
@@ -77,9 +80,16 @@ func TestForeignKeyCheckFailsClosed(t *testing.T) {
 			t.Errorf("%q: err = %v, ran = %v; want ErrValidation and nothing run", sql, err, x.ran)
 		}
 	}
-	x := &recordingExecer{}
-	if err := execStatement(context.Background(), x, Statement{SQL: "CREATE TABLE foreign_key_check (a int)"}); err != nil || len(x.ran) != 1 {
-		t.Errorf("an unrelated statement must run: %v %v", err, x.ran)
+	for _, sql := range []string{
+		"CREATE TABLE foreign_key_check (a int)",
+		"INSERT INTO log (msg) VALUES ('PRAGMA foreign_key_check')",
+		"SELECT 'pragma_foreign_key_check'",
+		"PRAGMA foreign_keys = OFF",
+	} {
+		x := &recordingExecer{}
+		if err := execStatement(context.Background(), x, Statement{SQL: sql}); err != nil || len(x.ran) != 1 {
+			t.Errorf("%q is unrelated and must run: %v %v", sql, err, x.ran)
+		}
 	}
 }
 

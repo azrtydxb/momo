@@ -318,12 +318,39 @@ func stripSQLComments(s string) string {
 	return b.String()
 }
 
-// looksLikeForeignKeyCheck reports whether sql is a PRAGMA statement that names
-// foreign_key_check, whatever else follows it. One that is not exactly the
-// forms foreignKeyCheckSQL accepts must fail rather than run unchecked.
+// looksLikeForeignKeyCheck reports whether sql uses foreign_key_check in any way
+// other than the forms foreignKeyCheckSQL accepts: a PRAGMA statement that names
+// it, or the pragma_foreign_key_check table-valued function in a query. Such a
+// statement would run with its rows discarded, so it must fail instead. Comments
+// and string literals are ignored.
 func looksLikeForeignKeyCheck(sql string) bool {
-	s := strings.ToLower(strings.TrimSpace(stripSQLComments(sql)))
-	return strings.HasPrefix(s, "pragma") && strings.Contains(s, "foreign_key_check")
+	s := strings.ToLower(strings.TrimSpace(stripStringLiterals(stripSQLComments(sql))))
+	if !strings.Contains(s, "foreign_key_check") {
+		return false
+	}
+	return strings.HasPrefix(s, "pragma") || strings.Contains(s, "pragma_foreign_key_check")
+}
+
+// stripStringLiterals empties each single-quoted literal, keeping the quotes.
+func stripStringLiterals(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\'' {
+			b.WriteByte(s[i])
+			continue
+		}
+		b.WriteString("''")
+		for i++; i < len(s); i++ {
+			if s[i] == '\'' {
+				if i+1 < len(s) && s[i+1] == '\'' {
+					i++
+					continue
+				}
+				break
+			}
+		}
+	}
+	return b.String()
 }
 
 // isForeignKeyCheck reports whether s is the PRAGMA foreign_key_check that ends
