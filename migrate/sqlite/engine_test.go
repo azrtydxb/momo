@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build integration
+//go:build integration && cgo && !windows
 
 package sqlite_test
 
@@ -216,5 +216,123 @@ func TestSQLiteEngineRebuildOrphanFailsAndRestores(t *testing.T) {
 	scanOne(t, c, `SELECT count(*) FROM momo_migration_lock`, &lockRows)
 	if lockRows != 0 {
 		t.Fatalf("the lock must be released after a failure, %d row(s) left", lockRows)
+	}
+}
+
+// TestSQLiteAutoMigrateSkipsRebuilds checks that AutoMigrate leaves a table
+// alone when an additive change to it would need a rebuild. A rebuild writes
+// the whole desired table, so it would also drop the column the model no
+// longer has and apply the other changes AutoMigrate skips.
+func TestSQLiteAutoMigrateSkipsRebuilds(t *testing.T) {
+	db := testopen.SQLite(t)
+	ctx := context.Background()
+	mustExec(t, db.Driver(), `CREATE TABLE items (id INTEGER NOT NULL PRIMARY KEY, name TEXT, legacy TEXT)`)
+	mustExec(t, db.Driver(), `INSERT INTO items (name, legacy) VALUES ('a', 'keep'), ('b', 'me')`)
+
+	// The model drops legacy and adds the enum column status.
+	desired := &schema.Schema{
+		Dialect: "sqlite",
+		Enums:   []schema.Enum{{Name: "items_status", Values: []string{"new", "done"}}},
+		Tables: []schema.Table{{
+			Name: "items",
+			Columns: []schema.Column{
+				{Name: "id", Type: "INTEGER"},
+				{Name: "name", Type: "TEXT", Nullable: true},
+				{Name: "status", Type: "TEXT", Nullable: true, Enum: "items_status"},
+			},
+			PrimaryKey: []string{"id"},
+		}},
+	}
+	rep, err := newEngine(t, db, migratetest.EmptyFS(), "20260101000000").AutoMigrate(ctx, desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skipped bool
+	for _, sk := range rep.Skipped {
+		if sk.Change.Kind == migrate.AddColumn && sk.Change.Name == "status" {
+			skipped = true
+			if sk.Reason != "requires a table rebuild; use a migration" {
+				t.Errorf("reason = %q", sk.Reason)
+			}
+		}
+	}
+	if !skipped {
+		t.Fatalf("the enum column must be reported as skipped: %+v", rep)
+	}
+	for _, a := range rep.Applied {
+		if a.Table == "items" {
+			t.Errorf("no change to items may be applied: %+v", a)
+		}
+	}
+
+	c := pinned(t, db)
+	var legacy string
+	scanOne(t, c, `SELECT legacy FROM items WHERE name = 'a'`, &legacy)
+	if legacy != "keep" {
+		t.Fatalf("legacy data lost: %q", legacy)
+	}
+	var n int
+	scanOne(t, c, `SELECT count(*) FROM pragma_table_info('items') WHERE name = 'status'`, &n)
+	if n != 0 {
+		t.Fatal("status must not have been added by a rebuild")
+	}
+}
+
+// TestSQLiteRollbackRebuildKeepsChildRows runs a hand-written down migration
+// that rebuilds a parent table with child rows. Rollback must honour the
+// foreign-keys-off directive as Apply does: with enforcement on, DROP TABLE of
+// the parent fails on the child rows.
+func TestSQLiteRollbackRebuildKeepsChildRows(t *testing.T) {
+	db := testopen.SQLite(t)
+	ctx := context.Background()
+	v1 := &schema.Schema{Dialect: "sqlite", Tables: []schema.Table{
+		{Name: "parents", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "note", Type: "TEXT", Nullable: true}}, PrimaryKey: []string{"id"}},
+		{
+			Name:       "children",
+			Columns:    []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "parent_id", Type: "INTEGER"}},
+			PrimaryKey: []string{"id"},
+			ForeignKeys: []schema.ForeignKey{
+				{Name: "children_parent_id_fkey", Columns: []string{"parent_id"}, RefTable: "parents", RefColumns: []string{"id"}},
+			},
+		},
+	}}
+	m1, err := newEngine(t, db, migratetest.EmptyFS(), "20260101000000").Diff(ctx, v1, "init", migrate.DiffOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := mergeFiles(m1.Files)
+	for name := range m1.Files {
+		if up, ok := strings.CutSuffix(name, ".up.sql"); ok {
+			files[up+".down.sql"] = []byte(`-- momo:sqlite-foreign-keys-off
+CREATE TABLE "new_parents" ("id" INTEGER NOT NULL, PRIMARY KEY ("id"));
+INSERT INTO "new_parents" ("id") SELECT "id" FROM "parents";
+DROP TABLE "parents";
+ALTER TABLE "new_parents" RENAME TO "parents";
+PRAGMA foreign_key_check;
+`)
+		}
+	}
+	e := newEngine(t, db, migratetest.FS(files), "20260102000000")
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, db.Driver(), `INSERT INTO parents (id, note) VALUES (1, 'x')`)
+	mustExec(t, db.Driver(), `INSERT INTO children (id, parent_id) VALUES (1, 1), (2, 1)`)
+
+	rep, err := e.Rollback(ctx, migrate.RollbackOptions{})
+	if err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if len(rep.Applied) != 1 {
+		t.Fatalf("applied %+v", rep.Applied)
+	}
+	c := pinned(t, db)
+	var kids, parents, fk, noteCols int
+	scanOne(t, c, `SELECT count(*) FROM children`, &kids)
+	scanOne(t, c, `SELECT count(*) FROM parents`, &parents)
+	scanOne(t, c, `PRAGMA foreign_keys`, &fk)
+	scanOne(t, c, `SELECT count(*) FROM pragma_table_info('parents') WHERE name = 'note'`, &noteCols)
+	if kids != 2 || parents != 1 || fk != 1 || noteCols != 0 {
+		t.Fatalf("children = %d (want 2), parents = %d (want 1), foreign_keys = %d (want 1), note columns = %d (want 0)", kids, parents, fk, noteCols)
 	}
 }

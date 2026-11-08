@@ -425,3 +425,74 @@ func TestSQLiteOrderViews(t *testing.T) {
 		t.Fatalf("a view must follow the views it reads, got %v", names)
 	}
 }
+
+func TestSQLiteStrictAndAutoincrementRender(t *testing.T) {
+	tbl := schema.Table{
+		Name:          "t",
+		Columns:       []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "v", Type: "TEXT", Nullable: true}},
+		PrimaryKey:    []string{"id"},
+		Autoincrement: true,
+		Strict:        true,
+	}
+	got, err := createTableSQL("t", tbl, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `CREATE TABLE "t" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "v" TEXT) STRICT`; got != want {
+		t.Fatalf("got:  %s\nwant: %s", got, want)
+	}
+	wr := schema.Table{Name: "w", Columns: []schema.Column{{Name: "k", Type: "TEXT"}}, PrimaryKey: []string{"k"}, WithoutRowID: true, Strict: true}
+	got, err = createTableSQL("w", wr, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `CREATE TABLE "w" ("k" TEXT NOT NULL, PRIMARY KEY ("k")) WITHOUT ROWID, STRICT`; got != want {
+		t.Fatalf("got:  %s\nwant: %s", got, want)
+	}
+	for name, bad := range map[string]schema.Table{
+		"composite key": {Name: "t", Columns: []schema.Column{{Name: "a", Type: "INTEGER"}, {Name: "b", Type: "INTEGER"}}, PrimaryKey: []string{"a", "b"}, Autoincrement: true},
+		"text key":      {Name: "t", Columns: []schema.Column{{Name: "a", Type: "TEXT"}}, PrimaryKey: []string{"a"}, Autoincrement: true},
+		"without rowid": {Name: "t", Columns: []schema.Column{{Name: "a", Type: "INTEGER"}}, PrimaryKey: []string{"a"}, Autoincrement: true, WithoutRowID: true},
+		"no key":        {Name: "t", Columns: []schema.Column{{Name: "a", Type: "INTEGER"}}, Autoincrement: true},
+	} {
+		if _, err := createTableSQL("t", bad, nil); !errors.Is(err, momo.ErrUnsupported) {
+			t.Errorf("%s: want ErrUnsupported, got %v", name, err)
+		}
+	}
+}
+
+// TestSQLiteRebuildKeepsStrictAndAutoincrement checks that a rebuild writes the
+// options the table has instead of dropping them, and that the diff refuses to
+// change them.
+func TestSQLiteRebuildKeepsStrictAndAutoincrement(t *testing.T) {
+	mk := func(nullable bool) *schema.Schema {
+		return liteSchema(schema.Table{
+			Name:          "t",
+			Columns:       []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "v", Type: "TEXT", Nullable: nullable}},
+			PrimaryKey:    []string{"id"},
+			Autoincrement: true,
+			Strict:        true,
+		})
+	}
+	from, to := mk(true), mk(false)
+	plan := []migrate.Change{{Kind: migrate.AlterColumn, Table: "t", Name: "v", Before: &from.Tables[0].Columns[1], After: &to.Tables[0].Columns[1]}}
+	stmts, err := Dialect{}.RenderSchema(from, to, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `CREATE TABLE "new_t" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "v" TEXT NOT NULL) STRICT`
+	if stmts[0].SQL != want {
+		t.Fatalf("got:  %s\nwant: %s", stmts[0].SQL, want)
+	}
+
+	plain := mk(true)
+	plain.Tables[0].Strict = false
+	if _, _, err := migrate.Diff(plain, from, migrate.DiffOptions{}); err == nil {
+		t.Fatal("a change of STRICT must be refused")
+	}
+	plain = mk(true)
+	plain.Tables[0].Autoincrement = false
+	if _, _, err := migrate.Diff(plain, from, migrate.DiffOptions{}); err == nil {
+		t.Fatal("a change of AUTOINCREMENT must be refused")
+	}
+}

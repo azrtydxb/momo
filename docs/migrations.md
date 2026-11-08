@@ -448,7 +448,16 @@ Limits of the rebuild:
 - `sqlite.Rebuild` and `sqlite.Capture` rebuild from a live connection
   (captured views and triggers are recreated verbatim); the engine path rebuilds
   from the snapshot instead.
-- Changing `WITHOUT ROWID` is refused by `diff` (write a custom migration).
+- Changing `WITHOUT ROWID`, `STRICT` or `AUTOINCREMENT` is refused by `diff`
+  (write a custom migration). `schema.Table` carries `Strict` and
+  `Autoincrement`; inspection reads them and a rebuild writes them back, so a
+  rebuild never drops them. An `AUTOINCREMENT` counter is recomputed from the
+  copied rows, so it can be lower than before if the highest ids had been deleted.
+  An `INTEGER PRIMARY KEY DESC` is not a rowid alias and is not reported as an
+  identity.
+- A down migration that rebuilds a table carries the same
+  `-- momo:sqlite-foreign-keys-off` line; `Rollback` honours it as `apply` does
+  (`TestSQLiteRollbackRebuildKeepsChildRows`).
 
 **Unsupported.** These fail with an error that wraps `momo.ErrUnsupported`
 instead of being dropped: `create_schema`, `create_extension`, the policy and
@@ -467,7 +476,7 @@ removed (there is no CLI flag). The lock and statement timeouts of the session
 options do nothing on SQLite; busy handling is the driver's `busy_timeout`.
 
 **Other differences.** DDL is transactional, so one migration is one
-transaction. `AutoMigrate` renders through the same code; it skips changes to existing tables beyond additive ones, and turns foreign keys off if one of its additive changes still needs a rebuild (an enum column, say). Index parts carry
+transaction. `AutoMigrate` skips any change to an existing table that needs a rebuild (an enum column, say) with the reason "requires a table rebuild; use a migration", because a rebuild writes the whole desired table and would also apply the changes AutoMigrate leaves alone (`TestSQLiteAutoMigrateSkipsRebuilds`). Index parts carry
 no collation in the schema, so a collation on an index key is not compared.
 Collation on a column is.
 

@@ -84,3 +84,12 @@ func renderPlan(d Dialect, from, to *schema.Schema, plan []Change) ([]Statement,
 	}
 	return d.Render(plan)
 }
+
+// RebuildDetector is implemented by dialects that change some tables by
+// rebuilding them from the desired definition (SQLite). NeedsRebuild reports
+// whether applying c to the live schema from takes a rebuild. A rebuild writes
+// the whole desired table, which would also apply every change AutoMigrate
+// chose to skip, so AutoMigrate skips a change that needs one.
+type RebuildDetector interface {
+	NeedsRebuild(from *schema.Schema, c Change) bool
+}

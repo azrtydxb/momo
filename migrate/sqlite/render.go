@@ -201,6 +201,14 @@ func (r *renderer) needsRebuild(c migrate.Change) bool {
 	return true // alter_column and every constraint change
 }
 
+// NeedsRebuild reports whether applying c to the schema from takes a table
+// rebuild. AutoMigrate uses it to skip such a change, because the rebuild
+// writes the whole desired table and would also apply what AutoMigrate skipped.
+func (Dialect) NeedsRebuild(from *schema.Schema, c migrate.Change) bool {
+	r := &renderer{from: from, oldNames: map[string]string{}}
+	return tableKinds[c.Kind] && r.needsRebuild(c)
+}
+
 func (r *renderer) render(plan []migrate.Change) ([]migrate.Statement, error) {
 	rp, err := r.planRebuilds(plan)
 	if err != nil {
@@ -471,15 +479,24 @@ func mentions(src, name string) bool {
 // createTableSQL renders CREATE TABLE for t under name, with every constraint
 // inline. enums holds the values of the enum columns' enums.
 func createTableSQL(name string, t schema.Table, enums map[string][]string) (string, error) {
+	if t.Autoincrement && (t.WithoutRowID || len(t.PrimaryKey) != 1) {
+		return "", unsupported("table %q is AUTOINCREMENT; that needs an INTEGER primary key of one column on a rowid table", t.Name)
+	}
 	var parts []string
 	for _, col := range t.Columns {
 		def, err := columnSQL(&t, col)
 		if err != nil {
 			return "", err
 		}
+		if t.Autoincrement && col.Name == t.PrimaryKey[0] {
+			if !strings.EqualFold(strings.TrimSpace(col.Type), "INTEGER") {
+				return "", unsupported("table %q is AUTOINCREMENT but column %q is %q, not INTEGER", t.Name, col.Name, col.Type)
+			}
+			def += " PRIMARY KEY AUTOINCREMENT" // only the column form takes AUTOINCREMENT
+		}
 		parts = append(parts, def)
 	}
-	if len(t.PrimaryKey) > 0 {
+	if len(t.PrimaryKey) > 0 && !t.Autoincrement {
 		parts = append(parts, "PRIMARY KEY ("+identList(t.PrimaryKey)+")")
 	}
 	for _, u := range t.Uniques {
@@ -514,8 +531,13 @@ func createTableSQL(name string, t schema.Table, enums map[string][]string) (str
 		parts = append(parts, def)
 	}
 	sql := "CREATE TABLE " + ident(name) + " (" + strings.Join(parts, ", ") + ")"
-	if t.WithoutRowID {
+	switch {
+	case t.WithoutRowID && t.Strict:
+		sql += " WITHOUT ROWID, STRICT"
+	case t.WithoutRowID:
 		sql += " WITHOUT ROWID"
+	case t.Strict:
+		sql += " STRICT"
 	}
 	if t.Partition != nil || t.PartitionOf != nil || t.RLS != nil && (t.RLS.Enabled || t.RLS.Forced) {
 		return "", unsupported("table %q uses partitioning or row-level security, which SQLite does not have", t.Name)

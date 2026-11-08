@@ -163,7 +163,7 @@ func (in *inspector) table(m masterRow) (*schema.Table, []schema.Enum, error) {
 	}
 	def := parseTableSQL(m.sql)
 
-	t := &schema.Table{Name: m.name, WithoutRowID: def.withoutRowID}
+	t := &schema.Table{Name: m.name, WithoutRowID: def.withoutRowID, Strict: def.strict, Autoincrement: def.autoinc}
 	type pkCol struct {
 		ord  int
 		name string
@@ -186,7 +186,7 @@ func (in *inspector) table(m masterRow) (*schema.Table, []schema.Enum, error) {
 	for _, p := range pks {
 		t.PrimaryKey = append(t.PrimaryKey, p.name)
 	}
-	if len(t.PrimaryKey) == 1 && !t.WithoutRowID {
+	if len(t.PrimaryKey) == 1 && !t.WithoutRowID && !def.pkDesc {
 		if col, ok := t.Column(t.PrimaryKey[0]); ok && strings.EqualFold(strings.TrimSpace(col.Type), "INTEGER") {
 			col.Identity = "by_default" // an INTEGER PRIMARY KEY is the rowid
 		}

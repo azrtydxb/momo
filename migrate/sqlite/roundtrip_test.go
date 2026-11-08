@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build integration
+//go:build integration && cgo && !windows
 
 package sqlite_test
 
@@ -288,4 +288,65 @@ func TestSQLiteDropAndRenameNative(t *testing.T) {
 		t.Fatalf("renamed column lost its data: %q", a2)
 	}
 	assertNoDiff(t, c, v2)
+}
+
+// TestSQLiteStrictAutoincrementRoundTrip creates a STRICT AUTOINCREMENT table,
+// inspects it back, and rebuilds it: the options must survive all three.
+func TestSQLiteStrictAutoincrementRoundTrip(t *testing.T) {
+	db := testopen.SQLite(t)
+	c := pinned(t, db)
+	mk := func(nullable bool) *schema.Schema {
+		return &schema.Schema{Dialect: dialect.SQLite, Tables: []schema.Table{{
+			Name:          "events",
+			Columns:       []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "body", Type: "TEXT", Nullable: nullable}},
+			PrimaryKey:    []string{"id"},
+			Autoincrement: true,
+			Strict:        true,
+		}}}
+	}
+	v1, v2 := mk(true), mk(false)
+	apply(t, c, render(t, &schema.Schema{Dialect: dialect.SQLite}, v1))
+	assertNoDiff(t, c, v1)
+	got, err := msqlite.New().Inspect(context.Background(), c, migrate.InspectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tbl, _ := got.Table("events"); !tbl.Strict || !tbl.Autoincrement {
+		t.Fatalf("inspection lost STRICT or AUTOINCREMENT: %+v", tbl)
+	}
+
+	mustExec(t, c, `INSERT INTO events (body) VALUES ('a'), ('b')`)
+	apply(t, c, render(t, v1, v2))
+	assertNoDiff(t, c, v2)
+	var text string
+	scanOne(t, c, `SELECT sql FROM sqlite_schema WHERE name = 'events'`, &text)
+	if !strings.Contains(text, "AUTOINCREMENT") || !strings.HasSuffix(strings.TrimSpace(text), "STRICT") {
+		t.Fatalf("the rebuild dropped an option: %s", text)
+	}
+	var n int
+	scanOne(t, c, `SELECT count(*) FROM events`, &n)
+	if n != 2 {
+		t.Fatalf("rows lost: %d", n)
+	}
+}
+
+// TestSQLiteInspectDescKeyIsNotRowid checks that INTEGER PRIMARY KEY DESC, which
+// is an ordinary index and not the rowid, is not reported as an identity.
+func TestSQLiteInspectDescKeyIsNotRowid(t *testing.T) {
+	db := testopen.SQLite(t)
+	c := pinned(t, db)
+	mustExec(t, c, `CREATE TABLE d (id INTEGER PRIMARY KEY DESC, v TEXT)`)
+	mustExec(t, c, `CREATE TABLE r (id INTEGER PRIMARY KEY, v TEXT)`)
+	got, err := msqlite.New().Inspect(context.Background(), c, migrate.InspectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _ := got.Table("d")
+	r, _ := got.Table("r")
+	if col, _ := d.Column("id"); col.Identity != "" {
+		t.Errorf("PRIMARY KEY DESC is not a rowid alias: %+v", col)
+	}
+	if col, _ := r.Column("id"); col.Identity != "by_default" {
+		t.Errorf("PRIMARY KEY is a rowid alias: %+v", col)
+	}
 }

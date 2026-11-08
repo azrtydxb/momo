@@ -23,6 +23,9 @@ type tableDef struct {
 	uniqueNames  map[string]string // key columns joined by NUL -> constraint name
 	fkNames      map[string]string // key columns joined by NUL, SOH, lower-case parent -> constraint name
 	withoutRowID bool
+	strict       bool // STRICT table option
+	autoinc      bool // a column is declared PRIMARY KEY AUTOINCREMENT
+	pkDesc       bool // the primary key is declared DESC, which is not a rowid alias
 }
 
 // parseTableSQL reads the CREATE TABLE text SQLite stores in sqlite_schema.
@@ -44,8 +47,11 @@ func parseTableSQL(createSQL string) tableDef {
 	if gi < 0 {
 		return def
 	}
-	for i := gi + 1; i+1 < len(toks); i++ {
-		if toks[i].upper() == "WITHOUT" && toks[i+1].upper() == "ROWID" {
+	for i := gi + 1; i < len(toks); i++ {
+		switch {
+		case toks[i].upper() == "STRICT":
+			def.strict = true
+		case toks[i].upper() == "WITHOUT" && i+1 < len(toks) && toks[i+1].upper() == "ROWID":
 			def.withoutRowID = true
 		}
 	}
@@ -71,6 +77,15 @@ func (d *tableDef) tableConstraint(part []token) {
 		name, i = part[1].name(), 2
 	}
 	switch part[i].upper() {
+	case "PRIMARY":
+		// PRIMARY KEY (a DESC) is not a rowid alias.
+		if i+2 < len(part) && part[i+1].upper() == "KEY" && part[i+2].kind == tokGroup {
+			for _, t := range tokenize(groupInner(part[i+2])) {
+				if t.upper() == "DESC" {
+					d.pkDesc = true
+				}
+			}
+		}
 	case "UNIQUE":
 		if i+1 < len(part) && part[i+1].kind == tokGroup && name != "" {
 			d.uniqueNames[strings.Join(groupNames(part[i+1]), "\x00")] = name
@@ -107,6 +122,18 @@ func (d *tableDef) columnItem(part []token) {
 			if i+1 < len(part) && part[i+1].kind == tokGroup {
 				d.checks = append(d.checks, checkText{name: pending, expr: strings.TrimSpace(groupInner(part[i+1]))})
 				i++
+			}
+		case "PRIMARY":
+			// PRIMARY KEY [ASC|DESC] [conflict clause] [AUTOINCREMENT]
+			for j := i + 1; j < len(part); j++ {
+				switch part[j].upper() {
+				case "DESC":
+					d.pkDesc = true
+				case "AUTOINCREMENT":
+					d.autoinc = true
+				case "CONSTRAINT", "NOT", "NULL", "UNIQUE", "CHECK", "DEFAULT", "COLLATE", "REFERENCES", "GENERATED", "AS":
+					j = len(part)
+				}
 			}
 		case "COLLATE":
 			if i+1 < len(part) {

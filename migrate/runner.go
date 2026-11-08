@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -240,7 +241,11 @@ func execAll(ctx context.Context, x execer, stmts []Statement, after func(n int)
 // its failure in ErrRebuildBlocked.
 func execStatement(ctx context.Context, x execer, s Statement) error {
 	if isForeignKeyCheck(s) {
-		return checkForeignKeys(ctx, x)
+		stmt, ok := foreignKeyCheckSQL(s.SQL)
+		if !ok {
+			stmt = "PRAGMA foreign_key_check"
+		}
+		return checkForeignKeys(ctx, x, stmt)
 	}
 	_, err := x.Exec(ctx, s.SQL, nil)
 	if err != nil {
@@ -251,26 +256,61 @@ func execStatement(ctx context.Context, x execer, s Statement) error {
 	return err
 }
 
+// foreignKeyCheckRE matches PRAGMA foreign_key_check in the forms SQLite
+// accepts: with an optional schema (main.foreign_key_check) and an optional
+// table argument (foreign_key_check(tbl), foreign_key_check("tbl")).
+var foreignKeyCheckRE = regexp.MustCompile(`(?is)^pragma\s+(?:(?:[A-Za-z_]\w*|"[^"]+")\s*\.\s*)?foreign_key_check\s*(?:\(\s*(?:[A-Za-z_]\w*|"[^"]+"|'[^']+')?\s*\))?$`)
+
+// foreignKeyCheckSQL returns the statement text without leading comments and
+// whitespace and without a trailing semicolon, and reports whether it is a
+// PRAGMA foreign_key_check. A migration file keeps the comments that precede a
+// statement, so they must not hide it.
+func foreignKeyCheckSQL(sql string) (string, bool) {
+	s := sql
+	for {
+		s = strings.TrimSpace(s)
+		switch {
+		case strings.HasPrefix(s, "--"):
+			i := strings.IndexByte(s, '\n')
+			if i < 0 {
+				return "", false
+			}
+			s = s[i+1:]
+			continue
+		case strings.HasPrefix(s, "/*"):
+			i := strings.Index(s, "*/")
+			if i < 0 {
+				return "", false
+			}
+			s = s[i+2:]
+			continue
+		}
+		break
+	}
+	s = strings.TrimRight(s, "; \t\r\n")
+	return s, foreignKeyCheckRE.MatchString(s)
+}
+
 // isForeignKeyCheck reports whether s is the PRAGMA foreign_key_check that ends
 // a SQLite table rebuild.
 func isForeignKeyCheck(s Statement) bool {
 	if s.Hint == "fk-check" {
 		return true
 	}
-	text := strings.Join(strings.Fields(strings.TrimRight(strings.TrimSpace(s.SQL), "; \t\r\n")), " ")
-	return strings.EqualFold(text, "PRAGMA foreign_key_check")
+	_, ok := foreignKeyCheckSQL(s.SQL)
+	return ok
 }
 
-// checkForeignKeys runs PRAGMA foreign_key_check and fails on the first
-// violation, naming the child table, its rowid and the parent table.
-func checkForeignKeys(ctx context.Context, x execer) error {
+// checkForeignKeys runs the PRAGMA foreign_key_check statement q and fails on
+// the first violation, naming the child table, its rowid and the parent table.
+func checkForeignKeys(ctx context.Context, x execer, stmt string) error {
 	q, ok := x.(interface {
 		Query(ctx context.Context, sql string, args []any) (momo.Rows, error)
 	})
 	if !ok {
 		return &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate", Err: errors.New("PRAGMA foreign_key_check needs a connection or transaction that can run a query")}
 	}
-	rows, err := q.Query(ctx, "PRAGMA foreign_key_check", nil)
+	rows, err := q.Query(ctx, stmt, nil)
 	if err != nil {
 		return err
 	}

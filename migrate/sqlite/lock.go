@@ -19,7 +19,8 @@ import (
 const unlockTimeout = 5 * time.Second
 
 // Lock takes the migration lock: one row (id = 1) in the table
-// momo_migration_lock, which Lock creates when it is missing. SQLite has no
+// momo_migration_lock, which Lock creates on first use (an existing table costs
+// no DDL). SQLite has no
 // advisory locks, and a lock held by a transaction would not survive the
 // autocommit statements of a migration that opts out of one, so the lock is a
 // row that outlives statements and is removed by unlock.
@@ -35,20 +36,29 @@ const unlockTimeout = 5 * time.Second
 // confirming that no process is migrating, remove it with ForceUnlock.
 func (Dialect) Lock(ctx context.Context, c momo.PinnedConn, _ string) (unlock func() error, holder func(context.Context) (string, error), err error) {
 	holder = func(ctx context.Context) (string, error) { return lockHolder(ctx, c) }
-	if _, err := c.Exec(ctx, `CREATE TABLE IF NOT EXISTS `+lockTable+` (
-id INTEGER PRIMARY KEY CHECK (id = 1),
-holder TEXT NOT NULL,
-acquired_at TEXT NOT NULL
-)`, nil); err != nil {
-		return nil, nil, fmt.Errorf("migrate/sqlite: create the lock table: %w", err)
-	}
 	host, herr := os.Hostname()
 	if herr != nil || host == "" {
 		host = "unknown"
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	me := fmt.Sprintf("pid=%d host=%s at=%s", os.Getpid(), host, now)
-	_, err = c.Exec(ctx, `INSERT INTO `+lockTable+` (id, holder, acquired_at) VALUES (1, ?, ?)`, []any{me, now})
+	insert := func() error {
+		_, err := c.Exec(ctx, `INSERT INTO `+lockTable+` (id, holder, acquired_at) VALUES (1, ?, ?)`, []any{me, now})
+		return err
+	}
+	// The table is created on first use: try the insert, and only when the
+	// table is missing create it and try once more.
+	err = insert()
+	if isNoSuchTable(err) {
+		if _, cerr := c.Exec(ctx, `CREATE TABLE IF NOT EXISTS `+lockTable+` (
+id INTEGER PRIMARY KEY CHECK (id = 1),
+holder TEXT NOT NULL,
+acquired_at TEXT NOT NULL
+)`, nil); cerr != nil {
+			return nil, nil, fmt.Errorf("migrate/sqlite: create the lock table: %w", cerr)
+		}
+		err = insert()
+	}
 	if errors.Is(err, momo.ErrUniqueViolation) {
 		text, lerr := holder(ctx)
 		if lerr != nil {
@@ -102,7 +112,11 @@ func ForceUnlock(ctx context.Context, c momo.PinnedConn) (previousHolder string,
 		}
 		return "", fmt.Errorf("migrate/sqlite: read the migration lock: %w", err)
 	}
-	if _, err := c.Exec(ctx, `DELETE FROM `+lockTable+` WHERE id = 1`, nil); err != nil {
+	if previousHolder == "" {
+		return "", nil
+	}
+	// Delete only the row just read, so a lock taken in between is not removed.
+	if _, err := c.Exec(ctx, `DELETE FROM `+lockTable+` WHERE id = 1 AND holder = ?`, []any{previousHolder}); err != nil {
 		return "", fmt.Errorf("migrate/sqlite: remove the migration lock: %w", err)
 	}
 	return previousHolder, nil

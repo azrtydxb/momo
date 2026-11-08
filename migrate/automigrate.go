@@ -92,7 +92,11 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 	}
 	var kept []Change
 	for _, ch := range changes {
-		if reason := autoSkipReason(ch, &to, created); reason != "" {
+		reason := autoSkipReason(ch, &to, created)
+		if rd, ok := e.opts.dialect.(RebuildDetector); ok && reason == "" && !created[ch.Schema+"\x00"+ch.Table] && rd.NeedsRebuild(live, ch) {
+			reason = "requires a table rebuild; use a migration"
+		}
+		if reason != "" {
 			rep.Skipped = append(rep.Skipped, Skipped{Change: ch, Reason: reason})
 			continue
 		}

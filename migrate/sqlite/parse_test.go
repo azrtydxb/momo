@@ -141,3 +141,23 @@ func FuzzParseDDL(f *testing.F) {
 		_ = dependsOf(s, "x", map[string]string{"t": "t", "a": "a"})
 	})
 }
+
+func TestParseTableSQLOptions(t *testing.T) {
+	cases := []struct {
+		name                                  string
+		sql                                   string
+		strict, autoinc, pkDesc, withoutRowID bool
+	}{
+		{"autoincrement and strict", `CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT) STRICT`, true, true, false, false},
+		{"desc key, without rowid and strict", `CREATE TABLE t (id INTEGER PRIMARY KEY DESC, v TEXT) WITHOUT ROWID, STRICT`, true, false, true, true},
+		{"table-level desc key", `CREATE TABLE t (id INTEGER, v TEXT, PRIMARY KEY (id DESC))`, false, false, true, false},
+		{"plain", `CREATE TABLE t (id INTEGER PRIMARY KEY, note TEXT DEFAULT 'DESC AUTOINCREMENT')`, false, false, false, false},
+		{"desc on another column", `CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT COLLATE DESC)`, false, false, false, false},
+	}
+	for _, c := range cases {
+		d := parseTableSQL(c.sql)
+		if d.strict != c.strict || d.autoinc != c.autoinc || d.pkDesc != c.pkDesc || d.withoutRowID != c.withoutRowID {
+			t.Errorf("%s: strict=%v autoinc=%v pkDesc=%v withoutRowID=%v", c.name, d.strict, d.autoinc, d.pkDesc, d.withoutRowID)
+		}
+	}
+}

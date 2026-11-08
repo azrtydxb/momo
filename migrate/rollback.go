@@ -82,11 +82,20 @@ func (e *Engine) Rollback(ctx context.Context, o RollbackOptions) (rep *Report, 
 	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin, HistoryTable: tbl}
 	rep = &Report{}
 	for i, r := range selected {
+		restore, err := e.foreignKeysOff(ctx, c, downs[i].ForeignKeysOff)
+		if err != nil {
+			return rep, err
+		}
 		a, err := runRollback(ctx, env, r, downs[i])
+		if err == nil {
+			rep.Applied = append(rep.Applied, a)
+		}
+		if rerr := restore(); rerr != nil {
+			err = errors.Join(err, rerr)
+		}
 		if err != nil {
 			return rep, redactErr(e.classify(err))
 		}
-		rep.Applied = append(rep.Applied, a)
 	}
 	return rep, nil
 }
@@ -157,7 +166,7 @@ func (e *Engine) loadDowns(rows []HistoryRow) ([]Pending, error) {
 			}
 			stmts[j] = Statement{SQL: s}
 		}
-		out[i] = Pending{Version: r.Version, Name: r.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: r.Checksum}
+		out[i] = Pending{Version: r.Version, Name: r.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: r.Checksum, ForeignKeysOff: dirs.SQLiteForeignKeysOff}
 	}
 	return out, nil
 }

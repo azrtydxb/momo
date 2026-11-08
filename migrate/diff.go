@@ -402,6 +402,12 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	if fn.WithoutRowID != tn.WithoutRowID {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes WITHOUT ROWID; write a custom migration", tn.Name))
 	}
+	if fn.Strict != tn.Strict {
+		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes STRICT; write a custom migration", tn.Name))
+	}
+	if fn.Autoincrement != tn.Autoincrement {
+		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes AUTOINCREMENT; write a custom migration", tn.Name))
+	}
 	d.gone = goneColumns(fn, tn)
 	d.columns(fn, tn, fo, to, renameTo)
 	d.primaryKey(fn, tn, to)

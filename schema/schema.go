@@ -74,6 +74,11 @@ type Table struct {
 	Checks      []Check      `json:"checks,omitempty"`
 	// WithoutRowID marks a SQLite WITHOUT ROWID table.
 	WithoutRowID bool `json:"without_rowid,omitempty"`
+	// Strict marks a SQLite STRICT table (column types are enforced).
+	Strict bool `json:"strict,omitempty"`
+	// Autoincrement marks a SQLite table whose INTEGER PRIMARY KEY is
+	// declared AUTOINCREMENT (row ids are never reused).
+	Autoincrement bool `json:"autoincrement,omitempty"`
 	// RLS is nil when row-level security is off.
 	RLS *RLS `json:"rls,omitempty"`
 	// Partition is set on the parent of a partitioned table.
