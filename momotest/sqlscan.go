@@ -2,16 +2,32 @@
 
 package momotest
 
+import "bytes"
+
 // stripSQL returns sql with the parts that cannot execute a statement replaced
-// by single spaces: -- comments, nested /* */ comments, '...' strings (with ”
-// escapes) and E'...' strings (with backslash escapes). Quoted identifiers are
-// kept, because an extension name may be quoted. Dollar-quote delimiters
-// ($$ and $tag$) are dropped but their bodies are kept and scanned as code:
-// a DO block can run CREATE EXTENSION, and wrongly flagging text inside a
-// dollar-quoted string is a loud failure the author can fix, where missing a
-// real statement would be silent.
+// by single spaces: -- comments, nested /* */ comments, '...' strings (with
+// doubled-quote escapes) and E'...' strings (with backslash escapes). Plain
+// '...' strings are read as PostgreSQL does with standard_conforming_strings
+// on, its default since 9.1: a backslash is an ordinary character. Quoted
+// identifiers are kept whole, because an extension name may be quoted.
+//
+// Dollar-quoted bodies ($$...$$ and $tag$...$tag$) are scanned as code, in a
+// pass of their own: a DO block can run CREATE EXTENSION, and wrongly flagging
+// text inside a dollar-quoted string is a loud failure the author can fix,
+// where missing a real statement would be silent. A body that is not valid SQL
+// on its own, such as the text don't, ends inside a string when scanned; its
+// raw text is kept then, so an apostrophe in a body can never hide what follows
+// the closing delimiter.
 func stripSQL(sql []byte) []byte {
-	out := make([]byte, 0, len(sql))
+	out, _ := scanSQL(sql)
+	return out
+}
+
+// scanSQL is stripSQL that also reports whether the input ended outside every
+// comment, string and quoted identifier.
+func scanSQL(sql []byte) (out []byte, clean bool) {
+	out = make([]byte, 0, len(sql))
+	clean = true
 	n := len(sql)
 	for i := 0; i < n; {
 		c := sql[i]
@@ -22,65 +38,86 @@ func stripSQL(sql []byte) []byte {
 			}
 			out = append(out, ' ')
 		case c == '/' && i+1 < n && sql[i+1] == '*':
-			depth := 0
-			for i < n {
-				switch {
-				case sql[i] == '/' && i+1 < n && sql[i+1] == '*':
-					depth++
-					i += 2
-				case sql[i] == '*' && i+1 < n && sql[i+1] == '/':
-					depth--
-					i += 2
-				default:
-					i++
-				}
-				if depth == 0 {
-					break
-				}
-			}
+			var ok bool
+			i, ok = skipBlockComment(sql, i)
+			clean = clean && ok
 			out = append(out, ' ')
 		case c == '\'':
-			i = skipString(sql, i+1, false)
+			var ok bool
+			i, ok = skipString(sql, i+1, false)
+			clean = clean && ok
 			out = append(out, ' ')
 		case (c == 'E' || c == 'e') && i+1 < n && sql[i+1] == '\'' && (i == 0 || !isIdent(sql[i-1])):
-			i = skipString(sql, i+2, true)
+			var ok bool
+			i, ok = skipString(sql, i+2, true)
+			clean = clean && ok
 			out = append(out, ' ')
 		case c == '"':
-			// A quoted identifier is kept whole, including "" escapes.
+			// A quoted identifier is kept, including "" escapes.
 			start := i
-			i++
-			for i < n {
-				if sql[i] == '"' {
-					if i+1 < n && sql[i+1] == '"' {
-						i += 2
-						continue
-					}
-					i++
-					break
-				}
-				i++
-			}
+			var ok bool
+			i, ok = skipQuotedIdent(sql, i+1)
+			clean = clean && ok
 			out = append(out, sql[start:i]...)
 		case c == '$' && (i == 0 || !isIdent(sql[i-1])):
-			if end := dollarTagEnd(sql, i); end > 0 {
-				i = end
-				out = append(out, ' ')
-			} else {
+			open := dollarTagEnd(sql, i)
+			if open == 0 {
 				out = append(out, c)
 				i++
+				break
 			}
+			delim := sql[i:open]
+			bodyEnd, next := len(sql), len(sql)
+			if k := bytes.Index(sql[open:], delim); k >= 0 {
+				bodyEnd, next = open+k, open+k+len(delim)
+			} else {
+				clean = false // no closing delimiter
+			}
+			body := sql[open:bodyEnd]
+			sub, subClean := scanSQL(body)
+			if !subClean {
+				sub = body
+			}
+			out = append(out, ' ')
+			out = append(out, sub...)
+			out = append(out, ' ')
+			i = next
 		default:
 			out = append(out, c)
 			i++
 		}
 	}
-	return out
+	return out, clean
+}
+
+// skipBlockComment returns the index after the (nested) comment that starts at
+// i, and whether it was closed.
+func skipBlockComment(sql []byte, i int) (int, bool) {
+	n := len(sql)
+	depth := 0
+	for i < n {
+		switch {
+		case sql[i] == '/' && i+1 < n && sql[i+1] == '*':
+			depth++
+			i += 2
+		case sql[i] == '*' && i+1 < n && sql[i+1] == '/':
+			depth--
+			i += 2
+			if depth == 0 {
+				return i, true
+			}
+		default:
+			i++
+		}
+	}
+	return n, false
 }
 
 // skipString returns the index after the string body that starts at i (just
-// past the opening quote). A doubled quote is an escaped quote; with
-// backslashes true, a backslash also escapes the next byte.
-func skipString(sql []byte, i int, backslashes bool) int {
+// past the opening quote), and whether the string was closed. A doubled quote
+// is an escaped quote; with backslashes true, a backslash also escapes the next
+// byte.
+func skipString(sql []byte, i int, backslashes bool) (int, bool) {
 	n := len(sql)
 	for i < n {
 		switch {
@@ -91,12 +128,29 @@ func skipString(sql []byte, i int, backslashes bool) int {
 				i += 2
 				continue
 			}
-			return i + 1
+			return i + 1, true
 		default:
 			i++
 		}
 	}
-	return n
+	return n, false
+}
+
+// skipQuotedIdent returns the index after the quoted identifier whose body
+// starts at i, and whether it was closed.
+func skipQuotedIdent(sql []byte, i int) (int, bool) {
+	n := len(sql)
+	for i < n {
+		if sql[i] == '"' {
+			if i+1 < n && sql[i+1] == '"' {
+				i += 2
+				continue
+			}
+			return i + 1, true
+		}
+		i++
+	}
+	return n, false
 }
 
 // dollarTagEnd returns the index after a dollar-quote delimiter ($$ or

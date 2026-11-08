@@ -3,7 +3,9 @@
 package momotest
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -133,6 +135,8 @@ func TestCheckMigrationsRejectsEscapes(t *testing.T) {
 		{"escaped strings", "escaped_strings.sql", nil, ""},
 		// Dollar-quoted bodies are scanned as code, so a DO block is caught.
 		{"dollar-quoted body", "dollar_body.sql", nil, "hstore"},
+		// An apostrophe in a dollar-quoted body must not swallow what follows.
+		{"apostrophe in a dollar-quoted body", "dollar_apostrophe.sql", nil, "hstore"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -145,6 +149,67 @@ func TestCheckMigrationsRejectsEscapes(t *testing.T) {
 			}
 		})
 	}
+}
+
+//go:embed testdata/escapes/plain.sql
+var okEmbed embed.FS
+
+//go:embed testdata/escapes/extension.sql
+var badEmbed embed.FS
+
+// wrapFS has a comparable static type but holds a map when its field is a
+// MapFS, which sync.Map would panic on if the cache hashed it.
+type wrapFS struct{ fs.FS }
+
+func isCached(c *config) bool {
+	_, ok := preparedCache.Load(preparedKey{c.migrations, strings.Join(c.extensions, ",")})
+	return ok
+}
+
+func TestPreparedTemplate(t *testing.T) {
+	good := fstest.MapFS{"20260101000000_a.up.sql": {Data: []byte("CREATE TABLE a (x int);")}}
+
+	for name, fsys := range map[string]fs.FS{
+		"MapFS":                 good,
+		"struct around a MapFS": wrapFS{good},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newConfig([]Option{WithMigrations(fsys)})
+			first, err := c.preparedTemplate() // must not panic in the cache
+			if err != nil {
+				t.Fatal(err)
+			}
+			if again, err := c.preparedTemplate(); err != nil || again != first {
+				t.Fatalf("second call = %q, %v; want %q", again, err, first)
+			}
+		})
+	}
+
+	t.Run("embed.FS is remembered", func(t *testing.T) {
+		c := newConfig([]Option{WithMigrations(okEmbed)})
+		first, err := c.preparedTemplate()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !isCached(c) {
+			t.Error("a successful result for an embed.FS was not remembered")
+		}
+		if again, err := c.preparedTemplate(); err != nil || again != first {
+			t.Fatalf("second call = %q, %v; want %q", again, err, first)
+		}
+	})
+
+	t.Run("errors are not remembered", func(t *testing.T) {
+		c := newConfig([]Option{WithMigrations(badEmbed)})
+		for range 2 {
+			if _, err := c.preparedTemplate(); err == nil {
+				t.Fatal("a migration creating an unlisted extension was accepted")
+			}
+		}
+		if isCached(c) {
+			t.Error("a failed check was remembered")
+		}
+	})
 }
 
 func TestExtensionNamesAreLowercased(t *testing.T) {

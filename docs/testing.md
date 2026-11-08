@@ -109,7 +109,10 @@ extension.
 `NewTx` remembers the result of the check and the template name per migration
 `fs.FS` value and extension list. Build the FS once, in a package variable or an
 `embed.FS`, so that the files are walked once; an FS rebuilt on every call (such
-as `fs.Sub` inside a function) is re-read each time, which still works.
+as `fs.Sub` inside a function) is re-read each time, which still works. Only
+successes are remembered, so a failed read fails one test and the next one tries
+again. Changing the files behind a remembered FS while the test binary runs, for
+example rewriting the directory an `os.DirFS` points at, is not supported.
 
 ## Leftover schemas
 

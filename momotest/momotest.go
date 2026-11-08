@@ -273,16 +273,20 @@ var (
 )
 
 // checkMigrations fails early on migration SQL that would escape the per-test
-// schema. It looks at the SQL with comments and string literals removed, so a
-// comment that mentions the words does not trip it and a comment between the
-// keywords does not hide them. Dollar-quoted bodies are checked as code: a DO
-// block that creates an extension is caught, at the price of flagging a
-// dollar-quoted string that merely contains such text. An extension is created once per database, not once per schema, so a
+// schema.
+//
+// An extension is created once per database, not once per schema, so a
 // migration that creates one lands it in whichever test's schema ran first,
 // and DROP SCHEMA removes it under the other tests. List the extension in
 // WithExtensions instead; it is then installed in public, which is on every
 // search path. A migration that creates another schema would collide between
 // parallel tests, so keep every object unqualified in the test schema.
+//
+// The check reads the SQL with comments and string literals removed (see
+// stripSQL), so a comment that mentions the words does not trip it and a
+// comment between the keywords does not hide them. Dollar-quoted bodies are
+// checked as code: a DO block that creates an extension is caught, at the price
+// of flagging a dollar-quoted string that merely contains such text.
 func (c *config) checkMigrations() error {
 	if c.migrations == nil {
 		return nil
@@ -405,41 +409,47 @@ type preparedKey struct {
 	exts string
 }
 
-type prepared struct {
-	name string
-	err  error
-}
+var preparedCache sync.Map // preparedKey -> template name; successes only
 
-var preparedCache sync.Map // preparedKey -> prepared
-
-// preparedTemplate checks the migrations and names their template. The result
+// preparedTemplate checks the migrations and names their template. A success
 // is remembered per migration FS value and extension list, so a suite that
 // builds its FS once (a package variable or an embed.FS) walks and hashes the
-// files once. A FS value that cannot be a map key, or one rebuilt on every call
-// (fs.Sub returns a new value each time), is simply recomputed.
+// files once. Errors are never remembered, so a transient read error fails one
+// test, not every later one.
+//
+// The key is the FS value itself. A value that cannot be hashed, even when its
+// type looks comparable (a struct wrapping an fstest.MapFS), is recomputed on
+// every call, as is one rebuilt on every call (fs.Sub returns a new value each
+// time). Changing the files behind a remembered FS while the test binary runs,
+// for example rewriting the directory an os.DirFS points at, is unsupported:
+// the remembered name would be stale.
 func (c *config) preparedTemplate() (string, error) {
-	compute := func() prepared {
+	compute := func() (string, error) {
 		if err := c.checkMigrations(); err != nil {
-			return prepared{err: err}
+			return "", err
 		}
 		name, err := c.templateName()
 		if err != nil {
-			return prepared{err: fmt.Errorf("hash migrations: %w", err)}
+			return "", fmt.Errorf("hash migrations: %w", err)
 		}
-		return prepared{name: name}
+		return name, nil
 	}
-	if c.migrations != nil && !reflect.TypeOf(c.migrations).Comparable() {
-		p := compute()
-		return p.name, p.err
+	// Value.Comparable looks at the dynamic value, unlike the static
+	// Type.Comparable, which would let an interface field holding a map through
+	// to a panic in sync.Map.
+	if c.migrations != nil && !reflect.ValueOf(c.migrations).Comparable() {
+		return compute()
 	}
 	key := preparedKey{c.migrations, strings.Join(c.extensions, ",")}
 	if v, ok := preparedCache.Load(key); ok {
-		p := v.(prepared)
-		return p.name, p.err
+		return v.(string), nil
 	}
-	p := compute()
-	preparedCache.Store(key, p)
-	return p.name, p.err
+	name, err := compute()
+	if err != nil {
+		return "", err
+	}
+	preparedCache.Store(key, name)
+	return name, nil
 }
 
 var (
