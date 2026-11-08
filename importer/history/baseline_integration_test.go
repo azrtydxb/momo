@@ -7,6 +7,7 @@ package history
 import (
 	"context"
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -71,9 +72,20 @@ func TestBaselineWorksOnASingleConnectionPool(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
+	if got := pool.Config().MaxConns; got != 1 {
+		t.Fatalf("the test needs a one-connection pool, got %d", got)
+	}
 	scratch := momo.New(pgxdriver.New(pool))
+	// Session state (search_path, a temp table) works inside a migration, a
+	// bare jsonb ? operator is not read as a placeholder, and nothing leaks
+	// into the next migration or the inspection.
+	schema := testdb.Schema(t)
+	first := "SET search_path TO " + strconv.Quote(schema) + ", public;\n" +
+		"CREATE TEMP TABLE scratch_tmp (x int);\n" +
+		"CREATE TABLE a (data jsonb, CONSTRAINT a_has_id CHECK (data ? 'id'));"
 	conv, _, err := Convert(Source{Tool: "goose", Migrations: []Raw{
-		{Version: "1", Name: "a", Up: []byte("CREATE TABLE a (x int);"), Origin: "1_a.sql"},
+		{Version: "1", Name: "a", Up: []byte(first), Origin: "1_a.sql"},
+		{Version: "2", Name: "b", Up: []byte("CREATE TABLE b (y int);"), Origin: "2_b.sql"},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +94,7 @@ func TestBaselineWorksOnASingleConnectionPool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Baseline on a one-connection pool: %v", err)
 	}
-	if len(snaps) != 1 || len(snaps[0].Schema.Tables) != 1 {
+	if len(snaps) != 2 || len(snaps[0].Schema.Tables) != 1 || len(snaps[1].Schema.Tables) != 2 {
 		t.Fatalf("unexpected snapshots: %+v", snaps)
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/importer"
 	"github.com/azrtydxb/momo/migrate"
 )
@@ -178,12 +179,8 @@ func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []C
 		if err != nil {
 			return nil, fmt.Errorf("history: %s: %w", c.Origin, err)
 		}
-		for i, s := range stmts {
-			// No connection is held between calls, so a single-connection pool
-			// works: each statement and the Inspect take it in turn.
-			if _, err := momo.Exec(ctx, scratch, s); err != nil {
-				return nil, fmt.Errorf("history: %s statement %d on the scratch database: %w", c.Origin, i+1, err)
-			}
+		if err := runMigration(ctx, scratch, d, c.Origin, stmts); err != nil {
+			return nil, err
 		}
 		s, err := eng.Inspect(ctx)
 		if err != nil {
@@ -193,6 +190,40 @@ func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []C
 		parent = c.Version
 	}
 	return snaps, nil
+}
+
+// runMigration runs the statements of one migration on one pinned connection,
+// verbatim (no placeholder scanning, so a jsonb ? operator is safe), then
+// resets the session and releases the connection. Session state (SET
+// search_path, SET ROLE, temporary tables) therefore lasts within a migration
+// and never carries over to the next one or to the Inspect that follows, which
+// takes the connection back from the pool; a one-connection pool works.
+func runMigration(ctx context.Context, scratch *momo.DB, d migrate.Dialect, origin string, stmts []string) (err error) {
+	pinner, ok := scratch.Driver().(momo.Pinner)
+	if !ok {
+		return errors.New("history: the scratch database driver cannot pin a connection")
+	}
+	pc, err := pinner.Pin(ctx)
+	if err != nil {
+		return fmt.Errorf("history: pin scratch connection: %w", err)
+	}
+	defer func() {
+		if d.Dialect().Name == dialect.Postgres {
+			// DISCARD ALL drops temporary tables and restores every session setting.
+			if _, rerr := pc.Exec(ctx, "DISCARD ALL", nil); rerr != nil {
+				err = errors.Join(err, fmt.Errorf("history: reset the scratch session: %w", rerr))
+			}
+		}
+		if rerr := pc.Release(); rerr != nil {
+			err = errors.Join(err, rerr)
+		}
+	}()
+	for i, s := range stmts {
+		if _, err := pc.Exec(ctx, s, nil); err != nil {
+			return fmt.Errorf("history: %s statement %d on the scratch database: %w", origin, i+1, err)
+		}
+	}
+	return nil
 }
 
 var (
@@ -305,6 +336,8 @@ func WriteImport(outDir string, conv []Converted, snaps []migrate.SnapshotFile) 
 		return fmt.Errorf("history: %w", err)
 	}
 	if err := os.Rename(stage, outDir); err != nil {
+		// Best effort: put back the empty directory removed above.
+		_ = os.Mkdir(outDir, 0o750)
 		return fmt.Errorf("history: %w", err)
 	}
 	committed = true

@@ -81,7 +81,7 @@ func render(models []Model, pkg string) ([]byte, error) {
 	seenModels := map[string]bool{}
 	for _, m := range models {
 		_, importName := stdImports[m.Name]
-		if !token.IsIdentifier(m.Name) || m.Name == "_" || m.Name == "momo" || importName || types.Universe.Lookup(m.Name) != nil {
+		if !token.IsIdentifier(m.Name) || m.Name == "_" || m.Name == "momo" || m.Name == "init" || importName || types.Universe.Lookup(m.Name) != nil {
 			return nil, fmt.Errorf("importer: %s: %q cannot be a model type name (it must be an identifier that is not _, a predeclared identifier, or an import name such as momo, time, sql or json)", m.Source, m.Name)
 		}
 		if seenModels[m.Name] {

@@ -157,6 +157,7 @@ func TestEmitRejectionTable(t *testing.T) {
 		{"operator as type", func(m *[]Model) { (*m)[0].Fields[1].GoType = "a+b" }, "models"},
 		{"model named time", func(m *[]Model) { (*m)[0].Name = "time" }, "models"},
 		{"model named sql", func(m *[]Model) { (*m)[0].Name = "sql" }, "models"},
+		{"model named init", func(m *[]Model) { (*m)[0].Name = "init" }, "models"},
 		{"model named string", func(m *[]Model) { (*m)[0].Name = "string" }, "models"},
 	}
 	for _, tc := range cases {
