@@ -4,6 +4,7 @@ package viz
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/schema"
@@ -84,10 +85,21 @@ func mermaidName(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, "#quot;") + `"`
 }
 
-// oneLine replaces line breaks, which would end a Mermaid statement, with a
-// space.
+// isLineControl reports whether r is a control character or a Unicode line or
+// paragraph separator: anything a parser may treat as a line break.
+func isLineControl(r rune) bool {
+	return unicode.IsControl(r) || r == ' ' || r == ' '
+}
+
+// oneLine replaces every control character and Unicode line separator, which
+// could end a Mermaid statement, with a space.
 func oneLine(s string) string {
-	return strings.NewReplacer("\r", " ", "\n", " ").Replace(s)
+	return strings.Map(func(r rune) rune {
+		if isLineControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
 }
 
 func mermaidLabel(label string) string {
