@@ -3,6 +3,7 @@
 package postgres_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -18,6 +19,42 @@ func renderSQL(t *testing.T, c ...migrate.Change) []migrate.Statement {
 		t.Fatalf("render: %v", err)
 	}
 	return out
+}
+
+// TestDimensionlessVectorTypeChange: moving a column between the bare vector
+// type and a sized one is a destructive type change that renders as exactly
+// one ALTER COLUMN TYPE, in both directions.
+func TestDimensionlessVectorTypeChange(t *testing.T) {
+	mk := func(typ string) *schema.Schema {
+		return &schema.Schema{
+			Dialect:    "postgres",
+			Extensions: []schema.Extension{{Name: "vector"}},
+			Tables: []schema.Table{{
+				Name:    "kb_chunks",
+				Columns: []schema.Column{{Name: "id", Type: "bigint"}, {Name: "embedding", Type: typ}},
+			}},
+		}
+	}
+	for _, c := range []struct{ from, to string }{{"vector", "vector(3)"}, {"vector(3)", "vector"}} {
+		from, to := mk(c.from), mk(c.to)
+		if _, _, err := migrate.Diff(from, to, migrate.DiffOptions{}); !errors.Is(err, migrate.ErrDestructive) {
+			t.Errorf("%s to %s: err = %v, want ErrDestructive without AllowDestructive", c.from, c.to, err)
+		}
+		changes, _, err := migrate.Diff(from, to, migrate.DiffOptions{AllowDestructive: true})
+		if err != nil || len(changes) != 1 || changes[0].Kind != migrate.AlterColumn {
+			t.Fatalf("%s to %s: want one alter_column: %v %v", c.from, c.to, changes, err)
+		}
+		stmts := renderSQL(t, changes...)
+		n := 0
+		for _, s := range stmts {
+			if strings.Contains(s.SQL, "ALTER COLUMN") && strings.Contains(s.SQL, "TYPE") {
+				n++
+			}
+		}
+		if len(stmts) != 1 || n != 1 {
+			t.Errorf("%s to %s: want exactly one ALTER COLUMN TYPE, got %+v", c.from, c.to, stmts)
+		}
+	}
 }
 
 func TestRenderEnumAddValueHint(t *testing.T) {

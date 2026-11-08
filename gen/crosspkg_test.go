@@ -34,7 +34,7 @@ func TestGenerateCrossPackage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gomod := "module " + crossModule + "\n\ngo 1.26\n\n" +
+	gomod := "module " + crossModule + "\n\ngo 1.26.10\n\n" +
 		"require github.com/azrtydxb/momo v0.0.0\n\nreplace github.com/azrtydxb/momo => " + momoRoot + "\n"
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatal(err)

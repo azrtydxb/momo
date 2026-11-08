@@ -80,16 +80,33 @@ func postgres(t string, tg tags.Tags) string {
 	case "types.Date":
 		return "date"
 	case "vector.Vector":
-		return withDim("vector", tg)
+		return withDim("vector", tg, true)
 	case "vector.HalfVector":
-		return withDim("halfvec", tg)
+		return withDim("halfvec", tg, true)
 	case "vector.SparseVector":
-		return withDim("sparsevec", tg)
+		return withDim("sparsevec", tg, false)
 	case "vector.Bits":
-		return withDim("bit", tg)
+		return withDim("bit", tg, false)
 	}
 	if strings.HasPrefix(t, "types.JSON[") && strings.HasSuffix(t, "]") {
 		return "jsonb"
+	}
+	if elem, ok := strings.CutPrefix(t, "[]"); ok && elem != "byte" && elem != "uint8" {
+		if elemSQL := postgresElem(elem, tg); elemSQL != "" {
+			return elemSQL + "[]"
+		}
+	}
+	return ""
+}
+
+// postgresElem is the PostgreSQL element type of a slice column: the scalar
+// Go types that have a plain array type. Sized strings keep their length
+// (character varying(N)[]). Nested slices, byte slices and codec types are
+// not arrays.
+func postgresElem(elem string, tg tags.Tags) string {
+	switch elem {
+	case "string", "int16", "int32", "int64", "bool", "float32", "float64":
+		return postgres(elem, tg)
 	}
 	return ""
 }
@@ -114,9 +131,14 @@ func sqlite(t string, _ tags.Tags) string {
 	return ""
 }
 
-// withDim renders a dimensioned type; the dim tag is required.
-func withDim(name string, tg tags.Tags) string {
+// withDim renders a dimensioned type. The dim tag is required unless bare is
+// true, in which case a missing dim gives the dimensionless type (a vector or
+// halfvec column that holds any size).
+func withDim(name string, tg tags.Tags, bare bool) string {
 	if tg.Dim <= 0 {
+		if bare {
+			return name
+		}
 		return ""
 	}
 	return fmt.Sprintf("%s(%d)", name, tg.Dim)

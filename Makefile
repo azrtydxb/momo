@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 SHELL := /bin/sh
 GO ?= go
-FUZZTIME ?= 10s
+# An execution count, not a duration: a time-based -fuzztime puts a deadline on
+# the fuzz coordinator, and when it fires while a worker call is in flight the
+# run fails with "context deadline exceeded" and no crasher (see FuzzBuilder on
+# CI run 42400921170). Counts never hit that path.
+FUZZTIME ?= 20000x
 # One fuzz target per line, so parallel branches add targets without conflicts.
 FUZZ_TARGETS  = .:FuzzBuilder
 FUZZ_TARGETS += ./schema:FuzzSchemaSort
@@ -14,6 +18,12 @@ FUZZ_TARGETS += ./vector:FuzzSparseDecode
 FUZZ_TARGETS += ./driver/pgxdriver:FuzzVectorBinaryDecode
 FUZZ_TARGETS += ./gen/testdata/golden/descriptors/document:FuzzColumnByName
 FUZZ_TARGETS += .:FuzzEscapeLike
+FUZZ_TARGETS += ./types:FuzzUUIDScan
+FUZZ_TARGETS += ./types:FuzzTimeOfDayScan
+FUZZ_TARGETS += ./types:FuzzDateScan
+FUZZ_TARGETS += ./types:FuzzJSONScan
+FUZZ_TARGETS += ./gen/tags:FuzzParse
+FUZZ_TARGETS += .:FuzzScanRaw
 GOVULNCHECK = go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
 # Same gosec release as .github/workflows/gosec.yml. Locally it fails on any
 # finding and on any type-check error, so a toolchain mismatch cannot pass silently.
