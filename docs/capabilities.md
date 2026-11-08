@@ -81,7 +81,9 @@ The `dialect/dialect.go` flags for the unusable dialects, for planning only:
   `IsolationLevels`, `WindowFunctions`. No `Returning` and no `OnConflict` on
   either; MariaDB alone has `InsertReturning` (`INSERT ... RETURNING`, not
   UPDATE or DELETE). Vector metadata: MariaDB lists L2 and cosine and a vector
-  index, MySQL lists none; the driver reports no vector support yet.
+  index, MySQL lists none. The driver reports vector support on MariaDB only; every
+  distance builder on MySQL returns `ErrUnsupported`, and on MariaDB only L2
+  and cosine on `vector.Vector` render (see vectors.md).
 
 ## Core queries
 
