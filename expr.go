@@ -280,19 +280,46 @@ type argExpr struct {
 
 func (a argExpr) AppendSQL(b *Builder) { b.argFor(a.flags, a.v) }
 
-// flagged is implemented by column descriptors, whose flags decide masking.
-type flagged interface{ Flags() uint16 }
+// Flagged is implemented by column descriptors, whose flags decide masking.
+// A custom expression that wraps a column implements it by returning
+// FlagsOf of the wrapped expression, so a sensitive column stays masked
+// through the wrapper. Flagged is an extension point; see Ops.
+type Flagged interface{ Flags() uint16 }
 
-// flagsOf returns the column flags of e, or 0 when e is not a column.
-func flagsOf(e Expr) uint16 {
-	if f, ok := e.(flagged); ok {
+// FlagsOf returns the column flags of e, or 0 when e does not implement
+// Flagged. Pass the result to Builder.ArgFor, Builder.RenderSensitive or
+// Builder.ExprFor so values compared with a sensitive column are masked in
+// hook events. FlagsOf is an extension point; see Ops.
+func FlagsOf(e Expr) uint16 {
+	if f, ok := e.(Flagged); ok {
 		return f.Flags()
 	}
 	return 0
 }
 
+// flagsOf is the in-package spelling of FlagsOf.
+func flagsOf(e Expr) uint16 { return FlagsOf(e) }
+
 // Value wraps a Go value as a typed bound parameter.
 func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v: v}} }
+
+// Typed wraps e as an Expression[T], for an expression whose SQL is built
+// elsewhere and whose result type the caller knows. It does not change the
+// SQL e renders and adds no comparison methods; embed Ops[T] in your own type
+// for those. Typed is an extension point: e must write identifiers through
+// Builder.Ident and values through Builder.Arg.
+func Typed[T any](e Expr) Expression[T] { return typed[T]{e} }
+
+// PredicateFunc adapts a render function to a Predicate. The function writes
+// the condition into the builder, using Builder.Ident for identifiers and
+// Builder.Arg or Builder.ArgFor for values. PredicateFunc is an extension
+// point; see Ops.
+type PredicateFunc func(b *Builder)
+
+// AppendSQL calls f.
+func (f PredicateFunc) AppendSQL(b *Builder) { f(b) }
+
+func (PredicateFunc) resultType() bool { return false }
 
 type typed[T any] struct{ Expr }
 
