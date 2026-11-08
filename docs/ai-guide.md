@@ -424,10 +424,10 @@ momo migrate drift                      # live DB vs latest applied snapshot
   `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
   Exit codes: 0 ok, 1 findings, 2 usage/config, 3 database/lock/execution error.
   An invalid migration name (`diff Bad-Name`) exits 3, not 2.
-- Hand-written SQL migration: create `<version>_<name>.up.sql` (no
-  `-- momo:generated` line) plus a snapshot file copied from the previous one
-  with `version` and `parent` changed; its schema must equal its parent's. Then
-  `momo migrate hash`, `momo migrate validate`. Directives (first lines):
+- Hand-written SQL migration: `momo migrate new --custom <name>` writes the up
+  file (no `-- momo:generated` line), a snapshot copied from the latest one and
+  the extended `momo.sum`; write the SQL, then `momo migrate hash` and
+  `momo migrate validate`. The snapshot schema must equal its parent's. Directives (first lines):
   `-- momo:no-transaction`, `-- momo:split`, `-- momo:destructive`
   (informational). Unknown `-- momo:` directive is an error.
 - Existing database: write models, `momo migrate diff init` (do not apply), then
@@ -437,7 +437,9 @@ momo migrate drift                      # live DB vs latest applied snapshot
 - The first migration with a vector column runs
   `CREATE EXTENSION IF NOT EXISTS "vector"`. pgvector must be installed on the server (image
   `pgvector/pgvector`), and the migration role must be allowed to create
-  extensions, otherwise apply exits 3 naming the extension.
+  extensions, otherwise apply exits 3 naming the extension. An extension a
+  superuser installs by hand goes in `migrate.external_extensions` in
+  `momo.yaml`: no migration emits it and drift ignores it.
 
 CI (every change):
 
