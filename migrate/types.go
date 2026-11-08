@@ -256,6 +256,11 @@ type Config struct {
 	// to 0 explicitly.
 	StatementTimeout time.Duration
 	Exclude          []string // glob patterns for unmanaged objects (drift)
+	// ExternalExtensions names extensions that are created outside momo, for
+	// example by a superuser. Diff and AutoMigrate never emit CREATE EXTENSION
+	// for them and leave them out of the snapshot; drift, baseline and Inspect
+	// do not report them. Exact names, compared case-sensitively.
+	ExternalExtensions []string
 }
 
 // SessionOptions are the per-session timeouts a Dialect applies in Setup.

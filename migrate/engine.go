@@ -728,7 +728,7 @@ func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Sche
 		return t.Name == historyTable && (t.Schema == "" || t.Schema == hs)
 	})
 	invalid = dropExcludedInvalid(s, invalid, e.opts.config.Exclude)
-	return applyExclude(s, e.opts.config.Exclude), invalid, nil
+	return e.hide(s), invalid, nil
 }
 
 // dropExcludedInvalid removes from invalid the indexes of a table or view that
@@ -785,12 +785,13 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	if to.Dialect == "" {
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
+	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
 	from := &schema.Schema{Dialect: to.Dialect}
 	parent := ""
 	snap, err := LatestSnapshot(e.dir)
 	switch {
 	case err == nil:
-		from, parent = snap.Schema, snap.Version
+		from, parent = dropExternalExtensions(snap.Schema, e.opts.config.ExternalExtensions), snap.Version
 	case !errors.Is(err, ErrNoSnapshot):
 		return nil, err
 	}
