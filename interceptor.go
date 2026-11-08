@@ -10,12 +10,21 @@ import (
 // Operation is what an interceptor sees and may change before a typed
 // statement compiles.
 type Operation struct {
-	// Kind is "select", "insert", "upsert", "update", "delete" or "truncate". A
-	// SoftDelete is a "delete". An Upsert, or an Insert with OnConflict
-	// DoUpdate, is an "upsert": ON CONFLICT DO UPDATE can overwrite an
-	// existing row, so a tenant rule must deny it or constrain it (for
-	// example by requiring the tenant column). An Insert with DoNothing stays
-	// an "insert".
+	// Kind is "select", "insert", "upsert", "update", "delete" or "truncate".
+	// Every write path reports one kind:
+	//
+	//	Insert (and Copy)                       insert
+	//	Insert with OnConflict DoNothing        insert
+	//	Insert with OnConflict DoUpdate, Upsert upsert
+	//	Update, BulkUpdate                      update
+	//	SoftDelete, Delete                      delete
+	//	Merge with WhenMatchedUpdate            upsert
+	//	Merge without WhenMatchedUpdate         insert
+	//	Truncate                                truncate
+	//
+	// ON CONFLICT DO UPDATE and a matched MERGE can overwrite an existing
+	// row, so a tenant rule must deny an "upsert" or constrain it (for
+	// example by requiring the tenant column).
 	Kind  string
 	Table string
 	// Where starts empty. An interceptor appends predicates to it; they are
@@ -34,16 +43,19 @@ type Operation struct {
 // An interceptor is an application-level guard, not a database security
 // boundary. It covers only the primary table of these typed statements of the
 // handle: Select (All, One, First, Each, Iter, Count, Explain), Insert,
-// Upsert, Update, SoftDelete and Delete. It does NOT cover: relation loading
+// Upsert, Update, BulkUpdate, SoftDelete, Delete, Merge, Truncate and
+// InsertQuery.Copy. It does NOT cover: relation loading
 // (Load, Preload, LoadCounts); the tables of joined relations (only the
 // primary table is filtered); the association helpers (Link, Unlink, Replace
 // and the like); subqueries and other sources rendered inside a statement
 // (subquery operands, UPDATE ... FROM, the FromSelect source of an insert);
 // raw SQL of any kind (Exec, MapRows, Scalars, SQL fragments and RawSubquery);
-// the raw driver CopyFrom (Insert.Copy does run the insert interceptors, deny
-// only); and anything run on the driver directly. SQL runs
-// interceptors with a background context for Select, Update, SoftDelete and
-// Delete; InsertQuery.SQL (also for an Upsert) runs neither interceptors nor
+// the raw driver CopyFrom (InsertQuery.Copy does run the insert interceptors,
+// deny only); and anything run on the driver directly. A predicate an
+// interceptor adds to an insert, a Copy or a Truncate is ignored, and one added
+// to a Merge fails it with ErrValidation. SQL() runs the interceptors with a
+// background context for Select, Update (BulkUpdate, SoftDelete), Delete and
+// Merge; InsertQuery.SQL (also for an Upsert) runs neither interceptors nor
 // hooks. The internal count that tells a stale version from a missing row
 // after a version-checked update is a Select, so select interceptors apply to it. See docs/PRIVACY_RULES.md.
 type Interceptor func(ctx context.Context, op *Operation) error

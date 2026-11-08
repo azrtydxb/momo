@@ -51,23 +51,14 @@ func serverVersionOf(ctx context.Context, q Querier) (int, error) {
 		v, err := sv.ServerVersion(ctx)
 		return v, db.ex.wrapErr("merge", "", err)
 	}
-	rows, err := q.conn().query(ctx, "query", "", "", Compiled{SQL: serverVersionQuery})
+	vs, err := Scalars[int](ctx, q, serverVersionQuery)
+	if err == nil && len(vs) == 0 {
+		err = &Error{Kind: ErrNotFound, Op: "merge", Err: errors.New("server_version_num returned no row")}
+	}
 	if err != nil {
-		return 0, err
+		return 0, q.conn().wrapErr("merge", "", err)
 	}
-	var v int
-	if rows.Next() {
-		err = rows.Scan(&v)
-	} else {
-		err = rows.Err()
-		if err == nil {
-			err = &Error{Kind: ErrNotFound, Op: "merge", Err: errors.New("server_version_num returned no row")}
-		}
-	}
-	if cerr := rows.Close(); err == nil {
-		err = cerr
-	}
-	return v, q.conn().wrapErr("merge", "", err)
+	return vs[0], nil
 }
 
 // MergeQuery builds a MERGE into one model table. It is a value: every method
@@ -710,16 +701,8 @@ func Truncate[T any, PT Modeler[T]](ctx context.Context, q Querier) error {
 // resetSQLiteSequence deletes the table's sqlite_sequence row; the sequence
 // table exists only once a table with AUTOINCREMENT was created.
 func resetSQLiteSequence(ctx context.Context, q Querier, table string) error {
-	rows, err := q.conn().query(ctx, "query", "", "", Compiled{SQL: "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'"})
-	if err != nil {
-		return err
-	}
-	has := rows.Next()
-	err = rows.Err()
-	if cerr := rows.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil || !has {
+	has, err := Scalars[int64](ctx, q, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'")
+	if err != nil || len(has) == 0 {
 		return q.conn().wrapErr("truncate", table, err)
 	}
 	c, err := compile(q.Dialect(), func(b *Builder) {

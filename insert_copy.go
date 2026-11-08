@@ -59,7 +59,14 @@ func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 			}
 		}
 	}
-	names, rows, err := q.copyRows(ms)
+	// Fill the Go-side ids (cuid, uuid, ...) like Models and Unnest do. It
+	// works on a clone, so the caller's slice is untouched.
+	q.models = ms
+	q, err := q.generateIDs(false)
+	if err != nil {
+		return Result{}, err
+	}
+	names, rows, err := q.copyRows(q.models)
 	if err != nil {
 		return Result{}, err
 	}
@@ -169,6 +176,10 @@ func (q InsertQuery[T]) copyRows(ms []T) ([]string, [][]any, error) {
 	d := q.q.Dialect()
 	for _, row := range vals {
 		for j, v := range row {
+			if isNilVectorPointer(v) {
+				row[j] = nil // a nil pointer would panic in the promoted DialectValue
+				continue
+			}
 			dv, ok := v.(DialectValuer)
 			if !ok {
 				continue
