@@ -37,10 +37,10 @@ func (a Allowlist) Column(name string) (ColumnRef, error) {
 
 // EscapeLike escapes %, _ and the escape character ! (each is prefixed with !)
 // so the result matches literally inside a LIKE pattern rendered with
-// ESCAPE '!'. The escape character is deliberately not a backslash: the
-// meaning of a backslash in a string literal depends on server settings
-// (MySQL NO_BACKSLASH_ESCAPES, PostgreSQL standard_conforming_strings), that
-// of ! does not.
+// ESCAPE '!', which Like, ILike and ContainsLiteral always emit. The escape
+// character is deliberately not a backslash: the meaning of a backslash in a
+// string literal depends on server settings (MySQL NO_BACKSLASH_ESCAPES,
+// PostgreSQL standard_conforming_strings), that of ! does not.
 func EscapeLike(s string) string {
 	if !strings.ContainsAny(s, "%_!") {
 		return s
@@ -63,18 +63,19 @@ func EscapeLike(s string) string {
 // dialect and the column collation (PostgreSQL LIKE is case-sensitive, SQLite
 // LIKE is ASCII case-insensitive, MySQL depends on the collation).
 func ContainsLiteral(e Expression[string], s string) Predicate {
-	return containsLiteral{e, "%" + EscapeLike(s) + "%"}
+	return containsLiteral{e, "%" + EscapeLike(s) + "%", flagsOf(e)}
 }
 
 type containsLiteral struct {
-	e Expr
-	p string
+	e     Expr
+	p     string
+	flags uint16
 }
 
 func (x containsLiteral) AppendSQL(b *Builder) {
-	x.e.AppendSQL(b)
+	fl := b.renderSens(x.e, x.flags)
 	b.WriteString(" LIKE ")
-	b.Arg(x.p)
-	b.WriteString(` ESCAPE '!'`)
+	b.argFor(fl, x.p)
+	b.WriteString(likeEscape)
 }
 func (containsLiteral) resultType() bool { return false }

@@ -44,6 +44,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
+          cache-dependency-path: "**/go.sum"
       - run: make test
 
   compile-fail:
@@ -89,7 +90,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
-      - run: make test-fuzz FUZZTIME=10s
+      - run: make test-fuzz
 
   bench-smoke:
     runs-on: ubuntu-latest
@@ -115,6 +116,9 @@ jobs:
           go-version-input: "1.27"
           go-package: ./...
 
+  # windows and macos run unit tests only: every test that needs a database
+  # carries the integration build tag, so go test without the tag cannot
+  # reach one. The integration job is the only place a database is used.
   windows:
     runs-on: windows-latest
     timeout-minutes: 20

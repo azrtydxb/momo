@@ -23,6 +23,10 @@ var (
 	ErrChainInvalid = errors.New("migrate: the snapshot chain is invalid")
 	// ErrOutOfOrder: a pending migration is older than the latest applied one.
 	ErrOutOfOrder = errors.New("migrate: a pending migration is older than the latest applied migration")
+	// ErrGoMigrationUnregistered: the directory holds the snapshot of a version that has no up file and no registered Go migration, and it is not in the history. It is a Go migration this engine cannot run (the momo CLI never can); applying later SQL past it would leave it out of order forever.
+	ErrGoMigrationUnregistered = errors.New("migrate: a snapshot has no up file and no registered Go migration (a Go migration this engine cannot run, or an up file that was removed); run the application's Engine.Apply")
+	// ErrGoMigrationNotReversible: a Go migration has no down step; a rollback must refuse a history row of kind "go".
+	ErrGoMigrationNotReversible = errors.New("migrate: a Go migration is forward-only and cannot be rolled back")
 	// ErrStagedRequired: a NOT NULL column without default on an existing table needs a staged change.
 	ErrStagedRequired = errors.New("migrate: NOT NULL column without default on an existing table requires a staged change (--stage), or --enforce-not-null once an existing column is backfilled")
 	// ErrNoDown: the migration has no authored down file.

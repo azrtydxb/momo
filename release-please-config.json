@@ -6,6 +6,20 @@
   "include-v-in-tag": true,
   "changelog-path": "CHANGELOG.md",
   "packages": {
-    ".": {}
+    ".": {
+      "extra-files": [
+        "README.md",
+        "llms.txt",
+        "docs/README.md",
+        "docs/ai-guide.md",
+        "docs/capabilities.md",
+        "docs/migrations.md",
+        "docs/supported-versions.md",
+        "examples/README.md",
+        "examples/adopt-existing-schema/README.md",
+        "examples/custom-sql-migration/README.md",
+        "examples/upgrade-database/README.md"
+      ]
+    }
   }
 }

@@ -15,9 +15,19 @@ import (
 // RunEnv is what RunMigration needs: the pinned connection every statement and
 // history write runs on, the dialect, and the clock.
 type RunEnv struct {
+	// Driver is the driver the Go migration handles are built on. Only a
+	// migration of kind "go" needs it.
+	Driver momo.Driver
+	// DB, when set, is the handle Go migrations are built on instead of
+	// momo.New of Driver (WithGoMigrationDB).
+	DB      *momo.DB
 	Conn    momo.PinnedConn
 	Dialect Dialect
 	Clock   func() time.Time
+	// HistoryTable is the SQL reference of the history table, as returned by
+	// HistoryLocator.HistoryTable. Empty means RunMigration resolves it from
+	// Conn before it runs the first statement.
+	HistoryTable string
 	// Reconnect, when set, returns a fresh pinned connection (the caller
 	// releases it through the returned value). It is used only to record a
 	// failure when Conn is no longer usable, which is what a cancelled
@@ -46,13 +56,26 @@ func RunMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (A
 }
 
 func runMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (Applied, error) {
-	h := historyWriter{d: env.Dialect}
+	tbl := env.HistoryTable
+	if tbl == "" {
+		var err error
+		if tbl, err = resolveHistoryTable(ctx, env.Conn, env.Dialect); err != nil {
+			return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+		}
+	}
+	h := historyWriter{d: env.Dialect, tbl: tbl}
 	start := env.Clock()
 	kind := string(p.Kind)
 	if kind == "" {
 		kind = "sql"
 	}
 	rec := HistoryRow{Version: p.Version, Name: p.Name, Checksum: p.Checksum, ApplyID: applyID, Kind: kind, AppliedAt: start}
+	if p.Go != nil {
+		if p.NoTx {
+			return runGoNoTx(ctx, env, h, rec, p, start)
+		}
+		return runTransactional(ctx, env, h, rec, p, start)
+	}
 	if p.NoTx || hasNoTx(p.Statements) {
 		return runNonTransactional(ctx, env, h, rec, p, start)
 	}
@@ -100,7 +123,12 @@ func runTransactional(ctx context.Context, env RunEnv, h historyWriter, rec Hist
 	if err := h.insert(ctx, tx, rec); err != nil {
 		return failed(err)
 	}
-	n, err := execAll(ctx, tx, p.Statements, nil)
+	var n int
+	if p.Go != nil {
+		err = callGo(ctx, env, p, tx)
+	} else {
+		n, err = execAll(ctx, tx, p.Statements, nil)
+	}
 	if err != nil {
 		return failed(err)
 	}
@@ -125,18 +153,7 @@ func runNonTransactional(ctx context.Context, env RunEnv, h historyWriter, rec H
 	n := 0
 	for _, s := range p.Statements {
 		if _, err := env.Conn.Exec(ctx, s.SQL, nil); err != nil {
-			cause := fmt.Errorf("statement %d: %w", n+1, redact(err))
-			_, ms := elapsed(env, start)
-			// The caller's context may be the reason for the failure, so the
-			// failure record is written on a context that outlives it.
-			fctx, cancel := failureContext(ctx)
-			defer cancel()
-			if herr := env.recordOnFailure(fctx, func(x execer) error {
-				return h.finish(fctx, x, p.Version, StatusFailed, n, RedactURLs(cause.Error()), ms)
-			}); herr != nil {
-				cause = errors.Join(cause, fmt.Errorf("record failed: %w", herr))
-			}
-			return Applied{Statements: n}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, cause)
+			return failNonTx(ctx, env, h, p, n, fmt.Errorf("statement %d: %w", n+1, redact(err)), start)
 		}
 		n++
 		if err := h.progress(ctx, env.Conn, p.Version, n); err != nil {
@@ -148,6 +165,42 @@ func runNonTransactional(ctx context.Context, env RunEnv, h historyWriter, rec H
 		return Applied{Statements: n}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
 	}
 	return Applied{Version: p.Version, Statements: n, Duration: d}, nil
+}
+
+// failNonTx records a failed no-transaction migration: the row stays failed,
+// which is dirty until resolved.
+func failNonTx(ctx context.Context, env RunEnv, h historyWriter, p Pending, n int, cause error, start time.Time) (Applied, error) {
+	_, ms := elapsed(env, start)
+	// The caller's context may be the reason for the failure, so the failure
+	// record is written on a context that outlives it.
+	fctx, cancel := failureContext(ctx)
+	defer cancel()
+	if herr := env.recordOnFailure(fctx, func(x execer) error {
+		return h.finish(fctx, x, p.Version, StatusFailed, n, RedactURLs(cause.Error()), ms)
+	}); herr != nil {
+		cause = errors.Join(cause, fmt.Errorf("record failed: %w", herr))
+	}
+	return Applied{Statements: n}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, cause)
+}
+
+// runGoNoTx runs a Go migration without a transaction. It writes a running row,
+// calls the function and then marks the row applied; an error leaves it failed.
+func runGoNoTx(ctx context.Context, env RunEnv, h historyWriter, rec HistoryRow, p Pending, start time.Time) (Applied, error) {
+	if err := h.deleteRolledBack(ctx, env.Conn, p.Version); err != nil {
+		return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+	}
+	rec.Status = StatusRunning
+	if err := h.insert(ctx, env.Conn, rec); err != nil {
+		return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+	}
+	if err := callGo(ctx, env, p, nil); err != nil {
+		return failNonTx(ctx, env, h, p, 0, redact(err), start)
+	}
+	d, ms := elapsed(env, start)
+	if err := h.finish(ctx, env.Conn, p.Version, StatusApplied, 0, "", ms); err != nil {
+		return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+	}
+	return Applied{Version: p.Version, Duration: d}, nil
 }
 
 // execAll runs stmts in order and returns how many succeeded. after is called
@@ -193,10 +246,13 @@ func RunStatements(ctx context.Context, c momo.PinnedConn, stmts []Statement) er
 }
 
 // historyWriter writes history rows with the dialect's placeholders.
-type historyWriter struct{ d Dialect }
+type historyWriter struct {
+	d   Dialect
+	tbl string // SQL reference of the history table
+}
 
 func (h historyWriter) deleteRolledBack(ctx context.Context, x execer, version string) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`DELETE FROM momo_migrations WHERE version = %s AND status = 'rolled_back'`, ph(h.d, 1)), []any{version})
+	_, err := x.Exec(ctx, fmt.Sprintf(`DELETE FROM %s WHERE version = %s AND status = 'rolled_back'`, h.tbl, ph(h.d, 1)), []any{version})
 	if err != nil {
 		return fmt.Errorf("clear rolled_back row: %w", err)
 	}
@@ -204,8 +260,8 @@ func (h historyWriter) deleteRolledBack(ctx context.Context, x execer, version s
 }
 
 func (h historyWriter) insert(ctx context.Context, x execer, r HistoryRow) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`INSERT INTO momo_migrations (version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)`, ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5), ph(h.d, 6), ph(h.d, 7), ph(h.d, 8), ph(h.d, 9), ph(h.d, 10)),
+	_, err := x.Exec(ctx, fmt.Sprintf(`INSERT INTO %s (version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)`, h.tbl, ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5), ph(h.d, 6), ph(h.d, 7), ph(h.d, 8), ph(h.d, 9), ph(h.d, 10)),
 		h.args(r))
 	if err != nil {
 		return fmt.Errorf("record %s row: %w", r.Status, err)
@@ -217,13 +273,13 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)`, ph(h.d, 1), ph(h.d, 2), ph(h.d
 // applied: a failure path must never turn another engine's applied row back
 // into a pending version.
 func (h historyWriter) upsert(ctx context.Context, x execer, r HistoryRow) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`INSERT INTO momo_migrations (version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind)
+	_, err := x.Exec(ctx, fmt.Sprintf(`INSERT INTO %s AS h (version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (version) DO UPDATE SET name = excluded.name, checksum = excluded.checksum, status = excluded.status,
  statements_applied = excluded.statements_applied, error = excluded.error, applied_at = excluded.applied_at,
  execution_ms = excluded.execution_ms, apply_id = excluded.apply_id, kind = excluded.kind
-WHERE momo_migrations.status IN ('rolled_back', 'failed', 'running')`,
-		ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5), ph(h.d, 6), ph(h.d, 7), ph(h.d, 8), ph(h.d, 9), ph(h.d, 10)),
+WHERE h.status IN ('rolled_back', 'failed', 'running')`,
+		h.tbl, ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5), ph(h.d, 6), ph(h.d, 7), ph(h.d, 8), ph(h.d, 9), ph(h.d, 10)),
 		h.args(r))
 	if err != nil {
 		return fmt.Errorf("record %s row: %w", r.Status, err)
@@ -236,7 +292,7 @@ func (historyWriter) args(r HistoryRow) []any {
 }
 
 func (h historyWriter) progress(ctx context.Context, x execer, version string, n int) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`UPDATE momo_migrations SET statements_applied = %s WHERE version = %s`, ph(h.d, 1), ph(h.d, 2)), []any{n, version})
+	_, err := x.Exec(ctx, fmt.Sprintf(`UPDATE %s SET statements_applied = %s WHERE version = %s`, h.tbl, ph(h.d, 1), ph(h.d, 2)), []any{n, version})
 	if err != nil {
 		return fmt.Errorf("record progress: %w", err)
 	}
@@ -244,8 +300,8 @@ func (h historyWriter) progress(ctx context.Context, x execer, version string, n
 }
 
 func (h historyWriter) finish(ctx context.Context, x execer, version, status string, n int, errText string, ms int64) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`UPDATE momo_migrations SET status = %s, statements_applied = %s, error = %s, execution_ms = %s WHERE version = %s`,
-		ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5)), []any{status, n, errText, ms, version})
+	_, err := x.Exec(ctx, fmt.Sprintf(`UPDATE %s SET status = %s, statements_applied = %s, error = %s, execution_ms = %s WHERE version = %s`,
+		h.tbl, ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5)), []any{status, n, errText, ms, version})
 	if err != nil {
 		return fmt.Errorf("record %s row: %w", status, err)
 	}
