@@ -35,6 +35,19 @@ Implements plan momo-11-adoption Task 4: Ent static reader and fixture module (n
 - Read the schema package statically; not executed (decision D-11.1). Reported rather than guessed: a Fields, Edges, Indexes or Mixin method that is not a single returned slice literal, field.JSON, UUID, Other and the slice types, GoType, custom id fields, many-to-many edges and edge.Through, a Default that is not a literal or time.Now, entsql annotation keys other than Table, Default, DefaultExpr and OnDelete, OnDelete on an edge.From (Ent reads it from the edge.To), Nillable without Optional, Unique on an edge field, index annotations, and every unknown builder method. Annotations from other packages (entgql and the like) do not change the SQL schema and are ignored; Comment, Sensitive, StructTag and Deprecated likewise.
 - Limits: SchemaType is read only for the postgres key (other dialects are reported as naming); the Ent Config and Annotations table names are read only from string literals; local mixin types are resolved only inside the read directory.
 
+## Review follow-up (review of 3c9b373: 0 critical, 2 important, 4 medium, 3 low)
+
+All nine findings are fixed in e4c864d (ci-agent run 42476644069, all jobs green), each with a test in importer/ent/read_test.go or internal/repocheck/repo_test.go:
+
+- Entity, field and edge annotations: entsql calls (Table and SchemaTable set the table; Skip, Check, Checks, View, IncrementStart, WithComments and the rest are unsupported), `&entsql.Annotation{...}` is unwrapped, and any element that cannot be shown to come from another package (variable, helper call, positional literal) is unsupported. TestReadEntityAnnotationsAreNotDroppedSilently, TestReadFieldAndEdgeAnnotationsBehindPointersAndVariables.
+- The generated-code header exemption in internal/repocheck is limited to internal/compat/entfixture/ent/ (TestGeneratedMarkerIsScoped).
+- Local mixins get the hook, policy, interceptor and annotation checks, and a mixin that lists mixins is unsupported (TestReadChecksEveryMixinContribution).
+- A struct that embeds a schema or mixin type of the package, directly or through another, is unsupported (TestReadReportsSchemaTypesThatEmbedSchemaTypes).
+- entsql.Default is quoted unless the column is time (Atlas.atDefault), and entsql.DefaultExpr is wrapped in parentheses unless it already starts and ends with them.
+- field.String MaxLen above 10485760 is text, as in dialect/sql/schema/postgres.go; a MaxLen that is not an integer literal is unsupported (TestReadMapsHugeMaxLenToText).
+- An Optional field without Nillable reports zero-value-handling (TestReadReportsNullableFieldsWithoutPointers).
+- dependabot.yml lists bunfixture and entfixture, enforced by TestDependabotCoversFixtureModules.
+
 ## Scope of this story
 
 The `momo import ent` command and the importer documentation page belong to story 228 (the import command) and the migration guides to stories 237 and 238; neither is part of this reader and fixture story.
