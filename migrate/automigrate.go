@@ -55,6 +55,7 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 	if to.Dialect == "" {
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
+	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
 	c, err := e.pin(ctx)
 	if err != nil {
 		return nil, err

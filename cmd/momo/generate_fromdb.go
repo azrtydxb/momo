@@ -164,9 +164,27 @@ func packageNameFor(dir string) string {
 // value that looks like a URL or a key=value string is the connection string
 // itself, and anything else names an environment variable.
 func (l *cli) fromDBURL(src string) (string, error) {
-	if src == "-" || strings.Contains(src, "://") || strings.Contains(src, "=") {
-		l.c.url = src
-		return l.databaseURL()
+	switch {
+	case src == "-":
+		if f, ok := migrateStdin.(*os.File); ok {
+			if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+				return "", errors.New("--from-db -: standard input is a terminal or a character device; pipe the URL in")
+			}
+		}
+		b, err := io.ReadAll(io.LimitReader(migrateStdin, 1<<16))
+		if err != nil {
+			return "", fmt.Errorf("read the database URL from stdin: %w", err)
+		}
+		u := strings.TrimSpace(string(b))
+		if u == "" {
+			return "", errors.New("--from-db -: standard input holds no database URL")
+		}
+		l.noteURL(u)
+		return u, nil
+	case strings.Contains(src, "://") || strings.Contains(src, "="):
+		_, _ = fmt.Fprintln(l.errOut, "momo: warning: --from-db puts the database URL in the process list, where other users can read it; pass - to read it from standard input, or the name of an environment variable")
+		l.noteURL(src)
+		return src, nil
 	}
 	u := l.env(src)
 	if u == "" {

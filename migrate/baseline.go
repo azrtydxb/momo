@@ -80,7 +80,7 @@ func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err 
 	if err != nil {
 		return err
 	}
-	want, err := cloneSchema(applyExclude(snap.Schema, e.opts.config.Exclude))
+	want, err := cloneSchema(e.hide(snap.Schema))
 	if err != nil {
 		return err
 	}

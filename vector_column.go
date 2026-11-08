@@ -46,7 +46,8 @@ func (c vectorBase[V]) Table() string { return c.col.Table() }
 // Flags returns the generated column flags.
 func (c vectorBase[V]) Flags() uint16 { return c.col.Flags() }
 
-// Dim returns the declared dimension (0 when unchecked).
+// Dim returns the declared dimension. Zero marks a dimensionless column: a
+// distance argument of any size is accepted and checked against itself.
 func (c vectorBase[V]) Dim() int { return c.dim }
 
 func (c vectorBase[V]) Eq(v V) Predicate                 { return c.col.Eq(v) }

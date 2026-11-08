@@ -22,6 +22,7 @@ import (
 // foreign keys with and without actions.
 var legacyDDL = []string{
 	`CREATE TYPE ticket_state AS ENUM ('open', 'closed')`,
+	`CREATE TYPE "TicketPhase" AS ENUM ('new', 'done')`,
 	`CREATE TABLE accounts (
 		id bigserial PRIMARY KEY,
 		email varchar(200) NOT NULL,
@@ -43,6 +44,7 @@ var legacyDDL = []string{
 		id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 		project_id bigint REFERENCES projects (id) ON DELETE SET NULL,
 		state ticket_state NOT NULL DEFAULT 'open',
+		phase "TicketPhase" NOT NULL DEFAULT 'new',
 		opened_at timestamp NOT NULL DEFAULT now(),
 		body text NOT NULL DEFAULT 'a,b',
 		CONSTRAINT tickets_project_state_key UNIQUE (project_id, state))`,

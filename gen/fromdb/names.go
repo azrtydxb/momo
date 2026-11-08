@@ -19,6 +19,7 @@ var initialisms = map[string]string{
 // camel case boundaries, so user_id, user-id, userId and UserID give the
 // same two words.
 func splitWords(s string) []string {
+	s = strings.ToValidUTF8(s, "")
 	var words []string
 	var cur []rune
 	flush := func() {
@@ -67,10 +68,17 @@ func pascal(words []string, fallback string) string {
 	if out == "" {
 		return fallback
 	}
-	if r, _ := utf8.DecodeRuneInString(out); unicode.IsDigit(r) {
-		out = "X" + out
+	return exported(out)
+}
+
+// exported prefixes an X when the name does not start with an upper-case
+// letter (a digit, or a letter such as a CJK character or ß that has no
+// upper case), because Go exports only names that do.
+func exported(name string) string {
+	if r, _ := utf8.DecodeRuneInString(name); !unicode.IsUpper(r) {
+		return "X" + name
 	}
-	return out
+	return name
 }
 
 var irregularSingular = map[string]string{

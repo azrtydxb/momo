@@ -267,7 +267,7 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		b.diag(f.Pos, fmt.Sprintf("field %s: dim is only valid on a vector field", f.GoName))
 	}
 	if (tg.Precision > 0 || tg.Scale > 0) && !isFloat && tg.Type == "" {
-		b.diag(f.Pos, fmt.Sprintf("field %s: precision is only valid on float or decimal fields", f.GoName))
+		b.diag(f.Pos, fmt.Sprintf("field %s: precision is only valid on float or decimal fields (a string without size that carries a numeric also takes it)", f.GoName))
 	}
 	if tg.Scale > 0 && tg.Precision == 0 && isFloat {
 		b.diag(f.Pos, fmt.Sprintf("field %s: scale requires precision", f.GoName))

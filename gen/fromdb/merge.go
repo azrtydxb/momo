@@ -9,8 +9,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
-	"strings"
 )
 
 // The kinds of Action.
@@ -21,6 +21,9 @@ const (
 	ActionConflict  = "conflict"  // the file was edited by hand and the database changed it
 	ActionOrphan    = "orphan"    // the file models a table that is gone or skipped
 )
+
+// modelFile matches the names fileName gives, with or without a counter.
+var modelFile = regexp.MustCompile(`_model[0-9]*\.go$`)
 
 // newSuffix is added to the name of a file that holds the regenerated version
 // of a conflicting file.
@@ -55,7 +58,7 @@ func Plan(dir string, files []File, overwrite bool) ([]Action, error) {
 		return nil, fmt.Errorf("fromdb: read %s: %w", dir, err)
 	}
 	for _, e := range entries {
-		if e.IsDir() || want[e.Name()] || !strings.HasSuffix(e.Name(), "_model.go") {
+		if e.IsDir() || want[e.Name()] || !modelFile.MatchString(e.Name()) {
 			continue
 		}
 		b, err := readFile(filepath.Join(dir, e.Name()))
@@ -85,6 +88,16 @@ func planFile(dir string, f File, overwrite bool) (Action, error) {
 		return a, nil
 	}
 	edited, generated := Edited(existing)
+	if generated && edited {
+		// Edited by hand, but the database did not change the model since it
+		// was written: the header hash is still the hash of the new body.
+		if _, newHash, ok := SplitHeader(f.Content); ok {
+			if _, oldHash, ok := SplitHeader(existing); ok && newHash == oldHash {
+				a.Kind, a.Content = ActionUnchanged, nil
+				return a, nil
+			}
+		}
+	}
 	switch {
 	case overwrite:
 		a.Kind = ActionUpdate

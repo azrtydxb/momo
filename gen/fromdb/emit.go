@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
@@ -262,7 +263,7 @@ func (g *generator) collectTables() {
 		t := &g.clean.Tables[i]
 		m := &model{
 			t: t, byCol: map[string]*field{}, imports: map[string]bool{importMomo: true},
-			used: map[string]bool{"Model": true},
+			used: map[string]bool{"Model": true, "MomoConfig": true},
 		}
 		m.name = g.uniqueStruct(g.structName(t.Name))
 		g.models = append(g.models, m)
@@ -304,9 +305,7 @@ func (g *generator) structName(table string) string {
 	var first string
 	for i, c := range singulars(last) {
 		name := head + titleWord(c)
-		if r := rune(name[0]); r >= '0' && r <= '9' {
-			name = "X" + name
-		}
+		name = exported(name)
 		if i == 0 {
 			first = name
 		}
@@ -329,7 +328,7 @@ func (g *generator) uniqueStruct(name string) string {
 // tagSafe reports whether v can be written as a momo tag value: the grammar
 // has no escape for a comma, and the tag sits in a double-quoted raw string.
 func tagSafe(v string) bool {
-	if v == "" || v != strings.TrimSpace(v) {
+	if v == "" || !utf8.ValidString(v) || v != strings.TrimSpace(v) {
 		return false
 	}
 	for _, r := range v {
@@ -1126,7 +1125,7 @@ func WithHeader(body []byte) []byte {
 	sum := sha256.Sum256(body)
 	var b bytes.Buffer
 	b.WriteString(headerPrefix + hex.EncodeToString(sum[:]) + "\n")
-	b.WriteString("// Written by momo generate --from-db. Edit it freely: a re-run keeps edited files and reports a conflict.\n\n")
+	b.WriteString("// Written by momo generate --from-db. A re-run keeps this file if you edit it, and reports a conflict when the database changed the model.\n\n")
 	b.Write(body)
 	return b.Bytes()
 }

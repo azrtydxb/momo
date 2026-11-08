@@ -294,6 +294,10 @@ func TestPlanApplyKeepsHandEdits(t *testing.T) {
 	if err := os.WriteFile(usersPath, edited, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Hand-edited, but the database did not change: a re-run stays quiet.
+	if quiet, err := Plan(dir, res.Files, false); err != nil || kindOf(quiet, "users_model.go") != ActionUnchanged {
+		t.Fatalf("an edited file with an unchanged database must not conflict: %+v %v", quiet, err)
+	}
 	s := sampleSchema()
 	s.Tables[0].Columns = append(s.Tables[0].Columns, schema.Column{Name: "shipped_at", Type: "timestamp with time zone", Nullable: true})
 	s.Tables[1].Columns = append(s.Tables[1].Columns, schema.Column{Name: "nickname", Type: "text", Nullable: true})
@@ -362,4 +366,59 @@ func TestPlanRefusesHandWrittenFile(t *testing.T) {
 
 func writeFile(path string, content []byte) error {
 	return os.WriteFile(path, content, 0o600)
+}
+
+func TestGenerateFromDBHostileNames(t *testing.T) {
+	s := &schema.Schema{Dialect: dialect.Postgres, Tables: []schema.Table{
+		{Name: "User", Columns: []schema.Column{{Name: "id", Type: "bigint"}}, PrimaryKey: []string{"id"}},
+		{Name: "user", Columns: []schema.Column{{Name: "id", Type: "bigint"}}, PrimaryKey: []string{"id"}},
+		{Name: "select", Columns: []schema.Column{
+			{Name: "id", Type: "bigint"},
+			{Name: "type", Type: "text"},
+			{Name: "1st", Type: "text"},
+			{Name: "\u65e5\u672c", Type: "text"},
+			{Name: "\u00df", Type: "text"},
+			{Name: "model", Type: "text"},
+			{Name: "momo_config", Type: "text"},
+			{Name: "A", Type: "text"},
+			{Name: "a", Type: "text"},
+			{Name: "quoted", Type: "text", Default: "'it''s \"x\"'::text", Comment: "line one\nline `two`"},
+		}, PrimaryKey: []string{"id"}},
+	}}
+	res, err := Generate(s, Options{Package: "models"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	if len(res.Files) != 3 {
+		t.Fatalf("files: %d", len(res.Files))
+	}
+	names := map[string]bool{}
+	for _, f := range res.Files {
+		if names[f.Name] {
+			t.Errorf("duplicate file name %s", f.Name)
+		}
+		names[f.Name] = true
+	}
+	var sel string
+	for _, f := range res.Files {
+		if f.Table == "select" {
+			sel = string(f.Content)
+		}
+	}
+	mustContain(t, "select", sel, "type Select struct", "Type ", "X1st", "Model2", "MomoConfig2", "A2", `c.Comment(&m.Quoted,`)
+	if !strings.Contains(sel, `c.Default(&m.Quoted,`) {
+		t.Errorf("a default with quotes must go through the companion:\n%s", sel)
+	}
+
+	bad := &schema.Schema{Dialect: dialect.Postgres, Tables: []schema.Table{
+		{Name: "t", Columns: []schema.Column{{Name: "a,b", Type: "text"}}},
+		{Name: "u", Columns: []schema.Column{{Name: "bad\xffname", Type: "text"}}},
+	}}
+	res, err = Generate(bad, Options{Package: "models"})
+	if err != nil || !res.Failed() {
+		t.Fatalf("a comma in a column name cannot be a tag: %v %v", err, res.Findings)
+	}
 }

@@ -296,6 +296,8 @@ func (in *inspector) column(ctx context.Context, rel uint32, x rawColumn) (schem
 	col.Default = def
 	if x.typtype == "e" {
 		col.Enum = in.qualify(x.typns, x.typname)
+		// format_type quotes a mixed-case name; the enum name is the type.
+		col.Type = col.Enum
 	}
 	if x.coll != nil {
 		col.Collate = *x.coll
