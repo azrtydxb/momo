@@ -17,6 +17,8 @@ Imports: `github.com/azrtydxb/momo` (core), `github.com/azrtydxb/momo/driver/pgx
 
 Open a pool and wrap it, as the README does (the caller closes the pool):
 
+<!-- docscheck:fragment -->
+
 ```go
 pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)
 if err != nil { return err }
