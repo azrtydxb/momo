@@ -5,8 +5,6 @@
 package docscheck
 
 import (
-	"os"
-	"os/exec"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -41,14 +39,12 @@ func TestDocsRunnableBlocks(t *testing.T) {
 		t.Fatal("no docscheck:run blocks in docs/: the runnable path proves nothing")
 	}
 	testopen.Each(t, func(t *testing.T, _ *momo.DB, d dialect.Name) {
-		cleanGen(t, root)
+		mod := blockModule(t, root)
 		dsn := dsnFor(t, d)
 		for n, b := range runnable {
-			pkg := writeBlock(t, root, n, b.src)
-			cmd := exec.Command("go", "run", pkg) //nolint:gosec // fixed arguments, the package path is generated above
-			cmd.Dir = root
-			cmd.Env = append(os.Environ(), "MOMO_EXAMPLE_DRIVER="+string(d), "MOMO_EXAMPLE_DSN="+dsn)
-			if out, err := cmd.CombinedOutput(); err != nil {
+			pkg := writeBlock(t, mod, n, b.src)
+			env := []string{"MOMO_EXAMPLE_DRIVER=" + string(d), "MOMO_EXAMPLE_DSN=" + dsn}
+			if out, err := goIn(mod, env, "run", pkg); err != nil {
 				t.Errorf("%s failed on %s: %v\n%s", b.where(root), d, err, out)
 			}
 		}
