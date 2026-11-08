@@ -390,8 +390,9 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
 ## SQLite and sqlite-vec
 
 `driver/sqlitedriver` links sqlite-vec v0.1.6 (the version `vec_version()`
-reports; `sqlitedriver.SQLiteVecVersion` pins it and `Open` fails with
-`ErrUnsupported` on any other). The same typed builders that serve pgvector
+reports; `sqlitedriver.SQLiteVecVersion` is the release it is tested with, and
+`Open` fails with `ErrUnsupported` on another minor or major version but accepts
+a later patch release such as v0.1.7). The same typed builders that serve pgvector
 render sqlite-vec's scalar functions, and the integration tests run them
 against a real SQLite database: `vector_sqlite_integration_test.go` in the root
 package and `TestSQLiteVectorParity` in `driver/sqlitedriver`. It needs cgo and
@@ -408,7 +409,8 @@ is then refused by the database as `ErrCheckViolation`. A dimensionless column
 is `ErrUnsupported`, because there is no length to check.
 
 **Values.** `vector.Vector` is stored as a little-endian float32 blob and read
-back from one, and `vector.Bits` as its packed bytes. Both are validated before
+back from one, and `vector.Bits` as its packed bytes (most significant bit first, as in
+pgvector: bit 0 is the top bit of byte 0). Both are validated before
 they are bound (NaN, Inf, an empty vector, a bad bit length are
 `ErrInvalidVector`), because a blob has no text form that would reject them
 later. A `*vector.Vector` or `*vector.Bits` field is nullable: nil binds `NULL`.
@@ -439,10 +441,11 @@ for cosine, and when a PostgreSQL URL is set `TestSQLiteVectorParity` also loads
 the same vectors into pgvector and requires the same ids for cosine, L2 and L1.
 
 **Indexes.** sqlite-vec compares every row, so it has no approximate index and
-`dialect.For(dialect.SQLite).Vector.Indexes` is empty. `momo.CheckVectorIndexMethod`
-returns `ErrUnsupported` for `hnsw`, `ivfflat` or any other method, and
+`dialect.For(dialect.SQLite).Vector.Indexes` is empty, and
 `schema.ValidateVectorIndex` rejects an index for SQLite with
-`schema.ErrInvalidVectorIndex`. SQLite itself does not parse an index method, so
+`schema.ErrInvalidVectorIndex`. An internal check turns a request for any index
+method on a dialect that lists none into `ErrUnsupported`; it becomes public
+when a SQLite migration dialect needs it. SQLite itself does not parse an index method, so
 nothing is accepted silently. `ExactSearch` in `SearchSettings` is a no-op (every
 search is exact) and any other setting is `ErrUnsupported`. The sqlite-vec
 virtual tables (`vec0`, which have an index of their own) are not wrapped.

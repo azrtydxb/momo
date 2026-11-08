@@ -172,8 +172,11 @@ Tables are inserted in file order and the rows of a table in list order, so
 list a table before the tables that reference it. Columns are written sorted by
 name and a YAML `null` becomes SQL `NULL`. Table and column names are quoted
 with `momo.Ident` and every value is a bound argument, so a value is never
-spliced into the SQL. `LoadFixtures` works on every dialect momo supports,
-because it writes plain `INSERT` statements. A file that is not a mapping of
+spliced into the SQL. A table name is one identifier, with no schema prefix.
+A value is a string, integer, float, bool, null, timestamp or `!!binary` (read as
+bytes); a nested map or list is refused. `LoadFixtures` writes plain `INSERT`
+statements and is tested on PostgreSQL and SQLite; it has not been run against
+MySQL or MariaDB. A file that is not a mapping of
 tables to lists of rows, a missing file, and a row the database refuses (a
 foreign key to a row that is not there, say) fail the test with a message that
 names the file, the table and the row. Each row is its own statement, so rows

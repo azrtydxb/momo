@@ -43,13 +43,16 @@ func TestSQLiteVecLoaded(t *testing.T) {
 	}
 }
 
-// TestCheckVecVersion: Open refuses a library that is not the pinned release,
-// with a momo error that names both versions.
+// TestCheckVecVersion: Open accepts the pinned release and later patch releases
+// of its minor version, and refuses everything else with a momo error that
+// names both versions.
 func TestCheckVecVersion(t *testing.T) {
-	if err := checkVecVersion(SQLiteVecVersion); err != nil {
-		t.Fatalf("pinned version refused: %v", err)
+	for _, got := range []string{SQLiteVecVersion, "v0.1.7", "v0.1.10"} {
+		if err := checkVecVersion(got); err != nil {
+			t.Fatalf("checkVecVersion(%q) = %v, want it accepted", got, err)
+		}
 	}
-	for _, got := range []string{"", "v0.1.7", "0.1.6", "v0.1.6-alpha.1"} {
+	for _, got := range []string{"", "v0.1.5", "v0.2.0", "v0.2.7", "v1.1.6", "0.1.6", "v0.1.6-alpha.1", "v0.1", "v0.1.x"} {
 		err := checkVecVersion(got)
 		if !errors.Is(err, momo.ErrUnsupported) {
 			t.Fatalf("checkVecVersion(%q) = %v, want ErrUnsupported", got, err)
@@ -113,11 +116,6 @@ func TestSQLiteVecMetrics(t *testing.T) {
 // accepted silently.
 func TestSQLiteANNIndexUnsupported(t *testing.T) {
 	sq := dialect.For(dialect.SQLite)
-	for _, method := range []string{"hnsw", "ivfflat", "vector"} {
-		if err := momo.CheckVectorIndexMethod(sq, method); !errors.Is(err, momo.ErrUnsupported) {
-			t.Errorf("CheckVectorIndexMethod(sqlite, %q) = %v, want momo.ErrUnsupported", method, err)
-		}
-	}
 	tbl := &schema.Table{Name: "docs", Columns: []schema.Column{{Name: "emb", Type: "vector(3)"}}}
 	idx := schema.Index{Name: "docs_emb", Method: "hnsw", Parts: []schema.IndexPart{{Column: "emb", OpClass: "vector_l2_ops"}}}
 	if err := schema.ValidateVectorIndex(dialect.SQLite, tbl, idx); !errors.Is(err, schema.ErrInvalidVectorIndex) {

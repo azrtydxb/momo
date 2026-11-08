@@ -118,15 +118,9 @@ func TestSQLiteVectorParity(t *testing.T) {
 		t.Fatalf("farthest L2 row = %d, reference %d", far[0].ID, all[len(all)-1])
 	}
 
-	// No ANN index: the dialect lists none, the check refuses every method,
-	// and SQLite itself does not take an index method.
+	// No ANN index: the dialect lists none and SQLite itself does not take an index method.
 	if idx := dialect.For(dialect.SQLite).Vector.Indexes; len(idx) != 0 {
 		t.Fatalf("the SQLite dialect lists vector indexes %v", idx)
-	}
-	for _, method := range []string{"hnsw", "ivfflat", "vector"} {
-		if err := momo.CheckVectorIndexMethod(drv.Dialect(), method); !errors.Is(err, momo.ErrUnsupported) {
-			t.Fatalf("CheckVectorIndexMethod(%q) = %v, want ErrUnsupported", method, err)
-		}
 	}
 	if _, err := momo.Exec(ctx, db, "CREATE INDEX docs_emb ON docs USING hnsw (emb)"); err == nil {
 		t.Fatal("SQLite accepted CREATE INDEX ... USING hnsw")

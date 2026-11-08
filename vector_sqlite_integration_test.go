@@ -337,11 +337,9 @@ func TestSQLiteVectorRefusals(t *testing.T) {
 		t.Fatalf("rows after refused inserts: %d, %v, want the original 3", len(left), err)
 	}
 
-	// An approximate index is refused before any statement is rendered.
-	for _, method := range []string{"hnsw", "ivfflat"} {
-		if err := momo.CheckVectorIndexMethod(db.Driver().Dialect(), method); !errors.Is(err, momo.ErrUnsupported) {
-			t.Errorf("index method %s: err = %v, want ErrUnsupported", method, err)
-		}
+	// There is no approximate index to ask for.
+	if idx := db.Driver().Dialect().Vector.Indexes; len(idx) != 0 {
+		t.Errorf("the SQLite dialect lists vector indexes %v", idx)
 	}
 
 	// Search settings: every SQLite search is exact, so ExactSearch is a no-op

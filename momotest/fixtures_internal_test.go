@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestParseFixtures: tables and rows keep the file order, the columns of a row
@@ -55,6 +56,9 @@ func TestParseFixturesRejects(t *testing.T) {
 		{"table is a mapping", "docs:\n  id: 1\n", "table docs must be a list"},
 		{"row is a scalar", "docs:\n  - 5\n", "table docs row 1"},
 		{"empty row", "docs:\n  - id: 1\n  - {}\n", "table docs row 2: a row needs at least one column"},
+		{"nested map", "docs:\n  - id: 1\n    meta:\n      a: 1\n", "table docs row 1: column meta: a value must be a scalar"},
+		{"nested list", "docs:\n  - id: 1\n    tags: [a, b]\n", "table docs row 1: column tags: a value must be a scalar"},
+		{"bad binary", "docs:\n  - blob: !!binary \"!!!\"\n", "table docs row 1"},
 		{"bad yaml", "docs: [\n", "yaml"},
 	}
 	for _, c := range cases {
@@ -79,5 +83,36 @@ func TestInsertStatement(t *testing.T) {
 	sql, args = insertStatement(fixtureRow{table: "docs", n: 1, cols: []string{"a"}, vals: []any{"1); DROP TABLE docs; --"}})
 	if strings.Contains(sql, "DROP") || len(args) != 3 {
 		t.Fatalf("sql = %q args = %#v, want the text bound", sql, args)
+	}
+}
+
+// TestParseFixturesScalarTypes pins what each kind of YAML scalar becomes: the
+// driver sees a float64, a bool, a time.Time and, for !!binary, the bytes.
+func TestParseFixturesScalarTypes(t *testing.T) {
+	rows, err := parseFixtures([]byte(`
+docs:
+  - b: true
+    blob: !!binary aGk=
+    f: 1.5
+    i: 42
+    n: null
+    s: "42"
+    t: 2026-01-02T03:04:05Z
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]any{}
+	for i, c := range rows[0].cols {
+		got[c] = rows[0].vals[i]
+	}
+	if got["b"] != true || got["f"] != 1.5 || got["i"] != 42 || got["n"] != nil || got["s"] != "42" {
+		t.Fatalf("values = %#v", got)
+	}
+	if b, ok := got["blob"].([]byte); !ok || string(b) != "hi" {
+		t.Fatalf("!!binary = %#v, want the bytes of hi", got["blob"])
+	}
+	if ts, ok := got["t"].(time.Time); !ok || !ts.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) {
+		t.Fatalf("timestamp = %#v, want a time.Time", got["t"])
 	}
 }

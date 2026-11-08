@@ -11,36 +11,21 @@ import (
 	"github.com/azrtydxb/momo/vector"
 )
 
-// bindSQLiteVector binds a pointer to a typed vector value on SQLite and
-// reports whether it handled v. A nil pointer (the nullable field type) binds
-// SQL NULL; a non-nil pointer binds the value it points to, which Arg encodes
-// as the sqlite-vec blob. Every other value is left to the caller. Without
-// this a nil pointer reaches DialectValue and panics.
-func bindSQLiteVector(b *Builder, v any) bool {
-	if b.d.Name != dialect.SQLite {
-		return false
-	}
-	switch x := v.(type) {
+// isNilVectorPointer reports whether v is a nil pointer to one of the vector
+// types, the nullable field types. Arg binds those as SQL NULL: left alone,
+// the DialectValue method they inherit from the value type dereferences nil.
+func isNilVectorPointer(v any) bool {
+	switch p := v.(type) {
 	case *vector.Vector:
-		bindVectorPointer(b, x)
+		return p == nil
 	case *vector.HalfVector:
-		bindVectorPointer(b, x)
+		return p == nil
 	case *vector.SparseVector:
-		bindVectorPointer(b, x)
+		return p == nil
 	case *vector.Bits:
-		bindVectorPointer(b, x)
-	default:
-		return false
+		return p == nil
 	}
-	return true
-}
-
-func bindVectorPointer[V VectorValue](b *Builder, p *V) {
-	if p == nil {
-		b.Arg(nil)
-		return
-	}
-	b.Arg(*p)
+	return false
 }
 
 // SQLiteVectorType returns the column definition of a float32 vector of dim
@@ -84,14 +69,14 @@ func sqliteBlobCheck(column, bytes string) string {
 	return "BLOB CHECK (length(" + string(d.AppendIdent(nil, column)) + ") = " + bytes + ")"
 }
 
-// CheckVectorIndexMethod reports whether d offers the vector index method:
+// checkVectorIndexMethod reports whether d offers the vector index method:
 // "hnsw" and "ivfflat" on PostgreSQL, "vector" on MariaDB. Any other pair,
 // every method on SQLite (sqlite-vec compares by brute force and has no
 // index) and every method on MySQL is an error wrapping ErrUnsupported that
 // names the dialect. It checks availability only; schema.ValidateVectorIndex
 // and its MariaDB counterpart check the index definition. Migration code
 // calls this before it renders a vector index.
-func CheckVectorIndexMethod(d *dialect.Dialect, method string) error {
+func checkVectorIndexMethod(d *dialect.Dialect, method string) error {
 	if slices.Contains(d.Vector.Indexes, method) {
 		return nil
 	}

@@ -139,7 +139,7 @@ func TestSQLiteVectorColumnTypes(t *testing.T) {
 	}
 }
 
-func TestCheckVectorIndexMethod(t *testing.T) {
+func TestcheckVectorIndexMethod(t *testing.T) {
 	cases := []struct {
 		name   string
 		d      *dialect.Dialect
@@ -158,7 +158,7 @@ func TestCheckVectorIndexMethod(t *testing.T) {
 		{"sqlite empty", dialect.For(dialect.SQLite), "", false},
 	}
 	for _, c := range cases {
-		err := CheckVectorIndexMethod(c.d, c.method)
+		err := checkVectorIndexMethod(c.d, c.method)
 		if c.ok && err != nil {
 			t.Errorf("%s: %v, want nil", c.name, err)
 		}
@@ -166,8 +166,44 @@ func TestCheckVectorIndexMethod(t *testing.T) {
 			t.Errorf("%s: err = %v, want ErrUnsupported", c.name, err)
 		}
 	}
-	err := CheckVectorIndexMethod(dialect.For(dialect.SQLite), "hnsw")
+	err := checkVectorIndexMethod(dialect.For(dialect.SQLite), "hnsw")
 	if err == nil || !strings.Contains(err.Error(), "sqlite") || !strings.Contains(err.Error(), "none") {
 		t.Fatalf("diagnostic %v does not name the dialect and say no index exists", err)
+	}
+}
+
+// A nil pointer to a vector type is the nullable field before it has a value:
+// every dialect binds SQL NULL. Left to the DialectValue method the pointer
+// inherits from the value type, it dereferenced nil and panicked on PostgreSQL,
+// on MySQL and on MariaDB for every type but *vector.Vector.
+func TestNilVectorPointerBindsNull(t *testing.T) {
+	var (
+		v  *vector.Vector
+		h  *vector.HalfVector
+		sp *vector.SparseVector
+		bt *vector.Bits
+	)
+	dialects := map[string]*dialect.Dialect{
+		"postgres": dialect.For(dialect.Postgres),
+		"sqlite":   dialect.For(dialect.SQLite),
+		"mariadb":  dialect.MySQLFlavor(dialect.FlavorMariaDB),
+		"mysql":    dialect.MySQLFlavor(dialect.FlavorMySQL),
+	}
+	for dname, d := range dialects {
+		for tname, p := range map[string]any{"vector": v, "halfvec": h, "sparsevec": sp, "bit": bt} {
+			got, err := compile(d, func(b *Builder) { b.argFor(0, p) })
+			if err != nil {
+				t.Errorf("%s %s: %v", dname, tname, err)
+				continue
+			}
+			if len(got.Args) != 1 || got.Args[0] != nil || strings.Contains(got.SQL, "(") {
+				t.Errorf("%s %s: %q %#v, want a bare NULL bind", dname, tname, got.SQL, got.Args)
+			}
+		}
+	}
+	// A sensitive column binds NULL the same way.
+	got, err := compile(dialect.For(dialect.Postgres), func(b *Builder) { b.argFor(FlagSensitive, v) })
+	if err != nil || len(got.Args) != 1 || got.Args[0] != nil {
+		t.Errorf("sensitive nil pointer: %#v, %v", got.Args, err)
 	}
 }

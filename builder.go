@@ -146,6 +146,9 @@ type DialectValuer interface {
 
 // Arg appends a bind placeholder and records v as its argument.
 func (b *Builder) Arg(v any) {
+	if isNilVectorPointer(v) {
+		v = nil // a nil pointer would panic in the promoted DialectValue
+	}
 	if dv, ok := v.(DialectValuer); ok {
 		enc, err := dv.DialectValue(b.d.Name)
 		if err != nil {
@@ -178,7 +181,7 @@ func (b *Builder) Arg(v any) {
 func (b *Builder) argFor(flags uint16, v any) {
 	prev := b.argSens
 	b.argSens = prev || flags&FlagSensitive != 0
-	if !bindMySQLVector(b, v) && !bindSQLiteVector(b, v) {
+	if !bindMySQLVector(b, v) {
 		b.Arg(v)
 	}
 	b.argSens = prev
