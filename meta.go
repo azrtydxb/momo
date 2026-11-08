@@ -77,6 +77,9 @@ type Meta[T any] struct {
 	// IDGens declares Go-side id generators per column; an insert fills the
 	// column when its field holds the zero value. See WithIDGenerator.
 	IDGens []IDGen
+	// Hooks are the typed model hooks the write and read builders call. See
+	// HookSet.
+	Hooks HookSet[T]
 }
 
 // Modeler is implemented (by generated code) on pointers to model and
