@@ -31,6 +31,8 @@ type of the field decides the shape:
 | `has_many`   | `[]Target` | the child            |
 | `many2many`  | `[]Target` | a join table         |
 
+<!-- docscheck:fragment -->
+
 ```go
 type Author struct {
 	momo.Model `momo:"table:authors"`
@@ -112,6 +114,8 @@ many-to-many relation, `Discriminator` for a polymorphic one, and the typed
 functions that read and write keys and the field itself. You refer to a
 relation as `<model package>.<Field>`:
 
+<!-- docscheck:fragment -->
+
 ```go
 document.Author   // belongs-to: momo.Relation[models.Document, models.Author]
 document.Comments // has-many
@@ -150,6 +154,8 @@ Momo when you load them or list them for `CreateGraph`. A plain `Insert` or
 
 `momo.Load` loads one relation for a slice of parents and assigns the result
 onto each element. `momo.LoadAll` loads several.
+
+<!-- docscheck:fragment -->
 
 ```go
 docs, err := momo.Select[models.Document](db).Limit(20).All(ctx)
@@ -198,6 +204,8 @@ Behavior to rely on:
 `Load` accepts the same options directly after the relation. Use `Scope` when
 you pass the relation to `LoadAll` or `Preload`:
 
+<!-- docscheck:fragment -->
+
 ```go
 err := momo.Load(ctx, db, docs, document.Comments,
 	momo.LoadWhere[models.Comment](comment.Approved.Eq(true)),
@@ -231,6 +239,8 @@ wins. They have no effect on a child model without a soft-delete column.
 `Relation.Then` loads relations on the children, in one pass over all children
 of the level above:
 
+<!-- docscheck:fragment -->
+
 ```go
 err := momo.LoadAll(ctx, db, authors,
 	author.Documents.Then(document.Comments),
@@ -244,6 +254,8 @@ per-parent limit they only load for the survivors.
 which has `Scope` and `Then` methods itself, so a filtered, ordered relation
 with nested loads is one loader ("approved comments, newest first, each with
 its author"):
+
+<!-- docscheck:fragment -->
 
 ```go
 err := momo.LoadAll(ctx, db, documents,
@@ -284,6 +296,8 @@ dialect's limit and runs one statement per chunk, so a load of any size works.
 exercise chunking with small data, or for databases configured below the
 dialect's default:
 
+<!-- docscheck:fragment -->
+
 ```go
 db := momo.New(drv, momo.WithMaxParams(100))
 ```
@@ -296,6 +310,8 @@ load fails with `ErrValidation` before any statement runs.
 `Relation.Count` counts one parent per statement. To show a count next to each
 row of a list, `LoadCounts` counts all parents at once: one grouped
 `SELECT key, COUNT(*) ... GROUP BY key` per bind-limit chunk.
+
+<!-- docscheck:fragment -->
 
 ```go
 counts, err := momo.LoadCounts(ctx, db, docs, document.Comments,
@@ -329,6 +345,8 @@ Preload returns a copy, so a base query can be reused, and a query with no
 result rows runs no relation statement. Inside a transaction the loads run in
 that transaction.
 
+<!-- docscheck:fragment -->
+
 ```go
 docs, err := momo.Select[models.Document](db).
 	Preload(document.Author, document.Comments.Scope(
@@ -347,6 +365,8 @@ LEFT JOIN, so it costs no extra round trip. Pass it to `Preload`. It does not
 work with `Load`, `LoadAll`, `Scope` or `Then`. A matched joined child with
 NULL in a column its Go field cannot hold fails with `ErrValidation` and an
 error naming the child column (`column=...`).
+
+<!-- docscheck:fragment -->
 
 ```go
 docs, err := momo.Select[models.Document](db).
@@ -412,6 +432,8 @@ If the driver rejects the batch before sending anything (`ErrUnsupported` with
 
 Relations also filter and order queries without loading anything.
 
+<!-- docscheck:fragment -->
+
 ```go
 // Documents with at least one approved comment.
 withApproved := momo.Select[models.Document](db).
@@ -446,6 +468,8 @@ without the alias refers to the outer query's table.
 the children whose key is in the key set of the given parent query. The parent
 query is embedded as a subquery, so no parent row is fetched:
 
+<!-- docscheck:fragment -->
+
 ```go
 comments := document.Comments.From(
 	momo.Select[models.Document](db).Where(document.ID.Eq(int64(1))))
@@ -459,6 +483,8 @@ rows, err := comments.All(ctx)
 
 `Link`, `Unlink`, `Replace` and `Count` write and count the link itself, with
 no model in between:
+
+<!-- docscheck:fragment -->
 
 ```go
 doc := models.Document{ID: 1}
@@ -533,6 +559,8 @@ Graph writes are explicit. Nothing saves a relation you did not name.
 `CreateGraph` inserts a parent and the children of the relations you list, in
 one transaction. List relations with `Relation.Include()`:
 
+<!-- docscheck:fragment -->
+
 ```go
 doc := models.Document{
 	Title:    "Hello",
@@ -573,6 +601,8 @@ err := momo.CreateGraph(ctx, db, &doc,
   usable. A dialect without savepoints returns `ErrUnsupported` there.
 
 ### FindOrCreate
+
+<!-- docscheck:fragment -->
 
 ```go
 a := models.Author{Name: "Ada"}
@@ -615,6 +645,8 @@ inserted it.
 
 ### UpsertByPK
 
+<!-- docscheck:fragment -->
+
 ```go
 err := momo.UpsertByPK(ctx, db, &a)
 ```
@@ -630,6 +662,8 @@ different unique key, or when you want to choose which columns update.
 
 A hook registered with `WithHook` that also implements `RelationHook` receives
 one event per relation load:
+
+<!-- docscheck:fragment -->
 
 ```go
 type relLogger struct{ momo.Hook } // embed a Hook for the query events
