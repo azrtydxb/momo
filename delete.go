@@ -64,7 +64,7 @@ func (d DeleteQuery[T]) ReturningAll() DeleteQuery[T] {
 }
 
 func (d DeleteQuery[T]) fail(kind error, err error) error {
-	return &Error{Kind: kind, Op: "delete", Table: d.meta.Table, Err: err}
+	return newError(kind, "delete", d.meta.Table, err)
 }
 
 // plan resolves the WHERE predicates and applies the guardrail.
@@ -99,7 +99,7 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 // reported here, before anything can reach the database.
 func (d DeleteQuery[T]) SQL() (Compiled, error) {
 	if d.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
+		return Compiled{}, noQuerier("delete", d.meta.Table)
 	}
 	where, err := d.plan()
 	if err != nil {
