@@ -81,11 +81,14 @@ func TestAggComparisonRendersAgainstTheAggregate(t *testing.T) {
 	}
 }
 
-// TestLibraryErrorsAreMatchable parses the non-test sources and flags a bare
-// library error: an errors.New or fmt.Errorf call (without a %w verb) whose
-// message starts with "momo:". Such an error has no Kind, so errors.Is cannot
-// match it; build it through newError, validation or noQuerier instead.
-// Package-level sentinels (var declarations) are matchable and allowed.
+// TestLibraryErrorsAreMatchable parses the non-test sources of the root
+// package (errors.go excluded) and flags a bare library error: an errors.New
+// or fmt.Errorf call whose first argument is a double-quoted literal starting
+// with "momo:" and containing no %w verb. Such an error has no Kind, so
+// errors.Is cannot match it; build it through newError, validation or
+// noQuerier instead. It does not look at other messages or at non-literal
+// arguments. Package-level var declarations are skipped (sentinels are
+// matchable), and allowedBare lists the one deliberate exception.
 func TestLibraryErrorsAreMatchable(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {

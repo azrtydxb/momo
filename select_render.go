@@ -313,10 +313,19 @@ func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
 	if len(s.lockOf) == 0 {
 		return true
 	}
+	ctes := make(map[string]struct{}, len(s.with))
+	for _, c := range s.with {
+		ctes[c.name] = struct{}{}
+	}
 	known := map[string]struct{}{}
 	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
 		if _, sub := src.(subquerySource); sub {
 			continue
+		}
+		if tr, ok := src.(TableRef); ok && tr.Schema == "" {
+			if _, isCTE := ctes[tr.Name]; isCTE {
+				continue // a WITH query cannot be locked
+			}
 		}
 		if q, ok := src.(interface{ Qualifier() string }); ok {
 			known[q.Qualifier()] = struct{}{}
@@ -324,7 +333,7 @@ func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
 	}
 	for _, t := range s.lockOf {
 		if _, ok := known[t]; !ok {
-			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("LockOf names %q, which is not a table or alias in the FROM or JOIN sources", t)))
+			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("LockOf names %q, which is not a table or alias in the FROM or JOIN sources (a CTE or subquery cannot be locked)", t)))
 			return false
 		}
 	}
