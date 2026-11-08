@@ -31,7 +31,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
-- Reciprocal-rank-fusion hybrid search, `MERGE` builder and window-function API
+- Reciprocal-rank-fusion hybrid search, `MERGE` builder
   do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
   (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
   query builders) exists on PostgreSQL; combine it with a vector distance in
@@ -643,6 +643,14 @@ dialect bind limit (PostgreSQL 65535, MySQL 65535, SQLite 32766, or a lower
 The check counts the binds rendered before the list; binds rendered after it
 are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 `In` renders a constant false and an empty `NotIn` a constant true.
+
+Two independent caps apply to a typed `In` or `NotIn` list. `WithMaxInList(n)`
+limits the number of values per list and fails the build with
+`ErrLimitExceeded`; it is for request-supplied lists. The bind limit above is
+the database ceiling for the whole statement and fails with `ErrValidation`.
+Both are checked at build time, the list cap first, so the stricter one wins.
+`SelectQuery.MaxRows(n)` is the matching cap on results: `All` and `Pluck`
+return `ErrLimitExceeded` instead of more than n rows, never a truncated slice.
 
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
@@ -1377,8 +1385,8 @@ Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-s
 
 Momo errors are `*momo.Error{Kind, Op, Table, Column, Constraint, Err}`. Check
 with `errors.Is(err, momo.ErrX)` (matches `Kind`) and reach the driver error with
-`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns driver detail
-that `Error()` hides. Never string-match error text.
+`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns the raw driver detail
+(for PostgreSQL the key text) that `Error()` hides. `Detail()` is unmasked and can quote sensitive values: never log it or return it to a client. Never string-match error text.
 
 ```go
 switch {
@@ -1435,8 +1443,22 @@ Rules:
 Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`.
 
-Pattern used by the examples (the harness is internal to the Momo module; copy
-the idea, not the package):
+Use the public kit `github.com/azrtydxb/momo/momotest` (see
+[testing.md](testing.md)):
+
+```go
+//go:build integration
+
+db := momotest.New(t, momotest.WithMigrations(app.Migrations()))  // schema per test, dropped after
+tx := momotest.NewTx(t, momotest.WithMigrations(app.Migrations())) // rolled back after; Commit refused
+momotest.Seed(t, tx, momotest.Insert(&org), momotest.Insert(&user))
+```
+
+It reads `MOMO_TEST_POSTGRES_URL` (skip when unset, fail when
+`MOMO_REQUIRE_INTEGRATION=1`), is safe with `t.Parallel` and `-race`, and
+`WithExtensions("vector")` creates the extension first. What it does, if you
+need to do it by hand (the examples' own harness is internal to the Momo
+module):
 
 1. Read an admin URL from an env var (the examples use `MOMO_TEST_POSTGRES_URL`);
    `t.Skip` when it is unset (and `t.Fatal` when your CI sets a require flag).

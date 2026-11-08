@@ -41,6 +41,10 @@ type Dialect struct {
 	// default SQLITE_MAX_VARIABLE_NUMBER is 32766 since 3.32.0.
 	MaxParams int
 
+	// MaxInList caps the values in one typed IN or NOT IN list. Zero means no
+	// cap. momo.WithMaxInList sets it on the per-DB copy of the dialect.
+	MaxInList int
+
 	Returning        bool // INSERT/UPDATE/DELETE ... RETURNING (SQLite >= 3.35)
 	OnConflict       bool // INSERT ... ON CONFLICT
 	OnDuplicateKey   bool // INSERT ... ON DUPLICATE KEY UPDATE

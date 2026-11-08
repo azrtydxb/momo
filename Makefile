@@ -27,6 +27,7 @@ FUZZ_TARGETS += ./types:FuzzTimeOfDayScan
 FUZZ_TARGETS += ./types:FuzzDateScan
 FUZZ_TARGETS += ./types:FuzzJSONScan
 FUZZ_TARGETS += ./gen/tags:FuzzParse
+FUZZ_TARGETS += .:FuzzRawArgs
 FUZZ_TARGETS += .:FuzzScanRaw
 GOVULNCHECK = go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
 # Same gosec release as .github/workflows/gosec.yml. Locally it fails on any
