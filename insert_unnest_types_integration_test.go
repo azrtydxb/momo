@@ -33,9 +33,8 @@ type unnestKind struct {
 func (r *unnestKind) MomoMeta() *momo.Meta[unnestKind] { return &unnestKindMeta }
 
 var (
-	unnestKindID   = momo.NewColumn[int64]("unnest_kinds", "id")
-	unnestKindNote = momo.NewColumn[string]("unnest_kinds", "note")
-	unnestKindAmt  = momo.NewColumn[float64]("unnest_kinds", "amt")
+	unnestKindID  = momo.NewColumn[int64]("unnest_kinds", "id", 0)
+	unnestKindAmt = momo.NewColumn[float64]("unnest_kinds", "amt", 0)
 )
 
 var unnestKindMeta = momo.Meta[unnestKind]{
