@@ -28,6 +28,7 @@ New here? Start with [getting started](getting-started.md).
 - [Interceptors](PRIVACY_RULES.md): `WithInterceptor` statement rules per handle, a tenant-handle recipe, and every path an interceptor does not cover.
 - [momovet](momovet.md): the static analyzer that reports raw SQL built with `+` or a format call.
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
+- [Performance](PERFORMANCE.md): the measured hook-overhead allocation budget and the layout of the comparison benchmark suite.
 - [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI, and the stability policy.
 - [Using these docs with an AI coding agent](agents.md): where an agent should read, canonical patterns and a copy-paste AGENTS.md snippet.
 - [Architecture](ARCHITECTURE.md): the package layering, dependency rules and contracts the code follows.

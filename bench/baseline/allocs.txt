@@ -1,0 +1,189 @@
+goos: linux
+goarch: amd64
+pkg: github.com/azrtydxb/momo/bench
+cpu: AMD EPYC 7763 64-Core Processor                
+BenchmarkAllocs_CustomerByID/pgx-4    	    6698	    168464 ns/op	     751 B/op	      12 allocs/op
+BenchmarkAllocs_CustomerByID/pgx-4    	    7034	    166398 ns/op	     752 B/op	      12 allocs/op
+BenchmarkAllocs_CustomerByID/pgx-4    	    7106	    169175 ns/op	     751 B/op	      12 allocs/op
+BenchmarkAllocs_CustomerByID/pgx-4    	    7597	    167318 ns/op	     751 B/op	      12 allocs/op
+BenchmarkAllocs_CustomerByID/pgx-4    	    7146	    165977 ns/op	     751 B/op	      12 allocs/op
+BenchmarkAllocs_CustomerByID/pgx-4    	    6782	    171633 ns/op	     752 B/op	      12 allocs/op
+BenchmarkAllocs_CustomerByID/database/sql-4         	    7082	    173114 ns/op	    1316 B/op	      31 allocs/op
+BenchmarkAllocs_CustomerByID/database/sql-4         	    6849	    169640 ns/op	    1316 B/op	      31 allocs/op
+BenchmarkAllocs_CustomerByID/database/sql-4         	    7004	    175525 ns/op	    1316 B/op	      31 allocs/op
+BenchmarkAllocs_CustomerByID/database/sql-4         	    6116	    185765 ns/op	    1316 B/op	      31 allocs/op
+BenchmarkAllocs_CustomerByID/database/sql-4         	    7111	    178079 ns/op	    1316 B/op	      31 allocs/op
+BenchmarkAllocs_CustomerByID/database/sql-4         	    7225	    171986 ns/op	    1316 B/op	      31 allocs/op
+BenchmarkAllocs_CustomerByID/momo-4                 	    4956	    235760 ns/op	    2804 B/op	      38 allocs/op
+BenchmarkAllocs_CustomerByID/momo-4                 	    4916	    239921 ns/op	    2804 B/op	      38 allocs/op
+BenchmarkAllocs_CustomerByID/momo-4                 	    5131	    237089 ns/op	    2804 B/op	      38 allocs/op
+BenchmarkAllocs_CustomerByID/momo-4                 	    4562	    239571 ns/op	    2804 B/op	      38 allocs/op
+BenchmarkAllocs_CustomerByID/momo-4                 	    5068	    232175 ns/op	    2803 B/op	      38 allocs/op
+BenchmarkAllocs_CustomerByID/momo-4                 	    5212	    236917 ns/op	    2804 B/op	      38 allocs/op
+BenchmarkAllocs_CustomerByID/gorm-4                 	    5913	    188333 ns/op	    5192 B/op	      75 allocs/op
+BenchmarkAllocs_CustomerByID/gorm-4                 	    6690	    184539 ns/op	    5192 B/op	      75 allocs/op
+BenchmarkAllocs_CustomerByID/gorm-4                 	    6602	    187849 ns/op	    5192 B/op	      75 allocs/op
+BenchmarkAllocs_CustomerByID/gorm-4                 	    6658	    186319 ns/op	    5192 B/op	      75 allocs/op
+BenchmarkAllocs_CustomerByID/gorm-4                 	    7032	    186974 ns/op	    5192 B/op	      75 allocs/op
+BenchmarkAllocs_CustomerByID/gorm-4                 	    6741	    189373 ns/op	    5193 B/op	      75 allocs/op
+BenchmarkAllocs_CustomerByID/ent-4                  	    6232	    189434 ns/op	    4960 B/op	     107 allocs/op
+BenchmarkAllocs_CustomerByID/ent-4                  	    6598	    191904 ns/op	    4960 B/op	     107 allocs/op
+BenchmarkAllocs_CustomerByID/ent-4                  	    6270	    188821 ns/op	    4960 B/op	     107 allocs/op
+BenchmarkAllocs_CustomerByID/ent-4                  	    6594	    190640 ns/op	    4960 B/op	     107 allocs/op
+BenchmarkAllocs_CustomerByID/ent-4                  	    6564	    194263 ns/op	    4960 B/op	     107 allocs/op
+BenchmarkAllocs_CustomerByID/ent-4                  	    6852	    188402 ns/op	    4960 B/op	     107 allocs/op
+BenchmarkAllocs_CustomerByID/bun-4                  	    6193	    175497 ns/op	    6268 B/op	      37 allocs/op
+BenchmarkAllocs_CustomerByID/bun-4                  	    6331	    180685 ns/op	    6268 B/op	      37 allocs/op
+BenchmarkAllocs_CustomerByID/bun-4                  	    6362	    175675 ns/op	    6268 B/op	      37 allocs/op
+BenchmarkAllocs_CustomerByID/bun-4                  	    6598	    178897 ns/op	    6268 B/op	      37 allocs/op
+BenchmarkAllocs_CustomerByID/bun-4                  	    6519	    174960 ns/op	    6268 B/op	      37 allocs/op
+BenchmarkAllocs_CustomerByID/bun-4                  	    6673	    176569 ns/op	    6268 B/op	      37 allocs/op
+BenchmarkAllocs_InsertOrder/pgx-4                   	    3882	    315084 ns/op	     554 B/op	      10 allocs/op
+BenchmarkAllocs_InsertOrder/pgx-4                   	    3658	    306904 ns/op	     554 B/op	      10 allocs/op
+BenchmarkAllocs_InsertOrder/pgx-4                   	    3540	    309315 ns/op	     556 B/op	      10 allocs/op
+BenchmarkAllocs_InsertOrder/pgx-4                   	    3823	    307759 ns/op	     555 B/op	      10 allocs/op
+BenchmarkAllocs_InsertOrder/pgx-4                   	    3906	    314519 ns/op	     556 B/op	      10 allocs/op
+BenchmarkAllocs_InsertOrder/pgx-4                   	    3562	    316490 ns/op	     555 B/op	      10 allocs/op
+BenchmarkAllocs_InsertOrder/database/sql-4          	    3891	    319685 ns/op	     999 B/op	      19 allocs/op
+BenchmarkAllocs_InsertOrder/database/sql-4          	    3862	    317690 ns/op	     999 B/op	      19 allocs/op
+BenchmarkAllocs_InsertOrder/database/sql-4          	    3860	    310674 ns/op	     999 B/op	      19 allocs/op
+BenchmarkAllocs_InsertOrder/database/sql-4          	    3932	    312398 ns/op	     999 B/op	      19 allocs/op
+BenchmarkAllocs_InsertOrder/database/sql-4          	    3848	    311147 ns/op	     999 B/op	      19 allocs/op
+BenchmarkAllocs_InsertOrder/database/sql-4          	    4161	    313253 ns/op	     999 B/op	      19 allocs/op
+BenchmarkAllocs_InsertOrder/momo-4                  	    3147	    367737 ns/op	    2443 B/op	      38 allocs/op
+BenchmarkAllocs_InsertOrder/momo-4                  	    3337	    360551 ns/op	    2443 B/op	      38 allocs/op
+BenchmarkAllocs_InsertOrder/momo-4                  	    3277	    364065 ns/op	    2444 B/op	      38 allocs/op
+BenchmarkAllocs_InsertOrder/momo-4                  	    3435	    360578 ns/op	    2444 B/op	      38 allocs/op
+BenchmarkAllocs_InsertOrder/momo-4                  	    3306	    368749 ns/op	    2443 B/op	      38 allocs/op
+BenchmarkAllocs_InsertOrder/momo-4                  	    3439	    369867 ns/op	    2444 B/op	      38 allocs/op
+BenchmarkAllocs_InsertOrder/gorm-4                  	    3256	    345024 ns/op	    5593 B/op	      63 allocs/op
+BenchmarkAllocs_InsertOrder/gorm-4                  	    3474	    346113 ns/op	    5593 B/op	      63 allocs/op
+BenchmarkAllocs_InsertOrder/gorm-4                  	    3598	    358916 ns/op	    5593 B/op	      63 allocs/op
+BenchmarkAllocs_InsertOrder/gorm-4                  	    3312	    362620 ns/op	    5593 B/op	      63 allocs/op
+BenchmarkAllocs_InsertOrder/gorm-4                  	    3261	    349212 ns/op	    5593 B/op	      63 allocs/op
+BenchmarkAllocs_InsertOrder/gorm-4                  	    3572	    336716 ns/op	    5593 B/op	      63 allocs/op
+BenchmarkAllocs_InsertOrder/ent-4                   	    3722	    332422 ns/op	    3047 B/op	      78 allocs/op
+BenchmarkAllocs_InsertOrder/ent-4                   	    3780	    326576 ns/op	    3046 B/op	      78 allocs/op
+BenchmarkAllocs_InsertOrder/ent-4                   	    3661	    334038 ns/op	    3046 B/op	      78 allocs/op
+BenchmarkAllocs_InsertOrder/ent-4                   	    3786	    338079 ns/op	    3046 B/op	      78 allocs/op
+BenchmarkAllocs_InsertOrder/ent-4                   	    3739	    328399 ns/op	    3046 B/op	      78 allocs/op
+BenchmarkAllocs_InsertOrder/ent-4                   	    3908	    329968 ns/op	    3046 B/op	      78 allocs/op
+BenchmarkAllocs_InsertOrder/bun-4                   	    2263	    627236 ns/op	    6265 B/op	      35 allocs/op
+BenchmarkAllocs_InsertOrder/bun-4                   	    1867	    639558 ns/op	    6268 B/op	      36 allocs/op
+BenchmarkAllocs_InsertOrder/bun-4                   	    1858	    646119 ns/op	    6268 B/op	      36 allocs/op
+BenchmarkAllocs_InsertOrder/bun-4                   	    1786	    637450 ns/op	    6267 B/op	      36 allocs/op
+BenchmarkAllocs_InsertOrder/bun-4                   	    1828	    654511 ns/op	    6268 B/op	      36 allocs/op
+BenchmarkAllocs_InsertOrder/bun-4                   	    1845	    644578 ns/op	    6268 B/op	      36 allocs/op
+BenchmarkAllocs_SetCustomerStatus/pgx-4             	    3840	    315726 ns/op	     154 B/op	       4 allocs/op
+BenchmarkAllocs_SetCustomerStatus/pgx-4             	    3318	    310502 ns/op	     154 B/op	       4 allocs/op
+BenchmarkAllocs_SetCustomerStatus/pgx-4             	    3489	    310480 ns/op	     154 B/op	       4 allocs/op
+BenchmarkAllocs_SetCustomerStatus/pgx-4             	    3991	    310995 ns/op	     154 B/op	       4 allocs/op
+BenchmarkAllocs_SetCustomerStatus/pgx-4             	    3804	    307817 ns/op	     154 B/op	       4 allocs/op
+BenchmarkAllocs_SetCustomerStatus/pgx-4             	    3297	    308260 ns/op	     154 B/op	       4 allocs/op
+BenchmarkAllocs_SetCustomerStatus/database/sql-4    	    4060	    315230 ns/op	     248 B/op	       6 allocs/op
+BenchmarkAllocs_SetCustomerStatus/database/sql-4    	    3938	    315040 ns/op	     248 B/op	       6 allocs/op
+BenchmarkAllocs_SetCustomerStatus/database/sql-4    	    3960	    314355 ns/op	     248 B/op	       6 allocs/op
+BenchmarkAllocs_SetCustomerStatus/database/sql-4    	    3742	    310546 ns/op	     248 B/op	       6 allocs/op
+BenchmarkAllocs_SetCustomerStatus/database/sql-4    	    3282	    317588 ns/op	     248 B/op	       6 allocs/op
+BenchmarkAllocs_SetCustomerStatus/database/sql-4    	    4084	    303661 ns/op	     248 B/op	       6 allocs/op
+BenchmarkAllocs_SetCustomerStatus/momo-4            	    3244	    358141 ns/op	    1450 B/op	      29 allocs/op
+BenchmarkAllocs_SetCustomerStatus/momo-4            	    3430	    372267 ns/op	    1449 B/op	      29 allocs/op
+BenchmarkAllocs_SetCustomerStatus/momo-4            	    3344	    367052 ns/op	    1449 B/op	      29 allocs/op
+BenchmarkAllocs_SetCustomerStatus/momo-4            	    3608	    367775 ns/op	    1449 B/op	      29 allocs/op
+BenchmarkAllocs_SetCustomerStatus/momo-4            	    3368	    372949 ns/op	    1449 B/op	      29 allocs/op
+BenchmarkAllocs_SetCustomerStatus/momo-4            	    2838	    378558 ns/op	    1449 B/op	      29 allocs/op
+BenchmarkAllocs_SetCustomerStatus/gorm-4            	    3073	    337443 ns/op	    4640 B/op	      51 allocs/op
+BenchmarkAllocs_SetCustomerStatus/gorm-4            	    3192	    334324 ns/op	    4640 B/op	      51 allocs/op
+BenchmarkAllocs_SetCustomerStatus/gorm-4            	    3534	    346542 ns/op	    4640 B/op	      51 allocs/op
+BenchmarkAllocs_SetCustomerStatus/gorm-4            	    3720	    330844 ns/op	    4640 B/op	      51 allocs/op
+BenchmarkAllocs_SetCustomerStatus/gorm-4            	    3070	    335161 ns/op	    4640 B/op	      51 allocs/op
+BenchmarkAllocs_SetCustomerStatus/gorm-4            	    3994	    343057 ns/op	    4640 B/op	      51 allocs/op
+BenchmarkAllocs_SetCustomerStatus/ent-4             	    3834	    321811 ns/op	    2760 B/op	      53 allocs/op
+BenchmarkAllocs_SetCustomerStatus/ent-4             	    3822	    328937 ns/op	    2760 B/op	      53 allocs/op
+BenchmarkAllocs_SetCustomerStatus/ent-4             	    3996	    325617 ns/op	    2760 B/op	      53 allocs/op
+BenchmarkAllocs_SetCustomerStatus/ent-4             	    3477	    327063 ns/op	    2760 B/op	      53 allocs/op
+BenchmarkAllocs_SetCustomerStatus/ent-4             	    3702	    342159 ns/op	    2760 B/op	      53 allocs/op
+BenchmarkAllocs_SetCustomerStatus/ent-4             	    3702	    330104 ns/op	    2760 B/op	      53 allocs/op
+BenchmarkAllocs_SetCustomerStatus/bun-4             	    3416	    360071 ns/op	    4992 B/op	      11 allocs/op
+BenchmarkAllocs_SetCustomerStatus/bun-4             	    3439	    367441 ns/op	    4992 B/op	      11 allocs/op
+BenchmarkAllocs_SetCustomerStatus/bun-4             	    3609	    357630 ns/op	    4992 B/op	      11 allocs/op
+BenchmarkAllocs_SetCustomerStatus/bun-4             	    3344	    374164 ns/op	    4992 B/op	      11 allocs/op
+BenchmarkAllocs_SetCustomerStatus/bun-4             	    3289	    353586 ns/op	    4992 B/op	      11 allocs/op
+BenchmarkAllocs_SetCustomerStatus/bun-4             	    3451	    384114 ns/op	    4992 B/op	      11 allocs/op
+BenchmarkAllocs_RecentOrders/pgx-4                  	    3639	    327742 ns/op	    8051 B/op	      74 allocs/op
+BenchmarkAllocs_RecentOrders/pgx-4                  	    3739	    327066 ns/op	    8051 B/op	      74 allocs/op
+BenchmarkAllocs_RecentOrders/pgx-4                  	    3679	    322189 ns/op	    8052 B/op	      74 allocs/op
+BenchmarkAllocs_RecentOrders/pgx-4                  	    3814	    319441 ns/op	    8050 B/op	      74 allocs/op
+BenchmarkAllocs_RecentOrders/pgx-4                  	    3252	    320218 ns/op	    8053 B/op	      74 allocs/op
+BenchmarkAllocs_RecentOrders/pgx-4                  	    3681	    325103 ns/op	    8052 B/op	      74 allocs/op
+BenchmarkAllocs_RecentOrders/database/sql-4         	    3405	    334532 ns/op	    8184 B/op	     144 allocs/op
+BenchmarkAllocs_RecentOrders/database/sql-4         	    3520	    336171 ns/op	    8184 B/op	     144 allocs/op
+BenchmarkAllocs_RecentOrders/database/sql-4         	    3639	    332623 ns/op	    8184 B/op	     144 allocs/op
+BenchmarkAllocs_RecentOrders/database/sql-4         	    3573	    340474 ns/op	    8184 B/op	     144 allocs/op
+BenchmarkAllocs_RecentOrders/database/sql-4         	    3595	    342546 ns/op	    8184 B/op	     144 allocs/op
+BenchmarkAllocs_RecentOrders/database/sql-4         	    3642	    352830 ns/op	    8184 B/op	     144 allocs/op
+BenchmarkAllocs_RecentOrders/momo-4                 	    2377	    522735 ns/op	    6226 B/op	      69 allocs/op
+BenchmarkAllocs_RecentOrders/momo-4                 	    2319	    513278 ns/op	    6227 B/op	      69 allocs/op
+BenchmarkAllocs_RecentOrders/momo-4                 	    2344	    521671 ns/op	    6226 B/op	      69 allocs/op
+BenchmarkAllocs_RecentOrders/momo-4                 	    2492	    517213 ns/op	    6229 B/op	      69 allocs/op
+BenchmarkAllocs_RecentOrders/momo-4                 	    2358	    511958 ns/op	    6228 B/op	      69 allocs/op
+BenchmarkAllocs_RecentOrders/momo-4                 	    2293	    515645 ns/op	    6228 B/op	      69 allocs/op
+BenchmarkAllocs_RecentOrders/gorm-4                 	    2958	    392161 ns/op	   13916 B/op	     324 allocs/op
+BenchmarkAllocs_RecentOrders/gorm-4                 	    2953	    402711 ns/op	   13929 B/op	     324 allocs/op
+BenchmarkAllocs_RecentOrders/gorm-4                 	    3046	    397240 ns/op	   13994 B/op	     324 allocs/op
+BenchmarkAllocs_RecentOrders/gorm-4                 	    3097	    391233 ns/op	   13915 B/op	     324 allocs/op
+BenchmarkAllocs_RecentOrders/gorm-4                 	    2970	    395442 ns/op	   13940 B/op	     324 allocs/op
+BenchmarkAllocs_RecentOrders/gorm-4                 	    3052	    390721 ns/op	   13981 B/op	     324 allocs/op
+BenchmarkAllocs_RecentOrders/ent-4                  	    3170	    382718 ns/op	   18520 B/op	     420 allocs/op
+BenchmarkAllocs_RecentOrders/ent-4                  	    3066	    383151 ns/op	   18520 B/op	     420 allocs/op
+BenchmarkAllocs_RecentOrders/ent-4                  	    3146	    375559 ns/op	   18520 B/op	     420 allocs/op
+BenchmarkAllocs_RecentOrders/ent-4                  	    3064	    383658 ns/op	   18520 B/op	     420 allocs/op
+BenchmarkAllocs_RecentOrders/ent-4                  	    3253	    378231 ns/op	   18520 B/op	     420 allocs/op
+BenchmarkAllocs_RecentOrders/ent-4                  	    3043	    380385 ns/op	   18520 B/op	     420 allocs/op
+BenchmarkAllocs_RecentOrders/bun-4                  	    3358	    358589 ns/op	   11264 B/op	     175 allocs/op
+BenchmarkAllocs_RecentOrders/bun-4                  	    3318	    353351 ns/op	   11264 B/op	     175 allocs/op
+BenchmarkAllocs_RecentOrders/bun-4                  	    3469	    358953 ns/op	   11264 B/op	     175 allocs/op
+BenchmarkAllocs_RecentOrders/bun-4                  	    3321	    360201 ns/op	   11264 B/op	     175 allocs/op
+BenchmarkAllocs_RecentOrders/bun-4                  	    3303	    364312 ns/op	   11264 B/op	     175 allocs/op
+BenchmarkAllocs_RecentOrders/bun-4                  	    3331	    361222 ns/op	   11263 B/op	     175 allocs/op
+PASS
+ok  	github.com/azrtydxb/momo/bench	180.318s
+PASS
+ok  	github.com/azrtydxb/momo/bench/adapters	0.005s
+?   	github.com/azrtydxb/momo/bench/adapters/bunad	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent/entgen	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent/entgen/customer	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent/entgen/enttest	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent/entgen/hook	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent/entgen/migrate	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent/entgen/order	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent/entgen/predicate	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent/entgen/runtime	[no test files]
+?   	github.com/azrtydxb/momo/bench/adapters/ent/schema	[no test files]
+PASS
+ok  	github.com/azrtydxb/momo/bench/adapters/gormad	0.006s
+?   	github.com/azrtydxb/momo/bench/adapters/momo	[no test files]
+PASS
+ok  	github.com/azrtydxb/momo/bench/adapters/pgxhand	0.004s
+?   	github.com/azrtydxb/momo/bench/adapters/sqlhand	[no test files]
+PASS
+ok  	github.com/azrtydxb/momo/bench/cmd/benchgate	0.003s
+?   	github.com/azrtydxb/momo/bench/cmd/codesize	[no test files]
+?   	github.com/azrtydxb/momo/bench/cmd/envcapture	[no test files]
+?   	github.com/azrtydxb/momo/bench/cmd/loadgen	[no test files]
+PASS
+ok  	github.com/azrtydxb/momo/bench/codesize	0.003s
+PASS
+ok  	github.com/azrtydxb/momo/bench/env	0.004s
+PASS
+ok  	github.com/azrtydxb/momo/bench/loadgen	0.004s
+?   	github.com/azrtydxb/momo/bench/models/momo	[no test files]
+?   	github.com/azrtydxb/momo/bench/models/momo/customer	[no test files]
+?   	github.com/azrtydxb/momo/bench/models/momo/order	[no test files]
+PASS
+ok  	github.com/azrtydxb/momo/bench/scripts	0.002s
+PASS
+ok  	github.com/azrtydxb/momo/bench/stats	0.003s
+PASS
+ok  	github.com/azrtydxb/momo/bench/workload	0.004s

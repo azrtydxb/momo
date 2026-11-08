@@ -70,16 +70,26 @@ func runMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (A
 		kind = "sql"
 	}
 	rec := HistoryRow{Version: p.Version, Name: p.Name, Checksum: p.Checksum, ApplyID: applyID, Kind: kind, AppliedAt: start}
+	// A dialect whose DDL commits implicitly (MySQL, MariaDB) cannot roll a
+	// migration back, so every migration runs statement by statement with or
+	// without a no-transaction directive, and a failure leaves a dirty row.
+	noTx := p.NoTx || !transactionalDDL(env.Dialect)
 	if p.Go != nil {
-		if p.NoTx {
+		if noTx {
 			return runGoNoTx(ctx, env, h, rec, p, start)
 		}
 		return runTransactional(ctx, env, h, rec, p, start)
 	}
-	if p.NoTx || hasNoTx(p.Statements) {
+	if noTx || hasNoTx(p.Statements) {
 		return runNonTransactional(ctx, env, h, rec, p, start)
 	}
 	return runTransactional(ctx, env, h, rec, p, start)
+}
+
+// transactionalDDL reports whether d can roll DDL back.
+func transactionalDDL(d Dialect) bool {
+	dd := d.Dialect()
+	return dd == nil || dd.TransactionalDDL
 }
 
 func hasNoTx(stmts []Statement) bool {

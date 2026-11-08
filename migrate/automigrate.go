@@ -56,6 +56,11 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
 	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
+	if v, ok := e.opts.dialect.(SchemaValidator); ok {
+		if err := v.ValidateSchema(&to); err != nil {
+			return nil, err
+		}
+	}
 	c, err := e.pin(ctx)
 	if err != nil {
 		return nil, err

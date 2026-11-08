@@ -11,8 +11,13 @@ Implements plan momo-12-performance Task 10: Generated-code size and compile cos
 
 ## Acceptance criteria
 
-- [ ] `TestCodeSizeReport` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestCodeSizeReport` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- TestCodeSizeReport: bench/codesize; bench/cmd/codesize prints the report, which run.sh stores as codesize.json.
+  Red proof: ci-agent run 42465164717 (headSha 0c7f14e) on branch worktree-agent-a51f3a530eba5c020-adapters-red, which keeps the tests and removes the implementations: bench-module fails with `no required module provides package` for the removed adapter packages and unit fails with `momo.InsertQuery[suite.Document] has no field or method Unnest`.
+  Green proof: ci-agent run 42465734475, headSha eaec549861a73104452a68df580ea15421eac7fb, all eight jobs green (lint, unit, fuzz-smoke, integration postgres, integration mysql84/mysql97/mariadb, bench-module).
+- Deviation: the compile time is the median of five go build runs using an overlay that appends a nonce to one generated file, instead of copying the package to a temporary directory; the plan's binary-size delta field is not implemented.
+  Gate: commits went through the procoder commit hook, with a hand-written go.work (untracked) so the hook can lint the nested bench module.

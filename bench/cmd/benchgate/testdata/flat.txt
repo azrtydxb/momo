@@ -1,0 +1,6 @@
+goos: linux
+goarch: amd64
+pkg: github.com/azrtydxb/momo/bench
+              │ baseline │ new │
+              │ allocs/op │ allocs/op vs base │
+Allocs_CustomerByID/momo-8  120.0 ± 0%  120.0 ± 0%  ~  (p=0.400 n=6+6)
