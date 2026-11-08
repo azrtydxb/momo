@@ -40,8 +40,8 @@ func wrapMySQLVectorArg(b *Builder, flavor dialect.Flavor, arg any) {
 
 // bindMySQLVector binds a typed vector value on MySQL or MariaDB and reports
 // whether it handled v. A vector.Vector and a non-nil *vector.Vector (the
-// nullable field type) go through the wrapper; a nil *vector.Vector binds SQL
-// NULL with no wrapper. Every other value is left to the caller.
+// nullable field type) go through the wrapper. A nil pointer is left to Arg,
+// which binds SQL NULL with no wrapper, as is every other value.
 func bindMySQLVector(b *Builder, v any) bool {
 	if b.d.Name != dialect.MySQL || !b.d.Vector.Storage {
 		return false
@@ -51,10 +51,9 @@ func bindMySQLVector(b *Builder, v any) bool {
 		wrapMySQLVectorArg(b, b.d.Flavor, x)
 	case *vector.Vector:
 		if x == nil {
-			b.Arg(nil)
-		} else {
-			wrapMySQLVectorArg(b, b.d.Flavor, *x)
+			return false
 		}
+		wrapMySQLVectorArg(b, b.d.Flavor, *x)
 	default:
 		return false
 	}

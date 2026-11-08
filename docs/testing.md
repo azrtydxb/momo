@@ -148,6 +148,62 @@ steps can use them. `Graph` inserts a root with the related rows it includes, as
 `momo.CreateGraph` does. A step is any `func(ctx, momo.Querier) error`, so
 custom fixtures fit too.
 
+## Fixtures from a file: LoadFixtures
+
+`momotest.LoadFixtures(t, q, path)` inserts the rows of a YAML file into `q`, a
+`*momo.DB` or a `*momo.Tx`, for data that is easier to read as a file than as Go
+structs. The file maps a table name to a list of rows, and each row maps a column
+name to a value:
+
+```yaml
+authors:
+  - id: 1
+    name: Ada
+documents:
+  - id: 1
+    author_id: 1
+    title: First
+  - id: 2
+    author_id: null
+    title: Orphan
+```
+
+Tables are inserted in file order and the rows of a table in list order, so
+list a table before the tables that reference it. Columns are written sorted by
+name and a YAML `null` becomes SQL `NULL`. Table and column names are quoted
+with `momo.Ident` and every value is a bound argument, so a value is never
+spliced into the SQL. A table name is one identifier, with no schema prefix.
+A value is a string, integer, float, bool, null, timestamp or `!!binary` (read as
+bytes); a nested map or list is refused. `LoadFixtures` writes plain `INSERT`
+statements and is tested on PostgreSQL and SQLite; it has not been run against
+MySQL or MariaDB. A file that is not a mapping of
+tables to lists of rows, a missing file, and a row the database refuses (a
+foreign key to a row that is not there, say) fail the test with a message that
+names the file, the table and the row. Each row is its own statement, so rows
+before a failing one stay unless you pass a transaction.
+
+## SQLite without a server: sqlitetest
+
+`github.com/azrtydxb/momo/momotest/sqlitetest` gives a test a SQLite database
+with sqlite-vec loaded, without a server and without an environment variable:
+`sqlitetest.New(t, opts...)` returns a `*momo.DB` on a new file in the test's
+own temporary directory. Every call opens a file of its own, so two databases in
+one test never see each other's tables and parallel tests do not collide. The
+database is closed and the file removed when the test ends. The options go to
+`momo.New`, for example `momo.WithHook`, and `LoadFixtures` fills it like any
+other database. The database starts empty: create the tables with your own DDL,
+for example `momo.SQLiteVectorType` for a vector column (see
+[Vector search](vectors.md)); `momotest.WithMigrations` and `NewTx` are
+PostgreSQL features and do not apply.
+
+SQLite lives in its own package, and not in `momotest`, because the SQLite
+driver is compiled from C sources: a test binary that imports only `momotest`
+for PostgreSQL does not build them, and a repository test
+(`TestMomotestAvoidsSQLite`) keeps it that way. Only a test that imports
+`sqlitetest` pays for them. The driver needs cgo and a non-Windows target; on
+any other build `sqlitetest.New` skips the test, the way `momotest.New` skips
+when the server URL is unset.
+
 ## Options
 
 | Option                  | Effect                                                                                          |
