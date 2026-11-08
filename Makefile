@@ -34,7 +34,7 @@ PG_URL ?= postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
 PG_APP_URL ?= postgres://momo_app:momo_app@127.0.0.1:5432/postgres?sslmode=disable
 PGBOUNCER_URL ?= postgres://postgres:momo@127.0.0.1:6432/postgres?sslmode=disable
 
-.PHONY: test test-race test-compilefail test-fuzz test-integration test-integration-postgres bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
+.PHONY: test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -56,6 +56,17 @@ test-integration: test-integration-postgres
 
 test-integration-postgres:
 	MOMO_REQUIRE_INTEGRATION=1 MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' MOMO_TEST_PGBOUNCER_URL='$(PGBOUNCER_URL)' $(GO) test -tags integration -race -count=1 ./...
+
+# The bench module is separate (GORM, Ent and Bun stay out of the library's
+# import graph), so ./... above never reaches it.
+test-bench-module:
+	cd bench && $(GO) vet ./... && $(GO) vet -tags integration ./... && $(GO) test -count=1 ./... && $(GO) mod tidy -diff
+
+test-bench-module-integration:
+	cd bench && BENCH_PG_URL='$(PG_URL)' $(GO) test -tags integration -count=1 ./...
+
+bench-env:
+	cd bench && $(GO) run ./cmd/envcapture
 
 bench-smoke:
 	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...
