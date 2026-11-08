@@ -295,16 +295,16 @@ func TestSQLiteDropAndRenameNative(t *testing.T) {
 func TestSQLiteStrictAutoincrementRoundTrip(t *testing.T) {
 	db := testopen.SQLite(t)
 	c := pinned(t, db)
-	mk := func(nullable bool) *schema.Schema {
+	mk := func(def string) *schema.Schema {
 		return &schema.Schema{Dialect: dialect.SQLite, Tables: []schema.Table{{
 			Name:          "events",
-			Columns:       []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "body", Type: "TEXT", Nullable: nullable}},
+			Columns:       []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "body", Type: "TEXT", Nullable: true, Default: def}},
 			PrimaryKey:    []string{"id"},
 			Autoincrement: true,
 			Strict:        true,
 		}}}
 	}
-	v1, v2 := mk(true), mk(false)
+	v1, v2 := mk(""), mk("'x'")
 	apply(t, c, render(t, &schema.Schema{Dialect: dialect.SQLite}, v1))
 	assertNoDiff(t, c, v1)
 	got, err := msqlite.New().Inspect(context.Background(), c, migrate.InspectOptions{})
