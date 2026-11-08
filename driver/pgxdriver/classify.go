@@ -26,7 +26,8 @@ func (e driverError) Unwrap() error { return e.cause }
 // ClassifyError maps *pgconn.PgError (found with errors.As) to *momo.Error.
 // Errors that are not recognized, or are already *momo.Error, are returned
 // unchanged. The PgError Detail field, which can contain row values, is never
-// copied into any string; it remains available on the unwrapped cause.
+// rendered by Error; it is reachable through momo.Error.Detail and on the
+// unwrapped cause.
 // Data exceptions (SQLSTATE class 22) are returned with a redacted message.
 func ClassifyError(err error) error {
 	if err == nil {
@@ -63,13 +64,13 @@ func ClassifyError(err error) error {
 		}
 		return err
 	}
-	return &momo.Error{
+	return momo.WithDetail(&momo.Error{
 		Kind:       kind,
 		Table:      pe.TableName,
 		Column:     pe.ColumnName,
 		Constraint: pe.ConstraintName,
 		Err:        driverError{cause: pe, msg: pe.Message},
-	}
+	}, pe.Detail)
 }
 
 // encodeArgRe finds the argument position in pgx's "failed to encode args[N]"

@@ -1,6 +1,6 @@
 # momo-10 Task 3: Viz edge model from models and from a snapshot
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-04
 Epic: momo-10-ecosystem-generators
 Sprint: -
@@ -11,8 +11,13 @@ Implements plan momo-10-ecosystem-generators Task 3: Viz edge model from models 
 
 ## Acceptance criteria
 
-- [ ] `TestVizEdges` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestVizEdges` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Files: gen/viz/edges.go, columns.go, edges_test.go.
+- TestVizEdges (and TestVizEdgesFromSchema) red: CI run 42414302688 (tests alone on sprint-5) failed with "undefined: EdgesFromGraph". Green: CI run 42412136570 (commit 015deab) succeeded.
+- The example edges are comments to documents, documents to tags (many-to-many) and documents to tenants. A has_many and the matching belongs_to collapse into one edge.
+- Deviation from the plan text: for many-to-many, To is the target table and Label names the join table, instead of To being the join table. The join table still appears in Tables with its two foreign keys.
 

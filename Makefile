@@ -23,6 +23,7 @@ FUZZ_TARGETS += ./types:FuzzTimeOfDayScan
 FUZZ_TARGETS += ./types:FuzzDateScan
 FUZZ_TARGETS += ./types:FuzzJSONScan
 FUZZ_TARGETS += ./gen/tags:FuzzParse
+FUZZ_TARGETS += .:FuzzRawArgs
 FUZZ_TARGETS += .:FuzzScanRaw
 GOVULNCHECK = go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
 # Same gosec release as .github/workflows/gosec.yml. Locally it fails on any
@@ -38,6 +39,7 @@ PGBOUNCER_URL ?= postgres://postgres:momo@127.0.0.1:6432/postgres?sslmode=disabl
 
 test:
 	$(GO) test -count=1 ./...
+	cd internal/integration && $(GO) test -count=1 ./...
 
 test-race:
 	$(GO) test -race -count=1 ./...
@@ -66,9 +68,11 @@ fmt-check:
 vet:
 	$(GO) vet ./...
 	$(GO) vet -tags integration ./...
+	cd internal/integration && $(GO) vet ./...
 
 tidy-check:
 	$(GO) mod tidy -diff
+	cd internal/integration && $(GO) mod tidy -diff
 
 staticcheck:
 	$(STATICCHECK) ./...
