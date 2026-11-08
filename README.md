@@ -430,6 +430,10 @@ work the same way. See [docs/projections.md](docs/projections.md),
 
 - `momo generate [-c momo.yaml] [--check] [patterns...]` writes the generated
   code, or with `--check` lists stale files and exits 1.
+- `momo generate --from-db <url|-|ENVVAR>` inspects a PostgreSQL database and
+  writes the models and the init snapshot, so an existing schema is adopted
+  without writing the structs by hand; see
+  [adopting an existing database](docs/migrations.md#7-adopting-an-existing-database).
 - `momo migrate diff <name>` writes a migration for the difference between the
   models and the latest snapshot. It refuses destructive changes unless you
   pass `--allow-destructive`.
@@ -446,6 +450,8 @@ for usage or configuration errors, and 3 for database errors.
   agents that use Momo in an application (also indexed by [llms.txt](llms.txt)).
 - [docs/vectors.md](docs/vectors.md) covers pgvector types, distance
   metrics, index limits and search settings.
+- [docs/fulltext.md](docs/fulltext.md) covers the tsvector type, the match,
+  rank and headline builders and hybrid vector plus text ranking.
 - [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md) maps every Go type to its
   column type.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the layers and

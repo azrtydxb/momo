@@ -326,12 +326,32 @@ func TestDimensionlessVectorColumns(t *testing.T) {
 	}
 }
 
+// TestPrecisionOnDecimalString: a string without size that carries a numeric
+// takes precision and scale.
+func TestPrecisionOnDecimalString(t *testing.T) {
+	m := mdl("Price", "prices",
+		fld("ID", "int64", "pk"),
+		fld("Amount", "string", "precision:12,scale:2"),
+		fld("Whole", "string", "precision:5"),
+	)
+	s, diags := build(t, pg(), m)
+	if len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	if got := mustCol(t, s, "prices", "amount"); got.Type != "numeric(12,2)" {
+		t.Errorf("amount: %q", got.Type)
+	}
+	if got := mustCol(t, s, "prices", "whole"); got.Type != "numeric(5)" {
+		t.Errorf("whole: %q", got.Type)
+	}
+}
+
 func TestTagMisuseIsDiagnosed(t *testing.T) {
 	cases := []struct{ name, goType, tag, want string }{
 		{"size on int", "int64", "size:5", "size is only valid on string"},
 		{"dim on string", "string", "dim:3", "dim is only valid on a vector"},
 		{"sparsevec without dim", "vector.SparseVector", "", "sparsevec requires dim"},
-		{"precision on string", "string", "precision:5,scale:1", "precision is only valid on float or decimal"},
+		{"precision on bool", "bool", "precision:5,scale:1", "precision is only valid on float or decimal"},
 		{"scale without precision", "float64", "scale:2", "scale requires precision"},
 		{"notnull vs pointer", "*string", "notnull", "notnull conflicts with a nullable"},
 		{"notnull vs nullable", "string", "notnull,nullable", "notnull conflicts with a nullable"},

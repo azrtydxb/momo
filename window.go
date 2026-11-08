@@ -42,18 +42,8 @@ func (f FilteredAgg[T]) Over(w WindowSpec) WindowExpr[T] {
 func (FilteredAgg[T]) resultType() T { var z T; return z }
 
 func (f FilteredAgg[T]) AppendSQL(b *Builder) {
-	if b.d.Name == dialect.MySQL {
-		b.unsupported("aggregate FILTER")
-		return
-	}
-	if f.where == nil {
-		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("Filter needs a predicate")})
-		return
-	}
 	f.agg.AppendSQL(b)
-	b.WriteString(" FILTER (WHERE ")
-	f.where.AppendSQL(b)
-	b.writeByte(')')
+	appendFilter(b, f.where)
 }
 
 // -------------------------------------------------------------- windows

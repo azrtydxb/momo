@@ -28,6 +28,8 @@ to the bare `vector` or `halfvec` type, a dimensionless column that holds
 embeddings of any size (see [vectors.md](vectors.md#dimensionless-columns)).
 `vector.SparseVector` and `vector.Bits` require `dim`. SQLite has no vector
 types.
+A slice of a scalar maps to the PostgreSQL array of its element type; SQLite
+has no array columns, so the generator rejects them there.
 
 | Go type                      | PostgreSQL                 | SQLite        |
 | ---------------------------- | -------------------------- | ------------- |
@@ -52,6 +54,13 @@ types.
 | `vector.Bits`                | `bit(N)`                   | `unsupported` |
 | `vector.Vector (no dim)`     | `vector`                   | `unsupported` |
 | `vector.HalfVector (no dim)` | `halfvec`                  | `unsupported` |
+| `[]string`                   | `text[]`                   | `unsupported` |
+| `[]int16`                    | `smallint[]`               | `unsupported` |
+| `[]int32`                    | `integer[]`                | `unsupported` |
+| `[]int64`                    | `bigint[]`                 | `unsupported` |
+| `[]bool`                     | `boolean[]`                | `unsupported` |
+| `[]float32`                  | `real[]`                   | `unsupported` |
+| `[]float64`                  | `double precision[]`       | `unsupported` |
 
 On SQLite, `bool` is stored as 0 or 1, and `time.Time`, `types.UUID`,
 `types.Date` and `types.JSON[T]` are stored as text. The SQLite column is what
@@ -67,6 +76,8 @@ the column; the generator's table is the fallback for everything else.
 | ----------------- | ---------- | ------ |
 | `types.TimeOfDay` | `time`     | `TEXT` |
 | `types.Hstore`    | `hstore`   | `TEXT` |
+| `types.TSVector`  | `tsvector` | `TEXT` |
+| `types.TSQuery`   | `tsquery`  | `TEXT` |
 
 `types.Hstore` needs the `hstore` extension; the vector types need `vector`
 (pgvector). Momo never runs `CREATE EXTENSION` for you.
@@ -80,7 +91,6 @@ document because nothing generates one.
 | Go type                 | PostgreSQL  | SQLite |
 | ----------------------- | ----------- | ------ |
 | `time.Time (timestamp)` | `timestamp` | `n/a`  |
-| `[]string`              | `text[]`    | `n/a`  |
 | `string (decimal)`      | `numeric`   | `n/a`  |
 
 ## Edge values and behavior
@@ -110,13 +120,36 @@ Each statement below is asserted by a test against PostgreSQL.
 - `types.UUID`: round-trips all 16 bytes, including the all-zero UUID.
 - `types.JSON[T]`: encodes with `encoding/json`. An empty slice and a nil
   slice are different JSON (`[]` and `null`) and read back as such.
+  Query it with `JSONText`, `JSONPath`, `JSONContains` and `JSONHasKey`. A
+  nullable column holds either SQL NULL or the JSON literal null; an extraction
+  is NULL for both and for a missing key, so test the column itself with
+  `IsNull`. Grouping by an extraction works only for plain keys (letters,
+  digits, underscore) and not on a sensitive column; see the AI guide pitfalls.
 - `types.TimeOfDay`: nanoseconds since midnight, truncated to microseconds
   (PostgreSQL `time` precision); `86399999999000` is the last representable
   value, and a value outside one day is an error.
 - `types.Hstore`: a nil `*string` value is an hstore NULL; keys and values
   with quotes and backslashes are escaped.
+- `types.TSVector` and `types.TSQuery`: the server's text form, with the
+  lexemes sorted and normalized, so write values in that canonical form to
+  compare them with `==`. An empty tsvector reads back empty. Full-text
+  expressions are PostgreSQL only (see docs/fulltext.md).
 - `[]string` on `text[]`: elements containing commas, quotes, the text `NULL`,
   or empty strings round-trip; an empty slice reads back empty.
+- Slices as arrays: only `[]string`, `[]int16`, `[]int32`, `[]int64`, `[]bool`,
+  `[]float32` and `[]float64` map. `[]int` is not mapped, because its width is
+  platform dependent; use `[]int64`. `[]string` with a `size` tag becomes
+  `character varying(N)[]`. A nil slice binds as NULL, so inserting it into a
+  `NOT NULL` array column fails with a not-null violation; pass an empty
+  non-nil slice (it stores `{}`), or give the column a `default '{}'` and omit
+  it. The array predicates bind a nil value list as an empty array, never NULL.
+- Slices as arrays: only `[]string`, `[]int16`, `[]int32`, `[]int64`, `[]bool`,
+  `[]float32` and `[]float64` map. `[]int` is not mapped, because its width is
+  platform dependent; use `[]int64`. `[]string` with a `size` tag becomes
+  `character varying(N)[]`. A nil slice binds as NULL, so inserting it into a
+  `NOT NULL` array column fails with a not-null violation; pass an empty
+  non-nil slice (it stores `{}`), or give the column a `default '{}'` and omit
+  it. The array predicates bind a nil value list as an empty array, never NULL.
 - Decimal: carry `numeric` as a string to avoid binary floating point. Values
   beyond `float64` precision round-trip exactly, and `numeric` also accepts
   `NaN`.
