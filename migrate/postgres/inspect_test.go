@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+//go:build integration
+
 package postgres_test
 
 import (
@@ -252,5 +254,42 @@ func TestPostgresInspectMixedCaseForeignKeyRoundTrip(t *testing.T) {
 		gj, _ := json.MarshalIndent(schema.Normalized(got), "", " ")
 		wj, _ := json.MarshalIndent(schema.Normalized(want), "", " ")
 		t.Fatalf("not equal:\n got %s\nwant %s", gj, wj)
+	}
+}
+
+// An enum column reports Type == Enum, spelled as format_type would not: the
+// bare name for the current schema, the mixed-case name unquoted, and
+// "schema.name" for a type in another schema. Rendering relies on Type equal
+// to Enum to quote the name instead of emitting the type text.
+func TestPostgresInspectEnumColumnTypeEqualsEnum(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	other := testdb.Schema(t) + "_enum"
+	mustExec(t, db.Driver(), `CREATE SCHEMA "`+other+`"`)
+	t.Cleanup(func() { mustExec(t, db.Driver(), `DROP SCHEMA IF EXISTS "`+other+`" CASCADE`) })
+	mustExec(t, db.Driver(), `CREATE TYPE "MixedCase" AS ENUM ('A','b')`)
+	mustExec(t, db.Driver(), `CREATE TYPE plain AS ENUM ('x')`)
+	mustExec(t, db.Driver(), `CREATE TYPE "`+other+`".kind AS ENUM ('k')`)
+	mustExec(t, db.Driver(), `CREATE TABLE ev (
+        mixed "MixedCase" NOT NULL,
+        plain plain NOT NULL,
+        foreign_kind "`+other+`".kind NOT NULL
+    )`)
+	got, err := inspectOnce(ctx, t, db, migrate.InspectOptions{Schemas: []string{testdb.Schema(t), other}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev, ok := got.Table("ev")
+	if !ok {
+		t.Fatal("ev missing")
+	}
+	for col, want := range map[string]string{"mixed": "MixedCase", "plain": "plain", "foreign_kind": other + ".kind"} {
+		c, ok := ev.Column(col)
+		if !ok {
+			t.Fatalf("column %q missing", col)
+		}
+		if c.Enum != want || c.Type != c.Enum {
+			t.Errorf("column %s: Type %q Enum %q, want both %q", col, c.Type, c.Enum, want)
+		}
 	}
 }

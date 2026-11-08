@@ -11,8 +11,13 @@ Implements plan momo-12-performance Task 11: Reproducible `make bench`, results 
 
 ## Acceptance criteria
 
-- [ ] `TestBenchResultsLayout` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestBenchResultsLayout` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- TestBenchResultsLayout: bench/scripts/run_test.go runs run.sh smoke and checks env.json, versions.txt, raw.txt and summary.txt. make bench, make bench-suite-smoke, make bench-baseline and make bench-generate exist; docs/PERFORMANCE.md holds the methodology, pinned versions, reproduction commands and regression policy.
+  Red proof: ci-agent run 42465164717 (headSha 0c7f14e) on branch worktree-agent-a51f3a530eba5c020-adapters-red, which keeps the tests and removes the implementations: bench-module fails with `no required module provides package` for the removed adapter packages and unit fails with `momo.InsertQuery[suite.Document] has no field or method Unnest`.
+  Green proof: ci-agent run 42465734475, headSha eaec549861a73104452a68df580ea15421eac7fb, all eight jobs green (lint, unit, fuzz-smoke, integration postgres, integration mysql84/mysql97/mariadb, bench-module).
+- Not done: plan Step 3, a committed make bench run on a dedicated machine, and with it any published comparative budget in docs/PERFORMANCE.md. This environment has no dedicated machine, and numbers from a shared runner would contradict the page's own policy. docs/PERFORMANCE.md says so.
+  Gate: commits went through the procoder commit hook, with a hand-written go.work (untracked) so the hook can lint the nested bench module.

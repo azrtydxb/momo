@@ -19,13 +19,21 @@ import (
 //
 // Identifiers go through Ident (always quoted); values go through Arg
 // (always bound as parameters). Raw text is only written by Momo itself or
-// by the explicit raw-SQL escape hatches (SQL, Raw), whose safety contract
-// is documented on those functions.
+// by the explicit raw-SQL escape hatches (SQL and RawSubquery), whose safety
+// contract is documented on those functions.
 type Builder struct {
 	d    *dialect.Dialect
 	buf  []byte
 	args []any
-	err  error
+	// sens lists the indexes in args bound from FlagSensitive columns; argSens
+	// marks the next Arg calls as such. Hooks and loggers see a placeholder.
+	sens    []int
+	argSens bool
+	// sensSeen counts sensitive columns rendered so far; a predicate compares it
+	// before and after rendering its left operand to learn whether the operand
+	// reads a sensitive column, directly or inside an expression.
+	sensSeen int
+	err      error
 	// unqualified renders columns without their table qualifier. It is
 	// set while rendering SET targets, INSERT column lists, ON CONFLICT
 	// targets and RETURNING lists.
@@ -34,6 +42,13 @@ type Builder struct {
 	// Excluded references are invalid there, and SQLite needs literal values
 	// inline because it matches the predicate against the index text.
 	conflictTarget bool
+	// odku is set while rendering a MySQL ON DUPLICATE KEY UPDATE clause;
+	// excluded then names the row alias, or is empty for VALUES(col).
+	// insertStmt is set while rendering an INSERT, the one statement that
+	// MariaDB lets return rows.
+	insertStmt bool
+	odku       bool
+	excluded   string
 	// scopes tracks, per SELECT being rendered, which table qualifiers its
 	// FROM and JOIN sources expose and which qualifiers its columns used.
 	scopes []*qscope
@@ -131,6 +146,9 @@ type DialectValuer interface {
 
 // Arg appends a bind placeholder and records v as its argument.
 func (b *Builder) Arg(v any) {
+	if isNilVectorPointer(v) {
+		v = nil // a nil pointer would panic in the promoted DialectValue
+	}
 	if dv, ok := v.(DialectValuer); ok {
 		enc, err := dv.DialectValue(b.d.Name)
 		if err != nil {
@@ -152,7 +170,41 @@ func (b *Builder) Arg(v any) {
 		return
 	}
 	b.args = append(b.args, v)
+	if b.argSens {
+		b.sens = append(b.sens, len(b.args)-1)
+	}
 	b.buf = b.d.AppendPlaceholder(b.buf, len(b.args))
+}
+
+// argFor binds v like Arg and records it as sensitive when flags carries
+// FlagSensitive, so QueryEvent.Args shows RedactedArg instead of the value.
+func (b *Builder) argFor(flags uint16, v any) {
+	prev := b.argSens
+	b.argSens = prev || flags&FlagSensitive != 0
+	if !bindMySQLVector(b, v) {
+		b.Arg(v)
+	}
+	b.argSens = prev
+}
+
+// renderSens renders e and reports whether it read a sensitive column. The
+// result is the flag to bind the other operands of the predicate with.
+func (b *Builder) renderSens(e Expr, flags uint16) uint16 {
+	n := b.sensSeen
+	e.AppendSQL(b)
+	if b.sensSeen != n {
+		flags |= FlagSensitive
+	}
+	return flags
+}
+
+// exprFor renders e with every argument it binds recorded as sensitive when
+// flags carries FlagSensitive, for an expression assigned to such a column.
+func (b *Builder) exprFor(flags uint16, e Expr) {
+	prev := b.argSens
+	b.argSens = prev || flags&FlagSensitive != 0
+	e.AppendSQL(b)
+	b.argSens = prev
 }
 
 // SetErr records the first build error; rendering continues but the
@@ -172,15 +224,33 @@ func (b *Builder) String() string { return string(b.buf) }
 // Args returns the bind arguments built so far.
 func (b *Builder) Args() []any { return b.args }
 
+// checkBindCap reports whether n more bind parameters fit under the dialect's
+// limit. When they do not it records an ErrValidation build error, so the
+// caller gets a typed error at build time instead of a driver failure. Only
+// binds rendered before the call are counted; binds rendered after it (later
+// predicates, HAVING) are left to the driver's own limit check. Inline
+// literal rendering (SQLite conflict targets) binds nothing and always fits.
+func (b *Builder) checkBindCap(n int, what string) bool {
+	m := b.d.MaxParams
+	if m <= 0 || b.conflictTarget || len(b.args)+n <= m {
+		return true
+	}
+	b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("%s needs %d bind parameters, over the %s limit of %d; chunk the list", what, len(b.args)+n, b.d.Name, m)})
+	return false
+}
+
 // unsupported records an ErrUnsupported build error for feature.
 func (b *Builder) unsupported(feature string) {
-	b.SetErr(&Error{Kind: ErrUnsupported, Op: "build", Err: fmt.Errorf("%s is not supported by %s", feature, b.d.Name)})
+	b.SetErr(newError(ErrUnsupported, "build", "", fmt.Errorf("%s is not supported by %s", feature, b.d.Name)))
 }
 
 // Compiled is a rendered statement ready for inspection or execution.
 type Compiled struct {
 	SQL  string
 	Args []any
+	// sens indexes the Args bound from sensitive columns; hooks get RedactedArg
+	// for them. The values sent to the database are not changed.
+	sens []int
 }
 
 func (c Compiled) String() string {
@@ -196,14 +266,14 @@ func (c Compiled) String() string {
 
 func compile(d *dialect.Dialect, render func(*Builder)) (Compiled, error) {
 	if d == nil {
-		return Compiled{}, errors.New("momo: no dialect (nil Querier?)")
+		return Compiled{}, newError(ErrValidation, "build", "", errors.New("no dialect (nil Querier?)"))
 	}
 	b := Builder{d: d}
 	render(&b)
 	if b.err != nil {
 		return Compiled{}, b.err
 	}
-	return Compiled{SQL: string(b.buf), Args: b.args}, nil
+	return Compiled{SQL: string(b.buf), Args: b.args, sens: b.sens}, nil
 }
 
 // sqliteLiteral renders the value that would be bound (after DialectValuer

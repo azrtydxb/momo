@@ -115,7 +115,7 @@ func (tx *Tx) requireIterativeSupport(ctx context.Context) error {
 }
 
 func searchInvalid(format string, args ...any) error {
-	return &Error{Kind: ErrValidation, Op: "search settings", Err: fmt.Errorf(format, args...)}
+	return validation("search settings", "", format, args...)
 }
 
 // Validate reports a setting outside its pgvector range. The error wraps

@@ -1,6 +1,6 @@
 # momo-04 Task 27: Rebase onto a target directory or version
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: -
@@ -11,9 +11,12 @@ Implements plan momo-04-migrations Task 27: Rebase onto a target directory or ve
 
 ## Acceptance criteria
 
-- [ ] `TestMigrateRebase` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-27] `TestMigrationBranchConflict`: two migrations with the same parent snapshot fail `momo migrate validate`; `TestMigrateRebase` regenerates the later one on top of the other and the result applies with a no-change round trip; fails if two heads are accepted.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestMigrateRebase` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-27] `TestMigrationBranchConflict`: two migrations with the same parent snapshot fail `momo migrate validate`; `TestMigrateRebase` regenerates the later one on top of the other and the result applies with a no-change round trip; fails if two heads are accepted.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
+
+Red evidence: ci-agent run 42453062663 on throwaway branch worktree-agent-ac8514dccee058855-red (commit 6f002a6, implementation reverted, tests kept, branch since deleted) failed: migrate/rebase_test.go: package migrate FAIL [build failed]; undefined Engine.Rebase (TestMigrateRebase).

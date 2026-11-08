@@ -20,6 +20,11 @@ import (
 // carry the generated header.
 var ErrHandwritten = errors.New("refusing to overwrite a handwritten file")
 
+// ErrDanglingSymlink is returned when an output path is a symbolic link that
+// does not resolve: where it would lead is unknown, so it cannot be shown to
+// stay inside the module root.
+var ErrDanglingSymlink = errors.New("symbolic link does not resolve")
+
 // ErrCollision is returned when two different outputs map to one path.
 var ErrCollision = errors.New("two different outputs for one path")
 
@@ -69,6 +74,14 @@ func resolveExisting(path string) (string, error) {
 // contained reports whether path, with symlinks resolved, lies under the
 // resolved module root.
 func (w *Writer) contained(path string) (bool, error) {
+	// A symbolic link that points nowhere cannot be resolved, so the walk
+	// below would treat it as a path that does not exist yet and approve it
+	// by its parent. Where it would lead is unknown, so refuse it.
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		if _, err := filepath.EvalSymlinks(path); err != nil {
+			return false, fmt.Errorf("%s: %w", path, ErrDanglingSymlink)
+		}
+	}
 	root, err := resolveExisting(w.options.ModuleRoot)
 	if err != nil {
 		return false, err
@@ -144,7 +157,97 @@ func hasHeader(path string) (header, exists bool, err error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, true, fmt.Errorf("gen: reading %s: %w", path, err)
 	}
-	return strings.HasPrefix(line, HeaderPrefix), true, nil
+	return isHeaderLine(line), true, nil
+}
+
+// commentLeaders are the line-comment leaders of the generated text formats:
+// Go, protobuf and DOT; Mermaid; and GraphQL schema and YAML.
+var commentLeaders = []string{"// ", "%% ", "# "}
+
+// isHeaderLine reports whether line is the generated-file header in any of
+// the comment styles Text accepts.
+func isHeaderLine(line string) bool {
+	for _, lead := range commentLeaders {
+		if strings.HasPrefix(line, lead+strings.TrimPrefix(HeaderPrefix, "// ")) {
+			return true
+		}
+	}
+	return false
+}
+
+// Text buffers data, which is not Go source, as the content of path: a
+// Mermaid, DOT, protobuf, GraphQL schema or YAML file. It follows the refusal
+// rules of File (absolute path inside the module root, no overwriting of a
+// handwritten file, no two different outputs for one path) but never
+// formats. The caller puts the generated header, in the comment style of the
+// format, on the first line of data; the writer refuses data without it.
+func (w *Writer) Text(path string, data []byte) error {
+	path, err := w.confine(path)
+	if err != nil {
+		return err
+	}
+	first, _, _ := strings.Cut(string(data), "\n")
+	if !isHeaderLine(strings.TrimRight(first, "\r")) {
+		return fmt.Errorf("gen: generator bug: output for %s lacks the %q header", path, strings.TrimSpace(HeaderPrefix))
+	}
+	hand, err := isHandwritten(path)
+	if err != nil {
+		return err
+	}
+	if hand {
+		return fmt.Errorf("gen: %s: %w", path, ErrHandwritten)
+	}
+	return w.put(path, append([]byte(nil), data...))
+}
+
+// Scaffold buffers data as the content of path only when path does not exist
+// yet. A scaffold is a starting point the user owns, not a generated file: it
+// carries no header and is never overwritten, so a later run leaves the
+// user's edits alone. Any existing path is skipped without a report, including
+// a generated file, a directory and a symbolic link that resolves inside the
+// module root. The path itself must still be inside the root: a symbolic link
+// that resolves outside it is refused, and a dangling one fails with
+// ErrDanglingSymlink. Go source is not formatted.
+func (w *Writer) Scaffold(path string, data []byte) error {
+	path, err := w.confine(path)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("gen: %w", err)
+	}
+	return w.put(path, append([]byte(nil), data...))
+}
+
+// confine cleans path and checks that it is absolute and inside the module
+// root once symlinks are resolved.
+func (w *Writer) confine(path string) (string, error) {
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("gen: output path %q is not absolute", path)
+	}
+	path = filepath.Clean(path)
+	ok, err := w.contained(path)
+	if err != nil {
+		return "", fmt.Errorf("gen: resolving %s: %w", path, err)
+	}
+	if !ok {
+		return "", fmt.Errorf("gen: output path %q is outside the module root %q", path, w.options.ModuleRoot)
+	}
+	return path, nil
+}
+
+// put buffers data for path, refusing a different earlier output.
+func (w *Writer) put(path string, data []byte) error {
+	if prev, ok := w.files[path]; ok {
+		if !bytes.Equal(prev, data) {
+			return fmt.Errorf("gen: %s: %w", path, ErrCollision)
+		}
+		return nil
+	}
+	w.files[path] = data
+	return nil
 }
 
 // Commit writes every buffered file (or, in check mode, reports the ones

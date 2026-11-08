@@ -1,6 +1,6 @@
 # momo-04 Task 36: SQLite session setup and migration lock
 
-Status: open
+Status: closed
 Created: 2026-11-04
 Epic: momo-04-migrations-sqlite
 Sprint: -
@@ -11,9 +11,24 @@ Implements plan momo-04-migrations Task 36: SQLite session setup and migration l
 
 ## Acceptance criteria
 
-- [ ] `TestSQLiteLockTable` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestSQLiteForeignKeysOffDuringRebuild` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestSQLiteLockTable` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestSQLiteForeignKeysOffDuringRebuild` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Tests (migrate/sqlite/lock_test.go, integration): `TestSQLiteLockTable`, `TestSQLiteForeignKeysOffDuringRebuild`, plus `TestSQLiteUnlockOnlyOwnRow`, `TestSQLiteForceUnlockWithoutTable`, `TestSQLiteSetupWithoutForeignKeysOffChangesNothing`; lock and restore through `Engine.Apply` in `TestSQLiteEngineLifecycle` (lock row removed, foreign keys back on) and `TestSQLiteEngineRebuildOrphanFailsAndRestores`.
+- Red: ci-agent run 42467369597 (headSha 374d20a44bafd45aaeb802b85aca4de0ad0b87ab) on the throwaway branch worktree-agent-a2047783134c30958-red, which held only the tests on top of sprint-5 (deleted afterwards): unit, lint and every integration job failed to build (`undefined: tokenize`, `undefined: parseTableSQL`, `undefined: enumCheck`, `undefined: msqlite.New`, `migrate.SessionOptions` has no field `ForeignKeysOff`).
+- Green: ci-agent run 42481107465 (headSha e0ccf4868ffb93980c85e07e1d394a7cefbd8800) on worktree-agent-a2047783134c30958, after three review rounds (round 3 added TestSQLiteRebuildWithoutRowIDTable and the fail-closed pragma_foreign_key_check checks in TestForeignKeyCheckFailsClosed): lint, unit (make test, test-compilefail, test-race), fuzz-smoke, bench-module, PostgreSQL integration and MySQL 8.4, MySQL 9.7 and MariaDB integration all success. The integration jobs run `go test -tags integration -race ./...`, which includes migrate/sqlite against a real SQLite. The per-test PASS listing (run 42470163697) predates the review fixes; the tests added since are named in the next bullet.
+- Per-test output: ci-agent run 42470163697 (headSha e98500bce10e87834c069617267450b55309d36f) on the throwaway branch worktree-agent-a2047783134c30958-verbose (deleted afterwards), the same code with the PostgreSQL integration target narrowed to `go test -v -tags integration -race ./migrate/sqlite/`: 51 PASS lines, 0 FAIL, 0 SKIP; every test named below shows PASS.
+- Review fixes proven by tests in that run: TestSQLiteAutoMigrateSkipsRebuilds and TestSQLiteAutoMigrateWithStrictTable (AutoMigrate skips rebuilds and is not stopped by a STRICT, AUTOINCREMENT or WITHOUT ROWID table), TestSQLiteRollbackRebuildKeepsChildRows, TestSQLiteStrictAutoincrementRoundTrip (options and sqlite_sequence survive a rebuild), TestSQLiteForeignKeyCycleBetweenNewTables, TestSQLiteCreatedTableForeignKeyCycle, TestSQLiteRebuildCarriesTableOptions, TestDiffSQLiteTableOptions, TestForeignKeyCheckStatement, TestForeignKeyCheckFailsClosed, TestIsUndefinedTable, TestNormalizeSQLiteIdentity, TestNormalizeDefinition.
+- Gate: the commit hook ran `procoder check` with 0 blocking findings.
+
+### Deviations from the plan
+
+- `SessionOptions` gained `ForeignKeysOff bool` in migrate/types.go (the plan said Task 3's file).
+- `TestSQLiteLockTable` opens its database with `sqlitedriver.Open(..., Config{MaxOpenConns: 2})` instead of `testopen.SQLite`: that pool has one connection, so two pinned sessions would wait for each other forever. The assertions are the plan's.
+- `Setup` reads `PRAGMA foreign_keys` back and fails when the value did not change (the pragma is a silent no-op inside a transaction); `reset` is idempotent, ignores cancellation of ctx and discards the connection when the restore fails. The lock and statement timeouts of `SessionOptions` are ignored (busy handling is the driver's busy_timeout).
+- `Lock` ignores `key` (a SQLite file has one history), maps `momo.ErrUniqueViolation` (not raw sqlite codes 1555 and 2067) to `ErrLocked`, and `unlock` returns an error when the row was no longer this holder's (removed by `ForceUnlock` or taken over).
+- `ForceUnlock` has no CLI flag; `momo migrate` still does not select the SQLite dialect (no story asked for it).
+- `migrate.isUndefinedTable` also recognises SQLite's "no such table" message, which has no SQLSTATE, so `Plan`, `Status` and `Apply` treat a missing history table as an empty history; `Engine.readHistoryAt` uses it.

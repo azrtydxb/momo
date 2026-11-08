@@ -9,18 +9,30 @@ distance expressions, and search settings are part of the core API. Schema
 migrations are built in as well: `momo migrate diff` compares your structs with
 the last snapshot and writes the SQL.
 
-Status: v0.1.0, pre-v1, with no compatibility promise between releases. This
-release supports PostgreSQL with pgvector. SQLite and MySQL are planned. Momo
-needs Go 1.26 or newer (see `go.mod`).
+Status: v0.3.0, pre-v1, with no compatibility promise between releases. This <!-- x-release-please-version -->
+release supports PostgreSQL with pgvector, and the `momo migrate` command is
+PostgreSQL-only. SQLite is usable through the cgo driver `driver/sqlitedriver`
+(not on Windows), which also runs the vector builders through sqlite-vec, or
+through the pure-Go driver `driver/sqlitepure` (no cgo, no vectors). SQLite
+migrations are a library API (`migrate/sqlite` with `migrate.NewEngine`), not a
+CLI command. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
+(`driver/mysqldriver`) for queries and writes and a library migration dialect
+(`migrate/mysql`); MySQL stores vectors only, and MariaDB has distance
+functions (see [capabilities](docs/capabilities.md)). Momo
+needs Go 1.26 or newer (see `go.mod` for the exact patch floor, 1.26.10).
 
 ## Install
 
 Add the library to your module and install the CLI:
 
+<!-- x-release-please-start-version -->
+
 ```sh
-go get github.com/azrtydxb/momo@v0.1.0
-go install github.com/azrtydxb/momo/cmd/momo@v0.1.0
+go get github.com/azrtydxb/momo@v0.3.0
+go install github.com/azrtydxb/momo/cmd/momo@v0.3.0
 ```
+
+<!-- x-release-please-end -->
 
 Momo expects PostgreSQL with the pgvector extension. The first migration runs
 `CREATE EXTENSION IF NOT EXISTS "vector"` for you, which needs a role that may
@@ -43,6 +55,8 @@ to your own module path.
 These are the imports of the example. The generated packages are imported as
 `<your module>/models/author`, `<your module>/models/post`, and so on, one
 package per model next to the models package.
+
+<!-- docscheck:fragment -->
 
 ```go
 import (
@@ -76,6 +90,8 @@ means Momo never writes the column, `has_many` and `belongs_to` declare a
 relation, and `fk:<Field>` names the foreign-key field. How Go types map to
 column types is in [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md).
 
+<!-- docscheck:fragment -->
+
 ```go
 // Author writes posts.
 type Author struct {
@@ -103,6 +119,8 @@ type Post struct {
 Tags cannot express everything. pgvector's `hnsw` index method has no default
 operator class, so a `MomoConfig` method names it. The generator reads this
 method statically and never runs it.
+
+<!-- docscheck:fragment -->
 
 ```go
 func (p *Post) MomoConfig(c *momo.Config) {
@@ -175,7 +193,7 @@ momo migrate apply
 another TLS mode against any database you do not reach over a trusted local
 connection.
 
-Momo v0.1.0 writes forward migrations only. There is no rollback command, so
+Momo v0.3.0 writes forward migrations only. There is no rollback command, so <!-- x-release-please-version -->
 undo a change with a new migration.
 
 Run `momo migrate help` for the other commands: `plan`, `status`, `validate`,
@@ -204,6 +222,8 @@ SQL before you apply it.
 `pgxdriver.NewPool` opens a pgx pool and `pgxdriver.New` wraps it as a Momo
 driver. The caller owns the pool and closes it.
 
+<!-- docscheck:fragment -->
+
 ```go
 func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
 	pool, err := pgxdriver.NewPool(ctx, url)
@@ -226,6 +246,8 @@ Queries take a `momo.Querier`, which both `*momo.DB` and `*momo.Tx` satisfy.
 Columns come from the generated packages. `Returning` reads database-assigned
 values, such as the identity column, back into the struct.
 
+<!-- docscheck:fragment -->
+
 ```go
 func createAuthor(ctx context.Context, q momo.Querier, name string) (models.Author, error) {
 	a := models.Author{Name: name}
@@ -245,6 +267,8 @@ func createAuthor(ctx context.Context, q momo.Querier, name string) (models.Auth
 
 `Models` inserts a slice as one multi-row statement:
 
+<!-- docscheck:fragment -->
+
 ```go
 func createPosts(ctx context.Context, q momo.Querier, authorID int64) error {
 	_, err := momo.Insert[models.Post](q).Models([]models.Post{
@@ -259,6 +283,8 @@ func createPosts(ctx context.Context, q momo.Querier, authorID int64) error {
 Select, update, and delete take typed predicates. An update or delete without
 a `Where` is refused unless you call `AllRows()`, so a forgotten filter cannot
 touch every row.
+
+<!-- docscheck:fragment -->
 
 ```go
 func readAndChange(ctx context.Context, q momo.Querier, authorID int64) error {
@@ -316,6 +342,8 @@ relation predicates such as `Has`, the `Link` and `Replace` helpers, graph
 writes and the error behavior of each are covered in
 [docs/relations.md](docs/relations.md).
 
+<!-- docscheck:fragment -->
+
 ```go
 func loadRelations(ctx context.Context, q momo.Querier, authorID int64) error {
 	authors, err := momo.Select[models.Author](q).Where(author.ID.Eq(authorID)).All(ctx)
@@ -351,6 +379,8 @@ here `hnsw.ef_search`. The settings end with the transaction. `SearchSettings`
 also covers iterative scans for filtered searches, IVFFlat probes, and
 `ExactSearch`.
 
+<!-- docscheck:fragment -->
+
 ```go
 func similarPosts(ctx context.Context, db *momo.DB, query vector.Vector) error {
 	settings := momo.SearchSettings{HNSWEfSearch: 100}
@@ -381,6 +411,8 @@ searches with `CosineDistance`.
 `db.Tx` begins a transaction, commits when the function returns nil, and rolls
 back when it returns an error or panics. Pass `momo.TxOptions` to set the
 isolation level or read-only mode.
+
+<!-- docscheck:fragment -->
 
 ```go
 func renameInTx(ctx context.Context, db *momo.DB, id int64, name string) error {
@@ -426,6 +458,10 @@ work the same way. See [docs/projections.md](docs/projections.md),
 
 - `momo generate [-c momo.yaml] [--check] [patterns...]` writes the generated
   code, or with `--check` lists stale files and exits 1.
+- `momo generate --from-db <url|-|ENVVAR>` inspects a PostgreSQL database and
+  writes the models and the init snapshot, so an existing schema is adopted
+  without writing the structs by hand; see
+  [adopting an existing database](docs/migrations.md#7-adopting-an-existing-database).
 - `momo migrate diff <name>` writes a migration for the difference between the
   models and the latest snapshot. It refuses destructive changes unless you
   pass `--allow-destructive`.
@@ -442,6 +478,8 @@ for usage or configuration errors, and 3 for database errors.
   agents that use Momo in an application (also indexed by [llms.txt](llms.txt)).
 - [docs/vectors.md](docs/vectors.md) covers pgvector types, distance
   metrics, index limits and search settings.
+- [docs/fulltext.md](docs/fulltext.md) covers the tsvector type, the match,
+  rank and headline builders and hybrid vector plus text ranking.
 - [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md) maps every Go type to its
   column type.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the layers and

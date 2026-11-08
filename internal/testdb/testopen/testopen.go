@@ -7,6 +7,7 @@ package testopen
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/driver/sqlitedriver"
 	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -35,7 +37,7 @@ type opener struct {
 // openers is the build-time list of dialects. Each driver milestone appends its
 // entry: M1 registers PostgreSQL; M2 registers SQLite; M3 registers MySQL84,
 // MySQL97 and MariaDB. The list is not mutable at runtime.
-var openers = []opener{{dialect.Postgres, Postgres}}
+var openers = []opener{{dialect.Postgres, Postgres}, {dialect.SQLite, SQLite}}
 
 // Postgres opens a fresh *momo.DB on testdb.PostgresURL(t) through pgxdriver.
 // opts are passed to momo.New, so options such as momo.WithHook and
@@ -80,6 +82,27 @@ func openPostgres(t *testing.T, url string, opts ...momo.Option) *momo.DB {
 	}
 	t.Cleanup(func() { closePool(pool, closeTimeout, t.Errorf) })
 	return momo.New(pgxdriver.New(pool), opts...)
+}
+
+// SQLite opens a fresh *momo.DB on testdb.SQLitePath(t) through sqlitedriver
+// (mattn, sqlite-vec). opts are passed to momo.New, as for Postgres. The
+// *sql.DB is closed by t.Cleanup.
+func SQLite(t *testing.T, opts ...momo.Option) *momo.DB {
+	t.Helper()
+	sqldb, drv, err := sqlitedriver.Open(testdb.SQLitePath(t), sqlitedriver.Config{})
+	if errors.Is(err, momo.ErrUnsupported) {
+		// A build without cgo, or for Windows, has only the stub driver.
+		t.Skipf("testopen: SQLite needs cgo and a non-Windows build: %v", err)
+	}
+	if err != nil {
+		t.Fatalf("testopen: open sqlite: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := sqldb.Close(); err != nil {
+			t.Errorf("testopen: close sqlite: %v", err)
+		}
+	})
+	return momo.New(drv, opts...)
 }
 
 // Each runs fn once per dialect whose opener is registered in this build, as a

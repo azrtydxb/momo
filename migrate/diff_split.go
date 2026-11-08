@@ -42,6 +42,9 @@ func (e *Engine) splitNoTx(version, name, parent string, ordered []Change, to *s
 	movedNames := map[string]bool{}  // schema, table, name of moved index-like changes
 	movedUnique := map[string]bool{} // tables that gained a unique index in the tail
 	for i, c := range ordered {
+		// Render, not renderPlan: splitNoTx has no live schema to hand to a
+		// SchemaRenderer, and a plan that needs one (a SQLite rebuild) is
+		// transactional, so it never reaches the no-transaction split.
 		stmts, rerr := e.opts.dialect.Render([]Change{c})
 		if rerr != nil {
 			return nil, nil, false, rerr

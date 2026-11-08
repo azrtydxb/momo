@@ -23,7 +23,7 @@ func Errors(t *testing.T, db *momo.DB, caps Caps) {
 		"DROP TABLE IF EXISTS child",
 		"DROP TABLE IF EXISTS parent",
 		"CREATE TABLE parent (id integer primary key)",
-		"CREATE TABLE child (id integer primary key, parent_id integer not null references parent(id))",
+		"CREATE TABLE child (id integer primary key, parent_id integer not null, foreign key (parent_id) references parent(id))",
 	} {
 		if _, err := momo.Exec(ctx, db, stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)

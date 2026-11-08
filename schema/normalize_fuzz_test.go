@@ -17,22 +17,22 @@ func fuzzSchema(d dialect.Name, in string) *Schema {
 	return &Schema{
 		Dialect: d,
 		Tables: []Table{
-			{Name: "b", Columns: []Column{{Name: "c", Type: in, Default: in, Generated: in}}, Checks: []Check{{Name: "k", Expr: in}}, Indexes: []Index{ix}},
+			{Name: "b", Columns: []Column{{Name: "c", Type: in, Default: in, Generated: in}, {Name: "id", Type: "integer", Identity: in}}, PrimaryKey: []string{"id"}, Checks: []Check{{Name: "k", Expr: in}}, Indexes: []Index{ix}},
 			{Name: "a"},
 		},
 		Views:     []View{{Name: "v", Query: in, Indexes: []Index{ix}}},
 		Functions: []Function{{Name: "f", Body: in}},
-		Triggers:  []Trigger{{Name: "t", Table: "a", When: in}},
+		Triggers:  []Trigger{{Name: "t", Table: "a", When: in, Definition: in}},
 		Policies:  []Policy{{Name: "p", Table: "a", Using: in, Check: in}},
 	}
 }
 
 func FuzzNormalize(f *testing.F) {
-	for _, s := range []string{"int4", "varchar(255)", "'a'::text", "((a))", "CURRENT_TIMESTAMP", "'x''y'", ""} {
+	for _, s := range []string{"int4", "varchar(255)", "'a'::text", "((a))", "CURRENT_TIMESTAMP", "'x''y'", "", "TIME(0000", `'it\'S  X'`} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
-		for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
+		for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
 			once := NormalizeExpr(d, in)
 			if twice := NormalizeExpr(d, once); twice != once {
 				t.Fatalf("NormalizeExpr not idempotent for %q: %q then %q", in, once, twice)

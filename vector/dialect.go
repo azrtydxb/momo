@@ -16,12 +16,20 @@ func unsupportedDialect(typ string, d dialect.Name) error {
 
 // DialectValue encodes v for dialect d. PostgreSQL passes the value through
 // so the driver chooses text or binary; SQLite gets a little-endian float32
-// blob.
+// blob; MySQL and MariaDB get the text form, which the SQL wraps in
+// STRING_TO_VECTOR or VEC_FromText.
 func (v Vector) DialectValue(d dialect.Name) (any, error) {
 	switch d {
 	case dialect.Postgres:
 		return v, nil
+	case dialect.MySQL:
+		return v.Value()
 	case dialect.SQLite:
+		// The blob has no type tag of its own, so a bad value would be stored
+		// silently: check it the way the text form does.
+		if err := v.Validate(len(v)); err != nil {
+			return nil, err
+		}
 		b := make([]byte, 4*len(v))
 		for i, x := range v {
 			binary.LittleEndian.PutUint32(b[4*i:], math.Float32bits(x))
@@ -54,6 +62,9 @@ func (b Bits) DialectValue(d dialect.Name) (any, error) {
 	case dialect.Postgres:
 		return b, nil
 	case dialect.SQLite:
+		if err := b.Validate(b.Len); err != nil {
+			return nil, err
+		}
 		return b.Data, nil
 	}
 	return nil, unsupportedDialect("bit", d)

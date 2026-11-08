@@ -141,10 +141,7 @@ func (d *differ) run(from, to *schema.Schema) {
 	d.namespaces(from, to)
 	d.enums()
 	d.tables(from, to)
-	d.views(from, to)
-	d.functions(from, to)
-	d.triggers(from, to)
-	d.policies(from, to)
+	d.objects(from, to)
 }
 
 // ---------------------------------------------------------------- helpers
@@ -402,8 +399,33 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	if !reflect.DeepEqual(fn.Partition, tn.Partition) || !reflect.DeepEqual(fn.PartitionOf, tn.PartitionOf) {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes its partitioning; this cannot be altered in place, write a custom migration", tn.Name))
 	}
-	if fn.WithoutRowID != tn.WithoutRowID {
+	// WITHOUT ROWID, STRICT and AUTOINCREMENT are properties of a SQLite table
+	// that a model cannot declare yet, so a table that has one in the database
+	// and not in the model keeps it (a rebuild writes it back). Asking for one
+	// the table lacks is a change that needs a custom migration.
+	if tn.WithoutRowID && !fn.WithoutRowID {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes WITHOUT ROWID; write a custom migration", tn.Name))
+	}
+	if tn.Strict && !fn.Strict {
+		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes STRICT; write a custom migration", tn.Name))
+	}
+	if tn.Autoincrement && !fn.Autoincrement {
+		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes AUTOINCREMENT; write a custom migration", tn.Name))
+	}
+	if fn.WithoutRowID && !tn.WithoutRowID {
+		// The table keeps WITHOUT ROWID, which has no rowid alias, so an
+		// INTEGER key the normalizer made "by_default" for a rowid table is
+		// not a difference from the table's own column.
+		c := *tn
+		c.WithoutRowID = true
+		c.Columns = slices.Clone(tn.Columns)
+		live := colByName(fn)
+		for i := range c.Columns {
+			if oc, ok := live[c.Columns[i].Name]; ok && c.Columns[i].Identity == "by_default" && oc.Identity == "" {
+				c.Columns[i].Identity = ""
+			}
+		}
+		tn = &c
 	}
 	d.gone = goneColumns(fn, tn)
 	d.columns(fn, tn, fo, to, renameTo)
@@ -775,150 +797,107 @@ func lookup[T any](xs []T, name func(T) string, n string) (T, bool) {
 
 // ------------------------------------------------- views and other objects
 
-func viewKey(v *schema.View) string { return v.Schema + "\x00" + v.Name }
-
-func (d *differ) views(from, to *schema.Schema) {
-	fromN := map[string]*schema.View{}
-	for i := range d.fromNorm.Views {
-		fromN[viewKey(&d.fromNorm.Views[i])] = &d.fromNorm.Views[i]
-	}
-	toN := map[string]*schema.View{}
-	for i := range d.toNorm.Views {
-		toN[viewKey(&d.toNorm.Views[i])] = &d.toNorm.Views[i]
-	}
-	fromO, toO := map[string]*schema.View{}, map[string]*schema.View{}
-	for i := range from.Views {
-		fromO[viewKey(&from.Views[i])] = &from.Views[i]
-	}
-	for i := range to.Views {
-		toO[viewKey(&to.Views[i])] = &to.Views[i]
-	}
-	for _, v := range d.toNorm.Views {
-		k := viewKey(&v)
-		o, ok := fromN[k]
-		switch {
-		case !ok:
-			d.emit(Change{Kind: CreateView, Schema: v.Schema, Name: v.Name, After: cp(*toO[k])})
-		case o.Query != v.Query || o.Materialized != v.Materialized || !reflect.DeepEqual(o.Indexes, v.Indexes):
-			d.emit(Change{Kind: DropView, Schema: v.Schema, Name: v.Name, Before: cp(*fromO[k])})
-			d.emit(Change{Kind: CreateView, Schema: v.Schema, Name: v.Name, After: cp(*toO[k])})
-		}
-	}
-	for _, v := range d.fromNorm.Views {
-		k := viewKey(&v)
-		if _, ok := toN[k]; !ok {
-			d.emit(Change{Kind: DropView, Schema: v.Schema, Name: v.Name, Before: cp(*fromO[k])})
-		}
-	}
+// objectSpec describes one kind of schema-level object for diffObjects: how
+// to identify it, when two versions are equal, and which changes create, drop
+// and replace it. An empty replace means a changed object is a drop followed
+// by a create; otherwise it is one change of that kind carrying both sides.
+type objectSpec[T any] struct {
+	key                   func(*T) string
+	ident                 func(*T) (schema, table, name string)
+	equal                 func(a, b *T) bool
+	create, drop, replace ChangeKind
 }
+
+func viewKey(v *schema.View) string { return v.Schema + "\x00" + v.Name }
 
 func funcKey(f *schema.Function) string { return f.Schema + "\x00" + f.Name + "\x00" + f.Args }
 
-func (d *differ) functions(from, to *schema.Schema) {
-	fromN := map[string]*schema.Function{}
-	for i := range d.fromNorm.Functions {
-		fromN[funcKey(&d.fromNorm.Functions[i])] = &d.fromNorm.Functions[i]
-	}
-	toN := map[string]*schema.Function{}
-	for i := range d.toNorm.Functions {
-		toN[funcKey(&d.toNorm.Functions[i])] = &d.toNorm.Functions[i]
-	}
-	fromO, toO := map[string]*schema.Function{}, map[string]*schema.Function{}
-	for i := range from.Functions {
-		fromO[funcKey(&from.Functions[i])] = &from.Functions[i]
-	}
-	for i := range to.Functions {
-		toO[funcKey(&to.Functions[i])] = &to.Functions[i]
-	}
-	for _, f := range d.toNorm.Functions {
-		k := funcKey(&f)
-		o, ok := fromN[k]
-		switch {
-		case !ok:
-			d.emit(Change{Kind: CreateFunction, Schema: f.Schema, Name: f.Name, After: cp(*toO[k])})
-		case *o != f:
-			d.emit(Change{Kind: ReplaceFunction, Schema: f.Schema, Name: f.Name, Before: cp(*fromO[k]), After: cp(*toO[k])})
-		}
-	}
-	for _, f := range d.fromNorm.Functions {
-		k := funcKey(&f)
-		if _, ok := toN[k]; !ok {
-			d.emit(Change{Kind: DropFunction, Schema: f.Schema, Name: f.Name, Before: cp(*fromO[k])})
-		}
-	}
-}
-
 func triggerKey(t *schema.Trigger) string { return t.Schema + "\x00" + t.Table + "\x00" + t.Name }
 
-func (d *differ) triggers(from, to *schema.Schema) {
-	fromN := map[string]*schema.Trigger{}
-	for i := range d.fromNorm.Triggers {
-		fromN[triggerKey(&d.fromNorm.Triggers[i])] = &d.fromNorm.Triggers[i]
+func policyKey(p *schema.Policy) string { return p.Schema + "\x00" + p.Table + "\x00" + p.Name }
+
+// diffObjects compares the normalized lists (fromN, toN) to decide what
+// changed, and puts the caller's original objects (fromO, toO) in the emitted
+// changes. Creates and replaces come first, in the order of toN, then drops
+// in the order of fromN.
+func diffObjects[T any](d *differ, s objectSpec[T], fromN, toN, fromO, toO []T) {
+	index := func(xs []T) map[string]*T {
+		m := make(map[string]*T, len(xs))
+		for i := range xs {
+			m[s.key(&xs[i])] = &xs[i]
+		}
+		return m
 	}
-	toN := map[string]*schema.Trigger{}
-	for i := range d.toNorm.Triggers {
-		toN[triggerKey(&d.toNorm.Triggers[i])] = &d.toNorm.Triggers[i]
+	fromNM, toNM, fromOM, toOM := index(fromN), index(toN), index(fromO), index(toO)
+	change := func(kind ChangeKind, o, before, after *T) {
+		sch, tbl, name := s.ident(o)
+		c := Change{Kind: kind, Schema: sch, Table: tbl, Name: name}
+		if before != nil {
+			c.Before = cp(*before)
+		}
+		if after != nil {
+			c.After = cp(*after)
+		}
+		d.emit(c)
 	}
-	fromO, toO := map[string]*schema.Trigger{}, map[string]*schema.Trigger{}
-	for i := range from.Triggers {
-		fromO[triggerKey(&from.Triggers[i])] = &from.Triggers[i]
-	}
-	for i := range to.Triggers {
-		toO[triggerKey(&to.Triggers[i])] = &to.Triggers[i]
-	}
-	for _, t := range d.toNorm.Triggers {
-		k := triggerKey(&t)
-		o, ok := fromN[k]
+	for i := range toN {
+		n := &toN[i]
+		k := s.key(n)
+		o, ok := fromNM[k]
 		switch {
 		case !ok:
-			d.emit(Change{Kind: CreateTrigger, Schema: t.Schema, Table: t.Table, Name: t.Name, After: cp(*toO[k])})
-		case !reflect.DeepEqual(*o, t):
-			d.emit(Change{Kind: DropTrigger, Schema: t.Schema, Table: t.Table, Name: t.Name, Before: cp(*fromO[k])})
-			d.emit(Change{Kind: CreateTrigger, Schema: t.Schema, Table: t.Table, Name: t.Name, After: cp(*toO[k])})
+			change(s.create, n, nil, toOM[k])
+		case s.equal(o, n):
+		case s.replace != "":
+			change(s.replace, n, fromOM[k], toOM[k])
+		default:
+			change(s.drop, n, fromOM[k], nil)
+			change(s.create, n, nil, toOM[k])
 		}
 	}
-	for _, t := range d.fromNorm.Triggers {
-		k := triggerKey(&t)
-		if _, ok := toN[k]; !ok {
-			d.emit(Change{Kind: DropTrigger, Schema: t.Schema, Table: t.Table, Name: t.Name, Before: cp(*fromO[k])})
+	for i := range fromN {
+		f := &fromN[i]
+		if k := s.key(f); toNM[k] == nil {
+			change(s.drop, f, fromOM[k], nil)
 		}
 	}
 }
 
-func (d *differ) policies(from, to *schema.Schema) {
-	key := func(p *schema.Policy) string { return p.Schema + "\x00" + p.Table + "\x00" + p.Name }
-	fromN := map[string]*schema.Policy{}
-	for i := range d.fromNorm.Policies {
-		fromN[key(&d.fromNorm.Policies[i])] = &d.fromNorm.Policies[i]
+var (
+	viewSpec = objectSpec[schema.View]{
+		key:   viewKey,
+		ident: func(v *schema.View) (string, string, string) { return v.Schema, "", v.Name },
+		equal: func(a, b *schema.View) bool {
+			return a.Query == b.Query && a.Materialized == b.Materialized && reflect.DeepEqual(a.Indexes, b.Indexes)
+		},
+		create: CreateView, drop: DropView,
 	}
-	toN := map[string]*schema.Policy{}
-	for i := range d.toNorm.Policies {
-		toN[key(&d.toNorm.Policies[i])] = &d.toNorm.Policies[i]
+	functionSpec = objectSpec[schema.Function]{
+		key:    funcKey,
+		ident:  func(f *schema.Function) (string, string, string) { return f.Schema, "", f.Name },
+		equal:  func(a, b *schema.Function) bool { return *a == *b },
+		create: CreateFunction, drop: DropFunction, replace: ReplaceFunction,
 	}
-	fromO, toO := map[string]*schema.Policy{}, map[string]*schema.Policy{}
-	for i := range from.Policies {
-		fromO[key(&from.Policies[i])] = &from.Policies[i]
+	triggerSpec = objectSpec[schema.Trigger]{
+		key:    triggerKey,
+		ident:  func(t *schema.Trigger) (string, string, string) { return t.Schema, t.Table, t.Name },
+		equal:  func(a, b *schema.Trigger) bool { return reflect.DeepEqual(*a, *b) },
+		create: CreateTrigger, drop: DropTrigger,
 	}
-	for i := range to.Policies {
-		toO[key(&to.Policies[i])] = &to.Policies[i]
+	policySpec = objectSpec[schema.Policy]{
+		key:    policyKey,
+		ident:  func(p *schema.Policy) (string, string, string) { return p.Schema, p.Table, p.Name },
+		equal:  func(a, b *schema.Policy) bool { return reflect.DeepEqual(*a, *b) },
+		create: CreatePolicy, drop: DropPolicy,
 	}
-	for _, p := range d.toNorm.Policies {
-		k := key(&p)
-		o, ok := fromN[k]
-		switch {
-		case !ok:
-			d.emit(Change{Kind: CreatePolicy, Schema: p.Schema, Table: p.Table, Name: p.Name, After: cp(*toO[k])})
-		case !reflect.DeepEqual(*o, p):
-			d.emit(Change{Kind: DropPolicy, Schema: p.Schema, Table: p.Table, Name: p.Name, Before: cp(*fromO[k])})
-			d.emit(Change{Kind: CreatePolicy, Schema: p.Schema, Table: p.Table, Name: p.Name, After: cp(*toO[k])})
-		}
-	}
-	for _, p := range d.fromNorm.Policies {
-		k := key(&p)
-		if _, ok := toN[k]; !ok {
-			d.emit(Change{Kind: DropPolicy, Schema: p.Schema, Table: p.Table, Name: p.Name, Before: cp(*fromO[k])})
-		}
-	}
+)
+
+// objects diffs the views, functions, triggers and policies.
+func (d *differ) objects(from, to *schema.Schema) {
+	diffObjects(d, viewSpec, d.fromNorm.Views, d.toNorm.Views, from.Views, to.Views)
+	diffObjects(d, functionSpec, d.fromNorm.Functions, d.toNorm.Functions, from.Functions, to.Functions)
+	diffObjects(d, triggerSpec, d.fromNorm.Triggers, d.toNorm.Triggers, from.Triggers, to.Triggers)
+	diffObjects(d, policySpec, d.fromNorm.Policies, d.toNorm.Policies, from.Policies, to.Policies)
 }
 
 // resolveColumnRenames returns old column -> new column for the explicit

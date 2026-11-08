@@ -114,6 +114,11 @@ type Pending struct {
 	Statements []Statement
 	NoTx       bool
 	Checksum   string // hex sha256 of the up file, recorded in the history row
+	// ForeignKeysOff is the -- momo:sqlite-foreign-keys-off directive: Apply
+	// turns foreign-key enforcement off around this migration on SQLite.
+	ForeignKeysOff bool
+	// Go is the migration to run when Kind is "go"; nil for SQL.
+	Go *GoMigration
 }
 
 // State is the status of one migration version: "pending", "applied", "dirty", "mismatch" or "missing".
@@ -243,8 +248,8 @@ type Config struct {
 	// Schemas lists the PostgreSQL schemas the engine manages. Default (nil or empty): the single schema
 	// returned by `SELECT current_schema()` on the pinned connection, resolved when the engine starts
 	// (Plan/Apply/Status/Diff/Drift/Inspect each resolve it once per call). An app with search_path=app
-	// therefore migrates `app` by default. Schemas[0] hosts the history table and must equal
-	// current_schema(); otherwise the engine returns a configuration error naming both.
+	// therefore migrates `app` by default. Schemas[0] must equal current_schema(), the schema in which a new
+	// history table is created (an existing one is found through the search_path); otherwise the engine returns a configuration error naming both.
 	Schemas []string
 	// LockTimeout is the PostgreSQL lock_timeout of the migration session;
 	// zero keeps the 5s default. WithLockTimeout(0) disables it.
@@ -254,6 +259,11 @@ type Config struct {
 	// to 0 explicitly.
 	StatementTimeout time.Duration
 	Exclude          []string // glob patterns for unmanaged objects (drift)
+	// ExternalExtensions names extensions that are created outside momo, for
+	// example by a superuser. Diff and AutoMigrate never emit CREATE EXTENSION
+	// for them and leave them out of the snapshot; drift, baseline and Inspect
+	// do not report them. Exact names, compared case-sensitively.
+	ExternalExtensions []string
 }
 
 // SessionOptions are the per-session timeouts a Dialect applies in Setup.
@@ -261,7 +271,12 @@ type Config struct {
 // A timeout above zero is applied. A zero timeout leaves the setting alone
 // unless its Set field is true, in which case the dialect sets it to zero
 // (PostgreSQL treats 0 as off).
+//
+// ForeignKeysOff asks a SQLite session to turn foreign-key enforcement off,
+// which a table rebuild needs; Setup must then run outside any transaction and
+// the returned reset restores the setting. Other dialects ignore it.
 type SessionOptions struct {
 	LockTimeout, StatementTimeout       time.Duration
 	LockTimeoutSet, StatementTimeoutSet bool
+	ForeignKeysOff                      bool
 }

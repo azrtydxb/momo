@@ -37,8 +37,8 @@ func TestClassifyUniqueRedactsDetail(t *testing.T) {
 	if !errors.As(got, &me) || me.Table != "users" || me.Constraint != "users_email_key" || me.Column != "email" {
 		t.Fatalf("structured fields missing: %+v", me)
 	}
-	if strings.Contains(me.Detail(), secret) {
-		t.Fatalf("momo.Error.Detail leaked the value: %q", me.Detail())
+	if !strings.Contains(me.Detail(), secret) {
+		t.Fatalf("momo.Error.Detail lacks the raw detail: %q", me.Detail())
 	}
 	var back *pgconn.PgError
 	if !errors.As(got, &back) || back.Detail == "" {

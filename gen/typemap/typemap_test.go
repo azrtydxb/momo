@@ -57,11 +57,20 @@ func TestGeneratorTypeMapFullTable(t *testing.T) {
 		{"string", tags.Tags{}, "text", "TEXT"},
 		{"string", tags.Tags{Size: 8}, "character varying(8)", "TEXT"},
 		{"[]byte", tags.Tags{}, "bytea", "BLOB"},
+		{"[]string", tags.Tags{}, "text[]", ""},
+		{"[]string", tags.Tags{Size: 8}, "character varying(8)[]", ""},
+		{"[]int32", tags.Tags{}, "integer[]", ""},
+		{"[]int64", tags.Tags{}, "bigint[]", ""},
+		{"[]bool", tags.Tags{}, "boolean[]", ""},
+		{"[]float64", tags.Tags{}, "double precision[]", ""},
+		{"*[]string", tags.Tags{}, "text[]", ""},
 		{"time.Time", tags.Tags{}, "timestamp with time zone", "TEXT"},
 		{"types.JSON[map[string]any]", tags.Tags{}, "jsonb", "TEXT"},
 		{"types.UUID", tags.Tags{}, "uuid", "TEXT"},
 		{"types.Date", tags.Tags{}, "date", "TEXT"},
 		{"vector.Vector", d3, "vector(3)", ""},
+		{"vector.Vector", tags.Tags{}, "vector", ""},
+		{"vector.HalfVector", tags.Tags{}, "halfvec", ""},
 		{"vector.HalfVector", d3, "halfvec(3)", ""},
 		{"vector.SparseVector", d3, "sparsevec(3)", ""},
 		{"vector.Bits", d3, "bit(3)", ""},
@@ -117,8 +126,13 @@ func TestGeneratorTypeMapUnsupported(t *testing.T) {
 		{"mypkg.Custom", dialect.Postgres, tags.Tags{}},
 		{"", dialect.Postgres, tags.Tags{}},
 		{"int64", dialect.MySQL, tags.Tags{}},
-		{"vector.Vector", dialect.Postgres, tags.Tags{}}, // missing dim tag
+		{"vector.SparseVector", dialect.Postgres, tags.Tags{}}, // missing dim tag
+		{"vector.Bits", dialect.Postgres, tags.Tags{}},         // missing dim tag
 		{"vector.Vector", dialect.SQLite, tags.Tags{Dim: 3}},
+		{"[]string", dialect.SQLite, tags.Tags{}},
+		{"[][]string", dialect.Postgres, tags.Tags{}},
+		{"[]uint32", dialect.Postgres, tags.Tags{}},
+		{"[]mypkg.Custom", dialect.Postgres, tags.Tags{}},
 	}
 	for _, c := range bad {
 		got, err := Map(c.goType, c.d, c.tg)

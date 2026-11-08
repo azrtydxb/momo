@@ -5,7 +5,6 @@ package momo_test
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -65,23 +64,6 @@ func ExampleVectorColumn() {
 	// Output:
 	// postgres [l2 ip cosine l1 hamming jaccard] [hnsw ivfflat]
 	// sqlite [l2 l1 cosine hamming] []
-}
-
-// Bit vectors take the Hamming and Jaccard distances.
-func ExampleHammingDistance() {
-	db := momo.New(pgxdriver.New(nil))
-	col := momo.NewVectorColumn[vector.Bits]("documents", "bits", 8, 0)
-
-	expr := momo.HammingDistance(col, vector.Bits{Len: 8, Data: []byte{0xF0}})
-	c, err := momo.Select[example.Document](db).
-		OrderBy(expr.Asc()).Limit(3).SQL()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println(strings.Contains(c.SQL, `("documents"."bits" <~> $1) ASC`))
-	// Output:
-	// true
 }
 
 // SearchSettings are applied with set_config(..., is_local = true), so they

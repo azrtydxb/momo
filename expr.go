@@ -34,6 +34,11 @@ type Predicate = Expression[bool]
 type ColumnRef interface {
 	Expr
 	ColumnName() string
+	// ParseEq parses raw with the column's Go type and returns the equality
+	// predicate; a value that does not parse is an ErrValidation error.
+	ParseEq(raw string) (Predicate, error)
+	// ParseCmp is ParseEq for op eq, ne, lt, le, gt or ge.
+	ParseCmp(op, raw string) (Predicate, error)
 }
 
 // ---------------------------------------------------------------- columns
@@ -43,107 +48,116 @@ type ColumnRef interface {
 // a Column[string]-compatible NullColumn[string]).
 //
 // Column values are small, immutable and safe to share between goroutines.
-type Column[T any] struct {
+// Build one with NewColumn, ColumnOf or the generated descriptors: the zero
+// value Column[T]{} has no column reference, so using it in a comparison
+// fails the build with ErrValidation.
+type Column[T any] struct{ colCore[T] }
+
+// colRef is the SQL reference of a column: its qualifier, name and flags.
+type colRef struct {
 	table string // table name or alias used as qualifier
 	name  string
 	flags uint16
 }
 
-// NewColumn is used by generated code.
-func NewColumn[T any](table, name string, flags uint16) Column[T] {
-	return Column[T]{table: table, name: name, flags: flags}
+func (r colRef) AppendSQL(b *Builder) {
+	if r.flags&FlagSensitive != 0 {
+		b.sensSeen++
+	}
+	b.QualifiedIdent(r.table, r.name)
 }
 
-// As returns the same column qualified by a table alias.
-func (c Column[T]) As(alias string) Column[T] { c.table = alias; return c }
+// Flags returns the column flags, which decide argument masking.
+func (r colRef) Flags() uint16 { return r.flags }
+
+// ColumnName and Table let the reference satisfy ColumnRef wherever a
+// comparison or ordering operand is inspected.
+func (r colRef) ColumnName() string { return r.name }
+func (r colRef) Table() string      { return r.table }
+
+// colCore is the comparison, ordering and metadata set shared by Column and
+// the permission wrappers (ReadOnlyColumn and friends). It embeds exprOps,
+// which holds the one implementation of the comparison methods, bound to the
+// column's colRef. It carries no write method.
+type colCore[T any] struct{ exprOps[T] }
+
+func newColCore[T any](table, name string, flags uint16) colCore[T] {
+	return colCore[T]{selfOps[T](colRef{table: table, name: name, flags: flags})}
+}
+
+func (c colCore[T]) ref() colRef {
+	r, _ := c.self.(colRef)
+	return r
+}
+
+func (c colCore[T]) withAlias(alias string) colCore[T] {
+	r := c.ref()
+	return newColCore[T](alias, r.name, r.flags)
+}
+
+func (c colCore[T]) AppendSQL(b *Builder) { c.ref().AppendSQL(b) }
+
+// Asc orders by the column ascending. The order item is the column itself,
+// a ColumnRef, so keyset pagination recognizes a primary-key column.
+func (c colCore[T]) Asc() Order { return Order{Expr: c} }
+
+// Desc orders by the column descending.
+func (c colCore[T]) Desc() Order { return Order{Expr: c, Desc: true} }
+
+func (c colCore[T]) order() Order  { return Order{Expr: c} }
+func (c colCore[T]) resultType() T { var z T; return z }
 
 // AsExpr returns the column as an Expression[T], so a projection list reads
 // explicitly: DocTitle.As("l").AsExpr().
-func (c Column[T]) AsExpr() Expression[T] { return c }
-
-func (c Column[T]) AppendSQL(b *Builder) { b.QualifiedIdent(c.table, c.name) }
-func (c Column[T]) resultType() T        { var z T; return z }
+func (c colCore[T]) AsExpr() Expression[T] { return c }
 
 // ColumnName returns the unquoted column name.
-func (c Column[T]) ColumnName() string { return c.name }
+func (c colCore[T]) ColumnName() string { return c.ref().name }
 
 // Table returns the qualifier (table name or alias).
-func (c Column[T]) Table() string { return c.table }
+func (c colCore[T]) Table() string { return c.ref().table }
 
 // Flags returns the generated column flags.
-func (c Column[T]) Flags() uint16 { return c.flags }
-
-func (c Column[T]) Eq(v T) Predicate  { return binOp{c, " = ", argExpr{v}} }
-func (c Column[T]) Ne(v T) Predicate  { return binOp{c, " <> ", argExpr{v}} }
-func (c Column[T]) Lt(v T) Predicate  { return binOp{c, " < ", argExpr{v}} }
-func (c Column[T]) Le(v T) Predicate  { return binOp{c, " <= ", argExpr{v}} }
-func (c Column[T]) Gt(v T) Predicate  { return binOp{c, " > ", argExpr{v}} }
-func (c Column[T]) Ge(v T) Predicate  { return binOp{c, " >= ", argExpr{v}} }
-func (c Column[T]) IsNull() Predicate { return postfix{c, " IS NULL"} }
-
-// IsNotNull is meaningful on nullable columns and on columns from the
-// outer side of a join.
-func (c Column[T]) IsNotNull() Predicate { return postfix{c, " IS NOT NULL"} }
-
-func (c Column[T]) EqExpr(e Expression[T]) Predicate { return binOp{c, " = ", e} }
-func (c Column[T]) NeExpr(e Expression[T]) Predicate { return binOp{c, " <> ", e} }
-func (c Column[T]) LtExpr(e Expression[T]) Predicate { return binOp{c, " < ", e} }
-func (c Column[T]) LeExpr(e Expression[T]) Predicate { return binOp{c, " <= ", e} }
-func (c Column[T]) GtExpr(e Expression[T]) Predicate { return binOp{c, " > ", e} }
-func (c Column[T]) GeExpr(e Expression[T]) Predicate { return binOp{c, " >= ", e} }
-
-// IsDistinctFrom is a NULL-safe inequality.
-func (c Column[T]) IsDistinctFrom(v T) Predicate { return distinctFrom{c, argExpr{v}, false} }
-
-// IsNotDistinctFrom is a NULL-safe equality.
-func (c Column[T]) IsNotDistinctFrom(v T) Predicate { return distinctFrom{c, argExpr{v}, true} }
-
-// Between is inclusive on both ends.
-func (c Column[T]) Between(lo, hi T) Predicate { return between{c, lo, hi} }
-
-// In matches any of vs. An empty list renders a predicate that is always
-// false (1 = 0) rather than invalid SQL.
-func (c Column[T]) In(vs ...T) Predicate { return inList[T]{c, slices.Clone(vs), false} }
-
-// NotIn is the negation of In; an empty list is always true.
-func (c Column[T]) NotIn(vs ...T) Predicate { return inList[T]{c, slices.Clone(vs), true} }
-
-// InQuery matches the single-column result of a subquery.
-func (c Column[T]) InQuery(q Subquery) Predicate { return inQuery{c, q, false} }
-
-// NotInQuery is the negation of InQuery. Beware SQL's NOT IN semantics when
-// the subquery can yield NULL.
-func (c Column[T]) NotInQuery(q Subquery) Predicate { return inQuery{c, q, true} }
-
-func (c Column[T]) Asc() Order  { return Order{Expr: c} }
-func (c Column[T]) Desc() Order { return Order{Expr: c, Desc: true} }
-
-// Set assigns a value (including the zero value) in INSERT or UPDATE.
-func (c Column[T]) Set(v T) Assignment { return Assignment{col: c.name, kind: setValue, val: v} }
-
-// SetExpr assigns an expression.
-func (c Column[T]) SetExpr(e Expression[T]) Assignment {
-	return Assignment{col: c.name, kind: setExpr, expr: e}
-}
-
-// SetDefault assigns the column's database default. PostgreSQL supports it
-// in INSERT and UPDATE; SQLite only by omitting the column from an INSERT,
-// so an UPDATE with SetDefault fails with ErrUnsupported there.
-func (c Column[T]) SetDefault() Assignment { return Assignment{col: c.name, kind: setDefault} }
-
-// SetExcluded assigns the value proposed for insertion in an upsert
-// (ON CONFLICT ... DO UPDATE SET col = excluded.col).
-func (c Column[T]) SetExcluded() Assignment { return Assignment{col: c.name, kind: setExcluded} }
+func (c colCore[T]) Flags() uint16 { return c.ref().flags }
 
 // Excluded is the value proposed for insertion in an upsert, rendered as
 // EXCLUDED.<col>. Use it on the right-hand side of a comparison in the
 // DO UPDATE WHERE or ON CONFLICT predicates, for example
 // until.LtExpr(until.Excluded()). It is only meaningful inside an ON CONFLICT
 // clause; the database rejects it elsewhere.
-func (c Column[T]) Excluded() ExcludedExpr[T] {
-	e := ExcludedExpr[T]{name: c.name}
+func (c colCore[T]) Excluded() ExcludedExpr[T] {
+	e := ExcludedExpr[T]{name: c.ref().name}
 	e.exprOps = selfOps[T](e)
 	return e
+}
+
+// NewColumn is used by generated code.
+func NewColumn[T any](table, name string, flags uint16) Column[T] {
+	return Column[T]{newColCore[T](table, name, flags)}
+}
+
+// As returns the same column qualified by a table alias.
+func (c Column[T]) As(alias string) Column[T] { return Column[T]{c.withAlias(alias)} }
+
+// Set assigns a value (including the zero value) in INSERT or UPDATE.
+func (c Column[T]) Set(v T) Assignment {
+	return Assignment{col: c.ColumnName(), kind: setValue, val: v, flags: c.Flags()}
+}
+
+// SetExpr assigns an expression.
+func (c Column[T]) SetExpr(e Expression[T]) Assignment {
+	return Assignment{col: c.ColumnName(), kind: setExpr, expr: e, flags: c.Flags()}
+}
+
+// SetDefault assigns the column's database default. PostgreSQL supports it
+// in INSERT and UPDATE; SQLite only by omitting the column from an INSERT,
+// so an UPDATE with SetDefault fails with ErrUnsupported there.
+func (c Column[T]) SetDefault() Assignment { return Assignment{col: c.ColumnName(), kind: setDefault} }
+
+// SetExcluded assigns the value proposed for insertion in an upsert
+// (ON CONFLICT ... DO UPDATE SET col = excluded.col).
+func (c Column[T]) SetExcluded() Assignment {
+	return Assignment{col: c.ColumnName(), kind: setExcluded}
 }
 
 // ExcludedExpr is the EXCLUDED.<col> reference returned by Column.Excluded.
@@ -159,8 +173,7 @@ func (e ExcludedExpr[T]) AppendSQL(b *Builder) {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "insert", Err: fmt.Errorf("Excluded() column %q is not valid in the ON CONFLICT target predicate; use it in the DO UPDATE Where", e.name)})
 		return
 	}
-	b.WriteString("EXCLUDED.")
-	b.Ident(e.name)
+	b.writeExcluded(e.name)
 }
 func (ExcludedExpr[T]) resultType() T { var z T; return z }
 
@@ -169,14 +182,14 @@ type NullColumn[T any] struct{ Column[T] }
 
 // NewNullColumn is used by generated code.
 func NewNullColumn[T any](table, name string, flags uint16) NullColumn[T] {
-	return NullColumn[T]{Column[T]{table: table, name: name, flags: flags | FlagNullable}}
+	return NullColumn[T]{NewColumn[T](table, name, flags|FlagNullable)}
 }
 
 // As returns the same column qualified by a table alias.
-func (c NullColumn[T]) As(alias string) NullColumn[T] { c.table = alias; return c }
+func (c NullColumn[T]) As(alias string) NullColumn[T] { return NullColumn[T]{c.Column.As(alias)} }
 
 // SetNull assigns SQL NULL.
-func (c NullColumn[T]) SetNull() Assignment { return Assignment{col: c.name, kind: setNull} }
+func (c NullColumn[T]) SetNull() Assignment { return Assignment{col: c.ColumnName(), kind: setNull} }
 
 // ---------------------------------------------------------- assignments
 
@@ -198,6 +211,8 @@ type Assignment struct {
 	kind setKind
 	val  any
 	expr Expr
+	// flags are the column flags; FlagSensitive masks bound values in hooks.
+	flags uint16
 }
 
 // ColumnName returns the assigned column.
@@ -256,12 +271,28 @@ func Desc(e Expr) Order { return Order{Expr: e, Desc: true} }
 
 // ---------------------------------------------------------- expressions
 
-type argExpr struct{ v any }
+// argExpr binds a value as a parameter. flags are the flags of the column it is
+// compared with or assigned to; a sensitive column masks the value in hooks.
+type argExpr struct {
+	v     any
+	flags uint16
+}
 
-func (a argExpr) AppendSQL(b *Builder) { b.Arg(a.v) }
+func (a argExpr) AppendSQL(b *Builder) { b.argFor(a.flags, a.v) }
+
+// flagged is implemented by column descriptors, whose flags decide masking.
+type flagged interface{ Flags() uint16 }
+
+// flagsOf returns the column flags of e, or 0 when e is not a column.
+func flagsOf(e Expr) uint16 {
+	if f, ok := e.(flagged); ok {
+		return f.Flags()
+	}
+	return 0
+}
 
 // Value wraps a Go value as a typed bound parameter.
-func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v}} }
+func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v: v}} }
 
 type typed[T any] struct{ Expr }
 
@@ -278,9 +309,10 @@ type binOp struct {
 }
 
 func (o binOp) AppendSQL(b *Builder) {
-	o.l.AppendSQL(b)
+	// A sensitive column on either side masks every argument of the other.
+	fl := b.renderSens(o.l, flagsOf(o.l)|flagsOf(o.r))
 	b.WriteString(o.op)
-	o.r.AppendSQL(b)
+	b.exprFor(fl, o.r)
 }
 func (binOp) resultType() bool { return false }
 
@@ -332,21 +364,23 @@ func (distinctFrom) resultType() bool { return false }
 type between struct {
 	e      Expr
 	lo, hi any
+	flags  uint16
 }
 
 func (x between) AppendSQL(b *Builder) {
-	x.e.AppendSQL(b)
+	fl := b.renderSens(x.e, x.flags)
 	b.WriteString(" BETWEEN ")
-	b.Arg(x.lo)
+	b.argFor(fl, x.lo)
 	b.WriteString(" AND ")
-	b.Arg(x.hi)
+	b.argFor(fl, x.hi)
 }
 func (between) resultType() bool { return false }
 
 type inList[T any] struct {
-	e   Expr
-	vs  []T
-	not bool
+	e     Expr
+	vs    []T
+	not   bool
+	flags uint16
 }
 
 func (x inList[T]) AppendSQL(b *Builder) {
@@ -358,7 +392,16 @@ func (x inList[T]) AppendSQL(b *Builder) {
 		}
 		return
 	}
-	x.e.AppendSQL(b)
+	if m := b.d.MaxInList; m > 0 && len(x.vs) > m {
+		b.SetErr(&Error{Kind: ErrLimitExceeded, Op: "build", Err: fmt.Errorf("IN list has %d values, over the limit of %d (WithMaxInList)", len(x.vs), m)})
+		b.WriteString("1 = 0")
+		return
+	}
+	if !b.checkBindCap(len(x.vs), "IN") {
+		b.WriteString("1 = 0")
+		return
+	}
+	fl := b.renderSens(x.e, x.flags)
 	if x.not {
 		b.WriteString(" NOT IN (")
 	} else {
@@ -368,7 +411,7 @@ func (x inList[T]) AppendSQL(b *Builder) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.Arg(v)
+		b.argFor(fl, v)
 	}
 	b.writeByte(')')
 }
@@ -472,19 +515,43 @@ func Exists(q Subquery) Predicate { return exists{q, false} }
 func NotExists(q Subquery) Predicate { return exists{q, true} }
 
 // Like matches a string expression against a LIKE pattern. The pattern is
-// bound as a parameter; escape wildcards in user input yourself.
+// bound as a parameter and the statement always carries ESCAPE '!' on every
+// dialect, the escape character EscapeLike uses. % and _ in the pattern stay
+// wildcards; a ! in the pattern makes the next character literal. Escape user
+// input with EscapeLike (or use ContainsLiteral) so it cannot act as a
+// wildcard. A literal ! in a hand-written pattern must be written as !!.
 func Like(e Expression[string], pattern string) Predicate {
-	return binOp{e, " LIKE ", argExpr{pattern}}
+	return like{e: e, p: pattern, flags: flagsOf(e)}
 }
+
+type like struct {
+	e     Expr
+	p     string
+	flags uint16
+}
+
+func (x like) AppendSQL(b *Builder) {
+	fl := b.renderSens(x.e, x.flags)
+	b.WriteString(" LIKE ")
+	b.argFor(fl, x.p)
+	b.WriteString(likeEscape)
+}
+func (like) resultType() bool { return false }
+
+// likeEscape is the clause every LIKE form appends; the character must match
+// EscapeLike.
+const likeEscape = ` ESCAPE '!'`
 
 // ILike is PostgreSQL's case-insensitive LIKE. On SQLite, whose LIKE is
 // already ASCII case-insensitive by default, it is ErrUnsupported to avoid
-// implying Unicode case folding SQLite does not perform.
-func ILike(e Expression[string], pattern string) Predicate { return ilike{e, pattern} }
+// implying Unicode case folding SQLite does not perform. Like Like, it always
+// carries ESCAPE '!' to match EscapeLike.
+func ILike(e Expression[string], pattern string) Predicate { return ilike{e, pattern, flagsOf(e)} }
 
 type ilike struct {
-	e Expr
-	p string
+	e     Expr
+	p     string
+	flags uint16
 }
 
 func (x ilike) AppendSQL(b *Builder) {
@@ -492,9 +559,10 @@ func (x ilike) AppendSQL(b *Builder) {
 		b.unsupported("ILIKE")
 		return
 	}
-	x.e.AppendSQL(b)
+	fl := b.renderSens(x.e, x.flags)
 	b.WriteString(" ILIKE ")
-	b.Arg(x.p)
+	b.argFor(fl, x.p)
+	b.WriteString(likeEscape)
 }
 func (ilike) resultType() bool { return false }
 
@@ -531,59 +599,55 @@ type Number interface{ ~int64 | ~float64 }
 // Agg is a typed aggregate expression such as COUNT(*) or SUM(col). Besides
 // being an Expression[T] usable in a select list, it carries the comparison
 // methods HAVING needs.
-type Agg[T any] struct{ fn }
+type Agg[T any] struct {
+	fn
+	exprOps[T]
+}
 
-func (Agg[T]) resultType() T  { var z T; return z }
-func (a Agg[T]) order() Order { return Order{Expr: a} }
+// newFnAgg builds an aggregate whose comparison methods are bound to itself.
+func newFnAgg[T any](f fn) Agg[T] {
+	a := Agg[T]{fn: f}
+	a.exprOps = selfOps[T](Agg[T]{fn: f})
+	return a
+}
 
-func (a Agg[T]) Eq(v T) Predicate { return binOp{a, " = ", argExpr{v}} }
-func (a Agg[T]) Ne(v T) Predicate { return binOp{a, " <> ", argExpr{v}} }
-func (a Agg[T]) Lt(v T) Predicate { return binOp{a, " < ", argExpr{v}} }
-func (a Agg[T]) Le(v T) Predicate { return binOp{a, " <= ", argExpr{v}} }
-func (a Agg[T]) Gt(v T) Predicate { return binOp{a, " > ", argExpr{v}} }
-func (a Agg[T]) Ge(v T) Predicate { return binOp{a, " >= ", argExpr{v}} }
+func (Agg[T]) resultType() T { var z T; return z }
 
 // As names the aggregate in a select list: SUM(col) AS name.
 func (a Agg[T]) As(name string) Aliased[T] { return As[T](a, name) }
 
-// Asc orders by the aggregate ascending.
-func (a Agg[T]) Asc() Order { return Order{Expr: a} }
-
-// Desc orders by the aggregate descending.
-func (a Agg[T]) Desc() Order { return Order{Expr: a, Desc: true} }
-
 // CountAll is COUNT(*).
-func CountAll() Agg[int64] { return Agg[int64]{fn{name: "COUNT", star: true}} }
+func CountAll() Agg[int64] { return newFnAgg[int64](fn{name: "COUNT", star: true}) }
 
 // CountOf is COUNT(expr), which skips NULLs.
-func CountOf(e Expr) Agg[int64] { return Agg[int64]{fn{name: "COUNT", args: []Expr{e}}} }
+func CountOf(e Expr) Agg[int64] { return newFnAgg[int64](fn{name: "COUNT", args: []Expr{e}}) }
 
 // CountDistinct is COUNT(DISTINCT expr).
 func CountDistinct(e Expr) Agg[int64] {
-	return Agg[int64]{fn{name: "COUNT", args: []Expr{SQL("DISTINCT ?", e)}}}
+	return newFnAgg[int64](fn{name: "COUNT", args: []Expr{SQL("DISTINCT ?", e)}})
 }
 
 // Sum is SUM(expr). The result is NULL over zero rows, so scan it into a
 // nullable destination such as *int64 or *float64 (sql.Null types work too), or
 // wrap it in Coalesce. Scanning NULL into a plain int64 returns an error.
-func Sum[T Number](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "SUM", args: []Expr{e}}} }
+func Sum[T Number](e Expression[T]) Agg[T] { return newFnAgg[T](fn{name: "SUM", args: []Expr{e}}) }
 
 // Avg is AVG(expr) as float64. It is NULL over zero rows: scan it into *float64
 // (or sql.NullFloat64), or wrap it in Coalesce.
 func Avg(e Expression[float64]) Agg[float64] {
-	return Agg[float64]{fn{name: "AVG", args: []Expr{e}}}
+	return newFnAgg[float64](fn{name: "AVG", args: []Expr{e}})
 }
 
 // Min is MIN(expr) (NULL over zero rows). T is any type the database can
 // order, such as time.Time, a decimal, or a string.
-func Min[T any](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "MIN", args: []Expr{e}}} }
+func Min[T any](e Expression[T]) Agg[T] { return newFnAgg[T](fn{name: "MIN", args: []Expr{e}}) }
 
 // Max is MAX(expr) (NULL over zero rows).
-func Max[T any](e Expression[T]) Agg[T] { return Agg[T]{fn{name: "MAX", args: []Expr{e}}} }
+func Max[T any](e Expression[T]) Agg[T] { return newFnAgg[T](fn{name: "MAX", args: []Expr{e}}) }
 
 // Coalesce returns the first non-NULL argument.
 func Coalesce[T any](e Expression[T], fallback T) Expression[T] {
-	return typedFn[T]{fn{name: "COALESCE", args: []Expr{e, argExpr{fallback}}}}
+	return typedFn[T]{fn{name: "COALESCE", args: []Expr{e, argExpr{v: fallback}}}}
 }
 
 // ------------------------------------------------------------- raw SQL
@@ -609,6 +673,13 @@ func (rawExpr) isRaw() bool            { return true }
 // error), Ident(name) renders a quoted identifier, and @name binds Named(name,
 // value). A ? or @name inside a string literal, quoted identifier, comment or
 // dollar-quoted string is text, as are the PostgreSQL operators ?| ?& @? @@ @>.
+//
+// On PostgreSQL, native $n placeholders bind positional argument n instead
+// of ?, and a reused $n shares one bind. A fragment uses one style: mixing
+// $n with ? or @name is ErrValidation, a $n with no argument or an argument
+// no $n uses is ErrValidation, and a $n on another dialect is ErrUnsupported.
+// The number is the position within this fragment's own arguments, not the
+// final statement's, so a fragment embedded after other binds is renumbered.
 func SQL(sql string, args ...any) Predicate { return rawExpr{sql, slices.Clone(args)} }
 
 // TypedSQL is SQL with a declared result type, for use in projections and

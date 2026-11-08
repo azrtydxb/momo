@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // History row statuses. Dirty means StatusRunning or StatusFailed; a
@@ -46,23 +48,85 @@ func (r HistoryRow) dirty() bool { return r.Status == StatusRunning || r.Status 
 // metadata row when it is missing. It refuses a table written with a newer
 // history format.
 func EnsureHistory(ctx context.Context, c momo.PinnedConn, d Dialect) error {
-	for _, ddl := range d.HistoryDDL() {
+	tbl, err := resolveHistoryTable(ctx, c, d)
+	if err != nil {
+		return err
+	}
+	return ensureHistory(ctx, c, d, tbl)
+}
+
+// HistoryLocator is implemented by dialects that can name the history table
+// schema-qualified. HistoryTable returns the SQL-ready, quoted reference of the
+// table, resolved against the connection before any migration runs, and
+// refuses a name that resolves to something that is not a regular table. A
+// migration may change search_path later; the reference does not move.
+// HistoryDDLFor is HistoryDDL for that reference. A dialect without it keeps
+// the bare table name.
+type HistoryLocator interface {
+	HistoryTable(ctx context.Context, c momo.PinnedConn) (string, error)
+	HistoryDDLFor(table string) []string
+}
+
+// ErrNoHistoryTable is returned (wrapped) by HistoryLocator.HistoryTable when
+// no history table exists and the connection has no current schema to create
+// one in. Read-only callers treat it as an empty history.
+var ErrNoHistoryTable = errors.New("migrate: no history table and no schema to create it in")
+
+// historyLockKeyer is implemented by locators that derive the advisory-lock key
+// from the resolved history table reference.
+type historyLockKeyer interface {
+	HistoryLockKey(table string) string
+}
+
+// resolveHistoryTable returns the SQL reference of the history table of d on c.
+func resolveHistoryTable(ctx context.Context, c momo.PinnedConn, d Dialect) (string, error) {
+	if l, ok := d.(HistoryLocator); ok {
+		return l.HistoryTable(ctx, c)
+	}
+	return historyTable, nil
+}
+
+func historyDDL(d Dialect, tbl string) []string {
+	if l, ok := d.(HistoryLocator); ok {
+		return l.HistoryDDLFor(tbl)
+	}
+	return d.HistoryDDL()
+}
+
+func ensureHistory(ctx context.Context, c momo.PinnedConn, d Dialect, tbl string) error {
+	for _, ddl := range historyDDL(d, tbl) {
 		if _, err := c.Exec(ctx, ddl, nil); err != nil {
 			return fmt.Errorf("migrate: create history table: %w", err)
 		}
 	}
-	ins := fmt.Sprintf(`INSERT INTO momo_migrations (version, name, checksum, status, applied_at) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (version) DO NOTHING`,
-		ph(d, 1), ph(d, 2), ph(d, 3), ph(d, 4), ph(d, 5))
+	// CREATE TABLE IF NOT EXISTS adopts a table that is already there. Resolve
+	// again so that table passes the same checks as one found at the start
+	// (kind, persistence, owner), and so it is the one named by tbl.
+	again, err := resolveHistoryTable(ctx, c, d)
+	if err != nil {
+		return err
+	}
+	if again != tbl {
+		return fmt.Errorf("migrate: the history table resolves to %s after it was created, not %s; the search_path changed under the migration", again, tbl)
+	}
+	ins := fmt.Sprintf(`INSERT INTO %s (version, name, checksum, status, applied_at) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (version) DO NOTHING`,
+		tbl, ph(d, 1), ph(d, 2), ph(d, 3), ph(d, 4), ph(d, 5))
+	if dd := d.Dialect(); dd != nil && dd.Name == dialect.MySQL {
+		// MySQL has no ON CONFLICT; the error column is TEXT, which cannot
+		// carry a default there, so the row names it.
+		ins = fmt.Sprintf(`INSERT INTO %s (version, name, checksum, status, error, applied_at) VALUES (%s, %s, %s, %s, '', %s) ON DUPLICATE KEY UPDATE version = version`,
+			tbl, ph(d, 1), ph(d, 2), ph(d, 3), ph(d, 4), ph(d, 5))
+	}
 	if _, err := c.Exec(ctx, ins, []any{MetaVersion, "meta", strconv.Itoa(FormatVersion), StatusMeta, time.Now().UTC().Format(timeLayout)}); err != nil {
 		return fmt.Errorf("migrate: write history metadata: %w", err)
 	}
-	return checkHistoryFormat(ctx, c)
+	return checkHistoryFormat(ctx, c, tbl)
 }
 
 // checkHistoryFormat refuses a history table written with a newer format. It
 // only reads: a database without the table or without a metadata row passes.
-func checkHistoryFormat(ctx context.Context, c momo.PinnedConn) error {
-	rows, err := c.Query(ctx, `SELECT checksum FROM momo_migrations WHERE status = 'meta'`, nil)
+func checkHistoryFormat(ctx context.Context, c momo.PinnedConn, tbl string) error {
+	rows, err := c.Query(ctx, `SELECT checksum FROM `+tbl+` WHERE status = 'meta'`, nil)
 	if err != nil {
 		if isUndefinedTable(err) {
 			return nil
@@ -91,17 +155,42 @@ func checkHistoryFormat(ctx context.Context, c momo.PinnedConn) error {
 	return nil
 }
 
-// isUndefinedTable reports whether err is PostgreSQL's "relation does not exist".
+// isUndefinedTable reports whether err says a table does not exist:
+// PostgreSQL's "relation does not exist" (SQLSTATE 42P01), MySQL's and
+// MariaDB's (42S02), or SQLite's "no such table: momo_migrations", which has no
+// SQLSTATE and is recognised by its message.
 func isUndefinedTable(err error) bool {
 	var s interface{ SQLState() string }
-	return errors.As(err, &s) && s.SQLState() == undefinedTable
+	if errors.As(err, &s) && (s.SQLState() == undefinedTable || s.SQLState() == undefinedTableMySQL) {
+		return true
+	}
+	return IsNoSuchTable(err, historyTable)
+}
+
+// IsNoSuchTable reports whether err is SQLite's "no such table" error for the
+// named table. SQLite has no SQLSTATE; its message names the table, and SQLite
+// may spell it main.<name>. Only the named table counts, not any other table a
+// statement named.
+func IsNoSuchTable(err error, name string) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no such table: "+name) || strings.Contains(msg, "no such table: main."+name)
 }
 
 // ReadHistory returns the migration rows of the history table ordered by
-// version. The metadata row is not included.
+// version. The metadata row is not included. It names the table unqualified,
+// so the connection's search_path decides which table it reads; the Engine
+// does not use it and reads through a qualified reference instead.
 func ReadHistory(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
+	return readHistoryRows(ctx, c, historyTable)
+}
+
+// readHistoryRows is ReadHistory for a history table reference.
+func readHistoryRows(ctx context.Context, c momo.PinnedConn, tbl string) ([]HistoryRow, error) {
 	rows, err := c.Query(ctx, `SELECT version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind
-FROM momo_migrations WHERE status <> 'meta' ORDER BY version`, nil)
+FROM `+tbl+` WHERE status <> 'meta' ORDER BY version`, nil)
 	if err != nil {
 		return nil, fmt.Errorf("migrate: read history: %w", err)
 	}

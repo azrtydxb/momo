@@ -80,7 +80,7 @@ func renderReturning[T any](b *Builder, m *Meta[T], r returningSet, invalid func
 	if !r.active() {
 		return
 	}
-	if !b.Dialect().Returning {
+	if !b.Dialect().Returning && !(b.insertStmt && b.Dialect().InsertReturning) {
 		b.unsupported("RETURNING")
 		return
 	}
@@ -106,7 +106,7 @@ func runReturning[T any](ctx context.Context, q Querier, op string, m *Meta[T], 
 	if err != nil {
 		return nil, err
 	}
-	return &ModelRows[T]{rows: rows, meta: m, idx: idx}, nil
+	return &ModelRows[T]{rows: rows, meta: m, idx: idx, ctx: ctx}, nil
 }
 
 // ModelRows is the cursor of a write statement with a RETURNING list. Each
@@ -117,6 +117,11 @@ type ModelRows[T any] struct {
 	meta *Meta[T]
 	idx  []int
 	dest []any
+	// ctx is the statement's context, passed to the AfterLoad hook.
+	ctx context.Context
+	// noHooks skips the AfterLoad hook: internal reads of RETURNING rows (the
+	// id-generator reconcile) scan half-filled models that no hook may see.
+	noHooks bool
 }
 
 // Next advances to the next returned row.
@@ -125,7 +130,7 @@ func (r *ModelRows[T]) Next() bool { return r.rows.Next() }
 // ScanModel scans the current row into the fields of m named by RETURNING.
 func (r *ModelRows[T]) ScanModel(m *T) error {
 	if m == nil {
-		return errors.New("momo: ScanModel into nil model")
+		return newError(ErrValidation, "scan", "", errors.New("ScanModel into nil model"))
 	}
 	if r.dest == nil {
 		r.dest = make([]any, len(r.idx))
@@ -133,11 +138,32 @@ func (r *ModelRows[T]) ScanModel(m *T) error {
 	for i, ci := range r.idx {
 		r.dest[i] = r.meta.Ptr(m, ci)
 	}
-	return r.rows.Scan(r.dest...)
+	if err := r.rows.Scan(r.dest...); err != nil {
+		return err
+	}
+	if r.noHooks {
+		return nil
+	}
+	return afterLoad(r.ctx, r.meta, m)
 }
 
 // Err returns the error that ended iteration, if any.
 func (r *ModelRows[T]) Err() error { return r.rows.Err() }
 
-// Close releases the cursor. It is safe to call more than once.
-func (r *ModelRows[T]) Close() error { return r.rows.Close() }
+// Close releases the cursor. It is safe to call more than once. Deferred
+// directly (defer rows.Close()), it also rolls back an implicit transaction
+// when a panic unwinds through the caller, so a RETURNING write is never
+// committed by a panicking iteration.
+func (r *ModelRows[T]) Close() error {
+	if p := recover(); p != nil {
+		if a, ok := r.rows.(interface{ abort() }); ok {
+			a.abort()
+		} else {
+			// Not an implicit transaction: still release the cursor, the
+			// connection and the AfterQuery report while the panic unwinds.
+			_ = r.rows.Close()
+		}
+		panic(p)
+	}
+	return r.rows.Close()
+}

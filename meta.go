@@ -73,6 +73,13 @@ type Meta[T any] struct {
 	// Fields are Go-side defaults and validators per column, run by the
 	// write builders before SQL is built. See FieldHook.
 	Fields []FieldHook[T]
+
+	// IDGens declares Go-side id generators per column; an insert fills the
+	// column when its field holds the zero value. See WithIDGenerator.
+	IDGens []IDGen
+	// Hooks are the typed model hooks the write and read builders call. See
+	// HookSet.
+	Hooks HookSet[T]
 }
 
 // Modeler is implemented (by generated code) on pointers to model and

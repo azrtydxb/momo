@@ -8,10 +8,13 @@ import (
 	sqldriver "database/sql/driver"
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/sqlmask"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -22,7 +25,9 @@ import (
 // momo.Copier nor momo.Batcher.
 //
 // A nil db, or a db that is not backed by the pgx stdlib driver, is rejected: every Query, Exec, Begin and
-// Pin then returns momo.ErrUnsupported.
+// Pin then returns momo.ErrUnsupported. So is a db whose pgx connections use simple protocol, which
+// interpolates arguments client-side; as database/sql hides the pgx config, this is detected on the first
+// statement, from a connection, rather than at construction.
 //
 // Differences from the native driver (New):
 //
@@ -56,15 +61,74 @@ func unsupportedDB(why string) error {
 // PgBouncer must set cfg.DefaultQueryExecMode = pgx.QueryExecModeExec. opts is accepted for signature
 // parity with New; the database/sql path uses only error classification, so opts have no effect here.
 // The caller closes the returned *sql.DB.
+//
+// Simple protocol (pgx.QueryExecModeSimpleProtocol, or prefer_simple_protocol in a DSN) interpolates
+// arguments client-side, which breaks the rule that values are always bound. A cfg that selects it is
+// refused: the returned driver then fails every Query, Exec, Begin and Pin with momo.ErrUnsupported,
+// and the returned *sql.DB is still returned so the caller can close it.
 func FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver) {
 	_ = opts
 	db := stdlib.OpenDB(*cfg)
-	return db, FromSQLDB(db)
+	d := FromSQLDB(db).(*sqlDriver)
+	if d.err == nil {
+		if cfg.DefaultQueryExecMode == pgx.QueryExecModeSimpleProtocol {
+			d.err = errSimpleProtocol
+		} else {
+			d.modeOK.Store(true)
+		}
+	}
+	return db, d
+}
+
+// errSimpleProtocol is returned by a database/sql driver whose pgx connections use simple protocol.
+var errSimpleProtocol = &momo.Error{
+	Kind: momo.ErrUnsupported,
+	Op:   "build",
+	Err:  errors.New("pgxdriver: simple protocol interpolates arguments client-side; use QueryExecModeExec or another extended-protocol mode"),
+}
+
+// ready reports the construction error, then, once, checks the execution mode of the pgx connections
+// behind an adopted *sql.DB. database/sql hides the pgx config, so FromSQLDB can only look at it through
+// a connection: the first statement checks one out, reads its DefaultQueryExecMode and refuses simple
+// protocol for good. A failure to get a connection is returned and the check repeats on the next call.
+func (d *sqlDriver) ready(ctx context.Context) error {
+	if d.modeOK.Load() {
+		return nil
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.err != nil {
+		return d.err
+	}
+	conn, err := d.db.Conn(ctx)
+	if err != nil {
+		return ClassifyError(err)
+	}
+	defer func() { _ = conn.Close() }()
+	simple := false
+	rawErr := conn.Raw(func(dc any) error {
+		if sc, ok := dc.(*stdlib.Conn); ok && sc.Conn().Config().DefaultQueryExecMode == pgx.QueryExecModeSimpleProtocol {
+			simple = true
+		}
+		return nil
+	})
+	if rawErr != nil {
+		return ClassifyError(rawErr)
+	}
+	if simple {
+		d.err = errSimpleProtocol
+		return d.err
+	}
+	d.modeOK.Store(true)
+	return nil
 }
 
 type sqlDriver struct {
 	db  *sql.DB
-	err error // non-nil when FromSQLDB rejected its argument
+	err error // non-nil when the adopted database was rejected; guarded by mu once ready may run
+	mu  sync.Mutex
+	// modeOK is set once the connections are known not to use simple protocol.
+	modeOK atomic.Bool
 }
 
 func (d *sqlDriver) Dialect() *dialect.Dialect { return dialect.For(dialect.Postgres) }
@@ -77,8 +141,8 @@ func (d *sqlDriver) Capabilities() momo.Capabilities { return momo.Capabilities{
 func (d *sqlDriver) ClassifyError(err error) error { return ClassifyError(err) }
 
 func (d *sqlDriver) Query(ctx context.Context, q string, args []any) (momo.Rows, error) {
-	if d.err != nil {
-		return nil, d.err
+	if err := d.ready(ctx); err != nil {
+		return nil, err
 	}
 	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -88,8 +152,8 @@ func (d *sqlDriver) Query(ctx context.Context, q string, args []any) (momo.Rows,
 }
 
 func (d *sqlDriver) Exec(ctx context.Context, q string, args []any) (int64, error) {
-	if d.err != nil {
-		return 0, d.err
+	if err := d.ready(ctx); err != nil {
+		return 0, err
 	}
 	res, err := d.db.ExecContext(ctx, q, args...)
 	if err != nil {
@@ -99,8 +163,8 @@ func (d *sqlDriver) Exec(ctx context.Context, q string, args []any) (int64, erro
 }
 
 func (d *sqlDriver) Begin(ctx context.Context, opts momo.TxOptions) (momo.DriverTx, error) {
-	if d.err != nil {
-		return nil, d.err
+	if err := d.ready(ctx); err != nil {
+		return nil, err
 	}
 	tx, err := beginTx(ctx, opts, d.db.BeginTx)
 	if err != nil {
@@ -138,8 +202,8 @@ func beginTx(ctx context.Context, opts momo.TxOptions, begin func(context.Contex
 
 // Pin checks one connection out of the database/sql pool.
 func (d *sqlDriver) Pin(ctx context.Context) (momo.PinnedConn, error) {
-	if d.err != nil {
-		return nil, d.err
+	if err := d.ready(ctx); err != nil {
+		return nil, err
 	}
 	conn, err := d.db.Conn(ctx)
 	if err != nil {
@@ -176,9 +240,19 @@ func rowsAffected(res sql.Result) (int64, error) {
 type sqlRows struct{ r *sql.Rows }
 
 func (r sqlRows) Next() bool             { return r.r.Next() }
-func (r sqlRows) Scan(dest ...any) error { return ClassifyError(r.r.Scan(dest...)) }
-func (r sqlRows) Err() error             { return ClassifyError(r.r.Err()) }
-func (r sqlRows) Close() error           { return ClassifyError(r.r.Close()) }
+func (r sqlRows) Scan(dest ...any) error { return scanErr(ClassifyError(r.r.Scan(dest...))) }
+
+// scanErr hides the text of a conversion failure, which quotes the stored
+// value; see sqlmask.ConversionErr. Server errors pass through.
+func scanErr(err error) error {
+	return sqlmask.ConversionErr(err, "pgx: cannot convert the column value to the destination type", func(err error) bool {
+		var pe *pgconn.PgError
+		return errors.As(err, &pe)
+	})
+}
+
+func (r sqlRows) Err() error   { return ClassifyError(r.r.Err()) }
+func (r sqlRows) Close() error { return ClassifyError(r.r.Close()) }
 
 // pinnedSQLRows is registered on its pinned connection until closed or exhausted,
 // so Release can close Rows the caller forgot.
@@ -419,3 +493,9 @@ var (
 	_ momo.PoolStater         = (*sqlDriver)(nil)
 	_ momo.CapabilityReporter = (*sqlDriver)(nil)
 )
+
+// Columns reports the result column names (momo.ColumnNamer).
+func (r sqlRows) Columns() ([]string, error) {
+	names, err := r.r.Columns()
+	return names, ClassifyError(err)
+}

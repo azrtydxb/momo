@@ -29,6 +29,9 @@ type DeleteQuery[T any] struct {
 	force bool
 	// returning is the RETURNING list, read with Rows.
 	returning returningSet
+	// extra holds the predicates interceptors added; plan appends them after
+	// the unfiltered-mutation guard, so they never count as a caller filter.
+	extra []Predicate
 }
 
 // Delete starts a DELETE from T's table.
@@ -64,7 +67,7 @@ func (d DeleteQuery[T]) ReturningAll() DeleteQuery[T] {
 }
 
 func (d DeleteQuery[T]) fail(kind error, err error) error {
-	return &Error{Kind: kind, Op: "delete", Table: d.meta.Table, Err: err}
+	return newError(kind, "delete", d.meta.Table, err)
 }
 
 // plan resolves the WHERE predicates and applies the guardrail.
@@ -85,21 +88,44 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 		}
 		pks := make([]Predicate, 0, len(d.meta.PK)+len(where))
 		for _, i := range d.meta.PK {
-			pks = append(pks, updPKEq{d.meta.Table, d.meta.Columns[i].Name, d.meta.Value(d.model, i)})
+			pks = append(pks, updPKEq{d.meta.Table, d.meta.Columns[i].Name, d.meta.Value(d.model, i), d.meta.Columns[i].Flags})
 		}
 		where = append(pks, where...)
 	}
 	if !hasEffectiveFilter(where) && !d.allRows {
 		return nil, d.fail(ErrUnfilteredMutation, nil)
 	}
-	return where, nil
+	return append(where, d.extra...), nil
 }
 
 // SQL renders the statement without executing it. Guardrail violations are
 // reported here, before anything can reach the database.
+//
+// Interceptors run with a background context here; the execution methods pass
+// the statement's own context.
 func (d DeleteQuery[T]) SQL() (Compiled, error) {
+	d, err := d.intercepted(context.Background())
+	if err != nil {
+		return Compiled{}, err
+	}
+	return d.compileSQL()
+}
+
+// intercepted runs the handle's interceptors with ctx and returns the query
+// carrying their predicates.
+func (d DeleteQuery[T]) intercepted(ctx context.Context) (DeleteQuery[T], error) {
+	extra, err := runInterceptors(ctx, d.q, "delete", d.meta.Table)
+	if err != nil {
+		return d, err
+	}
+	d.extra = extra
+	return d, nil
+}
+
+// compileSQL renders the statement; interceptors already ran (intercepted).
+func (d DeleteQuery[T]) compileSQL() (Compiled, error) {
 	if d.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
+		return Compiled{}, noQuerier("delete", d.meta.Table)
 	}
 	where, err := d.plan()
 	if err != nil {
@@ -125,7 +151,14 @@ func (d DeleteQuery[T]) SQL() (Compiled, error) {
 
 // Exec runs the DELETE.
 func (d DeleteQuery[T]) Exec(ctx context.Context) (Result, error) {
-	c, err := d.SQL()
+	d, err := d.intercepted(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := d.beforeWrite(ctx); err != nil {
+		return Result{}, err
+	}
+	c, err := d.compileSQL()
 	if err != nil {
 		return Result{}, err
 	}
@@ -142,7 +175,14 @@ func (d DeleteQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if !d.returning.active() {
 		return nil, d.fail(ErrValidation, errors.New("Rows needs a Returning list"))
 	}
-	c, err := d.SQL()
+	d, err := d.intercepted(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := d.beforeWrite(ctx); err != nil {
+		return nil, err
+	}
+	c, err := d.compileSQL()
 	if err != nil {
 		return nil, err
 	}

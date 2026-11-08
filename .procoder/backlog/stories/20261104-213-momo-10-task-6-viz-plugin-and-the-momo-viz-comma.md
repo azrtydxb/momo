@@ -1,6 +1,6 @@
 # momo-10 Task 6: Viz plugin and the momo viz command
 
-Status: open
+Status: done 2026-11-07
 Created: 2026-11-04
 Epic: momo-10-ecosystem-generators
 Sprint: -
@@ -11,9 +11,15 @@ Implements plan momo-10-ecosystem-generators Task 6: Viz plugin and the momo viz
 
 ## Acceptance criteria
 
-- [ ] `TestVizCLI` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestVizPlugin` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestVizCLI` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestVizPlugin` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+- Files: gen/viz/plugin.go, plugin_test.go; cmd/momo/viz.go, viz_test.go, cmd.go; gen/writer.go (Text and Scaffold) with gen/writer_text_test.go.
+- TestVizCLI (and TestVizCLISnapshot) and TestVizPlugin red: CI run 42414302688 (tests alone on sprint-5) failed with "undefined: Plugin" and a TestVizCLI failure for the unknown command. Green: CI run 42412136570 (commit 015deab) succeeded. TestCLIExitCodes now covers a real missing-snapshot exit 2.
+- Writer.Text refuses data without the generated header (comment styles //, %% and #) and follows the File refusal rules; TestWriterTextRefusals and TestWriterScaffoldNeverOverwrites cover it.
+- Review fixes (red: CI run 42458914148): every write method (File, Text, Scaffold) now refuses a dangling symlink, whose target cannot be shown to stay inside the root; TestWriterScaffoldConfinement also covers a path leaving the root through .. , a symlink pointing outside, and an existing directory.
+- Selecting viz from momo.yaml is plan Task 15 (story 222), not part of this story.
 

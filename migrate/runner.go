@@ -4,8 +4,10 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,9 +17,19 @@ import (
 // RunEnv is what RunMigration needs: the pinned connection every statement and
 // history write runs on, the dialect, and the clock.
 type RunEnv struct {
+	// Driver is the driver the Go migration handles are built on. Only a
+	// migration of kind "go" needs it.
+	Driver momo.Driver
+	// DB, when set, is the handle Go migrations are built on instead of
+	// momo.New of Driver (WithGoMigrationDB).
+	DB      *momo.DB
 	Conn    momo.PinnedConn
 	Dialect Dialect
 	Clock   func() time.Time
+	// HistoryTable is the SQL reference of the history table, as returned by
+	// HistoryLocator.HistoryTable. Empty means RunMigration resolves it from
+	// Conn before it runs the first statement.
+	HistoryTable string
 	// Reconnect, when set, returns a fresh pinned connection (the caller
 	// releases it through the returned value). It is used only to record a
 	// failure when Conn is no longer usable, which is what a cancelled
@@ -46,17 +58,40 @@ func RunMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (A
 }
 
 func runMigration(ctx context.Context, env RunEnv, p Pending, applyID string) (Applied, error) {
-	h := historyWriter{d: env.Dialect}
+	tbl := env.HistoryTable
+	if tbl == "" {
+		var err error
+		if tbl, err = resolveHistoryTable(ctx, env.Conn, env.Dialect); err != nil {
+			return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+		}
+	}
+	h := historyWriter{d: env.Dialect, tbl: tbl}
 	start := env.Clock()
 	kind := string(p.Kind)
 	if kind == "" {
 		kind = "sql"
 	}
 	rec := HistoryRow{Version: p.Version, Name: p.Name, Checksum: p.Checksum, ApplyID: applyID, Kind: kind, AppliedAt: start}
-	if p.NoTx || hasNoTx(p.Statements) {
+	// A dialect whose DDL commits implicitly (MySQL, MariaDB) cannot roll a
+	// migration back, so every migration runs statement by statement with or
+	// without a no-transaction directive, and a failure leaves a dirty row.
+	noTx := p.NoTx || !transactionalDDL(env.Dialect)
+	if p.Go != nil {
+		if noTx {
+			return runGoNoTx(ctx, env, h, rec, p, start)
+		}
+		return runTransactional(ctx, env, h, rec, p, start)
+	}
+	if noTx || hasNoTx(p.Statements) {
 		return runNonTransactional(ctx, env, h, rec, p, start)
 	}
 	return runTransactional(ctx, env, h, rec, p, start)
+}
+
+// transactionalDDL reports whether d can roll DDL back.
+func transactionalDDL(d Dialect) bool {
+	dd := d.Dialect()
+	return dd == nil || dd.TransactionalDDL
 }
 
 func hasNoTx(stmts []Statement) bool {
@@ -100,7 +135,12 @@ func runTransactional(ctx context.Context, env RunEnv, h historyWriter, rec Hist
 	if err := h.insert(ctx, tx, rec); err != nil {
 		return failed(err)
 	}
-	n, err := execAll(ctx, tx, p.Statements, nil)
+	var n int
+	if p.Go != nil {
+		err = callGo(ctx, env, p, tx)
+	} else {
+		n, err = execAll(ctx, tx, p.Statements, nil)
+	}
 	if err != nil {
 		return failed(err)
 	}
@@ -124,19 +164,11 @@ func runNonTransactional(ctx context.Context, env RunEnv, h historyWriter, rec H
 	}
 	n := 0
 	for _, s := range p.Statements {
-		if _, err := env.Conn.Exec(ctx, s.SQL, nil); err != nil {
-			cause := fmt.Errorf("statement %d: %w", n+1, redact(err))
-			_, ms := elapsed(env, start)
-			// The caller's context may be the reason for the failure, so the
-			// failure record is written on a context that outlives it.
-			fctx, cancel := failureContext(ctx)
-			defer cancel()
-			if herr := env.recordOnFailure(fctx, func(x execer) error {
-				return h.finish(fctx, x, p.Version, StatusFailed, n, RedactURLs(cause.Error()), ms)
-			}); herr != nil {
-				cause = errors.Join(cause, fmt.Errorf("record failed: %w", herr))
-			}
-			return Applied{Statements: n}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, cause)
+		// execStatement, as in a transaction: a PRAGMA foreign_key_check must
+		// fail the migration here too (its message says earlier statements
+		// are already committed).
+		if err := execStatement(ctx, env.Conn, s); err != nil {
+			return failNonTx(ctx, env, h, p, n, fmt.Errorf("statement %d: %w", n+1, redact(err)), start)
 		}
 		n++
 		if err := h.progress(ctx, env.Conn, p.Version, n); err != nil {
@@ -150,12 +182,48 @@ func runNonTransactional(ctx context.Context, env RunEnv, h historyWriter, rec H
 	return Applied{Version: p.Version, Statements: n, Duration: d}, nil
 }
 
+// failNonTx records a failed no-transaction migration: the row stays failed,
+// which is dirty until resolved.
+func failNonTx(ctx context.Context, env RunEnv, h historyWriter, p Pending, n int, cause error, start time.Time) (Applied, error) {
+	_, ms := elapsed(env, start)
+	// The caller's context may be the reason for the failure, so the failure
+	// record is written on a context that outlives it.
+	fctx, cancel := failureContext(ctx)
+	defer cancel()
+	if herr := env.recordOnFailure(fctx, func(x execer) error {
+		return h.finish(fctx, x, p.Version, StatusFailed, n, RedactURLs(cause.Error()), ms)
+	}); herr != nil {
+		cause = errors.Join(cause, fmt.Errorf("record failed: %w", herr))
+	}
+	return Applied{Statements: n}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, cause)
+}
+
+// runGoNoTx runs a Go migration without a transaction. It writes a running row,
+// calls the function and then marks the row applied; an error leaves it failed.
+func runGoNoTx(ctx context.Context, env RunEnv, h historyWriter, rec HistoryRow, p Pending, start time.Time) (Applied, error) {
+	if err := h.deleteRolledBack(ctx, env.Conn, p.Version); err != nil {
+		return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+	}
+	rec.Status = StatusRunning
+	if err := h.insert(ctx, env.Conn, rec); err != nil {
+		return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+	}
+	if err := callGo(ctx, env, p, nil); err != nil {
+		return failNonTx(ctx, env, h, p, 0, redact(err), start)
+	}
+	d, ms := elapsed(env, start)
+	if err := h.finish(ctx, env.Conn, p.Version, StatusApplied, 0, "", ms); err != nil {
+		return Applied{}, fmt.Errorf("migrate: %s_%s: %w", p.Version, p.Name, err)
+	}
+	return Applied{Version: p.Version, Duration: d}, nil
+}
+
 // execAll runs stmts in order and returns how many succeeded. after is called
 // after each success when it is not nil.
 func execAll(ctx context.Context, x execer, stmts []Statement, after func(n int) error) (int, error) {
 	n := 0
 	for _, s := range stmts {
-		if _, err := x.Exec(ctx, s.SQL, nil); err != nil {
+		if err := execStatement(ctx, x, s); err != nil {
 			return n, fmt.Errorf("statement %d: %w", n+1, err)
 		}
 		n++
@@ -166,6 +234,179 @@ func execAll(ctx context.Context, x execer, stmts []Statement, after func(n int)
 		}
 	}
 	return n, nil
+}
+
+// execStatement runs one statement. Two SQLite rebuild statements get special
+// treatment, recognised by their hint or, for a statement read back from a
+// migration file where hints are gone, by their text: PRAGMA foreign_key_check
+// fails the statement when it returns a row, and a statement hinted
+// "dependent:<type>:<name>" (a view or trigger recreated after a rebuild) wraps
+// its failure in ErrRebuildBlocked.
+func execStatement(ctx context.Context, x execer, s Statement) error {
+	if isForeignKeyCheck(s) {
+		stmt, ok := foreignKeyCheckSQL(s.SQL)
+		if !ok {
+			stmt = "PRAGMA foreign_key_check"
+		}
+		return checkForeignKeys(ctx, x, stmt)
+	}
+	if looksLikeForeignKeyCheck(s.SQL) {
+		return &momo.Error{Kind: momo.ErrValidation, Op: "migrate", Err: errors.New("unrecognised PRAGMA foreign_key_check statement; write it as one statement, PRAGMA [schema.]foreign_key_check[(table)], so that a violation fails the migration")}
+	}
+	_, err := x.Exec(ctx, s.SQL, nil)
+	if err != nil {
+		if rest, ok := strings.CutPrefix(s.Hint, "dependent:"); ok {
+			return fmt.Errorf("%w: %s: %w", ErrRebuildBlocked, strings.Replace(rest, ":", " ", 1), err)
+		}
+	}
+	return err
+}
+
+// foreignKeyCheckRE matches PRAGMA foreign_key_check in the forms SQLite
+// accepts: with an optional schema (main.foreign_key_check) and an optional
+// table argument (foreign_key_check(tbl), foreign_key_check("tbl")).
+var foreignKeyCheckRE = regexp.MustCompile(`(?is)^pragma\s+(?:(?:[A-Za-z_]\w*|"[^"]+")\s*\.\s*)?foreign_key_check\s*(?:\(\s*(?:[A-Za-z_]\w*|"[^"]+"|'[^']+')?\s*\))?$`)
+
+// foreignKeyCheckSQL returns the statement text without comments (leading,
+// trailing or between words) and without surrounding whitespace and a
+// trailing semicolon, and reports whether it is a PRAGMA foreign_key_check. A
+// migration file keeps the comments around a statement, so they must not hide
+// it.
+func foreignKeyCheckSQL(sql string) (string, bool) {
+	if !strings.Contains(strings.ToLower(sql), "foreign_key_check") {
+		return "", false
+	}
+	s := strings.TrimRight(strings.TrimSpace(stripSQLComments(sql)), "; \t\r\n")
+	return s, foreignKeyCheckRE.MatchString(s)
+}
+
+// stripSQLComments replaces each -- line comment and /* */ block comment outside
+// quotes with one space. An unterminated block comment runs to the end.
+func stripSQLComments(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		switch c := s[i]; {
+		case c == '\'' || c == '"' || c == '`':
+			j := i + 1
+			for j < len(s) {
+				if s[j] == c {
+					if j+1 < len(s) && s[j+1] == c {
+						j += 2
+						continue
+					}
+					break
+				}
+				j++
+			}
+			if j < len(s) {
+				j++
+			}
+			b.WriteString(s[i:j])
+			i = j
+		case c == '-' && i+1 < len(s) && s[i+1] == '-':
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+			b.WriteByte(' ')
+		case c == '/' && i+1 < len(s) && s[i+1] == '*':
+			end := strings.Index(s[i+2:], "*/")
+			if end < 0 {
+				i = len(s)
+			} else {
+				i += end + 4
+			}
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String()
+}
+
+// looksLikeForeignKeyCheck reports whether sql uses foreign_key_check in any way
+// other than the forms foreignKeyCheckSQL accepts: a PRAGMA statement that names
+// it, or the pragma_foreign_key_check table-valued function in a query. Such a
+// statement would run with its rows discarded, so it must fail instead. Comments
+// and string literals are ignored.
+func looksLikeForeignKeyCheck(sql string) bool {
+	// Cheap early return: most statements never name it, so skip the comment
+	// and literal stripping for them.
+	if !strings.Contains(strings.ToLower(sql), "foreign_key_check") {
+		return false
+	}
+	s := strings.ToLower(strings.TrimSpace(stripStringLiterals(stripSQLComments(sql))))
+	if !strings.Contains(s, "foreign_key_check") {
+		return false
+	}
+	return strings.HasPrefix(s, "pragma") || strings.Contains(s, "pragma_foreign_key_check")
+}
+
+// stripStringLiterals empties each single-quoted literal, keeping the quotes.
+func stripStringLiterals(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\'' {
+			b.WriteByte(s[i])
+			continue
+		}
+		b.WriteString("''")
+		for i++; i < len(s); i++ {
+			if s[i] == '\'' {
+				if i+1 < len(s) && s[i+1] == '\'' {
+					i++
+					continue
+				}
+				break
+			}
+		}
+	}
+	return b.String()
+}
+
+// isForeignKeyCheck reports whether s is the PRAGMA foreign_key_check that ends
+// a SQLite table rebuild.
+func isForeignKeyCheck(s Statement) bool {
+	if s.Hint == "fk-check" {
+		return true
+	}
+	_, ok := foreignKeyCheckSQL(s.SQL)
+	return ok
+}
+
+// checkForeignKeys runs the PRAGMA foreign_key_check statement q and fails on
+// the first violation, naming the child table, its rowid and the parent table.
+func checkForeignKeys(ctx context.Context, x execer, stmt string) error {
+	q, ok := x.(interface {
+		Query(ctx context.Context, sql string, args []any) (momo.Rows, error)
+	})
+	if !ok {
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate", Err: errors.New("PRAGMA foreign_key_check needs a connection or transaction that can run a query")}
+	}
+	rows, err := q.Query(ctx, stmt, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return rows.Err()
+	}
+	var child, parentTable sql.NullString
+	var rowid, fkid sql.NullInt64
+	if err := rows.Scan(&child, &rowid, &parentTable, &fkid); err != nil {
+		return err
+	}
+	table, parent := child.String, parentTable.String
+	where := "a row"
+	if rowid.Valid {
+		where = fmt.Sprintf("row %d", rowid.Int64)
+	}
+	// Only a transaction rolls back; without one the earlier statements stay.
+	outcome := "earlier statements of this migration are already committed and are not rolled back"
+	if _, inTx := x.(interface{ Commit(context.Context) error }); inTx {
+		outcome = "the transaction is rolled back and the table is unchanged"
+	}
+	return &momo.Error{Kind: momo.ErrForeignKeyViolation, Op: "migrate", Table: table, Err: fmt.Errorf("foreign_key_check: %s of table %q has no matching row in %q; %s", where, table, parent, outcome)}
 }
 
 // RunStatements runs stmts in one transaction on c and rolls it back on the
@@ -193,10 +434,13 @@ func RunStatements(ctx context.Context, c momo.PinnedConn, stmts []Statement) er
 }
 
 // historyWriter writes history rows with the dialect's placeholders.
-type historyWriter struct{ d Dialect }
+type historyWriter struct {
+	d   Dialect
+	tbl string // SQL reference of the history table
+}
 
 func (h historyWriter) deleteRolledBack(ctx context.Context, x execer, version string) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`DELETE FROM momo_migrations WHERE version = %s AND status = 'rolled_back'`, ph(h.d, 1)), []any{version})
+	_, err := x.Exec(ctx, fmt.Sprintf(`DELETE FROM %s WHERE version = %s AND status = 'rolled_back'`, h.tbl, ph(h.d, 1)), []any{version})
 	if err != nil {
 		return fmt.Errorf("clear rolled_back row: %w", err)
 	}
@@ -204,8 +448,8 @@ func (h historyWriter) deleteRolledBack(ctx context.Context, x execer, version s
 }
 
 func (h historyWriter) insert(ctx context.Context, x execer, r HistoryRow) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`INSERT INTO momo_migrations (version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)`, ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5), ph(h.d, 6), ph(h.d, 7), ph(h.d, 8), ph(h.d, 9), ph(h.d, 10)),
+	_, err := x.Exec(ctx, fmt.Sprintf(`INSERT INTO %s (version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)`, h.tbl, ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5), ph(h.d, 6), ph(h.d, 7), ph(h.d, 8), ph(h.d, 9), ph(h.d, 10)),
 		h.args(r))
 	if err != nil {
 		return fmt.Errorf("record %s row: %w", r.Status, err)
@@ -217,13 +461,13 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)`, ph(h.d, 1), ph(h.d, 2), ph(h.d
 // applied: a failure path must never turn another engine's applied row back
 // into a pending version.
 func (h historyWriter) upsert(ctx context.Context, x execer, r HistoryRow) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`INSERT INTO momo_migrations (version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind)
+	_, err := x.Exec(ctx, fmt.Sprintf(`INSERT INTO %s AS h (version, name, checksum, status, statements_applied, error, applied_at, execution_ms, apply_id, kind)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (version) DO UPDATE SET name = excluded.name, checksum = excluded.checksum, status = excluded.status,
  statements_applied = excluded.statements_applied, error = excluded.error, applied_at = excluded.applied_at,
  execution_ms = excluded.execution_ms, apply_id = excluded.apply_id, kind = excluded.kind
-WHERE momo_migrations.status IN ('rolled_back', 'failed', 'running')`,
-		ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5), ph(h.d, 6), ph(h.d, 7), ph(h.d, 8), ph(h.d, 9), ph(h.d, 10)),
+WHERE h.status IN ('rolled_back', 'failed', 'running')`,
+		h.tbl, ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5), ph(h.d, 6), ph(h.d, 7), ph(h.d, 8), ph(h.d, 9), ph(h.d, 10)),
 		h.args(r))
 	if err != nil {
 		return fmt.Errorf("record %s row: %w", r.Status, err)
@@ -236,7 +480,7 @@ func (historyWriter) args(r HistoryRow) []any {
 }
 
 func (h historyWriter) progress(ctx context.Context, x execer, version string, n int) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`UPDATE momo_migrations SET statements_applied = %s WHERE version = %s`, ph(h.d, 1), ph(h.d, 2)), []any{n, version})
+	_, err := x.Exec(ctx, fmt.Sprintf(`UPDATE %s SET statements_applied = %s WHERE version = %s`, h.tbl, ph(h.d, 1), ph(h.d, 2)), []any{n, version})
 	if err != nil {
 		return fmt.Errorf("record progress: %w", err)
 	}
@@ -244,8 +488,8 @@ func (h historyWriter) progress(ctx context.Context, x execer, version string, n
 }
 
 func (h historyWriter) finish(ctx context.Context, x execer, version, status string, n int, errText string, ms int64) error {
-	_, err := x.Exec(ctx, fmt.Sprintf(`UPDATE momo_migrations SET status = %s, statements_applied = %s, error = %s, execution_ms = %s WHERE version = %s`,
-		ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5)), []any{status, n, errText, ms, version})
+	_, err := x.Exec(ctx, fmt.Sprintf(`UPDATE %s SET status = %s, statements_applied = %s, error = %s, execution_ms = %s WHERE version = %s`,
+		h.tbl, ph(h.d, 1), ph(h.d, 2), ph(h.d, 3), ph(h.d, 4), ph(h.d, 5)), []any{status, n, errText, ms, version})
 	if err != nil {
 		return fmt.Errorf("record %s row: %w", status, err)
 	}

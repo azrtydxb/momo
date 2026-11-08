@@ -1,57 +1,66 @@
 # Supported versions
 
-What Momo v0.1.0 is built and tested against. "Tested" means a job in
+What Momo v0.3.0 is built and tested against. "Tested" means a job in <!-- x-release-please-version -->
 `.github/workflows/ci.yml` runs it. Anything not listed there is untested, not
 necessarily broken.
 
 ## Module
 
-| Item        | Value                                                                      |
-| ----------- | -------------------------------------------------------------------------- |
-| Module path | `github.com/azrtydxb/momo`                                                 |
-| Version     | v0.1.0 (tags use a `v` prefix)                                             |
-| Install     | `go get github.com/azrtydxb/momo@v0.1.0`                                   |
-| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path) |
-| Databases   | PostgreSQL with pgvector only; SQLite and MySQL are not usable yet         |
+| Item        | Value                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module path | `github.com/azrtydxb/momo`                                                                                                                                                                                                                                                                                                                                                          |
+| Version     | v0.3.0 (tags use a `v` prefix) <!-- x-release-please-version -->                                                                                                                                                                                                                                                                                                                    |
+| Install     | `go get github.com/azrtydxb/momo@v0.3.0` <!-- x-release-please-version -->                                                                                                                                                                                                                                                                                                          |
+| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path)                                                                                                                                                                                                                                                                                                          |
+| Databases   | PostgreSQL with pgvector; MySQL 8.4, MySQL 9.7 and MariaDB 11.8 for queries and writes, with library migrations (`migrate/mysql`; MySQL stores vectors only, MariaDB has distance functions); SQLite through the cgo driver (queries, writes, sqlite-vec vectors) or the pure-Go driver (no vectors), with library migrations (`migrate/sqlite`); `momo migrate` is PostgreSQL-only |
 
 ## Go
 
-| Item                         | Value                                                                                                                                   |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Minimum (`go.mod` `go` line) | 1.26.0                                                                                                                                  |
-| CI matrix                    | 1.26 and 1.27 for unit, compile-fail, race, fuzz smoke and integration jobs                                                             |
-| Single-version CI jobs       | lint (1.26); bench smoke, govulncheck, Windows and macOS (1.27)                                                                         |
-| Older than 1.26              | not supported                                                                                                                           |
-| cgo                          | the macOS job sets `CGO_ENABLED=1`; Linux and Windows jobs set nothing; CONTRIBUTING lists a C toolchain for the future SQLite packages |
+| Item                         | Value                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Minimum (`go.mod` `go` line) | 1.26.10                                                                                                                                                                                                                                                                                                                                                                 |
+| CI matrix                    | 1.26 and 1.27 for unit, compile-fail, race, fuzz smoke and integration jobs                                                                                                                                                                                                                                                                                             |
+| Single-version CI jobs       | lint (1.26); bench smoke, govulncheck, Windows and macOS (1.27)                                                                                                                                                                                                                                                                                                         |
+| Older than 1.26.10           | not supported                                                                                                                                                                                                                                                                                                                                                           |
+| cgo                          | `driver/sqlitedriver` (mattn go-sqlite3 and sqlite-vec) needs cgo and a C toolchain and does not build on Windows; a build without cgo gets a stub whose `Open` returns `ErrUnsupported`; `driver/sqlitepure` needs no cgo and is tested with `CGO_ENABLED=0` (`make test-sqlitepure`). The macOS job sets `CGO_ENABLED=1`; the Linux jobs use the default, which is on |
 
 ## Dependencies (`go.mod`)
 
-| Module                           | Version                                                                                                        |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `github.com/jackc/pgx/v5`        | v5.11.0                                                                                                        |
-| `go.yaml.in/yaml/v3`             | v3.0.6 (`momo.yaml`)                                                                                           |
-| `golang.org/x/tools`             | v0.52.0 (generator)                                                                                            |
-| `github.com/go-sql-driver/mysql` | v1.10.1; required by the module but used only by test harness code (`internal/testdb`). No MySQL driver ships. |
+| Module                                     | Version                                                                             |
+| ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `github.com/jackc/pgx/v5`                  | v5.12.0                                                                             |
+| `go.yaml.in/yaml/v3`                       | v3.0.6 (`momo.yaml`)                                                                |
+| `golang.org/x/tools`                       | v0.52.0 (generator)                                                                 |
+| `github.com/go-sql-driver/mysql`           | v1.10.1; used by `driver/mysqldriver` and by test harness code (`internal/testdb`). |
+| `github.com/mattn/go-sqlite3`              | v1.14.53; used by `driver/sqlitedriver` (cgo).                                      |
+| `github.com/asg017/sqlite-vec-go-bindings` | v0.1.6; sqlite-vec for `driver/sqlitedriver` (cgo).                                 |
+| `modernc.org/sqlite`                       | v1.60.1; pure-Go SQLite for `driver/sqlitepure` (no cgo, no vectors).               |
 
 ## Operating systems
 
-| OS      | CI job           | What runs                                               |
-| ------- | ---------------- | ------------------------------------------------------- |
-| Linux   | `ubuntu-latest`  | every job, including PostgreSQL integration tests       |
-| macOS   | `macos-latest`   | `CGO_ENABLED=1 go test ./...` (unit tests, no database) |
-| Windows | `windows-latest` | `go test ./...` (unit tests, no database)               |
+| OS      | CI job           | What runs                                                                                                                    |
+| ------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Linux   | `ubuntu-latest`  | every job, including PostgreSQL integration tests                                                                            |
+| macOS   | `macos-latest`   | `CGO_ENABLED=1 go test ./...` (unit tests, no database)                                                                      |
+| Windows | `windows-latest` | `go test ./...` and `go test -tags integration ./driver/sqlitepure/... ./internal/sqlshared/...` (pure-Go SQLite, no server) |
 
 Integration tests (real PostgreSQL, pgvector, PgBouncer) run on Linux only.
 
+The `integration-mysql` job runs the integration suite against MySQL 8.4.13,
+MySQL 9.7.4 and MariaDB 11.8.9 (one service container per matrix entry, on Go
+1.26 and 1.27). The `bench-module` job vets, tests and tidy-checks the separate
+`bench` module against PostgreSQL 17 with pgvector and runs the hook-overhead
+benchmark (`make bench-hooks`).
+
 ## PostgreSQL
 
-| Item                    | Value                                                                                                                                                 |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tested major versions   | 16 and 17 (images `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`)                                                                                    |
-| Other majors            | untested; no minimum is enforced in code and none is documented                                                                                       |
-| `MERGE` gate            | the driver exposes `server_version_num` (`ServerVersioner`) so a `MERGE` gate can require PostgreSQL 15; Momo has no public `MERGE` builder in v0.1.0 |
-| Authentication in tests | password (`postgres` and `momo_app` roles); TLS is off in CI (`sslmode=disable`)                                                                      |
-| Driver                  | pgx v5 pool through `pgxdriver.NewPool` or `pgxdriver.New`; `database/sql` through `pgxdriver.FromSQLDB`                                              |
+| Item                    | Value                                                                                                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tested major versions   | 16 and 17 (images `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`)                                                                                                     |
+| Other majors            | untested; no minimum is enforced in code and none is documented                                                                                                        |
+| `MERGE`                 | the `momo.Merge` builder; it reads `server_version_num` (`ServerVersioner`) and returns `ErrUnsupported` below PostgreSQL 15, and for `.Returning` below PostgreSQL 17 |
+| Authentication in tests | password (`postgres` and `momo_app` roles); TLS is off in CI (`sslmode=disable`)                                                                                       |
+| Driver                  | pgx v5 pool through `pgxdriver.NewPool` or `pgxdriver.New`; `database/sql` through `pgxdriver.FromSQLDB`                                                               |
 
 ## pgvector
 
@@ -80,7 +89,7 @@ Integration tests (real PostgreSQL, pgvector, PgBouncer) run on Linux only.
 | Feature                                               | Floor                                                                                                                          | Source                                  |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
 | Iterative vector scan settings                        | pgvector 0.8.0                                                                                                                 | `search.go` (`requireIterativeSupport`) |
-| `MERGE` (gate only, no builder)                       | PostgreSQL 15                                                                                                                  | `driver_optional.go`                    |
+| `MERGE` (`momo.Merge`)                                | PostgreSQL 15; `.Returning` needs PostgreSQL 17                                                                                | `merge.go`                              |
 | Window functions (`LoadPerParentLimit`)               | none enforced; tested on PostgreSQL 16 and 17                                                                                  | `load.go`, CI                           |
 | `RETURNING`, `ON CONFLICT`, row locking, savepoints   | none enforced; tested on PostgreSQL 16 and 17                                                                                  | `dialect/dialect.go`, CI                |
 | Generated identity columns, `OVERRIDING SYSTEM VALUE` | none enforced; tested on PostgreSQL 16 and 17                                                                                  | CI                                      |
@@ -90,7 +99,7 @@ Integration tests (real PostgreSQL, pgvector, PgBouncer) run on Linux only.
 
 | Item                | Statement                                                                                                                                                       |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pre-1.0             | the README states: "v0.1.0, pre-v1, with no compatibility promise between releases"                                                                             |
+| Pre-1.0             | the README states: "v0.3.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version -->                                           |
 | Versioning          | release-please with `bump-minor-pre-major: true` and Conventional Commits; breaking changes are marked `feat!:` or a `BREAKING CHANGE:` footer (CONTRIBUTING)   |
 | Deprecation process | none documented                                                                                                                                                 |
 | Security fixes      | latest minor only (`SECURITY.md`)                                                                                                                               |

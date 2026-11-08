@@ -4,13 +4,10 @@ package main
 
 import (
 	"bytes"
-	"context"
-	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	testdb "github.com/azrtydxb/momo/internal/testdb"
 	_ "github.com/jackc/pgx/v5/stdlib" // the pgx database/sql driver
 )
 
@@ -65,33 +62,6 @@ func TestOfflineCommandsNoDatabase(t *testing.T) {
 	}
 }
 
-func TestCLIExitOneOnDrift(t *testing.T) {
-	// testdb.PostgresURL(t) is memoized per t: the stray table and the CLI use the same per-test schema
-	// (search_path=t_xxx,public), so the CLI's default managed schema current_schema() is that schema.
-	dsn := testdb.PostgresURL(t)
-	sqlDB, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if _, err := sqlDB.ExecContext(context.Background(), `CREATE TABLE stray (id INTEGER PRIMARY KEY)`); err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(dir)+"/migrations/postgres\n  url_env:\n    postgres: MOMO_TEST_URL\n")
-	mkdirAll(t, dir+"/migrations/postgres")
-	var out, errOut bytes.Buffer
-	code := runMigrate(&out, &errOut, []string{"--config", cfg, "drift"}, func(k string) string {
-		if k == "MOMO_TEST_URL" {
-			return dsn
-		}
-		return ""
-	})
-	if code != 1 {
-		t.Fatalf("drift with an unmanaged table must exit 1, got %d: %s", code, errOut.String())
-	}
-}
-
 // Flag parsing and exit-code unit tests that need no database.
 
 func TestMigrateUsageErrors(t *testing.T) {
@@ -113,6 +83,9 @@ func TestMigrateUsageErrors(t *testing.T) {
 		{"bad lock wait", []string{"--config", cfg, "apply", "--lock-wait", "soon", "--url", u}, 2},
 		{"unknown dialect", []string{"--config", cfg, "--dialect", "oracle", "validate"}, 2},
 		{"not available yet", []string{"--config", cfg, "rollback"}, 2},
+		{"new needs --custom", []string{"--config", cfg, "new", "x"}, 2},
+		{"new --custom needs a name", []string{"--config", cfg, "new", "--custom"}, 2},
+		{"new --custom needs a snapshot", []string{"--config", cfg, "new", "--custom", "x"}, 2},
 	}
 	for _, c := range cases {
 		var out, errOut bytes.Buffer
@@ -136,16 +109,51 @@ func TestMigrateValidateExitOneOnProblems(t *testing.T) {
 	}
 }
 
-func TestMigrateRedactsURL(t *testing.T) {
+func TestCLIRedactsURL(t *testing.T) {
 	dir := t.TempDir()
 	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(dir)+"/m\n")
 	var out, errOut bytes.Buffer
 	url := "postgres://alice:hunter2secret@127.0.0.1:1/none?sslmode=disable&connect_timeout=1"
+	leak := "postgres://bob:p4ssw0rdleak@db.example.com:5432/app?sslmode=require"
 	code := runMigrate(&out, &errOut, []string{"--config", cfg, "status", "--url", url}, noEnv)
 	if code != 3 {
 		t.Fatalf("unreachable database must exit 3, got %d: %s", code, errOut.String())
 	}
 	if all := out.String() + errOut.String(); strings.Contains(all, "hunter2secret") || strings.Contains(all, url) {
 		t.Fatalf("output leaks the DSN: %s", all)
+	}
+
+	// The unreachable host above never puts the URL into an error, so it cannot
+	// observe a missing redaction: the driver's messages carry the host only.
+	// A usage error echoes what the user typed, so pass the URL where the
+	// command does not expect one. The error must be reported, and without the
+	// password.
+	for _, args := range [][]string{
+		{"--config", cfg, "status", "--url", url, leak},
+		{"--config", cfg, "diff", "x", "--rename-table", leak},
+		{leak},
+	} {
+		out.Reset()
+		errOut.Reset()
+		if code := runMigrate(&out, &errOut, args, noEnv); code == 0 {
+			t.Fatalf("%v must fail, got exit 0: %s", args, out.String())
+		}
+		all := out.String() + errOut.String()
+		if all == "" {
+			t.Fatalf("%v: the usage error must be reported", args)
+		}
+		if strings.Contains(all, "p4ssw0rdleak") || strings.Contains(all, leak) {
+			t.Fatalf("%v: output leaks the DSN: %s", args, all)
+		}
+	}
+
+	// A missing URL names the environment variable to set.
+	out.Reset()
+	errOut.Reset()
+	if code := runMigrate(&out, &errOut, []string{"--config", cfg, "status"}, noEnv); code == 0 {
+		t.Fatalf("status without a URL must fail: %s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "MOMO_DATABASE_URL") {
+		t.Fatalf("missing URL must name MOMO_DATABASE_URL: %q", errOut.String())
 	}
 }

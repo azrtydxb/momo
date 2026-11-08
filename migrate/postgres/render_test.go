@@ -3,6 +3,7 @@
 package postgres_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -18,6 +19,42 @@ func renderSQL(t *testing.T, c ...migrate.Change) []migrate.Statement {
 		t.Fatalf("render: %v", err)
 	}
 	return out
+}
+
+// TestDimensionlessVectorTypeChange: moving a column between the bare vector
+// type and a sized one is a destructive type change that renders as exactly
+// one ALTER COLUMN TYPE, in both directions.
+func TestDimensionlessVectorTypeChange(t *testing.T) {
+	mk := func(typ string) *schema.Schema {
+		return &schema.Schema{
+			Dialect:    "postgres",
+			Extensions: []schema.Extension{{Name: "vector"}},
+			Tables: []schema.Table{{
+				Name:    "kb_chunks",
+				Columns: []schema.Column{{Name: "id", Type: "bigint"}, {Name: "embedding", Type: typ}},
+			}},
+		}
+	}
+	for _, c := range []struct{ from, to string }{{"vector", "vector(3)"}, {"vector(3)", "vector"}} {
+		from, to := mk(c.from), mk(c.to)
+		if _, _, err := migrate.Diff(from, to, migrate.DiffOptions{}); !errors.Is(err, migrate.ErrDestructive) {
+			t.Errorf("%s to %s: err = %v, want ErrDestructive without AllowDestructive", c.from, c.to, err)
+		}
+		changes, _, err := migrate.Diff(from, to, migrate.DiffOptions{AllowDestructive: true})
+		if err != nil || len(changes) != 1 || changes[0].Kind != migrate.AlterColumn {
+			t.Fatalf("%s to %s: want one alter_column: %v %v", c.from, c.to, changes, err)
+		}
+		stmts := renderSQL(t, changes...)
+		n := 0
+		for _, s := range stmts {
+			if strings.Contains(s.SQL, "ALTER COLUMN") && strings.Contains(s.SQL, "TYPE") {
+				n++
+			}
+		}
+		if len(stmts) != 1 || n != 1 {
+			t.Errorf("%s to %s: want exactly one ALTER COLUMN TYPE, got %+v", c.from, c.to, stmts)
+		}
+	}
 }
 
 func TestRenderEnumAddValueHint(t *testing.T) {
@@ -252,5 +289,28 @@ func TestRenderFunctionStrictSecurityDefiner(t *testing.T) {
 	st := renderSQL(t, migrate.Change{Kind: migrate.ReplaceFunction, Name: "twice", Before: &base, After: &def})
 	if len(st) != 1 || !strings.HasPrefix(st[0].SQL, "CREATE OR REPLACE FUNCTION") || !strings.Contains(st[0].SQL, "SECURITY DEFINER AS") || strings.Contains(st[0].SQL, "STRICT") {
 		t.Fatalf("replace with security definer: %+v", st)
+	}
+}
+
+// An enum the inspector spelled "schema.name" renders as two quoted parts, in
+// CREATE TYPE, ALTER TYPE and as a column type. Quoting the whole text as one
+// identifier would name a type that does not exist.
+func TestRenderQualifiedEnumNames(t *testing.T) {
+	enum := &schema.Enum{Name: "other.Kind", Values: []string{"a"}}
+	st := renderSQL(t, migrate.Change{Kind: migrate.CreateEnum, Name: enum.Name, After: *enum})
+	if len(st) != 1 || st[0].SQL != `CREATE TYPE "other"."Kind" AS ENUM ('a')` {
+		t.Fatalf("CREATE TYPE = %+v", st)
+	}
+	st = renderSQL(t, migrate.Change{Kind: migrate.AlterEnumAddValue, Name: enum.Name, Before: enum, After: "b"})
+	if len(st) != 1 || st[0].SQL != `ALTER TYPE "other"."Kind" ADD VALUE 'b'` {
+		t.Fatalf("ALTER TYPE = %+v", st)
+	}
+	tbl := schema.Table{Name: "t", Columns: []schema.Column{
+		{Name: "k", Type: "other.Kind", Enum: "other.Kind"},
+		{Name: "m", Type: "Mixed", Enum: "Mixed"},
+	}}
+	st = renderSQL(t, migrate.Change{Kind: migrate.CreateTable, Table: "t", Name: "t", After: tbl})
+	if len(st) != 1 || !strings.Contains(st[0].SQL, `"k" "other"."Kind"`) || !strings.Contains(st[0].SQL, `"m" "Mixed"`) {
+		t.Fatalf("CREATE TABLE = %+v", st)
 	}
 }

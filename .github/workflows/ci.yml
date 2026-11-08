@@ -33,7 +33,7 @@ jobs:
 
   unit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       matrix:
         go: ["1.26", "1.27"]
@@ -44,7 +44,9 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
+          cache-dependency-path: "**/go.sum"
       - run: make test
+      - run: make test-sqlitepure
 
   compile-fail:
     runs-on: ubuntu-latest
@@ -89,7 +91,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
-      - run: make test-fuzz FUZZTIME=10s
+      - run: make test-fuzz
 
   bench-smoke:
     runs-on: ubuntu-latest
@@ -115,6 +117,9 @@ jobs:
           go-version-input: "1.27"
           go-package: ./...
 
+  # windows and macos run unit tests only: every test that needs a database
+  # carries the integration build tag, so go test without the tag cannot
+  # reach one. The integration job is the only place a database is used.
   windows:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -126,6 +131,7 @@ jobs:
         with:
           go-version: "1.27"
       - run: go test ./...
+      - run: go test -count=1 -tags integration ./driver/sqlitepure/... ./internal/sqlshared/...
 
   macos:
     runs-on: macos-latest
@@ -141,13 +147,13 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         go: ["1.26", "1.27"]
         pg: ["0.8.7-pg17", "0.8.7-pg16"]
-        dialect: [postgres] # M2: add sqlite; M3: add mysql84, mysql97, mariadb
+        dialect: [postgres] # SQLite runs inside the postgres cell: testopen.Each and the sqlitedriver tests need no server. M3: add mysql84, mysql97, mariadb
     env:
       PG_URL: postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
       PG_APP_URL: postgres://momo_app:momo_app@127.0.0.1:5432/postgres?sslmode=disable
@@ -182,3 +188,77 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
       - run: make test-integration-${{ matrix.dialect }}
+
+  # One server per matrix entry, so a failure names the server it ran against.
+  # MOMO_INTEGRATION_DIALECTS (set by the make target) keeps the other
+  # dialects' URLs from being required here.
+  integration-mysql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.26", "1.27"]
+        dialect: [mysql84, mysql97, mariadb]
+        include:
+          - dialect: mysql84
+            image: "mysql:8.4.13"
+            health: "mysqladmin ping -h 127.0.0.1 -uroot -pmomo --silent"
+          - dialect: mysql97
+            image: "mysql:9.7.4"
+            health: "mysqladmin ping -h 127.0.0.1 -uroot -pmomo --silent"
+          - dialect: mariadb
+            image: "mariadb:11.8.9"
+            health: "healthcheck.sh --connect --innodb_initialized"
+    env:
+      MYSQL84_URL: root:momo@tcp(127.0.0.1:3306)/
+      MYSQL97_URL: root:momo@tcp(127.0.0.1:3306)/
+      MARIADB_URL: root:momo@tcp(127.0.0.1:3306)/
+    services:
+      db:
+        image: ${{ matrix.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: momo
+          MARIADB_ROOT_PASSWORD: momo
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "${{ matrix.health }}"
+          --health-interval 2s
+          --health-retries 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+      - run: make test-integration-${{ matrix.dialect }}
+
+  bench-module:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PG_URL: postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
+    services:
+      postgres:
+        image: "pgvector/pgvector:0.8.7-pg17"
+        env:
+          POSTGRES_PASSWORD: momo
+          POSTGRES_USER: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - run: make test-bench-module
+      - run: make test-bench-module-integration
+      - run: make bench-hooks
+      - run: make bench-suite-smoke
+      - run: make bench-gate

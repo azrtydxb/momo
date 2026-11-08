@@ -40,6 +40,9 @@ func NewEngine(drv momo.Driver, dir fs.FS, opts ...Option) (*Engine, error) {
 	if o.lockTimeout != nil && *o.lockTimeout < 0 || o.statementTimeout != nil && *o.statementTimeout < 0 {
 		return nil, errors.New("migrate: a lock or statement timeout cannot be negative")
 	}
+	if err := checkGoMigrations(o.goMigrations); err != nil {
+		return nil, err
+	}
 	return &Engine{drv: drv, dir: dir, opts: o}, nil
 }
 
@@ -65,6 +68,9 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := goCollisions(e.opts.goMigrations, files); err != nil {
+		return nil, err
+	}
 	name := string(e.opts.dialect.Dialect().Name)
 	var out []Pending
 	for _, f := range files {
@@ -81,32 +87,42 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 		}
 		stmts := make([]Statement, len(parts))
 		for i, s := range parts {
+			if s, err = applyDDLDirective(s, name); err != nil {
+				return nil, fmt.Errorf("migrate: %s: statement %d: %w", f.Path, i+1, err)
+			}
 			stmts[i] = Statement{SQL: s}
 		}
-		out = append(out, Pending{Version: f.Version, Name: f.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: sum.Files[f.Path]})
+		out = append(out, Pending{Version: f.Version, Name: f.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: sum.Files[f.Path], ForeignKeysOff: dirs.SQLiteForeignKeysOff})
 	}
+	out = append(out, e.goPending(done)...)
+	sortPending(out)
 	return out, nil
-}
-
-// history creates the history table when it is missing and reads it. Only
-// callers that hold the migration lock may use it.
-func (e *Engine) history(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
-	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
-		return nil, err
-	}
-	return ReadHistory(ctx, c)
 }
 
 // undefinedTable is the SQLSTATE of a query on a table that does not exist.
 const undefinedTable = "42P01"
 
+// undefinedTableMySQL is the SQLSTATE MySQL and MariaDB report for it.
+const undefinedTableMySQL = "42S02"
+
 // readHistory reads the history table without creating it: a database that
 // has none yet has an empty history. Plan and Status use it so they stay
 // read-only and cannot race the first Apply on CREATE TABLE.
 func (e *Engine) readHistory(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
-	hist, err := ReadHistory(ctx, c)
-	var s interface{ SQLState() string }
-	if errors.As(err, &s) && s.SQLState() == undefinedTable {
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if errors.Is(err, ErrNoHistoryTable) {
+		return nil, nil // nothing to read, as for a database without the table
+	}
+	if err != nil {
+		return nil, err
+	}
+	return e.readHistoryAt(ctx, c, tbl)
+}
+
+// readHistoryAt is readHistory for a history table reference resolved earlier.
+func (e *Engine) readHistoryAt(ctx context.Context, c momo.PinnedConn, tbl string) ([]HistoryRow, error) {
+	hist, err := readHistoryRows(ctx, c, tbl)
+	if isUndefinedTable(err) {
 		return nil, nil
 	}
 	return hist, err
@@ -181,10 +197,17 @@ func (e *Engine) verifyChecksums(hist []HistoryRow) error {
 			byVersion[f.Version] = f
 		}
 	}
+	if err := goCollisions(e.opts.goMigrations, files); err != nil {
+		return err
+	}
+	goMigs := e.goByVersion()
 	for _, r := range hist {
 		f, ok := byVersion[r.Version]
 		if r.Status == StatusApplied && ok && sum.Files[f.Path] != r.Checksum {
 			return fmt.Errorf("%w: %s changed after version %s was applied", ErrChecksumMismatch, f.Path, r.Version)
+		}
+		if g, ok := goMigs[r.Version]; ok && r.Status == StatusApplied && g.identity() != r.Checksum {
+			return fmt.Errorf("%w: Go migration %s_%s changed (name or Checksum) after version %s was applied", ErrChecksumMismatch, g.Version, g.Name, r.Version)
 		}
 	}
 	return nil
@@ -209,8 +232,8 @@ func (e *Engine) Plan(ctx context.Context) ([]Pending, error) {
 
 // resolveSchemas returns the managed schemas: Config.Schemas, or the
 // connection's current_schema() when none are configured. On PostgreSQL the
-// first one must be current_schema(), because the history table is referenced
-// unqualified and lives there.
+// first one must be current_schema(), the schema a new history table is created
+// in (an existing one is found through the search_path and used wherever it is).
 func (e *Engine) resolveSchemas(ctx context.Context, c momo.PinnedConn) ([]string, error) {
 	if e.opts.dialect.Dialect().Name != dialect.Postgres {
 		return e.opts.config.Schemas, nil
@@ -238,7 +261,7 @@ func (e *Engine) resolveSchemas(ctx context.Context, c momo.PinnedConn) ([]strin
 		return []string{cur}, nil
 	}
 	if schemas[0] != cur {
-		return nil, fmt.Errorf("migrate: configuration error: Config.Schemas[0] is %q but the connection's current_schema() is %q; the history table is created unqualified in the current schema, so set search_path to %q or list %q first", schemas[0], cur, schemas[0], cur)
+		return nil, fmt.Errorf("migrate: configuration error: Config.Schemas[0] is %q but the connection's current_schema() is %q; a new history table is created in the current schema, so set search_path to %q or list %q first", schemas[0], cur, schemas[0], cur)
 	}
 	return schemas, nil
 }
@@ -301,6 +324,9 @@ func (e *Engine) checkTo(to string) error {
 			return nil
 		}
 	}
+	if _, ok := e.goByVersion()[to]; ok {
+		return nil
+	}
 	return fmt.Errorf("migrate: --to %s: no migration with that version in the directory", to)
 }
 
@@ -350,7 +376,7 @@ func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Durat
 	if len(schemas) > 0 {
 		hs = schemas[0]
 	}
-	unlock, err := e.acquireLock(ctx, c, "momo:"+hs+".momo_migrations", wait)
+	unlock, err := e.lockHistory(ctx, c, hs, wait)
 	if err != nil {
 		return nil, err
 	}
@@ -362,6 +388,44 @@ func (e *Engine) session(ctx context.Context, c momo.PinnedConn, wait time.Durat
 		err = joinErr(err, reset()) // runs first
 		return joinErr(err, unlock())
 	}, nil
+}
+
+// lockHistory takes the migration lock, keyed on the history table the
+// connection resolves to: its schema-qualified name when the table exists, the
+// current schema hs when it does not yet. The table is resolved before the lock
+// (a read) and again after it; if another session created or moved the table
+// in between so that the name differs, the lock is released and the attempt
+// repeats once with the new name, then fails.
+func (e *Engine) lockHistory(ctx context.Context, c momo.PinnedConn, hs string, wait time.Duration) (func() error, error) {
+	d := e.opts.dialect
+	var last string
+	for attempt := 0; attempt < 2; attempt++ {
+		tbl, err := resolveHistoryTable(ctx, c, d)
+		if err != nil {
+			return nil, err
+		}
+		key := "momo:" + hs + ".momo_migrations"
+		if k, ok := d.(historyLockKeyer); ok {
+			key = k.HistoryLockKey(tbl)
+		}
+		unlock, err := e.acquireLock(ctx, c, key, wait)
+		if err != nil {
+			return nil, err
+		}
+		again, err := resolveHistoryTable(ctx, c, d)
+		if err == nil && again == tbl {
+			return unlock, nil
+		}
+		uerr := unlock()
+		if err != nil {
+			return nil, joinErr(err, uerr)
+		}
+		last = fmt.Sprintf("%s then %s", tbl, again)
+		if uerr != nil {
+			return nil, uerr
+		}
+	}
+	return nil, fmt.Errorf("migrate: the history table moved while taking the migration lock (%s); another process is installing it, retry", last)
 }
 
 // outOfOrder refuses with ErrOutOfOrder when a pending version sorts before
@@ -415,11 +479,15 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 
 	// Read the history without creating it: a database that has none has an
 	// empty history, and an Apply with nothing to do must write nothing.
-	hist, err := e.readHistory(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkHistoryFormat(ctx, c); err != nil {
+	hist, err := e.readHistoryAt(ctx, c, tbl)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkHistoryFormat(ctx, c, tbl); err != nil {
 		return nil, err
 	}
 	if err := dirtyError(hist); err != nil {
@@ -441,13 +509,16 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	if err := outOfOrder(hist, pending); err != nil {
 		return nil, err
 	}
+	if err := e.checkGoRunnable(pending, hist, o.To); err != nil {
+		return nil, err
+	}
 	if len(pending) == 0 {
 		return &Report{}, nil
 	}
 	// The history table is created under the lock, so two first-time callers
 	// cannot race on CREATE TABLE. EnsureHistory also refuses a table written
 	// with a newer format.
-	if err := EnsureHistory(ctx, c, e.opts.dialect); err != nil {
+	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
 		return nil, err
 	}
 	var b [4]byte
@@ -455,18 +526,47 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		return nil, fmt.Errorf("migrate: apply id: %w", err)
 	}
 	rep = &Report{ApplyID: e.opts.clock().UTC().Format(applyIDLayout) + "-" + hex.EncodeToString(b[:])}
-	env := RunEnv{Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin}
+	env := RunEnv{Driver: e.drv, DB: e.opts.goDB, Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin, HistoryTable: tbl}
 	for _, p := range pending {
 		if o.To != "" && p.Version > o.To {
 			break
 		}
+		restore, err := e.foreignKeysOff(ctx, c, p.ForeignKeysOff)
+		if err != nil {
+			return rep, err
+		}
 		a, err := RunMigration(ctx, env, p, rep.ApplyID)
+		if err == nil {
+			rep.Applied = append(rep.Applied, a)
+		}
+		if rerr := restore(); rerr != nil {
+			err = errors.Join(err, rerr)
+		}
 		if err != nil {
 			return rep, redactErr(e.classify(err))
 		}
-		rep.Applied = append(rep.Applied, a)
 	}
 	return rep, nil
+}
+
+// foreignKeysOff turns foreign-key enforcement off on c when off is set (the
+// -- momo:sqlite-foreign-keys-off directive, which every SQLite table rebuild
+// carries) and the dialect is SQLite, and returns the function that restores
+// it. It runs outside any transaction, as SQLite requires. For any other
+// dialect, the directive is refused with ErrValidation, as -- momo:ddl is on a
+// dialect that does not support it; when off is false, it does nothing.
+func (e *Engine) foreignKeysOff(ctx context.Context, c momo.PinnedConn, off bool) (restore func() error, err error) {
+	if !off {
+		return func() error { return nil }, nil
+	}
+	if d := e.opts.dialect.Dialect(); d != nil && d.Name != dialect.SQLite {
+		return nil, &momo.Error{Kind: momo.ErrValidation, Op: "migrate", Err: fmt.Errorf("-- momo:sqlite-foreign-keys-off is supported on sqlite only, not %s", d.Name)}
+	}
+	restore, err = e.opts.dialect.Setup(ctx, c, SessionOptions{ForeignKeysOff: true})
+	if err != nil {
+		return nil, fmt.Errorf("migrate: turn foreign keys off: %w", err)
+	}
+	return restore, nil
 }
 
 // Status reports the state of every migration version: applied, pending, dirty
@@ -485,6 +585,9 @@ func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
 	}
 	files, err := Discover(e.dir)
 	if err != nil {
+		return nil, err
+	}
+	if err := goCollisions(e.opts.goMigrations, files); err != nil {
 		return nil, err
 	}
 	sum, err := ComputeSum(e.dir)
@@ -528,6 +631,22 @@ func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
 		}
 		out = append(out, st)
 	}
+	for _, g := range e.opts.goMigrations {
+		seen[g.Version] = true
+		st := VersionStatus{Version: g.Version, Name: g.Name, State: "pending", Checksum: g.identity()}
+		if r, ok := rows[g.Version]; ok {
+			st.Checksum, st.Error = r.Checksum, r.Error
+			switch {
+			case r.dirty():
+				st.State = "dirty"
+			case r.Status == StatusApplied && r.Checksum == g.identity():
+				st.State = "applied"
+			case r.Status == StatusApplied:
+				st.State = "mismatch"
+			}
+		}
+		out = append(out, st)
+	}
 	for _, r := range hist {
 		if seen[r.Version] || r.Status == StatusRolledBack {
 			continue
@@ -561,7 +680,14 @@ func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState
 		return err
 	}
 	defer func() { err = end(err) }()
-	hist, err := e.history(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if err != nil {
+		return err
+	}
+	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
+		return err
+	}
+	hist, err := readHistoryRows(ctx, c, tbl)
 	if err != nil {
 		return err
 	}
@@ -578,10 +704,10 @@ func (e *Engine) Resolve(ctx context.Context, version string, state ResolveState
 	var q string
 	var args []any
 	if state == ResolveApplied {
-		q = fmt.Sprintf(`UPDATE momo_migrations SET status = %s, error = '' WHERE version = %s AND status IN ('running', 'failed')`, ph(d, 1), ph(d, 2))
+		q = fmt.Sprintf(`UPDATE %s SET status = %s, error = '' WHERE version = %s AND status IN ('running', 'failed')`, tbl, ph(d, 1), ph(d, 2))
 		args = []any{StatusApplied, version}
 	} else {
-		q = fmt.Sprintf(`DELETE FROM momo_migrations WHERE version = %s AND status IN ('running', 'failed')`, ph(d, 1))
+		q = fmt.Sprintf(`DELETE FROM %s WHERE version = %s AND status IN ('running', 'failed')`, tbl, ph(d, 1))
 		args = []any{version}
 	}
 	if _, err := c.Exec(ctx, q, args); err != nil {
@@ -639,7 +765,7 @@ func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Sche
 		return t.Name == historyTable && (t.Schema == "" || t.Schema == hs)
 	})
 	invalid = dropExcludedInvalid(s, invalid, e.opts.config.Exclude)
-	return applyExclude(s, e.opts.config.Exclude), invalid, nil
+	return e.hide(s), invalid, nil
 }
 
 // dropExcludedInvalid removes from invalid the indexes of a table or view that
@@ -683,8 +809,9 @@ var migrationName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // Diff does not touch the database: it reads the directory and renders through
 // the dialect. It orders the changes with OrderWithViews and returns the
 // ordering error (a dependency cycle) instead of falling back to the unordered
-// list. SQLite table rebuilds need a live connection and are not supported
-// here yet.
+// list. A dialect that implements SchemaRenderer (SQLite) renders from the two
+// schemas rather than the changes alone, which is how a SQLite table rebuild
+// becomes plain statements in the up file.
 func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, opts DiffOptions) (*Migration, error) {
 	if !migrationName.MatchString(name) {
 		return nil, fmt.Errorf("migrate: migration name %q must match %s", name, migrationName)
@@ -696,17 +823,26 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	if to.Dialect == "" {
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
+	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
+	if v, ok := e.opts.dialect.(SchemaValidator); ok {
+		if err := v.ValidateSchema(&to); err != nil {
+			return nil, err
+		}
+	}
 	from := &schema.Schema{Dialect: to.Dialect}
 	parent := ""
 	snap, err := LatestSnapshot(e.dir)
 	switch {
 	case err == nil:
-		from, parent = snap.Schema, snap.Version
+		from, parent = dropExternalExtensions(snap.Schema, e.opts.config.ExternalExtensions), snap.Version
 	case !errors.Is(err, ErrNoSnapshot):
 		return nil, err
 	}
 	version, err := NextVersion(e.opts.clock, e.dir)
 	if err != nil {
+		return nil, err
+	}
+	if err := e.checkGoSnapshots(); err != nil {
 		return nil, err
 	}
 	changes, hints, err := Diff(from, &to, opts)
@@ -720,7 +856,7 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	if err != nil {
 		return nil, fmt.Errorf("migrate: order changes: %w", err)
 	}
-	stmts, err := e.opts.dialect.Render(ordered)
+	stmts, err := renderPlan(e.opts.dialect, from, &to, ordered)
 	if err != nil {
 		return nil, err
 	}
@@ -809,6 +945,12 @@ func renderUp(m *Migration) []byte {
 	}
 	if m.NoTx {
 		b.WriteString("-- momo:no-transaction\n")
+	}
+	if slices.ContainsFunc(m.Up, isForeignKeyCheck) {
+		// A SQLite table rebuild: Apply turns foreign-key enforcement off
+		// around the migration, which PRAGMA foreign_keys cannot do inside the
+		// transaction.
+		b.WriteString("-- momo:sqlite-foreign-keys-off\n")
 	}
 	b.WriteString("\n")
 	for i, s := range m.Up {

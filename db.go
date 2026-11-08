@@ -4,8 +4,10 @@ package momo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -22,7 +24,7 @@ type Querier interface {
 
 // QueryEvent describes one statement for observability hooks.
 type QueryEvent struct {
-	Op    string // "select", "insert", "update", "delete", "exec", "query", "begin", "commit", "rollback", "savepoint"
+	Op    string // "select", "insert", "update", "delete", "exec", "raw", "explain", "begin", "commit", "rollback", "savepoint"
 	Table string // model table when known
 	// Relation is set while eager-loading a relation ("documents.author").
 	Relation string
@@ -106,6 +108,18 @@ type DB struct {
 	pinned   bool             // set by OnConn: statements run on one pinned connection
 	// fieldHooks holds the []FieldHook[T] of WithFieldHooks keyed by *Meta[T].
 	fieldHooks map[any]any
+	// replicas are the read-replica drivers of WithReplicas, reached only
+	// through Replica. A handle derived from a DB never carries them.
+	replicas []Driver
+	// idGens holds the id generators of WithIDGenerator by name.
+	idGens map[string]func() string
+	// txSetup runs after every transaction momo begins (WithTxSetup).
+	txSetup []func(ctx context.Context, tx *Tx) error
+	// implicitTx runs auto-commit statements in a short transaction (WithImplicitTx).
+	implicitTx bool
+	// interceptors run before every typed statement of this handle and of the
+	// transactions begun from it (WithInterceptor).
+	interceptors []Interceptor
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and
@@ -183,7 +197,36 @@ func (e *execer) wrapErr(op, table string, err error) error {
 	return err
 }
 
-func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []any) (context.Context, *QueryEvent) {
+// RedactedArg replaces, in QueryEvent.Args, every value bound from a column
+// tagged sensitive. Only the copy handed to hooks is masked.
+const RedactedArg = "[redacted]"
+
+// maskArgs returns a copy of args with the sensitive positions replaced, so a
+// hook can neither read those values nor mutate the slice sent to the driver.
+// Byte slices are copied too, so changing their contents in place does not reach
+// the driver. It runs only when hooks are registered.
+func maskArgs(args []any, sens []int) []any {
+	if args == nil {
+		return nil
+	}
+	out := slices.Clone(args)
+	for i, a := range out {
+		switch v := a.(type) {
+		case []byte:
+			out[i] = slices.Clone(v)
+		case json.RawMessage:
+			out[i] = slices.Clone(v)
+		}
+	}
+	for _, i := range sens {
+		if i >= 0 && i < len(out) {
+			out[i] = RedactedArg
+		}
+	}
+	return out
+}
+
+func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []any, sens []int) (context.Context, *QueryEvent) {
 	if len(e.db.hooks) == 0 {
 		return ctx, nil
 	}
@@ -195,7 +238,7 @@ func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []
 		Start: time.Now(), Rows: -1, pool: slot,
 	}
 	if e.db.logArgs {
-		ev.Args = args
+		ev.Args = maskArgs(args, sens)
 	}
 	for _, h := range e.db.hooks {
 		ctx = h.BeforeQuery(ctx, ev)
@@ -217,7 +260,14 @@ func (e *execer) after(ctx context.Context, ev *QueryEvent, rows int64, err erro
 }
 
 func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64, error) {
-	ctx, ev := e.before(ctx, op, table, "", c.SQL, c.Args)
+	markWrite(ctx)
+	if e.unscopable() {
+		return -1, errPinnedSetup(op, table)
+	}
+	if e.implicit() {
+		return e.implicitExec(ctx, op, table, c)
+	}
+	ctx, ev := e.before(ctx, op, table, "", c.SQL, c.Args, c.sens)
 	n, err := e.q.Exec(ctx, c.SQL, c.Args)
 	err = e.wrapErr(op, table, err)
 	if err != nil {
@@ -227,9 +277,43 @@ func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64,
 	return n, err
 }
 
+// execInsertID is exec for a statement whose generated key is wanted. A driver
+// without InsertIDExecer reports the key as 0.
+func (e *execer) execInsertID(ctx context.Context, op, table string, c Compiled) (int64, int64, error) {
+	x, ok := e.q.(InsertIDExecer)
+	if !ok {
+		n, err := e.exec(ctx, op, table, c)
+		return n, 0, err
+	}
+	markWrite(ctx) // read-your-writes: later reads in this unit of work stay on the primary
+	if e.unscopable() {
+		return -1, 0, errPinnedSetup(op, table)
+	}
+	if e.implicit() {
+		return e.implicitExecInsertID(ctx, op, table, c)
+	}
+	ctx, ev := e.before(ctx, op, table, "", c.SQL, c.Args, c.sens)
+	n, id, err := x.ExecInsertID(ctx, c.SQL, c.Args)
+	err = e.wrapErr(op, table, err)
+	if err != nil {
+		n, id = -1, 0
+	}
+	e.after(ctx, ev, n, err)
+	return n, id, err
+}
+
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
-	ctx, ev := e.before(ctx, op, table, rel, c.SQL, c.Args)
+	if op != "select" && op != "explain" && op != "raw" { // a write with RETURNING; raw SQL is routed by its own text
+		markWrite(ctx)
+	}
+	if e.unscopable() {
+		return nil, errPinnedSetup(op, table)
+	}
+	if e.implicit() {
+		return e.implicitQuery(ctx, op, table, rel, c)
+	}
+	ctx, ev := e.before(ctx, op, table, rel, c.SQL, c.Args, c.sens)
 	rows, err := e.q.Query(ctx, c.SQL, c.Args)
 	if err != nil {
 		err = e.wrapErr(op, table, err)
@@ -282,6 +366,14 @@ func (r *hookedRows) Next() bool {
 	return false
 }
 
+// Columns forwards to the wrapped rows when they report column names.
+func (r *hookedRows) Columns() ([]string, error) {
+	if c, ok := r.Rows.(ColumnNamer); ok {
+		return c.Columns()
+	}
+	return nil, nil
+}
+
 func (r *hookedRows) Err() error { return r.e.wrapErr(r.op, r.table, r.Rows.Err()) }
 
 func (r *hookedRows) Close() error {
@@ -301,7 +393,8 @@ func (r *hookedRows) Close() error {
 }
 
 // Exec runs a raw statement. See SQL for the placeholder and safety
-// contract: '?' placeholders, "??" for a literal '?'.
+// contract: '?' placeholders, "??" for a literal '?', and on PostgreSQL
+// native $n placeholders.
 func Exec(ctx context.Context, q Querier, sql string, args ...any) (int64, error) {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	if err != nil {
@@ -319,7 +412,7 @@ func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
 		return nil, &Error{Kind: ErrUnsupported, Op: "begin", Err: errors.New("transactions are not available on a pinned connection")}
 	}
 	drv := db.Driver()
-	ctx2, ev := db.ex.before(ctx, "begin", "", "", "BEGIN", nil)
+	ctx2, ev := db.ex.before(ctx, "begin", "", "", "BEGIN", nil, nil)
 	dtx, err := drv.Begin(ctx2, opts)
 	db.ex.after(ctx2, ev, -1, err)
 	if err != nil {
@@ -327,6 +420,9 @@ func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
 	}
 	tx := &Tx{dtx: dtx, done: new(atomic.Bool)}
 	tx.ex = execer{db: db, q: dtx, d: db.ex.d, classify: db.ex.classify, inTx: true, owner: tx}
+	if err := db.runTxSetup(ctx2, tx); err != nil {
+		return nil, err
+	}
 	return tx, nil
 }
 
@@ -361,7 +457,7 @@ func (tx *Tx) DriverTx() DriverTx { return tx.dtx }
 // matching ErrAdoptedTx and does nothing.
 func (tx *Tx) Commit(ctx context.Context) error {
 	if tx.depth > 0 {
-		return errors.New("momo: Commit called on a savepoint scope; return from the Tx callback instead")
+		return newError(ErrValidation, "commit", "", errors.New("Commit called on a savepoint scope; return from the Tx callback instead"))
 	}
 	if tx.adopted {
 		return &Error{Kind: ErrAdoptedTx, Op: "commit"}
@@ -369,7 +465,7 @@ func (tx *Tx) Commit(ctx context.Context) error {
 	if !tx.done.CompareAndSwap(false, true) {
 		return ErrTxDone
 	}
-	ctx, ev := tx.ex.before(ctx, "commit", "", "", "COMMIT", nil)
+	ctx, ev := tx.ex.before(ctx, "commit", "", "", "COMMIT", nil, nil)
 	err := tx.dtx.Commit(ctx)
 	tx.ex.after(ctx, ev, -1, err)
 	return tx.ex.wrapErr("commit", "", err)
@@ -379,7 +475,7 @@ func (tx *Tx) Commit(ctx context.Context) error {
 // matching ErrAdoptedTx and does nothing.
 func (tx *Tx) Rollback(ctx context.Context) error {
 	if tx.depth > 0 {
-		return errors.New("momo: Rollback called on a savepoint scope; return an error from the Tx callback instead")
+		return newError(ErrValidation, "rollback", "", errors.New("Rollback called on a savepoint scope; return an error from the Tx callback instead"))
 	}
 	if tx.adopted {
 		return &Error{Kind: ErrAdoptedTx, Op: "rollback"}
@@ -387,7 +483,7 @@ func (tx *Tx) Rollback(ctx context.Context) error {
 	if !tx.done.CompareAndSwap(false, true) {
 		return ErrTxDone
 	}
-	ctx, ev := tx.ex.before(ctx, "rollback", "", "", "ROLLBACK", nil)
+	ctx, ev := tx.ex.before(ctx, "rollback", "", "", "ROLLBACK", nil, nil)
 	err := tx.dtx.Rollback(ctx)
 	tx.ex.after(ctx, ev, -1, err)
 	return tx.ex.wrapErr("rollback", "", err)

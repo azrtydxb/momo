@@ -2,13 +2,16 @@
 
 Momo supports pgvector on PostgreSQL: value types, typed distance
 expressions, HNSW and IVFFlat index declarations, scoped search settings,
-plan inspection and an opt-in binary wire codec. This page describes what is
-built. Every Go snippet below is an `Example` function in
+plan inspection and an opt-in binary wire codec. It also runs the float32 and
+bit vector builders on SQLite with sqlite-vec, and the distance builders on
+MariaDB. This page describes what is built. Every Go snippet below is an `Example` function in
 `example_vector_test.go` (package `momo`) or `vector/example_test.go`
 (package `vector`), so `go test` compiles it and checks its printed output.
 
 ## Platforms and versions
 
+- SQLite with sqlite-vec v0.1.6, through `driver/sqlitedriver` (cgo, not
+  Windows); see [SQLite and sqlite-vec](#sqlite-and-sqlite-vec) below.
 - PostgreSQL with the pgvector extension. Integration tests run against
   pgvector 0.8.7 (`pgvector/pgvector:0.8.7-pg17` primary, `0.8.7-pg16` for an
   older major). The iterative scan settings need pgvector 0.8.0 or newer.
@@ -22,16 +25,11 @@ built. Every Go snippet below is an `Example` function in
 These parts of the vector plan are not built on this branch, so there is no
 API to document yet:
 
-- SQLite: the plan pins sqlite-vec v0.1.6 through the Go bindings, loaded by
-  `sqlitedriver.Open` and checked with `vec_version()`. There is no SQLite
-  driver package yet. The dialect description already lists the SQLite
-  metrics, and the distance builders already render the sqlite-vec functions
-  (see the table below), but nothing opens a SQLite database with the
-  extension.
 - Hybrid search: PostgreSQL full-text plus vector search fused by reciprocal
   rank (planned options `TextCandidates`, `VectorCandidates` and `RRFK`, with
   k=60 as the default) does not exist yet.
-- MySQL and MariaDB: no vector support.
+- MySQL and MariaDB: see "MariaDB and MySQL" below. The migration engine for
+  MySQL does not exist yet, so no tool creates VECTOR columns or indexes.
 
 ## Value types
 
@@ -50,7 +48,8 @@ which the root package re-exports as `momo.ErrInvalidVector`.
 Value rules, enforced before a value reaches the server:
 
 - The length must equal the column dimension declared on the
-  `VectorColumn`.
+  `VectorColumn`, unless the column is dimensionless (see
+  [Dimensionless columns](#dimensionless-columns)).
 - NaN and Inf are rejected.
 - A halfvec component must satisfy |x| <= 65504.
 - A dimension above 16000 is rejected for vector and halfvec.
@@ -62,6 +61,8 @@ Value rules, enforced before a value reaches the server:
 The `Example` functions `ExampleVector`, `ExampleHalfVector`,
 `ExampleSparseVector` and `ExampleBits` in `vector/example_test.go` show the
 validation and the text forms:
+
+<!-- docscheck:fragment -->
 
 ```go
 v := vector.Vector{1, 2.5, -3}
@@ -111,11 +112,14 @@ and is the default; `Desc()` orders farthest first.
 product so that ascending order means closest. Passing a dense vector to a
 bit builder, or the reverse, does not compile (`testdata/compilefail`).
 
-The query vector is a bound argument. A dimension mismatch, NaN or an
-out-of-range value is a build error wrapping `ErrValidation`, reported by
+The query vector is a bound argument. A dimension mismatch (except on a
+dimensionless column, see [Dimensionless columns](#dimensionless-columns)),
+NaN or an out-of-range value is a build error wrapping `ErrValidation`, reported by
 `SQL()` or by the first execution, never a server error. A metric the dialect
 lacks is a build error wrapping `ErrUnsupported`. The metrics per dialect come
 from `dialect.Dialect.Vector`:
+
+<!-- docscheck:fragment -->
 
 ```go
 for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
@@ -127,6 +131,8 @@ for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 ```
 
 A nearest-neighbour query (`ExampleCosineDistance`):
+
+<!-- docscheck:fragment -->
 
 ```go
 c, err := momo.Select[example.Document](db).
@@ -150,6 +156,8 @@ The generator maps `vector.Vector`, `vector.HalfVector`,
 `sparsevec` and `bit` columns. The `dim` tag sets the dimension, and
 sparsevec and bit require it:
 
+<!-- docscheck:fragment -->
+
 ```go
 Embedding vector.Vector `momo:"dim:1536"`
 ```
@@ -158,6 +166,8 @@ Generation adds `CREATE EXTENSION vector` to the schema when a vector column
 or index is present. An ANN index needs an operator class, and pgvector's
 hnsw has no default one, so declare vector indexes in `MomoConfig` (the
 reference model is `internal/testmodels/example/models.go`):
+
+<!-- docscheck:fragment -->
 
 ```go
 func (d *Document) MomoConfig(c *momo.Config) {
@@ -188,6 +198,39 @@ returns the opclass for a column type and metric (`ExampleValidateVectorIndex`).
   rely on the server default of 100.
 - An index covers one plain column. Expression parts are rejected.
 - Vector indexes exist only on PostgreSQL. Another dialect gets an error.
+
+### Dimensionless columns
+
+A `vector.Vector` or `vector.HalfVector` field without a `dim` tag maps to the
+bare `vector` or `halfvec` type. Use it for a store whose embedding size
+depends on the configured model: each row carries its size in a `dims`
+column, and every search filters on it.
+
+<!-- docscheck:fragment -->
+
+```go
+type KbChunk struct {
+	momo.Model `momo:"table:kb_chunks"`
+	ID         int64         `momo:"pk,identity"`
+	Dims       int
+	Embedding  vector.Vector // no dim: any size
+}
+```
+
+- Generation emits a plain `vector` column and a `momo.VectorColumn` whose
+  `Dim()` is zero. `sparsevec` and `bit` still require `dim`.
+- A distance argument of any size is accepted; it is checked against its own
+  size, so NaN, Inf and an empty vector are still rejected. The column never
+  catches a size mismatch itself.
+- pgvector fails a distance between two sizes, so filter on `dims` in the same
+  query: `Where(chunk.Dims.Eq(len(q)))` plus `OrderBy(momo.CosineDistance(chunk.Embedding, q).Asc())`.
+- The migration round-trips the bare type and the next diff is empty.
+- Limit: pgvector cannot build an hnsw or ivfflat index on a dimensionless
+  column. Momo refuses one, with an error that wraps
+  `schema.ErrInvalidVectorIndex` and names the column. Searches run as a
+  sequential scan over the filtered rows. An expression or partial index such
+  as `((embedding::vector(1536))) WHERE dims = 1536` is not supported yet:
+  expression parts are rejected.
 
 ## Migrations
 
@@ -232,6 +275,8 @@ a placeholder.
 
 Use `DB.WithSearch` for a block, or `Tx.SetSearch` inside a transaction you
 already have (`ExampleDB_WithSearch`, `ExampleTx_SetSearch`):
+
+<!-- docscheck:fragment -->
 
 ```go
 settings := momo.SearchSettings{
@@ -283,6 +328,8 @@ the parameters and returns the plan text. It does not execute the query. Run
 it inside the transaction whose settings you want to see
 (`ExampleSelectQuery_Explain`):
 
+<!-- docscheck:fragment -->
+
 ```go
 plan, err := momo.Select[example.Document](db).
 	OrderBy(momo.L2Distance(document.Embedding, query).Asc()).
@@ -316,6 +363,8 @@ in `driver/pgxdriver`:
 
 `ExampleConfigureVectors` shows the setup:
 
+<!-- docscheck:fragment -->
+
 ```go
 cfg, err := pgxpool.ParseConfig("postgres://localhost/app")
 pgxdriver.ConfigureVectors(cfg)
@@ -329,11 +378,112 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
   nearest neighbours. Index search (hnsw, ivfflat) is approximate and tuned
   with `hnsw.ef_search`, `ivfflat.probes` and the iterative settings.
 - sqlite-vec is brute-force KNN with no ANN index. A request for an ANN index
-  on SQLite is an error. SQLite supports float32 vectors (l2, l1, cosine) and
+  on SQLite is `ErrUnsupported`. SQLite supports float32 vectors (l2, l1, cosine) and
   bit vectors (hamming) only; halfvec and sparsevec arguments, inner product
   and Jaccard return `ErrUnsupported` at build time. SQLite bit
   vectors keep only the packed bytes, so the declared column length is
-  authoritative for `Len`. See "Not yet available" for the driver status.
+  authoritative for `Len`. See [SQLite and sqlite-vec](#sqlite-and-sqlite-vec).
 - `SetSearch` on SQLite: `ExactSearch` alone is a no-op, every search is
   already exact, and any other field is `ErrUnsupported`.
-- MariaDB VECTOR INDEX is approximate; MySQL and MariaDB are not supported yet.
+- MariaDB VECTOR INDEX is approximate; see "MariaDB and MySQL" below.
+
+## SQLite and sqlite-vec
+
+`driver/sqlitedriver` links sqlite-vec v0.1.6 (the version `vec_version()`
+reports; `sqlitedriver.SQLiteVecVersion` is the release it is tested with, and
+`Open` fails with `ErrUnsupported` on another minor or major version but accepts
+a later patch release such as v0.1.7). The same typed builders that serve pgvector
+render sqlite-vec's scalar functions, and the integration tests run them
+against a real SQLite database: `vector_sqlite_integration_test.go` in the root
+package and `TestSQLiteVectorParity` in `driver/sqlitedriver`. It needs cgo and
+does not build on Windows. The SQLite migration dialect (`migrate/sqlite`) is library only, and the
+generator refuses vector fields on SQLite, so you create the table with your
+own DDL.
+
+**Columns.** A vector is a plain `BLOB` column; sqlite-vec has no declared
+dimension, so the length is guarded by a `CHECK`. `momo.SQLiteVectorType` and
+`momo.SQLiteBitsType` return the definition to put after the column name:
+`BLOB CHECK (length("emb") = 12)` for three float32 elements and
+`BLOB CHECK (length("bits") = 1)` for eight bits. A vector of the wrong size
+is then refused by the database as `ErrCheckViolation`. A dimensionless column
+is `ErrUnsupported`, because there is no length to check.
+
+**Values.** `vector.Vector` is stored as a little-endian float32 blob and read
+back from one, and `vector.Bits` as its packed bytes (most significant bit first, as in
+pgvector: bit 0 is the top bit of byte 0). Both are validated before
+they are bound (NaN, Inf, an empty vector, a bad bit length are
+`ErrInvalidVector`), because a blob has no text form that would reject them
+later. A `*vector.Vector` or `*vector.Bits` field is nullable: nil binds `NULL`.
+`HalfVector` and `SparseVector` have no sqlite-vec type, so binding one, or
+searching with one, is `ErrUnsupported` when the query is built. A bit vector
+read from SQLite has a `Len` of 8 times its byte count, so the column length is
+the authority for a length that is not a multiple of 8.
+
+**Metrics.** These are exactly the functions v0.1.6 registers:
+
+| Builder                | SQLite function                                            | Column type     |
+| ---------------------- | ---------------------------------------------------------- | --------------- |
+| `L2Distance`           | `vec_distance_l2`                                          | `vector.Vector` |
+| `L1Distance`           | `vec_distance_l1`                                          | `vector.Vector` |
+| `CosineDistance`       | `vec_distance_cosine`                                      | `vector.Vector` |
+| `HammingDistance`      | `vec_distance_hamming(vec_bit(column), vec_bit(argument))` | `vector.Bits`   |
+| `InnerProductDistance` | none: `ErrUnsupported` at build time                       |                 |
+| `JaccardDistance`      | none: `ErrUnsupported` at build time                       |                 |
+
+The query vector is a bound argument. When the column is sensitive, it shows
+as `momo.RedactedArg` in hook events, on a query and on an insert, while the
+database gets the real blob. Distances work in the select list, in a
+comparison and in `OrderBy` (`Asc` nearest first, `Desc` farthest first).
+Results are held to the plain-Go reference in `internal/vectorparity`: the
+top-10 ids of cosine, L2 and L1 search over 300 vectors equal the reference
+exactly. The reference is the one pgvector exact search and MariaDB are held to
+for cosine, and when a PostgreSQL URL is set `TestSQLiteVectorParity` also loads
+the same vectors into pgvector and requires the same ids for cosine, L2 and L1.
+
+**Indexes.** sqlite-vec compares every row, so it has no approximate index and
+`dialect.For(dialect.SQLite).Vector.Indexes` is empty, and
+`schema.ValidateVectorIndex` rejects an index for SQLite with
+`schema.ErrInvalidVectorIndex`. An internal check turns a request for any index
+method on a dialect that lists none into `ErrUnsupported`; it becomes public
+when a SQLite migration dialect needs it. SQLite itself does not parse an index method, so
+nothing is accepted silently. `ExactSearch` in `SearchSettings` is a no-op (every
+search is exact) and any other setting is `ErrUnsupported`. The sqlite-vec
+virtual tables (`vec0`, which have an index of their own) are not wrapped.
+
+Bring up a throwaway database for your own tests with
+[`momotest/sqlitetest`](testing.md#sqlite-without-a-server-sqlitetest).
+
+## MariaDB and MySQL
+
+MariaDB 11.8 supports float32 vectors through `mysqldriver`. MySQL 9.x
+stores them but cannot compare them.
+
+| Capability                     | MariaDB 11.8                                                  | MySQL 9.7        | MySQL 8.4              |
+| ------------------------------ | ------------------------------------------------------------- | ---------------- | ---------------------- |
+| Column type                    | `VECTOR(N)`                                                   | `VECTOR(N)`      | none: `ErrUnsupported` |
+| `vector.Vector` write and read | yes                                                           | yes              | no                     |
+| `L2Distance`                   | `VEC_DISTANCE_EUCLIDEAN(col, VEC_FromText(?))`                | `ErrUnsupported` | `ErrUnsupported`       |
+| `CosineDistance`               | `VEC_DISTANCE_COSINE(col, VEC_FromText(?))`                   | `ErrUnsupported` | `ErrUnsupported`       |
+| Other metrics, other types     | `ErrUnsupported` (inner product, L1, halfvec, sparsevec, bit) | `ErrUnsupported` | `ErrUnsupported`       |
+| ANN index                      | `VECTOR INDEX`, approximate                                   | none             | none                   |
+| `Capabilities().Vectors`       | true                                                          | false            | false                  |
+
+MySQL Community has no distance function (the distance functions belong to
+HeatWave), so a distance query on MySQL fails at build time with
+`ErrUnsupported`. Momo never falls back to a scan or to a Go-side sort.
+
+A `vector.Vector` bound on MySQL or MariaDB travels as its text form wrapped
+in `VEC_FromText` (MariaDB) or `STRING_TO_VECTOR` (MySQL), on every typed bind
+path: insert, update, equality and distance. Stored vectors scan back from the
+server's binary float32 form. A column marked sensitive masks the vector in
+hook events exactly as on PostgreSQL.
+
+A MariaDB `VECTOR INDEX` needs a `NOT NULL` `vector(N)` column and accepts
+`M` from 3 to 200 and `DISTANCE` of `euclidean` or `cosine`. It serves only
+the metric it was built with, and an `ORDER BY` distance with `LIMIT` uses
+it. To get the exact nearest neighbours from the same table, add `+ 0` to the
+distance in a raw query, which keeps the server from using the index.
+`schema.ValidateMariaDBVectorIndex` checks a declaration and
+`schema.MariaDBVectorIndexClause` renders it. `momo.MySQLVectorType` gives the
+column type for a server version and refuses MySQL 8.4 and MariaDB before
+11.7 with a diagnostic that names the version.

@@ -1,6 +1,6 @@
 # momo-04 Task 28: CLI URL redaction and TLS warning
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: -
@@ -12,10 +12,10 @@ Implements plan momo-04-migrations Task 28: CLI URL redaction and TLS warning (`
 
 ## Acceptance criteria
 
-- [ ] `TestCLIRedactsURL` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestCLIRedactsURL` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestCLITLSWarning` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-46] `TestCLIRedactsURL` runs failing CLI commands with a password-bearing URL and asserts the password never appears in output; `TestCLITLSWarning` asserts the warning for sslmode=disable on a remote host; fails if a URL is echoed.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
@@ -24,3 +24,10 @@ Implements plan momo-04-migrations Task 28: CLI URL redaction and TLS warning (`
 - `TestCLITLSWarning` (unit, local/remote/socket/multi-host/IPv6) and `TestMigrateWarnsOnRemoteDisabledTLS` (CLI: warns for remote, no password leak, silent for 127.0.0.1) in `cmd/momo/migrate_tls_test.go`.
 - Mutations caught: warning call removed; only localhost exempt; sslmode check broken; socket paths not exempt.
 
+Red evidence: ci-agent run 42453837637 (throwaway branch, commit a900207, branch since deleted) with TLSWarning disabled failed TestCLITLSWarning and TestCLITLSWarningUsesLibpqEnvironment, so that criterion is shown red.
+
+TestCLIRedactsURL was rewritten to pass a password-bearing URL as a stray argument, a bad rename-table value and a command name, because the earlier unreachable-host case never put the URL into an error and could not observe a missing redaction.
+
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
+
+Mutation red evidence for the secrets path: ci-agent run 42456781179 on throwaway branch commit 9beff96 (branch deleted) failed TestCLISayAndErrfStripRegisteredSecrets and TestCLINoteURLRegistersPassword with l.secrets dropped from say and errf. Run 42455889339 earlier failed TestCLIRedactsURL with RedactURLs a no-op.

@@ -39,11 +39,12 @@ type DistanceExpr struct {
 	dim         int
 	metric      dialect.Metric
 	arg         any
+	flags       uint16
 }
 
 func newDistance[V VectorValue](src VectorSource[V], m dialect.Metric, v V) DistanceExpr {
 	c := src.vectorColumn()
-	return DistanceExpr{table: c.Table(), name: c.ColumnName(), dim: c.Dim(), metric: m, arg: v}
+	return DistanceExpr{table: c.Table(), name: c.ColumnName(), dim: c.Dim(), metric: m, arg: v, flags: c.Flags()}
 }
 
 // L2Distance is the Euclidean distance (pgvector <->).
@@ -86,12 +87,35 @@ func (e DistanceExpr) Desc() Order { return Order{Expr: e, Desc: true} }
 
 func (e DistanceExpr) order() Order { return e.Asc() }
 
-// validateValue checks v against dim through its Validate method.
+// validateValue checks v against dim through its Validate method. A dim of
+// zero marks a dimensionless column (declared without the dim tag): the
+// column accepts any dimension, so v is checked against its own, which
+// still rejects NaN, Inf and malformed values. pgvector itself rejects a
+// distance between two vectors of different sizes, so the query must
+// filter the rows to one size first.
 func validateValue(v any, dim int) error {
+	if dim == 0 {
+		dim = ownDim(v)
+	}
 	if vv, ok := v.(interface{ Validate(int) error }); ok {
 		return vv.Validate(dim)
 	}
 	return nil
+}
+
+// ownDim is the dimension v carries itself.
+func ownDim(v any) int {
+	switch x := v.(type) {
+	case vector.Vector:
+		return len(x)
+	case vector.HalfVector:
+		return len(x)
+	case vector.SparseVector:
+		return x.Dim
+	case vector.Bits:
+		return x.Len
+	}
+	return 0
 }
 
 // AppendSQL renders the distance, or records a build error when the dialect
@@ -109,11 +133,27 @@ func (e DistanceExpr) AppendSQL(b *Builder) {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: e.table, Column: e.name, Err: err})
 		return
 	}
+	if e.flags&FlagSensitive != 0 {
+		b.sensSeen++ // an enclosing predicate masks its other operands too
+	}
 	if b.d.Name == dialect.Postgres {
 		b.WriteString("(")
 		b.QualifiedIdent(e.table, e.name)
 		b.WriteString(" " + pgOperators[e.metric] + " ")
-		b.Arg(e.arg)
+		b.argFor(e.flags, e.arg)
+		b.WriteString(")")
+		return
+	}
+	if b.d.Name == dialect.MySQL {
+		fn, ok := mariaDBFunctions[e.metric]
+		if !ok {
+			unavailable()
+			return
+		}
+		b.WriteString(fn + "(")
+		b.QualifiedIdent(e.table, e.name)
+		b.WriteString(", ")
+		b.argFor(e.flags, e.arg) // wrapped in VEC_FromText
 		b.WriteString(")")
 		return
 	}
@@ -135,7 +175,7 @@ func (e DistanceExpr) AppendSQL(b *Builder) {
 	if bitOperands {
 		b.WriteString("vec_bit(")
 	}
-	b.Arg(e.arg)
+	b.argFor(e.flags, e.arg)
 	if bitOperands {
 		b.WriteString(")")
 	}

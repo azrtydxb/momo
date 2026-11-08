@@ -100,7 +100,7 @@ func runPending(ctx context.Context, q Querier, pend []pendingLoad) error {
 // pipelinePlan reports whether pend can be sent as one batch on q.
 func pipelinePlan(q Querier, pend []pendingLoad) ([]batchable, Batcher, bool) {
 	b, ok := q.conn().q.(Batcher)
-	if !ok {
+	if !ok || bypassesTx(q) {
 		return nil, nil, false
 	}
 	bs := make([]batchable, len(pend))
@@ -213,12 +213,12 @@ func (e *execer) batch(b Batcher, stmts []stmt) ([]Rows, error) {
 	evs := make([]*QueryEvent, len(stmts))
 	for i, s := range stmts {
 		cs[i] = s.c
-		ctxs[i], evs[i] = e.before(s.ctx, "select", s.table, s.rel, s.c.SQL, s.c.Args)
+		ctxs[i], evs[i] = e.before(s.ctx, "select", s.table, s.rel, s.c.SQL, s.c.Args, s.c.sens)
 	}
 	rows, err := b.SendBatch(ctxs[0], cs)
 	if err == nil && len(rows) != len(stmts) {
 		closeRows(rows)
-		err = errors.New("momo: driver returned the wrong number of batch results")
+		err = newError(ErrUnsupported, "exec", "", errors.New("driver returned the wrong number of batch results"))
 	}
 	if err != nil {
 		err = e.wrapErr("select", "", err)

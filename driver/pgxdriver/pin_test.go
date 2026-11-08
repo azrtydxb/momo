@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+//go:build integration
+
 package pgxdriver
 
 import (
@@ -300,6 +302,23 @@ func TestPinRejectedExecMode(t *testing.T) {
 	d := New(openPool(t), WithExecMode(-1))
 	if _, err := d.(momo.Pinner).Pin(context.Background()); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("Pin err = %v, want ErrUnsupported", err)
+	}
+}
+
+func TestPoolStatsReflectAcquisition(t *testing.T) {
+	pool := openPool(t)
+	d := New(pool)
+	ctx := context.Background()
+	before := d.(momo.PoolStater).PoolStats().AcquireCount
+	p, err := d.(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if after := d.(momo.PoolStater).PoolStats().AcquireCount; after != before+1 {
+		t.Fatalf("AcquireCount %d -> %d, want +1", before, after)
 	}
 }
 

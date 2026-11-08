@@ -11,8 +11,12 @@ Implements plan momo-12-performance Task 7: Real-database mixed workload with co
 
 ## Acceptance criteria
 
-- [ ] `TestLoadgenOutputSchema` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestLoadgenOutputSchema` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- TestLoadgenOutputSchema: bench/loadgen/loadgen_integration_test.go (200 ops, 4 workers, zero errors, JSON keys). bench/cmd/loadgen runs it against any of the six adapters.
+  Red proof: ci-agent run 42465164717 (headSha 0c7f14e) on branch worktree-agent-a51f3a530eba5c020-adapters-red, which keeps the tests and removes the implementations: bench-module fails with `no required module provides package` for the removed adapter packages and unit fails with `momo.InsertQuery[suite.Document] has no field or method Unnest`.
+  Green proof: ci-agent run 42465734475, headSha eaec549861a73104452a68df580ea15421eac7fb, all eight jobs green (lint, unit, fuzz-smoke, integration postgres, integration mysql84/mysql97/mariadb, bench-module).
+  Gate: commits went through the procoder commit hook, with a hand-written go.work (untracked) so the hook can lint the nested bench module.

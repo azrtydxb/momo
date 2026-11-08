@@ -41,7 +41,12 @@ type Dialect struct {
 	// default SQLITE_MAX_VARIABLE_NUMBER is 32766 since 3.32.0.
 	MaxParams int
 
+	// MaxInList caps the values in one typed IN or NOT IN list. Zero means no
+	// cap. momo.WithMaxInList sets it on the per-DB copy of the dialect.
+	MaxInList int
+
 	Returning        bool // INSERT/UPDATE/DELETE ... RETURNING (SQLite >= 3.35)
+	InsertReturning  bool // INSERT ... RETURNING only (MariaDB >= 10.5); Returning stays false there
 	OnConflict       bool // INSERT ... ON CONFLICT
 	OnDuplicateKey   bool // INSERT ... ON DUPLICATE KEY UPDATE
 	Locking          bool // SELECT ... FOR UPDATE / FOR SHARE / SKIP LOCKED / NOWAIT
@@ -102,17 +107,6 @@ var sqlite = Dialect{
 		Storage: true,
 		Metrics: []Metric{MetricL2, MetricL1, MetricCosine, MetricHamming},
 	},
-}
-
-// MySQLFlavor returns the MySQL-family dialect for the given flavour.
-// MariaDB RETURNING is enabled by the MySQL plan after version verification (S-59).
-func MySQLFlavor(f Flavor) *Dialect {
-	return &Dialect{
-		Name: MySQL, Flavor: f, MaxParams: 65535,
-		OnDuplicateKey: true, Locking: true, DefaultInUpdate: true,
-		DefaultInValues: true, RecursiveCTE: true, RowValues: true,
-		Savepoints: true, IsolationLevels: true, WindowFunctions: true,
-	}
 }
 
 // AppendPlaceholder appends the n-th (1-based) bind placeholder.

@@ -70,6 +70,8 @@ func emitPackageMeta(models, projections []*Model, g *Graph) ([]byte, []Diagnost
 			}
 			used[v] = m.GoName
 		}
+		_, gd := idGensOf(m)
+		diags = append(diags, gd...)
 		emitModelMeta(&body, m, t, lower)
 	}
 	for _, m := range sortedP {
@@ -173,6 +175,16 @@ func emitModelMeta(b *strings.Builder, m *Model, t *schema.Table, lower string) 
 		}
 	}
 	w("PK: []int{%s},\n", strings.Join(pk, ", "))
+	if gens, _ := idGensOf(m); len(gens) > 0 {
+		w("IDGens: []momo.IDGen{")
+		for i, g := range gens {
+			if i > 0 {
+				w(", ")
+			}
+			w("{Column: %d, Name: %s}", g.Column, strconv.Quote(g.Name))
+		}
+		w("},\n")
+	}
 	w("}\n\n")
 	w("var %sTable = %s\n", lower, literal(reflect.ValueOf(*t)))
 }

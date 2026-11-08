@@ -30,6 +30,10 @@ func TestNormalizeType(t *testing.T) {
 		{dialect.Postgres, "timestamp with time zone", "timestamp with time zone"},
 		{dialect.SQLite, "integer", "INTEGER"},
 		{dialect.SQLite, "varchar(20)", "VARCHAR(20)"},
+		// An unbalanced argument list is kept as written (found by FuzzNormalize).
+		{dialect.Postgres, "TIME(0000", "time(0000"},
+		{dialect.Postgres, "varchar( 3", "varchar( 3"},
+		{dialect.SQLite, "time(0000", "TIME(0000"},
 	}
 	for _, c := range cases {
 		if got := NormalizeType(c.d, c.in); got != c.out {

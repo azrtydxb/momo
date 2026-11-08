@@ -24,18 +24,23 @@ func TestResolve(t *testing.T) {
 	}
 }
 
-func TestEnvVarNames(t *testing.T) {
-	want := map[string]string{
-		envPostgres:    "MOMO_TEST_POSTGRES_URL",
-		envPostgresApp: "MOMO_TEST_POSTGRES_APP_URL",
-		envPgBouncer:   "MOMO_TEST_PGBOUNCER_URL",
-		envMySQL84:     "MOMO_TEST_MYSQL84_URL",
-		envMySQL97:     "MOMO_TEST_MYSQL97_URL",
-		envMariaDB:     "MOMO_TEST_MARIADB_URL",
+func TestDialectRequired(t *testing.T) {
+	cases := []struct {
+		env, list string
+		want      bool
+	}{
+		{envPostgres, "", true},
+		{envMySQL84, "", true},
+		{envPostgres, "postgres", true},
+		{envPgBouncer, "postgres", true},
+		{envMySQL84, "postgres", false},
+		{envMariaDB, "mysql84, mariadb", true},
+		{envMySQL97, "mysql84,mariadb", false},
+		{envPostgres, "mysql84", false},
 	}
-	for got, name := range want {
-		if got != name {
-			t.Errorf("variable name %q, want %q", got, name)
+	for _, c := range cases {
+		if got := dialectRequired(c.env, c.list); got != c.want {
+			t.Errorf("dialectRequired(%s, %q) = %v, want %v", c.env, c.list, got, c.want)
 		}
 	}
 }

@@ -40,7 +40,10 @@ const BaselineApplyID = "baseline"
 // For every migration with a version not after version that has no history row
 // (a rolled_back row counts as none) it inserts a row with status applied,
 // statements_applied 0, the checksum of the file and apply_id "baseline", in one
-// transaction. It takes the migration lock and refuses, like Apply, while a
+// transaction. A registered Go migration (WithGoMigrations) gets a row of kind
+// go whose checksum is the migration's identity, not a file hash; a version
+// that has a snapshot but no up file and no registered Go migration makes it
+// return ErrGoMigrationUnregistered, naming the snapshot, and records nothing. It takes the migration lock and refuses, like Apply, while a
 // migration is dirty or a file differs from its checksum. The snapshot files are
 // not rewritten; a later Diff compares the models with the snapshot as written.
 func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err error) {
@@ -59,7 +62,14 @@ func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err 
 	}
 	defer func() { err = end(err) }()
 
-	hist, err := e.history(ctx, c)
+	tbl, err := resolveHistoryTable(ctx, c, e.opts.dialect)
+	if err != nil {
+		return err
+	}
+	if err := ensureHistory(ctx, c, e.opts.dialect, tbl); err != nil {
+		return err
+	}
+	hist, err := readHistoryRows(ctx, c, tbl)
 	if err != nil {
 		return err
 	}
@@ -73,7 +83,7 @@ func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err 
 	if err != nil {
 		return err
 	}
-	want, err := cloneSchema(applyExclude(snap.Schema, e.opts.config.Exclude))
+	want, err := cloneSchema(e.hide(snap.Schema))
 	if err != nil {
 		return err
 	}
@@ -86,7 +96,7 @@ func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err 
 		return fmt.Errorf("%w: differing object kinds: %s (%d changed, %d missing, %d unmanaged); fix the database, adjust Config.Exclude, or force the baseline",
 			ErrBaselineMismatch, strings.Join(rep.kinds(), ", "), len(rep.Changed), len(rep.Missing), len(rep.Unmanaged))
 	}
-	return e.insertBaselineRows(ctx, c, version, hist)
+	return e.insertBaselineRows(ctx, c, tbl, version, hist)
 }
 
 // cloneSchema returns a deep copy of s through its JSON form.
@@ -104,7 +114,7 @@ func cloneSchema(s *schema.Schema) (*schema.Schema, error) {
 
 // insertBaselineRows writes the applied rows of every migration up to version
 // that the history does not already hold, in one transaction.
-func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, version string, hist []HistoryRow) (err error) {
+func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, tbl, version string, hist []HistoryRow) (err error) {
 	have := map[string]bool{}
 	for _, r := range hist {
 		if r.Status != StatusRolledBack {
@@ -119,6 +129,13 @@ func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, vers
 	if err != nil {
 		return err
 	}
+	// A Go migration this engine does not have cannot be recorded: refuse
+	// rather than leave a gap that blocks the CLI or reruns it later.
+	for _, f := range e.unregisteredGo(files, have) {
+		if f.Version <= version {
+			return fmt.Errorf("%w: %s has no up file and no registered Go migration, so it cannot be baselined; baseline with the application's engine (migrate.WithGoMigrations)", ErrGoMigrationUnregistered, f.Path)
+		}
+	}
 	tx, err := c.Begin(ctx, momo.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("migrate: begin: %w", err)
@@ -130,7 +147,7 @@ func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, vers
 			}
 		}
 	}()
-	w := historyWriter{d: e.opts.dialect}
+	w := historyWriter{d: e.opts.dialect, tbl: tbl}
 	now := e.opts.clock().UTC()
 	for _, f := range files {
 		if f.Kind != "up" || f.Version > version || have[f.Version] {
@@ -142,6 +159,21 @@ func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, vers
 		row := HistoryRow{
 			Version: f.Version, Name: f.Name, Checksum: sum.Files[f.Path], Status: StatusApplied,
 			ApplyID: BaselineApplyID, Kind: "sql", AppliedAt: now.Truncate(time.Microsecond),
+		}
+		if err := w.insert(ctx, tx, row); err != nil {
+			return err
+		}
+	}
+	for _, g := range e.opts.goMigrations {
+		if g.Version > version || have[g.Version] {
+			continue
+		}
+		if err := w.deleteRolledBack(ctx, tx, g.Version); err != nil {
+			return err
+		}
+		row := HistoryRow{
+			Version: g.Version, Name: g.Name, Checksum: g.identity(), Status: StatusApplied,
+			ApplyID: BaselineApplyID, Kind: "go", AppliedAt: now.Truncate(time.Microsecond),
 		}
 		if err := w.insert(ctx, tx, row); err != nil {
 			return err

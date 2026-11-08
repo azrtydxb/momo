@@ -33,12 +33,24 @@ func (o exprOps[T]) e() Expr {
 	return o.self
 }
 
-func (o exprOps[T]) Eq(v T) Predicate  { return binOp{o.e(), " = ", argExpr{v}} }
-func (o exprOps[T]) Ne(v T) Predicate  { return binOp{o.e(), " <> ", argExpr{v}} }
-func (o exprOps[T]) Lt(v T) Predicate  { return binOp{o.e(), " < ", argExpr{v}} }
-func (o exprOps[T]) Le(v T) Predicate  { return binOp{o.e(), " <= ", argExpr{v}} }
-func (o exprOps[T]) Gt(v T) Predicate  { return binOp{o.e(), " > ", argExpr{v}} }
-func (o exprOps[T]) Ge(v T) Predicate  { return binOp{o.e(), " >= ", argExpr{v}} }
+func (o exprOps[T]) Eq(v T) Predicate {
+	return binOp{o.e(), " = ", argExpr{v: v, flags: flagsOf(o.e())}}
+}
+func (o exprOps[T]) Ne(v T) Predicate {
+	return binOp{o.e(), " <> ", argExpr{v: v, flags: flagsOf(o.e())}}
+}
+func (o exprOps[T]) Lt(v T) Predicate {
+	return binOp{o.e(), " < ", argExpr{v: v, flags: flagsOf(o.e())}}
+}
+func (o exprOps[T]) Le(v T) Predicate {
+	return binOp{o.e(), " <= ", argExpr{v: v, flags: flagsOf(o.e())}}
+}
+func (o exprOps[T]) Gt(v T) Predicate {
+	return binOp{o.e(), " > ", argExpr{v: v, flags: flagsOf(o.e())}}
+}
+func (o exprOps[T]) Ge(v T) Predicate {
+	return binOp{o.e(), " >= ", argExpr{v: v, flags: flagsOf(o.e())}}
+}
 func (o exprOps[T]) IsNull() Predicate { return postfix{o.e(), " IS NULL"} }
 
 // IsNotNull is true when the expression is not NULL.
@@ -52,13 +64,36 @@ func (o exprOps[T]) GtExpr(x Expression[T]) Predicate { return binOp{o.e(), " > 
 func (o exprOps[T]) GeExpr(x Expression[T]) Predicate { return binOp{o.e(), " >= ", x} }
 
 // Between is inclusive on both ends.
-func (o exprOps[T]) Between(lo, hi T) Predicate { return between{o.e(), lo, hi} }
+func (o exprOps[T]) Between(lo, hi T) Predicate {
+	return between{e: o.e(), lo: lo, hi: hi, flags: flagsOf(o.e())}
+}
 
 // In matches any of vs; an empty list is always false.
-func (o exprOps[T]) In(vs ...T) Predicate { return inList[T]{o.e(), slices.Clone(vs), false} }
+func (o exprOps[T]) In(vs ...T) Predicate {
+	return inList[T]{o.e(), slices.Clone(vs), false, flagsOf(o.e())}
+}
 
 // NotIn is the negation of In; an empty list is always true.
-func (o exprOps[T]) NotIn(vs ...T) Predicate { return inList[T]{o.e(), slices.Clone(vs), true} }
+func (o exprOps[T]) NotIn(vs ...T) Predicate {
+	return inList[T]{o.e(), slices.Clone(vs), true, flagsOf(o.e())}
+}
+
+// IsDistinctFrom is a NULL-safe inequality.
+func (o exprOps[T]) IsDistinctFrom(v T) Predicate {
+	return distinctFrom{o.e(), argExpr{v: v, flags: flagsOf(o.e())}, false}
+}
+
+// IsNotDistinctFrom is a NULL-safe equality.
+func (o exprOps[T]) IsNotDistinctFrom(v T) Predicate {
+	return distinctFrom{o.e(), argExpr{v: v, flags: flagsOf(o.e())}, true}
+}
+
+// InQuery matches the single-column result of a subquery.
+func (o exprOps[T]) InQuery(q Subquery) Predicate { return inQuery{o.e(), q, false} }
+
+// NotInQuery is the negation of InQuery. Beware SQL's NOT IN semantics when
+// the subquery can yield NULL.
+func (o exprOps[T]) NotInQuery(q Subquery) Predicate { return inQuery{o.e(), q, true} }
 
 // Asc orders by the expression ascending.
 func (o exprOps[T]) Asc() Order { return Order{Expr: o.e()} }

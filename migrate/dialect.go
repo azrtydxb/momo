@@ -26,6 +26,13 @@ type Dialect interface {
 	Lock(ctx context.Context, c momo.PinnedConn, key string) (unlock func() error, holder func(context.Context) (string, error), err error)
 }
 
+// SchemaValidator is implemented by dialects that refuse some declarations
+// their database cannot keep apart: ValidateSchema checks a desired schema, and
+// Diff and AutoMigrate return its error before anything is rendered.
+type SchemaValidator interface {
+	ValidateSchema(s *schema.Schema) error
+}
+
 // InvalidInspector is implemented by dialects whose Inspect hides objects left
 // in an invalid state. InspectWithInvalid is Inspect plus the names of the
 // invalid indexes (a failed CREATE INDEX CONCURRENTLY leaves one behind), spelled
@@ -58,4 +65,31 @@ type Canonicalizer interface {
 // gets a report.
 type TableCanonicalizer interface {
 	CanonicalizeTables(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (skipped []ObjectRef, err error)
+}
+
+// SchemaRenderer is implemented by dialects that need more than the change
+// list to render it. RenderSchema is Render with the schema the plan starts
+// from and the one it ends at; SQLite uses them to write a table rebuild
+// (which needs the whole desired table, the views and triggers that mention
+// it, and the columns it has now) as plain statements that a migration file
+// can hold. Diff and AutoMigrate call it in place of Render.
+type SchemaRenderer interface {
+	RenderSchema(from, to *schema.Schema, plan []Change) ([]Statement, error)
+}
+
+// renderPlan renders plan through d, with the schemas when d wants them.
+func renderPlan(d Dialect, from, to *schema.Schema, plan []Change) ([]Statement, error) {
+	if sr, ok := d.(SchemaRenderer); ok {
+		return sr.RenderSchema(from, to, plan)
+	}
+	return d.Render(plan)
+}
+
+// RebuildDetector is implemented by dialects that change some tables by
+// rebuilding them from the desired definition (SQLite). NeedsRebuild reports
+// whether applying c to the live schema from takes a rebuild. A rebuild writes
+// the whole desired table, which would also apply every change AutoMigrate
+// chose to skip, so AutoMigrate skips a change that needs one.
+type RebuildDetector interface {
+	NeedsRebuild(from *schema.Schema, c Change) bool
 }

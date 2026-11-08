@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -30,6 +31,13 @@ func TestDialectValues(t *testing.T) {
 	if pg == nil {
 		t.Fatal("postgres value must be passed through to the driver")
 	}
+	my, err := v.DialectValue(dialect.MySQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if my != "[1,2]" {
+		t.Fatalf("mysql encoding = %#v, want the text form [1,2]", my)
+	}
 	bits, err := (Bits{Len: 8, Data: []byte{0x80}}).DialectValue(dialect.SQLite)
 	if err != nil {
 		t.Fatal(err)
@@ -49,12 +57,13 @@ func TestDialectValues(t *testing.T) {
 func TestDialectValuesMatrix(t *testing.T) {
 	pgOnly := map[dialect.Name]bool{dialect.Postgres: true}
 	pgSQLite := map[dialect.Name]bool{dialect.Postgres: true, dialect.SQLite: true}
+	pgSQLiteMySQL := map[dialect.Name]bool{dialect.Postgres: true, dialect.SQLite: true, dialect.MySQL: true}
 	types := []struct {
 		name string
 		fn   func(dialect.Name) (any, error)
 		ok   map[dialect.Name]bool
 	}{
-		{"vector", Vector{1}.DialectValue, pgSQLite},
+		{"vector", Vector{1}.DialectValue, pgSQLiteMySQL},
 		{"halfvec", HalfVector{1}.DialectValue, pgOnly},
 		{"sparsevec", SparseVector{Dim: 2, Indices: []int32{0}, Values: []float32{1}}.DialectValue, pgOnly},
 		{"bit", Bits{Len: 8, Data: []byte{1}}.DialectValue, pgSQLite},
@@ -68,6 +77,22 @@ func TestDialectValuesMatrix(t *testing.T) {
 			if !ty.ok[d] && !errors.Is(err, ErrDialect) {
 				t.Errorf("%s on %s: err = %v, want ErrDialect", ty.name, d, err)
 			}
+		}
+	}
+}
+
+// TestSQLiteDialectValueValidates: the SQLite blob has no text form to reject
+// a bad value later, so DialectValue refuses it up front.
+func TestSQLiteDialectValueValidates(t *testing.T) {
+	nan := float32(math.NaN())
+	for name, fn := range map[string]func() (any, error){
+		"nan":       func() (any, error) { return Vector{1, nan}.DialectValue(dialect.SQLite) },
+		"empty":     func() (any, error) { return Vector{}.DialectValue(dialect.SQLite) },
+		"bits len":  func() (any, error) { return Bits{Len: 16, Data: []byte{1}}.DialectValue(dialect.SQLite) },
+		"bits tail": func() (any, error) { return Bits{Len: 4, Data: []byte{0x0F}}.DialectValue(dialect.SQLite) },
+	} {
+		if _, err := fn(); !errors.Is(err, ErrInvalidVector) {
+			t.Errorf("%s: err = %v, want ErrInvalidVector", name, err)
 		}
 	}
 }

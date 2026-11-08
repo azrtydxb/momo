@@ -5,6 +5,7 @@ package gen
 import (
 	"fmt"
 	"go/token"
+	"maps"
 	"reflect"
 	"slices"
 	"sort"
@@ -32,6 +33,7 @@ import (
 func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 	b := &schemaBuilder{
 		namer:   cfg.Naming,
+		typeDef: cfg.TypeDefaults,
 		primary: dialect.Postgres,
 		index:   map[*Model]int{},
 		enums:   map[string]enumDecl{},
@@ -44,6 +46,11 @@ func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 	}
 	if len(cfg.Dialects) > 0 {
 		b.primary = cfg.Dialects[0]
+	}
+	for _, k := range slices.Sorted(maps.Keys(cfg.TypeDefaults)) {
+		if k != "time.Time" {
+			b.diag(token.Position{}, fmt.Sprintf("TypeDefaults: %q cannot be overridden; only time.Time is supported", k))
+		}
 	}
 	for _, d := range cfg.Dialects {
 		if !slices.Contains(b.dialects, d) {
@@ -112,6 +119,7 @@ type feature struct {
 type schemaBuilder struct {
 	s        *schema.Schema
 	namer    naming.Namer
+	typeDef  map[string]string
 	primary  dialect.Name
 	dialects []dialect.Name
 	diags    []Diagnostic
@@ -252,7 +260,10 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 	inner := unwrapNull(core)
 	kind := vectorKind(inner, tg.Dim)
 	isString := inner == "string"
-	isFloat := inner == "float32" || inner == "float64" || strings.HasSuffix(inner, "decimal.Decimal")
+	// A string that carries a decimal (numeric) takes precision and scale like
+	// a float does.
+	isFloat := inner == "float32" || inner == "float64" || strings.HasSuffix(inner, "decimal.Decimal") ||
+		(isString && tg.Size == 0 && tg.Precision > 0)
 
 	conflict := func(tag string) {
 		b.diag(f.Pos, fmt.Sprintf("field %s: %s conflicts with type", f.GoName, tag))
@@ -264,7 +275,7 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		b.diag(f.Pos, fmt.Sprintf("field %s: dim is only valid on a vector field", f.GoName))
 	}
 	if (tg.Precision > 0 || tg.Scale > 0) && !isFloat && tg.Type == "" {
-		b.diag(f.Pos, fmt.Sprintf("field %s: precision is only valid on float or decimal fields", f.GoName))
+		b.diag(f.Pos, fmt.Sprintf("field %s: precision is only valid on float or decimal fields (a string without size that carries a numeric also takes it)", f.GoName))
 	}
 	if tg.Scale > 0 && tg.Precision == 0 && isFloat {
 		b.diag(f.Pos, fmt.Sprintf("field %s: scale requires precision", f.GoName))
@@ -310,6 +321,20 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 	goType := f.BaseType
 	if goType == "" {
 		goType = inner
+	}
+	// The type default applies to the primary dialect (the first of
+	// Config.Dialects) only, and only when it is PostgreSQL.
+	// Only the time.Time entry is a column type default; BuildSchema reports
+	// every other key.
+	def := ""
+	if goType == "time.Time" {
+		def = b.typeDef["time.Time"]
+	}
+	if def != "" && b.primary == dialect.Postgres {
+		if ValidTimeType(def) {
+			return strings.TrimSpace(def)
+		}
+		b.diag(f.Pos, fmt.Sprintf("field %s: type default %q for %s is not a timestamp type; use timestamp, timestamptz, time or timetz with an optional precision 0-6", f.GoName, def, goType))
 	}
 	typ, err := typemap.Map(goType, b.primary, tg)
 	if err != nil {

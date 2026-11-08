@@ -128,7 +128,7 @@ func SubqueriesCTEsRecursive(t *testing.T, db *momo.DB, caps Caps) {
 	body := momo.Union(true,
 		momo.RawSubquery(`SELECT 1 AS n`),
 		momo.Select[intRow](db).From(momo.CTE("seq")).
-			Columns(momo.TypedSQL[int64](`"seq"."n" + 1`)).Where(seqN.Lt(5)),
+			Columns(momo.TypedSQL[int64](`seq.n + 1`)).Where(seqN.Lt(5)),
 	)
 	rows, err := momo.Select[intRow](db).
 		WithRecursive("seq", body, "n").
@@ -172,6 +172,8 @@ func ReturningRendersAndScans(t *testing.T, db *momo.DB, caps Caps) {
 	}
 	if err := rows.ScanModel(&doc); err != nil {
 		t.Fatal(err)
+	}
+	for rows.Next() { // read to the end, as a write on an implicit-transaction handle needs
 	}
 	if err := rows.Close(); err != nil {
 		t.Fatal(err)
@@ -224,6 +226,47 @@ func RawArgs(t *testing.T, db *momo.DB, caps Caps) {
 	cnt, err := momo.Select[Document](db).Count(ctx)
 	if err != nil || cnt != 3 {
 		t.Fatalf("empty IN must not have executed: count=%d err=%v", cnt, err)
+	}
+	rawDollarPlaceholders(t, db, caps)
+}
+
+// rawDollarPlaceholders asserts native $n placeholders in raw SQL: PostgreSQL
+// binds a reused position once, renumbers it after prior binds, and runs the
+// statement; every other dialect rejects $n with ErrUnsupported at build time.
+func rawDollarPlaceholders(t *testing.T, db *momo.DB, caps Caps) {
+	t.Helper()
+	ctx := context.Background()
+	if caps.Dialect != dialect.Postgres {
+		_, err := momo.Scalars[string](ctx, db, "SELECT title FROM documents WHERE title = $1", "a")
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("$n off PostgreSQL: err = %v, want ErrUnsupported", err)
+		}
+		return
+	}
+	got, err := momo.Scalars[string](ctx, db,
+		"SELECT title FROM documents WHERE title = $2 OR title = $1 OR title = $2 ORDER BY title", "a", "c")
+	if err != nil || len(got) != 2 || got[0] != "a" || got[1] != "c" {
+		t.Fatalf("$n reused = %v, %v", got, err)
+	}
+	// Embedded after a WHERE bind: the fragment's $1 is statement bind $2.
+	rows, err := momo.Select[Document](db).
+		Where(DocTenantID.Eq(1)).
+		Where(momo.SQL("(title = $2 OR title = $1)", "a", "b")).
+		OrderBy(DocTitle.Asc()).All(ctx)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("$n after a bind: rows=%d err=%v", len(rows), err)
+	}
+	n, err := momo.Scalars[int64](ctx, db,
+		"SELECT count(*) FROM documents WHERE title IN (SELECT title FROM documents WHERE tenant_id = $1) AND tenant_id = $1", int64(1))
+	if err != nil || len(n) != 1 || n[0] != 3 {
+		t.Fatalf("$n reused in a subquery = %v, %v", n, err)
+	}
+	var me *momo.Error
+	if _, err := momo.Exec(ctx, db, "UPDATE documents SET title = $1 WHERE id = ?", "x", 1); !errors.As(err, &me) || me.Kind != momo.ErrValidation {
+		t.Fatalf("mixed styles err = %v, want ErrValidation", err)
+	}
+	if _, err := momo.Exec(ctx, db, "UPDATE documents SET title = $1 WHERE id = $3", "x", 1); !errors.As(err, &me) || me.Kind != momo.ErrValidation {
+		t.Fatalf("out of range $n err = %v, want ErrValidation", err)
 	}
 }
 
@@ -300,7 +343,7 @@ func WithTableNameQuoted(t *testing.T, db *momo.DB, caps Caps) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := strings.ReplaceAll(name, `"`, `""`); !strings.Contains(c.SQL, `"`+want+`"`) {
+		if want := db.Dialect().QuoteIdent(name); !strings.Contains(c.SQL, want) {
 			t.Fatalf("table name %q not quoted: %s", name, c.SQL)
 		}
 	}
@@ -309,8 +352,11 @@ func WithTableNameQuoted(t *testing.T, db *momo.DB, caps Caps) {
 		t.Fatal(err)
 	}
 	ddl := documentsDDLPostgres
-	if caps.Dialect == dialect.SQLite {
+	switch caps.Dialect {
+	case dialect.SQLite:
 		ddl = documentsDDLSQLite
+	case dialect.MySQL:
+		ddl = documentsDDLMySQL
 	}
 	if _, err := momo.Exec(ctx, db, strings.Replace(ddl, "CREATE TABLE documents", "CREATE TABLE docs_alt", 1)); err != nil {
 		t.Fatal(err)

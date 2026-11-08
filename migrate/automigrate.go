@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/azrtydxb/momo/schema"
 )
@@ -55,6 +56,12 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 	if to.Dialect == "" {
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
+	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
+	if v, ok := e.opts.dialect.(SchemaValidator); ok {
+		if err := v.ValidateSchema(&to); err != nil {
+			return nil, err
+		}
+	}
 	c, err := e.pin(ctx)
 	if err != nil {
 		return nil, err
@@ -85,7 +92,11 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 	}
 	var kept []Change
 	for _, ch := range changes {
-		if reason := autoSkipReason(ch, &to, created); reason != "" {
+		reason := autoSkipReason(ch, &to, created)
+		if rd, ok := e.opts.dialect.(RebuildDetector); ok && reason == "" && !created[ch.Schema+"\x00"+ch.Table] && rd.NeedsRebuild(live, ch) {
+			reason = "requires a table rebuild; use a migration"
+		}
+		if reason != "" {
 			rep.Skipped = append(rep.Skipped, Skipped{Change: ch, Reason: reason})
 			continue
 		}
@@ -99,7 +110,11 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 	if err != nil {
 		return nil, fmt.Errorf("migrate: order changes: %w", err)
 	}
-	stmts, err := e.opts.dialect.Render(ordered)
+	stmts, err := renderPlan(e.opts.dialect, live, &to, ordered)
+	if err != nil {
+		return nil, err
+	}
+	restore, err := e.foreignKeysOff(ctx, c, slices.ContainsFunc(stmts, isForeignKeyCheck))
 	if err != nil {
 		return nil, err
 	}
@@ -108,6 +123,7 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 	} else {
 		_, err = execAll(ctx, c, stmts, nil)
 	}
+	err = joinErr(err, restore())
 	if err != nil {
 		return nil, fmt.Errorf("migrate: AutoMigrate: %w", e.classify(err))
 	}
