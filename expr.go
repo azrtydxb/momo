@@ -586,8 +586,8 @@ type Agg[T any] struct {
 	exprOps[T]
 }
 
-// newAgg builds an aggregate whose comparison methods are bound to itself.
-func newAgg[T any](f fn) Agg[T] {
+// newFnAgg builds an aggregate whose comparison methods are bound to itself.
+func newFnAgg[T any](f fn) Agg[T] {
 	a := Agg[T]{fn: f}
 	a.exprOps = selfOps[T](Agg[T]{fn: f})
 	return a
@@ -599,33 +599,33 @@ func (Agg[T]) resultType() T { var z T; return z }
 func (a Agg[T]) As(name string) Aliased[T] { return As[T](a, name) }
 
 // CountAll is COUNT(*).
-func CountAll() Agg[int64] { return newAgg[int64](fn{name: "COUNT", star: true}) }
+func CountAll() Agg[int64] { return newFnAgg[int64](fn{name: "COUNT", star: true}) }
 
 // CountOf is COUNT(expr), which skips NULLs.
-func CountOf(e Expr) Agg[int64] { return newAgg[int64](fn{name: "COUNT", args: []Expr{e}}) }
+func CountOf(e Expr) Agg[int64] { return newFnAgg[int64](fn{name: "COUNT", args: []Expr{e}}) }
 
 // CountDistinct is COUNT(DISTINCT expr).
 func CountDistinct(e Expr) Agg[int64] {
-	return newAgg[int64](fn{name: "COUNT", args: []Expr{SQL("DISTINCT ?", e)}})
+	return newFnAgg[int64](fn{name: "COUNT", args: []Expr{SQL("DISTINCT ?", e)}})
 }
 
 // Sum is SUM(expr). The result is NULL over zero rows, so scan it into a
 // nullable destination such as *int64 or *float64 (sql.Null types work too), or
 // wrap it in Coalesce. Scanning NULL into a plain int64 returns an error.
-func Sum[T Number](e Expression[T]) Agg[T] { return newAgg[T](fn{name: "SUM", args: []Expr{e}}) }
+func Sum[T Number](e Expression[T]) Agg[T] { return newFnAgg[T](fn{name: "SUM", args: []Expr{e}}) }
 
 // Avg is AVG(expr) as float64. It is NULL over zero rows: scan it into *float64
 // (or sql.NullFloat64), or wrap it in Coalesce.
 func Avg(e Expression[float64]) Agg[float64] {
-	return newAgg[float64](fn{name: "AVG", args: []Expr{e}})
+	return newFnAgg[float64](fn{name: "AVG", args: []Expr{e}})
 }
 
 // Min is MIN(expr) (NULL over zero rows). T is any type the database can
 // order, such as time.Time, a decimal, or a string.
-func Min[T any](e Expression[T]) Agg[T] { return newAgg[T](fn{name: "MIN", args: []Expr{e}}) }
+func Min[T any](e Expression[T]) Agg[T] { return newFnAgg[T](fn{name: "MIN", args: []Expr{e}}) }
 
 // Max is MAX(expr) (NULL over zero rows).
-func Max[T any](e Expression[T]) Agg[T] { return newAgg[T](fn{name: "MAX", args: []Expr{e}}) }
+func Max[T any](e Expression[T]) Agg[T] { return newFnAgg[T](fn{name: "MAX", args: []Expr{e}}) }
 
 // Coalesce returns the first non-NULL argument.
 func Coalesce[T any](e Expression[T], fallback T) Expression[T] {
