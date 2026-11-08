@@ -4,54 +4,76 @@ package bench
 
 import (
 	"os"
-	"regexp"
 	"strings"
 	"testing"
 
 	"go.yaml.in/yaml/v3"
 )
 
-// TestBenchGateConfig reads the CI workflow of the allocation gate. Actions are
-// pinned by version tag (@vN), the azrtydxb standard recorded in
-// .procoder/ask/decisions.md, not by commit SHA as the plan text said.
+// TestBenchGateConfig reads the places that wire the allocation gate: the
+// bench-module job of both CI workflows must run `make bench-gate`, and the
+// Makefile recipe must run under bash with pipefail (a benchmark run that fails
+// behind a `| tee` would otherwise pass) and feed benchgate the allocs/op
+// comparison only.
 func TestBenchGateConfig(t *testing.T) {
-	raw, err := os.ReadFile("../.github/workflows/bench-gate.yml")
+	for _, path := range []string{"../.github/workflows/ci.yml", "../.github/workflows/ci-agent.yml"} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wf struct {
+			Jobs map[string]struct {
+				Steps []struct {
+					Run string `yaml:"run"`
+				} `yaml:"steps"`
+			} `yaml:"jobs"`
+		}
+		if err := yaml.Unmarshal(raw, &wf); err != nil {
+			t.Fatal(err)
+		}
+		job, ok := wf.Jobs["bench-module"]
+		if !ok {
+			t.Fatalf("%s: job bench-module missing", path)
+		}
+		found := false
+		for _, s := range job.Steps {
+			if strings.TrimSpace(s.Run) == "make bench-gate" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: bench-module does not run make bench-gate", path)
+		}
+	}
+
+	mk, err := os.ReadFile("../Makefile")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var wf struct {
-		Jobs map[string]struct {
-			Steps []struct {
-				Name string `yaml:"name"`
-				Run  string `yaml:"run"`
-				Uses string `yaml:"uses"`
-			} `yaml:"steps"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(raw, &wf); err != nil {
-		t.Fatal(err)
-	}
-	job, ok := wf.Jobs["allocs"]
-	if !ok {
-		t.Fatal("job allocs missing")
-	}
-	var script strings.Builder
-	tag := regexp.MustCompile(`@v[0-9]+$`)
-	for _, s := range job.Steps {
-		script.WriteString(s.Run + "\n")
-		if s.Uses != "" && !tag.MatchString(s.Uses) {
-			t.Errorf("action %s is not pinned by version tag (@vN)", s.Uses)
+	makefile := string(mk)
+	for _, want := range []string{"SHELL := bash", "-eo pipefail"} {
+		if !strings.Contains(makefile, want) {
+			t.Errorf("Makefile lacks %q: a failed benchmark run behind tee would pass", want)
 		}
+	}
+	start := strings.Index(makefile, "\nbench-gate:\n")
+	if start < 0 {
+		t.Fatal("Makefile has no bench-gate target")
+	}
+	recipe := makefile[start+1:]
+	if end := strings.Index(recipe, "\n\n"); end >= 0 {
+		recipe = recipe[:end]
 	}
 	for _, want := range []string{
-		"benchstat", "-filter '.unit:allocs/op'", "benchgate", "-max-percent 5", "bench/baseline/allocs.txt",
+		"-bench='BenchmarkAllocs_'", "$(BENCHSTAT)", "-filter '.unit:allocs/op'", "benchgate", "-max-percent 5",
+		"-baseline baseline/allocs.txt", "-new",
 	} {
-		if !strings.Contains(script.String(), want) {
-			t.Errorf("gate script lacks %q", want)
+		if !strings.Contains(recipe, want) {
+			t.Errorf("bench-gate recipe lacks %q", want)
 		}
 	}
-	// Timings are printed for information only; the gate input is the allocs/op filter.
-	for _, line := range strings.Split(script.String(), "\n") {
+	// Timings are never gated; the gate input is the allocs/op filter.
+	for _, line := range strings.Split(recipe, "\n") {
 		if strings.Contains(line, "benchgate") && !strings.Contains(line, "delta.txt") {
 			t.Errorf("benchgate must read the allocs/op delta file, got %q", line)
 		}

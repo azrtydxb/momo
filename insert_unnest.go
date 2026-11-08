@@ -10,7 +10,9 @@ import (
 )
 
 // Unnest switches a Model or Models insert to one statement that binds one
-// array parameter per column:
+// array parameter per column. It is a method of InsertQuery and is not the
+// package-level FROM source Unnest (see UnnestValues), which turns bound arrays
+// into rows of a SELECT.
 //
 //	INSERT INTO t (c1, c2) SELECT * FROM unnest($1::bigint[], $2::text[])
 //
@@ -22,6 +24,14 @@ import (
 // insert. PostgreSQL only: other dialects fail with ErrUnsupported. Values and
 // ValuesRows inserts are not supported, because their columns can differ per
 // row.
+//
+// Column values are bound as typed slices (int, float, bool, string,
+// time.Time and []byte columns, as []*T when a value is NULL). An element type
+// this does not know (uuid, json, decimal, a named enum) falls back to []any,
+// which pgx may reject for the array type; use Models for such a model.
+// OnConflict, Returning, hooks, interceptors, automatic timestamps and id
+// generators work as for Models. A sensitive column's array is redacted in
+// query events.
 func (q InsertQuery[T]) Unnest() InsertQuery[T] {
 	q.i.unnest = true
 	return q

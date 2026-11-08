@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-SHELL := /bin/sh
+# bash with pipefail: the bench recipes pipe go test through tee, and without
+# pipefail a failed or empty benchmark run would pass the gate.
+SHELL := bash
+.SHELLFLAGS := -eo pipefail -c
 GO ?= go
 # An execution count, not a duration: a time-based -fuzztime puts a deadline on
 # the fuzz coordinator, and when it fires while a worker call is in flight the
@@ -16,6 +19,10 @@ FUZZ_TARGETS += ./schema:FuzzNormalize
 FUZZ_TARGETS += ./vector:FuzzVectorDecode
 FUZZ_TARGETS += ./vector:FuzzSparseDecode
 FUZZ_TARGETS += ./driver/pgxdriver:FuzzVectorBinaryDecode
+FUZZ_TARGETS += ./driver/sqlitedriver:FuzzParseTime
+FUZZ_TARGETS += ./driver/sqlitedriver:FuzzConstraintTarget
+FUZZ_TARGETS += ./driver/sqlitedriver:FuzzCheckVersion
+FUZZ_TARGETS += ./driver/sqlitedriver:FuzzBuildDSN
 FUZZ_TARGETS += ./gen/testdata/golden/descriptors/document:FuzzColumnByName
 FUZZ_TARGETS += .:FuzzEscapeLike
 FUZZ_TARGETS += ./types:FuzzUUIDScan
@@ -38,7 +45,7 @@ MYSQL84_URL ?= root:momo@tcp(127.0.0.1:3306)/
 MYSQL97_URL ?= root:momo@tcp(127.0.0.1:3307)/
 MARIADB_URL ?= root:momo@tcp(127.0.0.1:3308)/
 
-.PHONY: bench-gate bench bench-baseline bench-suite-smoke bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
+.PHONY: bench-gate bench bench-baseline bench-suite-smoke bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-sqlite test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -57,10 +64,11 @@ test-fuzz:
 		$(GO) test -run='^$$' -fuzz="^$$fn$$" -fuzztime=$(FUZZTIME) $$pkg || exit 1; \
 	done
 
-test-integration: test-integration-postgres
+test-integration: test-integration-postgres test-integration-sqlite
 
 test-integration-postgres:
 	MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=postgres MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' MOMO_TEST_PGBOUNCER_URL='$(PGBOUNCER_URL)' $(GO) test -tags integration -race -count=1 ./...
+	cd internal/compat/gormfixture && MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=postgres MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' $(GO) test -tags integration -count=1 ./...
 
 test-integration-mysql84:
 	MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=mysql84 MOMO_TEST_MYSQL84_URL='$(MYSQL84_URL)' $(GO) test -tags integration -race -count=1 ./...
@@ -103,17 +111,22 @@ bench-suite-smoke:
 bench-baseline:
 	./bench/scripts/run.sh baseline
 
-# The allocation gate CI runs on pull requests (.github/workflows/bench-gate.yml),
+# The allocation gate CI runs in the bench-module job of ci.yml and ci-agent.yml,
 # runnable against any PostgreSQL: allocs/op versus bench/baseline/allocs.txt.
 BENCHSTAT = go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e
 bench-gate:
-	@set -e; out=$$(mktemp -d); \
+	out=$$(mktemp -d); \
 	(cd bench && BENCH_PG_URL='$(PG_URL)' $(GO) test -run='^$$' -tags integration -bench='BenchmarkAllocs_' -benchmem -count=6 ./... | tee $$out/new.txt); \
 	$(BENCHSTAT) -filter '.unit:allocs/op' bench/baseline/allocs.txt $$out/new.txt | tee $$out/delta.txt; \
-	(cd bench && $(GO) run ./cmd/benchgate -max-percent 5 $$out/delta.txt)
+	(cd bench && $(GO) run ./cmd/benchgate -max-percent 5 -baseline baseline/allocs.txt -new $$out/new.txt $$out/delta.txt)
 
 bench-env:
 	cd bench && $(GO) run ./cmd/envcapture
+
+# SQLite needs no server: no URL is set, so testopen.Each skips PostgreSQL and
+# runs every dialect-neutral test on SQLite. mattn/go-sqlite3 needs cgo.
+test-integration-sqlite:
+	CGO_ENABLED=1 $(GO) test -tags integration -race -count=1 ./...
 
 bench-smoke:
 	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...
@@ -125,10 +138,12 @@ vet:
 	$(GO) vet ./...
 	$(GO) vet -tags integration ./...
 	cd internal/integration && $(GO) vet ./...
+	cd internal/compat/gormfixture && $(GO) vet -tags integration ./...
 
 tidy-check:
 	$(GO) mod tidy -diff
 	cd internal/integration && $(GO) mod tidy -diff
+	cd internal/compat/gormfixture && $(GO) mod tidy -diff
 
 staticcheck:
 	$(STATICCHECK) ./...

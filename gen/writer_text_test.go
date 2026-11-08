@@ -123,14 +123,24 @@ func TestWriterScaffoldConfinement(t *testing.T) {
 		t.Fatal(err)
 	}
 	dangling := filepath.Join(root, "dangling")
-	if err := w.Scaffold(dangling, []byte("package x\n")); err == nil {
-		t.Fatal("a dangling symlink was accepted by Scaffold")
+	if err := w.Scaffold(dangling, []byte("package x\n")); !errors.Is(err, ErrDanglingSymlink) {
+		t.Fatalf("Scaffold on a dangling symlink: %v", err)
 	}
-	if err := w.Text(dangling, []byte("# "+strings.TrimPrefix(Header(), "// ")+"\n")); err == nil {
-		t.Fatal("a dangling symlink was accepted by Text")
+	if err := w.Text(dangling, []byte("# "+strings.TrimPrefix(Header(), "// ")+"\n")); !errors.Is(err, ErrDanglingSymlink) {
+		t.Fatalf("Text on a dangling symlink: %v", err)
 	}
-	if err := w.File(dangling, []byte(Header()+"\n\npackage x\n")); err == nil {
-		t.Fatal("a dangling symlink was accepted by File")
+	if err := w.File(dangling, []byte(Header()+"\n\npackage x\n")); !errors.Is(err, ErrDanglingSymlink) {
+		t.Fatalf("File on a dangling symlink: %v", err)
+	}
+	// A link that resolves inside the root is an existing path: Scaffold skips it.
+	if err := os.WriteFile(filepath.Join(root, "real.go"), []byte("package real\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "real.go"), filepath.Join(root, "inside")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Scaffold(filepath.Join(root, "inside"), []byte("package x\n")); err != nil {
+		t.Fatalf("Scaffold on an inside symlink: %v", err)
 	}
 	// An existing directory is skipped, not replaced.
 	if err := w.Scaffold(filepath.Join(root, "dir"), []byte("package x\n")); err != nil {

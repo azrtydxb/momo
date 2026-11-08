@@ -76,11 +76,16 @@ the Momo metadata and the Ent client.
   benchstat reports a change above 10 percent with p below 0.05 across two
   consecutive full runs. Shared CI runners are too noisy for timings, so CI never
   gates on them.
-- Allocation counts are deterministic, so CI gates them: the `bench-gate`
-  workflow runs the allocation benchmarks, compares allocs/op with
-  `bench/baseline/allocs.txt` using benchstat and fails above 5 percent with p
-  below 0.05. `make bench-gate` runs the same comparison locally and
-  `make bench-baseline` rewrites the baseline.
+- Allocation counts are deterministic, so CI gates them: the `bench-module`
+  job of `ci.yml` and `ci-agent.yml` runs `make bench-gate`, which runs the
+  allocation benchmarks, compares allocs/op with `bench/baseline/allocs.txt`
+  using benchstat and fails above 5 percent with p below 0.05. The gate runs in
+  that one job only, against the PostgreSQL service the job already starts, so
+  a pull request pays for one database job and not a second one. The recipe
+  runs under bash with pipefail, and `benchgate` exits 2 (never 0) when the new
+  run has no allocs/op rows or lacks a benchmark that the baseline has, so a
+  run that never happened cannot pass. `make bench-gate` runs the same
+  comparison locally and `make bench-baseline` rewrites the baseline.
 - Budgets are the median of the reference run plus 10 percent and are reviewed
   on every full run.
 

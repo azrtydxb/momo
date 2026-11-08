@@ -26,15 +26,18 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 
 ## 1. Scope
 
-- v0.3.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5 only. <!-- x-release-please-version -->
-- SQLite and MySQL/MariaDB are NOT usable. There is no driver for either and
-  `momo migrate` exits 2 for them. Do not write code for them, do not set
-  `dialects:` to anything but `[postgres]`.
+- v0.3.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5; SQLite and MySQL are covered by the next bullet. <!-- x-release-please-version -->
+- PostgreSQL is the reference database. SQLite is usable through
+  `driver/sqlitedriver` (mattn go-sqlite3 and sqlite-vec; it needs cgo and does
+  not build on Windows), but `momo migrate` exits 2 for SQLite and the vector
+  builders do not target it yet. MySQL and MariaDB have a driver package of
+  their own; check the MySQL column of docs/capabilities.md before relying on a
+  feature. Keep `dialects:` at `[postgres]` for generated migrations.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only in the CLI. No `migrate rollback`, `new`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
 - No command turns a database into models. Write models by hand.
-- Reciprocal-rank-fusion hybrid search, `MERGE` builder
-  do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
+- Reciprocal-rank-fusion hybrid search
+  does not exist. Use `momo.SQL` / `momo.TypedSQL` for it. Full-text search
   (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
   query builders) exists on PostgreSQL; combine it with a vector distance in
   one score as shown in [fulltext.md](fulltext.md).
@@ -250,7 +253,8 @@ Nullability and column rules:
   matched by comparing the column with a `types.JSON` whose value is nil.
   `JSONHasKey` is true for a key whose value is JSON null. A numeric key in
   `JSONText` or `JSONHasKey` is an object key; only `JSONPath` elements made of
-  digits can be array indexes. PostgreSQL only is usable today.
+  digits can be array indexes. SQLite renders `json_extract` and `json_type`
+  (`JSONContains` is `ErrUnsupported` there); MySQL renders its JSON functions.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
@@ -1077,12 +1081,20 @@ res, err := momo.Insert[models.Meter](q).
   (`"live" = 1`), because SQLite matches it against the index text; a value
   that cannot be inlined (time, bytes, pointer, NULL, NaN, a string with a NUL
   byte) is `ErrValidation`, and a type with `Value()` is inlined as that value.
-  This is golden-tested but not yet run against a real SQLite; `momo.SQL("live = 1")`
+  This is golden-tested; the live SQLite integration test for it is skipped for now, so check it against your own SQLite database; `momo.SQL("live = 1")`
   is the proven fallback. Write the literals in the index exactly as Momo renders them: integers as `2`, floats in plain decimal with `.0` for whole numbers (`2.0`) for magnitudes from 1e-6 up to 1e21, and exponent form (`1e-07`, `1e+21`) outside that range; otherwise use `momo.SQL`. The values appear in the SQL text, so they show up in
   logs and traces.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
   Explicit identity or serial values do not advance the sequence: `setval` it yourself.
   A `FromSelect` into a serial table cannot supply ids at all (`ErrValidation`).
+
+Bulk and set-based writes (PostgreSQL):
+
+- `Insert[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and through `FromSQLDB`. It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
+- `Insert[T].Unnest()` (the method, not the package-level FROM source `momo.Unnest`) renders a `Model` or `Models` insert as `INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])`: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses `MaxParams` and `WithMaxParams` and never chunks (and is not split into a transaction of several statements). PostgreSQL only: other dialects return `ErrUnsupported`. `Values`, `ValuesRows` and `FromSelect` return `ErrValidation`, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, `time.Time` and `[]byte` columns bind as typed slices (`[]*T` when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to `[]any`, which pgx may reject for an array type, so use plain `Models` for such a model. `OnConflict`, `Upsert` and `Returning` work as for `Models`; interceptors, `BeforeInsert`, field validators, automatic timestamps and id generators run as for `Models`. A `FlagSensitive` column's array shows as `RedactedArg` in `QueryEvent.Args`.
+- `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server, a driver without `ServerVersioner`, or SQLite returns `ErrUnsupported` before the statement runs. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
+- `BulkUpdate` updates only the keys in its row list, binds one parameter per value (over the limit is `ErrLimitExceeded`, it does not chunk), and keeps the version and updated-at columns current.
+- `Truncate` is `TRUNCATE TABLE` (no `RESTART IDENTITY`, no `CASCADE`), and `DELETE FROM` plus a sequence reset on SQLite. It runs the interceptors with the kind `truncate`, which a tenant-scoped handle should deny, and MySQL refuses it inside a transaction.
 
 Raw SQL (escape hatches; the SQL text must be a constant, pass user input only
 as arguments):
@@ -1687,7 +1699,7 @@ report)`, a development hook that reports once per statement shape per scope
 
 ## 12. Rules for AI agents
 
-1. v0.3.0 is PostgreSQL + pgvector via pgx only. Never target SQLite or MySQL. <!-- x-release-please-version -->
+1. v0.3.0 is PostgreSQL + pgvector via pgx first; SQLite runs through the cgo driver `sqlitedriver` (not on Windows, no migrations, no vector builders yet), and MySQL and MariaDB support is described in docs/capabilities.md. <!-- x-release-please-version -->
 2. Install the CLI at the same version as the library
    (`go install github.com/azrtydxb/momo/cmd/momo@v0.3.0`). <!-- x-release-please-version -->
 3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run

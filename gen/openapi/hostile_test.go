@@ -102,3 +102,92 @@ func TestDocumentUnsignedWidths(t *testing.T) {
 		t.Errorf("uint64 = %v", p["c"])
 	}
 }
+
+// Catches: component names OpenAPI forbids reaching the document, a repeated
+// model name overwriting the first schema, and an unstable choice between two
+// models of one name in different packages.
+func TestDocumentComponentNames(t *testing.T) {
+	id := &gen.Field{GoName: "ID", Column: "id", BaseType: "int64"}
+	other := modelWith("Fine", "fine_b", id)
+	other.PkgPath = "example.test/b"
+	first := modelWith("Fine", "fine_a", id)
+	first.PkgPath = "example.test/a"
+	g := &gen.Graph{Models: []*gen.Model{
+		other, // listed first on purpose: the package path decides, not the input order
+		first,
+		modelWith("Bad Name", "bad_name", id),
+		modelWith("Näive", "naive", id),
+	}}
+	raw, diags := Document(g, Options{Title: "t", Version: "1"})
+	var doc struct {
+		Paths      map[string]json.RawMessage `json:"paths"`
+		Components struct {
+			Schemas map[string]json.RawMessage `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := doc.Components.Schemas["Bad Name"]; ok {
+		t.Error("a component name with a space reached the document")
+	}
+	if _, ok := doc.Components.Schemas["Näive"]; ok {
+		t.Error("a non-ASCII component name reached the document")
+	}
+	if _, ok := doc.Paths["/fine_a"]; !ok {
+		t.Errorf("the model from the lower package path should win the name: %v", doc.Paths)
+	}
+	if _, ok := doc.Paths["/fine_b"]; ok {
+		t.Error("the second model named Fine was exposed")
+	}
+	joined := ""
+	for _, d := range diags {
+		joined += d.Msg + "\n"
+	}
+	for _, want := range []string{
+		`model name "Bad Name" is not a valid OpenAPI component name`,
+		`model name "Näive" is not a valid OpenAPI component name`,
+		"OpenAPI schema name Fine is duplicated or reserved",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("no diagnostic containing %q in:\n%s", want, joined)
+		}
+	}
+}
+
+// Catches: filter parameters advertising null for pointer and sql.Null
+// columns, which a query string cannot express.
+func TestDocumentFilterParametersAreNotNullable(t *testing.T) {
+	g := &gen.Graph{Models: []*gen.Model{modelWith("Thing", "things",
+		&gen.Field{GoName: "ID", Column: "id", BaseType: "int64"},
+		&gen.Field{GoName: "Note", Column: "note", BaseType: "sql.NullString"},
+		&gen.Field{GoName: "Opt", Column: "opt", BaseType: "int32", Nullable: true},
+	)}}
+	raw, _ := Document(g, Options{Title: "t", Version: "1"})
+	var doc struct {
+		Paths map[string]struct {
+			Get struct {
+				Parameters []struct {
+					Name   string         `json:"name"`
+					Schema map[string]any `json:"schema"`
+				} `json:"parameters"`
+			} `json:"get"`
+		} `json:"paths"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, p := range doc.Paths["/things"].Get.Parameters {
+		if !strings.HasPrefix(p.Name, "filter[") {
+			continue
+		}
+		seen++
+		if _, isArray := p.Schema["type"].([]any); isArray {
+			t.Errorf("%s advertises a nullable type: %v", p.Name, p.Schema)
+		}
+	}
+	if seen != 3 {
+		t.Errorf("found %d filter parameters, want 3", seen)
+	}
+}

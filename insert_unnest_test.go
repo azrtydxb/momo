@@ -5,14 +5,54 @@ package momo_test
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/internal/suite"
 )
+
+func TestUnnestRedactsSensitiveColumnArray(t *testing.T) {
+	rec := &obstest.Recorder{}
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
+	ms := []suite.Document{
+		{TenantID: 1, Title: "a", Secret: sensitiveValue},
+		{TenantID: 2, Title: "b", Secret: sensitiveValue},
+	}
+	if _, err := momo.Insert[suite.Document](db).Models(ms).Unnest().Exec(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	redacted := 0
+	for _, e := range rec.Events() {
+		for _, a := range e.Args {
+			if a == momo.RedactedArg {
+				redacted++
+			}
+			if s, ok := a.([]string); ok && slices.Contains(s, sensitiveValue) {
+				t.Fatalf("hook saw the secret array in %q", e.SQL)
+			}
+		}
+	}
+	if redacted != 1 {
+		t.Fatalf("%d redacted args, want exactly the one secret array", redacted)
+	}
+	sent := false
+	for _, c := range drv.Calls() {
+		for _, a := range c.Args {
+			if s, ok := a.([]string); ok && slices.Contains(s, sensitiveValue) {
+				sent = true
+			}
+		}
+	}
+	if !sent {
+		t.Fatal("the driver did not receive the real secret array")
+	}
+}
 
 func TestUnnestRendersOneArrayParameterPerColumn(t *testing.T) {
 	ms := []suite.Document{{TenantID: 1, Title: "a"}, {TenantID: 2, Title: "b"}, {TenantID: 3, Title: "c"}}
