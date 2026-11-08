@@ -22,6 +22,10 @@ func Scalars[V any](ctx context.Context, q Querier, sql string, args ...any) ([]
 	return nil, nil
 }
 
+func MapRows(ctx context.Context, q Querier, sql string, args ...any) ([]map[string]any, error) {
+	return nil, nil
+}
+
 func SQL(sql string, args ...any) Predicate { return nil }
 
 func TypedSQL[T any](sql string, args ...any) Expression[T] { return nil }

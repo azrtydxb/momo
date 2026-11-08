@@ -10,6 +10,7 @@ A call to one of these functions of `github.com/azrtydxb/momo` whose SQL argumen
 | ------------------ | ----------------------------------------- |
 | `momo.Exec`        | third (after the context and the querier) |
 | `momo.Scalars`     | third (after the context and the querier) |
+| `momo.MapRows`     | third (after the context and the querier) |
 | `momo.SQL`         | first                                     |
 | `momo.TypedSQL`    | first                                     |
 | `momo.RawSubquery` | first                                     |
@@ -29,4 +30,4 @@ To embed it in your own multichecker, import `github.com/azrtydxb/momo/momovet` 
 
 ## Limits
 
-The analyzer does not follow assignments. A `var` that holds a literal is reported; declare it as a `const`. It checks the call site only, so SQL built in one function and passed through another is reported where it reaches a raw-SQL function.
+The analyzer does not follow assignments. A `var` that holds a literal is reported, even a package-level one that is never reassigned: this is a false positive by design, so declare it as a `const`. It checks the call site only, so SQL built in one function and passed through another is reported where it reaches a raw-SQL function.

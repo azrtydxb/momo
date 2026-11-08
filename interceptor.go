@@ -10,8 +10,12 @@ import (
 // Operation is what an interceptor sees and may change before a typed
 // statement compiles.
 type Operation struct {
-	// Kind is "select", "insert", "update" or "delete". A SoftDelete is a
-	// "delete".
+	// Kind is "select", "insert", "upsert", "update" or "delete". A
+	// SoftDelete is a "delete". An Upsert, or an Insert with OnConflict
+	// DoUpdate, is an "upsert": ON CONFLICT DO UPDATE can overwrite an
+	// existing row, so a tenant rule must deny it or constrain it (for
+	// example by requiring the tenant column). An Insert with DoNothing stays
+	// an "insert".
 	Kind  string
 	Table string
 	// Where starts empty. An interceptor appends predicates to it; they are
@@ -27,13 +31,18 @@ type Operation struct {
 // attached per handle with WithInterceptor and inherited by transactions
 // begun from that handle only.
 //
-// Interceptors cover the typed statements of the handle: Select (All, One,
-// First, Each, Iter, Count, Explain), Insert, Update, SoftDelete and Delete.
-// They do not cover raw SQL (Exec, Scalars), relation loading (Load,
-// Preload, Joined), the statements of the association helpers, or a
-// subquery rendered inside another statement. An interceptor is an
-// application-level guard, not a database security boundary; see
-// docs/PRIVACY_RULES.md.
+// An interceptor is an application-level guard, not a database security
+// boundary. It covers only the primary table of these typed statements of the
+// handle: Select (All, One, First, Each, Iter, Count, Explain), Insert,
+// Upsert, Update, SoftDelete and Delete. It does NOT cover: relation loading
+// (Load, Preload, LoadCounts); the tables of joined relations (only the
+// primary table is filtered); the association helpers (Link, Unlink, Replace
+// and the like); subqueries and other sources rendered inside a statement
+// (subquery operands, UPDATE ... FROM, the FromSelect source of an insert);
+// raw SQL of any kind (Exec, MapRows, Scalars, SQL fragments and RawSubquery);
+// bulk loading with COPY; and anything run on the driver directly. SQL, and
+// so a statement built for inspection, runs interceptors with a background
+// context. See docs/PRIVACY_RULES.md.
 type Interceptor func(ctx context.Context, op *Operation) error
 
 // WithInterceptor attaches i to the handle. Several calls accumulate and run

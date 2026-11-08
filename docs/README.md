@@ -12,7 +12,7 @@ contributor guide, supported versions, performance).
 - [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, tuple rows (`Row1` to `Row10`), the soft-delete filter.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
-- [Privacy rules with interceptors](PRIVACY_RULES.md): per-handle interceptors that add predicates or deny statements, the tenant-handle recipe, and what they do not cover.
+- [Interceptors](PRIVACY_RULES.md): application-level per-handle rules that add predicates or deny typed statements, the tenant recipe, and the paths they do not cover (not a security boundary).
 - [Static check for raw SQL](momovet.md): the momovet analyzer that reports non-constant SQL passed to the raw-SQL functions.
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
 - [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI, and the stability policy.

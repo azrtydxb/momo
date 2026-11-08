@@ -23,12 +23,31 @@ import (
 //     Iter, and for every model a write scans from its RETURNING rows
 //     (ModelRows.ScanModel), after the row is scanned.
 //
+// Set the hooks on the metadata value that MomoMeta returns, for example in
+// the declaration of the package-level Meta:
+//
+//	var documentMeta = momo.Meta[Document]{ /* ... */ Hooks: momo.HookSet[Document]{
+//		BeforeInsert: func(ctx context.Context, d *Document) error { /* ... */ return nil },
+//	}}
+//
+// Generated metadata is not edited by hand; assign the field once at start-up
+// before any statement runs. Momo never mutates a Meta, so concurrent reads
+// are safe once it is set.
+//
+// Interceptors run before the Before hooks, so a statement an interceptor
+// denies never reaches them. A Before hook can still change the caller's
+// model (BeforeUpdate, BeforeDelete) when the statement then fails to build
+// or run, for example on the unfiltered-mutation guard or a database error.
+//
 // A returned error aborts the statement before any SQL runs (a Before hook)
 // or ends the read (AfterLoad); it is wrapped in an *Error of kind
 // ErrValidation that still reaches the hook's own error with errors.Is. A
 // hook may set values through the *T pointer but cannot change the SQL. Hooks
 // run on the execution methods (Exec, Rows, All and so on); SQL does not run
-// them. The call path performs no reflection and no allocation.
+// them. The hook dispatch itself performs no reflection and allocates nothing
+// (TestModelHookDispatchAllocations measures runModelHook and the AfterLoad
+// wrapper); the builders around it do allocate, and a hook that allocates is
+// the caller's cost.
 //
 // Relations loaded with Load or Preload and joined relations are scanned by
 // the relation machinery and do not run the AfterLoad hook of the related
@@ -63,11 +82,19 @@ func afterLoad[T any](ctx context.Context, meta *Meta[T], m *T) error {
 	return runModelHook(ctx, "select", meta.Table, fn, m)
 }
 
-// beforeWrite runs BeforeInsert over a copy of the query's models and the
-// insert interceptors. It returns the query to execute.
+// beforeWrite runs the insert interceptors, then BeforeInsert over a copy of
+// the query's models. An interceptor denial therefore never reaches a hook.
+// It returns the query to execute.
 func (q InsertQuery[T]) beforeWrite(ctx context.Context) (InsertQuery[T], error) {
 	if q.i.err != nil {
 		return q, nil
+	}
+	kind := "insert"
+	if q.i.upsert || q.i.conflict == conflictUpdate {
+		kind = "upsert"
+	}
+	if _, err := runInterceptors(ctx, q.q, kind, q.meta.Table); err != nil {
+		return q, err
 	}
 	if fn := q.meta.Hooks.BeforeInsert; fn != nil && len(q.models) > 0 {
 		ms := slices.Clone(q.models)
@@ -77,9 +104,6 @@ func (q InsertQuery[T]) beforeWrite(ctx context.Context) (InsertQuery[T], error)
 			}
 		}
 		q.models = ms
-	}
-	if _, err := runInterceptors(ctx, q.q, "insert", q.meta.Table); err != nil {
-		return q, err
 	}
 	return q, nil
 }

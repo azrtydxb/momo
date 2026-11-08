@@ -209,23 +209,33 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 // Interceptors run with a background context here; the execution methods pass
 // the statement's own context.
 func (u UpdateQuery[T]) SQL() (Compiled, error) {
-	return u.compileCtx(context.Background())
+	u, err := u.intercepted(context.Background())
+	if err != nil {
+		return Compiled{}, err
+	}
+	return u.compileSQL()
 }
 
-// compileCtx renders the statement after running the interceptors with ctx.
-func (u UpdateQuery[T]) compileCtx(ctx context.Context) (Compiled, error) {
-	if u.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
-	}
+// intercepted runs the handle's interceptors with ctx and returns the query
+// carrying their predicates.
+func (u UpdateQuery[T]) intercepted(ctx context.Context) (UpdateQuery[T], error) {
 	kind := "update"
 	if u.softDelete {
 		kind = "delete"
 	}
 	extra, err := runInterceptors(ctx, u.q, kind, u.meta.Table)
 	if err != nil {
-		return Compiled{}, err
+		return u, err
 	}
 	u.extra = extra
+	return u, nil
+}
+
+// compileSQL renders the statement; interceptors already ran (intercepted).
+func (u UpdateQuery[T]) compileSQL() (Compiled, error) {
+	if u.q == nil {
+		return Compiled{}, errors.New("momo: query has no Querier")
+	}
 	sets, where, err := u.plan()
 	if err != nil {
 		return Compiled{}, err
@@ -290,10 +300,14 @@ func (u UpdateQuery[T]) appendAssignment(b *Builder, a Assignment) {
 // looks the row up inside the same transaction (one is started when q is a
 // *DB) to tell ErrOptimisticLock from ErrNotFound.
 func (u UpdateQuery[T]) Exec(ctx context.Context) (Result, error) {
+	u, err := u.intercepted(ctx)
+	if err != nil {
+		return Result{}, err
+	}
 	if err := u.beforeWrite(ctx); err != nil {
 		return Result{}, err
 	}
-	c, err := u.compileCtx(ctx)
+	c, err := u.compileSQL()
 	if err != nil {
 		return Result{}, err
 	}
@@ -339,10 +353,14 @@ func (u UpdateQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if u.versioned() {
 		return nil, u.fail(ErrValidation, errors.New("Rows is not supported with a version-checked Model update; use Exec"))
 	}
+	u, err := u.intercepted(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if err := u.beforeWrite(ctx); err != nil {
 		return nil, err
 	}
-	c, err := u.compileCtx(ctx)
+	c, err := u.compileSQL()
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +373,9 @@ func (u UpdateQuery[T]) zeroRows(ctx context.Context, q Querier) error {
 	if err != nil {
 		return err
 	}
-	n, err := u.count(ctx, q, pks)
+	// The interceptor predicates count too: a row they hide is not found,
+	// not a lock conflict.
+	n, err := u.count(ctx, q, append(pks, u.extra...))
 	if err != nil {
 		return err
 	}

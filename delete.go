@@ -104,19 +104,29 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 // Interceptors run with a background context here; the execution methods pass
 // the statement's own context.
 func (d DeleteQuery[T]) SQL() (Compiled, error) {
-	return d.compileCtx(context.Background())
-}
-
-// compileCtx renders the statement after running the interceptors with ctx.
-func (d DeleteQuery[T]) compileCtx(ctx context.Context) (Compiled, error) {
-	if d.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
-	}
-	extra, err := runInterceptors(ctx, d.q, "delete", d.meta.Table)
+	d, err := d.intercepted(context.Background())
 	if err != nil {
 		return Compiled{}, err
 	}
+	return d.compileSQL()
+}
+
+// intercepted runs the handle's interceptors with ctx and returns the query
+// carrying their predicates.
+func (d DeleteQuery[T]) intercepted(ctx context.Context) (DeleteQuery[T], error) {
+	extra, err := runInterceptors(ctx, d.q, "delete", d.meta.Table)
+	if err != nil {
+		return d, err
+	}
 	d.extra = extra
+	return d, nil
+}
+
+// compileSQL renders the statement; interceptors already ran (intercepted).
+func (d DeleteQuery[T]) compileSQL() (Compiled, error) {
+	if d.q == nil {
+		return Compiled{}, errors.New("momo: query has no Querier")
+	}
 	where, err := d.plan()
 	if err != nil {
 		return Compiled{}, err
@@ -141,10 +151,14 @@ func (d DeleteQuery[T]) compileCtx(ctx context.Context) (Compiled, error) {
 
 // Exec runs the DELETE.
 func (d DeleteQuery[T]) Exec(ctx context.Context) (Result, error) {
+	d, err := d.intercepted(ctx)
+	if err != nil {
+		return Result{}, err
+	}
 	if err := d.beforeWrite(ctx); err != nil {
 		return Result{}, err
 	}
-	c, err := d.compileCtx(ctx)
+	c, err := d.compileSQL()
 	if err != nil {
 		return Result{}, err
 	}
@@ -161,10 +175,14 @@ func (d DeleteQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if !d.returning.active() {
 		return nil, d.fail(ErrValidation, errors.New("Rows needs a Returning list"))
 	}
+	d, err := d.intercepted(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if err := d.beforeWrite(ctx); err != nil {
 		return nil, err
 	}
-	c, err := d.compileCtx(ctx)
+	c, err := d.compileSQL()
 	if err != nil {
 		return nil, err
 	}

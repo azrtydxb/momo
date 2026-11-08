@@ -31,13 +31,14 @@ const momoPath = "github.com/azrtydxb/momo"
 var rawSQLFuncs = map[string]int{
 	"Exec":        2, // Exec(ctx, q, sql, args...)
 	"Scalars":     2, // Scalars(ctx, q, sql, args...)
+	"MapRows":     2, // MapRows(ctx, q, sql, args...)
 	"SQL":         0, // SQL(sql, args...)
 	"TypedSQL":    0, // TypedSQL(sql, args...)
 	"RawSubquery": 0, // RawSubquery(sql, args...)
 }
 
 // Analyzer flags non-constant SQL strings passed to Momo's raw-SQL entry
-// points: momo.Exec and momo.Scalars (argument index 2), momo.SQL,
+// points: momo.Exec, momo.Scalars and momo.MapRows (argument index 2), momo.SQL,
 // momo.TypedSQL and momo.RawSubquery (argument index 0). A string literal, a
 // constant, or an expression of constants is accepted.
 var Analyzer = &analysis.Analyzer{
