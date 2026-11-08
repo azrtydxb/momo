@@ -157,16 +157,26 @@ func checkHistoryFormat(ctx context.Context, c momo.PinnedConn, tbl string) erro
 
 // isUndefinedTable reports whether err says a table does not exist:
 // PostgreSQL's "relation does not exist" (SQLSTATE 42P01), MySQL's and
-// MariaDB's (42S02), or SQLite's "no such table: momo_migrations", which has no SQLSTATE and is
-// recognised by its message.
+// MariaDB's (42S02), or SQLite's "no such table: momo_migrations", which has no
+// SQLSTATE and is recognised by its message.
 func isUndefinedTable(err error) bool {
 	var s interface{ SQLState() string }
 	if errors.As(err, &s) && (s.SQLState() == undefinedTable || s.SQLState() == undefinedTableMySQL) {
 		return true
 	}
-	// SQLite has no SQLSTATE; its message names the table, and only a missing
-	// history table counts, not any other table a statement named.
-	return err != nil && (strings.Contains(err.Error(), "no such table: "+historyTable) || strings.Contains(err.Error(), "no such table: main."+historyTable))
+	return IsNoSuchTable(err, historyTable)
+}
+
+// IsNoSuchTable reports whether err is SQLite's "no such table" error for the
+// named table. SQLite has no SQLSTATE; its message names the table, and SQLite
+// may spell it main.<name>. Only the named table counts, not any other table a
+// statement named.
+func IsNoSuchTable(err error, name string) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no such table: "+name) || strings.Contains(msg, "no such table: main."+name)
 }
 
 // ReadHistory returns the migration rows of the history table ordered by

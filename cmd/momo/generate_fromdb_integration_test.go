@@ -188,3 +188,23 @@ func TestGenerateFromDBRerun(t *testing.T) {
 		t.Fatal("--overwrite did not replace the file")
 	}
 }
+
+// TestGenerateFromDBSnapshotFailureWritesNoModels: a migration directory whose
+// snapshot cannot be read fails the init snapshot step; the model files must
+// not have been written by then.
+func TestGenerateFromDBSnapshotFailureWritesNoModels(t *testing.T) {
+	dsn := testdb.PostgresURL(t)
+	execAll(t, dsn, legacyDDL)
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "momo.yaml"), "version: 1\npackages:\n  - ./models\ndialects: [postgres]\nmigrate:\n  dir:\n    postgres: migrations/postgres\n  exclude: [vector, pgcrypto]\n")
+	writeFile(t, filepath.Join(root, "migrations", "postgres", "20260101000000_bad.snapshot.json"), "not json")
+	chdir(t, root)
+	t.Setenv("MOMO_TEST_URL", dsn)
+	code, out, errOut := fromDB(t)
+	if code == 0 {
+		t.Fatalf("a broken snapshot must fail the run\n%s%s", out, errOut)
+	}
+	if entries, _ := filepath.Glob(filepath.Join(root, "models", "*")); len(entries) != 0 {
+		t.Fatalf("model files were left behind: %v", entries)
+	}
+}

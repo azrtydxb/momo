@@ -51,7 +51,38 @@ func (Dialect) HistoryTable(ctx context.Context, c momo.PinnedConn) (string, err
 	if db == "" {
 		return "", fmt.Errorf("%w: the connection has no default database; name one in the DSN", migrate.ErrNoHistoryTable)
 	}
+	if err := checkHistoryKind(ctx, c, db); err != nil {
+		return "", err
+	}
 	return quoteIdent(db) + "." + quoteIdent(historyTableName), nil
+}
+
+// checkHistoryKind refuses a momo_migrations in db that is not a base table: a
+// view would pass CREATE TABLE IF NOT EXISTS and then be written through.
+func checkHistoryKind(ctx context.Context, c momo.PinnedConn, db string) (err error) {
+	rows, err := c.Query(ctx, `SELECT TABLE_TYPE FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`, []any{db, historyTableName})
+	if err != nil {
+		return fmt.Errorf("migrate/mysql: locate the history table: %w", err)
+	}
+	defer func() {
+		if cerr := rows.Close(); err == nil && cerr != nil {
+			err = fmt.Errorf("migrate/mysql: locate the history table: %w", cerr)
+		}
+	}()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("migrate/mysql: locate the history table: %w", err)
+		}
+		return nil
+	}
+	var kind string
+	if err := rows.Scan(&kind); err != nil {
+		return fmt.Errorf("migrate/mysql: locate the history table: %w", err)
+	}
+	if kind != "BASE TABLE" {
+		return &momo.Error{Kind: momo.ErrValidation, Op: "migrate/mysql", Table: historyTableName, Err: fmt.Errorf("%s.%s is a %s, not a base table; drop it or rename it before running migrations", quoteIdent(db), historyTableName, strings.ToLower(kind))}
+	}
+	return nil
 }
 
 // HistoryLockKey returns the lock key for the history table reference that

@@ -187,8 +187,16 @@ func runRollback(ctx context.Context, env RunEnv, r HistoryRow, p Pending) (Appl
 	}
 	// A dialect whose DDL commits implicitly runs a down statement by
 	// statement too, and a failure leaves the row failed (dirty).
+	// The row turns running before the first statement, so a rollback killed
+	// half-way leaves a dirty row instead of an applied one over a
+	// half-reverted schema; a failure then leaves it failed.
 	if p.NoTx || hasNoTx(p.Statements) || !transactionalDDL(env.Dialect) {
-		n, err := execAll(ctx, env.Conn, p.Statements, nil)
+		if err := h.finish(ctx, env.Conn, p.Version, StatusRunning, 0, "", 0); err != nil {
+			return Applied{}, wrap(err)
+		}
+		n, err := execAll(ctx, env.Conn, p.Statements, func(n int) error {
+			return h.progress(ctx, env.Conn, p.Version, n)
+		})
 		if err != nil {
 			cause := redact(err)
 			fctx, cancel := failureContext(ctx)
