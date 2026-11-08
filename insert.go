@@ -66,6 +66,9 @@ type InsertQuery[T any] struct {
 	// idsDone marks that generateIDs has run, and reconcile that Exec reads
 	// the stored ids back after a conflict that may keep an existing row.
 	idsDone, reconcile bool
+	// pend collects the write-backs of execReconcile, applied once the
+	// statement (all chunks) has committed.
+	pend *[]func()
 	// clock, when set, is the statement time shared by every chunk of a
 	// chunked bulk insert; otherwise the DB clock is read per statement.
 	clock time.Time

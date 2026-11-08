@@ -27,8 +27,19 @@ func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	var pend []func()
+	for i := range chunks {
+		chunks[i].pend = &pend
+	}
 	if len(chunks) == 1 {
-		return chunks[0].execOne(ctx)
+		res, err := q.execSingle(ctx, chunks[0])
+		if err != nil {
+			return Result{}, err
+		}
+		for _, apply := range pend {
+			apply()
+		}
+		return res, nil
 	}
 	var total int64
 	err = runAtomic(ctx, q.q, "insert", q.meta.Table, func(sq Querier) error {
@@ -44,6 +55,9 @@ func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
 	})
 	if err != nil {
 		return Result{}, err
+	}
+	for _, apply := range pend {
+		apply()
 	}
 	return Result{RowsAffected: total}, nil
 }

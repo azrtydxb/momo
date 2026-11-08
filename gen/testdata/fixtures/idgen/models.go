@@ -22,6 +22,15 @@ func (n *Note) MomoConfig(c *momo.Config) {
 	c.IDGen(&n.ID, "ulid")
 }
 
+// Account has its generated id after other columns, so a column index that is
+// off by one is caught.
+type Account struct {
+	momo.Model
+	ID       int64 `momo:"pk"`
+	Email    string
+	PublicID string `momo:"idgen:uuid"`
+}
+
 // Token names a generator registered at runtime.
 type Token struct {
 	momo.Model

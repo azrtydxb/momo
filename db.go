@@ -110,6 +110,10 @@ type DB struct {
 	fieldHooks map[any]any
 	// idGens holds the id generators of WithIDGenerator by name.
 	idGens map[string]func() string
+	// txSetup runs after every transaction momo begins (WithTxSetup).
+	txSetup []func(ctx context.Context, tx *Tx) error
+	// implicitTx runs auto-commit statements in a short transaction (WithImplicitTx).
+	implicitTx bool
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and
@@ -250,6 +254,12 @@ func (e *execer) after(ctx context.Context, ev *QueryEvent, rows int64, err erro
 }
 
 func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64, error) {
+	if e.unscopable() {
+		return -1, errPinnedSetup(op, table)
+	}
+	if e.implicit() {
+		return e.implicitExec(ctx, op, table, c)
+	}
 	ctx, ev := e.before(ctx, op, table, "", c.SQL, c.Args, c.sens)
 	n, err := e.q.Exec(ctx, c.SQL, c.Args)
 	err = e.wrapErr(op, table, err)
@@ -262,6 +272,12 @@ func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64,
 
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
+	if e.unscopable() {
+		return nil, errPinnedSetup(op, table)
+	}
+	if e.implicit() {
+		return e.implicitQuery(ctx, op, table, rel, c)
+	}
 	ctx, ev := e.before(ctx, op, table, rel, c.SQL, c.Args, c.sens)
 	rows, err := e.q.Query(ctx, c.SQL, c.Args)
 	if err != nil {
@@ -361,6 +377,9 @@ func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
 	}
 	tx := &Tx{dtx: dtx, done: new(atomic.Bool)}
 	tx.ex = execer{db: db, q: dtx, d: db.ex.d, classify: db.ex.classify, inTx: true, owner: tx}
+	if err := db.runTxSetup(ctx2, tx); err != nil {
+		return nil, err
+	}
 	return tx, nil
 }
 

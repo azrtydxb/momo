@@ -28,6 +28,7 @@ func TestEmitMetaIDGens(t *testing.T) {
 		`IDGens: []momo.IDGen{{Column: 0, Name: "cuid"}},`,
 		`IDGens: []momo.IDGen{{Column: 0, Name: "ulid"}},`,
 		`IDGens: []momo.IDGen{{Column: 0, Name: "short_token"}},`,
+		`IDGens: []momo.IDGen{{Column: 2, Name: "uuid"}},`,
 	} {
 		if n := strings.Count(out, want); n != 1 {
 			t.Errorf("%q appears %d times, want 1:\n%s", want, n, out)

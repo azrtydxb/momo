@@ -27,6 +27,8 @@ func ByName(name string) (Namer, error) {
 		return Bun{}, nil
 	case "ent":
 		return Ent{}, nil
+	case "prisma":
+		return Prisma{}, nil
 	}
 	return nil, fmt.Errorf("unknown naming preset %q", name)
 }

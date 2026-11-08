@@ -10,6 +10,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/obstest"
 )
 
 // idSecret has a sensitive id column: sensitivity hides it from the generated
@@ -32,12 +33,28 @@ var idSecretMeta = momo.Meta[idSecret]{
 func (*idSecret) MomoMeta() *momo.Meta[idSecret] { return &idSecretMeta }
 
 func TestIDGenSensitiveIDColumnIsGenerated(t *testing.T) {
+	rec := &obstest.Recorder{}
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
 	m := idSecret{Name: "a"}
-	if _, err := momo.Insert[idSecret](idDB()).Model(&m).Exec(context.Background()); err != nil {
+	if _, err := momo.Insert[idSecret](db).Model(&m).Exec(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if !reUUID.MatchString(m.ID) {
 		t.Fatalf("sensitive id = %q", m.ID)
+	}
+	// The driver receives the generated id; hooks see the redaction.
+	calls, evs := drv.Calls(), rec.Events()
+	if len(calls) != 1 || calls[0].Args[0] != m.ID {
+		t.Fatalf("driver args = %v, model id %q", calls, m.ID)
+	}
+	if len(evs) != 1 || evs[0].Args[0] != momo.RedactedArg || evs[0].Args[1] != "a" {
+		t.Fatalf("hook args = %v", evs)
+	}
+	// A preview binds the generated id too.
+	c, err := momo.Insert[idSecret](db).Model(&idSecret{Name: "b"}).SQL()
+	if err != nil || !reUUID.MatchString(c.Args[0].(string)) {
+		t.Fatalf("SQL args = %v (%v)", c.Args, err)
 	}
 }
 

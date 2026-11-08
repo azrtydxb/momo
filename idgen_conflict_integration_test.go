@@ -135,6 +135,30 @@ func TestIDGenNonPKIDOnPrimaryKeyUpsert(t *testing.T) {
 	})
 }
 
+// TestIDGenDefaultUpsertSetKeepsPublicID proves the default DO UPDATE set does
+// not overwrite a stored generated id with the fresh one, and that the model
+// reads the stored id back.
+func TestIDGenDefaultUpsertSetKeepsPublicID(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+		ctx := context.Background()
+		idgenExec(t, db, "DROP TABLE IF EXISTS id_pub",
+			"CREATE TABLE id_pub (id text primary key, public_id text not null unique, name text not null)")
+		first := idPub{ID: "k1", Name: "one"}
+		if _, err := momo.Insert[idPub](db).Model(&first).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		again := idPub{ID: "k1", Name: "two"}
+		if _, err := momo.Upsert[idPub](db).Model(&again).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		stored := idgenScanString(t, db, "SELECT public_id FROM id_pub WHERE id = "+placeholder(db), "k1")
+		name := idgenScanString(t, db, "SELECT name FROM id_pub WHERE id = "+placeholder(db), "k1")
+		if stored != first.PublicID || again.PublicID != stored || name != "two" {
+			t.Fatalf("public id: first %q, stored %q, model %q; name %q", first.PublicID, stored, again.PublicID, name)
+		}
+	})
+}
+
 // idPad has a conflict target that PostgreSQL pads on read.
 type idPad struct {
 	ID   string

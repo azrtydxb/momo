@@ -131,6 +131,40 @@ func (q InsertQuery[T]) valueRowsSafe(d *dialect.Dialect, now time.Time, fp fiel
 	return q.valueRows(d, now, fp)
 }
 
+// isNonPKIDGen reports whether column ci has an id generator and is not part of
+// the primary key, e.g. a public id: a conflict must keep the stored value.
+func (q InsertQuery[T]) isNonPKIDGen(ci int) bool {
+	if slices.Contains(q.meta.PK, ci) {
+		return false
+	}
+	for _, g := range q.meta.IDGens {
+		if g.Column == ci {
+			return true
+		}
+	}
+	return false
+}
+
+// execSingle runs the only chunk of an insert. A statement that reconciles ids
+// runs in its own transaction (or savepoint), so a RETURNING row that matches
+// no model rolls the write back instead of leaving it committed.
+func (q InsertQuery[T]) execSingle(ctx context.Context, c InsertQuery[T]) (Result, error) {
+	if db, ok := q.q.(*DB); !c.reconcile || (ok && db.pinned) {
+		return c.execOne(ctx)
+	}
+	var res Result
+	err := runAtomic(ctx, q.q, "insert", q.meta.Table, func(sq Querier) error {
+		c.q = sq
+		var e error
+		res, e = c.execOne(ctx)
+		return e
+	})
+	if err != nil {
+		return Result{}, err
+	}
+	return res, nil
+}
+
 // keepsExistingRow reports whether the statement can leave a conflicting row
 // in place under another id than the one generated: it has an ON CONFLICT
 // action on something other than the primary key.
@@ -288,7 +322,13 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		}
 		for _, ci := range idCols {
 			if id, ok := idString(q.meta.Value(&got, ci)); ok {
-				setID(q.meta.Ptr(q.back[i], ci), id)
+				back, col := q.back[i], ci
+				apply := func() { setID(q.meta.Ptr(back, col), id) }
+				if q.pend != nil {
+					*q.pend = append(*q.pend, apply) // after the statement commits
+				} else {
+					apply()
+				}
 			}
 		}
 	}
