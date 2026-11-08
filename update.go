@@ -35,6 +35,8 @@ type UpdateQuery[T any] struct {
 	// softDelete marks the query as a SoftDelete statement.
 	softDelete bool
 	count      func(ctx context.Context, q Querier, ps []Predicate) (int64, error)
+	// bulk is the VALUES list of BulkUpdate; nil for every other update.
+	bulk *bulkSpec
 }
 
 // Update starts an UPDATE of T's table.
@@ -205,6 +207,9 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 func (u UpdateQuery[T]) SQL() (Compiled, error) {
 	if u.q == nil {
 		return Compiled{}, errors.New("momo: query has no Querier")
+	}
+	if u.bulk != nil {
+		return u.bulkSQL()
 	}
 	sets, where, err := u.plan()
 	if err != nil {
