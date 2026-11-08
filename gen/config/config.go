@@ -16,6 +16,7 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/gen/fromdb"
 	"github.com/azrtydxb/momo/gen/naming"
 )
 
@@ -28,6 +29,8 @@ type File struct {
 	Tags     []string                  `yaml:"tags"`
 	Migrate  MigrateConfig             `yaml:"migrate"`
 	Plugins  map[string]map[string]any `yaml:"plugins"`
+	// Introspect steers `momo generate --from-db`.
+	Introspect fromdb.Config `yaml:"introspect"`
 }
 
 // MigrateConfig is the single schema of the migrate: section. Its semantics
@@ -79,6 +82,9 @@ func Load(path string) (*File, error) {
 		}
 	}
 	if err := f.Migrate.validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := f.Introspect.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return &f, nil
