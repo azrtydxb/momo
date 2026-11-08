@@ -122,7 +122,7 @@ them as available in user documentation.
 - Read-only view models: marker `View` (tag `momo:"view:<name>[,materialized]"`), `WritableModeler[T]`, `MomoWritable`, and `RefreshMaterializedView`.
 - Migration engine: `Engine.Lint`, `Engine.Rebase`, an online `Engine.Validate`, and the `-- momo:sqlite-foreign-keys-off` directive.
 - Other databases: `driver/sqlitedriver`, `driver/sqlitepure`, `driver/mysqldriver`, `migrate/sqlite`, `migrate/mysql` and `migrate/importers/{atlas,bun,goose,golangmigrate}`. Their `testopen` entries come with them.
-- Tooling packages: `momolog` (slog hook), `momovet` and `cmd/momovet` (analyzer), `importer/{gorm,bun,ent}` and `gen/{graphql,grpc,openapi}`.
+- Tooling packages: `momolog` (slog hook), `momovet` and `cmd/momovet` (analyzer), `importer/{bun,ent}` and `gen/{graphql,grpc,openapi}`.
 - Separate modules: `otelmomo` (OpenTelemetry) and `bench`.
 
 ## Contract additions (round 1, from plan reviews)
