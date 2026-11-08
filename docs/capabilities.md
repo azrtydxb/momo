@@ -5,8 +5,11 @@ transactions, the shared integration suite and the vector builders (float32
 and bit vectors with sqlite-vec) run on it. It also has a migration dialect,
 `migrate/sqlite` (inspector, rendering, table rebuild and lock, see
 [migrations.md](migrations.md#3a-sqlite)), that you use as a library through
-`migrate.NewEngine`; the `momo migrate` command does not select it yet, and a
-pure-Go driver is **not available yet**. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
+`migrate.NewEngine`; the `momo migrate` command does not select it yet. The
+pure-Go driver `driver/sqlitepure` (modernc.org/sqlite) runs the same queries,
+writes and transactions without cgo and on Windows; it has no sqlite-vec, so it
+reports `Vectors=false` and a statement that calls a `vec_` function fails with
+`ErrUnsupported`. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
 (`driver/mysqldriver`): queries, writes, locking and transactions run and are
 covered by the integration suite. The library migration dialect `migrate/mysql`
 exists (inspector, drift, apply), but the `momo migrate` command is
