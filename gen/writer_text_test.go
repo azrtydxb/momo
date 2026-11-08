@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -115,6 +116,21 @@ func TestWriterScaffoldConfinement(t *testing.T) {
 	}
 	if err := w.Scaffold(filepath.Join(root, "link"), []byte("package x\n")); err == nil {
 		t.Fatal("a symlink that leaves the root was accepted as the scaffold path")
+	}
+	// A dangling symlink is refused for every write method: its target is
+	// unknown, so it cannot be shown to stay inside the root.
+	if err := os.Symlink(filepath.Join(outside, "missing", "x.go"), filepath.Join(root, "dangling")); err != nil {
+		t.Fatal(err)
+	}
+	dangling := filepath.Join(root, "dangling")
+	if err := w.Scaffold(dangling, []byte("package x\n")); err == nil {
+		t.Fatal("a dangling symlink was accepted by Scaffold")
+	}
+	if err := w.Text(dangling, []byte("# "+strings.TrimPrefix(Header(), "// ")+"\n")); err == nil {
+		t.Fatal("a dangling symlink was accepted by Text")
+	}
+	if err := w.File(dangling, []byte(Header()+"\n\npackage x\n")); err == nil {
+		t.Fatal("a dangling symlink was accepted by File")
 	}
 	// An existing directory is skipped, not replaced.
 	if err := w.Scaffold(filepath.Join(root, "dir"), []byte("package x\n")); err != nil {
