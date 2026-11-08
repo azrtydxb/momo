@@ -120,7 +120,6 @@ them as available in user documentation.
 - Read replicas and unit of work: `WithReplicas`, `DB.Reader()`, `NewUnitOfWork`, `AllowStaleReads`.
 - Generated per-model hook sets: `Meta.Hooks` as `HookSet[T]` (today `Meta.Fields` carries `FieldHook[T]` only).
 - Read-only view models: marker `View` (tag `momo:"view:<name>[,materialized]"`), `WritableModeler[T]`, `MomoWritable`, and `RefreshMaterializedView`.
-- Go migrations: `GoMigration` and `WithGoMigrations`.
 - Migration engine: `Engine.Lint`, `Engine.Rebase`, an online `Engine.Validate`, and the `-- momo:sqlite-foreign-keys-off` directive.
 - Other databases: `driver/sqlitedriver`, `driver/sqlitepure`, `driver/mysqldriver`, `migrate/sqlite`, `migrate/mysql` and `migrate/importers/{atlas,bun,goose,golangmigrate}`. Their `testopen` entries come with them.
 - Tooling packages: `momotest` (test helpers), `momolog` (slog hook), `momovet` and `cmd/momovet` (analyzer), `importer/{gorm,bun,ent}` and `gen/{graphql,grpc,openapi}`.
@@ -156,8 +155,9 @@ Only the `Merge` capability flag exists on `dialect.Dialect` beyond the base set
 ### `migrate`
 
 - `migrate.Dialect` adds `Dialect() *dialect.Dialect`, `HistoryDDL() []string`, `Setup(ctx, momo.PinnedConn, SessionOptions) (reset func() error, err error)`. `Lock` also reports the holder. There is no global registry: `NewEngine` requires `migrate.WithDialect(d)`, and the CLI selects the dialect statically. [momo-04]
-- The history table adds `apply_id` (groups the migrations of one apply run) and `kind` (`sql` today; `go` is reserved for the planned Go migrations). Transactional migrations write their history row inside the migration transaction. Only non-transactional `failed`/`running` rows are dirty. [momo-04]
+- The history table adds `apply_id` (groups the migrations of one apply run) and `kind` (`sql`, or `go` for a `GoMigration`). Transactional migrations write their history row inside the migration transaction. Only non-transactional `failed`/`running` rows are dirty. [momo-04]
 - Snapshots are stored as a wrapper `{format_version, parent, schema}`. [momo-04 Task 6]
+- `migrate.GoMigration` (fields `Version`, `Name`, `Up`, `UpNoTx`, `Checksum`) and the option `migrate.WithGoMigrations`: Go migrations are ordered with the SQL files by version and recorded with `kind = 'go'`. `Up` takes a `*momo.Tx` and runs in the migration transaction; `UpNoTx` takes a `*momo.DB` on the pinned connection through `OnConn`, with the dirty/resolve semantics of a no-transaction SQL file. The recorded checksum is a hash of version, name and the optional `Checksum` string (code cannot be hashed). A version shared with a SQL file is an error. They exist only in the application's process, so the `momo` CLI cannot run them; they are forward-only. `ValidateOffline` takes the registered migrations as extra arguments to check their snapshots. `migrate.WithGoMigrationDB` supplies the application's `*momo.DB` for them. Apply returns `ErrGoMigrationUnregistered` when a snapshot-only version (a Go migration the engine does not have) would be passed by later SQL. `RefuseGoRollback` and `ErrGoMigrationNotReversible` are for the rollback code to refuse rows of kind `go`. See docs/migrations.md section 6a. [issue 43]
 
 ### Generator companion (`MomoConfig`) methods
 
