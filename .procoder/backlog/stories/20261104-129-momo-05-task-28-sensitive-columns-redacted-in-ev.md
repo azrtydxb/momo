@@ -18,5 +18,5 @@ Implements plan momo-05-writes-queries Task 28: Sensitive columns redacted in ev
 ## Evidence
 
 - Red: run 42455602122 on the throwaway branch worktree-agent-aecd38e0a7c8adf10-red-sens (maskArgs sensitive loop removed, branch deleted): TestSensitiveColumns/hook_events and TestSensitiveColumns/failed_statement failed in unit and integration, together with the existing masking tests.
-- Green: green run 42455574669 on a5e569e0712fc7d785b63df4afac3ecfac87054e (ci-agent: lint including tidy-check, unit, integration postgres and fuzz-smoke all success).
+- Green: green run 42458998121 on 08f022ed7aa823b0e52cfca67853a90da8dfa131, the merged tree with the review fixes (ci-agent: all jobs success; the first green run was 42455574669 on a5e569e).
 - The masking itself (maskArgs, RedactedArg, per-position sens indexes, Compiled.String printing no values) pre-existed on sprint-5; this story adds TestSensitiveColumns covering hook events (before, after, failed statement), error text and the compiled-statement dump, also through the v and +v verbs. Deviation: the placeholder is RedactedArg replacing only the sensitive positions, not a one-element Args slice. A momotest dump was not exercised: dumps are Compiled.String, which prints no values.

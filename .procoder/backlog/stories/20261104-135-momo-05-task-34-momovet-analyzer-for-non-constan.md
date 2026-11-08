@@ -18,6 +18,6 @@ Implements plan momo-05-writes-queries Task 34: momovet analyzer for non-constan
 ## Evidence
 
 - Red: run 42455587059 on the throwaway branch worktree-agent-aecd38e0a7c8adf10-red (tests and fixtures only, branch deleted): vet reported momovet/analyzer_test.go undefined Analyzer.
-- Green: green run 42455574669 on a5e569e0712fc7d785b63df4afac3ecfac87054e (ci-agent: lint including tidy-check, unit, integration postgres and fuzz-smoke all success).
+- Green: green run 42458998121 on 08f022ed7aa823b0e52cfca67853a90da8dfa131, the merged tree with the review fixes (ci-agent: all jobs success; the first green run was 42455574669 on a5e569e).
 - TestMomovet runs analysistest over testdata/src/raw with a stub momo package under testdata: constants and constant concatenation pass; concatenation, a var and a format call are reported for Exec, Scalars, SQL, TypedSQL and RawSubquery; a same-named local function is not flagged. cmd/momovet uses singlechecker; tidy-check passed with no go.mod change; docs/momovet.md added.
 - Deviation: the plan names momo.Raw and momo.Subquery, which do not exist; the real raw-SQL functions are checked instead (Scalars, RawSubquery).

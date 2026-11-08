@@ -18,6 +18,6 @@ Implements plan momo-05-writes-queries Task 27: Typed model hooks (S-85) (`.proc
 ## Evidence
 
 - Red: run 42455587059 on the throwaway branch worktree-agent-aecd38e0a7c8adf10-red (tests only, implementation absent, branch deleted) failed to build: undefined HookSet, runModelHook and afterLoad.
-- Green: green run 42455574669 on a5e569e0712fc7d785b63df4afac3ecfac87054e (ci-agent: lint including tidy-check, unit, integration postgres and fuzz-smoke all success).
+- Green: green run 42458998121 on 08f022ed7aa823b0e52cfca67853a90da8dfa131, the merged tree with the review fixes (ci-agent: all jobs success; the first green run was 42455574669 on a5e569e).
 - Tests: TestModelHooks (order insert, load, update; BeforeUpdate veto aborts with no SQL; BeforeInsert value reaches the driver without touching the caller's model), TestModelHooksOnlyForOptedInBuilders (a hook runs only for its own builder kind), TestModelHooksBeforeAbortWithoutSQL, TestModelHooksAfterLoadOnEveryRead (All, Each, Iter, First, ScanModel), TestModelHookDispatchAllocations (zero allocations on the dispatch). They use the fake driver, so they run in the unit job.
 - Deviation: the plan test uses the shared integration suite; the fake driver is used so the assertions run without a database. Hooks do not run for SQL, and relation loads do not run the related type's AfterLoad (documented on HookSet).
