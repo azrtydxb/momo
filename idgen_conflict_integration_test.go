@@ -15,7 +15,7 @@ import (
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 )
 
-func mustExec(t *testing.T, db *momo.DB, stmts ...string) {
+func idgenExec(t *testing.T, db *momo.DB, stmts ...string) {
 	t.Helper()
 	for _, stmt := range stmts {
 		if _, err := db.Driver().Exec(context.Background(), stmt, nil); err != nil {
@@ -24,7 +24,7 @@ func mustExec(t *testing.T, db *momo.DB, stmts ...string) {
 	}
 }
 
-func scanString(t *testing.T, db *momo.DB, query string, arg string) string {
+func idgenScanString(t *testing.T, db *momo.DB, query string, arg string) string {
 	t.Helper()
 	rows, err := db.Driver().Query(context.Background(), query, []any{arg})
 	if err != nil {
@@ -46,12 +46,12 @@ func scanString(t *testing.T, db *momo.DB, query string, arg string) string {
 func TestIDGenConflictDuplicatesAndChunks(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
 		ctx := context.Background()
-		mustExec(t, db, "DROP TABLE IF EXISTS id_uniq",
+		idgenExec(t, db, "DROP TABLE IF EXISTS id_uniq",
 			"CREATE TABLE id_uniq (id text primary key, email text not null unique, name text not null)")
 		email := momo.NewColumn[string]("id_uniq", "email", momo.FlagUnique)
 		name := momo.NewColumn[string]("id_uniq", "name", 0)
 		idOf := func(addr string) string {
-			return scanString(t, db, "SELECT id FROM id_uniq WHERE email = "+placeholder(db), addr)
+			return idgenScanString(t, db, "SELECT id FROM id_uniq WHERE email = "+placeholder(db), addr)
 		}
 
 		// Two models with one email in a single DO NOTHING: the first is inserted.
@@ -113,7 +113,7 @@ func (*idPub) MomoMeta() *momo.Meta[idPub] { return &idPubMeta }
 func TestIDGenNonPKIDOnPrimaryKeyUpsert(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
 		ctx := context.Background()
-		mustExec(t, db, "DROP TABLE IF EXISTS id_pub",
+		idgenExec(t, db, "DROP TABLE IF EXISTS id_pub",
 			"CREATE TABLE id_pub (id text primary key, public_id text not null unique, name text not null)")
 		name := momo.NewColumn[string]("id_pub", "name", 0)
 		first := idPub{ID: "k1", Name: "one"}
@@ -128,7 +128,7 @@ func TestIDGenNonPKIDOnPrimaryKeyUpsert(t *testing.T) {
 		if _, err := momo.Insert[idPub](db).Model(&again).OnConflict(pk).DoUpdate(name.SetExcluded()).Exec(ctx); err != nil {
 			t.Fatal(err)
 		}
-		stored := scanString(t, db, "SELECT public_id FROM id_pub WHERE id = "+placeholder(db), "k1")
+		stored := idgenScanString(t, db, "SELECT public_id FROM id_pub WHERE id = "+placeholder(db), "k1")
 		if again.PublicID != stored || stored != first.PublicID {
 			t.Fatalf("public id: model %q, stored %q, first %q", again.PublicID, stored, first.PublicID)
 		}
@@ -158,7 +158,7 @@ func (*idPad) MomoMeta() *momo.Meta[idPad] { return &idPadMeta }
 func TestIDGenConflictTargetThatDoesNotRoundTripFails(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
-	mustExec(t, db, "DROP TABLE IF EXISTS id_pad",
+	idgenExec(t, db, "DROP TABLE IF EXISTS id_pad",
 		"CREATE TABLE id_pad (id text primary key, code char(8) not null unique)")
 	code := momo.NewColumn[string]("id_pad", "code", momo.FlagUnique)
 	m := idPad{Code: "ab"}
