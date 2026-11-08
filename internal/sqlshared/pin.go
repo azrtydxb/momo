@@ -105,7 +105,7 @@ func (p *sqlPinned) Exec(ctx context.Context, q string, args []any) (int64, erro
 	if err != nil {
 		return 0, p.h.Classify("exec", err)
 	}
-	return rowsAffected(res)
+	return p.h.rowsAffected(res)
 }
 
 // Begin starts a transaction on the pinned connection, with the isolation and
