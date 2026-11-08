@@ -126,6 +126,14 @@ type reader struct {
 	types   map[string]*typeInfo
 	methods map[string]map[string]method // type name -> method name -> declaration
 	fks     []*fk
+	structs []structInfo
+}
+
+// structInfo is a struct of the package with the local types it embeds.
+type structInfo struct {
+	name   string
+	spec   *ast.TypeSpec
+	embeds []string
 }
 
 func (r *reader) pos(p token.Pos) string {
@@ -170,14 +178,23 @@ func (r *reader) collect(f *ast.File) {
 					continue
 				}
 				ti := &typeInfo{name: ts.Name.Name, spec: ts, file: fi}
+				si := structInfo{name: ts.Name.Name, spec: ts}
 				for _, fld := range st.Fields.List {
 					if len(fld.Names) != 0 {
 						continue
+					}
+					t := fld.Type
+					if star, ok := t.(*ast.StarExpr); ok {
+						t = star.X
+					}
+					if id, ok := t.(*ast.Ident); ok {
+						si.embeds = append(si.embeds, id.Name)
 					}
 					ti.entity = ti.entity || fi.is(fld.Type, entPath, "Schema")
 					ti.mixin = ti.mixin || fi.is(fld.Type, mixinPath, "Schema")
 					ti.view = ti.view || fi.is(fld.Type, entPath, "View")
 				}
+				r.structs = append(r.structs, si)
 				if ti.entity || ti.mixin || ti.view {
 					r.types[ti.name] = ti
 					r.order = append(r.order, ti.name)
@@ -340,6 +357,8 @@ type fieldDef struct {
 	def, defKind      string // defKind is "db" or ""
 	claimed           bool   // the field is the key of an edge
 	ok                bool
+	ctor              string // the field.<Type> constructor
+	schemaTyped       bool   // SchemaType named the postgres type
 }
 
 // edgeDef is one parsed Ent edge.
@@ -413,6 +432,7 @@ func (r *reader) build() ([]importer.Model, *importer.Report, error) {
 		ents = append(ents, e)
 		byName[name] = e
 	}
+	r.embeddedSchemas()
 	for _, e := range ents {
 		r.readEntity(e)
 	}
@@ -423,6 +443,34 @@ func (r *reader) build() ([]importer.Model, *importer.Report, error) {
 		models = append(models, r.model(e, fks))
 	}
 	return models, r.rep, nil
+}
+
+// embeddedSchemas reports a struct that embeds a schema or mixin type of the
+// package, directly or through another such struct: Ent loads it as a schema of
+// its own with the embedded methods, which the reader does not follow.
+func (r *reader) embeddedSchemas() {
+	schemaLike := map[string]bool{}
+	for name, ti := range r.types {
+		if ti.entity || ti.mixin {
+			schemaLike[name] = true
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, si := range r.structs {
+			if r.types[si.name] != nil || schemaLike[si.name] {
+				continue
+			}
+			for _, emb := range si.embeds {
+				if schemaLike[emb] {
+					schemaLike[si.name] = true
+					changed = true
+					r.unsupported(si.spec.Pos(), si.name, "", si.name+" embeds the schema type "+emb+"; Ent would treat it as a schema with the embedded fields, edges and indexes, which the reader does not follow")
+					break
+				}
+			}
+		}
+	}
 }
 
 // contributions are the types whose Fields, Edges and Indexes make up e: its
@@ -438,6 +486,9 @@ func (r *reader) contributions(e *entity) []*typeInfo {
 		switch t := cl.Type.(type) {
 		case *ast.Ident:
 			if mt := r.types[t.Name]; mt != nil && mt.mixin {
+				if m, nested := r.methods[mt.name]["Mixin"]; nested {
+					r.unsupported(m.decl.Pos(), e.ti.name, "", "the mixin "+mt.name+" lists mixins of its own; nested mixins are not followed, so their columns would be lost")
+				}
 				out = append(out, mt)
 				continue
 			}
@@ -466,7 +517,7 @@ func exprName(e ast.Expr) string {
 // mixin.UpdateTime. They are time fields with a time.Now default, set in Go.
 func (r *reader) timeMixin(e *entity, kind string, p token.Pos) {
 	add := func(name, why string) {
-		e.fields = append(e.fields, &fieldDef{name: name, column: name, pos: r.pos(p), ft: fieldTypes["Time"], ok: true})
+		e.fields = append(e.fields, &fieldDef{name: name, column: name, pos: r.pos(p), ft: fieldTypes["Time"], ctor: "Time", ok: true})
 		r.rep.Add(importer.Change{Kind: importer.GoDefault, Source: r.pos(p), Model: e.ti.name, Field: pascal(name),
 			Message: "mixin." + kind + " sets " + name + " in Go (" + why + "); Momo needs a created_at or updated_at tag or a database default"})
 	}
@@ -487,14 +538,14 @@ func (r *reader) readEntity(e *entity) {
 	if m, ok := r.methods[name]["Config"]; ok {
 		r.config(e, m)
 	}
-	r.annotations(e)
-	for _, hook := range []string{"Hooks", "Policy", "Interceptors"} {
-		if m, ok := r.methods[name][hook]; ok {
-			r.rep.Add(importer.Change{Kind: importer.GoSideRule, Source: r.pos(m.decl.Pos()), Model: name,
-				Message: hook + " runs in Go inside Ent's builders; it does not carry over to Momo"})
-		}
-	}
 	for _, ti := range r.contributions(e) {
+		r.annotations(e, ti)
+		for _, hook := range []string{"Hooks", "Policy", "Interceptors"} {
+			if m, ok := r.methods[ti.name][hook]; ok {
+				r.rep.Add(importer.Change{Kind: importer.GoSideRule, Source: r.pos(m.decl.Pos()), Model: name,
+					Message: hook + " of " + ti.name + " runs in Go inside Ent's builders; it does not carry over to Momo"})
+			}
+		}
 		for _, el := range r.sliceElems(ti, "Fields") {
 			r.readField(e, el)
 		}
@@ -531,30 +582,86 @@ func (r *reader) config(e *entity, m method) {
 	r.unsupported(m.decl.Pos(), e.ti.name, "", "Config does not return an ent.Config literal, so its table name cannot be read")
 }
 
-// annotations reads entsql.Annotation{Table: ...} from the Annotations
-// method; any other entsql key is reported.
-func (r *reader) annotations(e *entity) {
-	for _, el := range r.sliceElems(e.ti, "Annotations") {
-		cl, ok := el.expr.(*ast.CompositeLit)
-		if !ok || !el.file.is(cl.Type, entsqlPath, "Annotation") {
-			continue // an annotation of another package does not change the schema
+// entry is one key of an entsql annotation: a field of an entsql.Annotation
+// literal, or an entsql call such as entsql.OnDelete(x), whose val is its only
+// argument (nil when it has none or several).
+type entry struct {
+	key string
+	val ast.Expr
+	pos token.Pos
+}
+
+// entsqlEntries returns the entries of the entsql annotations among elems. An
+// element that cannot be shown to come from another package (a variable, a
+// helper call, a positional literal) is reported as unsupported: it could be an
+// entsql annotation.
+func (r *reader) entsqlEntries(fi *fileInfo, model, field string, elems []ast.Expr) []entry {
+	var out []entry
+	for _, el := range elems {
+		x := el
+		if u, ok := x.(*ast.UnaryExpr); ok && u.Op == token.AND {
+			x = u.X
 		}
-		for _, kv := range cl.Elts {
-			kve, ok := kv.(*ast.KeyValueExpr)
-			if !ok {
+		switch x := x.(type) {
+		case *ast.CompositeLit:
+			if fi.is(x.Type, entsqlPath, "Annotation") {
+				for _, e := range x.Elts {
+					kv, ok := e.(*ast.KeyValueExpr)
+					if !ok {
+						r.unsupported(e.Pos(), model, field, "a positional entsql.Annotation literal cannot be read; name its fields")
+						continue
+					}
+					out = append(out, entry{key: exprName(kv.Key), val: kv.Value, pos: kv.Pos()})
+				}
 				continue
 			}
-			key := exprName(kve.Key)
-			if key == "Table" {
-				if v, ok := strLit(kve.Value); ok {
+			if sel, ok := x.Type.(*ast.SelectorExpr); ok && fi.pkg(sel.X) != "" {
+				continue // a literal of another package
+			}
+		case *ast.CallExpr:
+			if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+				switch p := fi.pkg(sel.X); {
+				case p == entsqlPath:
+					en := entry{key: sel.Sel.Name, pos: x.Pos()}
+					if len(x.Args) == 1 {
+						en.val = x.Args[0]
+					}
+					out = append(out, en)
+					continue
+				case p != "":
+					continue // a call of another package
+				}
+			}
+		}
+		r.unsupported(el.Pos(), model, field, "this annotation cannot be shown to come from a package other than entsql (it is a variable, a helper call or a literal the reader does not know), so it might change the schema; inline it or remove it")
+	}
+	return out
+}
+
+// annotations reads the table name from the Annotations method of ti:
+// entsql.Annotation{Table: ...} (also behind &), entsql.Table(...) and
+// entsql.SchemaTable(...). Any other entsql annotation is reported.
+func (r *reader) annotations(e *entity, ti *typeInfo) {
+	elems := r.sliceElems(ti, "Annotations")
+	if len(elems) == 0 {
+		return
+	}
+	args := make([]ast.Expr, len(elems))
+	for i, el := range elems {
+		args[i] = el.expr
+	}
+	for _, en := range r.entsqlEntries(elems[0].file, e.ti.name, "", args) {
+		if en.key == "Table" || en.key == "SchemaTable" {
+			if en.val != nil {
+				if v, ok := strLit(en.val); ok {
 					e.table = v
 					continue
 				}
-				r.unsupported(kve.Pos(), e.ti.name, "", "the entsql Table is not a string literal")
-				continue
 			}
-			r.unsupported(kve.Pos(), e.ti.name, "", "the entsql annotation key "+key+" is not imported; only Table is")
+			r.unsupported(en.pos, e.ti.name, "", "the entsql "+en.key+" is not a string literal")
+			continue
 		}
+		r.unsupported(en.pos, e.ti.name, "", "the entsql annotation "+en.key+" is not imported; only Table is")
 	}
 }
 
@@ -575,7 +682,7 @@ func (r *reader) readField(e *entity, el elem) {
 	}
 	pos := r.pos(c.pos)
 	ft, known := fieldTypes[c.ctor]
-	fd := &fieldDef{name: name, column: namer.ColumnName(name), pos: pos, ft: ft}
+	fd := &fieldDef{name: name, column: namer.ColumnName(name), pos: pos, ft: ft, ctor: c.ctor}
 	bad := func(p token.Pos, msg string) {
 		r.unsupported(p, model, pascal(name), msg)
 		fd.ok = false
@@ -633,6 +740,9 @@ func (r *reader) readField(e *entity, el elem) {
 		case m.name == "Annotations":
 			r.fieldAnnotations(fd, e, el.file, m)
 		case validators[m.name]:
+			if m.name == "MaxLen" && c.ctor == "String" {
+				r.maxLen(fd, model, m)
+			}
 			r.rep.Add(importer.Change{Kind: importer.GoSideRule, Source: r.pos(m.pos), Model: model, Field: pascal(name),
 				Message: m.name + " is a validator Ent runs in Go before it writes; it is not part of the schema and Momo does not run it"})
 		case metadata[m.name]:
@@ -644,6 +754,28 @@ func (r *reader) readField(e *entity, el elem) {
 		r.fieldDefault(fd, e, el.file, c.ctor, defArg, defCall)
 	}
 	e.fields = append(e.fields, fd)
+}
+
+// maxVarchar is the longest varchar Ent creates on PostgreSQL (10 MB); a
+// field.String with a MaxLen above it is text.
+const maxVarchar = 10 << 20
+
+// maxLen maps a field.String MaxLen above maxVarchar to text, as
+// dialect/sql/schema/postgres.go does. A MaxLen that is not an integer literal
+// cannot be compared with the limit and is reported.
+func (r *reader) maxLen(fd *fieldDef, model string, m call) {
+	if len(m.args) == 1 {
+		if lit, ok := m.args[0].(*ast.BasicLit); ok && lit.Kind == token.INT {
+			if n, err := strconv.ParseInt(strings.ReplaceAll(lit.Value, "_", ""), 0, 64); err == nil {
+				if n > maxVarchar && !fd.schemaTyped {
+					fd.ft.sqlType = "text"
+				}
+				return
+			}
+		}
+	}
+	r.unsupported(m.pos, model, pascal(fd.name), "MaxLen is not an integer literal; Ent creates text instead of varchar above 10485760, which the importer cannot check")
+	fd.ok = false
 }
 
 // schemaType reads the postgres entry of a SchemaType map literal.
@@ -668,7 +800,7 @@ func (r *reader) schemaType(fd *fieldDef, e *entity, f *fileInfo, m call) {
 				}
 				switch {
 				case key == "postgres" && vok:
-					fd.ft.sqlType = strings.ToLower(v)
+					fd.ft.sqlType, fd.schemaTyped = strings.ToLower(v), true
 				case key == "":
 					r.unsupported(kv.Pos(), model, field, "a SchemaType key that is not a dialect constant or a string literal cannot be read")
 					fd.ok = false
@@ -691,46 +823,31 @@ func (r *reader) schemaType(fd *fieldDef, e *entity, f *fileInfo, m call) {
 // entsql annotation is reported.
 func (r *reader) fieldAnnotations(fd *fieldDef, e *entity, fi *fileInfo, m call) {
 	model, field := e.ti.name, pascal(fd.name)
-	for _, a := range m.args {
-		switch a := a.(type) {
-		case *ast.CallExpr:
-			sel, ok := a.Fun.(*ast.SelectorExpr)
-			if !ok || fi.pkg(sel.X) != entsqlPath {
-				continue
+	for _, en := range r.entsqlEntries(fi, model, field, m.args) {
+		v, vok := "", false
+		if en.val != nil {
+			v, vok = strLit(en.val)
+		}
+		switch {
+		case en.key == "Default" && vok:
+			// Ent writes a string default as a quoted literal, except for
+			// time and UUID columns, where it is an expression.
+			if fd.ctor == "Time" {
+				fd.def = v
+			} else {
+				fd.def = "'" + strings.ReplaceAll(v, "'", "''") + "'"
 			}
-			v, vok := "", false
-			if len(a.Args) == 1 {
-				v, vok = strLit(a.Args[0])
+			fd.defKind = "db"
+		case en.key == "DefaultExpr" && vok:
+			// Ent wraps an expression in parentheses unless it already
+			// starts and ends with them (Atlas.atDefault).
+			if len(v) > 1 && (v[0] != '(' || v[len(v)-1] != ')') {
+				v = "(" + v + ")"
 			}
-			switch {
-			case sel.Sel.Name == "Default" && vok:
-				fd.def, fd.defKind = "'"+strings.ReplaceAll(v, "'", "''")+"'", "db"
-			case sel.Sel.Name == "DefaultExpr" && vok:
-				fd.def, fd.defKind = v, "db"
-			default:
-				r.unsupported(a.Pos(), model, field, "entsql."+sel.Sel.Name+" is not imported; only Default and DefaultExpr with a string literal are")
-				fd.ok = false
-			}
-		case *ast.CompositeLit:
-			if !fi.is(a.Type, entsqlPath, "Annotation") {
-				continue
-			}
-			for _, el := range a.Elts {
-				kv, ok := el.(*ast.KeyValueExpr)
-				if !ok {
-					continue
-				}
-				v, vok := strLit(kv.Value)
-				switch key := exprName(kv.Key); {
-				case key == "Default" && vok:
-					fd.def, fd.defKind = "'"+strings.ReplaceAll(v, "'", "''")+"'", "db"
-				case key == "DefaultExpr" && vok:
-					fd.def, fd.defKind = v, "db"
-				default:
-					r.unsupported(kv.Pos(), model, field, "the entsql annotation key "+key+" is not imported; only Default and DefaultExpr with a string literal are")
-					fd.ok = false
-				}
-			}
+			fd.def, fd.defKind = v, "db"
+		default:
+			r.unsupported(en.pos, model, field, "the entsql annotation "+en.key+" is not imported; only Default and DefaultExpr with a string literal are")
+			fd.ok = false
 		}
 	}
 }
@@ -899,42 +1016,15 @@ func (r *reader) edgeAnnotations(ed *edgeDef, m call, bad func(token.Pos, string
 		v, ok := deleteActions[sel.Sel.Name]
 		return v, ok
 	}
-	for _, a := range m.args {
-		switch a := a.(type) {
-		case *ast.CallExpr:
-			sel, ok := a.Fun.(*ast.SelectorExpr)
-			if !ok || ed.file.pkg(sel.X) != entsqlPath {
-				continue
-			}
-			if v, ok := action(firstArg(a)); ok && sel.Sel.Name == "OnDelete" {
+	for _, en := range r.entsqlEntries(ed.file, ed.owner.ti.name, pascal(ed.name), m.args) {
+		if en.key == "OnDelete" && en.val != nil {
+			if v, ok := action(en.val); ok {
 				ed.onDelete = v
 				continue
 			}
-			bad(a.Pos(), "entsql."+sel.Sel.Name+" on an edge is not imported; only OnDelete with entsql.Cascade, NoAction, Restrict, SetNull or SetDefault is")
-		case *ast.CompositeLit:
-			if !ed.file.is(a.Type, entsqlPath, "Annotation") {
-				continue
-			}
-			for _, el := range a.Elts {
-				kv, ok := el.(*ast.KeyValueExpr)
-				if !ok {
-					continue
-				}
-				if v, ok := action(kv.Value); ok && exprName(kv.Key) == "OnDelete" {
-					ed.onDelete = v
-					continue
-				}
-				bad(kv.Pos(), "the entsql annotation key "+exprName(kv.Key)+" on an edge is not imported; only OnDelete is")
-			}
 		}
+		bad(en.pos, "the entsql annotation "+en.key+" on an edge is not imported; only OnDelete with entsql.Cascade, NoAction, Restrict, SetNull or SetDefault is")
 	}
-}
-
-func firstArg(c *ast.CallExpr) ast.Expr {
-	if len(c.Args) == 1 {
-		return c.Args[0]
-	}
-	return c.Fun
 }
 
 func (r *reader) readIndex(e *entity, el elem) {
@@ -1236,6 +1326,10 @@ func (r *reader) column(e *entity, fd *fieldDef) importer.Field {
 		Name: pascal(fd.name), Column: fd.column, GoType: goType, SQLType: fd.ft.sqlType,
 		Nullable: fd.optional, Default: fd.def, DefaultKind: fd.defKind, Source: fd.pos,
 	}
+	if fd.optional && !fd.nillable {
+		r.rep.Add(importer.Change{Kind: importer.ZeroValueHandling, Source: fd.pos, Model: e.ti.name, Field: f.Name,
+			Message: "the column is nullable but the Go field is not a pointer: Ent reads NULL as the zero value; Momo needs a pointer type (or its nullable tag) to tell NULL from " + zeroName(fd.ft.goType)})
+	}
 	if fd.nillable && !fd.optional {
 		r.unsupportedAt(fd.pos, e.ti.name, f.Name, "Nillable without Optional: Momo reads nullability from the Go type, so the pointer would make the column nullable; add Optional or drop Nillable")
 	}
@@ -1335,4 +1429,19 @@ func (r *reader) keysOf(e *entity, name string) []string {
 		}
 	}
 	return cols
+}
+
+// zeroName names the zero value of a Go type for a message.
+func zeroName(goType string) string {
+	switch {
+	case goType == "string":
+		return `""`
+	case goType == "bool":
+		return "false"
+	case goType == "time.Time":
+		return "the zero time"
+	case goType == "[]byte":
+		return "an empty slice"
+	}
+	return "0"
 }

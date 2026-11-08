@@ -25,9 +25,11 @@ const imports = `package schema
 import (
 	"time"
 
+	"entgo.io/contrib/entgql"
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
+	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
@@ -203,8 +205,8 @@ func TestReadFixtureModels(t *testing.T) {
 	}
 
 	// the report
-	if got := rep.Of(importer.ZeroValueHandling); len(got) != 4 {
-		t.Fatalf("Active, Score, Kind and Label have a literal default: %s", rep)
+	if got := rep.Of(importer.ZeroValueHandling); len(got) != 9 {
+		t.Fatalf("Active, Score, Kind and Label have a literal default; DisplayName, SeenAt, Count, Blob and Body are nullable without a pointer: %s", rep)
 	}
 	if got := rep.Of(importer.GoDefault); len(got) != 4 {
 		t.Fatalf("create_time and update_time of mixin.Time, SeenAt and JoinedAt: %s", rep)
@@ -313,7 +315,7 @@ func (D) Fields() []ent.Field {
 }
 `)
 	d := model(t, models, "D")
-	for name, want := range map[string]string{"B": "false", "I": "-5", "U": "7", "F": "1.5", "G": "2", "S": "'it''s'", "T": "'x'", "E": "'a'", "Expr": "lower('A')", "At": ""} {
+	for name, want := range map[string]string{"B": "false", "I": "-5", "U": "7", "F": "1.5", "G": "2", "S": "'it''s'", "T": "'x'", "E": "'a'", "Expr": "(lower('A'))", "At": ""} {
 		if got := field(t, d, name).Default; got != want {
 			t.Errorf("default of %s = %q, want %q", name, got, want)
 		}
@@ -521,5 +523,193 @@ func TestReadIsDeterministic(t *testing.T) {
 				t.Fatalf("change %d moved between reads: %+v vs %+v", j, first.Changes[j], again.Changes[j])
 			}
 		}
+	}
+}
+
+func TestReadEntityAnnotationsAreNotDroppedSilently(t *testing.T) {
+	models, rep := readSource(t, `
+type A struct{ ent.Schema }
+
+func (A) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Table("a_tab"), entgql.QueryField()}
+}
+
+type B struct{ ent.Schema }
+
+func (B) Annotations() []schema.Annotation {
+	return []schema.Annotation{&entsql.Annotation{Table: "b_tab"}}
+}
+
+type C struct{ ent.Schema }
+
+func (C) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Skip(), entsql.WithComments(true), entsql.Checks(nil), mine, helper()}
+}
+
+type D struct{ ent.Schema }
+
+func (D) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.SchemaTable("d_tab")}
+}
+`)
+	if got := model(t, models, "A").Table; got != "a_tab" {
+		t.Errorf("entsql.Table call: %q", got)
+	}
+	if got := model(t, models, "B").Table; got != "b_tab" {
+		t.Errorf("&entsql.Annotation literal: %q", got)
+	}
+	if got := model(t, models, "D").Table; got != "d_tab" {
+		t.Errorf("entsql.SchemaTable call: %q", got)
+	}
+	// Skip, WithComments and Checks are entsql; mine and helper() cannot be proven to be another package's
+	if got := rep.Of(importer.Unsupported); len(got) != 5 {
+		t.Fatalf("every annotation that might change the schema is reported, the entgql one is not: %s", rep)
+	}
+}
+
+func TestReadFieldAndEdgeAnnotationsBehindPointersAndVariables(t *testing.T) {
+	models, rep := readSource(t, `
+type Org struct{ ent.Schema }
+
+func (Org) Edges() []ent.Edge {
+	return []ent.Edge{edge.To("users", User.Type).Annotations(&entsql.Annotation{OnDelete: entsql.Cascade})}
+}
+
+type User struct{ ent.Schema }
+
+func (User) Fields() []ent.Field {
+	return []ent.Field{
+		field.Time("at").Annotations(entsql.Default("now()")),
+		field.String("s").Annotations(entsql.Default("x")),
+		field.String("e").Annotations(&entsql.Annotation{DefaultExpr: "(lower('A'))"}),
+		field.String("v").Annotations(shared),
+	}
+}
+
+func (User) Edges() []ent.Edge {
+	return []ent.Edge{edge.From("org", Org.Type).Ref("users").Unique()}
+}
+`)
+	user := model(t, models, "User")
+	if len(user.ForeignKeys) != 1 || user.ForeignKeys[0].OnDelete != "CASCADE" {
+		t.Fatalf("OnDelete behind & must not be lost: %+v", user.ForeignKeys)
+	}
+	for name, want := range map[string]string{"At": "now()", "S": "'x'", "E": "(lower('A'))"} {
+		if got := field(t, user, name).Default; got != want {
+			t.Errorf("default of %s = %q, want %q (Ent quotes a string default except on time columns and wraps an expression in parentheses)", name, got, want)
+		}
+	}
+	if got := rep.Of(importer.Unsupported); len(got) != 1 || got[0].Field != "V" {
+		t.Fatalf("a variable annotation is reported: %s", rep)
+	}
+}
+
+func TestReadChecksEveryMixinContribution(t *testing.T) {
+	models, rep := readSource(t, `
+type Guarded struct{ mixin.Schema }
+
+func (Guarded) Fields() []ent.Field {
+	return []ent.Field{field.String("g")}
+}
+
+func (Guarded) Hooks() []ent.Hook { return nil }
+
+func (Guarded) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Skip(), entsql.Table("from_mixin")}
+}
+
+type Outer struct{ mixin.Schema }
+
+func (Outer) Mixin() []ent.Mixin { return []ent.Mixin{Guarded{}} }
+
+type T struct{ ent.Schema }
+
+func (T) Mixin() []ent.Mixin { return []ent.Mixin{Guarded{}, Outer{}} }
+`)
+	if got := rep.Of(importer.GoSideRule); len(got) != 1 || !strings.Contains(got[0].Message, "Guarded") {
+		t.Fatalf("the hook of the mixin: %s", rep)
+	}
+	var skip, nested int
+	for _, c := range rep.Of(importer.Unsupported) {
+		if strings.Contains(c.Message, "Skip") {
+			skip++
+		}
+		if strings.Contains(c.Message, "nested mixins") {
+			nested++
+		}
+	}
+	if skip != 1 || nested != 1 {
+		t.Fatalf("Skip in a mixin and a nested Mixin() must be reported: %s", rep)
+	}
+	if got := model(t, models, "T").Table; got != "from_mixin" {
+		t.Fatalf("a table named by a mixin annotation applies to the entity: %q", got)
+	}
+	field(t, model(t, models, "T"), "G")
+}
+
+func TestReadReportsSchemaTypesThatEmbedSchemaTypes(t *testing.T) {
+	models, rep := readSource(t, `
+type Base struct{ ent.Schema }
+
+func (Base) Fields() []ent.Field {
+	return []ent.Field{field.String("b")}
+}
+
+type Derived struct{ Base }
+
+type Deeper struct{ *Derived }
+`)
+	got := rep.Of(importer.Unsupported)
+	if len(got) != 2 || got[0].Model != "Derived" || got[1].Model != "Deeper" {
+		t.Fatalf("a struct embedding a schema type, directly or not, is reported: %s", rep)
+	}
+	if len(models) != 1 || models[0].Name != "Base" {
+		t.Fatalf("only Base is an entity: %+v", models)
+	}
+}
+
+func TestReadMapsHugeMaxLenToText(t *testing.T) {
+	models, rep := readSource(t, `
+type S struct{ ent.Schema }
+
+func (S) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("small").MaxLen(100),
+		field.String("huge").MaxLen(20000000),
+		field.String("typed").MaxLen(20000000).SchemaType(map[string]string{dialect.Postgres: "citext"}),
+		field.String("dyn").MaxLen(limit),
+	}
+}
+`)
+	s := model(t, models, "S")
+	if got := field(t, s, "Small").SQLType; got != "varchar" {
+		t.Errorf("small MaxLen: %q", got)
+	}
+	if got := field(t, s, "Huge").SQLType; got != "text" {
+		t.Errorf("Ent creates text above 10485760: %q", got)
+	}
+	if got := field(t, s, "Typed").SQLType; got != "citext" {
+		t.Errorf("SchemaType wins: %q", got)
+	}
+	if got := rep.Of(importer.Unsupported); len(got) != 1 || got[0].Field != "Dyn" {
+		t.Fatalf("a MaxLen that is not a literal is reported: %s", rep)
+	}
+}
+
+func TestReadReportsNullableFieldsWithoutPointers(t *testing.T) {
+	_, rep := readSource(t, `
+type N struct{ ent.Schema }
+
+func (N) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("plain").Optional(),
+		field.String("ptr").Optional().Nillable(),
+		field.Int("req"),
+	}
+}
+`)
+	got := rep.Of(importer.ZeroValueHandling)
+	if len(got) != 1 || got[0].Field != "Plain" {
+		t.Fatalf("only the optional field without a pointer is reported: %s", rep)
 	}
 }
