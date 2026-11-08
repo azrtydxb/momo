@@ -139,6 +139,11 @@ func (q InsertQuery[T]) keepsExistingRow() bool {
 	if err != nil || rq.i.conflict == conflictNone {
 		return false
 	}
+	for _, g := range rq.meta.IDGens {
+		if !slices.Contains(rq.meta.PK, g.Column) {
+			return true // e.g. a public_id: the row that is kept has its own
+		}
+	}
 	if len(rq.i.target) != len(rq.meta.PK) {
 		return true
 	}
@@ -260,7 +265,10 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 	}
 	byKey := make(map[string]int, len(q.models))
 	for i := range q.models {
-		byKey[idKey(q.meta, &q.models[i], keyCols)] = i
+		k := idKey(q.meta, &q.models[i], keyCols)
+		if _, dup := byKey[k]; !dup {
+			byKey[k] = i // the first model of a duplicate key is the one DO NOTHING inserts
+		}
 	}
 	var n int64
 	for rows.Next() {
@@ -271,7 +279,11 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		}
 		n++
 		i, ok := byKey[idKey(q.meta, &got, keyCols)]
-		if !ok || i >= len(q.back) || q.back[i] == nil {
+		if !ok {
+			_ = rows.Close()
+			return Result{}, q.verr("", "idgen: a RETURNING row of %s matched no model on %s: the conflict-target columns must read back exactly as written (citext, char(n) and numeric columns may not); the statement ran", q.meta.Table, strings.Join(keyNames(q.meta, keyCols), ", "))
+		}
+		if i >= len(q.back) || q.back[i] == nil {
 			continue
 		}
 		for _, ci := range idCols {
@@ -288,6 +300,15 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	return Result{RowsAffected: n}, nil
+}
+
+// keyNames lists the column names of the given indexes.
+func keyNames[T any](m *Meta[T], cols []int) []string {
+	out := make([]string, len(cols))
+	for i, ci := range cols {
+		out[i] = m.Columns[ci].Name
+	}
+	return out
 }
 
 // idKey joins the values of the given columns of m into a comparable key.
@@ -394,7 +415,28 @@ var ulidState struct {
 // order, also within the same millisecond. It returns the empty string, which
 // the insert reports as an error, if the random part would overflow.
 func newULID() string {
+	raw, ok := nextULIDBytes()
+	if !ok {
+		return ""
+	}
+	// Encode the 128 bits as 26 groups of 5 bits, least significant first;
+	// the leading group holds only 3 bits.
+	var out [26]byte
+	hi := binary.BigEndian.Uint64(raw[0:8])
+	lo := binary.BigEndian.Uint64(raw[8:16])
+	for i := 25; i >= 0; i-- {
+		out[i] = crockford[lo&31]
+		lo = lo>>5 | hi<<59
+		hi >>= 5
+	}
+	return string(out[:])
+}
+
+// nextULIDBytes advances the monotonic state and returns the next 128 bits. It
+// reports false if the random part would overflow within one millisecond.
+func nextULIDBytes() (raw [16]byte, ok bool) {
 	ulidState.Lock()
+	defer ulidState.Unlock()
 	ms := uint64(time.Now().UnixMilli())
 	if ms > ulidState.ms {
 		ulidState.ms = ms
@@ -411,25 +453,12 @@ func newULID() string {
 		}
 		if i < 0 { // 2^80 ids in one millisecond: refuse instead of wrapping
 			ulidState.rand = prev
-			ulidState.Unlock()
-			return ""
+			return raw, false
 		}
 	}
-	var raw [16]byte
 	binary.BigEndian.PutUint64(raw[0:8], ms<<16)
 	copy(raw[6:], ulidState.rand[:])
-	ulidState.Unlock()
-	// Encode the 128 bits as 26 groups of 5 bits, least significant first;
-	// the leading group holds only 3 bits.
-	var out [26]byte
-	hi := binary.BigEndian.Uint64(raw[0:8])
-	lo := binary.BigEndian.Uint64(raw[8:16])
-	for i := 25; i >= 0; i-- {
-		out[i] = crockford[lo&31]
-		lo = lo>>5 | hi<<59
-		hi >>= 5
-	}
-	return string(out[:])
+	return raw, true
 }
 
 var cuidState struct {

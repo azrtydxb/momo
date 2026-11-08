@@ -11,7 +11,7 @@ import (
 	"github.com/azrtydxb/momo"                    // core: DB, Tx, Select, Insert, Update, Delete, errors
 	"github.com/azrtydxb/momo/driver/pgxdriver"   // PostgreSQL driver (pgx v5)
 	"github.com/azrtydxb/momo/vector"             // vector.Vector, HalfVector, SparseVector, Bits
-	"github.com/azrtydxb/momo/types"              // types.UUID, Date, JSON[T], TimeOfDay, Hstore
+	"github.com/azrtydxb/momo/types"              // types.UUID, Date, JSON[T], TimeOfDay, Hstore, TSVector, TSQuery
 	"yourmodule/models"                           // your structs
 	"yourmodule/models/task"                      // GENERATED: one package per model (lowercase model name)
 )
@@ -31,8 +31,11 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
-- Hybrid (full text plus vector) search, `MERGE` builder and window-function API
-  do not exist. Use `momo.SQL` / `momo.TypedSQL` for those.
+- Reciprocal-rank-fusion hybrid search, `MERGE` builder and window-function API
+  do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
+  (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
+  query builders) exists on PostgreSQL; combine it with a vector distance in
+  one score as shown in [fulltext.md](fulltext.md).
 
 Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/quickstart/).
 
@@ -359,9 +362,18 @@ func (n *Note) MomoConfig(c *momo.Config) { c.IDGen(&n.ID, "ulid") }
   usually empty. This needs `RETURNING`; without it (MySQL) the id is not
   written back for such statements. `Rows` never writes back there: read the id
   from the returned rows.
-- A generated id stays in your struct, also when the insert fails. Retrying the
+- When the id is written back up front (every statement except the conflict
+  case above), it stays in your struct also when the insert fails. Retrying the
   same struct reuses the id, and so do all rows of a failed chunked insert. Clear
-  the field to get a new one.
+  the field to get a new one. In the conflict case the model is updated only
+  after a successful statement.
+- In the conflict case, rows are matched to models on the conflict-target
+  columns (or on the generated id for `DoNothing` without a target), so those
+  columns must read back exactly as you wrote them; `citext`, `char(n)` and
+  `numeric` columns may not. A returned row that matches no model fails with
+  `ErrValidation`; the statement has already run. If two models share a target
+  value, the first one is matched. A non-primary-key generated column (such as a
+  `public_id`) counts as a conflict case too, because the kept row has its own.
 - The generator is a client-side convenience, not a secret. A `cuid` is built
   from the time, a counter and a process fingerprint, so it is guessable: do not
   use it for tokens or anything that must be unpredictable. Use `uuid` (random,
@@ -483,10 +495,10 @@ momo migrate drift                      # live DB vs latest applied snapshot
   `migrate.url_env.postgres`, else `MOMO_DATABASE_URL`.
   Exit codes: 0 ok, 1 findings, 2 usage/config, 3 database/lock/execution error.
   An invalid migration name (`diff Bad-Name`) exits 3, not 2.
-- Hand-written SQL migration: create `<version>_<name>.up.sql` (no
-  `-- momo:generated` line) plus a snapshot file copied from the previous one
-  with `version` and `parent` changed; its schema must equal its parent's. Then
-  `momo migrate hash`, `momo migrate validate`. Directives (first lines):
+- Hand-written SQL migration: `momo migrate new --custom <name>` writes the up
+  file (no `-- momo:generated` line), a snapshot copied from the latest one and
+  the extended `momo.sum`; write the SQL, then `momo migrate hash` and
+  `momo migrate validate`. The snapshot schema must equal its parent's. Directives (first lines):
   `-- momo:no-transaction`, `-- momo:split`, `-- momo:destructive`
   (informational). Unknown `-- momo:` directive is an error.
 - Existing database: write models, `momo migrate diff init` (do not apply), then
@@ -496,7 +508,9 @@ momo migrate drift                      # live DB vs latest applied snapshot
 - The first migration with a vector column runs
   `CREATE EXTENSION IF NOT EXISTS "vector"`. pgvector must be installed on the server (image
   `pgvector/pgvector`), and the migration role must be allowed to create
-  extensions, otherwise apply exits 3 naming the extension.
+  extensions, otherwise apply exits 3 naming the extension. An extension a
+  superuser installs by hand goes in `migrate.external_extensions` in
+  `momo.yaml`: no migration emits it and drift ignores it.
 
 CI (every change):
 
@@ -698,6 +712,25 @@ momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
 momo.Func[string]("btrim", doc.Title)
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 momo.CurrentSchema()
+
+// Dates and times (PostgreSQL; SQLite and MySQL render equivalents). Fields and
+// units are constants checked against an allowlist; anything else is ErrValidation.
+momo.Extract(momo.ExtractEpoch, doc.CreatedAt)         // float64, also Year, Month, Day, Hour, Minute, Second, Quarter, Dow, ISODow, Doy
+momo.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is a validated literal; PostgreSQL only, else ErrUnsupported
+// Local-day buckets: momo.DateTrunc(momo.TruncDay, momo.AtTimeZone(col, zone)); a bare timestamptz truncates in the session zone.
+momo.DateTrunc(momo.TruncDay, doc.CreatedAt)           // Second..Year, weeks start on Monday
+momo.Now()                                             // also CurrentTimestamp(); the database clock, not WithClock
+// Intervals are an operand of AddInterval/SubInterval, not an expression of their own.
+momo.SubInterval(momo.Now(), momo.IntervalOf(7, momo.IntervalDay))              // literal count
+momo.AddInterval(doc.CreatedAt, momo.IntervalExpr(momo.Value(int64(n)), momo.IntervalHour)) // bound or column count
+
+// JoinSQL composes raw fragments with their args (Prisma.join). The separator is a fixed
+// literal from an allowlist: "," or " " (parts as written), " AND ", " OR ", "||", "+"
+// (parts and the whole parenthesised; MySQL renders "||" as CONCAT). A part is any Expr, usually
+// momo.SQL(...). An empty AND join is 1 = 1 and an empty OR join 1 = 0, like And and Or.
+var conds []momo.Expr
+conds = append(conds, momo.SQL("status = ?", status))
+q.Where(momo.JoinSQL(" AND ", conds...))               // JoinTypedSQL[T] declares a result type
 
 // CASE; branches share the type T. Else/ElseExpr optional (NULL otherwise).
 momo.Case[string]().
@@ -1293,7 +1326,8 @@ Pitfalls:
   `pgxpool.NewWithConfig`, then `pgxdriver.WithVectorFormat(pgxdriver.VectorBinary)`
   with a describe-based exec mode). Default text transport is correct; skip unless
   profiling says otherwise. `NewPool` does not call `ConfigureVectors`.
-- Hybrid (full text plus vector) search does not exist.
+- Reciprocal-rank-fusion hybrid search does not exist; combine a distance and a
+  text rank in one score instead ([fulltext.md](fulltext.md)).
 
 Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-search/).
 
