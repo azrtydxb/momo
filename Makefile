@@ -35,7 +35,7 @@ PG_URL ?= postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
 PG_APP_URL ?= postgres://momo_app:momo_app@127.0.0.1:5432/postgres?sslmode=disable
 PGBOUNCER_URL ?= postgres://postgres:momo@127.0.0.1:6432/postgres?sslmode=disable
 
-.PHONY: test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
+.PHONY: bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -66,6 +66,12 @@ test-bench-module:
 
 test-bench-module-integration:
 	cd bench && BENCH_PG_URL='$(PG_URL)' $(GO) test -tags integration -p 1 -count=1 ./...
+
+# The hook-overhead benchmark needs a database, so it only compiles with the
+# integration tag and bench-smoke skips it. The figure is the budget recorded
+# in docs/PERFORMANCE.md.
+bench-hooks:
+	MOMO_TEST_POSTGRES_URL='$(PG_URL)' $(GO) test -tags integration -run='^$$' -bench='^BenchmarkSelectNoHooks$$' -benchmem -benchtime=200x .
 
 bench-env:
 	cd bench && $(GO) run ./cmd/envcapture

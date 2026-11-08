@@ -19,7 +19,7 @@ is caught. Lower the budget in the same change whenever the path gets cheaper.
 | -------------------------------- | ------ |
 | BenchmarkSelectNoHooks allocs/op | 32     |
 
-To reproduce, run `make db-up`, then `go test -tags integration -run '^$' -bench '^BenchmarkSelectNoHooks$' -benchmem .` with `MOMO_TEST_POSTGRES_URL` set. The benchmark opens a database, so it only compiles with the `integration` build tag and `make bench-smoke` skips it.
+To reproduce, run `make db-up`, then `make bench-hooks`. The benchmark opens a database, so it only compiles with the `integration` build tag and `make bench-smoke` skips it; the `bench-module` CI job runs `make bench-hooks` against the pgvector service.
 
 ## Comparison suite
 
