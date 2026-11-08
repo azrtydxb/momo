@@ -23,6 +23,8 @@ New here? Start with [getting started](getting-started.md).
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
 - [Read replicas](replicas.md): `WithReplicas`, which statements go to a replica, reading your own writes, and what happens when a replica is down.
 - [Testing applications](testing.md): the `momotest` kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.
+- [Interceptors](PRIVACY_RULES.md): application-level per-handle rules that add predicates or deny typed statements, the tenant recipe, and the paths they do not cover (not a security boundary).
+- [Static check for raw SQL](momovet.md): the momovet analyzer that reports non-constant SQL passed to the raw-SQL functions.
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
 - [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI, and the stability policy.
 - [Using these docs with an AI coding agent](agents.md): where an agent should read, canonical patterns and a copy-paste AGENTS.md snippet.

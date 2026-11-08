@@ -30,7 +30,7 @@ func (sq SelectQuery[T]) Explain(ctx context.Context) (string, error) {
 	default:
 		return "", fmt.Errorf("momo: Explain on %s: %w", name, ErrUnsupported)
 	}
-	c, err := sq.SQL()
+	c, _, err := sq.compileJoined(ctx)
 	if err != nil {
 		return "", err
 	}

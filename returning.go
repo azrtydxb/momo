@@ -106,7 +106,7 @@ func runReturning[T any](ctx context.Context, q Querier, op string, m *Meta[T], 
 	if err != nil {
 		return nil, err
 	}
-	return &ModelRows[T]{rows: rows, meta: m, idx: idx}, nil
+	return &ModelRows[T]{rows: rows, meta: m, idx: idx, ctx: ctx}, nil
 }
 
 // ModelRows is the cursor of a write statement with a RETURNING list. Each
@@ -117,6 +117,11 @@ type ModelRows[T any] struct {
 	meta *Meta[T]
 	idx  []int
 	dest []any
+	// ctx is the statement's context, passed to the AfterLoad hook.
+	ctx context.Context
+	// noHooks skips the AfterLoad hook: internal reads of RETURNING rows (the
+	// id-generator reconcile) scan half-filled models that no hook may see.
+	noHooks bool
 }
 
 // Next advances to the next returned row.
@@ -133,7 +138,13 @@ func (r *ModelRows[T]) ScanModel(m *T) error {
 	for i, ci := range r.idx {
 		r.dest[i] = r.meta.Ptr(m, ci)
 	}
-	return r.rows.Scan(r.dest...)
+	if err := r.rows.Scan(r.dest...); err != nil {
+		return err
+	}
+	if r.noHooks {
+		return nil
+	}
+	return afterLoad(r.ctx, r.meta, m)
 }
 
 // Err returns the error that ended iteration, if any.

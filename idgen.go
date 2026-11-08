@@ -297,6 +297,7 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	rows.noHooks = true // internal read: the models are half-filled
 	byKey := make(map[string]int, len(q.models))
 	for i := range q.models {
 		k := idKey(q.meta, &q.models[i], keyCols)
