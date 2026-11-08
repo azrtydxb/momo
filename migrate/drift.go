@@ -41,6 +41,23 @@ func excludeMatcher(globs []string) (func(schemaName, name string) bool, error) 
 	}, nil
 }
 
+// dropExternalExtensions returns s without the extensions named in names; s is
+// returned as is when none matches and is never modified.
+func dropExternalExtensions(s *schema.Schema, names []string) *schema.Schema {
+	if s == nil || len(names) == 0 || len(s.Extensions) == 0 {
+		return s
+	}
+	c := *s
+	c.Extensions = slices.DeleteFunc(slices.Clone(s.Extensions), func(e schema.Extension) bool { return slices.Contains(names, e.Name) })
+	return &c
+}
+
+// hide applies the drift-time filters of the configuration to s: the external
+// extensions, then the Exclude globs.
+func (e *Engine) hide(s *schema.Schema) *schema.Schema {
+	return applyExclude(dropExternalExtensions(s, e.opts.config.ExternalExtensions), e.opts.config.Exclude)
+}
+
 // applyExclude returns a copy of s without the tables, views, functions, enums
 // and extensions whose name matches a pattern of globs, and without the
 // triggers and policies of an excluded table or whose own name matches. s is
@@ -431,7 +448,7 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 		if snap == nil {
 			return nil, fmt.Errorf("%w: applied version %s has no snapshot at or before it; run momo migrate diff", ErrNoSnapshot, latest)
 		}
-		from = applyExclude(snap.Schema, e.opts.config.Exclude)
+		from = e.hide(snap.Schema)
 		if from, skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
 			return nil, err
 		}
