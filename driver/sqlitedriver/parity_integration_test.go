@@ -15,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/driver/sqlitedriver"
 	"github.com/azrtydxb/momo/internal/testdb"
+	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -130,4 +131,42 @@ func TestSQLiteVectorParity(t *testing.T) {
 	if _, err := momo.Exec(ctx, db, "CREATE INDEX docs_emb ON docs USING hnsw (emb)"); err == nil {
 		t.Fatal("SQLite accepted CREATE INDEX ... USING hnsw")
 	}
+
+	// The same data in pgvector, searched exactly (the table has no index): the
+	// same builders return the same ids. Skipped when no PostgreSQL URL is set.
+	t.Run("pgvector", func(t *testing.T) {
+		pg := testopen.Postgres(t)
+		if _, err := momo.Exec(ctx, pg, fmt.Sprintf("CREATE TABLE docs (id bigint PRIMARY KEY, emb vector(%d) NOT NULL)", vectorparity.Dim)); err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range vecs {
+			if _, err := momo.Exec(ctx, pg, "INSERT INTO docs (id, emb) VALUES (?, ?)", int64(i+1), v); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, c := range cases {
+			sel, err := momo.Select[parityDoc](pg).OrderBy(c.dist.Asc(), id.Asc()).Limit(vectorparity.TopK).Columns(id).SQL()
+			if err != nil {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			rows, err := pg.Driver().Query(ctx, sel.SQL, sel.Args)
+			if err != nil {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			var ids []int64
+			for rows.Next() {
+				var n int64
+				if err := rows.Scan(&n); err != nil {
+					t.Fatalf("%s: %v", c.name, err)
+				}
+				ids = append(ids, n)
+			}
+			if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			if !slices.Equal(ids, c.want) {
+				t.Fatalf("%s top-%d: pgvector exact %v, sqlite-vec and reference %v", c.name, vectorparity.TopK, ids, c.want)
+			}
+		}
+	})
 }

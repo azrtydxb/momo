@@ -434,8 +434,9 @@ database gets the real blob. Distances work in the select list, in a
 comparison and in `OrderBy` (`Asc` nearest first, `Desc` farthest first).
 Results are held to the plain-Go reference in `internal/vectorparity`: the
 top-10 ids of cosine, L2 and L1 search over 300 vectors equal the reference
-exactly, and the reference is the one pgvector exact search and MariaDB are held
-to for cosine.
+exactly. The reference is the one pgvector exact search and MariaDB are held to
+for cosine, and when a PostgreSQL URL is set `TestSQLiteVectorParity` also loads
+the same vectors into pgvector and requires the same ids for cosine, L2 and L1.
 
 **Indexes.** sqlite-vec compares every row, so it has no approximate index and
 `dialect.For(dialect.SQLite).Vector.Indexes` is empty. `momo.CheckVectorIndexMethod`
