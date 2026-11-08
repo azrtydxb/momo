@@ -37,15 +37,16 @@ Implements plan momo-11-adoption Task 4: Ent static reader and fixture module (n
 
 ## Review follow-up (review of 3c9b373: 0 critical, 2 important, 4 medium, 3 low)
 
-All nine findings are fixed in e4c864d (ci-agent run 42476644069, all jobs green), each with a test in importer/ent/read_test.go or internal/repocheck/repo_test.go:
+All nine findings were fixed in e4c864d (ci-agent run 42476644069); a second pass (below) brought the code to f5d35e9, ci-agent run 42479118711, all jobs green, the last commit that touches code. Later commits only edit this story. Each finding has a test in importer/ent/read_test.go or internal/repocheck/repo_test.go:
 
 - Entity, field and edge annotations: entsql calls (Table and SchemaTable set the table; Skip, Check, Checks, View, IncrementStart, WithComments and the rest are unsupported), `&entsql.Annotation{...}` is unwrapped, and any element that cannot be shown to come from another package (variable, helper call, positional literal) is unsupported. TestReadEntityAnnotationsAreNotDroppedSilently, TestReadFieldAndEdgeAnnotationsBehindPointersAndVariables.
 - The generated-code header exemption in internal/repocheck is limited to internal/compat/entfixture/ent/ (TestGeneratedMarkerIsScoped).
 - Local mixins get the hook, policy, interceptor and annotation checks, and a mixin that lists mixins is unsupported (TestReadChecksEveryMixinContribution).
 - A struct that embeds a schema or mixin type of the package, directly or through another, is unsupported (TestReadReportsSchemaTypesThatEmbedSchemaTypes).
 - entsql.Default is quoted unless the column is time (Atlas.atDefault), and entsql.DefaultExpr is wrapped in parentheses unless it already starts and ends with them.
-- field.String MaxLen above 10485760 is text, as in dialect/sql/schema/postgres.go; a MaxLen that is not an integer literal is unsupported (TestReadMapsHugeMaxLenToText).
+- field.String MaxLen above 10485760 is text, as in dialect/sql/schema/postgres.go. The size is folded from integer literals, parentheses, + - * << and constants of the package; a size that cannot be folded keeps the varchar and is reported as renamed-type (TestReadMapsHugeMaxLenToText).
 - An Optional field without Nillable reports zero-value-handling (TestReadReportsNullableFieldsWithoutPointers).
+- The hand-written Ent schema (internal/compat/entfixture/ent/schema/) is excluded from the generated-marker exemption and keeps its SPDX header (TestGeneratedMarkerIsScoped).
 - dependabot.yml lists bunfixture and entfixture, enforced by TestDependabotCoversFixtureModules.
 
 ## Scope of this story
