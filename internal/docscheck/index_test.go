@@ -27,7 +27,7 @@ func TestDocsIndexLinksEveryPage(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(string(idx), "("+p+")") && !strings.Contains(string(idx), "("+p+"#") {
-			t.Errorf("docs/README.md does not link %s", p)
+			t.Errorf("docs/README.md does not link %s: add a line with a link to it", p)
 		}
 	}
 }

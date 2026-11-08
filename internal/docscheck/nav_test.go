@@ -52,7 +52,7 @@ func TestEveryDocPageInNav(t *testing.T) {
 			return err
 		}
 		if !inNav[filepath.ToSlash(rel)] {
-			t.Errorf("docs/%s is not in the mkdocs.yml nav", filepath.ToSlash(rel))
+			t.Errorf("docs/%s is not in the mkdocs.yml nav: add it under nav in mkdocs.yml and link it from docs/README.md", filepath.ToSlash(rel))
 		}
 		return nil
 	})

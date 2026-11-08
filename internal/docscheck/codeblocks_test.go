@@ -217,7 +217,7 @@ func TestDocsCodeBlocks(t *testing.T) {
 		default:
 			programs++
 			if !isProgram(b.src) {
-				t.Errorf("%s: a go block must be a complete package main program; mark a snippet with %s", b.where(root), markerFragment)
+				t.Errorf("%s: a go block must be a complete package main program (it is compiled); if it is only a snippet, put %s on the line before the fence (maxFragmentBlocks in codeblocks_test.go caps those)", b.where(root), markerFragment)
 				continue
 			}
 			pkg := writeBlock(t, mod, n, b.src)
@@ -228,7 +228,7 @@ func TestDocsCodeBlocks(t *testing.T) {
 	}
 	t.Logf("docs go blocks: %d complete programs (compiled), %d fragments (parsed only, ceiling %d)", programs, fragments, maxFragmentBlocks)
 	if fragments > maxFragmentBlocks {
-		t.Errorf("%d fragment blocks exceed the ceiling of %d: write complete programs instead", fragments, maxFragmentBlocks)
+		t.Errorf("%d fragment blocks exceed the ceiling of %d: turn fragments into complete package main programs, or raise maxFragmentBlocks by exactly the number you could not", fragments, maxFragmentBlocks)
 	}
 	if programs == 0 {
 		t.Error("no complete program blocks: the compile check proves nothing")

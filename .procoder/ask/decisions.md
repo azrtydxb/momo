@@ -135,21 +135,6 @@ Decision (2026-11-07): finish the port in kuvryn-license-momo on branch store/mo
 
 Decision (2026-11-07): merge PR #28 into kuvryn-license main once CI is green.
 
-## Scout's model provider key (scans fail with "model provider unavailable")
-
-- Replace Scout's provider key (…4a1c) with the current fastllm key (…9f8c) and rerun the DEEP scan (recommended)
-- Leave Scout's settings alone; the user updates the key
-
-Decision (2026-11-07): replace the key. Scout's default provider now uses the current fastllm key (…9f8c); the stored …4a1c key was rejected. The models were online throughout.
-
-## GitHub repository security settings for azrtydxb/momo (security audit M4)
-
-- Enable private vulnerability reporting, secret scanning with push protection, and protect main (require the CI checks, no force push, no deletion) (recommended)
-- Enable private vulnerability reporting and secret scanning only; leave main unprotected
-- Leave the repository settings as they are
-
-Decision (2026-11-07): all three. Private vulnerability reporting and secret scanning with push protection are enabled; main requires lint, unit, race, the integration matrix, compile-fail, govulncheck, windows, macos and the PR title check, with no force push or deletion. fuzz-smoke and bench-smoke stay optional (fuzz-smoke has a known timeout flake). Admins are exempt so release-please PRs, which get no CI runs, can still merge.
-
 ## NovaCRM adoption gaps (issues #27 to #34)
 
 - Plan them as sprint 6 after a NovaCRM gap audit, pulling the docs/code mismatch #29 into sprint 5 (recommended)

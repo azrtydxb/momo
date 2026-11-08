@@ -61,6 +61,12 @@ func TestDocsWorkflow(t *testing.T) {
 	if !strings.Contains(deploy.If, "refs/heads/main") || !strings.Contains(deploy.If, "refs/tags/v") {
 		t.Errorf("the deploy job must run only on main and version tags, got if: %q", deploy.If)
 	}
+	if !strings.Contains(deploy.If, "!contains(github.ref_name, '-')") {
+		t.Errorf("the deploy job must skip prerelease tags, got if: %q", deploy.If)
+	}
+	if !strings.Contains(text, "group: docs-deploy") {
+		t.Error("the deploy job needs its own concurrency group docs-deploy")
+	}
 	if strings.Contains(deploy.If, "worktree-agent") || strings.Contains(deploy.If, "sprint") {
 		t.Errorf("the deploy job must not run on work or sprint branches, got if: %q", deploy.If)
 	}

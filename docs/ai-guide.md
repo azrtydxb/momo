@@ -380,6 +380,12 @@ Databases that keep ids as text and generate them in the client (Prisma
 on the field, with the tag or in `MomoConfig`:
 
 ```go
+package main
+
+import "github.com/azrtydxb/momo"
+
+func main() {}
+
 type Contact struct {
 	momo.Model `momo:"table:contacts"`
 	ID         string `momo:"pk,idgen:cuid"`
