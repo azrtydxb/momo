@@ -68,6 +68,10 @@ type Error struct {
 	Column     string // when known
 	Constraint string // when known
 	Err        error  // underlying (often driver) error; may be nil
+
+	// detail is the raw driver detail (for PostgreSQL "Key (email)=(...)
+	// already exists."). It can quote row values, so Error never renders it.
+	detail string
 }
 
 func (e *Error) Error() string {
@@ -93,8 +97,26 @@ func (e *Error) Error() string {
 	return sb.String()
 }
 
-// Detail returns the underlying error text, or "" when there is none.
+// WithDetail returns a copy of err with the raw driver detail set, so Detail
+// can return it while Error keeps hiding it. Drivers call it from their
+// classifier. An err that is not a *Error is returned unchanged.
+func WithDetail(err error, detail string) error {
+	var me *Error
+	if !errors.As(err, &me) {
+		return err
+	}
+	c := *me
+	c.detail = detail
+	return &c
+}
+
+// Detail returns the raw driver detail captured by the classifier (it can
+// quote row values, so handle it as sensitive). Without a captured detail it
+// falls back to the underlying error text, or "" when there is none.
 func (e *Error) Detail() string {
+	if e.detail != "" {
+		return e.detail
+	}
 	if e.Err == nil {
 		return ""
 	}

@@ -1,0 +1,1 @@
+CREATE /* x */ EXTENSION foo;

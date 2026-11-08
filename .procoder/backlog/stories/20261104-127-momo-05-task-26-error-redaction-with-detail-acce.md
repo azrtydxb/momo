@@ -1,6 +1,6 @@
 # momo-05 Task 26: Error redaction with Detail accessor (S-41)
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: -
@@ -11,9 +11,13 @@ Implements plan momo-05-writes-queries Task 26: Error redaction with Detail acce
 
 ## Acceptance criteria
 
-- [ ] `TestErrorRedaction` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-41, part] `TestErrorRedaction` passes for the part of S-41 this task delivers; the full criterion is verified in story 200.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestErrorRedaction` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-41, part] `TestErrorRedaction` passes: Error() never shows the offending key value, and Detail() returns the raw driver detail. Detail() is unmasked by design and documented as such (docs/ai-guide.md, docs/capabilities.md masking known gaps): it can quote sensitive values, so it must not be logged or returned to clients. The full criterion is verified in story 200.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Green: ci-agent run 42453190263 on d8088d5 (unit, lint, fuzz-smoke, integration postgres).
+- Gate: the commit hook ran the procoder format and lint gate on every commit of this story with 0 blocking findings.
+- Red: run 42453213159 on throwaway branch worktree-agent-a1e9f39ea609a17b8-red (tests kept, implementation reverted) failed the build with undefined symbols for this story's API.
+- The red run is a build failure (the API did not exist), not a behavioural assertion failure. There is no separate behavioural red; the flipped assertion in TestClassifyUniqueRedactsDetail covers Detail().
