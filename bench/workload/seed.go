@@ -51,7 +51,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, customers, ordersPerCustomer 
 	if _, err := pool.Exec(ctx, schemaSQL, pgx.QueryExecModeSimpleProtocol); err != nil {
 		return fmt.Errorf("workload: create schema: %w", err)
 	}
-	r := rand.New(rand.NewSource(SeedValue)) //nolint:gosec // deterministic benchmark data, not security
+	r := rand.New(rand.NewSource(SeedValue)) // #nosec G404 -- deterministic benchmark data, not security
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	custRows := make([][]any, 0, customers)

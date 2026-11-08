@@ -115,9 +115,9 @@ func cpuModel() string {
 			}
 		}
 	case "darwin":
-		return run("sysctl", "-n", "machdep.cpu.brand_string")
+		return output(exec.Command("sysctl", "-n", "machdep.cpu.brand_string"))
 	case "windows":
-		out := run("wmic", "cpu", "get", "name")
+		out := output(exec.Command("wmic", "cpu", "get", "name"))
 		lines := strings.Split(out, "\n")
 		if len(lines) > 1 {
 			return strings.TrimSpace(lines[1])
@@ -130,11 +130,11 @@ func kernel() string {
 	if runtime.GOOS == "windows" {
 		return ""
 	}
-	return run("uname", "-sr")
+	return output(exec.Command("uname", "-sr"))
 }
 
-func run(name string, args ...string) string {
-	out, err := exec.Command(name, args...).Output()
+func output(cmd *exec.Cmd) string {
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
