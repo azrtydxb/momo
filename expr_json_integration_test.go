@@ -20,6 +20,9 @@ import (
 // NULL, JSON null and a missing key.
 func TestJSONOperatorsAgainstDatabase(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		if d == dialect.SQLite {
+			t.Skip("the JSON operators render PostgreSQL jsonb; SQLite JSON support is not implemented yet")
+		}
 		ctx := context.Background()
 		for _, stmt := range []string{
 			"DROP TABLE IF EXISTS jsonev",

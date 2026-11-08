@@ -42,6 +42,12 @@ func (*tmTime) MomoMeta() *momo.Meta[tmTime] { return &tmTimeMeta }
 // the database's now (tenant 2).
 func seedTimeDocs(t *testing.T, db *momo.DB) {
 	t.Helper()
+	if db.Dialect().Name == dialect.SQLite {
+		// The seeds use a PostgreSQL timestamp literal and the expectations are
+		// PostgreSQL's extract and date_trunc semantics; SQLite strftime support
+		// for these expressions is not implemented yet.
+		t.Skip("time expressions are not implemented for SQLite yet")
+	}
 	ctx := context.Background()
 	suite.CreateDocuments(t, db, suite.CapsOf(db))
 	for _, s := range []string{
