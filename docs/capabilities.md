@@ -1,4 +1,3 @@
-# Capabilities
 
 What Momo v0.3.0 supports, per database. Only PostgreSQL (through pgx) is <!-- x-release-please-version -->
 usable. SQLite and MySQL exist as dialect metadata in `dialect/` only: there is
@@ -234,6 +233,61 @@ session advisory lock.
 - Argument masking: with `WithArgLogging`, a value bound from a column tagged `sensitive` reaches hooks as `momo.RedactedArg`, not the value. This covers insert values, `Set` and `SetExpr` assignments on insert, update and upsert (every argument inside an expression assigned to a sensitive column), the primary-key and version predicates of a model update or delete, keyset `After` values, and WHERE predicates in which a sensitive column is one operand: the comparison methods, `EqExpr` and the other expression comparisons, `In`, `NotIn`, `Between`, `Like`, `ILike`, `ContainsLiteral`, `ArrayContains`, `ArrayContainedBy`, `ArrayOverlaps`, `AnyOf`, and the same methods on an expression that reads a sensitive column such as `Lower` of it. Relation loading, `Link`, `Unlink`, `Replace` and `Count` mask key values bound to sensitive key columns, including join-table columns that map to them. The database still receives the real value. `QueryEvent.Args` is always a copy, so a hook cannot replace or reorder the bound arguments. The copy is deep for `[]byte` and `json.RawMessage` values only, so changing those in place does not reach the driver; other mutable argument types are shared. Known gaps: arguments passed to raw `momo.SQL` or `momo.TypedSQL` fragments are not masked, because Momo cannot tell which column they belong to; SQLite renders values in an ON CONFLICT target predicate as SQL literals, so such a value appears in `QueryEvent.SQL`. Do not enable argument logging where raw fragments or conflict-target predicates carry secrets.
 - Encode errors: the pgx driver withholds the text of pgx client-side encode failures, which quote the bound value, on every path (pool, transactions, pinned and adopted connections, the database/sql adapter, rows). The message keeps the argument position, such as `args[2]`; the original error stays reachable with `errors.Is`, `errors.As` and `Unwrap`. That unwrapped cause still contains the bound value, so code that logs every link of an error chain must not print the causes.
 - Simple protocol: `pgxdriver.WithExecMode`, `FromConnConfig` and `FromSQLDB` refuse simple protocol, which interpolates values client-side, with `ErrUnsupported`. `FromConnConfig` checks the config it is given. `FromSQLDB` cannot read the pgx config of an opaque `*sql.DB`, so it checks the first connection it uses, on the first statement, not at construction. Only that first connection is checked: a custom connector that varies the exec mode per connection is not checked.
+
+## Multi-tenant row-level security
+
+Row-level security (RLS) policies usually read a setting such as
+`current_setting('app.tenant_id', true)`. The fail-closed pattern sets that
+setting at the start of every transaction from a scope carried in the
+`context.Context`, so a statement that forgot its scope matches no rows.
+`WithTxSetup` and `WithImplicitTx` build that into the `*DB`:
+
+```go
+db := momo.New(pgxdriver.New(pool),
+	momo.WithTxSetup(func(ctx context.Context, tx *momo.Tx) error {
+		id, ok := tenantFrom(ctx)
+		if !ok {
+			return nil // no scope: nothing is set, the policy matches no rows
+		}
+		return momo.SetConfigLocal(ctx, tx, "app.tenant_id", id)
+	}),
+	momo.WithImplicitTx(),
+)
+```
+
+```sql
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON documents
+  USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::bigint)
+  WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::bigint);
+```
+
+Connect as a role without `BYPASSRLS` that does not own the tables (or use
+`FORCE`, as above): superusers and `BYPASSRLS` roles skip every policy.
+
+| Feature                       | Behavior                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WithTxSetup`                 | The function runs right after every transaction momo begins: `DB.Begin`, `DB.Tx`, and the transactions momo opens itself (chunked inserts, graph creation, relation writes, `WithSearch`, implicit transactions). It runs once per real transaction, not per savepoint, and not for `AdoptTx` (the caller began that transaction). An error rolls back and is returned.  |
+| `WithImplicitTx`              | Auto-commit statements on a `*DB` (`Select`, `Insert`, `Update`, `Delete`, `Exec`, `Scalars`, relation loads) each run in a short transaction, so the setup applies. `Iter`, `Each` and `Rows` hold the transaction until exhausted or closed, then commit; a scan or driver error or a cancelled context rolls back. Close early-abandoned rows to free the connection. |
+| `SetConfigLocal`              | `set_config(key, value, true)`: the setting ends with the transaction. The same as `Tx.SetLocal`.                                                                                                                                                                                                                                                                        |
+| Not used on an implicit `*DB` | Pipelined relation loading (`Batch`) and the `COPY` fast path, because they bypass the setup. `BatcherOf` and `CopierOf` report none for such a `*DB`; use a `Tx` for them.                                                                                                                                                                                              |
+
+The setup does not cover everything. `AdoptTx` transactions are the caller's,
+so apply the setting yourself. `momo migrate` and Go migrations run outside the
+`*DB` options, so they are never scoped; run them as a role that may bypass
+the policies. A handle from `OnConn` cannot begin a transaction, so on a `*DB`
+configured with `WithTxSetup` its statements fail with `ErrUnsupported`
+instead of running unscoped, and it reports no COPY or Batch path. A panic in
+a setup function rolls the transaction back before it propagates, and a panic
+in an `Each` or `Iter` callback rolls back the implicit transaction. If the
+context is cancelled before a streaming implicit write is closed, the write is
+rolled back and `Close` and `Err` return the context error.
+
+Behind PgBouncer in transaction mode use only transaction-local settings
+(`SetConfigLocal`), never a session-level `SET`: the session belongs to
+whichever client PgBouncer hands the backend to next. `TestImplicitTxPgBouncer`
+runs concurrent tenants through PgBouncer and checks no scope leaks.
 
 ## PgBouncer and TLS
 
