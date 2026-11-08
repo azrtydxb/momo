@@ -432,7 +432,7 @@ func (l *cli) failure(err error) int {
 	switch {
 	case errors.Is(err, migrate.ErrDestructive), errors.Is(err, migrate.ErrStagedRequired),
 		errors.Is(err, migrate.ErrBaselineMismatch), errors.Is(err, migrate.ErrBranchConflict),
-		errors.Is(err, migrate.ErrOutOfOrder), errors.Is(err, migrate.ErrChainInvalid):
+		errors.Is(err, migrate.ErrOutOfOrder), errors.Is(err, migrate.ErrChainInvalid), errors.Is(err, migrate.ErrGoMigrationUnregistered):
 		return l.errf(exitFindings, "%v", err)
 	case errors.Is(err, migrate.ErrNoSnapshot):
 		return l.errf(exitUsage, "%v", err)

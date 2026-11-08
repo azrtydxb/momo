@@ -2,7 +2,11 @@
 
 package migrate
 
-import "time"
+import (
+	"time"
+
+	"github.com/azrtydxb/momo"
+)
 
 const defaultLockTimeout = 5 * time.Second
 
@@ -21,6 +25,7 @@ type options struct {
 	noSum       bool
 	// goMigrations are the migrations registered with WithGoMigrations.
 	goMigrations []GoMigration
+	goDB         *momo.DB
 	// lockTimeout and statementTimeout, when non-nil, were given explicitly
 	// (possibly as zero) and override the Config values.
 	lockTimeout, statementTimeout *time.Duration

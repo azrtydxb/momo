@@ -504,6 +504,9 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	if err := outOfOrder(hist, pending); err != nil {
 		return nil, err
 	}
+	if err := e.checkGoRunnable(pending, hist, o.To); err != nil {
+		return nil, err
+	}
 	if len(pending) == 0 {
 		return &Report{}, nil
 	}
@@ -518,7 +521,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		return nil, fmt.Errorf("migrate: apply id: %w", err)
 	}
 	rep = &Report{ApplyID: e.opts.clock().UTC().Format(applyIDLayout) + "-" + hex.EncodeToString(b[:])}
-	env := RunEnv{Driver: e.drv, Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin, HistoryTable: tbl}
+	env := RunEnv{Driver: e.drv, DB: e.opts.goDB, Conn: c, Dialect: e.opts.dialect, Clock: e.opts.clock, Reconnect: e.pin, HistoryTable: tbl}
 	for _, p := range pending {
 		if o.To != "" && p.Version > o.To {
 			break
@@ -799,15 +802,8 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	if err != nil {
 		return nil, err
 	}
-	// A Go migration without a snapshot file yet still owns its version.
-	for _, g := range e.opts.goMigrations {
-		if g.Version >= version {
-			t, perr := time.Parse(versionLayout, g.Version)
-			if perr != nil {
-				return nil, perr
-			}
-			version = t.Add(time.Second).Format(versionLayout)
-		}
+	if err := e.checkGoSnapshots(); err != nil {
+		return nil, err
 	}
 	changes, hints, err := Diff(from, &to, opts)
 	if err != nil {

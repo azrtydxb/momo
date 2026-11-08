@@ -669,13 +669,30 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
   registered Go migration has a snapshot; run it from a test of the application
   with the same migrations. `momo migrate validate` does not know the
   application's Go migrations, so it cannot check them. `diff` compares
-  against the latest snapshot, a Go migration's included, and takes a version
-  after every registered Go migration.
+  against the latest snapshot, a Go migration's included, and refuses while a
+  registered Go migration has no snapshot file yet. Note for callers:
+  `ValidateOffline` gained a variadic parameter, so a call without Go
+  migrations compiles unchanged, but a function value of the old type no longer
+  matches.
 - **Forward only.** A Go migration has no down step. A rollback of the group
-  that contains one refuses it; fix forward with a new migration.
-- **The CLI cannot run them.** `momo migrate apply`, `plan` and `status` read
-  only the directory; a Go migration lives in the application's binary. A
-  database that has one in its history shows it as `missing` to the CLI. The
+  that contains one refuses it, with `ErrGoMigrationNotReversible`
+  (`migrate.RefuseGoRollback` takes the history rows to roll back and returns
+  it for the first row of kind `go`); fix forward with a new migration.
+- **Hooks and options.** Without `migrate.WithGoMigrationDB`, `Up` and `UpNoTx`
+  get a bare `momo.New` of the engine's driver: none of the application's
+  hooks, field hooks, clock or other options. Pass the application's `*momo.DB`
+  (same driver) to `WithGoMigrationDB` to have its options apply.
+- **The CLI cannot run them, and refuses to pass them.** `momo migrate apply`,
+  `plan` and `status` read only the directory; a Go migration lives in the
+  application's binary. The snapshot file marks its place: when the directory
+  holds a snapshot with no up file, no registered Go migration and no history
+  row, and a pending SQL migration has a later version, `apply` refuses with
+  `ErrGoMigrationUnregistered` (exit 1) before it runs anything, telling you to
+  run the application's `Engine.Apply`. Without that, the CLI would apply the
+  later SQL and the application's engine would then fail with `ErrOutOfOrder`
+  for the Go migration for good. Once the Go migration is applied, the CLI is
+  unblocked; a database that has one in its history shows it as `missing` to
+  the CLI. The
   application runs the engine itself, at start or in a small
   `cmd/migrate` of its own:
 

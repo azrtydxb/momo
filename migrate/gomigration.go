@@ -89,6 +89,15 @@ func WithGoMigrations(ms ...GoMigration) Option {
 	return func(o *options) { o.goMigrations = append(o.goMigrations, ms...) }
 }
 
+// WithGoMigrationDB sets the handle that Go migrations are built on. Without
+// it they get a bare momo.New of the engine's driver, with none of the
+// application's hooks, field hooks, clock or other options. The handle must use
+// the same driver (pool) as the engine; each migration gets its transaction
+// (AdoptTx) or the pinned connection (OnConn) from a copy of it.
+func WithGoMigrationDB(db *momo.DB) Option {
+	return func(o *options) { o.goDB = db }
+}
+
 // checkGoMigrations validates the registered migrations among themselves.
 func checkGoMigrations(ms []GoMigration) error {
 	seen := map[string]bool{}
@@ -150,14 +159,92 @@ func callGo(ctx context.Context, env RunEnv, p Pending, tx momo.DriverTx) (err e
 			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
-	if env.Driver == nil {
-		return errors.New("a Go migration needs RunEnv.Driver")
+	db := env.DB
+	if db == nil {
+		if env.Driver == nil {
+			return errors.New("a Go migration needs RunEnv.Driver or RunEnv.DB")
+		}
+		db = momo.New(env.Driver)
 	}
-	db := momo.New(env.Driver)
 	if tx != nil {
 		return p.Go.Up(ctx, db.AdoptTx(tx))
 	}
 	return p.Go.UpNoTx(ctx, db.OnConn(env.Conn))
+}
+
+// checkGoSnapshots refuses Diff while a registered Go migration has no
+// snapshot file: the new migration would be compared with, and chained to, a
+// snapshot that skips the Go migration's version.
+func (e *Engine) checkGoSnapshots() error {
+	if len(e.opts.goMigrations) == 0 {
+		return nil
+	}
+	files, err := Discover(e.dir)
+	if err != nil {
+		return err
+	}
+	for _, g := range e.opts.goMigrations {
+		if !slices.ContainsFunc(files, func(f File) bool { return f.Kind == "snapshot" && f.Version == g.Version }) {
+			return fmt.Errorf("migrate: Go migration %s_%s has no snapshot file %s_%s.snapshot.json; create it (a copy of the previous snapshot) before diff", g.Version, g.Name, g.Version, g.Name)
+		}
+	}
+	return nil
+}
+
+// RefuseGoRollback returns ErrGoMigrationNotReversible, naming the first
+// version, when any of the history rows to be rolled back has kind "go". A
+// rollback (Engine.Rollback, when it exists) calls it before it runs any down
+// step, because a Go migration has none.
+func RefuseGoRollback(rows []HistoryRow) error {
+	for _, r := range rows {
+		if r.Kind == "go" {
+			return fmt.Errorf("%w: version %s (%s)", ErrGoMigrationNotReversible, r.Version, r.Name)
+		}
+	}
+	return nil
+}
+
+// unregisteredGo returns the snapshot-only versions (a snapshot file and no up
+// file) that are not registered Go migrations and have no history row: Go
+// migrations this engine cannot run. Apply refuses to run later SQL past one.
+func (e *Engine) unregisteredGo(files []File, done map[string]bool) []File {
+	ups := map[string]bool{}
+	for _, f := range files {
+		if f.Kind == "up" {
+			ups[f.Version] = true
+		}
+	}
+	reg := e.goByVersion()
+	var out []File
+	for _, f := range files {
+		if _, ok := reg[f.Version]; f.Kind == "snapshot" && !ups[f.Version] && !ok && !done[f.Version] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// checkGoRunnable refuses with ErrGoMigrationUnregistered when a pending SQL
+// migration would run past a Go migration this engine cannot run.
+func (e *Engine) checkGoRunnable(pending []Pending, hist []HistoryRow, to string) error {
+	files, err := Discover(e.dir)
+	if err != nil {
+		return err
+	}
+	done := map[string]bool{}
+	for _, r := range hist {
+		if r.Status != StatusRolledBack {
+			done[r.Version] = true
+		}
+	}
+	for _, f := range e.unregisteredGo(files, done) {
+		for _, p := range pending {
+			if p.Version > f.Version && (to == "" || p.Version <= to) {
+				return fmt.Errorf("%w: %s has no up file and no registered Go migration, and %s_%s would run after it. The momo CLI cannot run Go migrations: apply with the application's own Engine.Apply (migrate.WithGoMigrations)", ErrGoMigrationUnregistered, f.Path, p.Version, p.Name)
+			}
+		}
+	}
+	return nil
 }
 
 // validateGo adds the problems of the registered Go migrations to a

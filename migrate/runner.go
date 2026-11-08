@@ -17,7 +17,10 @@ import (
 type RunEnv struct {
 	// Driver is the driver the Go migration handles are built on. Only a
 	// migration of kind "go" needs it.
-	Driver  momo.Driver
+	Driver momo.Driver
+	// DB, when set, is the handle Go migrations are built on instead of
+	// momo.New of Driver (WithGoMigrationDB).
+	DB      *momo.DB
 	Conn    momo.PinnedConn
 	Dialect Dialect
 	Clock   func() time.Time

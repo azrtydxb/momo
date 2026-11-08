@@ -258,3 +258,100 @@ func TestGoMigrationVersionCollisionAndIdentity(t *testing.T) {
 		t.Fatalf("status = %+v", st)
 	}
 }
+
+func TestGoMigrationCrashedNoTransactionRowIsDirty(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	g := migrate.GoMigration{Version: goVerGo, Name: "fill", UpNoTx: func(context.Context, *momo.DB) error {
+		return errors.New("stop")
+	}}
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), goLogFS(), migrate.WithGoMigrations(g))
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
+		t.Fatal("apply must fail")
+	}
+	// A process killed inside the function leaves the row as written before it
+	// ran: running.
+	mustExecDB(t, db, `UPDATE momo_migrations SET status = 'running', error = '' WHERE version = '`+goVerGo+`'`)
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); !errors.Is(err, migrate.ErrDirty) {
+		t.Fatalf("a running go row must be ErrDirty, got %v", err)
+	}
+}
+
+func TestGoMigrationNoTransactionPanicIsFailed(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	g := migrate.GoMigration{Version: goVerGo, Name: "fill", UpNoTx: func(context.Context, *momo.DB) error {
+		panic("kaboom")
+	}}
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), goLogFS(), migrate.WithGoMigrations(g))
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil || !strings.Contains(err.Error(), "kaboom") {
+		t.Fatalf("apply must fail with the panic, got %v", err)
+	}
+	if row := historyRow(t, db, goVerGo); row.Status != migrate.StatusFailed || !strings.Contains(row.Error, "kaboom") {
+		t.Fatalf("want a failed row with the panic text, got %+v", row)
+	}
+}
+
+// The momo CLI is built without the application's Go migrations. It must not
+// run later SQL past a Go migration it cannot run.
+func TestGoMigrationUnregisteredEngineRefusesToPassIt(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	dir := goLogFS()
+	dir[goVerGo+"_backfill.snapshot.json"] = &fstest.MapFile{Data: []byte(`{"format_version":1,"version":"` + goVerGo + `","parent":"","schema":{"format_version":1,"dialect":"postgres","tables":[]}}`)}
+	cli := migratetest.NewEngine(t, mpg.New(), db.Driver(), dir)
+	_, err := cli.Apply(ctx, migrate.ApplyOptions{})
+	if !errors.Is(err, migrate.ErrGoMigrationUnregistered) || !strings.Contains(err.Error(), "Engine.Apply") {
+		t.Fatalf("want ErrGoMigrationUnregistered telling the user to run Engine.Apply, got %v", err)
+	}
+	if tableExists(t, db, "gm_log") {
+		t.Fatal("nothing may run before the refusal")
+	}
+
+	g := migrate.GoMigration{Version: goVerGo, Name: "backfill", Up: func(ctx context.Context, tx *momo.Tx) error { return insertLog(ctx, tx, "go") }}
+	app := migratetest.NewEngine(t, mpg.New(), db.Driver(), dir, migrate.WithGoMigrations(g))
+	if _, err := app.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// Applied: the engine without the Go migration has nothing to refuse, and
+	// lists the row as missing.
+	if _, err := cli.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatalf("an applied Go migration must not block the CLI: %v", err)
+	}
+	st, err := cli.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range st {
+		if s.Version == goVerGo {
+			found = true
+			if s.State != "missing" {
+				t.Fatalf("an unregistered go row must be missing, got %q", s.State)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("status lacks the go row: %+v", st)
+	}
+}
+
+type countHook struct{ n *int }
+
+func (h countHook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Context { return ctx }
+func (h countHook) AfterQuery(context.Context, *momo.QueryEvent)                        { *h.n++ }
+
+func TestGoMigrationDBTemplateCarriesHooks(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	seen := 0
+	tmpl := momo.New(db.Driver(), momo.WithHook(countHook{&seen}))
+	g := migrate.GoMigration{Version: goVerGo, Name: "backfill", Up: func(ctx context.Context, tx *momo.Tx) error { return insertLog(ctx, tx, "go") }}
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), goLogFS(), migrate.WithGoMigrations(g), migrate.WithGoMigrationDB(tmpl))
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if seen == 0 {
+		t.Fatal("the template's hook must see the Go migration's statements")
+	}
+}
