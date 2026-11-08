@@ -1,6 +1,6 @@
 # momo-13 Task 1: Docs toolchain pins and Dependabot for Python
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-13-docs-release
 Sprint: -

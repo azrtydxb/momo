@@ -1,6 +1,6 @@
 # momo-13 Task 8: Docs workflow with mike versioning
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-13-docs-release
 Sprint: -

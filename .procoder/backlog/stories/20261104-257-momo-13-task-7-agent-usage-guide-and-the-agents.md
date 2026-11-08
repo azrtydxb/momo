@@ -1,6 +1,6 @@
 # momo-13 Task 7: Agent usage guide and the AGENTS.md snippet
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-13-docs-release
 Sprint: -
