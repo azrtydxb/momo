@@ -101,14 +101,6 @@ func dialectRequired(env, list string) bool {
 	return false
 }
 
-// RequiredFor reports whether a missing URL in env must fail the run: false
-// when MOMO_INTEGRATION_DIALECTS is set and does not list env's dialect. Other
-// packages with their own URL handling (momotest) use it so an integration job
-// that provides one server does not fail for the others.
-func RequiredFor(env string) bool {
-	return dialectRequired(env, os.Getenv(envDialects))
-}
-
 // randomName returns "t_" followed by 16 lowercase hex characters.
 func randomName() string {
 	var b [8]byte

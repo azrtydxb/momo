@@ -260,3 +260,19 @@ func TestServerURLHonoursIntegrationDialects(t *testing.T) {
 		t.Fatalf("ok = %v, reached = %v: want the test skipped, not failed and not run on", ok, reached)
 	}
 }
+
+func TestPostgresRequired(t *testing.T) {
+	cases := map[string]bool{
+		"":                  true,
+		"  ":                true,
+		"postgres":          true,
+		"MySQL84, Postgres": true,
+		"mysql84":           false,
+		"mysql97,mariadb":   false,
+	}
+	for list, want := range cases {
+		if got := postgresRequired(list); got != want {
+			t.Errorf("postgresRequired(%q) = %v, want %v", list, got, want)
+		}
+	}
+}
