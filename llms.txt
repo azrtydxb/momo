@@ -1,6 +1,6 @@
 # Momo
 
-> Momo is a Go ORM (github.com/azrtydxb/momo) that generates typed column and relation descriptors from plain Go structs. v0.3.0 supports PostgreSQL 16/17 with pgvector through pgx only; SQLite and MySQL are not usable. Includes versioned SQL migrations, relations, transactions and vector search. Read the AI guide first. <!-- x-release-please-version -->
+> Momo is a Go ORM (github.com/azrtydxb/momo) that generates typed column and relation descriptors from plain Go structs. v0.3.0 supports PostgreSQL 16/17 with pgvector through pgx; SQLite works through the cgo driver sqlitedriver (no migrations or vector builders yet, not on Windows); MySQL and MariaDB support is listed in docs/capabilities.md. Includes versioned SQL migrations, relations, transactions and vector search. Read the AI guide first. <!-- x-release-please-version -->
 
 ## Start here
 

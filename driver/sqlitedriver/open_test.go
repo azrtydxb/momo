@@ -19,20 +19,36 @@ func TestCheckVersion(t *testing.T) {
 	}
 }
 
-func TestBuildDSNAliasesAndForbiddenKeys(t *testing.T) {
-	got, err := buildDSN("x.db?_fk=0&_timeout=7&_journal=DELETE&_sync=OFF", Config{})
+func TestBuildDSNRefusesUnknownAndWeakeningKeys(t *testing.T) {
+	for _, key := range []string{
+		"_fk=0", "_foreign_keys=0", "_journal=OFF", "_journal_mode=OFF", "_sync=OFF", "_synchronous=OFF",
+		"_locking_mode=EXCLUSIVE", "_mutex=no", "_secure_delete=1", "_case_sensitive_like=1",
+		"_defer_foreign_keys=1", "_recursive_triggers=1", "_writable_schema=1", "_trusted_schema=1",
+		"_query_only=1", "_ignore_check_constraints=1", "_auth=1", "_some_future_key=1", "vfs=x", "mode=bogus", "cache=bogus",
+	} {
+		if _, err := buildDSN("x.db?"+key, Config{}); err == nil {
+			t.Errorf("DSN parameter %s accepted", key)
+		}
+	}
+	for _, key := range []string{"_busy_timeout=7", "_timeout=7", "_txlock=deferred", "_loc=auto", "_cache_size=-2000", "mode=rwc", "cache=shared"} {
+		if _, err := buildDSN("file:x.db?"+key, Config{}); err != nil {
+			t.Errorf("DSN parameter %s refused: %v", key, err)
+		}
+	}
+}
+
+func TestBuildDSNKeepsSafetiesOn(t *testing.T) {
+	got, err := buildDSN("x.db?_timeout=7", Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, dup := range []string{"_foreign_keys", "_busy_timeout", "_journal_mode", "_synchronous"} {
-		if strings.Contains(got, dup+"=") {
-			t.Errorf("DSN %q sets %s although its alias was given", got, dup)
+	for _, want := range []string{"_foreign_keys=on", "_journal_mode=WAL", "_synchronous=NORMAL", "_busy_timeout=7"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("DSN %q lacks %q", got, want)
 		}
 	}
-	for _, key := range []string{"_writable_schema", "_trusted_schema", "_query_only", "_ignore_check_constraints", "_auth"} {
-		if _, err := buildDSN("x.db?"+key+"=1", Config{}); err == nil {
-			t.Errorf("DSN key %s accepted", key)
-		}
+	if strings.Contains(got, "_timeout=") {
+		t.Errorf("DSN %q still carries the alias next to _busy_timeout", got)
 	}
 }
 
@@ -47,6 +63,9 @@ func TestBuildDSNInMemory(t *testing.T) {
 	}
 	if _, err := buildDSN("x.db", Config{MaxOpenConns: 4}); err != nil {
 		t.Errorf("a file with four connections refused: %v", err)
+	}
+	if _, err := buildDSN("file::memory:?cache=shared", Config{MaxOpenConns: 4}); err != nil {
+		t.Errorf("a shared-cache in-memory database with four connections refused: %v", err)
 	}
 }
 

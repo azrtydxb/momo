@@ -89,15 +89,35 @@ func (t *roTx) finish(ctx context.Context, stmt, op string) error {
 	// still end, so the statement runs on a context that outlives it.
 	ectx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resetTimeout)
 	defer cancel()
-	_, err := t.conn.ExecContext(ectx, stmt)
+	err := t.run(ectx, stmt)
 	if err != nil && stmt == "COMMIT" {
 		// A failed COMMIT can leave the transaction open (SQLITE_BUSY); end it so
-		// the connection returns to the pool in autocommit mode.
-		_, _ = t.conn.ExecContext(ectx, "ROLLBACK")
+		// the connection returns to the pool in autocommit mode. If that fails
+		// too the connection's state is unknown, so it is discarded.
+		if rerr := t.run(ectx, "ROLLBACK"); rerr != nil {
+			_ = t.conn.Raw(func(any) error { return errBadConn })
+			if t.onDone != nil {
+				t.onDone()
+			}
+			return ClassifyError(err)
+		}
 	}
 	resetQueryOnly(t.conn)
 	if t.onDone != nil {
 		t.onDone()
 	}
 	return ClassifyError(err)
+}
+
+// execStmtHook lets a test make a statement of the transaction end fail.
+var execStmtHook func(stmt string) error
+
+func (t *roTx) run(ctx context.Context, stmt string) error {
+	if h := execStmtHook; h != nil {
+		if err := h(stmt); err != nil {
+			return err
+		}
+	}
+	_, err := t.conn.ExecContext(ctx, stmt)
+	return err
 }

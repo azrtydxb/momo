@@ -89,53 +89,62 @@ func buildDSN(dsn string, cfg Config) (string, error) {
 	default:
 		return "", fmt.Errorf("sqlitedriver: unknown transaction lock %q", lock)
 	}
-	for key := range q {
-		if forbiddenDSNKeys[strings.ToLower(key)] {
-			return "", fmt.Errorf("sqlitedriver: DSN parameter %q weakens the connection and is not allowed", key)
+	for key, vals := range q {
+		if !allowedDSNKeys[key] {
+			return "", fmt.Errorf("sqlitedriver: DSN parameter %q is not allowed; the adapter sets foreign keys, journal mode and synchronous itself (use Config), and other parameters are refused", key)
+		}
+		if key == "mode" || key == "cache" {
+			if !allowedDSNValues[key][q.Get(key)] || len(vals) != 1 {
+				return "", fmt.Errorf("sqlitedriver: DSN parameter %s has an unsupported value", key)
+			}
 		}
 	}
-	if isMemory(base, q) && cfg.MaxOpenConns > 1 {
-		return "", errors.New("sqlitedriver: an in-memory database is private to one connection, so MaxOpenConns must be 1 (or use a file)")
+	if isMemory(base, q) && cfg.MaxOpenConns > 1 && q.Get("cache") != "shared" {
+		return "", errors.New("sqlitedriver: an in-memory database is private to one connection, so MaxOpenConns must be 1 (or use a file, or cache=shared)")
 	}
-	defaults := []struct {
-		key, value string
-		aliases    []string
-	}{
-		{"_busy_timeout", strconv.FormatInt(busy.Milliseconds(), 10), []string{"_timeout"}},
-		{"_journal_mode", "WAL", []string{"_journal"}},
-		{"_synchronous", synchronous, []string{"_sync"}},
-		{"_foreign_keys", "on", []string{"_fk"}},
-		{"_txlock", lock, nil},
-	}
-	for _, d := range defaults {
-		present := q.Has(d.key)
-		for _, a := range d.aliases {
-			present = present || q.Has(a)
-		}
-		if !present {
-			q.Set(d.key, d.value)
-		}
+	q.Set("_busy_timeout", busyValue(q, busy))
+	q.Del("_timeout")
+	q.Set("_journal_mode", "WAL")
+	q.Set("_synchronous", synchronous)
+	q.Set("_foreign_keys", "on")
+	if !q.Has("_txlock") {
+		q.Set("_txlock", lock)
 	}
 	return base + "?" + q.Encode(), nil
 }
 
-// forbiddenDSNKeys are mattn parameters that switch off a safety the adapter
-// relies on: schema writes, schema triggers and views, read-only mode, CHECK
-// enforcement and the authentication extension.
-var forbiddenDSNKeys = map[string]bool{
-	"_writable_schema":          true,
-	"_trusted_schema":           true,
-	"_query_only":               true,
-	"_ignore_check_constraints": true,
-	"_auth":                     true,
-	"_auth_user":                true,
-	"_auth_pass":                true,
-	"_auth_crypt":               true,
-	"_auth_salt":                true,
+// busyValue is the busy timeout in milliseconds: the DSN's own value (under
+// either name) when given, else the configured one.
+func busyValue(q url.Values, busy time.Duration) string {
+	for _, k := range []string{"_busy_timeout", "_timeout"} {
+		if q.Has(k) {
+			return q.Get(k)
+		}
+	}
+	return strconv.FormatInt(busy.Milliseconds(), 10)
+}
+
+// allowedDSNKeys is an allowlist: any other parameter, including ones a later
+// mattn release adds, is refused. Foreign keys, journal mode and synchronous
+// are not on it because Config owns them (and their aliases), so a DSN cannot
+// switch them off.
+var allowedDSNKeys = map[string]bool{
+	"_busy_timeout": true,
+	"_timeout":      true,
+	"_txlock":       true,
+	"_loc":          true,
+	"_cache_size":   true,
+	"mode":          true,
+	"cache":         true,
+}
+
+var allowedDSNValues = map[string]map[string]bool{
+	"mode":  {"ro": true, "rw": true, "rwc": true, "memory": true},
+	"cache": {"shared": true, "private": true},
 }
 
 // isMemory reports whether the DSN names an in-memory database, which exists
-// per connection.
+// per connection unless cache=shared.
 func isMemory(base string, q url.Values) bool {
 	return base == "" || base == ":memory:" || base == "file::memory:" || q.Get("mode") == "memory"
 }

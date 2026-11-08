@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
@@ -156,9 +157,10 @@ func (r sqlRows) Next() bool             { return r.r.Next() }
 func (r sqlRows) Scan(dest ...any) error { return scanErr(r.r.Scan(wrapDests(dest)...)) }
 
 // scanErr hides the text of a conversion failure: database/sql quotes the
-// stored value in it ("converting driver.Value type string ("...")"). The
-// cause stays reachable through errors.Unwrap, as with pgxdriver data
-// exceptions.
+// stored value in it ("converting driver.Value type string ("...")"). Only
+// errors that look like a conversion failure are masked; cancellation, a
+// closed Rows and driver errors pass through. The cause stays reachable
+// through errors.Unwrap, as with pgxdriver data exceptions.
 func scanErr(err error) error {
 	if err == nil {
 		return nil
@@ -166,12 +168,17 @@ func scanErr(err error) error {
 	c := ClassifyError(err)
 	var se sqlite3.Error
 	var me *momo.Error
-	if errors.As(c, &se) || errors.As(c, &me) {
+	if errors.As(c, &se) || errors.As(c, &me) ||
+		errors.Is(c, context.Canceled) || errors.Is(c, context.DeadlineExceeded) || errors.Is(c, sql.ErrNoRows) {
 		return c
 	}
-	err = c
-	return driverError{cause: err, msg: "sqlitedriver: cannot convert the column value to the destination type"}
+	msg := c.Error()
+	if !strings.Contains(msg, "converting") && !strings.Contains(msg, "Scan error on column") {
+		return c
+	}
+	return driverError{cause: c, msg: "sqlitedriver: cannot convert the column value to the destination type"}
 }
+
 func (r sqlRows) Err() error   { return ClassifyError(r.r.Err()) }
 func (r sqlRows) Close() error { return ClassifyError(r.r.Close()) }
 

@@ -5,7 +5,9 @@
 package sqlitedriver
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +73,19 @@ func TestNullTimeScanners(t *testing.T) {
 	}
 	if nt.Valid || ng.Valid {
 		t.Fatalf("NULL left Valid set: %+v %+v", nt, ng)
+	}
+}
+
+func TestScanErrPassesThroughNonConversionErrors(t *testing.T) {
+	for _, in := range []error{context.Canceled, context.DeadlineExceeded, sql.ErrNoRows, errors.New("sql: Rows are closed")} {
+		if got := scanErr(in); got != in {
+			t.Errorf("scanErr(%v) = %v, want it unchanged", in, got)
+		}
+	}
+	conv := errors.New(`sql: Scan error on column index 0, name "x": converting driver.Value type string ("secret") to a int64`)
+	got := scanErr(conv)
+	if strings.Contains(got.Error(), "secret") || !errors.Is(got, conv) {
+		t.Errorf("conversion failure = %v; want it masked with the cause kept", got)
 	}
 }
 

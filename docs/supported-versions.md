@@ -6,32 +6,32 @@ necessarily broken.
 
 ## Module
 
-| Item        | Value                                                                      |
-| ----------- | -------------------------------------------------------------------------- |
-| Module path | `github.com/azrtydxb/momo`                                                 |
-| Version     | v0.3.0 (tags use a `v` prefix) <!-- x-release-please-version -->           |
-| Install     | `go get github.com/azrtydxb/momo@v0.3.0` <!-- x-release-please-version --> |
-| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path) |
-| Databases   | PostgreSQL with pgvector only; SQLite and MySQL are not usable yet         |
+| Item        | Value                                                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Module path | `github.com/azrtydxb/momo`                                                                                              |
+| Version     | v0.3.0 (tags use a `v` prefix) <!-- x-release-please-version -->                                                        |
+| Install     | `go get github.com/azrtydxb/momo@v0.3.0` <!-- x-release-please-version -->                                              |
+| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path)                                              |
+| Databases   | PostgreSQL with pgvector; SQLite through the cgo driver (no migrations yet); MySQL and MariaDB per docs/capabilities.md |
 
 ## Go
 
-| Item                         | Value                                                                                                                                   |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Minimum (`go.mod` `go` line) | 1.26.10                                                                                                                                 |
-| CI matrix                    | 1.26 and 1.27 for unit, compile-fail, race, fuzz smoke and integration jobs                                                             |
-| Single-version CI jobs       | lint (1.26); bench smoke, govulncheck, Windows and macOS (1.27)                                                                         |
-| Older than 1.26.10           | not supported                                                                                                                           |
-| cgo                          | the macOS job sets `CGO_ENABLED=1`; Linux and Windows jobs set nothing; CONTRIBUTING lists a C toolchain for the future SQLite packages |
+| Item                         | Value                                                                                                                                                                                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Minimum (`go.mod` `go` line) | 1.26.10                                                                                                                                                                                                                                                                   |
+| CI matrix                    | 1.26 and 1.27 for unit, compile-fail, race, fuzz smoke and integration jobs                                                                                                                                                                                               |
+| Single-version CI jobs       | lint (1.26); bench smoke, govulncheck, Windows and macOS (1.27)                                                                                                                                                                                                           |
+| Older than 1.26.10           | not supported                                                                                                                                                                                                                                                             |
+| cgo                          | `driver/sqlitedriver` (mattn go-sqlite3 and sqlite-vec) needs cgo and a C toolchain and does not build on Windows; a build without cgo gets a stub whose `Open` returns `ErrUnsupported`. The macOS job sets `CGO_ENABLED=1`; the Linux jobs use the default, which is on |
 
 ## Dependencies (`go.mod`)
 
-| Module                           | Version                                                                                                        |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `github.com/jackc/pgx/v5`        | v5.11.0                                                                                                        |
-| `go.yaml.in/yaml/v3`             | v3.0.6 (`momo.yaml`)                                                                                           |
-| `golang.org/x/tools`             | v0.52.0 (generator)                                                                                            |
-| `github.com/go-sql-driver/mysql` | v1.10.1; required by the module but used only by test harness code (`internal/testdb`). No MySQL driver ships. |
+| Module                           | Version                                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `github.com/jackc/pgx/v5`        | v5.11.0                                                                                                                   |
+| `go.yaml.in/yaml/v3`             | v3.0.6 (`momo.yaml`)                                                                                                      |
+| `golang.org/x/tools`             | v0.52.0 (generator)                                                                                                       |
+| `github.com/go-sql-driver/mysql` | v1.10.1; required by the module; the test harness (`internal/testdb`) uses it, and the MySQL driver package builds on it. |
 
 ## Operating systems
 

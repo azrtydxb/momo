@@ -4,9 +4,10 @@ go-sqlite3 and sqlite-vec; it needs cgo and does not build on Windows); the
 SQLite column below was written before that driver existed, so a SQLite cell
 that says **not usable yet** means the feature is not verified on SQLite, not
 that SQLite cannot open. Migrations (`momo migrate`), the pure-Go driver and
-sqlite-vec vector builders are not done for SQLite. MySQL exists as dialect
-metadata in `dialect/` only: there is no driver package for it, and every MySQL
-cell is **not usable yet**.
+sqlite-vec vector builders are not done for SQLite. MySQL and MariaDB have a
+driver package of their own (its status is in the MySQL column and the driver
+rows below); a MySQL cell that says **not usable yet** is a feature that is not
+verified there.
 
 Legend: yes = implemented for PostgreSQL and covered by the integration suite
 (`make test-integration-postgres`, which also runs every dialect-neutral test
