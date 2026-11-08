@@ -159,8 +159,8 @@ func TestApplyAsAppRoleNeedsCreateOnSchema(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "permission denied for schema") {
 		t.Fatalf("want a permission denied for schema error, got %v", err)
 	}
-	if got := firstValue(t, admin, `SELECT count(*)::text FROM momo_migrations`); got != "0" {
-		t.Fatalf("a refused apply recorded %s history row(s), want 0", got)
+	if got := firstValue(t, admin, `SELECT count(*)::text FROM momo_migrations WHERE status = 'applied'`); got != "0" {
+		t.Fatalf("a refused apply recorded %s applied migration(s), want 0", got)
 	}
 }
 

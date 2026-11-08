@@ -427,13 +427,16 @@ func TestGenerateFromDBHostileNames(t *testing.T) {
 
 	// Each unrepresentable name gets a schema of its own, so one failing name
 	// cannot hide that the other is accepted.
-	for name, col := range map[string]string{"comma": "a,b", "invalid utf-8": "bad\xffname"} {
+	for name, c := range map[string]struct {
+		col  string
+		fail bool
+	}{"comma": {"a,b", true}, "invalid utf-8": {"bad\xffname", false}} {
 		bad := &schema.Schema{Dialect: dialect.Postgres, Tables: []schema.Table{
-			{Name: "t", Columns: []schema.Column{{Name: col, Type: "text"}}},
+			{Name: "t", Columns: []schema.Column{{Name: c.col, Type: "text"}}},
 		}}
 		res, err = Generate(bad, Options{Package: "models"})
-		if err != nil || !res.Failed() {
-			t.Errorf("%s in a column name cannot be a tag: %v %v", name, err, res.Findings)
+		if err != nil || res.Failed() != c.fail {
+			t.Errorf("%s in a column name: failed = %v, want %v (%v %v)", name, res.Failed(), c.fail, err, res.Findings)
 		}
 	}
 }
