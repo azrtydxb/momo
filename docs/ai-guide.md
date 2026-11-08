@@ -198,6 +198,15 @@ Nullability and column rules:
   `time.Time` is `timestamptz`, `types.UUID` is `uuid`, `types.JSON[T]` is
   `jsonb`). `uint64`, maps and unknown types have no mapping: add `type:<sql>`
   or a codec.
+- JSON columns: `JSONText`, `JSONPath`, `JSONContains` and `JSONHasKey` (file
+  `expr_json.go`) are typed predicates over a `types.JSON[T]` column; the
+  extractions are string expressions usable in `Where`, `OrderBy` and `Columns`.
+  An extraction is NULL for a missing key and for JSON null alike, a SQL NULL
+  column is tested with `IsNull` on the column, and the JSON literal null is
+  matched by comparing the column with a `types.JSON` whose value is nil.
+  `JSONHasKey` is true for a key whose value is JSON null. A numeric key in
+  `JSONText` or `JSONHasKey` is an object key; only `JSONPath` elements made of
+  digits can be array indexes. PostgreSQL only is usable today.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
@@ -594,10 +603,20 @@ are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
 `"SKIP LOCKED"`), `ForShare`, `LockOf` (names the tables a lock covers, for
-example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim), `With`, `WithRecursive`, `Union`,
+example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim; the names must be
+table or alias names, not CTEs), `With`, `WithRecursive`, `Union`,
 `FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
-context; it returns `iter.Seq2[T, error]`). Aggregates: `momo.CountAll`,
+context; it returns `iter.Seq2[T, error]`). `Count` and `Exists` wrap the whole
+statement, so they keep a lock clause and lock the rows they count. Aggregates: `momo.CountAll`,
 `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
+
+Advisory locks (PostgreSQL, inside a transaction): `tx.AdvisoryXactLock(ctx, key)`
+waits for a transaction-scoped lock on an int64 key, `tx.TryAdvisoryXactLock`
+returns whether it was granted, and the `String` variants
+(`AdvisoryXactLockString`, `TryAdvisoryXactLockString`) hash a text key with
+`hashtext`. The lock ends at commit or rollback. The same names on `*DB` fail
+with `ErrValidation`; other dialects fail with `ErrUnsupported`. Never store a
+hashed key, it can change across PostgreSQL major versions.
 
 Typed expressions (no `momo.SQL` needed). Computed values (`Func`, `Substr`,
 `Lower`, `Upper`, `Length`, `Case`, `Add`/`Sub`/`Mul`, `Cast`, `Concat`,
@@ -901,8 +920,38 @@ ids, err := momo.Scalars[int64](ctx, q, `SELECT id FROM tasks WHERE done = ?`, t
   becomes ambiguous with a joined table. A column qualified by a table that is not
   in the statement's FROM/JOIN is `ErrValidation` at build time.
 - On PostgreSQL write `? |` with a space for a bind followed by OR; `?|` and `?&`
-  are operators. Do not mix `?`/`@name` with native `$n` in one fragment.
+  are operators. On PostgreSQL a fragment may use native `$n` placeholders instead
+  (see "Porting pgx and sqlc SQL" below); do not mix them with `?`/`@name`.
 - Returned results of raw queries bypass soft-delete, hooks and timestamps.
+
+#### Porting pgx and sqlc SQL
+
+On the PostgreSQL dialect, raw SQL (`Exec`, `Scalars`, `SQL`, `TypedSQL`,
+`RawSubquery`) accepts PostgreSQL's native `$1, $2, ...` placeholders, so a
+statement written for pgx or sqlc moves over unchanged:
+
+```go
+// pgx / sqlc:   pool.Exec(ctx, "UPDATE tasks SET done = $1 WHERE owner = $2 OR creator = $2", true, uid)
+affected, err := momo.Exec(ctx, q, "UPDATE tasks SET done = $1 WHERE owner = $2 OR creator = $2", true, uid)
+```
+
+Rules:
+
+- `$n` binds positional argument n of that call. A reused `$n` (here `$2`) binds
+  the argument once. An `In`, `Ident` or `Expr` argument is rendered again at each
+  use. Momo renumbers: inside a larger statement (`TypedSQL` or `RawSubquery`
+  after earlier `Where` binds) `$1` still means the fragment's first argument.
+- One style per fragment. Mixing `$n` with `?`, `@name` or `Named` is
+  `ErrValidation`.
+- Every `$n` needs an argument (`$3` with two arguments, or `$0`, is
+  `ErrValidation`) and every argument must be used (a gap such as `$1, $3` is
+  `ErrValidation`), so a typo fails at build time.
+- A `$n` inside a string literal, quoted identifier, comment or dollar-quoted body
+  is text, not a placeholder.
+- Other dialects: `$n` is `ErrUnsupported` at build time. Port such statements to
+  `?` (or `@name`) when the code must run on SQLite or MySQL.
+- sqlc `sqlc.arg(name)` / `@name` styles: use `momo.Named("name", v)` with `@name`.
+- Typed casts keep working: `$1::int` is fine.
 
 `SelectQuery.SQL()` returns `Compiled{SQL, Args}` without running. `Explain(ctx)`
 runs `EXPLAIN` (never `ANALYZE`) and returns plan text; it binds parameters and
@@ -1241,6 +1290,13 @@ or a missing extension: `ErrUnsupported`.
 
 Pitfalls:
 
+- JSON extraction in GROUP BY: a key that is not plain letters, digits and
+  underscores is a bound parameter, and PostgreSQL treats the parameter in the
+  select list and the one in GROUP BY as different expressions and rejects the
+  query. Plain keys are inlined and group fine, except on a sensitive column,
+  whose keys are always bound so they stay masked; for those and any other key
+  group on a SQL fragment with a literal key. Inlined keys vary the statement
+  text per key, so pass only keys from a fixed set, not user input.
 - Filtered search: with iterative scan off, an ANN index returns its nearest
   candidates and applies `Where` afterwards, so a selective filter can return FEWER
   than `Limit` rows even when enough match. Set `HNSWIterativeScan`

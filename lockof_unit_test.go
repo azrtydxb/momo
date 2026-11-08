@@ -160,3 +160,37 @@ func TestAdvisoryXactLockRefusals(t *testing.T) {
 		}
 	}
 }
+
+func TestLockOfSourcesAndRestrictions(t *testing.T) {
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	base := func() momo.SelectQuery[unitDocument] { return momo.Select[unitDocument](pg) }
+	cteJoin := func() momo.SelectQuery[unitDocument] {
+		return base().With("c", momo.RawSubquery("SELECT 1 AS id"), "id").
+			Join(momo.CTE("c"), DocID.EqExpr(momo.ColumnOf[int64]("c", "id")))
+	}
+
+	// Unaliased schema-qualified source: the lock names the bare table.
+	schema := base().From(momo.TableRef{Name: "documents", Schema: "tenant"}).ForUpdate("NOWAIT").LockOf("documents")
+	if c, err := schema.SQL(); err != nil || !strings.HasSuffix(c.SQL, ` FOR UPDATE OF "documents" NOWAIT`) {
+		t.Errorf("schema-qualified: %q, %v", c.SQL, err)
+	}
+	// The same option twice is allowed.
+	if c, err := base().ForUpdate("NOWAIT", "NOWAIT").SQL(); err != nil || !strings.HasSuffix(c.SQL, " FOR UPDATE NOWAIT") {
+		t.Errorf("repeated NOWAIT: %q, %v", c.SQL, err)
+	}
+	// The base table of a query with a CTE join stays lockable.
+	if c, err := cteJoin().ForUpdate().LockOf("documents").SQL(); err != nil || !strings.HasSuffix(c.SQL, ` FOR UPDATE OF "documents"`) {
+		t.Errorf("lock the base table next to a CTE: %q, %v", c.SQL, err)
+	}
+
+	for name, q := range map[string]momo.SelectQuery[unitDocument]{
+		"CTE name":         cteJoin().ForUpdate().LockOf("c"),
+		"having":           base().GroupBy(DocTenantID).Having(DocTenantID.Eq(1)).ForUpdate(),
+		"share + distinct": base().Distinct().ForShare(),
+		"share + group by": base().GroupBy(DocTenantID).ForShare("SKIP LOCKED"),
+	} {
+		if err := buildErr(q); !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("%s: err = %v, want ErrValidation", name, err)
+		}
+	}
+}
