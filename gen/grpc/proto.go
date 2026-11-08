@@ -129,6 +129,7 @@ func Proto(g *gen.Graph, lock *Lock, pkg string) ([]byte, []gen.Diagnostic) {
 // not retire their numbers.
 func fieldsOf(m *gen.Model) (fields []protoField, hidden []string, timestamp bool, diags []gen.Diagnostic) {
 	seen := map[string]bool{}
+	jsonNames := map[string]string{}
 	for _, f := range m.Fields {
 		if seen[f.Column] {
 			continue
@@ -149,10 +150,37 @@ func fieldsOf(m *gen.Model) (fields []protoField, hidden []string, timestamp boo
 			diags = append(diags, gen.Diagnostic{Pos: f.Pos, Msg: fmt.Sprintf("column %q is not a valid protobuf field name", f.Column)})
 			continue
 		}
+		jn := jsonName(f.Column)
+		if other, dup := jsonNames[jn]; dup {
+			hidden = append(hidden, f.Column)
+			diags = append(diags, gen.Diagnostic{Pos: f.Pos, Msg: fmt.Sprintf("column %q of %s has the same proto3 JSON name %q as column %q", f.Column, m.GoName, jn, other)})
+			continue
+		}
+		jsonNames[jn] = f.Column
 		timestamp = timestamp || ts
 		fields = append(fields, protoField{column: f.Column, typ: typ, repeated: repeated, optional: f.Nullable && !repeated})
 	}
 	return fields, hidden, timestamp, diags
+}
+
+// jsonName is the proto3 JSON name protoc derives from a field name: each
+// underscore is dropped and the letter after it is upper-cased. Two fields of
+// one message with the same JSON name (foo_bar and fooBar) are a protoc error.
+func jsonName(field string) string {
+	var b strings.Builder
+	upper := false
+	for _, r := range field {
+		switch {
+		case r == '_':
+			upper = true
+		case upper:
+			b.WriteString(strings.ToUpper(string(r)))
+			upper = false
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // message writes one message whose fields are numbered through the lock.

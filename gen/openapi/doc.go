@@ -35,8 +35,21 @@ type obj = map[string]any
 // schemaFor maps a base Go type to a JSON schema. nullable uses the 3.1 form
 // "type": [t, "null"]; the nullable keyword is never written.
 func schemaFor(baseType string, nullable bool) (obj, bool) {
+	return schemaWith(baseType, nullable, true)
+}
+
+// valueSchema is the schema of one non-null value of baseType, for query
+// parameters and keys: a filter compares against a value, never against null,
+// even for a pointer or sql.Null column.
+func valueSchema(baseType string) (obj, bool) {
+	return schemaWith(baseType, false, false)
+}
+
+// schemaWith is schemaFor; typeNull says whether a pointer or sql.Null type
+// makes the schema nullable by itself.
+func schemaWith(baseType string, nullable, typeNull bool) (obj, bool) {
 	t := strings.TrimPrefix(baseType, "*")
-	if strings.HasPrefix(baseType, "*") || strings.HasPrefix(t, "sql.Null") {
+	if typeNull && (strings.HasPrefix(baseType, "*") || strings.HasPrefix(t, "sql.Null")) {
 		nullable = true
 	}
 	typ := func(name string) any {
@@ -84,12 +97,13 @@ type property struct {
 	base     string // base Go type, for the filter and key schemas
 }
 
+// schemaNameRE is what OpenAPI allows in a component name.
+var schemaNameRE = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
 // pathSegmentRE is what a table name may contain to be one safe URL path
 // segment: the unreserved characters of RFC 3986. A name with a slash, brace,
 // percent sign, dot-only segment or any other character is refused instead of
 // escaped, so a table name can never add path segments or template variables.
-var schemaNameRE = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
-
 var pathSegmentRE = regexp.MustCompile(`^[A-Za-z0-9_~-][A-Za-z0-9._~-]*$`)
 
 func propertiesOf(m *gen.Model) ([]property, []gen.Diagnostic) {
@@ -137,7 +151,12 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 	}
 
 	models := append([]*gen.Model(nil), g.Models...)
-	sort.SliceStable(models, func(i, j int) bool { return models[i].GoName < models[j].GoName })
+	sort.SliceStable(models, func(i, j int) bool {
+		if models[i].GoName != models[j].GoName {
+			return models[i].GoName < models[j].GoName
+		}
+		return models[i].PkgPath < models[j].PkgPath
+	})
 
 	schemas := obj{"Error": obj{
 		"type":       "object",
@@ -192,7 +211,7 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 			if p.vector {
 				continue
 			}
-			s, _ := schemaFor(p.base, false)
+			s, _ := valueSchema(p.base)
 			params = append(params, obj{"name": "filter[" + p.column + "]", "in": "query", "schema": s})
 		}
 		listBody := obj{
@@ -269,7 +288,7 @@ func singlePK(g *gen.Graph, m *gen.Model, props []property) (obj, bool) {
 	}
 	for _, p := range props {
 		if p.column == t.PrimaryKey[0] {
-			return schemaFor(p.base, false)
+			return valueSchema(p.base)
 		}
 	}
 	return nil, false
