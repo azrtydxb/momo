@@ -41,6 +41,9 @@ type insertCore struct {
 	// query, withIdentity puts the identity column in a model INSERT list.
 	upsert       bool
 	withIdentity bool
+	// unnest renders a Models insert as one statement with an array parameter
+	// per column (Unnest, PostgreSQL only).
+	unnest bool
 	// sel and selCols are the row source and target columns of FromSelect.
 	sel     Subquery
 	selCols []string

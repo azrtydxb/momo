@@ -151,6 +151,9 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	}
 	q.idsDone = true
 	one := []InsertQuery[T]{q}
+	if q.i.unnest {
+		return one, nil // one array parameter per column: the bind count does not grow with the rows
+	}
 	if q.q == nil || q.i.err != nil || q.meta.Table == "" || len(q.models) < 2 {
 		return one, nil
 	}

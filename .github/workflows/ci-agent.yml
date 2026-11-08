@@ -143,3 +143,32 @@ jobs:
         with:
           go-version: "1.26"
       - run: make test-integration-${{ matrix.dialect }}
+
+  bench-module:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PG_URL: postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
+    services:
+      postgres:
+        image: "pgvector/pgvector:0.8.7-pg17"
+        env:
+          POSTGRES_PASSWORD: momo
+          POSTGRES_USER: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - run: make test-bench-module
+      - run: make test-bench-module-integration
+      - run: make bench-hooks
+      - run: make bench-suite-smoke
+      - run: make bench-gate
