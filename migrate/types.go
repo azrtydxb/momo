@@ -114,6 +114,9 @@ type Pending struct {
 	Statements []Statement
 	NoTx       bool
 	Checksum   string // hex sha256 of the up file, recorded in the history row
+	// ForeignKeysOff is the -- momo:sqlite-foreign-keys-off directive: Apply
+	// turns foreign-key enforcement off around this migration on SQLite.
+	ForeignKeysOff bool
 	// Go is the migration to run when Kind is "go"; nil for SQL.
 	Go *GoMigration
 }
@@ -268,7 +271,12 @@ type Config struct {
 // A timeout above zero is applied. A zero timeout leaves the setting alone
 // unless its Set field is true, in which case the dialect sets it to zero
 // (PostgreSQL treats 0 as off).
+//
+// ForeignKeysOff asks a SQLite session to turn foreign-key enforcement off,
+// which a table rebuild needs; Setup must then run outside any transaction and
+// the returned reset restores the setting. Other dialects ignore it.
 type SessionOptions struct {
 	LockTimeout, StatementTimeout       time.Duration
 	LockTimeoutSet, StatementTimeoutSet bool
+	ForeignKeysOff                      bool
 }

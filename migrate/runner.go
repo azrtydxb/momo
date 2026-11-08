@@ -4,6 +4,7 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -208,7 +209,7 @@ func runGoNoTx(ctx context.Context, env RunEnv, h historyWriter, rec HistoryRow,
 func execAll(ctx context.Context, x execer, stmts []Statement, after func(n int) error) (int, error) {
 	n := 0
 	for _, s := range stmts {
-		if _, err := x.Exec(ctx, s.SQL, nil); err != nil {
+		if err := execStatement(ctx, x, s); err != nil {
 			return n, fmt.Errorf("statement %d: %w", n+1, err)
 		}
 		n++
@@ -219,6 +220,65 @@ func execAll(ctx context.Context, x execer, stmts []Statement, after func(n int)
 		}
 	}
 	return n, nil
+}
+
+// execStatement runs one statement. Two SQLite rebuild statements get special
+// treatment, recognised by their hint or, for a statement read back from a
+// migration file where hints are gone, by their text: PRAGMA foreign_key_check
+// fails the statement when it returns a row, and a statement hinted
+// "dependent:<type>:<name>" (a view or trigger recreated after a rebuild) wraps
+// its failure in ErrRebuildBlocked.
+func execStatement(ctx context.Context, x execer, s Statement) error {
+	if isForeignKeyCheck(s) {
+		return checkForeignKeys(ctx, x)
+	}
+	_, err := x.Exec(ctx, s.SQL, nil)
+	if err != nil {
+		if rest, ok := strings.CutPrefix(s.Hint, "dependent:"); ok {
+			return fmt.Errorf("%w: %s: %w", ErrRebuildBlocked, strings.Replace(rest, ":", " ", 1), err)
+		}
+	}
+	return err
+}
+
+// isForeignKeyCheck reports whether s is the PRAGMA foreign_key_check that ends
+// a SQLite table rebuild.
+func isForeignKeyCheck(s Statement) bool {
+	if s.Hint == "fk-check" {
+		return true
+	}
+	text := strings.Join(strings.Fields(strings.TrimRight(strings.TrimSpace(s.SQL), "; \t\r\n")), " ")
+	return strings.EqualFold(text, "PRAGMA foreign_key_check")
+}
+
+// checkForeignKeys runs PRAGMA foreign_key_check and fails on the first
+// violation, naming the child table, its rowid and the parent table.
+func checkForeignKeys(ctx context.Context, x execer) error {
+	q, ok := x.(interface {
+		Query(ctx context.Context, sql string, args []any) (momo.Rows, error)
+	})
+	if !ok {
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate", Err: errors.New("PRAGMA foreign_key_check needs a connection or transaction that can run a query")}
+	}
+	rows, err := q.Query(ctx, "PRAGMA foreign_key_check", nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return rows.Err()
+	}
+	var child, parentTable sql.NullString
+	var rowid, fkid sql.NullInt64
+	if err := rows.Scan(&child, &rowid, &parentTable, &fkid); err != nil {
+		return err
+	}
+	table, parent := child.String, parentTable.String
+	where := "a row"
+	if rowid.Valid {
+		where = fmt.Sprintf("row %d", rowid.Int64)
+	}
+	return &momo.Error{Kind: momo.ErrForeignKeyViolation, Op: "migrate", Table: table, Err: fmt.Errorf("foreign_key_check: %s of table %q has no matching row in %q; the transaction is rolled back and the table is unchanged", where, table, parent)}
 }
 
 // RunStatements runs stmts in one transaction on c and rolls it back on the

@@ -1,12 +1,13 @@
 # Migration safety and recovery
 
-Momo v0.3.0, PostgreSQL only. Every statement here was checked against <!-- x-release-please-version -->
+Momo v0.3.0, PostgreSQL (and SQLite as a library, section 3a). Every statement here was checked against <!-- x-release-please-version -->
 `migrate/`, `cmd/momo/`, `schema/` and `dialect/`; the tests that pin a
 behavior are named. For the first run see README, [Create and apply the
 migration](../README.md#3-create-and-apply-the-migration).
 
-Only PostgreSQL migrations exist. `momo migrate` with another dialect exits 2
-("migrations for dialect ... are not available yet").
+`momo migrate` runs PostgreSQL only; with another dialect it exits 2
+("migrations for dialect ... are not available yet"). SQLite has a migration
+dialect for use as a library, described in section 3a.
 
 ## 1. Model
 
@@ -370,6 +371,105 @@ migration engine through PgBouncer is **not tested** in v0.3.0. A startup <!-- x
 `search_path` is also not reliable through a pooler, so set the schema on the
 role or on a direct connection.
 
+## 3a. SQLite
+
+`migrate/sqlite` is the SQLite migration dialect. It is a library API: pass it
+to the engine with `migrate.WithDialect(sqlite.New())` and a
+`driver/sqlitedriver` driver (cgo, not Windows). The `momo migrate` command does
+not select it yet, so there is no `--dialect sqlite`. The tests that pin the
+behavior below run on a real SQLite in the integration suite
+(`TestSQLiteInspectRoundTrip`, `TestSQLiteAlterDecision`,
+`TestSQLiteRebuild`, `TestSQLiteLockTable`, `TestSQLiteEngineLifecycle`,
+`TestSQLiteRenderApplyInspectDiffIsZero`).
+
+**Inspection.** Tables, columns (type, NOT NULL, default, collation, generated
+expression), the primary key, UNIQUE constraints, indexes (including expression
+and partial indexes), foreign keys, CHECK constraints, views and triggers. The
+`momo_migrations` and `momo_migration_lock` tables, the `sqlite_` tables,
+virtual tables and the shadow tables of virtual tables are left out. An
+`INTEGER PRIMARY KEY` of a rowid table is reported with identity `by_default`,
+and the schema normalizer gives that column the same identity on the model side,
+so the two compare equal. A trigger is its `CREATE TRIGGER` text
+(`Trigger.Definition`), compared after whitespace and case outside quotes are
+normalized. Extensions, native enums, functions, policies, partitions,
+row-level security and schemas do not exist on SQLite and are never reported.
+
+**Enums.** SQLite has no enum type. A TEXT column that carries
+`CHECK ("col" IN ('a', 'b'))` is inspected as an enum column whose enum is named
+`<table>_<column>`, and `Engine.Diff` writes an enum column back as that CHECK.
+A model enum therefore round-trips without a diff only when it is named
+`<table>_<column>`. `create_enum` and `drop_enum` produce no statement;
+`alter_enum_add_value` rebuilds the tables that use the enum.
+
+**ALTER or rebuild.** SQLite changes a table in place only for these:
+`ALTER TABLE ... RENAME TO`, `RENAME COLUMN`, `ADD COLUMN`, `DROP COLUMN`, and
+index, view and trigger statements. The renderer uses them when the
+[restrictions in the SQLite documentation](https://www.sqlite.org/lang_altertable.html)
+allow it: an added column must not be PRIMARY KEY, UNIQUE, a stored generated
+column, an enum or identity column, or NOT NULL without a non-NULL default, and
+its default must not be `CURRENT_TIMESTAMP` (or `CURRENT_DATE`, `CURRENT_TIME`)
+or a parenthesised expression; a dropped column must not be in the primary key,
+a UNIQUE constraint, an index (key or `WHERE`), a CHECK, a foreign key (either
+side), a generated column's expression, a trigger or a view. Everything else
+(`alter_column`, any primary key, unique, check or foreign key change, and an
+add or drop of a column that breaks a restriction) rebuilds the table, and all
+changes to that table in the same diff become one rebuild.
+
+**The rebuild** follows
+[the 12 steps in the SQLite documentation](https://www.sqlite.org/lang_altertable.html#otheralter).
+`diff` writes them as plain statements into the up file and puts
+`-- momo:sqlite-foreign-keys-off` at the top of the file. On `apply` the engine
+runs `PRAGMA foreign_keys = OFF` outside the transaction (the pragma does
+nothing inside one), runs the file in one transaction and turns enforcement back
+on afterwards, also when the migration failed. The statements are: drop every
+view and trigger that mentions the table (directly or through another view),
+`CREATE TABLE "new_<table>"`, `INSERT ... SELECT` of the columns the old and new
+table share, `DROP TABLE`, `RENAME`, `CREATE INDEX` for each index, recreate the
+dropped views and triggers that the desired schema keeps unchanged, and
+`PRAGMA foreign_key_check`. If that pragma returns a row the statement fails
+with `momo.ErrForeignKeyViolation` naming the table and row, and the transaction
+rolls back (`TestSQLiteRebuildOrphanRollsBack`). Row count and content, indexes,
+triggers and views survive (`TestSQLiteRebuild`, `TestSQLiteRebuildKeepsDataAndObjects`)
+and foreign keys are enforced again afterwards (`TestSQLiteRebuildFKStillEnforced`).
+
+Limits of the rebuild:
+
+- After each recreated view the file runs `SELECT 1 FROM "view" LIMIT 0`,
+  because `CREATE VIEW` does not check the names in its query. A view that names
+  a dropped column therefore fails the migration. `sqlite.Rebuild` with
+  `migrate.RunStatements` reports that as `migrate.ErrRebuildBlocked` naming the
+  view; a migration read back from a file has lost the statement hints, so the
+  engine reports the failing statement number instead.
+- A trigger body is resolved only when the trigger fires, so a trigger that names
+  a dropped column is recreated and fails later.
+- A table can be rebuilt only if it has columns in common with the new
+  definition; `INSERT` is skipped otherwise.
+- `sqlite.Rebuild` and `sqlite.Capture` rebuild from a live connection
+  (captured views and triggers are recreated verbatim); the engine path rebuilds
+  from the snapshot instead.
+- Changing `WITHOUT ROWID` is refused by `diff` (write a custom migration).
+
+**Unsupported.** These fail with an error that wraps `momo.ErrUnsupported`
+instead of being dropped: `create_schema`, `create_extension`, the policy and
+row-level-security changes, the function changes, materialized views, views with
+indexes, index storage parameters, an access method other than b-tree, operator
+classes, `NULLS FIRST/LAST` in an index, column comments, `serial` identity,
+identity on anything but an `INTEGER` primary key, partitioning.
+
+**Lock.** A row in `momo_migration_lock` (`id = 1`, `holder`, `acquired_at`),
+created on first use. A second holder gets `ErrLocked` with
+`held by pid=N host=H at=T`; `apply` polls it like the PostgreSQL lock until
+`--lock-wait`. Unlock deletes the row only while it still carries this holder's
+text. A process that dies leaves the row behind: after checking that nothing is
+migrating, call `sqlite.ForceUnlock(ctx, conn)`, which returns the holder it
+removed (there is no CLI flag). The lock and statement timeouts of the session
+options do nothing on SQLite; busy handling is the driver's `busy_timeout`.
+
+**Other differences.** DDL is transactional, so one migration is one
+transaction. `AutoMigrate` rebuilds with enforcement off too. Index parts carry
+no collation in the schema, so a collation on an index key is not compared.
+Collation on a column is.
+
 ## 4. Failure and recovery
 
 Check state with `momo migrate status` (exit 1 when anything is dirty,
@@ -661,7 +761,7 @@ You can also create the files yourself:
 2. Optional directives at the top, before the first statement:
    `-- momo:no-transaction`, `-- momo:split`, `-- momo:destructive`
    (informational, never enforced), `-- momo:generated` (do not use it here)
-   and `-- momo:sqlite-foreign-keys-off` (SQLite only). An unknown `-- momo:` directive is an error.
+   and `-- momo:sqlite-foreign-keys-off` (SQLite only; `apply` turns foreign keys off around the migration, section 3a). An unknown `-- momo:` directive is an error.
 3. Create `20260301120000_backfill_slug.snapshot.json` as a copy of the previous
    snapshot with `version` set to the new version and `parent` set to the
    previous version. The `schema` must stay equal to the parent's, or

@@ -89,7 +89,7 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 		for i, s := range parts {
 			stmts[i] = Statement{SQL: s}
 		}
-		out = append(out, Pending{Version: f.Version, Name: f.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: sum.Files[f.Path]})
+		out = append(out, Pending{Version: f.Version, Name: f.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: sum.Files[f.Path], ForeignKeysOff: dirs.SQLiteForeignKeysOff})
 	}
 	out = append(out, e.goPending(done)...)
 	sortPending(out)
@@ -116,8 +116,7 @@ func (e *Engine) readHistory(ctx context.Context, c momo.PinnedConn) ([]HistoryR
 // readHistoryAt is readHistory for a history table reference resolved earlier.
 func (e *Engine) readHistoryAt(ctx context.Context, c momo.PinnedConn, tbl string) ([]HistoryRow, error) {
 	hist, err := readHistoryRows(ctx, c, tbl)
-	var s interface{ SQLState() string }
-	if errors.As(err, &s) && s.SQLState() == undefinedTable {
+	if isUndefinedTable(err) {
 		return nil, nil
 	}
 	return hist, err
@@ -526,13 +525,38 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 		if o.To != "" && p.Version > o.To {
 			break
 		}
+		restore, err := e.foreignKeysOff(ctx, c, p.ForeignKeysOff)
+		if err != nil {
+			return rep, err
+		}
 		a, err := RunMigration(ctx, env, p, rep.ApplyID)
+		if err == nil {
+			rep.Applied = append(rep.Applied, a)
+		}
+		if rerr := restore(); rerr != nil {
+			err = errors.Join(err, rerr)
+		}
 		if err != nil {
 			return rep, redactErr(e.classify(err))
 		}
-		rep.Applied = append(rep.Applied, a)
 	}
 	return rep, nil
+}
+
+// foreignKeysOff turns foreign-key enforcement off on c when off is set (the
+// -- momo:sqlite-foreign-keys-off directive, which every SQLite table rebuild
+// carries) and the dialect is SQLite, and returns the function that restores
+// it. It runs outside any transaction, as SQLite requires. For any other
+// dialect, or when off is false, it does nothing.
+func (e *Engine) foreignKeysOff(ctx context.Context, c momo.PinnedConn, off bool) (restore func() error, err error) {
+	if !off || e.opts.dialect.Dialect().Name != dialect.SQLite {
+		return func() error { return nil }, nil
+	}
+	restore, err = e.opts.dialect.Setup(ctx, c, SessionOptions{ForeignKeysOff: true})
+	if err != nil {
+		return nil, fmt.Errorf("migrate: turn foreign keys off: %w", err)
+	}
+	return restore, nil
 }
 
 // Status reports the state of every migration version: applied, pending, dirty
@@ -775,8 +799,9 @@ var migrationName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // Diff does not touch the database: it reads the directory and renders through
 // the dialect. It orders the changes with OrderWithViews and returns the
 // ordering error (a dependency cycle) instead of falling back to the unordered
-// list. SQLite table rebuilds need a live connection and are not supported
-// here yet.
+// list. A dialect that implements SchemaRenderer (SQLite) renders from the two
+// schemas rather than the changes alone, which is how a SQLite table rebuild
+// becomes plain statements in the up file.
 func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, opts DiffOptions) (*Migration, error) {
 	if !migrationName.MatchString(name) {
 		return nil, fmt.Errorf("migrate: migration name %q must match %s", name, migrationName)
@@ -816,7 +841,7 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	if err != nil {
 		return nil, fmt.Errorf("migrate: order changes: %w", err)
 	}
-	stmts, err := e.opts.dialect.Render(ordered)
+	stmts, err := renderPlan(e.opts.dialect, from, &to, ordered)
 	if err != nil {
 		return nil, err
 	}
@@ -905,6 +930,12 @@ func renderUp(m *Migration) []byte {
 	}
 	if m.NoTx {
 		b.WriteString("-- momo:no-transaction\n")
+	}
+	if slices.ContainsFunc(m.Up, isForeignKeyCheck) {
+		// A SQLite table rebuild: Apply turns foreign-key enforcement off
+		// around the migration, which PRAGMA foreign_keys cannot do inside the
+		// transaction.
+		b.WriteString("-- momo:sqlite-foreign-keys-off\n")
 	}
 	b.WriteString("\n")
 	for i, s := range m.Up {

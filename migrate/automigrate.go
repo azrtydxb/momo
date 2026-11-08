@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/azrtydxb/momo/schema"
 )
@@ -100,7 +101,11 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 	if err != nil {
 		return nil, fmt.Errorf("migrate: order changes: %w", err)
 	}
-	stmts, err := e.opts.dialect.Render(ordered)
+	stmts, err := renderPlan(e.opts.dialect, live, &to, ordered)
+	if err != nil {
+		return nil, err
+	}
+	restore, err := e.foreignKeysOff(ctx, c, slices.ContainsFunc(stmts, isForeignKeyCheck))
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +114,7 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 	} else {
 		_, err = execAll(ctx, c, stmts, nil)
 	}
+	err = joinErr(err, restore())
 	if err != nil {
 		return nil, fmt.Errorf("migrate: AutoMigrate: %w", e.classify(err))
 	}

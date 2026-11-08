@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
@@ -147,10 +148,15 @@ func checkHistoryFormat(ctx context.Context, c momo.PinnedConn, tbl string) erro
 	return nil
 }
 
-// isUndefinedTable reports whether err is PostgreSQL's "relation does not exist".
+// isUndefinedTable reports whether err says a table does not exist:
+// PostgreSQL's "relation does not exist" (SQLSTATE 42P01) or SQLite's "no such
+// table", which has no SQLSTATE and is recognised by its message.
 func isUndefinedTable(err error) bool {
 	var s interface{ SQLState() string }
-	return errors.As(err, &s) && s.SQLState() == undefinedTable
+	if errors.As(err, &s) && s.SQLState() == undefinedTable {
+		return true
+	}
+	return err != nil && strings.Contains(err.Error(), "no such table: ")
 }
 
 // ReadHistory returns the migration rows of the history table ordered by

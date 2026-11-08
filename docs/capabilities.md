@@ -1,9 +1,11 @@
 What Momo supports, per database. PostgreSQL (through pgx) is fully usable.
 SQLite is usable through `driver/sqlitedriver` (mattn go-sqlite3 and
 sqlite-vec; it needs cgo and does not build on Windows): queries, writes,
-transactions and the shared integration suite run on it, but migrations
-(`momo migrate`), the inspector, a pure-Go driver and the vector builders are
-**not available yet**. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
+transactions and the shared integration suite run on it. It also has a
+migration dialect, `migrate/sqlite` (inspector, rendering, table rebuild and
+lock, see [migrations.md](migrations.md#3a-sqlite)), that you use as a library
+through `migrate.NewEngine`; the `momo migrate` command does not select it yet,
+and a pure-Go driver and the vector builders are **not available yet**. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
 (`driver/mysqldriver`): queries, writes, locking and transactions run and are
 covered by the integration suite, but migrations, the inspector and vector
 search are **not available yet** (see [MySQL and MariaDB](mysql.md)).
@@ -62,14 +64,14 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 
 ## Dialect and driver status
 
-| Item                           | PostgreSQL (pgx)                              | SQLite                                                                   | MySQL / MariaDB                                       |
-| ------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------- |
-| Usable                         | yes                                           | queries and writes: yes (cgo, not Windows); migrations, vectors: not yet | queries and writes: yes; migrations, vectors: not yet |
-| Driver package                 | `driver/pgxdriver` (pgx v5 pool, `FromSQLDB`) | `driver/sqlitedriver` (mattn go-sqlite3, sqlite-vec)                     | `driver/mysqldriver`                                  |
-| `dialect.For(name)` metadata   | yes                                           | yes (data only)                                                          | yes (data only)                                       |
-| Migration dialect (`migrate`)  | `migrate/postgres`                            | none                                                                     | none                                                  |
-| `momo migrate` on this dialect | works                                         | exit 2, "migrations for dialect ... are not available yet"               | same                                                  |
-| CI integration matrix          | PostgreSQL 16 and 17, pgvector 0.8.7          | runs inside the PostgreSQL job (no server needed)                        | MySQL 8.4.13, MySQL 9.7.4, MariaDB 11.8.9             |
+| Item                           | PostgreSQL (pgx)                              | SQLite                                                                        | MySQL / MariaDB                                       |
+| ------------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Usable                         | yes                                           | queries, writes, library migrations: yes (cgo, not Windows); vectors: not yet | queries and writes: yes; migrations, vectors: not yet |
+| Driver package                 | `driver/pgxdriver` (pgx v5 pool, `FromSQLDB`) | `driver/sqlitedriver` (mattn go-sqlite3, sqlite-vec)                          | `driver/mysqldriver`                                  |
+| `dialect.For(name)` metadata   | yes                                           | yes (data only)                                                               | yes (data only)                                       |
+| Migration dialect (`migrate`)  | `migrate/postgres`                            | `migrate/sqlite` (library only)                                               | none                                                  |
+| `momo migrate` on this dialect | works                                         | exit 2, "migrations for dialect ... are not available yet" (use the library)  | same                                                  |
+| CI integration matrix          | PostgreSQL 16 and 17, pgvector 0.8.7          | runs inside the PostgreSQL job (no server needed)                             | MySQL 8.4.13, MySQL 9.7.4, MariaDB 11.8.9             |
 
 The `dialect/dialect.go` flags for the unusable dialects, for planning only:
 

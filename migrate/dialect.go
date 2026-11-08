@@ -59,3 +59,21 @@ type Canonicalizer interface {
 type TableCanonicalizer interface {
 	CanonicalizeTables(ctx context.Context, c momo.PinnedConn, s *schema.Schema) (skipped []ObjectRef, err error)
 }
+
+// SchemaRenderer is implemented by dialects that need more than the change
+// list to render it. RenderSchema is Render with the schema the plan starts
+// from and the one it ends at; SQLite uses them to write a table rebuild
+// (which needs the whole desired table, the views and triggers that mention
+// it, and the columns it has now) as plain statements that a migration file
+// can hold. Diff and AutoMigrate call it in place of Render.
+type SchemaRenderer interface {
+	RenderSchema(from, to *schema.Schema, plan []Change) ([]Statement, error)
+}
+
+// renderPlan renders plan through d, with the schemas when d wants them.
+func renderPlan(d Dialect, from, to *schema.Schema, plan []Change) ([]Statement, error) {
+	if sr, ok := d.(SchemaRenderer); ok {
+		return sr.RenderSchema(from, to, plan)
+	}
+	return d.Render(plan)
+}
