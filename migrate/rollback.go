@@ -152,6 +152,9 @@ func (e *Engine) loadDowns(rows []HistoryRow) ([]Pending, error) {
 		}
 		stmts := make([]Statement, len(parts))
 		for j, s := range parts {
+			if s, err = applyDDLDirective(s, name); err != nil {
+				return nil, fmt.Errorf("migrate: %s: statement %d: %w", f.Path, j+1, err)
+			}
 			stmts[j] = Statement{SQL: s}
 		}
 		out[i] = Pending{Version: r.Version, Name: r.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: r.Checksum}

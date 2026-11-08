@@ -51,6 +51,9 @@ func NormalizeType(d dialect.Name, t string) string {
 			base = m
 		}
 	}
+	if d == dialect.MySQL {
+		base, args = mysqlType(base, args)
+	}
 	if rest != "" {
 		rest = " " + rest
 	}
@@ -169,7 +172,99 @@ func normalizeExprOnce(d dialect.Name, e string) string {
 	if d == dialect.Postgres {
 		s = postgresRewrite(s)
 	}
+	if d == dialect.MySQL {
+		s = mysqlRewrite(s)
+	}
 	return s
+}
+
+// mysqlAliases maps the alternative spellings of MySQL and MariaDB types to
+// the name information_schema reports.
+var mysqlAliases = map[string]string{
+	"integer": "int", "int1": "tinyint", "int2": "smallint", "int3": "mediumint", "middleint": "mediumint",
+	"int4": "int", "int8": "bigint", "float4": "float", "float8": "double", "real": "double",
+	"numeric": "decimal", "dec": "decimal", "fixed": "decimal",
+}
+
+// mysqlType canonicalises a MySQL or MariaDB type name and its argument list:
+// aliases collapse (integer, bool, double precision, ...), and the display width
+// of an integer type is dropped, because MySQL 8.0.19 and later no longer
+// report it while MariaDB still does. tinyint(1) keeps its width, the spelling
+// of a boolean. base may carry words after the type name ("int unsigned").
+func mysqlType(base, args string) (string, string) {
+	head, tail, _ := strings.Cut(base, " ")
+	if m, ok := mysqlAliases[head]; ok {
+		head = m
+	}
+	if head == "bool" || head == "boolean" {
+		head, args = "tinyint", "(1)"
+	}
+	if head == "double" {
+		for tail == "precision" || strings.HasPrefix(tail, "precision ") {
+			tail = strings.TrimSpace(strings.TrimPrefix(tail, "precision"))
+		}
+	}
+	switch head {
+	case "tinyint", "smallint", "mediumint", "int", "bigint":
+		if head != "tinyint" || args != "(1)" {
+			args = ""
+		}
+	}
+	if tail != "" {
+		head += " " + tail
+	}
+	return head, args
+}
+
+// mysqlRewrite undoes spellings the MySQL family substitutes for what was
+// declared: it removes identifier quotes and the character set introducers
+// (_utf8mb4'x') that the server adds to stored expressions. Text inside
+// string literals is left alone.
+func mysqlRewrite(s string) string {
+	var sb strings.Builder
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			sb.WriteByte(c)
+			switch {
+			case c == '\\' && i+1 < len(s):
+				i++
+				sb.WriteByte(s[i])
+			case c == quote:
+				quote = 0
+			}
+			continue
+		}
+		switch {
+		case c == '`':
+			continue
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '_' && (i == 0 || !isWordByte(s[i-1])):
+			if n := charsetIntroducer(s[i:]); n > 0 {
+				i += n - 1
+				continue
+			}
+		}
+		sb.WriteByte(c)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func isWordByte(c byte) bool {
+	return c == '_' || c == '$' || c >= 0x80 || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
+// charsetIntroducer returns the length of a character set introducer such as
+// _utf8mb4 at the start of s when a string literal follows it, otherwise 0.
+func charsetIntroducer(s string) int {
+	for _, cs := range []string{"_utf8mb4", "_utf8mb3", "_utf8", "_latin1", "_binary"} {
+		if strings.HasPrefix(s, cs) && len(s) > len(cs) && s[len(cs)] == '\'' {
+			return len(cs)
+		}
+	}
+	return 0
 }
 
 // postgresRewrite undoes spellings PostgreSQL substitutes for what was

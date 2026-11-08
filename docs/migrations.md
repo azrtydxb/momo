@@ -661,7 +661,8 @@ You can also create the files yourself:
 2. Optional directives at the top, before the first statement:
    `-- momo:no-transaction`, `-- momo:split`, `-- momo:destructive`
    (informational, never enforced), `-- momo:generated` (do not use it here)
-   and `-- momo:sqlite-foreign-keys-off` (SQLite only). An unknown `-- momo:` directive is an error.
+   and `-- momo:sqlite-foreign-keys-off` (SQLite only). `-- momo:ddl` is not a
+   file directive: it goes before one MySQL ALTER TABLE statement (section 9). An unknown `-- momo:` directive is an error.
 3. Create `20260301120000_backfill_slug.snapshot.json` as a copy of the previous
    snapshot with `version` set to the new version and `parent` set to the
    previous version. The `schema` must stay equal to the parent's, or
@@ -1029,6 +1030,68 @@ return to the state before step 7; nothing else changed.
   from your snapshots and models, and takes locks while it runs. Run them
   against a scratch database restored from a backup, or a clone, rather than
   production.
+
+## 9. MySQL and MariaDB
+
+The `migrate/mysql` package is the migration dialect for MySQL 8.4, MySQL 9.7
+and MariaDB 11.8. It reads `information_schema`, renders DDL and locks with
+`GET_LOCK`. `momo migrate` does not select it yet; build the engine with
+`migrate.WithDialect(mmysql.New())` and the `mysqldriver` driver.
+
+**Every migration is non-transactional.** DDL implies a commit on these
+servers, so a failure cannot be rolled back. The engine runs each statement on
+its own, records `statements_applied` after each one, and leaves a failed row
+that is dirty until you repair the database and run `resolve`. This holds with
+or without `-- momo:no-transaction`, and for Go migrations too. Write each
+migration so that a half-applied run is easy to finish by hand.
+
+**Locking.** `GET_LOCK` names are server-wide, so the lock name carries the
+database (`momo:<database>.momo_migrations`, cut to the 64 characters MySQL
+allows, with a hash suffix when the key is longer). The lock belongs to the
+pinned connection and is released with `RELEASE_LOCK`, or when the connection
+ends. A busy lock returns `migrate.ErrLocked` with the connection id of the
+holder.
+
+**Session timeouts.** The lock timeout becomes `lock_wait_timeout`, the time a
+statement waits for a metadata lock, in whole seconds. A statement timeout
+becomes `max_statement_time` on MariaDB; on MySQL it is refused with
+`momo.ErrUnsupported`, because `max_execution_time` bounds SELECT only.
+
+**Online DDL.** A line `-- momo:ddl ALGORITHM=INSTANT, LOCK=NONE` directly
+before an `ALTER TABLE` statement appends those options to it. The server
+rejects the statement when it cannot honour them, so a change that would copy
+the table fails instead of running slowly. Without the directive momo adds no
+`ALGORITHM` or `LOCK` clause. Only `ALGORITHM=` and `LOCK=` options are
+accepted.
+
+**What inspection reports.** One database is inspected, the connection's
+default, and the history table is left out.
+
+- A UNIQUE constraint and a unique index are the same object on these servers.
+  A unique key made of plain ascending columns is reported as a unique
+  constraint; declare such keys as constraints.
+- The index MySQL creates for a foreign key, named after the constraint, is
+  not reported. An index you declare under the name of a foreign key on the
+  same columns is hidden the same way.
+- `NO ACTION` is reported as an empty action. MariaDB reports its default as
+  `RESTRICT`, so on MariaDB `RESTRICT` and an unwritten clause are one.
+- MariaDB stores `json` as `longtext` with a `json_valid` check named after the
+  column; the pair is reported as type `json`.
+- Integer display widths (`int(11)` on MariaDB) are no difference of type.
+  Identifier quotes, character set introducers and outer parentheses in stored
+  expressions are no difference of text.
+- An index part with a prefix length is the column name followed by the length
+  in parentheses, such as `name(10)`. Index visibility, collations and
+  `ON UPDATE CURRENT_TIMESTAMP` are not part of the schema model.
+
+**Rendering.** Tables are `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`. An identity
+column is `AUTO_INCREMENT` (`by_default`; `always` and `serial` are refused). A
+default that is not a literal or `CURRENT_TIMESTAMP` is wrapped in parentheses,
+as MySQL requires. Partial indexes, storage parameters, operator classes,
+enums, views, functions, triggers and policies have no MySQL rendering yet and
+are refused. Declare a generated column as nullable: MariaDB does not take
+`NOT NULL` on one. MySQL refuses a CHECK, or a stored generated column, on a
+column that a foreign key with a referential action uses.
 
 ## Upgrading: generated file header
 

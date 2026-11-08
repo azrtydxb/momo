@@ -26,6 +26,17 @@ func (e driverError) Error() string  { return e.msg }
 func (e driverError) Detail() string { return e.detail }
 func (e driverError) Unwrap() error  { return e.cause }
 
+// SQLState returns the five-character SQLSTATE of the server error, or "" when
+// the cause is not one. The migration engine reads it to recognise a missing
+// table (42S02) and to withhold data exceptions (class 22).
+func (e driverError) SQLState() string {
+	var se *mysql.MySQLError
+	if errors.As(e.cause, &se) {
+		return string(se.SQLState[:])
+	}
+	return ""
+}
+
 // kinds maps server error numbers to momo sentinels. MySQL and MariaDB share
 // the numbers except the check constraint failure, which MariaDB reports as
 // 4025 where MySQL reports 3819.

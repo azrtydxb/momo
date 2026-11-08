@@ -32,7 +32,7 @@ func FuzzNormalize(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
-		for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
+		for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
 			once := NormalizeExpr(d, in)
 			if twice := NormalizeExpr(d, once); twice != once {
 				t.Fatalf("NormalizeExpr not idempotent for %q: %q then %q", in, once, twice)
