@@ -5,6 +5,7 @@ package momo
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/azrtydxb/momo/vector"
@@ -28,12 +29,29 @@ import (
 // ErrUnsupported, because the setup could not run. On a Tx it uses the
 // transaction's own COPY path. Query hooks see one event with Op "copy" and no
 // arguments, so no value reaches a hook.
+//
+// Copy runs the insert interceptors (they can deny it, but a predicate they
+// add is ignored, as for any insert) and the BeforeInsert hook of the model
+// over a copy of ms, so a hook that stamps a tenant applies to every row. It
+// skips OnConflict handling, RETURNING and the chunking of Exec. It counts as a
+// write for NewUnitOfWork, so later reads on a Replica handle in the same unit
+// of work stay on the primary.
 func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 	if q.q == nil {
 		return Result{}, noQuerier("copy", q.meta.Table)
 	}
 	if _, err := runInterceptors(ctx, q.q, "insert", q.meta.Table); err != nil {
 		return Result{}, err
+	}
+	if fn := q.meta.Hooks.BeforeInsert; fn != nil {
+		// Run the hook over copies, like Models does, so the caller's slice is
+		// untouched and a tenant-stamping hook applies to every copied row.
+		ms = slices.Clone(ms)
+		for i := range ms {
+			if err := runModelHook(ctx, "insert", q.meta.Table, fn, &ms[i]); err != nil {
+				return Result{}, err
+			}
+		}
 	}
 	names, rows, err := q.copyRows(ms)
 	if err != nil {
@@ -156,6 +174,10 @@ func (e *execer) copyFrom(ctx context.Context, c Copier, schema, model string, c
 		quotedCols[i] = ident(n)
 	}
 	sql := "COPY " + quoted + " (" + strings.Join(quotedCols, ", ") + ") FROM STDIN"
+	markWrite(ctx) // read-your-writes: later reads in this unit of work stay on the primary
+	if err := ctx.Err(); err != nil {
+		return -1, e.wrapErr("copy", model, err)
+	}
 	ctx, ev := e.before(ctx, "copy", model, "", sql, nil, nil)
 	n, err := c.CopyFrom(ctx, table, cols, rows)
 	err = e.wrapErr("copy", model, err)

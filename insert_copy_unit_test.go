@@ -273,3 +273,157 @@ func TestCopyRejectsIncompatibleQueries(t *testing.T) {
 		}
 	}
 }
+
+// Catches: Copy skipping BeforeInsert (a tenant-stamping model writes unstamped
+// rows), mutating the caller's slice, or running after a hook veto.
+func TestCopyRunsBeforeInsertOverACopy(t *testing.T) {
+	veto := errors.New("veto")
+	setHooks(t, momo.HookSet[hookedDoc]{
+		BeforeInsert: func(_ context.Context, m *hookedDoc) error {
+			if m.Title == "bad" {
+				return veto
+			}
+			m.Secret = "stamped"
+			return nil
+		},
+	})
+	drv := newCopyDriver(dialect.Postgres)
+	db := momo.New(drv)
+	ms := []hookedDoc{{Title: "a"}, {Title: "b"}}
+	if _, err := momo.Insert[hookedDoc](db).Copy(t.Context(), ms); err != nil {
+		t.Fatal(err)
+	}
+	if len(drv.log.rows) != 2 || !slices.Equal(drv.log.cols, []string{"title", "secret"}) {
+		t.Fatalf("cols %v rows %v", drv.log.cols, drv.log.rows)
+	}
+	for _, r := range drv.log.rows {
+		if r[1] != "stamped" {
+			t.Fatalf("row %v was not stamped by BeforeInsert", r)
+		}
+	}
+	if ms[0].Secret != "" || ms[1].Secret != "" {
+		t.Fatalf("BeforeInsert changed the caller's models: %+v", ms)
+	}
+
+	drv2 := newCopyDriver(dialect.Postgres)
+	_, err := momo.Insert[hookedDoc](momo.New(drv2)).Copy(t.Context(), []hookedDoc{{Title: "a"}, {Title: "bad"}})
+	if !errors.Is(err, momo.ErrValidation) || !errors.Is(err, veto) {
+		t.Fatalf("Copy with a vetoing hook = %v", err)
+	}
+	if len(drv2.log.Events()) != 0 {
+		t.Fatalf("events = %v: COPY ran after a veto", drv2.log.Events())
+	}
+}
+
+// Catches: Copy bypassing the insert interceptors.
+func TestCopyIsDeniedByInterceptor(t *testing.T) {
+	drv := newCopyDriver(dialect.Postgres)
+	var kind string
+	db := momo.New(drv, momo.WithInterceptor(func(_ context.Context, op *momo.Operation) error {
+		kind = op.Kind
+		return errors.New("not on this handle")
+	}))
+	if _, err := copyQuery(db).Copy(t.Context(), copyDocs()); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("Copy = %v, want ErrValidation", err)
+	}
+	if kind != "insert" || len(drv.log.Events()) != 0 {
+		t.Fatalf("kind %q events %v", kind, drv.log.Events())
+	}
+}
+
+// Catches: a cancelled context still starting the COPY.
+func TestCopyHonoursCancelledContext(t *testing.T) {
+	drv := newCopyDriver(dialect.Postgres)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := copyQuery(momo.New(drv)).Copy(ctx, copyDocs()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Copy = %v, want context.Canceled", err)
+	}
+	if len(drv.log.Events()) != 0 {
+		t.Fatalf("events = %v: COPY ran on a cancelled context", drv.log.Events())
+	}
+}
+
+// Catches: COPY and MERGE failing on a replica handle (the router hid the
+// primary's Copier and ServerVersioner), COPY going anywhere but the primary,
+// and a Copy that is not recorded as a write, so a later read in the same
+// unit of work misses the copied rows on the replica.
+func TestReplicaHandleCopyMergeAndReadYourWrites(t *testing.T) {
+	prim := versionedCopy{copyDriver: newCopyDriver(dialect.Postgres), version: 170000}
+	rep := fakedriver.New(dialect.Postgres)
+	rep.SetRows([][]any{{int64(0)}})
+	prim.SetRows([][]any{{int64(2)}})
+	rd, err := momo.New(prim, momo.WithReplicas(rep)).Replica(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := momo.NewUnitOfWork(t.Context())
+	count := func() int64 {
+		n, err := momo.Select[suite.Document](rd).Count(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := count(); n != 0 || len(rep.Calls()) != 1 {
+		t.Fatalf("before the write: count %d, replica calls %d, want a replica read", n, len(rep.Calls()))
+	}
+	if res, err := copyQuery(rd).Copy(ctx, copyDocs()); err != nil || res.RowsAffected != 2 {
+		t.Fatalf("Copy on a replica handle = %+v, %v", res, err)
+	}
+	if got := prim.log.Events(); !slices.Equal(got, []string{"copy-db"}) {
+		t.Fatalf("events = %v, want the primary's COPY", got)
+	}
+	if n := count(); n != 2 || len(rep.Calls()) != 1 {
+		t.Fatalf("after Copy: count %d, replica calls %d, want a primary read", n, len(rep.Calls()))
+	}
+
+	if _, err := mergeInsertQuery(rd).Exec(t.Context()); err != nil {
+		t.Fatalf("Merge on a replica handle = %v", err)
+	}
+	last := prim.Calls()[len(prim.Calls())-1]
+	if !strings.HasPrefix(last.SQL, "MERGE INTO") {
+		t.Fatalf("last primary statement = %q, want the MERGE", last.SQL)
+	}
+}
+
+// versionedCopy is a copy-capable fake driver that reports a server version.
+type versionedCopy struct {
+	copyDriver
+	version int
+}
+
+func (v versionedCopy) ServerVersion(context.Context) (int, error) { return v.version, nil }
+
+// Catches: Truncate running without the interceptors (a tenant handle wiping
+// every tenant), a wrong kind, and MySQL TRUNCATE (an implicit commit) inside
+// a transaction.
+func TestTruncateInterceptorsAndMySQLTransaction(t *testing.T) {
+	var kind string
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv, momo.WithInterceptor(func(_ context.Context, op *momo.Operation) error {
+		kind = op.Kind
+		return errors.New("no truncate on a tenant handle")
+	}))
+	if err := momo.Truncate[suite.Document](t.Context(), db); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("Truncate = %v, want ErrValidation", err)
+	}
+	if kind != "truncate" || len(drv.Calls()) != 0 {
+		t.Fatalf("kind %q calls %v", kind, drv.Calls())
+	}
+
+	my := fakedriver.New(dialect.MySQL)
+	mdb := momo.New(my)
+	err := mdb.Tx(t.Context(), momo.TxOptions{}, func(tx *momo.Tx) error {
+		return momo.Truncate[suite.Document](t.Context(), tx)
+	})
+	if !errors.Is(err, momo.ErrUnsupported) || len(my.Calls()) != 0 {
+		t.Fatalf("MySQL Truncate in a Tx = %v, calls %v, want ErrUnsupported and none", err, my.Calls())
+	}
+	if err := momo.Truncate[suite.Document](t.Context(), mdb); err != nil {
+		t.Fatal(err)
+	}
+	if c := my.Calls(); len(c) != 1 || !strings.HasPrefix(c[0].SQL, "TRUNCATE TABLE ") {
+		t.Fatalf("MySQL calls = %+v", c)
+	}
+}

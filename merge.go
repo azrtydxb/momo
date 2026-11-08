@@ -67,7 +67,7 @@ func serverVersionOf(ctx context.Context, q Querier) (int, error) {
 	if cerr := rows.Close(); err == nil {
 		err = cerr
 	}
-	return v, err
+	return v, q.conn().wrapErr("merge", "", err)
 }
 
 // MergeQuery builds a MERGE into one model table. It is a value: every method
@@ -431,28 +431,30 @@ func (m MergeQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	return runReturning(ctx, m.q, "merge", m.meta, m.returning, c)
 }
 
-// bulkSpec is the VALUES list of BulkUpdate.
+// bulkSpec is the row list of BulkUpdate.
 type bulkSpec struct {
 	key  ColumnRef
 	cols []ColumnRef
 	rows [][]any
 }
 
-// BulkUpdate updates rows of T from a VALUES list keyed by key. Only listed
+// BulkUpdate updates rows of T from a list of rows keyed by key. Only listed
 // keys change. Each row holds the key value first, then one value per column
 // of cols, in order:
 //
 //	BulkUpdate[Document](db, DocID, []ColumnRef{DocTitle}, [][]any{{int64(2), "new"}})
 //
-// It renders UPDATE t SET c = v.c FROM (VALUES ...) AS v WHERE t.key = v.key
-// with every value bound, so a row whose key is not in the table changes
-// nothing. The VALUES list takes its column types from the table. A key
+// It renders UPDATE t SET c = v.c FROM (one SELECT per row, joined by
+// UNION ALL) AS v WHERE t.key = v.key with every value bound, so a row whose
+// key is not in the table changes nothing. The rows take their column types
+// from the table. A key
 // listed twice applies one of its rows. The statement also maintains the
 // updated-at and version columns, runs the OnUpdate defaults and the field
 // validators over each row, and honours Where for extra conditions; Set and
 // Model cannot be combined with it. PostgreSQL only (dialect.Merge gates
 // both): other dialects fail with ErrUnsupported. A statement over the
-// bind-parameter limit fails with ErrLimitExceeded.
+// bind-parameter limit fails with ErrLimitExceeded: BulkUpdate does not chunk,
+// so split a larger list across calls (in a transaction if it must be atomic).
 func BulkUpdate[T any, PT Modeler[T]](q Querier, key ColumnRef, cols []ColumnRef, rows [][]any) UpdateQuery[T] {
 	u := Update[T, PT](q)
 	u.bulk = &bulkSpec{key: key, cols: slices.Clone(cols), rows: slices.Clone(rows)}
@@ -649,15 +651,29 @@ func (u UpdateQuery[T]) bulkSQL() (Compiled, error) {
 }
 
 // Truncate removes all rows of T's table, soft-deleted rows included, with no
-// filter. PostgreSQL and MySQL run TRUNCATE TABLE (PostgreSQL keeps the
-// identity sequence). SQLite runs DELETE FROM and deletes the table's
-// sqlite_sequence row when that table exists, so a SQLite autoincrement key
-// restarts. The two SQLite statements are atomic: on a DB they run in one
-// transaction, on a Tx in a savepoint.
+// filter. PostgreSQL and MySQL run TRUNCATE TABLE with no RESTART IDENTITY and
+// no CASCADE: PostgreSQL keeps the identity sequence and fails when another
+// table has a foreign key to this one, and MySQL resets its AUTO_INCREMENT
+// counter. SQLite runs DELETE FROM and deletes the table's sqlite_sequence row
+// when that table exists, so a SQLite autoincrement key restarts. The two
+// SQLite statements are atomic: on a DB they run in one transaction, on a Tx
+// in a savepoint.
+//
+// MySQL TRUNCATE is DDL and commits implicitly, so inside a Tx it is refused
+// with ErrUnsupported. The handle's interceptors run first with the kind
+// "truncate" and can deny it; a predicate they add is ignored, so a
+// tenant-scoped handle should deny the kind.
 func Truncate[T any, PT Modeler[T]](ctx context.Context, q Querier) error {
 	meta := metaOf[T, PT]()
 	if meta.Table == "" {
 		return &Error{Kind: ErrValidation, Op: "truncate", Err: errors.New("model has no table")}
+	}
+	if _, err := runInterceptors(ctx, q, "truncate", meta.Table); err != nil {
+		return err
+	}
+	if _, inTx := q.(*Tx); inTx && q.Dialect().Name == dialect.MySQL {
+		return &Error{Kind: ErrUnsupported, Op: "truncate", Table: meta.Table,
+			Err: errors.New("MySQL TRUNCATE commits implicitly, so it cannot run inside a transaction")}
 	}
 	d := q.Dialect()
 	target := TableRef{Name: meta.Table, Schema: meta.Schema}
@@ -701,7 +717,7 @@ func resetSQLiteSequence(ctx context.Context, q Querier, table string) error {
 		err = cerr
 	}
 	if err != nil || !has {
-		return err
+		return q.conn().wrapErr("truncate", table, err)
 	}
 	c, err := compile(q.Dialect(), func(b *Builder) {
 		b.WriteString("DELETE FROM sqlite_sequence WHERE name = ")

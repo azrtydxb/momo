@@ -118,6 +118,25 @@ func (r routingDriver) Query(ctx context.Context, sql string, args []any) (Rows,
 	return rows, err
 }
 
+// CopyFrom forwards to the primary: COPY is a write and never goes to a
+// replica. It returns ErrUnsupported when the primary has no COPY path.
+func (r routingDriver) CopyFrom(ctx context.Context, table string, cols []string, rows [][]any) (int64, error) {
+	c, ok := r.Driver.(Copier)
+	if !ok {
+		return -1, newError(ErrUnsupported, "copy", "", errors.New("the driver has no COPY path (momo.Copier)"))
+	}
+	return c.CopyFrom(ctx, table, cols, rows)
+}
+
+// ServerVersion forwards to the primary, whose version gates MERGE.
+func (r routingDriver) ServerVersion(ctx context.Context) (int, error) {
+	v, ok := r.Driver.(ServerVersioner)
+	if !ok {
+		return 0, newError(ErrUnsupported, "merge", "", errors.New("the driver does not report the server version (momo.ServerVersioner)"))
+	}
+	return v.ServerVersion(ctx)
+}
+
 // sqlStater is implemented by driver errors that carry a SQLSTATE, such as
 // pgconn.PgError.
 type sqlStater interface{ SQLState() string }
