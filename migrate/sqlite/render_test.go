@@ -496,3 +496,66 @@ func TestSQLiteRebuildKeepsStrictAndAutoincrement(t *testing.T) {
 		t.Fatal("a change of AUTOINCREMENT must be refused")
 	}
 }
+
+// TestSQLiteRebuildCarriesTableOptions checks that a table which is STRICT and
+// AUTOINCREMENT in the starting schema keeps both when the desired schema (a
+// model cannot declare them) says nothing, and that the sequence counter is
+// carried to the new table before the old one is dropped.
+func TestSQLiteRebuildCarriesTableOptions(t *testing.T) {
+	mk := func(nullable, options bool) *schema.Schema {
+		return liteSchema(schema.Table{
+			Name:          "t",
+			Columns:       []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "v", Type: "TEXT", Nullable: nullable}},
+			PrimaryKey:    []string{"id"},
+			Autoincrement: options,
+			Strict:        options,
+		})
+	}
+	from, to := mk(true, true), mk(false, false)
+	plan := []migrate.Change{{Kind: migrate.AlterColumn, Table: "t", Name: "v", Before: &from.Tables[0].Columns[1], After: &to.Tables[0].Columns[1]}}
+	stmts, err := Dialect{}.RenderSchema(from, to, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sqls []string
+	for _, s := range stmts {
+		sqls = append(sqls, s.SQL)
+	}
+	want := []string{
+		`CREATE TABLE "new_t" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "v" TEXT NOT NULL) STRICT`,
+		`INSERT INTO "new_t" ("id", "v") SELECT "id", "v" FROM "t"`,
+		`INSERT INTO sqlite_sequence (name, seq) SELECT 'new_t', seq FROM sqlite_sequence WHERE name = 't' AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'new_t')`,
+		`UPDATE sqlite_sequence SET seq = (SELECT seq FROM sqlite_sequence WHERE name = 't') WHERE name = 'new_t' AND seq < (SELECT seq FROM sqlite_sequence WHERE name = 't')`,
+		`DROP TABLE "t"`,
+		`ALTER TABLE "new_t" RENAME TO "t"`,
+		`PRAGMA foreign_key_check`,
+	}
+	if strings.Join(sqls, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got:\n%s\nwant:\n%s", strings.Join(sqls, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestSQLiteCreatedTableForeignKeyCycle checks that the add_fk changes the
+// ordering produces for a cycle between two new tables are written into the
+// CREATE TABLE statements and render nothing of their own.
+func TestSQLiteCreatedTableForeignKeyCycle(t *testing.T) {
+	a := schema.Table{Name: "a", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}}, PrimaryKey: []string{"id"}}
+	b := schema.Table{Name: "b", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}}, PrimaryKey: []string{"id"}}
+	fk := schema.ForeignKey{Name: "a_b_fkey", Columns: []string{"id"}, RefTable: "b", RefColumns: []string{"id"}}
+	plan := []migrate.Change{
+		{Kind: migrate.CreateTable, Table: "a", Name: "a", After: &a},
+		{Kind: migrate.CreateTable, Table: "b", Name: "b", After: &b},
+		{Kind: migrate.AddFK, Table: "a", Name: "a_b_fkey", After: &fk},
+	}
+	to := liteSchema(a, b)
+	stmts, err := Dialect{}.RenderSchema(liteSchema(), to, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stmts) != 2 || !strings.Contains(stmts[0].SQL, `CONSTRAINT "a_b_fkey" FOREIGN KEY ("id") REFERENCES "b" ("id")`) {
+		t.Fatalf("the key must be inline in the CREATE TABLE of a, got %+v", stmts)
+	}
+	if a.ForeignKeys != nil {
+		t.Fatal("rendering modified the change's table")
+	}
+}

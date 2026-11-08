@@ -247,6 +247,9 @@ func execStatement(ctx context.Context, x execer, s Statement) error {
 		}
 		return checkForeignKeys(ctx, x, stmt)
 	}
+	if looksLikeForeignKeyCheck(s.SQL) {
+		return &momo.Error{Kind: momo.ErrValidation, Op: "migrate", Err: errors.New("unrecognised PRAGMA foreign_key_check statement; write it as one statement, PRAGMA [schema.]foreign_key_check[(table)], so that a violation fails the migration")}
+	}
 	_, err := x.Exec(ctx, s.SQL, nil)
 	if err != nil {
 		if rest, ok := strings.CutPrefix(s.Hint, "dependent:"); ok {
@@ -261,34 +264,66 @@ func execStatement(ctx context.Context, x execer, s Statement) error {
 // table argument (foreign_key_check(tbl), foreign_key_check("tbl")).
 var foreignKeyCheckRE = regexp.MustCompile(`(?is)^pragma\s+(?:(?:[A-Za-z_]\w*|"[^"]+")\s*\.\s*)?foreign_key_check\s*(?:\(\s*(?:[A-Za-z_]\w*|"[^"]+"|'[^']+')?\s*\))?$`)
 
-// foreignKeyCheckSQL returns the statement text without leading comments and
-// whitespace and without a trailing semicolon, and reports whether it is a
-// PRAGMA foreign_key_check. A migration file keeps the comments that precede a
-// statement, so they must not hide it.
+// foreignKeyCheckSQL returns the statement text without comments (leading,
+// trailing or between words) and without surrounding whitespace and a
+// trailing semicolon, and reports whether it is a PRAGMA foreign_key_check. A
+// migration file keeps the comments around a statement, so they must not hide
+// it.
 func foreignKeyCheckSQL(sql string) (string, bool) {
-	s := sql
-	for {
-		s = strings.TrimSpace(s)
-		switch {
-		case strings.HasPrefix(s, "--"):
-			i := strings.IndexByte(s, '\n')
-			if i < 0 {
-				return "", false
-			}
-			s = s[i+1:]
-			continue
-		case strings.HasPrefix(s, "/*"):
-			i := strings.Index(s, "*/")
-			if i < 0 {
-				return "", false
-			}
-			s = s[i+2:]
-			continue
-		}
-		break
-	}
-	s = strings.TrimRight(s, "; \t\r\n")
+	s := strings.TrimRight(strings.TrimSpace(stripSQLComments(sql)), "; \t\r\n")
 	return s, foreignKeyCheckRE.MatchString(s)
+}
+
+// stripSQLComments replaces each -- line comment and /* */ block comment outside
+// quotes with one space. An unterminated block comment runs to the end.
+func stripSQLComments(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		switch c := s[i]; {
+		case c == '\'' || c == '"' || c == '`':
+			j := i + 1
+			for j < len(s) {
+				if s[j] == c {
+					if j+1 < len(s) && s[j+1] == c {
+						j += 2
+						continue
+					}
+					break
+				}
+				j++
+			}
+			if j < len(s) {
+				j++
+			}
+			b.WriteString(s[i:j])
+			i = j
+		case c == '-' && i+1 < len(s) && s[i+1] == '-':
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+			b.WriteByte(' ')
+		case c == '/' && i+1 < len(s) && s[i+1] == '*':
+			end := strings.Index(s[i+2:], "*/")
+			if end < 0 {
+				i = len(s)
+			} else {
+				i += end + 4
+			}
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String()
+}
+
+// looksLikeForeignKeyCheck reports whether sql is a PRAGMA statement that names
+// foreign_key_check, whatever else follows it. One that is not exactly the
+// forms foreignKeyCheckSQL accepts must fail rather than run unchecked.
+func looksLikeForeignKeyCheck(sql string) bool {
+	s := strings.ToLower(strings.TrimSpace(stripSQLComments(sql)))
+	return strings.HasPrefix(s, "pragma") && strings.Contains(s, "foreign_key_check")
 }
 
 // isForeignKeyCheck reports whether s is the PRAGMA foreign_key_check that ends

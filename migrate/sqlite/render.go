@@ -87,6 +87,11 @@ type renderer struct {
 	// oldNames maps the name a renamed table has after the plan's rename_table
 	// to the name it has in from.
 	oldNames map[string]string
+	// createdFKs holds the foreign keys that the ordering moved out of a
+	// create_table into add_fk changes (to break a cycle between new tables);
+	// SQLite accepts a foreign key to a table that does not exist yet, so they
+	// go back into the CREATE TABLE.
+	createdFKs map[string][]schema.ForeignKey
 }
 
 func describe(c migrate.Change) string {
@@ -124,6 +129,13 @@ func (r *renderer) planRebuilds(plan []migrate.Change) (*rebuildPlan, error) {
 			r.oldNames[c.Name] = c.Table
 		}
 	}
+	created := map[string]bool{}
+	for _, c := range plan {
+		if c.Kind == migrate.CreateTable {
+			created[c.Table] = true
+		}
+	}
+	r.createdFKs = map[string][]schema.ForeignKey{}
 	anchor := map[string]int{}
 	note := func(table string, i int) {
 		if j, ok := anchor[table]; !ok || i < j {
@@ -133,6 +145,12 @@ func (r *renderer) planRebuilds(plan []migrate.Change) (*rebuildPlan, error) {
 	rp := &rebuildPlan{at: map[int][]string{}, folded: map[int]bool{}, silent: map[int]bool{}}
 	for i, c := range plan {
 		switch {
+		case c.Kind == migrate.AddFK && created[c.Table]:
+			// The table is created in this plan: the key belongs in its CREATE TABLE.
+			if fk, err := get[schema.ForeignKey](c.After); err == nil {
+				r.createdFKs[c.Table] = append(r.createdFKs[c.Table], fk)
+				rp.silent[i] = true
+			}
 		case tableKinds[c.Kind] && dropped[c.Table]:
 			// The table goes away with these: its foreign keys and indexes
 			// need no statement of their own.
@@ -243,6 +261,9 @@ func (r *renderer) renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		t, err := get[schema.Table](c.After)
 		if err != nil {
 			return nil, err
+		}
+		if extra := r.createdFKs[t.Name]; len(extra) > 0 {
+			t.ForeignKeys = append(slices.Clone(t.ForeignKeys), extra...)
 		}
 		sql, err := createTableSQL(t.Name, t, r.enums())
 		if err != nil {

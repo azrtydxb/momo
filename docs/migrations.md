@@ -448,11 +448,14 @@ Limits of the rebuild:
 - `sqlite.Rebuild` and `sqlite.Capture` rebuild from a live connection
   (captured views and triggers are recreated verbatim); the engine path rebuilds
   from the snapshot instead.
-- Changing `WITHOUT ROWID`, `STRICT` or `AUTOINCREMENT` is refused by `diff`
-  (write a custom migration). `schema.Table` carries `Strict` and
-  `Autoincrement`; inspection reads them and a rebuild writes them back, so a
-  rebuild never drops them. An `AUTOINCREMENT` counter is recomputed from the
-  copied rows, so it can be lower than before if the highest ids had been deleted.
+- A model cannot declare `WITHOUT ROWID`, `STRICT` or `AUTOINCREMENT`, so a
+  table that has one in the database and not in the model is not a difference:
+  `diff` and `AutoMigrate` leave it alone and a rebuild writes it back
+  (`TestSQLiteAutoMigrateWithStrictTable`). Asking for one the table lacks is
+  refused by `diff` (write a custom migration). `schema.Table` carries `Strict`
+  and `Autoincrement`; inspection reads them. A rebuild of an `AUTOINCREMENT`
+  table copies its `sqlite_sequence` value to the new table, so ids of deleted
+  rows are not handed out again (`TestSQLiteStrictAutoincrementRoundTrip`).
   An `INTEGER PRIMARY KEY DESC` is not a rowid alias and is not reported as an
   identity.
 - A down migration that rebuilds a table carries the same

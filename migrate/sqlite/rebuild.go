@@ -187,6 +187,18 @@ func rebuildScript(table string, desired schema.Table, indexes []schema.Index, c
 		}
 		out = append(out, migrate.Statement{SQL: "INSERT INTO " + ident(tmp) + " (" + identList(dst) + ") SELECT " + identList(src) + " FROM " + ident(table)})
 	}
+	if desired.Autoincrement {
+		// AUTOINCREMENT remembers the highest id ever used in sqlite_sequence,
+		// which DROP TABLE removes with the old table. Carry the old value to
+		// the new table first, so ids of deleted rows are not handed out again.
+		oldName, newName := literalOrEmpty(table), literalOrEmpty(tmp)
+		out = append(out,
+			migrate.Statement{SQL: "INSERT INTO sqlite_sequence (name, seq) SELECT " + newName + ", seq FROM sqlite_sequence WHERE name = " + oldName +
+				" AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = " + newName + ")"},
+			migrate.Statement{SQL: "UPDATE sqlite_sequence SET seq = (SELECT seq FROM sqlite_sequence WHERE name = " + oldName + ") WHERE name = " + newName +
+				" AND seq < (SELECT seq FROM sqlite_sequence WHERE name = " + oldName + ")"},
+		)
+	}
 	out = append(out,
 		migrate.Statement{SQL: "DROP TABLE " + ident(table)},
 		migrate.Statement{SQL: "ALTER TABLE " + ident(tmp) + " RENAME TO " + ident(table)},
@@ -235,6 +247,12 @@ func (r *renderer) rebuild(table string, plan []migrate.Change) ([]migrate.State
 	if !ok {
 		return nil, fmt.Errorf("%w: %q is not in the starting schema", errNoTable, oldName)
 	}
+	// A model cannot declare WITHOUT ROWID, STRICT or AUTOINCREMENT yet, so the
+	// rebuilt table keeps the ones the table has.
+	target := *desired
+	target.WithoutRowID = target.WithoutRowID || old.WithoutRowID
+	target.Strict = target.Strict || old.Strict
+	target.Autoincrement = target.Autoincrement || old.Autoincrement
 	var copyCols [][2]string
 	for _, col := range desired.Columns {
 		if col.Generated != "" {
@@ -252,7 +270,7 @@ func (r *renderer) rebuild(table string, plan []migrate.Change) ([]migrate.State
 	if err != nil {
 		return nil, err
 	}
-	return rebuildScript(table, *desired, desired.Indexes, copyCols, r.enums(), drops, recreates)
+	return rebuildScript(table, target, desired.Indexes, copyCols, r.enums(), drops, recreates)
 }
 
 // dependents finds the views and triggers of the starting schema that a rebuild
@@ -369,4 +387,14 @@ func orderViews(views []schema.View) []schema.View {
 		remaining = next
 	}
 	return out
+}
+
+// literalOrEmpty renders s as an SQL string literal; a NUL byte, which no
+// table name holds, is dropped.
+func literalOrEmpty(s string) string {
+	l, err := literal(strings.ReplaceAll(s, "\x00", ""))
+	if err != nil {
+		return "''"
+	}
+	return l
 }

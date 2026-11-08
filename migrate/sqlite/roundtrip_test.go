@@ -315,7 +315,8 @@ func TestSQLiteStrictAutoincrementRoundTrip(t *testing.T) {
 		t.Fatalf("inspection lost STRICT or AUTOINCREMENT: %+v", tbl)
 	}
 
-	mustExec(t, c, `INSERT INTO events (body) VALUES ('a'), ('b')`)
+	mustExec(t, c, `INSERT INTO events (body) VALUES ('a'), ('b'), ('c')`)
+	mustExec(t, c, `DELETE FROM events WHERE id = 3`) // AUTOINCREMENT remembers 3 although the row is gone
 	apply(t, c, render(t, v1, v2))
 	assertNoDiff(t, c, v2)
 	var text string
@@ -327,6 +328,43 @@ func TestSQLiteStrictAutoincrementRoundTrip(t *testing.T) {
 	scanOne(t, c, `SELECT count(*) FROM events`, &n)
 	if n != 2 {
 		t.Fatalf("rows lost: %d", n)
+	}
+	mustExec(t, c, `INSERT INTO events (body) VALUES ('d')`)
+	var next int
+	scanOne(t, c, `SELECT max(id) FROM events`, &next)
+	if next != 4 {
+		t.Fatalf("the rebuild lost the sequence: the next id is %d, want 4 (id 3 was used before)", next)
+	}
+}
+
+// TestSQLiteForeignKeyCycleBetweenNewTables creates two tables that reference
+// each other. The ordering moves the keys out of the CREATE TABLE statements;
+// the render must put them back, and the result must inspect equal.
+func TestSQLiteForeignKeyCycleBetweenNewTables(t *testing.T) {
+	db := testopen.SQLite(t)
+	c := pinned(t, db)
+	want := &schema.Schema{Dialect: dialect.SQLite, Tables: []schema.Table{
+		{
+			Name:       "authors",
+			Columns:    []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "latest_book", Type: "INTEGER", Nullable: true}},
+			PrimaryKey: []string{"id"},
+			ForeignKeys: []schema.ForeignKey{
+				{Name: "authors_latest_book_fkey", Columns: []string{"latest_book"}, RefTable: "books", RefColumns: []string{"id"}},
+			},
+		},
+		{
+			Name:       "books",
+			Columns:    []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "author", Type: "INTEGER", Nullable: true}},
+			PrimaryKey: []string{"id"},
+			ForeignKeys: []schema.ForeignKey{
+				{Name: "books_author_fkey", Columns: []string{"author"}, RefTable: "authors", RefColumns: []string{"id"}},
+			},
+		},
+	}}
+	apply(t, c, render(t, &schema.Schema{Dialect: dialect.SQLite}, want))
+	assertNoDiff(t, c, want)
+	if _, err := c.Exec(context.Background(), `INSERT INTO books (id, author) VALUES (1, 99)`, nil); err == nil {
+		t.Fatal("the foreign key of books must be enforced")
 	}
 }
 

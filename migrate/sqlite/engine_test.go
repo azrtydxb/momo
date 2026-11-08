@@ -336,3 +336,35 @@ PRAGMA foreign_key_check;
 		t.Fatalf("children = %d (want 2), parents = %d (want 1), foreign_keys = %d (want 1), note columns = %d (want 0)", kids, parents, fk, noteCols)
 	}
 }
+
+// TestSQLiteAutoMigrateWithStrictTable checks that a database holding a STRICT
+// and AUTOINCREMENT table, which a model cannot declare, does not stop
+// AutoMigrate: the unrelated change is applied and the table keeps its options.
+func TestSQLiteAutoMigrateWithStrictTable(t *testing.T) {
+	db := testopen.SQLite(t)
+	ctx := context.Background()
+	mustExec(t, db.Driver(), `CREATE TABLE s (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, v TEXT) STRICT`)
+	mustExec(t, db.Driver(), `CREATE TABLE other (id INTEGER NOT NULL PRIMARY KEY)`)
+	desired := &schema.Schema{Dialect: "sqlite", Tables: []schema.Table{
+		{Name: "s", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "v", Type: "TEXT", Nullable: true}}, PrimaryKey: []string{"id"}},
+		{Name: "other", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}, {Name: "note", Type: "TEXT", Nullable: true}}, PrimaryKey: []string{"id"}},
+	}}
+	rep, err := newEngine(t, db, migratetest.EmptyFS(), "20260101000000").AutoMigrate(ctx, desired)
+	if err != nil {
+		t.Fatalf("a STRICT table must not stop AutoMigrate: %v", err)
+	}
+	if len(rep.Applied) != 1 || rep.Applied[0].Name != "note" {
+		t.Fatalf("the unrelated column must be added: %+v", rep)
+	}
+	c := pinned(t, db)
+	var n int
+	scanOne(t, c, `SELECT count(*) FROM pragma_table_info('other') WHERE name = 'note'`, &n)
+	if n != 1 {
+		t.Fatal("note was not added")
+	}
+	var text string
+	scanOne(t, c, `SELECT sql FROM sqlite_schema WHERE name = 's'`, &text)
+	if !strings.Contains(text, "AUTOINCREMENT") || !strings.HasSuffix(strings.TrimSpace(text), "STRICT") {
+		t.Fatalf("s lost its options: %s", text)
+	}
+}

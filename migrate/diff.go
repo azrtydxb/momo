@@ -399,13 +399,17 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	if !reflect.DeepEqual(fn.Partition, tn.Partition) || !reflect.DeepEqual(fn.PartitionOf, tn.PartitionOf) {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes its partitioning; this cannot be altered in place, write a custom migration", tn.Name))
 	}
-	if fn.WithoutRowID != tn.WithoutRowID {
+	// WITHOUT ROWID, STRICT and AUTOINCREMENT are properties of a SQLite table
+	// that a model cannot declare yet, so a table that has one in the database
+	// and not in the model keeps it (a rebuild writes it back). Asking for one
+	// the table lacks is a change that needs a custom migration.
+	if tn.WithoutRowID && !fn.WithoutRowID {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes WITHOUT ROWID; write a custom migration", tn.Name))
 	}
-	if fn.Strict != tn.Strict {
+	if tn.Strict && !fn.Strict {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes STRICT; write a custom migration", tn.Name))
 	}
-	if fn.Autoincrement != tn.Autoincrement {
+	if tn.Autoincrement && !fn.Autoincrement {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes AUTOINCREMENT; write a custom migration", tn.Name))
 	}
 	d.gone = goneColumns(fn, tn)
