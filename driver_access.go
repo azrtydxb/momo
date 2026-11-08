@@ -8,6 +8,9 @@ package momo
 func CopierOf(q Querier) (Copier, bool) {
 	switch h := q.(type) {
 	case *DB:
+		if bypassesTx(h) {
+			return nil, false
+		}
 		c, ok := h.ex.q.(Copier)
 		return c, ok
 	case *Tx:
@@ -23,6 +26,9 @@ func CopierOf(q Querier) (Copier, bool) {
 func BatcherOf(q Querier) (Batcher, bool) {
 	switch h := q.(type) {
 	case *DB:
+		if bypassesTx(h) {
+			return nil, false
+		}
 		b, ok := h.ex.q.(Batcher)
 		return b, ok
 	case *Tx:
