@@ -100,6 +100,19 @@ func LoadLock(path string) (*Lock, error) {
 				return nil, err
 			}
 		}
+		names := map[string]bool{}
+		for _, n := range m.ReservedNames {
+			switch {
+			case !identRE.MatchString(n):
+				return nil, fmt.Errorf("grpc: lock message %q: reserved name %q is not an identifier", name, n)
+			case names[n]:
+				return nil, fmt.Errorf("grpc: lock message %q: reserved name %q is listed twice", name, n)
+			}
+			if _, used := m.Fields[n]; used {
+				return nil, fmt.Errorf("grpc: lock message %q: reserved name %q is also a field", name, n)
+			}
+			names[n] = true
+		}
 	}
 	return &l, nil
 }
