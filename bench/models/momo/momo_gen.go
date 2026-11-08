@@ -91,6 +91,52 @@ var customerTable = schema.Table{
 	},
 }
 
+func (*Item) MomoMeta() *momo.Meta[Item] { return &itemMeta }
+
+var itemMeta = momo.Meta[Item]{
+	Table: "topk_items",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK},
+		{Name: "embedding"},
+	},
+	Ptr: func(m *Item, i int) any {
+		switch i {
+		case 0:
+			return &m.ID
+		case 1:
+			return &m.Embedding
+		}
+		return nil
+	},
+	Value: func(m *Item, i int) any {
+		switch i {
+		case 0:
+			return m.ID
+		case 1:
+			return m.Embedding
+		}
+		return nil
+	},
+	TableSchema: &itemTable,
+	Identity:    -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+	PK: []int{0},
+}
+
+var itemTable = schema.Table{
+	Name: "topk_items",
+	Columns: []schema.Column{
+		{
+			Name: "id",
+			Type: "bigint",
+		},
+		{
+			Name: "embedding",
+			Type: "vector(384)",
+		},
+	},
+	PrimaryKey: []string{"id"},
+}
+
 func (*Order) MomoMeta() *momo.Meta[Order] { return &orderMeta }
 
 var orderMeta = momo.Meta[Order]{
