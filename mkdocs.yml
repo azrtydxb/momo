@@ -52,6 +52,7 @@ nav:
       - Testing applications: testing.md
   - Reference:
       - Capabilities: capabilities.md
+      - Performance: PERFORMANCE.md
       - Supported versions: supported-versions.md
       - Architecture: ARCHITECTURE.md
   - Contributing: contributing.md
