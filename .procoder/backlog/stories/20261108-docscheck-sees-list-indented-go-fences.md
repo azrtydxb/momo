@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-08
 Epic: momo-14-structure-and-docs
-Sprint: -
+Sprint: 006-sprint-6-split-the-root-package-into-subpackages-and-keep
 
 ## Description
 
