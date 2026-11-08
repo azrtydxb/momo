@@ -19,8 +19,8 @@ import (
 )
 
 // TestHooks checks the S-18 hook contract: SQL, duration, rows and errors are
-// reported, and bound arguments only with WithArgLogging. The redaction of
-// FlagSensitive arguments is asserted where momo-05 delivers it.
+// reported, bound arguments only with WithArgLogging, and FlagSensitive
+// arguments as momo.RedactedArg.
 func TestHooks(t *testing.T) {
 	ctx := context.Background()
 
@@ -79,6 +79,22 @@ func TestHooks(t *testing.T) {
 			e := rec.Events()[0]
 			if len(e.Args) != 1 || e.Args[0] != "Ada" {
 				t.Fatalf("Args = %v, want [Ada]", e.Args)
+			}
+		}, momo.WithHook(rec), momo.WithArgLogging())
+	})
+
+	t.Run("sensitive columns show the placeholder, not the value", func(t *testing.T) {
+		secret := momo.NewColumn[string]("authors", "name", momo.FlagSensitive)
+		rec := &obstest.Recorder{}
+		testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+			obsSeed(t, db)
+			rec.Reset()
+			if _, err := momo.Select[models.Author](db).Where(secret.Eq("hunter2")).All(ctx); err != nil {
+				t.Fatal(err)
+			}
+			e := rec.Events()[0]
+			if len(e.Args) != 1 || e.Args[0] != momo.RedactedArg {
+				t.Fatalf("Args = %v, want [momo.RedactedArg] for a FlagSensitive column", e.Args)
 			}
 		}, momo.WithHook(rec), momo.WithArgLogging())
 	})
