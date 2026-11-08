@@ -229,7 +229,7 @@ func (b *Builder) checkBindCap(n int, what string) bool {
 
 // unsupported records an ErrUnsupported build error for feature.
 func (b *Builder) unsupported(feature string) {
-	b.SetErr(&Error{Kind: ErrUnsupported, Op: "build", Err: fmt.Errorf("%s is not supported by %s", feature, b.d.Name)})
+	b.SetErr(newError(ErrUnsupported, "build", "", fmt.Errorf("%s is not supported by %s", feature, b.d.Name)))
 }
 
 // Compiled is a rendered statement ready for inspection or execution.
@@ -254,7 +254,7 @@ func (c Compiled) String() string {
 
 func compile(d *dialect.Dialect, render func(*Builder)) (Compiled, error) {
 	if d == nil {
-		return Compiled{}, errors.New("momo: no dialect (nil Querier?)")
+		return Compiled{}, newError(ErrValidation, "build", "", errors.New("no dialect (nil Querier?)"))
 	}
 	b := Builder{d: d}
 	render(&b)

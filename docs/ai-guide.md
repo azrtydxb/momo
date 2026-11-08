@@ -260,6 +260,7 @@ Tag reference (all lower case):
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                              |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                         |
+| `idgen:<name>`                                                            | client-generated string id (`cuid`, `uuid`, `ulid` or a name registered with `WithIDGenerator`); filled on insert when the field is empty                                                                                                             |
 | `version`                                                                 | optimistic-lock column (integer type)                                                                                                                                                                                                                 |
 | `created_at[:unix\|unixmilli\|unixnano]`, `updated_at`                    | automatic timestamps; field type `time.Time`, `*time.Time`, `int64` or `*int64`                                                                                                                                                                       |
 | `soft_delete:timestamp\|unix\|bool`                                       | soft-delete marker; Go type `*time.Time`, `*int64` or `bool`                                                                                                                                                                                          |
@@ -357,6 +358,82 @@ What the generator emits per model `Task` (package `task`):
 - Package name = lowercase model name. It can collide with your local variable
   names (`task := ...` shadows the package). Name variables differently or
   alias the import.
+
+### Client-generated ids
+
+Databases that keep ids as text and generate them in the client (Prisma
+`@default(cuid())`) have no column default to lean on. Declare the generator
+on the field, with the tag or in `MomoConfig`:
+
+```go
+type Contact struct {
+	momo.Model `momo:"table:contacts"`
+	ID         string `momo:"pk,idgen:cuid"`
+	Name       string
+}
+
+type Note struct {
+	momo.Model `momo:"table:notes"`
+	ID         string `momo:"pk"`
+}
+
+func (n *Note) MomoConfig(c *momo.Config) { c.IDGen(&n.ID, "ulid") }
+```
+
+- Built-in generators: `cuid` (25 characters in the layout Prisma writes, so old
+  and new ids look alike), `uuid` (random, version 4, 36 characters) and `ulid`
+  (26 characters, sortable by creation time). Register your own, or replace a
+  built-in, with `momo.New(drv, momo.WithIDGenerator("short", fn))` and tag
+  `idgen:short`. Names are lowercase; the `MomoConfig` form takes a string
+  literal.
+- The generator fires when an insert writes the field and it holds the Go zero
+  value: `Model`, `Models`, `Upsert` and every chunk of a bulk insert. An id you
+  assigned is kept. The generated id is stored in your struct (the model you
+  passed, or the slice element), so read `m.ID` after `Exec` or `Rows`.
+- The field must be a `string` kind (named string types and `*string` work). Any
+  other type, a name given twice (tag and `MomoConfig`) or `identity`/`serial`
+  on the same field is refused by the generator. A name that is neither built in
+  nor registered fails the insert with `ErrValidation`.
+- A column named in `Omit` always takes a fresh generated id, which is bound
+  and written back like any other. `Values` and `ValuesRows` that leave the id
+  out get one too. `SQL()` shows a generated id in the arguments but does not
+  store it in the model.
+- On an `OnConflict` upsert whose target is not the primary key, the row in the
+  database may keep its own id. `Exec` then asks the database for the stored id
+  and writes that into the model (a `DoUpdate` that hit an existing row gives
+  that row's id). A model whose row `DoNothing` skipped keeps the id it had,
+  usually empty. This needs `RETURNING`; without it (MySQL) the id is not
+  written back for such statements. `Rows` never writes back there: read the id
+  from the returned rows.
+- When the id is written back up front (every statement except the conflict
+  case above), it stays in your struct also when the insert fails. Retrying the
+  same struct reuses the id, and so do all rows of a failed chunked insert. Clear
+  the field to get a new one. In the conflict case the model is updated only
+  after a successful statement.
+- In the conflict case, rows are matched to models on the conflict-target
+  columns (or on the generated id for `DoNothing` without a target), so those
+  columns must read back exactly as you wrote them; `citext`, `char(n)` and
+  `numeric` columns may not. A returned row that matches no model fails with
+  `ErrValidation` and the write is rolled back; only a pinned `OnConn` handle,
+  which cannot open a transaction, keeps it. If two models share a target
+  value, the first one is matched. A non-primary-key generated column (such as a
+  `public_id`) counts as a conflict case too, because the kept row has its own;
+  the default `DO UPDATE` set of `Upsert` leaves such a column out, so a
+  conflict never replaces the stored value, even one you assigned; to overwrite
+  it, pass an explicit `DoUpdate` that sets it. A single-statement insert that
+  reads ids back runs in its own transaction (or savepoint), so a mismatch rolls
+  the write back, and the models are updated only after the whole insert has
+  committed. Inside your own `Tx` that means after the savepoint is released,
+  not after your outer commit: if you roll the outer transaction back, the
+  models still hold the ids of rows that no longer exist.
+- The generator is a client-side convenience, not a secret. A `cuid` is built
+  from the time, a counter and a process fingerprint, so it is guessable: do not
+  use it for tokens or anything that must be unpredictable. Use `uuid` (random,
+  version 4) or your own generator for that.
+- A generator that returns an empty id, panics, or is registered with a nil
+  function fails the insert with `ErrValidation`. The `ulid` generator does the
+  same in the unlikely case that it runs out of ids within one millisecond.
+- The tag adds no database default: the column stays `text primary key`.
 
 ### Projections
 

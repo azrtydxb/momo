@@ -38,10 +38,10 @@ func WithReplicas(replicas ...Driver) Option {
 // tenant) for replica reads.
 func (db *DB) Replica(i int) (*DB, error) {
 	if i < 0 || i >= len(db.replicas) {
-		return nil, &Error{Kind: ErrUnsupported, Op: "replica", Err: errors.New("no such read replica configured")}
+		return nil, newError(ErrUnsupported, "replica", "", errors.New("no such read replica configured"))
 	}
 	if db.implicitTx {
-		return nil, &Error{Kind: ErrUnsupported, Op: "replica", Err: errors.New("WithImplicitTx runs every statement on the primary; a read replica handle cannot be combined with it")}
+		return nil, newError(ErrUnsupported, "replica", "", errors.New("WithImplicitTx runs every statement on the primary; a read replica handle cannot be combined with it"))
 	}
 	nd := new(DB)
 	*nd = *db

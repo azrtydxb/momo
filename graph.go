@@ -34,7 +34,7 @@ func (r Relation[P, C]) Include() Association[P] { return includedRel[P, C]{r} }
 
 // graphErr builds a validation error for a graph write.
 func graphErr(table, msg string) error {
-	return &Error{Kind: ErrValidation, Op: "create graph", Table: table, Err: errors.New(msg)}
+	return newError(ErrValidation, "create graph", table, errors.New(msg))
 }
 
 // before runs for BelongsTo: the child is inserted first and its key written into
@@ -218,7 +218,7 @@ func insertModels[T any](ctx context.Context, q Querier, meta *Meta[T], ms []T) 
 	for rows.Next() {
 		if n >= len(ms) {
 			_ = rows.Close()
-			return &Error{Kind: ErrValidation, Op: "insert", Table: meta.Table, Err: errors.New("bulk insert returned more rows than were inserted")}
+			return newError(ErrValidation, "insert", meta.Table, errors.New("bulk insert returned more rows than were inserted"))
 		}
 		if err := rows.ScanModel(&ms[n]); err != nil {
 			_ = rows.Close()
@@ -249,7 +249,7 @@ func insertModels[T any](ctx context.Context, q Querier, meta *Meta[T], ms []T) 
 func runInsert[T any](ctx context.Context, q Querier, iq InsertQuery[T], m *T) (bool, error) {
 	if !q.Dialect().Returning {
 		if iq.meta.Identity >= 0 {
-			return false, &Error{Kind: ErrUnsupported, Op: "insert", Table: iq.meta.Table, Err: errors.New("identity read-back needs RETURNING")}
+			return false, newError(ErrUnsupported, "insert", iq.meta.Table, errors.New("identity read-back needs RETURNING"))
 		}
 		res, err := iq.Exec(ctx)
 		return res.RowsAffected > 0, err
@@ -305,10 +305,10 @@ func runInsert[T any](ctx context.Context, q Querier, iq InsertQuery[T], m *T) (
 func FindOrCreate[T any, PT Modeler[T]](ctx context.Context, q Querier, key []ColumnRef, m *T) (created bool, err error) {
 	meta := metaOf[T, PT]()
 	if m == nil {
-		return false, &Error{Kind: ErrValidation, Op: "find or create", Table: meta.Table, Err: errors.New("FindOrCreate(nil)")}
+		return false, newError(ErrValidation, "find or create", meta.Table, errors.New("FindOrCreate(nil)"))
 	}
 	if len(key) == 0 {
-		return false, &Error{Kind: ErrValidation, Op: "find or create", Table: meta.Table, Err: errors.New("key needs at least one column")}
+		return false, newError(ErrValidation, "find or create", meta.Table, errors.New("key needs at least one column"))
 	}
 	preds := make([]Predicate, len(key))
 	for i, k := range key {
@@ -319,7 +319,7 @@ func FindOrCreate[T any, PT Modeler[T]](ctx context.Context, q Querier, key []Co
 		preds[i] = binOp{k, " = ", argExpr{v: meta.Value(m, ci), flags: meta.Columns[ci].Flags}}
 	}
 	if d := q.Dialect(); !d.OnConflict || !d.Returning {
-		return false, &Error{Kind: ErrUnsupported, Op: "find or create", Table: meta.Table, Err: errors.New("FindOrCreate needs ON CONFLICT and RETURNING")}
+		return false, newError(ErrUnsupported, "find or create", meta.Table, errors.New("FindOrCreate needs ON CONFLICT and RETURNING"))
 	}
 	iq := InsertQuery[T]{q: q, meta: meta}.Model(m).OnConflict(key...).DoNothing()
 	created, err = runInsert(ctx, q, iq, m)
@@ -354,7 +354,7 @@ func FindOrCreate[T any, PT Modeler[T]](ctx context.Context, q Querier, key []Co
 func UpsertByPK[T any, PT Modeler[T]](ctx context.Context, q Querier, m *T) error {
 	meta := metaOf[T, PT]()
 	if m == nil {
-		return &Error{Kind: ErrValidation, Op: "upsert", Table: meta.Table, Err: errors.New("UpsertByPK(nil)")}
+		return newError(ErrValidation, "upsert", meta.Table, errors.New("UpsertByPK(nil)"))
 	}
 	_, err := runInsert(ctx, q, Upsert[T, PT](q).Model(m), m)
 	return err

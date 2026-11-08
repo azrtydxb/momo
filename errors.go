@@ -56,6 +56,10 @@ var (
 	ErrPinnedBusy = errors.New("momo: pinned connection is busy")
 	// ErrLimitExceeded: a configured limit (rows, size, parameters) was exceeded.
 	ErrLimitExceeded = errors.New("momo: limit exceeded")
+	// ErrCanceled: a streaming read stopped because its context ended. The
+	// context's own error (context.Canceled or context.DeadlineExceeded) is
+	// wrapped too, so errors.Is matches it as well.
+	ErrCanceled = errors.New("momo: operation canceled")
 	// ErrInvalidVector: a vector value failed validation.
 	ErrInvalidVector = vector.ErrInvalidVector
 )
@@ -128,6 +132,22 @@ func (e *Error) Is(target error) bool { return target == e.Kind }
 
 // Unwrap returns the underlying error.
 func (e *Error) Unwrap() error { return e.Err }
+
+// newError builds the structured error every library failure goes through,
+// so context (operation, table) is added in one place.
+func newError(kind error, op, table string, err error) *Error {
+	return &Error{Kind: kind, Op: op, Table: table, Err: err}
+}
+
+// validation builds an ErrValidation error whose detail is formatted.
+func validation(op, table, format string, args ...any) *Error {
+	return newError(ErrValidation, op, table, fmt.Errorf(format, args...))
+}
+
+// noQuerier is the ErrValidation error of a query built without a Querier.
+func noQuerier(op, table string) *Error {
+	return newError(ErrValidation, op, table, errors.New("query has no Querier"))
+}
 
 // ErrorClassifier converts a raw driver error into a structured *Error when
 // it recognizes it, and returns err unchanged otherwise. Drivers implement
