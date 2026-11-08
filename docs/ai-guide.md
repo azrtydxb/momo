@@ -1002,8 +1002,17 @@ Rules:
   `ErrValidation`), so a typo fails at build time.
 - A `$n` inside a string literal, quoted identifier, comment or dollar-quoted body
   is text, not a placeholder.
-- Other dialects: `$n` is `ErrUnsupported` at build time. Port such statements to
-  `?` (or `@name`) when the code must run on SQLite or MySQL.
+- Other dialects: `$n` is `ErrUnsupported` at build time on SQLite and MySQL,
+  even when the fragment has no `?`. Port such statements to `?` (or `@name`)
+  when the code must run on SQLite or MySQL.
+- A literal `$n` that must reach the server as text, as in `PREPARE` or a
+  `CREATE FUNCTION` body that refers to its parameters, is read as a placeholder
+  and fails with `ErrValidation` for a missing argument. Put it where momo
+  treats it as text: inside a string literal or a dollar-quoted body, for example
+  `DO $$ BEGIN EXECUTE 'PREPARE p AS SELECT $1::int'; END $$`.
+- Behaviour change: before native `$n` support a `$1` in raw PostgreSQL SQL went
+  to the server untouched. It is now a momo placeholder, so a statement that used
+  `$1` as text needs the treatment above.
 - sqlc `sqlc.arg(name)` / `@name` styles: use `momo.Named("name", v)` with `@name`.
 - Typed casts keep working: `$1::int` is fine.
 
