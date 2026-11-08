@@ -34,6 +34,11 @@ type Predicate = Expression[bool]
 type ColumnRef interface {
 	Expr
 	ColumnName() string
+	// ParseEq parses raw with the column's Go type and returns the equality
+	// predicate; a value that does not parse is an ErrValidation error.
+	ParseEq(raw string) (Predicate, error)
+	// ParseCmp is ParseEq for op eq, ne, lt, le, gt or ge.
+	ParseCmp(op, raw string) (Predicate, error)
 }
 
 // ---------------------------------------------------------------- columns
@@ -388,6 +393,11 @@ func (x inList[T]) AppendSQL(b *Builder) {
 		} else {
 			b.WriteString("1 = 0")
 		}
+		return
+	}
+	if m := b.d.MaxInList; m > 0 && len(x.vs) > m {
+		b.SetErr(&Error{Kind: ErrLimitExceeded, Op: "build", Err: fmt.Errorf("IN list has %d values, over the limit of %d (WithMaxInList)", len(x.vs), m)})
+		b.WriteString("1 = 0")
 		return
 	}
 	if !b.checkBindCap(len(x.vs), "IN") {

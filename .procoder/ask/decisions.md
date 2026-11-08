@@ -175,3 +175,12 @@ Stories 068, 097, 091-093, 112, 127, 131, 132 and 133 each carry a criterion tha
 - Carry the stories open until a later sprint
 
 Decision (2026-11-08): prove red on CI — for each such story, push a throwaway worktree-agent-*-red branch with the implementation reverted, cite the failing run as red evidence, then close.
+
+## Root-package structure and always-current docs
+
+- Guards now, reorganisation as the first story after sprint-5 merges (recommended)
+- Everything after sprint-5, as a dedicated structure-and-docs sprint
+- Everything now, accepting conflict work on the in-flight branches
+- Scope: API-only root (no breaking changes) (recommended) / file-prefix taxonomy only / breaking split into feature subpackages
+
+Decision (2026-11-08): everything after sprint-5, as a breaking split. Once sprint-5 is on main, a dedicated sprint 6 moves feature APIs into subpackages (breaking imports before v1), moves non-API mechanics into internal/, enforces a file-prefix taxonomy and an architecture test, and adds the docs-freshness guards: one source for version strings, generated capability and type tables with a drift check, a docs-reference-exists test, compiled code blocks, and an apidiff docs gate. A stale-docs sweep against the real code runs in the same sprint.

@@ -20,6 +20,7 @@ New here? Start with [getting started](getting-started.md).
 - [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, tuple rows (`Row1` to `Row10`), the soft-delete filter.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
+- [Testing applications](testing.md): the `momotest` kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
 - [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI, and the stability policy.
 - [Using these docs with an AI coding agent](agents.md): where an agent should read, canonical patterns and a copy-paste AGENTS.md snippet.
@@ -33,6 +34,7 @@ Runnable programs, each tested end to end in CI. See [the examples index](../exa
 - [quickstart](../examples/quickstart/): the root README loop: models, generate, CRUD, relations, vector search, a transaction.
 - [crud-zero-null](../examples/crud-zero-null/): insert, update, delete; zero value versus NULL versus default; soft delete.
 - [transactions](../examples/transactions/): Tx, rollback, savepoints, read-only and isolation, retry on serialization failure.
+- [testing](../examples/testing/): momotest: a database or a rolled-back transaction per test, migrations applied, seeded fixtures, parallel tests.
 - [relations](../examples/relations/): has-many, belongs-to, many-to-many; Load, Preload, Joined, Has, Link, CreateGraph.
 - [projection-pagination](../examples/projection-pagination/): column subsets, keyset pagination with a tie-break, counting.
 - [vector-search](../examples/vector-search/): HNSW index, nearest-neighbour queries, filters, search settings.
