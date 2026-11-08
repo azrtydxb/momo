@@ -34,6 +34,10 @@ type CustomerWithOrders struct {
 	Orders   []Order
 }
 
+// The canonical encoding of a row joins its fields with a pipe. It assumes the
+// workload data has no NULLs, no floating point values and no pipe character in
+// any text field; the seed guarantees that. A workload that adds such a column
+// must extend the encoding first, or two different rows could encode alike.
 const canonicalTimeLayout = "2006-01-02T15:04:05.000000Z07:00"
 
 func canonicalTime(t time.Time) string {

@@ -71,7 +71,7 @@ test-bench-module-integration:
 # integration tag and bench-smoke skips it. The figure is the budget recorded
 # in docs/PERFORMANCE.md.
 bench-hooks:
-	MOMO_TEST_POSTGRES_URL='$(PG_URL)' $(GO) test -run='^$$' -tags integration -bench='^BenchmarkSelectNoHooks$$' -benchmem -benchtime=200x .
+	MOMO_REQUIRE_INTEGRATION=1 MOMO_TEST_POSTGRES_URL='$(PG_URL)' $(GO) test -run='^$$' -tags integration -bench='^BenchmarkSelectNoHooks$$' -benchmem -benchtime=200x .
 
 bench-env:
 	cd bench && $(GO) run ./cmd/envcapture

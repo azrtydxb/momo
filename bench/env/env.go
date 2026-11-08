@@ -7,6 +7,7 @@ package env
 import (
 	"bufio"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"runtime"
@@ -27,7 +28,7 @@ type Environment struct {
 	GOMAXPROCS      int               `json:"gomaxprocs"`
 	CPUModel        string            `json:"cpu_model"`
 	Kernel          string            `json:"kernel"`
-	Hostname        string            `json:"hostname"`
+	Hostname        string            `json:"hostname,omitempty"`
 	VCSRevision     string            `json:"vcs_revision"`
 	VCSModified     bool              `json:"vcs_modified"`
 	ModuleVersions  map[string]string `json:"module_versions"`
@@ -38,9 +39,15 @@ type Environment struct {
 // Capture reads the environment. The PostgreSQL fields stay empty; fill them
 // with CapturePostgres.
 func Capture() (Environment, error) {
-	host, err := os.Hostname()
-	if err != nil {
-		return Environment{}, err
+	// The hostname identifies the machine that ran the benchmark, so it is
+	// recorded only when BENCH_RECORD_HOSTNAME=1; published results leave it out.
+	host := ""
+	if os.Getenv("BENCH_RECORD_HOSTNAME") == "1" {
+		h, err := os.Hostname()
+		if err != nil {
+			return Environment{}, err
+		}
+		host = h
 	}
 	e := Environment{
 		CapturedAtUTC:  time.Now().UTC().Format(time.RFC3339),
@@ -101,7 +108,7 @@ func CapturePostgres(ctx context.Context, dsn string, e *Environment) error {
 		return err
 	}
 	err = conn.QueryRow(ctx, "SELECT extversion FROM pg_extension WHERE extname = 'vector'").Scan(&e.PgvectorVersion)
-	if err != nil && err != pgx.ErrNoRows {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
 	return nil
