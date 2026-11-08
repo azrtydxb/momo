@@ -1,0 +1,5 @@
+version: 1
+packages:
+  - ./models/momo
+naming: gorm
+dialects: [postgres]
