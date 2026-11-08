@@ -19,5 +19,6 @@ Implements plan momo-10-ecosystem-generators Task 10: gRPC protobuf emitter (gol
 - Files: gen/grpc/proto.go, proto_test.go, testdata/example.proto.
 - TestProtoEmitGolden (and TestProtoRules) red: CI run 42455374066 (tests alone on sprint-5) failed with "undefined: Proto, Lock". Green: CI run 42456595252 (commit 5f4ffe6). The golden was written from the first run's output (run 42455728306) after review; the test also regenerates over the filled lock and requires identical bytes.
 - Reserved numbers of retired columns are written as a reserved statement; sensitive columns are not in the API; an unmapped type is the diagnostic "no protobuf mapping for <type>"; an invalid package name is refused.
+- Review fixes (red: CI run 42458914148): model and column names must be ASCII protobuf identifiers; Filter and derived message names (XGetRequest and the rest) that collide with another model are diagnostics and the model is left out; columns hidden by a sensitive tag or a diagnostic keep their lock numbers, and retired columns are reserved by name as well as by number (TestProtoHostileNames, TestProtoHiddenColumnsKeepNumbers).
 - Not done here: go_package, the plugin and its output wiring, protoc compilation (stories 219 and 222).
 
