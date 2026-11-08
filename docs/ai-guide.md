@@ -820,6 +820,8 @@ momo.Cast[int64](momo.Sum(usage.Answers), "bigint")
 momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
 // Any other function: Func[T](name, args...). name is validated (identifier,
 // optionally schema.qualified); an Expr arg renders inline, other values are bound.
+// Plain values bound by Func or an aggregate are not masked in hook events, even
+// beside a sensitive column; only comparison predicates mask their other operands.
 momo.Func[string]("btrim", doc.Title)
 // Aggregates with their own ORDER BY (AggExpr[T]); chain OrderBy, inside the call.
 momo.StringAgg(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
@@ -1134,8 +1136,17 @@ Rules:
   `ErrValidation`), so a typo fails at build time.
 - A `$n` inside a string literal, quoted identifier, comment or dollar-quoted body
   is text, not a placeholder.
-- Other dialects: `$n` is `ErrUnsupported` at build time. Port such statements to
-  `?` (or `@name`) when the code must run on SQLite or MySQL.
+- Other dialects: `$n` is `ErrUnsupported` at build time on SQLite and MySQL,
+  even when the fragment has no `?`. Port such statements to `?` (or `@name`)
+  when the code must run on SQLite or MySQL.
+- A literal `$n` that must reach the server as text, as in `PREPARE` or a
+  `CREATE FUNCTION` body that refers to its parameters, is read as a placeholder
+  and fails with `ErrValidation` for a missing argument. Put it where momo
+  treats it as text: inside a string literal or a dollar-quoted body, for example
+  `DO $$ BEGIN EXECUTE 'PREPARE p AS SELECT $1::int'; END $$`.
+- Behaviour change: before native `$n` support a `$1` in raw PostgreSQL SQL went
+  to the server untouched. It is now a momo placeholder, so a statement that used
+  `$1` as text needs the treatment above.
 - sqlc `sqlc.arg(name)` / `@name` styles: use `momo.Named("name", v)` with `@name`.
 - Typed casts keep working: `$1::int` is fine.
 
@@ -1665,6 +1676,14 @@ report)`, a development hook that reports once per statement shape per scope
   drive both from `WithTenant`, read the tenant there and call
   `SetConfigLocal`. Without `WithImplicitTx`, non-transactional queries get no
   setting.
+- `WithImplicitTx` and RETURNING writes: on an unpinned `*DB` configured with
+  `WithImplicitTx`, read the rows of `Insert`, `Update` or `Delete` with
+  `Rows` to the end (`for rows.Next() {}`) before `Close`. A write whose rows
+  were closed unread, or after only the first row, is rolled back and `Close`
+  returns `ErrValidation`. This also holds for a panic that unwinds through the
+  loop, however `Close` is deferred. The library's own single-row helpers
+  (`FindOrCreate`, `UpsertByPK`, `CreateGraph`) read to the end themselves. Handles
+  without `WithImplicitTx`, `Tx` and pinned `OnConn` handles are unaffected.
 
 ## 12. Rules for AI agents
 

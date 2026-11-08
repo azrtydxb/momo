@@ -292,7 +292,7 @@ func (sq SelectQuery[T]) writeLock(b *Builder) {
 		return
 	}
 	if s.distinct || len(s.distinctOn) > 0 || len(s.groupBy) > 0 || len(s.having) > 0 {
-		b.SetErr(newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("%s cannot be combined with DISTINCT, GROUP BY or HAVING", s.lock)))
+		b.SetErr(newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("%s cannot be combined with DISTINCT [ON], GROUP BY or HAVING", s.lock)))
 		return
 	}
 	if !sq.checkLockOf(b) {

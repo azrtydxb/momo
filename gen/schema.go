@@ -5,6 +5,7 @@ package gen
 import (
 	"fmt"
 	"go/token"
+	"maps"
 	"reflect"
 	"slices"
 	"sort"
@@ -45,6 +46,11 @@ func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 	}
 	if len(cfg.Dialects) > 0 {
 		b.primary = cfg.Dialects[0]
+	}
+	for _, k := range slices.Sorted(maps.Keys(cfg.TypeDefaults)) {
+		if k != "time.Time" {
+			b.diag(token.Position{}, fmt.Sprintf("TypeDefaults: %q cannot be overridden; only time.Time is supported", k))
+		}
 	}
 	for _, d := range cfg.Dialects {
 		if !slices.Contains(b.dialects, d) {
@@ -318,7 +324,13 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 	}
 	// The type default applies to the primary dialect (the first of
 	// Config.Dialects) only, and only when it is PostgreSQL.
-	if def := b.typeDef[goType]; def != "" && b.primary == dialect.Postgres {
+	// Only the time.Time entry is a column type default; BuildSchema reports
+	// every other key.
+	def := ""
+	if goType == "time.Time" {
+		def = b.typeDef["time.Time"]
+	}
+	if def != "" && b.primary == dialect.Postgres {
 		if ValidTimeType(def) {
 			return strings.TrimSpace(def)
 		}

@@ -19,7 +19,7 @@ func TestValidTimeType(t *testing.T) {
 			t.Errorf("ValidTimeType(%q) = false, want true", ok)
 		}
 	}
-	for _, bad := range []string{"", "text", "timestamp(3); DROP TABLE x", "timestamp'", `"timestamp"`, "timestamp(7)", "timestamp(3) --", "date", "timestamp(3)\ntext"} {
+	for _, bad := range []string{"", "text", "timestamp(3); DROP TABLE x", "timestamp'", `"timestamp"`, "timestamp(7)", "timestamp(3) --", "date", "timestamp(3)\ntext", "timeſtamp", "TIMEſTAMPTZ"} {
 		if ValidTimeType(bad) {
 			t.Errorf("ValidTimeType(%q) = true, want false", bad)
 		}
@@ -70,5 +70,31 @@ func TestTypeDefaultSQLitePrimary(t *testing.T) {
 	}
 	if c, _ := acct.Column("createdAt"); c.Type != "TEXT" {
 		t.Fatalf("createdAt type=%q want TEXT on sqlite", c.Type)
+	}
+}
+
+// TestTypeDefaultNonTimeKeyIsDiagnostic catches a Go-API TypeDefaults entry
+// for another Go type that silently changes that type's column type.
+func TestTypeDefaultNonTimeKeyIsDiagnostic(t *testing.T) {
+	dir, err := filepath.Abs("testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Dir: dir, Naming: naming.Prisma{}, TypeDefaults: map[string]string{"string": "timestamp"}, Dialects: []dialect.Name{dialect.Postgres}}
+	_, diags, err := Load([]string{"./prisma"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Msg, `"string" cannot be overridden`) {
+			found = true
+		}
+		if strings.Contains(d.Msg, "type default") {
+			t.Errorf("the string default was applied: %s", d.Msg)
+		}
+	}
+	if !found {
+		t.Fatalf("no diagnostic for the unsupported key; diags=%v", diags)
 	}
 }

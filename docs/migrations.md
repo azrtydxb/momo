@@ -852,7 +852,9 @@ file stays quiet while the database has not changed its model; it conflicts
 only when the regenerated model differs. The run writes
 the regenerated version next to it as `<file>.new`, prints
 `conflict: <file>`, and exits 1; merge the two by hand and delete the `.new`
-file, or run again with `--overwrite` to take the regenerated one. A file whose
+file, or run again with `--overwrite` to take the regenerated one.
+`--overwrite` only replaces a conflicting file: an edited file whose model the
+database did not change stays as it is. A file whose
 table is gone is printed as `orphan` and never deleted. `--check` writes
 nothing, prints `stale: <file>` for each difference and exits 1. The init
 snapshot is written once: when the migration directory already has a snapshot,

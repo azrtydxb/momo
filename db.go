@@ -24,7 +24,7 @@ type Querier interface {
 
 // QueryEvent describes one statement for observability hooks.
 type QueryEvent struct {
-	Op    string // "select", "insert", "update", "delete", "exec", "query", "begin", "commit", "rollback", "savepoint"
+	Op    string // "select", "insert", "update", "delete", "exec", "raw", "explain", "begin", "commit", "rollback", "savepoint"
 	Table string // model table when known
 	// Relation is set while eager-loading a relation ("documents.author").
 	Relation string
@@ -117,6 +117,9 @@ type DB struct {
 	txSetup []func(ctx context.Context, tx *Tx) error
 	// implicitTx runs auto-commit statements in a short transaction (WithImplicitTx).
 	implicitTx bool
+	// interceptors run before every typed statement of this handle and of the
+	// transactions begun from it (WithInterceptor).
+	interceptors []Interceptor
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and
@@ -301,7 +304,7 @@ func (e *execer) execInsertID(ctx context.Context, op, table string, c Compiled)
 
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
-	if op != "select" && op != "explain" { // a write with RETURNING
+	if op != "select" && op != "explain" && op != "raw" { // a write with RETURNING; raw SQL is routed by its own text
 		markWrite(ctx)
 	}
 	if e.unscopable() {
