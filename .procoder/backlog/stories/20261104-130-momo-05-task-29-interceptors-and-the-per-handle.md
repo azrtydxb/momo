@@ -1,6 +1,6 @@
 # momo-05 Task 29: Interceptors and the per-handle privacy recipe (S-86)
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: -
@@ -11,9 +11,12 @@ Implements plan momo-05-writes-queries Task 29: Interceptors and the per-handle 
 
 ## Acceptance criteria
 
-- [ ] `TestInterceptors` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-86] `TestInterceptors` asserts an interceptor can add a predicate and deny a mutation, applies only to its handle, and is visible in compiled SQL; fails if an interceptor registered on one handle affects another.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestInterceptors` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-86] `TestInterceptors` asserts an interceptor can add a predicate and deny a mutation, applies only to its handle, and is visible in compiled SQL; fails if an interceptor registered on one handle affects another.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Red: run 42455587059 on the throwaway branch worktree-agent-aecd38e0a7c8adf10-red (tests only, implementation absent, branch deleted) failed to build in the root package (interceptor_test.go uses WithInterceptor and Operation).
+- Green: green run 42455574669 on a5e569e0712fc7d785b63df4afac3ecfac87054e (ci-agent: lint including tidy-check, unit, integration postgres and fuzz-smoke all success).
+- Tests: TestInterceptors (predicate added to the executed select and count, visible in compiled SQL, delete denied with no SQL, a plain handle on the same driver unaffected), TestInterceptorsAreNotAFilterForTheMutationGuard, TestInterceptorsFollowTheHandleIntoTransactions (a Tx from the handle has it, a Tx from another handle does not), TestInterceptorDeniesInsert. docs/PRIVACY_RULES.md holds the tenant recipe and the not-a-security-boundary statement.
