@@ -50,7 +50,7 @@ type fixtureRow struct {
 // message that names the file and the table.
 func LoadFixtures(tb testing.TB, q momo.Querier, path string) {
 	tb.Helper()
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- the path is the fixture file the test names
 	if err != nil {
 		tb.Fatalf("momotest.LoadFixtures: %v", err)
 		return
