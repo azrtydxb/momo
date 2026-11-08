@@ -22,7 +22,7 @@ const mysqlRowAlias = "momo_new"
 // doNothing it writes the no-op assignment firstKey = firstKey, which is how
 // MySQL skips a conflicting row. value renders the right-hand side of one
 // assignment.
-func renderMySQLUpsert(b *Builder, flavor dialect.Flavor, firstKey string, sets []Assignment, doNothing, fromValues bool, value func(*Builder, Assignment)) {
+func renderMySQLUpsert(b *Builder, flavor dialect.Flavor, table, firstKey string, sets []Assignment, doNothing, fromValues bool, value func(*Builder, Assignment)) {
 	if flavor == dialect.FlavorMySQL && fromValues {
 		b.WriteString(" AS ")
 		b.Ident(mysqlRowAlias)
@@ -34,9 +34,10 @@ func renderMySQLUpsert(b *Builder, flavor dialect.Flavor, firstKey string, sets 
 	defer func() { b.odku, b.excluded = false, "" }()
 	b.WriteString(" ON DUPLICATE KEY UPDATE ")
 	if doNothing {
+		// Qualified on the right: with a row alias the bare name is ambiguous.
 		b.Ident(firstKey)
 		b.WriteString(" = ")
-		b.Ident(firstKey)
+		b.QualifiedIdent(table, firstKey)
 		return
 	}
 	for i, a := range sets {
@@ -144,7 +145,7 @@ func (q InsertQuery[T]) renderMySQLConflict(b *Builder) {
 			b.SetErr(q.verr("", "DoNothing needs a column to leave unchanged, and %s maps none", q.meta.Table))
 			return
 		}
-		renderMySQLUpsert(b, b.d.Flavor, key, nil, true, fromValues, q.appendValueTo)
+		renderMySQLUpsert(b, b.d.Flavor, q.meta.Table, key, nil, true, fromValues, q.appendValueTo)
 		return
 	}
 	if len(q.i.target) == 0 {
@@ -166,7 +167,7 @@ func (q InsertQuery[T]) renderMySQLConflict(b *Builder) {
 			return
 		}
 	}
-	renderMySQLUpsert(b, b.d.Flavor, "", q.i.set, false, fromValues, q.appendValueTo)
+	renderMySQLUpsert(b, b.d.Flavor, q.meta.Table, "", q.i.set, false, fromValues, q.appendValueTo)
 }
 
 // appendValueTo adapts appendValue to the callback form.

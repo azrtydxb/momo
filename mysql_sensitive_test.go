@@ -19,7 +19,7 @@ type idDriver struct{ *fakedriver.Driver }
 
 func (d idDriver) ExecInsertID(ctx context.Context, sql string, args []any) (int64, int64, error) {
 	n, err := d.Exec(ctx, sql, args)
-	return n, 42, err
+	return max(n, 1), 42, err
 }
 
 // Catches: the generated-key insert path handing hooks the real value of a

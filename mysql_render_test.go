@@ -18,7 +18,7 @@ func TestMySQLUpsertRendering(t *testing.T) {
 		b := NewBuilder(dialect.MySQLFlavor(flavor))
 		b.WriteString("INSERT INTO `users` (`id`, `email`) VALUES (?, ?)")
 		sets := []Assignment{assignForTest("email")}
-		renderMySQLUpsert(b, flavor, "id", sets, false, true, func(b *Builder, a Assignment) { b.writeExcluded(a.col) })
+		renderMySQLUpsert(b, flavor, "users", "id", sets, false, true, func(b *Builder, a Assignment) { b.writeExcluded(a.col) })
 		return b.String()
 	}
 	want := "INSERT INTO `users` (`id`, `email`) VALUES (?, ?) AS `momo_new` ON DUPLICATE KEY UPDATE `email` = `momo_new`.`email`"
@@ -29,8 +29,8 @@ func TestMySQLUpsertRendering(t *testing.T) {
 		t.Fatalf("MariaDB upsert = %s, want suffix %s and no row alias", got, want)
 	}
 	b := NewBuilder(dialect.MySQLFlavor(dialect.FlavorMySQL))
-	renderMySQLUpsert(b, dialect.FlavorMySQL, "id", nil, true, true, nil)
-	if got, want := b.String(), " AS `momo_new` ON DUPLICATE KEY UPDATE `id` = `id`"; got != want {
+	renderMySQLUpsert(b, dialect.FlavorMySQL, "users", "id", nil, true, true, nil)
+	if got, want := b.String(), " AS `momo_new` ON DUPLICATE KEY UPDATE `id` = `users`.`id`"; got != want {
 		t.Fatalf("DoNothing = %s, want %s", got, want)
 	}
 }
