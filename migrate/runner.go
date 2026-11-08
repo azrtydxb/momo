@@ -164,7 +164,10 @@ func runNonTransactional(ctx context.Context, env RunEnv, h historyWriter, rec H
 	}
 	n := 0
 	for _, s := range p.Statements {
-		if _, err := env.Conn.Exec(ctx, s.SQL, nil); err != nil {
+		// execStatement, as in a transaction: a PRAGMA foreign_key_check must
+		// fail the migration here too (its message says earlier statements
+		// are already committed).
+		if err := execStatement(ctx, env.Conn, s); err != nil {
 			return failNonTx(ctx, env, h, p, n, fmt.Errorf("statement %d: %w", n+1, redact(err)), start)
 		}
 		n++
