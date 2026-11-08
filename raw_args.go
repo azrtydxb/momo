@@ -259,7 +259,7 @@ func indexFrom(s, sub string, from int) int {
 // ------------------------------------------------------------ rendering
 
 func rawErr(format string, a ...any) *Error {
-	return &Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf(format, a...)}
+	return validation("build", "", format, a...)
 }
 
 // appendRaw renders a raw fragment. '?' binds the next positional argument
@@ -357,7 +357,7 @@ func (b *Builder) appendRawDollar(sql string, toks []rawTok, pos []any, hasNamed
 		return false
 	}
 	if b.d.Name != dialect.Postgres {
-		b.SetErr(&Error{Kind: ErrUnsupported, Op: "build", Err: fmt.Errorf("raw SQL %q uses a $n placeholder, which only PostgreSQL supports; write ? instead", sql)})
+		b.SetErr(newError(ErrUnsupported, "build", "", fmt.Errorf("raw SQL %q uses a $n placeholder, which only PostgreSQL supports; write ? instead", sql)))
 		return true
 	}
 	if other || hasNamed {

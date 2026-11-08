@@ -14,22 +14,22 @@ import (
 // predicate on it. A value that does not parse is an *Error with Kind
 // ErrValidation; the error does not echo raw, which may be attacker
 // controlled.
-func (c Column[T]) ParseEq(raw string) (Predicate, error) { return c.ParseCmp("eq", raw) }
+func (c colCore[T]) ParseEq(raw string) (Predicate, error) { return c.ParseCmp("eq", raw) }
 
 // ParseCmp parses raw with the column's Go type and returns the comparison
 // predicate for op, one of eq, ne, lt, le, gt and ge. An unknown op or a value
 // that does not parse is an *Error with Kind ErrValidation. It is meant for a
 // filter value that arrives as text from outside; the column comes from the
 // generated ColumnByName allowlist.
-func (c Column[T]) ParseCmp(op, raw string) (Predicate, error) {
+func (c colCore[T]) ParseCmp(op, raw string) (Predicate, error) {
 	switch op {
 	case "eq", "ne", "lt", "le", "gt", "ge":
 	default:
-		return nil, &Error{Kind: ErrValidation, Op: "parse", Column: c.name, Err: errors.New("unknown comparison operator")}
+		return nil, &Error{Kind: ErrValidation, Op: "parse", Column: c.ColumnName(), Err: errors.New("unknown comparison operator")}
 	}
 	v, err := parseText[T](raw)
 	if err != nil {
-		return nil, &Error{Kind: ErrValidation, Op: "parse", Column: c.name, Err: err}
+		return nil, &Error{Kind: ErrValidation, Op: "parse", Column: c.ColumnName(), Err: err}
 	}
 	switch op {
 	case "eq":
@@ -46,48 +46,16 @@ func (c Column[T]) ParseCmp(op, raw string) (Predicate, error) {
 	return c.Ge(v), nil
 }
 
-// ParseEq is Column.ParseEq.
-func (c ReadOnlyColumn[T]) ParseEq(raw string) (Predicate, error) { return c.col.ParseEq(raw) }
-
-// ParseCmp is Column.ParseCmp.
-func (c ReadOnlyColumn[T]) ParseCmp(op, raw string) (Predicate, error) {
-	return c.col.ParseCmp(op, raw)
-}
-
-// ParseEq is Column.ParseEq.
-func (c NullReadOnlyColumn[T]) ParseEq(raw string) (Predicate, error) { return c.col.ParseEq(raw) }
-
-// ParseCmp is Column.ParseCmp.
-func (c NullReadOnlyColumn[T]) ParseCmp(op, raw string) (Predicate, error) {
-	return c.col.ParseCmp(op, raw)
-}
-
-// ParseEq is Column.ParseEq.
-func (c CreateOnlyColumn[T]) ParseEq(raw string) (Predicate, error) { return c.col.ParseEq(raw) }
-
-// ParseCmp is Column.ParseCmp.
-func (c CreateOnlyColumn[T]) ParseCmp(op, raw string) (Predicate, error) {
-	return c.col.ParseCmp(op, raw)
-}
-
-// ParseEq is Column.ParseEq.
-func (c ImmutableColumn[T]) ParseEq(raw string) (Predicate, error) { return c.col.ParseEq(raw) }
-
-// ParseCmp is Column.ParseCmp.
-func (c ImmutableColumn[T]) ParseCmp(op, raw string) (Predicate, error) {
-	return c.col.ParseCmp(op, raw)
-}
-
 var errVectorFilter = errors.New("a vector column cannot be filtered by a text value")
 
 // ParseEq always fails: a vector has no text form to filter by.
 func (c vectorBase[V]) ParseEq(string) (Predicate, error) {
-	return nil, &Error{Kind: ErrValidation, Op: "parse", Column: c.col.name, Err: errVectorFilter}
+	return nil, &Error{Kind: ErrValidation, Op: "parse", Column: c.col.ColumnName(), Err: errVectorFilter}
 }
 
 // ParseCmp always fails: a vector has no text form to filter by.
 func (c vectorBase[V]) ParseCmp(string, string) (Predicate, error) {
-	return nil, &Error{Kind: ErrValidation, Op: "parse", Column: c.col.name, Err: errVectorFilter}
+	return nil, &Error{Kind: ErrValidation, Op: "parse", Column: c.col.ColumnName(), Err: errVectorFilter}
 }
 
 // parseText parses raw into T: integers, floats, bools and strings by their

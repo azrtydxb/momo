@@ -188,7 +188,7 @@ func (sq SelectQuery[T]) order() Order { return Order{Expr: sq} }
 // (ErrUnsupported otherwise).
 func (sq SelectQuery[T]) After(values ...any) SelectQuery[T] {
 	if len(values) == 0 {
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("After needs at least one value")}
+		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("After needs at least one value"))
 		return sq
 	}
 	sq.s.keyset = append(slices.Clip(sq.s.keyset), values...)
@@ -243,23 +243,23 @@ func (sq SelectQuery[T]) keysetKeys() []keysetKey {
 func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 	s := &sq.s
 	if len(s.order) == 0 {
-		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("After requires OrderBy")})
+		b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("After requires OrderBy")))
 		return nil
 	}
 	for _, o := range s.order {
 		if isAliasOrder(o) {
-			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("keyset pagination cannot order by a select-list alias; order by the expression itself")})
+			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("keyset pagination cannot order by a select-list alias; order by the expression itself")))
 			return nil
 		}
 	}
 	keys := sq.keysetKeys()
 	if len(s.keyset) != len(keys) {
-		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("After got %d values for %d ORDER BY keys (including the primary key tie-breaker)", len(s.keyset), len(keys))})
+		b.SetErr(newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("After got %d values for %d ORDER BY keys (including the primary key tie-breaker)", len(s.keyset), len(keys))))
 		return nil
 	}
 	for _, k := range keys {
 		if k.nullable {
-			b.SetErr(&Error{Kind: ErrUnsupported, Op: "build", Table: sq.meta.Table, Err: errors.New("After with a nullable ORDER BY key is not supported")})
+			b.SetErr(newError(ErrUnsupported, "build", sq.meta.Table, errors.New("After with a nullable ORDER BY key is not supported")))
 			return nil
 		}
 	}
@@ -286,7 +286,7 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 // Limit sets LIMIT.
 func (sq SelectQuery[T]) Limit(n int64) SelectQuery[T] {
 	if n < 0 {
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("Limit must not be negative, got %d", n)}
+		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("Limit must not be negative, got %d", n))
 		return sq
 	}
 	sq.s.limit = n
@@ -296,7 +296,7 @@ func (sq SelectQuery[T]) Limit(n int64) SelectQuery[T] {
 // Offset sets OFFSET. Prefer keyset pagination (After) for deep pages.
 func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] {
 	if n < 0 {
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("Offset must not be negative, got %d", n)}
+		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("Offset must not be negative, got %d", n))
 		return sq
 	}
 	sq.s.offset = n
@@ -322,11 +322,11 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 		switch o {
 		case "NOWAIT", "SKIP LOCKED":
 			if sq.s.lockWait != "" && sq.s.lockWait != " "+o {
-				sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("lock options NOWAIT and SKIP LOCKED are mutually exclusive")}
+				sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("lock options NOWAIT and SKIP LOCKED are mutually exclusive"))
 			}
 			sq.s.lockWait = " " + o
 		default:
-			sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("unknown lock option %q (want NOWAIT or SKIP LOCKED)", o)}
+			sq.s.err = newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("unknown lock option %q (want NOWAIT or SKIP LOCKED)", o))
 		}
 	}
 	sq.s.lock = l
@@ -347,11 +347,11 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 // invalid combinations, such as aggregates or UNION, are left to the server.
 func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
 	if len(tables) == 0 {
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("LockOf needs at least one table")}
+		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf needs at least one table"))
 		return sq
 	}
 	if slices.Contains(tables, "") {
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("LockOf table name must not be empty")}
+		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf table name must not be empty"))
 		return sq
 	}
 	sq.s.lockOf = slices.Clone(tables)
@@ -364,7 +364,7 @@ func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
 // a plain table (TableRef).
 func (sq SelectQuery[T]) IndexedBy(index string) SelectQuery[T] {
 	if index == "" {
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("IndexedBy needs an index name")}
+		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("IndexedBy needs an index name"))
 		return sq
 	}
 	sq.s.indexedBy = index
@@ -380,9 +380,9 @@ func (sq SelectQuery[T]) WithTableName(name string) SelectQuery[T] {
 	t, ok := sq.s.from.(TableRef)
 	switch {
 	case name == "":
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("WithTableName needs a table name")}
+		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("WithTableName needs a table name"))
 	case !ok:
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("WithTableName needs a plain table as the FROM source")}
+		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("WithTableName needs a plain table as the FROM source"))
 	default:
 		if t.Alias == "" {
 			t.Alias = t.Name
@@ -424,7 +424,7 @@ func (sq SelectQuery[T]) SQL() (Compiled, error) {
 func (sq SelectQuery[T]) compileJoined() (Compiled, scanner[T], error) {
 	sc := scanner[T]{meta: sq.meta}
 	if sq.q == nil {
-		return Compiled{}, sc, errors.New("momo: query has no Querier")
+		return Compiled{}, sc, noQuerier("select", sq.meta.Table)
 	}
 	run, ls, err := sq.expandJoins()
 	if err != nil {
@@ -613,7 +613,7 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 	var m, zero T
 	for {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("momo: select cancelled: %w", err)
+			return newError(ErrCanceled, "select", sq.meta.Table, err)
 		}
 		if !r.Next() {
 			break
@@ -649,7 +649,7 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 		defer r.Close()
 		for {
 			if err := ctx.Err(); err != nil {
-				yield(zero, fmt.Errorf("momo: select cancelled: %w", err))
+				yield(zero, newError(ErrCanceled, "select", sq.meta.Table, err))
 				return
 			}
 			if !r.Next() {
@@ -678,7 +678,7 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 // GROUP BY, LIMIT and OFFSET keep their meaning).
 func (sq SelectQuery[T]) Count(ctx context.Context) (int64, error) {
 	if sq.q == nil {
-		return 0, errors.New("momo: query has no Querier")
+		return 0, noQuerier("select", sq.meta.Table)
 	}
 	inner := sq
 	// The count covers the whole filtered set: neither the ordering nor the
@@ -743,7 +743,7 @@ func CTE(name string) TableRef { return TableRef{Name: name} }
 // ColumnOf declares a typed column of an ad-hoc source (CTE, subquery
 // alias). Momo cannot check that the column exists or has type T.
 func ColumnOf[T any](source string, name string) Column[T] {
-	return Column[T]{table: source, name: name}
+	return NewColumn[T](source, name, 0)
 }
 
 type rawSubquery struct {

@@ -86,7 +86,7 @@ func (u UpdateQuery[T]) ReturningAll() UpdateQuery[T] {
 }
 
 func (u UpdateQuery[T]) fail(kind error, err error) error {
-	return &Error{Kind: kind, Op: "update", Table: u.meta.Table, Err: err}
+	return newError(kind, "update", u.meta.Table, err)
 }
 
 // updModelWritable reports whether Model writes the column from the struct.
@@ -206,7 +206,7 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 // reported here, before anything can reach the database.
 func (u UpdateQuery[T]) SQL() (Compiled, error) {
 	if u.q == nil {
-		return Compiled{}, errors.New("momo: query has no Querier")
+		return Compiled{}, noQuerier("update", u.meta.Table)
 	}
 	if u.bulk != nil {
 		return u.bulkSQL()
