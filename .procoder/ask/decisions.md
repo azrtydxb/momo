@@ -151,6 +151,8 @@ Decision (2026-11-07): "do it" — audit NovaCRM (read-only) into .procoder/rese
 
 Decision (2026-11-08): close #41 as superseded by 126646b on sprint-5.
 
+Note (2026-11-08): #41 had in fact been merged into main on 2026-11-07, so main carried agent-ci.yml next to sprint-5's ci-agent.yml and every agent branch ran both. Merging main into sprint-5 drops agent-ci.yml, keeping ci-agent.yml (which also runs fuzz smoke and PostgreSQL integration).
+
 ## Story criteria that cannot be met: "failed before the implementation" and a local `procoder check`
 
 Stories 068, 097, 091-093, 112, 127, 131, 132 and 133 each carry a criterion that the test failed before the code existed, plus a local gate run. Laptop test runs are forbidden, and the code was written before the tests ran on CI.
@@ -160,3 +162,27 @@ Stories 068, 097, 091-093, 112, 127, 131, 132 and 133 each carry a criterion tha
 - Carry the stories open until a later sprint
 
 Decision (2026-11-08): prove red on CI — for each such story, push a throwaway worktree-agent-*-red branch with the implementation reverted, cite the failing run as red evidence, then close.
+
+## Root-package structure and always-current docs
+
+- Guards now, reorganisation as the first story after sprint-5 merges (recommended)
+- Everything after sprint-5, as a dedicated structure-and-docs sprint
+- Everything now, accepting conflict work on the in-flight branches
+- Scope: API-only root (no breaking changes) (recommended) / file-prefix taxonomy only / breaking split into feature subpackages
+
+Decision (2026-11-08): everything after sprint-5, as a breaking split. Once sprint-5 is on main, a dedicated sprint 6 moves feature APIs into subpackages (breaking imports before v1), moves non-API mechanics into internal/, enforces a file-prefix taxonomy and an architecture test, and adds the docs-freshness guards: one source for version strings, generated capability and type tables with a drift check, a docs-reference-exists test, compiled code blocks, and an apidiff docs gate. A stale-docs sweep against the real code runs in the same sprint.
+
+## Scout's model provider key (scans fail with "model provider unavailable")
+
+- Replace Scout's provider key (…4a1c) with the current fastllm key (…9f8c) and rerun the DEEP scan (recommended)
+- Leave Scout's settings alone; the user updates the key
+
+Decision (2026-11-07): replace the key. Scout's default provider now uses the current fastllm key (…9f8c); the stored …4a1c key was rejected. The models were online throughout.
+
+## GitHub repository security settings for azrtydxb/momo (security audit M4)
+
+- Enable private vulnerability reporting, secret scanning with push protection, and protect main (require the CI checks, no force push, no deletion) (recommended)
+- Enable private vulnerability reporting and secret scanning only; leave main unprotected
+- Leave the repository settings as they are
+
+Decision (2026-11-07): all three. Private vulnerability reporting and secret scanning with push protection are enabled; main requires lint, unit, race, the integration matrix, compile-fail, govulncheck, windows, macos and the PR title check, with no force push or deletion. fuzz-smoke and bench-smoke stay optional (fuzz-smoke has a known timeout flake). Admins are exempt so release-please PRs, which get no CI runs, can still merge.
