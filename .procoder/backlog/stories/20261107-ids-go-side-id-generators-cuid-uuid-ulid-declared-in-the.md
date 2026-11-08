@@ -21,4 +21,4 @@ GitHub issue #35, found by the NovaCRM port (gap audit item N1). Prisma database
 
 ## Evidence
 
-GitHub Actions run 42409383050 on cf4ba59 (merged with origin/sprint-5): unit, lint, fuzz-smoke and integration (postgres) all success. Unit tests in idgen_test.go, gen/idgen_test.go and gen/tags/tags_test.go cover criteria 1 to 5; idgen_integration_test.go (TestIDGenLive) covers criterion 6; docs/ai-guide.md and docs/capabilities.md cover criterion 7.
+GitHub Actions run 42454149873 on 97eb94f (merged with origin/sprint-5 and the insert refactor): unit, lint, fuzz-smoke and integration (postgres) all success. Unit tests in idgen_test.go, idgen_writeback_test.go, idgen_conflict_test.go, idgen_internal_test.go (race-safe concurrent generation, ULID overflow), gen/idgen_test.go, gen/idgen_unit_test.go and gen/tags/tags_test.go cover criteria 1 to 5. Integration tests idgen_integration_test.go, idgen_upsert_integration_test.go and idgen_conflict_integration_test.go (conflict upserts, duplicate keys, chunked upsert, non-PK ids, non-round-tripping target) cover criterion 6. docs/ai-guide.md and docs/capabilities.md cover criterion 7.
