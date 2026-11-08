@@ -624,21 +624,93 @@ will try to generate the same change again.
 
 Worked example: `examples/adopt-existing-schema`.
 
-Momo has no command that turns a database into models or a snapshot.
-(`migrate.Engine.Inspect` returns the live schema as a Go value, but nothing
-in the CLI writes it.) Procedure:
+`momo generate --from-db` reads a live PostgreSQL database and writes the
+models and the init snapshot, so nothing has to be written by hand first.
 
-1. Write the models so they match the database.
-2. `momo migrate diff init` against the empty directory writes the initial
-   migration and snapshot. Do not apply it.
+1. Run `momo generate --from-db DATABASE_URL`. The value is a database URL, `-`
+   to read the URL from standard input, or the name of an environment variable
+   that holds it; prefer the last two, because a URL on the command line is
+   visible in the process list. It inspects the schemas named by
+   `migrate.schemas` (default: the current schema), writes one
+   `<table>_model.go` per table into the model package (`--out`, else
+   `introspect.out`, else the first local entry of `packages`, else `./models`)
+   and, when the migration directory has no snapshot, the init migration and
+   snapshot. Do not apply the init migration.
+2. Run `momo generate`, which writes the generated code for the new models.
 3. `momo migrate baseline --version <init version>`. It checks the live
    database against that snapshot, including view, policy and trigger text, and
    exits 1 with `differing object kinds: ...` on a mismatch, then records every
    migration up to that version as `applied` with `statements_applied = 0` and
    `apply_id = baseline`, without running them. `--force` records anyway; use it
    only after reviewing the mismatch. Schema objects outside the models, such as
-   extra extensions, count as a mismatch: add them to `migrate.exclude`.
+   extra extensions, count as a mismatch: add them to `migrate.exclude`. The
+   run prints a hint for the extensions and skipped tables it found.
 4. From then on use `diff` and `apply`.
+
+The models carry exact table and column names (a `table` or `column` tag is
+written wherever the naming preset would derive another name), Go types,
+nullability (a pointer, or the `nullable` tag for slices), defaults, `size`,
+`precision` and `scale`, enums, primary keys, identity and serial columns,
+single-column indexes as tags, other indexes, unique constraints, checks and
+comments in the `MomoConfig` method, and every foreign key the generator can
+derive as a `belongs_to` field with its `on_delete` and `on_update` actions.
+`numeric` columns are Go strings (the `decimal-as-string` note); an
+`introspect.types` rule picks a decimal type instead.
+
+A column type with no Go mapping is an error and nothing is written; add a rule
+to the `introspect` section of `momo.yaml`. Constraints the models cannot
+declare are left out of the models and the snapshot and printed as warnings, so
+the two agree and the baseline reports them: composite foreign keys, foreign
+keys whose name is not table, column and `_fkey`, foreign keys that do not
+reference a single-column primary key, unique expression indexes, generated
+columns, `generated always` identity (modeled as by default), and PostgreSQL
+schemas other than the current one.
+
+### The introspect section
+
+`momo.yaml` holds what the database cannot say, and it is applied again on every
+run:
+
+```yaml
+introspect:
+  package: models # default: the directory name
+  out: ./models # default: the first local entry of packages
+  skip: ["_prisma_*"] # table globs: no model, not in the snapshot
+  types: # SQL type to Go type, for every column of that type
+    inet: { go: string }
+    numeric(12,2):
+      { go: decimal.Decimal, import: github.com/shopspring/decimal }
+  columns: # first to last; later rules win, tags add up
+    - match: "*.updated_at" # glob over table.column
+      tags: [updated_at]
+    - match: "users.settings"
+      go: "types.JSON[Settings]"
+      name: Prefs # Go field name
+  tables:
+    users: { name: Account, tags: ["soft_delete:timestamp"] }
+```
+
+A rule's `tags` are momo tag options; one with the key of a generated option
+replaces it. A Go type needs no `import` for `types.`, `vector.`, `time.`,
+`json.` or `sql.`. Add skipped tables to `migrate.exclude` too, so the baseline
+ignores the live tables.
+
+### Running it again
+
+The schema keeps changing during a port. A re-run rewrites the model files that
+nobody edited. Each file starts with a header that holds the hash of its body:
+when the body still matches, the file is regenerated freely. A file with hand
+edits, or one that `--from-db` did not write, is never replaced. A hand-edited
+file stays quiet while the database has not changed its model; it conflicts
+only when the regenerated model differs. The run writes
+the regenerated version next to it as `<file>.new`, prints
+`conflict: <file>`, and exits 1; merge the two by hand and delete the `.new`
+file, or run again with `--overwrite` to take the regenerated one. A file whose
+table is gone is printed as `orphan` and never deleted. `--check` writes
+nothing, prints `stale: <file>` for each difference and exits 1. The init
+snapshot is written once: when the migration directory already has a snapshot,
+use `diff` for later schema changes. Put code of your own in other files and
+rules in the `introspect` section, and a re-run stays quiet.
 
 `baseline` needs `CREATE` on the database for the canonicalization step when
 the snapshot has views, functions, triggers or policies, **or any table with
