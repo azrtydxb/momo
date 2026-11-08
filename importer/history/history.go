@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,8 +25,8 @@ import (
 )
 
 // MappedBase is the version a source version that is not a timestamp is
-// mapped after: the n-th such migration (1-based, in source order) gets
-// MappedBase plus n seconds.
+// mapped after: the migration at 1-based position n in the source list (all
+// migrations count, timestamped ones too) gets MappedBase plus n seconds.
 const MappedBase = "19700101000000"
 
 // ErrSourceDirty is returned when the source tool recorded a half-applied
@@ -172,6 +173,13 @@ func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []C
 	if err != nil {
 		return nil, err
 	}
+	before, err := eng.Inspect(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("history: inspect the scratch database: %w", err)
+	}
+	if len(before.Tables)+len(before.Views)+len(before.Enums)+len(before.Functions) != 0 {
+		return nil, errors.New("history: the scratch database is not empty; the baseline needs a database that starts empty")
+	}
 	var snaps []migrate.SnapshotFile
 	parent := ""
 	for _, c := range conv {
@@ -194,21 +202,61 @@ func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []C
 	return snaps, nil
 }
 
+var (
+	versionRe = regexp.MustCompile(`^\d{14}$`)
+	nameRe    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+)
+
 // WriteImport writes the converted migrations into outDir: <version>_<name>.up.sql
 // (first line "-- momo:no-transaction" when NoTx), the .down.sql file when the
 // source had a down, <version>_<name>.snapshot.json for each snapshot, and
-// momo.sum for the directory. It never overwrites: files are created
-// exclusively, and an existing file is an error.
+// momo.sum for the directory. Everything is validated first and written to a
+// temporary directory beside outDir, which is then renamed into place, so a
+// failure leaves nothing behind and a retry works. outDir must not exist or
+// must be empty; existing files are never overwritten.
 func WriteImport(outDir string, conv []Converted, snaps []migrate.SnapshotFile) error {
 	byVersion := map[string]Converted{}
 	for _, c := range conv {
+		if !versionRe.MatchString(c.Version) || !nameRe.MatchString(c.Name) {
+			return fmt.Errorf("history: %s: version %q or name %q is not usable in a file name", c.Origin, c.Version, c.Name)
+		}
+		if _, dup := byVersion[c.Version]; dup {
+			return fmt.Errorf("history: version %s appears twice", c.Version)
+		}
 		byVersion[c.Version] = c
 	}
-	if err := os.MkdirAll(outDir, 0o750); err != nil {
+	seenSnap := map[string]bool{}
+	for _, sn := range snaps {
+		if _, ok := byVersion[sn.Version]; !ok {
+			return fmt.Errorf("history: snapshot for version %s has no converted migration", sn.Version)
+		}
+		if seenSnap[sn.Version] {
+			return fmt.Errorf("history: two snapshots for version %s", sn.Version)
+		}
+		seenSnap[sn.Version] = true
+	}
+	outDir = filepath.Clean(outDir)
+	if ents, err := os.ReadDir(outDir); err == nil && len(ents) > 0 {
+		return fmt.Errorf("history: %s is not empty; the import never overwrites", outDir)
+	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("history: %w", err)
 	}
+	parent := filepath.Dir(outDir)
+	if err := os.MkdirAll(parent, 0o750); err != nil {
+		return fmt.Errorf("history: %w", err)
+	}
+	stage, err := os.MkdirTemp(parent, ".momo-import-*")
+	if err != nil {
+		return fmt.Errorf("history: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.RemoveAll(stage)
+		}
+	}()
 	create := func(name string, data []byte) error {
-		f, err := os.OpenFile(filepath.Join(outDir, name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- name is built from a validated version and a sanitized name, never from path input
+		f, err := os.OpenFile(filepath.Join(stage, name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- name is built from a validated version and name, never from path input
 		if err != nil {
 			return fmt.Errorf("history: %w", err)
 		}
@@ -233,20 +281,17 @@ func WriteImport(outDir string, conv []Converted, snaps []migrate.SnapshotFile) 
 			}
 		}
 	}
-	for _, s := range snaps {
-		c, ok := byVersion[s.Version]
-		if !ok {
-			return fmt.Errorf("history: snapshot for version %s has no converted migration", s.Version)
-		}
+	for _, sn := range snaps {
+		c := byVersion[sn.Version]
 		var buf bytes.Buffer
-		if err := migrate.WriteSnapshot(&buf, s); err != nil {
+		if err := migrate.WriteSnapshot(&buf, sn); err != nil {
 			return err
 		}
 		if err := create(c.Version+"_"+c.Name+".snapshot.json", buf.Bytes()); err != nil {
 			return err
 		}
 	}
-	sum, err := migrate.ComputeSum(os.DirFS(outDir))
+	sum, err := migrate.ComputeSum(os.DirFS(stage))
 	if err != nil {
 		return err
 	}
@@ -254,29 +299,46 @@ func WriteImport(outDir string, conv []Converted, snaps []migrate.SnapshotFile) 
 	if err := sum.Write(&buf); err != nil {
 		return err
 	}
-	return create(migrate.SumFileName, buf.Bytes())
+	if err := create(migrate.SumFileName, buf.Bytes()); err != nil {
+		return err
+	}
+	if err := os.Chmod(stage, 0o750); err != nil { // #nosec G302 -- a directory; 0750 like the other generated directories
+		return fmt.Errorf("history: %w", err)
+	}
+	// Renaming onto an empty directory replaces it; onto a missing path it creates it.
+	if err := os.Rename(stage, outDir); err != nil {
+		return fmt.Errorf("history: %w", err)
+	}
+	committed = true
+	return nil
 }
 
 // HistoryRows returns the momo_migrations rows that record conv as applied:
 // Name is OriginalVersion+"_"+Name when the version was mapped (so the source
 // version is kept), else Name; Checksum comes from sum for the migration's up
-// file (empty when sum is nil); the status is applied with zero statements,
-// ApplyID "import:<tool>" and Kind "sql".
-func HistoryRows(conv []Converted, sum *migrate.Sum, tool string, now time.Time) []migrate.HistoryRow {
+// file; the status is applied with zero statements, ApplyID "import:<tool>"
+// and Kind "sql". It fails when sum is nil or lacks an entry for a migration:
+// a row without the checksum would make the first migrate up report a
+// checksum mismatch.
+func HistoryRows(conv []Converted, sum *migrate.Sum, tool string, now time.Time) ([]migrate.HistoryRow, error) {
+	if sum == nil {
+		return nil, errors.New("history: HistoryRows needs the momo.sum of the written directory")
+	}
 	rows := make([]migrate.HistoryRow, 0, len(conv))
 	for _, c := range conv {
 		name := c.Name
 		if c.OriginalVersion != c.Version {
 			name = c.OriginalVersion + "_" + c.Name
 		}
-		checksum := ""
-		if sum != nil {
-			checksum = sum.Files[c.Version+"_"+c.Name+".up.sql"]
+		file := c.Version + "_" + c.Name + ".up.sql"
+		checksum := sum.Files[file]
+		if checksum == "" {
+			return nil, fmt.Errorf("history: momo.sum has no entry for %s", file)
 		}
 		rows = append(rows, migrate.HistoryRow{
 			Version: c.Version, Name: name, Checksum: checksum, Status: migrate.StatusApplied,
 			ApplyID: "import:" + tool, Kind: "sql", AppliedAt: now,
 		})
 	}
-	return rows
+	return rows, nil
 }

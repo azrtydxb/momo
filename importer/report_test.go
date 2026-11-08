@@ -115,3 +115,29 @@ func TestEmitRejectsUnsafeValues(t *testing.T) {
 		})
 	}
 }
+
+func TestEmitRejectsUnsafeStructure(t *testing.T) {
+	root := t.TempDir()
+	cases := map[string]func(*[]Model){
+		"type is a call":      func(m *[]Model) { (*m)[0].Fields[1].GoType = "int; var x = f()" },
+		"type is an operator": func(m *[]Model) { (*m)[0].Fields[1].GoType = "a+b" },
+		"duplicate field":     func(m *[]Model) { (*m)[0].Fields[2].Name = "Email" },
+		"field named Model":   func(m *[]Model) { (*m)[0].Fields[2].Name = "Model" },
+		"model named momo":    func(m *[]Model) { (*m)[0].Name = "momo" },
+		"duplicate model":     func(m *[]Model) { *m = append(*m, (*m)[0]) },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			ms := sampleModels()
+			mutate(&ms)
+			w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+			if err := Emit(ms, &Report{}, w, filepath.Join(root, "models"), "models"); err == nil {
+				t.Fatal("Emit accepted unsafe input")
+			}
+		})
+	}
+	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	if err := Emit(sampleModels(), &Report{}, w, filepath.Join(root, "models"), "_"); err == nil {
+		t.Fatal("Emit accepted package _")
+	}
+}

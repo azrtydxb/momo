@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/format"
+	"go/parser"
 	"go/token"
 	"path/filepath"
 	"slices"
@@ -58,12 +61,15 @@ func Emit(models []Model, rep *Report, w *gen.Writer, dir, pkg string) error {
 			return fmt.Errorf("%w:%s", ErrUnsupported, sb.String())
 		}
 	}
-	if !token.IsIdentifier(pkg) {
+	if !token.IsIdentifier(pkg) || pkg == "_" {
 		return fmt.Errorf("importer: %q is not a package name", pkg)
 	}
 	src, err := render(models, pkg)
 	if err != nil {
 		return err
+	}
+	if src, err = format.Source(src); err != nil {
+		return fmt.Errorf("importer: the emitted source does not parse (importer bug or an unusable type): %w", err)
 	}
 	return w.File(filepath.Join(dir, "models.go"), src)
 }
@@ -71,10 +77,16 @@ func Emit(models []Model, rep *Report, w *gen.Writer, dir, pkg string) error {
 func render(models []Model, pkg string) ([]byte, error) {
 	imports := map[string]bool{"github.com/azrtydxb/momo": true}
 	var body bytes.Buffer
+	seenModels := map[string]bool{}
 	for _, m := range models {
-		if !token.IsIdentifier(m.Name) {
-			return nil, fmt.Errorf("importer: %s: %q is not a Go type name", m.Source, m.Name)
+		if !token.IsIdentifier(m.Name) || m.Name == "_" || m.Name == "momo" {
+			return nil, fmt.Errorf("importer: %s: %q cannot be a model type name (it must be an identifier other than _ and momo, the import name)", m.Source, m.Name)
 		}
+		if seenModels[m.Name] {
+			return nil, fmt.Errorf("importer: %s: model %s is declared twice", m.Source, m.Name)
+		}
+		seenModels[m.Name] = true
+		seenFields := map[string]bool{}
 		mt := ""
 		if m.Table != "" {
 			if err := checkTagValue(m.Table); err != nil {
@@ -84,11 +96,18 @@ func render(models []Model, pkg string) ([]byte, error) {
 		}
 		fmt.Fprintf(&body, "// %s was imported by momo import.\ntype %s struct {\n\tmomo.Model%s\n", m.Name, m.Name, mt)
 		for _, f := range m.Fields {
-			if !token.IsIdentifier(f.Name) {
+			if !token.IsIdentifier(f.Name) || f.Name == "_" {
 				return nil, fmt.Errorf("importer: %s: %q is not a Go field name", f.Source, f.Name)
 			}
+			if f.Name == "Model" || seenFields[f.Name] {
+				return nil, fmt.Errorf("importer: %s: field %s.%s is declared twice or collides with the embedded momo.Model", f.Source, m.Name, f.Name)
+			}
+			seenFields[f.Name] = true
 			if f.GoType == "" {
 				return nil, fmt.Errorf("importer: %s: field %s.%s has no Go type", f.Source, m.Name, f.Name)
+			}
+			if err := checkTypeExpr(f.GoType); err != nil {
+				return nil, fmt.Errorf("importer: %s: field %s.%s: %w", f.Source, m.Name, f.Name, err)
 			}
 			if err := collectImports(f.GoType, imports); err != nil {
 				return nil, fmt.Errorf("importer: %s: field %s.%s: %w", f.Source, m.Name, f.Name, err)
@@ -193,4 +212,55 @@ func fieldTag(f Field) (string, error) {
 		}
 	}
 	return strings.Join(opts, ","), nil
+}
+
+// checkTypeExpr requires goType to parse as a Go type expression: names,
+// pointers, selectors, slices, arrays with a literal length, maps and generic
+// instantiations. Anything else (a call, an operator, a second declaration)
+// would put arbitrary source into the model file.
+func checkTypeExpr(goType string) error {
+	e, err := parser.ParseExpr(goType)
+	if err != nil {
+		return fmt.Errorf("type %q does not parse: %w", goType, err)
+	}
+	if !isTypeExpr(e) {
+		return fmt.Errorf("%q is not a type expression", goType)
+	}
+	return nil
+}
+
+func isTypeExpr(e ast.Expr) bool {
+	switch t := e.(type) {
+	case *ast.Ident:
+		return true
+	case *ast.StarExpr:
+		return isTypeExpr(t.X)
+	case *ast.ParenExpr:
+		return isTypeExpr(t.X)
+	case *ast.SelectorExpr:
+		_, ok := t.X.(*ast.Ident)
+		return ok
+	case *ast.ArrayType:
+		if t.Len != nil {
+			if lit, ok := t.Len.(*ast.BasicLit); !ok || lit.Kind != token.INT {
+				return false
+			}
+		}
+		return isTypeExpr(t.Elt)
+	case *ast.MapType:
+		return isTypeExpr(t.Key) && isTypeExpr(t.Value)
+	case *ast.IndexExpr:
+		return isTypeExpr(t.X) && isTypeExpr(t.Index)
+	case *ast.IndexListExpr:
+		if !isTypeExpr(t.X) {
+			return false
+		}
+		for _, i := range t.Indices {
+			if !isTypeExpr(i) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }

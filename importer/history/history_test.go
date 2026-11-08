@@ -38,7 +38,17 @@ func TestConvertKeepsTimestampsAndMapsOrdinals(t *testing.T) {
 	if string(again[0].Up) != string(conv[0].Up) || again[0].Version != conv[0].Version {
 		t.Fatal("conversion must be deterministic")
 	}
-	rows := HistoryRows(conv, nil, "goose", time.Unix(0, 0))
+	if _, err := HistoryRows(conv, nil, "goose", time.Unix(0, 0)); err == nil {
+		t.Fatal("HistoryRows must refuse a nil momo.sum: empty checksums would fail the first migrate up")
+	}
+	sum := &migrate.Sum{Files: map[string]string{
+		"19700101000001_init.up.sql": "aa",
+		"20260101000000_more.up.sql": "bb",
+	}}
+	rows, err := HistoryRows(conv, sum, "goose", time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if rows[0].Name != "00001_init" {
 		t.Fatalf("original version must be kept in the name column: %q", rows[0].Name)
 	}
@@ -82,10 +92,16 @@ func TestConvertMappedVersionsStayValidTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range conv {
+	for i, c := range conv {
 		if _, err := time.Parse(versionLayout, c.Version); err != nil {
 			t.Fatalf("mapped version %s is not a timestamp: %v", c.Version, err)
 		}
+		if i > 0 && c.Version <= conv[i-1].Version {
+			t.Fatalf("versions must ascend strictly: %s after %s", c.Version, conv[i-1].Version)
+		}
+	}
+	if conv[59].Version != "19700101000100" {
+		t.Fatalf("ordinal 60 must roll over to 19700101000100, got %s", conv[59].Version)
 	}
 }
 
@@ -121,7 +137,7 @@ func TestWriteImportNeverOverwrites(t *testing.T) {
 		}
 	}
 	if err := WriteImport(dir, conv, nil); err == nil {
-		t.Fatal("WriteImport overwrote an existing file")
+		t.Fatal("WriteImport overwrote an existing directory")
 	}
 	sumFile, err := os.Open(filepath.Join(dir, migrate.SumFileName))
 	if err != nil {
@@ -132,11 +148,48 @@ func TestWriteImportNeverOverwrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := HistoryRows(conv, sum, "goose", time.Unix(0, 0))
+	rows, err := HistoryRows(conv, sum, "goose", time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := HistoryRows(conv, &migrate.Sum{Files: map[string]string{}}, "goose", time.Unix(0, 0)); err == nil {
+		t.Fatal("HistoryRows must refuse a momo.sum without an entry for the migration")
+	}
 	if rows[0].Checksum == "" || rows[0].Checksum != sum.Files["20260101000000_init.up.sql"] {
 		t.Fatalf("history checksum must come from momo.sum: %+v", rows[0])
 	}
 	if rows[0].Status != migrate.StatusApplied || rows[0].ApplyID != "import:goose" || rows[0].Kind != "sql" {
 		t.Fatalf("history row wrong: %+v", rows[0])
+	}
+}
+
+func TestWriteImportFailureLeavesNothing(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "migrations")
+	good := Converted{Version: "20260101000000", Name: "init", Up: []byte("SELECT 1;")}
+	// A snapshot for a version that was not converted is refused before any write.
+	if err := WriteImport(dir, []Converted{good}, []migrate.SnapshotFile{{Version: "20260101000009"}}); err == nil {
+		t.Fatal("a snapshot without a migration must be refused")
+	}
+	// Path separators and dot-dot in a name never reach the file system.
+	bad := Converted{Version: "20260101000000", Name: "../evil", Up: []byte("SELECT 1;")}
+	if err := WriteImport(dir, []Converted{bad}, nil); err == nil {
+		t.Fatal("a path-like name must be refused")
+	}
+	if ents, _ := os.ReadDir(parent); len(ents) != 0 {
+		t.Fatalf("a failed import left files behind: %v", ents)
+	}
+	if err := WriteImport(dir, []Converted{good}, nil); err != nil {
+		t.Fatalf("a retry after a failure must work: %v", err)
+	}
+}
+
+func TestConvertAppliedEmptyVersusNil(t *testing.T) {
+	m := []Raw{{Version: "1", Name: "a", Origin: "1_a.sql"}}
+	if _, _, err := Convert(Source{Tool: "goose", Migrations: m}); err != nil {
+		t.Fatalf("nil Applied means the reader does not know; got %v", err)
+	}
+	if _, _, err := Convert(Source{Tool: "goose", Migrations: m, Applied: []string{}}); !errors.Is(err, ErrSourcePending) {
+		t.Fatalf("an empty non-nil Applied means nothing was applied; got %v", err)
 	}
 }
