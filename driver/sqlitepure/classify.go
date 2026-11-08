@@ -22,6 +22,7 @@ const (
 	extFK       = 787  // SQLITE_CONSTRAINT_FOREIGNKEY
 	extNotNull  = 1299 // SQLITE_CONSTRAINT_NOTNULL
 	extPK       = 1555 // SQLITE_CONSTRAINT_PRIMARYKEY
+	extRowID    = 2579 // SQLITE_CONSTRAINT_ROWID
 	extUnique   = 2067 // SQLITE_CONSTRAINT_UNIQUE
 )
 
@@ -56,7 +57,7 @@ func classifyOp(op string, err error) error {
 	switch code := se.Code(); {
 	case strings.Contains(msg, "no such function: vec_"):
 		kind = momo.ErrUnsupported
-	case code == extUnique || code == extPK:
+	case code == extUnique || code == extPK || code == extRowID:
 		kind = momo.ErrUniqueViolation
 	case code == extFK:
 		kind = momo.ErrForeignKeyViolation
@@ -71,7 +72,7 @@ func classifyOp(op string, err error) error {
 	case code&0xff == codeBusy || code&0xff == codeLocked:
 		kind = momo.ErrBusy
 	case code&0xff == codeConstr:
-		kind = constraintKind(msg)
+		kind = sqlshared.ConstraintKind(msg)
 	}
 	if kind == nil {
 		return err
@@ -79,28 +80,13 @@ func classifyOp(op string, err error) error {
 	if kind == momo.ErrUnsupported {
 		return &momo.Error{Kind: kind, Op: op, Err: sqlshared.DriverError{Cause: err, Msg: msg}}
 	}
-	table, column := constraintTarget(msg)
+	table, column := sqlshared.ConstraintTarget(msg)
 	return &momo.Error{
 		Kind:   kind,
 		Table:  table,
 		Column: column,
 		Err:    sqlshared.DriverError{Cause: err, Msg: msg},
 	}
-}
-
-// constraintKind classifies a bare SQLITE_CONSTRAINT by its message prefix.
-func constraintKind(msg string) error {
-	switch {
-	case strings.HasPrefix(msg, "UNIQUE constraint failed"), strings.HasPrefix(msg, "PRIMARY KEY constraint failed"):
-		return momo.ErrUniqueViolation
-	case strings.HasPrefix(msg, "FOREIGN KEY constraint failed"):
-		return momo.ErrForeignKeyViolation
-	case strings.HasPrefix(msg, "CHECK constraint failed"):
-		return momo.ErrCheckViolation
-	case strings.HasPrefix(msg, "NOT NULL constraint failed"):
-		return momo.ErrNotNullViolation
-	}
-	return nil
 }
 
 // cleanMessage drops the " (code)" suffix modernc appends to the message.
@@ -111,20 +97,4 @@ func cleanMessage(msg string) string {
 		}
 	}
 	return msg
-}
-
-// constraintTarget parses "UNIQUE constraint failed: table.column" into its
-// table and column. It returns empty strings for any other message; for a
-// multi-column constraint (a comma-separated list) it returns the first.
-func constraintTarget(msg string) (table, column string) {
-	i := strings.LastIndex(msg, ": ")
-	if i < 0 || !strings.Contains(msg[:i], "constraint failed") {
-		return "", ""
-	}
-	target, _, _ := strings.Cut(msg[i+2:], ",")
-	table, column, ok := strings.Cut(strings.TrimSpace(target), ".")
-	if !ok {
-		return "", ""
-	}
-	return table, column
 }

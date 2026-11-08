@@ -12,7 +12,9 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/sqlmask"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -238,9 +240,19 @@ func rowsAffected(res sql.Result) (int64, error) {
 type sqlRows struct{ r *sql.Rows }
 
 func (r sqlRows) Next() bool             { return r.r.Next() }
-func (r sqlRows) Scan(dest ...any) error { return ClassifyError(r.r.Scan(dest...)) }
-func (r sqlRows) Err() error             { return ClassifyError(r.r.Err()) }
-func (r sqlRows) Close() error           { return ClassifyError(r.r.Close()) }
+func (r sqlRows) Scan(dest ...any) error { return scanErr(ClassifyError(r.r.Scan(dest...))) }
+
+// scanErr hides the text of a conversion failure, which quotes the stored
+// value; see sqlmask.ConversionErr. Server errors pass through.
+func scanErr(err error) error {
+	return sqlmask.ConversionErr(err, "pgx: cannot convert the column value to the destination type", func(err error) bool {
+		var pe *pgconn.PgError
+		return errors.As(err, &pe)
+	})
+}
+
+func (r sqlRows) Err() error   { return ClassifyError(r.r.Err()) }
+func (r sqlRows) Close() error { return ClassifyError(r.r.Close()) }
 
 // pinnedSQLRows is registered on its pinned connection until closed or exhausted,
 // so Release can close Rows the caller forgot.

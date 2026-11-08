@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/azrtydxb/momo/internal/sqlshared"
 )
 
 func FuzzPureConstraintTarget(f *testing.F) {
@@ -13,7 +15,7 @@ func FuzzPureConstraintTarget(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		table, _ := constraintTarget(cleanMessage(s))
+		table, _ := sqlshared.ConstraintTarget(cleanMessage(s))
 		if strings.Contains(table, ".") {
 			t.Fatalf("table %q holds a dot", table)
 		}

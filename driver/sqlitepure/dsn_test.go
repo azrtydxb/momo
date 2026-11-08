@@ -103,24 +103,6 @@ func TestBuildDSNInMemory(t *testing.T) {
 	}
 }
 
-func TestConstraintTarget(t *testing.T) {
-	for msg, want := range map[string][2]string{
-		"UNIQUE constraint failed: u.email":    {"u", "email"},
-		"NOT NULL constraint failed: a.b, a.c": {"a", "b"},
-		"SQL logic error: no such table: x":    {"", ""},
-		"FOREIGN KEY constraint failed":        {"", ""},
-		"CHECK constraint failed: positive":    {"", ""},
-		"UNIQUE constraint failed: onlytable":  {"", ""},
-		"constraint failed: ":                  {"", ""},
-		"":                                     {"", ""},
-	} {
-		table, column := constraintTarget(msg)
-		if table != want[0] || column != want[1] {
-			t.Errorf("constraintTarget(%q) = %q, %q; want %q, %q", msg, table, column, want[0], want[1])
-		}
-	}
-}
-
 func TestCleanMessage(t *testing.T) {
 	for in, want := range map[string]string{
 		"UNIQUE constraint failed: u.email (2067)": "UNIQUE constraint failed: u.email",

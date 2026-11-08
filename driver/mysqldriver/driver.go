@@ -15,6 +15,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/sqlmask"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -43,6 +44,12 @@ func ConfigureDSN(dsn string) (*mysql.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.AllowAllFiles {
+		return nil, dsnRefused("allowAllFiles=true lets the server read any local file through LOAD DATA LOCAL INFILE")
+	}
+	if cfg.AllowCleartextPasswords {
+		return nil, dsnRefused("allowCleartextPasswords=true sends the password to the server unhashed")
+	}
 	cfg.ParseTime = true
 	cfg.Loc = time.UTC
 	cfg.ClientFoundRows = true
@@ -55,8 +62,21 @@ func ConfigureDSN(dsn string) (*mysql.Config, error) {
 	return cfg, nil
 }
 
-// Open opens a *sql.DB for dsn with ConfigureDSN applied and adopts it. The
+// dsnRefused is the momo.ErrValidation for a DSN setting momo refuses. The
+// message never quotes the DSN, which carries the password.
+func dsnRefused(why string) error {
+	return &momo.Error{Kind: momo.ErrValidation, Op: "open", Err: errors.New("mysqldriver: " + why + "; momo refuses it")}
+}
+
+// Open opens a *sql.DB for dsn with ConfigureDSN applied and adopts it. Open
+// pings the server, as the SQLite drivers do, so a bad DSN, a refused
+// connection or bad credentials are reported here and not on the first
+// statement. An unknown flavor, a nil result of New, is momo.ErrUnsupported.
+// On any error the pool is closed and nothing is returned; on success the
 // caller closes the returned *sql.DB.
+//
+// ConfigureDSN refuses allowAllFiles=true and allowCleartextPasswords=true
+// with momo.ErrValidation.
 func Open(dsn string, flavor dialect.Flavor) (*sql.DB, momo.Driver, error) {
 	cfg, err := ConfigureDSN(dsn)
 	if err != nil {
@@ -67,7 +87,16 @@ func Open(dsn string, flavor dialect.Flavor) (*sql.DB, momo.Driver, error) {
 		return nil, nil, err
 	}
 	db := sql.OpenDB(conn)
-	return db, New(db, flavor), nil
+	d := New(db, flavor)
+	if bad, ok := d.(*driver); ok && bad.err != nil {
+		_ = db.Close()
+		return nil, nil, bad.err
+	}
+	if err := db.PingContext(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, nil, classify(err, "")
+	}
+	return db, d, nil
 }
 
 // New wraps an opened *sql.DB. The DSN must come from ConfigureDSN (or set
@@ -225,9 +254,20 @@ type sqlRows struct {
 }
 
 func (r sqlRows) Next() bool             { return r.r.Next() }
-func (r sqlRows) Scan(dest ...any) error { return classify(r.r.Scan(dest...), r.stmt) }
-func (r sqlRows) Err() error             { return classify(r.r.Err(), r.stmt) }
-func (r sqlRows) Close() error           { return classify(r.r.Close(), r.stmt) }
+func (r sqlRows) Scan(dest ...any) error { return scanErr(classify(r.r.Scan(dest...), r.stmt)) }
+
+// scanErr hides the text of a conversion failure, which quotes the stored
+// value; see sqlmask.ConversionErr. Server errors pass through: classify
+// already redacts them.
+func scanErr(err error) error {
+	return sqlmask.ConversionErr(err, "mysql: cannot convert the column value to the destination type", func(err error) bool {
+		var se *mysql.MySQLError
+		return errors.As(err, &se)
+	})
+}
+
+func (r sqlRows) Err() error   { return classify(r.r.Err(), r.stmt) }
+func (r sqlRows) Close() error { return classify(r.r.Close(), r.stmt) }
 
 // pinnedRows is registered on its pinned connection until closed or exhausted,
 // so Release can close Rows the caller forgot.

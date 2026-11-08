@@ -29,6 +29,21 @@ configured DSN always has:
   that sets either is overridden. A `*sql.DB` handed to `New` directly must
   already be configured this way.
 
+`Open` pings the server, as the SQLite drivers do, so a bad DSN, a refused
+connection or bad credentials fail at `Open` and not on the first statement.
+An unknown flavor makes `Open` return `ErrUnsupported`; on any error the pool
+is closed and nothing is returned. (`New`, which takes an already opened
+`*sql.DB`, still returns a driver whose every call is `ErrUnsupported` for an
+unknown flavor, because it has no error to return.)
+
+`ConfigureDSN` (and so `Open`) refuses two DSN settings with `ErrValidation`:
+
+- `allowAllFiles=true`, which lets the server read any client file through
+  `LOAD DATA LOCAL INFILE`;
+- `allowCleartextPasswords=true`, which sends the password unhashed.
+
+Remove them from the DSN. The error message never quotes the DSN.
+
 Transport security is the DSN's business and defaults to none: add `tls=true`
 (or a registered TLS config) for any server that is not on the same host.
 
