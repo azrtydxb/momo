@@ -29,7 +29,7 @@ func TestImportGORM(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := g.AutoMigrate(&Org{}, &User{}, &Post{}, &Comment{}); err != nil {
+	if err := g.AutoMigrate(&Org{}, &User{}, &Post{}, &Comment{}, &Sized{}, &Folder{}, &File{}); err != nil {
 		t.Fatal(err)
 	}
 	source := schemafixture.AsMomoWould(t, schemafixture.Inspect(t, testopen.Postgres(t)))
