@@ -644,6 +644,14 @@ The check counts the binds rendered before the list; binds rendered after it
 are left to the driver. Cap or chunk request-supplied lists yourself. An empty
 `In` renders a constant false and an empty `NotIn` a constant true.
 
+Two independent caps apply to a typed `In` or `NotIn` list. `WithMaxInList(n)`
+limits the number of values per list and fails the build with
+`ErrLimitExceeded`; it is for request-supplied lists. The bind limit above is
+the database ceiling for the whole statement and fails with `ErrValidation`.
+Both are checked at build time, the list cap first, so the stricter one wins.
+`SelectQuery.MaxRows(n)` is the matching cap on results: `All` and `Pluck`
+return `ErrLimitExceeded` instead of more than n rows, never a truncated slice.
+
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
 `"SKIP LOCKED"`), `ForShare`, `LockOf` (names the tables a lock covers, for
@@ -1377,8 +1385,8 @@ Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-s
 
 Momo errors are `*momo.Error{Kind, Op, Table, Column, Constraint, Err}`. Check
 with `errors.Is(err, momo.ErrX)` (matches `Kind`) and reach the driver error with
-`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns driver detail
-that `Error()` hides. Never string-match error text.
+`errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns the raw driver detail
+(for PostgreSQL the key text) that `Error()` hides. `Detail()` is unmasked and can quote sensitive values: never log it or return it to a client. Never string-match error text.
 
 ```go
 switch {

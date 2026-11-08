@@ -395,6 +395,11 @@ func (x inList[T]) AppendSQL(b *Builder) {
 		}
 		return
 	}
+	if m := b.d.MaxInList; m > 0 && len(x.vs) > m {
+		b.SetErr(&Error{Kind: ErrLimitExceeded, Op: "build", Err: fmt.Errorf("IN list has %d values, over the limit of %d (WithMaxInList)", len(x.vs), m)})
+		b.WriteString("1 = 0")
+		return
+	}
 	if !b.checkBindCap(len(x.vs), "IN") {
 		b.WriteString("1 = 0")
 		return

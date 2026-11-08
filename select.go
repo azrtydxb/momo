@@ -47,6 +47,7 @@ type selectCore struct {
 	// joinLoads holds the joined loaders added by Preload (copy-on-write).
 	joinLoads   []any
 	limit       int64 // -1: none
+	maxRows     int   // 0: no cap; collecting reads fail past it (MaxRows)
 	offset      int64
 	lock        string
 	lockWait    string   // " NOWAIT" or " SKIP LOCKED", or empty
@@ -534,6 +535,9 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 	}
 	var zero T
 	for r.Next() {
+		if sq.s.maxRows > 0 && len(out) >= sq.s.maxRows {
+			return nil, sq.maxRowsError()
+		}
 		out = append(out, zero)
 		if err := sc.scan(r, &out[len(out)-1]); err != nil {
 			return nil, err
