@@ -244,3 +244,35 @@ func TestTemplateNameTracksMigrations(t *testing.T) {
 		t.Errorf("template name %q has the wrong shape", n)
 	}
 }
+
+// Catches: a MySQL or MariaDB integration job failing in momotest because the
+// PostgreSQL URL is unset, although MOMO_INTEGRATION_DIALECTS excludes postgres.
+func TestServerURLHonoursIntegrationDialects(t *testing.T) {
+	t.Setenv(RequireEnv, "1")
+	t.Setenv(DefaultEnv, "")
+	t.Setenv("MOMO_INTEGRATION_DIALECTS", "mysql84")
+	reached := false
+	ok := t.Run("excluded", func(t *testing.T) {
+		(&config{env: DefaultEnv}).serverURL(t)
+		reached = true
+	})
+	if !ok || reached {
+		t.Fatalf("ok = %v, reached = %v: want the test skipped, not failed and not run on", ok, reached)
+	}
+}
+
+func TestPostgresRequired(t *testing.T) {
+	cases := map[string]bool{
+		"":                  true,
+		"  ":                true,
+		"postgres":          true,
+		"MySQL84, Postgres": true,
+		"mysql84":           false,
+		"mysql97,mariadb":   false,
+	}
+	for list, want := range cases {
+		if got := postgresRequired(list); got != want {
+			t.Errorf("postgresRequired(%q) = %v, want %v", list, got, want)
+		}
+	}
+}

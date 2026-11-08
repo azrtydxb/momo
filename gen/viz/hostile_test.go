@@ -21,8 +21,14 @@ func hostile() ([]schema.Table, []Edge) {
 			{Name: "a b", Type: "int[]"},
 			{Name: `q"<>&z`, Type: "text"},
 		},
+	}, {
+		Name:    "%% x --> }",
+		Columns: []schema.Column{{Name: `c\d`, Type: "t"}},
 	}}
-	edges := []Edge{{From: `we"ird<t>`, To: "p r", Cardinality: OneToMany, Label: "l\"1\r\n2"}}
+	edges := []Edge{
+		{From: `we"ird<t>`, To: "p r", Cardinality: OneToMany, Label: "l\"1\r\n2"},
+		{From: "%% x --> }", To: `we"ird<t>`, Cardinality: OneToMany, Label: "back\\slash x y\x00z"},
+	}
 	return tables, edges
 }
 

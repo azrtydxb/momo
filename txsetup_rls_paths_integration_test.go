@@ -227,3 +227,31 @@ func TestImplicitTxRLSRelationLoads(t *testing.T) {
 	}
 	assertNoLeakedConns(t, pool)
 }
+
+func TestImplicitTxModelRowsPanicRollsBack(t *testing.T) {
+	db, pool := rlsDB(t, momo.WithTxSetup(tenantSetup), momo.WithImplicitTx())
+	t1 := withTenant(context.Background(), 1)
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("the iteration panic was swallowed")
+			}
+		}()
+		rows, err := momo.Insert[suite.Document](db).Model(&suite.Document{TenantID: 1, Title: "boom"}).ReturningAll().Rows(t1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close() //nolint:errcheck // the deferred close is the code under test
+		for rows.Next() {
+			var d suite.Document
+			if err := rows.ScanModel(&d); err != nil {
+				t.Fatal(err)
+			}
+			panic("mid-iteration")
+		}
+	}()
+	if c, err := momo.Select[suite.Document](db).Where(suite.DocTitle.Eq("boom")).Count(t1); err != nil || c != 0 {
+		t.Fatalf("a panicking RETURNING write persisted: count = %d, %v", c, err)
+	}
+	assertNoLeakedConns(t, pool)
+}

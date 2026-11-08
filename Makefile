@@ -34,8 +34,11 @@ STATICCHECK = go run honnef.co/go/tools/cmd/staticcheck@v0.8.2
 PG_URL ?= postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
 PG_APP_URL ?= postgres://momo_app:momo_app@127.0.0.1:5432/postgres?sslmode=disable
 PGBOUNCER_URL ?= postgres://postgres:momo@127.0.0.1:6432/postgres?sslmode=disable
+MYSQL84_URL ?= root:momo@tcp(127.0.0.1:3306)/
+MYSQL97_URL ?= root:momo@tcp(127.0.0.1:3307)/
+MARIADB_URL ?= root:momo@tcp(127.0.0.1:3308)/
 
-.PHONY: test test-race test-compilefail test-fuzz test-integration test-integration-postgres bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
+.PHONY: test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -57,8 +60,17 @@ test-fuzz:
 test-integration: test-integration-postgres
 
 test-integration-postgres:
-	MOMO_REQUIRE_INTEGRATION=1 MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' MOMO_TEST_PGBOUNCER_URL='$(PGBOUNCER_URL)' $(GO) test -tags integration -race -count=1 ./...
-	cd internal/compat/gormfixture && MOMO_REQUIRE_INTEGRATION=1 MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' $(GO) test -tags integration -count=1 ./...
+	MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=postgres MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' MOMO_TEST_PGBOUNCER_URL='$(PGBOUNCER_URL)' $(GO) test -tags integration -race -count=1 ./...
+	cd internal/compat/gormfixture && MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=postgres MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' $(GO) test -tags integration -count=1 ./...
+
+test-integration-mysql84:
+	MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=mysql84 MOMO_TEST_MYSQL84_URL='$(MYSQL84_URL)' $(GO) test -tags integration -race -count=1 ./...
+
+test-integration-mysql97:
+	MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=mysql97 MOMO_TEST_MYSQL97_URL='$(MYSQL97_URL)' $(GO) test -tags integration -race -count=1 ./...
+
+test-integration-mariadb:
+	MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=mariadb MOMO_TEST_MARIADB_URL='$(MARIADB_URL)' $(GO) test -tags integration -race -count=1 ./...
 
 bench-smoke:
 	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...
