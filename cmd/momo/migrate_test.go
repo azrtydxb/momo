@@ -114,6 +114,7 @@ func TestCLIRedactsURL(t *testing.T) {
 	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(dir)+"/m\n")
 	var out, errOut bytes.Buffer
 	url := "postgres://alice:hunter2secret@127.0.0.1:1/none?sslmode=disable&connect_timeout=1"
+	leak := "postgres://bob:p4ssw0rdleak@db.example.com:5432/app?sslmode=require"
 	code := runMigrate(&out, &errOut, []string{"--config", cfg, "status", "--url", url}, noEnv)
 	if code != 3 {
 		t.Fatalf("unreachable database must exit 3, got %d: %s", code, errOut.String())
@@ -122,23 +123,28 @@ func TestCLIRedactsURL(t *testing.T) {
 		t.Fatalf("output leaks the DSN: %s", all)
 	}
 
-	// A URL the driver cannot parse is echoed, password included, by the
-	// driver's own error (net/url quotes the raw string). The unreachable host
-	// above never reaches such an error, so only this case can observe a
-	// missing redaction: the output must show the error was reported and still
-	// hide the password.
-	out.Reset()
-	errOut.Reset()
-	bad := "postgres://bob:p4ssw0rdleak@127.0.0.1:notaport/none?sslmode=disable"
-	if code := runMigrate(&out, &errOut, []string{"--config", cfg, "status", "--url", bad}, noEnv); code == 0 {
-		t.Fatalf("an unparsable URL must fail, got exit 0: %s", out.String())
-	}
-	all := out.String() + errOut.String()
-	if !strings.Contains(all, "port") {
-		t.Fatalf("the parse error must be reported (it names the port), got %q", all)
-	}
-	if strings.Contains(all, "p4ssw0rdleak") || strings.Contains(all, bad) {
-		t.Fatalf("output leaks the DSN of an unparsable URL: %s", all)
+	// The unreachable host above never puts the URL into an error, so it cannot
+	// observe a missing redaction: the driver's messages carry the host only.
+	// A usage error echoes what the user typed, so pass the URL where the
+	// command does not expect one. The error must be reported, and without the
+	// password.
+	for _, args := range [][]string{
+		{"--config", cfg, "status", "--url", url, leak},
+		{"--config", cfg, "diff", "x", "--rename-table", leak},
+		{leak},
+	} {
+		out.Reset()
+		errOut.Reset()
+		if code := runMigrate(&out, &errOut, args, noEnv); code == 0 {
+			t.Fatalf("%v must fail, got exit 0: %s", args, out.String())
+		}
+		all := out.String() + errOut.String()
+		if all == "" {
+			t.Fatalf("%v: the usage error must be reported", args)
+		}
+		if strings.Contains(all, "p4ssw0rdleak") || strings.Contains(all, leak) {
+			t.Fatalf("%v: output leaks the DSN: %s", args, all)
+		}
 	}
 
 	// A missing URL names the environment variable to set.

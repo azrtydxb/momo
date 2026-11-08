@@ -17,6 +17,7 @@ import (
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
+	mpg "github.com/azrtydxb/momo/migrate/postgres"
 )
 
 const rbVersion = "20260101000000"
