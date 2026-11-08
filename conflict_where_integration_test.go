@@ -126,6 +126,12 @@ func TestConflictWhereExcludedComparison(t *testing.T) {
 // predicate that is qualified or bound wrongly.
 func TestConflictWherePartialIndexTarget(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		if d == dialect.SQLite {
+			// SQLite matches a conflict-target WHERE against the index predicate
+			// textually, so a bound parameter never matches. Open story
+			// 20261106-conditional-upsert-follow-ups-sqlite-target-literals.
+			t.Skip("SQLite conflict-target predicates must be literals")
+		}
 		createJobsLock(t, db, "CREATE UNIQUE INDEX jobs_lock_live_holder ON jobs_lock (holder) WHERE live")
 		ctx := context.Background()
 		t0 := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)

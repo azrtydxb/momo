@@ -10,9 +10,10 @@ end to end in CI.
 ## Requirements
 
 - Go 1.26 or newer.
-- PostgreSQL with the pgvector extension installed on the server. Momo
-  supports PostgreSQL only; SQLite and MySQL are not usable yet (see
-  [capabilities](capabilities.md)).
+- PostgreSQL with the pgvector extension installed on the server. Momo's
+  migrations and vector search are PostgreSQL only. SQLite (cgo driver) and
+  MySQL 8.4, MySQL 9.7 and MariaDB 11.8 run queries and writes but have no
+  migrations or vectors yet (see [capabilities](capabilities.md)).
 - A role that may create extensions, or a superuser who runs
   `CREATE EXTENSION vector` once in the target database. The first generated
   migration creates the extension when a model has a vector column.

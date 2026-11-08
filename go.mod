@@ -3,8 +3,10 @@ module github.com/azrtydxb/momo
 go 1.26.10
 
 require (
+	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/jackc/pgx/v5 v5.12.0
+	github.com/mattn/go-sqlite3 v1.14.53
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/tools v0.52.0
 )

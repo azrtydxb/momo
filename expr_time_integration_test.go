@@ -6,6 +6,7 @@ package momo_test
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -44,9 +45,21 @@ func seedTimeDocs(t *testing.T, db *momo.DB) {
 	t.Helper()
 	ctx := context.Background()
 	suite.CreateDocuments(t, db, suite.CapsOf(db))
+	// SQLite stores momo's own text format, which strftime parses.
+	old := "'2024-03-15 13:45:30+00'"
+	// The "new" row takes the database's now. SQLite timestamps have millisecond
+	// resolution, so it is seeded a second in the past: "created before now" then
+	// cannot tie with a Now() read in the same millisecond.
+	newCol, newVal := "", ""
+	if db.Dialect().Name == dialect.SQLite {
+		newCol, newVal = ", created_at", ", strftime('%Y-%m-%d %H:%M:%f', 'now', '-1 seconds')"
+	}
+	if db.Dialect().Name == dialect.SQLite {
+		old = "'2024-03-15 13:45:30.000'"
+	}
 	for _, s := range []string{
-		"INSERT INTO documents (tenant_id, title, created_at) VALUES (1, 'old', '2024-03-15 13:45:30+00')",
-		"INSERT INTO documents (tenant_id, title) VALUES (2, 'new')",
+		"INSERT INTO documents (tenant_id, title, created_at) VALUES (1, 'old', " + old + ")",
+		"INSERT INTO documents (tenant_id, title" + newCol + ") VALUES (2, 'new'" + newVal + ")",
 	} {
 		if _, err := momo.Exec(ctx, db, s); err != nil {
 			t.Fatal(err)
@@ -96,6 +109,14 @@ func TestExtractIntegration(t *testing.T) {
 		} {
 			if got := floatOf(t, db, 1, momo.Extract(c.field, src)); math.Abs(got-c.want) > 1e-6 {
 				t.Errorf("Extract %s = %v, want %v", c.field, got, c.want)
+			}
+		}
+		if d == dialect.SQLite {
+			_, err := momo.Select[tmFloat](db).From(momo.TableRef{Name: "documents"}).
+				Columns(momo.Extract(momo.ExtractHour, momo.AtTimeZone(suite.DocCreatedAt, "Asia/Tokyo"))).
+				Where(suite.DocTenantID.Eq(1)).One(context.Background())
+			if !errors.Is(err, momo.ErrUnsupported) {
+				t.Errorf("AtTimeZone on SQLite = %v, want ErrUnsupported", err)
 			}
 		}
 		if d == dialect.Postgres {
@@ -208,9 +229,6 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 			t.Errorf("+90 bound minutes = %v", got)
 		}
 
-		if d != dialect.Postgres {
-			return
-		}
 		now := timeOf(t, db, 1, momo.Now())
 		if diff := time.Since(now); diff < -time.Minute || diff > time.Minute {
 			t.Errorf("Now() = %v, far from the wall clock", now)

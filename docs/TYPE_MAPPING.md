@@ -71,8 +71,10 @@ follow the `timestamp` notes below and pass UTC times.
 
 On SQLite, `bool` is stored as 0 or 1, and `time.Time`, `types.UUID`,
 `types.Date` and `types.JSON[T]` are stored as text. The SQLite column is what
-the generator emits; it is not yet exercised against a live SQLite database
-because the SQLite driver is not part of the current build.
+the generator emits. The SQLite driver (`driver/sqlitedriver`, cgo, not on
+Windows) reads text columns back into `time.Time`, `*time.Time`,
+`sql.NullTime`, `sql.Null[time.Time]` and `types.Date`, whatever the column was
+declared as.
 
 ## Codec-provided mappings
 
