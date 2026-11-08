@@ -169,6 +169,7 @@ PostgreSQL with the pgvector extension only. Detail: [vectors.md](vectors.md).
 | Exact search                                                           | `SearchSettings.ExactSearch`                                                                                              | not usable yet           | no               |
 | Binary wire codec                                                      | opt-in: `pgxdriver.ConfigureVectors`, `WithVectorFormat(VectorBinary)`                                                    | no                       | no               |
 | Plan inspection                                                        | `SelectQuery.Explain`                                                                                                     | no driver                | `ErrUnsupported` |
+| Full-text search (`tsvector`, `@@`, rank, headline), see fulltext.md   | yes, builders and `types.TSVector`                                                                                        | no                       | `ErrUnsupported` |
 | Hybrid search (full text plus vector, RRF)                             | no                                                                                                                        | no                       | no               |
 
 ## Migrations
