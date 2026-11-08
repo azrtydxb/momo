@@ -31,7 +31,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only. No rollback, no `migrate new`, no `lint`, no `rebase`.
 - No command turns a database into models. Write models by hand.
-- Reciprocal-rank-fusion hybrid search, `MERGE` builder and window-function API
+- Reciprocal-rank-fusion hybrid search, `MERGE` builder
   do not exist. Use `momo.SQL` / `momo.TypedSQL` for those. Full-text search
   (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
   query builders) exists on PostgreSQL; combine it with a vector distance in

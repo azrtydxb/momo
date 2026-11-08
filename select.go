@@ -59,7 +59,9 @@ type selectCore struct {
 	keysOnly bool
 	// preloads holds the Loader[T] values added by Preload (copy-on-write).
 	preloads []any
-	err      error
+	// distinctOn holds the DISTINCT ON expressions (see DistinctOn).
+	distinctOn []Expr
+	err        error
 }
 
 // SelectQuery builds and runs a SELECT whose rows scan into T.
@@ -337,7 +339,7 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 // ForShare the build fails with ErrValidation; like them, LockOf returns
 // ErrUnsupported on SQLite. Each name must be the table or alias of the FROM or
 // a joined table, else the build fails with ErrValidation naming it. A lock
-// cannot be combined with DISTINCT, GROUP BY or HAVING (ErrValidation); other
+// cannot be combined with DISTINCT, DISTINCT ON, GROUP BY or HAVING (ErrValidation); other
 // invalid combinations, such as aggregates or UNION, are left to the server.
 func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
 	if len(tables) == 0 {
@@ -674,7 +676,9 @@ func (sq SelectQuery[T]) Count(ctx context.Context) (int64, error) {
 	inner := sq
 	// The count covers the whole filtered set: neither the ordering nor the
 	// page cursor applies.
-	inner.s.order = nil
+	if len(inner.s.distinctOn) == 0 { // DISTINCT ON keeps its ORDER BY: it picks the rows
+		inner.s.order = nil
+	}
 	inner.s.keyset = nil
 	c, err := compile(sq.q.Dialect(), func(b *Builder) {
 		b.WriteString("SELECT COUNT(*) FROM ")

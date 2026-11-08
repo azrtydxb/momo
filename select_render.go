@@ -41,7 +41,9 @@ func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 	s := &sq.s
 	s.writeWith(b)
 	b.WriteString("SELECT ")
-	if s.distinct {
+	if len(s.distinctOn) > 0 {
+		sq.renderDistinctOn(b)
+	} else if s.distinct {
 		b.WriteString("DISTINCT ")
 	}
 	if !sq.writeSelectList(b) {
@@ -269,7 +271,7 @@ func (s *selectCore) writeLimitOffset(b *Builder) {
 }
 
 // writeLock writes the row-lock clause, if any: the lock mode, OF tables, then
-// NOWAIT or SKIP LOCKED. A lock cannot be combined with DISTINCT, GROUP BY or
+// NOWAIT or SKIP LOCKED. A lock cannot be combined with DISTINCT, DISTINCT ON, GROUP BY or
 // HAVING, and LockOf without a lock is an error.
 func (sq SelectQuery[T]) writeLock(b *Builder) {
 	s := &sq.s
@@ -283,7 +285,7 @@ func (sq SelectQuery[T]) writeLock(b *Builder) {
 		b.unsupported(s.lock)
 		return
 	}
-	if s.distinct || len(s.groupBy) > 0 || len(s.having) > 0 {
+	if s.distinct || len(s.distinctOn) > 0 || len(s.groupBy) > 0 || len(s.having) > 0 {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("%s cannot be combined with DISTINCT, GROUP BY or HAVING", s.lock)})
 		return
 	}
@@ -321,6 +323,9 @@ func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
 	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
 		if _, sub := src.(subquerySource); sub {
 			continue
+		}
+		if _, no := src.(interface{ notLockable() }); no {
+			continue // LATERAL, unnest and generate_series sources
 		}
 		if tr, ok := src.(TableRef); ok && tr.Schema == "" {
 			if _, isCTE := ctes[tr.Name]; isCTE {
