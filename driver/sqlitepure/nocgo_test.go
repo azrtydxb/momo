@@ -22,10 +22,11 @@ import (
 // also runs the whole package with CGO_ENABLED=0 (make test-sqlitepure), where
 // a build that needs cgo fails to compile.
 func TestSQLitePureGo(t *testing.T) {
-	_, d, err := Open(testdb.SQLitePath(t), Config{})
+	db, d, err := Open(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { db.Close() })
 	ctx := context.Background()
 	if _, err := d.Exec(ctx, "CREATE TABLE p (x int)", nil); err != nil {
 		t.Fatal(err)
