@@ -71,18 +71,26 @@ func TestReadFixtureModels(t *testing.T) {
 	for _, m := range models {
 		names = append(names, m.Name)
 	}
-	if strings.Join(names, " ") != "Org User Post Comment" {
+	if strings.Join(names, " ") != "Org User Post Comment Sized Folder File" {
 		t.Fatalf("want the fixture models in source order, got %v", names)
 	}
 	if rep.Has(importer.Unsupported) {
 		t.Fatalf("the fixture must import cleanly: %s", rep)
 	}
-	org, user, post, comment := models[0], models[1], models[2], models[3]
+	org, user, post, comment, sized, file := models[0], models[1], models[2], models[3], models[4], models[6]
 	if f := field(t, org, "Slug"); !f.Unique || f.UniqueIndex || f.UniqueName != "uni_orgs_slug" {
 		t.Fatalf("a plain unique stays a constraint: %+v", f)
 	}
 	if f := field(t, user, "Score"); f.SQLType != "bigint" {
 		t.Fatalf("Score: %+v", f)
+	}
+	for name, want := range map[string]string{"Rank": "integer", "Level": "integer", "Flag": "smallint", "Alt": "integer"} {
+		if f := field(t, sized, name); f.SQLType != want {
+			t.Fatalf("%s is %s, gorm.io/driver/postgres makes it %s", name, f.SQLType, want)
+		}
+	}
+	if len(file.ForeignKeys) != 1 || file.ForeignKeys[0].OnDelete != "SET NULL" || file.ForeignKeys[0].Name != "fk_folders_files" {
+		t.Fatalf("constraint:OnDelete:SET NULL: %+v", file.ForeignKeys)
 	}
 	if f := field(t, post, "CreatedBy"); f.Column != "audit_created_by" {
 		t.Fatalf("embedded with a prefix on a named field: %+v", f)
