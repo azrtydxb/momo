@@ -23,6 +23,15 @@ Dialect coverage is expressed as subtests from `testopen.Each`, one per dialect 
 
 A new page under `docs/` must be added to the `nav` in `mkdocs.yml` and linked from `docs/README.md`; `TestEveryDocPageInNav` and `TestDocsIndexLinksEveryPage` fail otherwise. Every Go block in `docs/` is checked by `TestDocsCodeBlocks`: write a complete `package main` program (it is compiled), or, for a snippet that cannot stand alone, put the comment `<!-- docscheck:fragment -->` on the line before the fence (it must still parse as Go). The number of fragments is capped by `maxFragmentBlocks` in `internal/docscheck/codeblocks_test.go`, so prefer a program. A block marked `<!-- docscheck:run -->` is also executed against PostgreSQL.
 
+## Exported API changes need a docs change
+
+The `apidiff-docs` CI job (`make apidiff-gate`, `scripts/apidiff-docs-gate.sh`) runs `golang.org/x/exp/cmd/apidiff`, pinned in the Makefile, between the base branch and your branch for the root package and every non-internal subpackage. Any exported change, compatible or incompatible, fails the job unless one of two things holds:
+
+- the diff touches `README.md`, `docs/**`, `llms.txt` or `examples/**`; or
+- the pull request body, or a commit message in the range, contains a line `Docs: no reader-visible change: <reason>` (the reason is required, for example `Docs: no reader-visible change: internal helper exposed for tests`).
+
+A change to a Go comment or an unexported identifier produces an empty report and needs neither. On a pull request the job comments the apidiff report so the reviewer sees what changed. Run it locally with `make apidiff-gate`.
+
 ## Commit messages and PR titles
 
 Commit messages and PR titles use Conventional Commits: `feat`, `fix`, `perf`,
