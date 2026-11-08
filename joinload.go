@@ -68,7 +68,7 @@ func (j joinedLoader[P, C]) prepare(Querier, []P) (pendingLoad, error) {
 }
 
 func (j joinedLoader[P, C]) unsupported(msg string) error {
-	return &Error{Kind: ErrUnsupported, Op: "select", Table: j.rel.Child.Name, Err: errors.New(j.rel.Name + ": " + msg)}
+	return newError(ErrUnsupported, "select", j.rel.Child.Name, errors.New(j.rel.Name+": "+msg))
 }
 
 func (j joinedLoader[P, C]) joinCheck() error {
@@ -282,7 +282,7 @@ func (sq SelectQuery[T]) expandJoins() (SelectQuery[T], []joinLoader[T], error) 
 		}
 	}
 	unsupported := func(what string) error {
-		return &Error{Kind: ErrUnsupported, Op: "select", Table: sq.meta.Table, Err: errors.New("Joined relations cannot be combined with " + what)}
+		return newError(ErrUnsupported, "select", sq.meta.Table, errors.New("Joined relations cannot be combined with "+what))
 	}
 	switch {
 	case len(sq.s.groupBy) > 0 || len(sq.s.having) > 0:
