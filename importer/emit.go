@@ -23,13 +23,37 @@ import (
 type Model struct {
 	Name, Table string
 	Fields      []Field
+	// ForeignKeys are the belongs-to relations of the model; each one is
+	// emitted as a relation field next to the columns.
+	ForeignKeys []ForeignKey
 	Source      string
+}
+
+// ForeignKey is a belongs-to relation with a database constraint.
+type ForeignKey struct {
+	Name       string // constraint name in the source database
+	Field      string // Go name of the relation field, e.g. "Org"
+	RefModel   string // Go name of the referenced model
+	FKField    string // Go name of the local field that holds the key
+	Columns    []string
+	RefTable   string
+	RefColumns []string
+	// OnDelete and OnUpdate are SQL actions in upper case ("CASCADE"); empty is NO ACTION.
+	OnDelete, OnUpdate string
 }
 
 // Field is one column of a Model.
 type Field struct {
 	Name, Column, GoType, SQLType string
 	Nullable, PK, Unique, Index   bool
+	// Serial marks an auto-incrementing integer key (a sequence-backed column).
+	Serial bool
+	// UniqueIndex means Unique is a unique index rather than a UNIQUE
+	// constraint (GORM uniqueIndex versus unique).
+	UniqueIndex bool
+	// IndexName and UniqueName are the source database's names for the index
+	// or unique key; empty means the default name.
+	IndexName, UniqueName string
 	// Default is the default expression; DefaultKind is "db" (a SQL
 	// default Momo keeps) or "go" (applied by the source ORM in Go, which
 	// Momo does not reproduce).
@@ -124,6 +148,13 @@ func render(models []Model, pkg string) ([]byte, error) {
 			}
 			fmt.Fprintf(&body, "\t%s %s%s\n", f.Name, goType, tag)
 		}
+		for _, fk := range m.ForeignKeys {
+			line, err := relationField(fk)
+			if err != nil {
+				return nil, fmt.Errorf("importer: %s: model %s: %w", m.Source, m.Name, err)
+			}
+			body.WriteString(line)
+		}
 		body.WriteString("}\n\n")
 	}
 	var out bytes.Buffer
@@ -190,6 +221,9 @@ func fieldTag(f Field) (string, error) {
 	if f.PK {
 		opts = append(opts, "pk")
 	}
+	if f.Serial {
+		opts = append(opts, "serial")
+	}
 	if f.Column != "" {
 		if err := add("column", f.Column); err != nil {
 			return "", err
@@ -200,14 +234,32 @@ func fieldTag(f Field) (string, error) {
 			return "", err
 		}
 	}
-	if !f.Nullable && !f.PK {
+	// Momo reads nullability from the Go type or the nullable tag; a plain
+	// value type without notnull would otherwise be NOT NULL.
+	ptr := strings.HasPrefix(f.GoType, "*")
+	switch {
+	case !f.Nullable && !f.PK && !ptr:
 		opts = append(opts, "notnull")
+	case f.Nullable && !ptr:
+		opts = append(opts, "nullable")
 	}
-	if f.Unique {
-		opts = append(opts, "unique")
+	if f.Unique || f.UniqueIndex {
+		if f.UniqueName != "" {
+			if err := add("unique", f.UniqueName); err != nil {
+				return "", err
+			}
+		} else {
+			opts = append(opts, "unique")
+		}
 	}
 	if f.Index {
-		opts = append(opts, "index")
+		if f.IndexName != "" {
+			if err := add("index", f.IndexName); err != nil {
+				return "", err
+			}
+		} else {
+			opts = append(opts, "index")
+		}
 	}
 	if f.Default != "" && f.DefaultKind != "go" {
 		if err := add("default", f.Default); err != nil {
@@ -274,4 +326,23 @@ func isTypeExpr(e ast.Expr) bool {
 		return true
 	}
 	return false
+}
+
+// relationField renders a belongs-to field.
+func relationField(fk ForeignKey) (string, error) {
+	if !token.IsIdentifier(fk.Field) || !token.IsIdentifier(fk.RefModel) || !token.IsIdentifier(fk.FKField) {
+		return "", fmt.Errorf("relation %q to %q by %q needs identifier names", fk.Field, fk.RefModel, fk.FKField)
+	}
+	opts := []string{"belongs_to", "fk:" + fk.FKField}
+	for key, val := range map[string]string{"on_delete": fk.OnDelete, "on_update": fk.OnUpdate} {
+		if val == "" {
+			continue
+		}
+		if err := checkTagValue(val); err != nil {
+			return "", fmt.Errorf("%s: %w", key, err)
+		}
+		opts = append(opts, key+":"+strings.ToLower(strings.ReplaceAll(val, " ", "_")))
+	}
+	slices.Sort(opts[2:])
+	return fmt.Sprintf("\t%s *%s `momo:%s`\n", fk.Field, fk.RefModel, strconv.Quote(strings.Join(opts, ","))), nil
 }
