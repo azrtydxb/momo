@@ -1,4 +1,3 @@
-# Capabilities
 
 What Momo v0.3.0 supports, per database. Only PostgreSQL (through pgx) is <!-- x-release-please-version -->
 usable. SQLite and MySQL exist as dialect metadata in `dialect/` only: there is
@@ -269,6 +268,17 @@ Connect as a role without `BYPASSRLS` that does not own the tables (or use
 | `WithImplicitTx`              | Auto-commit statements on a `*DB` (`Select`, `Insert`, `Update`, `Delete`, `Exec`, `Scalars`, relation loads) each run in a short transaction, so the setup applies. `Iter`, `Each` and `Rows` hold the transaction until exhausted or closed, then commit; a scan or driver error or a cancelled context rolls back. Close early-abandoned rows to free the connection. |
 | `SetConfigLocal`              | `set_config(key, value, true)`: the setting ends with the transaction. The same as `Tx.SetLocal`.                                                                                                                                                                                                                                                                        |
 | Not used on an implicit `*DB` | Pipelined relation loading (`Batch`) and the `COPY` fast path, because they bypass the setup. `BatcherOf` and `CopierOf` report none for such a `*DB`; use a `Tx` for them.                                                                                                                                                                                              |
+
+The setup does not cover everything. `AdoptTx` transactions are the caller's,
+so apply the setting yourself. `momo migrate` and Go migrations run outside the
+`*DB` options, so they are never scoped; run them as a role that may bypass
+the policies. A handle from `OnConn` cannot begin a transaction, so on a `*DB`
+configured with `WithTxSetup` its statements fail with `ErrUnsupported`
+instead of running unscoped, and it reports no COPY or Batch path. A panic in
+a setup function rolls the transaction back before it propagates, and a panic
+in an `Each` or `Iter` callback rolls back the implicit transaction. If the
+context is cancelled before a streaming implicit write is closed, the write is
+rolled back and `Close` and `Err` return the context error.
 
 Behind PgBouncer in transaction mode use only transaction-local settings
 (`SetConfigLocal`), never a session-level `SET`: the session belongs to

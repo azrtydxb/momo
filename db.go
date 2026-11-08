@@ -252,6 +252,9 @@ func (e *execer) after(ctx context.Context, ev *QueryEvent, rows int64, err erro
 }
 
 func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64, error) {
+	if e.unscopable() {
+		return -1, errPinnedSetup(op, table)
+	}
 	if e.implicit() {
 		return e.implicitExec(ctx, op, table, c)
 	}
@@ -267,6 +270,9 @@ func (e *execer) exec(ctx context.Context, op, table string, c Compiled) (int64,
 
 // query starts a read. The returned rows report to hooks when closed.
 func (e *execer) query(ctx context.Context, op, table, rel string, c Compiled) (Rows, error) {
+	if e.unscopable() {
+		return nil, errPinnedSetup(op, table)
+	}
 	if e.implicit() {
 		return e.implicitQuery(ctx, op, table, rel, c)
 	}
@@ -369,7 +375,7 @@ func (db *DB) Begin(ctx context.Context, opts TxOptions) (*Tx, error) {
 	}
 	tx := &Tx{dtx: dtx, done: new(atomic.Bool)}
 	tx.ex = execer{db: db, q: dtx, d: db.ex.d, classify: db.ex.classify, inTx: true, owner: tx}
-	if err := db.runTxSetup(ctx, tx); err != nil {
+	if err := db.runTxSetup(ctx2, tx); err != nil {
 		return nil, err
 	}
 	return tx, nil

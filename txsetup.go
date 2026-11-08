@@ -72,7 +72,17 @@ func SetConfigLocal(ctx context.Context, tx *Tx, key, value string) error {
 
 // runTxSetup applies the setup functions to a freshly begun tx and rolls the
 // transaction back when one fails.
-func (db *DB) runTxSetup(ctx context.Context, tx *Tx) error {
+func (db *DB) runTxSetup(ctx context.Context, tx *Tx) (err error) {
+	if len(db.txSetup) == 0 {
+		return nil
+	}
+	// A panic in a setup function must not leak the begun transaction.
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback(context.WithoutCancel(ctx))
+			panic(p)
+		}
+	}()
 	for _, fn := range db.txSetup {
 		if err := fn(ctx, tx); err != nil {
 			if rb := tx.Rollback(context.WithoutCancel(ctx)); rb != nil && !errors.Is(rb, ErrTxDone) {
@@ -82,6 +92,18 @@ func (db *DB) runTxSetup(ctx context.Context, tx *Tx) error {
 		}
 	}
 	return nil
+}
+
+// unscopable reports a statement on a handle pinned with OnConn whose DB has
+// a setup function: a pinned connection cannot begin a transaction, so the
+// setup cannot run and the statement fails closed instead of running unscoped.
+func (e *execer) unscopable() bool {
+	return e.db != nil && e.db.pinned && !e.inTx && len(e.db.txSetup) > 0
+}
+
+func errPinnedSetup(op, table string) error {
+	return &Error{Kind: ErrUnsupported, Op: op, Table: table,
+		Err: errors.New("WithTxSetup is configured but a pinned OnConn connection cannot begin a transaction to run it; use db.Tx, or an OnConn handle of a DB without WithTxSetup")}
 }
 
 // implicit reports that a statement on e must run in its own transaction.
@@ -124,6 +146,9 @@ func (e *execer) implicitQuery(ctx context.Context, op, table, rel string, c Com
 
 // txRows ends the implicit transaction behind a read: it commits when the
 // rows are exhausted or closed cleanly and rolls back when anything failed.
+// The outcome (a commit failure, or the context error that forced a rollback)
+// is reported by Err and by every Close, so a write with RETURNING is never
+// silently discarded.
 type txRows struct {
 	Rows
 	tx      *Tx
@@ -133,12 +158,26 @@ type txRows struct {
 	endErr  error
 }
 
-func (r *txRows) Scan(dest ...any) error {
-	err := r.Rows.Scan(dest...)
+func (r *txRows) Scan(dest ...any) (err error) {
+	defer func() {
+		// A panic while reading rolls the transaction back, never commits.
+		if p := recover(); p != nil {
+			r.rollback()
+			panic(p)
+		}
+	}()
+	err = r.Rows.Scan(dest...)
 	if err != nil && r.scanErr == nil {
 		r.scanErr = err
 	}
 	return err
+}
+
+func (r *txRows) rollback() {
+	r.once.Do(func() {
+		_ = r.Rows.Close()
+		_ = r.tx.Rollback(context.WithoutCancel(r.ctx))
+	})
 }
 
 func (r *txRows) Next() bool {
@@ -158,27 +197,38 @@ func (r *txRows) Err() error {
 }
 
 func (r *txRows) Close() error {
-	var err error
+	// Deferred directly by Each, Iter and the Rows readers: a panic in a
+	// caller's callback rolls the transaction back instead of committing it.
+	if p := recover(); p != nil {
+		r.rollback()
+		panic(p)
+	}
 	r.once.Do(func() {
-		err = r.Rows.Close()
-		failed := err != nil || r.Rows.Err() != nil || r.scanErr != nil || r.ctx.Err() != nil
-		if failed {
-			if rb := r.tx.Rollback(context.WithoutCancel(r.ctx)); rb != nil && !errors.Is(rb, ErrTxDone) && err == nil {
-				err = rb
+		err := r.Rows.Close()
+		if err == nil {
+			err = r.Rows.Err()
+		}
+		if err == nil {
+			err = r.scanErr
+		}
+		if err == nil {
+			err = r.ctx.Err()
+		}
+		if err != nil {
+			if rb := r.tx.Rollback(context.WithoutCancel(r.ctx)); rb != nil && !errors.Is(rb, ErrTxDone) {
+				err = errors.Join(err, rb)
 			}
+			r.endErr = err
 			return
 		}
-		if cerr := r.tx.Commit(r.ctx); cerr != nil {
-			r.endErr = cerr
-			err = cerr
-		}
+		r.endErr = r.tx.Commit(r.ctx)
 	})
-	return err
+	return r.endErr
 }
 
 // bypassesTx reports that q is a *DB whose statements must not take a driver
 // path (COPY, Batch) that skips the implicit transaction.
 func bypassesTx(q Querier) bool {
 	db, ok := q.(*DB)
-	return ok && db.implicitTx && !db.pinned
+	return ok && ((db.implicitTx && !db.pinned) || (db.pinned && len(db.txSetup) > 0))
 }
