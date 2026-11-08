@@ -435,9 +435,28 @@ type H struct {
 
 type Kind string
 
+type Tgt struct {
+	bun.BaseModel `+"`bun:\"table:tgts\"`"+`
+	ID int64 `+"`bun:\",pk\"`"+`
+}
+
+type Rel struct {
+	bun.BaseModel `+"`bun:\"table:rels\"`"+`
+	ID  int64 `+"`bun:\",pk\"`"+`
+	TID int64 `+"`bun:\"t_id\"`"+`
+	T   *Tgt  `+"`bun:\"rel:belongs-to,join:t_id=id,join_on:x=1\"`"+`
+	U   *Tgt  `+"`bun:\"rel:belongs-to,join:t_id=id,nulzero\"`"+`
+}
+
 func (h *H) BeforeAppendModel() error { return nil }
 func (h *H) AfterCreateTable() error  { return nil }
 `)
+	if !hasChange(rep, importer.DroppedField, "Rel", "T") {
+		t.Errorf("join_on on a belongs-to is not reported: %s", rep)
+	}
+	if !hasChange(rep, importer.Unsupported, "Rel", "U") {
+		t.Errorf("an unknown option on a belongs-to is not reported: %s", rep)
+	}
 	if !hasChange(rep, importer.GoDefault, "H", "") {
 		t.Errorf("BeforeAppendModel not reported: %s", rep)
 	}
@@ -504,6 +523,20 @@ func init() { schema.SetTableNameInflector(func(s string) string { return s }) }
 `)
 	if !rep.Has(importer.Naming) {
 		t.Fatalf("SetTableNameInflector not reported: %s", rep)
+	}
+}
+
+func TestReadPointerPrimaryKeyAndUintptr(t *testing.T) {
+	models, rep := readSource(t, "type P struct {\n\tbun.BaseModel\n\tID *int64 `bun:\"id,pk\"`\n\tPtr uintptr\n}\n")
+	m := modelOf(t, models, "P")
+	if f := fieldOf(t, m, "ID"); !f.PK || f.Nullable || f.GoType != "*int64" {
+		t.Errorf("a pointer pk is kept, not an error: %+v", f)
+	}
+	if f := fieldOf(t, m, "Ptr"); f.SQLType != "bigint" {
+		t.Errorf("uintptr = %+v", f)
+	}
+	if rep.Has(importer.Unsupported) {
+		t.Errorf("unexpected: %s", rep)
 	}
 }
 

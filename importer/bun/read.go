@@ -586,7 +586,7 @@ func (r *reader) relation(mb *modelBuild, c cand, pos string) {
 var basicSQL = map[string]string{
 	"bool": "boolean", "int": "bigint", "int8": "smallint", "int16": "smallint", "int32": "integer",
 	"int64": "bigint", "uint": "bigint", "uint8": "smallint", "uint16": "smallint", "uint32": "integer",
-	"uint64": "bigint", "byte": "smallint", "rune": "integer", "float32": "real",
+	"uint64": "bigint", "uintptr": "bigint", "byte": "smallint", "rune": "integer", "float32": "real",
 	"float64": "double precision", "string": "varchar",
 }
 
@@ -853,6 +853,16 @@ func fkRule(t tag, key string) (action string, problem string) {
 func (r *reader) belongsTo(mb *modelBuild, byName map[string]*modelBuild, p pendingRel) {
 	m := &mb.m
 	fail := func(msg string) { r.unsupported(p.pos, m.Name, p.name, msg) }
+	for _, k := range sortedKeys(p.tag.opts) {
+		switch k {
+		case "rel", "join", "on_delete", "on_update":
+		case "join_on":
+			r.add(importer.Change{Kind: importer.DroppedField, Source: p.pos, Model: m.Name, Field: p.name,
+				Message: "join_on adds a condition to Bun's joins only and is not imported; the foreign key is unaffected"})
+		default:
+			fail("the option " + k + " has no meaning on a belongs-to relation and is not imported (a typo, or an option Bun v1.3.0 ignores here)")
+		}
+	}
 	e := p.field.Type
 	if s, ok := e.(*ast.StarExpr); ok {
 		e = s.X
