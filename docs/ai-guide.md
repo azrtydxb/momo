@@ -1611,6 +1611,14 @@ report)`, a development hook that reports once per statement shape per scope
   drive both from `WithTenant`, read the tenant there and call
   `SetConfigLocal`. Without `WithImplicitTx`, non-transactional queries get no
   setting.
+- `WithImplicitTx` and RETURNING writes: on an unpinned `*DB` configured with
+  `WithImplicitTx`, read the rows of `Insert`, `Update` or `Delete` with
+  `Rows` to the end (`for rows.Next() {}`) before `Close`. A write whose rows
+  were closed unread, or after only the first row, is rolled back and `Close`
+  returns `ErrValidation`. This also holds for a panic that unwinds through the
+  loop, however `Close` is deferred. The library's own single-row helpers
+  (`FindOrCreate`, `UpsertByPK`, `CreateGraph`) read to the end themselves. Handles
+  without `WithImplicitTx`, `Tx` and pinned `OnConn` handles are unaffected.
 
 ## 12. Rules for AI agents
 

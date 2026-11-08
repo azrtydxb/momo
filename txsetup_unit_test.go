@@ -10,6 +10,8 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/relfixture/models"
+	"github.com/azrtydxb/momo/internal/relfixture/tag"
 	"github.com/azrtydxb/momo/internal/suite"
 )
 
@@ -127,5 +129,60 @@ func TestImplicitTxWriteClosedUnreadIsRolledBack(t *testing.T) {
 	}
 	if drv.Commits() != 0 || drv.Rollbacks() != 1 {
 		t.Fatalf("commits = %d rollbacks = %d, want 0 and 1", drv.Commits(), drv.Rollbacks())
+	}
+}
+
+// The single-row write helpers read their RETURNING rows to the end, so on an
+// implicit-transaction handle their insert is committed, not rolled back.
+func TestImplicitTxFindOrCreateAndUpsertByPKCommit(t *testing.T) {
+	for name, run := range map[string]func(db *momo.DB) error{
+		"FindOrCreate": func(db *momo.DB) error {
+			created, err := momo.FindOrCreate[models.Tag, *models.Tag](t.Context(), db, []momo.ColumnRef{tag.ID}, &models.Tag{ID: 1, Name: "x"})
+			if err == nil && !created {
+				t.Error("created = false, want true")
+			}
+			return err
+		},
+		"UpsertByPK": func(db *momo.DB) error {
+			return momo.UpsertByPK[models.Tag, *models.Tag](t.Context(), db, &models.Tag{ID: 1, Name: "x"})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			drv := fakedriver.New(dialect.Postgres)
+			drv.SetRows([][]any{{int64(1), "x"}})
+			if err := run(implicitDB(drv)); err != nil {
+				t.Fatal(err)
+			}
+			if drv.Commits() != 1 || drv.Rollbacks() != 0 {
+				t.Fatalf("commits = %d rollbacks = %d, want 1 and 0: the insert was lost", drv.Commits(), drv.Rollbacks())
+			}
+		})
+	}
+}
+
+// UpdateQuery.Rows on an implicit-transaction handle: a caller that reads the
+// first row and closes loses the update, while reading to the end commits.
+func TestImplicitTxUpdateRowsMustBeReadToTheEnd(t *testing.T) {
+	read := func(toEnd bool) (*fakedriver.Driver, error) {
+		drv := fakedriver.New(dialect.Postgres)
+		drv.SetRows([][]any{{int64(1), "x"}, {int64(2), "y"}})
+		rows, err := momo.Update[models.Tag](implicitDB(drv)).Set(tag.Name.Set("z")).Where(tag.ID.Gt(0)).ReturningAll().Rows(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows.Next()
+		if toEnd {
+			for rows.Next() {
+			}
+		}
+		return drv, rows.Close()
+	}
+	drv, err := read(false)
+	if !errors.Is(err, momo.ErrValidation) || drv.Commits() != 0 || drv.Rollbacks() != 1 {
+		t.Fatalf("first row only: err = %v commits = %d rollbacks = %d, want ErrValidation, 0 and 1", err, drv.Commits(), drv.Rollbacks())
+	}
+	drv, err = read(true)
+	if err != nil || drv.Commits() != 1 || drv.Rollbacks() != 0 {
+		t.Fatalf("read to the end: err = %v commits = %d rollbacks = %d, want nil, 1 and 0", err, drv.Commits(), drv.Rollbacks())
 	}
 }

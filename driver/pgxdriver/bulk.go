@@ -44,10 +44,13 @@ func copyFromSource(ctx context.Context, s copySender, table string, cols []stri
 		// raw network error under a finished context becomes the context
 		// error. A server error is kept: the database really refused the copy.
 		var pe *pgconn.PgError
+		redacted := copyErr(err)
 		if cerr := ctx.Err(); cerr != nil && !errors.Is(err, cerr) && !errors.As(err, &pe) {
-			err = fmt.Errorf("pgx: copy stopped: %w: %w", cerr, err)
+			// The redaction ran on the original error first, so the text kept
+			// here is the redacted one.
+			redacted = fmt.Errorf("pgx: copy stopped: %w: %w", cerr, redacted)
 		}
-		return 0, copyErr(err)
+		return 0, redacted
 	}
 	return n, nil
 }

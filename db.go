@@ -24,7 +24,7 @@ type Querier interface {
 
 // QueryEvent describes one statement for observability hooks.
 type QueryEvent struct {
-	Op    string // "select", "insert", "update", "delete", "exec", "query", "begin", "commit", "rollback", "savepoint"
+	Op    string // "select", "insert", "update", "delete", "exec", "query", "raw", "explain", "begin", "commit", "rollback", "savepoint"
 	Table string // model table when known
 	// Relation is set while eager-loading a relation ("documents.author").
 	Relation string

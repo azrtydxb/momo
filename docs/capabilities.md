@@ -281,6 +281,15 @@ Connect as a role without `BYPASSRLS` that does not own the tables (or use
 | `SetConfigLocal`              | `set_config(key, value, true)`: the setting ends with the transaction. The same as `Tx.SetLocal`.                                                                                                                                                                                                                                                                                                                                                             |
 | Not used on an implicit `*DB` | Pipelined relation loading (`Batch`) and the `COPY` fast path, because they bypass the setup. `BatcherOf` and `CopierOf` report none for such a `*DB`; use a `Tx` for them.                                                                                                                                                                                                                                                                                   |
 
+A behaviour change for `WithImplicitTx` on an unpinned `*DB` only: the rows of
+an `Insert`, `Update` or `Delete` with RETURNING (`Rows`) must be read to the
+end before `Close`. A write closed unread, or after reading only the first row
+(for example `UpdateQuery.Rows` or `DeleteQuery.Rows` users who read one row and
+close), is rolled back and `Close` returns `ErrValidation`; this includes a
+panic that unwinds through the loop. Handles without `WithImplicitTx`, a `Tx`
+and a pinned `OnConn` handle are unaffected, and `FindOrCreate`, `UpsertByPK`
+and `CreateGraph` read to the end themselves.
+
 Without `WithImplicitTx`, auto-commit statements on a `*DB` run outside any
 transaction, so the setup never applies to them and they are unscoped. Use
 `WithImplicitTx` (or `DB.Tx`) whenever the setup enforces a security boundary.
