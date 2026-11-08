@@ -74,7 +74,8 @@ The `dialect/dialect.go` flags for the unusable dialects, for planning only:
   `DEFAULT` in `VALUES`.
 - MySQL: `OnDuplicateKey`, `Locking`, `DefaultInUpdate`, `DefaultInValues`,
   `RecursiveCTE`, `RowValues`, `Savepoints`, `IsolationLevels`,
-  `WindowFunctions`. No `Returning`, no `OnConflict`, no vector support.
+  `WindowFunctions`. No `Returning`, no `OnConflict`; vectors on MariaDB only
+  (see vectors.md).
 
 ## Core queries
 
@@ -165,7 +166,11 @@ PostgreSQL only. Behavior and error table: [relations.md](relations.md).
 
 ## Vectors
 
-PostgreSQL with the pgvector extension only. Detail: [vectors.md](vectors.md).
+PostgreSQL with the pgvector extension, plus MariaDB 11.8 (float32 vectors,
+Euclidean and cosine distance, `VECTOR INDEX`) and MySQL 9.x (storage only,
+distance is `ErrUnsupported`). The MySQL column in the table below is for
+PostgreSQL features only; the MariaDB and MySQL vector support is in
+[vectors.md](vectors.md#mariadb-and-mysql).
 
 | Feature                                                                | PostgreSQL                                                                                                                | SQLite                   | MySQL            |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ---------------- |
