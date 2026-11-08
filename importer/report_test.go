@@ -82,6 +82,37 @@ func TestEmitWritesModelsThroughWriter(t *testing.T) {
 	}
 }
 
+func TestEmitSplitsNumericPrecisionIntoTags(t *testing.T) {
+	root := t.TempDir()
+	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	models := []Model{{Name: "Price", Table: "prices", Source: "m.go:1:1", Fields: []Field{
+		{Name: "ID", Column: "id", GoType: "int", PK: true, Source: "m.go:2:2"},
+		{Name: "Amount", Column: "amount", GoType: "float64", SQLType: "numeric(10,2)", Source: "m.go:3:2"},
+		{Name: "Whole", Column: "whole", GoType: "float64", SQLType: "DECIMAL(8, 0)", Source: "m.go:4:2"},
+		{Name: "Plain", Column: "plain", GoType: "string", SQLType: "numeric(12)", Source: "m.go:5:2"},
+	}}}
+	if err := Emit(models, &Report{}, w, filepath.Join(root, "models"), "models"); err != nil {
+		t.Fatalf("a numeric(p,s) type has a comma and must not be written as a type: value: %v", err)
+	}
+	if _, err := w.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, "models", "models.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	for _, want := range []string{
+		"`momo:\"column:amount,precision:10,scale:2,notnull\"`",
+		"`momo:\"column:whole,precision:8,notnull\"`",
+		"`momo:\"column:plain,type:numeric(12),notnull\"`",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("emitted source lacks %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestEmitRefusesUnsupported(t *testing.T) {
 	root := t.TempDir()
 	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})

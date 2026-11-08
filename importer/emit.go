@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"go/types"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -211,6 +212,18 @@ func checkTagValue(v string) error {
 	return nil
 }
 
+// numericPrecisionRE matches numeric(p,s) and decimal(p,s) written with digits only.
+var numericPrecisionRE = regexp.MustCompile(`^(?i:numeric|decimal)\s*\(\s*([0-9]+)\s*,\s*([0-9]+)\s*\)$`)
+
+// numericPrecision splits a numeric(p,s) type into its precision and scale.
+func numericPrecision(sqlType string) (precision, scale string, ok bool) {
+	m := numericPrecisionRE.FindStringSubmatch(strings.TrimSpace(sqlType))
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
+
 func fieldTag(f Field) (string, error) {
 	var opts []string
 	add := func(key, val string) error {
@@ -234,7 +247,14 @@ func fieldTag(f Field) (string, error) {
 			return "", err
 		}
 	}
-	if f.SQLType != "" {
+	if p, sc, ok := numericPrecision(f.SQLType); ok {
+		// numeric(p,s) has a comma, which a type: value cannot carry; the
+		// precision and scale tags build the same type.
+		opts = append(opts, "precision:"+p)
+		if sc != "0" {
+			opts = append(opts, "scale:"+sc)
+		}
+	} else if f.SQLType != "" {
 		if err := add("type", f.SQLType); err != nil {
 			return "", err
 		}
