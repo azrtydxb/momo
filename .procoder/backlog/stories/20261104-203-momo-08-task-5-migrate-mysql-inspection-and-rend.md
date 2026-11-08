@@ -1,6 +1,6 @@
 # momo-08 Task 5: migrate/mysql inspection and rendering
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-08-mysql
 Sprint: -
@@ -11,10 +11,16 @@ Implements plan momo-08-mysql Task 5: migrate/mysql inspection and rendering (`.
 
 ## Acceptance criteria
 
-- [ ] `TestMySQLNormalizeType` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestMySQLMigrationRoundTrip` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-60, part] `TestMySQLMigrationRoundTrip` passes for the part of S-60 this task delivers; the full criterion is verified in story 204.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestMySQLNormalizeType` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestMySQLMigrationRoundTrip` exists as written in the plan, failed before the implementation, and passes now
+- [x] [S-60, part] `TestMySQLMigrationRoundTrip` passes for the part of S-60 this task delivers; the full criterion is verified in story 204.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- Green run: ci-agent run 42462329606 on 9ef02462d33b245266a85fa7acc07d79d8610e1f (lint, unit, fuzz-smoke, integration postgres, integration-mysql mysql84, mysql97 and mariadb all success). Each MySQL job runs the roundtrip subtest of its own server.
+- Red run: ci-agent run 42460447363 on the throwaway branch worktree-agent-aa139b45101cda3e1-red (sprint-5 plus the tests only, branch deleted): the unit and all integration jobs failed with `undefined: lockName`, `undefined: Dialect` and `undefined: applyDDLDirective`, so TestMySQLNormalizeType and TestMySQLMigrationRoundTrip did not build without the implementation. The red state is a compile failure, not a value mismatch, because the package has no non-test file there.
+- TestMySQLNormalizeType: migrate/mysql/normalize_test.go, the plan's cases plus alias and idempotence cases; implementation is the MySQL branch of schema.NormalizeType (mysqlType in schema/normalize.go). A MySQL case was added to the FuzzNormalize dialect loop.
+- TestMySQLMigrationRoundTrip: migrate/mysql/roundtrip_integration_test.go. It differs from the plan text in two ways, both because of server rules: it uses the current engine API (migratetest.NewEngine, Engine.Diff, Apply, Inspect, Drift), and the example schema moves the CHECK and the stored generated column off the foreign key columns (MySQL refuses both on a column a foreign key with a referential action uses; this comes from the MySQL reference manual and was not observed on CI) and declares the generated column nullable (MariaDB does not take NOT NULL there; also from the documentation, not observed). The test also covers a default, a comment, a datetime(6) default and a json column (MariaDB's longtext alias). It asserts schema.Equal of the inspected and declared schema, a clean Drift, an empty migrate.Diff and no new migration from Engine.Diff.
+- Inspection: migrate/mysql/inspect.go (information_schema queries with bound schema name, MySQL and MariaDB variants for STATISTICS and CHECK_CONSTRAINTS). Rendering: migrate/mysql/render.go, unit tests in migrate/mysql/render_test.go.
+- Gate: the procoder commit gate (golangci-lint and formatters) ran on every commit of this branch and passed.
