@@ -57,13 +57,23 @@ func TestUpsertGoldenSQL(t *testing.T) {
 	}
 }
 
-func TestUpsertMySQLUnsupported(t *testing.T) {
+// Catches: MySQL failing an upsert that ON DUPLICATE KEY UPDATE can express, or
+// rendering the PostgreSQL EXCLUDED reference.
+func TestUpsertMySQLRendersOnDuplicateKey(t *testing.T) {
 	doc := suite.Document{ID: 1, TenantID: 1, Title: "t"}
-	_, err := upsertSQL(t, dialect.MySQL, func(q momo.Querier) momo.InsertQuery[suite.Document] {
+	c, err := upsertSQL(t, dialect.MySQL, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 		return momo.Upsert[suite.Document](q).Model(&doc)
 	})
-	if !errors.Is(err, momo.ErrUnsupported) {
-		t.Fatalf("err = %v, want ErrUnsupported", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{" AS `momo_new` ON DUPLICATE KEY UPDATE ", "`title` = `momo_new`.`title`"} {
+		if !strings.Contains(c.SQL, want) {
+			t.Errorf("SQL %s lacks %s", c.SQL, want)
+		}
+	}
+	if strings.Contains(c.SQL, "EXCLUDED") || strings.Contains(c.SQL, "ON CONFLICT") {
+		t.Errorf("SQL %s uses PostgreSQL syntax", c.SQL)
 	}
 }
 

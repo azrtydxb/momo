@@ -6,9 +6,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
 )
 
 var errRollMeBack = errors.New("suite: roll me back")
@@ -156,9 +158,16 @@ func Transactions(t *testing.T, db *momo.DB, caps Caps) {
 	t.Run("isolation", func(t *testing.T) {
 		if caps.NonDefaultIsolation {
 			err := db.Tx(ctx, momo.TxOptions{Isolation: sql.LevelRepeatableRead}, func(tx *momo.Tx) error {
-				got, err := momo.Scalars[string](ctx, tx, "SHOW transaction_isolation")
+				query := "SHOW transaction_isolation"
+				if caps.Dialect == dialect.MySQL {
+					query = "SELECT @@transaction_isolation"
+				}
+				got, err := momo.Scalars[string](ctx, tx, query)
 				if err != nil {
 					return err
+				}
+				if len(got) == 1 && caps.Dialect == dialect.MySQL {
+					got[0] = strings.ToLower(strings.ReplaceAll(got[0], "-", " "))
 				}
 				if len(got) != 1 || got[0] != "repeatable read" {
 					t.Errorf("transaction_isolation = %v, want [repeatable read]", got)

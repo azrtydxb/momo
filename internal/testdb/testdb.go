@@ -34,6 +34,11 @@ const (
 	envMariaDB     = "MOMO_TEST_MARIADB_URL"
 
 	envRequire = "MOMO_REQUIRE_INTEGRATION"
+	// envDialects optionally narrows envRequire to a comma-separated list of
+	// dialect tokens (postgres, mysql84, mysql97, mariadb). A CI job that
+	// provides one server sets it, so the URLs of the other servers skip
+	// instead of failing. Unset, every dialect is required.
+	envDialects = "MOMO_INTEGRATION_DIALECTS"
 
 	vectorLockID = 7000001
 	roleLockID   = 7000002
@@ -61,7 +66,8 @@ func resolve(env string, lookup func(string) (string, bool), require bool) (stri
 // failing it when MOMO_REQUIRE_INTEGRATION=1.
 func require(t testing.TB, env string) string {
 	t.Helper()
-	v, err := resolve(env, os.LookupEnv, os.Getenv(envRequire) == "1")
+	required := os.Getenv(envRequire) == "1" && dialectRequired(env, os.Getenv(envDialects))
+	v, err := resolve(env, os.LookupEnv, required)
 	switch {
 	case errors.Is(err, errSkip):
 		t.Skip(err.Error() + ": " + env)
@@ -69,6 +75,30 @@ func require(t testing.TB, env string) string {
 		t.Fatal(err)
 	}
 	return v
+}
+
+// dialectTokens maps each URL variable to the dialect token envDialects lists.
+var dialectTokens = map[string]string{
+	envPostgres:    "postgres",
+	envPostgresApp: "postgres",
+	envPgBouncer:   "postgres",
+	envMySQL84:     "mysql84",
+	envMySQL97:     "mysql97",
+	envMariaDB:     "mariadb",
+}
+
+// dialectRequired reports whether a missing env must fail the run, given the
+// value of envDialects: an empty list requires every dialect.
+func dialectRequired(env, list string) bool {
+	if strings.TrimSpace(list) == "" {
+		return true
+	}
+	for _, d := range strings.Split(list, ",") {
+		if strings.TrimSpace(d) == dialectTokens[env] {
+			return true
+		}
+	}
+	return false
 }
 
 // randomName returns "t_" followed by 16 lowercase hex characters.

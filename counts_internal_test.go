@@ -3,6 +3,7 @@
 package momo
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -154,6 +155,82 @@ func TestCountQueriesMarkSensitiveKeys(t *testing.T) {
 			}
 			if qs[0].Args[0] != relSecret {
 				t.Fatalf("the driver must still get the key: %v", qs[0].Args)
+			}
+		})
+	}
+}
+
+func manyArgFilters(n int) *loadConfig {
+	cfg := &loadConfig{}
+	for i := 0; i < n; i++ {
+		cfg.where = append(cfg.where, binOp{qcol{"ckids", "seq"}, " = ", argExpr{v: i}})
+	}
+	return cfg
+}
+
+// A filter binding more than the 16 reserved arguments still shrinks the key
+// budget, so a chunk never goes over the bind limit.
+func TestCountQueriesManyFilterArgsShrinkTheKeyBudget(t *testing.T) {
+	d := *dialect.For(dialect.Postgres)
+	d.MaxParams = 16 + 20 + 10 // 20 filter binds leave room for five two-column keys
+	var keys [][]any
+	for i := 1; i <= 12; i++ {
+		keys = append(keys, []any{i, i})
+	}
+	qs, err := ckidsRel().countQueries(&d, keys, manyArgFilters(20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Ignoring the filter binds would fit all twelve keys in one statement.
+	if len(qs) != 3 {
+		t.Fatalf("got %d statements, want 3 (five keys each)", len(qs))
+	}
+	for i, q := range qs {
+		if len(q.Args) > d.MaxParams {
+			t.Fatalf("statement %d binds %d args over the limit %d", i, len(q.Args), d.MaxParams)
+		}
+	}
+}
+
+// A scope that leaves no room for a single key is a validation error.
+func TestCountQueriesScopeLeavesNoRoomForKey(t *testing.T) {
+	d := *dialect.For(dialect.Postgres)
+	d.MaxParams = 21 // 20 filter binds plus a two-column key is 22
+	_, err := ckidsRel().countQueries(&d, [][]any{{1, 1}}, manyArgFilters(20))
+	var me *Error
+	if !errors.As(err, &me) || me.Kind != ErrValidation || !strings.Contains(err.Error(), "no room for a key") {
+		t.Fatalf("err = %v, want ErrValidation naming the missing key room", err)
+	}
+}
+
+// Only the side that holds the parent key decides whether the key is masked:
+// the child join column for has-many, the parent key column for many-to-many.
+func TestCountQueriesMaskOnlyTheKeyHoldingSide(t *testing.T) {
+	cases := []struct {
+		name                  string
+		kind                  RelationKind
+		parentFlag, childFlag uint16
+		masked                bool
+	}{
+		{"has many sensitive child", HasMany, 0, FlagSensitive, true},
+		{"has many sensitive parent only", HasMany, FlagSensitive, 0, false},
+		{"many to many sensitive parent", ManyToMany, FlagSensitive, 0, true},
+		{"many to many sensitive child only", ManyToMany, 0, FlagSensitive, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := secRelationWith(c.kind, c.parentFlag, c.childFlag)
+			qs, err := r.countQueries(dialect.For(dialect.Postgres), [][]any{{relSecret}}, &loadConfig{})
+			if err != nil || len(qs) != 1 {
+				t.Fatalf("countQueries: %v %d", err, len(qs))
+			}
+			got := maskArgs(qs[0].Args, qs[0].sens)
+			want := any(relSecret)
+			if c.masked {
+				want = RedactedArg
+			}
+			if len(got) != 1 || got[0] != want {
+				t.Fatalf("hook args %v, want [%v]", got, want)
 			}
 		})
 	}

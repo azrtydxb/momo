@@ -291,3 +291,26 @@ func TestRenderFunctionStrictSecurityDefiner(t *testing.T) {
 		t.Fatalf("replace with security definer: %+v", st)
 	}
 }
+
+// An enum the inspector spelled "schema.name" renders as two quoted parts, in
+// CREATE TYPE, ALTER TYPE and as a column type. Quoting the whole text as one
+// identifier would name a type that does not exist.
+func TestRenderQualifiedEnumNames(t *testing.T) {
+	enum := &schema.Enum{Name: "other.Kind", Values: []string{"a"}}
+	st := renderSQL(t, migrate.Change{Kind: migrate.CreateEnum, Name: enum.Name, After: *enum})
+	if len(st) != 1 || st[0].SQL != `CREATE TYPE "other"."Kind" AS ENUM ('a')` {
+		t.Fatalf("CREATE TYPE = %+v", st)
+	}
+	st = renderSQL(t, migrate.Change{Kind: migrate.AlterEnumAddValue, Name: enum.Name, Before: enum, After: "b"})
+	if len(st) != 1 || st[0].SQL != `ALTER TYPE "other"."Kind" ADD VALUE 'b'` {
+		t.Fatalf("ALTER TYPE = %+v", st)
+	}
+	tbl := schema.Table{Name: "t", Columns: []schema.Column{
+		{Name: "k", Type: "other.Kind", Enum: "other.Kind"},
+		{Name: "m", Type: "Mixed", Enum: "Mixed"},
+	}}
+	st = renderSQL(t, migrate.Change{Kind: migrate.CreateTable, Table: "t", Name: "t", After: tbl})
+	if len(st) != 1 || !strings.Contains(st[0].SQL, `"k" "other"."Kind"`) || !strings.Contains(st[0].SQL, `"m" "Mixed"`) {
+		t.Fatalf("CREATE TABLE = %+v", st)
+	}
+}

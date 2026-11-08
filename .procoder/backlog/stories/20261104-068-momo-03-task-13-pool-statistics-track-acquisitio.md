@@ -1,6 +1,6 @@
 # momo-03 Task 13: Pool statistics track acquisition (S-90)
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-03-drivers-postgresql
 Sprint: -
@@ -11,8 +11,11 @@ Implements plan momo-03-drivers Task 13: Pool statistics track acquisition (S-90
 
 ## Acceptance criteria
 
-- [ ] `TestPoolStatsReflectAcquisition` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestPoolStatsReflectAcquisition` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+CI run 42457640580 on b7ec703 (ci-agent: unit, lint, fuzz-smoke, integration postgres) concluded success; the named tests passed there.
+
+Red evidence: ci-agent run 42453837637 on throwaway branch worktree-agent-ac8514dccee058855-red (commit a900207, the code under test broken, tests kept, branch since deleted) failed: --- FAIL: TestPoolStatsReflectAcquisition, with PoolStats reporting AcquireCount 0.

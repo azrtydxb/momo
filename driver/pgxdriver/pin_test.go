@@ -305,6 +305,23 @@ func TestPinRejectedExecMode(t *testing.T) {
 	}
 }
 
+func TestPoolStatsReflectAcquisition(t *testing.T) {
+	pool := openPool(t)
+	d := New(pool)
+	ctx := context.Background()
+	before := d.(momo.PoolStater).PoolStats().AcquireCount
+	p, err := d.(momo.Pinner).Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if after := d.(momo.PoolStater).PoolStats().AcquireCount; after != before+1 {
+		t.Fatalf("AcquireCount %d -> %d, want +1", before, after)
+	}
+}
+
 func TestPoolStatsReflectPool(t *testing.T) {
 	var pool *pgxpool.Pool = openInstrumentedPool(t, 3, true)
 	d := New(pool)

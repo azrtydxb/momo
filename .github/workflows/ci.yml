@@ -187,6 +187,51 @@ jobs:
           go-version: ${{ matrix.go }}
       - run: make test-integration-${{ matrix.dialect }}
 
+  # One server per matrix entry, so a failure names the server it ran against.
+  # MOMO_INTEGRATION_DIALECTS (set by the make target) keeps the other
+  # dialects' URLs from being required here.
+  integration-mysql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.26", "1.27"]
+        dialect: [mysql84, mysql97, mariadb]
+        include:
+          - dialect: mysql84
+            image: "mysql:8.4.13"
+            health: "mysqladmin ping -h 127.0.0.1 -uroot -pmomo --silent"
+          - dialect: mysql97
+            image: "mysql:9.7.4"
+            health: "mysqladmin ping -h 127.0.0.1 -uroot -pmomo --silent"
+          - dialect: mariadb
+            image: "mariadb:11.8.9"
+            health: "healthcheck.sh --connect --innodb_initialized"
+    env:
+      MYSQL84_URL: root:momo@tcp(127.0.0.1:3306)/
+      MYSQL97_URL: root:momo@tcp(127.0.0.1:3306)/
+      MARIADB_URL: root:momo@tcp(127.0.0.1:3306)/
+    services:
+      db:
+        image: ${{ matrix.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: momo
+          MARIADB_ROOT_PASSWORD: momo
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "${{ matrix.health }}"
+          --health-interval 2s
+          --health-retries 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+      - run: make test-integration-${{ matrix.dialect }}
+
   bench-module:
     runs-on: ubuntu-latest
     timeout-minutes: 20
