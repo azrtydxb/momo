@@ -178,7 +178,7 @@ func (b *Builder) Arg(v any) {
 func (b *Builder) argFor(flags uint16, v any) {
 	prev := b.argSens
 	b.argSens = prev || flags&FlagSensitive != 0
-	if !bindMySQLVector(b, v) {
+	if !bindMySQLVector(b, v) && !bindSQLiteVector(b, v) {
 		b.Arg(v)
 	}
 	b.argSens = prev

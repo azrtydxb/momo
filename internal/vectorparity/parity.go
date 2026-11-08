@@ -50,16 +50,35 @@ func CosineDistance(a, b vector.Vector) float64 {
 	return 1 - dot/(math.Sqrt(na)*math.Sqrt(nb))
 }
 
-// ExactCosineTopK returns the ids of the k vectors nearest to q by cosine
-// distance, nearest first, ties broken by the lower id.
-func ExactCosineTopK(vecs []vector.Vector, q vector.Vector, k int) []int64 {
+// L2Distance is the Euclidean distance in float64.
+func L2Distance(a, b vector.Vector) float64 {
+	var sum float64
+	for i := range a {
+		d := float64(a[i]) - float64(b[i])
+		sum += d * d
+	}
+	return math.Sqrt(sum)
+}
+
+// L1Distance is the taxicab distance in float64.
+func L1Distance(a, b vector.Vector) float64 {
+	var sum float64
+	for i := range a {
+		sum += math.Abs(float64(a[i]) - float64(b[i]))
+	}
+	return sum
+}
+
+// ExactTopK returns the ids of the k vectors nearest to q by dist, nearest
+// first, ties broken by the lower id.
+func ExactTopK(vecs []vector.Vector, q vector.Vector, k int, dist func(a, b vector.Vector) float64) []int64 {
 	type scored struct {
 		id   int64
 		dist float64
 	}
 	all := make([]scored, len(vecs))
 	for i, v := range vecs {
-		all[i] = scored{id: int64(i + 1), dist: CosineDistance(v, q)}
+		all[i] = scored{id: int64(i + 1), dist: dist(v, q)}
 	}
 	sort.Slice(all, func(i, j int) bool {
 		if all[i].dist != all[j].dist {
@@ -72,4 +91,10 @@ func ExactCosineTopK(vecs []vector.Vector, q vector.Vector, k int) []int64 {
 		ids = append(ids, s.id)
 	}
 	return ids
+}
+
+// ExactCosineTopK returns the ids of the k vectors nearest to q by cosine
+// distance, nearest first, ties broken by the lower id.
+func ExactCosineTopK(vecs []vector.Vector, q vector.Vector, k int) []int64 {
+	return ExactTopK(vecs, q, k, CosineDistance)
 }
