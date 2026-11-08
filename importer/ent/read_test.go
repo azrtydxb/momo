@@ -137,7 +137,7 @@ func TestReadFixtureModels(t *testing.T) {
 	if c := field(t, user, "CreatedBy"); c.GoType != "*string" {
 		t.Fatalf("mixin field: %+v", c)
 	}
-	if f := field(t, org, "CreatedAt"); f.SQLType != "timestamptz" || f.Nullable || f.GoType != "time.Time" {
+	if f := field(t, org, "CreateTime"); f.SQLType != "timestamptz" || f.Nullable || f.GoType != "time.Time" {
 		t.Fatalf("mixin.Time: %+v", f)
 	}
 	if f := field(t, org, "DisplayName"); !f.Nullable || f.SQLType != "varchar" {
@@ -207,7 +207,7 @@ func TestReadFixtureModels(t *testing.T) {
 		t.Fatalf("Active, Score, Kind and Label have a literal default: %s", rep)
 	}
 	if got := rep.Of(importer.GoDefault); len(got) != 4 {
-		t.Fatalf("created_at and updated_at of mixin.Time, SeenAt and JoinedAt: %s", rep)
+		t.Fatalf("create_time and update_time of mixin.Time, SeenAt and JoinedAt: %s", rep)
 	}
 	if got := rep.Of(importer.ImplicitSave); len(got) != 7 {
 		t.Fatalf("every edge is reported once: %s", rep)
@@ -219,7 +219,7 @@ func TestReadFixtureModels(t *testing.T) {
 		t.Fatalf("four foreign key names: %s", rep)
 	}
 	if got := rep.Of(importer.GoSideRule); len(got) != 5 {
-		t.Fatalf("created_at, MaxLen, Immutable, NotEmpty and the enum values: %s", rep)
+		t.Fatalf("create_time, MaxLen, Immutable, NotEmpty and the enum values: %s", rep)
 	}
 	for _, c := range rep.Changes {
 		if !sourcePosition.MatchString(c.Source) {
@@ -483,7 +483,7 @@ func (U) Config() ent.Config {
 		t.Fatalf("Config Table: %q", tm.Table)
 	}
 	field(t, tm, "Tag")
-	if c := field(t, tm, "CreatedAt"); c.SQLType != "timestamptz" || c.Nullable {
+	if c := field(t, tm, "CreateTime"); c.SQLType != "timestamptz" || c.Nullable {
 		t.Fatalf("mixin.CreateTime: %+v", c)
 	}
 	if a := field(t, tm, "A"); !a.UniqueIndex || a.UniqueName != "t_a" || a.Index {
@@ -496,7 +496,7 @@ func (U) Config() ent.Config {
 		t.Fatalf("a second index on one field is reported and dropped: %s", rep)
 	}
 	if got := rep.Of(importer.GoSideRule); len(got) != 2 {
-		t.Fatalf("the hook and the immutable created_at: %s", rep)
+		t.Fatalf("the hook and the immutable create_time: %s", rep)
 	}
 	if u := model(t, models, "U"); u.Table != "u_table" {
 		t.Fatalf("an entsql Table annotation wins over Config: %q", u.Table)

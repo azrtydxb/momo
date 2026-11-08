@@ -471,12 +471,12 @@ func (r *reader) timeMixin(e *entity, kind string, p token.Pos) {
 			Message: "mixin." + kind + " sets " + name + " in Go (" + why + "); Momo needs a created_at or updated_at tag or a database default"})
 	}
 	if kind == "Time" || kind == "CreateTime" {
-		add("created_at", "default time.Now when the row is created")
-		r.rep.Add(importer.Change{Kind: importer.GoSideRule, Source: r.pos(p), Model: e.ti.name, Field: "CreatedAt",
-			Message: "mixin." + kind + " makes created_at immutable in Ent's builders; Momo does not stop updates"})
+		add("create_time", "default time.Now when the row is created")
+		r.rep.Add(importer.Change{Kind: importer.GoSideRule, Source: r.pos(p), Model: e.ti.name, Field: "CreateTime",
+			Message: "mixin." + kind + " makes create_time immutable in Ent's builders; Momo does not stop updates"})
 	}
 	if kind == "Time" || kind == "UpdateTime" {
-		add("updated_at", "default and update default time.Now")
+		add("update_time", "default and update default time.Now")
 	}
 }
 

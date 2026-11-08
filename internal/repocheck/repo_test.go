@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -13,6 +14,10 @@ import (
 )
 
 const spdxTag = "SPDX-License-Identifier: Apache-2.0"
+
+// goGenerated is the Go convention for generated files, which carry the
+// generator's own header (the Ent client of the importer fixture, for one).
+var goGenerated = regexp.MustCompile(`(?m)^// Code generated .* DO NOT EDIT\.$`)
 
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -70,7 +75,7 @@ func TestRepoFiles(t *testing.T) {
 		if len(head) > 600 {
 			head = head[:600]
 		}
-		if !strings.Contains(head, spdxTag) {
+		if !strings.Contains(head, spdxTag) && !goGenerated.MatchString(head) {
 			t.Errorf("%s: missing SPDX header", path)
 		}
 		return nil
