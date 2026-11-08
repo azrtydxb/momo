@@ -95,8 +95,21 @@ search path. Write them unqualified. `momotest` refuses early, with the file
 name, a migration that contains `CREATE SCHEMA`, or `CREATE EXTENSION` for an
 extension not listed in `WithExtensions`: an extension exists once per
 database, so it would land in one test's schema and vanish under the others when
-that schema is dropped. List extensions in `WithExtensions`; they are installed
-once in `public`.
+that schema is dropped. List extensions in `WithExtensions` (names are matched
+in lower case); they are installed once in `public`.
+
+The check reads the SQL with comments and string literals removed, so a comment
+that mentions `create schema` is fine and `CREATE /* x */ EXTENSION foo` is still
+caught. Quoted identifiers are kept. Dollar-quoted bodies are checked as code,
+because a `DO` block can run `CREATE EXTENSION`: the cost is that text inside a
+dollar-quoted string that looks like that statement is also refused, with a
+message naming the file. Move such text into a normal string, or list the
+extension.
+
+`NewTx` remembers the result of the check and the template name per migration
+`fs.FS` value and extension list. Build the FS once, in a package variable or an
+`embed.FS`, so that the files are walked once; an FS rebuilt on every call (such
+as `fs.Sub` inside a function) is re-read each time, which still works.
 
 ## Leftover schemas
 
@@ -105,7 +118,8 @@ can leave `momotest_<hex>` schemas behind. They are harmless but accumulate. Dro
 them on a disposable server by recreating it, or with
 `DROP SCHEMA momotest_<hex> CASCADE` for each name in `pg_namespace` that matches
 `momotest\_%` and is not `momotest_tpl_%`. Template schemas `momotest_tpl_*` are
-meant to stay.
+meant to stay. `momotest` has no sweep helper: it never drops a schema it did
+not create in the current test.
 
 ## Fixtures: Seed
 

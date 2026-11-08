@@ -122,6 +122,17 @@ func TestCheckMigrationsRejectsEscapes(t *testing.T) {
 		{"unlisted quoted extension", "quoted_extension.sql", nil, "pgcrypto"},
 		{"listed extension", "extension.sql", []Option{WithExtensions("vector")}, ""},
 		{"schema", "schema.sql", nil, "schema"},
+		{"schema if not exists", "schema_if_not_exists.sql", nil, "schema"},
+		{"quoted extension if not exists", "quoted_if_not_exists.sql", nil, "uuid-ossp"},
+		{"mixed case unlisted", "mixed_case.sql", nil, "foo"},
+		{"mixed case listed in other case", "mixed_case.sql", []Option{WithExtensions("FOO")}, ""},
+		{"comment between the keywords", "comment_between.sql", nil, "foo"},
+		{"comments that mention the words", "comment_mentions.sql", nil, ""},
+		{"nested comment", "nested_comment.sql", nil, ""},
+		{"string literal", "string_literal.sql", nil, ""},
+		{"escaped strings", "escaped_strings.sql", nil, ""},
+		// Dollar-quoted bodies are scanned as code, so a DO block is caught.
+		{"dollar-quoted body", "dollar_body.sql", nil, "hstore"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -133,6 +144,13 @@ func TestCheckMigrationsRejectsEscapes(t *testing.T) {
 				t.Fatalf("err = %v, want one naming %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestExtensionNamesAreLowercased(t *testing.T) {
+	c := newConfig([]Option{WithExtensions("Vector", "PGCrypto")})
+	if got := strings.Join(c.extensions, ","); got != "vector,pgcrypto" {
+		t.Fatalf("extensions = %q, want vector,pgcrypto", got)
 	}
 }
 

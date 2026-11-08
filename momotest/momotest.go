@@ -37,6 +37,7 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"reflect"
 	"regexp"
 	"runtime/debug"
 	"slices"
@@ -112,6 +113,11 @@ func newConfig(opts []Option) *config {
 	c := &config{env: DefaultEnv}
 	for _, o := range opts {
 		o(c)
+	}
+	// Extension names are matched and created in lower case, so
+	// WithExtensions("Vector") means vector.
+	for i, e := range c.extensions {
+		c.extensions[i] = strings.ToLower(e)
 	}
 	return c
 }
@@ -267,7 +273,11 @@ var (
 )
 
 // checkMigrations fails early on migration SQL that would escape the per-test
-// schema. An extension is created once per database, not once per schema, so a
+// schema. It looks at the SQL with comments and string literals removed, so a
+// comment that mentions the words does not trip it and a comment between the
+// keywords does not hide them. Dollar-quoted bodies are checked as code: a DO
+// block that creates an extension is caught, at the price of flagging a
+// dollar-quoted string that merely contains such text. An extension is created once per database, not once per schema, so a
 // migration that creates one lands it in whichever test's schema ran first,
 // and DROP SCHEMA removes it under the other tests. List the extension in
 // WithExtensions instead; it is then installed in public, which is on every
@@ -285,9 +295,11 @@ func (c *config) checkMigrations() error {
 		if err != nil {
 			return err
 		}
+		b = stripSQL(b)
 		for _, m := range createExtension.FindAllSubmatch(b, -1) {
-			if !slices.Contains(c.extensions, strings.ToLower(string(m[1]))) {
-				return fmt.Errorf("migration %s creates extension %s; list it in momotest.WithExtensions so it is installed once in the public schema", p, m[1])
+			name := strings.ToLower(string(m[1]))
+			if !slices.Contains(c.extensions, name) {
+				return fmt.Errorf("migration %s creates extension %s; list it in momotest.WithExtensions so it is installed once in the public schema", p, name)
 			}
 		}
 		if createSchema.Match(b) {
@@ -386,6 +398,48 @@ func (c *config) templateName() (string, error) {
 		}
 	}
 	return "momotest_tpl_" + hex.EncodeToString(h.Sum(nil))[:16], nil
+}
+
+type preparedKey struct {
+	fsys fs.FS
+	exts string
+}
+
+type prepared struct {
+	name string
+	err  error
+}
+
+var preparedCache sync.Map // preparedKey -> prepared
+
+// preparedTemplate checks the migrations and names their template. The result
+// is remembered per migration FS value and extension list, so a suite that
+// builds its FS once (a package variable or an embed.FS) walks and hashes the
+// files once. A FS value that cannot be a map key, or one rebuilt on every call
+// (fs.Sub returns a new value each time), is simply recomputed.
+func (c *config) preparedTemplate() (string, error) {
+	compute := func() prepared {
+		if err := c.checkMigrations(); err != nil {
+			return prepared{err: err}
+		}
+		name, err := c.templateName()
+		if err != nil {
+			return prepared{err: fmt.Errorf("hash migrations: %w", err)}
+		}
+		return prepared{name: name}
+	}
+	if c.migrations != nil && !reflect.TypeOf(c.migrations).Comparable() {
+		p := compute()
+		return p.name, p.err
+	}
+	key := preparedKey{c.migrations, strings.Join(c.extensions, ",")}
+	if v, ok := preparedCache.Load(key); ok {
+		p := v.(prepared)
+		return p.name, p.err
+	}
+	p := compute()
+	preparedCache.Store(key, p)
+	return p.name, p.err
 }
 
 var (
@@ -490,12 +544,9 @@ func NewTx(t testing.TB, opts ...Option) *momo.Tx {
 	t.Helper()
 	c := newConfig(opts)
 	raw := c.serverURL(t)
-	if err := c.checkMigrations(); err != nil {
-		t.Fatalf("momotest: %v", err)
-	}
-	name, err := c.templateName()
+	name, err := c.preparedTemplate()
 	if err != nil {
-		t.Fatalf("momotest: hash migrations: %v", err)
+		t.Fatalf("momotest: %v", err)
 	}
 	c.ensureTemplate(t, raw, name)
 
