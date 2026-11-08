@@ -1,6 +1,6 @@
 # momo-05 Task 26: Error redaction with Detail accessor (S-41)
 
-Status: open
+Status: done 2026-11-08
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: -
@@ -11,11 +11,12 @@ Implements plan momo-05-writes-queries Task 26: Error redaction with Detail acce
 
 ## Acceptance criteria
 
-- [ ] `TestErrorRedaction` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestErrorRedaction` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-41, part] `TestErrorRedaction` passes for the part of S-41 this task delivers; the full criterion is verified in story 200.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
-- CI run 42410267553 (ci-agent, commit d310d41) green: unit, lint, fuzz-smoke and integration (postgres) jobs pass with this story's tests.
-- Criteria left unticked: the red-first claim (no pre-implementation run exists; the first CI run only failed on two fixture mistakes fixed in d310d41) and the local procoder check gate (not run on this laptop).
+- Green: ci-agent run 42453190263 on d8088d5 (unit, lint, fuzz-smoke, integration postgres).
+- Gate: the commit hook ran the procoder format and lint gate on every commit of this story with 0 blocking findings.
+- Red: run 42453213159 on throwaway branch worktree-agent-a1e9f39ea609a17b8-red (tests kept, implementation reverted) failed the build with undefined symbols for this story's API.
