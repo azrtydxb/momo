@@ -37,8 +37,17 @@ func register() {
 // sqlite_version() >= 3.35.0 and that load_extension is disabled; Open pings
 // the database so a refused connection is reported here.
 //
-// dsn is a file path or a "file:" URI. Settings already present in its query
-// string win over the defaults from cfg.
+// dsn is a file path or a "file:" URI. The query string may carry only the
+// parameters on allowedDSNKeys. The busy timeout and the transaction lock in
+// it override cfg; foreign keys, WAL and synchronous always come from cfg and
+// the adapter. The mode and cache parameters are SQLite URI parameters, which
+// SQLite sees only for a "file:" DSN, so any other DSN carrying them is
+// refused. mode=ro cannot open a database that is not in WAL mode yet, because
+// the adapter sets journal_mode=WAL on every connection and a read-only
+// connection cannot change it: create the database read-write first. An
+// in-memory database with MaxOpenConns above 1 needs cache=shared, and then a
+// statement can fail with SQLITE_LOCKED, which ClassifyError reports as
+// momo.ErrBusy.
 func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
 	register()
 	full, err := buildDSN(dsn, cfg)
@@ -94,6 +103,9 @@ func buildDSN(dsn string, cfg Config) (string, error) {
 			return "", fmt.Errorf("sqlitedriver: DSN parameter %q is not allowed; the adapter sets foreign keys, journal mode and synchronous itself (use Config), and other parameters are refused", key)
 		}
 		if key == "mode" || key == "cache" {
+			if !strings.HasPrefix(base, "file:") {
+				return "", fmt.Errorf("sqlitedriver: DSN parameter %s needs a \"file:\" DSN; SQLite does not see the query of a plain path", key)
+			}
 			if !allowedDSNValues[key][q.Get(key)] || len(vals) != 1 {
 				return "", fmt.Errorf("sqlitedriver: DSN parameter %s has an unsupported value", key)
 			}
@@ -144,9 +156,14 @@ var allowedDSNValues = map[string]map[string]bool{
 }
 
 // isMemory reports whether the DSN names an in-memory database, which exists
-// per connection unless cache=shared.
+// per connection unless cache=shared. mode and cache count only for a "file:"
+// DSN (buildDSN refuses them elsewhere); a bare path or ":memory:" is judged
+// by the path alone.
 func isMemory(base string, q url.Values) bool {
-	return base == "" || base == ":memory:" || base == "file::memory:" || q.Get("mode") == "memory"
+	if strings.HasPrefix(base, "file:") {
+		return base == "file::memory:" || q.Get("mode") == "memory"
+	}
+	return base == "" || base == ":memory:"
 }
 
 // The oldest SQLite the dialect description assumes (RETURNING).

@@ -47,12 +47,19 @@ func seedTimeDocs(t *testing.T, db *momo.DB) {
 	suite.CreateDocuments(t, db, suite.CapsOf(db))
 	// SQLite stores momo's own text format, which strftime parses.
 	old := "'2024-03-15 13:45:30+00'"
+	// The "new" row takes the database's now. SQLite timestamps have millisecond
+	// resolution, so it is seeded a second in the past: "created before now" then
+	// cannot tie with a Now() read in the same millisecond.
+	newCol, newVal := "", ""
+	if db.Dialect().Name == dialect.SQLite {
+		newCol, newVal = ", created_at", ", strftime('%Y-%m-%d %H:%M:%f', 'now', '-1 seconds')"
+	}
 	if db.Dialect().Name == dialect.SQLite {
 		old = "'2024-03-15 13:45:30.000'"
 	}
 	for _, s := range []string{
 		"INSERT INTO documents (tenant_id, title, created_at) VALUES (1, 'old', " + old + ")",
-		"INSERT INTO documents (tenant_id, title) VALUES (2, 'new')",
+		"INSERT INTO documents (tenant_id, title" + newCol + ") VALUES (2, 'new'" + newVal + ")",
 	} {
 		if _, err := momo.Exec(ctx, db, s); err != nil {
 			t.Fatal(err)
@@ -230,11 +237,6 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 			t.Errorf("CurrentTimestamp() = %v, behind Now() = %v", cur, now)
 		}
 
-		if d == dialect.SQLite {
-			// SQLite timestamps have millisecond resolution: let the clock move past
-			// the row that was inserted a moment ago, or "before now" can tie.
-			time.Sleep(10 * time.Millisecond)
-		}
 		recent := func(p momo.Predicate) int64 {
 			r, err := momo.Select[unitTally](db).From(momo.TableRef{Name: "documents"}).
 				Columns(momo.CountAll()).Where(p).One(ctx)

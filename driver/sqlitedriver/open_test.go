@@ -52,6 +52,26 @@ func TestBuildDSNKeepsSafetiesOn(t *testing.T) {
 	}
 }
 
+// mattn hands the query to SQLite only for a "file:" DSN, so mode and cache on
+// a plain path would be silently ignored: x.db?mode=ro would open read-write.
+func TestBuildDSNRefusesURIParametersOnPlainPaths(t *testing.T) {
+	for _, dsn := range []string{
+		"x.db?mode=ro", "x.db?mode=memory", "x.db?cache=shared", ":memory:?cache=shared", ":memory:?mode=memory",
+	} {
+		if _, err := buildDSN(dsn, Config{MaxOpenConns: 4}); err == nil {
+			t.Errorf("%q accepted although SQLite never sees its mode or cache parameter", dsn)
+		}
+	}
+	if isMemory("x.db", map[string][]string{"mode": {"memory"}}) {
+		t.Error("a plain path with mode=memory counted as in-memory")
+	}
+	for _, dsn := range []string{"file:x.db?mode=ro", "file:m?mode=memory&cache=shared", "file::memory:?cache=shared"} {
+		if _, err := buildDSN(dsn, Config{MaxOpenConns: 4}); err != nil {
+			t.Errorf("%q refused: %v", dsn, err)
+		}
+	}
+}
+
 func TestBuildDSNInMemory(t *testing.T) {
 	for _, dsn := range []string{":memory:", "file::memory:", "file:m?mode=memory"} {
 		if _, err := buildDSN(dsn, Config{MaxOpenConns: 2}); err == nil {

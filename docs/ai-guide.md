@@ -26,7 +26,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 
 ## 1. Scope
 
-- v0.3.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5 only. <!-- x-release-please-version -->
+- v0.3.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5; SQLite and MySQL are covered by the next bullet. <!-- x-release-please-version -->
 - PostgreSQL is the reference database. SQLite is usable through
   `driver/sqlitedriver` (mattn go-sqlite3 and sqlite-vec; it needs cgo and does
   not build on Windows), but `momo migrate` exits 2 for SQLite and the vector

@@ -22,12 +22,12 @@ built. Every Go snippet below is an `Example` function in
 These parts of the vector plan are not built on this branch, so there is no
 API to document yet:
 
-- SQLite: the plan pins sqlite-vec v0.1.6 through the Go bindings, loaded by
-  `sqlitedriver.Open` and checked with `vec_version()`. There is no SQLite
-  driver package yet. The dialect description already lists the SQLite
-  metrics, and the distance builders already render the sqlite-vec functions
-  (see the table below), but nothing opens a SQLite database with the
-  extension.
+- SQLite: `sqlitedriver.Open` loads sqlite-vec v0.1.6 through the Go bindings
+  (the `vec_*` scalar functions work on every connection, and the integration
+  suite checks `vec_version()`). The dialect description lists the SQLite
+  metrics and the distance builders render the sqlite-vec functions (see the
+  table below), but the vector builders have not been run against SQLite yet,
+  so treat them as untested there.
 - Hybrid search: PostgreSQL full-text plus vector search fused by reciprocal
   rank (planned options `TextCandidates`, `VectorCandidates` and `RRFK`, with
   k=60 as the default) does not exist yet.

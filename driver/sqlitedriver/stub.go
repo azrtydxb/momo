@@ -12,8 +12,8 @@ import (
 )
 
 // Open reports momo.ErrUnsupported: this build has no cgo, or targets
-// Windows, where the sqlite-vec C sources cannot be compiled. Use package
-// sqlitepure for SQLite without cgo.
+// Windows, where the sqlite-vec C sources cannot be compiled. There is no
+// cgo-free SQLite driver in this module yet.
 func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
 	return nil, nil, &momo.Error{Kind: momo.ErrUnsupported, Op: "open", Err: errors.New("sqlitedriver: needs cgo and a non-Windows target")}
 }
