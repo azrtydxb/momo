@@ -160,7 +160,7 @@ func resolve(env string, lookup func(string) (string, bool), require bool) (stri
 // variable is unset.
 func (c *config) serverURL(t testing.TB) string {
 	t.Helper()
-	v, err := resolve(c.env, os.LookupEnv, os.Getenv(RequireEnv) == "1" && postgresRequired(os.Getenv(dialectsEnv)))
+	v, err := resolve(c.env, os.LookupEnv, os.Getenv(RequireEnv) == "1" && (c.env != DefaultEnv || postgresRequired(os.Getenv(dialectsEnv))))
 	switch {
 	case errors.Is(err, errSkip):
 		t.Skip(err.Error() + ": " + c.env)
