@@ -38,7 +38,7 @@ MYSQL84_URL ?= root:momo@tcp(127.0.0.1:3306)/
 MYSQL97_URL ?= root:momo@tcp(127.0.0.1:3307)/
 MARIADB_URL ?= root:momo@tcp(127.0.0.1:3308)/
 
-.PHONY: bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
+.PHONY: bench bench-baseline bench-suite-smoke bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -88,6 +88,19 @@ bench-hooks:
 # Regenerates the Momo metadata and the Ent client for the bench module.
 bench-generate:
 	cd bench && $(GO) run github.com/azrtydxb/momo/cmd/momo generate && $(GO) run entgo.io/ent/cmd/ent generate --target ./adapters/ent/entgen ./adapters/ent/schema
+
+# Full run on the dedicated machine: BENCH_COUNT repetitions (default 10), results
+# under bench/results. Needs BENCH_PG_URL.
+bench:
+	./bench/scripts/run.sh full
+
+# One iteration of every benchmark, for CI.
+bench-suite-smoke:
+	BENCH_PG_URL='$(PG_URL)' ./bench/scripts/run.sh smoke
+
+# Rewrites bench/baseline/allocs.txt from the allocation-gate benchmarks.
+bench-baseline:
+	./bench/scripts/run.sh baseline
 
 bench-env:
 	cd bench && $(GO) run ./cmd/envcapture

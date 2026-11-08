@@ -170,3 +170,4 @@ jobs:
       - run: make test-bench-module
       - run: make test-bench-module-integration
       - run: make bench-hooks
+      - run: make bench-suite-smoke

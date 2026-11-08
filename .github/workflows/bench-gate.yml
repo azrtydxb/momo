@@ -1,0 +1,59 @@
+# Allocation regression gate. Allocation counts are deterministic across runs,
+# so benchstat against the committed baseline is a stable CI signal; timings on
+# a shared runner are not, so they are printed for information and never gated.
+# Actions are pinned by version tag, the azrtydxb standard (see
+# .procoder/ask/decisions.md).
+name: bench-gate
+
+on:
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "bench-gate-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  allocs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BENCH_PG_URL: postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
+    services:
+      postgres:
+        image: "pgvector/pgvector:0.8.7-pg17"
+        env:
+          POSTGRES_PASSWORD: momo
+          POSTGRES_USER: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - name: Install benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e
+      - name: Run the allocation benchmarks
+        run: cd bench && go test -tags integration -run '^$' -bench 'BenchmarkAllocs_' -benchmem -count=6 ./... | tee new.txt
+      - name: Compare allocs/op with the baseline
+        run: |
+          benchstat -filter '.unit:allocs/op' bench/baseline/allocs.txt bench/new.txt | tee delta.txt
+          cd bench && go run ./cmd/benchgate -max-percent 5 ../delta.txt
+      - name: Timings (information only, not gated)
+        run: benchstat -filter '.unit:ns/op' bench/baseline/allocs.txt bench/new.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-allocs
+          path: |
+            bench/new.txt
+            delta.txt

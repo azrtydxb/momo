@@ -1,0 +1,2 @@
+Allocs_InsertOrder/momo-8  100.0 ± 0%  103.0 ± 0%  +3.00%  (p=0.002 n=6+6)
+Allocs_InsertOrder/gorm-8  100.0 ± 0%  120.0 ± 0%  +20.00%  (p=0.300 n=6+6)
