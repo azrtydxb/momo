@@ -41,7 +41,9 @@ type Action struct {
 // Plan compares the generated files with the output directory. It reads the
 // directory and writes nothing. A file that was edited by hand, or that this
 // command did not write, is never replaced: it becomes a conflict, unless
-// overwrite is set.
+// overwrite is set. A hand-edited file whose model the database did not change
+// stays unchanged even with overwrite, so overwrite never discards an edit that
+// the database gave no reason to replace.
 func Plan(dir string, files []File, overwrite bool) ([]Action, error) {
 	var out []Action
 	want := map[string]bool{}
