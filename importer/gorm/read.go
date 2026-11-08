@@ -545,7 +545,8 @@ func (r *reader) applyDefault(m *importer.Model, fld *importer.Field, tag map[st
 // the others are reported as dropped.
 func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all map[string][]string, m *importer.Model) {
 	if has(tag, "UNIQUE") && tag["UNIQUE"] != "false" {
-		fld.Unique = true // GORM emits a column-level UNIQUE; PostgreSQL names it <table>_<column>_key
+		fld.Unique = true // a UNIQUE constraint, which GORM names uni_<table>_<column>
+		fld.UniqueName = "uni_" + m.Table + "_" + fld.Column
 	}
 	kept := false
 	for _, key := range []string{"INDEX", "UNIQUEINDEX"} {

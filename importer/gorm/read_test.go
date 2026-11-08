@@ -73,7 +73,7 @@ func TestReadFixtureModels(t *testing.T) {
 		t.Fatalf("the fixture must import cleanly: %s", rep)
 	}
 	org, user, post, comment := models[0], models[1], models[2], models[3]
-	if f := field(t, org, "Slug"); !f.Unique || f.UniqueIndex || f.UniqueName != "" {
+	if f := field(t, org, "Slug"); !f.Unique || f.UniqueIndex || f.UniqueName != "uni_orgs_slug" {
 		t.Fatalf("a plain unique stays a constraint: %+v", f)
 	}
 	if f := field(t, post, "CreatedBy"); f.Column != "audit_created_by" {
