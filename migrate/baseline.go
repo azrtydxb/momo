@@ -126,6 +126,13 @@ func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, tbl,
 	if err != nil {
 		return err
 	}
+	// A Go migration this engine does not have cannot be recorded: refuse
+	// rather than leave a gap that blocks the CLI or reruns it later.
+	for _, f := range e.unregisteredGo(files, have) {
+		if f.Version <= version {
+			return fmt.Errorf("%w: %s has no up file and no registered Go migration, so it cannot be baselined; baseline with the application's engine (migrate.WithGoMigrations)", ErrGoMigrationUnregistered, f.Path)
+		}
+	}
 	tx, err := c.Begin(ctx, momo.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("migrate: begin: %w", err)
@@ -149,6 +156,21 @@ func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, tbl,
 		row := HistoryRow{
 			Version: f.Version, Name: f.Name, Checksum: sum.Files[f.Path], Status: StatusApplied,
 			ApplyID: BaselineApplyID, Kind: "sql", AppliedAt: now.Truncate(time.Microsecond),
+		}
+		if err := w.insert(ctx, tx, row); err != nil {
+			return err
+		}
+	}
+	for _, g := range e.opts.goMigrations {
+		if g.Version > version || have[g.Version] {
+			continue
+		}
+		if err := w.deleteRolledBack(ctx, tx, g.Version); err != nil {
+			return err
+		}
+		row := HistoryRow{
+			Version: g.Version, Name: g.Name, Checksum: g.identity(), Status: StatusApplied,
+			ApplyID: BaselineApplyID, Kind: "go", AppliedAt: now.Truncate(time.Microsecond),
 		}
 		if err := w.insert(ctx, tx, row); err != nil {
 			return err

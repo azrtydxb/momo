@@ -381,6 +381,13 @@ func (l *cli) databaseURL() (string, error) {
 	if u == "" {
 		return "", errors.New("no database URL: pass --url, set migrate.url_env in momo.yaml, or set MOMO_DATABASE_URL")
 	}
+	l.noteURL(u)
+	return u, nil
+}
+
+// noteURL registers the URL and its password as secrets to redact, and warns
+// when TLS is not enforced for a remote host.
+func (l *cli) noteURL(u string) {
 	l.secrets = append(l.secrets, u)
 	if w := TLSWarning(u, l.env); w != "" {
 		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))
@@ -390,7 +397,6 @@ func (l *cli) databaseURL() (string, error) {
 			l.secrets = append(l.secrets, pw)
 		}
 	}
-	return u, nil
 }
 
 // openEngine builds an engine on a live database. The returned close func
@@ -400,6 +406,11 @@ func (l *cli) openEngine(ctx context.Context, extra ...migrate.Option) (*migrate
 	if err != nil {
 		return nil, nil, l.errf(exitUsage, "%v", err)
 	}
+	return l.openEngineAt(ctx, dsn, extra...)
+}
+
+// openEngineAt builds an engine on the database at dsn.
+func (l *cli) openEngineAt(ctx context.Context, dsn string, extra ...migrate.Option) (*migrate.Engine, func(), int) {
 	d, err := l.dialectImpl()
 	if err != nil {
 		return nil, nil, l.errf(exitUsage, "%v", err)
@@ -432,7 +443,7 @@ func (l *cli) failure(err error) int {
 	switch {
 	case errors.Is(err, migrate.ErrDestructive), errors.Is(err, migrate.ErrStagedRequired),
 		errors.Is(err, migrate.ErrBaselineMismatch), errors.Is(err, migrate.ErrBranchConflict),
-		errors.Is(err, migrate.ErrOutOfOrder), errors.Is(err, migrate.ErrChainInvalid):
+		errors.Is(err, migrate.ErrOutOfOrder), errors.Is(err, migrate.ErrChainInvalid), errors.Is(err, migrate.ErrGoMigrationUnregistered):
 		return l.errf(exitFindings, "%v", err)
 	case errors.Is(err, migrate.ErrNoSnapshot):
 		return l.errf(exitUsage, "%v", err)

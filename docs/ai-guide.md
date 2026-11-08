@@ -81,8 +81,42 @@ migrate:
 ```
 
 `naming:` is optional: `momo` (default: snake_case columns, plural snake_case
-tables), `gorm`, `bun`, `ent`. Pick one and never change it: a change renames
-columns.
+tables), `gorm`, `bun`, `ent`, `prisma`. Pick one and never change it: a change
+renames columns.
+
+`naming: prisma` matches a database that Prisma created: the table is the model
+name as written and quoted (`KbChunk`), the column is camelCase (`createdAt`,
+`accountId`; an `ID` word at the end becomes `Id`, and a trailing `IDs` becomes
+`Ids`, so `UserIDs` is `userIds`), and the constraint and index names are
+`<Table>_pkey`, `<Table>_<col>_fkey`, `<Table>_<col>_key` (unique) and
+`<Table>_<col>_idx`. Those names come out of the table and column names, so no
+tag is needed for single-column keys and indexes.
+
+Limits of the preset:
+
+- A composite `@@index` or `@@unique` is named by Prisma from all its columns
+  (`<Table>_<a>_<b>_idx`). Name such an index explicitly in `MomoConfig` or with
+  an `index:`/`unique:` tag name.
+- The implicit many-to-many table is named `_AToB` (model names in alphabetical
+  order), but its `A` and `B` columns and its foreign key names are not
+  reproduced. Declare that table with an explicit join model instead.
+- A column name that does not follow the camelCase rule needs a `column:` tag.
+
+Prisma maps `DateTime` to `timestamp(3)`, so add a `types:` section:
+
+```yaml
+naming: prisma
+types:
+  time.Time: timestamp(3)
+```
+
+`types:` overrides the default PostgreSQL column type of a Go type. Only
+`time.Time` is supported, and the value must be `timestamp`, `timestamptz`,
+`time` or `timetz` with an optional precision 0-6 and an optional
+`with`/`without time zone` (anything else is refused, as it is written into
+DDL). A `type:` tag on a field still wins. It applies when the first entry of
+`dialects` is PostgreSQL (or `dialects` is empty); with SQLite first it is
+ignored. Without it `time.Time` is `timestamp with time zone`.
 
 Generate:
 
@@ -221,7 +255,7 @@ Tag reference (all lower case):
 | `serial`                                                                  | PostgreSQL `smallserial`/`serial`/`bigserial` id by Go int width (sequence owned by the column, `DEFAULT nextval`); omitted from inserts and read back with `RETURNING` like `identity`; excludes `identity` and `default`; refused on other dialects |
 | `column:<name>`                                                           | column name                                                                                                                                                                                                                                           |
 | `size:<n>`                                                                | `varchar(n)`; strings only                                                                                                                                                                                                                            |
-| `precision:<p>`, `scale:<s>`                                              | numeric precision (float/decimal only); `scale` needs `precision`                                                                                                                                                                                     |
+| `precision:<p>`, `scale:<s>`                                              | numeric precision (float, decimal, or a string without `size` that carries a numeric); `scale` needs `precision`                                                                                                                                      |
 | `dim:<n>`                                                                 | vector dimension; optional on vector and halfvec (none: dimensionless column), required on sparsevec and bit, invalid elsewhere                                                                                                                       |
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                              |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
@@ -577,6 +611,16 @@ combinators `momo.And`, `momo.Or`, `momo.Not`, `momo.Like`, `momo.ILike`,
 `momo.EscapeLike(s)` escapes user text for `Like`. Find NULLs with `IsNull()`;
 `Eq(nil)` is not expressible.
 
+Array columns (PostgreSQL only). A `[]string` field is generated as `text[]`;
+`[]int16`, `[]int32`, `[]int64`, `[]bool`, `[]float32` and `[]float64` map to
+`smallint[]`, `integer[]`, `bigint[]`, `boolean[]`, `real[]` and
+`double precision[]`. The predicates are generic functions over a typed
+column: `momo.ArrayContains(col, vals...)` (`@>`), `momo.ArrayContainedBy`
+(`<@`), `momo.ArrayOverlaps` (`&&`) and `momo.AnyOf(scalarCol, vals...)`
+(`= ANY($n)`). Each binds the values as one array parameter, so the bind count
+does not grow with the list. `ArrayOverlaps` and `AnyOf` with no values are
+false. On SQLite they fail the build with `ErrUnsupported`; use `In` there.
+
 Searching with user input safely. `Like` and `ILike` always render
 `ESCAPE '!'` on every dialect, matching `EscapeLike`. Wildcards (`%`, `_`) in
 the pattern still work; only a `!` makes the next character literal, so a
@@ -661,6 +705,16 @@ momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
 // Any other function: Func[T](name, args...). name is validated (identifier,
 // optionally schema.qualified); an Expr arg renders inline, other values are bound.
 momo.Func[string]("btrim", doc.Title)
+// Aggregates with their own ORDER BY (AggExpr[T]); chain OrderBy, inside the call.
+momo.StringAgg(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
+momo.ArrayAgg[string](label).OrderBy(label.Asc())       // []string, PostgreSQL only
+// Ordered-set aggregates (PostgreSQL): WithinGroup is required.
+momo.PercentileCont(0.5).WithinGroup(run.DurationMs.Asc())      // float64
+momo.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
+// JSON: T is the Go type the result decodes into (types.JSON[T]). Keys and
+// separators are literals and must not contain a backslash.
+item := momo.JSONBBuildObject[Item](momo.JSONField("label", label), momo.JSONField("n", n))
+momo.CoalesceExpr(momo.JSONBAgg[Item](item).OrderBy(label.Asc()), momo.EmptyJSONArray[Item]())
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 momo.CurrentSchema()
 

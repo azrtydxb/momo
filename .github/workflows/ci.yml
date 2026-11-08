@@ -44,6 +44,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
+          cache-dependency-path: "**/go.sum"
       - run: make test
 
   compile-fail:
