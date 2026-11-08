@@ -9,9 +9,8 @@ import (
 
 type tenantKey struct{}
 
-// WithTenant returns a context carrying tenant for TenantFilter. This key is
-// unrelated to the setting that row-level security helpers read; see
-// TenantFilter.
+// WithTenant returns a context carrying tenant for TenantFilter only. Nothing
+// else reads it; see TenantFilter for how to drive row-level security from it.
 func WithTenant(ctx context.Context, tenant any) context.Context {
 	return context.WithValue(ctx, tenantKey{}, tenant)
 }
@@ -45,9 +44,11 @@ func (p tenantPredicate[T]) AppendSQL(b *Builder) {
 // It is applied only where you add it to a Where: not automatically on
 // Update or Delete, not to the tenant column of an Insert, not to Preload,
 // Load or LoadCounts queries, joins or subqueries, and not to raw SQL. Enforce
-// isolation in the database with row-level security; the tenant that
-// TenantFilter reads (WithTenant) is a different context value from the one
-// the RLS helpers set on the connection.
+// isolation in the database with row-level security. That is configured by
+// your own WithTxSetup function, which reads whatever your code put in the
+// context; to drive both from WithTenant, read the tenant there and call
+// SetConfigLocal. Without WithImplicitTx, non-transactional queries get no
+// setting.
 func TenantFilter[T any](ctx context.Context, col Column[T]) Predicate {
 	v, ok := ctx.Value(tenantKey{}).(T)
 	return tenantPredicate[T]{col: col, tenant: v, ok: ok}

@@ -1488,7 +1488,7 @@ Examples: every `examples/*/example_test.go`, harness
 report)`, a development hook that reports once per statement shape per scope
   when the shape runs more than the threshold. Contexts without a scope are not
   tracked; a scope tracks at most 1024 shapes; a panic in the report function is
-  recovered. Batched relation loads do not trigger it.
+  recovered. A single batched relation load runs one statement per relation and does not trigger it.
 - `momo.WithTenant(ctx, tenant)` and `momo.TenantFilter(ctx, column)` add a
   `column = tenant` predicate. This is an application-side convenience and NOT a
   security boundary. It applies only where you add it to a `Where`: not to
@@ -1496,8 +1496,11 @@ report)`, a development hook that reports once per statement shape per scope
   or LoadCounts, joins, subqueries or raw SQL. A missing tenant, or one whose Go
   type is not exactly the column type, fails the build with `ErrValidation`
   (also under Not and Or). The zero value is a real tenant. Enforce isolation
-  with PostgreSQL row-level security; the tenant read by `TenantFilter` is a
-  different context value from the one a row-level security setting uses.
+  with PostgreSQL row-level security: it is configured by your own
+  `WithTxSetup` function, which reads whatever your code put in the context. To
+  drive both from `WithTenant`, read the tenant there and call
+  `SetConfigLocal`. Without `WithImplicitTx`, non-transactional queries get no
+  setting.
 
 ## 12. Rules for AI agents
 
