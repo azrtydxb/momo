@@ -23,6 +23,10 @@ import (
 // timestamp. A single row with more bound columns than the limit fails with
 // ErrLimitExceeded.
 func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
+	q, err := q.beforeWrite(ctx)
+	if err != nil {
+		return Result{}, err
+	}
 	chunks, err := q.plan()
 	if err != nil {
 		return Result{}, err
@@ -98,6 +102,10 @@ func (q InsertQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if !q.i.returning.active() {
 		return nil, q.verr("", "Rows needs a Returning list")
 	}
+	q, err := q.beforeWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
 	chunks, err := q.plan()
 	if err != nil {
 		return nil, err
@@ -121,7 +129,7 @@ func (q InsertQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 		cr.done = true
 		return nil, sc.finish(context.WithoutCancel(ctx), err)
 	}
-	return &ModelRows[T]{rows: cr, meta: q.meta, idx: idx}, nil
+	return &ModelRows[T]{rows: cr, meta: q.meta, idx: idx, ctx: ctx}, nil
 }
 
 func (q InsertQuery[T]) rowsOne(ctx context.Context) (*ModelRows[T], error) {
