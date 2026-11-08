@@ -24,9 +24,69 @@ To reproduce, run `make db-up`, then `make bench-hooks`. The benchmark opens a d
 
 ## Comparison suite
 
-The `bench/` module holds the workload contract (`bench/workload`), the shared
-connection settings and the handwritten pgx and database/sql reference
-adapters (`bench/adapters`), and the environment capture (`bench/env`,
-`make bench-env`). Pool settings are identical for every adapter: 16
-connections, one hour connection lifetime. Timings are judged only on a
-dedicated machine; shared CI runners are too noisy for them.
+The `bench/` module compares Momo with handwritten pgx and database/sql, GORM,
+Ent and Bun on one PostgreSQL server. Every operation is defined once in
+`bench/workload` and each library implements it in `bench/adapters`; the
+equivalence test `TestBenchEquivalence` fails when an adapter returns different
+rows than the handwritten pgx reference or leaves different state after a
+write, so a workload whose SQL meaning differs between libraries cannot be
+published.
+
+### Methodology
+
+- Identical pool settings for every adapter: 16 connections, one hour
+  connection lifetime. The native pgx path uses the statement cache; the other
+  libraries run on the pgx standard library driver.
+- GORM runs with `SkipDefaultTransaction`, as Momo adds no implicit
+  transaction. Bun runs on the same pgx standard library `database/sql` handle
+  as Ent and GORM, so the comparison isolates the ORM layer. No library cache
+  is enabled.
+- The data is deterministic: a fixed seed, 200 customers with 5 orders each.
+  `ANALYZE` runs after seeding.
+- ORM-only microbenchmarks report p50, p95 and p99 per call beside allocations,
+  for six operations over all six libraries. A mixed read and write workload
+  with concurrency and the bulk insert paths have their own runners.
+- Bulk insert compares chunked VALUES, COPY and Momo's `Unnest`, one statement
+  with one array parameter per column, at 1000, 10000 and 40000 rows.
+- Vector search is compared at equal recall: a sweep picks the smallest
+  `hnsw.ef_search` whose recall at 10 reaches 0.95 against exact search, and both
+  the Momo builder and the handwritten statement then run at that setting.
+- Generated-code size and compile cost of the benchmark models are measured by
+  `bench/codesize`.
+
+### Pinned versions
+
+The module versions are pinned in `bench/go.mod`; each run records them in
+`versions.txt` and `env.json`, together with the Go toolchain, the machine, the
+PostgreSQL version and the pgvector version. The database image is
+`pgvector/pgvector:0.8.7-pg17`.
+
+### Reproducing a run
+
+`make db-up` starts PostgreSQL with pgvector. Then `make bench` runs the whole
+suite ten times per benchmark and writes `bench/results/` under a directory named
+by UTC time, operating system and architecture, with `env.json`, `versions.txt`,
+`codesize.json`, `raw.txt` and `summary.txt`. `make bench-suite-smoke` runs one
+iteration of everything and is what CI uses. `make bench-generate` regenerates
+the Momo metadata and the Ent client.
+
+### Regression policy
+
+- Timings are judged only on a dedicated machine: a regression is flagged when
+  benchstat reports a change above 10 percent with p below 0.05 across two
+  consecutive full runs. Shared CI runners are too noisy for timings, so CI never
+  gates on them.
+- Allocation counts are deterministic, so CI gates them: the `bench-gate`
+  workflow runs the allocation benchmarks, compares allocs/op with
+  `bench/baseline/allocs.txt` using benchstat and fails above 5 percent with p
+  below 0.05. `make bench-gate` runs the same comparison locally and
+  `make bench-baseline` rewrites the baseline.
+- Budgets are the median of the reference run plus 10 percent and are reviewed
+  on every full run.
+
+### Status of the published numbers
+
+No full run on a dedicated machine has been committed yet, so this page records
+no comparative timings. The only budget in force is the hook overhead budget
+above, which CI enforces. Timing figures will be added from the stored
+`bench/results/` run, never from a shared runner.
