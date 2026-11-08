@@ -152,6 +152,9 @@ func (e *Engine) loadDowns(rows []HistoryRow) ([]Pending, error) {
 		}
 		stmts := make([]Statement, len(parts))
 		for j, s := range parts {
+			if s, err = applyDDLDirective(s, name); err != nil {
+				return nil, fmt.Errorf("migrate: %s: statement %d: %w", f.Path, j+1, err)
+			}
 			stmts[j] = Statement{SQL: s}
 		}
 		out[i] = Pending{Version: r.Version, Name: r.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: r.Checksum}
@@ -173,7 +176,9 @@ func runRollback(ctx context.Context, env RunEnv, r HistoryRow, p Pending) (Appl
 	wrap := func(err error) error {
 		return fmt.Errorf("migrate: down %s_%s: %w", p.Version, p.Name, err)
 	}
-	if p.NoTx || hasNoTx(p.Statements) {
+	// A dialect whose DDL commits implicitly runs a down statement by
+	// statement too, and a failure leaves the row failed (dirty).
+	if p.NoTx || hasNoTx(p.Statements) || !transactionalDDL(env.Dialect) {
 		n, err := execAll(ctx, env.Conn, p.Statements, nil)
 		if err != nil {
 			cause := redact(err)

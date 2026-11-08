@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // History row statuses. Dirty means StatusRunning or StatusFailed; a
@@ -110,6 +111,12 @@ func ensureHistory(ctx context.Context, c momo.PinnedConn, d Dialect, tbl string
 	}
 	ins := fmt.Sprintf(`INSERT INTO %s (version, name, checksum, status, applied_at) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (version) DO NOTHING`,
 		tbl, ph(d, 1), ph(d, 2), ph(d, 3), ph(d, 4), ph(d, 5))
+	if dd := d.Dialect(); dd != nil && dd.Name == dialect.MySQL {
+		// MySQL has no ON CONFLICT; the error column is TEXT, which cannot
+		// carry a default there, so the row names it.
+		ins = fmt.Sprintf(`INSERT INTO %s (version, name, checksum, status, error, applied_at) VALUES (%s, %s, %s, %s, '', %s) ON DUPLICATE KEY UPDATE version = version`,
+			tbl, ph(d, 1), ph(d, 2), ph(d, 3), ph(d, 4), ph(d, 5))
+	}
 	if _, err := c.Exec(ctx, ins, []any{MetaVersion, "meta", strconv.Itoa(FormatVersion), StatusMeta, time.Now().UTC().Format(timeLayout)}); err != nil {
 		return fmt.Errorf("migrate: write history metadata: %w", err)
 	}
@@ -149,11 +156,12 @@ func checkHistoryFormat(ctx context.Context, c momo.PinnedConn, tbl string) erro
 }
 
 // isUndefinedTable reports whether err says a table does not exist:
-// PostgreSQL's "relation does not exist" (SQLSTATE 42P01) or SQLite's "no such
-// table", which has no SQLSTATE and is recognised by its message.
+// PostgreSQL's "relation does not exist" (SQLSTATE 42P01), MySQL's and
+// MariaDB's (42S02), or SQLite's "no such table", which has no SQLSTATE and is
+// recognised by its message.
 func isUndefinedTable(err error) bool {
 	var s interface{ SQLState() string }
-	if errors.As(err, &s) && s.SQLState() == undefinedTable {
+	if errors.As(err, &s) && (s.SQLState() == undefinedTable || s.SQLState() == undefinedTableMySQL) {
 		return true
 	}
 	return err != nil && strings.Contains(err.Error(), "no such table: ")

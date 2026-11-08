@@ -87,6 +87,9 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 		}
 		stmts := make([]Statement, len(parts))
 		for i, s := range parts {
+			if s, err = applyDDLDirective(s, name); err != nil {
+				return nil, fmt.Errorf("migrate: %s: statement %d: %w", f.Path, i+1, err)
+			}
 			stmts[i] = Statement{SQL: s}
 		}
 		out = append(out, Pending{Version: f.Version, Name: f.Name, Kind: "sql", Statements: stmts, NoTx: dirs.NoTransaction, Checksum: sum.Files[f.Path], ForeignKeysOff: dirs.SQLiteForeignKeysOff})
@@ -98,6 +101,9 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 
 // undefinedTable is the SQLSTATE of a query on a table that does not exist.
 const undefinedTable = "42P01"
+
+// undefinedTableMySQL is the SQLSTATE MySQL and MariaDB report for it.
+const undefinedTableMySQL = "42S02"
 
 // readHistory reads the history table without creating it: a database that
 // has none yet has an empty history. Plan and Status use it so they stay
@@ -814,6 +820,11 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
 	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
+	if v, ok := e.opts.dialect.(SchemaValidator); ok {
+		if err := v.ValidateSchema(&to); err != nil {
+			return nil, err
+		}
+	}
 	from := &schema.Schema{Dialect: to.Dialect}
 	parent := ""
 	snap, err := LatestSnapshot(e.dir)

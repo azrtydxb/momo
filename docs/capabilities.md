@@ -7,8 +7,10 @@ lock, see [migrations.md](migrations.md#3a-sqlite)), that you use as a library
 through `migrate.NewEngine`; the `momo migrate` command does not select it yet,
 and a pure-Go driver and the vector builders are **not available yet**. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
 (`driver/mysqldriver`): queries, writes, locking and transactions run and are
-covered by the integration suite, but migrations, the inspector and vector
-search are **not available yet** (see [MySQL and MariaDB](mysql.md)).
+covered by the integration suite. The library migration dialect `migrate/mysql`
+exists (inspector, drift, apply), but the `momo migrate` command is
+PostgreSQL-only; MySQL vector search is storage only and MariaDB has distance
+functions (see [MySQL and MariaDB](mysql.md)).
 
 Legend: yes = implemented for PostgreSQL and covered by the integration suite
 (`make test-integration-postgres`, which also runs every dialect-neutral test
@@ -64,14 +66,14 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 
 ## Dialect and driver status
 
-| Item                           | PostgreSQL (pgx)                              | SQLite                                                                        | MySQL / MariaDB                                       |
-| ------------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Usable                         | yes                                           | queries, writes, library migrations: yes (cgo, not Windows); vectors: not yet | queries and writes: yes; migrations, vectors: not yet |
-| Driver package                 | `driver/pgxdriver` (pgx v5 pool, `FromSQLDB`) | `driver/sqlitedriver` (mattn go-sqlite3, sqlite-vec)                          | `driver/mysqldriver`                                  |
-| `dialect.For(name)` metadata   | yes                                           | yes (data only)                                                               | yes (data only)                                       |
-| Migration dialect (`migrate`)  | `migrate/postgres`                            | `migrate/sqlite` (library only)                                               | none                                                  |
-| `momo migrate` on this dialect | works                                         | exit 2, "migrations for dialect ... are not available yet" (use the library)  | same                                                  |
-| CI integration matrix          | PostgreSQL 16 and 17, pgvector 0.8.7          | runs inside the PostgreSQL job (no server needed)                             | MySQL 8.4.13, MySQL 9.7.4, MariaDB 11.8.9             |
+| Item                           | PostgreSQL (pgx)                              | SQLite                                                                        | MySQL / MariaDB                                    |
+| ------------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------- |
+| Usable                         | yes                                           | queries, writes, library migrations: yes (cgo, not Windows); vectors: not yet | queries, writes, library migrations: yes; CLI: no  |
+| Driver package                 | `driver/pgxdriver` (pgx v5 pool, `FromSQLDB`) | `driver/sqlitedriver` (mattn go-sqlite3, sqlite-vec)                          | `driver/mysqldriver`                               |
+| `dialect.For(name)` metadata   | yes                                           | yes (data only)                                                               | yes (data only)                                    |
+| Migration dialect (`migrate`)  | `migrate/postgres`                            | `migrate/sqlite` (library only)                                               | `migrate/mysql` (library only)                     |
+| `momo migrate` on this dialect | works                                         | exit 2, the CLI builds only the PostgreSQL dialect                            | exit 2, the CLI builds only the PostgreSQL dialect |
+| CI integration matrix          | PostgreSQL 16 and 17, pgvector 0.8.7          | runs inside the PostgreSQL job (no server needed)                             | MySQL 8.4.13, MySQL 9.7.4, MariaDB 11.8.9          |
 
 The `dialect/dialect.go` flags for the unusable dialects, for planning only:
 
@@ -346,7 +348,7 @@ All match `errors.Is(err, momo.ErrUnsupported)`. Build-time errors surface from
 
 | Call                                                          | When                                                                                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Anything on SQLite; migrations and vectors on MySQL           | SQLite and MySQL have no migration dialect or vector builders yet, so `momo migrate` exits 2                                                                                                                                                                                                                               |
+| Anything on SQLite; `momo migrate` on MySQL                   | SQLite has no migration dialect, and the CLI builds only the PostgreSQL one, so `momo migrate` exits 2 on both (use the library dialect `migrate/mysql`)                                                                                                                                                                   |
 | `Upsert`, `OnConflict`, `FindOrCreate`                        | `Upsert`, `OnConflict`: a dialect with neither `ON CONFLICT` nor `ON DUPLICATE KEY`; on MySQL also a target that is not the only unique key, and a `Where` on the conflict clause. `FindOrCreate`: a dialect without `ON CONFLICT` and `RETURNING`, which is MySQL and MariaDB                                             |
 | `CreateGraph`                                                 | `*Tx` on a dialect without savepoints; dialect without `RETURNING` (rejected before the transaction opens)                                                                                                                                                                                                                 |
 | `ForUpdate`, `ForShare`                                       | dialect without row locks (SQLite metadata)                                                                                                                                                                                                                                                                                |

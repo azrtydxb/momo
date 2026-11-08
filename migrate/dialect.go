@@ -26,6 +26,13 @@ type Dialect interface {
 	Lock(ctx context.Context, c momo.PinnedConn, key string) (unlock func() error, holder func(context.Context) (string, error), err error)
 }
 
+// SchemaValidator is implemented by dialects that refuse some declarations
+// their database cannot keep apart: ValidateSchema checks a desired schema, and
+// Diff and AutoMigrate return its error before anything is rendered.
+type SchemaValidator interface {
+	ValidateSchema(s *schema.Schema) error
+}
+
 // InvalidInspector is implemented by dialects whose Inspect hides objects left
 // in an invalid state. InspectWithInvalid is Inspect plus the names of the
 // invalid indexes (a failed CREATE INDEX CONCURRENTLY leaves one behind), spelled
