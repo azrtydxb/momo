@@ -98,3 +98,99 @@ func TestSDLRules(t *testing.T) {
 		t.Errorf("missing generated header:\n%s", s)
 	}
 }
+
+// Catches: 64-bit and unsigned 32-bit integers mapped to the 32-bit GraphQL
+// Int, which would overflow, and small integers needlessly widened.
+func TestSDLIntegerWidths(t *testing.T) {
+	m := &gen.Model{GoName: "Num", Table: "nums", Fields: []*gen.Field{
+		{GoName: "ID", Column: "id", BaseType: "int64"},
+		{GoName: "Small", Column: "small", BaseType: "int32"},
+		{GoName: "Tiny", Column: "tiny", BaseType: "uint16"},
+		{GoName: "Wide", Column: "wide", BaseType: "uint32"},
+		{GoName: "Huge", Column: "huge", BaseType: "uint64"},
+	}}
+	g := &gen.Graph{Models: []*gen.Model{m}, Schema: &schema.Schema{Tables: []schema.Table{{Name: "nums", PrimaryKey: []string{"id"}}}}}
+	src, diags := SDL(g)
+	if len(diags) != 0 {
+		t.Fatalf("diags = %v", diags)
+	}
+	s := string(src)
+	for _, want := range []string{
+		"scalar Int64\n", "input Int64Filter {\n  eq: Int64\n",
+		"  small: Int!\n", "  tiny: Int!\n", "  wide: Int64!\n", "  huge: Int64!\n",
+		"  id: ID!\n", "  id: Int64Filter\n", "  small: IntFilter\n",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("schema lacks %q:\n%s", want, s)
+		}
+	}
+}
+
+// Catches: column or model names that are not valid GraphQL names, names that
+// collide after camel casing or upper casing, the reserved filter fields, the
+// reserved type names and derived-type clashes (X against XEdge) reaching the
+// schema.
+func TestSDLHostileNames(t *testing.T) {
+	bad := &gen.Model{GoName: "Bad", Table: "bad", Fields: []*gen.Field{
+		{GoName: "A", Column: "id", BaseType: "int64"},
+		{GoName: "B", Column: "user_id", BaseType: "string"},
+		{GoName: "C", Column: "userId", BaseType: "string"},
+		{GoName: "D", Column: "a_b", BaseType: "string"},
+		{GoName: "E", Column: "A_B", BaseType: "string"},
+		{GoName: "F", Column: "and", BaseType: "string"},
+		{GoName: "G", Column: "has space", BaseType: "string"},
+		{GoName: "H", Column: "__typename", BaseType: "string"},
+		{GoName: "I", Column: "1st", BaseType: "string"},
+		{GoName: "J", Column: "naïve", BaseType: "string"},
+	}}
+	query := &gen.Model{GoName: "Query", Table: "q", Fields: []*gen.Field{{GoName: "ID", Column: "id", BaseType: "int64"}}}
+	edge := &gen.Model{GoName: "BadEdge", Table: "be", Fields: []*gen.Field{{GoName: "ID", Column: "id", BaseType: "int64"}}}
+	ascii := &gen.Model{GoName: "Näive", Table: "n", Fields: []*gen.Field{{GoName: "ID", Column: "id", BaseType: "int64"}}}
+	empty := &gen.Model{GoName: "Empty", Table: "e", Fields: []*gen.Field{{GoName: "V", Column: "v", BaseType: "vector.Vector"}}}
+	g := &gen.Graph{Models: []*gen.Model{bad, query, edge, ascii, empty}}
+	src, diags := SDL(g)
+	s := string(src)
+	for _, leak := range []string{"has space", "__typename", "1st", "naïve", "Näive", "type Empty", "type Query {\n  edges"} {
+		if strings.Contains(s, leak) {
+			t.Errorf("schema contains %q:\n%s", leak, s)
+		}
+	}
+	// Bad keeps the first column of each colliding pair; the model named
+	// BadEdge loses to the edge type that Bad derives.
+	if !strings.Contains(s, "  userId: String!\n") || !strings.Contains(s, "  aB: String!\n") || strings.Count(s, "  A_B\n") != 1 {
+		t.Errorf("collision handling wrong:\n%s", s)
+	}
+	if strings.Count(s, "type BadEdge {") != 1 || strings.Contains(s, "type Query {\n  badEdges") {
+		t.Errorf("model BadEdge was exposed:\n%s", s)
+	}
+	joined := ""
+	for _, d := range diags {
+		joined += d.Msg + "\n"
+	}
+	for _, want := range []string{
+		"column userId of Bad collides with column user_id",
+		"column A_B of Bad collides with column a_b",
+		"column and of Bad collides with the reserved filter field and",
+		"column has space of Bad is not a valid GraphQL name",
+		"column __typename of Bad is not a valid GraphQL name",
+		"column 1st of Bad is not a valid GraphQL name",
+		"GraphQL types of model Query collide",
+		"model name Näive is not a valid GraphQL name",
+		"model Empty has no exposed columns",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("no diagnostic containing %q in:\n%s", want, joined)
+		}
+	}
+	if !strings.Contains(joined, "GraphQL types of model BadEdge collide") {
+		t.Errorf("BadEdge/Bad derived type clash not reported:\n%s", joined)
+	}
+}
+
+// Catches: an empty schema producing an invalid empty Query type silently.
+func TestSDLNoModels(t *testing.T) {
+	src, diags := SDL(&gen.Graph{})
+	if strings.Contains(string(src), "type Query") || len(diags) != 1 {
+		t.Fatalf("src %q diags %v", src, diags)
+	}
+}

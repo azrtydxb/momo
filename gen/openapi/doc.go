@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -45,9 +46,17 @@ func schemaFor(baseType string, nullable bool) (obj, bool) {
 		return name
 	}
 	switch t {
-	case "int64", "int", "uint", "uint64", "sql.NullInt64":
+	case "int64", "int", "sql.NullInt64":
 		return obj{"type": typ("integer"), "format": "int64"}, true
-	case "int32", "int16", "int8", "uint32", "uint16", "uint8", "sql.NullInt32", "sql.NullInt16", "sql.NullByte":
+	case "uint32":
+		// Does not fit int32; int64 holds it.
+		return obj{"type": typ("integer"), "format": "int64", "minimum": 0}, true
+	case "uint64", "uint":
+		// No standard format is wide enough, so none is claimed.
+		return obj{"type": typ("integer"), "minimum": 0}, true
+	case "uint16", "uint8", "sql.NullByte":
+		return obj{"type": typ("integer"), "format": "int32", "minimum": 0}, true
+	case "int32", "int16", "int8", "sql.NullInt32", "sql.NullInt16":
 		return obj{"type": typ("integer"), "format": "int32"}, true
 	case "string", "sql.NullString":
 		return obj{"type": typ("string")}, true
@@ -72,7 +81,16 @@ type property struct {
 	schema   obj
 	required bool
 	vector   bool
+	base     string // base Go type, for the filter and key schemas
 }
+
+// pathSegmentRE is what a table name may contain to be one safe URL path
+// segment: the unreserved characters of RFC 3986. A name with a slash, brace,
+// percent sign, dot-only segment or any other character is refused instead of
+// escaped, so a table name can never add path segments or template variables.
+var schemaNameRE = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+var pathSegmentRE = regexp.MustCompile(`^[A-Za-z0-9_~-][A-Za-z0-9._~-]*$`)
 
 func propertiesOf(m *gen.Model) ([]property, []gen.Diagnostic) {
 	var props []property
@@ -89,7 +107,7 @@ func propertiesOf(m *gen.Model) ([]property, []gen.Diagnostic) {
 			continue
 		}
 		nullable := f.Nullable || strings.HasPrefix(f.BaseType, "*") || strings.HasPrefix(f.BaseType, "sql.Null")
-		props = append(props, property{column: f.Column, schema: s, required: !nullable, vector: strings.HasPrefix(f.BaseType, "vector.")})
+		props = append(props, property{column: f.Column, schema: s, required: !nullable, vector: strings.HasPrefix(f.BaseType, "vector."), base: f.BaseType})
 	}
 	return props, diags
 }
@@ -128,11 +146,25 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 	}}
 	paths := obj{}
 	seen := map[string]bool{}
+	collections := map[string]string{}
 	for _, m := range models {
 		if seen[m.GoName] || m.GoName == "Error" {
 			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "OpenAPI schema name " + m.GoName + " is duplicated or reserved"})
 			continue
 		}
+		if !schemaNameRE.MatchString(m.GoName) {
+			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: fmt.Sprintf("model name %q is not a valid OpenAPI component name", m.GoName)})
+			continue
+		}
+		if !pathSegmentRE.MatchString(m.Table) {
+			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: fmt.Sprintf("table name %q of %s cannot be an OpenAPI path segment", m.Table, m.GoName)})
+			continue
+		}
+		if owner, dup := collections[m.Table]; dup {
+			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: fmt.Sprintf("OpenAPI path /%s of %s is already used by %s", m.Table, m.GoName, owner)})
+			continue
+		}
+		collections[m.Table] = m.GoName
 		seen[m.GoName] = true
 		props, pd := propertiesOf(m)
 		diags = append(diags, pd...)
@@ -160,7 +192,7 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 			if p.vector {
 				continue
 			}
-			s, _ := schemaFor(columnBase(m, p.column), false)
+			s, _ := schemaFor(p.base, false)
 			params = append(params, obj{"name": "filter[" + p.column + "]", "in": "query", "schema": s})
 		}
 		listBody := obj{
@@ -225,16 +257,6 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 	return buf.Bytes(), diags
 }
 
-// columnBase returns the base Go type of the column of m.
-func columnBase(m *gen.Model, column string) string {
-	for _, f := range m.Fields {
-		if f.Column == column {
-			return f.BaseType
-		}
-	}
-	return ""
-}
-
 // singlePK returns the schema of m's primary key when it is a single exposed
 // column; a composite key has no {id} path.
 func singlePK(g *gen.Graph, m *gen.Model, props []property) (obj, bool) {
@@ -247,7 +269,7 @@ func singlePK(g *gen.Graph, m *gen.Model, props []property) (obj, bool) {
 	}
 	for _, p := range props {
 		if p.column == t.PrimaryKey[0] {
-			return schemaFor(columnBase(m, p.column), false)
+			return schemaFor(p.base, false)
 		}
 	}
 	return nil, false

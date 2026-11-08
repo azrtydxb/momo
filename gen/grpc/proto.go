@@ -17,6 +17,11 @@ var (
 	identRE   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
+// derivedMessages lists the message and service names a model name derives.
+func derivedMessages(name string) []string {
+	return []string{name, name + "GetRequest", name + "DeleteRequest", name + "DeleteResponse", name + "ListRequest", name + "ListResponse", name + "Service"}
+}
+
 // protoType maps a field's base Go type to a protobuf type. repeated is set
 // for types that map to a repeated field, which cannot be optional.
 func protoType(baseType string) (typ string, repeated, timestamp, ok bool) {
@@ -56,34 +61,56 @@ type protoField struct {
 }
 
 // Proto returns the .proto source for the models of g in the proto package
-// pkg, and the diagnostics for columns with no protobuf mapping. Field
-// numbers come from lock, which Proto updates; the caller saves it. Sensitive
-// columns are not part of the API. The output is deterministic.
+// pkg, and the diagnostics for columns and models that cannot be exposed.
+// Field numbers come from lock, which Proto updates; the caller writes it with
+// Lock.Marshal. Sensitive columns are not part of the API. A model or derived
+// message name that is not a valid ASCII protobuf identifier or that collides
+// with another message (Filter, or XGetRequest against a model called
+// XGetRequest) is a diagnostic and the model is left out. The output is
+// deterministic.
 func Proto(g *gen.Graph, lock *Lock, pkg string) ([]byte, []gen.Diagnostic) {
 	var diags []gen.Diagnostic
 	if !packageRE.MatchString(pkg) {
 		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("invalid protobuf package %q", pkg)}}
 	}
 	models := append([]*gen.Model(nil), g.Models...)
-	sort.SliceStable(models, func(i, j int) bool { return models[i].GoName < models[j].GoName })
+	sort.SliceStable(models, func(i, j int) bool {
+		if models[i].GoName != models[j].GoName {
+			return models[i].GoName < models[j].GoName
+		}
+		return models[i].PkgPath < models[j].PkgPath
+	})
 
 	var body strings.Builder
-	seen := map[string]bool{}
+	taken := map[string]string{"Filter": ""}
 	needTimestamp := false
 	for _, m := range models {
-		if seen[m.GoName] {
-			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "protobuf message " + m.GoName + " is produced by more than one model"})
+		fail := func(msg string) { diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: msg}) }
+		if !identRE.MatchString(m.GoName) {
+			fail("model name " + m.GoName + " is not a valid protobuf identifier")
 			continue
 		}
-		seen[m.GoName] = true
-		if m.GoName == "Filter" {
-			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "model name Filter collides with the shared Filter message"})
+		clash := ""
+		for _, n := range derivedMessages(m.GoName) {
+			if owner, dup := taken[n]; dup {
+				if owner == "" {
+					clash = n + " is the shared Filter message"
+				} else {
+					clash = n + " is also derived from model " + owner
+				}
+			}
+		}
+		if clash != "" {
+			fail("protobuf messages of model " + m.GoName + " collide: " + clash)
 			continue
 		}
-		fields, ts, fd := fieldsOf(m)
+		for _, n := range derivedMessages(m.GoName) {
+			taken[n] = m.GoName
+		}
+		fields, hidden, ts, fd := fieldsOf(m)
 		diags = append(diags, fd...)
 		needTimestamp = needTimestamp || ts
-		writeModel(&body, g, m, fields, lock, &diags)
+		writeModel(&body, g, m, fields, hidden, lock, &diags)
 	}
 
 	var out strings.Builder
@@ -97,41 +124,58 @@ func Proto(g *gen.Graph, lock *Lock, pkg string) ([]byte, []gen.Diagnostic) {
 	return []byte(out.String()), diags
 }
 
-func fieldsOf(m *gen.Model) (fields []protoField, timestamp bool, diags []gen.Diagnostic) {
+// fieldsOf returns the exposed fields of m. hidden lists the columns of m
+// that are not exposed (sensitive, unmapped or badly named), so the lock does
+// not retire their numbers.
+func fieldsOf(m *gen.Model) (fields []protoField, hidden []string, timestamp bool, diags []gen.Diagnostic) {
 	seen := map[string]bool{}
 	for _, f := range m.Fields {
-		if f.Tags.Sensitive || seen[f.Column] {
+		if seen[f.Column] {
 			continue
 		}
 		seen[f.Column] = true
+		if f.Tags.Sensitive {
+			hidden = append(hidden, f.Column)
+			continue
+		}
 		typ, repeated, ts, ok := protoType(f.BaseType)
 		if !ok {
+			hidden = append(hidden, f.Column)
 			diags = append(diags, gen.Diagnostic{Pos: f.Pos, Msg: "no protobuf mapping for " + f.BaseType})
 			continue
 		}
 		if !identRE.MatchString(f.Column) {
+			hidden = append(hidden, f.Column)
 			diags = append(diags, gen.Diagnostic{Pos: f.Pos, Msg: fmt.Sprintf("column %q is not a valid protobuf field name", f.Column)})
 			continue
 		}
 		timestamp = timestamp || ts
 		fields = append(fields, protoField{column: f.Column, typ: typ, repeated: repeated, optional: f.Nullable && !repeated})
 	}
-	return fields, timestamp, diags
+	return fields, hidden, timestamp, diags
 }
 
 // message writes one message whose fields are numbered through the lock.
-func message(b *strings.Builder, lock *Lock, name string, fields []protoField, diags *[]gen.Diagnostic) {
+func message(b *strings.Builder, lock *Lock, name string, fields []protoField, hidden []string, diags *[]gen.Diagnostic) {
 	cols := make([]string, len(fields))
 	for i, f := range fields {
 		cols[i] = f.column
 	}
-	nums, d := lock.Assign(name, cols)
+	nums, d := lock.AssignKeeping(name, cols, hidden)
 	*diags = append(*diags, d...)
 	b.WriteString("\nmessage " + name + " {\n")
-	if r := lock.Messages[name].Reserved; len(r) > 0 {
-		parts := make([]string, len(r))
-		for i, n := range r {
+	ml := lock.Messages[name]
+	if len(ml.Reserved) > 0 {
+		parts := make([]string, len(ml.Reserved))
+		for i, n := range ml.Reserved {
 			parts[i] = strconv.Itoa(n)
+		}
+		b.WriteString("  reserved " + strings.Join(parts, ", ") + ";\n")
+	}
+	if len(ml.ReservedNames) > 0 {
+		parts := make([]string, len(ml.ReservedNames))
+		for i, n := range ml.ReservedNames {
+			parts[i] = strconv.Quote(n)
 		}
 		b.WriteString("  reserved " + strings.Join(parts, ", ") + ";\n")
 	}
@@ -152,9 +196,9 @@ func message(b *strings.Builder, lock *Lock, name string, fields []protoField, d
 	b.WriteString("}\n")
 }
 
-func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoField, lock *Lock, diags *[]gen.Diagnostic) {
+func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoField, hidden []string, lock *Lock, diags *[]gen.Diagnostic) {
 	name := m.GoName
-	message(b, lock, name, fields, diags)
+	message(b, lock, name, fields, hidden, diags)
 
 	// The key of the row: the primary key columns of the schema table.
 	var key []protoField
@@ -174,8 +218,8 @@ func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoFi
 	if len(key) == 0 {
 		*diags = append(*diags, gen.Diagnostic{Pos: m.Pos, Msg: "model " + name + " has no exposed primary key, so Get and Delete cannot address a row"})
 	}
-	message(b, lock, name+"GetRequest", key, diags)
-	message(b, lock, name+"DeleteRequest", key, diags)
+	message(b, lock, name+"GetRequest", key, nil, diags)
+	message(b, lock, name+"DeleteRequest", key, nil, diags)
 	b.WriteString("\nmessage " + name + "DeleteResponse {}\n")
 	b.WriteString("\nmessage " + name + "ListRequest {\n  string after = 1;\n  int32 limit = 2;\n  repeated Filter filter = 3;\n}\n")
 	b.WriteString("\nmessage " + name + "ListResponse {\n  repeated " + name + " items = 1;\n  string next_cursor = 2;\n}\n")
