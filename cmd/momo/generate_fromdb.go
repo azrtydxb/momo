@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/fromdb"
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/migrate"
@@ -35,13 +36,21 @@ func (a fromDBArgs) othersSet() bool {
 // and, when the migration directory has no snapshot yet, the init migration
 // and snapshot of the inspected schema.
 func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) int {
-	l := &cli{out: stdout, errOut: stderr, env: os.Getenv, dialectName: "postgres"}
+	l := &cli{out: stdout, errOut: stderr, env: os.Getenv}
 	var err error
 	if l.cwd, err = os.Getwd(); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
 	if l.file, l.cfgDir, err = loadConfigFile(cfgPath, l.cwd); err != nil {
 		return l.errf(exitUsage, "%v", err)
+	}
+	// Resolve the dialect as the other commands do, and refuse one the
+	// inspector cannot read before anything is opened or written.
+	if l.dialectName, err = l.chooseDialect(); err != nil {
+		return l.errf(exitUsage, "%v", err)
+	}
+	if l.dialectName != string(dialect.Postgres) {
+		return l.errf(exitUsage, "--from-db reads PostgreSQL databases only, not %s", l.dialectName)
 	}
 	if a.schemas != "" {
 		l.file.Migrate.Schemas = strings.Split(a.schemas, ",")
@@ -99,12 +108,21 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 		}
 		return exitOK
 	}
+	// Build the init migration before any model file is written: a snapshot
+	// that fails must not leave model files behind without it.
+	var initSnap *initSnapshot
+	if !a.noSnapshot {
+		var code int
+		if initSnap, code = l.planInitSnapshot(ctx, e, res.Snapshot, a.name); code != exitOK {
+			return code
+		}
+	}
 	if _, err := fromdb.Apply(outDir, actions, writeModelFile); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
 	l.excludeHint()
-	if !a.noSnapshot {
-		if code := l.writeInitSnapshot(ctx, e, res.Snapshot, a.name); code != exitOK {
+	if initSnap != nil {
+		if code := l.writeInitSnapshot(initSnap); code != exitOK {
 			return code
 		}
 	}
@@ -235,38 +253,56 @@ func (l *cli) excludeHint() {
 	}
 }
 
-// writeInitSnapshot writes the init migration and snapshot of the inspected
-// schema, unless the migration directory already has a snapshot.
-func (l *cli) writeInitSnapshot(ctx context.Context, e *migrate.Engine, snap *schema.Schema, name string) int {
+// initSnapshot is the outcome of planInitSnapshot: the migration to write, or
+// the version of the snapshot that is already there, or neither when the
+// database has no objects.
+type initSnapshot struct {
+	dir      string
+	m        *migrate.Migration
+	existing string
+}
+
+// planInitSnapshot builds the init migration and snapshot of the inspected
+// schema without writing anything, unless the migration directory already has
+// a snapshot.
+func (l *cli) planInitSnapshot(ctx context.Context, e *migrate.Engine, snap *schema.Schema, name string) (*initSnapshot, int) {
 	if name == "" {
 		name = "init"
 	}
 	dir := l.migrationDir()
 	switch latest, err := migrate.LatestSnapshot(dirFS(dir)); {
 	case err == nil:
-		l.say("%s already holds the snapshot %s: no init migration written; use momo migrate diff for later changes", l.rel(dir), latest.Version)
-		return exitOK
+		return &initSnapshot{dir: dir, existing: latest.Version}, exitOK
 	case !errors.Is(err, migrate.ErrNoSnapshot):
-		return l.failure(err)
+		return nil, l.failure(err)
 	}
 	m, err := e.Diff(ctx, snap, name, migrate.DiffOptions{})
 	if err != nil {
-		return l.failure(err)
+		return nil, l.failure(err)
 	}
-	if m == nil {
+	return &initSnapshot{dir: dir, m: m}, exitOK
+}
+
+// writeInitSnapshot writes the init migration planned by planInitSnapshot.
+func (l *cli) writeInitSnapshot(s *initSnapshot) int {
+	switch {
+	case s.existing != "":
+		l.say("%s already holds the snapshot %s: no init migration written; use momo migrate diff for later changes", l.rel(s.dir), s.existing)
+		return exitOK
+	case s.m == nil:
 		l.say("the database has no objects to snapshot")
 		return exitOK
 	}
-	written, err := writeNewFiles(dir, m.Files)
+	written, err := writeNewFiles(s.dir, s.m.Files)
 	for _, p := range written {
 		l.say("%s", l.rel(p))
 	}
 	if err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
-	last := m
-	if m.Next != nil {
-		last = m.Next
+	last := s.m
+	if s.m.Next != nil {
+		last = s.m.Next
 	}
 	l.say("next: run momo generate, then momo migrate baseline --version %s", last.Version)
 	return exitOK

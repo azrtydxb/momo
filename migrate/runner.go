@@ -270,6 +270,9 @@ var foreignKeyCheckRE = regexp.MustCompile(`(?is)^pragma\s+(?:(?:[A-Za-z_]\w*|"[
 // migration file keeps the comments around a statement, so they must not hide
 // it.
 func foreignKeyCheckSQL(sql string) (string, bool) {
+	if !strings.Contains(strings.ToLower(sql), "foreign_key_check") {
+		return "", false
+	}
 	s := strings.TrimRight(strings.TrimSpace(stripSQLComments(sql)), "; \t\r\n")
 	return s, foreignKeyCheckRE.MatchString(s)
 }
@@ -324,6 +327,11 @@ func stripSQLComments(s string) string {
 // statement would run with its rows discarded, so it must fail instead. Comments
 // and string literals are ignored.
 func looksLikeForeignKeyCheck(sql string) bool {
+	// Cheap early return: most statements never name it, so skip the comment
+	// and literal stripping for them.
+	if !strings.Contains(strings.ToLower(sql), "foreign_key_check") {
+		return false
+	}
 	s := strings.ToLower(strings.TrimSpace(stripStringLiterals(stripSQLComments(sql))))
 	if !strings.Contains(s, "foreign_key_check") {
 		return false
@@ -390,7 +398,12 @@ func checkForeignKeys(ctx context.Context, x execer, stmt string) error {
 	if rowid.Valid {
 		where = fmt.Sprintf("row %d", rowid.Int64)
 	}
-	return &momo.Error{Kind: momo.ErrForeignKeyViolation, Op: "migrate", Table: table, Err: fmt.Errorf("foreign_key_check: %s of table %q has no matching row in %q; the transaction is rolled back and the table is unchanged", where, table, parent)}
+	// Only a transaction rolls back; without one the earlier statements stay.
+	outcome := "earlier statements of this migration are already committed and are not rolled back"
+	if _, inTx := x.(interface{ Commit(context.Context) error }); inTx {
+		outcome = "the transaction is rolled back and the table is unchanged"
+	}
+	return &momo.Error{Kind: momo.ErrForeignKeyViolation, Op: "migrate", Table: table, Err: fmt.Errorf("foreign_key_check: %s of table %q has no matching row in %q; %s", where, table, parent, outcome)}
 }
 
 // RunStatements runs stmts in one transaction on c and rolls it back on the

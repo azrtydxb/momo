@@ -553,10 +553,14 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 // -- momo:sqlite-foreign-keys-off directive, which every SQLite table rebuild
 // carries) and the dialect is SQLite, and returns the function that restores
 // it. It runs outside any transaction, as SQLite requires. For any other
-// dialect, or when off is false, it does nothing.
+// dialect, the directive is refused with ErrValidation, as -- momo:ddl is on a
+// dialect that does not support it; when off is false, it does nothing.
 func (e *Engine) foreignKeysOff(ctx context.Context, c momo.PinnedConn, off bool) (restore func() error, err error) {
-	if !off || e.opts.dialect.Dialect().Name != dialect.SQLite {
+	if !off {
 		return func() error { return nil }, nil
+	}
+	if d := e.opts.dialect.Dialect(); d != nil && d.Name != dialect.SQLite {
+		return nil, &momo.Error{Kind: momo.ErrValidation, Op: "migrate", Err: fmt.Errorf("-- momo:sqlite-foreign-keys-off is supported on sqlite only, not %s", d.Name)}
 	}
 	restore, err = e.opts.dialect.Setup(ctx, c, SessionOptions{ForeignKeysOff: true})
 	if err != nil {

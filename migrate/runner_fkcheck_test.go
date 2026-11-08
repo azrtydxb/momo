@@ -4,11 +4,15 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/schema"
 )
 
 func TestForeignKeyCheckStatement(t *testing.T) {
@@ -115,6 +119,104 @@ func TestIsUndefinedTable(t *testing.T) {
 	for _, c := range cases {
 		if got := isUndefinedTable(c.err); got != c.want {
 			t.Errorf("isUndefinedTable(%v) = %v, want %v", c.err, got, c.want)
+		}
+	}
+}
+
+func TestIsNoSuchTable(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		name string
+		want bool
+	}{
+		{nil, "t", false},
+		{errors.New("no such table: t"), "t", true},
+		{fmt.Errorf("wrapped: %w", errors.New("no such table: main.t")), "t", true},
+		{errors.New("no such table: other"), "t", false},
+	} {
+		if got := IsNoSuchTable(c.err, c.name); got != c.want {
+			t.Errorf("IsNoSuchTable(%v, %q) = %v, want %v", c.err, c.name, got, c.want)
+		}
+	}
+}
+
+// violationRows is one foreign_key_check row: child, rowid, parent, fkid.
+type violationRows struct{ done bool }
+
+func (r *violationRows) Next() bool {
+	if r.done {
+		return false
+	}
+	r.done = true
+	return true
+}
+
+func (r *violationRows) Scan(dest ...any) error {
+	*dest[0].(*sql.NullString) = sql.NullString{String: "child", Valid: true}
+	*dest[1].(*sql.NullInt64) = sql.NullInt64{Int64: 7, Valid: true}
+	*dest[2].(*sql.NullString) = sql.NullString{String: "parent", Valid: true}
+	*dest[3].(*sql.NullInt64) = sql.NullInt64{Int64: 0, Valid: true}
+	return nil
+}
+func (*violationRows) Err() error   { return nil }
+func (*violationRows) Close() error { return nil }
+
+// violationConn answers every query with one violation; it is a connection.
+type violationConn struct{}
+
+func (violationConn) Exec(context.Context, string, []any) (int64, error) { return 0, nil }
+func (violationConn) Query(context.Context, string, []any) (momo.Rows, error) {
+	return &violationRows{}, nil
+}
+
+// violationTx is the same inside a transaction.
+type violationTx struct{ violationConn }
+
+func (violationTx) Commit(context.Context) error { return nil }
+
+// A foreign_key_check violation in a no-transaction run must not claim a
+// rollback; in a transaction it says so.
+func TestForeignKeyCheckMessageMatchesMode(t *testing.T) {
+	stmt := Statement{SQL: "PRAGMA foreign_key_check"}
+	err := execStatement(context.Background(), violationTx{}, stmt)
+	if !errors.Is(err, momo.ErrForeignKeyViolation) || !strings.Contains(err.Error(), "the transaction is rolled back") {
+		t.Fatalf("in a transaction: %v", err)
+	}
+	err = execStatement(context.Background(), violationConn{}, stmt)
+	if !errors.Is(err, momo.ErrForeignKeyViolation) {
+		t.Fatalf("without a transaction: %v", err)
+	}
+	if strings.Contains(err.Error(), "the transaction is rolled back") || !strings.Contains(err.Error(), "already committed") {
+		t.Fatalf("without a transaction the message must not claim a rollback: %v", err)
+	}
+}
+
+// namedDialect is a Dialect stub that only reports its name.
+type namedDialect struct{ name dialect.Name }
+
+func (d namedDialect) Dialect() *dialect.Dialect { return dialect.For(d.name) }
+func (namedDialect) Inspect(context.Context, momo.PinnedConn, InspectOptions) (*schema.Schema, error) {
+	return nil, errors.New("unused")
+}
+func (namedDialect) Render([]Change) ([]Statement, error) { return nil, errors.New("unused") }
+func (namedDialect) HistoryDDL() []string                 { return nil }
+func (namedDialect) Setup(context.Context, momo.PinnedConn, SessionOptions) (func() error, error) {
+	return nil, errors.New("setup must not run")
+}
+func (namedDialect) Lock(context.Context, momo.PinnedConn, string) (func() error, func(context.Context) (string, error), error) {
+	return nil, nil, errors.New("unused")
+}
+
+// The sqlite-foreign-keys-off directive is refused where it has no meaning.
+func TestForeignKeysOffRefusedOffSQLite(t *testing.T) {
+	for _, name := range []dialect.Name{dialect.Postgres, dialect.MySQL} {
+		e := &Engine{opts: options{dialect: namedDialect{name}}}
+		restore, err := e.foreignKeysOff(context.Background(), nil, true)
+		if !errors.Is(err, momo.ErrValidation) || restore != nil {
+			t.Errorf("%s: err = %v, restore set = %v; want ErrValidation", name, err, restore != nil)
+		}
+		if restore, err := e.foreignKeysOff(context.Background(), nil, false); err != nil || restore == nil {
+			t.Errorf("%s: off=false must do nothing: %v", name, err)
 		}
 	}
 }

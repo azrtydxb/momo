@@ -129,7 +129,7 @@ func (in *inspector) skippedTables(rows []masterRow) (map[string]bool, error) {
 		skip[n] = true
 		return nil
 	})
-	if err != nil && !isNoSuchTable(err, "pragma_table_list") {
+	if err != nil && !migrate.IsNoSuchTable(err, "pragma_table_list") {
 		return nil, fmt.Errorf("migrate/sqlite: read pragma_table_list: %w", err)
 	}
 	return skip, nil
@@ -469,14 +469,4 @@ func collectNames(src string, known map[string]string, out map[string]bool, dept
 			}
 		}
 	}
-}
-
-// isNoSuchTable reports whether err is SQLite's "no such table" error for the
-// named table (SQLite may spell it main.<name>).
-func isNoSuchTable(err error, name string) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "no such table: "+name) || strings.Contains(msg, "no such table: main."+name)
 }
