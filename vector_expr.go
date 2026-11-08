@@ -144,6 +144,19 @@ func (e DistanceExpr) AppendSQL(b *Builder) {
 		b.WriteString(")")
 		return
 	}
+	if b.d.Name == dialect.MySQL {
+		fn, ok := mariaDBFunctions[e.metric]
+		if !ok {
+			unavailable()
+			return
+		}
+		b.WriteString(fn + "(")
+		b.QualifiedIdent(e.table, e.name)
+		b.WriteString(", ")
+		b.argFor(e.flags, e.arg) // wrapped in VEC_FromText
+		b.WriteString(")")
+		return
+	}
 	fn, ok := sqliteFunctions[e.metric]
 	if !ok {
 		unavailable()

@@ -6,14 +6,15 @@ import "context"
 
 // Scalars renders sql through the raw path (see Exec: '?' binds, "??" is a
 // literal '?', Expr arguments render inline, an argument-count mismatch is a
-// build error) and returns the first column of every row as V. An empty
+// build error; on PostgreSQL native $n placeholders bind argument n, see
+// SQL) and returns the first column of every row as V. An empty
 // result returns a nil slice and a nil error.
 func Scalars[V any](ctx context.Context, q Querier, sql string, args ...any) ([]V, error) {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	if err != nil {
 		return nil, err
 	}
-	r, err := q.conn().query(ctx, "select", "", "", c)
+	r, err := q.conn().query(ctx, "raw", "", "", c)
 	if err != nil {
 		return nil, err
 	}

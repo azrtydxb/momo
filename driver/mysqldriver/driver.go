@@ -100,9 +100,12 @@ func (d *driver) Dialect() *dialect.Dialect {
 	return d.d
 }
 
-// Capabilities reports no driver-level extras: there is no COPY or batch path,
-// and vector functions are enabled by the vector story.
-func (d *driver) Capabilities() momo.Capabilities { return momo.Capabilities{} }
+// Capabilities reports no COPY or batch path. Vectors is true on MariaDB,
+// which has VEC_DISTANCE_EUCLIDEAN and VEC_DISTANCE_COSINE, and false on
+// MySQL, which stores VECTOR columns from 9.0 but has no distance function.
+func (d *driver) Capabilities() momo.Capabilities {
+	return momo.Capabilities{Vectors: d.d != nil && len(d.d.Vector.Metrics) > 0}
+}
 
 // ClassifyError implements momo.ErrorClassifier.
 func (d *driver) ClassifyError(err error) error { return classifier{}.ClassifyError(err) }

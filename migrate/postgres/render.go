@@ -61,7 +61,7 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []migrate.Statement{{SQL: "ALTER TYPE " + ident(c.Name) + " ADD VALUE " + lit, Hint: "enum-add"}}, nil
+		return []migrate.Statement{{SQL: "ALTER TYPE " + qualifiedName(c.Name) + " ADD VALUE " + lit, Hint: "enum-add"}}, nil
 	case migrate.DropEnum:
 		return nil, fmt.Errorf("enum %q cannot be dropped by a generated migration; removing an enum or its values requires a manual migration", c.Name)
 	case migrate.CreateTable:
@@ -207,7 +207,9 @@ func tableRef(schemaName, name string) string {
 }
 
 // qualifiedName splits a name the inspector spelled relative to the current
-// schema ("name" or "schema.name") and quotes each part.
+// schema ("name" or "schema.name") and quotes each part. It cuts at the first
+// dot, so a name that itself contains a dot cannot be told from a qualified one
+// and renders as schema and name; such names are not supported.
 func qualifiedName(s string) string {
 	if ns, name, ok := strings.Cut(s, "."); ok {
 		return ident(ns) + "." + ident(name)
@@ -282,17 +284,17 @@ func renderCreateEnum(c migrate.Change) ([]migrate.Statement, error) {
 			return nil, err
 		}
 	}
-	return one("CREATE TYPE " + ident(e.Name) + " AS ENUM (" + strings.Join(vals, ", ") + ")"), nil
+	return one("CREATE TYPE " + qualifiedName(e.Name) + " AS ENUM (" + strings.Join(vals, ", ") + ")"), nil
 }
 
 // ------------------------------------------------------------------ tables
 
 // columnType is the type text of a column. An enum column's type is the enum
-// name and is quoted like any identifier; every other type is the model's SQL
-// type text.
+// name, quoted like any identifier and split at the dot when the inspector
+// qualified it ("schema.name"); every other type is the model's SQL type text.
 func columnType(col schema.Column) string {
 	if col.Enum != "" && col.Type == col.Enum {
-		return ident(col.Type)
+		return qualifiedName(col.Type)
 	}
 	return col.Type
 }
