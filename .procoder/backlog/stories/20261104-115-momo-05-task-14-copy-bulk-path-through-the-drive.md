@@ -13,7 +13,7 @@ Implements plan momo-05-writes-queries Task 14: COPY bulk path through the drive
 
 - [x] `TestCopyInsert` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-5] [S-9] `TestBulkInsertChunking` inserts more rows than one statement's parameter limit and counts them; `TestCopyInsert` (PostgreSQL) writes rows via COPY, including a count above one statement's parameter limit; `TestBulkInsertChunking` (bulk_test.go, which predates this story) fails if chunk size ignores the dialect limit.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
@@ -27,3 +27,4 @@ Remains open, with the reason:
 - Criterion 1 is ticked: red run 42462295742 (throwaway branch, only insert_copy.go removed) failed to compile with `ins(db).Copy undefined` in copy_test.go and insert_copy_unit_test.go; green run 42462290717 on 12b5c776b6d5b18562aa78396848de1375a2b60c passes TestCopyInsert and the unit tests (lint, unit, fuzz-smoke, PostgreSQL, MySQL and MariaDB integration all success).
 - Criterion 2 is ticked: mutation run 42464171855 (throwaway branch from e2e4686, chunk size set to ignore the dialect parameter limit, branch deleted) fails TestBulkInsertChunking in PostgreSQL integration: `bulk_test.go:28: momo: limit exceeded (op=insert table=documents): 200000 bind parameters exceed the postgres limit of 65535`. TestCopyInsert passes in run 42462290717 and the unrelated chunk-boundary unit tests in `bulk_unit_test.go` fail under the same mutation.
 - Criterion 3: the story close gate must pass once 1 and 2 are settled.
+- Gate and commit: the commit gate passed on the branch commits and on the merge into sprint-5 (0f930fd, 2026-11-08); green ci-agent run 42465035321 on a19267b.
