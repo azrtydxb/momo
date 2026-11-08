@@ -38,15 +38,27 @@ func wrapMySQLVectorArg(b *Builder, flavor dialect.Flavor, arg any) {
 	b.WriteString(")")
 }
 
-// isMySQLVectorArg reports whether a typed bind of v on d needs the wrapper.
-// Only the dense float32 vector has a MySQL or MariaDB type; the other vector
-// types fail in DialectValue.
-func isMySQLVectorArg(d *dialect.Dialect, v any) bool {
-	if d.Name != dialect.MySQL || !d.Vector.Storage {
+// bindMySQLVector binds a typed vector value on MySQL or MariaDB and reports
+// whether it handled v. A vector.Vector and a non-nil *vector.Vector (the
+// nullable field type) go through the wrapper; a nil *vector.Vector binds SQL
+// NULL with no wrapper. Every other value is left to the caller.
+func bindMySQLVector(b *Builder, v any) bool {
+	if b.d.Name != dialect.MySQL || !b.d.Vector.Storage {
 		return false
 	}
-	_, ok := v.(vector.Vector)
-	return ok
+	switch x := v.(type) {
+	case vector.Vector:
+		wrapMySQLVectorArg(b, b.d.Flavor, x)
+	case *vector.Vector:
+		if x == nil {
+			b.Arg(nil)
+		} else {
+			wrapMySQLVectorArg(b, b.d.Flavor, *x)
+		}
+	default:
+		return false
+	}
+	return true
 }
 
 // Minimum server versions with a VECTOR type.

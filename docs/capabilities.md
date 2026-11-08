@@ -176,8 +176,8 @@ PostgreSQL only. Behavior and error table: [relations.md](relations.md).
 
 PostgreSQL with the pgvector extension, plus MariaDB 11.8 (float32 vectors,
 Euclidean and cosine distance, `VECTOR INDEX`) and MySQL 9.x (storage only,
-distance is `ErrUnsupported`). The MySQL column in the table below is for
-PostgreSQL features only; the MariaDB and MySQL vector support is in
+distance is `ErrUnsupported`). The MySQL column in the table below
+covers MySQL only; for MariaDB see
 [vectors.md](vectors.md#mariadb-and-mysql).
 
 | Feature                                                                | PostgreSQL                                                                                                                | SQLite                   | MySQL            |

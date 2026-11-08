@@ -28,7 +28,7 @@ func fuzzSchema(d dialect.Name, in string) *Schema {
 }
 
 func FuzzNormalize(f *testing.F) {
-	for _, s := range []string{"int4", "varchar(255)", "'a'::text", "((a))", "CURRENT_TIMESTAMP", "'x''y'", ""} {
+	for _, s := range []string{"int4", "varchar(255)", "'a'::text", "((a))", "CURRENT_TIMESTAMP", "'x''y'", "", "TIME(0000"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {

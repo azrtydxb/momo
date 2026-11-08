@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
@@ -129,6 +130,69 @@ func TestMariaDBVectorParity(t *testing.T) {
 	_, err = momo.Select[vecDoc](db).OrderBy(momo.InnerProductDistance(col, query).Asc()).Limit(1).All(ctx)
 	if !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("inner product: err = %v, want ErrUnsupported", err)
+	}
+}
+
+// nullDoc has the nullable vector field type, *vector.Vector.
+type nullDoc struct {
+	ID  int64
+	Emb *vector.Vector
+}
+
+var nullDocMeta = momo.Meta[nullDoc]{
+	Table:      "ndocs",
+	Columns:    []momo.ColumnMeta{{Name: "id"}, {Name: "emb"}},
+	Ptr:        func(m *nullDoc, i int) any { return []any{&m.ID, &m.Emb}[i] },
+	Value:      func(m *nullDoc, i int) any { return []any{m.ID, m.Emb}[i] },
+	Identity:   -1,
+	Version:    -1,
+	SoftDelete: -1,
+	CreatedAt:  -1,
+	UpdatedAt:  -1,
+	PK:         []int{0},
+}
+
+func (d *nullDoc) MomoMeta() *momo.Meta[nullDoc] { return &nullDocMeta }
+
+// TestMySQLVectorNullableWrite inserts and updates a nullable vector field on
+// the servers that store vectors.
+func TestMySQLVectorNullableWrite(t *testing.T) {
+	ctx := context.Background()
+	servers := []struct {
+		name   string
+		open   func(*testing.T, ...momo.Option) *momo.DB
+		flavor dialect.Flavor
+	}{
+		{"mariadb118", testopen.MariaDB, dialect.FlavorMariaDB},
+		{"mysql97", testopen.MySQL97, dialect.FlavorMySQL},
+	}
+	for _, s := range servers {
+		t.Run(s.name, func(t *testing.T) {
+			db := s.open(t)
+			typ, err := momo.MySQLVectorType(s.flavor, serverVersion(t, db), 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustExecMySQL(t, db, "CREATE TABLE ndocs (id bigint PRIMARY KEY, emb "+typ+")")
+			first := vector.Vector{1, 2, 3}
+			rows := []nullDoc{{ID: 1, Emb: &first}, {ID: 2}}
+			if _, err := momo.Insert[nullDoc](db).Models(rows).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+			col := momo.NewNullVectorColumn[vector.Vector]("ndocs", "emb", 3, 0)
+			id := momo.NewColumn[int64]("ndocs", "id", 0)
+			if _, err := momo.Update[nullDoc](db).Set(col.Set(vector.Vector{4, 5, 6})).Where(id.Eq(2)).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+			got, err := momo.Select[nullDoc](db).Where(col.Eq(vector.Vector{4, 5, 6})).All(ctx)
+			if err != nil || len(got) != 1 || got[0].ID != 2 || got[0].Emb == nil || !slices.Equal(*got[0].Emb, vector.Vector{4, 5, 6}) {
+				t.Fatalf("after update: %v, %v", got, err)
+			}
+			one, err := momo.Select[nullDoc](db).Where(id.Eq(1)).All(ctx)
+			if err != nil || len(one) != 1 || one[0].Emb == nil || !slices.Equal(*one[0].Emb, first) {
+				t.Fatalf("non-nil pointer insert: %v, %v", one, err)
+			}
+		})
 	}
 }
 
