@@ -153,8 +153,8 @@ func (q InsertQuery[T]) defaultUpsertSet() []Assignment {
 			omit[n] = struct{}{}
 		}
 		for i, c := range q.meta.Columns {
-			if _, skip := omit[c.Name]; skip || !q.writable(i) || !upsertUpdatable(c.Flags) {
-				continue
+			if _, skip := omit[c.Name]; skip || !q.writable(i) || !upsertUpdatable(c.Flags) || q.isNonPKIDGen(i) {
+				continue // a generated id is never overwritten by a fresh one
 			}
 			out = append(out, Assignment{col: c.Name, kind: setExcluded})
 		}
