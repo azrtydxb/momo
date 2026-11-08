@@ -41,7 +41,7 @@ func Measure(ctx context.Context, dir string) (Report, error) {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return err
 		}
-		raw, err := os.ReadFile(path) // #nosec G304 -- path comes from walking dir
+		raw, err := os.ReadFile(path) // #nosec G304 G122 -- path comes from walking dir; a local read-only measurement
 		if err != nil {
 			return err
 		}
@@ -92,7 +92,7 @@ func compileMedianMS(ctx context.Context, dir, file string) (int64, error) {
 	for n := 0; n < 5; n++ {
 		changed := filepath.Join(tmp, fmt.Sprintf("changed%d.go", n))
 		body := append(slices.Clone(raw), fmt.Appendf(nil, "\n// nonce %d %d\n", n, time.Now().UnixNano())...)
-		if err := os.WriteFile(changed, body, 0o600); err != nil {
+		if err := os.WriteFile(changed, body, 0o600); err != nil { // #nosec G703 -- changed is inside the temp dir this function created
 			return 0, err
 		}
 		overlay := filepath.Join(tmp, fmt.Sprintf("overlay%d.json", n))
