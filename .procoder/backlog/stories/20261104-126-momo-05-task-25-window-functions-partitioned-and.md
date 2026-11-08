@@ -21,3 +21,7 @@ Implements plan momo-05-writes-queries Task 25: Window functions, partitioned an
 
 Commit 8eece1e on branch worktree-agent-a78cf9b5b1e09d5cf: goldens and error cases in analytics_test.go, integration tests in analytics_integration_test.go; CI run 42409618987 green.
 
+Red first: throwaway branch worktree-agent-a78cf9b5b1e09d5cf-red (sprint-5 plus only the test files, no implementation, commit 6d21b48) failed on CI run 42453178535; the branch is deleted.
+
+Review fixes (Lag default masking, DISTINCT ON and unlockable sources refused under row locks, DISTINCT ON dedupe) are covered by TestLagDefaultMasksSensitiveColumn, TestAnalyticsLockRefusals and TestDistinctOnDeduplicates.
+
