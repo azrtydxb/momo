@@ -18,3 +18,5 @@ Implements plan momo-03-drivers Task 18: SQLite transaction isolation and read-o
 ## Evidence
 
 Red: red run 42453078374 (integration job, sqlitedriver stubbed on throwaway branch) failed TestSQLiteIsolationRules, TestSQLiteReadOnlyTransaction, TestSQLitePinnedReadOnlyTransaction. Green: green run 42410524015 on be3aa13 (ci-agent: lint, unit, fuzz-smoke, integration). The procoder check gate was clean at each commit.
+
+Addendum (honest ordering): the tests and the implementation were written together, so the red evidence above was produced after the fact, on a throwaway branch with the driver stubbed and these tests kept; it was not a red run before the implementation. Green on the final head 5bcbfff4c8da982e037c167ac3ac17940126dc30: ci-agent run 42458136467 (lint, unit, fuzz-smoke, integration all passed).
