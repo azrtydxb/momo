@@ -712,6 +712,8 @@ momo.Cast[int64](momo.Sum(usage.Answers), "bigint")
 momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
 // Any other function: Func[T](name, args...). name is validated (identifier,
 // optionally schema.qualified); an Expr arg renders inline, other values are bound.
+// Plain values bound by Func or an aggregate are not masked in hook events, even
+// beside a sensitive column; only comparison predicates mask their other operands.
 momo.Func[string]("btrim", doc.Title)
 // Aggregates with their own ORDER BY (AggExpr[T]); chain OrderBy, inside the call.
 momo.StringAgg(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
