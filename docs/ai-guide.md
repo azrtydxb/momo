@@ -1435,8 +1435,22 @@ Rules:
 Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`.
 
-Pattern used by the examples (the harness is internal to the Momo module; copy
-the idea, not the package):
+Use the public kit `github.com/azrtydxb/momo/momotest` (see
+[testing.md](testing.md)):
+
+```go
+//go:build integration
+
+db := momotest.New(t, momotest.WithMigrations(app.Migrations()))  // schema per test, dropped after
+tx := momotest.NewTx(t, momotest.WithMigrations(app.Migrations())) // rolled back after; Commit refused
+momotest.Seed(t, tx, momotest.Insert(&org), momotest.Insert(&user))
+```
+
+It reads `MOMO_TEST_POSTGRES_URL` (skip when unset, fail when
+`MOMO_REQUIRE_INTEGRATION=1`), is safe with `t.Parallel` and `-race`, and
+`WithExtensions("vector")` creates the extension first. What it does, if you
+need to do it by hand (the examples' own harness is internal to the Momo
+module):
 
 1. Read an admin URL from an env var (the examples use `MOMO_TEST_POSTGRES_URL`);
    `t.Skip` when it is unset (and `t.Fatal` when your CI sets a require flag).
