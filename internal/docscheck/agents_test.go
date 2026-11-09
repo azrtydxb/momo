@@ -10,7 +10,7 @@ import (
 )
 
 var agentRules = []string{
-	"PostgreSQL with pgvector is the only supported database",
+	"PostgreSQL with pgvector is the reference database",
 	"Run `momo generate` after every model change",
 	"Never edit generated files",
 	"Pass user input only as arguments",

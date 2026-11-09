@@ -165,6 +165,16 @@ tidy-check:
 	cd internal/compat/bunfixture && $(GO) mod tidy -diff
 	cd internal/compat/entfixture && $(GO) mod tidy -diff
 
+# gen-check regenerates everything `go generate` writes in the root module (the
+# generated blocks of the docs from internal/gendocs, and any later generator)
+# and fails when that changes or adds a file, so a code change without its
+# regenerated docs cannot merge. It covers every //go:generate directive, not
+# a fixed list of files. The diff is printed for the log.
+.PHONY: gen-check
+gen-check:
+	$(GO) generate ./...
+	@out=$$(git status --porcelain); if [ -n "$$out" ]; then echo "go generate changed these files; run it and commit the result:"; echo "$$out"; git --no-pager diff; exit 1; fi
+
 # The nested modules are separate go.mod trees, so ./... above never reaches
 # them. staticcheck skips files marked "Code generated ... DO NOT EDIT", so the
 # Ent client in entfixture needs no exclusion there.

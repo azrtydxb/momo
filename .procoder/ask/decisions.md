@@ -261,3 +261,11 @@ Decision (2026-11-09): update now. procoder was updated to 3.9.5 with
 /procoder:update, verified (version, doctor, hook probe, `check` clean on the
 staged bench edit) and reloaded; the vecop bench edit then committed through
 the gate (2867c19).
+
+## Release gate for momo
+
+Decision (2026-11-09): momo releases no longer wait on kuvryn-license or any
+other application. Once sprint 6 is merged to main and green, release-please
+PR #26 (0.4.0) is merged. Downstream apps handle their own upgrades using
+docs/upgrading.md; work stays on momo only. Replaces the earlier rule that
+releases wait for the kuvryn-license port.
