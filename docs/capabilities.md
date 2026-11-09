@@ -188,7 +188,9 @@ JSON operators: keys and values are bound, except that a plain key (letters, dig
 
 ## Relations
 
-PostgreSQL only. Behavior and error table: [relations.md](relations.md).
+The table describes PostgreSQL behavior; the shared integration tests also run
+relation loading on SQLite (`testopen.Each`). Behavior and error table:
+[relations.md](relations.md).
 
 | Feature                              | PostgreSQL                                                                                                                                                                                    | API                                                                                                               |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -209,7 +211,8 @@ PostgreSQL only. Behavior and error table: [relations.md](relations.md).
 
 ## Vectors
 
-PostgreSQL with the pgvector extension, plus MariaDB 11.8 (float32 vectors,
+PostgreSQL with the pgvector extension, SQLite through sqlite-vec
+(`driver/sqlitedriver`), MariaDB 11.8 (float32 vectors,
 Euclidean and cosine distance, `VECTOR INDEX`) and MySQL 9.x (storage only,
 distance is `ErrUnsupported`). The MySQL column in the table below
 covers MySQL only; for MariaDB see
@@ -231,9 +234,10 @@ covers MySQL only; for MariaDB see
 
 ## Migrations
 
-PostgreSQL only. `diff`, `validate` (without `--db`) and `hash` run offline;
-the other commands need a database. Run `momo migrate` over a direct
-PostgreSQL connection, not a transaction-mode pooler: the migration lock is a
+The `momo migrate` command selects the PostgreSQL dialect (see the generated
+status above for the library dialects). `diff`, `validate` (without `--db`) and
+`hash` run offline; the other commands need a database. Run `momo migrate` over
+a direct PostgreSQL connection, not a transaction-mode pooler: the migration lock is a
 session advisory lock.
 
 | Feature                          | PostgreSQL                                                                                                                                                                                                                                  | CLI / API                                                                                       |
@@ -378,7 +382,7 @@ All match `errors.Is(err, momo.ErrUnsupported)`. Build-time errors surface from
 
 | Call                                                          | When                                                                                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Anything on SQLite; `momo migrate` on MySQL                   | The CLI builds only the PostgreSQL dialect, so `momo migrate` exits 2 on both (use the library dialects `migrate/sqlite` and `migrate/mysql`)                                                                                                                                                                              |
+| `momo migrate` on SQLite or MySQL                             | The CLI builds only the PostgreSQL dialect, so `momo migrate` exits 2 on both (use the library dialects `migrate/sqlite` and `migrate/mysql`)                                                                                                                                                                              |
 | `Upsert`, `OnConflict`, `FindOrCreate`                        | `Upsert`, `OnConflict`: a dialect with neither `ON CONFLICT` nor `ON DUPLICATE KEY`; on MySQL also a target that is not the only unique key, and a `Where` on the conflict clause. `FindOrCreate`: a dialect without `ON CONFLICT` and `RETURNING`, which is MySQL and MariaDB                                             |
 | `CreateGraph`                                                 | `*Tx` on a dialect without savepoints; dialect without `RETURNING` (rejected before the transaction opens)                                                                                                                                                                                                                 |
 | `ForUpdate`, `ForShare`                                       | dialect without row locks (SQLite metadata)                                                                                                                                                                                                                                                                                |

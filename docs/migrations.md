@@ -159,7 +159,7 @@ repeated once; a second disagreement fails with an error asking you to retry.
 | `applied_at`         | TEXT             | RFC 3339 UTC                                                                              |
 | `execution_ms`       | BIGINT           | Duration                                                                                  |
 | `apply_id`           | TEXT             | UTC timestamp plus 8 hex digits, shared by one `apply` run; `baseline` for baselined rows |
-| `kind`               | TEXT             | `sql`                                                                                     |
+| `kind`               | TEXT             | `sql` (default), or `go` for a Go migration (section 6a)                                  |
 
 One extra row, `version = '__momo_meta__'`, `status = 'meta'`, holds the
 history format version. `ReadHistory` and `Inspect` hide it and the table.
@@ -209,7 +209,7 @@ finding:
 
 ## 2. CLI
 
-`momo` has three commands: `generate`, `migrate`, `help`. Global exit codes:
+`momo` has four commands: `generate`, `migrate`, `viz`, `help`. Global exit codes:
 0 success, 1 findings, 2 usage/config, 3 database/lock/execution (migrate).
 
 Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
@@ -631,7 +631,7 @@ carries `-- momo:destructive`. Review these. Type changes render as
 `ALTER COLUMN ... TYPE ... USING col::type`: a full table rewrite under an
 `ACCESS EXCLUSIVE` lock, which fails on rows that do not cast.
 
-Not destructive, but reported as `risky:` hints by `diff` (no flag needed):
+Not destructive, but reported as `risky:` hints by `diff` on PostgreSQL (no flag needed):
 dropping an index, primary key, unique, check or foreign key; adding a unique
 or check constraint (both can fail on existing data).
 
@@ -854,9 +854,9 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
   migrations compiles unchanged, but a function value of the old type no longer
   matches.
 - **Forward only.** A Go migration has no down step. A rollback of the group
-  that contains one refuses it: `Engine.Rollback` (landing from the M1
-  migrations branch) calls `migrate.RefuseGoRollback` with the history rows to
-  roll back, which returns `ErrGoMigrationNotReversible` for the first row of
+  that contains one refuses it: `Engine.Rollback` calls
+  `migrate.RefuseGoRollback` with the history rows to roll back, before any down
+  runs, and that returns `ErrGoMigrationNotReversible` for the first row of
   kind `go`; fix forward with a new migration.
 - **Baseline.** `Baseline` through a version records a `go` row (checksum =
   the identity) for every registered Go migration up to it. An engine without

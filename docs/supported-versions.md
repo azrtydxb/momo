@@ -35,7 +35,7 @@ Servers the integration jobs run against: PostgreSQL 16 and 17 with pgvector (se
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Minimum (`go.mod` `go` line) | 1.26.10                                                                                                                                                                                                                                                                                                                                                                 |
 | CI matrix                    | 1.26 and 1.27 for unit, compile-fail, race, fuzz smoke and integration jobs                                                                                                                                                                                                                                                                                             |
-| Single-version CI jobs       | lint (1.26); bench smoke, govulncheck, Windows and macOS (1.27)                                                                                                                                                                                                                                                                                                         |
+| Single-version CI jobs       | lint and bench-module (1.26); bench smoke, govulncheck, Windows and macOS (1.27)                                                                                                                                                                                                                                                                                        |
 | Older than 1.26.10           | not supported                                                                                                                                                                                                                                                                                                                                                           |
 | cgo                          | `driver/sqlitedriver` (mattn go-sqlite3 and sqlite-vec) needs cgo and a C toolchain and does not build on Windows; a build without cgo gets a stub whose `Open` returns `ErrUnsupported`; `driver/sqlitepure` needs no cgo and is tested with `CGO_ENABLED=0` (`make test-sqlitepure`). The macOS job sets `CGO_ENABLED=1`; the Linux jobs use the default, which is on |
 
@@ -70,8 +70,9 @@ Integration tests (real PostgreSQL, pgvector, PgBouncer) run on Linux only.
 The `integration-mysql` job runs the integration suite against MySQL 8.4.13,
 MySQL 9.7.4 and MariaDB 11.8.9 (one service container per matrix entry, on Go
 1.26 and 1.27). The `bench-module` job vets, tests and tidy-checks the separate
-`bench` module against PostgreSQL 17 with pgvector and runs the hook-overhead
-benchmark (`make bench-hooks`).
+`bench` module against PostgreSQL 17 with pgvector, runs its integration tests,
+the hook-overhead benchmark (`make bench-hooks`), the benchmark suite smoke run
+and the allocation gate (`make bench-gate`).
 
 ## PostgreSQL
 
@@ -107,14 +108,14 @@ benchmark (`make bench-hooks`).
 
 ## Feature version floors
 
-| Feature                                               | Floor                                                                                                                          | Source                                  |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
-| Iterative vector scan settings                        | pgvector 0.8.0                                                                                                                 | `search.go` (`requireIterativeSupport`) |
-| `MERGE` (`momo.Merge`)                                | PostgreSQL 15; `.Returning` needs PostgreSQL 17                                                                                | `merge.go`                              |
-| Window functions (`LoadPerParentLimit`)               | none enforced; tested on PostgreSQL 16 and 17                                                                                  | `load.go`, CI                           |
-| `RETURNING`, `ON CONFLICT`, row locking, savepoints   | none enforced; tested on PostgreSQL 16 and 17                                                                                  | `dialect/dialect.go`, CI                |
-| Generated identity columns, `OVERRIDING SYSTEM VALUE` | none enforced; tested on PostgreSQL 16 and 17                                                                                  | CI                                      |
-| `momo.yaml`, migration files, `momo.sum`, snapshots   | format versions `1` (`FormatVersion`, `SnapshotFormat`, `SumFormat`); a newer snapshot format is refused with `ErrNewerFormat` | `migrate/`                              |
+| Feature                                               | Floor                                                                                                                          | Source                             |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| Iterative vector scan settings                        | pgvector 0.8.0                                                                                                                 | `vecsearch/vecsearch.go` (`Apply`) |
+| `MERGE` (`momo.Merge`)                                | PostgreSQL 15; `.Returning` needs PostgreSQL 17                                                                                | `merge.go`                         |
+| Window functions (`LoadPerParentLimit`)               | none enforced; tested on PostgreSQL 16 and 17                                                                                  | `load.go`, CI                      |
+| `RETURNING`, `ON CONFLICT`, row locking, savepoints   | none enforced; tested on PostgreSQL 16 and 17                                                                                  | `dialect/dialect.go`, CI           |
+| Generated identity columns, `OVERRIDING SYSTEM VALUE` | none enforced; tested on PostgreSQL 16 and 17                                                                                  | CI                                 |
+| `momo.yaml`, migration files, `momo.sum`, snapshots   | format versions `1` (`FormatVersion`, `SnapshotFormat`, `SumFormat`); a newer snapshot format is refused with `ErrNewerFormat` | `migrate/`                         |
 
 ## Stability policy
 

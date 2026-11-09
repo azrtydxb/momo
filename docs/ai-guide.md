@@ -44,7 +44,7 @@ A database is usable when a driver package for it exists under `driver/`:
 
 - PostgreSQL is the reference database. Check the dialect columns of docs/capabilities.md before relying on a feature on another database. Keep `dialects:` at `[postgres]` for generated migrations. `momo migrate` exits 2 for a dialect it does not link; library migrations go through `migrate.NewEngine`.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
-- Forward migrations only in the CLI. No `migrate rollback`, `new`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
+- Forward migrations only in the CLI. No `migrate rollback`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
 - `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
 - Reciprocal-rank-fusion hybrid search
   does not exist. Use `momo.SQL` / `momo.TypedSQL` for it. Full-text search
@@ -152,8 +152,8 @@ Rules:
   compiling code that uses the generated packages.
 - DO commit generated files. DON'T edit `*_gen.go` and DON'T name your own
   files `*_gen.go` (the generator refuses to overwrite non-generated files).
-- DO put `*_gen.go text eol=lf` in `.gitattributes` if anyone uses Windows, or
-  `--check` reports CRLF files as stale.
+- DO put `*_gen.go text eol=lf` in `.gitattributes` if anyone uses Windows, to
+  keep checkouts byte-identical (`--check` already treats a CRLF copy as current).
 - DON'T use `go run` of the CLI inside app code; the library (`momo`) never
   imports the generator.
 
@@ -320,7 +320,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
 Config methods: `Index`, `IndexExpr`, `Unique`, `Check`, `Enum`, `Default`,
-`Comment`, `Collate`, `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`,
+`Comment`, `Collate`, `IDGen`, `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`,
 `PartitionOf`. Index chain: `Where(pred)`, `Method(m)`, `With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
@@ -733,7 +733,7 @@ combinators `momo.And`, `momo.Or`, `momo.Not`, `momo.Like`, `momo.ILike`,
 `momo.EscapeLike(s)` escapes user text for `Like`. Find NULLs with `IsNull()`;
 `Eq(nil)` is not expressible.
 
-Array columns (PostgreSQL only). A `[]string` field is generated as `text[]`;
+Array columns (a PostgreSQL type). A `[]string` field is generated as `text[]`;
 `[]int16`, `[]int32`, `[]int64`, `[]bool`, `[]float32` and `[]float64` map to
 `smallint[]`, `integer[]`, `bigint[]`, `boolean[]`, `real[]` and
 `double precision[]`. The predicates are generic functions over a typed column,
@@ -845,7 +845,7 @@ sqlfn.Concat(sqlfn.Upper(doc.Title), momo.Value("-x"))
 momo.Func[string]("btrim", doc.Title)
 // Aggregates with their own ORDER BY (agg.Call[T], package momo/agg); chain OrderBy, inside the call.
 agg.String(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
-agg.Array[string](label).OrderBy(label.Asc())       // []string, PostgreSQL only
+agg.Array[string](label).OrderBy(label.Asc())       // []string; ErrUnsupported on other dialects
 // Ordered-set aggregates (PostgreSQL): WithinGroup is required.
 agg.PercentileCont(0.5).WithinGroup(run.DurationMs.Asc())      // float64
 agg.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
@@ -859,7 +859,7 @@ sqlfn.CurrentSchema()
 // Dates and times, package github.com/azrtydxb/momo/timeop (PostgreSQL; SQLite and MySQL render equivalents). Fields and
 // units are constants checked against an allowlist; anything else is ErrValidation.
 timeop.Extract(timeop.ExtractEpoch, doc.CreatedAt)         // float64, also Year, Month, Day, Hour, Minute, Second, Quarter, Dow, ISODow, Doy
-timeop.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is a validated literal; PostgreSQL only, else ErrUnsupported
+timeop.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is a validated literal; ErrUnsupported on SQLite and MySQL
 // Local-day buckets: timeop.Trunc(timeop.TruncDay, timeop.AtTimeZone(col, zone)); a bare timestamptz truncates in the session zone.
 timeop.Trunc(timeop.TruncDay, doc.CreatedAt)           // Second..Year, weeks start on Monday
 timeop.Now()                                             // also CurrentTimestamp(); the database clock, not WithClock
@@ -1106,9 +1106,9 @@ res, err := momo.Insert[models.Meter](q).
 
 Bulk and set-based writes (PostgreSQL):
 
-- `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and through `FromSQLDB`. It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
-- `InsertQuery[T].Unnest()` (the method, not the package-level FROM source `momo.Unnest`) renders a `Model` or `Models` insert as `INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])`: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses `MaxParams` and `WithMaxParams` and never chunks (and is not split into a transaction of several statements). PostgreSQL only: other dialects return `ErrUnsupported`. `Values`, `ValuesRows` and `FromSelect` return `ErrValidation`, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, `time.Time` and `[]byte` columns bind as typed slices (`[]*T` when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to `[]any`, which pgx may reject for an array type, so use plain `Models` for such a model. `OnConflict`, `Upsert` and `Returning` work as for `Models`; interceptors, `BeforeInsert`, field validators, automatic timestamps and id generators run as for `Models`. A `FlagSensitive` column's array shows as `RedactedArg` in `QueryEvent.Args`.
-- `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server, a driver without `ServerVersioner`, or SQLite returns `ErrUnsupported` before the statement runs. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
+- `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `FromSQLDB` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
+- `InsertQuery[T].Unnest()` (the method, not the package-level FROM source `momo.Unnest`) renders a `Model` or `Models` insert as `INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])`: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses `MaxParams` and `WithMaxParams` and never chunks (and is not split into a transaction of several statements). Other dialects return `ErrUnsupported`. `Values`, `ValuesRows` and `FromSelect` return `ErrValidation`, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, `time.Time` and `[]byte` columns bind as typed slices (`[]*T` when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to `[]any`, which pgx may reject for an array type, so use plain `Models` for such a model. `OnConflict`, `Upsert` and `Returning` work as for `Models`; interceptors, `BeforeInsert`, field validators, automatic timestamps and id generators run as for `Models`. A `FlagSensitive` column's array shows as `RedactedArg` in `QueryEvent.Args`.
+- `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server, a driver without `ServerVersioner`, or a dialect other than PostgreSQL returns `ErrUnsupported` before the statement runs. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
 - `BulkUpdate` updates only the keys in its row list, binds one parameter per value (over the limit is `ErrLimitExceeded`, it does not chunk), and keeps the version and updated-at columns current.
 - `Truncate` is `TRUNCATE TABLE` (no `RESTART IDENTITY`, no `CASCADE`), and `DELETE FROM` plus a sequence reset on SQLite. It runs the interceptors with the kind `truncate`, which a tenant-scoped handle should deny, and MySQL refuses it inside a transaction.
 
@@ -1267,7 +1267,7 @@ func main() {
 ```
 
 DON'T build the SQL text from caller input with `WriteString`; use `Ident` and
-`Arg`. A runnable version is in `example_expression_test.go`.
+`Arg`. A tested version is `TestExtensionOpsCustomExpressions` in `expr_ops_test.go`.
 
 ## 7. Transactions
 
@@ -1421,7 +1421,7 @@ Rules and limits:
   primary key or a single unique column. Has-one, has-many, many-to-many give
   `ErrUnsupported`. `momo.Load(ctx, db, docs, X.Joined())` does not compile
   (`Joined()` returns a `Loader`, `Load` wants a `Relation`; cannot infer `C`),
-  and `LoadAll` returns `ErrUnsupported`. Also `ErrUnsupported` with `Scope`,
+  and `LoadAll` returns `ErrUnsupported`. Also `ErrUnsupported` with
   `Then`, `GroupBy`, `Having`, `ForUpdate`, `Each`, `Iter`. With `Columns` the
   select list must have one expression per mapped field (`ErrValidation`).
   Qualify raw column names in the parent's `Where` (ambiguity with the joined
@@ -1687,7 +1687,7 @@ invalid text representation) hide the message because it may quote the value; th
 Migration errors (package `migrate` and the CLI, exit codes in section 5):
 `migrate.ErrChecksumMismatch`, `ErrDirty`, `ErrLocked`, `ErrDestructive`,
 `ErrBranchConflict`, `ErrStagedRequired`, `ErrBaselineMismatch`, `ErrNoSnapshot`,
-`ErrNoDown`; `migrate.ErrNewerFormat` (a snapshot written by a newer momo).
+`ErrNoDown`; `schema.ErrNewerFormat` (a snapshot written by a newer momo).
 
 Rules:
 
@@ -1848,9 +1848,9 @@ report)`, a development hook that reports once per statement shape per scope
     `.DoUpdate(...).Where(...)`.
 17. Vector columns take `dim:<n>`; leave it off a `vector` or `halfvec` field only
     for a dimensionless column (embedding size depends on the model, rows
-    filtered by a dims column; no hnsw/ivfflat index on it). hnsw/ivfflat indexes
-    need an explicit opclass matching the distance function used in queries;
-    ivfflat needs `lists`.
+    filtered by a dims column; no hnsw/ivfflat index on it). An hnsw index needs an
+    explicit opclass, and any index opclass must match the distance function used
+    in queries (ivfflat on `vector` defaults to L2); ivfflat needs `lists`.
 18. Run vector queries that need tuning inside `vecsearch.With` and use `tx`
     there; use iterative scan for filtered ANN searches; expect seq scans on small
     tables.
