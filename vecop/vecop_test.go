@@ -276,3 +276,32 @@ func TestDistanceInQueries(t *testing.T) {
 		t.Fatal("Desc() must order descending")
 	}
 }
+
+// TestDistanceThresholdFilter renders a distance compared with a bound
+// threshold, the radius filter of a nearest-neighbour search. The comparison
+// methods come from momo.Ops, so the distance renders as the left operand and
+// both values are bound.
+func TestDistanceThresholdFilter(t *testing.T) {
+	col := momo.NewVectorColumn[vector.Vector]("t", "c", 2, 0)
+	q := vector.Vector{1, 2}
+	for name, c := range map[string]struct {
+		d    *dialect.Dialect
+		want string
+	}{
+		"postgres": {dialect.For(dialect.Postgres), `("t"."c" <-> $1) < $2`},
+		"sqlite":   {dialect.For(dialect.SQLite), `vec_distance_l2("t"."c", ?) < ?`},
+	} {
+		b := momo.NewBuilder(c.d)
+		vecop.L2(col, q).Lt(0.5).AppendSQL(b)
+		if err := b.Err(); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if b.String() != c.want {
+			t.Errorf("%s: SQL = %s, want %s", name, b.String(), c.want)
+		}
+		args := b.Args()
+		if len(args) != 2 || args[1] != 0.5 {
+			t.Errorf("%s: args = %#v, want the query vector and 0.5", name, args)
+		}
+	}
+}

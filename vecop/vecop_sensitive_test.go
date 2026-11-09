@@ -120,3 +120,28 @@ func TestDistanceInPredicateMasksWithSensitiveColumn(t *testing.T) {
 		})
 	}
 }
+
+// TestDistanceThresholdMasksSensitiveColumn: the query vector of a distance
+// compared with Lt shows as RedactedArg in hook events when the vector column
+// is sensitive, while the driver gets the real vector.
+func TestDistanceThresholdMasksSensitiveColumn(t *testing.T) {
+	col := momo.NewVectorColumn[vector.Vector]("documents", "emb", 3, momo.FlagSensitive)
+	rec := &obstest.Recorder{}
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
+	_, err := momo.Select[suite.Document](db).Where(vecop.L2(col, vector.Vector{1, 0, 0}).Lt(0.5)).All(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, calls := rec.Events(), drv.Calls()
+	if len(evs) == 0 || len(calls) == 0 {
+		t.Fatal("no statement recorded")
+	}
+	seen, sent := evs[len(evs)-1].Args, calls[len(calls)-1].Args
+	if len(seen) != 2 || len(sent) != 2 {
+		t.Fatalf("want two arguments, hook saw %v, driver got %v", seen, sent)
+	}
+	if seen[0] != momo.RedactedArg || sent[0] == momo.RedactedArg {
+		t.Fatalf("hook saw %v, driver got %v, want the placeholder for the hook only", seen[0], sent[0])
+	}
+}
