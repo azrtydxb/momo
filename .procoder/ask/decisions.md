@@ -221,3 +221,10 @@ Decision (2026-11-09): for the vecsearch merge, cherry-pick the story branch's
 own bench commits (already green on ci-agent, bench-module job included) onto
 sprint-6. CI lint and the bench-module job remain the check for nested modules.
 The gate gap is a procoder issue to raise; do not disable golangci-lint.
+
+Follow-up (2026-11-09): the vecop merge needs a two-line edit in
+`bench/vector/topk_integration_test.go` that no existing commit carries, so a
+cherry-pick is not available. Decision: fix the gate first. procoder's Go lint
+will run golangci-lint per module from each module's own go.mod; until that
+fix is released and installed, the vecop merge waits (parked locally on
+`integrate-vecop`, not pushed) and no other non-gated landing is used.
