@@ -43,6 +43,8 @@ GOVULNCHECK = $(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0
 GOSEC = $(GO) run github.com/securego/gosec/v2/cmd/gosec@v2.30.0
 # Pinned like the others; go run pkg@version leaves go.mod untouched.
 STATICCHECK = $(GO) run honnef.co/go/tools/cmd/staticcheck@v0.8.2
+# x/exp is untagged, so this is a pseudo-version (commit 47ce03d25ef0, 2026-11-06).
+APIDIFF = $(GO) run golang.org/x/exp/cmd/apidiff@v0.0.0-20261106192419-47ce03d25ef0
 PG_URL ?= postgres://postgres:momo@127.0.0.1:5432/postgres?sslmode=disable
 PG_APP_URL ?= postgres://momo_app:momo_app@127.0.0.1:5432/postgres?sslmode=disable
 PGBOUNCER_URL ?= postgres://postgres:momo@127.0.0.1:6432/postgres?sslmode=disable
@@ -50,7 +52,7 @@ MYSQL84_URL ?= root:momo@tcp(127.0.0.1:3306)/
 MYSQL97_URL ?= root:momo@tcp(127.0.0.1:3307)/
 MARIADB_URL ?= root:momo@tcp(127.0.0.1:3308)/
 
-.PHONY: bench-gate bench bench-baseline bench-suite-smoke bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-sqlite test-sqlitepure test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec db-up db-down
+.PHONY: bench-gate bench bench-baseline bench-suite-smoke bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-sqlite test-sqlitepure test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec apidiff-gate db-up db-down
 
 test:
 	$(GO) test -count=1 ./...
@@ -199,3 +201,7 @@ db-up:
 
 db-down:
 	docker compose -f internal/testdb/compose.yaml down -v
+
+# Fails when the exported API changed and no docs changed; see CONTRIBUTING.md.
+apidiff-gate:
+	APIDIFF='$(APIDIFF)' bash scripts/apidiff-docs-gate.sh
