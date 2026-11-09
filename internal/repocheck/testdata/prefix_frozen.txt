@@ -8,7 +8,6 @@ allowlist.go
 analytics_integration_test.go
 analytics_locks_test.go
 analytics_test.go
-array_ops.go
 assoc.go
 assoc_chunk_test.go
 assoc_concurrent_integration_test.go

@@ -19,6 +19,7 @@ leaf dialect
 leaf schema
 leaf types
 leaf vector
+feature arrayop
 
 internal-leaf internal/chunk
 internal-leaf internal/golden

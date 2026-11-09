@@ -2,7 +2,7 @@
 
 //go:build integration
 
-package momo_test
+package arrayop_test
 
 import (
 	"context"
@@ -12,8 +12,24 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/arrayop"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 )
+
+// kvRow is a two-field projection: a key and a count.
+type kvRow struct {
+	K int64
+	N int64
+}
+
+var kvRowMeta = momo.Meta[kvRow]{
+	Columns:  []momo.ColumnMeta{{Name: "k"}, {Name: "n"}},
+	Ptr:      func(m *kvRow, i int) any { return [...]any{&m.K, &m.N}[i] },
+	Value:    func(m *kvRow, i int) any { return [...]any{m.K, m.N}[i] },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}
+
+func (*kvRow) MomoMeta() *momo.Meta[kvRow] { return &kvRowMeta }
 
 // arrRow reads an id, a title and a text[] column.
 type arrRow struct {
@@ -75,15 +91,15 @@ func TestArrayOperatorsLive(t *testing.T) {
 		pred momo.Predicate
 		want []int64
 	}{
-		{"contains a,b", momo.ArrayContains(arrLiveTags, "a", "b"), []int64{1, 3}},
-		{"contains nothing", momo.ArrayContains[string](arrLiveTags), []int64{1, 2, 3, 4}},
-		{"contained by a,b", momo.ArrayContainedBy(arrLiveTags, "a", "b"), []int64{1, 4}},
-		{"contained by nothing", momo.ArrayContainedBy[string](arrLiveTags), []int64{4}},
-		{"overlaps b,z", momo.ArrayOverlaps(arrLiveTags, "b", "z"), []int64{1, 3}},
-		{"overlaps nothing", momo.ArrayOverlaps[string](arrLiveTags), []int64{}},
-		{"title any of j,l", momo.AnyOf(arrLiveTitle, "j", "l"), []int64{1, 3}},
-		{"title any of nothing", momo.AnyOf[string](arrLiveTitle), []int64{}},
-		{"combined", momo.And(momo.ArrayOverlaps(arrLiveTags, "c"), momo.Not(momo.AnyOf(arrLiveTitle, "k"))), []int64{3}},
+		{"contains a,b", arrayop.Contains(arrLiveTags, "a", "b"), []int64{1, 3}},
+		{"contains nothing", arrayop.Contains[string](arrLiveTags), []int64{1, 2, 3, 4}},
+		{"contained by a,b", arrayop.ContainedBy(arrLiveTags, "a", "b"), []int64{1, 4}},
+		{"contained by nothing", arrayop.ContainedBy[string](arrLiveTags), []int64{4}},
+		{"overlaps b,z", arrayop.Overlaps(arrLiveTags, "b", "z"), []int64{1, 3}},
+		{"overlaps nothing", arrayop.Overlaps[string](arrLiveTags), []int64{}},
+		{"title any of j,l", arrayop.AnyOf(arrLiveTitle, "j", "l"), []int64{1, 3}},
+		{"title any of nothing", arrayop.AnyOf[string](arrLiveTitle), []int64{}},
+		{"combined", momo.And(arrayop.Overlaps(arrLiveTags, "c"), momo.Not(arrayop.AnyOf(arrLiveTitle, "k"))), []int64{3}},
 	}
 	for _, c := range cases {
 		if got := ids(c.pred); !reflect.DeepEqual(got, c.want) {
@@ -110,7 +126,7 @@ func TestArrayOperatorsBindHostileValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, err := momo.Select[arrRow](db).From(momo.TableRef{Name: "arr_docs"}).
-		Columns(arrLiveID, arrLiveTitle, arrLiveTags).Where(momo.ArrayContains(arrLiveTags, evil, "a,b", `"q"`)).Count(ctx)
+		Columns(arrLiveID, arrLiveTitle, arrLiveTags).Where(arrayop.Contains(arrLiveTags, evil, "a,b", `"q"`)).Count(ctx)
 	if err != nil || n != 1 {
 		t.Fatalf("count = %d, %v", n, err)
 	}
@@ -153,10 +169,10 @@ func TestArrayContainsOnIntegerColumns(t *testing.T) {
 		pred momo.Predicate
 		want []int64
 	}{
-		"int16 contains":     {momo.ArrayContains(small, int16(math.MinInt16), 7), []int64{1}},
-		"int16 overlaps":     {momo.ArrayOverlaps(small, 7, 8), []int64{1, 2}},
-		"int64 contains":     {momo.ArrayContains(big, int64(math.MaxInt64)), []int64{1}},
-		"int64 contained by": {momo.ArrayContainedBy(big, 2, 3), []int64{2}},
+		"int16 contains":     {arrayop.Contains(small, int16(math.MinInt16), 7), []int64{1}},
+		"int16 overlaps":     {arrayop.Overlaps(small, 7, 8), []int64{1, 2}},
+		"int64 contains":     {arrayop.Contains(big, int64(math.MaxInt64)), []int64{1}},
+		"int64 contained by": {arrayop.ContainedBy(big, 2, 3), []int64{2}},
 	} {
 		if got := ids(c.pred); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: ids = %v, want %v", name, got, c.want)

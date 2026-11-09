@@ -77,6 +77,33 @@ func TestCompileFailPermissionConversions(t *testing.T) {
 	}
 }
 
+// TestCompileFailArrayPredicatesMoved checks that the array predicates left
+// the root package for momo/arrayop, and that the new package keeps the
+// element type of the column.
+func TestCompileFailArrayPredicatesMoved(t *testing.T) {
+	for name, wants := range map[string][]string{
+		"arrayop_moved": {
+			"undefined: momo.ArrayContains",
+			"undefined: momo.ArrayContainedBy",
+			"undefined: momo.ArrayOverlaps",
+			"undefined: momo.AnyOf",
+		},
+		"arrayop_wrongtype": {"cannot use"},
+	} {
+		cmd := exec.Command("go", "build", "-gcflags=-e", "-o", os.DevNull, "./testdata/compilefail/"+name)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Errorf("%s compiled; want a compile error", name)
+			continue
+		}
+		for _, want := range wants {
+			if !strings.Contains(string(out), want) {
+				t.Errorf("%s: want %q in:\n%s", name, want, out)
+			}
+		}
+	}
+}
+
 func TestValidExamplesCompile(t *testing.T) {
 	cmd := exec.Command("go", "build", "-o", os.DevNull, "./testdata/valid/basic")
 	if out, err := cmd.CombinedOutput(); err != nil {

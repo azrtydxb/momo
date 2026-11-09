@@ -729,11 +729,11 @@ combinators `momo.And`, `momo.Or`, `momo.Not`, `momo.Like`, `momo.ILike`,
 Array columns (PostgreSQL only). A `[]string` field is generated as `text[]`;
 `[]int16`, `[]int32`, `[]int64`, `[]bool`, `[]float32` and `[]float64` map to
 `smallint[]`, `integer[]`, `bigint[]`, `boolean[]`, `real[]` and
-`double precision[]`. The predicates are generic functions over a typed
-column: `momo.ArrayContains(col, vals...)` (`@>`), `momo.ArrayContainedBy`
-(`<@`), `momo.ArrayOverlaps` (`&&`) and `momo.AnyOf(scalarCol, vals...)`
+`double precision[]`. The predicates live in `github.com/azrtydxb/momo/arrayop` and are generic functions over a typed
+column: `arrayop.Contains(col, vals...)` (`@>`), `arrayop.ContainedBy`
+(`<@`), `arrayop.Overlaps` (`&&`) and `arrayop.AnyOf(scalarCol, vals...)`
 (`= ANY($n)`). Each binds the values as one array parameter, so the bind count
-does not grow with the list. `ArrayOverlaps` and `AnyOf` with no values are
+does not grow with the list. `Overlaps` and `AnyOf` with no values are
 false. On SQLite they fail the build with `ErrUnsupported`; use `In` there.
 
 Searching with user input safely. `Like` and `ILike` always render
