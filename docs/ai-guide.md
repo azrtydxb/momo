@@ -43,7 +43,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
 - Reciprocal-rank-fusion hybrid search
   does not exist. Use `momo.SQL` / `momo.TypedSQL` for it. Full-text search
-  (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
+  (`types.TSVector`, `fts.Match`, `fts.RankCD`, `fts.Headline`, the
   query builders) exists on PostgreSQL; combine it with a vector distance in
   one score as shown in [fulltext.md](fulltext.md).
 
@@ -787,14 +787,15 @@ returns whether it was granted, and the `String` variants
 with `ErrValidation`; other dialects fail with `ErrUnsupported`. Never store a
 hashed key, it can change across PostgreSQL major versions.
 
-Typed expressions (no `momo.SQL` needed). Computed values (`Func`, `Substr`,
-`Lower`, `Upper`, `Length`, `Case`, `Add`/`Sub`/`Mul`, `Cast`, `Concat`,
-`CoalesceExpr`) work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr`, and carry
+Typed expressions (no `momo.SQL` needed). Computed values (`momo.Func` and, in the
+package `github.com/azrtydxb/momo/sqlfn`, `sqlfn.Substr`, `sqlfn.Lower`,
+`sqlfn.Upper`, `sqlfn.Length`, `sqlfn.Case`, `sqlfn.Add`/`sqlfn.Sub`/`sqlfn.Mul`,
+`sqlfn.Cast`, `sqlfn.Concat`, `sqlfn.CoalesceExpr`) work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr`, and carry
 the comparisons of a column for `Where` and `Having`: `Eq`, `Ne`, `Lt`, `Le`,
 `Gt`, `Ge`, `EqExpr` and the other `...Expr` forms, `In`, `NotIn`, `Between`,
 `IsNull`, `IsNotNull`; plus `Asc` and `Desc`. An `.As` alias belongs in the
 select list: `OrderBy` accepts it and orders by the alias name, `GroupBy`
-rejects it with `ErrValidation`. A `Case` used in both the select list and `GroupBy`
+rejects it with `ErrValidation`. A `sqlfn.Case` used in both the select list and `GroupBy`
 must be built with `WhenExpr` and `ElseExpr` from literal or column expressions: bound
 `When` and `Else` values get a different `$n` in each place, and PostgreSQL rejects the
 mismatch. Otherwise group by position or alias in an outer query. Keyset pagination with `After` and a per-parent
@@ -805,7 +806,7 @@ expression itself there.
 <!-- docscheck:fragment -->
 
 ```go
-// Alias a select-list item. As[T] is generic; Agg, Case and Func values also have .As(name).
+// Alias a select-list item. As[T] is generic; Agg, sqlfn.Case and Func values also have .As(name).
 // Column.As is the TABLE alias, so alias a column with momo.As[int64](col, "name").
 n := momo.CountAll().As("n")                  // COUNT(*) AS "n"
 inner := momo.Select[Pair](q).From(momo.TableRef{Name: "docs"}).
@@ -816,19 +817,19 @@ momo.Select[Pair](q).From(momo.FromSubquery(inner, "s")).
 // CTE, no positional column names needed:
 momo.Select[Pair](q).With("s", inner).From(momo.CTE("s")).Columns(pairK, n.Ref("s"))
 
-// Strings: Substr(e, from, length), SubstrFrom, Lower, Upper, Length. Positions are
+// Strings (package sqlfn): Substr(e, from, length), SubstrFrom, Lower, Upper, Length. Positions are
 // literals, so the same expression works in SELECT and GROUP BY.
-momo.Substr(doc.Title, 1, 10)
+sqlfn.Substr(doc.Title, 1, 10)
 // Filter and order on a computed value:
-//   Where(momo.Substr(doc.Title, 1, 3).Eq("abc"), momo.Length(doc.Title).Ge(3))
-//   OrderBy(momo.Lower(doc.Title).Desc(), momo.Add(doc.Hits, 0).Asc())
+//   Where(sqlfn.Substr(doc.Title, 1, 3).Eq("abc"), sqlfn.Length(doc.Title).Ge(3))
+//   OrderBy(sqlfn.Lower(doc.Title).Desc(), sqlfn.Add(doc.Hits, 0).Asc())
 // COALESCE over expressions (Coalesce takes a bound fallback value instead):
-momo.CoalesceExpr(site.Name, site.LicenseID)          // coalesce(a, b, ...)
+sqlfn.CoalesceExpr(site.Name, site.LicenseID)          // coalesce(a, b, ...)
 // CAST: T is the result type you choose, the SQL type name is validated
 // (words, optional (n) or (n,m)); names are not portable (MySQL: signed).
-momo.Cast[int64](momo.Sum(usage.Answers), "bigint")
+sqlfn.Cast[int64](momo.Sum(usage.Answers), "bigint")
 // Concat: (a || b) on PostgreSQL/SQLite, CONCAT(a, b) on MySQL; NULL in, NULL out.
-momo.Concat(momo.Upper(doc.Title), momo.Value("-x"))
+sqlfn.Concat(sqlfn.Upper(doc.Title), momo.Value("-x"))
 // Any other function: Func[T](name, args...). name is validated (identifier,
 // optionally schema.qualified); an Expr arg renders inline, other values are bound.
 // Plain values bound by Func or an aggregate are not masked in hook events, even
@@ -843,9 +844,9 @@ momo.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
 // JSON: T is the Go type the result decodes into (types.JSON[T]). Keys and
 // separators are literals and must not contain a backslash.
 item := momo.JSONBBuildObject[Item](momo.JSONField("label", label), momo.JSONField("n", n))
-momo.CoalesceExpr(momo.JSONBAgg[Item](item).OrderBy(label.Asc()), momo.EmptyJSONArray[Item]())
+sqlfn.CoalesceExpr(momo.JSONBAgg[Item](item).OrderBy(label.Asc()), momo.EmptyJSONArray[Item]())
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
-momo.CurrentSchema()
+sqlfn.CurrentSchema()
 
 // Dates and times, package github.com/azrtydxb/momo/timeop (PostgreSQL; SQLite and MySQL render equivalents). Fields and
 // units are constants checked against an allowlist; anything else is ErrValidation.
@@ -866,15 +867,15 @@ var conds []momo.Expr
 conds = append(conds, momo.SQL("status = ?", status))
 q.Where(momo.JoinSQL(" AND ", conds...))               // JoinTypedSQL[T] declares a result type
 
-// CASE; branches share the type T. Else/ElseExpr optional (NULL otherwise).
-momo.Case[string]().
+// CASE (sqlfn.Case); branches share the type T. Else/ElseExpr optional (NULL otherwise).
+sqlfn.Case[string]().
 	WhenExpr(node.Hostname.Excluded().Ne(""), node.Hostname.Excluded()).
 	ElseExpr(node.Hostname)
 
-// Arithmetic on numeric columns: Add, Sub, Mul (bound value) and AddExpr, SubExpr,
+// Arithmetic on numeric columns (sqlfn): Add, Sub, Mul (bound value) and AddExpr, SubExpr,
 // MulExpr (expression). Numeric only; a string column does not compile.
-node.Hits.SetExpr(momo.Add(node.Hits, 5))                         // hits = (hits + $1)
-node.Hits.SetExpr(momo.AddExpr(node.Hits, node.Hits.Excluded()))  // upsert accumulate
+node.Hits.SetExpr(sqlfn.Add(node.Hits, 5))                         // hits = (hits + $1)
+node.Hits.SetExpr(sqlfn.AddExpr(node.Hits, node.Hits.Excluded()))  // upsert accumulate
 ```
 
 An alias must be a plain identifier (letters, digits, `_`, `$`, not starting with a
@@ -946,7 +947,7 @@ res, err := momo.Update[models.Task](q).
 	Where(task.ID.Eq(id)).
 	Exec(ctx) // res.RowsAffected
 // Atomic arithmetic (no read-modify-write race):
-//   .Set(account.Balance.SetExpr(momo.Add(account.Balance, delta)))
+//   .Set(account.Balance.SetExpr(sqlfn.Add(account.Balance, delta)))
 // (Sub, Mul, AddExpr with col.Excluded() in an upsert, Case, Substr: see section 6 "Typed expressions".)
 // Other assignments: col.SetDefault(), col.SetExcluded() (upsert), nullCol.SetNull().
 

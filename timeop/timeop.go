@@ -91,7 +91,7 @@ type ExtractExpr struct {
 // PostgreSQL, strftime on SQLite and EXTRACT, DAYOFWEEK and friends on
 // MySQL. The result is always a float64 (cast on PostgreSQL, whose EXTRACT
 // returns numeric), so ExtractEpoch can carry fractional seconds; wrap it in
-// momo.Cast to get an integer. On PostgreSQL ExtractSecond includes the
+// sqlfn.Cast to get an integer. On PostgreSQL ExtractSecond includes the
 // fraction; SQLite and MySQL return whole seconds. On MySQL ExtractEpoch is
 // UNIX_TIMESTAMP, which reads the value in the session time zone.
 func Extract(field ExtractField, e momo.Expression[time.Time]) ExtractExpr {

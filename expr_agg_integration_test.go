@@ -14,6 +14,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/sqlfn"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -162,7 +163,7 @@ func TestJSONBAggShapeAndEmptyGroup(t *testing.T) {
 		}
 		run := func(tenant int64) []aggItem {
 			t.Helper()
-			col := momo.CoalesceExpr(agg(), momo.EmptyJSONArray[aggItem]())
+			col := sqlfn.CoalesceExpr(agg(), momo.EmptyJSONArray[aggItem]())
 			rows, err := momo.Select[aggJSONRow](db).From(momo.TableRef{Name: "documents"}).
 				Columns(col).Where(suite.DocTenantID.Eq(tenant)).All(ctx)
 			if err != nil || len(rows) != 1 {

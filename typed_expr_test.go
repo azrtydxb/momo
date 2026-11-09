@@ -42,34 +42,6 @@ var strCountMeta = momo.Meta[strCount]{
 
 func (*strCount) MomoMeta() *momo.Meta[strCount] { return &strCountMeta }
 
-// Node is a table with a text column to merge and a counter to accumulate.
-type Node struct {
-	Name     string
-	Hostname string
-	Hits     int64
-}
-
-var (
-	nodeName     = momo.NewColumn[string]("nodes", "name", momo.FlagPK)
-	nodeHostname = momo.NewColumn[string]("nodes", "hostname", 0)
-	nodeHits     = momo.NewColumn[int64]("nodes", "hits", 0)
-)
-
-var nodeMeta = &momo.Meta[Node]{
-	Table: "nodes",
-	Columns: []momo.ColumnMeta{
-		{Name: "name", Flags: nodeName.Flags()},
-		{Name: "hostname", Flags: nodeHostname.Flags()},
-		{Name: "hits", Flags: nodeHits.Flags()},
-	},
-	Ptr:      func(m *Node, i int) any { return [...]any{&m.Name, &m.Hostname, &m.Hits}[i] },
-	Value:    func(m *Node, i int) any { return [...]any{m.Name, m.Hostname, m.Hits}[i] },
-	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
-	PK: []int{0},
-}
-
-func (*Node) MomoMeta() *momo.Meta[Node] { return nodeMeta }
-
 var pairK = momo.ColumnOf[int64]("s", "tenant_id")
 
 func typedDB(name dialect.Name) *momo.DB { return momo.New(fakedriver.New(name)) }
@@ -152,55 +124,21 @@ func TestAliasValidation(t *testing.T) {
 	}
 }
 
-// Catches: positions bound as parameters (SELECT and GROUP BY would then
-// differ and PostgreSQL rejects the grouping), and per-dialect names wrong.
-func TestStringFunctionsGolden(t *testing.T) {
-	sub := func() momo.FuncExpr[string] { return momo.Substr(DocTitle, 1, 3) }
-	for _, d := range typedDialects {
-		db := typedDB(d)
-		got, err := momo.Select[strCount](db).From(momo.TableRef{Name: "documents"}).
-			Columns(sub(), momo.CountAll()).GroupBy(sub()).SQL()
-		if err != nil {
-			t.Fatalf("%s: %v", d, err)
-		}
-		want := quoteFor(d, `SELECT substr("documents"."title", 1, 3), COUNT(*) FROM "documents" GROUP BY substr("documents"."title", 1, 3)`)
-		if got.SQL != want || len(got.Args) != 0 {
-			t.Errorf("%s substr:\n got %s %v\nwant %s", d, got.SQL, got.Args, want)
-		}
-	}
+// Catches: Func binding a plain argument inline or dropping the schema
+// qualifier of the function name.
+func TestFuncGolden(t *testing.T) {
 	cases := []struct {
-		d    dialect.Name
 		e    momo.Expr
 		want string
 	}{
-		{dialect.Postgres, momo.SubstrFrom(DocTitle, 4), `substr("documents"."title", 4)`},
-		{dialect.Postgres, momo.Lower(DocTitle), `lower("documents"."title")`},
-		{dialect.SQLite, momo.Upper(DocTitle), `upper("documents"."title")`},
-		{dialect.Postgres, momo.Length(DocTitle), `length("documents"."title")`},
-		{dialect.SQLite, momo.Length(DocTitle), `length("documents"."title")`},
-		{dialect.MySQL, momo.Length(DocTitle), "char_length(`documents`.`title`)"},
-		{dialect.Postgres, momo.Func[string]("coalesce", DocTitle, "x"), `coalesce("documents"."title", $1)`},
-		{dialect.Postgres, momo.Func[string]("pg_catalog.lower", DocTitle), `pg_catalog.lower("documents"."title")`},
-		{dialect.Postgres, momo.CurrentSchema(), `current_schema()`},
-		{dialect.MySQL, momo.CurrentSchema(), `DATABASE()`},
+		{momo.Func[string]("coalesce", DocTitle, "x"), `coalesce("documents"."title", $1)`},
+		{momo.Func[string]("pg_catalog.lower", DocTitle), `pg_catalog.lower("documents"."title")`},
 	}
 	for _, c := range cases {
-		got, err := momo.Select[unitTally](typedDB(c.d)).From(momo.TableRef{Name: "documents"}).Columns(c.e).SQL()
-		if err != nil {
-			t.Errorf("%s %s: %v", c.d, c.want, err)
-			continue
+		got, err := momo.Select[unitTally](typedDB(dialect.Postgres)).From(momo.TableRef{Name: "documents"}).Columns(c.e).SQL()
+		if want := `SELECT ` + c.want + ` FROM "documents"`; err != nil || got.SQL != want {
+			t.Errorf("func:\n got %s (%v)\nwant %s", got.SQL, err, want)
 		}
-		if want := quoteFor(c.d, "SELECT "+c.want+` FROM "documents"`); got.SQL != want {
-			t.Errorf("%s:\n got %s\nwant %s", c.d, got.SQL, want)
-		}
-	}
-}
-
-// Catches: current_schema() silently rendered where SQLite has no schemas.
-func TestCurrentSchemaRefusedOnSQLite(t *testing.T) {
-	_, err := momo.Select[unitTally](typedDB(dialect.SQLite)).From(momo.TableRef{Name: "documents"}).Columns(momo.CurrentSchema()).SQL()
-	if !errors.Is(err, momo.ErrUnsupported) {
-		t.Fatalf("current_schema on SQLite = %v, want ErrUnsupported", err)
 	}
 }
 
@@ -211,138 +149,6 @@ func TestFuncNameValidation(t *testing.T) {
 			Columns(momo.Func[string](bad, DocTitle)).SQL()
 		if !errors.Is(err, momo.ErrValidation) {
 			t.Errorf("name %q err = %v, want ErrValidation", bad, err)
-		}
-	}
-}
-
-// Catches: a CASE rendered without its branches, an ELSE lost, an empty CASE
-// accepted, and the branch values not bound in order.
-func TestCaseGolden(t *testing.T) {
-	db := typedDB(dialect.Postgres)
-	run := func(e momo.Expr) (momo.Compiled, error) {
-		return momo.Select[unitTally](db).From(momo.TableRef{Name: "documents"}).Columns(e).SQL()
-	}
-	got, err := run(momo.Case[string]().When(DocPublished.Eq(true), "yes").When(DocTenantID.Gt(5), "big").Else("no"))
-	want := `SELECT CASE WHEN "documents"."published" = $1 THEN $2 WHEN "documents"."tenant_id" > $3 THEN $4 ELSE $5 END FROM "documents"`
-	if err != nil || got.SQL != want || len(got.Args) != 5 {
-		t.Errorf("case:\n got %s %v (%v)\nwant %s", got.SQL, got.Args, err, want)
-	}
-	got, err = run(momo.Case[string]().WhenExpr(DocPublished.Eq(true), DocTitle).As("t"))
-	want = `SELECT CASE WHEN "documents"."published" = $1 THEN "documents"."title" END AS "t" FROM "documents"`
-	if err != nil || got.SQL != want {
-		t.Errorf("case without else:\n got %s (%v)\nwant %s", got.SQL, err, want)
-	}
-	if _, err := run(momo.Case[string]().Else("x")); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("CASE without When = %v, want ErrValidation", err)
-	}
-}
-
-func nodeUpsert(q momo.Querier) momo.InsertQuery[Node] {
-	merge := momo.Case[string]().
-		WhenExpr(nodeHostname.Excluded().Ne(""), nodeHostname.Excluded()).
-		ElseExpr(nodeHostname)
-	return momo.Insert[Node](q).
-		Values(nodeName.Set("a"), nodeHostname.Set("h"), nodeHits.Set(1)).
-		OnConflict(nodeName).
-		DoUpdate(
-			nodeHostname.SetExpr(merge),
-			nodeHits.SetExpr(momo.AddExpr(nodeHits, nodeHits.Excluded())),
-		)
-}
-
-// Catches: Excluded comparisons losing the EXCLUDED qualifier, the CASE
-// else branch qualified wrongly, and column arithmetic not parenthesised or
-// not reading the existing row.
-func TestUpsertCaseAndArithmeticGolden(t *testing.T) {
-	const tail = `ON CONFLICT ("name") DO UPDATE SET "hostname" = CASE WHEN EXCLUDED."hostname" <> %s THEN EXCLUDED."hostname" ELSE "nodes"."hostname" END, "hits" = ("nodes"."hits" + EXCLUDED."hits")`
-	cases := []struct {
-		d    dialect.Name
-		want string
-	}{
-		{dialect.Postgres, `INSERT INTO "nodes" ("name", "hostname", "hits") VALUES ($1, $2, $3) ` + strings.Replace(tail, "%s", "$4", 1)},
-		{dialect.SQLite, `INSERT INTO "nodes" ("name", "hostname", "hits") VALUES (?, ?, ?) ` + strings.Replace(tail, "%s", "?", 1)},
-	}
-	for _, c := range cases {
-		got, err := nodeUpsert(typedDB(c.d)).SQL()
-		if err != nil || got.SQL != c.want || len(got.Args) != 4 {
-			t.Errorf("%s:\n got %s %v (%v)\nwant %s", c.d, got.SQL, got.Args, err, c.want)
-		}
-	}
-	my, err := nodeUpsert(typedDB(dialect.MySQL)).SQL()
-	if err != nil || !strings.Contains(my.SQL, "ON DUPLICATE KEY UPDATE") || strings.Contains(my.SQL, "EXCLUDED") {
-		t.Errorf("upsert on MySQL = %s, %v, want ON DUPLICATE KEY UPDATE without EXCLUDED", my.SQL, err)
-	}
-}
-
-// Catches: arithmetic operators swapped, operands unparenthesised when
-// nested, and values interpolated instead of bound.
-func TestUpdateArithmeticGolden(t *testing.T) {
-	for _, d := range typedDialects {
-		ph := func(n int) string {
-			if d == dialect.Postgres {
-				return "$" + string(rune('0'+n))
-			}
-			return "?"
-		}
-		got, err := momo.Update[Node](typedDB(d)).
-			Set(
-				nodeHits.SetExpr(momo.Mul(momo.Add(nodeHits, 5), 2)),
-				nodeHostname.SetExpr(momo.Lower(nodeHostname)),
-			).
-			Where(nodeName.Eq("a")).SQL()
-		if err != nil {
-			t.Fatalf("%s: %v", d, err)
-		}
-		want := quoteFor(d, `UPDATE "nodes" SET "hits" = (("nodes"."hits" + `+ph(1)+`) * `+ph(2)+`), "hostname" = lower("nodes"."hostname") WHERE "nodes"."name" = `+ph(3))
-		if got.SQL != want || len(got.Args) != 3 {
-			t.Errorf("%s:\n got %s %v\nwant %s", d, got.SQL, got.Args, want)
-		}
-	}
-	got, err := momo.Update[Node](typedDB(dialect.Postgres)).
-		Set(nodeHits.SetExpr(momo.SubExpr(nodeHits, momo.Value[int64](1)))).
-		Where(nodeName.Eq("a")).SQL()
-	if want := `UPDATE "nodes" SET "hits" = ("nodes"."hits" - $1) WHERE "nodes"."name" = $2`; err != nil || got.SQL != want {
-		t.Errorf("sub:\n got %s (%v)\nwant %s", got.SQL, err, want)
-	}
-}
-
-// Catches: COALESCE over expressions dropping an argument, CAST rendered with
-// the wrong type text, and concat using the wrong operator per dialect.
-func TestCoalesceCastConcatGolden(t *testing.T) {
-	cases := []struct {
-		d    dialect.Name
-		e    momo.Expr
-		want string
-	}{
-		{dialect.Postgres, momo.CoalesceExpr(DocTitle, momo.Lower(DocTitle)), `coalesce("documents"."title", lower("documents"."title"))`},
-		{dialect.SQLite, momo.CoalesceExpr(DocTitle, DocTitle, momo.Upper(DocTitle)), `coalesce("documents"."title", "documents"."title", upper("documents"."title"))`},
-		{dialect.Postgres, momo.Cast[int64](momo.Sum(DocTenantID), "bigint"), `CAST(SUM("documents"."tenant_id") AS bigint)`},
-		{dialect.Postgres, momo.Cast[float64](DocTenantID, "numeric(10,2)").As("v"), `CAST("documents"."tenant_id" AS numeric(10,2)) AS "v"`},
-		{dialect.Postgres, momo.Cast[float64](DocTenantID, "double precision"), `CAST("documents"."tenant_id" AS double precision)`},
-		{dialect.MySQL, momo.Cast[int64](DocTenantID, "signed"), "CAST(`documents`.`tenant_id` AS signed)"},
-		{dialect.Postgres, momo.Concat(DocTitle, momo.Value("-x"), DocTitle), `("documents"."title" || $1 || "documents"."title")`},
-		{dialect.SQLite, momo.Concat(DocTitle, DocTitle), `("documents"."title" || "documents"."title")`},
-		{dialect.MySQL, momo.Concat(DocTitle, DocTitle), "CONCAT(`documents`.`title`, `documents`.`title`)"},
-	}
-	for _, c := range cases {
-		got, err := momo.Select[unitTally](typedDB(c.d)).From(momo.TableRef{Name: "documents"}).Columns(c.e).SQL()
-		if err != nil {
-			t.Errorf("%s %s: %v", c.d, c.want, err)
-			continue
-		}
-		if want := quoteFor(c.d, "SELECT "+c.want+` FROM "documents"`); got.SQL != want {
-			t.Errorf("%s:\n got %s\nwant %s", c.d, got.SQL, want)
-		}
-	}
-}
-
-// Catches: a CAST type name reaching the SQL text unchecked.
-func TestCastTypeValidation(t *testing.T) {
-	for _, bad := range []string{"", "bigint; DROP TABLE x", "big)int", "a(", "numeric(x)", "numeric()", "x--", "a  b", "int(1,)", "(10)"} {
-		_, err := momo.Select[unitTally](typedDB(dialect.Postgres)).From(momo.TableRef{Name: "documents"}).
-			Columns(momo.Cast[int64](DocTenantID, bad)).SQL()
-		if !errors.Is(err, momo.ErrValidation) {
-			t.Errorf("type %q err = %v, want ErrValidation", bad, err)
 		}
 	}
 }

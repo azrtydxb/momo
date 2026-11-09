@@ -9,8 +9,9 @@ import (
 
 // Ops gives a scalar expression of result type T the comparison and ordering
 // methods of Column: Eq, Ne, Lt, Le, Gt, Ge, the ...Expr forms, In, NotIn,
-// Between, IsNull, IsNotNull, Asc and Desc. FuncExpr, CaseExpr, ArithExpr,
-// CastExpr, ConcatExpr and LengthExpr embed it, so each method exists once.
+// Between, IsNull, IsNotNull, Asc and Desc. FuncExpr and the expressions of
+// the sqlfn package (CaseExpr, ArithExpr, CastExpr, ConcatExpr, LengthExpr)
+// embed it, so each method exists once.
 //
 // Ops is an extension point. Embedding momo.Ops[T] in your own struct makes
 // that struct an Expression[T] (an Expression[bool] is a Predicate), which is
@@ -41,7 +42,7 @@ func NewOps[T any](host Expr) Ops[T] { return Ops[T]{host} }
 func selfOps[T any](e Expr) Ops[T] { return NewOps[T](e) }
 
 // unboundExpr stands in for an expression value built without its
-// constructor (a zero CaseExpr); rendering it fails the build.
+// constructor (a zero sqlfn.CaseExpr); rendering it fails the build.
 type unboundExpr struct{}
 
 func (unboundExpr) AppendSQL(b *Builder) {

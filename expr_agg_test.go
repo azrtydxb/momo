@@ -9,6 +9,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/sqlfn"
 )
 
 type aggCase struct {
@@ -83,7 +84,7 @@ func TestAggregateGolden(t *testing.T) {
 			dialect.MySQL:    "SELECT JSON_ARRAYAGG(JSON_OBJECT('label', `documents`.`title`, 'o''k', `documents`.`tenant_id`)) FROM `documents`",
 		}},
 		{"coalesce empty array", func() momo.Expr {
-			return momo.CoalesceExpr(momo.JSONBAgg[string](title).OrderBy(title.Asc()), momo.EmptyJSONArray[string]())
+			return sqlfn.CoalesceExpr(momo.JSONBAgg[string](title).OrderBy(title.Asc()), momo.EmptyJSONArray[string]())
 		}, map[dialect.Name]string{
 			dialect.Postgres: `SELECT coalesce(jsonb_agg("documents"."title" ORDER BY "documents"."title" ASC), '[]'::jsonb)` + from,
 			dialect.SQLite:   `SELECT coalesce(json_group_array("documents"."title" ORDER BY "documents"."title" ASC), '[]')` + from,
