@@ -10,6 +10,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/arrayop"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/internal/obstest"
 )
@@ -34,7 +35,7 @@ func TestArrayOperatorsMaskSensitiveColumn(t *testing.T) {
 			rec := &obstest.Recorder{}
 			drv := fakedriver.New(dialect.Postgres)
 			db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
-			if _, err := momo.Select[tally](db).From(momo.TableRef{Name: "docs"}).Columns(momo.CountAll()).Where(p).All(t.Context()); err != nil {
+			if _, err := momo.Select[exprtest.Tally](db).From(momo.TableRef{Name: "docs"}).Columns(momo.CountAll()).Where(p).All(t.Context()); err != nil {
 				t.Fatalf("%s: %v", name, err)
 			}
 			evs, calls := rec.Events(), drv.Calls()
@@ -76,7 +77,7 @@ func TestArrayOperatorsGolden(t *testing.T) {
 		{"any of nothing", arrayop.AnyOf[string](arrTitle), `"docs"."title" = ANY($1)`, []any{[]string{}}},
 	}
 	for _, c := range cases {
-		got, err := momo.Select[tally](dbFor(dialect.Postgres)).From(momo.TableRef{Name: "docs"}).Columns(momo.CountAll()).Where(c.pred).SQL()
+		got, err := exprtest.Compile(dialect.Postgres, c.pred)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -101,7 +102,7 @@ func TestArrayOperatorsUnsupportedOffPostgres(t *testing.T) {
 	}
 	for _, d := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
 		for name, p := range preds {
-			_, err := momo.Select[tally](dbFor(d)).From(momo.TableRef{Name: "docs"}).Columns(momo.CountAll()).Where(p).SQL()
+			_, err := exprtest.Compile(d, p)
 			if !errors.Is(err, momo.ErrUnsupported) {
 				t.Errorf("%s %s: err = %v, want ErrUnsupported", d, name, err)
 			}

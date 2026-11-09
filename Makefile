@@ -62,7 +62,7 @@ test-race:
 	$(GO) test -race -count=1 ./...
 
 test-compilefail:
-	$(GO) test -count=1 -run '^TestCompileFail' .
+	$(GO) test -count=1 -run '^TestCompileFail' ./...
 	$(GO) test -count=1 -run '^TestFieldPermissions$$' ./gen
 
 test-fuzz:
