@@ -148,19 +148,34 @@ as an argument.
 
 ### Rewrite recipe
 
-1. Save this page as `upgrading.md` in your module and, from the directory
-   that holds your code, turn the table into `gofmt -r` rules and run them.
-   The rules rewrite every row of a plain identifier (a function, type or
-   constant) and leave the method rows to step 2:
+1. Commit your work first, because the next steps edit files in place, then
+   fetch the release: `go get github.com/azrtydxb/momo@v0.4.0`.
+2. Save the raw markdown of this page (not the rendered HTML) as `upgrading.md`
+   in your module root and run the block below from there. It turns the table
+   into `gofmt -r` rules and applies them to the Go files that import
+   `github.com/azrtydxb/momo` by that exact path, skipping `vendor/`. It
+   rewrites the rows of plain identifiers (functions, types and constants),
+   stops with an error when it finds no file or generates no rule, and does not
+   touch a file that imports momo under an alias or with a dot import; the
+   compiler lists what is left there.
 
    ```sh
-   awk -F'`' 'NF == 7 && $1 ~ /^\| *$/ && $2 ~ /^momo\.[A-Za-z0-9]+$/ { printf "gofmt -r \"%s -> %s\" -w \"$@\"\n", $2, $6 }' upgrading.md | sh -s -- .
+   files=$(grep -rl --include='*.go' 'github.com/azrtydxb/momo"' . | grep -v /vendor/)
+   rules=$(awk -F'`' 'NF == 7 && $1 ~ /^\| *$/ && $2 ~ /^momo\.[A-Za-z0-9]+$/ { printf "gofmt -r \"%s -> %s\" -w \"$@\"\n", $2, $6 }' upgrading.md)
+   [ -n "$files" ] || { echo "no Go file imports momo" >&2; exit 1; }
+   [ -n "$rules" ] || { echo "no rules: upgrading.md must be the raw markdown of this page" >&2; exit 1; }
+   echo "$rules" | sh -s -- $files
    ```
 
-2. Rewrite the method rows by hand, because the receiver moves into the
-   argument list: `recv.Old(ctx, args)` becomes `pkg.New(ctx, recv, args)`.
-3. Import the new packages (`goimports -w .` does it) and build. The compiler
-   lists whatever is left.
+3. Rewrite the `momo.Tx.*` and `momo.DB.*` rows by hand, because the receiver
+   moves into the argument list: `recv.Old(ctx, args)` becomes
+   `pkg.New(ctx, recv, args)`. A `DB` advisory call must pass a transaction
+   (see the paragraph on the advisory locks below). `momo.SearchSettings.Validate`
+   is a plain rename: step 2 rewrites the type, and `Validate` stays a method of
+   `vecsearch.Settings`.
+4. In every file, import each new package that now appears in it (`arrayop.`,
+   `fts.`, ...) by the full path in the second column of the table, then build.
+   The compiler lists whatever is left.
 
 A row never changes the SQL a query produces; only the Go name and import path
 change.

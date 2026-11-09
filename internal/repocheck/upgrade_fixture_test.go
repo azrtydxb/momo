@@ -4,6 +4,9 @@ package repocheck
 
 import (
 	"bytes"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,24 +38,72 @@ func methodParts(p movePair) []string {
 	return strings.Split(strings.TrimPrefix(p.old, "momo."), ".")
 }
 
-// fixtureUses reports whether the fixture source uses the old name of p. A
-// plain identifier is looked for as momo.<name>; a method of Tx or DB through
-// the conventional receiver variable (tx, db) so the two forms stay apart; any
-// other method by its name alone.
-func fixtureUses(src string, p movePair) bool {
+// fixtureSelectors parses the fixture and returns every x.Sel selector whose
+// x is an identifier, so a name in a comment or a string does not count. A
+// call of Validate on a variable declared as momo.SearchSettings is recorded
+// as "momo.SearchSettings.Validate".
+func fixtureSelectors(src string) (map[string]bool, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), "main.go", src, 0)
+	if err != nil {
+		return nil, err
+	}
+	isSettings := func(e ast.Expr) bool {
+		sel, ok := e.(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		x, ok := sel.X.(*ast.Ident)
+		return ok && x.Name == "momo" && sel.Sel.Name == "SearchSettings"
+	}
+	settings := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.ValueSpec:
+			if isSettings(n.Type) {
+				for _, id := range n.Names {
+					settings[id.Name] = true
+				}
+			}
+		case *ast.Field:
+			if isSettings(n.Type) {
+				for _, id := range n.Names {
+					settings[id.Name] = true
+				}
+			}
+		}
+		return true
+	})
+	sels := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok {
+			if x, ok := sel.X.(*ast.Ident); ok {
+				sels[x.Name+"."+sel.Sel.Name] = true
+				if settings[x.Name] && sel.Sel.Name == "Validate" {
+					sels["momo.SearchSettings.Validate"] = true
+				}
+			}
+		}
+		return true
+	})
+	return sels, nil
+}
+
+// fixtureUses reports whether the selectors of the fixture include the old
+// name of p: momo.<name> for a plain identifier, the conventional receiver
+// variable (tx, db) for a method of Tx or DB so the two forms stay apart, and
+// the Validate call on a SearchSettings value for the method of that type.
+func fixtureUses(sels map[string]bool, p movePair) bool {
 	parts := methodParts(p)
-	var re string
 	switch {
 	case len(parts) == 1:
-		re = `\bmomo\.` + parts[0] + `\b`
+		return sels["momo."+parts[0]]
 	case parts[0] == "Tx":
-		re = `\btx\.` + parts[1] + `\(`
+		return sels["tx."+parts[1]]
 	case parts[0] == "DB":
-		re = `\bdb\.` + parts[1] + `\(`
+		return sels["db."+parts[1]]
 	default:
-		re = `\.` + parts[1] + `\(`
+		return sels[p.old]
 	}
-	return regexp.MustCompile(re).MatchString(src)
 }
 
 func TestUpgradeFixtureCoversMoves(t *testing.T) {
@@ -61,8 +112,12 @@ func TestUpgradeFixtureCoversMoves(t *testing.T) {
 	if len(moves) == 0 {
 		t.Fatal("no pairs in testdata/moves")
 	}
+	sels, err := fixtureSelectors(src)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, p := range moves {
-		if !fixtureUses(src, p) {
+		if !fixtureUses(sels, p) {
 			t.Errorf("%s/old/main.go never uses %s (new: %s); add a use to the fixture", fixtureDir, p.old, p.new)
 		}
 	}
@@ -100,7 +155,7 @@ func TestUpgradeFixtureOldFailsToCompile(t *testing.T) {
 		case len(parts) == 1:
 			want = "undefined: " + p.old
 		case parts[0] == "Tx" || parts[0] == "DB":
-			want = "." + parts[1] + " undefined"
+			want = strings.ToLower(parts[0]) + "." + parts[1] + " undefined"
 		default:
 			continue // a method of a moved type: the type itself is reported
 		}
@@ -156,12 +211,13 @@ func rewriteMethods(src string, moves []movePair) string {
 	return src
 }
 
-// addImports adds the import of every new package the source now uses, which
-// is what goimports does for a real code base.
-func addImports(src string, moves []movePair) string {
+// addImports performs step 4 of the recipe: it adds, for every new package
+// name that now appears in the source, the import path from the second column
+// of the page's table.
+func addImports(src string, rows []movePair) string {
 	seen := map[string]bool{}
 	var imports []string
-	for _, p := range moves {
+	for _, p := range rows {
 		pkg, _, _ := strings.Cut(p.new, ".")
 		if seen[pkg] || !regexp.MustCompile(`\b`+pkg+`\.`).MatchString(src) {
 			continue
@@ -207,7 +263,7 @@ func TestUpgradeFixtureRecipeCompiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src := addImports(rewriteMethods(string(rewritten), moves), moves)
+	src := addImports(rewriteMethods(string(rewritten), moves), parseUpgradeRows(page))
 	if err := os.WriteFile(mainGo, []byte(src), 0o600); err != nil { // #nosec G703 -- a file in this test's own work directory
 		t.Fatal(err)
 	}
