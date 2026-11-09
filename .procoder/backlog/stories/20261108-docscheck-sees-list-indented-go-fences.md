@@ -42,3 +42,4 @@ program that the check compiles or carries `<!-- docscheck:fragment -->`.
   `<!-- docscheck:fragment -->`; `maxFragmentBlocks` rose from 69 to 71, which
   `TestDocsCodeBlocks` enforces as a ceiling and passed.
 - The final-sha green run is recorded in the pull request report.
+- Criterion 3: ci.yml run 42575016309 on branch sprint-6, headSha 72fade6 (a descendant of merge commit 3cb698f): conclusion success, including `TestDocsCodeBlocks`.

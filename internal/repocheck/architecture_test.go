@@ -166,28 +166,57 @@ func TestInternalNeverImportsRoot(t *testing.T) {
 	}
 }
 
-// TestFeaturePackagesImportOnlyAllowed pins what the feature subpackages
-// listed in testdata/packages.txt may import.
-func TestFeaturePackagesImportOnlyAllowed(t *testing.T) {
-	var patterns []string
-	for _, e := range loadPackages(t) {
+// featurePatterns returns the import paths of the feature entries.
+func featurePatterns(entries []pkgEntry) []string {
+	var out []string
+	for _, e := range entries {
 		if e.role == roleFeature {
-			patterns = append(patterns, modPath+"/"+e.path)
+			out = append(out, modPath+"/"+e.path)
 		}
 	}
-	if len(patterns) == 0 {
-		return
-	}
-	graph := goDeps(t, patterns...)
+	return out
+}
+
+// featureGraphViolations checks every feature pattern against the dependency
+// graph: a pattern go list did not find is a violation, as is a forbidden import.
+func featureGraphViolations(patterns []string, graph map[string][]string) []string {
+	var out []string
 	for _, p := range patterns {
 		deps, ok := graph[p]
 		if !ok {
-			t.Errorf("%s is listed as a feature in %s but go list does not find it", p, packagesFile)
+			out = append(out, p+" is listed as a feature in "+packagesFile+" but go list does not find it")
 			continue
 		}
-		for _, v := range featureViolations(p, deps) {
-			t.Error(v)
+		out = append(out, featureViolations(p, deps)...)
+	}
+	return out
+}
+
+// staleEntries reports non-wildcard entries whose directory does not exist,
+// so a deleted or renamed package cannot linger in the table.
+func staleEntries(entries []pkgEntry, exists func(rel string) bool) []string {
+	var out []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.path, "/...") {
+			continue
 		}
+		if !exists(e.path) {
+			out = append(out, e.path)
+		}
+	}
+	return out
+}
+
+// TestFeaturePackagesImportOnlyAllowed pins what the feature subpackages
+// listed in testdata/packages.txt may import. With no feature line the test is
+// skipped, visibly; the first feature line makes it run go list for real.
+func TestFeaturePackagesImportOnlyAllowed(t *testing.T) {
+	patterns := featurePatterns(loadPackages(t))
+	if len(patterns) == 0 {
+		t.Skipf("no feature packages in %s yet; the check runs once one is listed", packagesFile)
+	}
+	for _, v := range featureGraphViolations(patterns, goDeps(t, patterns...)) {
+		t.Error(v)
 	}
 }
 
@@ -227,8 +256,16 @@ func TestKnownPackages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, d := range unknownDirs(loadPackages(t), dirs) {
+	entries := loadPackages(t)
+	for _, d := range unknownDirs(entries, dirs) {
 		t.Errorf("directory %q has Go files but is not listed in %s; add a line with its role", d, packagesFile)
+	}
+	exists := func(rel string) bool {
+		_, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+		return err == nil
+	}
+	for _, d := range staleEntries(entries, exists) {
+		t.Errorf("%s lists %q, which is not a directory; remove or rename the line", packagesFile, d)
 	}
 }
 
@@ -267,6 +304,19 @@ func TestArchitectureRulesCatchViolations(t *testing.T) {
 
 	if u := unknownDirs(entries, []string{".", "cmd/momo/x", "newpkg", "internal/suite/sub"}); len(u) != 2 || u[0] != "newpkg" {
 		t.Errorf("unknown directories = %v, want [newpkg internal/suite/sub]", u)
+	}
+	if st := staleEntries(entries, func(rel string) bool { return rel != "fts" && rel != "internal/chunk" }); len(st) != 2 || st[0] != "fts" || st[1] != "internal/chunk" {
+		t.Errorf("stale entries = %v, want [fts internal/chunk] (cmd/... is a wildcard and is skipped)", st)
+	}
+	patterns := featurePatterns(entries)
+	if len(patterns) != 1 || patterns[0] != modPath+"/fts" {
+		t.Fatalf("feature patterns = %v, want the fts feature", patterns)
+	}
+	if v := featureGraphViolations(patterns, map[string][]string{}); len(v) != 1 || !strings.Contains(v[0], "go list does not find it") {
+		t.Errorf("a feature go list cannot find must be flagged, got %v", v)
+	}
+	if v := featureGraphViolations(patterns, map[string][]string{modPath + "/fts": {modPath + "/jsonop"}}); len(v) != 1 {
+		t.Errorf("a feature importing another feature must be flagged through the graph, got %v", v)
 	}
 	if _, err := parsePackages("bogus x\n"); err == nil {
 		t.Error("an unknown role must be rejected")
