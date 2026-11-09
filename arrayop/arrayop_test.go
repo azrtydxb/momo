@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo_test
+package arrayop_test
 
 import (
 	"errors"
@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/arrayop"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/internal/obstest"
 )
@@ -24,16 +26,16 @@ func TestArrayOperatorsMaskSensitiveColumn(t *testing.T) {
 		tags := momo.NewColumn[[]string]("docs", "tags", fl)
 		title := momo.NewColumn[string]("docs", "title", fl)
 		preds := map[string]momo.Predicate{
-			"contains":     momo.ArrayContains(tags, "a"),
-			"contained by": momo.ArrayContainedBy(tags, "a"),
-			"overlaps":     momo.ArrayOverlaps(tags, "a"),
-			"any of":       momo.AnyOf(title, "a"),
+			"contains":     arrayop.Contains(tags, "a"),
+			"contained by": arrayop.ContainedBy(tags, "a"),
+			"overlaps":     arrayop.Overlaps(tags, "a"),
+			"any of":       arrayop.AnyOf(title, "a"),
 		}
 		for name, p := range preds {
 			rec := &obstest.Recorder{}
 			drv := fakedriver.New(dialect.Postgres)
 			db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
-			if _, err := momo.Select[unitTally](db).From(momo.TableRef{Name: "docs"}).Columns(momo.CountAll()).Where(p).All(t.Context()); err != nil {
+			if _, err := momo.Select[exprtest.Tally](db).From(momo.TableRef{Name: "docs"}).Columns(momo.CountAll()).Where(p).All(t.Context()); err != nil {
 				t.Fatalf("%s: %v", name, err)
 			}
 			evs, calls := rec.Events(), drv.Calls()
@@ -66,16 +68,16 @@ func TestArrayOperatorsGolden(t *testing.T) {
 		wantSQL  string
 		wantArgs []any
 	}{
-		{"contains", momo.ArrayContains(arrTags, "a", "b"), `"docs"."tags" @> $1`, []any{[]string{"a", "b"}}},
-		{"contained by", momo.ArrayContainedBy(arrTags, "a", "b"), `"docs"."tags" <@ $1`, []any{[]string{"a", "b"}}},
-		{"overlaps", momo.ArrayOverlaps(arrTags, "x'; DROP TABLE docs; --"), `"docs"."tags" && $1`, []any{[]string{"x'; DROP TABLE docs; --"}}},
-		{"overlaps ints", momo.ArrayOverlaps(arrIDs, 1, 2, 3), `"docs"."ids" && $1`, []any{[]int32{1, 2, 3}}},
-		{"any of", momo.AnyOf(arrTitle, "j", "k", "l"), `"docs"."title" = ANY($1)`, []any{[]string{"j", "k", "l"}}},
-		{"no values is an empty array", momo.ArrayOverlaps[string](arrTags), `"docs"."tags" && $1`, []any{[]string{}}},
-		{"any of nothing", momo.AnyOf[string](arrTitle), `"docs"."title" = ANY($1)`, []any{[]string{}}},
+		{"contains", arrayop.Contains(arrTags, "a", "b"), `"docs"."tags" @> $1`, []any{[]string{"a", "b"}}},
+		{"contained by", arrayop.ContainedBy(arrTags, "a", "b"), `"docs"."tags" <@ $1`, []any{[]string{"a", "b"}}},
+		{"overlaps", arrayop.Overlaps(arrTags, "x'; DROP TABLE docs; --"), `"docs"."tags" && $1`, []any{[]string{"x'; DROP TABLE docs; --"}}},
+		{"overlaps ints", arrayop.Overlaps(arrIDs, 1, 2, 3), `"docs"."ids" && $1`, []any{[]int32{1, 2, 3}}},
+		{"any of", arrayop.AnyOf(arrTitle, "j", "k", "l"), `"docs"."title" = ANY($1)`, []any{[]string{"j", "k", "l"}}},
+		{"no values is an empty array", arrayop.Overlaps[string](arrTags), `"docs"."tags" && $1`, []any{[]string{}}},
+		{"any of nothing", arrayop.AnyOf[string](arrTitle), `"docs"."title" = ANY($1)`, []any{[]string{}}},
 	}
 	for _, c := range cases {
-		got, err := momo.Select[unitTally](typedDB(dialect.Postgres)).From(momo.TableRef{Name: "docs"}).Columns(momo.CountAll()).Where(c.pred).SQL()
+		got, err := exprtest.Compile(dialect.Postgres, c.pred)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -93,14 +95,14 @@ func TestArrayOperatorsGolden(t *testing.T) {
 // array type.
 func TestArrayOperatorsUnsupportedOffPostgres(t *testing.T) {
 	preds := map[string]momo.Predicate{
-		"contains":     momo.ArrayContains(arrTags, "a"),
-		"contained by": momo.ArrayContainedBy(arrTags, "a"),
-		"overlaps":     momo.ArrayOverlaps(arrTags, "a"),
-		"any of":       momo.AnyOf(arrTitle, "a"),
+		"contains":     arrayop.Contains(arrTags, "a"),
+		"contained by": arrayop.ContainedBy(arrTags, "a"),
+		"overlaps":     arrayop.Overlaps(arrTags, "a"),
+		"any of":       arrayop.AnyOf(arrTitle, "a"),
 	}
 	for _, d := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
 		for name, p := range preds {
-			_, err := momo.Select[unitTally](typedDB(d)).From(momo.TableRef{Name: "docs"}).Columns(momo.CountAll()).Where(p).SQL()
+			_, err := exprtest.Compile(d, p)
 			if !errors.Is(err, momo.ErrUnsupported) {
 				t.Errorf("%s %s: err = %v, want ErrUnsupported", d, name, err)
 			}

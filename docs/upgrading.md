@@ -21,8 +21,12 @@ One row per moved identifier. When a method became a function, the old name is
 the method and the new name is the function, which takes the former receiver
 as an argument.
 
-| Old identifier | New import path | New identifier |
-| -------------- | --------------- | -------------- |
+| Old identifier          | New import path                    | New identifier        |
+| ----------------------- | ---------------------------------- | --------------------- |
+| `momo.ArrayContains`    | `github.com/azrtydxb/momo/arrayop` | `arrayop.Contains`    |
+| `momo.ArrayContainedBy` | `github.com/azrtydxb/momo/arrayop` | `arrayop.ContainedBy` |
+| `momo.ArrayOverlaps`    | `github.com/azrtydxb/momo/arrayop` | `arrayop.Overlaps`    |
+| `momo.AnyOf`            | `github.com/azrtydxb/momo/arrayop` | `arrayop.AnyOf`       |
 
 ### Rewrite recipe
 
