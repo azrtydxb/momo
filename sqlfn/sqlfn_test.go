@@ -345,7 +345,7 @@ func TestFunctionResultsCompareAndOrder(t *testing.T) {
 	}
 	for _, c := range preds {
 		got, err := exprtest.Compile(dialect.Postgres, c.p)
-		want := "SELECT COUNT(*) FROM \"documents\" WHERE " + c.want
+		want := "SELECT COUNT(*) FROM \"docs\" WHERE " + c.want
 		if err != nil || got.SQL != want || len(got.Args) != len(c.args) {
 			t.Errorf("%s:\n got %s %v (%v)\nwant %s %v", c.name, got.SQL, got.Args, err, want, c.args)
 			continue
