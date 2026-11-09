@@ -228,3 +228,14 @@ cherry-pick is not available. Decision: fix the gate first. procoder's Go lint
 will run golangci-lint per module from each module's own go.mod; until that
 fix is released and installed, the vecop merge waits (parked locally on
 `integrate-vecop`, not pushed) and no other non-gated landing is used.
+
+## Land the procoder nested-module gate fix (PR azrtydxb/procoder#340)?
+
+The fix makes the gate lint and test each nested Go module from its own
+go.mod, which unblocks the parked vecop merge. It is green on procoder's Ubuntu
+test job; Windows and the gate job did not run. A fresh review is in progress.
+
+- Merge and release once the review is clean, then install the new procoder
+  here and land vecop.
+- Merge without a release; install from main for this session only.
+- Hold the PR until it runs on macOS and Windows too.
