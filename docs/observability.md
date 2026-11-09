@@ -26,7 +26,7 @@ and hands out copies. `Slog` logs arguments only when you also pass
 
 ## Recorder
 
-```go
+```text
 rec := &obs.Recorder{}
 db := momo.New(drv, momo.WithHook(rec))
 // run the code under test
@@ -42,7 +42,7 @@ check that the hook chain passes the context through.
 
 ## N+1 detection
 
-```go
+```text
 det := obs.NewNPlusOne(3, func(f obs.Finding) {
     log.Printf("N+1: %s loaded %d times", f.Relation, f.Count)
 })
@@ -66,7 +66,7 @@ instead of relation loads.
 
 ## slog
 
-```go
+```text
 logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 db := momo.New(drv, momo.WithHook(obs.NewSlog(logger,
     obs.SlogLevel(slog.LevelInfo),
