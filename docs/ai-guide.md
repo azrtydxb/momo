@@ -1205,6 +1205,11 @@ values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQ
   when the flags argument has `FlagSensitive`.
 - `Builder.Unsupported`: records `ErrUnsupported` for a dialect that
   cannot express the feature. `Builder.WriteByte` appends a trusted SQL byte.
+- `Builder.MarkSensitive`: call it from an expression that writes a sensitive
+  column's identifier directly, so an enclosing comparison masks its other
+  operands. A column reference does this by itself.
+- `momo.ValidName`: checks a function name or alias before you write it with
+  `Builder.Ident`.
 - `momo.VectorColumnOf`: the `VectorColumn` behind any `VectorSource`
   (read its table, name, dimension and flags for a custom distance expression).
 

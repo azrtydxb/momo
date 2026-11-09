@@ -359,31 +359,31 @@ type distinctFrom struct {
 func (d distinctFrom) AppendSQL(b *Builder) {
 	switch b.d.Name {
 	case dialect.SQLite: // SQLite spells it IS / IS NOT
-		d.l.AppendSQL(b)
+		fl := b.renderSens(d.l, flagsOf(d.l)|flagsOf(d.r))
 		if d.not {
 			b.WriteString(" IS ")
 		} else {
 			b.WriteString(" IS NOT ")
 		}
-		d.r.AppendSQL(b)
+		b.exprFor(fl, d.r)
 	case dialect.MySQL: // MySQL has the NULL-safe equality operator
 		if !d.not {
 			b.WriteString("NOT (")
 		}
-		d.l.AppendSQL(b)
+		fl := b.renderSens(d.l, flagsOf(d.l)|flagsOf(d.r))
 		b.WriteString(" <=> ")
-		d.r.AppendSQL(b)
+		b.exprFor(fl, d.r)
 		if !d.not {
 			b.writeByte(')')
 		}
 	default:
-		d.l.AppendSQL(b)
+		fl := b.renderSens(d.l, flagsOf(d.l)|flagsOf(d.r))
 		if d.not {
 			b.WriteString(" IS NOT DISTINCT FROM ")
 		} else {
 			b.WriteString(" IS DISTINCT FROM ")
 		}
-		d.r.AppendSQL(b)
+		b.exprFor(fl, d.r)
 	}
 }
 func (distinctFrom) resultType() bool { return false }
@@ -746,8 +746,15 @@ func (a Aliased[T]) Ref(source string) Column[T] { return ColumnOf[T](source, a.
 // As[T](col, name) for a column.
 func As[T any](e Expression[T], alias string) Aliased[T] { return Aliased[T]{e, alias} }
 
-// validName checks an identifier-like name (alias, function name part).
-func validName(s string) error {
+// validName is the in-package spelling of ValidName.
+func validName(s string) error { return ValidName(s) }
+
+// ValidName checks an identifier-like name: non-empty, at most 63 bytes, a
+// letter or underscore first, then letters, digits, underscores or dollar
+// signs. It returns a descriptive error otherwise. Code outside the package
+// uses it to check a function name or alias before writing it with
+// Builder.Ident. ValidName is an extension point; see Ops.
+func ValidName(s string) error {
 	if s == "" {
 		return errors.New("name is empty")
 	}

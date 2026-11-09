@@ -202,6 +202,14 @@ func (b *Builder) RenderSensitive(e Expr, flags uint16) uint16 {
 	return flags
 }
 
+// MarkSensitive records that the expression being rendered read a sensitive
+// column, so an enclosing predicate that compares it masks its other operands
+// in hook events. A column reference does this by itself; call MarkSensitive
+// from a custom expression that writes a sensitive column's identifier
+// directly with Ident or QualifiedIdent instead of rendering the column. It
+// does not change the SQL. MarkSensitive is an extension point; see Ops.
+func (b *Builder) MarkSensitive() { b.sensSeen++ }
+
 // ExprFor renders e with every argument it binds recorded as sensitive when
 // flags carries FlagSensitive, for an expression compared with or assigned to
 // such a column. ExprFor is an extension point; see Ops.
