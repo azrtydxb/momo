@@ -26,6 +26,7 @@ feature fts
 feature sqlfn
 feature jsonop
 feature obs
+feature advisory
 
 internal-leaf internal/chunk
 internal-leaf internal/golden

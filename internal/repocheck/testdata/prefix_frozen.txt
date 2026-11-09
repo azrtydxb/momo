@@ -3,7 +3,6 @@
 # be a subset of this list, so the exception list cannot admit a new file.
 # Story root-file-prefix-rename deletes this file together with the ratchet.
 adopt_tx_test.go
-advisory.go
 allowlist.go
 analytics_integration_test.go
 analytics_locks_test.go
