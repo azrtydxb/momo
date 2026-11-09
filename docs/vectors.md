@@ -5,7 +5,7 @@ expressions, HNSW and IVFFlat index declarations, scoped search settings,
 plan inspection and an opt-in binary wire codec. It also runs the float32 and
 bit vector builders on SQLite with sqlite-vec, and the distance builders on
 MariaDB. This page describes what is built. Every Go snippet below is an `Example` function in
-`example_vector_test.go` (package `momo_test`), `vector/example_test.go`
+`col_example_vector_test.go` (package `momo_test`), `vector/example_test.go`
 (package `vector_test`) or `vecsearch/example_test.go` (package
 `vecsearch_test`), so `go test` compiles it and checks its printed output.
 
@@ -401,7 +401,7 @@ reports; `sqlitedriver.SQLiteVecVersion` is the release it is tested with, and
 `Open` fails with `ErrUnsupported` on another minor or major version but accepts
 a later patch release of the same minor). The same typed builders that serve pgvector
 render sqlite-vec's scalar functions, and the integration tests run them
-against a real SQLite database: `vector_sqlite_integration_test.go` in the root
+against a real SQLite database: `col_vector_sqlite_integration_test.go` in the root
 package and `TestSQLiteVectorParity` in `driver/sqlitedriver`. It needs cgo and
 does not build on Windows. The SQLite migration dialect (`migrate/sqlite`) is library only, and the
 generator refuses vector fields on SQLite, so you create the table with your

@@ -34,9 +34,7 @@ A change to a Go comment or an unexported identifier produces an empty report an
 
 ## Root package file names
 
-Every non-test `.go` file in the repository root is `doc.go` or is named with one of the prefixes `db`, `tx`, `driver`, `err`, `build`, `meta`, `expr`, `col`, `select`, `insert`, `update`, `delete`, `upsert`, `write`, `raw` or `rel`, either bare (`db.go`) or followed by an underscore and a topic (`expr_ops.go`). A test file is named after its subject file: `foo_test.go`, `foo_internal_test.go` or `foo_integration_test.go` needs `foo.go`. `TestRootFilePrefixes` in `internal/repocheck` fails on any other name and lists the prefixes in its message.
-
-Files that predate the rule are listed in `internal/repocheck/testdata/prefix_exceptions.txt`. The list may only shrink: a listed file that no longer exists fails the test, and a name that is not in the frozen snapshot `prefix_frozen.txt` is rejected, so the list cannot admit a new file. Rename the file instead of adding it to the list.
+Every non-test `.go` file in the repository root is `doc.go` or is named with one of the prefixes `db`, `tx`, `driver`, `err`, `build`, `meta`, `expr`, `col`, `select`, `insert`, `update`, `delete`, `upsert`, `write`, `raw` or `rel`, either bare (`db.go`) or followed by an underscore and a topic (`expr_ops.go`). A test file is named after its subject file and so starts with the same prefixes: `foo_test.go`, `foo_internal_test.go` or `foo_integration_test.go` for a subject `foo.go` (a longer topic such as `foo_bar_integration_test.go` is fine). `TestRootFilePrefixes` in `internal/repocheck` fails on any other name and lists the prefixes in its message. There is no exception list: rename the file instead.
 
 ## Commit messages and PR titles
 
