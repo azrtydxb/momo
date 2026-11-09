@@ -97,11 +97,11 @@ benchmark (`make bench-hooks`).
 
 ## Stability policy
 
-| Item                | Statement                                                                                                                                                       |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pre-1.0             | the README states: "v0.3.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version -->                                           |
-| Versioning          | release-please with `bump-minor-pre-major: true` and Conventional Commits; breaking changes are marked `feat!:` or a `BREAKING CHANGE:` footer (CONTRIBUTING)   |
-| Deprecation process | none documented                                                                                                                                                 |
-| Security fixes      | latest minor only (`SECURITY.md`)                                                                                                                               |
-| Pin your dependency | use an exact version in `go.mod` and read `CHANGELOG.md` before each upgrade                                                                                    |
-| Generated code      | regenerate with `momo generate` after every upgrade; generated files carry the generator version in their header and `momo generate --check` reports stale ones |
+| Item                | Statement                                                                                                                                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pre-1.0             | the README states: "v0.3.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version -->                                                                                                         |
+| Versioning          | release-please with `bump-minor-pre-major: true` and Conventional Commits; breaking changes are marked `feat!:` or a `BREAKING CHANGE:` footer (CONTRIBUTING)                                                                 |
+| Deprecation process | none documented                                                                                                                                                                                                               |
+| Security fixes      | latest minor only (`SECURITY.md`)                                                                                                                                                                                             |
+| Pin your dependency | use an exact version in `go.mod` and read `CHANGELOG.md` before each upgrade                                                                                                                                                  |
+| Generated code      | regenerate with `momo generate` after every upgrade; generated files carry only a format number in their header, so an upgrade rewrites them only when the generated code changes; `momo generate --check` reports stale ones |
