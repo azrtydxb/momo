@@ -239,3 +239,9 @@ test job; Windows and the gate job did not run. A fresh review is in progress.
   here and land vecop.
 - Merge without a release; install from main for this session only.
 - Hold the PR until it runs on macOS and Windows too.
+
+Decision (2026-11-09): merge and release once the review is clean, then
+install the new procoder here and land vecop through the fixed gate. The first
+review found 3 Important issues (a package at a nested module's root still
+resolves to the root module in the test runner; stub tests lack Windows skips;
+a changelog entry against CONTRIBUTING), sent back for fixes before merge.
