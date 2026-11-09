@@ -1,6 +1,6 @@
 # Migration guide docs/upgrading.md for the breaking imports
 
-Status: open
+Status: done
 Created: 2026-11-08
 Epic: momo-14-structure-and-docs
 Sprint: 006-sprint-6-split-the-root-package-into-subpackages-and-keep
@@ -12,18 +12,21 @@ The split breaks every user who calls a moved identifier (section 3 of `.procode
 ## Acceptance criteria
 
 - [x] `TestUpgradingCoversMoves` fails when a `moves/<package>.txt` pair is absent from `docs/upgrading.md` and when the page lists a pair with no `moves` file (red evidence from a throwaway branch)
-- [ ] every move story's pairs are present at release time: the test is green on the sprint-6 head after the last move, with one `moves` file per moved package
-- [ ] the fixture program that uses every moved identifier through the old names is rewritten by the documented recipe and compiles against the new packages (CI job output)
+- [x] every move story's pairs are present at release time: the test is green on the sprint-6 head after the last move, with one `moves` file per moved package
+- [x] the fixture program that uses every moved identifier through the old names is rewritten by the documented recipe and compiles against the new packages (CI job output)
 - [x] the page states which things did not move and why: `Func`, the vector column types, the `Hook` interfaces, the `Agg` basics, `Tx.SetLocal`
-- [ ] the page links to the release's CHANGELOG entry, carries the 0.4.0 version only inside a heading that the version test treats as historical, and is indexed from `docs/README.md`
+- [x] the page links to the release's CHANGELOG entry, carries the 0.4.0 version only inside a heading that the version test treats as historical, and is indexed from `docs/README.md`
 - [x] `docs/upgrading.md` has a short note on pre-v1 policy (`docs/supported-versions.md` stability section) so a reader knows more breaks can follow
 
 ## Evidence
 
-Step 1 only (skeleton and moves check); the story stays open until step 6.
+Step 1 (skeleton and moves check) and the closing step (fixture, recipe, release-note link).
 
 - Criterion 1: red run 42494821840 on probe commit b9430270a639a1e215b9f5dd5f6b33f2ada5bbd4 (throwaway branch, deleted): TestUpgradingCoversMoves failed with `docs/upgrading.md lacks the row | momo.ArrayContains | .../arrayop | arrayop.Contains |` (moves file with no row) and `lists a move that no testdata/moves file records: momo.Stale` (row with no moves file). TestUpgradingDiffDetectsDrift pins the comparison in memory. Green: run 42498774870 on 7e303a02c92551bc758aa300a84b4d3aa373c198.
 - Criterion 4: docs/upgrading.md "What did not move" lists Func/FuncExpr, the vector column types, the hook interfaces, the basic aggregates and Tx.SetLocal with reasons; each identifier exists in the root package (expr_funcs.go, vector_column.go, db.go, relhook.go, expr.go, search.go).
 - Criterion 6: docs/upgrading.md opens with the pre-v1 note linking supported-versions.md#stability-policy.
-- Not ticked: 2 (needs the move stories), 3 (fixture and recipe come later), 5 (CHANGELOG link at release). The page is already indexed from docs/README.md and README.md, and is in the mkdocs nav so TestEveryDocPageInNav passes. Format of testdata/moves/<package>.txt: one `<old> <new>` pair per line.
+- Format of testdata/moves/<package>.txt: one `<old> <new>` pair per line. The page is indexed from docs/README.md and README.md, and is in the mkdocs nav so TestEveryDocPageInNav passes.
+- Criterion 2: `internal/repocheck/testdata/moves/` holds one file per moved package: advisory, agg, arrayop, fts, jsonop, sqlfn, timeop, vecop, vecsearch (121 pairs). TestUpgradingCoversMoves passed on the sprint-6 head plus this change in the green ci-agent run 42632529985 (headSha e358971cb89e5640abc2db90fec67799f64f936a, all nine ci-agent jobs green: lint, unit, fuzz-smoke, apidiff-docs, bench-module and the postgres and mysql84, mysql97, mariadb integration jobs); the table of docs/upgrading.md and the nine files agree both ways.
+- Criterion 3: the fixture is `internal/repocheck/testdata/upgrade_fixture/old/main.go`, a program written against the 0.3.0 root package that uses every moved identifier through its old name. Three tests in `internal/repocheck/upgrade_fixture_test.go`, all running in the unit job (`make test`): TestUpgradeFixtureCoversMoves reads every `moves/*.txt` pair and fails when the fixture does not use it, so the fixture cannot drift from the table; TestUpgradeFixtureOldFailsToCompile builds the fixture with `go build -gcflags=-e` and requires `undefined: momo.X` for each plain pair and `.Method undefined` for each Tx/DB method pair; TestUpgradeFixtureRecipeCompiles copies the fixture and the page into a work directory, runs the `sh` block under "Rewrite recipe" of docs/upgrading.md (an awk line that turns the table rows into `gofmt -r 'momo.Old -> pkg.New' -w` commands), applies the by-hand method rule (`recv.Old(ctx, args)` to `pkg.New(ctx, recv, args)`, with a DB-form advisory call passing the transaction) and the imports, and requires `go build` to succeed. Green in run 42632529985. Red evidence: run 42629851166 on throwaway branch worktree-agent-a1d67d005d802fcfc-red (commit 25b5e114e0b6c3e9eea7a11d1a31c70137cdb901, fixture without TruncYear and JaccardDistance, page without the recipe block and link; branch deleted): TestUpgradeFixtureCoversMoves failed with `never uses momo.TruncYear` and `never uses momo.JaccardDistance`, TestUpgradeFixtureOldFailsToCompile with `compiler output lacks "undefined: momo.TruncYear"`, TestUpgradeFixtureRecipeCompiles with no sh block, TestUpgradingLinksChangelogAndIsIndexed with the missing link.
+- Criterion 5: the page links `https://github.com/azrtydxb/momo/blob/main/CHANGELOG.md` in the opening of "Upgrading to 0.4.0". That heading is the only place the page names 0.4.0 outside the table, and TestDocsVersionStrings treats an Upgrading heading as historical. The 0.4.0 entry itself is written by release-please (PR #26, stays open until the release gate lifts); when it merges, release-please prepends the `## 0.4.0` entry to CHANGELOG.md, so the link then lands on a file that holds the entry. The page keeps the link to the file, not to a dated anchor, because the anchor carries the release date, which is unknown until the release. TestUpgradingLinksChangelogAndIsIndexed pins the link and the docs/README.md index entry (`](upgrading.md)`).
 
