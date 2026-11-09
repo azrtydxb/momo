@@ -31,6 +31,10 @@ func TestCompileFailAggregates(t *testing.T) {
 			"undefined: momo.ToJSONB",
 			"undefined: momo.EmptyJSONArray",
 		},
+		"ordernotexpr": {
+			"as momo.Expr value in variable declaration: momo.Order does not implement momo.Expr",
+			"as momo.Expr value in argument to agg.JSONB[string]: momo.Order does not implement momo.Expr",
+		},
 		"wrongtype": {"as momo.Expression[string] value in argument to agg.String"},
 	} {
 		cmd := exec.Command("go", "build", "-gcflags=-e", "-o", os.DevNull, "./testdata/compilefail/"+name)

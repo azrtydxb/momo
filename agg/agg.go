@@ -8,7 +8,7 @@
 // and turned into a window function with Over.
 //
 // The package builds on the exported extension API of the root package (Ops,
-// Order.AppendSQL, Builder.AppendFilter, WindowOf, ValidName and the Builder
+// Order.AppendOrder, Builder.AppendFilter, WindowOf, ValidName and the Builder
 // methods) and no unexported name.
 package agg
 
@@ -116,7 +116,7 @@ func appendOrders(b *momo.Builder, orders []momo.Order) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		o.AppendSQL(b)
+		o.AppendOrder(b)
 	}
 }
 

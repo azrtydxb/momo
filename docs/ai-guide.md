@@ -1207,7 +1207,7 @@ values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQ
   when the flags argument has `FlagSensitive`.
 - `Builder.Unsupported`: records `ErrUnsupported` for a dialect that
   cannot express the feature. `Builder.WriteByte` appends a trusted SQL byte.
-- `Order.AppendSQL`: renders one ORDER BY item (`expr ASC|DESC [NULLS ...]`) for
+- `Order.AppendOrder`: renders one ORDER BY item (`expr ASC|DESC [NULLS ...]`) for
   an expression that carries its own ordering, such as `agg.Call.OrderBy`.
 - `Builder.AppendFilter`: writes ` FILTER (WHERE p)` after an aggregate call
   and fails the build for a nil predicate or on MySQL.
