@@ -22,7 +22,7 @@ A database is usable when a driver package for it exists under `driver/`:
 
 - PostgreSQL: usable through `driver/pgxdriver` (vector builders: yes). Migrations: `migrate/postgres`, run by `momo migrate`.
 - SQLite: usable through `driver/sqlitedriver` (needs cgo, not on Windows, vector builders: yes) and `driver/sqlitepure` (vector builders: no). Migrations: `migrate/sqlite`, library only (`momo migrate` does not select it).
-- MySQL and MariaDB: usable through `driver/mysqldriver` (vector builders: depend on the server). Migrations: `migrate/mysql`, library only (`momo migrate` does not select it).
+- MySQL and MariaDB: usable through `driver/mysqldriver` (vector storage and builders depend on the server version). Migrations: `migrate/mysql`, library only (`momo migrate` does not select it).
 
 <!-- /generated:status -->
 
