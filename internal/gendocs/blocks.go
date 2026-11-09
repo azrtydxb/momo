@@ -210,11 +210,11 @@ var features = []feature{
 // featuresBlock is the feature support table built from the features data and
 // the driver scan.
 func featuresBlock(root string) (string, error) {
-	if err := checkFeatureAPI(root); err != nil {
-		return "", err
-	}
 	drivers, err := scanDrivers(root)
 	if err != nil {
+		return "", err
+	}
+	if err := checkFeatureAPI(root); err != nil {
 		return "", err
 	}
 	cell := func(n dialect.Name, text string) string {
