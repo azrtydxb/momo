@@ -1498,11 +1498,12 @@ optional for vector and halfvec):
 
 | Go type               | SQL            | Distance builders                                                     |
 | --------------------- | -------------- | --------------------------------------------------------------------- |
-| `vector.Vector`       | `vector(n)`    | `L2Distance`, `InnerProductDistance`, `CosineDistance`, `L1Distance`  |
+| `vector.Vector`       | `vector(n)`    | `vecop.L2`, `vecop.InnerProduct`, `vecop.Cosine`, `vecop.L1`          |
 | `vector.HalfVector`   | `halfvec(n)`   | same four                                                             |
 | `vector.SparseVector` | `sparsevec(n)` | same four (`Dim`, zero-based strictly increasing `Indices`, `Values`) |
-| `vector.Bits`         | `bit(n)`       | `HammingDistance`, `JaccardDistance`                                  |
+| `vector.Bits`         | `bit(n)`       | `vecop.Hamming`, `vecop.Jaccard`                                      |
 
+The distance builders live in package `github.com/azrtydxb/momo/vecop`.
 A pointer field (`*vector.Vector`) is nullable (`momo.NullVectorColumn`).
 Validation (before the database): length must equal `dim`; NaN and Inf rejected;
 halfvec within 65504; max dim 16000 (`vector.MaxDim`). Failures wrap
@@ -1531,8 +1532,8 @@ Index rules (`MomoConfig`; validated by the generator, error wraps
   `ivfflat` REQUIRES `With("lists", "N")` (1..32768).
 - An index covers one plain column; expression parts are rejected.
 - Index opclass must match the distance function: `vector_cosine_ops` with
-  `CosineDistance`, `vector_l2_ops` with `L2Distance`, `vector_ip_ops` with
-  `InnerProductDistance`, `vector_l1_ops` with `L1Distance`. A mismatch silently
+  `vecop.Cosine`, `vector_l2_ops` with `vecop.L2`, `vector_ip_ops` with
+  `vecop.InnerProduct`, `vector_l1_ops` with `vecop.L1`. A mismatch silently
   runs a sequential scan.
 
 Nearest-neighbour query; `Asc()` is nearest first:
@@ -1540,7 +1541,7 @@ Nearest-neighbour query; `Asc()` is nearest first:
 <!-- docscheck:fragment -->
 
 ```go
-distance := momo.CosineDistance(item.Embedding, query) // query is vector.Vector of dim 1536
+distance := vecop.Cosine(item.Embedding, query) // query is vector.Vector of dim 1536
 hits, err := momo.Select[models.Hit](q). // projection with Title string, Distance float64 (section 4); soft-deleted items are filtered automatically
 	From(item.Table).
 	Columns(item.Title, distance).
@@ -1551,7 +1552,7 @@ hits, err := momo.Select[models.Hit](q). // projection with Title string, Distan
 
 // Rows only (the soft-delete filter applies automatically):
 items, err := momo.Select[models.Item](q).
-	OrderBy(momo.CosineDistance(item.Embedding, query).Asc()).Limit(5).All(ctx)
+	OrderBy(vecop.Cosine(item.Embedding, query).Asc()).Limit(5).All(ctx)
 ```
 
 - `Hit` is a projection (section 4); the generator emits its meta. The select
@@ -1559,7 +1560,7 @@ items, err := momo.Select[models.Item](q).
   column.
 - A vector literal is `vector.Vector{0.1, 0.2, 0.3}` (`vector.Vector` is
   `[]float32`; its length must equal `dim`).
-- `InnerProductDistance` is pgvector `<#>`: the NEGATIVE inner product, so
+- `vecop.InnerProduct` is pgvector `<#>`: the NEGATIVE inner product, so
   ascending order is closest.
 - Vector columns have no `Lt/Le/Gt/Ge/Between`; use a distance builder.
 - Passing a dense vector to a bit builder (or the reverse) does not compile.
@@ -1584,7 +1585,7 @@ err := db.WithSearch(ctx, momo.SearchSettings{
 }, func(tx *momo.Tx) error {
 	// run EVERY vector query for this search on tx, not db
 	_, err := momo.Select[models.Item](tx).
-		OrderBy(momo.CosineDistance(item.Embedding, query).Asc()).Limit(10).All(ctx)
+		OrderBy(vecop.Cosine(item.Embedding, query).Asc()).Limit(10).All(ctx)
 	return err
 })
 // Inside an existing transaction: tx.SetSearch(ctx, settings)

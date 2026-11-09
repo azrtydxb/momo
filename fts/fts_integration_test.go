@@ -17,6 +17,7 @@ import (
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/sqlfn"
 	"github.com/azrtydxb/momo/types"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -197,7 +198,7 @@ func TestFullTextHybridRanking(t *testing.T) {
 		ctx := context.Background()
 
 		q := fts.WebsearchToQuery("english", "reset")
-		dist := momo.CosineDistance(kbEmb, vector.Vector{1, 0, 0})
+		dist := vecop.Cosine(kbEmb, vector.Vector{1, 0, 0})
 		text := fts.RankCD(kbTsv, q)
 		// Lower is better: the distance, reduced by half the text rank.
 		score := sqlfn.SubExpr[float64](dist, sqlfn.Mul[float64](text, 0.5))

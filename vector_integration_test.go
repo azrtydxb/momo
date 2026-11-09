@@ -11,6 +11,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -43,7 +44,7 @@ func TestVectorDistances(t *testing.T) {
 		mustExecPG(t, db, "INSERT INTO docs (id, emb) VALUES (?, ?)", int64(i+1), v)
 	}
 	col := momo.NewVectorColumn[vector.Vector]("docs", "emb", 3, 0)
-	c, err := momo.Select[vecDoc, *vecDoc](db).OrderBy(momo.L2Distance(col, vector.Vector{4, 5, 6}).Asc()).Limit(3).SQL()
+	c, err := momo.Select[vecDoc, *vecDoc](db).OrderBy(vecop.L2(col, vector.Vector{4, 5, 6}).Asc()).Limit(3).SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,10 +93,10 @@ func TestVectorDistances(t *testing.T) {
 		expr momo.Expression[float64]
 		ref  func(a, b vector.Vector) float64
 	}{
-		{"L2Distance", momo.L2Distance(col, q), l2},
-		{"InnerProductDistance", momo.InnerProductDistance(col, q), negDot},
-		{"CosineDistance", momo.CosineDistance(col, q), cosine},
-		{"L1Distance", momo.L1Distance(col, q), l1},
+		{"L2Distance", vecop.L2(col, q), l2},
+		{"InnerProductDistance", vecop.InnerProduct(col, q), negDot},
+		{"CosineDistance", vecop.Cosine(col, q), cosine},
+		{"L1Distance", vecop.L1(col, q), l1},
 	}
 	for _, tc := range cases {
 		// The select list must match the two mapped fields of vecDoc, so it is id plus the distance.

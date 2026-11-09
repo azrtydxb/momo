@@ -16,6 +16,7 @@ import (
 	"github.com/azrtydxb/momo/bench/models/momo/item"
 	"github.com/azrtydxb/momo/bench/stats"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/vecop"
 	momovector "github.com/azrtydxb/momo/vector"
 )
 
@@ -79,7 +80,7 @@ func BenchmarkVectorTopK(b *testing.B) {
 				q := momovector.Vector(ds.Queries[i%len(ds.Queries)])
 				start := time.Now()
 				_, err := momo.Select[models.Item](tx).
-					OrderBy(momo.L2Distance(item.Embedding, q).Asc(), item.ID.Asc()).
+					OrderBy(vecop.L2(item.Embedding, q).Asc(), item.ID.Asc()).
 					Limit(10).
 					All(ctx)
 				if err != nil {

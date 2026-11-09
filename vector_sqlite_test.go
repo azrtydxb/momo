@@ -70,7 +70,8 @@ func TestSQLiteVectorBindAndValidate(t *testing.T) {
 }
 
 // Everything sqlite-vec cannot do is ErrUnsupported when the query is built:
-// the halfvec and sparsevec types as arguments, inner product and Jaccard.
+// the halfvec and sparsevec types as arguments. The distance metrics it lacks
+// are covered in package vecop.
 func TestSQLiteVectorUnsupported(t *testing.T) {
 	sq := dialect.For(dialect.SQLite)
 	half := NewVectorColumn[vector.HalfVector]("docs", "h", 2, 0)
@@ -81,21 +82,11 @@ func TestSQLiteVectorUnsupported(t *testing.T) {
 		"sparsevec bind": func(b *Builder) { b.argFor(0, sv) },
 		"halfvec eq":     half.Eq(vector.HalfVector{1, 2}).AppendSQL,
 		"sparsevec eq":   sparse.Eq(sv).AppendSQL,
-		"halfvec l2":     L2Distance(half, vector.HalfVector{1, 2}).AppendSQL,
-		"sparsevec l1":   L1Distance(sparse, sv).AppendSQL,
 		"halfvec ptr":    func(b *Builder) { v := vector.HalfVector{1, 2}; b.argFor(0, &v) },
 	} {
 		if _, err := compile(sq, fn); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%s: err = %v, want ErrUnsupported", name, err)
 		}
-	}
-	bits := NewVectorColumn[vector.Bits]("docs", "b", 8, 0)
-	if _, err := compile(sq, JaccardDistance(bits, vector.Bits{Len: 8, Data: []byte{1}}).AppendSQL); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("jaccard: err = %v, want ErrUnsupported", err)
-	}
-	dense := NewVectorColumn[vector.Vector]("docs", "emb", 2, 0)
-	if _, err := compile(sq, InnerProductDistance(dense, vector.Vector{1, 2}).AppendSQL); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("inner product: err = %v, want ErrUnsupported", err)
 	}
 	// A nil pointer to a type SQLite lacks is just NULL: nothing is stored.
 	var noHalf *vector.HalfVector

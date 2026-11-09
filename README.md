@@ -386,7 +386,7 @@ func similarPosts(ctx context.Context, db *momo.DB, query vector.Vector) error {
 	settings := momo.SearchSettings{HNSWEfSearch: 100}
 	return db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
 		nearest, err := momo.Select[models.Post](tx).
-			OrderBy(momo.CosineDistance(post.Embedding, query).Asc()).
+			OrderBy(vecop.Cosine(post.Embedding, query).Asc()).
 			Limit(5).
 			All(ctx)
 		if err != nil {
@@ -400,11 +400,12 @@ func similarPosts(ctx context.Context, db *momo.DB, query vector.Vector) error {
 }
 ```
 
-For dense vectors the functions are `L2Distance`, `InnerProductDistance`,
-`CosineDistance`, and `L1Distance`. For bit vectors they are `HammingDistance`
-and `JaccardDistance`. Match the function to the operator
+The distance builders live in package `github.com/azrtydxb/momo/vecop`. For
+dense vectors the functions are `vecop.L2`, `vecop.InnerProduct`,
+`vecop.Cosine`, and `vecop.L1`. For bit vectors they are `vecop.Hamming`
+and `vecop.Jaccard`. Match the function to the operator
 class of your index: this example indexes with `vector_cosine_ops`, so it
-searches with `CosineDistance`.
+searches with `vecop.Cosine`.
 
 ### 8. Transactions
 

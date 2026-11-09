@@ -24,7 +24,8 @@ call exists and fails with `momo.ErrUnsupported`.
 ## Getting connected
 
 Imports: `github.com/azrtydxb/momo` (core), `github.com/azrtydxb/momo/driver/pgxdriver`
-(PostgreSQL driver), and `github.com/azrtydxb/momo/vector` for vector types.
+(PostgreSQL driver), `github.com/azrtydxb/momo/vector` for vector types and
+`github.com/azrtydxb/momo/vecop` for the vector distance builders.
 
 Open a pool and wrap it, as the README does (the caller closes the pool):
 

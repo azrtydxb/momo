@@ -11,6 +11,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -61,7 +62,7 @@ func TestExplainBindsArgsNeverInterpolates(t *testing.T) {
 	drv.SetRows([][]any{{"plan"}})
 	db := momo.New(drv)
 	q := momo.Select[vecDocU, *vecDocU](db).Where(momo.NewColumn[int64]("docs", "id", 0).Eq(int64(41))).
-		OrderBy(momo.L2Distance(momo.NewVectorColumn[vector.Vector]("docs", "emb", 3, 0), vector.Vector{1, 2, 3}).Asc())
+		OrderBy(vecop.L2(momo.NewVectorColumn[vector.Vector]("docs", "emb", 3, 0), vector.Vector{1, 2, 3}).Asc())
 	c, err := q.SQL()
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +89,7 @@ func TestExplainBuildErrorRunsNothing(t *testing.T) {
 	n := len(drv.Calls())
 	col := momo.NewVectorColumn[vector.Vector]("docs", "emb", 3, 0)
 	_, err := momo.Select[vecDocU, *vecDocU](db).
-		OrderBy(momo.L2Distance(col, vector.Vector{1, 2}).Asc()).
+		OrderBy(vecop.L2(col, vector.Vector{1, 2}).Asc()).
 		Explain(t.Context())
 	if !errors.Is(err, momo.ErrInvalidVector) {
 		t.Fatalf("err = %v, want ErrInvalidVector from the build", err)

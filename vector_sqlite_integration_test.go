@@ -15,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -150,12 +151,12 @@ func TestSQLiteVectorDistances(t *testing.T) {
 	q := vector.Vector{4, 5, 6}
 	cases := []struct {
 		name string
-		expr momo.DistanceExpr
+		expr vecop.Expr
 		ref  func(a, b vector.Vector) float64
 	}{
-		{"L2Distance", momo.L2Distance(col, q), vectorparity.L2Distance},
-		{"L1Distance", momo.L1Distance(col, q), vectorparity.L1Distance},
-		{"CosineDistance", momo.CosineDistance(col, q), vectorparity.CosineDistance},
+		{"L2Distance", vecop.L2(col, q), vectorparity.L2Distance},
+		{"L1Distance", vecop.L1(col, q), vectorparity.L1Distance},
+		{"CosineDistance", vecop.Cosine(col, q), vectorparity.CosineDistance},
 	}
 	for _, tc := range cases {
 		c, err := momo.Select[vecDoc, *vecDoc](db).Columns(idCol, tc.expr).SQL()
@@ -175,7 +176,7 @@ func TestSQLiteVectorDistances(t *testing.T) {
 	}
 
 	// Nearest first, farthest first, and the typed read back of the vectors.
-	near, err := momo.Select[vecDoc](db).OrderBy(momo.L2Distance(col, q).Asc()).All(t.Context())
+	near, err := momo.Select[vecDoc](db).OrderBy(vecop.L2(col, q).Asc()).All(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +188,7 @@ func TestSQLiteVectorDistances(t *testing.T) {
 			t.Errorf("id %d reads back as %v, want %v", d.ID, d.Emb, rows[d.ID-1])
 		}
 	}
-	far, err := momo.Select[vecDoc](db).OrderBy(momo.L2Distance(col, q).Desc()).All(t.Context())
+	far, err := momo.Select[vecDoc](db).OrderBy(vecop.L2(col, q).Desc()).All(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +199,7 @@ func TestSQLiteVectorDistances(t *testing.T) {
 	// A distance in a WHERE clause: radius 5 holds only the query itself (0),
 	// the next row is sqrt(27), about 5.2.
 	radius := momo.NewColumn[float64]("docs", "radius", 0)
-	within, err := momo.Select[vecDoc](db).Where(radius.GtExpr(momo.L2Distance(col, q))).All(t.Context())
+	within, err := momo.Select[vecDoc](db).Where(radius.GtExpr(vecop.L2(col, q))).All(t.Context())
 	if err != nil || len(within) != 1 || within[0].ID != 2 {
 		t.Fatalf("within radius: %v, %v, want only id 2", within, err)
 	}
@@ -229,7 +230,7 @@ func TestSQLiteBitVectorHamming(t *testing.T) {
 	}
 	col := momo.NewVectorColumn[vector.Bits]("bdocs", "bits", 8, 0)
 	q := vector.Bits{Len: 8, Data: []byte{0xB0}}
-	c, err := momo.Select[sqvBitsDoc](db).Columns(momo.ColumnOf[int64]("bdocs", "id"), momo.HammingDistance(col, q)).SQL()
+	c, err := momo.Select[sqvBitsDoc](db).Columns(momo.ColumnOf[int64]("bdocs", "id"), vecop.Hamming(col, q)).SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +244,7 @@ func TestSQLiteBitVectorHamming(t *testing.T) {
 		t.Errorf("hamming(0xB0, 0x98) = %v, want 2 (the popcount of 0x28)", got[2])
 	}
 
-	ordered, err := momo.Select[sqvBitsDoc](db).OrderBy(momo.HammingDistance(col, q).Asc()).All(t.Context())
+	ordered, err := momo.Select[sqvBitsDoc](db).OrderBy(vecop.Hamming(col, q).Asc()).All(t.Context())
 	if err != nil || len(ordered) != 3 {
 		t.Fatalf("ordered: %v, %v", ordered, err)
 	}
@@ -256,7 +257,7 @@ func TestSQLiteBitVectorHamming(t *testing.T) {
 		}
 	}
 	// Jaccard has no sqlite-vec function.
-	_, err = momo.Select[sqvBitsDoc](db).OrderBy(momo.JaccardDistance(col, q).Asc()).All(t.Context())
+	_, err = momo.Select[sqvBitsDoc](db).OrderBy(vecop.Jaccard(col, q).Asc()).All(t.Context())
 	if !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("jaccard: err = %v, want ErrUnsupported", err)
 	}
@@ -307,9 +308,9 @@ func TestSQLiteVectorRefusals(t *testing.T) {
 	ctx := t.Context()
 
 	unsupported := map[string]momo.Order{
-		"inner product": momo.InnerProductDistance(col, q).Asc(),
-		"halfvec":       momo.L2Distance(momo.NewVectorColumn[vector.HalfVector]("docs", "emb", 3, 0), vector.HalfVector{1, 2, 3}).Asc(),
-		"sparsevec":     momo.L2Distance(momo.NewVectorColumn[vector.SparseVector]("docs", "emb", 3, 0), vector.SparseVector{Dim: 3, Indices: []int32{0}, Values: []float32{1}}).Asc(),
+		"inner product": vecop.InnerProduct(col, q).Asc(),
+		"halfvec":       vecop.L2(momo.NewVectorColumn[vector.HalfVector]("docs", "emb", 3, 0), vector.HalfVector{1, 2, 3}).Asc(),
+		"sparsevec":     vecop.L2(momo.NewVectorColumn[vector.SparseVector]("docs", "emb", 3, 0), vector.SparseVector{Dim: 3, Indices: []int32{0}, Values: []float32{1}}).Asc(),
 	}
 	for name, order := range unsupported {
 		if _, err := momo.Select[vecDoc](db).OrderBy(order).All(ctx); !errors.Is(err, momo.ErrUnsupported) {
@@ -317,10 +318,10 @@ func TestSQLiteVectorRefusals(t *testing.T) {
 		}
 	}
 
-	if _, err := momo.Select[vecDoc](db).OrderBy(momo.L2Distance(col, vector.Vector{1, 2}).Asc()).All(ctx); !errors.Is(err, momo.ErrValidation) {
+	if _, err := momo.Select[vecDoc](db).OrderBy(vecop.L2(col, vector.Vector{1, 2}).Asc()).All(ctx); !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("dimension mismatch: err = %v, want ErrValidation", err)
 	}
-	if _, err := momo.Select[vecDoc](db).OrderBy(momo.L2Distance(col, vector.Vector{1, float32(math.NaN()), 3}).Asc()).All(ctx); !errors.Is(err, momo.ErrInvalidVector) {
+	if _, err := momo.Select[vecDoc](db).OrderBy(vecop.L2(col, vector.Vector{1, float32(math.NaN()), 3}).Asc()).All(ctx); !errors.Is(err, momo.ErrInvalidVector) {
 		t.Errorf("NaN query: err = %v, want ErrInvalidVector", err)
 	}
 
@@ -345,7 +346,7 @@ func TestSQLiteVectorRefusals(t *testing.T) {
 	// Search settings: every SQLite search is exact, so ExactSearch is a no-op
 	// and a setting that tunes an index is refused.
 	if err := db.WithSearch(ctx, momo.SearchSettings{ExactSearch: true}, func(tx *momo.Tx) error {
-		_, err := momo.Select[vecDoc](tx).OrderBy(momo.L2Distance(col, q).Asc()).Limit(1).All(ctx)
+		_, err := momo.Select[vecDoc](tx).OrderBy(vecop.L2(col, q).Asc()).Limit(1).All(ctx)
 		return err
 	}); err != nil {
 		t.Errorf("ExactSearch: %v", err)
@@ -372,7 +373,7 @@ func TestSQLiteVectorSensitiveRedaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	col := momo.NewVectorColumn[vector.Vector]("sdocs", "emb", 3, momo.FlagSensitive)
-	got, err := momo.Select[sqvSecretDoc](db).OrderBy(momo.CosineDistance(col, secret).Asc()).All(t.Context())
+	got, err := momo.Select[sqvSecretDoc](db).OrderBy(vecop.Cosine(col, secret).Asc()).All(t.Context())
 	if err != nil || len(got) != 1 || !slices.Equal(got[0].Emb, secret) {
 		t.Fatalf("round trip: %v, %v", got, err)
 	}

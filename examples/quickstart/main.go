@@ -21,6 +21,7 @@ import (
 	"github.com/azrtydxb/momo/examples/quickstart/models"
 	"github.com/azrtydxb/momo/examples/quickstart/models/author"
 	"github.com/azrtydxb/momo/examples/quickstart/models/post"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -145,7 +146,7 @@ func similarPosts(ctx context.Context, db *momo.DB, query vector.Vector) error {
 	settings := momo.SearchSettings{HNSWEfSearch: 100}
 	return db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
 		nearest, err := momo.Select[models.Post](tx).
-			OrderBy(momo.CosineDistance(post.Embedding, query).Asc()).
+			OrderBy(vecop.Cosine(post.Embedding, query).Asc()).
 			Limit(5).
 			All(ctx)
 		if err != nil {

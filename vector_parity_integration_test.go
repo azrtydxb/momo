@@ -12,6 +12,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -31,7 +32,7 @@ func TestPostgresVectorParityReference(t *testing.T) {
 	}
 	col := momo.NewVectorColumn[vector.Vector]("docs", "emb", vectorparity.Dim, 0)
 	c, err := momo.Select[vecDoc, *vecDoc](db).
-		OrderBy(momo.CosineDistance(col, query).Asc(), momo.NewColumn[int64]("docs", "id", 0).Asc()).
+		OrderBy(vecop.Cosine(col, query).Asc(), momo.NewColumn[int64]("docs", "id", 0).Asc()).
 		Limit(vectorparity.TopK).SQL()
 	if err != nil {
 		t.Fatal(err)

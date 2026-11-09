@@ -10,6 +10,7 @@ import (
 	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/internal/testmodels/example"
 	"github.com/azrtydxb/momo/internal/testmodels/example/document"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -28,7 +29,7 @@ func TestGeneratedVectorColumnDistance(t *testing.T) {
 
 	db := momo.New(pgxdriver.New(nil))
 	c, err := momo.Select[example.Document, *example.Document](db).
-		OrderBy(momo.CosineDistance(document.Embedding, make(vector.Vector, 1536)).Asc()).
+		OrderBy(vecop.Cosine(document.Embedding, make(vector.Vector, 1536)).Asc()).
 		SQL()
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +38,7 @@ func TestGeneratedVectorColumnDistance(t *testing.T) {
 		t.Fatal("empty SQL")
 	}
 	_, err = momo.Select[example.Document, *example.Document](db).
-		OrderBy(momo.CosineDistance(document.Embedding, vector.Vector{1, 2, 3}).Asc()).
+		OrderBy(vecop.Cosine(document.Embedding, vector.Vector{1, 2, 3}).Asc()).
 		SQL()
 	if !errors.Is(err, momo.ErrValidation) {
 		t.Fatalf("wrong-sized query vector error = %v, want ErrValidation", err)

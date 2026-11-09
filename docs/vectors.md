@@ -95,20 +95,21 @@ the other two) and every distance builder accepts them, so a read-only
 embedding can be searched.
 
 The distance builders take a column and a query vector of the same type.
-Each returns a `DistanceExpr`, an `Expression[float64]` that works in the
+The builders live in package `github.com/azrtydxb/momo/vecop`. Each returns a
+`vecop.Expr`, an `Expression[float64]` that works in the
 select list, in comparisons and in `OrderBy`. `Asc()` orders nearest first
 and is the default; `Desc()` orders farthest first.
 
-| Builder                | pgvector operator | Column types            | SQLite function        |
-| ---------------------- | ----------------- | ----------------------- | ---------------------- |
-| `L2Distance`           | `<->`             | vector, halfvec, sparse | `vec_distance_l2`      |
-| `InnerProductDistance` | `<#>`             | vector, halfvec, sparse | none                   |
-| `CosineDistance`       | `<=>`             | vector, halfvec, sparse | `vec_distance_cosine`  |
-| `L1Distance`           | `<+>`             | vector, halfvec, sparse | `vec_distance_l1`      |
-| `HammingDistance`      | `<~>`             | bit                     | `vec_distance_hamming` |
-| `JaccardDistance`      | `<%>`             | bit                     | none                   |
+| Builder              | pgvector operator | Column types            | SQLite function        |
+| -------------------- | ----------------- | ----------------------- | ---------------------- |
+| `vecop.L2`           | `<->`             | vector, halfvec, sparse | `vec_distance_l2`      |
+| `vecop.InnerProduct` | `<#>`             | vector, halfvec, sparse | none                   |
+| `vecop.Cosine`       | `<=>`             | vector, halfvec, sparse | `vec_distance_cosine`  |
+| `vecop.L1`           | `<+>`             | vector, halfvec, sparse | `vec_distance_l1`      |
+| `vecop.Hamming`      | `<~>`             | bit                     | `vec_distance_hamming` |
+| `vecop.Jaccard`      | `<%>`             | bit                     | none                   |
 
-`InnerProductDistance` is pgvector's `<#>`, which returns the negative inner
+`vecop.InnerProduct` is pgvector's `<#>`, which returns the negative inner
 product so that ascending order means closest. Passing a dense vector to a
 bit builder, or the reverse, does not compile (`testdata/compilefail`).
 
@@ -130,13 +131,13 @@ for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 // sqlite [l2 l1 cosine hamming] []
 ```
 
-A nearest-neighbour query (`ExampleCosineDistance`):
+A nearest-neighbour query (`Example_vectorNearest`):
 
 <!-- docscheck:fragment -->
 
 ```go
 c, err := momo.Select[example.Document](db).
-	OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
+	OrderBy(vecop.Cosine(document.Embedding, query).Asc()).
 	Limit(5).
 	SQL()
 // ... ORDER BY ("documents"."embedding" <=> $1) ASC LIMIT $2
@@ -223,7 +224,7 @@ type KbChunk struct {
   size, so NaN, Inf and an empty vector are still rejected. The column never
   catches a size mismatch itself.
 - pgvector fails a distance between two sizes, so filter on `dims` in the same
-  query: `Where(chunk.Dims.Eq(len(q)))` plus `OrderBy(momo.CosineDistance(chunk.Embedding, q).Asc())`.
+  query: `Where(chunk.Dims.Eq(len(q)))` plus `OrderBy(vecop.Cosine(chunk.Embedding, q).Asc())`.
 - The migration round-trips the bare type and the next diff is empty.
 - Limit: pgvector cannot build an hnsw or ivfflat index on a dimensionless
   column. Momo refuses one, with an error that wraps
@@ -287,7 +288,7 @@ settings := momo.SearchSettings{
 }
 err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
 	_, err := momo.Select[example.Document](tx).
-		OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
+		OrderBy(vecop.Cosine(document.Embedding, query).Asc()).
 		Limit(10).
 		All(ctx)
 	return err
@@ -332,7 +333,7 @@ it inside the transaction whose settings you want to see
 
 ```go
 plan, err := momo.Select[example.Document](db).
-	OrderBy(momo.L2Distance(document.Embedding, query).Asc()).
+	OrderBy(vecop.L2(document.Embedding, query).Asc()).
 	Limit(10).
 	Explain(ctx)
 // look for "Index Scan using documents_embedding_hnsw"
@@ -421,14 +422,14 @@ the authority for a length that is not a multiple of 8.
 
 **Metrics.** These are exactly the functions v0.1.6 registers:
 
-| Builder                | SQLite function                                            | Column type     |
-| ---------------------- | ---------------------------------------------------------- | --------------- |
-| `L2Distance`           | `vec_distance_l2`                                          | `vector.Vector` |
-| `L1Distance`           | `vec_distance_l1`                                          | `vector.Vector` |
-| `CosineDistance`       | `vec_distance_cosine`                                      | `vector.Vector` |
-| `HammingDistance`      | `vec_distance_hamming(vec_bit(column), vec_bit(argument))` | `vector.Bits`   |
-| `InnerProductDistance` | none: `ErrUnsupported` at build time                       |                 |
-| `JaccardDistance`      | none: `ErrUnsupported` at build time                       |                 |
+| Builder              | SQLite function                                            | Column type     |
+| -------------------- | ---------------------------------------------------------- | --------------- |
+| `vecop.L2`           | `vec_distance_l2`                                          | `vector.Vector` |
+| `vecop.L1`           | `vec_distance_l1`                                          | `vector.Vector` |
+| `vecop.Cosine`       | `vec_distance_cosine`                                      | `vector.Vector` |
+| `vecop.Hamming`      | `vec_distance_hamming(vec_bit(column), vec_bit(argument))` | `vector.Bits`   |
+| `vecop.InnerProduct` | none: `ErrUnsupported` at build time                       |                 |
+| `vecop.Jaccard`      | none: `ErrUnsupported` at build time                       |                 |
 
 The query vector is a bound argument. When the column is sensitive, it shows
 as `momo.RedactedArg` in hook events, on a query and on an insert, while the
@@ -462,8 +463,8 @@ stores them but cannot compare them.
 | ------------------------------ | ------------------------------------------------------------- | ---------------- | ---------------------- |
 | Column type                    | `VECTOR(N)`                                                   | `VECTOR(N)`      | none: `ErrUnsupported` |
 | `vector.Vector` write and read | yes                                                           | yes              | no                     |
-| `L2Distance`                   | `VEC_DISTANCE_EUCLIDEAN(col, VEC_FromText(?))`                | `ErrUnsupported` | `ErrUnsupported`       |
-| `CosineDistance`               | `VEC_DISTANCE_COSINE(col, VEC_FromText(?))`                   | `ErrUnsupported` | `ErrUnsupported`       |
+| `vecop.L2`                     | `VEC_DISTANCE_EUCLIDEAN(col, VEC_FromText(?))`                | `ErrUnsupported` | `ErrUnsupported`       |
+| `vecop.Cosine`                 | `VEC_DISTANCE_COSINE(col, VEC_FromText(?))`                   | `ErrUnsupported` | `ErrUnsupported`       |
 | Other metrics, other types     | `ErrUnsupported` (inner product, L1, halfvec, sparsevec, bit) | `ErrUnsupported` | `ErrUnsupported`       |
 | ANN index                      | `VECTOR INDEX`, approximate                                   | none             | none                   |
 | `Capabilities().Vectors`       | true                                                          | false            | false                  |

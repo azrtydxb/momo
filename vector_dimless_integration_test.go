@@ -10,6 +10,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -52,7 +53,7 @@ func TestCosineDistanceDimensionlessColumn(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c, err := momo.Select[vecDoc, *vecDoc](db).
 				Where(dims.Eq(int64(len(tc.q)))).
-				OrderBy(momo.CosineDistance(col, tc.q).Asc()).
+				OrderBy(vecop.Cosine(col, tc.q).Asc()).
 				Limit(10).SQL()
 			if err != nil {
 				t.Fatal(err)

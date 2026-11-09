@@ -11,15 +11,16 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/internal/testmodels/example"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
 // Bit vectors take the Hamming and Jaccard distances.
-func ExampleHammingDistance() {
+func Example_vectorHamming() {
 	db := momo.New(pgxdriver.New(nil))
 	col := momo.NewVectorColumn[vector.Bits]("documents", "bits", 8, 0)
 
-	expr := momo.HammingDistance(col, vector.Bits{Len: 8, Data: []byte{0xF0}})
+	expr := vecop.Hamming(col, vector.Bits{Len: 8, Data: []byte{0xF0}})
 	c, err := momo.Select[example.Document](db).
 		OrderBy(expr.Asc()).Limit(3).SQL()
 	if err != nil {

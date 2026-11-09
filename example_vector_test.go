@@ -16,20 +16,21 @@ import (
 	"github.com/azrtydxb/momo/migrate"
 	migratepg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
 // A nearest-neighbour query orders by a typed distance expression. The query
 // vector is bound as an argument and checked against the column dimension
 // when the SQL is built.
-func ExampleCosineDistance() {
+func Example_vectorNearest() {
 	// SQL() only compiles the statement, so no connection is needed here.
 	db := momo.New(pgxdriver.New(nil))
 	query := make(vector.Vector, 1536)
 	query[0] = 1
 
 	c, err := momo.Select[example.Document](db).
-		OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
+		OrderBy(vecop.Cosine(document.Embedding, query).Asc()).
 		Limit(5).
 		SQL()
 	if err != nil {
@@ -42,11 +43,11 @@ func ExampleCosineDistance() {
 }
 
 // A query vector of the wrong dimension is a build error, not a server error.
-func ExampleL2Distance() {
+func Example_vectorDimensionMismatch() {
 	db := momo.New(pgxdriver.New(nil))
 
 	_, err := momo.Select[example.Document](db).
-		OrderBy(momo.L2Distance(document.Embedding, vector.Vector{1, 2, 3}).Asc()).
+		OrderBy(vecop.L2(document.Embedding, vector.Vector{1, 2, 3}).Asc()).
 		SQL()
 	fmt.Println(err != nil)
 	// Output:
@@ -79,7 +80,7 @@ func ExampleDB_WithSearch() {
 	}
 	err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
 		_, err := momo.Select[example.Document](tx).
-			OrderBy(momo.CosineDistance(document.Embedding, make(vector.Vector, 1536)).Asc()).
+			OrderBy(vecop.Cosine(document.Embedding, make(vector.Vector, 1536)).Asc()).
 			Limit(10).
 			All(ctx)
 		return err
@@ -111,7 +112,7 @@ func ExampleSelectQuery_Explain() {
 	ctx := context.Background()
 
 	plan, err := momo.Select[example.Document](db).
-		OrderBy(momo.L2Distance(document.Embedding, make(vector.Vector, 1536)).Asc()).
+		OrderBy(vecop.L2(document.Embedding, make(vector.Vector, 1536)).Asc()).
 		Limit(10).
 		Explain(ctx)
 	if err != nil {
