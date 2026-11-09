@@ -31,3 +31,5 @@ ci-agent run 42494595487 on b625fd0 (all jobs green: unit, integration postgres,
 - chunk: `ok internal/chunk`; TestKeysPerStatementPerDialect, TestKeysPerStatementReservedAndLimits (composite cap, SQLite cap, MaxParams), TestEachSplitsInOrder, TestEachEdges.
 - keyenc: `ok internal/keyenc`; TestString, TestStringNormalization.
 - Root tests green unchanged apart from import and call-site edits; no exported identifier added or removed (RedactedArg keeps its value, now `redact.Arg`).
+
+Review follow-up: the review's fixes are on head e3b5e16, and ci-agent run 42575189091 passed all eight jobs on it. They fold `raw_render_seed_internal_test.go` into `raw_args_internal_test.go`, and add the root fuzz target `FuzzAppendRaw` to FUZZ_TARGETS. They rename the shadowing locals `chunk` to `part`, add the four internal-leaf lines in `packages.txt`, and drop the deleted files from the prefix-guard lists.
