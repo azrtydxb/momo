@@ -250,16 +250,18 @@ Nullability and column rules:
   `time.Time` is `timestamptz`, `types.UUID` is `uuid`, `types.JSON[T]` is
   `jsonb`). `uint64`, maps and unknown types have no mapping: add `type:<sql>`
   or a codec.
-- JSON columns: `JSONText`, `JSONPath`, `JSONContains` and `JSONHasKey` (file
-  `expr_json.go`) are typed predicates over a `types.JSON[T]` column; the
-  extractions are string expressions usable in `Where`, `OrderBy` and `Columns`.
+- JSON columns: `jsonop.Text`, `jsonop.Path`, `jsonop.Contains` and
+  `jsonop.HasKey` (package `github.com/azrtydxb/momo/jsonop`) are typed
+  operators over a `types.JSON[T]` column; the extractions are string
+  expressions usable in `Where`, `OrderBy` and `Columns`.
   An extraction is NULL for a missing key and for JSON null alike, a SQL NULL
   column is tested with `IsNull` on the column, and the JSON literal null is
   matched by comparing the column with a `types.JSON` whose value is nil.
-  `JSONHasKey` is true for a key whose value is JSON null. A numeric key in
-  `JSONText` or `JSONHasKey` is an object key; only `JSONPath` elements made of
-  digits can be array indexes. SQLite renders `json_extract` and `json_type`
-  (`JSONContains` is `ErrUnsupported` there); MySQL renders its JSON functions.
+  `jsonop.HasKey` is true for a key whose value is JSON null. A numeric key in
+  `jsonop.Text` or `jsonop.HasKey` is an object key; only `jsonop.Path`
+  elements made of digits can be array indexes. SQLite renders `json_extract`
+  and `json_type` (`jsonop.Contains` is `ErrUnsupported` there); MySQL renders
+  its JSON functions.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.

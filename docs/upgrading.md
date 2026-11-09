@@ -60,6 +60,11 @@ as an argument.
 | `momo.CastExpr`           | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.CastExpr`          |
 | `momo.Concat`             | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Concat`            |
 | `momo.ConcatExpr`         | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.ConcatExpr`        |
+| `momo.JSONText`           | `github.com/azrtydxb/momo/jsonop`  | `jsonop.Text`             |
+| `momo.JSONPath`           | `github.com/azrtydxb/momo/jsonop`  | `jsonop.Path`             |
+| `momo.JSONContains`       | `github.com/azrtydxb/momo/jsonop`  | `jsonop.Contains`         |
+| `momo.JSONHasKey`         | `github.com/azrtydxb/momo/jsonop`  | `jsonop.HasKey`           |
+| `momo.JSONTextExpr`       | `github.com/azrtydxb/momo/jsonop`  | `jsonop.TextExpr`         |
 
 ### Rewrite recipe
 

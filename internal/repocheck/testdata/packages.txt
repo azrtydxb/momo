@@ -22,6 +22,7 @@ leaf vector
 feature arrayop
 feature fts
 feature sqlfn
+feature jsonop
 
 internal-leaf internal/chunk
 internal-leaf internal/golden
