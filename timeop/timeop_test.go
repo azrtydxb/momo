@@ -17,6 +17,8 @@ import (
 
 var tmCreated = momo.NewColumn[time.Time]("documents", "created_at", 0)
 
+var tmTitle = momo.NewColumn[string]("documents", "title", 0)
+
 const tmC = `"documents"."created_at"`
 
 // selectOne compiles SELECT <e> FROM documents for d.
@@ -116,7 +118,7 @@ func TestAtTimeZone(t *testing.T) {
 		{dialect.Postgres, timeop.AtTimeZone(tmCreated, "Etc/GMT+5"), `(` + tmC + ` AT TIME ZONE 'Etc/GMT+5')`, nil},
 		{dialect.Postgres, timeop.Extract(timeop.ExtractYear, momo.Value(time.Unix(0, 0).UTC())), `CAST(EXTRACT(YEAR FROM CAST($1 AS timestamptz)) AS double precision)`, []any{time.Unix(0, 0).UTC()}},
 		{dialect.Postgres, timeop.Trunc(timeop.TruncDay, momo.Value(time.Unix(0, 0).UTC())), `date_trunc('day', CAST($1 AS timestamptz))`, []any{time.Unix(0, 0).UTC()}},
-		{dialect.Postgres, timeop.AtTimeZoneExpr(tmCreated, DocTitle), `(` + tmC + ` AT TIME ZONE "documents"."title")`, nil},
+		{dialect.Postgres, timeop.AtTimeZoneExpr(tmCreated, tmTitle), `(` + tmC + ` AT TIME ZONE "documents"."title")`, nil},
 	})
 	for _, d := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
 		if _, err := selectOne(d, timeop.AtTimeZone(tmCreated, "UTC")); !errors.Is(err, momo.ErrUnsupported) {

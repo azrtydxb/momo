@@ -316,7 +316,11 @@ func Typed[T any](e Expr) Expression[T] { return typed[T]{e} }
 // PostgreSQL). It is false for a column, a function call or any other
 // expression. IsBound is an extension point; see Ops.
 func IsBound(e Expr) bool {
-	if w, ok := e.(interface{ inner() Expr }); ok {
+	for {
+		w, ok := e.(interface{ inner() Expr })
+		if !ok {
+			break
+		}
 		e = w.inner()
 	}
 	_, bound := e.(argExpr)
