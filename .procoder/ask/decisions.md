@@ -256,3 +256,8 @@ vecop merge needs the fixed gate to commit `bench/vector/topk_integration_test.g
 - Update the plugin now with /procoder:update, then land vecop.
 - The user updates the plugin themselves; vecop waits until they say it is done.
 - Do not update yet; vecop stays parked.
+
+Decision (2026-11-09): update now. procoder was updated to 3.9.5 with
+/procoder:update, verified (version, doctor, hook probe, `check` clean on the
+staged bench edit) and reloaded; the vecop bench edit then committed through
+the gate (2867c19).
