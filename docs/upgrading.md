@@ -21,12 +21,22 @@ One row per moved identifier. When a method became a function, the old name is
 the method and the new name is the function, which takes the former receiver
 as an argument.
 
-| Old identifier          | New import path                    | New identifier        |
-| ----------------------- | ---------------------------------- | --------------------- |
-| `momo.ArrayContains`    | `github.com/azrtydxb/momo/arrayop` | `arrayop.Contains`    |
-| `momo.ArrayContainedBy` | `github.com/azrtydxb/momo/arrayop` | `arrayop.ContainedBy` |
-| `momo.ArrayOverlaps`    | `github.com/azrtydxb/momo/arrayop` | `arrayop.Overlaps`    |
-| `momo.AnyOf`            | `github.com/azrtydxb/momo/arrayop` | `arrayop.AnyOf`       |
+| Old identifier            | New import path                    | New identifier         |
+| ------------------------- | ---------------------------------- | ---------------------- |
+| `momo.ArrayContains`      | `github.com/azrtydxb/momo/arrayop` | `arrayop.Contains`     |
+| `momo.ArrayContainedBy`   | `github.com/azrtydxb/momo/arrayop` | `arrayop.ContainedBy`  |
+| `momo.ArrayOverlaps`      | `github.com/azrtydxb/momo/arrayop` | `arrayop.Overlaps`     |
+| `momo.AnyOf`              | `github.com/azrtydxb/momo/arrayop` | `arrayop.AnyOf`        |
+| `momo.TSExpr`             | `github.com/azrtydxb/momo/fts`     | `fts.Expr`             |
+| `momo.ToTSVector`         | `github.com/azrtydxb/momo/fts`     | `fts.ToVector`         |
+| `momo.WebsearchToTSQuery` | `github.com/azrtydxb/momo/fts`     | `fts.WebsearchToQuery` |
+| `momo.PlainToTSQuery`     | `github.com/azrtydxb/momo/fts`     | `fts.PlainToQuery`     |
+| `momo.PhraseToTSQuery`    | `github.com/azrtydxb/momo/fts`     | `fts.PhraseToQuery`    |
+| `momo.ToTSQuery`          | `github.com/azrtydxb/momo/fts`     | `fts.ToQuery`          |
+| `momo.TSMatch`            | `github.com/azrtydxb/momo/fts`     | `fts.Match`            |
+| `momo.TSRank`             | `github.com/azrtydxb/momo/fts`     | `fts.Rank`             |
+| `momo.TSRankCD`           | `github.com/azrtydxb/momo/fts`     | `fts.RankCD`           |
+| `momo.TSHeadline`         | `github.com/azrtydxb/momo/fts`     | `fts.Headline`         |
 
 ### Rewrite recipe
 

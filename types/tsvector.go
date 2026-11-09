@@ -15,7 +15,7 @@ import (
 //
 // A column of this type is usually maintained by a trigger declared through
 // MomoConfig and is read-only for the application; the full-text expression
-// builders (TSMatch, ToTSVector, TSRankCD, ...) take it as an operand.
+// builders (fts.Match, fts.ToVector, fts.RankCD, ...) take it as an operand.
 type TSVector string
 
 // SQLType returns the column type for d.
@@ -41,8 +41,8 @@ func (v *TSVector) Scan(src any) error {
 }
 
 // TSQuery is a PostgreSQL full-text query: tsquery on PostgreSQL, TEXT on
-// SQLite. It is mostly the result type of the query builders (ToTSQuery,
-// WebsearchToTSQuery, ...), but a column can hold one too (stored searches).
+// SQLite. It is mostly the result type of the query builders (fts.ToQuery,
+// fts.WebsearchToQuery, ...), but a column can hold one too (stored searches).
 type TSQuery string
 
 // SQLType returns the column type for d.
