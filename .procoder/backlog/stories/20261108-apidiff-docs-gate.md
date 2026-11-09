@@ -28,3 +28,11 @@ Run evidence (ci-agent, 2026-11-08, job `apidiff-docs`):
 - Criterion 4: not done. Needs the user's branch-protection change and a decisions.md entry.
 - Criterion 5: `TestAPIDiffDocsGate` in `internal/repocheck/apidiff_gate_test.go`. Red: run 42494372028 (0fe79a8, test only) failed `unit`. Green: run 42494433597 (f0b30ce) all jobs passed.
 - Criterion 6: CONTRIBUTING.md section "Exported API changes need a docs change" (f0b30ce).
+
+Review round 2026-11-09 (fixes in 4a0df53, ci-agent job `apidiff-docs`; the required-check criterion stays unticked, the user sets branch protection after the sprint-6 to main PR):
+
+- Body edits: the gate moved to `.github/workflows/apidiff-docs.yml` (types opened, synchronize, reopened, edited; job id `apidiff-docs`), which reads the live body with `gh pr view`; ci.yml no longer defines the job, so the ci.yml matrix does not re-run on a body edit. The pull_request path itself cannot run on ci-agent and is first exercised on the sprint-6 to main PR.
+- Escape line must start in column 0 with a real reason: run 42575395073 (933255e) has a `<reason>` placeholder line and an indented line; `apidiff-docs` failed.
+- Docs match limited to README.md, llms.txt, docs/**/*.md, examples/**/README.md: run 42575386754 (84ca00e) adds an exported function and changes docs/requirements.txt only; `apidiff-docs` failed.
+- Package moves: run 42575926402 (d22b8c4) deletes exported root func `WithMaxInList`, adds package `foo/` and an exported func in `internal/probe`, no docs; `apidiff-docs` failed reporting `WithMaxInList: removed` (incompatible) and `package github.com/azrtydxb/momo/foo: added`, and `internal/probe` was skipped ("Ignoring internal package"). An earlier probe (run 42575378098) deleted `WithClock`, still used by internal/suite, and failed on a type error, so it proves nothing.
+- Comment: one comment marked `<!-- apidiff-docs -->` is edited in place, none is posted when the API did not change; the report is written under RUNNER_TEMP and `/apidiff-report.md` is git-ignored. Not exercisable on ci-agent.
