@@ -133,7 +133,7 @@ func TestLogsRelationLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{"relation=log_parents.Kids", "msg=momo.relation", "parent=log_parents", "name=Kids", "parents=2", "queries=1", "children=0", "duration="} {
+	for _, want := range []string{"relation=log_parents.Kids", "msg=momo.relation", "parent=log_parents", "name=Kids", "kind=has-many", "parents=2", "queries=1", "children=0", "duration="} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("log lacks %q:\n%s", want, out)
 		}

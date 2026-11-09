@@ -96,7 +96,7 @@ func (h *hook) AfterRelation(ctx context.Context, e *momo.RelationEvent) {
 	attrs := []slog.Attr{
 		slog.String("parent", e.Parent),
 		slog.String("name", e.Name),
-		slog.Any("kind", e.Kind),
+		slog.String("kind", e.Kind.String()),
 		slog.Int("parents", e.Parents),
 		slog.Int64("children", e.Children),
 		slog.Int("queries", e.Queries),
