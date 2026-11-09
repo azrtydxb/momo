@@ -35,7 +35,6 @@ example_relations_test.go
 example_vector_integration_test.go
 example_vector_test.go
 explain.go
-expr_time_sensitive_test.go
 fields.go
 fields_hint_test.go
 fields_nonwritable_test.go

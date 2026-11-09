@@ -581,3 +581,27 @@ func TestValidName(t *testing.T) {
 		}
 	}
 }
+
+// Catches: IsBound true for a column or a function (a feature package would
+// cast it), false for a bound value (the cast dropped), or blind to the Typed
+// wrapper.
+func TestIsBound(t *testing.T) {
+	col := momo.NewColumn[string]("docs", "title", 0)
+	for name, c := range map[string]struct {
+		e    momo.Expr
+		want bool
+	}{
+		"value":         {momo.Value("x"), true},
+		"typed value":   {momo.Typed[string](momo.Value("x")), true},
+		"column":        {col, false},
+		"function":      {momo.Func[string]("lower", col), false},
+		"typed column":  {momo.Typed[string](col), false},
+		"nil":           {nil, false},
+		"raw fragment":  {momo.SQL("x = ?", 1), false},
+		"typed raw sql": {momo.TypedSQL[int64]("1"), false},
+	} {
+		if got := momo.IsBound(c.e); got != c.want {
+			t.Errorf("%s: IsBound = %v, want %v", name, got, c.want)
+		}
+	}
+}

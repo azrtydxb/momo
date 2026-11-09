@@ -21,6 +21,7 @@ leaf types
 leaf vector
 feature agg
 feature arrayop
+feature timeop
 feature fts
 feature sqlfn
 feature jsonop
