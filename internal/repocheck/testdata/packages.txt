@@ -19,6 +19,7 @@ leaf dialect
 leaf schema
 leaf types
 leaf vector
+feature agg
 feature arrayop
 feature fts
 feature sqlfn

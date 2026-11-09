@@ -174,7 +174,6 @@ vector_parity_integration_test.go
 vector_sensitive_test.go
 vector_sqlite.go
 window.go
-window_agg.go
 write_states_test.go
 write_states_unit_test.go
 writeguard.go
