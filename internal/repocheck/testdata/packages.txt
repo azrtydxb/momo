@@ -20,7 +20,11 @@ leaf schema
 leaf types
 leaf vector
 
+internal-leaf internal/chunk
 internal-leaf internal/golden
+internal-leaf internal/keyenc
+internal-leaf internal/redact
+internal-leaf internal/sqlscan
 internal-leaf internal/sqliteconf
 internal-leaf internal/sqlstub
 

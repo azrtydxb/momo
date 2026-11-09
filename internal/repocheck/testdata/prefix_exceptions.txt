@@ -73,7 +73,6 @@ joinload_scan_integration_test.go
 joinload_scan_internal_test.go
 joins_integration_test.go
 junction_test.go
-keys.go
 keyset_test.go
 lateral.go
 like_escape_integration_test.go
@@ -123,7 +122,6 @@ projection_softdelete_integration_test.go
 projection_softdelete_test.go
 raw_args_fuzz_test.go
 raw_empty_in_test.go
-raw_scan_fuzz_test.go
 raw_subquery_operand_internal_test.go
 raw_test.go
 relation.go
