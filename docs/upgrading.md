@@ -9,7 +9,8 @@ later releases can break more.
 
 Release 0.4.0 moves feature-specific helpers out of the root package `momo`
 into subpackages. Every move is a source break: the old identifier is gone and
-the new one lives under a new import path.
+the new one lives under a new import path. The release notes are the 0.4.0
+entry of the [changelog](https://github.com/azrtydxb/momo/blob/main/CHANGELOG.md).
 
 Why there is no alias: a Go method lives in the package of its receiver type,
 and the subpackages import `momo`, so `momo` cannot import them back to keep
@@ -147,10 +148,19 @@ as an argument.
 
 ### Rewrite recipe
 
-1. Find each old identifier of the table in your code (`grep` for `momo.` plus
-   the old name, or let the compiler list them).
-2. Replace it with the new identifier and import the new package.
-3. Run `gofmt` and build.
+1. Save this page as `upgrading.md` in your module and, from the directory
+   that holds your code, turn the table into `gofmt -r` rules and run them.
+   The rules rewrite every row of a plain identifier (a function, type or
+   constant) and leave the method rows to step 2:
+
+   ```sh
+   awk -F'`' 'NF == 7 && $1 ~ /^\| *$/ && $2 ~ /^momo\.[A-Za-z0-9]+$/ { printf "gofmt -r \"%s -> %s\" -w \"$@\"\n", $2, $6 }' upgrading.md | sh -s -- .
+   ```
+
+2. Rewrite the method rows by hand, because the receiver moves into the
+   argument list: `recv.Old(ctx, args)` becomes `pkg.New(ctx, recv, args)`.
+3. Import the new packages (`goimports -w .` does it) and build. The compiler
+   lists whatever is left.
 
 A row never changes the SQL a query produces; only the Go name and import path
 change.
