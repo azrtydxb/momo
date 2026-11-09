@@ -9,7 +9,8 @@ later releases can break more.
 
 Release 0.4.0 moves feature-specific helpers out of the root package `momo`
 into subpackages. Every move is a source break: the old identifier is gone and
-the new one lives under a new import path.
+the new one lives under a new import path. The release notes are the 0.4.0
+entry of the [changelog](https://github.com/azrtydxb/momo/blob/main/CHANGELOG.md).
 
 Why there is no alias: a Go method lives in the package of its receiver type,
 and the subpackages import `momo`, so `momo` cannot import them back to keep
@@ -147,10 +148,34 @@ as an argument.
 
 ### Rewrite recipe
 
-1. Find each old identifier of the table in your code (`grep` for `momo.` plus
-   the old name, or let the compiler list them).
-2. Replace it with the new identifier and import the new package.
-3. Run `gofmt` and build.
+1. Commit your work first, because the next steps edit files in place, then
+   fetch the release: `go get github.com/azrtydxb/momo@v0.4.0`.
+2. Save the raw markdown of this page (not the rendered HTML) as `upgrading.md`
+   in your module root and run the block below from there. It turns the table
+   into `gofmt -r` rules and applies them to the Go files that import
+   `github.com/azrtydxb/momo` by that exact path, skipping `vendor/`. It
+   rewrites the rows of plain identifiers (functions, types and constants),
+   stops with an error when it finds no file or generates no rule, and does not
+   touch a file that imports momo under an alias or with a dot import; the
+   compiler lists what is left there.
+
+   ```sh
+   files=$(grep -rl --include='*.go' 'github.com/azrtydxb/momo"' . | grep -v /vendor/)
+   rules=$(awk -F'`' 'NF == 7 && $1 ~ /^\| *$/ && $2 ~ /^momo\.[A-Za-z0-9]+$/ { printf "gofmt -r \"%s -> %s\" -w \"$@\"\n", $2, $6 }' upgrading.md)
+   [ -n "$files" ] || { echo "no Go file imports momo" >&2; exit 1; }
+   [ -n "$rules" ] || { echo "no rules: upgrading.md must be the raw markdown of this page" >&2; exit 1; }
+   echo "$rules" | sh -s -- $files
+   ```
+
+3. Rewrite the `momo.Tx.*` and `momo.DB.*` rows by hand, because the receiver
+   moves into the argument list: `recv.Old(ctx, args)` becomes
+   `pkg.New(ctx, recv, args)`. A `DB` advisory call must pass a transaction
+   (see the paragraph on the advisory locks below). `momo.SearchSettings.Validate`
+   is a plain rename: step 2 rewrites the type, and `Validate` stays a method of
+   `vecsearch.Settings`.
+4. In every file, import each new package that now appears in it (`arrayop.`,
+   `fts.`, ...) by the full path in the second column of the table, then build.
+   The compiler lists whatever is left.
 
 A row never changes the SQL a query produces; only the Go name and import path
 change.
