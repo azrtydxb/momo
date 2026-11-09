@@ -56,20 +56,19 @@ func TestXactLockStatements(t *testing.T) {
 	}
 }
 
-func TestXactLockRefusals(t *testing.T) {
+func TestXactLockNilAndUnsupported(t *testing.T) {
 	ctx := context.Background()
-	db := momo.New(fakedriver.New(dialect.Postgres))
-	if err := advisory.XactLock(ctx, db, 1); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("XactLock outside a tx = %v, want ErrValidation", err)
+	if err := advisory.XactLock(ctx, nil, 1); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("XactLock with a nil tx = %v, want ErrValidation", err)
 	}
-	if err := advisory.XactLockString(ctx, db, "k"); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("XactLockString outside a tx = %v, want ErrValidation", err)
+	if err := advisory.XactLockString(ctx, nil, "k"); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("XactLockString with a nil tx = %v, want ErrValidation", err)
 	}
-	if _, err := advisory.TryXactLock(ctx, db, 1); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("TryXactLock outside a tx = %v, want ErrValidation", err)
+	if _, err := advisory.TryXactLock(ctx, nil, 1); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("TryXactLock with a nil tx = %v, want ErrValidation", err)
 	}
-	if _, err := advisory.TryXactLockString(ctx, db, "k"); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("TryXactLockString outside a tx = %v, want ErrValidation", err)
+	if _, err := advisory.TryXactLockString(ctx, nil, "k"); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("TryXactLockString with a nil tx = %v, want ErrValidation", err)
 	}
 
 	for _, n := range []dialect.Name{dialect.SQLite, dialect.MySQL} {

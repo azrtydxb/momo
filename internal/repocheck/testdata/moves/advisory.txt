@@ -1,4 +1,4 @@
-# The advisory lock methods of DB and Tx become free functions in github.com/azrtydxb/momo/advisory; each takes the transaction (a momo.Querier) as its second argument.
+# The advisory lock methods of DB and Tx become free functions in github.com/azrtydxb/momo/advisory; each takes the transaction (a *momo.Tx) as its second argument.
 Tx.AdvisoryXactLock XactLock
 Tx.AdvisoryXactLockString XactLockString
 Tx.TryAdvisoryXactLock TryXactLock

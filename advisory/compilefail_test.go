@@ -10,7 +10,8 @@ import (
 )
 
 // TestCompileFailAdvisory checks that the advisory lock methods left DB and
-// Tx for free functions in advisory, and that the key types stay separate.
+// Tx for free functions in advisory, that a *momo.DB is refused at compile
+// time, and that the key types stay separate.
 // The programs live in testdata/compilefail and are built, not run.
 func TestCompileFailAdvisory(t *testing.T) {
 	for name, wants := range map[string][]string{
@@ -23,6 +24,12 @@ func TestCompileFailAdvisory(t *testing.T) {
 			"db.AdvisoryXactLockString undefined",
 			"db.TryAdvisoryXactLock undefined",
 			"db.TryAdvisoryXactLockString undefined",
+		},
+		"dbarg": {
+			"as *momo.Tx value in argument to advisory.XactLock",
+			"as *momo.Tx value in argument to advisory.XactLockString",
+			"as *momo.Tx value in argument to advisory.TryXactLock",
+			"as *momo.Tx value in argument to advisory.TryXactLockString",
 		},
 		"wrongtype": {
 			"as int64 value in argument to advisory.XactLock",

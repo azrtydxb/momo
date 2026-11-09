@@ -786,8 +786,8 @@ Advisory locks (PostgreSQL, inside a transaction), in the package
 for a transaction-scoped lock on an int64 key, `advisory.TryXactLock` returns
 whether it was granted, and the `String` variants (`advisory.XactLockString`,
 `advisory.TryXactLockString`) hash a text key with `hashtext`. The lock ends at
-commit or rollback. Passing a `*DB` instead of a `*Tx` fails with
-`ErrValidation`; other dialects fail with `ErrUnsupported`. Never store a
+commit or rollback. They take a `*Tx`, so a `*DB` does not compile: open a
+transaction first. Other dialects fail with `ErrUnsupported`. Never store a
 hashed key, it can change across PostgreSQL major versions.
 
 Typed expressions (no `momo.SQL` needed). Computed values (`momo.Func` and, in the

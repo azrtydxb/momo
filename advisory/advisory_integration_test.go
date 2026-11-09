@@ -6,7 +6,6 @@ package advisory_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -57,11 +56,6 @@ func TestXactLockContention(t *testing.T) {
 	}
 	if ok, err := advisory.TryXactLock(ctx, rival, 9001); err != nil || !ok {
 		t.Fatalf("rival try after the holder committed = %v, %v; want true", ok, err)
-	}
-
-	// Outside a transaction the call is refused.
-	if err := advisory.XactLock(ctx, db, 1); !errors.Is(err, momo.ErrValidation) {
-		t.Fatalf("XactLock on the DB = %v, want ErrValidation", err)
 	}
 }
 

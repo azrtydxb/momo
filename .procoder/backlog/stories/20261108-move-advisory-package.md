@@ -25,3 +25,4 @@ Move `advisory.go` out of the root package into `github.com/azrtydxb/momo/adviso
 - Green: ci-agent run 42600832614, headSha c4edde2, all nine jobs success, including integration (postgres) with TestXactLockContention and TestXactLockBlocksUntilCommit, and the unit job with the compile-fail, moves/upgrading, prefix and architecture checks.
 - advisory.go deleted from root; unit and contention tests moved to advisory/; docs (ai-guide, capabilities, upgrading) updated; no old identifier left outside upgrading.md and the moves file.
 - No core export added: the functions use Exec, Scalars, Dialect and a *momo.Tx type assertion.
+- Review change: the four functions take `*momo.Tx` instead of `momo.Querier`, so a `*momo.DB` is a compile error (compile-fail program `dbarg`); a nil tx returns ErrValidation (unit test).

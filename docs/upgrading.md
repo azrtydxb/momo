@@ -147,9 +147,12 @@ no such method.
 
 The advisory lock methods became functions: `tx.AdvisoryXactLock(ctx, 42)`
 is now `advisory.XactLock(ctx, tx, 42)`, and the same for the `String` and
-`Try` forms. The transaction is the second argument. Passing a `*momo.DB`
-fails with `momo.ErrValidation`, as the `DB` methods did, and a dialect other
-than PostgreSQL fails with `momo.ErrUnsupported`.
+`Try` forms. The transaction is the second argument and its type is
+`*momo.Tx`. The `DB` methods always returned `momo.ErrValidation`, because a
+transaction-scoped lock outside a transaction is released at once; the
+functions turn that into a compile error, so a caller that used the `DB` form
+must open a transaction with `db.Tx` or `db.Begin`. A dialect other than
+PostgreSQL still fails with `momo.ErrUnsupported`.
 
 ### What did not move
 

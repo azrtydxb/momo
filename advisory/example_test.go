@@ -30,13 +30,18 @@ func ExampleXactLock() {
 	// SELECT pg_advisory_xact_lock(hashtext($1))
 }
 
-// A call with the DB instead of a transaction is refused, because the server
-// would release the lock at the end of that one statement.
+// Only PostgreSQL has transaction-scoped advisory locks; other dialects fail
+// with ErrUnsupported. The functions take a *momo.Tx, so a *momo.DB does not
+// compile.
 func ExampleTryXactLock() {
-	db := momo.New(fakedriver.New(dialect.Postgres))
+	ctx := context.Background()
+	db := momo.New(fakedriver.New(dialect.SQLite))
 
-	_, err := advisory.TryXactLock(context.Background(), db, 9001)
-	fmt.Println(errors.Is(err, momo.ErrValidation))
+	err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		_, err := advisory.TryXactLock(ctx, tx, 9001)
+		return err
+	})
+	fmt.Println(errors.Is(err, momo.ErrUnsupported))
 	// Output:
 	// true
 }
