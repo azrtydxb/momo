@@ -594,7 +594,7 @@ func TestIsBound(t *testing.T) {
 		"value":         {momo.Value("x"), true},
 		"typed value":   {momo.Typed[string](momo.Value("x")), true},
 		"column":        {col, false},
-		"function":      {momo.Lower(col), false},
+		"function":      {momo.Func[string]("lower", col), false},
 		"typed column":  {momo.Typed[string](col), false},
 		"nil":           {nil, false},
 		"raw fragment":  {momo.SQL("x = ?", 1), false},
