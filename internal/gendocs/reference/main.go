@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/azrtydxb/momo/internal/docscheck"
 )
@@ -45,13 +46,46 @@ func render(pkgs []*docscheck.Package) string {
 			path += "/" + p.Dir
 		}
 		fmt.Fprintf(&b, "\n## %s\n\nImport path: `%s`\n\n", p.Name, path)
-		b.WriteString("| Identifier | Kind | Synopsis |\n| --- | --- | --- |\n")
 		ids := append([]docscheck.Ident(nil), p.Idents...)
 		sort.SliceStable(ids, func(i, j int) bool { return ids[i].Name < ids[j].Name })
+		rows := [][]string{{"Identifier", "Kind", "Synopsis"}}
 		for _, id := range ids {
-			syn := strings.ReplaceAll(id.Synopsis(), "|", `\|`)
-			fmt.Fprintf(&b, "| `%s` | %s | %s |\n", id.Key(p.Name), id.Kind, syn)
+			rows = append(rows, []string{"`" + id.Key(p.Name) + "`", id.Kind, cell(id.Synopsis())})
 		}
+		writeTable(&b, rows)
 	}
 	return b.String()
+}
+
+// cell escapes what would change the meaning of a table cell: a pipe ends it
+// and square brackets can read as a link.
+func cell(s string) string {
+	return strings.NewReplacer("|", `\|`, "[", `\[`, "]", `\]`).Replace(s)
+}
+
+// writeTable writes rows as a Markdown table with every column padded to its
+// widest cell, which is the layout the repository's Markdown formatter keeps.
+func writeTable(b *strings.Builder, rows [][]string) {
+	width := make([]int, len(rows[0]))
+	for _, r := range rows {
+		for i, c := range r {
+			width[i] = max(width[i], utf8.RuneCountInString(c))
+		}
+	}
+	line := func(r []string) {
+		b.WriteString("|")
+		for i, c := range r {
+			b.WriteString(" " + c + strings.Repeat(" ", width[i]-utf8.RuneCountInString(c)) + " |")
+		}
+		b.WriteString("\n")
+	}
+	line(rows[0])
+	dash := make([]string, len(width))
+	for i, w := range width {
+		dash[i] = strings.Repeat("-", w)
+	}
+	line(dash)
+	for _, r := range rows[1:] {
+		line(r)
+	}
 }

@@ -285,6 +285,7 @@ type Compiled struct {
 	sens []int
 }
 
+// String returns the SQL text of the compiled statement.
 func (c Compiled) String() string {
 	if len(c.Args) == 0 {
 		return c.SQL

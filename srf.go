@@ -135,7 +135,7 @@ func Unnest(alias string, cols ...UnnestArray) UnnestSource {
 }
 
 // WithOrdinality adds WITH ORDINALITY: an extra 1-based bigint column called
-// name, read with ColumnOf[int64](alias, name).
+// name, read as an int64 column through ColumnOf.
 func (u UnnestSource) WithOrdinality(name string) UnnestSource {
 	u.ordinality = name
 	return u

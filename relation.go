@@ -21,6 +21,7 @@ const (
 	ManyToMany
 )
 
+// String returns the lower-case name of the relation kind.
 func (k RelationKind) String() string {
 	switch k {
 	case BelongsTo:

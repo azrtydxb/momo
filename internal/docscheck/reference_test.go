@@ -25,6 +25,12 @@ import (
 //	pkg.Type.Member    a method or field of a type of that package
 //	Type.Member        Type is an exported type of the root package, momo
 //
+// pkg is checked only for the packages in APIPackages (momo, dialect, schema,
+// types, vector and the feature packages). Other module packages share names
+// with third-party libraries (importer/gorm and gorm.Model, migrate/mysql and
+// mysql.MySQLError), so a reference to them cannot be told apart. docs/upgrading.md
+// is skipped: it names identifiers that no longer exist.
+//
 // Name and Member must start with an upper-case letter. Everything else is
 // prose and is not checked: SQL, file names (go.mod), other libraries
 // (sql.DB, pgx.Conn: their first segment is not a module package), lower-case
@@ -124,7 +130,7 @@ func docPages(t *testing.T, root string) []string {
 
 func TestDocsIdentifiersResolve(t *testing.T) {
 	root := repoRoot(t)
-	pkgs, err := ScanModule(root)
+	pkgs, err := ReferencePackages(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,6 +141,9 @@ func TestDocsIdentifiersResolve(t *testing.T) {
 			t.Fatal(err)
 		}
 		rel, _ := filepath.Rel(root, f)
+		if filepath.ToSlash(rel) == "docs/upgrading.md" {
+			continue // it lists the identifiers that were removed or moved, by design
+		}
 		for _, r := range extractRefs(string(b)) {
 			ok, was := resolveRef(pkgs, r.text)
 			if !was {
