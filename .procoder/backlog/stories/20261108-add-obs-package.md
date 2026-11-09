@@ -1,6 +1,6 @@
 # Add momo/obs: ready-made hooks (recorder, N+1 detector, slog)
 
-Status: open
+Status: done
 Created: 2026-11-08
 Epic: momo-14-structure-and-docs
 Sprint: 006-sprint-6-split-the-root-package-into-subpackages-and-keep
@@ -11,10 +11,18 @@ The brief asked for tenant filter and N+1 hook to move to `momo/obs`; reading th
 
 ## Acceptance criteria
 
-- [ ] `obs.Recorder` records query events and relation events, is safe for concurrent use, and `internal/obstest` re-exports it so existing tests keep working
-- [ ] `obs.NPlusOne` reports a finding when a loop issues the same relation load statement more than a threshold number of times in one context, and stays silent for one batched `Load` (unit test with the fake driver, plus a PostgreSQL integration test)
-- [ ] the `slog` hook never logs a value bound from a sensitive column (test uses a sensitive column and asserts the log output contains `[redacted]`)
-- [ ] `obs` imports only `momo` and the standard library (architecture test green); no root file changes
-- [ ] `docs/ai-guide.md` has a section on hooks that names the package; `apidiff` shows additions only
+- [x] `obs.Recorder` records query events and relation events, is safe for concurrent use, and `internal/obstest` re-exports it so existing tests keep working
+- [x] `obs.NPlusOne` reports a finding when a loop issues the same relation load statement more than a threshold number of times in one context, and stays silent for one batched `Load` (unit test with the fake driver, plus a PostgreSQL integration test)
+- [x] the `slog` hook never logs a value bound from a sensitive column (test uses a sensitive column and asserts the log output contains `[redacted]`)
+- [x] `obs` imports only `momo` and the standard library (architecture test green); no root file changes
+- [x] `docs/ai-guide.md` has a section on hooks that names the package; `apidiff` shows additions only
 
 ## Evidence
+
+- Red: ci-agent run 42600801428 on the throwaway branch `worktree-agent-ab65fec48e7c4efa8-red` (compiling stubs plus the tests, branch deleted afterwards): unit failed in TestRecorder*, TestNPlusOne and TestSlog* with behavioural failures (for example "want 1 finding, got []", "log lacks [redacted]").
+- Green: ci-agent run 42603467150, headSha 86baa13, all jobs success.
+- Recorder: `obs.Recorder` records query and relation events, copies Args, tested concurrently (`TestRecorderConcurrent`); `internal/obstest` aliases `obs.Event` and `obs.Recorder`, and its existing users compile and pass unchanged.
+- N+1: `obs.NPlusOne` counts relation loads per relation in an `obs.WithScope` context through `RelationHook`; fake-driver tests (`TestNPlusOne`) and the PostgreSQL test `TestNPlusOneAgainstDatabase`. The root already has `NewNPlusOneHook` (statement shapes); this one counts loads and is the loop-over-`Load` detector the story describes.
+- slog: `TestSlogNeverLogsSensitiveValue` binds a sensitive column, logs with `SlogArgs(true)`, asserts `[redacted]` is present and the value absent.
+- Architecture: `feature obs` in `internal/repocheck/testdata/packages.txt`, `TestFeaturePackagesImportOnlyAllowed` green; no root file changed.
+- Docs: `docs/observability.md` (new, in the README index and mkdocs nav), `docs/ai-guide.md` hooks bullet, `docs/ARCHITECTURE.md`; the apidiff-docs job is green.
