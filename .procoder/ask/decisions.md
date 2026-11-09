@@ -269,3 +269,17 @@ other application. Once sprint 6 is merged to main and green, release-please
 PR #26 (0.4.0) is merged. Downstream apps handle their own upgrades using
 docs/upgrading.md; work stays on momo only. Replaces the earlier rule that
 releases wait for the kuvryn-license port.
+
+## Make apidiff-docs a required check on main?
+
+The apidiff-docs gate (story 20261108-apidiff-docs-gate) is proven on a pull
+request: draft PR #51 failed on an undocumented export (run 42668537688) and
+passed once the escape line was in the body (run 42668814473). Its last
+criterion is that `apidiff-docs` is a required status check on main. main's
+required checks today are lint, unit, race, integration, compile-fail,
+govulncheck, windows, macos and title; apidiff-docs is not among them.
+
+- I add `apidiff-docs` to main's required checks with `gh api` right after the
+  sprint-6 to main PR passes it.
+- The user changes branch protection themselves.
+- Leave it advisory (not required) for now; carry the criterion.
