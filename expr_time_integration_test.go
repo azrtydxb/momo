@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"math"
+	"regexp"
+	"strconv"
 	"testing"
 	"time"
 
@@ -27,6 +29,20 @@ var tmFloatMeta = momo.Meta[tmFloat]{
 }
 
 func (*tmFloat) MomoMeta() *momo.Meta[tmFloat] { return &tmFloatMeta }
+
+type tmText struct{ S string }
+
+var tmTextMeta = momo.Meta[tmText]{
+	Columns:  []momo.ColumnMeta{{Name: "s"}},
+	Ptr:      func(m *tmText, _ int) any { return &m.S },
+	Value:    func(m *tmText, _ int) any { return m.S },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}
+
+func (*tmText) MomoMeta() *momo.Meta[tmText] { return &tmTextMeta }
+
+// sqliteStamp is momo's stored SQLite timestamp text: millisecond resolution.
+var sqliteStamp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$`)
 
 type tmTime struct{ T time.Time }
 
@@ -104,6 +120,7 @@ func TestExtractIntegration(t *testing.T) {
 			want  float64
 		}{
 			{momo.ExtractYear, 2024}, {momo.ExtractMonth, 3}, {momo.ExtractDay, 15},
+			{momo.ExtractHour, 13}, {momo.ExtractMinute, 45}, {momo.ExtractSecond, 30},
 			{momo.ExtractQuarter, 1}, {momo.ExtractDow, 5}, {momo.ExtractISODow, 5},
 			{momo.ExtractDoy, 75}, {momo.ExtractEpoch, float64(at.Unix())},
 		} {
@@ -134,15 +151,16 @@ func TestExtractIntegration(t *testing.T) {
 // date_trunc or AT TIME ZONE.
 func TestBoundTimeOperandIntegration(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		if d != dialect.Postgres {
-			t.Skip("bound timestamp operands are checked on PostgreSQL")
-		}
 		seedTimeDocs(t, db)
 		at := time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)
 		if got := floatOf(t, db, 1, momo.Extract(momo.ExtractYear, momo.Value(at))); got != 2024 {
 			t.Errorf("Extract over a bound time = %v, want 2024", got)
 		}
-		if got := timeOf(t, db, 1, momo.DateTrunc(momo.TruncDay, momo.AtTimeZone(momo.Value(at), "UTC"))); got.Day() != 15 || got.Hour() != 0 {
+		trunc := momo.Expression[time.Time](momo.Value(at))
+		if d == dialect.Postgres {
+			trunc = momo.AtTimeZone(momo.Value(at), "UTC")
+		}
+		if got := timeOf(t, db, 1, momo.DateTrunc(momo.TruncDay, trunc)); got.Day() != 15 || got.Hour() != 0 {
 			t.Errorf("DateTrunc over a bound time = %v", got)
 		}
 		if got := timeOf(t, db, 1, momo.AddInterval(momo.Value(at), momo.IntervalOf(1, momo.IntervalHour))); !got.Equal(at.Add(time.Hour)) {
@@ -188,6 +206,8 @@ func TestDateTruncIntegration(t *testing.T) {
 			unit momo.TruncUnit
 			want time.Time
 		}{
+			{momo.TruncSecond, time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)},
+			{momo.TruncMinute, time.Date(2024, 3, 15, 13, 45, 0, 0, time.UTC)},
 			{momo.TruncHour, time.Date(2024, 3, 15, 13, 0, 0, 0, time.UTC)},
 			{momo.TruncDay, time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)},
 			{momo.TruncWeek, time.Date(2024, 3, 11, 0, 0, 0, 0, time.UTC)},
@@ -196,7 +216,7 @@ func TestDateTruncIntegration(t *testing.T) {
 			{momo.TruncYear, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
 		} {
 			got := timeOf(t, db, 1, momo.DateTrunc(c.unit, src))
-			if got.Year() != c.want.Year() || got.Month() != c.want.Month() || got.Day() != c.want.Day() || got.Hour() != c.want.Hour() || got.Minute() != 0 {
+			if got.Year() != c.want.Year() || got.Month() != c.want.Month() || got.Day() != c.want.Day() || got.Hour() != c.want.Hour() || got.Minute() != c.want.Minute() || got.Second() != c.want.Second() {
 				t.Errorf("DateTrunc %s = %v, want %v", c.unit, got, c.want)
 			}
 		}
@@ -229,6 +249,45 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 			t.Errorf("+90 bound minutes = %v", got)
 		}
 
+		// Month arithmetic at a month end: Feb 28 plus a month is Mar 28
+		// everywhere; Jan 31 plus a month is clamped to Feb 28 on PostgreSQL
+		// and normalised into Mar 3 on SQLite (2023 is not a leap year).
+		stamp := func(tenant int64, wall string) {
+			t.Helper()
+			lit := "'" + wall + "+00'"
+			if d == dialect.SQLite {
+				lit = "'" + wall + ".000'"
+			}
+			if _, err := momo.Exec(ctx, db, "INSERT INTO documents (tenant_id, title, created_at) VALUES ("+strconv.FormatInt(tenant, 10)+", 'eom', "+lit+")"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		stamp(10, "2023-02-28 10:00:00")
+		stamp(11, "2023-01-31 10:00:00")
+		month := momo.IntervalOf(1, momo.IntervalMonth)
+		if got, want := timeOf(t, db, 10, momo.AddInterval(suite.DocCreatedAt, month)), time.Date(2023, 3, 28, 10, 0, 0, 0, time.UTC); !got.Equal(want) {
+			t.Errorf("Feb 28 + 1 month = %v, want %v", got, want)
+		}
+		janWant := time.Date(2023, 2, 28, 10, 0, 0, 0, time.UTC)
+		if d == dialect.SQLite {
+			janWant = time.Date(2023, 3, 3, 10, 0, 0, 0, time.UTC)
+		}
+		if got := timeOf(t, db, 11, momo.AddInterval(suite.DocCreatedAt, month)); !got.Equal(janWant) {
+			t.Errorf("Jan 31 + 1 month = %v, want %v", got, janWant)
+		}
+		if got, want := timeOf(t, db, 11, momo.SubInterval(suite.DocCreatedAt, momo.IntervalOf(1, momo.IntervalYear))), time.Date(2022, 1, 31, 10, 0, 0, 0, time.UTC); !got.Equal(want) {
+			t.Errorf("Jan 31 - 1 year = %v, want %v", got, want)
+		}
+
+		if d == dialect.SQLite {
+			// Now is text in the stored timestamp format, so it sorts with it.
+			r, err := momo.Select[tmText](db).From(momo.TableRef{Name: "documents"}).Columns(momo.Now()).
+				Where(suite.DocTenantID.Eq(1)).One(ctx)
+			if err != nil || !sqliteStamp.MatchString(r.S) {
+				t.Errorf("Now() on SQLite = %q, %v; want %s", r.S, err, sqliteStamp)
+			}
+		}
+
 		now := timeOf(t, db, 1, momo.Now())
 		if diff := time.Since(now); diff < -time.Minute || diff > time.Minute {
 			t.Errorf("Now() = %v, far from the wall clock", now)
@@ -248,8 +307,8 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 		if n := recent(suite.DocCreatedAt.GtExpr(momo.SubInterval(momo.Now(), momo.IntervalOf(1, momo.IntervalDay)))); n != 1 {
 			t.Errorf("created in the last day = %d, want 1", n)
 		}
-		if n := recent(suite.DocCreatedAt.LtExpr(momo.Now())); n != 2 {
-			t.Errorf("created before now = %d, want 2", n)
+		if n := recent(suite.DocCreatedAt.LtExpr(momo.Now())); n != 4 {
+			t.Errorf("created before now = %d, want 4", n)
 		}
 	})
 }
