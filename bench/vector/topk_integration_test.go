@@ -74,7 +74,7 @@ func BenchmarkVectorTopK(b *testing.B) {
 		samples := make([]time.Duration, 0, b.N)
 		b.ReportAllocs()
 		b.ResetTimer()
-		err := db.WithSearch(ctx, momo.SearchSettings{HNSWEfSearch: ef}, func(tx *momo.Tx) error {
+		err := vecsearch.With(ctx, db, vecsearch.Settings{HNSWEfSearch: ef}, func(tx *momo.Tx) error {
 			for i := 0; i < b.N; i++ {
 				q := momovector.Vector(ds.Queries[i%len(ds.Queries)])
 				start := time.Now()
