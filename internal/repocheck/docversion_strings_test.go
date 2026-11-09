@@ -237,11 +237,22 @@ func TestDocsVersionStrings(t *testing.T) {
 	for _, f := range cfg.Packages["."].ExtraFiles {
 		listed[f] = true
 	}
+	for _, p := range unlistedCarriers(carriers, listed) {
+		t.Error(p)
+	}
+}
+
+// unlistedCarriers returns one problem per marker-carrying doc that is missing
+// from the release-please extra-files list.
+func unlistedCarriers(carriers, listed map[string]bool) []string {
+	var out []string
 	for f := range carriers {
 		if !listed[f] {
-			t.Errorf("%s carries a release-please marker but is not in extra-files of release-please-config.json, so release-please would never update it", f)
+			out = append(out, f+" carries a release-please marker but is not in extra-files of release-please-config.json, so release-please would never update it")
 		}
 	}
+	sort.Strings(out)
+	return out
 }
 
 // TestDocsVersionRules pins the rules TestDocsVersionStrings applies, on
@@ -288,4 +299,14 @@ func TestDocsVersionRules(t *testing.T) {
 			}
 		})
 	}
+	t.Run("marker file missing from extra-files fails", func(t *testing.T) {
+		carriers := map[string]bool{"README.md": true, "docs/new.md": true}
+		got := unlistedCarriers(carriers, map[string]bool{"README.md": true})
+		if len(got) != 1 || !strings.HasPrefix(got[0], "docs/new.md carries a release-please marker") {
+			t.Fatalf("a marker-carrying doc missing from extra-files must fail, got %v", got)
+		}
+		if got := unlistedCarriers(carriers, map[string]bool{"README.md": true, "docs/new.md": true}); len(got) != 0 {
+			t.Fatalf("listed docs flagged: %v", got)
+		}
+	})
 }

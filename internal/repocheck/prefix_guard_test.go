@@ -34,10 +34,11 @@ func sourceConforms(name string) bool {
 }
 
 // testSubject returns the subject file of a root test file: the name without
-// _test and without one _internal or _integration marker, plus .go.
+// _test and without the _internal and _integration markers (in that order, so
+// _integration_internal_test.go names its real subject), plus .go.
 func testSubject(name string) string {
 	s := strings.TrimSuffix(strings.TrimSuffix(name, ".go"), "_test")
-	s = strings.TrimSuffix(strings.TrimSuffix(s, "_integration"), "_internal")
+	s = strings.TrimSuffix(strings.TrimSuffix(s, "_internal"), "_integration")
 	return s + ".go"
 }
 
@@ -165,6 +166,17 @@ func TestRootFilePrefixRules(t *testing.T) {
 		got := rootPrefixProblems(files, exc, frozen)
 		if len(got) != 1 || !strings.Contains(got[0], "orphan_integration_test.go") || !strings.Contains(got[0], "orphan.go") {
 			t.Fatalf("want one problem for orphan_integration_test.go, got %v", got)
+		}
+	})
+	t.Run("integration_internal test file maps to the bare subject", func(t *testing.T) {
+		ok := append([]string{"db_integration_internal_test.go"}, base...)
+		if got := rootPrefixProblems(ok, exc, frozen); len(got) != 0 {
+			t.Fatalf("unexpected problems: %v", got)
+		}
+		orphan := append([]string{"orphan_integration_internal_test.go"}, base...)
+		got := rootPrefixProblems(orphan, exc, frozen)
+		if len(got) != 1 || !strings.Contains(got[0], "needs its subject orphan.go") {
+			t.Fatalf("want a problem naming subject orphan.go, got %v", got)
 		}
 	})
 	t.Run("an exception covers a test file without subject", func(t *testing.T) {
