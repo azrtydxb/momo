@@ -5,8 +5,9 @@ expressions, HNSW and IVFFlat index declarations, scoped search settings,
 plan inspection and an opt-in binary wire codec. It also runs the float32 and
 bit vector builders on SQLite with sqlite-vec, and the distance builders on
 MariaDB. This page describes what is built. Every Go snippet below is an `Example` function in
-`example_vector_test.go` (package `momo`) or `vector/example_test.go`
-(package `vector`), so `go test` compiles it and checks its printed output.
+`example_vector_test.go` (package `momo_test`), `vector/example_test.go`
+(package `vector_test`) or `vecsearch/example_test.go` (package
+`vecsearch_test`), so `go test` compiles it and checks its printed output.
 
 ## Platforms and versions
 
@@ -111,7 +112,7 @@ and is the default; `Desc()` orders farthest first.
 
 `vecop.InnerProduct` is pgvector's `<#>`, which returns the negative inner
 product so that ascending order means closest. Passing a dense vector to a
-bit builder, or the reverse, does not compile (`testdata/compilefail`).
+bit builder, or the reverse, does not compile (`vecop/testdata/compilefail`).
 
 The query vector is a bound argument. A dimension mismatch (except on a
 dimensionless column, see [Dimensionless columns](#dimensionless-columns)),
@@ -198,7 +199,10 @@ returns the opclass for a column type and metric (`ExampleValidateVectorIndex`).
 - ivfflat requires an explicit `lists` parameter (1 to 32768). Momo does not
   rely on the server default of 100.
 - An index covers one plain column. Expression parts are rejected.
-- Vector indexes exist only on PostgreSQL. Another dialect gets an error.
+- The hnsw and ivfflat methods are pgvector's. `schema.ValidateVectorIndex`
+  rejects them for another dialect, with an error that wraps
+  `schema.ErrInvalidVectorIndex`. MariaDB has its own `VECTOR INDEX`; see
+  "MariaDB and MySQL" below.
 
 ### Dimensionless columns
 
@@ -314,7 +318,7 @@ With a selective filter and `LIMIT k`, pgvector with iterative scan off scans
 the index once and applies the filter afterwards, so it can return
 fewer than k rows. `TestFilteredANNIterativeScan` reproduces this: a filter that matches 1%
 of 20000 rows returns fewer than 10 rows with iterative scan off, and 10 with
-`relaxed_order` and `HNSWMaxScanTuples` 20000.
+`relaxed_order` and `HNSWMaxScanTuples` 1,000,000.
 
 `relaxed_order` keeps scanning until enough rows pass the filter or
 `hnsw.max_scan_tuples` is reached. The result is therefore still approximate,
@@ -342,7 +346,7 @@ plan, err := momo.Select[example.Document](db).
 `TestVectorIndexUsed` and `TestExactSearchBypassesVectorIndex` use this
 pattern to assert that the index is used, and that `ExactSearch` stops using
 it. Expect a sequential scan on a small table, because the planner prefers it
-below a few thousand rows. Explain returns `ErrUnsupported` on MySQL.
+below a few thousand rows. Explain returns `ErrUnsupported` on MySQL and MariaDB.
 
 ## PostgreSQL wire format
 
@@ -385,7 +389,9 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
   vectors keep only the packed bytes, so the declared column length is
   authoritative for `Len`. See [SQLite and sqlite-vec](#sqlite-and-sqlite-vec).
 - `vecsearch.Apply` on SQLite: `ExactSearch` alone is a no-op, every search is
-  already exact, and any other field is `ErrUnsupported`.
+  already exact, and any other field is `ErrUnsupported`. On MySQL and MariaDB
+  every non-zero setting, `ExactSearch` included, is `ErrUnsupported`, because
+  `Tx.SetLocal` has no transaction-scoped setting there.
 - MariaDB VECTOR INDEX is approximate; see "MariaDB and MySQL" below.
 
 ## SQLite and sqlite-vec
