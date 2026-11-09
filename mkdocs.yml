@@ -53,6 +53,7 @@ nav:
       - Importing from other ORMs: importers.md
       - Read replicas: replicas.md
       - Testing applications: testing.md
+      - Observability hooks: observability.md
       - Interceptors: PRIVACY_RULES.md
       - momovet raw-SQL check: momovet.md
   - Reference:

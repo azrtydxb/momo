@@ -1767,6 +1767,17 @@ report)`, a development hook that reports once per statement shape per scope
   when the shape runs more than the threshold. Contexts without a scope are not
   tracked; a scope tracks at most 1024 shapes; a panic in the report function is
   recovered. A single batched relation load runs one statement per relation and does not trigger it.
+- Hooks, package `github.com/azrtydxb/momo/obs` (see
+  [observability](observability.md)): each of these implements `momo.Hook` and
+  `momo.RelationHook`, so `momo.WithHook` registers it for statements and for
+  relation loads. `&obs.Recorder{}` keeps events for test assertions (`Events`,
+  `SQLs`, `Relations`, `Reset`). `obs.NewNPlusOne(threshold, report)` with
+  `obs.WithScope(ctx)` reports a relation loaded more than the threshold times
+  in one scope (a `Load` inside a loop; one batched `Load` stays silent).
+  `obs.NewSlog(logger, opts...)` logs a record per statement and per relation
+  load; argument values are logged only with `obs.SlogArgs(true)` and
+  `momo.WithArgLogging`. A value bound from a sensitive column is always
+  `momo.RedactedArg` in what these hooks see. They are safe for concurrent use.
 - `momo.WithTenant(ctx, tenant)` and `momo.TenantFilter(ctx, column)` add a
   `column = tenant` predicate. This is an application-side convenience and NOT a
   security boundary. It applies only where you add it to a `Where`: not to
