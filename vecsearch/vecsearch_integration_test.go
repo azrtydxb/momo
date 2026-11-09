@@ -2,7 +2,7 @@
 
 //go:build integration
 
-package momo_test
+package vecsearch_test
 
 import (
 	"context"
@@ -13,7 +13,15 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/internal/testdb"
+	"github.com/azrtydxb/momo/vecsearch"
 )
+
+func mustExecPG(t *testing.T, q momo.Querier, sql string) {
+	t.Helper()
+	if _, err := momo.Exec(context.Background(), q, sql); err != nil {
+		t.Fatalf("exec %q: %v", sql, err)
+	}
+}
 
 // singleConnPool returns a pool with one connection, so every transaction reuses the same backend.
 func singleConnPool(t *testing.T) *pgxpool.Pool {
@@ -43,7 +51,7 @@ func TestSearchSettingsScoped(t *testing.T) {
 	mustExecPG(t, db, "CREATE EXTENSION IF NOT EXISTS vector")
 	mustExecPG(t, db, "CREATE TABLE docs (id bigint PRIMARY KEY, emb vector(4))")
 	mustExecPG(t, db, "CREATE INDEX docs_emb ON docs USING hnsw (emb vector_l2_ops)")
-	err := db.WithSearch(ctx, momo.SearchSettings{HNSWEfSearch: 200}, func(tx *momo.Tx) error {
+	err := vecsearch.With(ctx, db, vecsearch.Settings{HNSWEfSearch: 200}, func(tx *momo.Tx) error {
 		return checkSetting(ctx, tx, "hnsw.ef_search", "200")
 	})
 	if err != nil {
@@ -79,9 +87,9 @@ func TestFilteredANNIterativeScan(t *testing.T) {
 	} {
 		mustExecPG(t, db, stmt)
 	}
-	count := func(name string, s momo.SearchSettings) int64 {
+	count := func(name string, s vecsearch.Settings) int64 {
 		var n int64
-		err := db.WithSearch(ctx, s, func(tx *momo.Tx) error {
+		err := vecsearch.With(ctx, db, s, func(tx *momo.Tx) error {
 			// The test is about the HNSW scan, so the planner must not choose an
 			// exact sequential scan (which returns 10 rows with the setting off).
 			for _, stmt := range []string{"SET LOCAL enable_seqscan = off", "SET LOCAL enable_bitmapscan = off"} {
@@ -101,8 +109,8 @@ func TestFilteredANNIterativeScan(t *testing.T) {
 		}
 		return n
 	}
-	off := count("hits_off", momo.SearchSettings{})
-	on := count("hits_on", momo.SearchSettings{HNSWIterativeScan: momo.IterativeRelaxedOrder, HNSWMaxScanTuples: 1_000_000})
+	off := count("hits_off", vecsearch.Settings{})
+	on := count("hits_on", vecsearch.Settings{HNSWIterativeScan: vecsearch.IterativeRelaxedOrder, HNSWMaxScanTuples: 1_000_000})
 	if off >= 10 {
 		t.Fatalf("iterative scan off returned %d rows, want fewer than 10", off)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
+	"github.com/azrtydxb/momo/vecsearch"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -344,13 +345,13 @@ func TestSQLiteVectorRefusals(t *testing.T) {
 
 	// Search settings: every SQLite search is exact, so ExactSearch is a no-op
 	// and a setting that tunes an index is refused.
-	if err := db.WithSearch(ctx, momo.SearchSettings{ExactSearch: true}, func(tx *momo.Tx) error {
+	if err := vecsearch.With(ctx, db, vecsearch.Settings{ExactSearch: true}, func(tx *momo.Tx) error {
 		_, err := momo.Select[vecDoc](tx).OrderBy(momo.L2Distance(col, q).Asc()).Limit(1).All(ctx)
 		return err
 	}); err != nil {
 		t.Errorf("ExactSearch: %v", err)
 	}
-	err = db.WithSearch(ctx, momo.SearchSettings{HNSWEfSearch: 40}, func(*momo.Tx) error { return nil })
+	err = vecsearch.With(ctx, db, vecsearch.Settings{HNSWEfSearch: 40}, func(*momo.Tx) error { return nil })
 	if !errors.Is(err, momo.ErrUnsupported) {
 		t.Errorf("HNSWEfSearch: err = %v, want ErrUnsupported", err)
 	}
