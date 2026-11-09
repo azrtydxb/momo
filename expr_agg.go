@@ -258,7 +258,7 @@ func sqlStringLiteral(b *Builder, what, s string) (string, bool) {
 // and GROUP_CONCAT ... SEPARATOR on MySQL (which truncates at
 // group_concat_max_len). The separator is rendered as a literal and must not
 // contain a backslash. Without a matching row, and for a group whose values
-// are all NULL, the result is NULL: wrap it in CoalesceExpr with a literal
+// are all NULL, the result is NULL: wrap it in sqlfn.CoalesceExpr with a literal
 // (for example an empty string) when the group may be empty.
 func StringAgg(e Expression[string], sep string) AggExpr[string] {
 	return newAgg[string](aggSpec{kind: aggString, args: []any{e}, sep: sep})
@@ -278,7 +278,7 @@ func ArrayAgg[T any](e Expression[T]) AggExpr[[]T] {
 // no OrderBy). T is the element type the array decodes into, for example
 // JSONBAgg[Item](JSONBBuildObject[Item](...)). Without a matching row the
 // result is NULL on PostgreSQL and MySQL and '[]' on SQLite; wrap it in
-// CoalesceExpr with EmptyJSONArray to get an empty array everywhere.
+// sqlfn.CoalesceExpr with EmptyJSONArray to get an empty array everywhere.
 func JSONBAgg[T any](e Expr) AggExpr[types.JSON[[]T]] {
 	return newAgg[types.JSON[[]T]](aggSpec{kind: aggJSON, args: []any{e}})
 }
@@ -286,7 +286,7 @@ func JSONBAgg[T any](e Expr) AggExpr[types.JSON[[]T]] {
 // PercentileCont is percentile_cont(fraction) WITHIN GROUP (ORDER BY ...):
 // the interpolated value at fraction (0 to 1) of the ordered input. The
 // ordering comes from WithinGroup, which is required. PostgreSQL only. The
-// result is NULL for an empty group: wrap it in CoalesceExpr when the group
+// result is NULL for an empty group: wrap it in sqlfn.CoalesceExpr when the group
 // may be empty.
 func PercentileCont(fraction float64) AggExpr[float64] {
 	return percentile[float64]("percentile_cont", fraction)
@@ -396,8 +396,8 @@ func (t ToJSONExpr[T]) AppendSQL(b *Builder) {
 }
 
 // EmptyJSONArray is the empty JSON array literal, the fallback of
-// CoalesceExpr over an aggregate that saw no rows:
-// CoalesceExpr(JSONBAgg[T](x), EmptyJSONArray[T]()).
+// sqlfn.CoalesceExpr over an aggregate that saw no rows:
+// sqlfn.CoalesceExpr(JSONBAgg[T](x), EmptyJSONArray[T]()).
 func EmptyJSONArray[T any]() Expression[types.JSON[[]T]] { return emptyJSONArray[T]{} }
 
 type emptyJSONArray[T any] struct{}

@@ -14,6 +14,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/sqlfn"
 )
 
 // seedAnalytics inserts documents: tenant 1 has versions 10, 20, 30 (titles
@@ -115,7 +116,7 @@ func TestAnalyticsGenerateSeries(t *testing.T) {
 		}
 
 		down := momo.GenerateSeries("g", "n", 3, 1, -1)
-		rows, err = momo.Select[anN](db).From(down).Columns(momo.Cast[int64](down.Column(), "bigint")).All(ctx)
+		rows, err = momo.Select[anN](db).From(down).Columns(sqlfn.Cast[int64](down.Column(), "bigint")).All(ctx)
 		if err != nil || len(rows) != 3 || rows[0].N != 3 || rows[2].N != 1 {
 			t.Fatalf("down series = %+v, %v", rows, err)
 		}

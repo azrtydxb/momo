@@ -15,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/fts"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/sqlfn"
 	"github.com/azrtydxb/momo/types"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -199,7 +200,7 @@ func TestFullTextHybridRanking(t *testing.T) {
 		dist := momo.CosineDistance(kbEmb, vector.Vector{1, 0, 0})
 		text := fts.RankCD(kbTsv, q)
 		// Lower is better: the distance, reduced by half the text rank.
-		score := momo.SubExpr[float64](dist, momo.Mul[float64](text, 0.5))
+		score := sqlfn.SubExpr[float64](dist, sqlfn.Mul[float64](text, 0.5))
 
 		hits, err := momo.Select[ftsHit](db).From(momo.TableRef{Name: "kb_articles"}).
 			Columns(kbID, score.As("score"), kbTitle).
