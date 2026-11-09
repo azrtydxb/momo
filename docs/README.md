@@ -26,6 +26,7 @@ New here? Start with [getting started](getting-started.md).
 - [Testing applications](testing.md): the `momotest` kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.
 - [Interceptors](PRIVACY_RULES.md): application-level per-handle rules that add predicates or deny typed statements, the tenant recipe, and the paths they do not cover (not a security boundary).
 - [Static check for raw SQL](momovet.md): the momovet analyzer that reports non-constant SQL passed to the raw-SQL functions.
+- [Observability hooks](observability.md): the `obs` package: the test recorder, the N+1 relation-load detector and the `momolog` slog hook, and how they treat sensitive arguments.
 - [Capabilities](capabilities.md): what each database supports, what is not built, and what returns `ErrUnsupported`.
 - [Performance](PERFORMANCE.md): the measured hook-overhead allocation budget and the layout of the comparison benchmark suite.
 - [Supported versions](supported-versions.md): Go, PostgreSQL, pgvector, PgBouncer, pgx and OS versions in CI for v0.3.0, and the stability policy. <!-- x-release-please-version -->
