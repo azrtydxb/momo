@@ -11,7 +11,7 @@ Nothing today ties an API change to its documentation, so docs drift one merge a
 
 ## Acceptance criteria
 
-- [ ] a throwaway branch that adds an exported function and touches no doc fails the job (red evidence run id); the same branch with `Docs: no reader-visible change: internal helper exposed for tests` in the PR body passes
+- [x] a throwaway branch that adds an exported function and touches no doc fails the job (red evidence run id); the same branch with `Docs: no reader-visible change: internal helper exposed for tests` in the PR body passes
 - [x] a branch that changes only a Go comment or an unexported identifier produces an empty apidiff and passes without any line
 - [x] a branch that renames an exported function and edits `docs/ai-guide.md` passes
 - [ ] the job is a required status check on main (the branch-protection change is made by the user and recorded in `.procoder/ask/decisions.md`)
@@ -36,3 +36,9 @@ Review round 2026-11-09 (fixes in 4a0df53, ci-agent job `apidiff-docs`; the requ
 - Docs match limited to README.md, llms.txt, docs/**/*.md, examples/**/README.md: run 42575386754 (84ca00e) adds an exported function and changes docs/requirements.txt only; `apidiff-docs` failed.
 - Package moves: run 42575926402 (d22b8c4) deletes exported root func `WithMaxInList`, adds package `foo/` and an exported func in `internal/probe`, no docs; `apidiff-docs` failed reporting `WithMaxInList: removed` (incompatible) and `package github.com/azrtydxb/momo/foo: added`, and `internal/probe` was skipped ("Ignoring internal package"). An earlier probe (run 42575378098) deleted `WithClock`, still used by internal/suite, and failed on a type error, so it proves nothing.
 - Comment: one comment marked `<!-- apidiff-docs -->` is edited in place, none is posted when the API did not change; the report is written under RUNNER_TEMP and `/apidiff-report.md` is git-ignored. Not exercisable on ci-agent.
+
+PR-body path (2026-11-09, workflow `apidiff-docs.yml`, throwaway draft PR #51 `apidiff-probe-prbody` into sprint-6, head 55ca940, adds exported `momolog.ProbePRBody` and no docs):
+
+- Red: run 42668537688 (pull_request, opened) failed with `./momolog.ProbePRBody: added` and "Docs gate failed: the exported API changed but no docs changed."
+- Escape: after adding `Docs: no reader-visible change: internal helper exposed for tests` to the PR body, run 42668814473 (pull_request, edited) passed with "Docs gate passed by the escape line". Criterion 1 is ticked on these two runs. PR #51 closed unmerged and its branch deleted.
+
