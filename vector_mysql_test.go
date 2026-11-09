@@ -12,42 +12,6 @@ import (
 	"github.com/azrtydxb/momo/vector"
 )
 
-func TestMySQLVectorSQL(t *testing.T) {
-	ma := dialect.MySQLFlavor(dialect.FlavorMariaDB)
-	my := dialect.MySQLFlavor(dialect.FlavorMySQL)
-	col := NewVectorColumn[vector.Vector]("docs", "emb", 3, 0)
-	q := vector.Vector{1, 2, 3}
-
-	if got, want := renderForTest(t, ma, CosineDistance(col, q)), "VEC_DISTANCE_COSINE(`docs`.`emb`, VEC_FromText(?))"; got != want {
-		t.Fatalf("MariaDB cosine = %s, want %s", got, want)
-	}
-	if got, want := renderForTest(t, ma, L2Distance(col, q)), "VEC_DISTANCE_EUCLIDEAN(`docs`.`emb`, VEC_FromText(?))"; got != want {
-		t.Fatalf("MariaDB L2 = %s, want %s", got, want)
-	}
-	if args := renderArgs(t, ma, L2Distance(col, q)); len(args) != 1 || args[0] != "[1,2,3]" {
-		t.Fatalf("MariaDB args = %#v, want the text form [1,2,3]", args)
-	}
-	for _, e := range []Expression[float64]{L2Distance(col, q), CosineDistance(col, q), InnerProductDistance(col, q)} {
-		if _, err := renderErr(my, e); !errors.Is(err, ErrUnsupported) {
-			t.Fatalf("MySQL distance = %v, want ErrUnsupported", err)
-		}
-	}
-	// MariaDB offers neither inner product nor L1: no silent substitute.
-	for _, e := range []Expression[float64]{InnerProductDistance(col, q), L1Distance(col, q)} {
-		if _, err := renderErr(ma, e); !errors.Is(err, ErrUnsupported) {
-			t.Fatalf("MariaDB unsupported metric = %v, want ErrUnsupported", err)
-		}
-	}
-	// Half precision, sparse and bit vectors have no MariaDB type.
-	hc := NewVectorColumn[vector.HalfVector]("docs", "emb", 3, 0)
-	if _, err := renderErr(ma, L2Distance(hc, vector.HalfVector{1, 2, 3})); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("MariaDB halfvec = %v, want ErrUnsupported", err)
-	}
-	if _, err := MySQLVectorType(dialect.FlavorMySQL, "8.4.13", 3); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("MySQL 8.4 VECTOR = %v, want ErrUnsupported", err)
-	}
-}
-
 // A vector value is wrapped into the server's text-to-vector function on
 // every typed bind path, not only in a distance, so an insert, an update or an
 // equality works on a VECTOR column.
@@ -77,8 +41,9 @@ func TestMySQLVectorBindWrapping(t *testing.T) {
 	}
 }
 
-// The query vector shows as RedactedArg in hook events when the column is
-// sensitive, through the wrapper too.
+// The bound vector of an equality shows as RedactedArg in hook events when the
+// column is sensitive, through the wrapper too. The distance case is covered
+// in package vecop.
 func TestMySQLVectorSensitiveArg(t *testing.T) {
 	ma := dialect.MySQLFlavor(dialect.FlavorMariaDB)
 	q := vector.Vector{1, 2, 3}
@@ -87,13 +52,6 @@ func TestMySQLVectorSensitiveArg(t *testing.T) {
 		want  []int
 	}{{FlagSensitive, []int{0}}, {0, nil}} {
 		col := NewVectorColumn[vector.Vector]("docs", "emb", 3, c.flags)
-		got, err := compile(ma, CosineDistance(col, q).AppendSQL)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !slices.Equal(got.sens, c.want) {
-			t.Fatalf("flags %d: sensitive args = %v, want %v", c.flags, got.sens, c.want)
-		}
 		eq, err := compile(ma, col.Eq(q).AppendSQL)
 		if err != nil {
 			t.Fatal(err)

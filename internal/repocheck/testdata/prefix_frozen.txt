@@ -162,12 +162,10 @@ update_unit_test.go
 vector_builder_test.go
 vector_column.go
 vector_dimless_integration_test.go
-vector_expr.go
 vector_integration_test.go
 vector_mysql.go
 vector_nil_pointer_integration_test.go
 vector_parity_integration_test.go
-vector_sensitive_test.go
 vector_sqlite.go
 window.go
 write_states_test.go

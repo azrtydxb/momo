@@ -11,6 +11,7 @@ import (
 	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/internal/testmodels/example"
 	"github.com/azrtydxb/momo/internal/testmodels/example/document"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -110,10 +111,10 @@ func TestVectorPermissionColumnsSearchable(t *testing.T) {
 	ro := momo.NewReadOnlyVectorColumn[vector.Vector]("t", "ro", 3, momo.FlagReadOnly)
 	co := momo.NewCreateOnlyVectorColumn[vector.Vector]("t", "co", 3, momo.FlagCreateOnly)
 	im := momo.NewImmutableVectorColumn[vector.Vector]("t", "im", 3, momo.FlagImmutable)
-	for name, d := range map[string]momo.DistanceExpr{
-		"read_only":   momo.CosineDistance(ro, v),
-		"create_only": momo.L2Distance(co.As("a"), v),
-		"immutable":   momo.InnerProductDistance(im, v),
+	for name, d := range map[string]vecop.Expr{
+		"read_only":   vecop.Cosine(ro, v),
+		"create_only": vecop.L2(co.As("a"), v),
+		"immutable":   vecop.InnerProduct(im, v),
 	} {
 		b := momo.NewBuilder(vecDB().Dialect())
 		d.AppendSQL(b)

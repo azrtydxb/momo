@@ -12,6 +12,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -58,7 +59,7 @@ func TestVectorIndexUsed(t *testing.T) {
 			}
 			var err error
 			plan, err = momo.Select[vecDoc, *vecDoc](tx).
-				OrderBy(momo.L2Distance(col, query).Asc()).
+				OrderBy(vecop.L2(col, query).Asc()).
 				Limit(10).
 				Explain(ctx)
 			return err

@@ -137,6 +137,13 @@ as an argument.
 | `momo.IterativeStrictOrder`         | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.IterativeStrictOrder`  |
 | `momo.Tx.SetSearch`                 | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.Apply`                 |
 | `momo.DB.WithSearch`                | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.With`                  |
+| `momo.DistanceExpr`                 | `github.com/azrtydxb/momo/vecop`     | `vecop.Expr`                      |
+| `momo.L2Distance`                   | `github.com/azrtydxb/momo/vecop`     | `vecop.L2`                        |
+| `momo.InnerProductDistance`         | `github.com/azrtydxb/momo/vecop`     | `vecop.InnerProduct`              |
+| `momo.CosineDistance`               | `github.com/azrtydxb/momo/vecop`     | `vecop.Cosine`                    |
+| `momo.L1Distance`                   | `github.com/azrtydxb/momo/vecop`     | `vecop.L1`                        |
+| `momo.HammingDistance`              | `github.com/azrtydxb/momo/vecop`     | `vecop.Hamming`                   |
+| `momo.JaccardDistance`              | `github.com/azrtydxb/momo/vecop`     | `vecop.Jaccard`                   |
 
 ### Rewrite recipe
 

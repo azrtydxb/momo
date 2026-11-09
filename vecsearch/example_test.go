@@ -9,6 +9,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/testmodels/example"
 	"github.com/azrtydxb/momo/internal/testmodels/example/document"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vecsearch"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -26,7 +27,7 @@ func ExampleWith() {
 	}
 	err := vecsearch.With(ctx, db, settings, func(tx *momo.Tx) error {
 		_, err := momo.Select[example.Document](tx).
-			OrderBy(momo.CosineDistance(document.Embedding, make(vector.Vector, 1536)).Asc()).
+			OrderBy(vecop.Cosine(document.Embedding, make(vector.Vector, 1536)).Asc()).
 			Limit(10).
 			All(ctx)
 		return err

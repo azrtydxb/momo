@@ -1,0 +1,8 @@
+# Vector distance builders move to github.com/azrtydxb/momo/vecop and drop the Distance suffix; DistanceExpr becomes Expr.
+DistanceExpr Expr
+L2Distance L2
+InnerProductDistance InnerProduct
+CosineDistance Cosine
+L1Distance L1
+HammingDistance Hamming
+JaccardDistance Jaccard

@@ -17,6 +17,7 @@ import (
 	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -88,12 +89,12 @@ func TestSQLiteVectorParity(t *testing.T) {
 	id := momo.NewColumn[int64]("docs", "id", 0)
 	cases := []struct {
 		name string
-		dist momo.DistanceExpr
+		dist vecop.Expr
 		want []int64
 	}{
-		{"cosine", momo.CosineDistance(col, query), vectorparity.ExactCosineTopK(vecs, query, vectorparity.TopK)},
-		{"l2", momo.L2Distance(col, query), vectorparity.ExactTopK(vecs, query, vectorparity.TopK, vectorparity.L2Distance)},
-		{"l1", momo.L1Distance(col, query), vectorparity.ExactTopK(vecs, query, vectorparity.TopK, vectorparity.L1Distance)},
+		{"cosine", vecop.Cosine(col, query), vectorparity.ExactCosineTopK(vecs, query, vectorparity.TopK)},
+		{"l2", vecop.L2(col, query), vectorparity.ExactTopK(vecs, query, vectorparity.TopK, vectorparity.L2Distance)},
+		{"l1", vecop.L1(col, query), vectorparity.ExactTopK(vecs, query, vectorparity.TopK, vectorparity.L1Distance)},
 	}
 	for _, c := range cases {
 		got, err := momo.Select[parityDoc](db).OrderBy(c.dist.Asc(), id.Asc()).Limit(vectorparity.TopK).All(ctx)
