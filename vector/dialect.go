@@ -39,7 +39,8 @@ func (v Vector) DialectValue(d dialect.Name) (any, error) {
 	return nil, unsupportedDialect("vector", d)
 }
 
-// DialectValue encodes h for dialect d; only PostgreSQL supports halfvec.
+// DialectValue encodes h for dialect d. Any dialect other than PostgreSQL gets
+// an unsupported-dialect error.
 func (h HalfVector) DialectValue(d dialect.Name) (any, error) {
 	if d == dialect.Postgres {
 		return h, nil
@@ -47,7 +48,8 @@ func (h HalfVector) DialectValue(d dialect.Name) (any, error) {
 	return nil, unsupportedDialect("halfvec", d)
 }
 
-// DialectValue encodes s for dialect d; only PostgreSQL supports sparsevec.
+// DialectValue encodes s for dialect d. Any dialect other than PostgreSQL gets
+// an unsupported-dialect error.
 func (s SparseVector) DialectValue(d dialect.Name) (any, error) {
 	if d == dialect.Postgres {
 		return s, nil

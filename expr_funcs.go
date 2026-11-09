@@ -37,6 +37,7 @@ func (f FuncExpr[T]) As(alias string) Aliased[T] { return As[T](f, alias) }
 
 func (FuncExpr[T]) resultType() T { var z T; return z }
 
+// AppendSQL writes the function call to b.
 func (f FuncExpr[T]) AppendSQL(b *Builder) {
 	name := f.name
 	for _, part := range strings.Split(name, ".") {

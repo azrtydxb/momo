@@ -98,8 +98,8 @@ func (t JSONExpr[T]) AppendSQL(b *momo.Builder) {
 }
 
 // EmptyJSONArray is the empty JSON array literal, the fallback of
-// sqlfn.CoalesceExpr over an aggregate that saw no rows:
-// sqlfn.CoalesceExpr(JSONB[T](x), EmptyJSONArray[T]()).
+// sqlfn.CoalesceExpr over an aggregate that saw no rows. Pass it as the
+// second argument: sqlfn.CoalesceExpr(JSONB[T](x), EmptyJSONArray[T]()).
 func EmptyJSONArray[T any]() momo.Expression[types.JSON[[]T]] {
 	return momo.Typed[types.JSON[[]T]](emptyJSONArray{})
 }

@@ -41,6 +41,7 @@ func (f FilteredAgg[T]) Over(w WindowSpec) WindowExpr[T] {
 
 func (FilteredAgg[T]) resultType() T { var z T; return z }
 
+// AppendSQL writes the aggregate and its FILTER clause to b.
 func (f FilteredAgg[T]) AppendSQL(b *Builder) {
 	f.agg.AppendSQL(b)
 	appendFilter(b, f.where)
@@ -350,6 +351,7 @@ func (e WindowExpr[T]) As(alias string) Aliased[T] { return As[T](e, alias) }
 
 func (WindowExpr[T]) resultType() T { var z T; return z }
 
+// AppendSQL writes the window expression to b.
 func (e WindowExpr[T]) AppendSQL(b *Builder) {
 	if !b.d.WindowFunctions {
 		b.unsupported("window functions")

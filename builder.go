@@ -285,6 +285,8 @@ type Compiled struct {
 	sens []int
 }
 
+// String returns the SQL text. When arguments are bound it appends a comment
+// that names their placeholders; it never prints the argument values.
 func (c Compiled) String() string {
 	if len(c.Args) == 0 {
 		return c.SQL

@@ -941,8 +941,8 @@ return rows2.Err()
 - `Exec` does not fill the identity into your struct; use `Returning(...).Rows`.
   `ReturningAll()` returns every mapped column. `CreateGraph` reads identities
   back itself.
-- A `ReadOnly` / `identity` column is never written by `Insert.Model`.
-- `Insert.Models([]T{})` (empty) is `ErrValidation`.
+- A `ReadOnly` / `identity` column is never written by `InsertQuery.Model`.
+- `InsertQuery.Models([]T{})` (empty) is `ErrValidation`.
 
 Update:
 
@@ -968,14 +968,14 @@ _, err = momo.Update[models.Task](q).Model(&cur).Exec(ctx)
 - An `Update` or `Delete` without `Where` fails with `ErrUnfilteredMutation`
   unless you call `.AllRows()`. DON'T add `AllRows()` to silence it; add the
   filter.
-- `Update.Set` with zero rows matched is NOT an error; check `res.RowsAffected`.
-- `Update.Model(&m)` identifies the row by primary key. Without a version
+- `UpdateQuery.Set` with zero rows matched is NOT an error; check `res.RowsAffected`.
+- `UpdateQuery.Model(&m)` identifies the row by primary key. Without a version
   column a missing row is `ErrNotFound`. With a `version` column the statement
   is `WHERE pk = ? AND version = ?` and `SET version = version + 1`: a stale copy
   fails with `ErrOptimisticLock`, a missing row with `ErrNotFound`, and after
   success your struct's version field is advanced. Reload the row and retry on
   `ErrOptimisticLock`.
-- Only `Update.Model` checks and advances the version. A `Set`-based update,
+- Only `UpdateQuery.Model` checks and advances the version. A `Set`-based update,
   `Upsert` and relation helpers do NOT. DON'T `Set` the version, pk, soft-delete,
   created_at or updated_at column directly (`ErrValidation`); writing a
   `read_only`, `immutable` (on update) or identity column is `ErrValidation`.
@@ -1013,7 +1013,7 @@ dead, _ := momo.Select[models.Task](q).OnlyDeleted().All(ctx)
   use `Insert` + `OnConflict(key).Where(...)`). Use partial unique indexes
   (`Where("deleted_at IS NULL")`) if
   keys must be reusable.
-- `Delete.Model(&m)` deletes by primary key (`ErrNotFound` if missing).
+- `DeleteQuery.Model(&m)` deletes by primary key (`ErrNotFound` if missing).
 
 Upsert (PostgreSQL `ON CONFLICT`):
 
@@ -1106,8 +1106,8 @@ res, err := momo.Insert[models.Meter](q).
 
 Bulk and set-based writes (PostgreSQL):
 
-- `Insert[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `FromSQLDB` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
-- `Insert[T].Unnest()` (the method, not the package-level FROM source `momo.Unnest`) renders a `Model` or `Models` insert as `INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])`: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses `MaxParams` and `WithMaxParams` and never chunks (and is not split into a transaction of several statements). Other dialects return `ErrUnsupported`. `Values`, `ValuesRows` and `FromSelect` return `ErrValidation`, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, `time.Time` and `[]byte` columns bind as typed slices (`[]*T` when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to `[]any`, which pgx may reject for an array type, so use plain `Models` for such a model. `OnConflict`, `Upsert` and `Returning` work as for `Models`; interceptors, `BeforeInsert`, field validators, automatic timestamps and id generators run as for `Models`. A `FlagSensitive` column's array shows as `RedactedArg` in `QueryEvent.Args`.
+- `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `FromSQLDB` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
+- `InsertQuery[T].Unnest()` (the method, not the package-level FROM source `momo.Unnest`) renders a `Model` or `Models` insert as `INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])`: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses `MaxParams` and `WithMaxParams` and never chunks (and is not split into a transaction of several statements). Other dialects return `ErrUnsupported`. `Values`, `ValuesRows` and `FromSelect` return `ErrValidation`, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, `time.Time` and `[]byte` columns bind as typed slices (`[]*T` when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to `[]any`, which pgx may reject for an array type, so use plain `Models` for such a model. `OnConflict`, `Upsert` and `Returning` work as for `Models`; interceptors, `BeforeInsert`, field validators, automatic timestamps and id generators run as for `Models`. A `FlagSensitive` column's array shows as `RedactedArg` in `QueryEvent.Args`.
 - `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server, a driver without `ServerVersioner`, or a dialect other than PostgreSQL returns `ErrUnsupported` before the statement runs. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
 - `BulkUpdate` updates only the keys in its row list, binds one parameter per value (over the limit is `ErrLimitExceeded`, it does not chunk), and keeps the version and updated-at columns current.
 - `Truncate` is `TRUNCATE TABLE` (no `RESTART IDENTITY`, no `CASCADE`), and `DELETE FROM` plus a sequence reset on SQLite. It runs the interceptors with the kind `truncate`, which a tenant-scoped handle should deny, and MySQL refuses it inside a transaction.
@@ -1352,7 +1352,7 @@ func retrySerializable(ctx context.Context, db *momo.DB, fn func(tx *momo.Tx) er
 - On a pinned connection (`db.OnConn(pc)`) transactions are not available:
   `Begin`, `Tx`, `Replace`, `CreateGraph` return `ErrUnsupported`.
 - Several momo helpers open their own transaction on a `*DB` and a savepoint on a
-  `*Tx`: `Replace`, `CreateGraph`, chunked `Insert.Models`, `vecsearch.With`.
+  `*Tx`: `Replace`, `CreateGraph`, chunked `InsertQuery.Models`, `vecsearch.With`.
 
 Details: README section 8. Example: [transactions](../examples/transactions/).
 
@@ -1661,7 +1661,7 @@ reports a column only for NOT NULL). Use `Constraint` for those three.
 
 | Error                    | When                                                                                                                                                                                                                                                                                                      | What to do                                          |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `ErrNotFound`            | `One`, `First`, `Update.Model`, `Delete.Model` matched no row; `FindOrCreate` re-select miss. `All`/`Each`/`Iter` never return it                                                                                                                                                                         | map to 404 or create                                |
+| `ErrNotFound`            | `One`, `First`, `UpdateQuery.Model`, `DeleteQuery.Model` matched no row; `FindOrCreate` re-select miss. `All`/`Each`/`Iter` never return it                                                                                                                                                               | map to 404 or create                                |
 | `ErrTooManyRows`         | `One` matched more than one row; has-one load matched several children                                                                                                                                                                                                                                    | fix the filter or the data                          |
 | `ErrUniqueViolation`     | unique key or primary key violated (SQLSTATE 23505)                                                                                                                                                                                                                                                       | conflict; `Constraint` names it                     |
 | `ErrForeignKeyViolation` | FK violated (23503)                                                                                                                                                                                                                                                                                       | missing parent or children still exist              |
@@ -1669,7 +1669,7 @@ reports a column only for NOT NULL). Use `Constraint` for those three.
 | `ErrNotNullViolation`    | NULL into NOT NULL (23502); has-one/has-many `Unlink`/`Replace` on a NOT NULL FK                                                                                                                                                                                                                          | fix the data or nullability                         |
 | `ErrSerialization`       | serialization failure or deadlock (40001, 40P01)                                                                                                                                                                                                                                                          | retry the whole transaction with backoff            |
 | `ErrBusy`                | lock not available (55P03)                                                                                                                                                                                                                                                                                | retry later                                         |
-| `ErrOptimisticLock`      | `Update.Model` on a versioned model with a stale version                                                                                                                                                                                                                                                  | reload, reapply, retry                              |
+| `ErrOptimisticLock`      | `UpdateQuery.Model` on a versioned model with a stale version                                                                                                                                                                                                                                             | reload, reapply, retry                              |
 | `ErrUnfilteredMutation`  | `Update`/`Delete` without `Where` and without `AllRows()`                                                                                                                                                                                                                                                 | add a filter                                        |
 | `ErrValidation`          | bad input detected before the database: wrong vector dim, `After` count, empty `Models`, writing a reserved/read-only column, plain `Delete` on a soft-delete model, negative `Limit`, `Link` with NULL key, bad `vecsearch.Settings`, qualifier not in FROM                                              | programmer or input error; fix the call             |
 | `ErrUnsupported`         | dialect or driver cannot do it: `Each`/`Iter` with `Preload`; `Joined` shape; `LoadPerParentLimit` on to-one; belongs-to helpers; keyset on nullable key; `IndexedBy`; iterative search on pgvector < 0.8; simple protocol exec mode; non-standard isolation; transactions on a pinned conn; SQLite/MySQL | redesign the call; not retryable                    |
@@ -1819,9 +1819,9 @@ report)`, a development hook that reports once per statement shape per scope
    projection.
 5. Non-pointer field = NOT NULL; pointer = NULL-able. Use `SetNull()` only on
    pointer fields.
-6. Use `Insert.Model` to store the struct as-is (zeros included); `Insert.Values`
+6. Use `InsertQuery.Model` to store the struct as-is (zeros included); `InsertQuery.Values`
    to fall back to database defaults. Use `Returning(...).Rows` to read identities.
-7. Use `Update.Set(col.Set(v))` for partial updates, `Update.Model` for whole-row
+7. Use `UpdateQuery.Set(col.Set(v))` for partial updates, `UpdateQuery.Model` for whole-row
    updates with a `version` column; handle `ErrOptimisticLock` by reload and
    retry. `Set` updates do not touch the version.
 8. Never call `AllRows()` to get past `ErrUnfilteredMutation`; add a `Where`.

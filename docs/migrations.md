@@ -138,7 +138,7 @@ repeated once; a second disagreement fails with an error asking you to retry.
   `search_path` before any table exists. Keep schemas on the migrator's
   `search_path` writable only by the migrator.
 - With no table yet, it is created in the current schema.
-  `Config.Schemas[0]` (`migrate.schemas`) must equal the current schema
+  `migrate.Config.Schemas[0]` (`migrate.schemas`) must equal the current schema
   (current_schema) or the engine returns a configuration error naming both.
   `plan`, `status` and `drift` on a connection with no current schema and no
   table report an empty history; `apply` and the other writers fail.

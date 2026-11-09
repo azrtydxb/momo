@@ -97,7 +97,7 @@ func (joinExpr) isRaw() bool      { return true }
 
 // JoinSQL composes raw SQL fragments and their arguments into one
 // expression, the equivalent of Prisma.join: each part is typically
-// SQL("status = ?", s), and the result is usable wherever SQL is. Because
+// SQL("status = ?", s), and the result can be used wherever SQL can. Because
 // every part keeps its own arguments and placeholders are numbered as the
 // whole statement renders, fragments can be collected in a slice and
 // combined without hand-counting binds:

@@ -168,6 +168,7 @@ type ExcludedExpr[T any] struct {
 	name string
 }
 
+// AppendSQL writes the EXCLUDED column reference to b.
 func (e ExcludedExpr[T]) AppendSQL(b *Builder) {
 	if b.conflictTarget {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "insert", Err: fmt.Errorf("Excluded() column %q is not valid in the ON CONFLICT target predicate; use it in the DO UPDATE Where", e.name)})
@@ -224,8 +225,11 @@ func (a Assignment) ColumnName() string { return a.col }
 type Nulls uint8
 
 const (
+	// NullsDefault leaves NULL placement to the database.
 	NullsDefault Nulls = iota
+	// NullsFirst sorts NULLs before other values.
 	NullsFirst
+	// NullsLast sorts NULLs after other values.
 	NullsLast
 )
 
@@ -750,6 +754,7 @@ type Aliased[T any] struct {
 	alias string
 }
 
+// AppendSQL writes the expression and its alias to b.
 func (a Aliased[T]) AppendSQL(b *Builder) {
 	if err := validName(a.alias); err != nil {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("alias %q: %w", a.alias, err)})

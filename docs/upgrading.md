@@ -170,9 +170,9 @@ as an argument.
 3. Rewrite the `momo.Tx.*` and `momo.DB.*` rows by hand, because the receiver
    moves into the argument list: `recv.Old(ctx, args)` becomes
    `pkg.New(ctx, recv, args)`. A `DB` advisory call must pass a transaction
-   (see the paragraph on the advisory locks below). `momo.SearchSettings.Validate`
-   is a plain rename: step 2 rewrites the type, and `Validate` stays a method of
-   `vecsearch.Settings`.
+   (see the paragraph on the advisory locks below). The `Validate` method of the old
+   `SearchSettings` type is a plain rename: step 2 rewrites the type, and
+   `Validate` stays a method of `vecsearch.Settings`.
 4. In every file, import each new package that now appears in it (`arrayop.`,
    `fts.`, ...) by the full path in the second column of the table, then build.
    The compiler lists whatever is left.
@@ -182,8 +182,8 @@ change.
 
 One type gained methods: `sqlfn.CurrentSchemaExpr` now has the comparison and
 ordering methods (`Eq`, `In`, `Asc`, ...) the other function results have, so
-`sqlfn.CurrentSchema().Eq("app")` compiles where `momo.CurrentSchema()` had
-no such method.
+`sqlfn.CurrentSchema().Eq("app")` compiles, where the old root function's
+result had no such method.
 
 The advisory lock methods became functions: `tx.AdvisoryXactLock(ctx, 42)`
 is now `advisory.XactLock(ctx, tx, 42)`, and the same for the `String` and

@@ -63,6 +63,7 @@ type LengthExpr struct {
 // As names the expression in a select list.
 func (l LengthExpr) As(alias string) momo.Aliased[int64] { return momo.As[int64](l, alias) }
 
+// AppendSQL writes the length call to b.
 func (l LengthExpr) AppendSQL(b *momo.Builder) {
 	switch b.Dialect().Name {
 	case dialect.MySQL: // LENGTH counts bytes there
@@ -93,6 +94,7 @@ func (c CurrentSchemaExpr) As(alias string) momo.Aliased[string] {
 	return momo.As[string](c, alias)
 }
 
+// AppendSQL writes the current_schema call to b.
 func (CurrentSchemaExpr) AppendSQL(b *momo.Builder) {
 	switch b.Dialect().Name {
 	case dialect.Postgres:
@@ -155,6 +157,7 @@ func (c CaseExpr[T]) ElseExpr(e momo.Expression[T]) CaseExpr[T] {
 // As names the expression in a select list.
 func (c CaseExpr[T]) As(alias string) momo.Aliased[T] { return momo.As[T](c, alias) }
 
+// AppendSQL writes the CASE expression to b.
 func (c CaseExpr[T]) AppendSQL(b *momo.Builder) {
 	if len(c.whens) == 0 {
 		b.SetErr(&momo.Error{Kind: momo.ErrValidation, Op: "build", Err: errors.New("CASE needs at least one When")})
@@ -200,6 +203,7 @@ func arith[T Numeric](l momo.Expr, op string, r momo.Expr) ArithExpr[T] {
 // As names the expression in a select list.
 func (a ArithExpr[T]) As(alias string) momo.Aliased[T] { return momo.As[T](a, alias) }
 
+// AppendSQL writes the arithmetic expression to b.
 func (a ArithExpr[T]) AppendSQL(b *momo.Builder) {
 	b.WriteString("(")
 	a.l.AppendSQL(b)
@@ -277,6 +281,7 @@ func Cast[T any](e momo.Expr, sqlType string) CastExpr[T] {
 // As names the expression in a select list.
 func (c CastExpr[T]) As(alias string) momo.Aliased[T] { return momo.As[T](c, alias) }
 
+// AppendSQL writes the CAST expression to b.
 func (c CastExpr[T]) AppendSQL(b *momo.Builder) {
 	if err := momo.ValidTypeName(c.sqlType); err != nil {
 		b.SetErr(&momo.Error{Kind: momo.ErrValidation, Op: "build", Err: fmt.Errorf("cast type %q: %w", c.sqlType, err)})
@@ -307,6 +312,7 @@ func Concat(a, b momo.Expression[string], more ...momo.Expression[string]) Conca
 // As names the expression in a select list.
 func (c ConcatExpr) As(alias string) momo.Aliased[string] { return momo.As[string](c, alias) }
 
+// AppendSQL writes the concatenation to b.
 func (c ConcatExpr) AppendSQL(b *momo.Builder) {
 	open, sep, closing := "(", " || ", ")"
 	if b.Dialect().Name == dialect.MySQL {

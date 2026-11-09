@@ -21,7 +21,7 @@ type Interceptor func(ctx context.Context, op *Operation) error
 - An `Upsert`, or an `Insert` with `OnConflict` and `DoUpdate`, has the kind `upsert`, not `insert`. ON CONFLICT DO UPDATE can overwrite an existing row, including a row of another tenant that shares the conflict key, and an appended predicate cannot stop it. A tenant rule must therefore deny the kind `upsert` or constrain it by other means (see the recipe). An `Insert` with `DoNothing` is an `insert`.
 - A soft delete has the kind `delete`.
 - `Truncate` has the kind `truncate`. It removes every row of the table, so a tenant-scoped handle should deny it; a predicate appended to it is ignored.
-- `BulkUpdate` is an `update` and keeps the predicates. `Merge` is an `upsert` when it has a matched update and an `insert` otherwise; a predicate an interceptor appends makes it fail with `ErrValidation`, because it cannot be applied without changing which rows match. `Insert.Copy` is an `insert` (deny only).
+- `BulkUpdate` is an `update` and keeps the predicates. `Merge` is an `upsert` when it has a matched update and an `insert` otherwise; a predicate an interceptor appends makes it fail with `ErrValidation`, because it cannot be applied without changing which rows match. `InsertQuery.Copy` is an `insert` (deny only).
 - Interceptors run in registration order, before the typed model hooks (`Meta.Hooks`), so a denied statement never reaches a Before hook. The first error stops the chain and the statement; it is returned as a `momo.Error` of kind `ErrValidation` that still reaches the interceptor's own error with `errors.Is`. No SQL runs.
 - The predicates an interceptor adds are not a caller filter: an update or delete with no `Where` of its own is still refused with `ErrUnfilteredMutation` unless `AllRows` confirms it. A version-checked model update whose row is hidden by an interceptor predicate returns `ErrNotFound`, not `ErrOptimisticLock`. The count that decides between the two is a select, so your select interceptors run for it too.
 
@@ -97,7 +97,7 @@ Each of these bypasses every interceptor. Scope them explicitly or use row-level
 - The association helpers (`Link`, `Unlink`, `Replace` and the like) and graph creation.
 - Subqueries and other sources rendered inside a statement: subquery operands, `UPDATE ... FROM` sources, and the `FromSelect` source of an insert.
 - Raw SQL of every kind: `momo.Exec`, `momo.MapRows`, `momo.Scalars`, `momo.SQL` fragments and `momo.RawSubquery`.
-- Bulk loading with COPY: `Insert[T].Copy` runs the insert interceptors (deny only) and `BeforeInsert`, but a predicate an interceptor adds is ignored, and `momo.CopierOf(...).CopyFrom` skips them entirely.
+- Bulk loading with COPY: `InsertQuery[T].Copy` runs the insert interceptors (deny only) and `BeforeInsert`, but a predicate an interceptor adds is ignored, and `momo.CopierOf(...).CopyFrom` skips them entirely.
 - Anything run on the driver directly, and any other `*momo.DB` over the same driver.
 
 For isolation that holds even when application code is wrong, use database row-level security with the transaction setup hook (`WithTxSetup`) and a policy on the table. Treat interceptors as the first layer and row-level security as the enforcing one.

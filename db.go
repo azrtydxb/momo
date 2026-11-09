@@ -137,6 +137,7 @@ func New(drv Driver, opts ...Option) *DB {
 	return db
 }
 
+// Dialect returns the dialect of the connection.
 func (db *DB) Dialect() *dialect.Dialect { return db.ex.d }
 func (db *DB) conn() *execer             { return &db.ex }
 
@@ -156,6 +157,7 @@ type Tx struct {
 	adopted bool
 }
 
+// Dialect returns the dialect of the transaction's connection.
 func (tx *Tx) Dialect() *dialect.Dialect { return tx.ex.d }
 func (tx *Tx) conn() *execer             { return &tx.ex }
 
