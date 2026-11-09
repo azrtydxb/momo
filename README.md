@@ -71,6 +71,7 @@ import (
 	"github.com/azrtydxb/momo/examples/quickstart/models"
 	"github.com/azrtydxb/momo/examples/quickstart/models/author"
 	"github.com/azrtydxb/momo/examples/quickstart/models/post"
+	"github.com/azrtydxb/momo/vecsearch"
 	"github.com/azrtydxb/momo/vector"
 )
 ```
