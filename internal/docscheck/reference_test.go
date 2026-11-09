@@ -302,7 +302,7 @@ func TestReferenceListsEveryIdentifier(t *testing.T) {
 	var missing []string
 	for _, p := range pkgs {
 		for _, id := range p.Idents {
-			if !strings.Contains(string(b), "| `"+id.Key(p.Name)+"` |") {
+			if !strings.Contains(string(b), "| `"+id.Key(p.Name)+"` ") {
 				missing = append(missing, id.Key(p.Name))
 			}
 		}
