@@ -1,0 +1,9 @@
+# The advisory lock methods of DB and Tx become free functions in github.com/azrtydxb/momo/advisory; each takes the transaction (a momo.Querier) as its second argument.
+Tx.AdvisoryXactLock XactLock
+Tx.AdvisoryXactLockString XactLockString
+Tx.TryAdvisoryXactLock TryXactLock
+Tx.TryAdvisoryXactLockString TryXactLockString
+DB.AdvisoryXactLock XactLock
+DB.AdvisoryXactLockString XactLockString
+DB.TryAdvisoryXactLock TryXactLock
+DB.TryAdvisoryXactLockString TryXactLockString

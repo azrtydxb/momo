@@ -2,7 +2,6 @@
 # The list may only shrink: entries must exist in the root directory and in the
 # frozen snapshot in prefix_frozen.txt. Story root-file-prefix-rename empties it.
 adopt_tx_test.go
-advisory.go
 allowlist.go
 analytics_integration_test.go
 analytics_locks_test.go
