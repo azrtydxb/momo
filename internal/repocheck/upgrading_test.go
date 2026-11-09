@@ -106,9 +106,11 @@ func diffMoves(moves, page []movePair) []string {
 	return msgs
 }
 
-func TestUpgradingCoversMoves(t *testing.T) {
-	root := repoRoot(t)
-	dir := filepath.Join(root, "internal", "repocheck", "testdata", "moves")
+// loadMoves returns every pair of every testdata/moves file, reporting a
+// malformed file as a test error.
+func loadMoves(t *testing.T) []movePair {
+	t.Helper()
+	dir := filepath.Join(repoRoot(t), "internal", "repocheck", "testdata", "moves")
 	var moves []movePair
 	entries, err := os.ReadDir(dir)
 	if err != nil && !os.IsNotExist(err) {
@@ -129,12 +131,30 @@ func TestUpgradingCoversMoves(t *testing.T) {
 		}
 		moves = append(moves, ps...)
 	}
+	return moves
+}
+
+func TestUpgradingCoversMoves(t *testing.T) {
+	moves := loadMoves(t)
 	page := readRepoFile(t, "docs", "upgrading.md")
 	if !strings.Contains(page, "\n"+upgradeHeading+"\n") {
 		t.Fatalf("docs/upgrading.md has no %q heading", upgradeHeading)
 	}
 	for _, m := range diffMoves(moves, parseUpgradeRows(page)) {
 		t.Error(m)
+	}
+}
+
+// TestUpgradingLinksChangelogAndIsIndexed pins the release-note wiring: the
+// page links the CHANGELOG.md that release-please writes the 0.4.0 entry into,
+// and docs/README.md lists the page.
+func TestUpgradingLinksChangelogAndIsIndexed(t *testing.T) {
+	page := readRepoFile(t, "docs", "upgrading.md")
+	if !strings.Contains(page, "](https://github.com/azrtydxb/momo/blob/main/CHANGELOG.md") {
+		t.Error("docs/upgrading.md must link the CHANGELOG.md of the repository")
+	}
+	if idx := readRepoFile(t, "docs", "README.md"); !strings.Contains(idx, "](upgrading.md)") {
+		t.Error("docs/README.md must link upgrading.md")
 	}
 }
 
