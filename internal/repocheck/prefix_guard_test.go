@@ -64,6 +64,9 @@ func TestRootFilePrefixes(t *testing.T) {
 			files = append(files, e.Name())
 		}
 	}
+	if len(files) == 0 {
+		t.Fatal("no .go files found in the repository root; the guard would pass without checking anything")
+	}
 	for _, p := range rootPrefixProblems(files) {
 		t.Error(p)
 	}
