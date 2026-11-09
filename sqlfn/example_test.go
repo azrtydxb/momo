@@ -36,7 +36,7 @@ func ExampleCase() {
 	size.AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:
-	// CASE WHEN "docs"."hits" > $1 THEN $2 ELSE $3 END [100 big]
+	// CASE WHEN "docs"."hits" > $1 THEN $2 ELSE $3 END [100 big small]
 }
 
 // Add binds the value as a parameter; arithmetic accepts numeric columns only.

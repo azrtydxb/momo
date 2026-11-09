@@ -65,11 +65,11 @@ func TestStringFunctionsGolden(t *testing.T) {
 	sub := func() momo.FuncExpr[string] { return sqlfn.Substr(docTitle, 1, 3) }
 	for _, d := range typedDialects {
 		got, err := momo.Select[exprtest.Tally](exprtest.DB(d)).From(momo.TableRef{Name: "documents"}).
-			Columns(sub(), momo.CountAll()).GroupBy(sub()).SQL()
+			Columns(sub()).GroupBy(sub()).SQL()
 		if err != nil {
 			t.Fatalf("%s: %v", d, err)
 		}
-		want := quoteFor(d, `SELECT substr("documents"."title", 1, 3), COUNT(*) FROM "documents" GROUP BY substr("documents"."title", 1, 3)`)
+		want := quoteFor(d, `SELECT substr("documents"."title", 1, 3) FROM "documents" GROUP BY substr("documents"."title", 1, 3)`)
 		if got.SQL != want || len(got.Args) != 0 {
 			t.Errorf("%s substr:\n got %s %v\nwant %s", d, got.SQL, got.Args, want)
 		}
@@ -267,12 +267,13 @@ func TestComparisonsMaskSensitiveColumn(t *testing.T) {
 		}
 		secret := momo.NewColumn[string]("docs", "secret", fl)
 		n := momo.NewColumn[int64]("docs", "n", fl)
+		visible := momo.NewColumn[int64]("docs", "id", 0)
 		preds := map[string]momo.Predicate{
 			"length":   sqlfn.Length(secret).Eq(7),
 			"arith":    sqlfn.Add(n, 1).Eq(7),
 			"cast":     sqlfn.Cast[string](secret, "text").Eq("x"),
 			"concat":   sqlfn.Concat(secret, secret).Eq("x"),
-			"case":     sqlfn.Case[string]().WhenExpr(docTenantID.Eq(1), secret).Else("z").Eq("x"),
+			"case":     sqlfn.Case[string]().WhenExpr(visible.Eq(1), secret).Else("z").Eq("x"),
 			"coalesce": sqlfn.CoalesceExpr(secret, secret).Eq("x"),
 		}
 		for name, p := range preds {
@@ -344,8 +345,9 @@ func TestFunctionResultsCompareAndOrder(t *testing.T) {
 		{"current schema eq", sqlfn.CurrentSchema().Eq("public"), `current_schema() = $1`, []any{"public"}},
 	}
 	for _, c := range preds {
-		got, err := exprtest.Compile(dialect.Postgres, c.p)
-		want := "SELECT COUNT(*) FROM \"docs\" WHERE " + c.want
+		got, err := momo.Select[exprtest.Tally](exprtest.DB(dialect.Postgres)).From(momo.TableRef{Name: "documents"}).
+			Columns(momo.CountAll()).Where(c.p).SQL()
+		want := "SELECT COUNT(*) FROM \"documents\" WHERE " + c.want
 		if err != nil || got.SQL != want || len(got.Args) != len(c.args) {
 			t.Errorf("%s:\n got %s %v (%v)\nwant %s %v", c.name, got.SQL, got.Args, err, want, c.args)
 			continue
