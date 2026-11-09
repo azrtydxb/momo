@@ -176,7 +176,7 @@ func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
 - Read the URL from the environment, never hard-code credentials.
 - Pool sizing: Momo documents no recommendation and sets nothing. pgxpool
   options (for example `pool_max_conns=N` in the URL) apply. Each open `Tx`,
-  `WithSearch` block, `Replace` and `CreateGraph` holds one connection for its
+  `vecsearch.With` block, `Replace` and `CreateGraph` holds one connection for its
   whole duration.
 
 Other constructors:
@@ -1347,7 +1347,7 @@ func retrySerializable(ctx context.Context, db *momo.DB, fn func(tx *momo.Tx) er
 - On a pinned connection (`db.OnConn(pc)`) transactions are not available:
   `Begin`, `Tx`, `Replace`, `CreateGraph` return `ErrUnsupported`.
 - Several momo helpers open their own transaction on a `*DB` and a savepoint on a
-  `*Tx`: `Replace`, `CreateGraph`, chunked `Insert.Models`, `WithSearch`.
+  `*Tx`: `Replace`, `CreateGraph`, chunked `Insert.Models`, `vecsearch.With`.
 
 Details: README section 8. Example: [transactions](../examples/transactions/).
 
@@ -1571,15 +1571,15 @@ items, err := momo.Select[models.Item](q).
   index entirely. Order among equal distances is unspecified. Check the plan
   with `Explain` (see [vector-search](../examples/vector-search/)).
 
-Search settings (transaction-scoped; revert at commit or rollback; safe behind
-PgBouncer):
+Search settings, package `github.com/azrtydxb/momo/vecsearch` (transaction-scoped;
+revert at commit or rollback; safe behind PgBouncer):
 
 <!-- docscheck:fragment -->
 
 ```go
-err := db.WithSearch(ctx, momo.SearchSettings{
+err := vecsearch.With(ctx, db, vecsearch.Settings{
 	HNSWEfSearch:          100,                        // 1..1000 (default 40; at least your LIMIT)
-	HNSWIterativeScan:     momo.IterativeRelaxedOrder, // pgvector >= 0.8: filtered searches
+	HNSWIterativeScan:     vecsearch.IterativeRelaxedOrder, // pgvector >= 0.8: filtered searches
 	HNSWMaxScanTuples:     20000,                      // pgvector >= 0.8
 	HNSWScanMemMultiplier: 2,                          // pgvector >= 0.8; 1..1000 x work_mem
 }, func(tx *momo.Tx) error {
@@ -1588,15 +1588,15 @@ err := db.WithSearch(ctx, momo.SearchSettings{
 		OrderBy(momo.CosineDistance(item.Embedding, query).Asc()).Limit(10).All(ctx)
 	return err
 })
-// Inside an existing transaction: tx.SetSearch(ctx, settings)
+// Inside an existing transaction: vecsearch.Apply(ctx, tx, settings)
 ```
 
 Fields: `ExactSearch` (turns off index AND bitmap scans for the whole transaction:
 exact results, but every other index lookup in that transaction also goes
 sequential, so keep it short and dedicated), `HNSWEfSearch`,
-`HNSWIterativeScan` (`IterativeOff`, `IterativeRelaxedOrder`,
-`IterativeStrictOrder`), `HNSWMaxScanTuples`, `HNSWScanMemMultiplier` (float, 1..1000), `IVFFlatProbes`,
-`IVFFlatIterativeScan` (`IterativeOff`, `IterativeRelaxedOrder` only),
+`HNSWIterativeScan` (`vecsearch.IterativeOff`, `vecsearch.IterativeRelaxedOrder`,
+`vecsearch.IterativeStrictOrder`), `HNSWMaxScanTuples`, `HNSWScanMemMultiplier` (float, 1..1000), `IVFFlatProbes`,
+`IVFFlatIterativeScan` (`vecsearch.IterativeOff`, `vecsearch.IterativeRelaxedOrder` only),
 `IVFFlatMaxProbes`. Zero leaves the server default. Out of range:
 `ErrValidation`. Iterative/max-scan/scan-mem/max-probes fields on pgvector older than 0.8.0
 or a missing extension: `ErrUnsupported`.
@@ -1613,7 +1613,7 @@ Pitfalls:
 - Filtered search: with iterative scan off, an ANN index returns its nearest
   candidates and applies `Where` afterwards, so a selective filter can return FEWER
   than `Limit` rows even when enough match. Set `HNSWIterativeScan`
-  (`IterativeRelaxedOrder`; results stay approximate and can still be short when
+  (`vecsearch.IterativeRelaxedOrder`; results stay approximate and can still be short when
   the filter matches fewer rows than `HNSWMaxScanTuples`).
 - Small-table seq scan: below a few thousand rows the planner prefers a
   sequential scan, so `Explain` shows no index use in tests. That is correct. To
@@ -1665,7 +1665,7 @@ reports a column only for NOT NULL). Use `Constraint` for those three.
 | `ErrBusy`                | lock not available (55P03)                                                                                                                                                                                                                                                                                | retry later                                         |
 | `ErrOptimisticLock`      | `Update.Model` on a versioned model with a stale version                                                                                                                                                                                                                                                  | reload, reapply, retry                              |
 | `ErrUnfilteredMutation`  | `Update`/`Delete` without `Where` and without `AllRows()`                                                                                                                                                                                                                                                 | add a filter                                        |
-| `ErrValidation`          | bad input detected before the database: wrong vector dim, `After` count, empty `Models`, writing a reserved/read-only column, plain `Delete` on a soft-delete model, negative `Limit`, `Link` with NULL key, bad `SearchSettings`, qualifier not in FROM                                                  | programmer or input error; fix the call             |
+| `ErrValidation`          | bad input detected before the database: wrong vector dim, `After` count, empty `Models`, writing a reserved/read-only column, plain `Delete` on a soft-delete model, negative `Limit`, `Link` with NULL key, bad `vecsearch.Settings`, qualifier not in FROM                                              | programmer or input error; fix the call             |
 | `ErrUnsupported`         | dialect or driver cannot do it: `Each`/`Iter` with `Preload`; `Joined` shape; `LoadPerParentLimit` on to-one; belongs-to helpers; keyset on nullable key; `IndexedBy`; iterative search on pgvector < 0.8; simple protocol exec mode; non-standard isolation; transactions on a pinned conn; SQLite/MySQL | redesign the call; not retryable                    |
 | `ErrAdoptedTx`           | `Commit` or `Rollback` on a `*Tx` from `AdoptTx`; the caller owns that transaction                                                                                                                                                                                                                        | finish the transaction with the caller's own handle |
 | `ErrTxDone`              | `*Tx` already committed or rolled back                                                                                                                                                                                                                                                                    | do not reuse a finished `Tx`                        |
@@ -1843,7 +1843,7 @@ report)`, a development hook that reports once per statement shape per scope
     filtered by a dims column; no hnsw/ivfflat index on it). hnsw/ivfflat indexes
     need an explicit opclass matching the distance function used in queries;
     ivfflat needs `lists`.
-18. Run vector queries that need tuning inside `db.WithSearch` and use `tx`
+18. Run vector queries that need tuning inside `vecsearch.With` and use `tx`
     there; use iterative scan for filtered ANN searches; expect seq scans on small
     tables.
 19. Migrations: `diff`, review SQL, commit all files, `apply`. Never edit an

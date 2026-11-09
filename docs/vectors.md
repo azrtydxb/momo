@@ -249,43 +249,43 @@ vector, `vector_l2_ops`) is stored as empty, which matches inspection.
 
 ## Search settings
 
-`momo.SearchSettings` applies pgvector settings for one transaction. Zero
+`vecsearch.Settings` (package `github.com/azrtydxb/momo/vecsearch`) applies pgvector settings for one transaction. Zero
 values leave the server default alone. Settings use
 `set_config(name, value, true)`, so they revert at commit or rollback and
 never reach a pooled connection, which makes them safe behind PgBouncer in
 transaction mode.
 
-| Field                   | Setting                                            | Range                                                           |
-| ----------------------- | -------------------------------------------------- | --------------------------------------------------------------- |
-| `HNSWEfSearch`          | `hnsw.ef_search`                                   | 1 to 1000                                                       |
-| `HNSWIterativeScan`     | `hnsw.iterative_scan`                              | `IterativeOff`, `IterativeRelaxedOrder`, `IterativeStrictOrder` |
-| `HNSWMaxScanTuples`     | `hnsw.max_scan_tuples`                             | 1 to 2147483647 (server default 20000)                          |
-| `HNSWScanMemMultiplier` | `hnsw.scan_mem_multiplier`                         | 1 to 1000, float, a multiple of `work_mem`                      |
-| `IVFFlatProbes`         | `ivfflat.probes`                                   | 1 to 32768                                                      |
-| `IVFFlatIterativeScan`  | `ivfflat.iterative_scan`                           | `IterativeOff` or `IterativeRelaxedOrder`                       |
-| `IVFFlatMaxProbes`      | `ivfflat.max_probes`                               | 1 to 32768                                                      |
-| `ExactSearch`           | `enable_indexscan`, `enable_bitmapscan` set to off | bool                                                            |
+| Field                   | Setting                                            | Range                                                                                         |
+| ----------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `HNSWEfSearch`          | `hnsw.ef_search`                                   | 1 to 1000                                                                                     |
+| `HNSWIterativeScan`     | `hnsw.iterative_scan`                              | `vecsearch.IterativeOff`, `vecsearch.IterativeRelaxedOrder`, `vecsearch.IterativeStrictOrder` |
+| `HNSWMaxScanTuples`     | `hnsw.max_scan_tuples`                             | 1 to 2147483647 (server default 20000)                                                        |
+| `HNSWScanMemMultiplier` | `hnsw.scan_mem_multiplier`                         | 1 to 1000, float, a multiple of `work_mem`                                                    |
+| `IVFFlatProbes`         | `ivfflat.probes`                                   | 1 to 32768                                                                                    |
+| `IVFFlatIterativeScan`  | `ivfflat.iterative_scan`                           | `vecsearch.IterativeOff` or `vecsearch.IterativeRelaxedOrder`                                 |
+| `IVFFlatMaxProbes`      | `ivfflat.max_probes`                               | 1 to 32768                                                                                    |
+| `ExactSearch`           | `enable_indexscan`, `enable_bitmapscan` set to off | bool                                                                                          |
 
-`SearchSettings.Validate` reports a value outside its range as
+`Settings.Validate` reports a value outside its range as
 `ErrValidation`. The iterative fields, `HNSWMaxScanTuples`,
 `HNSWScanMemMultiplier` and `IVFFlatMaxProbes` need pgvector 0.8.0 or newer. When any of them is set,
-`SetSearch` reads `pg_extension` and returns `ErrUnsupported` on an older or
+`vecsearch.Apply` reads `pg_extension` and returns `ErrUnsupported` on an older or
 missing extension, instead of letting the server accept an unknown setting as
 a placeholder.
 
-Use `DB.WithSearch` for a block, or `Tx.SetSearch` inside a transaction you
-already have (`ExampleDB_WithSearch`, `ExampleTx_SetSearch`):
+Use `vecsearch.With` for a block, or `vecsearch.Apply` inside a transaction you
+already have (`ExampleWith`, `ExampleApply`):
 
 <!-- docscheck:fragment -->
 
 ```go
-settings := momo.SearchSettings{
+settings := vecsearch.Settings{
 	HNSWEfSearch:      100,
-	HNSWIterativeScan: momo.IterativeRelaxedOrder, // needs pgvector 0.8
+	HNSWIterativeScan: vecsearch.IterativeRelaxedOrder, // needs pgvector 0.8
 	HNSWMaxScanTuples: 20000,
 	HNSWScanMemMultiplier: 2, // pgvector 0.8: iterative scan memory, times work_mem
 }
-err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
+err := vecsearch.With(ctx, db, settings, func(tx *momo.Tx) error {
 	_, err := momo.Select[example.Document](tx).
 		OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
 		Limit(10).
@@ -383,7 +383,7 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
   and Jaccard return `ErrUnsupported` at build time. SQLite bit
   vectors keep only the packed bytes, so the declared column length is
   authoritative for `Len`. See [SQLite and sqlite-vec](#sqlite-and-sqlite-vec).
-- `SetSearch` on SQLite: `ExactSearch` alone is a no-op, every search is
+- `vecsearch.Apply` on SQLite: `ExactSearch` alone is a no-op, every search is
   already exact, and any other field is `ErrUnsupported`.
 - MariaDB VECTOR INDEX is approximate; see "MariaDB and MySQL" below.
 
@@ -446,7 +446,7 @@ the same vectors into pgvector and requires the same ids for cosine, L2 and L1.
 `schema.ErrInvalidVectorIndex`. An internal check turns a request for any index
 method on a dialect that lists none into `ErrUnsupported`; it becomes public
 when a SQLite migration dialect needs it. SQLite itself does not parse an index method, so
-nothing is accepted silently. `ExactSearch` in `SearchSettings` is a no-op (every
+nothing is accepted silently. `ExactSearch` in `vecsearch.Settings` is a no-op (every
 search is exact) and any other setting is `ErrUnsupported`. The sqlite-vec
 virtual tables (`vec0`, which have an index of their own) are not wrapped.
 

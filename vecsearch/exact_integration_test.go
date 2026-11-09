@@ -2,7 +2,7 @@
 
 //go:build integration
 
-package momo_test
+package vecsearch_test
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/vecsearch"
 )
 
 // explain returns the EXPLAIN plan text of query inside tx.
@@ -45,7 +46,7 @@ func TestExactSearchBypassesVectorIndex(t *testing.T) {
 	// Control: with the planner steered away from a sequential scan, the
 	// ORDER BY ... LIMIT query uses the hnsw index. This proves the exact
 	// case below really changed the plan.
-	err := db.WithSearch(ctx, momo.SearchSettings{}, func(tx *momo.Tx) error {
+	err := vecsearch.With(ctx, db, vecsearch.Settings{}, func(tx *momo.Tx) error {
 		if err := tx.SetLocal(ctx, "enable_seqscan", "off"); err != nil {
 			return err
 		}
@@ -59,7 +60,7 @@ func TestExactSearchBypassesVectorIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = db.WithSearch(ctx, momo.SearchSettings{ExactSearch: true}, func(tx *momo.Tx) error {
+	err = vecsearch.With(ctx, db, vecsearch.Settings{ExactSearch: true}, func(tx *momo.Tx) error {
 		plan := explain(ctx, t, tx, query)
 		if strings.Contains(plan, "exact_items_emb") || strings.Contains(plan, "Index Scan") {
 			t.Errorf("ExactSearch plan still uses an index:\n%s", plan)
@@ -78,9 +79,9 @@ func TestSearchIterativeSettingsOnInstalledPgvector(t *testing.T) {
 	ctx := context.Background()
 	db := momo.New(pgxdriver.New(singleConnPool(t)))
 	mustExecPG(t, db, "CREATE EXTENSION IF NOT EXISTS vector")
-	err := db.WithSearch(ctx, momo.SearchSettings{
-		HNSWIterativeScan: momo.IterativeRelaxedOrder, HNSWMaxScanTuples: 1000,
-		IVFFlatIterativeScan: momo.IterativeRelaxedOrder, IVFFlatMaxProbes: 20,
+	err := vecsearch.With(ctx, db, vecsearch.Settings{
+		HNSWIterativeScan: vecsearch.IterativeRelaxedOrder, HNSWMaxScanTuples: 1000,
+		IVFFlatIterativeScan: vecsearch.IterativeRelaxedOrder, IVFFlatMaxProbes: 20,
 	}, func(tx *momo.Tx) error {
 		return checkSetting(ctx, tx, "hnsw.max_scan_tuples", "1000")
 	})
@@ -113,7 +114,7 @@ func TestSearchSettingsPgBouncer(t *testing.T) {
 	t.Cleanup(pool.Close)
 	db := momo.New(pgxdriver.New(pool))
 
-	err = db.WithSearch(ctx, momo.SearchSettings{HNSWEfSearch: 321}, func(tx *momo.Tx) error {
+	err = vecsearch.With(ctx, db, vecsearch.Settings{HNSWEfSearch: 321}, func(tx *momo.Tx) error {
 		return checkSetting(ctx, tx, "hnsw.ef_search", "321")
 	})
 	if err != nil {
@@ -143,7 +144,7 @@ func TestSearchScanMemMultiplierScoped(t *testing.T) {
 	if err != nil || len(before) != 1 {
 		t.Fatalf("reading the default: %v %v", before, err)
 	}
-	err = db.WithSearch(ctx, momo.SearchSettings{HNSWIterativeScan: momo.IterativeRelaxedOrder, HNSWScanMemMultiplier: 2.5}, func(tx *momo.Tx) error {
+	err = vecsearch.With(ctx, db, vecsearch.Settings{HNSWIterativeScan: vecsearch.IterativeRelaxedOrder, HNSWScanMemMultiplier: 2.5}, func(tx *momo.Tx) error {
 		return checkSetting(ctx, tx, "hnsw.scan_mem_multiplier", "2.5")
 	})
 	if err != nil {

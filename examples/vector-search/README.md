@@ -20,7 +20,7 @@ Nearest-neighbour search with pgvector over items that carry an embedding.
   after it returns its nearest candidates, which can leave fewer rows than the
   limit; `HNSWIterativeScan` (pgvector 0.8 or newer) keeps scanning until enough
   rows pass.
-- `db.WithSearch` applies settings to one transaction only, so they never leak to
+- `vecsearch.With` applies settings to one transaction only, so they never leak to
   a pooled connection and are safe behind PgBouncer: `HNSWEfSearch` trades
   latency for recall, and `ExactSearch` switches the index off for exact results.
 - `Explain` shows whether the index is used. On a table this small the planner

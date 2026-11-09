@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo_test
+package vecsearch_test
 
 import (
 	"errors"
@@ -11,16 +11,17 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/vecsearch"
 )
 
-func TestSearchSetLocalBinds(t *testing.T) {
+func TestApplyBindsSetConfig(t *testing.T) {
 	drv := fakedriver.New(dialect.Postgres)
 	db := momo.New(drv)
 	tx, err := db.Begin(t.Context(), momo.TxOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.SetSearch(t.Context(), momo.SearchSettings{HNSWEfSearch: 100}); err != nil {
+	if err := vecsearch.Apply(t.Context(), tx, vecsearch.Settings{HNSWEfSearch: 100}); err != nil {
 		t.Fatal(err)
 	}
 	calls := drv.Calls()
@@ -40,10 +41,10 @@ func TestSearchSQLiteSupport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.SetSearch(t.Context(), momo.SearchSettings{ExactSearch: true}); err != nil {
+	if err := vecsearch.Apply(t.Context(), tx, vecsearch.Settings{ExactSearch: true}); err != nil {
 		t.Fatalf("ExactSearch alone on SQLite: %v, want no-op", err)
 	}
-	if err := tx.SetSearch(t.Context(), momo.SearchSettings{HNSWEfSearch: 10}); !errors.Is(err, momo.ErrUnsupported) {
+	if err := vecsearch.Apply(t.Context(), tx, vecsearch.Settings{HNSWEfSearch: 10}); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}
 	if n := len(drv.Calls()); n != 0 {
@@ -63,7 +64,7 @@ func TestSearchIterativeNeedsPgvector08(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = tx.SetSearch(t.Context(), momo.SearchSettings{HNSWIterativeScan: momo.IterativeRelaxedOrder})
+		err = vecsearch.Apply(t.Context(), tx, vecsearch.Settings{HNSWIterativeScan: vecsearch.IterativeRelaxedOrder})
 		if tc.ok && err != nil {
 			t.Fatalf("%s: %v", tc.version, err)
 		}
@@ -92,7 +93,7 @@ func TestSearchScanMemMultiplierNeedsPgvector08(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = tx.SetSearch(t.Context(), momo.SearchSettings{HNSWScanMemMultiplier: 2})
+		err = vecsearch.Apply(t.Context(), tx, vecsearch.Settings{HNSWScanMemMultiplier: 2})
 		if tc.ok {
 			if err != nil {
 				t.Fatalf("%s: %v", tc.version, err)
@@ -127,7 +128,7 @@ func TestSearchNoVersionQueryWithoutIterativeFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.SetSearch(t.Context(), momo.SearchSettings{HNSWEfSearch: 50, IVFFlatProbes: 3, ExactSearch: true}); err != nil {
+	if err := vecsearch.Apply(t.Context(), tx, vecsearch.Settings{HNSWEfSearch: 50, IVFFlatProbes: 3, ExactSearch: true}); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range drv.Calls() {
@@ -143,7 +144,46 @@ func TestSearchMySQLExactSearchUnsupported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.SetSearch(t.Context(), momo.SearchSettings{ExactSearch: true}); !errors.Is(err, momo.ErrUnsupported) {
+	if err := vecsearch.Apply(t.Context(), tx, vecsearch.Settings{ExactSearch: true}); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
+	}
+}
+
+func TestWithAppliesSettingsAndRunsCallback(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv)
+	ran := false
+	err := vecsearch.With(t.Context(), db, vecsearch.Settings{HNSWEfSearch: 77}, func(tx *momo.Tx) error {
+		ran = true
+		return nil
+	})
+	if err != nil || !ran {
+		t.Fatalf("With = %v, ran = %v, want nil and true", err, ran)
+	}
+	found := false
+	for _, c := range drv.Calls() {
+		if strings.Contains(c.SQL, "set_config") && slices.Equal(c.Args, []any{"hnsw.ef_search", "77"}) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no set_config(hnsw.ef_search, 77) among %v", drv.Calls())
+	}
+	if drv.Commits() != 1 {
+		t.Fatalf("commits = %d, want 1", drv.Commits())
+	}
+}
+
+func TestWithRejectsInvalidSettingsBeforeBegin(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	err := vecsearch.With(t.Context(), momo.New(drv), vecsearch.Settings{HNSWEfSearch: 5000}, func(*momo.Tx) error {
+		t.Fatal("callback ran")
+		return nil
+	})
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if n := len(drv.Calls()); n != 0 {
+		t.Fatalf("invalid settings issued %d statements, want none", n)
 	}
 }
