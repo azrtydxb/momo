@@ -10,16 +10,14 @@ migrations are built in as well: `momo migrate diff` compares your structs with
 the last snapshot and writes the SQL.
 
 Status: v0.3.0, pre-v1, with no compatibility promise between releases. This <!-- x-release-please-version -->
-release supports PostgreSQL with pgvector, and the `momo migrate` command is
-PostgreSQL-only. SQLite is usable through the cgo driver `driver/sqlitedriver`
-(not on Windows), which also runs the vector builders through sqlite-vec, or
-through the pure-Go driver `driver/sqlitepure` (no cgo, no vectors). SQLite
-migrations are a library API (`migrate/sqlite` with `migrate.NewEngine`), not a
-CLI command. MySQL 8.4, MySQL 9.7 and MariaDB 11.8 have a driver
-(`driver/mysqldriver`) for queries and writes and a library migration dialect
-(`migrate/mysql`); MySQL stores vectors only, and MariaDB has distance
-functions (see [capabilities](docs/capabilities.md)). Momo
-needs Go 1.26 or newer (see `go.mod` for the exact patch floor, 1.26.10).
+release is tested against PostgreSQL with pgvector. The databases below are
+generated from the driver packages; see [capabilities](docs/capabilities.md)
+for what each one supports.
+
+<!-- generated:status -->
+<!-- /generated:status -->
+
+Momo needs Go 1.26 or newer (see `go.mod` for the exact patch floor, 1.26.10).
 
 ## Install
 

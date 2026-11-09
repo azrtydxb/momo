@@ -5,10 +5,13 @@ Momo v0.3.0, PostgreSQL (SQLite and MySQL as libraries, sections 3a and 9). Ever
 behavior are named. For the first run see README, [Create and apply the
 migration](../README.md#3-create-and-apply-the-migration).
 
-`momo migrate` runs PostgreSQL only; with another dialect it exits 2
-("migrations for dialect ... are not available yet"). SQLite has a migration
-dialect for use as a library, described in section 3a, and MySQL and MariaDB
-have one described in section 9.
+With a dialect the `momo migrate` command does not link, it exits 2
+("migrations for dialect ... are not available yet"). The library migration
+dialects are described in section 3a (SQLite) and section 9 (MySQL and
+MariaDB):
+
+<!-- generated:status -->
+<!-- /generated:status -->
 
 ## 1. Model
 

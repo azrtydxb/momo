@@ -26,18 +26,14 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 
 ## 1. Scope
 
-- v0.3.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5; SQLite and MySQL are covered by the next bullet. <!-- x-release-please-version -->
-- PostgreSQL is the reference database. SQLite is usable through
-  `driver/sqlitedriver` (mattn go-sqlite3 and sqlite-vec; it needs cgo and does
-  not build on Windows) or through the pure-Go `driver/sqlitepure`
-  (modernc.org/sqlite; no cgo, no vectors, `sqlitepure.Config` is the same type
-  as `sqlitedriver.Config`), but `momo migrate` exits 2 for SQLite and the
-  vector builders work on `sqlitedriver` only (`sqlitepure` reports
-  `Vectors=false`). SQLite and MySQL migrations exist as libraries
-  (`migrate/sqlite`, `migrate/mysql` with `migrate.NewEngine`), not as CLI
-  commands. MySQL and MariaDB have a driver package of
-  their own (MySQL stores vectors only; MariaDB has distance functions); check the MySQL column of docs/capabilities.md before relying on a
-  feature. Keep `dialects:` at `[postgres]` for generated migrations.
+- v0.3.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5; the other databases are in the status block below. <!-- x-release-please-version -->
+
+Database status:
+
+<!-- generated:status -->
+<!-- /generated:status -->
+
+- PostgreSQL is the reference database. Check the dialect columns of docs/capabilities.md before relying on a feature on another database. Keep `dialects:` at `[postgres]` for generated migrations. `momo migrate` exits 2 for a dialect it does not link; library migrations go through `migrate.NewEngine`.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only in the CLI. No `migrate rollback`, `new`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
 - `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.

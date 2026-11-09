@@ -6,13 +6,17 @@ necessarily broken.
 
 ## Module
 
-| Item        | Value                                                                                                                                                                                                                                                                                                                                                                               |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Module path | `github.com/azrtydxb/momo`                                                                                                                                                                                                                                                                                                                                                          |
-| Version     | v0.3.0 (tags use a `v` prefix) <!-- x-release-please-version -->                                                                                                                                                                                                                                                                                                                    |
-| Install     | `go get github.com/azrtydxb/momo@v0.3.0` <!-- x-release-please-version -->                                                                                                                                                                                                                                                                                                          |
-| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path)                                                                                                                                                                                                                                                                                                          |
-| Databases   | PostgreSQL with pgvector; MySQL 8.4, MySQL 9.7 and MariaDB 11.8 for queries and writes, with library migrations (`migrate/mysql`; MySQL stores vectors only, MariaDB has distance functions); SQLite through the cgo driver (queries, writes, sqlite-vec vectors) or the pure-Go driver (no vectors), with library migrations (`migrate/sqlite`); `momo migrate` is PostgreSQL-only |
+| Item        | Value                                                                      |
+| ----------- | -------------------------------------------------------------------------- |
+| Module path | `github.com/azrtydxb/momo`                                                 |
+| Version     | v0.3.0 (tags use a `v` prefix) <!-- x-release-please-version -->           |
+| Install     | `go get github.com/azrtydxb/momo@v0.3.0` <!-- x-release-please-version --> |
+| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path) |
+
+## Databases
+
+<!-- generated:status -->
+<!-- /generated:status -->
 
 ## Go
 
@@ -26,15 +30,8 @@ necessarily broken.
 
 ## Dependencies (`go.mod`)
 
-| Module                                     | Version                                                                             |
-| ------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `github.com/jackc/pgx/v5`                  | v5.12.0                                                                             |
-| `go.yaml.in/yaml/v3`                       | v3.0.6 (`momo.yaml`)                                                                |
-| `golang.org/x/tools`                       | v0.52.0 (generator)                                                                 |
-| `github.com/go-sql-driver/mysql`           | v1.10.1; used by `driver/mysqldriver` and by test harness code (`internal/testdb`). |
-| `github.com/mattn/go-sqlite3`              | v1.14.53; used by `driver/sqlitedriver` (cgo).                                      |
-| `github.com/asg017/sqlite-vec-go-bindings` | v0.1.6; sqlite-vec for `driver/sqlitedriver` (cgo).                                 |
-| `modernc.org/sqlite`                       | v1.60.1; pure-Go SQLite for `driver/sqlitepure` (no cgo, no vectors).               |
+<!-- generated:dependencies -->
+<!-- /generated:dependencies -->
 
 ## Operating systems
 
