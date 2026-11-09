@@ -1,0 +1,11 @@
+# Full-text search moves to github.com/azrtydxb/momo/fts and drops the TS prefix.
+TSExpr Expr
+ToTSVector ToVector
+WebsearchToTSQuery WebsearchToQuery
+PlainToTSQuery PlainToQuery
+PhraseToTSQuery PhraseToQuery
+ToTSQuery ToQuery
+TSMatch Match
+TSRank Rank
+TSRankCD RankCD
+TSHeadline Headline

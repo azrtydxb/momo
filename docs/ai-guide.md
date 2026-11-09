@@ -43,7 +43,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 - `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
 - Reciprocal-rank-fusion hybrid search
   does not exist. Use `momo.SQL` / `momo.TypedSQL` for it. Full-text search
-  (`types.TSVector`, `momo.TSMatch`, `momo.TSRankCD`, `momo.TSHeadline`, the
+  (`types.TSVector`, `fts.Match`, `fts.RankCD`, `fts.Headline`, the
   query builders) exists on PostgreSQL; combine it with a vector distance in
   one score as shown in [fulltext.md](fulltext.md).
 
