@@ -209,3 +209,15 @@ Decision (2026-11-07): all three. Private vulnerability reporting and secret sca
 - Decide later
 
 Decision (2026-11-09): required on main. The `apidiff-docs` job (sprint 6, story apidiff-docs-gate) is added to main's required status checks after it has passed on a real pull request (the sprint-6 → main PR). A PR changes the exported API only with a docs change or the line `Docs: no reader-visible change: <reason>`.
+
+## Commit gate cannot lint nested Go modules
+
+Question: the commit gate's golangci-lint runs from the root module and blocks
+any commit touching a file of a nested module (`bench/`, `examples/*`,
+`internal/integration`, the compat fixtures) with "main module does not contain
+package". How do we land such a change?
+
+Decision (2026-11-09): for the vecsearch merge, cherry-pick the story branch's
+own bench commits (already green on ci-agent, bench-module job included) onto
+sprint-6. CI lint and the bench-module job remain the check for nested modules.
+The gate gap is a procoder issue to raise; do not disable golangci-lint.
