@@ -18,18 +18,18 @@ import (
 
 // What counts as an identifier reference in the docs. Only an inline code span
 // (backticks on one line, outside a fenced block) whose whole content has one
-// of these shapes is checked, after a trailing call or type-argument list such
-// as (ctx) or [T] is cut off:
+// of these shapes is checked, after type arguments such as [T] and a trailing
+// call such as (ctx) are removed:
 //
 //	pkg.Name           pkg is the name of a package of this module (momo, types, vecop, ...)
 //	pkg.Type.Member    a method or field of a type of that package
 //	Type.Member        Type is an exported type of the root package, momo
 //
 // pkg is checked only for the packages in APIPackages (momo, dialect, schema,
-// types, vector and the feature packages). Other module packages share names
+// types, vector, migrate, momolog, momotest and the feature packages). Other module packages share names
 // with third-party libraries (importer/gorm and gorm.Model, migrate/mysql and
 // mysql.MySQLError), so a reference to them cannot be told apart. docs/upgrading.md
-// is skipped: it names identifiers that no longer exist.
+// is checked except for the old-identifier column of its table.
 //
 // Name and Member must start with an upper-case letter. Everything else is
 // prose and is not checked: SQL, file names (go.mod), other libraries
@@ -48,24 +48,67 @@ type docRef struct {
 	text string // the span without backticks, after trimming a call or type-argument list
 }
 
-// extractRefs returns the identifier-shaped inline spans of one page, with
-// their 1-based line numbers. Fenced code blocks are skipped.
-func extractRefs(text string) []docRef {
-	var out []docRef
-	fenced := false
-	for i, line := range strings.Split(text, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "```") {
-			fenced = !fenced
-			continue
-		}
-		if fenced {
-			continue
-		}
-		for _, m := range spanRe.FindAllStringSubmatch(line, -1) {
-			s := m[1]
-			if k := strings.IndexAny(s, "(["); k >= 0 {
-				s = s[:k]
+// stripTypeArgs removes every [...] group (type arguments or an index) and
+// cuts the span at the first '(' (a call), so Relation[T].Has and
+// momo.Select[T](db) check as Relation.Has and momo.Select.
+func stripTypeArgs(s string) string {
+	var sb strings.Builder
+	depth := 0
+	for _, r := range s {
+		switch {
+		case r == '[':
+			depth++
+		case r == ']':
+			if depth > 0 {
+				depth--
 			}
+		case depth > 0:
+		case r == '(':
+			return sb.String()
+		default:
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
+var fenceRe = regexp.MustCompile("^\\s*(`{3,}|~{3,})")
+
+// extractRefs returns the identifier-shaped inline spans of one page, with
+// their 1-based line numbers. Fenced code blocks (``` or ~~~, closed by a fence
+// of the same character and at least the same length) are skipped. With
+// skipFirstCell, spans in the first cell of a table row are skipped too: the
+// upgrade table's first column names identifiers that no longer exist.
+func extractRefs(text string, skipFirstCell bool) []docRef {
+	var out []docRef
+	var open string // the opening fence; empty outside a block
+	for i, line := range strings.Split(text, "\n") {
+		if m := fenceRe.FindStringSubmatch(line); m != nil {
+			f := m[1]
+			rest := strings.TrimSpace(line[strings.Index(line, f)+len(f):])
+			switch {
+			case open == "":
+				open = f
+				continue
+			case f[0] == open[0] && len(f) >= len(open) && strings.Trim(rest, string(f[0])) == "":
+				open = ""
+				continue
+			}
+		}
+		if open != "" {
+			continue
+		}
+		limit := 0
+		if t := strings.TrimSpace(line); skipFirstCell && strings.HasPrefix(t, "|") {
+			if k := strings.Index(t[1:], "|"); k >= 0 {
+				limit = strings.Index(line, t) + 1 + k
+			}
+		}
+		for _, loc := range spanRe.FindAllStringSubmatchIndex(line, -1) {
+			if loc[0] < limit {
+				continue
+			}
+			s := stripTypeArgs(line[loc[2]:loc[3]])
 			if refRe.MatchString(s) {
 				out = append(out, docRef{line: i + 1, text: s})
 			}
@@ -141,10 +184,10 @@ func TestDocsIdentifiersResolve(t *testing.T) {
 			t.Fatal(err)
 		}
 		rel, _ := filepath.Rel(root, f)
-		if filepath.ToSlash(rel) == "docs/upgrading.md" {
-			continue // it lists the identifiers that were removed or moved, by design
-		}
-		for _, r := range extractRefs(string(b)) {
+		// docs/upgrading.md names the identifiers that were removed in the first
+		// column of its table; the new identifiers and the prose are checked.
+		upgrading := filepath.ToSlash(rel) == "docs/upgrading.md"
+		for _, r := range extractRefs(string(b), upgrading) {
 			ok, was := resolveRef(pkgs, r.text)
 			if !was {
 				continue
@@ -178,6 +221,12 @@ type Base struct{}
 func (Base) Close() {}
 type DB struct{ Base }
 func Select[T any]() {}
+type Expression[T any] interface{ And() }
+type Predicate = Expression[bool]
+type Codec interface {
+	sql.Scanner
+	SQLType() string
+}
 `)
 	vecop := parseSrc(t, "vecop", "package vecop\nfunc Cosine() {}\n")
 	pkgs := []*Package{root, vecop}
@@ -196,6 +245,10 @@ func Select[T any]() {}
 		{"Relation.Nope", false, true},
 		{"DB.Close", true, true}, // promoted through an embedded type
 		{"momo.Select", true, true},
+		{"Predicate.And", true, true},   // through the alias target
+		{"Predicate.Nope", false, true}, // the alias target is checked
+		{"momo.Codec.Scan", true, true}, // member of a cross-package embed
+		{"momo.Codec.SQLType", true, true},
 		{"sql.DB", true, false},    // another library
 		{"go.mod", true, false},    // a file name
 		{"momo.yaml", true, false}, // lower-case member
@@ -210,15 +263,37 @@ func Select[T any]() {}
 }
 
 func TestExtractRefs(t *testing.T) {
-	text := "see `momo.Hook` and `momo.Select[T](db)` and `SELECT x`\n```go\n`momo.Fenced`\n```\n`x` and `types.JSON`\n"
-	got := extractRefs(text)
-	var s []string
-	for _, r := range got {
-		s = append(s, fmt.Sprintf("%d:%s", r.line, r.text))
-	}
-	want := "1:momo.Hook,1:momo.Select,5:types.JSON"
-	if strings.Join(s, ",") != want {
-		t.Errorf("extractRefs = %v, want %s", s, want)
+	text := strings.Join([]string{
+		"see `momo.Hook` and `momo.Select[T](db)` and `SELECT x`",
+		"```go",
+		"`momo.Fenced`",
+		"```",
+		"`x` and `types.JSON` and `Relation[T].Has`",
+		"~~~",
+		"`momo.Tilde`",
+		"~~~",
+		"````md",
+		"```",
+		"`momo.Nested`",
+		"```",
+		"````",
+		"`momo.After`",
+		"| `momo.Old` | `momo.New` |",
+	}, "\n")
+	for _, tc := range []struct {
+		skipFirst bool
+		want      string
+	}{
+		{false, "1:momo.Hook,1:momo.Select,5:types.JSON,5:Relation.Has,14:momo.After,15:momo.Old,15:momo.New"},
+		{true, "1:momo.Hook,1:momo.Select,5:types.JSON,5:Relation.Has,14:momo.After,15:momo.New"},
+	} {
+		var s []string
+		for _, r := range extractRefs(text, tc.skipFirst) {
+			s = append(s, fmt.Sprintf("%d:%s", r.line, r.text))
+		}
+		if got := strings.Join(s, ","); got != tc.want {
+			t.Errorf("extractRefs(skipFirstCell=%v) = %s, want %s", tc.skipFirst, got, tc.want)
+		}
 	}
 }
 

@@ -18,7 +18,7 @@ import (
 // identifiers must carry a doc comment and appear in docs/reference.md: the
 // core, its public leaf packages and the feature packages split out of it.
 var APIPackages = []string{
-	".", "dialect", "schema", "types", "vector",
+	".", "dialect", "schema", "types", "vector", "migrate", "momolog", "momotest",
 	"advisory", "agg", "arrayop", "fts", "jsonop", "obs", "sqlfn", "timeop", "vecop", "vecsearch",
 }
 
@@ -72,6 +72,9 @@ func (p *Package) hasMember(typ, name string, depth int) bool {
 		return true
 	}
 	for _, e := range p.embeds[typ] {
+		if strings.Contains(e, ".") {
+			return true // embeds a type of another package: its members cannot be checked here
+		}
 		if p.hasMember(e, name, depth+1) {
 			return true
 		}
@@ -147,6 +150,11 @@ func (p *Package) scanGen(d *ast.GenDecl, add func(name, kind, doc string)) {
 			}
 			add(s.Name.Name, "type", doc)
 			p.scanType(s)
+			if s.Assign.IsValid() { // an alias has the members of its target
+				if e := embeddedName(s.Type); e != "" {
+					p.embeds[s.Name.Name] = append(p.embeds[s.Name.Name], e)
+				}
+			}
 		case *ast.ValueSpec:
 			kind := "var"
 			if d.Tok == token.CONST {
@@ -215,6 +223,10 @@ func embeddedName(e ast.Expr) string {
 		return embeddedName(t.X)
 	case *ast.Ident:
 		return t.Name
+	case *ast.SelectorExpr:
+		if x, ok := t.X.(*ast.Ident); ok {
+			return x.Name + "." + t.Sel.Name
+		}
 	}
 	return ""
 }

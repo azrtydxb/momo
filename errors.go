@@ -78,7 +78,9 @@ type Error struct {
 	detail string
 }
 
-// Error returns the message without the driver detail, which can quote row values.
+// Error returns the kind, the operation and its identifying fields, followed
+// by the text of the wrapped error. It never renders the raw driver detail,
+// which can quote row values.
 func (e *Error) Error() string {
 	var sb strings.Builder
 	sb.WriteString(e.Kind.Error())
