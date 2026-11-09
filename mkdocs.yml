@@ -61,5 +61,6 @@ nav:
       - Performance: PERFORMANCE.md
       - Supported versions: supported-versions.md
       - Upgrading: upgrading.md
+      - API reference: reference.md
       - Architecture: ARCHITECTURE.md
   - Contributing: contributing.md
