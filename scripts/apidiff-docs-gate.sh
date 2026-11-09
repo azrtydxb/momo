@@ -6,21 +6,29 @@
 # Compares the exported API of every non-internal package in the root module
 # between the base and HEAD with golang.org/x/exp/cmd/apidiff. A non-empty
 # report (compatible or incompatible) fails unless
-#   1. the diff touches README.md, docs/**, llms.txt or examples/**, or
-#   2. a commit message in the range, or the pull request body (PR_BODY), has a
-#      line "Docs: no reader-visible change: <reason>".
+#   1. the diff touches README.md, llms.txt, docs/**/*.md or examples/**/README.md, or
+#   2. a commit message in the range, or the pull request body, has a line that
+#      starts in column 0 with "Docs: no reader-visible change: " and a real
+#      reason (not blank, not a <placeholder>).
 #
 # Environment:
 #   APIDIFF   command that runs apidiff, e.g. "go run golang.org/x/exp/cmd/apidiff@<ver>" (required)
 #   BASE_REF  ref to compare against; default: the origin/main or origin/sprint-* branch
 #             with the fewest commits not in HEAD
-#   PR_BODY   pull request body, searched for the escape line
-#   REPORT    file to write the markdown report to (default apidiff-report.md)
+#   PR_BODY_FILE  file holding the pull request body, searched for the escape line
+#   PR_BODY       the body itself, if PR_BODY_FILE is not set
+#   REPORT    markdown report file (default $RUNNER_TEMP/apidiff-report.md, else
+#             ./apidiff-report.md, which is git-ignored)
 set -euo pipefail
 
 : "${APIDIFF:?APIDIFF must be set}"
-REPORT=${REPORT:-apidiff-report.md}
+REPORT=${REPORT:-${RUNNER_TEMP:-.}/apidiff-report.md}
 PR_BODY=${PR_BODY:-}
+if [ -n "${PR_BODY_FILE:-}" ]; then
+	PR_BODY=$(cat "$PR_BODY_FILE")
+fi
+MARKER='<!-- apidiff-docs -->'
+rm -f "$REPORT"
 
 if [ -z "${BASE_REF:-}" ]; then
 	best=""
@@ -55,19 +63,20 @@ $APIDIFF -m "$tmp/base.export" "$MOD" >"$tmp/report.txt"
 
 if ! grep -q '[^[:space:]]' "$tmp/report.txt"; then
 	echo "apidiff gate: no exported API change"
-	printf '## apidiff\n\nNo exported API change against `%s`.\n' "$BASE_REF" >"$REPORT"
+	printf '%s\n## apidiff\n\nNo exported API change against `%s`.\n' "$MARKER" "$BASE_REF" >"$REPORT"
 	exit 0
 fi
 
-docs_changed=$(git diff --name-only "$BASE_SHA" HEAD | grep -E '^(README\.md|docs/|llms\.txt|examples/)' || true)
+docs_changed=$(git diff --name-only "$BASE_SHA" HEAD | grep -E '^(README\.md|llms\.txt|docs/.*\.md|examples/(.*/)?README\.md)$' || true)
 escape=$({
 	printf '%s\n' "$PR_BODY"
 	git log --format=%B "$BASE_SHA..HEAD"
 } | tr -d '\r' |
-	grep -E '^[[:space:]]*Docs: no reader-visible change: [^[:space:]]' | head -1 || true)
+	grep -E '^Docs: no reader-visible change: [^[:space:]]' |
+	grep -vE '^Docs: no reader-visible change: <[^>]*>[[:space:]]*$' | head -1 || true)
 
 {
-	printf '## apidiff\n\nExported API changes against `%s`:\n\n```\n' "$BASE_REF"
+	printf '%s\n## apidiff\n\nExported API changes against `%s`:\n\n```\n' "$MARKER" "$BASE_REF"
 	cat "$tmp/report.txt"
 	printf '```\n\n'
 } >"$REPORT"
@@ -84,7 +93,7 @@ if [ -n "$escape" ]; then
 fi
 {
 	printf 'Docs gate failed: the exported API changed but no docs changed.\n\n'
-	printf 'Touch README.md, docs/**, llms.txt or examples/**, or add a line\n'
+	printf 'Touch README.md, llms.txt, docs/**/*.md or examples/**/README.md, or add a line\n'
 	printf '`Docs: no reader-visible change: <reason>` to the PR body or a commit message.\n'
 } | tee -a "$REPORT" >&2
 exit 1

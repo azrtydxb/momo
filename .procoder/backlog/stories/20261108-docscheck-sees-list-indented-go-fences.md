@@ -1,6 +1,6 @@
 # docscheck sees list-indented go fences
 
-Status: open
+Status: done
 Created: 2026-11-08
 Epic: momo-14-structure-and-docs
 Sprint: 006-sprint-6-split-the-root-package-into-subpackages-and-keep
@@ -20,13 +20,25 @@ program that the check compiles or carries `<!-- docscheck:fragment -->`.
 
 ## Acceptance criteria
 
-- [ ] The fence pattern in `internal/docscheck` accepts leading whitespace and
+- [x] The fence pattern in `internal/docscheck` accepts leading whitespace and
       strips the list indent from the block body before compiling it; a unit
       test with an indented fence fails on the old pattern (red run on CI) and
       passes on the new one.
-- [ ] The two indented blocks in `docs/migrations.md` and `docs/testing.md`
+- [x] The two indented blocks in `docs/migrations.md` and `docs/testing.md`
       compile or are marked as fragments, and `maxFragmentBlocks` matches the
       new count.
-- [ ] The docs code-block test is green on CI on the merged branch.
+- [x] The docs code-block test is green on CI on the merged branch.
 
 ## Evidence
+
+- Red: ci-agent run 42494269368 on a throwaway branch (new test with the old
+  pattern): `unit` failed with "TestParseDocBlocksIndentedFence: found 1 blocks,
+  want 2". Branch deleted afterwards.
+- Green: ci-agent run 42494331282, headSha 7167c74 (pattern accepts leading
+  whitespace, `parseDocBlocks` strips the indent, `TestParseDocBlocksIndentedFence`
+  passes): all jobs success, including `unit` which runs `TestDocsCodeBlocks`.
+  The `docs` workflow was green on the same sha (run 42494331537).
+- The two indented blocks (`docs/migrations.md`, `docs/testing.md`) carry
+  `<!-- docscheck:fragment -->`; `maxFragmentBlocks` rose from 69 to 71, which
+  `TestDocsCodeBlocks` enforces as a ceiling and passed.
+- The final-sha green run is recorded in the pull request report.

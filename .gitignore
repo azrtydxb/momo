@@ -15,3 +15,6 @@ coverage.*
 
 # Scratch modules created by gen tests (removed by t.Cleanup).
 gen/testdata/scratch-*/
+
+# Local output of make apidiff-gate (CI writes it under RUNNER_TEMP).
+/apidiff-report.md

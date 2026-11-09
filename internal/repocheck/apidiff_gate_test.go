@@ -14,12 +14,12 @@ import (
 // or @latest. x/exp is untagged, so the pin is a pseudo-version.
 var apidiffPin = regexp.MustCompile(`golang\.org/x/exp/cmd/apidiff@v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?\b`)
 
-// TestAPIDiffDocsGate pins the docs gate: ci.yml and ci-agent.yml each have a
+// TestAPIDiffDocsGate pins the docs gate: apidiff-docs.yml (pull requests) and ci-agent.yml each have a
 // job that runs it, the Makefile runs apidiff at a pinned version through go
 // run, the root module does not depend on x/exp, and CONTRIBUTING.md documents
 // the escape line.
 func TestAPIDiffDocsGate(t *testing.T) {
-	for _, name := range []string{"ci.yml", "ci-agent.yml"} {
+	for _, name := range []string{"apidiff-docs.yml", "ci-agent.yml"} {
 		w := loadWorkflow(t, name)
 		j, ok := w.Jobs["apidiff-docs"]
 		if !ok {
@@ -41,6 +41,26 @@ func TestAPIDiffDocsGate(t *testing.T) {
 		if !fetchesHistory {
 			t.Errorf("%s job apidiff-docs needs checkout with fetch-depth: 0 to find the merge base", name)
 		}
+	}
+
+	// The pull request workflow re-runs when the body is edited and reads the
+	// live body: the event payload is stale on a re-run.
+	pr := loadWorkflow(t, "apidiff-docs.yml")
+	types, _ := pr.On["pull_request"].(map[string]any)["types"].([]any)
+	hasEdited := false
+	for _, ty := range types {
+		if ty == "edited" {
+			hasEdited = true
+		}
+	}
+	if !hasEdited {
+		t.Error("apidiff-docs.yml must trigger on pull_request type edited")
+	}
+	if !runsContain(pr.Jobs["apidiff-docs"], "gh pr view") {
+		t.Error("apidiff-docs.yml must read the live PR body with gh pr view")
+	}
+	if _, ok := loadWorkflow(t, "ci.yml").Jobs["apidiff-docs"]; ok {
+		t.Error("ci.yml must not also define apidiff-docs; it lives in apidiff-docs.yml")
 	}
 
 	root := repoRoot(t)
