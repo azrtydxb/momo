@@ -10,6 +10,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/sqlfn"
 )
 
 // anMeta builds the Meta of a projection with the named columns.
@@ -173,7 +174,7 @@ func TestAnalyticsGolden(t *testing.T) {
 		}, `SELECT "g"."n" FROM generate_series($1::bigint, $2::bigint, $3::bigint) AS "g" ("n")`,
 			[]any{int64(1), int64(9), int64(2)}},
 		{"generate_series int32 without step", func() (momo.Compiled, error) {
-			return momo.Select[anN](pg).From(series32).Columns(momo.Cast[int64](series32.Column(), "bigint")).SQL()
+			return momo.Select[anN](pg).From(series32).Columns(sqlfn.Cast[int64](series32.Column(), "bigint")).SQL()
 		}, `SELECT CAST("g"."n" AS bigint) FROM generate_series($1::integer, $2::integer) AS "g" ("n")`,
 			[]any{int32(1), int32(3)}},
 		{"generate_series over time", func() (momo.Compiled, error) {

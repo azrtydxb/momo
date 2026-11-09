@@ -21,6 +21,8 @@ leaf types
 leaf vector
 feature agg
 feature arrayop
+feature fts
+feature sqlfn
 
 internal-leaf internal/chunk
 internal-leaf internal/golden

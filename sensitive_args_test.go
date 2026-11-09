@@ -14,6 +14,7 @@ import (
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/internal/suite"
+	"github.com/azrtydxb/momo/sqlfn"
 )
 
 const sensitiveValue = "hunter2-sensitive"
@@ -242,11 +243,11 @@ func TestHooksSeeMaskedSensitivePredicateArgs(t *testing.T) {
 	predicateCase(t, "eq expr with value", 1, nil, sel(suite.DocSecret.EqExpr(momo.Value(sensitiveValue))))
 	predicateCase(t, "ne expr with value", 1, nil, sel(suite.DocSecret.NeExpr(momo.Value(sensitiveValue))))
 	predicateCase(t, "gt expr with value", 1, nil, sel(suite.DocSecret.GtExpr(momo.Value(sensitiveValue))))
-	predicateCase(t, "expr ops eq", 1, nil, sel(momo.Lower(suite.DocSecret).Eq(sensitiveValue)))
-	predicateCase(t, "expr ops in", 1, []any{"x"}, sel(momo.Lower(suite.DocSecret).In(sensitiveValue, "x")))
-	predicateCase(t, "expr ops not in", 1, []any{"x"}, sel(momo.Lower(suite.DocSecret).NotIn(sensitiveValue, "x")))
-	predicateCase(t, "expr ops between", 1, []any{"lo"}, sel(momo.Lower(suite.DocSecret).Between("lo", sensitiveValue)))
-	predicateCase(t, "expr ops on a visible column", 0, nil, sel(momo.Lower(suite.DocTitle).In("a", "b")))
+	predicateCase(t, "expr ops eq", 1, nil, sel(sqlfn.Lower(suite.DocSecret).Eq(sensitiveValue)))
+	predicateCase(t, "expr ops in", 1, []any{"x"}, sel(sqlfn.Lower(suite.DocSecret).In(sensitiveValue, "x")))
+	predicateCase(t, "expr ops not in", 1, []any{"x"}, sel(sqlfn.Lower(suite.DocSecret).NotIn(sensitiveValue, "x")))
+	predicateCase(t, "expr ops between", 1, []any{"lo"}, sel(sqlfn.Lower(suite.DocSecret).Between("lo", sensitiveValue)))
+	predicateCase(t, "expr ops on a visible column", 0, nil, sel(sqlfn.Lower(suite.DocTitle).In("a", "b")))
 	predicateCase(t, "non-sensitive stays visible", 0, nil, sel(suite.DocTitle.Eq("visible")))
 	predicateCase(t, "update where", 1, nil, func(ctx context.Context, db *momo.DB) error {
 		_, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("visible")).Where(suite.DocSecret.Eq(sensitiveValue)).Exec(ctx)

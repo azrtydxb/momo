@@ -249,7 +249,7 @@ func stringLiteral(b *momo.Builder, what, s string) (string, bool) {
 // and GROUP_CONCAT ... SEPARATOR on MySQL (which truncates at
 // group_concat_max_len). The separator is rendered as a literal and must not
 // contain a backslash. Without a matching row, and for a group whose values
-// are all NULL, the result is NULL: wrap it in momo.CoalesceExpr with a
+// are all NULL, the result is NULL: wrap it in sqlfn.CoalesceExpr with a
 // literal (for example an empty string) when the group may be empty.
 func String(e momo.Expression[string], sep string) Call[string] {
 	return newCall[string](spec{kind: kindString, args: []any{e}, sep: sep})
@@ -269,7 +269,7 @@ func Array[T any](e momo.Expression[T]) Call[[]T] {
 // T is the element type the array decodes into, for example
 // JSONB[Item](BuildObject[Item](...)). Without a matching row the result is
 // NULL on PostgreSQL and MySQL and '[]' on SQLite; wrap it in
-// momo.CoalesceExpr with EmptyJSONArray to get an empty array everywhere.
+// sqlfn.CoalesceExpr with EmptyJSONArray to get an empty array everywhere.
 func JSONB[T any](e momo.Expr) Call[types.JSON[[]T]] {
 	return newCall[types.JSON[[]T]](spec{kind: kindJSON, args: []any{e}})
 }
@@ -277,7 +277,7 @@ func JSONB[T any](e momo.Expr) Call[types.JSON[[]T]] {
 // PercentileCont is percentile_cont(fraction) WITHIN GROUP (ORDER BY ...):
 // the interpolated value at fraction (0 to 1) of the ordered input. The
 // ordering comes from WithinGroup, which is required. PostgreSQL only. The
-// result is NULL for an empty group: wrap it in momo.CoalesceExpr when the
+// result is NULL for an empty group: wrap it in sqlfn.CoalesceExpr when the
 // group may be empty.
 func PercentileCont(fraction float64) Call[float64] {
 	return percentile[float64]("percentile_cont", fraction)

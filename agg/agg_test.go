@@ -12,6 +12,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/suite"
+	"github.com/azrtydxb/momo/sqlfn"
 )
 
 var dialects = []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL}
@@ -76,7 +77,7 @@ func TestAggregateGolden(t *testing.T) {
 			dialect.MySQL:    "SELECT JSON_ARRAYAGG(JSON_OBJECT('label', `documents`.`title`, 'o''k', `documents`.`tenant_id`)) FROM `documents`",
 		}},
 		{"coalesce empty array", func() momo.Expr {
-			return momo.CoalesceExpr(agg.JSONB[string](title).OrderBy(title.Asc()), agg.EmptyJSONArray[string]())
+			return sqlfn.CoalesceExpr(agg.JSONB[string](title).OrderBy(title.Asc()), agg.EmptyJSONArray[string]())
 		}, map[dialect.Name]string{
 			dialect.Postgres: `SELECT coalesce(jsonb_agg("documents"."title" ORDER BY "documents"."title" ASC), '[]'::jsonb)` + from,
 			dialect.SQLite:   `SELECT coalesce(json_group_array("documents"."title" ORDER BY "documents"."title" ASC), '[]')` + from,

@@ -34,6 +34,15 @@ func (*Tally) MomoMeta() *momo.Meta[Tally] { return &tallyMeta }
 // runs none.
 func DB(name dialect.Name) *momo.DB { return momo.New(fakedriver.New(name)) }
 
+// CompileColumns renders "SELECT cols FROM documents" for the dialect and
+// returns the statement, for tests of a value expression.
+func CompileColumns(name dialect.Name, cols ...momo.Expr) (momo.Compiled, error) {
+	return momo.Select[Tally](DB(name)).
+		From(momo.TableRef{Name: "documents"}).
+		Columns(cols...).
+		SQL()
+}
+
 // Compile renders the predicate in "SELECT COUNT(*) FROM docs WHERE p" for the
 // dialect and returns the statement.
 func Compile(name dialect.Name, p momo.Predicate) (momo.Compiled, error) {
