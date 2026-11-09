@@ -97,7 +97,7 @@ Each of these bypasses every interceptor. Scope them explicitly or use row-level
 - The association helpers (`Link`, `Unlink`, `Replace` and the like) and graph creation.
 - Subqueries and other sources rendered inside a statement: subquery operands, `UPDATE ... FROM` sources, and the `FromSelect` source of an insert.
 - Raw SQL of every kind: `momo.Exec`, `momo.MapRows`, `momo.Scalars`, `momo.SQL` fragments and `momo.RawSubquery`.
-- Bulk loading with COPY: `Insert[T].Copy` runs the insert interceptors (deny only) and `BeforeInsert`, but a predicate an interceptor adds is ignored, and `momo.CopierOf(...).CopyFrom` skips them entirely.
+- Bulk loading with COPY: `InsertQuery[T].Copy` runs the insert interceptors (deny only) and `BeforeInsert`, but a predicate an interceptor adds is ignored, and `momo.CopierOf(...).CopyFrom` skips them entirely.
 - Anything run on the driver directly, and any other `*momo.DB` over the same driver.
 
 For isolation that holds even when application code is wrong, use database row-level security with the transaction setup hook (`WithTxSetup`) and a policy on the table. Treat interceptors as the first layer and row-level security as the enforcing one.

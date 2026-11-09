@@ -157,8 +157,8 @@ change.
 
 One type gained methods: `sqlfn.CurrentSchemaExpr` now has the comparison and
 ordering methods (`Eq`, `In`, `Asc`, ...) the other function results have, so
-`sqlfn.CurrentSchema().Eq("app")` compiles where `momo.CurrentSchema()` had
-no such method.
+`sqlfn.CurrentSchema().Eq("app")` compiles, where the old root function's
+result had no such method.
 
 The advisory lock methods became functions: `tx.AdvisoryXactLock(ctx, 42)`
 is now `advisory.XactLock(ctx, tx, 42)`, and the same for the `String` and
