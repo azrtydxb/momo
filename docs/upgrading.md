@@ -27,6 +27,11 @@ as an argument.
 | `momo.ArrayContainedBy` | `github.com/azrtydxb/momo/arrayop` | `arrayop.ContainedBy` |
 | `momo.ArrayOverlaps`    | `github.com/azrtydxb/momo/arrayop` | `arrayop.Overlaps`    |
 | `momo.AnyOf`            | `github.com/azrtydxb/momo/arrayop` | `arrayop.AnyOf`       |
+| `momo.JSONText`         | `github.com/azrtydxb/momo/jsonop`  | `jsonop.Text`         |
+| `momo.JSONPath`         | `github.com/azrtydxb/momo/jsonop`  | `jsonop.Path`         |
+| `momo.JSONContains`     | `github.com/azrtydxb/momo/jsonop`  | `jsonop.Contains`     |
+| `momo.JSONHasKey`       | `github.com/azrtydxb/momo/jsonop`  | `jsonop.HasKey`       |
+| `momo.JSONTextExpr`     | `github.com/azrtydxb/momo/jsonop`  | `jsonop.TextExpr`     |
 
 ### Rewrite recipe
 

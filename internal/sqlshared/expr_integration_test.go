@@ -14,6 +14,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/sqlitepure"
+	"github.com/azrtydxb/momo/jsonop"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -87,18 +88,18 @@ func TestJSONAndTimeExpressionsOnEachDriver(t *testing.T) {
 				t.Errorf("%s = %v, want %v", name, got, want)
 			}
 		}
-		eq("text", ids(momo.JSONText(doc, "via").Eq("api")), 1)
-		eq("path", ids(momo.JSONPath(doc, "n", "x", "1").Eq("q")), 1)
-		eq("bool true reads as 1", ids(momo.JSONText(doc, "flag").Eq("1")), 1)
-		eq("bool false reads as 0", ids(momo.JSONText(doc, "off").Eq("0")), 1)
-		eq("has key", ids(momo.JSONHasKey(doc, "via")), 1)
-		eq("has key with JSON null value", ids(momo.JSONHasKey(doc, "gone")), 1)
+		eq("text", ids(jsonop.Text(doc, "via").Eq("api")), 1)
+		eq("path", ids(jsonop.Path(doc, "n", "x", "1").Eq("q")), 1)
+		eq("bool true reads as 1", ids(jsonop.Text(doc, "flag").Eq("1")), 1)
+		eq("bool false reads as 0", ids(jsonop.Text(doc, "off").Eq("0")), 1)
+		eq("has key", ids(jsonop.HasKey(doc, "via")), 1)
+		eq("has key with JSON null value", ids(jsonop.HasKey(doc, "gone")), 1)
 		eq("SQL NULL column", ids(doc.IsNull()), 2)
-		eq("JSON null extracts as NULL", ids(momo.JSONText(doc, "via").IsNull()), 2, 3)
+		eq("JSON null extracts as NULL", ids(jsonop.Text(doc, "via").IsNull()), 2, 3)
 		_, err := momo.Select[exprRow](db).From(src).Columns(id, id, id).
-			Where(momo.JSONContains(doc, map[string]any{"via": "api"})).All(ctx)
+			Where(jsonop.Contains(doc, map[string]any{"via": "api"})).All(ctx)
 		if !errors.Is(err, momo.ErrUnsupported) {
-			t.Errorf("JSONContains = %v, want ErrUnsupported", err)
+			t.Errorf("jsonop.Contains = %v, want ErrUnsupported", err)
 		}
 
 		tm := func(row int64, e momo.Expr) time.Time {
