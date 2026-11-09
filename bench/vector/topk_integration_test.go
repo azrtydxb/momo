@@ -16,6 +16,7 @@ import (
 	"github.com/azrtydxb/momo/bench/models/momo/item"
 	"github.com/azrtydxb/momo/bench/stats"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/vecsearch"
 	momovector "github.com/azrtydxb/momo/vector"
 )
 
