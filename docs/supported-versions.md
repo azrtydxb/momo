@@ -27,6 +27,8 @@ A database is usable when a driver package for it exists under `driver/`:
 
 <!-- /generated:status -->
 
+Servers the integration jobs run against: PostgreSQL 16 and 17 with pgvector (see below), and MySQL 8.4, MySQL 9.7 and MariaDB 11.8 for the MySQL driver. Vector support on the MySQL family depends on the server version: MySQL 8.4 has no `VECTOR` type, MySQL 9.x stores vectors but has no distance function, and MariaDB 11.8 has L2 and cosine distance functions (see [MySQL and MariaDB](mysql.md)).
+
 ## Go
 
 | Item                         | Value                                                                                                                                                                                                                                                                                                                                                                   |

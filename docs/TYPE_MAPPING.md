@@ -68,6 +68,11 @@ has no array columns, so the generator rejects them there.
 
 <!-- /generated:typemap -->
 
+The MySQL column is what `typemap.Map` returns for MySQL: the generator emits no
+MySQL models, so every Go type shows `unsupported` there until it does. Only an
+error that wraps `momo.ErrUnsupported` shows as `unsupported`; any other error
+from `typemap.Map` fails the generation of this table.
+
 The PostgreSQL type of `time.Time` can be changed for the whole project with the
 `types:` section of `momo.yaml`, for example `types: {time.Time: timestamp(3)}`
 for a database created by Prisma (see `naming: prisma` in ai-guide.md). Only

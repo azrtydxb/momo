@@ -1810,7 +1810,7 @@ report)`, a development hook that reports once per statement shape per scope
 
 ## 12. Rules for AI agents
 
-1. v0.3.0 is PostgreSQL + pgvector via pgx first; SQLite runs through the cgo driver `sqlitedriver` (not on Windows) or the pure-Go `sqlitepure` (no vectors); `momo migrate` is PostgreSQL-only (SQLite and MySQL migrations are library only: `migrate/sqlite`, `migrate/mysql`); the vector builders work on `sqlitedriver` only (via sqlite-vec); MySQL stores vectors only and MariaDB has distance functions; see docs/capabilities.md. <!-- x-release-please-version -->
+1. v0.3.0 is PostgreSQL + pgvector via pgx first; the other databases, their drivers and the dialects `momo migrate` runs are in the generated status near the top of this guide and in docs/capabilities.md. <!-- x-release-please-version -->
 2. Install the CLI at the same version as the library
    (`go install github.com/azrtydxb/momo/cmd/momo@v0.3.0`). <!-- x-release-please-version -->
 3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run

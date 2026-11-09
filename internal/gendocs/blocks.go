@@ -3,11 +3,13 @@
 package gendocs
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/gen/typemap"
@@ -63,7 +65,7 @@ func statusBlock(root string) (string, error) {
 				if d.NeedsCGO {
 					notes = append(notes, "needs cgo")
 				}
-				if d.NoWindows {
+				if !d.Windows {
 					notes = append(notes, "not on Windows")
 				}
 				switch d.Vectors {
@@ -72,7 +74,7 @@ func statusBlock(root string) (string, error) {
 				case "no":
 					notes = append(notes, "vector builders: no")
 				default:
-					notes = append(notes, "vector builders: depend on the server")
+					notes = append(notes, "vector storage and builders depend on the server version")
 				}
 				parts[i] = code(d.Dir) + " (" + strings.Join(notes, ", ") + ")"
 			}
@@ -190,7 +192,7 @@ var features = []feature{
 		PG:   "yes",
 		SQLite: "`jsonop.Text`, `jsonop.Path` and `jsonop.HasKey` run on both SQLite drivers; a JSON boolean extracts as `1` or `0`; " +
 			"`jsonop.Contains` is `ErrUnsupported`, since `json_each` cannot express the recursive `@>` rule",
-		MySQL: "runs in the shared suite (`suite.RunAll`) only where that suite covers it",
+		MySQL: "SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server",
 	},
 	{
 		Name: "Date and time expressions",
@@ -201,7 +203,7 @@ var features = []feature{
 		PG: "yes",
 		SQLite: "every `ExtractField`, `TruncUnit`, interval and `Now` run on both SQLite drivers; month arithmetic overflows into the next month " +
 			"(Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); `Now` is millisecond text; `timeop.AtTimeZone` is PostgreSQL only",
-		MySQL: "equivalents; `timeop.AtTimeZone` is PostgreSQL only",
+		MySQL: "SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server; `timeop.AtTimeZone` is PostgreSQL only",
 	},
 }
 
@@ -240,8 +242,9 @@ type typeRow struct {
 }
 
 // sentinel stands in for the size and dim tags, so a mapped type with a length
-// can be shown with N.
-const sentinel = 987654
+// can be shown with N. It is a small value that is valid for every length and
+// dimension, so a future range check in typemap.Map cannot reject it.
+const sentinel = 7
 
 var typeRows = []typeRow{
 	{"int", "int", tags.Tags{}},
@@ -294,8 +297,11 @@ func typemapBlock() (string, error) {
 		r := []string{code(tr.Label)}
 		for _, d := range dialects {
 			sql, err := typemap.Map(tr.Go, d.Name, tr.Tags)
-			if err != nil {
+			switch {
+			case errors.Is(err, momo.ErrUnsupported):
 				sql = "unsupported"
+			case err != nil:
+				return "", fmt.Errorf("typemap.Map(%q, %s): %w", tr.Go, d.Name, err)
 			}
 			r = append(r, strings.ReplaceAll(sql, fmt.Sprintf("(%d)", sentinel), "(N)"))
 		}

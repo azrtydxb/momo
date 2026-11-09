@@ -103,6 +103,11 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 
 <!-- /generated:capabilities -->
 
+The vector rows are dialect metadata. What a MySQL-family server can do depends
+on its version: MySQL 8.4 has no `VECTOR` type, MySQL 9.x stores vectors without
+a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
+[MySQL and MariaDB](mysql.md) and [vectors](vectors.md).
+
 ## JSON operators and date and time expressions
 
 <!-- generated:features -->

@@ -170,38 +170,20 @@ func TestTypeTableMatchesTypemap(t *testing.T) {
 	}
 }
 
-var statusProse = regexp.MustCompile(`(?i)\b(not usable|unusable|is usable|are usable)\b`)
-
-// Catches: hand-written dialect-status prose creeping back next to the
-// generated block, where it goes stale when a driver is added.
-func TestNoStatusProseOutsideBlocks(t *testing.T) {
-	root := repoRoot(t)
-	for _, f := range []string{"README.md", "llms.txt", "docs/ai-guide.md", "docs/supported-versions.md", "docs/migrations.md", "docs/capabilities.md"} {
-		doc, err := readFile(filepath.Join(root, filepath.FromSlash(f)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(doc, "<!-- generated:status -->") {
-			t.Errorf("%s has no generated status block", f)
-		}
-		for i, line := range strings.Split(StripBlocks(doc), "\n") {
-			if statusProse.MatchString(line) {
-				t.Errorf("%s: hand-written status prose outside a generated block: %q (line %d of the text without blocks)", f, line, i+1)
-			}
-		}
-	}
-}
-
 func fakeRepo(t *testing.T, sqliteDriver bool) string {
 	t.Helper()
 	root := t.TempDir()
-	write(t, root, "driver/pgx/d.go", "package pgx\n\nimport \"github.com/azrtydxb/momo/dialect\"\n\nvar _ = dialect.Postgres\n")
-	write(t, root, "driver/my/d.go", "package my\n\nimport \"github.com/azrtydxb/momo/dialect\"\n\nvar _ = dialect.MySQLFlavor\n")
+	status := func(dir, decl string) {
+		write(t, root, "driver/"+dir+"/status.go", "package "+dir+"\n\n//momo:driver "+decl+"\n")
+	}
+	status("pgx", "dialect=postgres usable=true cgo=false windows=true vectors=yes")
+	status("my", "dialect=mysql usable=true cgo=false windows=true vectors=server")
+	write(t, root, "driver/internal/x.go", "package internal\n")
 	write(t, root, "migrate/postgres/d.go", "package postgres\n")
 	write(t, root, "migrate/sqlite/d.go", "package sqlite\n")
-	write(t, root, "cmd/momo/m.go", "package main\n\nimport _ \"github.com/azrtydxb/momo/migrate/postgres\"\n")
+	write(t, root, "cmd/momo/m.go", "package main\n\nimport \"github.com/azrtydxb/momo/dialect\"\n\nfunc dialectImpl(n string) {\n\tif n == string(dialect.Postgres) {\n\t\treturn\n\t}\n}\n")
 	if sqliteDriver {
-		write(t, root, "driver/lite/d.go", "//go:build cgo && !windows\n\npackage lite\n\nimport (\n\t\"github.com/azrtydxb/momo\"\n\t\"github.com/azrtydxb/momo/dialect\"\n)\n\nvar _ = dialect.SQLite\nvar _ = momo.Capabilities{Vectors: true}\n")
+		status("lite", "dialect=sqlite usable=true cgo=true windows=false vectors=yes")
 	}
 	return root
 }

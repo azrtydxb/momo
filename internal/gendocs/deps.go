@@ -41,8 +41,8 @@ func DirectDeps(gomod string) [][2]string {
 	return out
 }
 
-// depNotes says what each direct dependency is used for. A dependency without
-// an entry shows an empty note.
+// depNotes says what each direct dependency is used for. Generation fails for
+// a direct dependency without an entry.
 var depNotes = map[string]string{
 	"github.com/asg017/sqlite-vec-go-bindings": "sqlite-vec for `driver/sqlitedriver` (cgo).",
 	"github.com/go-sql-driver/mysql":           "used by `driver/mysqldriver` and by test harness code (`internal/testdb`).",
@@ -61,7 +61,11 @@ func dependenciesBlock(root string) (string, error) {
 	}
 	var rows [][]string
 	for _, d := range DirectDeps(gomod) {
-		rows = append(rows, []string{code(d[0]), d[1], depNotes[d[0]]})
+		note, ok := depNotes[d[0]]
+		if !ok {
+			return "", fmt.Errorf("direct dependency %s has no entry in depNotes (internal/gendocs/deps.go); say what it is used for", d[0])
+		}
+		rows = append(rows, []string{code(d[0]), d[1], note})
 	}
 	if len(rows) == 0 {
 		return "", fmt.Errorf("go.mod has no direct requirements")

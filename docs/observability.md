@@ -69,7 +69,7 @@ the parent count of the load that crossed the threshold; 1 is the usual sign of
 a loop. A context without a scope is not tracked, a scope tracks at most 1024
 relations, and a panic in `report` is recovered and dropped. `report` runs on
 the loading goroutine and must not query the database. Create the detector with
-`obs.NewNPlusOne`; its zero value is not usable.
+`obs.NewNPlusOne`; its zero value must not be used.
 
 ## slog
 

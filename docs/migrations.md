@@ -1165,8 +1165,7 @@ return to the state before step 7; nothing else changed.
 The `migrate/mysql` package is the migration dialect for MySQL 8.4, MySQL 9.7
 and MariaDB 11.8. It reads `information_schema`, renders DDL and locks with
 `GET_LOCK`. `momo migrate` does not select it yet; build the engine with
-`migrate.WithDialect(mmysql.New())` and the `mysqldriver` driver; the command
-line is PostgreSQL-only.
+`migrate.WithDialect(mmysql.New())` and the `mysqldriver` driver.
 
 **Every migration is non-transactional.** DDL implies a commit on these
 servers, so a failure cannot be rolled back. The engine runs each statement on
