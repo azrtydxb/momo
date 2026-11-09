@@ -847,16 +847,16 @@ momo.CoalesceExpr(momo.JSONBAgg[Item](item).OrderBy(label.Asc()), momo.EmptyJSON
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 momo.CurrentSchema()
 
-// Dates and times (PostgreSQL; SQLite and MySQL render equivalents). Fields and
+// Dates and times, package github.com/azrtydxb/momo/timeop (PostgreSQL; SQLite and MySQL render equivalents). Fields and
 // units are constants checked against an allowlist; anything else is ErrValidation.
-momo.Extract(momo.ExtractEpoch, doc.CreatedAt)         // float64, also Year, Month, Day, Hour, Minute, Second, Quarter, Dow, ISODow, Doy
-momo.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is a validated literal; PostgreSQL only, else ErrUnsupported
-// Local-day buckets: momo.DateTrunc(momo.TruncDay, momo.AtTimeZone(col, zone)); a bare timestamptz truncates in the session zone.
-momo.DateTrunc(momo.TruncDay, doc.CreatedAt)           // Second..Year, weeks start on Monday
-momo.Now()                                             // also CurrentTimestamp(); the database clock, not WithClock
+timeop.Extract(timeop.ExtractEpoch, doc.CreatedAt)         // float64, also Year, Month, Day, Hour, Minute, Second, Quarter, Dow, ISODow, Doy
+timeop.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is a validated literal; PostgreSQL only, else ErrUnsupported
+// Local-day buckets: timeop.Trunc(timeop.TruncDay, timeop.AtTimeZone(col, zone)); a bare timestamptz truncates in the session zone.
+timeop.Trunc(timeop.TruncDay, doc.CreatedAt)           // Second..Year, weeks start on Monday
+timeop.Now()                                             // also CurrentTimestamp(); the database clock, not WithClock
 // Intervals are an operand of AddInterval/SubInterval, not an expression of their own.
-momo.SubInterval(momo.Now(), momo.IntervalOf(7, momo.IntervalDay))              // literal count
-momo.AddInterval(doc.CreatedAt, momo.IntervalExpr(momo.Value(int64(n)), momo.IntervalHour)) // bound or column count
+timeop.SubInterval(timeop.Now(), timeop.IntervalOf(7, timeop.IntervalDay))              // literal count
+timeop.AddInterval(doc.CreatedAt, timeop.IntervalExpr(momo.Value(int64(n)), timeop.IntervalHour)) // bound or column count
 
 // JoinSQL composes raw fragments with their args (Prisma.join). The separator is a fixed
 // literal from an allowlist: "," or " " (parts as written), " AND ", " OR ", "||", "+"

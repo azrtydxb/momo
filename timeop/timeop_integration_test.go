@@ -2,7 +2,7 @@
 
 //go:build integration
 
-package momo_test
+package timeop_test
 
 import (
 	"context"
@@ -15,8 +15,10 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/timeop"
 )
 
 type tmFloat struct{ F float64 }
@@ -113,34 +115,34 @@ func TestExtractIntegration(t *testing.T) {
 		// depend on the session time zone.
 		src := momo.Expression[time.Time](suite.DocCreatedAt)
 		if d == dialect.Postgres {
-			src = momo.AtTimeZone(suite.DocCreatedAt, "UTC")
+			src = timeop.AtTimeZone(suite.DocCreatedAt, "UTC")
 		}
 		for _, c := range []struct {
-			field momo.ExtractField
+			field timeop.ExtractField
 			want  float64
 		}{
-			{momo.ExtractYear, 2024}, {momo.ExtractMonth, 3}, {momo.ExtractDay, 15},
-			{momo.ExtractHour, 13}, {momo.ExtractMinute, 45}, {momo.ExtractSecond, 30},
-			{momo.ExtractQuarter, 1}, {momo.ExtractDow, 5}, {momo.ExtractISODow, 5},
-			{momo.ExtractDoy, 75}, {momo.ExtractEpoch, float64(at.Unix())},
+			{timeop.ExtractYear, 2024}, {timeop.ExtractMonth, 3}, {timeop.ExtractDay, 15},
+			{timeop.ExtractHour, 13}, {timeop.ExtractMinute, 45}, {timeop.ExtractSecond, 30},
+			{timeop.ExtractQuarter, 1}, {timeop.ExtractDow, 5}, {timeop.ExtractISODow, 5},
+			{timeop.ExtractDoy, 75}, {timeop.ExtractEpoch, float64(at.Unix())},
 		} {
-			if got := floatOf(t, db, 1, momo.Extract(c.field, src)); math.Abs(got-c.want) > 1e-6 {
+			if got := floatOf(t, db, 1, timeop.Extract(c.field, src)); math.Abs(got-c.want) > 1e-6 {
 				t.Errorf("Extract %s = %v, want %v", c.field, got, c.want)
 			}
 		}
 		if d == dialect.SQLite {
 			_, err := momo.Select[tmFloat](db).From(momo.TableRef{Name: "documents"}).
-				Columns(momo.Extract(momo.ExtractHour, momo.AtTimeZone(suite.DocCreatedAt, "Asia/Tokyo"))).
+				Columns(timeop.Extract(timeop.ExtractHour, timeop.AtTimeZone(suite.DocCreatedAt, "Asia/Tokyo"))).
 				Where(suite.DocTenantID.Eq(1)).One(context.Background())
 			if !errors.Is(err, momo.ErrUnsupported) {
 				t.Errorf("AtTimeZone on SQLite = %v, want ErrUnsupported", err)
 			}
 		}
 		if d == dialect.Postgres {
-			if got := floatOf(t, db, 1, momo.Extract(momo.ExtractHour, src)); got != 13 {
+			if got := floatOf(t, db, 1, timeop.Extract(timeop.ExtractHour, src)); got != 13 {
 				t.Errorf("hour in UTC = %v, want 13", got)
 			}
-			if got := floatOf(t, db, 1, momo.Extract(momo.ExtractHour, momo.AtTimeZone(suite.DocCreatedAt, "Asia/Tokyo"))); got != 22 {
+			if got := floatOf(t, db, 1, timeop.Extract(timeop.ExtractHour, timeop.AtTimeZone(suite.DocCreatedAt, "Asia/Tokyo"))); got != 22 {
 				t.Errorf("hour in Tokyo = %v, want 22", got)
 			}
 		}
@@ -153,17 +155,17 @@ func TestBoundTimeOperandIntegration(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedTimeDocs(t, db)
 		at := time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)
-		if got := floatOf(t, db, 1, momo.Extract(momo.ExtractYear, momo.Value(at))); got != 2024 {
+		if got := floatOf(t, db, 1, timeop.Extract(timeop.ExtractYear, momo.Value(at))); got != 2024 {
 			t.Errorf("Extract over a bound time = %v, want 2024", got)
 		}
 		trunc := momo.Expression[time.Time](momo.Value(at))
 		if d == dialect.Postgres {
-			trunc = momo.AtTimeZone(momo.Value(at), "UTC")
+			trunc = timeop.AtTimeZone(momo.Value(at), "UTC")
 		}
-		if got := timeOf(t, db, 1, momo.DateTrunc(momo.TruncDay, trunc)); got.Day() != 15 || got.Hour() != 0 {
+		if got := timeOf(t, db, 1, timeop.Trunc(timeop.TruncDay, trunc)); got.Day() != 15 || got.Hour() != 0 {
 			t.Errorf("DateTrunc over a bound time = %v", got)
 		}
-		if got := timeOf(t, db, 1, momo.AddInterval(momo.Value(at), momo.IntervalOf(1, momo.IntervalHour))); !got.Equal(at.Add(time.Hour)) {
+		if got := timeOf(t, db, 1, timeop.AddInterval(momo.Value(at), timeop.IntervalOf(1, timeop.IntervalHour))); !got.Equal(at.Add(time.Hour)) {
 			t.Errorf("AddInterval over a bound time = %v", got)
 		}
 	})
@@ -181,8 +183,8 @@ func TestGroupByLocalDayIntegration(t *testing.T) {
 		if _, err := momo.Exec(context.Background(), db, "INSERT INTO documents (tenant_id, title, created_at) VALUES (3, 'late', '2024-03-15 23:30:00+00')"); err != nil {
 			t.Fatal(err)
 		}
-		local := func() momo.TimeExpr {
-			return momo.DateTrunc(momo.TruncDay, momo.AtTimeZone(suite.DocCreatedAt, "Europe/Brussels"))
+		local := func() timeop.Expr {
+			return timeop.Trunc(timeop.TruncDay, timeop.AtTimeZone(suite.DocCreatedAt, "Europe/Brussels"))
 		}
 		got, err := momo.Select[tmTime](db).From(momo.TableRef{Name: "documents"}).
 			Columns(local()).Where(suite.DocTenantID.Eq(3)).GroupBy(local()).One(context.Background())
@@ -200,28 +202,28 @@ func TestDateTruncIntegration(t *testing.T) {
 		seedTimeDocs(t, db)
 		src := momo.Expression[time.Time](suite.DocCreatedAt)
 		if d == dialect.Postgres {
-			src = momo.AtTimeZone(suite.DocCreatedAt, "UTC")
+			src = timeop.AtTimeZone(suite.DocCreatedAt, "UTC")
 		}
 		for _, c := range []struct {
-			unit momo.TruncUnit
+			unit timeop.TruncUnit
 			want time.Time
 		}{
-			{momo.TruncSecond, time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)},
-			{momo.TruncMinute, time.Date(2024, 3, 15, 13, 45, 0, 0, time.UTC)},
-			{momo.TruncHour, time.Date(2024, 3, 15, 13, 0, 0, 0, time.UTC)},
-			{momo.TruncDay, time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)},
-			{momo.TruncWeek, time.Date(2024, 3, 11, 0, 0, 0, 0, time.UTC)},
-			{momo.TruncMonth, time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)},
-			{momo.TruncQuarter, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
-			{momo.TruncYear, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncSecond, time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)},
+			{timeop.TruncMinute, time.Date(2024, 3, 15, 13, 45, 0, 0, time.UTC)},
+			{timeop.TruncHour, time.Date(2024, 3, 15, 13, 0, 0, 0, time.UTC)},
+			{timeop.TruncDay, time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncWeek, time.Date(2024, 3, 11, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncMonth, time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncQuarter, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncYear, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
 		} {
-			got := timeOf(t, db, 1, momo.DateTrunc(c.unit, src))
+			got := timeOf(t, db, 1, timeop.Trunc(c.unit, src))
 			if got.Year() != c.want.Year() || got.Month() != c.want.Month() || got.Day() != c.want.Day() || got.Hour() != c.want.Hour() || got.Minute() != c.want.Minute() || got.Second() != c.want.Second() {
 				t.Errorf("DateTrunc %s = %v, want %v", c.unit, got, c.want)
 			}
 		}
-		day := func() momo.TimeExpr { return momo.DateTrunc(momo.TruncDay, suite.DocCreatedAt) }
-		rows, err := momo.Select[unitTally](db).From(momo.TableRef{Name: "documents"}).
+		day := func() timeop.Expr { return timeop.Trunc(timeop.TruncDay, suite.DocCreatedAt) }
+		rows, err := momo.Select[exprtest.Tally](db).From(momo.TableRef{Name: "documents"}).
 			Columns(momo.CountAll()).GroupBy(day()).OrderBy(day().Asc()).All(context.Background())
 		if err != nil || len(rows) != 2 {
 			t.Fatalf("group by day = %+v, %v; want 2 groups", rows, err)
@@ -238,14 +240,14 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 		ctx := context.Background()
 		at := time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)
 
-		if got := timeOf(t, db, 1, momo.AddInterval(suite.DocCreatedAt, momo.IntervalOf(36, momo.IntervalHour))); !got.Equal(at.Add(36 * time.Hour)) {
+		if got := timeOf(t, db, 1, timeop.AddInterval(suite.DocCreatedAt, timeop.IntervalOf(36, timeop.IntervalHour))); !got.Equal(at.Add(36 * time.Hour)) {
 			t.Errorf("+36 hours = %v", got)
 		}
-		if got := timeOf(t, db, 1, momo.SubInterval(suite.DocCreatedAt, momo.IntervalOf(2, momo.IntervalWeek))); !got.Equal(at.Add(-14 * 24 * time.Hour)) {
+		if got := timeOf(t, db, 1, timeop.SubInterval(suite.DocCreatedAt, timeop.IntervalOf(2, timeop.IntervalWeek))); !got.Equal(at.Add(-14 * 24 * time.Hour)) {
 			t.Errorf("-2 weeks = %v", got)
 		}
-		bound := momo.IntervalExpr(momo.Value(int64(90)), momo.IntervalMinute)
-		if got := timeOf(t, db, 1, momo.AddInterval(suite.DocCreatedAt, bound)); !got.Equal(at.Add(90 * time.Minute)) {
+		bound := timeop.IntervalExpr(momo.Value(int64(90)), timeop.IntervalMinute)
+		if got := timeOf(t, db, 1, timeop.AddInterval(suite.DocCreatedAt, bound)); !got.Equal(at.Add(90 * time.Minute)) {
 			t.Errorf("+90 bound minutes = %v", got)
 		}
 
@@ -264,76 +266,51 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 		}
 		stamp(10, "2023-02-28 10:00:00")
 		stamp(11, "2023-01-31 10:00:00")
-		month := momo.IntervalOf(1, momo.IntervalMonth)
-		if got, want := timeOf(t, db, 10, momo.AddInterval(suite.DocCreatedAt, month)), time.Date(2023, 3, 28, 10, 0, 0, 0, time.UTC); !got.Equal(want) {
+		month := timeop.IntervalOf(1, timeop.IntervalMonth)
+		if got, want := timeOf(t, db, 10, timeop.AddInterval(suite.DocCreatedAt, month)), time.Date(2023, 3, 28, 10, 0, 0, 0, time.UTC); !got.Equal(want) {
 			t.Errorf("Feb 28 + 1 month = %v, want %v", got, want)
 		}
 		janWant := time.Date(2023, 2, 28, 10, 0, 0, 0, time.UTC)
 		if d == dialect.SQLite {
 			janWant = time.Date(2023, 3, 3, 10, 0, 0, 0, time.UTC)
 		}
-		if got := timeOf(t, db, 11, momo.AddInterval(suite.DocCreatedAt, month)); !got.Equal(janWant) {
+		if got := timeOf(t, db, 11, timeop.AddInterval(suite.DocCreatedAt, month)); !got.Equal(janWant) {
 			t.Errorf("Jan 31 + 1 month = %v, want %v", got, janWant)
 		}
-		if got, want := timeOf(t, db, 11, momo.SubInterval(suite.DocCreatedAt, momo.IntervalOf(1, momo.IntervalYear))), time.Date(2022, 1, 31, 10, 0, 0, 0, time.UTC); !got.Equal(want) {
+		if got, want := timeOf(t, db, 11, timeop.SubInterval(suite.DocCreatedAt, timeop.IntervalOf(1, timeop.IntervalYear))), time.Date(2022, 1, 31, 10, 0, 0, 0, time.UTC); !got.Equal(want) {
 			t.Errorf("Jan 31 - 1 year = %v, want %v", got, want)
 		}
 
 		if d == dialect.SQLite {
 			// Now is text in the stored timestamp format, so it sorts with it.
-			r, err := momo.Select[tmText](db).From(momo.TableRef{Name: "documents"}).Columns(momo.Now()).
+			r, err := momo.Select[tmText](db).From(momo.TableRef{Name: "documents"}).Columns(timeop.Now()).
 				Where(suite.DocTenantID.Eq(1)).One(ctx)
 			if err != nil || !sqliteStamp.MatchString(r.S) {
 				t.Errorf("Now() on SQLite = %q, %v; want %s", r.S, err, sqliteStamp)
 			}
 		}
 
-		now := timeOf(t, db, 1, momo.Now())
+		now := timeOf(t, db, 1, timeop.Now())
 		if diff := time.Since(now); diff < -time.Minute || diff > time.Minute {
 			t.Errorf("Now() = %v, far from the wall clock", now)
 		}
-		if cur := timeOf(t, db, 1, momo.CurrentTimestamp()); cur.Before(now.Add(-time.Minute)) {
+		if cur := timeOf(t, db, 1, timeop.CurrentTimestamp()); cur.Before(now.Add(-time.Minute)) {
 			t.Errorf("CurrentTimestamp() = %v, behind Now() = %v", cur, now)
 		}
 
 		recent := func(p momo.Predicate) int64 {
-			r, err := momo.Select[unitTally](db).From(momo.TableRef{Name: "documents"}).
+			r, err := momo.Select[exprtest.Tally](db).From(momo.TableRef{Name: "documents"}).
 				Columns(momo.CountAll()).Where(p).One(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
 			return r.N
 		}
-		if n := recent(suite.DocCreatedAt.GtExpr(momo.SubInterval(momo.Now(), momo.IntervalOf(1, momo.IntervalDay)))); n != 1 {
+		if n := recent(suite.DocCreatedAt.GtExpr(timeop.SubInterval(timeop.Now(), timeop.IntervalOf(1, timeop.IntervalDay)))); n != 1 {
 			t.Errorf("created in the last day = %d, want 1", n)
 		}
-		if n := recent(suite.DocCreatedAt.LtExpr(momo.Now())); n != 4 {
+		if n := recent(suite.DocCreatedAt.LtExpr(timeop.Now())); n != 4 {
 			t.Errorf("created before now = %d, want 4", n)
-		}
-	})
-}
-
-// Catches: JoinSQL fragments losing their binds or placeholder numbering when
-// executed, and a typed join not usable as a value.
-func TestJoinSQLIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		seedTimeDocs(t, db)
-		ctx := context.Background()
-		var conds []momo.Expr
-		for _, tenant := range []int64{1, 99} {
-			conds = append(conds, momo.SQL("tenant_id = ?", tenant))
-		}
-		r, err := momo.Select[unitTally](db).From(momo.TableRef{Name: "documents"}).
-			Columns(momo.CountAll()).
-			Where(suite.DocTitle.Ne("zzz"), momo.JoinSQL(" OR ", conds...)).One(ctx)
-		if err != nil || r.N != 1 {
-			t.Fatalf("OR join count = %+v, %v; want 1", r, err)
-		}
-		sum := momo.JoinTypedSQL[int64]("+", momo.SQL("tenant_id"), momo.SQL("tenant_id"))
-		r, err = momo.Select[unitTally](db).From(momo.TableRef{Name: "documents"}).
-			Columns(sum).Where(suite.DocTenantID.Eq(2)).One(ctx)
-		if err != nil || r.N != 4 {
-			t.Fatalf("typed + join = %+v, %v; want 4", r, err)
 		}
 	})
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/sqlitepure"
+	"github.com/azrtydxb/momo/timeop"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -118,48 +119,48 @@ func TestJSONAndTimeExpressionsOnEachDriver(t *testing.T) {
 			return r.F
 		}
 		for _, c := range []struct {
-			f    momo.ExtractField
+			f    timeop.ExtractField
 			want float64
 		}{
-			{momo.ExtractYear, 2024}, {momo.ExtractMonth, 3}, {momo.ExtractDay, 15},
-			{momo.ExtractHour, 13}, {momo.ExtractMinute, 45}, {momo.ExtractSecond, 30},
-			{momo.ExtractQuarter, 1}, {momo.ExtractDow, 5}, {momo.ExtractISODow, 5},
-			{momo.ExtractDoy, 75}, {momo.ExtractEpoch, 1710510330},
+			{timeop.ExtractYear, 2024}, {timeop.ExtractMonth, 3}, {timeop.ExtractDay, 15},
+			{timeop.ExtractHour, 13}, {timeop.ExtractMinute, 45}, {timeop.ExtractSecond, 30},
+			{timeop.ExtractQuarter, 1}, {timeop.ExtractDow, 5}, {timeop.ExtractISODow, 5},
+			{timeop.ExtractDoy, 75}, {timeop.ExtractEpoch, 1710510330},
 		} {
-			if got := num(3, momo.Extract(c.f, at)); got != c.want {
+			if got := num(3, timeop.Extract(c.f, at)); got != c.want {
 				t.Errorf("Extract %s = %v, want %v", c.f, got, c.want)
 			}
 		}
 		for _, c := range []struct {
-			u    momo.TruncUnit
+			u    timeop.TruncUnit
 			want time.Time
 		}{
-			{momo.TruncSecond, time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)},
-			{momo.TruncMinute, time.Date(2024, 3, 15, 13, 45, 0, 0, time.UTC)},
-			{momo.TruncHour, time.Date(2024, 3, 15, 13, 0, 0, 0, time.UTC)},
-			{momo.TruncDay, time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)},
-			{momo.TruncWeek, time.Date(2024, 3, 11, 0, 0, 0, 0, time.UTC)},
-			{momo.TruncMonth, time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)},
-			{momo.TruncQuarter, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
-			{momo.TruncYear, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncSecond, time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)},
+			{timeop.TruncMinute, time.Date(2024, 3, 15, 13, 45, 0, 0, time.UTC)},
+			{timeop.TruncHour, time.Date(2024, 3, 15, 13, 0, 0, 0, time.UTC)},
+			{timeop.TruncDay, time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncWeek, time.Date(2024, 3, 11, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncMonth, time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncQuarter, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
+			{timeop.TruncYear, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
 		} {
-			if got := tm(3, momo.DateTrunc(c.u, at)); !got.Equal(c.want) {
+			if got := tm(3, timeop.Trunc(c.u, at)); !got.Equal(c.want) {
 				t.Errorf("DateTrunc %s = %v, want %v", c.u, got, c.want)
 			}
 		}
-		month := momo.IntervalOf(1, momo.IntervalMonth)
-		if got, want := tm(2, momo.AddInterval(at, month)), time.Date(2023, 3, 28, 10, 15, 30, 250_000_000, time.UTC); !got.Equal(want) {
+		month := timeop.IntervalOf(1, timeop.IntervalMonth)
+		if got, want := tm(2, timeop.AddInterval(at, month)), time.Date(2023, 3, 28, 10, 15, 30, 250_000_000, time.UTC); !got.Equal(want) {
 			t.Errorf("Feb 28 + 1 month = %v, want %v", got, want)
 		}
 		// SQLite normalises the overflow: Jan 31 2023 plus a month is Mar 3.
-		if got, want := tm(1, momo.AddInterval(at, month)), time.Date(2023, 3, 3, 10, 15, 30, 250_000_000, time.UTC); !got.Equal(want) {
+		if got, want := tm(1, timeop.AddInterval(at, month)), time.Date(2023, 3, 3, 10, 15, 30, 250_000_000, time.UTC); !got.Equal(want) {
 			t.Errorf("Jan 31 + 1 month = %v, want %v", got, want)
 		}
-		if got, want := tm(3, momo.SubInterval(at, momo.IntervalOf(2, momo.IntervalWeek))), time.Date(2024, 3, 1, 13, 45, 30, 0, time.UTC); !got.Equal(want) {
+		if got, want := tm(3, timeop.SubInterval(at, timeop.IntervalOf(2, timeop.IntervalWeek))), time.Date(2024, 3, 1, 13, 45, 30, 0, time.UTC); !got.Equal(want) {
 			t.Errorf("- 2 weeks = %v, want %v", got, want)
 		}
 
-		r, err := momo.Select[exprRow](db).From(src).Columns(id, momo.Now(), id).Where(id.Eq(1)).One(ctx)
+		r, err := momo.Select[exprRow](db).From(src).Columns(id, timeop.Now(), id).Where(id.Eq(1)).One(ctx)
 		if err != nil || !storedStamp.MatchString(r.S) {
 			t.Errorf("Now() = %q, %v; want the stored timestamp text", r.S, err)
 		}

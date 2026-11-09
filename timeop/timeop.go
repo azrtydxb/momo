@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo
+// Package timeop holds the typed date and time expressions: Extract,
+// AtTimeZone, intervals with AddInterval and SubInterval, Now,
+// CurrentTimestamp and Trunc. Every keyword that reaches the SQL text (an
+// extract field, an interval unit, a truncation unit) is looked up in a fixed
+// allowlist at build time and the canonical spelling from the table is what
+// gets written, so no caller string is ever interpolated. A name outside the
+// allowlist fails the build with momo.ErrValidation.
+//
+// The package builds on the exported extension API of the root package
+// (Ops, NewOps, Typed, As, IsBound and the Builder methods) and uses no
+// unexported name of it.
+package timeop
 
 import (
 	"errors"
@@ -8,19 +19,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 )
 
-// Typed date and time expressions: Extract, AtTimeZone, intervals with
-// AddInterval and SubInterval, Now, CurrentTimestamp and DateTrunc. Every
-// keyword that reaches the SQL text (an extract field, an interval unit, a
-// truncation unit) is looked up in a fixed allowlist at build time and the
-// canonical spelling from the table is what gets written, so no caller
-// string is ever interpolated. A name outside the allowlist fails the build
-// with ErrValidation.
-
-func timeErr(format string, a ...any) *Error {
-	return &Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf(format, a...)}
+func timeErr(format string, a ...any) *momo.Error {
+	return &momo.Error{Kind: momo.ErrValidation, Op: "build", Err: fmt.Errorf(format, a...)}
 }
 
 // sqliteTimeFmt is the timestamp text format momo's SQLite schema uses
@@ -33,16 +37,14 @@ const sqliteTimeFmt = `'%Y-%m-%d %H:%M:%f'`
 const maxIntervalMagnitude = 1_000_000_000_000
 
 // appendTime renders a timestamp operand. On PostgreSQL a bound Go time
-// (Value(t)) is cast to timestamptz, because the server cannot always infer
+// (momo.Value(t)) is cast to timestamptz, because the server cannot always infer
 // the parameter type inside EXTRACT, date_trunc or AT TIME ZONE.
-func appendTime(b *Builder, e Expression[time.Time]) {
-	if t, ok := e.(typed[time.Time]); ok && b.d.Name == dialect.Postgres {
-		if _, bound := t.Expr.(argExpr); bound {
-			b.WriteString("CAST(")
-			e.AppendSQL(b)
-			b.WriteString(" AS timestamptz)")
-			return
-		}
+func appendTime(b *momo.Builder, e momo.Expression[time.Time]) {
+	if b.Dialect().Name == dialect.Postgres && momo.IsBound(e) {
+		b.WriteString("CAST(")
+		e.AppendSQL(b)
+		b.WriteString(" AS timestamptz)")
+		return
 	}
 	e.AppendSQL(b)
 }
@@ -50,7 +52,7 @@ func appendTime(b *Builder, e Expression[time.Time]) {
 // ------------------------------------------------------------- Extract
 
 // ExtractField names the part of a timestamp that Extract reads. Use the
-// constants; any other value fails the build with ErrValidation.
+// constants; any other value fails the build with momo.ErrValidation.
 type ExtractField string
 
 // The extract fields every dialect can answer. Dow counts Sunday as 0 and
@@ -80,30 +82,29 @@ var extractPG = map[ExtractField]string{
 // ExtractExpr is a date part of a timestamp as a float64. Build it with
 // Extract.
 type ExtractExpr struct {
-	exprOps[float64]
+	momo.Ops[float64]
 	field ExtractField
-	e     Expression[time.Time]
+	e     momo.Expression[time.Time]
 }
 
 // Extract reads one part of a timestamp: EXTRACT(field FROM e) on
 // PostgreSQL, strftime on SQLite and EXTRACT, DAYOFWEEK and friends on
 // MySQL. The result is always a float64 (cast on PostgreSQL, whose EXTRACT
 // returns numeric), so ExtractEpoch can carry fractional seconds; wrap it in
-// Cast to get an integer. On PostgreSQL ExtractSecond includes the
+// momo.Cast to get an integer. On PostgreSQL ExtractSecond includes the
 // fraction; SQLite and MySQL return whole seconds. On MySQL ExtractEpoch is
 // UNIX_TIMESTAMP, which reads the value in the session time zone.
-func Extract(field ExtractField, e Expression[time.Time]) ExtractExpr {
+func Extract(field ExtractField, e momo.Expression[time.Time]) ExtractExpr {
 	x := ExtractExpr{field: field, e: e}
-	x.exprOps = selfOps[float64](x)
+	x.Ops = momo.NewOps[float64](x)
 	return x
 }
 
 // As names the expression in a select list.
-func (x ExtractExpr) As(alias string) Aliased[float64] { return As[float64](x, alias) }
+func (x ExtractExpr) As(alias string) momo.Aliased[float64] { return momo.As[float64](x, alias) }
 
-func (ExtractExpr) resultType() float64 { return 0 }
-
-func (x ExtractExpr) AppendSQL(b *Builder) {
+// AppendSQL renders the extraction for the dialect of b.
+func (x ExtractExpr) AppendSQL(b *momo.Builder) {
 	kw, ok := extractPG[x.field]
 	if !ok {
 		b.SetErr(timeErr("extract field %q is not one of the Extract... constants", string(x.field)))
@@ -113,7 +114,7 @@ func (x ExtractExpr) AppendSQL(b *Builder) {
 		b.SetErr(timeErr("Extract needs a timestamp expression"))
 		return
 	}
-	switch b.d.Name {
+	switch b.Dialect().Name {
 	case dialect.Postgres:
 		b.WriteString("CAST(EXTRACT(" + kw + " FROM ")
 		appendTime(b, x.e)
@@ -123,15 +124,15 @@ func (x ExtractExpr) AppendSQL(b *Builder) {
 	case dialect.MySQL:
 		x.appendMySQL(b)
 	default:
-		b.unsupported("Extract")
+		b.Unsupported("Extract")
 	}
 }
 
-func (x ExtractExpr) appendSQLite(b *Builder) {
+func (x ExtractExpr) appendSQLite(b *momo.Builder) {
 	strf := func(f string) {
 		b.WriteString("strftime('" + f + "', ")
 		x.e.AppendSQL(b)
-		b.writeByte(')')
+		b.WriteString(")")
 	}
 	switch x.field {
 	case ExtractQuarter:
@@ -154,7 +155,7 @@ func (x ExtractExpr) appendSQLite(b *Builder) {
 	}
 }
 
-func (x ExtractExpr) appendMySQL(b *Builder) {
+func (x ExtractExpr) appendMySQL(b *momo.Builder) {
 	// "+ 0e0" turns MySQL's integer or decimal result into a DOUBLE.
 	wrap := func(pre string, post string) {
 		b.WriteString("(" + pre)
@@ -175,29 +176,27 @@ func (x ExtractExpr) appendMySQL(b *Builder) {
 	}
 }
 
-// ------------------------------------------------------------ TimeExpr
+// ------------------------------------------------------------------ Expr
 
-// TimeExpr is a timestamp-valued expression built by AtTimeZone,
-// AddInterval, SubInterval, Now, CurrentTimestamp or DateTrunc. It carries
-// the comparisons of a column (Eq, Lt, Between, ...) and can be aliased with
-// As.
-type TimeExpr struct {
-	exprOps[time.Time]
-	fn func(*Builder)
+// Expr is a timestamp-valued expression built by AtTimeZone, AddInterval,
+// SubInterval, Now, CurrentTimestamp or Trunc. It carries the comparisons of
+// a column (Eq, Lt, Between, ...) and can be aliased with As.
+type Expr struct {
+	momo.Ops[time.Time]
+	fn func(*momo.Builder)
 }
 
-func newTimeExpr(fn func(*Builder)) TimeExpr {
-	t := TimeExpr{fn: fn}
-	t.exprOps = selfOps[time.Time](t)
+func newExpr(fn func(*momo.Builder)) Expr {
+	t := Expr{fn: fn}
+	t.Ops = momo.NewOps[time.Time](t)
 	return t
 }
 
 // As names the expression in a select list.
-func (t TimeExpr) As(alias string) Aliased[time.Time] { return As[time.Time](t, alias) }
+func (t Expr) As(alias string) momo.Aliased[time.Time] { return momo.As[time.Time](t, alias) }
 
-func (TimeExpr) resultType() time.Time { return time.Time{} }
-
-func (t TimeExpr) AppendSQL(b *Builder) {
+// AppendSQL renders the expression for the dialect of b.
+func (t Expr) AppendSQL(b *momo.Builder) {
 	if t.fn == nil {
 		b.SetErr(timeErr("expression was not built with its constructor"))
 		return
@@ -214,25 +213,24 @@ func (t TimeExpr) AppendSQL(b *Builder) {
 // same expression in SELECT and GROUP BY renders identical text and
 // PostgreSQL accepts the grouping; for that it must be at most 64 bytes of
 // letters, digits and _ + : / -, otherwise the build fails with
-// ErrValidation. Use AtTimeZoneExpr for a zone held in a column. SQLite and
-// MySQL have no portable time zone conversion and fail with ErrUnsupported.
+// momo.ErrValidation. Use AtTimeZoneExpr for a zone held in a column. SQLite and
+// MySQL have no portable time zone conversion and fail with momo.ErrUnsupported.
 //
 // For local-time buckets wrap the column before truncating or extracting:
-// DateTrunc(TruncDay, AtTimeZone(col, "Europe/Brussels")). DateTrunc and
+// Trunc(TruncDay, AtTimeZone(col, "Europe/Brussels")). Trunc and
 // Extract on a bare timestamptz work in the session time zone.
-func AtTimeZone(e Expression[time.Time], zone string) TimeExpr {
+func AtTimeZone(e momo.Expression[time.Time], zone string) Expr {
 	if err := validZone(zone); err != nil {
-		return newTimeExpr(func(b *Builder) { b.SetErr(timeErr("AtTimeZone zone %q: %v", zone, err)) })
+		return newExpr(func(b *momo.Builder) { b.SetErr(timeErr("AtTimeZone zone %q: %v", zone, err)) })
 	}
-	return AtTimeZoneExpr(e, zoneLiteral(zone))
+	return AtTimeZoneExpr(e, momo.Typed[string](zoneLiteral(zone)))
 }
 
 // zoneLiteral is a validated zone name rendered as a quoted SQL literal.
 type zoneLiteral string
 
-func (zoneLiteral) resultType() string { return "" }
-
-func (z zoneLiteral) AppendSQL(b *Builder) { b.WriteString("'" + string(z) + "'") }
+// AppendSQL writes the validated zone as a quoted literal.
+func (z zoneLiteral) AppendSQL(b *momo.Builder) { b.WriteString("'" + string(z) + "'") }
 
 func validZone(zone string) error {
 	if zone == "" || len(zone) > 64 {
@@ -252,28 +250,28 @@ func validZone(zone string) error {
 
 // AtTimeZoneExpr is AtTimeZone with the zone taken from a string
 // expression, for example a column holding each row's zone.
-func AtTimeZoneExpr(e Expression[time.Time], zone Expression[string]) TimeExpr {
-	return newTimeExpr(func(b *Builder) {
+func AtTimeZoneExpr(e momo.Expression[time.Time], zone momo.Expression[string]) Expr {
+	return newExpr(func(b *momo.Builder) {
 		if e == nil || zone == nil {
 			b.SetErr(timeErr("AtTimeZone needs a timestamp and a zone expression"))
 			return
 		}
-		if b.d.Name != dialect.Postgres {
-			b.unsupported("AtTimeZone")
+		if b.Dialect().Name != dialect.Postgres {
+			b.Unsupported("AtTimeZone")
 			return
 		}
-		b.writeByte('(')
+		b.WriteString("(")
 		appendTime(b, e)
 		b.WriteString(" AT TIME ZONE ")
 		zone.AppendSQL(b)
-		b.writeByte(')')
+		b.WriteString(")")
 	})
 }
 
 // ------------------------------------------------------------ Interval
 
 // IntervalUnit is the unit of an Interval. Use the constants; any other
-// value fails the build with ErrValidation.
+// value fails the build with momo.ErrValidation.
 type IntervalUnit string
 
 // The interval units every dialect supports.
@@ -310,7 +308,7 @@ var intervalUnits = map[IntervalUnit]unitSpec{
 // SubInterval. Build it with IntervalOf or IntervalExpr.
 type Interval struct {
 	lit     int64
-	count   Expression[int64] // nil for a literal
+	count   momo.Expression[int64] // nil for a literal
 	unit    IntervalUnit
 	isBuilt bool
 	isExpr  bool
@@ -319,15 +317,15 @@ type Interval struct {
 // IntervalOf is a literal interval of n units, written into the SQL text
 // (INTERVAL '5 day'), so the same expression in SELECT and GROUP BY stays
 // identical. n must be within one trillion either way, otherwise the build
-// fails with ErrValidation.
+// fails with momo.ErrValidation.
 func IntervalOf(n int64, unit IntervalUnit) Interval {
 	return Interval{lit: n, unit: unit, isBuilt: true}
 }
 
 // IntervalExpr is an interval whose count comes from an integer expression:
-// a column, or Value(n) to bind a parameter. On PostgreSQL the count is
+// a column, or momo.Value(n) to bind a parameter. On PostgreSQL the count is
 // multiplied into a one-unit INTERVAL.
-func IntervalExpr(count Expression[int64], unit IntervalUnit) Interval {
+func IntervalExpr(count momo.Expression[int64], unit IntervalUnit) Interval {
 	return Interval{count: count, unit: unit, isBuilt: true, isExpr: true}
 }
 
@@ -338,13 +336,13 @@ func IntervalExpr(count Expression[int64], unit IntervalUnit) Interval {
 // differs at month ends: PostgreSQL and MySQL clamp to the last day (Jan 31
 // plus one month is Feb 28 or 29), SQLite normalises the overflow into the
 // next month (Mar 2 or 3). SQLite years outside 0000 to 9999 are NULL.
-func AddInterval(ts Expression[time.Time], iv Interval) TimeExpr { return intervalExpr(ts, iv, 1) }
+func AddInterval(ts momo.Expression[time.Time], iv Interval) Expr { return intervalExpr(ts, iv, 1) }
 
 // SubInterval is ts - iv: the timestamp moved back by the interval.
-func SubInterval(ts Expression[time.Time], iv Interval) TimeExpr { return intervalExpr(ts, iv, -1) }
+func SubInterval(ts momo.Expression[time.Time], iv Interval) Expr { return intervalExpr(ts, iv, -1) }
 
-func intervalExpr(ts Expression[time.Time], iv Interval, sign int64) TimeExpr {
-	return newTimeExpr(func(b *Builder) {
+func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
+	return newExpr(func(b *momo.Builder) {
 		spec, ok := intervalUnits[iv.unit]
 		switch {
 		case ts == nil || !iv.isBuilt:
@@ -360,9 +358,9 @@ func intervalExpr(ts Expression[time.Time], iv Interval, sign int64) TimeExpr {
 			b.SetErr(timeErr("interval of %d %ss is outside the supported range", iv.lit, string(iv.unit)))
 			return
 		}
-		switch b.d.Name {
+		switch b.Dialect().Name {
 		case dialect.Postgres:
-			b.writeByte('(')
+			b.WriteString("(")
 			appendTime(b, ts)
 			op := " + "
 			if sign < 0 {
@@ -402,16 +400,16 @@ func intervalExpr(ts Expression[time.Time], iv Interval, sign int64) TimeExpr {
 			iv.count.AppendSQL(b)
 			b.WriteString(") * " + strconv.FormatInt(sign*spec.factor, 10) + " AS TEXT) || ' " + spec.sqlite + "')")
 		default:
-			b.unsupported("interval arithmetic")
+			b.Unsupported("interval arithmetic")
 		}
 	})
 }
 
 // ----------------------------------------------------------------- Now
 
-func nowExpr(name string, pg, my string) TimeExpr {
-	return newTimeExpr(func(b *Builder) {
-		switch b.d.Name {
+func nowExpr(name string, pg, my string) Expr {
+	return newExpr(func(b *momo.Builder) {
+		switch b.Dialect().Name {
 		case dialect.Postgres:
 			b.WriteString(pg)
 		case dialect.MySQL:
@@ -419,7 +417,7 @@ func nowExpr(name string, pg, my string) TimeExpr {
 		case dialect.SQLite:
 			b.WriteString("strftime(" + sqliteTimeFmt + ", 'now')")
 		default:
-			b.unsupported(name)
+			b.Unsupported(name)
 		}
 	})
 }
@@ -427,18 +425,18 @@ func nowExpr(name string, pg, my string) TimeExpr {
 // Now is the database clock: now() on PostgreSQL (the start of the
 // transaction), NOW(6) on MySQL, and strftime of 'now' in momo's timestamp
 // format on SQLite. It reads the database's time, not the WithClock option.
-func Now() TimeExpr { return nowExpr("Now", "now()", "NOW(6)") }
+func Now() Expr { return nowExpr("Now", "now()", "NOW(6)") }
 
 // CurrentTimestamp is CURRENT_TIMESTAMP, with microsecond precision on
 // MySQL, and the same millisecond text as Now on SQLite.
-func CurrentTimestamp() TimeExpr {
+func CurrentTimestamp() Expr {
 	return nowExpr("CurrentTimestamp", "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP(6)")
 }
 
-// ----------------------------------------------------------- DateTrunc
+// ---------------------------------------------------------------- Trunc
 
-// TruncUnit is the precision of DateTrunc. Use the constants; any other
-// value fails the build with ErrValidation.
+// TruncUnit is the precision of Trunc. Use the constants; any other
+// value fails the build with momo.ErrValidation.
 type TruncUnit string
 
 // The truncation units every dialect supports. Weeks start on Monday.
@@ -467,40 +465,40 @@ var truncFormats = map[TruncUnit]struct{ sqlite, mysql string }{
 	TruncYear:    {"%Y-01-01 00:00:00.000", "%Y-01-01"},
 }
 
-// DateTrunc rounds a timestamp down to the start of its unit:
+// Trunc rounds a timestamp down to the start of its unit:
 // date_trunc('day', e) on PostgreSQL, and the equivalent strftime or
 // DATE_FORMAT composition on SQLite and MySQL. The unit is written as a
 // literal so SELECT and GROUP BY render identically. On PostgreSQL a
 // timestamptz is truncated in the session time zone; wrap the input in
 // AtTimeZone for buckets in a chosen zone. On SQLite the result
 // is text in momo's timestamp format; on MySQL it is a DATETIME.
-func DateTrunc(unit TruncUnit, e Expression[time.Time]) TimeExpr {
-	return newTimeExpr(func(b *Builder) {
+func Trunc(unit TruncUnit, e momo.Expression[time.Time]) Expr {
+	return newExpr(func(b *momo.Builder) {
 		f, ok := truncFormats[unit]
 		switch {
 		case !ok:
 			b.SetErr(timeErr("truncation unit %q is not one of the Trunc... constants", string(unit)))
 			return
 		case e == nil:
-			b.SetErr(timeErr("DateTrunc needs a timestamp expression"))
+			b.SetErr(timeErr("Trunc needs a timestamp expression"))
 			return
 		}
-		switch b.d.Name {
+		switch b.Dialect().Name {
 		case dialect.Postgres:
 			b.WriteString("date_trunc('" + string(unit) + "', ")
 			appendTime(b, e)
-			b.writeByte(')')
+			b.WriteString(")")
 		case dialect.SQLite:
 			truncSQLite(b, unit, f.sqlite, e)
 		case dialect.MySQL:
 			truncMySQL(b, unit, f.mysql, e)
 		default:
-			b.unsupported("DateTrunc")
+			b.Unsupported("Trunc")
 		}
 	})
 }
 
-func truncSQLite(b *Builder, unit TruncUnit, layout string, e Expr) {
+func truncSQLite(b *momo.Builder, unit TruncUnit, layout string, e momo.Expr) {
 	switch unit {
 	case TruncQuarter:
 		b.WriteString("(strftime('%Y-', ")
@@ -515,11 +513,11 @@ func truncSQLite(b *Builder, unit TruncUnit, layout string, e Expr) {
 	default:
 		b.WriteString("strftime('" + layout + "', ")
 		e.AppendSQL(b)
-		b.writeByte(')')
+		b.WriteString(")")
 	}
 }
 
-func truncMySQL(b *Builder, unit TruncUnit, layout string, e Expr) {
+func truncMySQL(b *momo.Builder, unit TruncUnit, layout string, e momo.Expr) {
 	switch unit {
 	case TruncQuarter:
 		b.WriteString("CAST(CONCAT(YEAR(")

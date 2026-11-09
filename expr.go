@@ -310,6 +310,19 @@ func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v: v}} }
 // Builder.Ident and values through Builder.Arg.
 func Typed[T any](e Expr) Expression[T] { return typed[T]{e} }
 
+// IsBound reports whether e is a Go value bound as a parameter by Value,
+// possibly wrapped by Typed. A feature package uses it to cast a bound operand
+// whose type the server cannot infer (a timestamp inside EXTRACT on
+// PostgreSQL). It is false for a column, a function call or any other
+// expression. IsBound is an extension point; see Ops.
+func IsBound(e Expr) bool {
+	if w, ok := e.(interface{ inner() Expr }); ok {
+		e = w.inner()
+	}
+	_, bound := e.(argExpr)
+	return bound
+}
+
 // PredicateFunc adapts a render function to a Predicate. The function writes
 // the condition into the builder, using Builder.Ident for identifiers and
 // Builder.Arg or Builder.ArgFor for values. PredicateFunc is an extension
@@ -324,6 +337,10 @@ func (PredicateFunc) resultType() bool { return false }
 type typed[T any] struct{ Expr }
 
 func (typed[T]) resultType() T { var z T; return z }
+
+// inner returns the expression a typed wrapper adds a result type to.
+func (t typed[T]) inner() Expr { return t.Expr }
+
 func (t typed[T]) isRaw() bool {
 	r, ok := t.Expr.(interface{ isRaw() bool })
 	return ok && r.isRaw()

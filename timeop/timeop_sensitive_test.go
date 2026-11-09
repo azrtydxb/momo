@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo_test
+package timeop_test
 
 import (
 	"testing"
@@ -11,6 +11,7 @@ import (
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/internal/suite"
+	"github.com/azrtydxb/momo/timeop"
 )
 
 // TestTimeExpressionsMaskComparedArgs requires an argument compared with a
@@ -21,11 +22,11 @@ import (
 func TestTimeExpressionsMaskComparedArgs(t *testing.T) {
 	when := time.Date(2024, 3, 5, 10, 0, 0, 0, time.UTC)
 	build := map[string]func(col momo.Column[time.Time]) momo.Predicate{
-		"extract": func(c momo.Column[time.Time]) momo.Predicate { return momo.Extract(momo.ExtractYear, c).Eq(2024) },
+		"extract": func(c momo.Column[time.Time]) momo.Predicate { return timeop.Extract(timeop.ExtractYear, c).Eq(2024) },
 		"interval": func(c momo.Column[time.Time]) momo.Predicate {
-			return momo.AddInterval(c, momo.IntervalOf(1, momo.IntervalDay)).Lt(when)
+			return timeop.AddInterval(c, timeop.IntervalOf(1, timeop.IntervalDay)).Lt(when)
 		},
-		"trunc": func(c momo.Column[time.Time]) momo.Predicate { return momo.DateTrunc(momo.TruncDay, c).Eq(when) },
+		"trunc": func(c momo.Column[time.Time]) momo.Predicate { return timeop.Trunc(timeop.TruncDay, c).Eq(when) },
 	}
 	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 		for name, mk := range build {
