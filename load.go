@@ -265,13 +265,13 @@ func (r *Relation[P, C]) childQueries(q Querier, keys [][]any, cfg *loadConfig) 
 	var out []Compiled
 	for start := 0; start < len(keys); start += budget {
 		end := min(start+budget, len(keys))
-		chunk := keys[start:end]
+		part := keys[start:end]
 		var c Compiled
 		var err error
 		if cfg.perParentLimit > 0 {
-			c, err = r.topNQuery(d, chunk, cfg)
+			c, err = r.topNQuery(d, part, cfg)
 		} else {
-			c, err = r.chunkQuery(d, chunk, cfg)
+			c, err = r.chunkQuery(d, part, cfg)
 		}
 		if err != nil {
 			return nil, err

@@ -142,8 +142,8 @@ func (r Relation[P, C]) countQueries(d *dialect.Dialect, keys [][]any, cfg *load
 	budget := chunk.KeysPerStatement(d, ncols, 16+scopeArgs)
 	var out []Compiled
 	for start := 0; start < len(keys); start += budget {
-		chunk := keys[start:min(start+budget, len(keys))]
-		c, err := compile(d, func(b *Builder) { r.writeCount(b, chunk, cfg) })
+		part := keys[start:min(start+budget, len(keys))]
+		c, err := compile(d, func(b *Builder) { r.writeCount(b, part, cfg) })
 		if err != nil {
 			return nil, err
 		}
