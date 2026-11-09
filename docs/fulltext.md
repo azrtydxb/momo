@@ -114,7 +114,7 @@ weighted rank from the distance and order ascending:
 ```go
 dist := momo.CosineDistance(articleEmb, queryEmbedding) // vector.Vector
 text := momo.TSRankCD(articleSearch, momo.WebsearchToTSQuery("english", userInput))
-score := momo.SubExpr[float64](dist, momo.Mul[float64](text, 0.5))
+score := sqlfn.SubExpr[float64](dist, sqlfn.Mul[float64](text, 0.5))
 
 hits, err := momo.Select[Hit](db).
 	From(momo.TableRef{Name: "kb_articles"}).

@@ -21,12 +21,35 @@ One row per moved identifier. When a method became a function, the old name is
 the method and the new name is the function, which takes the former receiver
 as an argument.
 
-| Old identifier          | New import path                    | New identifier        |
-| ----------------------- | ---------------------------------- | --------------------- |
-| `momo.ArrayContains`    | `github.com/azrtydxb/momo/arrayop` | `arrayop.Contains`    |
-| `momo.ArrayContainedBy` | `github.com/azrtydxb/momo/arrayop` | `arrayop.ContainedBy` |
-| `momo.ArrayOverlaps`    | `github.com/azrtydxb/momo/arrayop` | `arrayop.Overlaps`    |
-| `momo.AnyOf`            | `github.com/azrtydxb/momo/arrayop` | `arrayop.AnyOf`       |
+| Old identifier           | New import path                    | New identifier            |
+| ------------------------ | ---------------------------------- | ------------------------- |
+| `momo.ArrayContains`     | `github.com/azrtydxb/momo/arrayop` | `arrayop.Contains`        |
+| `momo.ArrayContainedBy`  | `github.com/azrtydxb/momo/arrayop` | `arrayop.ContainedBy`     |
+| `momo.ArrayOverlaps`     | `github.com/azrtydxb/momo/arrayop` | `arrayop.Overlaps`        |
+| `momo.AnyOf`             | `github.com/azrtydxb/momo/arrayop` | `arrayop.AnyOf`           |
+| `momo.Substr`            | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Substr`            |
+| `momo.SubstrFrom`        | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.SubstrFrom`        |
+| `momo.Lower`             | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Lower`             |
+| `momo.Upper`             | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Upper`             |
+| `momo.Length`            | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Length`            |
+| `momo.LengthExpr`        | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.LengthExpr`        |
+| `momo.CurrentSchema`     | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.CurrentSchema`     |
+| `momo.CurrentSchemaExpr` | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.CurrentSchemaExpr` |
+| `momo.Case`              | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Case`              |
+| `momo.CaseExpr`          | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.CaseExpr`          |
+| `momo.Numeric`           | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Numeric`           |
+| `momo.ArithExpr`         | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.ArithExpr`         |
+| `momo.Add`               | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Add`               |
+| `momo.AddExpr`           | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.AddExpr`           |
+| `momo.Sub`               | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Sub`               |
+| `momo.SubExpr`           | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.SubExpr`           |
+| `momo.Mul`               | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Mul`               |
+| `momo.MulExpr`           | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.MulExpr`           |
+| `momo.CoalesceExpr`      | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.CoalesceExpr`      |
+| `momo.Cast`              | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Cast`              |
+| `momo.CastExpr`          | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.CastExpr`          |
+| `momo.Concat`            | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.Concat`            |
+| `momo.ConcatExpr`        | `github.com/azrtydxb/momo/sqlfn`   | `sqlfn.ConcatExpr`        |
 
 ### Rewrite recipe
 
@@ -44,6 +67,9 @@ These stay in `momo`, with the reason:
 
 - `Func` and `FuncExpr`: the generic SQL function escape hatch, which the new
   packages build on.
+- `Coalesce`, `Value`, `SQL` and `TypedSQL`: bound-value and raw-fragment
+  building blocks of the expression core. `sqlfn.CoalesceExpr` takes expression
+  arguments instead.
 - The vector column types (`VectorColumn` and its variants): generated code
   references them.
 - The hook interfaces (`Hook`, `QueryEvent`, `RelationHook`, `RelationEvent`):

@@ -20,6 +20,7 @@ leaf schema
 leaf types
 leaf vector
 feature arrayop
+feature sqlfn
 
 internal-leaf internal/chunk
 internal-leaf internal/golden
