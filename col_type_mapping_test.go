@@ -24,7 +24,7 @@ const (
 
 // mappingRow is one documented Go-to-SQL mapping. docs/TYPE_MAPPING.md must
 // contain exactly these rows, and each row's PostgreSQL type must be what the
-// code produces and what the live round trip (type_mapping_integration_test.go)
+// code produces and what the live round trip (col_type_mapping_integration_test.go)
 // stores into.
 type mappingRow struct {
 	goType string // first cell of the doc row, without backticks

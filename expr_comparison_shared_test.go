@@ -83,7 +83,7 @@ func TestAggComparisonRendersAgainstTheAggregate(t *testing.T) {
 }
 
 // TestLibraryErrorsAreMatchable parses the non-test sources of the root
-// package (errors.go excluded) and flags a bare library error: an errors.New
+// package (err.go excluded) and flags a bare library error: an errors.New
 // or fmt.Errorf call whose first argument is a double-quoted literal starting
 // with "momo:" and containing no %w verb. Such an error has no Kind, so
 // errors.Is cannot match it; build it through newError, validation or
@@ -97,7 +97,7 @@ func TestLibraryErrorsAreMatchable(t *testing.T) {
 	}
 	fset := token.NewFileSet()
 	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") || f == "errors.go" {
+		if strings.HasSuffix(f, "_test.go") || f == "err.go" {
 			continue
 		}
 		file, err := parser.ParseFile(fset, f, nil, 0)
