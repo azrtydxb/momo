@@ -26,6 +26,7 @@ feature fts
 feature sqlfn
 feature jsonop
 feature advisory
+feature vecop
 feature vecsearch
 
 internal-leaf internal/chunk

@@ -23,6 +23,7 @@ import (
 	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/examples/vector-search/models"
 	"github.com/azrtydxb/momo/examples/vector-search/models/item"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vecsearch"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -112,7 +113,7 @@ func search(ctx context.Context, q momo.Querier, limit int64, where ...momo.Pred
 // searchQuery builds the query without running it, so Explain plans exactly
 // the statement search runs.
 func searchQuery(q momo.Querier, limit int64, where ...momo.Predicate) momo.SelectQuery[models.Hit] {
-	distance := momo.CosineDistance(item.Embedding, query)
+	distance := vecop.Cosine(item.Embedding, query)
 	return momo.Select[models.Hit](q).
 		From(item.Table).
 		Columns(item.Title, distance).

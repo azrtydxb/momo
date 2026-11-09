@@ -116,7 +116,7 @@ weighted rank from the distance and order ascending:
 <!-- docscheck:fragment -->
 
 ```go
-dist := momo.CosineDistance(articleEmb, queryEmbedding) // vector.Vector
+dist := vecop.Cosine(articleEmb, queryEmbedding) // vector.Vector
 text := fts.RankCD(articleSearch, fts.WebsearchToQuery("english", userInput))
 score := sqlfn.SubExpr[float64](dist, sqlfn.Mul[float64](text, 0.5))
 
