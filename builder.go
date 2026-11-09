@@ -176,9 +176,11 @@ func (b *Builder) Arg(v any) {
 	b.buf = b.d.AppendPlaceholder(b.buf, len(b.args))
 }
 
-// argFor binds v like Arg and records it as sensitive when flags carries
+// ArgFor binds v like Arg and records it as sensitive when flags carries
 // FlagSensitive, so QueryEvent.Args shows RedactedArg instead of the value.
-func (b *Builder) argFor(flags uint16, v any) {
+// Take flags from FlagsOf of the column the value is compared with, or from
+// RenderSensitive. ArgFor is an extension point; see Ops.
+func (b *Builder) ArgFor(flags uint16, v any) {
 	prev := b.argSens
 	b.argSens = prev || flags&FlagSensitive != 0
 	if !bindMySQLVector(b, v) {
@@ -187,9 +189,11 @@ func (b *Builder) argFor(flags uint16, v any) {
 	b.argSens = prev
 }
 
-// renderSens renders e and reports whether it read a sensitive column. The
-// result is the flag to bind the other operands of the predicate with.
-func (b *Builder) renderSens(e Expr, flags uint16) uint16 {
+// RenderSensitive renders e and returns flags with FlagSensitive added when e
+// read a sensitive column. The result is the flag to bind the other operands
+// of the predicate with, through ArgFor or ExprFor. RenderSensitive is an
+// extension point; see Ops.
+func (b *Builder) RenderSensitive(e Expr, flags uint16) uint16 {
 	n := b.sensSeen
 	e.AppendSQL(b)
 	if b.sensSeen != n {
@@ -198,9 +202,18 @@ func (b *Builder) renderSens(e Expr, flags uint16) uint16 {
 	return flags
 }
 
-// exprFor renders e with every argument it binds recorded as sensitive when
-// flags carries FlagSensitive, for an expression assigned to such a column.
-func (b *Builder) exprFor(flags uint16, e Expr) {
+// MarkSensitive records that the expression being rendered read a sensitive
+// column, so an enclosing predicate that compares it masks its other operands
+// in hook events. A column reference does this by itself; call MarkSensitive
+// from a custom expression that writes a sensitive column's identifier
+// directly with Ident or QualifiedIdent instead of rendering the column. It
+// does not change the SQL. MarkSensitive is an extension point; see Ops.
+func (b *Builder) MarkSensitive() { b.sensSeen++ }
+
+// ExprFor renders e with every argument it binds recorded as sensitive when
+// flags carries FlagSensitive, for an expression compared with or assigned to
+// such a column. ExprFor is an extension point; see Ops.
+func (b *Builder) ExprFor(flags uint16, e Expr) {
 	prev := b.argSens
 	b.argSens = prev || flags&FlagSensitive != 0
 	e.AppendSQL(b)
@@ -239,10 +252,23 @@ func (b *Builder) checkBindCap(n int, what string) bool {
 	return false
 }
 
-// unsupported records an ErrUnsupported build error for feature.
-func (b *Builder) unsupported(feature string) {
+// Unsupported records an ErrUnsupported build error for feature, naming the
+// dialect being rendered. Call it from a custom expression that the dialect
+// cannot express, instead of rendering SQL that would fail at the database.
+// Unsupported is an extension point; see Ops.
+func (b *Builder) Unsupported(feature string) {
 	b.SetErr(newError(ErrUnsupported, "build", "", fmt.Errorf("%s is not supported by %s", feature, b.d.Name)))
 }
+
+// The unexported spellings below are the in-package names of the extension
+// methods above; they only forward, so each behaviour has one implementation.
+func (b *Builder) argFor(flags uint16, v any) { b.ArgFor(flags, v) }
+
+func (b *Builder) renderSens(e Expr, flags uint16) uint16 { return b.RenderSensitive(e, flags) }
+
+func (b *Builder) exprFor(flags uint16, e Expr) { b.ExprFor(flags, e) }
+
+func (b *Builder) unsupported(feature string) { b.Unsupported(feature) }
 
 // Compiled is a rendered statement ready for inspection or execution.
 type Compiled struct {

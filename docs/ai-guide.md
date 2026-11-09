@@ -1177,6 +1177,81 @@ Details: README sections 5-7, [capabilities.md](capabilities.md).
 Examples: [crud-zero-null](../examples/crud-zero-null/),
 [projection-pagination](../examples/projection-pagination/).
 
+### Writing your own expression
+
+Code outside the root package (your own package, or a Momo subpackage) builds
+typed expressions with a small extension API. Every name below is an extension
+point: writing one correctly means identifiers go through `Builder.Ident` and
+values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQL.
+
+- `momo.Ops[T]`: embed it in your struct to make the struct an `Expression[T]`
+  (a `Predicate` when `T` is `bool`) with `Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge`,
+  `IsNull`, `IsNotNull`, `Between`, `In`, `NotIn`, `Asc` and `Desc`.
+- `momo.NewOps[T]`: binds the embedded `Ops` to the finished struct. Call it in
+  the constructor, as the example below does. An unbound `Ops` fails the
+  build with `ErrValidation`.
+- `momo.Typed[T]`: wraps any `Expr` as an `Expression[T]` without comparison
+  methods.
+- `momo.PredicateFunc`: turns `func(*momo.Builder)` into a `Predicate`.
+- `momo.Flagged` and `momo.FlagsOf`: the column flags of an expression, or 0. Give your
+  expression a `Flags() uint16` method that returns `FlagsOf` of the wrapped
+  column so a sensitive column stays masked.
+- `Builder.ArgFor`: binds a value, masked as `momo.RedactedArg` in hook
+  events when the flags argument has `FlagSensitive`.
+- `Builder.RenderSensitive`: renders an expression and returns the flags with
+  `FlagSensitive` added when it read a sensitive column; pass the result to the
+  other operands.
+- `Builder.ExprFor`: renders an expression with every argument it binds masked
+  when the flags argument has `FlagSensitive`.
+- `Builder.Unsupported`: records `ErrUnsupported` for a dialect that
+  cannot express the feature. `Builder.WriteByte` appends a trusted SQL byte.
+- `Builder.MarkSensitive`: call it from an expression that writes a sensitive
+  column's identifier directly, so an enclosing comparison masks its other
+  operands. A column reference does this by itself.
+- `momo.ValidName`: checks a function name or alias before you write it with
+  `Builder.Ident`.
+- `momo.VectorColumnOf`: the `VectorColumn` behind any `VectorSource`
+  (read its table, name, dimension and flags for a custom distance expression).
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/azrtydxb/momo"
+)
+
+type shout struct {
+	momo.Ops[string]
+	src momo.Expr
+}
+
+func newShout(src momo.Expr) shout {
+	s := shout{src: src}
+	s.Ops = momo.NewOps[string](s)
+	return s
+}
+
+func (s shout) AppendSQL(b *momo.Builder) {
+	b.WriteString("upper(")
+	s.src.AppendSQL(b)
+	b.WriteString(")")
+}
+
+func (s shout) Flags() uint16 { return momo.FlagsOf(s.src) }
+
+// newShout(col) works in Columns, Where (newShout(col).Eq("X")) and OrderBy.
+func main() {
+	title := momo.NewColumn[string]("documents", "title", 0)
+	_ = newShout(title).Eq("X")
+	fmt.Println("ok")
+}
+```
+
+DON'T build the SQL text from caller input with `WriteString`; use `Ident` and
+`Arg`. A runnable version is in `example_expression_test.go`.
+
 ## 7. Transactions
 
 <!-- docscheck:fragment -->

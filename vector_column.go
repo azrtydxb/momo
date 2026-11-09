@@ -184,3 +184,10 @@ func (c ImmutableVectorColumn[V]) As(alias string) ImmutableVectorColumn[V] {
 
 // Set assigns v on insert; only Insert accepts the result.
 func (c ImmutableVectorColumn[V]) Set(v V) InsertAssignment { return InsertAssignment{c.col.Set(v)} }
+
+// VectorColumnOf returns the VectorColumn behind any vector column descriptor
+// that satisfies VectorSource: VectorColumn itself, its nullable variant and
+// the permission variants. Code outside this package uses it to read a source's
+// table, column name, dimension and flags when it builds a distance
+// expression. VectorColumnOf is an extension point; see Ops.
+func VectorColumnOf[V VectorValue](s VectorSource[V]) VectorColumn[V] { return s.vectorColumn() }

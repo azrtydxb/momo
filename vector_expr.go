@@ -134,7 +134,7 @@ func (e DistanceExpr) AppendSQL(b *Builder) {
 		return
 	}
 	if e.flags&FlagSensitive != 0 {
-		b.sensSeen++ // an enclosing predicate masks its other operands too
+		b.MarkSensitive() // an enclosing predicate masks its other operands too
 	}
 	if b.d.Name == dialect.Postgres {
 		b.WriteString("(")
