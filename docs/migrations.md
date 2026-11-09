@@ -872,6 +872,8 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
   application runs the engine itself, at start or in a small
   `cmd/migrate` of its own:
 
+  <!-- docscheck:fragment -->
+
   ```go
   eng, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.WithGoMigrations(g))
   if err != nil { /* ... */ }

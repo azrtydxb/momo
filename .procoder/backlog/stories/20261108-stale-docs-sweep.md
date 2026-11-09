@@ -16,7 +16,7 @@ Compare every claim in `README.md`, `llms.txt` and `docs/*.md` with the code on 
 - [x] `docs/ARCHITECTURE.md` no longer contains `[momo-` tags, 'Planned, not implemented', 'Delivery order' or 'Ownership decisions'; a test in `internal/repocheck` fails if `docs/*.md` contain a `[momo-NN]` tag or a link to `.procoder/`
 - [x] `docs/README.md` lists every page in `docs/` (a test compares the index links to the directory listing) and no longer names `.procoder/specs/momo.md`
 - [x] every example program named in `docs/README.md` exists under `examples/` (existing `TestExamplesAreWired` plus a docs-index check)
-- [x] no change to nav structure, mkdocs files or the llms generation (momo-13 stories 252, 254 and 256 own them)
+- [ ] no change to nav structure, mkdocs files or the llms generation (momo-13 stories 252, 254 and 256 own them)
 
 ## Evidence
 
@@ -39,3 +39,6 @@ Second pass (criterion 2 NOT ticked): I did not read every section of every name
 Tests: internal/repocheck/docs_hygiene_test.go (TestDocsHaveNoPlanBookkeeping, TestArchitecturePageDescribesCode, TestDocsIndexListsEveryPage). Red run 42494821840 (probe commit b9430270a639a1e215b9f5dd5f6b33f2ada5bbd4, branch deleted): TestDocsHaveNoPlanBookkeeping flagged a [momo-05] tag and a .procoder/ reference, TestDocsIndexListsEveryPage flagged an unlinked page.
 
 Nav: mkdocs.yml gained one entry, `Upgrading: upgrading.md` (TestEveryDocPageInNav requires every page in the nav, for the upgrading story). No structure, hook or llms change.
+
+Nav criterion not ticked: the criterion "no change to nav structure, mkdocs files or the llms generation" is unticked because the branch adds one nav entry, `Upgrading: upgrading.md`, to mkdocs.yml. TestEveryDocPageInNav requires every page under docs/ to be in the nav, so the new page cannot exist without that entry. No other nav, hook or llms change.
+

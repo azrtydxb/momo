@@ -25,7 +25,7 @@ func docPages(t *testing.T) []string {
 
 var (
 	planTag       = regexp.MustCompile(`\[momo-\d+`)
-	procoderLink  = regexp.MustCompile(`\.procoder/`)
+	procoderLink  = regexp.MustCompile(`\]\([^)]*\.procoder/`)
 	indexLinkRe   = regexp.MustCompile(`\]\(([^)#\s]+\.md)(?:#[^)]*)?\)`)
 	exampleLinkRe = regexp.MustCompile(`\]\(\.\./examples/([^)/#\s]+)/?[^)]*\)`)
 )
@@ -44,9 +44,29 @@ func TestDocsHaveNoPlanBookkeeping(t *testing.T) {
 				t.Errorf("%s:%d carries a plan tag ([momo-NN]); describe the code, not the plan", filepath.Base(p), i+1)
 			}
 			if procoderLink.MatchString(line) {
-				t.Errorf("%s:%d refers to .procoder/, which readers of the docs cannot open", filepath.Base(p), i+1)
+				t.Errorf("%s:%d links into .procoder/, which readers of the docs cannot open", filepath.Base(p), i+1)
 			}
 		}
+	}
+}
+
+// TestPlanLinkPatterns pins what the checks above catch: a plan tag and a
+// Markdown link into .procoder/ are findings, while prose or inline code that
+// names .procoder/ is allowed.
+func TestPlanLinkPatterns(t *testing.T) {
+	for line, want := range map[string]bool{
+		"see [the plan](../.procoder/plans/x.md)":      true,
+		"[a](.procoder/specs/momo.md#s)":               true,
+		"stories live under .procoder/ in the repo":    false,
+		"the path `.procoder/backlog` is not a link":   false,
+		"[docs](capabilities.md) and `.procoder/` too": false,
+	} {
+		if got := procoderLink.MatchString(line); got != want {
+			t.Errorf("procoderLink on %q = %v, want %v", line, got, want)
+		}
+	}
+	if !planTag.MatchString("owned by [momo-05 Task 1]") || planTag.MatchString("the momo-05 plan") {
+		t.Error("planTag must match a bracketed [momo-NN tag only")
 	}
 }
 

@@ -201,3 +201,11 @@ Decision (2026-11-07): replace the key. Scout's default provider now uses the cu
 - Leave the repository settings as they are
 
 Decision (2026-11-07): all three. Private vulnerability reporting and secret scanning with push protection are enabled; main requires lint, unit, race, the integration matrix, compile-fail, govulncheck, windows, macos and the PR title check, with no force push or deletion. fuzz-smoke and bench-smoke stay optional (fuzz-smoke has a known timeout flake). Admins are exempt so release-please PRs, which get no CI runs, can still merge.
+
+## apidiff-docs gate: required check on main?
+
+- Required on main once it has passed on a real PR (recommended)
+- Advisory only: runs and comments, not required
+- Decide later
+
+Decision (2026-11-09): required on main. The `apidiff-docs` job (sprint 6, story apidiff-docs-gate) is added to main's required status checks after it has passed on a real pull request (the sprint-6 → main PR). A PR changes the exported API only with a docs change or the line `Docs: no reader-visible change: <reason>`.

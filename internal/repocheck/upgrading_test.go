@@ -92,7 +92,12 @@ func diffMoves(moves, page []movePair) []string {
 			msgs = append(msgs, "docs/upgrading.md lacks the row "+p.String())
 		}
 	}
+	seen := map[movePair]bool{}
 	for _, p := range page {
+		if seen[p] {
+			msgs = append(msgs, "docs/upgrading.md lists the row twice: "+p.String())
+		}
+		seen[p] = true
 		if !want[p] {
 			msgs = append(msgs, "docs/upgrading.md lists a move that no testdata/moves file records: "+p.String())
 		}
@@ -154,6 +159,10 @@ func TestUpgradingDiffDetectsDrift(t *testing.T) {
 	}
 	if !strings.Contains(got[0]+got[1], "lacks the row") || !strings.Contains(got[0]+got[1], "momo.Stale") {
 		t.Errorf("unexpected messages %v", got)
+	}
+	dup := diffMoves(moves, []movePair{moves[0], moves[1], moves[1]})
+	if len(dup) != 1 || !strings.Contains(dup[0], "twice") {
+		t.Errorf("a duplicated row must be reported once as a duplicate, got %v", dup)
 	}
 	if clean := diffMoves(moves, moves); len(clean) != 0 {
 		t.Errorf("identical sets reported %v", clean)

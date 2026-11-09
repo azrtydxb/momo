@@ -22,18 +22,26 @@ documentation, which is the source of truth.
    driver/{pgxdriver,sqlitedriver,sqlitepure,mysqldriver}
 ```
 
-Dependency rules, enforced by `TestImportGraph` in `internal/repocheck`, which
-runs `go list -deps`:
+Dependency rules. Tests in `internal/repocheck` enforce the first rule and
+the two architecture rules below it; the rest are conventions that no test
+checks.
 
-1. `momo`, `dialect`, `schema` and `vector` import only the standard library
-   and each other (the root package may also import `types`). No driver, no
-   `golang.org/x/tools`, no YAML.
-2. `driver/*` import `momo` plus their database driver only.
-3. `gen`, `migrate/*` and `cmd/*` may import `golang.org/x/tools`, YAML and
-   drivers. An application binary that imports only `momo` and one driver
-   never links them.
-4. Generated code imports only `momo`, `vector`, `types`, `schema` and the
-   model package.
+1. Enforced by `TestImportGraph` (`go list -deps`): `momo`, `dialect`,
+   `schema` and `vector` import only the standard library and each other (the
+   root package may also import `types`). No driver, no `golang.org/x/tools`,
+   no YAML.
+2. Enforced by `TestInternalNeverImportsRoot`: the internal packages the root
+   builds on never import the root.
+3. Enforced by `TestFeaturePackagesImportOnlyAllowed`: the feature
+   subpackages listed in `internal/repocheck/testdata/packages.txt` import only
+   the root, the leaf packages and `internal/*`. `TestKnownPackages` forces
+   every new package to be given a role in that file.
+4. Convention: `driver/*` import `momo` plus their database driver only.
+5. Convention: `gen`, `migrate/*` and `cmd/*` may import `golang.org/x/tools`,
+   YAML and drivers. An application binary that imports only `momo` and one
+   driver never links them.
+6. Convention: generated code imports only `momo`, `vector`, `types`, `schema`
+   and the model package.
 
 ## Packages
 
