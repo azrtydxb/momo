@@ -26,7 +26,7 @@ func TestCompileFailFullText(t *testing.T) {
 			"undefined: momo.TSHeadline",
 			"undefined: momo.TSExpr",
 		},
-		"wrongtype": {"as Expression[types.TSVector] value in argument to fts.Match"},
+		"wrongtype": {"as momo.Expression[types.TSVector] value in argument to fts.Match"},
 	} {
 		cmd := exec.Command("go", "build", "-gcflags=-e", "-o", os.DevNull, "./testdata/compilefail/"+name)
 		out, err := cmd.CombinedOutput()
