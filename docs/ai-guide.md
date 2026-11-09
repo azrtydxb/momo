@@ -781,12 +781,13 @@ context; it returns `iter.Seq2[T, error]`). `Count` and `Exists` wrap the whole
 statement, so they keep a lock clause and lock the rows they count. Aggregates: `momo.CountAll`,
 `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
 
-Advisory locks (PostgreSQL, inside a transaction): `tx.AdvisoryXactLock(ctx, key)`
-waits for a transaction-scoped lock on an int64 key, `tx.TryAdvisoryXactLock`
-returns whether it was granted, and the `String` variants
-(`AdvisoryXactLockString`, `TryAdvisoryXactLockString`) hash a text key with
-`hashtext`. The lock ends at commit or rollback. The same names on `*DB` fail
-with `ErrValidation`; other dialects fail with `ErrUnsupported`. Never store a
+Advisory locks (PostgreSQL, inside a transaction), in the package
+`github.com/azrtydxb/momo/advisory`: `advisory.XactLock(ctx, tx, key)` waits
+for a transaction-scoped lock on an int64 key, `advisory.TryXactLock` returns
+whether it was granted, and the `String` variants (`advisory.XactLockString`,
+`advisory.TryXactLockString`) hash a text key with `hashtext`. The lock ends at
+commit or rollback. They take a `*Tx`, so a `*DB` does not compile: open a
+transaction first. Other dialects fail with `ErrUnsupported`. Never store a
 hashed key, it can change across PostgreSQL major versions.
 
 Typed expressions (no `momo.SQL` needed). Computed values (`momo.Func` and, in the
