@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo
+package keyenc
 
 import (
 	"database/sql/driver"
@@ -21,24 +21,24 @@ type selfValuer struct{}
 
 func (s selfValuer) Value() (driver.Value, error) { return s, nil }
 
-func TestKeyStringSelfReturningValuerTerminates(t *testing.T) {
-	a := keyString([]any{selfValuer{}})
-	if a == "" || a != keyString([]any{selfValuer{}}) {
+func TestStringSelfReturningValuerTerminates(t *testing.T) {
+	a := String([]any{selfValuer{}})
+	if a == "" || a != String([]any{selfValuer{}}) {
 		t.Fatalf("unstable key for a self-returning Valuer: %q", a)
 	}
 }
 
-func TestKeyStringNormalization(t *testing.T) {
+func TestStringNormalization(t *testing.T) {
 	same := func(a, b []any) {
 		t.Helper()
-		if keyString(a) != keyString(b) {
-			t.Fatalf("keys differ: %q vs %q", keyString(a), keyString(b))
+		if String(a) != String(b) {
+			t.Fatalf("keys differ: %q vs %q", String(a), String(b))
 		}
 	}
 	diff := func(a, b []any) {
 		t.Helper()
-		if keyString(a) == keyString(b) {
-			t.Fatalf("keys collide: %q", keyString(a))
+		if String(a) == String(b) {
+			t.Fatalf("keys collide: %q", String(a))
 		}
 	}
 	same([]any{int64(7)}, []any{7})                  // int vs int64 from driver

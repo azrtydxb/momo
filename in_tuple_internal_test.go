@@ -35,15 +35,6 @@ func TestTupleInRendering(t *testing.T) {
 	if empty.SQL != "1 = 0" || len(empty.Args) != 0 {
 		t.Fatalf("empty IN must render always-false: got %q", empty.SQL)
 	}
-	if n := keysPerStatement(dialect.For(dialect.SQLite), 1, 16); n != 32766-16 {
-		t.Fatalf("sqlite single-column budget: got %d", n)
-	}
-	if n := keysPerStatement(dialect.For(dialect.SQLite), 2, 16); n != maxCompositeTuplesSQLite {
-		t.Fatalf("sqlite composite budget: got %d", n)
-	}
-	if n := keysPerStatement(dialect.For(dialect.Postgres), 1, 16); n != 65535-16 {
-		t.Fatalf("postgres budget: got %d", n)
-	}
 }
 
 func TestTupleInMySQLAndEdges(t *testing.T) {
@@ -59,46 +50,6 @@ func TestTupleInMySQLAndEdges(t *testing.T) {
 	emptyComposite := renderPred(t, dialect.MySQL, inTuple{table: "c", cols: []string{"a", "b"}})
 	if emptyComposite.SQL != "1 = 0" {
 		t.Fatalf("empty composite: got %q", emptyComposite.SQL)
-	}
-	if n := keysPerStatement(dialect.For(dialect.Postgres), 0, 0); n != 65535 {
-		t.Fatalf("zero cols: got %d", n)
-	}
-	if n := keysPerStatement(dialect.For(dialect.SQLite), 2, 40000); n != 1 {
-		t.Fatalf("over-reserved must floor at 1: got %d", n)
-	}
-	if n := keysPerStatement(&dialect.Dialect{}, 1, 0); n < 1<<20 {
-		t.Fatalf("unlimited dialect, single column: got %d", n)
-	}
-	if n := keysPerStatement(&dialect.Dialect{}, 2, 0); n != maxCompositeTuples {
-		t.Fatalf("unlimited dialect, composite is still capped: got %d", n)
-	}
-}
-
-func TestKeysPerStatementPerDialect(t *testing.T) {
-	cases := []struct {
-		name  dialect.Name
-		ncols int
-		want  int
-	}{
-		{dialect.Postgres, 1, 65535},
-		{dialect.Postgres, 2, 2000},
-		{dialect.Postgres, 3, 2000},
-		{dialect.MySQL, 1, 65535},
-		{dialect.MySQL, 2, 2000},
-		{dialect.SQLite, 1, 32766},
-		{dialect.SQLite, 2, 400},
-		{dialect.SQLite, 5, 400},
-	}
-	for _, c := range cases {
-		if got := keysPerStatement(dialect.For(c.name), c.ncols, 0); got != c.want {
-			t.Errorf("%s ncols=%d: got %d, want %d", c.name, c.ncols, got, c.want)
-		}
-	}
-	// A tight bind limit still wins over the cap.
-	d := *dialect.For(dialect.Postgres)
-	d.MaxParams = 10
-	if got := keysPerStatement(&d, 2, 0); got != 5 {
-		t.Errorf("tight limit: got %d, want 5", got)
 	}
 }
 

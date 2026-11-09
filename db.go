@@ -4,15 +4,14 @@ package momo
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"sync/atomic"
 	"time"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/redact"
 )
 
 // Querier is implemented by *DB and *Tx. Query builders take a Querier so
@@ -199,32 +198,7 @@ func (e *execer) wrapErr(op, table string, err error) error {
 
 // RedactedArg replaces, in QueryEvent.Args, every value bound from a column
 // tagged sensitive. Only the copy handed to hooks is masked.
-const RedactedArg = "[redacted]"
-
-// maskArgs returns a copy of args with the sensitive positions replaced, so a
-// hook can neither read those values nor mutate the slice sent to the driver.
-// Byte slices are copied too, so changing their contents in place does not reach
-// the driver. It runs only when hooks are registered.
-func maskArgs(args []any, sens []int) []any {
-	if args == nil {
-		return nil
-	}
-	out := slices.Clone(args)
-	for i, a := range out {
-		switch v := a.(type) {
-		case []byte:
-			out[i] = slices.Clone(v)
-		case json.RawMessage:
-			out[i] = slices.Clone(v)
-		}
-	}
-	for _, i := range sens {
-		if i >= 0 && i < len(out) {
-			out[i] = RedactedArg
-		}
-	}
-	return out
-}
+const RedactedArg = redact.Arg
 
 func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []any, sens []int) (context.Context, *QueryEvent) {
 	if len(e.db.hooks) == 0 {
@@ -238,7 +212,7 @@ func (e *execer) before(ctx context.Context, op, table, rel, sql string, args []
 		Start: time.Now(), Rows: -1, pool: slot,
 	}
 	if e.db.logArgs {
-		ev.Args = maskArgs(args, sens)
+		ev.Args = redact.Mask(args, sens)
 	}
 	for _, h := range e.db.hooks {
 		ctx = h.BeforeQuery(ctx, ev)

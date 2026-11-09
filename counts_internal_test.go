@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/redact"
 )
 
 func TestCountQueriesGolden(t *testing.T) {
@@ -149,7 +150,7 @@ func TestCountQueriesMarkSensitiveKeys(t *testing.T) {
 			if err != nil || len(qs) != 1 {
 				t.Fatalf("countQueries: %v %d", err, len(qs))
 			}
-			masked := maskArgs(qs[0].Args, qs[0].sens)
+			masked := redact.Mask(qs[0].Args, qs[0].sens)
 			if len(masked) != 1 || masked[0] != RedactedArg {
 				t.Fatalf("hook args %v, want [%s]", masked, RedactedArg)
 			}
@@ -224,7 +225,7 @@ func TestCountQueriesMaskOnlyTheKeyHoldingSide(t *testing.T) {
 			if err != nil || len(qs) != 1 {
 				t.Fatalf("countQueries: %v %d", err, len(qs))
 			}
-			got := maskArgs(qs[0].Args, qs[0].sens)
+			got := redact.Mask(qs[0].Args, qs[0].sens)
 			want := any(relSecret)
 			if c.masked {
 				want = RedactedArg

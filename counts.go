@@ -8,6 +8,8 @@ import (
 	"fmt"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/chunk"
+	"github.com/azrtydxb/momo/internal/keyenc"
 )
 
 // LoadCounts counts the children of every parent in parents with one grouped
@@ -53,7 +55,7 @@ func LoadCounts[P, C any](ctx context.Context, q Querier, parents []P, rel Relat
 		if !ok || hasNilPart(vals) {
 			continue
 		}
-		k := keyString(vals)
+		k := keyenc.String(vals)
 		if _, seen := groups[k]; !seen {
 			keys = append(keys, vals)
 		}
@@ -106,7 +108,7 @@ func (r Relation[P, C]) runCounts(ctx context.Context, q Querier, qs []Compiled,
 				if err := rows.Scan(dest...); err != nil {
 					return q.conn().wrapErr("load", r.Child.Name, err)
 				}
-				for _, i := range groups[keyString(key)] {
+				for _, i := range groups[keyenc.String(key)] {
 					out[i] += n
 				}
 				ev.Children += n
@@ -137,11 +139,11 @@ func (r Relation[P, C]) countQueries(d *dialect.Dialect, keys [][]any, cfg *load
 		return nil, &Error{Kind: ErrValidation, Op: "load", Table: r.Child.Name,
 			Err: fmt.Errorf("%s: scope binds %d arguments, leaving no room for a key under the %d-parameter limit", r.Name, scopeArgs, d.MaxParams)}
 	}
-	budget := keysPerStatement(d, ncols, 16+scopeArgs)
+	budget := chunk.KeysPerStatement(d, ncols, 16+scopeArgs)
 	var out []Compiled
 	for start := 0; start < len(keys); start += budget {
-		chunk := keys[start:min(start+budget, len(keys))]
-		c, err := compile(d, func(b *Builder) { r.writeCount(b, chunk, cfg) })
+		part := keys[start:min(start+budget, len(keys))]
+		c, err := compile(d, func(b *Builder) { r.writeCount(b, part, cfg) })
 		if err != nil {
 			return nil, err
 		}

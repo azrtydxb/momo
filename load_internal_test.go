@@ -222,21 +222,6 @@ func TestLoadReservesScopeArgs(t *testing.T) {
 	}
 }
 
-func TestKeysPerStatementCompositeCap(t *testing.T) {
-	pg := dialect.For(dialect.Postgres)
-	if got := keysPerStatement(pg, 1, 0); got != 65535 {
-		t.Fatalf("single-column keys use the full bind budget, got %d", got)
-	}
-	if got := keysPerStatement(pg, 2, 0); got != maxCompositeTuples {
-		t.Fatalf("composite keys are capped at %d tuples, got %d", maxCompositeTuples, got)
-	}
-	tiny := *pg
-	tiny.MaxParams = 10
-	if got := keysPerStatement(&tiny, 2, 0); got != 5 {
-		t.Fatalf("a tight bind limit still wins over the cap, got %d", got)
-	}
-}
-
 func argRange(n int) []int {
 	vs := make([]int, n)
 	for i := range vs {
