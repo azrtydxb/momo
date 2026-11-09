@@ -47,3 +47,16 @@ Entry shape (unindented in real entries):
   line: wire/file integers are range-checked as the unsigned source type
   before narrowing or allocating, and a `#nosec G115` names the bounding
   check. Verified: gosec v2.30.0 over the tree reports 0 issues.
+
+## 2026-11-09 Windows CI job (sprint-6 checkout) — a committed file named with a colon
+
+- Class: mechanical
+- Missed by: ci
+- Adaptation: an agent committed a watcher log named
+  `worktree-agent-adffe7ae4d2ad2c57:61fe0ce` at the repo root. Git on Linux
+  holds it, the Windows job's checkout could not create it, and ci-agent has
+  no Windows job, so the agent branch looked green. `TestRepoFileNamesAreWindowsSafe`
+  in `internal/repocheck` now walks the tree in the unit job and fails on
+  Windows-invalid characters, trailing space or dot, reserved device names
+  and case-only collisions. Verified red on a throwaway branch with a
+  `stray:name.txt` probe (ci-agent run 42598901541).
