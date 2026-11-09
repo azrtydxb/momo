@@ -3,7 +3,8 @@
 What works on MySQL and MariaDB today, and what does not. The driver is
 `driver/mysqldriver` (database/sql on `github.com/go-sql-driver/mysql`).
 The migration dialect `migrate/mysql` exists as a library; the `momo
-migrate` command is PostgreSQL-only (see [Migrations](#migrations)).
+migrate` command does not run it (see [Migrations](#migrations) and the
+generated status in [capabilities](capabilities.md)).
 
 ## Supported servers
 

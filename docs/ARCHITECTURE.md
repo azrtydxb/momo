@@ -121,8 +121,9 @@ and `Rebase`, plus `ValidateOffline`. A migration directory holds
 `<version>_<name>.up.sql`, optional hand-written `.down.sql`, snapshots and
 `momo.sum`. A database implements `migrate.Dialect`; the implementations are
 `migrate/postgres`, `migrate/sqlite` and `migrate/mysql`, and
-`migrate/migratetest` holds helpers for tests. The `momo migrate` command runs
-PostgreSQL only; the other dialects are library APIs. See
+`migrate/migratetest` holds helpers for tests. Which of them the `momo migrate`
+command runs is generated in [capabilities](capabilities.md); the others are
+library APIs. See
 [migrations](migrations.md).
 
 ### `gen`

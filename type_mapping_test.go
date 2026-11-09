@@ -78,11 +78,14 @@ var mappingRows = []mappingRow{
 const typeMappingDoc = "docs/TYPE_MAPPING.md"
 
 // docRowRE matches a three-cell table row whose first cell is a code span.
-var docRowRE = regexp.MustCompile("^\\|\\s*`([^`]+)`\\s*\\|([^|]*)\\|([^|]*)\\|$")
+// A generated row (internal/gendocs) carries a fourth cell for MySQL, which the
+// type map does not cover; it is read and ignored here.
+var docRowRE = regexp.MustCompile("^\\|\\s*`([^`]+)`\\s*\\|([^|]*)\\|([^|]*)\\|(?:[^|]*\\|)?$")
 
 // parseDocRows extracts the mapping rows (goType -> [pg, sqlite]) from the
-// document. Mapping tables are the only three-column tables whose first cell
-// is a code span, so other tables on the page are ignored.
+// document. Mapping tables are the only tables on the page whose first cell is
+// a code span and that have three or four columns, so other tables are
+// ignored.
 func parseDocRows(t *testing.T) map[string][2]string {
 	t.Helper()
 	b, err := os.ReadFile(typeMappingDoc)

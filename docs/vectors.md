@@ -27,7 +27,7 @@ MariaDB. This page describes what is built. Every Go snippet below is an `Exampl
   in [full-text search](fulltext.md).
 - MySQL: the server stores vectors but has no distance function, so a distance
   query fails with `ErrUnsupported`; see "MariaDB and MySQL" below. The
-  `momo migrate` command runs PostgreSQL only, and `migrate/mysql` renders its
+  `momo migrate` command does not run `migrate/mysql`, which renders its
   statements as-is, so a MySQL or MariaDB `VECTOR` column is created by your
   own DDL.
 

@@ -1,6 +1,6 @@
 # Generate the capability matrix and the type-mapping table with go generate
 
-Status: open
+Status: done
 Created: 2026-11-08
 Epic: momo-14-structure-and-docs
 Sprint: 006-sprint-6-split-the-root-package-into-subpackages-and-keep
@@ -11,11 +11,21 @@ Sprint: 006-sprint-6-split-the-root-package-into-subpackages-and-keep
 
 ## Acceptance criteria
 
-- [ ] `go generate ./internal/gendocs/...` is deterministic: running it twice yields no diff (CI step output)
-- [ ] the CI drift check fails on a throwaway branch where a `dialect.Dialect` flag is flipped without regenerating (red evidence run id)
-- [ ] the hand-written dialect-status prose is removed from `README.md`, `llms.txt`, `docs/ai-guide.md`, `docs/supported-versions.md`, `docs/migrations.md` and `docs/capabilities.md`, replaced by generated blocks; a search for 'not usable' outside generated blocks finds nothing
-- [ ] the type table in `docs/TYPE_MAPPING.md` matches `gen/typemap` for every Go type listed, with `unsupported` where a dialect has no mapping (a test compares the doc block to the generator output)
-- [ ] dependency version rows in `docs/supported-versions.md` come from `go.mod` (a test fails when the row and `go.mod` differ)
-- [ ] the generator imports no package that needs cgo or a database; it runs on the lint job's Go setup
+- [x] `go generate ./internal/gendocs/...` is deterministic: running it twice yields no diff (CI step output)
+- [x] the CI drift check fails on a throwaway branch where a `dialect.Dialect` flag is flipped without regenerating (red evidence run id)
+- [x] the hand-written dialect-status prose is removed from `README.md`, `llms.txt`, `docs/ai-guide.md`, `docs/supported-versions.md`, `docs/migrations.md` and `docs/capabilities.md`, replaced by generated blocks; a search for 'not usable' outside generated blocks finds nothing
+- [x] the type table in `docs/TYPE_MAPPING.md` matches `gen/typemap` for every Go type listed, with `unsupported` where a dialect has no mapping (a test compares the doc block to the generator output)
+- [x] dependency version rows in `docs/supported-versions.md` come from `go.mod` (a test fails when the row and `go.mod` differ)
+- [x] the generator imports no package that needs cgo or a database; it runs on the lint job's Go setup
 
 ## Evidence
+
+- Criterion 1: generator `internal/gendocs` (directive in `internal/gendocs/gendocs.go`, `go run ./cmd/gendocs`). Run 42631299561 (ci-agent, headSha b26c95d, all jobs green): the lint job's `make gen-check` runs `go generate ./...` on the committed output and the tree stays clean; `TestRenderIsDeterministic` and `TestGeneratedBlocksAreCurrent` pass in `unit`. The generated output itself was taken from the `regenerated-docs` artifact of run 42630301561 (lint red there, the blocks were still empty), never hand-written.
+- Criterion 2 (red): throwaway branch `worktree-agent-aea2c86acc1efc2d9-red` (deleted) flipped `Locking: true` on the SQLite dialect without regenerating. Run 42634437452 (ci-agent, headSha de4bf86): `lint` failed in `make gen-check` ("go generate changed these files" listing docs/capabilities.md) and `unit` failed `TestGeneratedBlocksAreCurrent`. The drift check is a step of the existing `lint` job in `ci.yml` and `ci-agent.yml` and covers all `go generate ./...` output through `git status --porcelain`, not a file list.
+- Criterion 3: the status prose in README.md, llms.txt, docs/ai-guide.md, docs/supported-versions.md, docs/migrations.md and docs/capabilities.md is replaced by `<!-- generated:status -->` blocks (one text, rendered from the driver packages); the hand-written dialect-status table and flag list in capabilities.md became `generated:capabilities` and `generated:features` blocks. `TestNoStatusProseOutsideBlocks` fails on 'not usable', 'unusable', 'is usable' or 'are usable' outside blocks; green in run 42631299561.
+- Criterion 4: `docs/TYPE_MAPPING.md` holds the `generated:typemap` block, one column per dialect (PostgreSQL, SQLite, MySQL), `unsupported` where `typemap.Map` fails. `TestTypeTableMatchesTypemap` compares the doc block to the generator output; the existing `TestTypeMappingDoc` still checks the PostgreSQL and SQLite cells against `typemap.Map`. Red: `float32`/`float64` SQLite mapping changed to `FLOAT` without regenerating, run 42634437452, `TestTypeTableMatchesTypemap`, `TestTypeMappingDoc` and `TestGeneratorTypeMapFullTable` failed.
+- Criterion 5: the dependency table in `docs/supported-versions.md` is the `generated:dependencies` block from `go.mod`; `TestDependencyRowsMatchGoMod` reads go.mod and the doc directly. Red: pgx row changed from v5.12.0 to v5.11.0, run 42634437452, `TestDependencyRowsMatchGoMod` failed.
+- Criterion 6: `TestGeneratorNeedsNoCgoOrDatabase` runs `go list -deps` on the generator and its command and rejects any `/driver/` path, pgx, sqlite, mysql driver or non-standard package with cgo files; it passes in run 42631299561. The generator ran in the lint job (plain Go 1.26 setup, no database) in the same run.
+- Usable flag: `TestUsableFollowsDriverPackages` shows a SQLite driver package under `driver/` flips the status from not usable to usable with no doc edit.
+- Review follow-up, explicit driver declarations: each of `driver/pgxdriver`, `driver/sqlitedriver`, `driver/sqlitepure` and `driver/mysqldriver` holds a `status.go` with one `//momo:driver dialect= usable= cgo= windows= vectors=` comment that the generator reads through go/ast (no driver import). Generation fails for a `driver/<dir>` without it (`driver/internal` and `driver/testdata` are skipped explicitly). Red first: throwaway branch `worktree-agent-aea2c86acc1efc2d9-red2` (deleted) held only `TestDriverWithoutDeclarationFailsGeneration` against the old guessing generator; run 42640580984 (headSha 964415f), `unit` failed on exactly that test. `TestDriverDeclarationsMatchSource` checks each declaration against the package source and `TestBadDeclarationsFail` covers malformed ones.
+- Review follow-up, other items: `momo migrate runs it` is read from the dialect switch (`dialectImpl` in cmd/momo, `TestCLIDialectsComeFromTheDialectSwitch`); the features table says MySQL is golden-tested only (testopen.Each covers PostgreSQL and SQLite) and the `jsonop` package comment was corrected; `TestNoStatusProseOutsideBlocks` now covers README, llms.txt and every docs/*.md with more phrases, and `TestPackageDocsHoldNoStatusProse` covers the package comments of the feature packages; the type table distinguishes `momo.ErrUnsupported` from other typemap errors and uses sentinel 7; generation fails for a direct dependency without a `depNotes` entry; the MySQL server versions and the vector caveat are back beside the generated blocks.

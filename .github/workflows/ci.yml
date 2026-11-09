@@ -30,6 +30,16 @@ jobs:
       - run: make staticcheck
       - run: make gosec
       - run: make tidy-check
+      - id: gen-check
+        run: make gen-check
+      - if: failure() && steps.gen-check.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: regenerated-docs
+          path: |
+            README.md
+            llms.txt
+            docs/
 
   unit:
     runs-on: ubuntu-latest
