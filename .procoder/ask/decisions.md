@@ -283,3 +283,7 @@ govulncheck, windows, macos and title; apidiff-docs is not among them.
   sprint-6 to main PR passes it.
 - The user changes branch protection themselves.
 - Leave it advisory (not required) for now; carry the criterion.
+
+Decision (2026-11-09): I add it. `apidiff-docs` is added to main's required
+status checks with `gh api` right after the sprint-6 to main PR passes it, and
+the story's last criterion is ticked with that evidence.
