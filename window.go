@@ -46,6 +46,23 @@ func (f FilteredAgg[T]) AppendSQL(b *Builder) {
 	appendFilter(b, f.where)
 }
 
+// appendFilter renders " FILTER (WHERE p)". A nil predicate fails the build
+// with ErrValidation instead of silently leaving the aggregate unfiltered;
+// MySQL has no FILTER clause.
+func appendFilter(b *Builder, p Predicate) {
+	if p == nil {
+		b.SetErr(newError(ErrValidation, "build", "", errors.New("Filter needs a predicate")))
+		return
+	}
+	if b.d.Name == dialect.MySQL {
+		b.unsupported("aggregate FILTER")
+		return
+	}
+	b.WriteString(" FILTER (WHERE ")
+	p.AppendSQL(b)
+	b.writeByte(')')
+}
+
 // -------------------------------------------------------------- windows
 
 type frameKind uint8
@@ -314,6 +331,15 @@ func newWindowExpr[T any](call Expr, name string, needOrder, noFrame bool, w Win
 	e := WindowExpr[T]{call: call, name: name, spec: w, needOrder: needOrder, noFrame: noFrame}
 	e.exprOps = selfOps[T](e)
 	return e
+}
+
+// WindowOf turns the aggregate call into a window function: call OVER (...).
+// Code outside this package that defines its own aggregate type (agg.Call)
+// builds its Over method on it; call must write identifiers through
+// Builder.Ident and values through Builder.Arg. WindowOf is an extension
+// point; see Ops.
+func WindowOf[T any](call Expr, w WindowSpec) WindowExpr[T] {
+	return newWindowExpr[T](call, "", false, false, w)
 }
 
 // Over turns an aggregate into a window function: SUM(x) OVER (...).

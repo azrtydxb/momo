@@ -27,6 +27,20 @@ as an argument.
 | `momo.ArrayContainedBy` | `github.com/azrtydxb/momo/arrayop` | `arrayop.ContainedBy` |
 | `momo.ArrayOverlaps`    | `github.com/azrtydxb/momo/arrayop` | `arrayop.Overlaps`    |
 | `momo.AnyOf`            | `github.com/azrtydxb/momo/arrayop` | `arrayop.AnyOf`       |
+| `momo.AggExpr`          | `github.com/azrtydxb/momo/agg`     | `agg.Call`            |
+| `momo.Aggregate`        | `github.com/azrtydxb/momo/agg`     | `agg.Func`            |
+| `momo.StringAgg`        | `github.com/azrtydxb/momo/agg`     | `agg.String`          |
+| `momo.ArrayAgg`         | `github.com/azrtydxb/momo/agg`     | `agg.Array`           |
+| `momo.JSONBAgg`         | `github.com/azrtydxb/momo/agg`     | `agg.JSONB`           |
+| `momo.PercentileCont`   | `github.com/azrtydxb/momo/agg`     | `agg.PercentileCont`  |
+| `momo.PercentileDisc`   | `github.com/azrtydxb/momo/agg`     | `agg.PercentileDisc`  |
+| `momo.JSONPair`         | `github.com/azrtydxb/momo/agg`     | `agg.Pair`            |
+| `momo.JSONField`        | `github.com/azrtydxb/momo/agg`     | `agg.Field`           |
+| `momo.JSONObjectExpr`   | `github.com/azrtydxb/momo/agg`     | `agg.ObjectExpr`      |
+| `momo.JSONBBuildObject` | `github.com/azrtydxb/momo/agg`     | `agg.BuildObject`     |
+| `momo.ToJSONExpr`       | `github.com/azrtydxb/momo/agg`     | `agg.JSONExpr`        |
+| `momo.ToJSONB`          | `github.com/azrtydxb/momo/agg`     | `agg.ToJSONB`         |
+| `momo.EmptyJSONArray`   | `github.com/azrtydxb/momo/agg`     | `agg.EmptyJSONArray`  |
 
 ### Rewrite recipe
 

@@ -2,7 +2,7 @@
 
 //go:build integration
 
-package momo_test
+package agg_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/agg"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
@@ -91,7 +92,7 @@ func seedAggDocs(t *testing.T, db *momo.DB) {
 	}
 }
 
-// Catches: StringAgg ignoring its ORDER BY or separator on a real server.
+// Catches: String ignoring its ORDER BY or separator on a real server.
 func TestStringAggOrderExecutes(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		if d == dialect.SQLite {
@@ -99,8 +100,8 @@ func TestStringAggOrderExecutes(t *testing.T) {
 		}
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		seedAggDocs(t, db)
-		agg := momo.StringAgg(suite.DocTitle, ", ").OrderBy(suite.DocTitle.Desc())
-		rows, err := momo.Select[aggStrRow](db).From(momo.TableRef{Name: "documents"}).Columns(agg).All(context.Background())
+		call := agg.String(suite.DocTitle, ", ").OrderBy(suite.DocTitle.Desc())
+		rows, err := momo.Select[aggStrRow](db).From(momo.TableRef{Name: "documents"}).Columns(call).All(context.Background())
 		if err != nil || len(rows) != 1 || rows[0].S != "delta, charlie, bravo, alpha" {
 			t.Fatalf("string_agg = %+v, %v; want delta, charlie, bravo, alpha", rows, err)
 		}
@@ -121,8 +122,8 @@ func TestPercentileOnKnownDistribution(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		cont := momo.PercentileCont(0.5).WithinGroup(suite.DocTenantID.Asc())
-		disc := momo.PercentileDisc[int64](0.5).WithinGroup(suite.DocTenantID.Asc())
+		cont := agg.PercentileCont(0.5).WithinGroup(suite.DocTenantID.Asc())
+		disc := agg.PercentileDisc[int64](0.5).WithinGroup(suite.DocTenantID.Asc())
 		rows, err := momo.Select[aggFloatRow](db).From(momo.TableRef{Name: "documents"}).Columns(cont, disc).All(ctx)
 		if err != nil || len(rows) != 1 || math.Abs(rows[0].F-2.5) > 1e-9 || rows[0].D != 2 {
 			t.Fatalf("percentiles = %+v, %v; want cont 2.5 disc 2", rows, err)
@@ -130,7 +131,7 @@ func TestPercentileOnKnownDistribution(t *testing.T) {
 	})
 }
 
-// Catches: ArrayAgg losing its order or failing to scan into a slice.
+// Catches: Array losing its order or failing to scan into a slice.
 func TestArrayAggExecutes(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		if d != dialect.Postgres {
@@ -138,8 +139,8 @@ func TestArrayAggExecutes(t *testing.T) {
 		}
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		seedAggDocs(t, db)
-		agg := momo.ArrayAgg[string](suite.DocTitle).OrderBy(suite.DocTenantID.Asc(), suite.DocTitle.Asc())
-		rows, err := momo.Select[aggArrayRow](db).From(momo.TableRef{Name: "documents"}).Columns(agg).All(context.Background())
+		call := agg.Array[string](suite.DocTitle).OrderBy(suite.DocTenantID.Asc(), suite.DocTitle.Asc())
+		rows, err := momo.Select[aggArrayRow](db).From(momo.TableRef{Name: "documents"}).Columns(call).All(context.Background())
 		if err != nil || len(rows) != 1 || !slices.Equal(rows[0].A, []string{"alpha", "delta", "bravo", "charlie"}) {
 			t.Fatalf("array_agg = %+v, %v", rows, err)
 		}
@@ -156,13 +157,13 @@ func TestJSONBAggShapeAndEmptyGroup(t *testing.T) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		seedAggDocs(t, db)
 		ctx := context.Background()
-		obj := momo.JSONBBuildObject[aggItem](momo.JSONField("label", suite.DocTitle), momo.JSONField("tenant", suite.DocTenantID))
-		agg := func() momo.AggExpr[types.JSON[[]aggItem]] {
-			return momo.JSONBAgg[aggItem](obj).OrderBy(suite.DocTitle.Asc())
+		obj := agg.BuildObject[aggItem](agg.Field("label", suite.DocTitle), agg.Field("tenant", suite.DocTenantID))
+		call := func() agg.Call[types.JSON[[]aggItem]] {
+			return agg.JSONB[aggItem](obj).OrderBy(suite.DocTitle.Asc())
 		}
 		run := func(tenant int64) []aggItem {
 			t.Helper()
-			col := momo.CoalesceExpr(agg(), momo.EmptyJSONArray[aggItem]())
+			col := momo.CoalesceExpr(call(), agg.EmptyJSONArray[aggItem]())
 			rows, err := momo.Select[aggJSONRow](db).From(momo.TableRef{Name: "documents"}).
 				Columns(col).Where(suite.DocTenantID.Eq(tenant)).All(ctx)
 			if err != nil || len(rows) != 1 {

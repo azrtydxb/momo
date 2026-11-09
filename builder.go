@@ -260,6 +260,12 @@ func (b *Builder) Unsupported(feature string) {
 	b.SetErr(newError(ErrUnsupported, "build", "", fmt.Errorf("%s is not supported by %s", feature, b.d.Name)))
 }
 
+// AppendFilter writes " FILTER (WHERE p)" for an aggregate call that was just
+// rendered. A nil predicate fails the build with ErrValidation instead of
+// silently leaving the aggregate unfiltered; MySQL has no FILTER clause and
+// fails with ErrUnsupported. AppendFilter is an extension point; see Ops.
+func (b *Builder) AppendFilter(p Predicate) { appendFilter(b, p) }
+
 // The unexported spellings below are the in-package names of the extension
 // methods above; they only forward, so each behaviour has one implementation.
 func (b *Builder) argFor(flags uint16, v any) { b.ArgFor(flags, v) }
