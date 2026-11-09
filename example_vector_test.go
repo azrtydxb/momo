@@ -66,44 +66,6 @@ func ExampleVectorColumn() {
 	// sqlite [l2 l1 cosine hamming] []
 }
 
-// SearchSettings are applied with set_config(..., is_local = true), so they
-// end with the transaction and never reach a pooled connection.
-func ExampleDB_WithSearch() {
-	var db *momo.DB // opened with momo.New(pgxdriver.New(pool))
-	ctx := context.Background()
-
-	settings := momo.SearchSettings{
-		HNSWEfSearch:      100,
-		HNSWIterativeScan: momo.IterativeRelaxedOrder, // needs pgvector 0.8
-		HNSWMaxScanTuples: 20000,
-	}
-	err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
-		_, err := momo.Select[example.Document](tx).
-			OrderBy(momo.CosineDistance(document.Embedding, make(vector.Vector, 1536)).Asc()).
-			Limit(10).
-			All(ctx)
-		return err
-	})
-	fmt.Println(err)
-}
-
-// ExactSearch bypasses the vector index for the rest of the transaction so
-// the result is the exact nearest neighbours.
-func ExampleTx_SetSearch() {
-	var db *momo.DB
-	ctx := context.Background()
-
-	err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
-		if err := tx.SetSearch(ctx, momo.SearchSettings{ExactSearch: true}); err != nil {
-			return err
-		}
-		// Queries here scan the table. Keep this transaction short: the
-		// planner switches also affect every other index lookup in it.
-		return nil
-	})
-	fmt.Println(err)
-}
-
 // Explain returns the plan text without executing the query, so a test can
 // check that a vector query uses its index.
 func ExampleSelectQuery_Explain() {

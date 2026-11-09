@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // WithTxSetup registers fn to run right after every transaction momo begins,
 // before any other statement of that transaction. It covers DB.Begin and
 // DB.Tx, and every transaction momo opens on its own: chunked inserts, graph
-// creation, relation writes, WithSearch and the short transactions of
+// creation, relation writes, vecsearch.With and the short transactions of
 // WithImplicitTx. Typical use is row-level-security scoping:
 //
 //	db := momo.New(drv, momo.WithTxSetup(func(ctx context.Context, tx *momo.Tx) error {
@@ -72,6 +74,23 @@ func WithImplicitTx() Option { return func(db *DB) { db.implicitTx = true } }
 // transaction-scoped settings.
 func SetConfigLocal(ctx context.Context, tx *Tx, key, value string) error {
 	return tx.SetLocal(ctx, key, value)
+}
+
+// SetLocal sets a run-time parameter for the rest of this transaction only
+// (set_config with is_local = true). Name and value are bound parameters, so
+// the setting reverts at commit or rollback and never reaches a pooled
+// connection, which makes it safe behind PgBouncer in transaction mode. It
+// returns ErrUnsupported on dialects without transaction-scoped settings.
+//
+// name must never come from untrusted input. It is bound, so it cannot inject
+// SQL, but set_config can change security-relevant parameters such as role,
+// session_authorization or search_path for the rest of the transaction.
+func (tx *Tx) SetLocal(ctx context.Context, name, value string) error {
+	if tx.ex.d.Name != dialect.Postgres {
+		return &Error{Kind: ErrUnsupported, Op: "set local", Err: errors.New("transaction-scoped settings need PostgreSQL")}
+	}
+	_, err := Exec(ctx, tx, "SELECT set_config(?, ?, true)", name, value)
+	return err
 }
 
 // runTxSetup applies the setup functions to a freshly begun tx and rolls the

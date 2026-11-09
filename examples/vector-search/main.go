@@ -23,6 +23,7 @@ import (
 	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/examples/vector-search/models"
 	"github.com/azrtydxb/momo/examples/vector-search/models/item"
+	"github.com/azrtydxb/momo/vecsearch"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -151,15 +152,15 @@ func explainIndex(ctx context.Context, db *momo.DB, out io.Writer) error {
 // enough rows pass the filter. relaxed_order returns slightly out-of-order
 // results for more speed; strict_order keeps the order exactly.
 //
-// WithSearch applies the settings to one transaction only (they end at commit
+// vecsearch.With applies the settings to one transaction only (they end at commit
 // or rollback), so they never leak to other users of a pooled connection and
 // are safe behind PgBouncer in transaction mode.
 func nearestWithFilter(ctx context.Context, db *momo.DB, out io.Writer) error {
-	settings := momo.SearchSettings{
-		HNSWIterativeScan: momo.IterativeRelaxedOrder,
+	settings := vecsearch.Settings{
+		HNSWIterativeScan: vecsearch.IterativeRelaxedOrder,
 		HNSWMaxScanTuples: 20000,
 	}
-	return db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
+	return vecsearch.With(ctx, db, settings, func(tx *momo.Tx) error {
 		hits, err := search(ctx, tx, 2, item.Category.Eq("news"))
 		if err != nil {
 			return err
@@ -182,12 +183,12 @@ func nearestWithFilter(ctx context.Context, db *momo.DB, out io.Writer) error {
 func searchSettings(ctx context.Context, db *momo.DB, out io.Writer) error {
 	for _, s := range []struct {
 		label    string
-		settings momo.SearchSettings
+		settings vecsearch.Settings
 	}{
-		{"ef_search 100", momo.SearchSettings{HNSWEfSearch: 100}},
-		{"exact", momo.SearchSettings{ExactSearch: true}},
+		{"ef_search 100", vecsearch.Settings{HNSWEfSearch: 100}},
+		{"exact", vecsearch.Settings{ExactSearch: true}},
 	} {
-		err := db.WithSearch(ctx, s.settings, func(tx *momo.Tx) error {
+		err := vecsearch.With(ctx, db, s.settings, func(tx *momo.Tx) error {
 			hits, err := search(ctx, tx, 1)
 			if err != nil {
 				return err

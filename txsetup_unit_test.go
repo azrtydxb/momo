@@ -230,3 +230,42 @@ func TestRawReadsReportOpRaw(t *testing.T) {
 		t.Fatalf("events = %+v, want op raw", evs)
 	}
 }
+
+// SetLocal binds the name and value as parameters of set_config, so neither
+// can inject SQL.
+func TestSetLocalBindsNameAndValue(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	tx, err := momo.New(drv).Begin(t.Context(), momo.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.SetLocal(t.Context(), "app.tenant_id", "a'; DROP TABLE t; --"); err != nil {
+		t.Fatal(err)
+	}
+	calls := drv.Calls()
+	got := calls[len(calls)-1]
+	if got.SQL != "SELECT set_config($1, $2, true)" {
+		t.Fatalf("SQL = %q, want a bound set_config call", got.SQL)
+	}
+	if len(got.Args) != 2 || got.Args[0] != "app.tenant_id" || got.Args[1] != "a'; DROP TABLE t; --" {
+		t.Fatalf("args = %v, want the name and value bound as parameters", got.Args)
+	}
+}
+
+// SetLocal is PostgreSQL only: other dialects have no transaction-scoped
+// setting, and no statement is sent.
+func TestSetLocalUnsupportedOffPostgres(t *testing.T) {
+	for _, name := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
+		drv := fakedriver.New(name)
+		tx, err := momo.New(drv).Begin(t.Context(), momo.TxOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.SetLocal(t.Context(), "app.x", "1"); !errors.Is(err, momo.ErrUnsupported) {
+			t.Errorf("%s: err = %v, want ErrUnsupported", name, err)
+		}
+		if n := len(drv.Calls()); n != 0 {
+			t.Errorf("%s: %d statements sent, want none", name, n)
+		}
+	}
+}

@@ -374,8 +374,8 @@ orders a select. The generator emits a `momo.VectorColumn` for every field of
 a `vector` type, such as `post.Embedding`. It records the dimension from the
 `dim` tag, so a wrong-sized query vector is rejected when the query is built.
 
-`WithSearch` runs a function in a transaction with pgvector settings applied,
-here `hnsw.ef_search`. The settings end with the transaction. `SearchSettings`
+`vecsearch.With` (package `github.com/azrtydxb/momo/vecsearch`) runs a function in a transaction with pgvector settings applied,
+here `hnsw.ef_search`. The settings end with the transaction. `vecsearch.Settings`
 also covers iterative scans for filtered searches, IVFFlat probes, and
 `ExactSearch`.
 
@@ -383,8 +383,8 @@ also covers iterative scans for filtered searches, IVFFlat probes, and
 
 ```go
 func similarPosts(ctx context.Context, db *momo.DB, query vector.Vector) error {
-	settings := momo.SearchSettings{HNSWEfSearch: 100}
-	return db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
+	settings := vecsearch.Settings{HNSWEfSearch: 100}
+	return vecsearch.With(ctx, db, settings, func(tx *momo.Tx) error {
 		nearest, err := momo.Select[models.Post](tx).
 			OrderBy(momo.CosineDistance(post.Embedding, query).Asc()).
 			Limit(5).

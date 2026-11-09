@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo
+// Package vecsearch applies pgvector search settings (hnsw and ivfflat) to one
+// transaction. Apply sets them on a transaction you already have; With opens
+// one and runs a callback inside it. The settings end with the transaction.
+package vecsearch
 
 import (
 	"context"
@@ -9,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 )
 
@@ -36,15 +40,15 @@ const (
 	maxHNSWScanMemMultiplier = 1000
 )
 
-// SearchSettings applies pgvector session settings for one transaction only.
+// Settings applies pgvector session settings for one transaction only.
 // Zero values mean "do not change the server default".
 //
 // HNSWIterativeScan, HNSWMaxScanTuples, HNSWScanMemMultiplier, IVFFlatIterativeScan and
-// IVFFlatMaxProbes need pgvector 0.8.0 or newer. SetSearch checks the
+// IVFFlatMaxProbes need pgvector 0.8.0 or newer. Apply checks the
 // installed extension version when any of them is set and returns
-// ErrUnsupported on an older one, because an older server may accept the unknown setting as a
+// momo.ErrUnsupported on an older one, because an older server may accept the unknown setting as a
 // placeholder or fail with a generic error instead of a typed one.
-type SearchSettings struct {
+type Settings struct {
 	// ExactSearch disables index scans and bitmap scans for the rest of the
 	// transaction (enable_indexscan = off, enable_bitmapscan = off) so vector
 	// ORDER BY queries scan the table and return exact nearest neighbours.
@@ -60,7 +64,7 @@ type SearchSettings struct {
 	// iterative HNSW scan may use, as a multiple of work_mem. The unit is a
 	// plain multiplier (not bytes), the accepted range is 1 to 1000 and zero
 	// leaves the server default alone. It needs pgvector 0.8.0 or newer;
-	// SetSearch returns ErrUnsupported on an older extension.
+	// Apply returns momo.ErrUnsupported on an older extension.
 	HNSWScanMemMultiplier float64
 	IVFFlatProbes         int           // ivfflat.probes, 1..32768
 	IVFFlatIterativeScan  IterativeScan // ivfflat.iterative_scan: off or relaxed_order only (pgvector >= 0.8)
@@ -74,7 +78,7 @@ type SearchSettings struct {
 
 // usesIterativeGUCs reports whether s sets a parameter that exists only in
 // pgvector 0.8.0 and newer.
-func (s SearchSettings) usesIterativeGUCs() bool {
+func (s Settings) usesIterativeGUCs() bool {
 	return s.HNSWIterativeScan != "" || s.HNSWMaxScanTuples != 0 || s.HNSWScanMemMultiplier != 0 ||
 		s.IVFFlatIterativeScan != "" || s.IVFFlatMaxProbes != 0
 }
@@ -94,33 +98,33 @@ func pgvectorAtLeast08(version string) (bool, error) {
 	return major > 0 || minor >= 8, nil
 }
 
-// requireIterativeSupport returns ErrUnsupported when the installed pgvector
+// requireIterativeSupport returns momo.ErrUnsupported when the installed pgvector
 // is older than 0.8.0 or missing.
-func (tx *Tx) requireIterativeSupport(ctx context.Context) error {
-	vs, err := Scalars[string](ctx, tx, "SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+func requireIterativeSupport(ctx context.Context, tx *momo.Tx) error {
+	vs, err := momo.Scalars[string](ctx, tx, "SELECT extversion FROM pg_extension WHERE extname = 'vector'")
 	if err != nil {
 		return err
 	}
 	if len(vs) == 0 {
-		return &Error{Kind: ErrUnsupported, Op: "search settings", Err: errors.New("the pgvector extension is not installed")}
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "search settings", Err: errors.New("the pgvector extension is not installed")}
 	}
 	ok, err := pgvectorAtLeast08(vs[0])
 	if err != nil {
-		return &Error{Kind: ErrUnsupported, Op: "search settings", Err: err}
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "search settings", Err: err}
 	}
 	if !ok {
-		return &Error{Kind: ErrUnsupported, Op: "search settings", Err: fmt.Errorf("iterative scan, max_scan_tuples, scan_mem_multiplier and max_probes need pgvector 0.8.0 or newer, found %s (after upgrading the package, run ALTER EXTENSION vector UPDATE)", vs[0])}
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "search settings", Err: fmt.Errorf("iterative scan, max_scan_tuples, scan_mem_multiplier and max_probes need pgvector 0.8.0 or newer, found %s (after upgrading the package, run ALTER EXTENSION vector UPDATE)", vs[0])}
 	}
 	return nil
 }
 
 func searchInvalid(format string, args ...any) error {
-	return validation("search settings", "", format, args...)
+	return &momo.Error{Kind: momo.ErrValidation, Op: "search settings", Err: fmt.Errorf(format, args...)}
 }
 
 // Validate reports a setting outside its pgvector range. The error wraps
-// ErrValidation.
-func (s SearchSettings) Validate() error {
+// momo.ErrValidation.
+func (s Settings) Validate() error {
 	if s.HNSWEfSearch < 0 || s.HNSWEfSearch > 1000 {
 		return searchInvalid("hnsw.ef_search %d is outside 1..1000", s.HNSWEfSearch)
 	}
@@ -155,7 +159,7 @@ type settingPair struct{ Name, Value string }
 // enable_bitmapscan, hnsw.ef_search, hnsw.iterative_scan, hnsw.max_scan_tuples,
 // hnsw.scan_mem_multiplier, ivfflat.probes, ivfflat.iterative_scan, ivfflat.max_probes. Integers are
 // formatted with strconv.Itoa and the multiplier without exponent notation.
-func searchSettingPairs(s SearchSettings) []settingPair {
+func searchSettingPairs(s Settings) []settingPair {
 	var out []settingPair
 	if s.ExactSearch {
 		out = append(out, settingPair{"enable_indexscan", "off"}, settingPair{"enable_bitmapscan", "off"})
@@ -184,45 +188,30 @@ func searchSettingPairs(s SearchSettings) []settingPair {
 	return out
 }
 
-// SetLocal sets a run-time parameter for the rest of this transaction only
-// (set_config with is_local = true). Name and value are bound parameters, so
-// the setting reverts at commit or rollback and never reaches a pooled
-// connection, which makes it safe behind PgBouncer in transaction mode. It
-// returns ErrUnsupported on dialects without transaction-scoped settings.
-//
-// name must never come from untrusted input. It is bound, so it cannot inject
-// SQL, but set_config can change security-relevant parameters such as role,
-// session_authorization or search_path for the rest of the transaction.
-func (tx *Tx) SetLocal(ctx context.Context, name, value string) error {
-	if tx.ex.d.Name != dialect.Postgres {
-		return &Error{Kind: ErrUnsupported, Op: "set local", Err: errors.New("transaction-scoped settings need PostgreSQL")}
-	}
-	_, err := Exec(ctx, tx, "SELECT set_config(?, ?, true)", name, value)
-	return err
-}
-
-// SetSearch applies s to the rest of this transaction. Settings that need
-// pgvector 0.8 return ErrUnsupported on an older extension.
+// Apply applies s to the rest of tx. Settings that need pgvector 0.8 return
+// momo.ErrUnsupported on an older extension.
 //
 // Dialect behavior: on SQLite, ExactSearch alone is a no-op (SQLite has no
 // approximate vector index to bypass, so every search is already exact) and
-// any other non-zero field returns ErrUnsupported. On MySQL, SetLocal is
-// unsupported, so any non-zero setting including ExactSearch alone returns
-// ErrUnsupported; there is no transaction-scoped switch to apply.
-func (tx *Tx) SetSearch(ctx context.Context, s SearchSettings) error {
+// any other non-zero field returns momo.ErrUnsupported. On MySQL,
+// Tx.SetLocal is unsupported, so any non-zero setting including ExactSearch
+// alone returns momo.ErrUnsupported; there is no transaction-scoped switch to
+// apply.
+func Apply(ctx context.Context, tx *momo.Tx, s Settings) error {
 	if err := s.Validate(); err != nil {
 		return err
 	}
-	if tx.ex.d.Name == dialect.SQLite {
+	name := tx.Dialect().Name
+	if name == dialect.SQLite {
 		only := s
 		only.ExactSearch = false
-		if only != (SearchSettings{}) {
-			return &Error{Kind: ErrUnsupported, Op: "search settings", Err: errors.New("only ExactSearch is supported on SQLite")}
+		if only != (Settings{}) {
+			return &momo.Error{Kind: momo.ErrUnsupported, Op: "search settings", Err: errors.New("only ExactSearch is supported on SQLite")}
 		}
 		return nil
 	}
-	if s.usesIterativeGUCs() && tx.ex.d.Name == dialect.Postgres {
-		if err := tx.requireIterativeSupport(ctx); err != nil {
+	if s.usesIterativeGUCs() && name == dialect.Postgres {
+		if err := requireIterativeSupport(ctx, tx); err != nil {
 			return err
 		}
 	}
@@ -234,14 +223,14 @@ func (tx *Tx) SetSearch(ctx context.Context, s SearchSettings) error {
 	return nil
 }
 
-// WithSearch runs fn in a transaction with s applied to it. The settings end
+// With runs fn in a transaction on db with s applied to it. The settings end
 // with the transaction.
-func (db *DB) WithSearch(ctx context.Context, s SearchSettings, fn func(*Tx) error) error {
+func With(ctx context.Context, db *momo.DB, s Settings, fn func(*momo.Tx) error) error {
 	if err := s.Validate(); err != nil {
 		return err
 	}
-	return db.Tx(ctx, TxOptions{}, func(tx *Tx) error {
-		if err := tx.SetSearch(ctx, s); err != nil {
+	return db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		if err := Apply(ctx, tx, s); err != nil {
 			return err
 		}
 		return fn(tx)

@@ -135,9 +135,6 @@ rows.go
 scalars.go
 scope_internal_test.go
 scope_subquery_internal_test.go
-search.go
-search_exact_integration_test.go
-search_fake_test.go
 select_golden_test.go
 select_validation_test.go
 sensitive_args_internal_test.go
