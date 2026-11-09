@@ -23,6 +23,8 @@ code under test; the constraints and the SQL are what you want to exercise.
 2. Embed the migrations in the package that owns the schema, so the binary and
    its tests share them:
 
+   <!-- docscheck:fragment -->
+
    ```go
    //go:embed migrations
    var files embed.FS
