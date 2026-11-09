@@ -202,7 +202,7 @@ func TestTimeExprComposition(t *testing.T) {
 	local := func() timeop.Expr {
 		return timeop.Trunc(timeop.TruncDay, timeop.AtTimeZone(tmCreated, "Europe/Brussels"))
 	}
-	got, err = momo.Select[exprtest.Tally](db).From(momo.TableRef{Name: "documents"}).
+	got, err = momo.Select[exprtest.TextTally](db).From(momo.TableRef{Name: "documents"}).
 		Columns(local(), momo.CountAll()).GroupBy(local()).SQL()
 	if err != nil {
 		t.Fatal(err)
@@ -215,5 +215,3 @@ func TestTimeExprComposition(t *testing.T) {
 		t.Errorf("extract over date_trunc: %v", err)
 	}
 }
-
-func joinRender(d dialect.Name, e momo.Expr) (momo.Compiled, error) { return selectOne(d, e) }

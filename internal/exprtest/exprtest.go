@@ -30,6 +30,27 @@ var tallyMeta = momo.Meta[Tally]{
 // MomoMeta makes Tally a model for momo.Select.
 func (*Tally) MomoMeta() *momo.Meta[Tally] { return &tallyMeta }
 
+// TextTally is a projection fixture with a text column and a count column, for
+// statements that select a computed bucket next to COUNT(*).
+type TextTally struct {
+	S string
+	N int64
+}
+
+var textTallyMeta = momo.Meta[TextTally]{
+	Columns:    []momo.ColumnMeta{{Name: "s"}, {Name: "n"}},
+	Ptr:        func(m *TextTally, i int) any { return [...]any{&m.S, &m.N}[i] },
+	Value:      func(m *TextTally, i int) any { return [...]any{m.S, m.N}[i] },
+	Identity:   -1,
+	Version:    -1,
+	SoftDelete: -1,
+	CreatedAt:  -1,
+	UpdatedAt:  -1,
+}
+
+// MomoMeta makes TextTally a model for momo.Select.
+func (*TextTally) MomoMeta() *momo.Meta[TextTally] { return &textTallyMeta }
+
 // DB opens a DB for the dialect over a driver that records statements and
 // runs none.
 func DB(name dialect.Name) *momo.DB { return momo.New(fakedriver.New(name)) }
