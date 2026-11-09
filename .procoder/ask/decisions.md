@@ -245,3 +245,14 @@ install the new procoder here and land vecop through the fixed gate. The first
 review found 3 Important issues (a package at a nested module's root still
 resolves to the root module in the test runner; stub tests lack Windows skips;
 a changelog entry against CONTRIBUTING), sent back for fixes before merge.
+
+## Install procoder 3.9.5 in this environment?
+
+procoder 3.9.5 is published (https://github.com/azrtydxb/procoder/releases/tag/v3.9.5,
+tag run green on Linux, macOS, Windows and the gate). It carries the
+nested-module gate fix (#340, #345). The installed plugin is 3.9.2. The parked
+vecop merge needs the fixed gate to commit `bench/vector/topk_integration_test.go`.
+
+- Update the plugin now with /procoder:update, then land vecop.
+- The user updates the plugin themselves; vecop waits until they say it is done.
+- Do not update yet; vecop stays parked.
