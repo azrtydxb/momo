@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo_test
+package jsonop_test
 
 import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprtest"
+	"github.com/azrtydxb/momo/jsonop"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -15,8 +17,8 @@ import (
 // sensitive column inlining its key.
 func TestJSONGroupByRendering(t *testing.T) {
 	render := func(col momo.Expression[types.JSON[jsonPayload]], key string) string {
-		e := momo.JSONText(col, key)
-		got, err := momo.Select[kvRow](typedDB(dialect.Postgres)).From(momo.TableRef{Name: "events"}).
+		e := jsonop.Text(col, key)
+		got, err := momo.Select[exprtest.Pair](exprtest.DB(dialect.Postgres)).From(momo.TableRef{Name: "events"}).
 			Columns(e, momo.CountAll()).GroupBy(e).SQL()
 		if err != nil {
 			t.Fatal(err)

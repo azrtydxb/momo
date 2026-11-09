@@ -1,0 +1,15 @@
+# Ordered aggregates and JSON builders move to github.com/azrtydxb/momo/agg and drop the Agg and JSON prefixes.
+AggExpr Call
+Aggregate Func
+StringAgg String
+ArrayAgg Array
+JSONBAgg JSONB
+PercentileCont PercentileCont
+PercentileDisc PercentileDisc
+JSONPair Pair
+JSONField Field
+JSONObjectExpr ObjectExpr
+JSONBBuildObject BuildObject
+ToJSONExpr JSONExpr
+ToJSONB ToJSONB
+EmptyJSONArray EmptyJSONArray

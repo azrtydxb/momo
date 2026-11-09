@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momo_test
+package jsonop_test
 
 import (
 	"errors"
@@ -11,8 +11,10 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/internal/obstest"
+	"github.com/azrtydxb/momo/jsonop"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -25,7 +27,7 @@ var (
 )
 
 func jsonWhere(d dialect.Name, p momo.Predicate) (momo.Compiled, error) {
-	return momo.Select[unitTally](typedDB(d)).From(momo.TableRef{Name: "events"}).
+	return momo.Select[exprtest.Tally](exprtest.DB(d)).From(momo.TableRef{Name: "events"}).
 		Columns(momo.CountAll()).Where(p).SQL()
 }
 
@@ -39,41 +41,41 @@ func TestJSONOperatorsGolden(t *testing.T) {
 		want string
 		args []any
 	}{
-		{"pg text eq", dialect.Postgres, momo.JSONText(jsonDoc, "via").Eq("api"),
+		{"pg text eq", dialect.Postgres, jsonop.Text(jsonDoc, "via").Eq("api"),
 			`("events"."after" ->> 'via') = $1`, []any{"api"}},
-		{"pg numeric key is a key", dialect.Postgres, momo.JSONText(jsonDoc, "0").Eq("x"),
+		{"pg numeric key is a key", dialect.Postgres, jsonop.Text(jsonDoc, "0").Eq("x"),
 			`("events"."after" ->> '0') = $1`, []any{"x"}},
-		{"pg key with dot is bound", dialect.Postgres, momo.JSONText(jsonDoc, "a.b").Eq("x"),
+		{"pg key with dot is bound", dialect.Postgres, jsonop.Text(jsonDoc, "a.b").Eq("x"),
 			`("events"."after" ->> $1) = $2`, []any{"a.b", "x"}},
-		{"pg text on nullable", dialect.Postgres, momo.JSONText(jsonBefore, "a'b").Ne("x"),
+		{"pg text on nullable", dialect.Postgres, jsonop.Text(jsonBefore, "a'b").Ne("x"),
 			`("events"."before" ->> $1) <> $2`, []any{"a'b", "x"}},
-		{"pg text in", dialect.Postgres, momo.JSONText(jsonDoc, "via").In("a", "b"),
+		{"pg text in", dialect.Postgres, jsonop.Text(jsonDoc, "via").In("a", "b"),
 			`("events"."after" ->> 'via') IN ($1, $2)`, []any{"a", "b"}},
-		{"pg text is null", dialect.Postgres, momo.JSONText(jsonDoc, "via").IsNull(),
+		{"pg text is null", dialect.Postgres, jsonop.Text(jsonDoc, "via").IsNull(),
 			`("events"."after" ->> 'via') IS NULL`, nil},
-		{"pg path", dialect.Postgres, momo.JSONPath(jsonDoc, "a", "0", "b").Eq("x"),
+		{"pg path", dialect.Postgres, jsonop.Path(jsonDoc, "a", "0", "b").Eq("x"),
 			`("events"."after" #>> '{a,0,b}') = $1`, []any{"x"}},
-		{"pg path unsafe element is bound", dialect.Postgres, momo.JSONPath(jsonDoc, "a", "b,c").Eq("x"),
+		{"pg path unsafe element is bound", dialect.Postgres, jsonop.Path(jsonDoc, "a", "b,c").Eq("x"),
 			`("events"."after" #>> $1) = $2`, []any{[]string{"a", "b,c"}, "x"}},
-		{"pg contains", dialect.Postgres, momo.JSONContains(jsonDoc, map[string]any{"via": "api"}),
+		{"pg contains", dialect.Postgres, jsonop.Contains(jsonDoc, map[string]any{"via": "api"}),
 			`("events"."after" @> CAST($1 AS jsonb))`, []any{`{"via":"api"}`}},
-		{"pg has key", dialect.Postgres, momo.JSONHasKey(jsonDoc, "via"),
+		{"pg has key", dialect.Postgres, jsonop.HasKey(jsonDoc, "via"),
 			`("events"."after" ? $1)`, []any{"via"}},
-		{"sqlite text", dialect.SQLite, momo.JSONText(jsonDoc, "via").Eq("api"),
+		{"sqlite text", dialect.SQLite, jsonop.Text(jsonDoc, "via").Eq("api"),
 			`CAST(json_extract("events"."after", '$."via"') AS TEXT) = ?`, []any{"api"}},
-		{"sqlite numeric key stays an object key", dialect.SQLite, momo.JSONText(jsonDoc, "0").Eq("x"),
+		{"sqlite numeric key stays an object key", dialect.SQLite, jsonop.Text(jsonDoc, "0").Eq("x"),
 			`CAST(json_extract("events"."after", '$."0"') AS TEXT) = ?`, []any{"x"}},
-		{"sqlite has numeric key is an object key", dialect.SQLite, momo.JSONHasKey(jsonDoc, "0"),
+		{"sqlite has numeric key is an object key", dialect.SQLite, jsonop.HasKey(jsonDoc, "0"),
 			`(json_type("events"."after", ?) IS NOT NULL)`, []any{`$."0"`}},
-		{"sqlite path", dialect.SQLite, momo.JSONPath(jsonDoc, "a", "0", "b").Eq("x"),
+		{"sqlite path", dialect.SQLite, jsonop.Path(jsonDoc, "a", "0", "b").Eq("x"),
 			`CAST(json_extract("events"."after", '$."a"[0]."b"') AS TEXT) = ?`, []any{"x"}},
-		{"sqlite has key", dialect.SQLite, momo.JSONHasKey(jsonDoc, "via"),
+		{"sqlite has key", dialect.SQLite, jsonop.HasKey(jsonDoc, "via"),
 			`(json_type("events"."after", ?) IS NOT NULL)`, []any{`$."via"`}},
-		{"mysql text", dialect.MySQL, momo.JSONText(jsonDoc, "via").Eq("api"),
+		{"mysql text", dialect.MySQL, jsonop.Text(jsonDoc, "via").Eq("api"),
 			"JSON_UNQUOTE(JSON_EXTRACT(`events`.`after`, '$.\"via\"')) = ?", []any{"api"}},
-		{"mysql contains", dialect.MySQL, momo.JSONContains(jsonDoc, []string{"a"}),
+		{"mysql contains", dialect.MySQL, jsonop.Contains(jsonDoc, []string{"a"}),
 			"JSON_CONTAINS(`events`.`after`, CAST(? AS JSON))", []any{`["a"]`}},
-		{"mysql has key", dialect.MySQL, momo.JSONHasKey(jsonDoc, "via"),
+		{"mysql has key", dialect.MySQL, jsonop.HasKey(jsonDoc, "via"),
 			"JSON_CONTAINS_PATH(`events`.`after`, 'one', ?)", []any{`$."via"`}},
 	}
 	for _, c := range cases {
@@ -97,8 +99,8 @@ func TestJSONOperatorsGolden(t *testing.T) {
 
 // Catches: the extraction unusable in ORDER BY or the select list.
 func TestJSONTextOrderAndColumns(t *testing.T) {
-	e := momo.JSONText(jsonDoc, "via")
-	got, err := momo.Select[unitTally](typedDB(dialect.Postgres)).From(momo.TableRef{Name: "events"}).
+	e := jsonop.Text(jsonDoc, "via")
+	got, err := momo.Select[exprtest.Tally](exprtest.DB(dialect.Postgres)).From(momo.TableRef{Name: "events"}).
 		Columns(e).OrderBy(e.Desc()).SQL()
 	if err != nil {
 		t.Fatal(err)
@@ -112,15 +114,15 @@ func TestJSONTextOrderAndColumns(t *testing.T) {
 // Catches: sensitivity lost through extraction, and the extraction not
 // marked nullable for keyset ordering.
 func TestJSONFlags(t *testing.T) {
-	f := momo.JSONText(jsonAfter, "via").Flags()
+	f := jsonop.Text(jsonAfter, "via").Flags()
 	if f&momo.FlagSensitive == 0 || f&momo.FlagNullable == 0 {
-		t.Errorf("JSONText flags = %b, want sensitive and nullable", f)
+		t.Errorf("Text flags = %b, want sensitive and nullable", f)
 	}
-	if momo.JSONText(jsonBefore, "via").Flags()&momo.FlagSensitive != 0 {
+	if jsonop.Text(jsonBefore, "via").Flags()&momo.FlagSensitive != 0 {
 		t.Error("extraction from a non-sensitive column is marked sensitive")
 	}
-	if momo.JSONPath(jsonAfter, "a").Flags()&momo.FlagSensitive == 0 {
-		t.Error("JSONPath lost the sensitive flag")
+	if jsonop.Path(jsonAfter, "a").Flags()&momo.FlagSensitive == 0 {
+		t.Error("Path lost the sensitive flag")
 	}
 }
 
@@ -133,17 +135,17 @@ func TestJSONOperatorErrors(t *testing.T) {
 		p    momo.Predicate
 		kind error
 	}{
-		{"empty key", dialect.Postgres, momo.JSONText(jsonDoc, "").Eq("x"), momo.ErrValidation},
-		{"empty path", dialect.Postgres, momo.JSONPath(jsonDoc).Eq("x"), momo.ErrValidation},
-		{"quote on sqlite", dialect.SQLite, momo.JSONText(jsonDoc, `a"b`).Eq("x"), momo.ErrValidation},
-		{"quote on postgres is fine", dialect.Postgres, momo.JSONText(jsonDoc, `a"b`).Eq("x"), nil},
-		{"control char on mysql", dialect.MySQL, momo.JSONText(jsonDoc, "a\nb").Eq("x"), momo.ErrValidation},
-		{"control char on sqlite", dialect.SQLite, momo.JSONHasKey(jsonDoc, "a\x01b"), momo.ErrValidation},
-		{"backslash on sqlite", dialect.SQLite, momo.JSONText(jsonDoc, `a\b`).Eq("x"), momo.ErrValidation},
-		{"backslash on mysql is escaped", dialect.MySQL, momo.JSONText(jsonDoc, `a\b`).Eq("x"), nil},
-		{"has key empty", dialect.Postgres, momo.JSONHasKey(jsonDoc, ""), momo.ErrValidation},
-		{"contains on sqlite", dialect.SQLite, momo.JSONContains(jsonDoc, jsonPayload{"a": 1}), momo.ErrUnsupported},
-		{"unencodable value", dialect.Postgres, momo.JSONContains(jsonDoc, make(chan int)), momo.ErrValidation},
+		{"empty key", dialect.Postgres, jsonop.Text(jsonDoc, "").Eq("x"), momo.ErrValidation},
+		{"empty path", dialect.Postgres, jsonop.Path(jsonDoc).Eq("x"), momo.ErrValidation},
+		{"quote on sqlite", dialect.SQLite, jsonop.Text(jsonDoc, `a"b`).Eq("x"), momo.ErrValidation},
+		{"quote on postgres is fine", dialect.Postgres, jsonop.Text(jsonDoc, `a"b`).Eq("x"), nil},
+		{"control char on mysql", dialect.MySQL, jsonop.Text(jsonDoc, "a\nb").Eq("x"), momo.ErrValidation},
+		{"control char on sqlite", dialect.SQLite, jsonop.HasKey(jsonDoc, "a\x01b"), momo.ErrValidation},
+		{"backslash on sqlite", dialect.SQLite, jsonop.Text(jsonDoc, `a\b`).Eq("x"), momo.ErrValidation},
+		{"backslash on mysql is escaped", dialect.MySQL, jsonop.Text(jsonDoc, `a\b`).Eq("x"), nil},
+		{"has key empty", dialect.Postgres, jsonop.HasKey(jsonDoc, ""), momo.ErrValidation},
+		{"contains on sqlite", dialect.SQLite, jsonop.Contains(jsonDoc, jsonPayload{"a": 1}), momo.ErrUnsupported},
+		{"unencodable value", dialect.Postgres, jsonop.Contains(jsonDoc, make(chan int)), momo.ErrValidation},
 	}
 	for _, c := range cases {
 		_, err := jsonWhere(c.d, c.p)
@@ -160,16 +162,16 @@ func TestJSONOperatorErrors(t *testing.T) {
 }
 
 // Catches: a backslash in a MySQL key left unescaped, and a numeric
-// JSONPath element not turned into an array index.
+// Path element not turned into an array index.
 func TestJSONPathEscapingAndIndexes(t *testing.T) {
-	got, err := jsonWhere(dialect.MySQL, momo.JSONText(jsonDoc, `a\b`).Eq("x"))
+	got, err := jsonWhere(dialect.MySQL, jsonop.Text(jsonDoc, `a\b`).Eq("x"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if want := []any{`$."a\\b"`, "x"}; !reflect.DeepEqual(got.Args, want) {
 		t.Errorf("mysql args = %#v, want %#v", got.Args, want)
 	}
-	got, err = jsonWhere(dialect.MySQL, momo.JSONPath(jsonDoc, "a", "1").Eq("x"))
+	got, err = jsonWhere(dialect.MySQL, jsonop.Path(jsonDoc, "a", "1").Eq("x"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,21 +185,21 @@ func TestJSONPathEscapingAndIndexes(t *testing.T) {
 func TestJSONOperatorsMaskSensitiveColumn(t *testing.T) {
 	secret := "hunter2json" // plain-shaped, so only sensitivity keeps it out of the SQL text
 	preds := map[string]momo.Predicate{
-		"text eq":    momo.JSONText(jsonAfter, "via").Eq(secret),
-		"plain key":  momo.JSONText(jsonAfter, secret).IsNull(),
-		"plain path": momo.JSONPath(jsonAfter, secret, "b").IsNull(),
-		"unsafe key": momo.JSONText(jsonAfter, secret+".x").IsNull(),
-		"path":       momo.JSONPath(jsonAfter, "a", secret+".x").IsNull(),
-		"contains":   momo.JSONContains(jsonAfter, map[string]any{"k": secret}),
-		"has key":    momo.JSONHasKey(jsonAfter, secret),
-		"in":         momo.JSONText(jsonAfter, "via").In(secret, "b"),
+		"text eq":    jsonop.Text(jsonAfter, "via").Eq(secret),
+		"plain key":  jsonop.Text(jsonAfter, secret).IsNull(),
+		"plain path": jsonop.Path(jsonAfter, secret, "b").IsNull(),
+		"unsafe key": jsonop.Text(jsonAfter, secret+".x").IsNull(),
+		"path":       jsonop.Path(jsonAfter, "a", secret+".x").IsNull(),
+		"contains":   jsonop.Contains(jsonAfter, map[string]any{"k": secret}),
+		"has key":    jsonop.HasKey(jsonAfter, secret),
+		"in":         jsonop.Text(jsonAfter, "via").In(secret, "b"),
 	}
 	// A wrapper without Flags still masks, because rendering the column does.
-	preds["through Coalesce"] = momo.JSONText(momo.Coalesce(jsonAfter, types.JSON[jsonPayload]{}), secret).Eq(secret)
+	preds["through Coalesce"] = jsonop.Text(momo.Coalesce(jsonAfter, types.JSON[jsonPayload]{}), secret).Eq(secret)
 	for name, p := range preds {
 		rec := &obstest.Recorder{}
 		db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(rec), momo.WithArgLogging())
-		_, _ = momo.Select[unitTally](db).From(momo.TableRef{Name: "events"}).Columns(momo.CountAll()).Where(p).All(t.Context())
+		_, _ = momo.Select[exprtest.Tally](db).From(momo.TableRef{Name: "events"}).Columns(momo.CountAll()).Where(p).All(t.Context())
 		seen := false
 		for _, e := range rec.Events() {
 			seen = seen || len(e.Args) > 0
@@ -220,8 +222,8 @@ func TestJSONOperatorsMaskSensitiveColumn(t *testing.T) {
 
 	rec := &obstest.Recorder{}
 	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(rec), momo.WithArgLogging())
-	_, _ = momo.Select[unitTally](db).From(momo.TableRef{Name: "events"}).Columns(momo.CountAll()).
-		Where(momo.JSONText(jsonBefore, "via").Eq("visible")).All(t.Context())
+	_, _ = momo.Select[exprtest.Tally](db).From(momo.TableRef{Name: "events"}).Columns(momo.CountAll()).
+		Where(jsonop.Text(jsonBefore, "via").Eq("visible")).All(t.Context())
 	for _, e := range rec.Events() {
 		if len(e.Args) > 0 && !slices.Contains(e.Args, any("visible")) {
 			t.Errorf("non-sensitive column was masked: %v", e.Args)

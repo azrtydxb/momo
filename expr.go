@@ -242,6 +242,13 @@ func (o Order) NullsFirst() Order { o.Nulls = NullsFirst; return o }
 // NullsLast returns o with explicit NULLS LAST.
 func (o Order) NullsLast() Order { o.Nulls = NullsLast; return o }
 
+// AppendOrder renders the item as "expr ASC|DESC [NULLS FIRST|LAST]", failing
+// the build with ErrUnsupported where the dialect has no NULLS ordering.
+// Code outside this package that renders an ORDER BY inside its own
+// expression (an ordered aggregate) calls it. AppendOrder is an extension
+// point; see Ops.
+func (o Order) AppendOrder(b *Builder) { o.appendSQL(b) }
+
 func (o Order) appendSQL(b *Builder) {
 	o.Expr.AppendSQL(b)
 	if o.Desc {

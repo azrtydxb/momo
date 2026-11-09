@@ -129,7 +129,8 @@ Each statement below is asserted by a test against PostgreSQL.
 - `types.UUID`: round-trips all 16 bytes, including the all-zero UUID.
 - `types.JSON[T]`: encodes with `encoding/json`. An empty slice and a nil
   slice are different JSON (`[]` and `null`) and read back as such.
-  Query it with `JSONText`, `JSONPath`, `JSONContains` and `JSONHasKey`. A
+  Query it with `jsonop.Text`, `jsonop.Path`, `jsonop.Contains` and
+  `jsonop.HasKey` (package `github.com/azrtydxb/momo/jsonop`). A
   nullable column holds either SQL NULL or the JSON literal null; an extraction
   is NULL for both and for a missing key, so test the column itself with
   `IsNull`. Grouping by an extraction works only for plain keys (letters,

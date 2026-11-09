@@ -19,10 +19,12 @@ leaf dialect
 leaf schema
 leaf types
 leaf vector
+feature agg
 feature arrayop
 feature timeop
 feature fts
 feature sqlfn
+feature jsonop
 
 internal-leaf internal/chunk
 internal-leaf internal/golden

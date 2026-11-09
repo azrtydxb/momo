@@ -1,0 +1,6 @@
+# JSON operators move to github.com/azrtydxb/momo/jsonop and drop the JSON prefix.
+JSONText Text
+JSONPath Path
+JSONContains Contains
+JSONHasKey HasKey
+JSONTextExpr TextExpr

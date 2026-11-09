@@ -27,21 +27,6 @@ var kvRowMeta = momo.Meta[kvRow]{
 
 func (*kvRow) MomoMeta() *momo.Meta[kvRow] { return &kvRowMeta }
 
-// strCount is a projection of a string key and a count.
-type strCount struct {
-	S string
-	N int64
-}
-
-var strCountMeta = momo.Meta[strCount]{
-	Columns:  []momo.ColumnMeta{{Name: "s"}, {Name: "n"}},
-	Ptr:      func(m *strCount, i int) any { return [...]any{&m.S, &m.N}[i] },
-	Value:    func(m *strCount, i int) any { return [...]any{m.S, m.N}[i] },
-	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
-}
-
-func (*strCount) MomoMeta() *momo.Meta[strCount] { return &strCountMeta }
-
 var pairK = momo.ColumnOf[int64]("s", "tenant_id")
 
 func typedDB(name dialect.Name) *momo.DB { return momo.New(fakedriver.New(name)) }

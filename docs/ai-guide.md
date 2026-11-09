@@ -250,16 +250,18 @@ Nullability and column rules:
   `time.Time` is `timestamptz`, `types.UUID` is `uuid`, `types.JSON[T]` is
   `jsonb`). `uint64`, maps and unknown types have no mapping: add `type:<sql>`
   or a codec.
-- JSON columns: `JSONText`, `JSONPath`, `JSONContains` and `JSONHasKey` (file
-  `expr_json.go`) are typed predicates over a `types.JSON[T]` column; the
-  extractions are string expressions usable in `Where`, `OrderBy` and `Columns`.
+- JSON columns: `jsonop.Text`, `jsonop.Path`, `jsonop.Contains` and
+  `jsonop.HasKey` (package `github.com/azrtydxb/momo/jsonop`) are typed
+  operators over a `types.JSON[T]` column; the extractions are string
+  expressions usable in `Where`, `OrderBy` and `Columns`.
   An extraction is NULL for a missing key and for JSON null alike, a SQL NULL
   column is tested with `IsNull` on the column, and the JSON literal null is
   matched by comparing the column with a `types.JSON` whose value is nil.
-  `JSONHasKey` is true for a key whose value is JSON null. A numeric key in
-  `JSONText` or `JSONHasKey` is an object key; only `JSONPath` elements made of
-  digits can be array indexes. SQLite renders `json_extract` and `json_type`
-  (`JSONContains` is `ErrUnsupported` there); MySQL renders its JSON functions.
+  `jsonop.HasKey` is true for a key whose value is JSON null. A numeric key in
+  `jsonop.Text` or `jsonop.HasKey` is an object key; only `jsonop.Path`
+  elements made of digits can be array indexes. SQLite renders `json_extract`
+  and `json_type` (`jsonop.Contains` is `ErrUnsupported` there); MySQL renders
+  its JSON functions.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
@@ -835,16 +837,16 @@ sqlfn.Concat(sqlfn.Upper(doc.Title), momo.Value("-x"))
 // Plain values bound by Func or an aggregate are not masked in hook events, even
 // beside a sensitive column; only comparison predicates mask their other operands.
 momo.Func[string]("btrim", doc.Title)
-// Aggregates with their own ORDER BY (AggExpr[T]); chain OrderBy, inside the call.
-momo.StringAgg(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
-momo.ArrayAgg[string](label).OrderBy(label.Asc())       // []string, PostgreSQL only
+// Aggregates with their own ORDER BY (agg.Call[T], package momo/agg); chain OrderBy, inside the call.
+agg.String(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
+agg.Array[string](label).OrderBy(label.Asc())       // []string, PostgreSQL only
 // Ordered-set aggregates (PostgreSQL): WithinGroup is required.
-momo.PercentileCont(0.5).WithinGroup(run.DurationMs.Asc())      // float64
-momo.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
+agg.PercentileCont(0.5).WithinGroup(run.DurationMs.Asc())      // float64
+agg.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
 // JSON: T is the Go type the result decodes into (types.JSON[T]). Keys and
 // separators are literals and must not contain a backslash.
-item := momo.JSONBBuildObject[Item](momo.JSONField("label", label), momo.JSONField("n", n))
-sqlfn.CoalesceExpr(momo.JSONBAgg[Item](item).OrderBy(label.Asc()), momo.EmptyJSONArray[Item]())
+item := agg.BuildObject[Item](agg.Field("label", label), agg.Field("n", n))
+sqlfn.CoalesceExpr(agg.JSONB[Item](item).OrderBy(label.Asc()), agg.EmptyJSONArray[Item]())
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 sqlfn.CurrentSchema()
 
@@ -1208,6 +1210,12 @@ values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQ
   when the flags argument has `FlagSensitive`.
 - `Builder.Unsupported`: records `ErrUnsupported` for a dialect that
   cannot express the feature. `Builder.WriteByte` appends a trusted SQL byte.
+- `Order.AppendOrder`: renders one ORDER BY item (`expr ASC|DESC [NULLS ...]`) for
+  an expression that carries its own ordering, such as `agg.Call.OrderBy`.
+- `Builder.AppendFilter`: writes ` FILTER (WHERE p)` after an aggregate call
+  and fails the build for a nil predicate or on MySQL.
+- `momo.WindowOf[T]`: turns your aggregate call into a window function,
+  `call OVER (...)`; `agg.Call.Over` is built on it.
 - `Builder.MarkSensitive`: call it from an expression that writes a sensitive
   column's identifier directly, so an enclosing comparison masks its other
   operands. A column reference does this by itself.
