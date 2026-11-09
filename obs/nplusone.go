@@ -46,8 +46,16 @@ func WithScope(ctx context.Context) context.Context {
 // exceeds the threshold. A single batched load is one load however many
 // parents it covers, so it never triggers a finding.
 //
-// It implements momo.Hook and momo.RelationHook, so one momo.WithHook call
-// registers it. It is safe for concurrent use.
+// It differs from the root momo.NewNPlusOneHook, which counts repeated
+// statement shapes in a scope made with momo.WithQueryScope. Use NPlusOne for
+// a relation Load inside a loop, the root hook for any repeated statement (a
+// Select in a loop, for instance), or both. Each reads its own scope: wrap the
+// context with obs.WithScope for this detector and momo.WithQueryScope for the
+// root one; one does not see the other's scope.
+//
+// Create it with NewNPlusOne; the zero value is not usable. It implements
+// momo.Hook and momo.RelationHook, so one momo.WithHook call registers it. It
+// is safe for concurrent use.
 type NPlusOne struct {
 	threshold int
 	report    func(Finding)

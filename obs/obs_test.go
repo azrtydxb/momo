@@ -3,14 +3,11 @@
 package obs_test
 
 import (
-	"bytes"
 	"context"
-	"log/slog"
+	"errors"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -140,6 +137,21 @@ func TestRecorderEventsAreCopies(t *testing.T) {
 	}
 }
 
+func TestRecorderKeepsRelationError(t *testing.T) {
+	rec := &obs.Recorder{}
+	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(rec))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := momo.Load(ctx, db, parents(2), kids)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want context.Canceled, got %v", err)
+	}
+	rels := rec.Relations()
+	if len(rels) != 1 || !errors.Is(rels[0].Err, context.Canceled) {
+		t.Fatalf("relation event must carry the load error, got %+v", rels)
+	}
+}
+
 func TestRecorderConcurrent(t *testing.T) {
 	rec := &obs.Recorder{}
 	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(rec))
@@ -243,62 +255,4 @@ func TestNPlusOne(t *testing.T) {
 			t.Fatalf("want 1 finding, got %d", len(*found))
 		}
 	})
-}
-
-func logger(buf *bytes.Buffer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-}
-
-func TestSlogNeverLogsSensitiveValue(t *testing.T) {
-	var buf bytes.Buffer
-	h := obs.NewSlog(logger(&buf), obs.SlogArgs(true))
-	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(h), momo.WithArgLogging())
-	insertSecret(t, db)
-	out := buf.String()
-	if strings.Contains(out, secret) {
-		t.Fatalf("log leaks the sensitive value:\n%s", out)
-	}
-	for _, want := range []string{"[redacted]", "op=insert", "table=documents", "sql=", "duration=", "rows="} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("log lacks %q:\n%s", want, out)
-		}
-	}
-}
-
-func TestSlogArgsAreOptIn(t *testing.T) {
-	var buf bytes.Buffer
-	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(obs.NewSlog(logger(&buf))), momo.WithArgLogging())
-	insertSecret(t, db)
-	out := buf.String()
-	if strings.Contains(out, "args=") || strings.Contains(out, "[redacted]") {
-		t.Fatalf("args logged without SlogArgs:\n%s", out)
-	}
-	if !strings.Contains(out, "op=insert") {
-		t.Fatalf("no record logged:\n%s", out)
-	}
-}
-
-func TestSlogLogsRelationLoads(t *testing.T) {
-	var buf bytes.Buffer
-	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(obs.NewSlog(logger(&buf))))
-	if err := momo.Load(context.Background(), db, parents(2), kids); err != nil {
-		t.Fatal(err)
-	}
-	out := buf.String()
-	for _, want := range []string{"relation=obs_parents.Kids", "msg=momo.relation", "parent=obs_parents", "name=Kids", "parents=2", "queries=1"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("log lacks %q:\n%s", want, out)
-		}
-	}
-}
-
-func TestSlogLevels(t *testing.T) {
-	var buf bytes.Buffer
-	h := obs.NewSlog(logger(&buf), obs.SlogLevel(slog.LevelInfo), obs.SlogSlowOver(time.Second))
-	h.AfterQuery(context.Background(), &momo.QueryEvent{Op: "select", SQL: "select 1", Duration: time.Millisecond})
-	h.AfterQuery(context.Background(), &momo.QueryEvent{Op: "select", SQL: "select 2", Duration: 2 * time.Second})
-	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	if len(lines) != 2 || !strings.Contains(lines[0], "level=INFO") || !strings.Contains(lines[1], "level=WARN") {
-		t.Fatalf("levels:\n%s", buf.String())
-	}
 }

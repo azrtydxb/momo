@@ -32,9 +32,14 @@ func SlowOver(d time.Duration) Option { return func(h *hook) { h.slow = d } }
 // carries no values to log.
 func Values(on bool) Option { return func(h *hook) { h.values = on } }
 
-// New returns a momo.Hook that logs one record per finished statement with
-// the attributes op, table, relation (when set), sql, duration, rows and err
-// (when set).
+// New returns a hook that logs one "momo.query" record per finished statement
+// with the attributes op, table, relation (when set), sql, duration, rows and
+// err (when set). The hook also implements momo.RelationHook, so momo.WithHook
+// additionally logs one "momo.relation" record per finished relation load with
+// parent, name, kind, parents, children, queries, duration and err (when set).
+// Errors are logged through Error() only. Argument values are logged only with
+// Values(true) and momo.WithArgLogging together, and a value bound from a
+// sensitive column is momo.RedactedArg in them.
 func New(l *slog.Logger, opts ...Option) momo.Hook {
 	h := &hook{l: l, level: slog.LevelDebug}
 	for _, o := range opts {
@@ -73,4 +78,32 @@ func (h *hook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
 		attrs = append(attrs, slog.String("err", e.Err.Error()))
 	}
 	h.l.LogAttrs(ctx, level, "momo.query", attrs...)
+}
+
+var (
+	_ momo.Hook         = (*hook)(nil)
+	_ momo.RelationHook = (*hook)(nil)
+)
+
+func (h *hook) BeforeRelation(ctx context.Context, _ *momo.RelationEvent) context.Context {
+	return ctx
+}
+
+func (h *hook) AfterRelation(ctx context.Context, e *momo.RelationEvent) {
+	if !h.l.Enabled(ctx, h.level) {
+		return
+	}
+	attrs := []slog.Attr{
+		slog.String("parent", e.Parent),
+		slog.String("name", e.Name),
+		slog.Any("kind", e.Kind),
+		slog.Int("parents", e.Parents),
+		slog.Int64("children", e.Children),
+		slog.Int("queries", e.Queries),
+		slog.Duration("duration", e.Duration),
+	}
+	if e.Err != nil {
+		attrs = append(attrs, slog.String("err", e.Err.Error()))
+	}
+	h.l.LogAttrs(ctx, h.level, "momo.relation", attrs...)
 }

@@ -153,9 +153,9 @@ carries the format number and no release version.
 - `momotest`: a schema or a rolled-back transaction per test with your
   migrations applied; `momotest/sqlitetest` is the SQLite variant, kept apart
   so PostgreSQL tests do not link cgo. See [testing](testing.md).
-- `momolog`: a `log/slog` hook.
-- `obs`: ready-made `Hook` and `RelationHook` implementations (a recorder, an
-  N+1 relation-load detector, a `log/slog` hook); imports only `momo`. See
+- `momolog`: a `log/slog` hook for statements and relation loads.
+- `obs`: ready-made `Hook` and `RelationHook` implementations (a recorder and
+  an N+1 relation-load detector); imports only `momo`. See
   [observability](observability.md).
 - `importer`, `importer/{gorm,bun,ent}`: static readers of other ORMs' models;
   see [importers](importers.md).

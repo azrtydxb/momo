@@ -2,16 +2,17 @@
 
 // Package obs holds ready-made observability hooks for Momo: a Recorder that
 // keeps every statement and relation load, an NPlusOne detector that reports a
-// relation loaded once per row, and a log/slog hook.
+// relation loaded once per row. For log/slog use package momolog, whose hook
+// also logs relation loads.
 //
-// Each hook implements momo.Hook and momo.RelationHook, so one momo.WithHook
-// call registers it for both statement events and relation load events. All
-// of them are safe for concurrent use, as the hook contract requires.
+// Both hooks implement momo.Hook and momo.RelationHook, so one momo.WithHook
+// call registers them for statement events and relation load events. Both are
+// safe for concurrent use, as the hook contract requires.
 //
 // The hooks see the argument values the DB hands to every hook: nil unless the
 // DB was opened with momo.WithArgLogging, and with the value bound from a
-// sensitive column replaced by momo.RedactedArg. None of the hooks here can
-// recover a masked value, and none of them logs an argument unless asked to.
+// sensitive column replaced by momo.RedactedArg. Neither hook can recover a
+// masked value.
 package obs
 
 import (

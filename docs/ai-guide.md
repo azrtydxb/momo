@@ -1758,27 +1758,29 @@ Examples: every `examples/*/example_test.go`, harness
 
 ### Observability and scoping helpers
 
-- `momolog.New(logger, opts...)` returns a `momo.Hook` that logs one record per
-  statement (op, table, relation, sql, duration, rows, err). Options: `Level`,
+- `momolog.New(logger, opts...)` returns a hook that logs one record per
+  statement (op, table, relation, sql, duration, rows, err) and, because it also
+  implements `momo.RelationHook`, one record per relation load (parent, name,
+  kind, parents, children, queries, duration, err). Options: `Level`,
   `SlowOver` (statements slower than the duration log at WARN) and `Values`.
   Argument values are logged only with `Values(true)` and `momo.WithArgLogging`
-  together.
+  together; a sensitive column's value is `momo.RedactedArg`.
 - `momo.WithQueryScope(ctx)` groups statements for `momo.NewNPlusOneHook(threshold,
 report)`, a development hook that reports once per statement shape per scope
   when the shape runs more than the threshold. Contexts without a scope are not
   tracked; a scope tracks at most 1024 shapes; a panic in the report function is
   recovered. A single batched relation load runs one statement per relation and does not trigger it.
 - Hooks, package `github.com/azrtydxb/momo/obs` (see
-  [observability](observability.md)): each of these implements `momo.Hook` and
-  `momo.RelationHook`, so `momo.WithHook` registers it for statements and for
+  [observability](observability.md)): both implement `momo.Hook` and
+  `momo.RelationHook`, so `momo.WithHook` registers them for statements and for
   relation loads. `&obs.Recorder{}` keeps events for test assertions (`Events`,
   `SQLs`, `Relations`, `Reset`). `obs.NewNPlusOne(threshold, report)` with
   `obs.WithScope(ctx)` reports a relation loaded more than the threshold times
-  in one scope (a `Load` inside a loop; one batched `Load` stays silent).
-  `obs.NewSlog(logger, opts...)` logs a record per statement and per relation
-  load; argument values are logged only with `obs.SlogArgs(true)` and
-  `momo.WithArgLogging`. A value bound from a sensitive column is always
-  `momo.RedactedArg` in what these hooks see. They are safe for concurrent use.
+  in one scope (a `Load` inside a loop; one batched `Load` stays silent). It is
+  separate from `momo.NewNPlusOneHook`, which counts repeated statement shapes in
+  a `momo.WithQueryScope` scope; each needs its own scope on the context. A value
+  bound from a sensitive column is always `momo.RedactedArg` in what these hooks
+  see. They are safe for concurrent use. For slog use `momolog.New`.
 - `momo.WithTenant(ctx, tenant)` and `momo.TenantFilter(ctx, column)` add a
   `column = tenant` predicate. This is an application-side convenience and NOT a
   security boundary. It applies only where you add it to a `Where`: not to

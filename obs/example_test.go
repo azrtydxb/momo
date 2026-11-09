@@ -5,8 +5,6 @@ package obs_test
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -47,28 +45,4 @@ func ExampleNPlusOne() {
 	}
 	// Output:
 	// obs_parents.Kids loaded 3 times, 1 parent each
-}
-
-// ExampleNewSlog logs a relation load. Argument values are logged only with
-// SlogArgs and momo.WithArgLogging together, and a value bound from a
-// sensitive column shows as momo.RedactedArg.
-func ExampleNewSlog() {
-	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			switch a.Key {
-			case slog.TimeKey, "duration", "sql", "kind", "rows":
-				return slog.Attr{}
-			}
-			return a
-		},
-	}))
-	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(obs.NewSlog(l)))
-
-	if err := momo.Load(context.Background(), db, parents(2), kids); err != nil {
-		fmt.Println(err)
-	}
-	// Output:
-	// level=DEBUG msg=momo.query op=select table=obs_kids relation=obs_parents.Kids
-	// level=DEBUG msg=momo.relation parent=obs_parents name=Kids parents=2 children=0 queries=1
 }
