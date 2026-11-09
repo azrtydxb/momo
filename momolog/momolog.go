@@ -107,3 +107,6 @@ func (h *hook) AfterRelation(ctx context.Context, e *momo.RelationEvent) {
 	}
 	h.l.LogAttrs(ctx, h.level, "momo.relation", attrs...)
 }
+
+// ProbePRBody is a throwaway export that proves the apidiff docs gate reads the pull request body.
+func ProbePRBody() {}
