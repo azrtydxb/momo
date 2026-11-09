@@ -11,14 +11,6 @@ import (
 	"github.com/azrtydxb/momo/vector"
 )
 
-// mariaDBFunctions maps each metric MariaDB 11.8 provides to its distance
-// function. MySQL (any version) has no distance function outside HeatWave, so
-// its dialect lists no metric and a distance never reaches this table.
-var mariaDBFunctions = map[dialect.Metric]string{
-	dialect.MetricL2:     "VEC_DISTANCE_EUCLIDEAN",
-	dialect.MetricCosine: "VEC_DISTANCE_COSINE",
-}
-
 // mysqlVectorLiteralFunc is the function that turns the bound text form of a
 // vector into the server's VECTOR value: VEC_FromText on MariaDB and
 // STRING_TO_VECTOR on MySQL.
