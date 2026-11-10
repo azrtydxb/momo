@@ -21,6 +21,7 @@ import (
 	"go/format"
 	"go/token"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -384,7 +385,12 @@ func (g *generator) columns(m *model) {
 	if len(t.PrimaryKey) == 0 {
 		g.add(SevNote, t.Name, "the table has no primary key")
 	} else if !pkInColumnOrder(t) {
-		g.add(SevWarn, t.Name, "the primary key columns are not in column order: the model declares the key in field order, so the baseline will report the table")
+		refs, ok := m.refs(t.PrimaryKey)
+		if ok {
+			m.stmts = append(m.stmts, "c.PrimaryKey("+strings.Join(refs, ", ")+")")
+		} else {
+			g.add(SevWarn, t.Name, "the primary key uses a column the models do not have: the baseline will report the table")
+		}
 	}
 }
 
@@ -655,6 +661,10 @@ func (g *generator) constraints(m *model) {
 	g.tableObjects(m)
 }
 
+// fkNameOK is what a constraint name may hold to be written as an fk_name tag
+// value: no comma, colon, quote or space.
+var fkNameOK = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_$]{0,62}$`)
+
 var fkActions = map[string]bool{"": true, "CASCADE": true, "RESTRICT": true, "SET NULL": true, "SET DEFAULT": true}
 
 // foreignKey declares fk as a belongs_to relation when the generator can
@@ -684,9 +694,6 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	if f == nil {
 		return drop("its column is not modeled")
 	}
-	if want := t.Name + "_" + fk.Columns[0] + "_fkey"; fk.Name != want {
-		return drop("its name differs from the derived name " + want)
-	}
 	if !fkActions[fk.OnDelete] || !fkActions[fk.OnUpdate] {
 		return drop("its referential action is not supported")
 	}
@@ -695,6 +702,12 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		return drop("the column types differ")
 	}
 	opts := []string{"belongs_to", "fk:" + f.name}
+	if want := t.Name + "_" + fk.Columns[0] + "_fkey"; fk.Name != want {
+		if !fkNameOK.MatchString(fk.Name) {
+			return drop("its name " + fk.Name + " cannot be written in a struct tag")
+		}
+		opts = append(opts, "fk_name:"+fk.Name)
+	}
 	for _, a := range []struct{ key, val string }{{"on_delete", fk.OnDelete}, {"on_update", fk.OnUpdate}} {
 		if a.val != "" {
 			opts = append(opts, a.key+":"+strings.ToLower(strings.ReplaceAll(a.val, " ", "_")))

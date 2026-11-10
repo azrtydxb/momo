@@ -78,7 +78,12 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
+	// introspect.skip tables get no model, so inspection skips them before
+	// reading them: one the schema model cannot represent must not fail the run.
+	savedExclude := l.file.Migrate.Exclude
+	l.file.Migrate.Exclude = append(slices.Clone(savedExclude), l.file.Introspect.Skip...)
 	e, closeFn, code := l.openEngineAt(ctx, dsn)
+	l.file.Migrate.Exclude = savedExclude
 	if e == nil {
 		return code
 	}

@@ -102,6 +102,16 @@ Tag options for relations:
 - `polytype:<column>` together with `polyvalue:<value>` makes a `has_one` or
   `has_many` polymorphic: the child row belongs to the parent only when its
   type column equals the value.
+- `fk_name:<name>` names the foreign key constraint of a `belongs_to` instead of
+  the derived `<table>_<column>_fkey` (for example `_fkey1` on a partitioned
+  table). `MomoConfig` can do the same with `c.FKName(&m.AuthorID, "name")`; the
+  field is the key field. Declaring it both ways is an error. A migration diff
+  and `baseline` compare the constraint by this name. Changing it later is a
+  drop and add of the foreign key (a rename is not generated). A name longer than
+  63 bytes, a repeated name on one table, `fk_name` on `has_one`/`has_many` and a
+  `FKName` whose field is not the key of a `belongs_to` are generator errors.
+  `generate --from-db` writes it only for names made of letters, digits, `_` and
+  `$`; any other foreign key name is reported and left out.
 - `on_delete`, `on_update` and `no_constraint` affect only the foreign key
   emitted for `belongs_to`. `has_one` and `has_many` create no constraint, and
   many-to-many join tables always get two foreign keys with

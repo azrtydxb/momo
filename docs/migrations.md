@@ -198,6 +198,19 @@ finding:
 - Hide objects you do not manage with `migrate.exclude` (globs over `name` or
   `schema.name`; they apply to tables, views, functions, enums, extensions,
   triggers and policies). Example: `exclude: ["pg_stat_statements", "audit_*"]`.
+  PostgreSQL inspection applies the globs while it reads, before an object is
+  examined: a matching table is skipped before its columns, constraints, indexes
+  and partitions are read, a matching view or function before its definition is
+  read, and a trigger whose own name or table matches before its definition is
+  read. So an object the schema model cannot represent (for example a table with
+  a `VIRTUAL` generated column) no longer fails `generate --from-db`, `baseline`
+  or `drift` once you exclude it. Extensions, enums and policies are not skipped
+  early; they are filtered afterwards as before. `generate --from-db` also
+  passes every `introspect.skip` glob to inspection the same way, so a skipped
+  table is never read (the globs also match views and functions of that name).
+- A trigger limited to some columns (`AFTER UPDATE OF state`) is
+  `schema.Trigger.UpdateOf`: PostgreSQL renders `UPDATE OF "state"`, inspection
+  reads the list back and `generate --from-db` writes it into the model.
 - `momo_migrations` is never reported.
 - A view query, trigger `WHEN` and policy `USING`/`WITH CHECK` changed outside
   migrations is reported as `changed:` (the detail names `query`, `when`,
@@ -985,9 +998,16 @@ nullability (a pointer, or the `nullable` tag for slices), defaults, `size`,
 `identity:always`) and serial columns,
 single-column indexes as tags, other indexes, unique constraints, checks and
 comments in the `MomoConfig` method, every foreign key the generator can
-derive as a `belongs_to` field with its `on_delete` and `on_update` actions, and
-every composite (multi-column) foreign key to a modeled table as a
-`c.ForeignKey(...)` statement in `MomoConfig`.
+derive as a `belongs_to` field with its `on_delete` and `on_update` actions
+(with `fk_name` when the constraint name is not `<table>_<column>_fkey`;
+PostgreSQL picks `_fkey1` on a partitioned table), and every composite
+(multi-column) foreign key to a modeled table as a `c.ForeignKey(...)`
+statement in `MomoConfig`. A composite primary key whose
+column order differs from the field order is declared with
+`c.PrimaryKey(&m.Name, &m.Scope, &m.At)` in `MomoConfig`; the DDL, inspection
+and baseline keep that order. Changing the order of an existing key later is a
+drop and add of the primary key under an `ACCESS EXCLUSIVE` lock, and the drop
+is gated as destructive.
 `numeric` columns are Go strings (the `decimal-as-string` note); an
 `introspect.types` rule picks a decimal type instead. `tsvector` columns become
 `types.TSVector` (`*types.TSVector` when nullable); an `introspect.types` rule

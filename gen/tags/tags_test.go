@@ -77,7 +77,7 @@ func TestTagGrammar(t *testing.T) {
 		"immutable", "sensitive", "embedded", "no_constraint", "belongs_to", "has_one",
 		"has_many", "many2many", "created_at", "updated_at", "column:c", "type:citext",
 		"collate:C", "default:now()", "check:x > 0", "comment:hello", "enum:e", "table:t",
-		"schema:s", "view:v,materialized", "prefix:p_", "fk:AuthorID", "join:document_tags", "rel:has_many", "polytype:owner_type", "polyvalue:document",
+		"schema:s", "view:v,materialized", "prefix:p_", "fk:AuthorID", "fk_name:t_a_fkey1", "join:document_tags", "rel:has_many", "polytype:owner_type", "polyvalue:document",
 		"on_delete:cascade", "on_update:cascade", "soft_delete:timestamp", "method:gin",
 		"size:1", "precision:10", "scale:2", "dim:3", "index", "unique", "sort:asc", "nulls:last", "idgen:cuid",
 	} {

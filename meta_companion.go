@@ -69,6 +69,18 @@ func (c *Config) Collate(field any, collation string) {}
 // generator; never executed for its effect.
 func (c *Config) IDGen(field any, name string) {}
 
+// FKName names the foreign key constraint of the belongs_to relation whose key
+// field is field, for a name other than the derived <table>_<column>_fkey (for
+// example _fkey1 on a partitioned table). Read statically by the generator;
+// never executed for its effect.
+func (c *Config) FKName(field any, name string) {}
+
+// PrimaryKey orders the columns of a composite primary key, for a key whose
+// column order differs from the field order (the order is the btree order that
+// lookups rely on). The fields must be exactly the fields tagged pk. Read
+// statically by the generator; never executed for its effect.
+func (c *Config) PrimaryKey(fields ...any) {}
+
 // View declares a view or materialized view. The argument must be a
 // composite literal; read statically by the generator, never executed.
 func (c *Config) View(v schema.View) {}
