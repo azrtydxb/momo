@@ -46,7 +46,7 @@ func DirectDeps(gomod string) [][2]string {
 var depNotes = map[string]string{
 	"github.com/asg017/sqlite-vec-go-bindings": "sqlite-vec for `driver/sqlitedriver` (cgo).",
 	"github.com/go-sql-driver/mysql":           "used by `driver/mysqldriver` and by test harness code (`internal/testdb`).",
-	"github.com/google/uuid":                   "tests only (`arrayop`); the generator and `arrayop` match its `UUID` by import path, so momo's own code imports nothing from it.",
+	"github.com/google/uuid":                   "tests only (`arrayop`); the generator and `arrayop` match its UUID type by import path, so momo's own code imports nothing from it.",
 	"github.com/jackc/pgx/v5":                  "PostgreSQL driver for `driver/pgxdriver`.",
 	"github.com/mattn/go-sqlite3":              "used by `driver/sqlitedriver` (cgo).",
 	"go.yaml.in/yaml/v3":                       "`momo.yaml`.",
