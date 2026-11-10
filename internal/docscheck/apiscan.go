@@ -16,10 +16,11 @@ import (
 
 // APIPackages lists, in reference order, the directories whose exported
 // identifiers must carry a doc comment and appear in docs/reference.md: the
-// core, its public leaf packages and the feature packages split out of it.
+// core, its public leaf packages, the feature packages split out of it and cli,
+// the command line a project builds its own momo binary from.
 var APIPackages = []string{
 	".", "dialect", "schema", "types", "vector", "migrate", "momolog", "momotest",
-	"advisory", "agg", "arrayop", "fts", "jsonop", "obs", "sqlfn", "timeop", "vecop", "vecsearch",
+	"advisory", "agg", "arrayop", "cli", "fts", "jsonop", "obs", "sqlfn", "timeop", "vecop", "vecsearch",
 }
 
 // Ident is one exported identifier of a package.

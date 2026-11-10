@@ -74,16 +74,24 @@ func commands(plugins []gen.Plugin) []command {
 	}
 }
 
-// Main runs the momo CLI with the process arguments and exits with its code.
-// The plugins are the generator plugins this binary offers: momo.yaml may
-// enable them by name. Main does not return.
+// Main is the entry point of a custom momo binary: put it in a main function
+// and the binary behaves as `momo` does (commands, flags, exit codes,
+// diagnostics) with the given generator plugins selectable by name from the
+// plugins section of momo.yaml. It runs Run with the process arguments, standard
+// output and standard error, then exits with the code Run returns. Main does
+// not return, so write nothing after it.
 func Main(plugins ...gen.Plugin) {
 	os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr, plugins...))
 }
 
-// Run executes the momo CLI with args (without the program name) and returns
-// the process exit code. The plugins are the generator plugins the run
-// offers; momo.yaml enables them by name. It is the testable form of Main.
+// Run executes the momo CLI with args (without the program name), writes its
+// output to stdout and its diagnostics to stderr, and returns the process exit
+// code: 0 for success or current generated code, 1 for stale generated files or
+// generator diagnostics, 2 for a usage, configuration or infrastructure error.
+// The plugins are the generator plugins this run offers; momo.yaml enables them
+// by name, and naming one that is not passed here is a configuration error. Run
+// is the testable form of Main: a custom binary calls Main, a test calls Run
+// with its own writers.
 func Run(args []string, stdout, stderr io.Writer, plugins ...gen.Plugin) int {
 	if len(args) == 0 {
 		_, _ = fmt.Fprint(stderr, usage)
