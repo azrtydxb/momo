@@ -4,6 +4,7 @@ package openapi
 
 import (
 	"fmt"
+	"go/token"
 	"regexp"
 	"slices"
 	"strings"
@@ -103,8 +104,10 @@ func handlerFields(g *gen.Graph, m *gen.Model) ([]hfield, []gen.Diagnostic) {
 // application/json bodies of at most 1 MiB, and answer errors as
 // {"error": "..."} with fixed messages: a unique or foreign key violation is
 // 409, a check or not-null violation 400, a busy database or a serialization
-// failure 503. PUT needs every required property; a property that is absent
-// and not required keeps its stored value. They do no authentication or
+// failure 503, a request whose context was cancelled 499 and one whose deadline
+// passed 504. With Options.OnError every such error is first passed to that
+// function with the operation name and the original error. PUT needs every
+// required property; a property that is absent and not required keeps its stored value. They do no authentication or
 // authorization: wrap the mux. The response keys are exactly the column
 // properties of the model's schema. The output is deterministic.
 func Handlers(g *gen.Graph, pkg string, opts Options) ([]byte, []gen.Diagnostic) {
@@ -119,9 +122,12 @@ func Handlers(g *gen.Graph, pkg string, opts Options) ([]byte, []gen.Diagnostic)
 	if err := opts.Ops.Validate(); err != nil {
 		return nil, []gen.Diagnostic{{Msg: "OpenAPI " + err.Error()}}
 	}
+	if opts.OnError != "" && !token.IsIdentifier(opts.OnError) {
+		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("OpenAPI on_error %q must be the name of a Go function in the handlers package", opts.OnError)}}
+	}
 
 	aliases := gosrc.NewAliases(map[string]string{
-		"bytes": "bytes", "json": "encoding/json", "errors": "errors", "io": "io", "mime": "mime",
+		"bytes": "bytes", "context": "context", "json": "encoding/json", "errors": "errors", "io": "io", "mime": "mime",
 		"http": "net/http", "sort": "sort", "strconv": "strconv", "strings": "strings", "time": "time",
 		"momo": "github.com/azrtydxb/momo", "vector": "github.com/azrtydxb/momo/vector",
 		"apiquery": "github.com/azrtydxb/momo/gen/apiquery",
@@ -176,7 +182,7 @@ func Handlers(g *gen.Graph, pkg string, opts Options) ([]byte, []gen.Diagnostic)
 	}
 
 	var b strings.Builder
-	b.WriteString(preamble)
+	b.WriteString(preambleSource(opts.OnError))
 	for _, hm := range models {
 		writeHandler(&b, hm, base)
 	}
@@ -193,8 +199,32 @@ func Handlers(g *gen.Graph, pkg string, opts Options) ([]byte, []gen.Diagnostic)
 	return []byte(out.String()), diags
 }
 
+// preambleSource returns the shared helpers of the handlers; onError is the
+// name of the hook writeError calls, or "".
+func preambleSource(onError string) string {
+	hook := ""
+	out := preamble
+	if onError != "" {
+		hook = "\trunErrorHook(r.Context(), op, err)\n"
+		out += strings.NewReplacer("{{name}}", onError, "{{extra}}", "").Replace(`
+// runErrorHook calls the on_error hook {{name}}. A panic in the hook is
+// recovered, so a failing log or metric call cannot stop the request from being
+// answered{{extra}}.
+func runErrorHook(ctx context.Context, op string, err error) {
+	defer func() { _ = recover() }()
+	{{name}}(ctx, op, err)
+}
+`)
+	}
+	return strings.Replace(out, "{{hook}}", hook, 1)
+}
+
 const preamble = `// maxBodyBytes is the largest request body a handler reads: 1 MiB.
 const maxBodyBytes = 1 << 20
+
+// statusClientClosedRequest is the nginx status for a request the client gave
+// up on; net/http has no constant for it.
+const statusClientClosedRequest = 499
 
 // errorBody is the JSON form of every error response.
 type errorBody struct {
@@ -208,9 +238,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // writeError answers a failed statement with a fixed message: the error of the
-// database, which names tables and constraints, never reaches the client.
-func writeError(w http.ResponseWriter, err error) {
-	switch {
+// database, which names tables and constraints, never reaches the client. op is
+// the operationId of the endpoint. A request whose context ended is answered
+// 499 (cancelled) or 504 (deadline), not as a server error.
+func writeError(w http.ResponseWriter, r *http.Request, op string, err error) {
+{{hook}}	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		writeJSON(w, http.StatusGatewayTimeout, errorBody{Error: "request timed out"})
+	case errors.Is(err, context.Canceled):
+		writeJSON(w, statusClientClosedRequest, errorBody{Error: "request canceled"})
 	case errors.Is(err, momo.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, errorBody{Error: "not found"})
 	case errors.Is(err, momo.ErrUniqueViolation):
@@ -223,6 +259,10 @@ func writeError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "temporarily unavailable; retry"})
 	case errors.Is(err, momo.ErrValidation):
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: "invalid request"})
+	case errors.Is(r.Context().Err(), context.DeadlineExceeded):
+		writeJSON(w, http.StatusGatewayTimeout, errorBody{Error: "request timed out"})
+	case r.Context().Err() != nil:
+		writeJSON(w, statusClientClosedRequest, errorBody{Error: "request canceled"})
 	default:
 		writeJSON(w, http.StatusInternalServerError, errorBody{Error: "internal error"})
 	}
@@ -424,7 +464,7 @@ func (h *{{M}}Handler) list(w http.ResponseWriter, r *http.Request) {
 	if s := q.Get("after"); s != "" {
 		c, err := apiquery.DecodeCursor(s)
 		if err != nil {
-			writeError(w, err)
+			writeError(w, r, "list{{M}}", err)
 			return
 		}
 		if len(c.Keys) != 1 {
@@ -458,7 +498,7 @@ func (h *{{M}}Handler) list(w http.ResponseWriter, r *http.Request) {
 		for _, v := range q[name] {
 			p, err := apiquery.ParseFilter({{desc}}.ColumnByName, apiquery.Filter{Column: col, Op: "eq", Value: v})
 			if err != nil {
-				writeError(w, err)
+				writeError(w, r, "list{{M}}", err)
 				return
 			}
 			sel = sel.Where(p)
@@ -466,7 +506,7 @@ func (h *{{M}}Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := sel.All(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "list{{M}}", err)
 		return
 	}
 	var next *string
@@ -496,7 +536,7 @@ func (h *{{M}}Handler) get(w http.ResponseWriter, r *http.Request) {
 	}
 	m, err := momo.Select[{{models}}.{{M}}](h.DB).Where({{desc}}.{{PKI}}.Eq(id)).One(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "get{{M}}", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dto{{M}}From(&m))
@@ -529,23 +569,23 @@ func (h *{{M}}Handler) create(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(r.Replace(`	rows, err := ins.Rows(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "create{{M}}", err)
 		return
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			writeError(w, err)
+			writeError(w, r, "create{{M}}", err)
 			return
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		writeError(w, err)
+		writeError(w, r, "create{{M}}", err)
 		return
 	}
 	if err := rows.Close(); err != nil {
-		writeError(w, err)
+		writeError(w, r, "create{{M}}", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, dto{{M}}From(&m))
@@ -591,13 +631,13 @@ func (h *{{M}}Handler) update(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(r.Replace(`	if len(sets) > 0 {
 		if _, err := momo.Update[{{models}}.{{M}}](h.DB).Where({{desc}}.{{PKI}}.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			writeError(w, err)
+			writeError(w, r, "update{{M}}", err)
 			return
 		}
 	}
 	out, err := momo.Select[{{models}}.{{M}}](h.DB).Where({{desc}}.{{PKI}}.Eq(id)).One(ctx)
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "update{{M}}", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dto{{M}}From(&out))
@@ -614,11 +654,11 @@ func (h *{{M}}Handler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := momo.Delete[{{models}}.{{M}}](h.DB).Where({{desc}}.{{PKI}}.Eq(id)).Exec(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "delete{{M}}", err)
 		return
 	}
 	if res.RowsAffected == 0 {
-		writeError(w, momo.ErrNotFound)
+		writeError(w, r, "delete{{M}}", momo.ErrNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -85,10 +85,11 @@ func (x *Filter) GetValue() string {
 }
 
 type Comment struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	DocumentId    int64                  `protobuf:"varint,2,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
-	Body          string                 `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The key of the row. Create ignores it (the database assigns it); Update takes it to find the row.
+	Id            int64  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	DocumentId    int64  `protobuf:"varint,2,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
+	Body          string `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -381,13 +382,15 @@ func (x *CommentListResponse) GetNextCursor() string {
 }
 
 type Document struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	TenantId      int64                  `protobuf:"varint,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
-	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
-	Embedding     []float32              `protobuf:"fixed32,5,rep,packed,name=embedding,proto3" json:"embedding,omitempty"`
-	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The key of the row. Create ignores it (the database assigns it); Update takes it to find the row.
+	Id        int64     `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	TenantId  int64     `protobuf:"varint,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Title     string    `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	Body      string    `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	Embedding []float32 `protobuf:"fixed32,5,rep,packed,name=embedding,proto3" json:"embedding,omitempty"`
+	Status    string    `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	// Read-only: Create and Update ignore it.
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -709,9 +712,10 @@ func (x *DocumentListResponse) GetNextCursor() string {
 }
 
 type Tag struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The key of the row. Create ignores it (the database assigns it); Update takes it to find the row.
+	Id            int64  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -997,9 +1001,10 @@ func (x *TagListResponse) GetNextCursor() string {
 }
 
 type Tenant struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The key of the row. Create ignores it (the database assigns it); Update takes it to find the row.
+	Id            int64  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

@@ -97,7 +97,14 @@ func (u UpdateQuery[T]) WithRecursive(name string, q Subquery, cols ...string) U
 // Where predicate must reference a column of the target table, otherwise the
 // statement joins every target row to src and fails with ErrUnfilteredMutation
 // unless AllRows confirms it. A raw SQL fragment does not count as such a
-// reference. From cannot be combined with BulkUpdate (ErrValidation).
+// reference. An Or counts only when every branch references the target, because a
+// branch off the target can be true on its own; an And counts when any term does.
+// Not swaps the two rules (De Morgan): a negated And needs every term on the
+// target, a negated Or any term. JoinSQL with AND or OR follows the same rules
+// as And and Or; with another separator it does not count. The guard checks
+// that Where references the target, not that it restricts it: a constant-true
+// predicate such as t.id = t.id passes.
+// From cannot be combined with BulkUpdate (ErrValidation).
 func (u UpdateQuery[T]) From(src TableSource) UpdateQuery[T] { u.from = src; return u }
 
 // Where adds predicates combined with AND.

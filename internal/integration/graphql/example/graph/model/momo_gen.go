@@ -191,6 +191,10 @@ func presentError(ctx context.Context, err error) *gqlerror.Error {
 	}
 	code, msg := "INTERNAL", "internal error"
 	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		code, msg = "CANCELED", "request timed out"
+	case errors.Is(err, context.Canceled):
+		code, msg = "CANCELED", "request canceled"
 	case errors.Is(err, momo.ErrNotFound):
 		code, msg = "NOT_FOUND", "not found"
 	case errors.Is(err, momo.ErrUniqueViolation):
@@ -203,6 +207,12 @@ func presentError(ctx context.Context, err error) *gqlerror.Error {
 		code, msg = "UNAVAILABLE", "temporarily unavailable; retry"
 	case errors.Is(err, momo.ErrValidation):
 		code, msg = "BAD_INPUT", "invalid input"
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		// The driver may report its own text for an aborted statement without
+		// wrapping the context error; the context is the last resort.
+		code, msg = "CANCELED", "request timed out"
+	case ctx.Err() != nil:
+		code, msg = "CANCELED", "request canceled"
 	}
 	out.Message = msg
 	out.Extensions = map[string]any{"code": code}

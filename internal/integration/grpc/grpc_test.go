@@ -87,6 +87,7 @@ func TestProtoGenerator(t *testing.T) {
 		Package:      "example",
 		ProtoPackage: "momo.example.v1",
 		GoPackage:    "github.com/azrtydxb/momo/internal/integration/grpc/example/pb",
+		OnError:      "OnError",
 	}
 	if err := plugin.Generate(g, w); err != nil {
 		t.Fatal(err)

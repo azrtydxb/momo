@@ -59,6 +59,8 @@ type protoField struct {
 	typ      string
 	repeated bool
 	optional bool
+	// note is the comment written above the field: what a request ignores.
+	note string
 }
 
 // lockType is the type the lock records for the field: the protobuf type with
@@ -293,6 +295,9 @@ func message(b *strings.Builder, lock *Lock, name, table string, live map[string
 		if !ok {
 			continue
 		}
+		if f.note != "" {
+			b.WriteString("  // " + f.note + "\n")
+		}
 		prefix := ""
 		switch {
 		case f.repeated:
@@ -307,13 +312,19 @@ func message(b *strings.Builder, lock *Lock, name, table string, live map[string
 
 func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoField, hidden []string, lock *Lock, live map[string]bool, ops apiquery.OpSet, diags *[]gen.Diagnostic) {
 	name := m.GoName
-	message(b, lock, name, m.Table, live, fields, hidden, diags)
-
 	// The key of the row: the primary key columns of the schema table.
-	var key []protoField
+	var pkCols []string
 	if g.Schema != nil {
 		if t, ok := g.TableOf(m); ok {
-			for _, pk := range t.PrimaryKey {
+			pkCols = t.PrimaryKey
+		}
+	}
+	message(b, lock, name, m.Table, live, annotate(m, fields, pkCols), hidden, diags)
+
+	var key []protoField
+	if g.Schema != nil {
+		if _, ok := g.TableOf(m); ok {
+			for _, pk := range pkCols {
 				for _, f := range fields {
 					if f.column == pk {
 						k := f
@@ -349,4 +360,37 @@ func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoFi
 		}
 	}
 	b.WriteString("}\n")
+}
+
+// annotate returns fields with the note on each column a request ignores: the
+// key (a Create ignores it), the identity, serial and read-only columns (a
+// Create and an Update ignore them) and the version, soft-delete and timestamp
+// columns momo owns (an Update ignores them). The generated server writes
+// exactly these rules; see Update in the server source.
+func annotate(m *gen.Model, fields []protoField, pkCols []string) []protoField {
+	byCol := map[string]*gen.Field{}
+	for _, f := range m.Fields {
+		if _, dup := byCol[f.Column]; !dup {
+			byCol[f.Column] = f
+		}
+	}
+	isKey := map[string]bool{}
+	for _, c := range pkCols {
+		isKey[c] = true
+	}
+	out := make([]protoField, len(fields))
+	copy(out, fields)
+	for i, pf := range out {
+		f := byCol[pf.column]
+		switch {
+		case f == nil:
+		case isKey[pf.column] || f.Tags.PK:
+			out[i].note = "The key of the row. Create ignores it (the database assigns it); Update takes it to find the row."
+		case f.Tags.Identity || f.Tags.Serial || f.Access == gen.ReadOnly:
+			out[i].note = "Read-only: Create and Update ignore it."
+		case f.Tags.Version || f.Tags.SoftDelete != "" || f.Tags.CreatedAt || f.Tags.UpdatedAt:
+			out[i].note = "Maintained by momo: Update ignores it."
+		}
+	}
+	return out
 }

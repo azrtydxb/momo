@@ -46,7 +46,7 @@ func TestOpenAPIGenerator(t *testing.T) {
 	if len(diags) != 0 {
 		t.Fatalf("diagnostics: %v", diags)
 	}
-	opts := ggopenapi.Options{Title: "momo example", Version: "1.0.0", BasePath: "/v1", Handlers: true}
+	opts := ggopenapi.Options{Title: "momo example", Version: "1.0.0", BasePath: "/v1", Handlers: true, OnError: "OnError"}
 	doc, ds := ggopenapi.Document(g, opts)
 	if len(ds) != 0 {
 		t.Fatalf("document diagnostics: %v", ds)

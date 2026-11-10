@@ -1039,6 +1039,15 @@ Import path: `github.com/azrtydxb/momo/arrayop`
 | `arrayop.Contains`    | func | Contains is true when the array column contains every one of vals (PostgreSQL @>).                                         |
 | `arrayop.Overlaps`    | func | Overlaps is true when the array column shares at least one element with vals (PostgreSQL &&).                              |
 
+## cli
+
+Import path: `github.com/azrtydxb/momo/cli`
+
+| Identifier | Kind | Synopsis                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cli.Main` | func | Main is the entry point of a custom momo binary: put it in a main function and the binary behaves as momo does (commands, flags, exit codes, diagnostics) with the given generator plugins selectable by name from the plugins section of momo.yaml.                                                                                                                             |
+| `cli.Run`  | func | Run executes the momo CLI with args (without the program name), writes its output to stdout and its diagnostics to stderr, and returns the process exit code: 0 for success or current generated code, 1 for stale generated files or generator diagnostics, 2 for a usage, configuration or infrastructure error, and 3 for a database, lock or execution error (momo migrate). |
+
 ## fts
 
 Import path: `github.com/azrtydxb/momo/fts`

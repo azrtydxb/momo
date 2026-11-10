@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-13-docs-release
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — Step 5 needs /llms.txt at the site root. The root copy (decision 2026-11-10) is implemented in 2a3addc and runs on release tags only, so it is observable at the next release.
 
 ## Description
 
@@ -25,3 +26,4 @@ Implements plan momo-13-docs-release Task 9: Plan gate and GitHub Pages source (
 - Steps 1 and 2: ci-agent run 42768951858 (sha 3e1eed0, success): unit, apidiff-docs and the integration jobs. Step 3: docs run 42768951678 (same sha, success) runs the strict mkdocs build and TestLLMsTxt.
 - Step 4: gh-pages existed (`gh api repos/azrtydxb/momo/branches/gh-pages --jq .name` printed gh-pages); Pages did not (GET returned 404), so `gh api -X POST repos/azrtydxb/momo/pages -f source[branch]=gh-pages -f source[path]=/` created it.
 - Step 5 left open: `gh api repos/azrtydxb/momo/pages` prints gh-pages and https://azrtydxb.github.io/momo/, but `curl -fsI https://azrtydxb.github.io/momo/llms.txt` returns 404 and will keep doing so: mike publishes only under version directories (gh-pages holds .nojekyll, dev/, versions.json), so the file is at /dev/llms.txt (200). Needs decision: change the check to /dev/llms.txt (or /latest/llms.txt once a release is deployed), or add a root redirect. The /latest/ part waits on story 256.
+- Decision 2026-11-10 (`.procoder/ask/decisions.md`, "Sprint 7 docs decisions"): root copy. The deploy job copies llms.txt and llms-full.txt to the gh-pages root on every release deploy; implemented in 2a3addc, pinned by `TestDocsRootCopyOnRelease` (shown failing first on branch worktree-agent-acf2b-red-rootcopy, sha a69fbf7). Step 5 stays unticked until a release deploy shows `curl -fsI https://azrtydxb.github.io/momo/llms.txt` answering 200: root copy implemented in 2a3addc, observable at the next release.

@@ -43,6 +43,9 @@ func (Plugin) APIVersion() int { return gen.PluginAPIVersion }
 // a handlers_gen.go left behind by an earlier run with handlers: true, which
 // would otherwise keep serving routes the document no longer lists.
 func (p Plugin) Generate(g *gen.Graph, w *gen.Writer) error {
+	if p.Options.OnError != "" && !p.Options.Handlers {
+		return &gen.ErrDiagnostics{Diagnostics: []gen.Diagnostic{{Msg: "OpenAPI on_error needs handlers: true: only the generated handlers call the hook"}}}
+	}
 	doc, diags := Document(g, p.Options)
 	if doc == nil {
 		return &gen.ErrDiagnostics{Diagnostics: diags}

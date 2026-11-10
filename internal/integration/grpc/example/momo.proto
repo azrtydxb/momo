@@ -15,6 +15,7 @@ message Filter {
 }
 
 message Comment {
+  // The key of the row. Create ignores it (the database assigns it); Update takes it to find the row.
   int64 id = 1;
   int64 document_id = 2;
   string body = 3;
@@ -50,12 +51,14 @@ service CommentService {
 }
 
 message Document {
+  // The key of the row. Create ignores it (the database assigns it); Update takes it to find the row.
   int64 id = 1;
   int64 tenant_id = 2;
   string title = 3;
   string body = 4;
   repeated float embedding = 5;
   string status = 6;
+  // Read-only: Create and Update ignore it.
   google.protobuf.Timestamp created_at = 7;
 }
 
@@ -89,6 +92,7 @@ service DocumentService {
 }
 
 message Tag {
+  // The key of the row. Create ignores it (the database assigns it); Update takes it to find the row.
   int64 id = 1;
   string name = 2;
 }
@@ -123,6 +127,7 @@ service TagService {
 }
 
 message Tenant {
+  // The key of the row. Create ignores it (the database assigns it); Update takes it to find the row.
   int64 id = 1;
   string name = 2;
 }

@@ -179,6 +179,7 @@ func buildPlugins(cfg map[string]map[string]any, out string) ([]gen.Plugin, erro
 				ProtoPackage: o.str("proto_package"),
 				GoPackage:    o.str("go_package"),
 				Ops:          o.ops(),
+				OnError:      o.str("on_error"),
 			}
 		case "openapi":
 			p = openapi.Plugin{
@@ -190,6 +191,7 @@ func buildPlugins(cfg map[string]map[string]any, out string) ([]gen.Plugin, erro
 					BasePath: o.str("base_path"),
 					Handlers: o.boolean("handlers"),
 					Ops:      o.ops(),
+					OnError:  o.str("on_error"),
 				},
 			}
 		case "viz":

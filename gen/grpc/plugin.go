@@ -25,6 +25,12 @@ type Plugin struct {
 	GoPackage string
 	// Ops chooses the operations each service offers; nil offers every one.
 	Ops apiquery.Ops
+	// OnError names a function in the adapters' package with the signature
+	// func(ctx context.Context, op string, err error). Every call that fails
+	// calls it once, with the operation name (for example DocumentService.Get)
+	// and the original error, before the fixed status is returned. Empty
+	// means no hook.
+	OnError string
 }
 
 // Name returns "grpc".
@@ -63,7 +69,7 @@ func (p Plugin) Generate(g *gen.Graph, w *gen.Writer) error {
 	if pkg == "" {
 		pkg = filepath.Base(p.Dir)
 	}
-	srv, diags := serverSource(g, lock, pkg, p.GoPackage, p.Ops)
+	srv, diags := serverSourceHook(g, lock, pkg, p.GoPackage, p.Ops, p.OnError)
 	if len(diags) > 0 {
 		return &gen.ErrDiagnostics{Diagnostics: diags}
 	}

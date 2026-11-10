@@ -7,6 +7,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -30,6 +31,10 @@ import (
 // maxBodyBytes is the largest request body a handler reads: 1 MiB.
 const maxBodyBytes = 1 << 20
 
+// statusClientClosedRequest is the nginx status for a request the client gave
+// up on; net/http has no constant for it.
+const statusClientClosedRequest = 499
+
 // errorBody is the JSON form of every error response.
 type errorBody struct {
 	Error string `json:"error"`
@@ -42,9 +47,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // writeError answers a failed statement with a fixed message: the error of the
-// database, which names tables and constraints, never reaches the client.
-func writeError(w http.ResponseWriter, err error) {
+// database, which names tables and constraints, never reaches the client. op is
+// the operationId of the endpoint. A request whose context ended is answered
+// 499 (cancelled) or 504 (deadline), not as a server error.
+func writeError(w http.ResponseWriter, r *http.Request, op string, err error) {
+	runErrorHook(r.Context(), op, err)
 	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		writeJSON(w, http.StatusGatewayTimeout, errorBody{Error: "request timed out"})
+	case errors.Is(err, context.Canceled):
+		writeJSON(w, statusClientClosedRequest, errorBody{Error: "request canceled"})
 	case errors.Is(err, momo.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, errorBody{Error: "not found"})
 	case errors.Is(err, momo.ErrUniqueViolation):
@@ -57,6 +69,10 @@ func writeError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusServiceUnavailable, errorBody{Error: "temporarily unavailable; retry"})
 	case errors.Is(err, momo.ErrValidation):
 		writeJSON(w, http.StatusBadRequest, errorBody{Error: "invalid request"})
+	case errors.Is(r.Context().Err(), context.DeadlineExceeded):
+		writeJSON(w, http.StatusGatewayTimeout, errorBody{Error: "request timed out"})
+	case r.Context().Err() != nil:
+		writeJSON(w, statusClientClosedRequest, errorBody{Error: "request canceled"})
 	default:
 		writeJSON(w, http.StatusInternalServerError, errorBody{Error: "internal error"})
 	}
@@ -137,6 +153,14 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
+// runErrorHook calls the on_error hook OnError. A panic in the hook is
+// recovered, so a failing log or metric call cannot stop the request from being
+// answered.
+func runErrorHook(ctx context.Context, op string, err error) {
+	defer func() { _ = recover() }()
+	OnError(ctx, op, err)
+}
+
 // CommentHandler serves the Comment endpoints of the OpenAPI document.
 type CommentHandler struct{ DB *momo.DB }
 
@@ -209,7 +233,7 @@ func (h *CommentHandler) list(w http.ResponseWriter, r *http.Request) {
 	if s := q.Get("after"); s != "" {
 		c, err := apiquery.DecodeCursor(s)
 		if err != nil {
-			writeError(w, err)
+			writeError(w, r, "listComment", err)
 			return
 		}
 		if len(c.Keys) != 1 {
@@ -243,7 +267,7 @@ func (h *CommentHandler) list(w http.ResponseWriter, r *http.Request) {
 		for _, v := range q[name] {
 			p, err := apiquery.ParseFilter(commentdesc.ColumnByName, apiquery.Filter{Column: col, Op: "eq", Value: v})
 			if err != nil {
-				writeError(w, err)
+				writeError(w, r, "listComment", err)
 				return
 			}
 			sel = sel.Where(p)
@@ -251,7 +275,7 @@ func (h *CommentHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := sel.All(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "listComment", err)
 		return
 	}
 	var next *string
@@ -277,7 +301,7 @@ func (h *CommentHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 	m, err := momo.Select[example.Comment](h.DB).Where(commentdesc.ID.Eq(id)).One(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "getComment", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dtoCommentFrom(&m))
@@ -297,23 +321,23 @@ func (h *CommentHandler) create(w http.ResponseWriter, r *http.Request) {
 	ins := momo.Insert[example.Comment](h.DB).Model(&m).ReturningAll()
 	rows, err := ins.Rows(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "createComment", err)
 		return
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			writeError(w, err)
+			writeError(w, r, "createComment", err)
 			return
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		writeError(w, err)
+		writeError(w, r, "createComment", err)
 		return
 	}
 	if err := rows.Close(); err != nil {
-		writeError(w, err)
+		writeError(w, r, "createComment", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, dtoCommentFrom(&m))
@@ -345,13 +369,13 @@ func (h *CommentHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(sets) > 0 {
 		if _, err := momo.Update[example.Comment](h.DB).Where(commentdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			writeError(w, err)
+			writeError(w, r, "updateComment", err)
 			return
 		}
 	}
 	out, err := momo.Select[example.Comment](h.DB).Where(commentdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "updateComment", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dtoCommentFrom(&out))
@@ -364,11 +388,11 @@ func (h *CommentHandler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := momo.Delete[example.Comment](h.DB).Where(commentdesc.ID.Eq(id)).Exec(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "deleteComment", err)
 		return
 	}
 	if res.RowsAffected == 0 {
-		writeError(w, momo.ErrNotFound)
+		writeError(w, r, "deleteComment", momo.ErrNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -473,7 +497,7 @@ func (h *DocumentHandler) list(w http.ResponseWriter, r *http.Request) {
 	if s := q.Get("after"); s != "" {
 		c, err := apiquery.DecodeCursor(s)
 		if err != nil {
-			writeError(w, err)
+			writeError(w, r, "listDocument", err)
 			return
 		}
 		if len(c.Keys) != 1 {
@@ -507,7 +531,7 @@ func (h *DocumentHandler) list(w http.ResponseWriter, r *http.Request) {
 		for _, v := range q[name] {
 			p, err := apiquery.ParseFilter(documentdesc.ColumnByName, apiquery.Filter{Column: col, Op: "eq", Value: v})
 			if err != nil {
-				writeError(w, err)
+				writeError(w, r, "listDocument", err)
 				return
 			}
 			sel = sel.Where(p)
@@ -515,7 +539,7 @@ func (h *DocumentHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := sel.All(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "listDocument", err)
 		return
 	}
 	var next *string
@@ -541,7 +565,7 @@ func (h *DocumentHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 	m, err := momo.Select[example.Document](h.DB).Where(documentdesc.ID.Eq(id)).One(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "getDocument", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dtoDocumentFrom(&m))
@@ -567,23 +591,23 @@ func (h *DocumentHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := ins.Rows(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "createDocument", err)
 		return
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			writeError(w, err)
+			writeError(w, r, "createDocument", err)
 			return
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		writeError(w, err)
+		writeError(w, r, "createDocument", err)
 		return
 	}
 	if err := rows.Close(); err != nil {
-		writeError(w, err)
+		writeError(w, r, "createDocument", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, dtoDocumentFrom(&m))
@@ -628,13 +652,13 @@ func (h *DocumentHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(sets) > 0 {
 		if _, err := momo.Update[example.Document](h.DB).Where(documentdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			writeError(w, err)
+			writeError(w, r, "updateDocument", err)
 			return
 		}
 	}
 	out, err := momo.Select[example.Document](h.DB).Where(documentdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "updateDocument", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dtoDocumentFrom(&out))
@@ -647,11 +671,11 @@ func (h *DocumentHandler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := momo.Delete[example.Document](h.DB).Where(documentdesc.ID.Eq(id)).Exec(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "deleteDocument", err)
 		return
 	}
 	if res.RowsAffected == 0 {
-		writeError(w, momo.ErrNotFound)
+		writeError(w, r, "deleteDocument", momo.ErrNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -722,7 +746,7 @@ func (h *TagHandler) list(w http.ResponseWriter, r *http.Request) {
 	if s := q.Get("after"); s != "" {
 		c, err := apiquery.DecodeCursor(s)
 		if err != nil {
-			writeError(w, err)
+			writeError(w, r, "listTag", err)
 			return
 		}
 		if len(c.Keys) != 1 {
@@ -756,7 +780,7 @@ func (h *TagHandler) list(w http.ResponseWriter, r *http.Request) {
 		for _, v := range q[name] {
 			p, err := apiquery.ParseFilter(tagdesc.ColumnByName, apiquery.Filter{Column: col, Op: "eq", Value: v})
 			if err != nil {
-				writeError(w, err)
+				writeError(w, r, "listTag", err)
 				return
 			}
 			sel = sel.Where(p)
@@ -764,7 +788,7 @@ func (h *TagHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := sel.All(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "listTag", err)
 		return
 	}
 	var next *string
@@ -790,7 +814,7 @@ func (h *TagHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 	m, err := momo.Select[example.Tag](h.DB).Where(tagdesc.ID.Eq(id)).One(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "getTag", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dtoTagFrom(&m))
@@ -810,23 +834,23 @@ func (h *TagHandler) create(w http.ResponseWriter, r *http.Request) {
 	ins := momo.Insert[example.Tag](h.DB).Model(&m).ReturningAll()
 	rows, err := ins.Rows(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "createTag", err)
 		return
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			writeError(w, err)
+			writeError(w, r, "createTag", err)
 			return
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		writeError(w, err)
+		writeError(w, r, "createTag", err)
 		return
 	}
 	if err := rows.Close(); err != nil {
-		writeError(w, err)
+		writeError(w, r, "createTag", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, dtoTagFrom(&m))
@@ -855,13 +879,13 @@ func (h *TagHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(sets) > 0 {
 		if _, err := momo.Update[example.Tag](h.DB).Where(tagdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			writeError(w, err)
+			writeError(w, r, "updateTag", err)
 			return
 		}
 	}
 	out, err := momo.Select[example.Tag](h.DB).Where(tagdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "updateTag", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dtoTagFrom(&out))
@@ -874,11 +898,11 @@ func (h *TagHandler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := momo.Delete[example.Tag](h.DB).Where(tagdesc.ID.Eq(id)).Exec(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "deleteTag", err)
 		return
 	}
 	if res.RowsAffected == 0 {
-		writeError(w, momo.ErrNotFound)
+		writeError(w, r, "deleteTag", momo.ErrNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -949,7 +973,7 @@ func (h *TenantHandler) list(w http.ResponseWriter, r *http.Request) {
 	if s := q.Get("after"); s != "" {
 		c, err := apiquery.DecodeCursor(s)
 		if err != nil {
-			writeError(w, err)
+			writeError(w, r, "listTenant", err)
 			return
 		}
 		if len(c.Keys) != 1 {
@@ -983,7 +1007,7 @@ func (h *TenantHandler) list(w http.ResponseWriter, r *http.Request) {
 		for _, v := range q[name] {
 			p, err := apiquery.ParseFilter(tenantdesc.ColumnByName, apiquery.Filter{Column: col, Op: "eq", Value: v})
 			if err != nil {
-				writeError(w, err)
+				writeError(w, r, "listTenant", err)
 				return
 			}
 			sel = sel.Where(p)
@@ -991,7 +1015,7 @@ func (h *TenantHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := sel.All(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "listTenant", err)
 		return
 	}
 	var next *string
@@ -1017,7 +1041,7 @@ func (h *TenantHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 	m, err := momo.Select[example.Tenant](h.DB).Where(tenantdesc.ID.Eq(id)).One(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "getTenant", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dtoTenantFrom(&m))
@@ -1037,23 +1061,23 @@ func (h *TenantHandler) create(w http.ResponseWriter, r *http.Request) {
 	ins := momo.Insert[example.Tenant](h.DB).Model(&m).ReturningAll()
 	rows, err := ins.Rows(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "createTenant", err)
 		return
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			writeError(w, err)
+			writeError(w, r, "createTenant", err)
 			return
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		writeError(w, err)
+		writeError(w, r, "createTenant", err)
 		return
 	}
 	if err := rows.Close(); err != nil {
-		writeError(w, err)
+		writeError(w, r, "createTenant", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, dtoTenantFrom(&m))
@@ -1082,13 +1106,13 @@ func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(sets) > 0 {
 		if _, err := momo.Update[example.Tenant](h.DB).Where(tenantdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			writeError(w, err)
+			writeError(w, r, "updateTenant", err)
 			return
 		}
 	}
 	out, err := momo.Select[example.Tenant](h.DB).Where(tenantdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "updateTenant", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dtoTenantFrom(&out))
@@ -1101,11 +1125,11 @@ func (h *TenantHandler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := momo.Delete[example.Tenant](h.DB).Where(tenantdesc.ID.Eq(id)).Exec(r.Context())
 	if err != nil {
-		writeError(w, err)
+		writeError(w, r, "deleteTenant", err)
 		return
 	}
 	if res.RowsAffected == 0 {
-		writeError(w, momo.ErrNotFound)
+		writeError(w, r, "deleteTenant", momo.ErrNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
