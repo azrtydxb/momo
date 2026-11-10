@@ -18,3 +18,12 @@ Implements plan momo-02-generator Task 27: Companion schema declarations (struct
 
 ## Evidence
 
+Carry reason: the feature shipped under other names; only the `momo.View` marker rule is missing, and that belongs to story 050 (Needs decision).
+
+- The seven structured companion methods exist as no-ops on `*momo.Config`: `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`, `PartitionOf` (meta_companion.go:59-85, and `View` just above). Their compile check is `TestCompanionManagedObjectsCompile` (meta_companion_test.go:47), the shipped counterpart of `TestCompanionSchemaDSLCompiles`.
+- The static reader accepts the structured literals: `schema` type table at gen/companion.go:48-54, `CompanionResult` carries the objects, and `TestCompanionStructuredArguments` (gen/companion_test.go:57) with the fixture gen/testdata/fixtures/companionstruct/ok.go asserts functions, triggers, policies, RLS and partition are read. Hostile shapes (identifiers, non-literals) are diagnosed by `TestCompanionHostileShapes` (gen/companion_test.go:89), the counterpart of `TestCompanionSchemaDiagnostics`.
+- `BuildSchema` merges them into the schema (`mergeObjects`, gen/schema.go:561; asserted for views and policies at gen/schema_test.go:399-427).
+- Not built: the `momo.View` marker and the diagnostic `view model <GoName> has no c.View for <name>`. They need the decision in story 050.
+
+The plan's three test names (`TestCompanionSchemaMethods`, `TestCompanionSchemaDiagnostics`, `TestCompanionSchemaDSLCompiles`) do not exist; their intent is covered by the tests above. Criteria left unticked for the integrator to carry or retire.
+

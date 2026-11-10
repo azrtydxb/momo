@@ -77,13 +77,10 @@ func TestFieldPermissionsRuntime(t *testing.T) {
 		}
 	}
 
-	// A descriptor with a restricted flag cannot be assigned in an UPDATE.
-	for name, flag := range map[string]uint16{
-		"read-only":   momo.FlagReadOnly,
-		"create-only": momo.FlagCreateOnly,
-		"immutable":   momo.FlagImmutable,
-	} {
-		col := momo.NewColumn[string]("items", "x", flag)
+	// A restricted column cannot be assigned in an UPDATE, even through a
+	// descriptor that does not carry the restriction (the metadata decides).
+	for _, name := range []string{"code", "owner", "serial"} {
+		col := momo.NewColumn[string]("items", name, 0)
 		if _, err := momo.Update[permItem](pg).Set(col.Set("v")).AllRows().SQL(); !errors.Is(err, momo.ErrValidation) {
 			t.Errorf("%s column in Update.Set: err = %v, want ErrValidation", name, err)
 		}

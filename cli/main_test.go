@@ -81,6 +81,7 @@ func TestCustomBinary(t *testing.T) {
 // TestPluginNotPassedToMain checks that a plugin that is not passed to Run (or
 // Main) cannot be enabled from momo.yaml: exit 2 and the Go API hint.
 func TestPluginNotPassedToMain(t *testing.T) {
+	bin := buildCustomBinary(t) // before chdir: it builds relative to the repository
 	root := copyModule(t, exampleSrc)
 	if err := os.WriteFile(filepath.Join(root, "momo.yaml"), []byte("version: 1\nplugins:\n  custom: {}\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -100,7 +101,6 @@ func TestPluginNotPassedToMain(t *testing.T) {
 	}
 
 	// The custom binary refuses a plugin it was not built with.
-	bin := buildCustomBinary(t)
 	if err := os.WriteFile(filepath.Join(root, "momo.yaml"), []byte("version: 1\nplugins:\n  other: {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
