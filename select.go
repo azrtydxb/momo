@@ -316,6 +316,24 @@ func (sq SelectQuery[T]) ForUpdate(opt ...string) SelectQuery[T] {
 // ForUpdate.
 func (sq SelectQuery[T]) ForShare(opt ...string) SelectQuery[T] { return sq.withLock("FOR SHARE", opt) }
 
+// ForNoKeyUpdate adds FOR NO KEY UPDATE (PostgreSQL only): a write lock that
+// does not block foreign-key inserts and FOR KEY SHARE locks on the same row,
+// so it suits a row update that leaves the key columns alone. Options and
+// restrictions are those of ForUpdate, and LockOf works with it. MySQL,
+// MariaDB and SQLite have no such mode and return ErrUnsupported when the
+// query is built.
+func (sq SelectQuery[T]) ForNoKeyUpdate(opt ...string) SelectQuery[T] {
+	return sq.withLock("FOR NO KEY UPDATE", opt)
+}
+
+// ForKeyShare adds FOR KEY SHARE (PostgreSQL only): the weakest row lock, which
+// only blocks changes to the key columns and deletes. Options and
+// restrictions are those of ForUpdate, and LockOf works with it. MySQL,
+// MariaDB and SQLite return ErrUnsupported when the query is built.
+func (sq SelectQuery[T]) ForKeyShare(opt ...string) SelectQuery[T] {
+	return sq.withLock("FOR KEY SHARE", opt)
+}
+
 func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 	sq.s.lockWait = ""
 	for _, o := range opt {
@@ -333,7 +351,7 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 	return sq
 }
 
-// LockOf narrows the row lock of ForUpdate or ForShare to the named tables
+// LockOf narrows the row lock of ForUpdate, ForShare, ForNoKeyUpdate or ForKeyShare to the named tables
 // (FOR UPDATE OF t1, t2). A joined select needs it to lock only the claimed
 // side: a LEFT JOIN cannot lock its nullable side, and a job-claim join
 // locks the job table and leaves the parent alone. Each name is the

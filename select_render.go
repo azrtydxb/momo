@@ -291,6 +291,10 @@ func (sq SelectQuery[T]) writeLock(b *Builder) {
 		b.unsupported(s.lock)
 		return
 	}
+	if (s.lock == "FOR NO KEY UPDATE" || s.lock == "FOR KEY SHARE") && b.d.Name != dialect.Postgres {
+		b.unsupported(s.lock)
+		return
+	}
 	if s.distinct || len(s.distinctOn) > 0 || len(s.groupBy) > 0 || len(s.having) > 0 {
 		b.SetErr(newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("%s cannot be combined with DISTINCT [ON], GROUP BY or HAVING", s.lock)))
 		return
