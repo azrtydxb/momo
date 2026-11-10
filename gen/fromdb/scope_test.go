@@ -1,0 +1,190 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package fromdb
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/schema"
+)
+
+// Catches: introspect.only being ignored, so a table outside the list still
+// gets a model and a place in the init snapshot.
+func TestOnlyLimitsModelsAndSnapshot(t *testing.T) {
+	res, files := generate(t, sampleSchema(), Config{Only: []string{"users"}})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	if len(res.Files) != 1 || files["users"] == "" || files["orders"] != "" {
+		t.Fatalf("files = %d, want only the users model", len(res.Files))
+	}
+	if len(res.Snapshot.Tables) != 1 || res.Snapshot.Tables[0].Name != "users" {
+		t.Fatalf("snapshot tables = %+v, want only users", res.Snapshot.Tables)
+	}
+}
+
+// Catches: skip not applying within only, or only widening what skip removed.
+func TestOnlyAndSkipTogether(t *testing.T) {
+	res, files := generate(t, sampleSchema(), Config{Only: []string{"o*", "u*"}, Skip: []string{"orders"}})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	if len(res.Files) != 1 || files["users"] == "" {
+		t.Fatalf("files = %d, want only users (orders is skipped inside only)", len(res.Files))
+	}
+}
+
+// Catches: the triggers of a table outside only staying in the models and the
+// snapshot, where they would name a table with no model.
+func TestOnlyDropsObjectsOfOtherTables(t *testing.T) {
+	s := sampleSchema()
+	s.Functions = []schema.Function{{Name: "touch", Returns: "trigger", Language: "plpgsql", Volatility: "VOLATILE", Body: "BEGIN RETURN NEW; END;"}}
+	s.Triggers = []schema.Trigger{{Table: "orders", Name: "orders_touch", Timing: "BEFORE", Events: []string{"UPDATE"}, ForEachRow: true, Function: "touch()"}}
+	res, files := generate(t, s, Config{Only: []string{"users"}})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	if strings.Contains(files["users"], "orders_touch") || len(res.Snapshot.Triggers) != 0 {
+		t.Fatalf("the trigger of an unmodeled table must be dropped: %v", res.Snapshot.Triggers)
+	}
+}
+
+// Catches: a malformed or misspelled option passing validation and failing
+// later, or silently doing nothing.
+func TestIntrospectScopeValidation(t *testing.T) {
+	for name, c := range map[string]Config{
+		"only glob":    {Only: []string{"["}},
+		"functions":    {Functions: "some"},
+		"dbdefault":    {DBDefault: "yes"},
+		"functions ok": {Functions: "all"},
+		"dbdefault ok": {DBDefault: "all"},
+	} {
+		err := c.Validate()
+		if want := !strings.HasSuffix(name, " ok"); (err != nil) != want {
+			t.Errorf("%s: Validate = %v, want error %v", name, err, want)
+		}
+	}
+}
+
+// scopeSchema has three modeled tables and functions with different users.
+func scopeSchema() *schema.Schema {
+	fn := func(name, ret, body string) schema.Function {
+		return schema.Function{Name: name, Returns: ret, Language: "plpgsql", Volatility: "VOLATILE", Body: body}
+	}
+	idCol := schema.Column{Name: "id", Type: "bigint", Identity: "by_default"}
+	return &schema.Schema{
+		FormatVersion: schema.FormatVersion,
+		Dialect:       dialect.Postgres,
+		Tables: []schema.Table{
+			{Name: "alpha", Columns: []schema.Column{idCol, {Name: "owner", Type: "text"}}, PrimaryKey: []string{"id"}},
+			{Name: "beta", Columns: []schema.Column{idCol, {Name: "n", Type: "integer"}}, PrimaryKey: []string{"id"}},
+			{
+				Name: "gamma", Columns: []schema.Column{idCol, {Name: "code", Type: "text", Default: "next_code()"}}, PrimaryKey: []string{"id"},
+				Checks: []schema.Check{{Name: "gamma_code_check", Expr: "(char_length(code) > 0)"}},
+			},
+		},
+		Functions: []schema.Function{
+			fn("touch", "trigger", "BEGIN PERFORM touch_helper(); RETURN NEW; END;"),
+			fn("touch_helper", "void", "BEGIN NULL; END;"),
+			fn("next_code", "text", "BEGIN RETURN 'x'; END;"),
+			fn("can_read", "boolean", "BEGIN RETURN true; END;"),
+			fn("unrelated_fn", "void", "BEGIN NULL; END;"),
+		},
+		Triggers: []schema.Trigger{{Table: "beta", Name: "beta_touch", Timing: "BEFORE", Events: []string{"UPDATE"}, ForEachRow: true, Function: "touch()"}},
+		Policies: []schema.Policy{{Table: "alpha", Name: "alpha_read", Command: "SELECT", Permissive: true, Using: "can_read(owner)"}},
+	}
+}
+
+// Catches: every schema function landing on the alphabetically first model
+// (issue 74): a function no modeled table uses must not be written, and one a
+// table uses must sit on that table's model, with the functions it calls.
+func TestFunctionsOnlyThoseModeledTablesUse(t *testing.T) {
+	res, files := generate(t, scopeSchema(), Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	var all strings.Builder
+	for _, src := range files {
+		all.WriteString(src)
+	}
+	if strings.Contains(all.String(), "unrelated_fn") {
+		t.Error("a function no modeled table uses was written")
+	}
+	mustContain(t, "beta", files["beta"], `schema.Function{Name: "touch"`, `schema.Function{Name: "touch_helper"`, "beta_touch")
+	mustContain(t, "gamma", files["gamma"], `schema.Function{Name: "next_code"`)
+	mustContain(t, "alpha", files["alpha"], `schema.Function{Name: "can_read"`, "alpha_read")
+	for _, fn := range []string{"touch", "touch_helper", "next_code"} {
+		if strings.Contains(files["alpha"], `schema.Function{Name: "`+fn+`"`) {
+			t.Errorf("alpha, the first model, carries %s", fn)
+		}
+	}
+	names := map[string]bool{}
+	for _, f := range res.Snapshot.Functions {
+		names[f.Name] = true
+	}
+	if names["unrelated_fn"] || !names["touch"] || !names["touch_helper"] || !names["next_code"] || !names["can_read"] {
+		t.Errorf("snapshot functions = %v", names)
+	}
+}
+
+// Catches: introspect.functions: all not restoring the old behaviour of every
+// function on the first model.
+func TestFunctionsAllRestoresOldBehaviour(t *testing.T) {
+	res, files := generate(t, scopeSchema(), Config{Functions: "all"})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	for _, fn := range []string{"touch", "touch_helper", "next_code", "can_read", "unrelated_fn"} {
+		mustContain(t, "alpha", files["alpha"], `schema.Function{Name: "`+fn+`"`)
+	}
+	if strings.Contains(files["beta"], "schema.Function{") || strings.Contains(files["gamma"], "schema.Function{") {
+		t.Error("with functions: all every function belongs on the first model")
+	}
+}
+
+// Catches: the generated file of a model changing when something unrelated
+// changes in the database (issue 74: the header hash changed on every
+// migration).
+func TestModelFilesStableAgainstUnrelatedChanges(t *testing.T) {
+	_, before := generate(t, scopeSchema(), Config{})
+	s := scopeSchema()
+	s.Functions = append(s.Functions, schema.Function{Name: "added_later", Returns: "void", Language: "plpgsql", Volatility: "VOLATILE", Body: "BEGIN NULL; END;"})
+	s.Tables = append(s.Tables, schema.Table{Name: "zeta", Columns: []schema.Column{{Name: "id", Type: "bigint", Identity: "by_default"}}, PrimaryKey: []string{"id"}})
+	s.Triggers = append(s.Triggers, schema.Trigger{Table: "zeta", Name: "zeta_touch", Timing: "BEFORE", Events: []string{"UPDATE"}, ForEachRow: true, Function: "added_later()"})
+	_, after := generate(t, s, Config{})
+	for _, table := range []string{"alpha", "beta", "gamma"} {
+		if before[table] != after[table] {
+			t.Errorf("the model of %s changed when an unrelated function and table were added:\n%s\n---\n%s", table, before[table], after[table])
+		}
+	}
+}
+
+// Catches: dbdefault: all missing the constant default (version bigint NOT
+// NULL DEFAULT 1), which Insert.Model then writes as 0 (issue 77).
+func TestDBDefaultAllTagsConstantDefaults(t *testing.T) {
+	s := &schema.Schema{FormatVersion: schema.FormatVersion, Dialect: dialect.Postgres, Tables: []schema.Table{{
+		Name: "overrides",
+		Columns: []schema.Column{
+			{Name: "id", Type: "bigint", Identity: "by_default"},
+			{Name: "version", Type: "bigint", Default: "1"},
+			{Name: "state", Type: "text", Default: "'open'::text"},
+			{Name: "note", Type: "text", Nullable: true, Default: "'x'::text"},
+			{Name: "plain", Type: "text"},
+		},
+		PrimaryKey: []string{"id"},
+	}}}
+	_, def := generate(t, s, Config{})
+	if strings.Contains(def["overrides"], "dbdefault") {
+		t.Error("by default a constant default must not get dbdefault")
+	}
+	_, all := generate(t, s, Config{DBDefault: "all"})
+	src := all["overrides"]
+	mustContain(t, "overrides", src, "`momo:\"default:1,dbdefault\"`", "`momo:\"default:'open'::text,dbdefault\"`")
+	for _, line := range strings.Split(src, "\n") {
+		if (strings.Contains(line, "Note ") || strings.Contains(line, "Plain ")) && strings.Contains(line, "dbdefault") {
+			t.Errorf("a nullable or default-less column got dbdefault: %s", line)
+		}
+	}
+}

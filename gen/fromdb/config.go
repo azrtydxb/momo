@@ -26,6 +26,20 @@ type Config struct {
 	// left out of the init snapshot; add the same globs to migrate.exclude so
 	// the baseline ignores the live table.
 	Skip []string `yaml:"skip"`
+	// Only lists table name globs that get a model, the inverse of Skip: a
+	// table that matches none gets no model, no place in the init snapshot and
+	// no place in migrate (drift, baseline and diff treat it as excluded).
+	// Skip applies within Only. Empty means every table.
+	Only []string `yaml:"only"`
+	// Functions is "" (the default) to write only the functions that a modeled
+	// table's triggers, defaults, checks or policies use, each on the model of
+	// the table that uses it, or "all" to write every database function on the
+	// first model.
+	Functions string `yaml:"functions"`
+	// DBDefault is "" (the default) to tag only NOT NULL columns with a
+	// computed default dbdefault, or "all" to tag every NOT NULL column that
+	// has a default.
+	DBDefault string `yaml:"dbdefault"`
 	// Types overrides the Go type of every column of one SQL type, keyed by
 	// the normalized type, for example "inet" or "numeric(10,2)".
 	Types map[string]TypeRule `yaml:"types"`

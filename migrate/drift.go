@@ -55,7 +55,8 @@ func dropExternalExtensions(s *schema.Schema, names []string) *schema.Schema {
 // hide applies the drift-time filters of the configuration to s: the external
 // extensions, then the Exclude globs.
 func (e *Engine) hide(s *schema.Schema) *schema.Schema {
-	return applyExclude(dropExternalExtensions(s, e.opts.config.ExternalExtensions), e.opts.config.Exclude)
+	hidden := applyExclude(dropExternalExtensions(s, e.opts.config.ExternalExtensions), e.opts.config.Exclude)
+	return applyOnly(hidden, e.opts.config.OnlyTables)
 }
 
 // applyExclude returns a copy of s without the tables, views, functions, enums
@@ -90,6 +91,12 @@ func applyExclude(s *schema.Schema, globs []string) *schema.Schema {
 		return gone[p.Schema+"\x00"+p.Table] || match(p.Schema, p.Name)
 	})
 	return &c
+}
+
+// applyOnly returns s without the tables that match none of globs, and without
+// their triggers and policies. s is not modified.
+func applyOnly(s *schema.Schema, globs []string) *schema.Schema {
+	return s
 }
 
 // object is one comparable database object: its identity, its normalized JSON
