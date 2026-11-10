@@ -140,8 +140,9 @@ Momo core links no OpenTelemetry package (a test runs `go list -deps` on the cor
 to keep it that way). Add it to your `go.mod` only if you want it.
 
 The module has its own release tags, `otelmomo/vX.Y.Z`, made by release-please
-(`go get github.com/azrtydxb/momo/otelmomo@latest`). It requires momo `v0.4.0`,
-whose exported API it compiles against, so it needs no unreleased momo code;
+(`go get github.com/azrtydxb/momo/otelmomo@latest`). It requires a released momo
+version (see its `go.mod`) whose exported API it compiles against, so it needs
+no unreleased momo code;
 the `replace` directive in its `go.mod` only points in-repository builds at the
 working tree and is ignored by anyone who imports it. A repository test fails if
 that require ever becomes a pseudo-version or names a momo version newer than
