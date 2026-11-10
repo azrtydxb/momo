@@ -2,8 +2,8 @@
 
 // Package timeop holds the typed date and time expressions: Extract,
 // AtTimeZone, intervals with AddInterval and SubInterval, Now,
-// CurrentTimestamp and Trunc. Every keyword that reaches the SQL text (an
-// extract field, an interval unit, a truncation unit) is looked up in a fixed
+// CurrentTimestamp, ClockTimestamp, StatementTimestamp and Trunc. Every
+// keyword that reaches the SQL text (an extract field, an interval unit, a truncation unit) is looked up in a fixed
 // allowlist at build time and the canonical spelling from the table is what
 // gets written, so no caller string is ever interpolated. A name outside the
 // allowlist fails the build with momo.ErrValidation.
@@ -413,6 +413,10 @@ func nowExpr(name string, pg, my string) Expr {
 		case dialect.Postgres:
 			b.WriteString(pg)
 		case dialect.MySQL:
+			if my == "" {
+				b.Unsupported(name)
+				return
+			}
 			b.WriteString(my)
 		case dialect.SQLite:
 			b.WriteString("strftime(" + sqliteTimeFmt + ", 'now')")
@@ -432,6 +436,25 @@ func Now() Expr { return nowExpr("Now", "now()", "NOW(6)") }
 func CurrentTimestamp() Expr {
 	return nowExpr("CurrentTimestamp", "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP(6)")
 }
+
+// ClockTimestamp is the wall-clock time at the moment it is evaluated:
+// clock_timestamp() on PostgreSQL, which changes within a statement and a
+// transaction, unlike Now. Use it to sample database time after a row lock is
+// acquired (a lease or fence deadline).
+//
+// Other dialects differ: SQLite's value is fixed per statement, like Now.
+// MySQL renders SYSDATE(6), the time the call runs, but only when the server
+// is not started with sysdate-is-now, which makes SYSDATE behave like NOW.
+func ClockTimestamp() Expr {
+	return nowExpr("ClockTimestamp", "clock_timestamp()", "SYSDATE(6)")
+}
+
+// StatementTimestamp is the time the current statement started:
+// statement_timestamp() on PostgreSQL, which differs from Now inside a
+// transaction that runs several statements. MySQL has no such function and
+// returns momo.ErrUnsupported when the query is built; SQLite renders the same
+// millisecond text as Now, which is fixed per statement there.
+func StatementTimestamp() Expr { return nowExpr("StatementTimestamp", "statement_timestamp()", "") }
 
 // ---------------------------------------------------------------- Trunc
 

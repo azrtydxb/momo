@@ -31,6 +31,10 @@ type Tags struct {
 
 	Size, Precision, Scale, Dim int
 
+	// IdentityAlways is the identity:always option: GENERATED ALWAYS AS
+	// IDENTITY. It implies Identity.
+	IdentityAlways bool
+
 	PK, NotNull, Nullable, Identity, Serial, Version, CreatedAt, UpdatedAt bool
 	ReadOnly, CreateOnly, Immutable, Sensitive, Embedded                   bool
 	NoConstraint, BelongsTo, HasOne, HasMany, ManyToMany                   bool
@@ -141,7 +145,17 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 	case "pk":
 		return bare(&t.PK)
 	case "identity":
-		return bare(&t.Identity)
+		switch {
+		case !hasVal:
+			t.Identity = true
+		case val == "always":
+			t.Identity, t.IdentityAlways = true, true
+		case val == "by_default":
+			t.Identity = true
+		default:
+			return "identity must be bare, identity:always or identity:by_default"
+		}
+		return ""
 	case "serial":
 		return bare(&t.Serial)
 	case "dbdefault":
