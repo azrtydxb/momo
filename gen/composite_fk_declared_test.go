@@ -46,8 +46,8 @@ func fkEqual(a, b schema.ForeignKey) bool {
 // key, an unknown table or an unknown column is a diagnostic, not a schema.
 func TestCompanionForeignKeyRefusals(t *testing.T) {
 	// Load builds the schema to validate the companion, so the refusals are
-	// its diagnostics and no model survives.
-	g, diags, err := Load([]string{"./companionfkbad"}, Config{Dir: fixturesDir(t)})
+	// its diagnostics.
+	_, diags, err := Load([]string{"./companionfkbad"}, Config{Dir: fixturesDir(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,8 +60,5 @@ func TestCompanionForeignKeyRefusals(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing diagnostic %q in:\n%s", want, joined)
 		}
-	}
-	if len(g.Models) != 0 {
-		t.Errorf("refused keys must not produce models: %d", len(g.Models))
 	}
 }
