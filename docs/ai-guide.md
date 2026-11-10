@@ -486,7 +486,7 @@ documentation. DON'T edit `Meta.Hooks` in generated code.
 
 A model that maps a database view embeds `momo.View` next to `momo.Model`:
 
-```go
+```text
 type ActiveUser struct {
 	momo.Model `momo:"table:active_users"`
 	momo.View
