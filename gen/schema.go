@@ -873,7 +873,7 @@ func (b *schemaBuilder) belongsTo(m *Model, r *Relation) {
 	}
 	target := &b.s.Tables[b.index[r.Target]]
 	if len(target.PrimaryKey) != 1 {
-		b.diag(r.Pos, fmt.Sprintf("relation %s: target %s needs a single-column primary key for a foreign key, but its key is (%s); composite foreign key targets are not supported", r.GoName, r.Target.GoName, strings.Join(target.PrimaryKey, ", ")))
+		b.diag(r.Pos, fmt.Sprintf("relation %s: target %s needs a single-column primary key for a foreign key, but its key is (%s); declare a composite foreign key with Config.ForeignKey in MomoConfig", r.GoName, r.Target.GoName, strings.Join(target.PrimaryKey, ", ")))
 		return
 	}
 	if !ok1 || !ok2 {

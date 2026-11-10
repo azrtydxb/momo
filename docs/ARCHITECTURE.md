@@ -8,7 +8,7 @@ documentation, which is the source of truth.
 ## Layering
 
 ```text
-              cmd/momo (CLI)         cmd/momovet (analyzer binary)
+              cmd/momo → cli         cmd/momovet (analyzer binary)
                  │
    ┌─────────────┼──────────────┐
    gen (plugin interface)       migrate ── migrate/{postgres,sqlite,mysql}

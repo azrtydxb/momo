@@ -61,7 +61,7 @@ Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/q
 
 ```sh
 go get github.com/azrtydxb/momo@v0.4.0                # adds the library to go.mod and writes go.sum
-go install github.com/azrtydxb/momo/cmd/momo@v0.4.0   # the CLI: generate, migrate, help
+go install github.com/azrtydxb/momo/cmd/momo@v0.4.0   # the CLI: generate, migrate, import, viz, help
 ```
 
 <!-- x-release-please-end -->

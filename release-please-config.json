@@ -8,6 +8,7 @@
   "packages": {
     ".": {
       "include-component-in-tag": false,
+      "exclude-paths": ["otelmomo"],
       "extra-files": [
         "README.md",
         "llms.txt",
