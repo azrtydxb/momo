@@ -5,6 +5,7 @@ package momo_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -25,6 +26,7 @@ func TestRefreshMaterializedView(t *testing.T) {
 		{"reports.order_totals", false, `REFRESH MATERIALIZED VIEW "reports"."order_totals"`},
 		{`we"ird`, false, `REFRESH MATERIALIZED VIEW "we""ird"`},
 		{"what?is$1", false, `REFRESH MATERIALIZED VIEW "what?is$1"`},
+		{strings.Repeat("v", 63), false, `REFRESH MATERIALIZED VIEW "` + strings.Repeat("v", 63) + `"`},
 	}
 	for _, c := range cases {
 		fd := fakedriver.New(dialect.Postgres)
@@ -42,7 +44,8 @@ func TestRefreshMaterializedView(t *testing.T) {
 // ErrValidation and a dialect without materialized views with ErrUnsupported,
 // in both cases before any statement is sent.
 func TestRefreshMaterializedViewRefusals(t *testing.T) {
-	for _, name := range []string{"", ".x", "x.", "a.b.c", "a..b"} {
+	long := strings.Repeat("v", 64)
+	for _, name := range []string{"", ".x", "x.", "a.b.c", "a..b", long, "s." + long, long + ".v"} {
 		fd := fakedriver.New(dialect.Postgres)
 		err := momo.RefreshMaterializedView(context.Background(), momo.New(fd), name, false)
 		if !errors.Is(err, momo.ErrValidation) {

@@ -10,6 +10,10 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 )
 
+// maxViewNamePart is the longest identifier PostgreSQL keeps (NAMEDATALEN-1);
+// a longer one is cut silently, so the helper would refresh another view.
+const maxViewNamePart = 63
+
 // RefreshMaterializedView runs REFRESH MATERIALIZED VIEW on q. The name is
 // the view's name, or schema.name; each part is quoted as an identifier, so a
 // name cannot inject SQL. With concurrently set the statement is
@@ -18,7 +22,8 @@ import (
 // Indexes) and a view that already holds data.
 //
 // PostgreSQL only: other dialects fail with ErrUnsupported, and a name that
-// is empty or has more than two parts fails with ErrValidation, both before
+// is empty, has more than two parts or has a part longer than 63 bytes fails
+// with ErrValidation, both before
 // any statement is sent. Declare the view in the model's MomoConfig with
 // c.View and Materialized set; a migration creates it, empty or filled as the
 // query returns at that moment, and this helper brings it up to date.
@@ -35,6 +40,9 @@ func RefreshMaterializedView(ctx context.Context, q Querier, name string, concur
 	for i, p := range parts {
 		if p == "" {
 			return validation("refresh", name, "view name %q has an empty part", name)
+		}
+		if len(p) > maxViewNamePart {
+			return validation("refresh", name, "view name part %q is longer than %d bytes", p, maxViewNamePart)
 		}
 		quoted[i] = d.QuoteIdent(p)
 	}

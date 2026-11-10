@@ -86,7 +86,7 @@ func SinglePK(g *gen.Graph, m *gen.Model) *gen.Field {
 	if g.Schema == nil {
 		return nil
 	}
-	t, ok := g.Schema.Table(m.Table)
+	t, ok := g.TableOf(m)
 	if !ok || len(t.PrimaryKey) != 1 {
 		return nil
 	}

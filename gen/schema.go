@@ -79,10 +79,6 @@ func buildSchema(models []*Model, cfg Config) (*schema.Schema, map[*Model]*schem
 	})
 	for _, m := range sorted {
 		if m.IsView {
-			// A view model reads a view its companion declares. It is not a
-			// table: it gets no CREATE TABLE and no table key, so no foreign
-			// key refers to it and its relations add no constraint.
-			b.addModel(m)
 			continue
 		}
 		if prev, dup := b.tableBy[tableKey(m)]; dup {
@@ -90,6 +86,26 @@ func buildSchema(models []*Model, cfg Config) (*schema.Schema, map[*Model]*schem
 			continue
 		}
 		b.tableBy[tableKey(m)] = m
+		b.addModel(m)
+	}
+	// A view model reads a view its companion declares. It is not a table: it
+	// gets no CREATE TABLE and no table key, so no foreign key refers to it
+	// and its relations add no constraint. It still may not share its name
+	// with a table model or with another view model.
+	viewBy := map[string]*Model{}
+	for _, m := range sorted {
+		if !m.IsView {
+			continue
+		}
+		prev, dup := b.tableBy[tableKey(m)]
+		if !dup {
+			prev, dup = viewBy[tableKey(m)]
+		}
+		if dup {
+			b.diag(m.Pos, fmt.Sprintf("table %q is produced by models %s and %s", m.Table, prev.GoName, m.GoName))
+			continue
+		}
+		viewBy[tableKey(m)] = m
 		b.addModel(m)
 	}
 	for _, m := range sorted {
@@ -740,7 +756,11 @@ func action(v string) (string, bool) {
 func (b *schemaBuilder) addRelations(m *Model) {
 	for _, r := range m.Relations {
 		if r.Target == nil || b.tableBy[tableKey(r.Target)] != r.Target {
-			continue // an unresolved target is reported where relations are discovered
+			// An unresolved target is reported where relations are
+			// discovered. A view model is not in tableBy either, so a relation
+			// that targets one adds no foreign key and no join table: a
+			// constraint cannot reference a view.
+			continue
 		}
 		if r.FKName != "" && r.Kind != BelongsTo {
 			b.diag(r.Pos, fmt.Sprintf("relation %s: fk_name applies to belongs_to only; has_one and has_many create no constraint", r.GoName))

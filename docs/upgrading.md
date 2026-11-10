@@ -32,6 +32,19 @@ zero value is a value), so it writes every writable column the message holds;
 a vector, a timestamp or a defaulted scalar left unset is not written. Neither
 reads the row first and writes it back.
 
+### View models no longer produce a table
+
+A model that embeds `momo.View` maps a view, so the generated schema, and with
+it `momo migrate diff`, holds no table for it. A view model gets no
+`CREATE TABLE`, and a foreign key never points at it. Declare the view itself
+with `c.View` in `MomoConfig`.
+
+If you add `momo.View` to a model whose table really exists in the database,
+`momo migrate diff` now plans a `DROP TABLE` for that table (AutoMigrate skips
+it). Review the diff before you apply it.
+
+`momo.RefreshMaterializedView` refreshes a materialized view (PostgreSQL only).
+
 ## Upgrading to 0.5.0
 
 ### Regenerating with `--from-db` after the `dbdefault` tag
@@ -80,11 +93,7 @@ only for models that have a hook method.
 ### View models
 
 A model that embeds `momo.View` (new) is marked as a view. Its writes fail with
-`ErrValidation`. Existing models are unaffected unless you add the marker. The
-generated schema (and so `momo migrate diff`) holds no table for a view model;
-a view model that used to be a table model with a view of the same name no
-longer produces a `CREATE TABLE`. `momo.RefreshMaterializedView` refreshes a
-materialized view (PostgreSQL only).
+`ErrValidation`. Existing models are unaffected unless you add the marker.
 
 ## Upgrading to 0.4.0
 

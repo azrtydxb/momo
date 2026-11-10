@@ -3,6 +3,8 @@
 package gen
 
 import (
+	"go/token"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -31,5 +33,53 @@ func TestViewModelDeclaresNoTable(t *testing.T) {
 	}
 	if len(s.Views) != 1 || s.Views[0].Name != "active_accounts" {
 		t.Fatalf("views = %+v, want active_accounts", s.Views)
+	}
+}
+
+// viewModel is a model that maps the view named table.
+func viewModel(goName, table string) *Model {
+	m := mdl(goName, table, fld("ID", "int64", "pk"))
+	m.IsView = true
+	return m
+}
+
+// TestViewModelSharingATableNameIsDiagnosed checks that a view model may not
+// share its table name with a table model or with another view model, as two
+// table models may not.
+func TestViewModelSharingATableNameIsDiagnosed(t *testing.T) {
+	tbl := mdl("Thing", "things", fld("ID", "int64", "pk"))
+	_, diags := build(t, pg(), tbl, viewModel("ThingView", "things"))
+	if !strings.Contains(sdiagsString(diags), `table "things" is produced by models Thing and ThingView`) {
+		t.Fatalf("view and table: %v", diags)
+	}
+	_, diags = build(t, pg(), viewModel("AView", "v"), viewModel("BView", "v"))
+	if !strings.Contains(sdiagsString(diags), `table "v" is produced by models AView and BView`) {
+		t.Fatalf("two views: %v", diags)
+	}
+	if _, diags = build(t, pg(), tbl, viewModel("ThingView", "thing_view")); len(diags) != 0 {
+		t.Fatalf("distinct names must pass: %v", diags)
+	}
+}
+
+// TestBelongsToViewModelAddsNoForeignKey checks that a belongs_to relation
+// whose target is a view model creates no foreign key: a constraint cannot
+// reference a view.
+func TestBelongsToViewModelAddsNoForeignKey(t *testing.T) {
+	doc, author := relModels()
+	author.GoName, author.Table = "Author", "authors"
+	author.Fields[0].GoType = "int64"
+	author.IsView = true
+	doc.Relations = []*Relation{{GoName: "Author", Kind: BelongsTo, Target: author, FK: "AuthorID",
+		Pos: token.Position{Filename: "m.go", Line: 40, Column: 2}}}
+	s, diags := build(t, pg(), doc, author)
+	if len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	tb, ok := s.Table("documents")
+	if !ok {
+		t.Fatal("documents table missing")
+	}
+	if len(tb.ForeignKeys) != 0 {
+		t.Fatalf("a belongs_to to a view model must add no foreign key: %+v", tb.ForeignKeys)
 	}
 }

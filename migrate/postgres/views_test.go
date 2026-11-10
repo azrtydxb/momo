@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	testdb "github.com/azrtydxb/momo/internal/testdb"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
@@ -71,7 +72,8 @@ func ordersSchema(openQuery string, withViews bool) *schema.Schema {
 			// big_orders reads a view, so the engine must create it after open_orders,
 			// drop it before open_orders, and rebuild it when open_orders is replaced.
 			{Name: "big_orders", Query: "SELECT id, total FROM open_orders WHERE total > 5", Depends: []string{"open_orders"}},
-			{Name: "order_totals", Materialized: true, Query: "SELECT status, sum(total)::bigint AS total FROM orders GROUP BY status", Depends: []string{"orders"}},
+			{Name: "order_totals", Materialized: true, Query: "SELECT status, sum(total)::bigint AS total FROM orders GROUP BY status", Depends: []string{"orders"},
+				Indexes: []schema.Index{{Name: "order_totals_status_uq", Unique: true, Parts: []schema.IndexPart{{Column: "status"}}}}},
 		}
 	}
 	return s
@@ -136,26 +138,43 @@ func TestViewsAsModels(t *testing.T) {
 		t.Fatalf("order_totals must have two groups after the refresh, got %+v", totals)
 	}
 	mustExec(t, db.Driver(), `INSERT INTO orders (id, status, total) VALUES (4, 'open', 7)`)
-	if err := momo.RefreshMaterializedView(ctx, db, "order_totals", false); err != nil {
+	// CONCURRENTLY needs a unique index on the view, which the schema declares.
+	if err := momo.RefreshMaterializedView(ctx, db, "order_totals", true); err != nil {
 		t.Fatal(err)
 	}
-	totals, err = momo.Select[orderTotal](db).All(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tot := range totals {
-		if tot.Status == "open" && tot.Total != 20 {
-			t.Fatalf("open total after the second refresh = %d, want 20", tot.Total)
+	openTotal := func(want int64, after string) {
+		t.Helper()
+		totals, err := momo.Select[orderTotal](db).All(ctx)
+		if err != nil {
+			t.Fatal(err)
 		}
+		for _, tot := range totals {
+			if tot.Status == "open" {
+				if tot.Total != want {
+					t.Fatalf("open total after %s = %d, want %d", after, tot.Total, want)
+				}
+				return
+			}
+		}
+		t.Fatalf("no open group after %s: %+v", after, totals)
 	}
+	openTotal(20, "the concurrent refresh")
+
+	// A schema-qualified name is split and quoted: the per-test schema holds
+	// the view.
+	mustExec(t, db.Driver(), `INSERT INTO orders (id, status, total) VALUES (5, 'open', 1)`)
+	if err := momo.RefreshMaterializedView(ctx, db, testdb.Schema(t)+".order_totals", false); err != nil {
+		t.Fatal(err)
+	}
+	openTotal(21, "the schema-qualified refresh")
 
 	// A write builder on a view model fails before any statement is sent.
 	row := openOrder{ID: 9, Total: 1}
 	if _, err := momo.Insert[openOrder](db).Model(&row).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
 		t.Fatalf("Insert on a view model: err = %v, want ErrValidation", err)
 	}
-	if n := countRows(t, db, `SELECT count(*) FROM orders`); n != 4 {
-		t.Fatalf("orders has %d rows, want 4", n)
+	if n := countRows(t, db, `SELECT count(*) FROM orders`); n != 5 {
+		t.Fatalf("orders has %d rows, want 5", n)
 	}
 
 	// Replaced: open_orders is dropped and recreated, and so is big_orders
