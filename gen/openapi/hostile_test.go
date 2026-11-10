@@ -53,7 +53,7 @@ func TestDocumentHostileTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	for p := range doc.Paths {
-		if p != "/items" && p != "/fine_things" {
+		if p != "/items" && p != "/items/{id}" && p != "/fine_things" && p != "/fine_things/{id}" {
 			t.Errorf("unexpected path %q", p)
 		}
 	}

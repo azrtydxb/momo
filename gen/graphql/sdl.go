@@ -276,7 +276,7 @@ func columnsOf(m *gen.Model) ([]column, []gen.Diagnostic) {
 			diags = append(diags, gen.Diagnostic{Pos: f.Pos, Msg: "no GraphQL filter for " + f.BaseType})
 			continue
 		}
-		c := column{name: f.Column, field: camel(f.Column), enum: strings.ToUpper(f.Column), sc: sc, null: f.Nullable}
+		c := column{name: f.Column, field: camel(f.Column), enum: strings.ToUpper(f.Column), sc: sc, null: f.Nullable || strings.HasPrefix(f.BaseType, "sql.Null")}
 		bad := ""
 		owner, fieldTaken := fields[c.field]
 		switch {

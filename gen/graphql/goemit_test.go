@@ -195,12 +195,12 @@ func TestGoSourceRules(t *testing.T) {
 	if strings.Contains(s, "Secret") {
 		t.Errorf("sensitive column in the glue:\n%s", s)
 	}
-	if !strings.Contains(s, "Note *StringFilter") || !strings.Contains(s, "N *IntFilter") {
+	if !strings.Contains(s, "Note *StringEqFilter") || !strings.Contains(s, "N *IntFilter") {
 		t.Errorf("filter fields missing:\n%s", s)
 	}
 	// "note" is a nullable text column: contains is not wired up for it, and it
 	// cannot be an order key.
-	if !strings.Contains(s, `f.Note.predicate(thingdesc.ColumnByName, "note", nil)`) {
+	if !strings.Contains(s, `f.Note.predicate(thingdesc.ColumnByName, "note")`) {
 		t.Errorf("nullable text column offers contains:\n%s", s)
 	}
 	if strings.Contains(s, `case "note":`) {

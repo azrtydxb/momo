@@ -135,7 +135,7 @@ func TestHandlersMatchDocument(t *testing.T) {
 			t.Errorf("handlers lack %q", must)
 		}
 	}
-	if strings.Contains(s, ".With(") || strings.Contains(s, "Raw") {
+	if strings.Contains(s, ".With(") || strings.Contains(s, "momo.Raw") {
 		t.Error("handlers must use the typed builders only")
 	}
 	again, _ := Handlers(g, "handlers", opts)

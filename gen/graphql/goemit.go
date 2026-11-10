@@ -31,7 +31,7 @@ const (
 func bindKind(sc scalar, goType string) (keyKind, bool) {
 	switch strings.TrimPrefix(goType, "*") {
 	case "string":
-		return kString, sc == scString
+		return kString, sc == scString || sc == scStringEq
 	case "int32":
 		return kInt32, sc == scInt
 	case "int64":
@@ -598,6 +598,27 @@ func (f *StringFilter) predicate(lookup lookupFunc, col string, contains func(st
 	return all(ps), nil
 }
 `)
+	case scStringEq:
+		return r.Replace(`
+// StringEqFilter is the filter input of a text column that cannot be searched
+// with contains: a nullable one.
+type StringEqFilter struct {
+	Eq *string
+	Ne *string
+	In []string
+}
+
+func (f *StringEqFilter) predicate(lookup lookupFunc, col string) (momo.Predicate, error) {
+	if f == nil {
+		return nil, nil
+	}
+	ps, err := cmpOps[string]{eq: f.Eq, ne: f.Ne, in: f.In}.predicates(lookup, col, func(s string) string { return s })
+	if err != nil {
+		return nil, err
+	}
+	return all(ps), nil
+}
+`)
 	case scBool:
 		return r.Replace(`
 func formatBool(v bool) string { return strconv.FormatBool(v) }
@@ -758,12 +779,8 @@ func (f *{{M}}Filter) predicate(depth int) (momo.Predicate, error) {
 	for _, c := range gm.cols {
 		call := "f." + c.f.GoName + ".predicate({{desc}}.ColumnByName, " + strconv.Quote(c.name)
 		switch {
-		case c.sc == scString && c.f.GoType == "string":
-			call += ", func(s string) momo.Predicate { return momo.ContainsLiteral({{desc}}." + c.ident + ", s) })"
 		case c.sc == scString:
-			call += ", nil)"
-		case c.sc == scStringEq:
-			call += ")"
+			call += ", func(s string) momo.Predicate { return momo.ContainsLiteral({{desc}}." + c.ident + ", s) })"
 		default:
 			call += ")"
 		}

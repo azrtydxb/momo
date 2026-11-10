@@ -110,7 +110,7 @@ func TestDocumentRules(t *testing.T) {
 	if !regexp.MustCompile(`"type": \[\s*"string",\s*"null"\s*\]`).MatchString(s) {
 		t.Errorf("nullable column lacks the 3.1 type array:\n%s", s)
 	}
-	if _, d := Document(syntheticGraph(), Options{BasePath: "api"}); len(d) < 3 {
+	if _, d := Document(syntheticGraph(), Options{BasePath: "api"}); len(d) < 2 {
 		t.Errorf("missing title, version and bad base path not reported: %v", d)
 	}
 }

@@ -81,7 +81,7 @@ func TestServerSourceExample(t *testing.T) {
 		"func isZero[T comparable](v T) bool",
 		"if !isZero(p.Status) {",
 		"if isZero(m.Status) {\n\t\tins = ins.Omit(documentdesc.Status)",
-		"do no authentication or authorization",
+		"authentication or authorization: wrap the grpc.Server",
 		`"google.golang.org/grpc/status"`,
 		`"example.com/app/pb"`,
 	} {
