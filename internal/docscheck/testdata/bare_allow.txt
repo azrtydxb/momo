@@ -1,39 +1,5 @@
 # Pages whose bare backticked names are not root (momo) names.
 # Format: path package reason (see TestBareNamesAreRootNames).
-docs/ARCHITECTURE.md dialect the package table and its sections name dialect
-docs/ARCHITECTURE.md migrate the migration section names migrate (Engine, Diff, Apply, errors)
-docs/ARCHITECTURE.md schema the snapshot section names schema and migrate
-docs/ARCHITECTURE.md vector the vector section names the vector package
-docs/ARCHITECTURE.md types the types section names the types package
-docs/ARCHITECTURE.md momotest the testing section names momotest
-docs/ARCHITECTURE.md vecsearch Apply is a method of the migrate Engine, not vecsearch.Apply
-docs/PRIVACY_RULES.md momolog Values is the field of momolog.Options named in that rule
-docs/ai-guide.md schema the schema DSL section names schema (Config methods, Table refs)
-docs/ai-guide.md vecsearch With is the index-option and query method, not vecsearch.With
-docs/ai-guide.md momolog Level, SlowOver and Values are momolog.Options fields named in their section
-docs/ai-guide.md migrate the migrations section names migrate and its errors
-docs/ai-guide.md arrayop Overlaps and AnyOf are named in the arrayop section
-docs/ai-guide.md agg String names the string variants of the agg functions
-docs/ai-guide.md vector the vector section names the vector package
-docs/ai-guide.md momotest the testing section names momotest
-docs/ai-guide.md dialect Name is the dialect name field in its section
-docs/capabilities.md timeop the date and time row names package timeop
-docs/capabilities.md momolog Level, SlowOver and Values are momolog.Options fields
-docs/capabilities.md vecsearch With is the index-option method, not vecsearch.With
-docs/capabilities.md vector the vector rows name the vector package
-docs/capabilities.md migrate the migration rows name migrate
-docs/importers.md migrate Change is the migrate report entry the importer prose describes
-docs/migrations.md vecsearch Apply is a method of the migrate Engine, not vecsearch.Apply
-docs/migrations.md migrate the page documents the migrate package
-docs/observability.md obs the page documents package obs
-docs/projections.md schema Table is the generated model table, not schema.Table
-docs/projections.md vecsearch With is the query method, not vecsearch.With
-docs/relations.md dialect Name is the relation spec field, not dialect.Name
-docs/relations.md migrate Kind is the relation spec field, not migrate.Kind
-docs/supported-versions.md vecsearch Apply is a method of the migrate Engine, not vecsearch.Apply
-docs/supported-versions.md migrate the format table names migrate
-docs/supported-versions.md schema the format table names schema
-docs/testing.md momotest the page documents package momotest
-docs/upgrading.md agg String names the string variants of the agg functions
-docs/vectors.md momolog Values is a field of vector.SparseVector, not momolog.Values
-docs/vectors.md vector the page documents the vector types
+docs/migrations.md migrate the page documents the migrate package; its sections name it
+docs/observability.md obs the page documents package obs; its table names the package
+docs/testing.md momotest the page documents package momotest; its sections name it

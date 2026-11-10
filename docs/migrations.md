@@ -95,12 +95,12 @@ is derived from the code, not covered by a test.
 Two independent checks, both SHA-256 of the file bytes:
 
 1. `momo.sum` must match the directory: every file present, none added,
-   removed or changed. `Apply`, `Status` and `Baseline` refuse otherwise
+   removed or changed. `Engine.Apply`, `Status` and `Baseline` refuse otherwise
    (`ErrChecksumMismatch`, naming the files). A missing `momo.sum` is an error
    that names `momo migrate hash`. `momo.sum` itself carries a directory hash;
    a hand-edited `momo.sum` is rejected.
 2. The history row of an applied migration stores the checksum of its up file.
-   `Apply` refuses when that file changed since (the error says
+   `Engine.Apply` refuses when that file changed since (the error says
    `... changed after version V was applied`).
 
 `Plan` and `Drift` do not check either.
@@ -270,7 +270,7 @@ already has two of them, for Go callers:
   the last applied migration (the applied row with the greatest `applied_at`);
   with `Group: true` it runs the downs of every row that shares the greatest
   `apply_id`, in descending version order. It takes the same lock and session
-  timeouts as `Apply`, refuses a dirty database or a checksum mismatch, and
+  timeouts as `Engine.Apply`, refuses a dirty database or a checksum mismatch, and
   returns `ErrNoDown` before running anything when any selected version has no
   down file. A transactional down runs in one transaction together with the
   history update; the row becomes `rolled_back`, so the version is pending

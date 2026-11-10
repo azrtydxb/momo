@@ -38,7 +38,7 @@ cards, err := momo.Select[models.Card](q).
 	All(ctx)
 ```
 
-`From` takes the generated `Table` of a model package, an aliased table (`article.Table.As("a")`), a CTE or a subquery. `Columns` must list as many expressions as the struct has fields, in field order. Without `Columns` the query fails with `ErrValidation`. Computed expressions (a distance, `momo.CountAll()`) are valid entries.
+`From` takes the generated Table of a model package, an aliased table (`article.Table.As("a")`), a CTE or a subquery. `Columns` must list as many expressions as the struct has fields, in field order. Without `Columns` the query fails with `ErrValidation`. Computed expressions (a distance, `momo.CountAll()`) are valid entries.
 
 Keyset pagination over a projection lists the unique tie-break key in `OrderBy` yourself, since the metadata has no primary key. See [projection-pagination](../examples/projection-pagination/).
 
@@ -65,7 +65,7 @@ total, err := momo.Select[momo.Row1[int64]](db).From(license.Table).Columns(momo
 ```
 
 - A column that can be NULL takes a pointer type: a `LeftJoin` side or an aggregate over no rows. With a `Row3` of `string, *int64, *string`, the columns `a.Title, b.ID, b.Title` fill `C1` to `C3`, and `C2` and `C3` stay nil when the join finds no row.
-- Subquery columns, `Union`, `FromSubquery`, `With` and `WithRecursive` work as for any projection. The Go types of the columns are yours to match; they are not checked against the SQL.
+- Subquery columns, `Union`, `FromSubquery`, With and `WithRecursive` work as for any projection. The Go types of the columns are yours to match; they are not checked against the SQL.
 - A mismatch between the number of `Columns` and the arity of the row is `ErrValidation`, reported before any statement runs. So is omitting `Columns`.
 - A tuple row is a projection with no table: `Insert`, `Update`, `Delete`, `Upsert`, `SoftDelete` and `ForceDelete` refuse it with `ErrValidation`. It has no soft-delete column of its own, and the filter on the `From` table applies as described below, so a `Row1[int64]` with `CountAll` over `article.Table` counts live rows, and `WithDeleted` counts all.
 - `After` works when `OrderBy` lists a unique key, since a tuple has no primary key to break ties.
@@ -75,7 +75,7 @@ When the result has meaning worth a name, or more than ten columns, declare a pr
 
 ## Soft-deleted rows
 
-When `From` is the generated `Table` of a model that has a soft-delete column (timestamp, unix or bool), a projection excludes soft-deleted rows by default, exactly as a model query does. `WithDeleted()` includes them and `OnlyDeleted()` returns only them. Do not add the `deleted_at` predicate by hand.
+When `From` is the generated Table of a model that has a soft-delete column (timestamp, unix or bool), a projection excludes soft-deleted rows by default, exactly as a model query does. `WithDeleted()` includes them and `OnlyDeleted()` returns only them. Do not add the `deleted_at` predicate by hand.
 
 The filter applies to the `From` table whatever else the query does: with `Join` or `LeftJoin` the `From` table is still filtered, and the joined tables are not (filter them in the `ON` clause or a `Where`, as for a model). To alias the table keep the generated one and call `As`: `article.Table.As("a")` keeps the soft-delete column, so the filter is qualified with the alias.
 

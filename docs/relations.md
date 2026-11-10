@@ -688,15 +688,15 @@ db := momo.New(drv, momo.WithHook(relLogger{queryHook}))
 
 `RelationEvent` fields:
 
-| Field            | Meaning                                                                  |
-| ---------------- | ------------------------------------------------------------------------ |
-| `Parent`, `Name` | parent table and relation name                                           |
-| `Kind`           | belongs-to, has-one, has-many or many-to-many                            |
-| `Parents`        | number of parents the load ran for                                       |
-| `Queries`        | child statements compiled for the load; a failed load may have run fewer |
-| `Children`       | children loaded; set only when the statements succeeded, zero on error   |
-| `Duration`       | filled before `AfterRelation`                                            |
-| `Err`            | the load's error                                                         |
+| Field          | Meaning                                                                  |
+| -------------- | ------------------------------------------------------------------------ |
+| `Parent`, Name | parent table and relation name                                           |
+| Kind           | belongs-to, has-one, has-many or many-to-many                            |
+| `Parents`      | number of parents the load ran for                                       |
+| `Queries`      | child statements compiled for the load; a failed load may have run fewer |
+| `Children`     | children loaded; set only when the statements succeeded, zero on error   |
+| `Duration`     | filled before `AfterRelation`                                            |
+| `Err`          | the load's error                                                         |
 
 Events fire only for loads that execute statements. They do not fire when there
 are no parents, when the load fails while being prepared (validation or

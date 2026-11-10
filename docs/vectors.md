@@ -43,7 +43,7 @@ which the root package re-exports as `momo.ErrInvalidVector`.
 | --------------------- | --------------- | ------------------------------------------------------------- |
 | `vector.Vector`       | `vector(n)`     | float32, dimension 1 to 16000 (`vector.MaxDim`)               |
 | `vector.HalfVector`   | `halfvec(n)`    | float32 in Go, float16 in storage, each value within 65504    |
-| `vector.SparseVector` | `sparsevec(n)`  | `Dim`, zero-based strictly increasing `Indices`, `Values`     |
+| `vector.SparseVector` | `sparsevec(n)`  | `Dim`, zero-based strictly increasing `Indices`, Values       |
 | `vector.Bits`         | `bit(n)`        | `Len` bits packed most significant bit first, trailing bits 0 |
 
 Value rules, enforced before a value reaches the server:
@@ -421,7 +421,7 @@ pgvector: bit 0 is the top bit of byte 0). Both are validated before
 they are bound (NaN, Inf, an empty vector, a bad bit length are
 `ErrInvalidVector`), because a blob has no text form that would reject them
 later. A `*vector.Vector` or `*vector.Bits` field is nullable: nil binds `NULL`.
-`HalfVector` and `SparseVector` have no sqlite-vec type, so binding one, or
+`vector.HalfVector` and `vector.SparseVector` have no sqlite-vec type, so binding one, or
 searching with one, is `ErrUnsupported` when the query is built. A bit vector
 read from SQLite has a `Len` of 8 times its byte count, so the column length is
 the authority for a length that is not a multiple of 8.
