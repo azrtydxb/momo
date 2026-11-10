@@ -333,13 +333,16 @@ its own best `TextCandidates` and `VectorCandidates` rows (default 100, at most
 1000), ranks them, and a row scores the sum of `1/(RRFK+rank)` over the legs it
 appears in (`RRFK` defaults to 60 and must be at least 1). The text leg ranks
 with `ts_rank_cd` over `websearch_to_tsquery`; the vector leg uses `<=>`.
-Ties break on the primary key ascending, in each leg and in the final order,
-so the result does not depend on insertion order.
+Ties break on the primary key ascending, in each leg's ranking and in the final
+order, so the result does not depend on insertion order. The vector leg orders
+by distance alone so an hnsw or ivfflat index can serve it; when rows tie on
+distance exactly at the candidate cut-off, which of them become candidates is
+not defined.
 
 <!-- docscheck:fragment -->
 
 ```go
-hits, err := momo.HybridSearch[Article](db, momo.HybridSpec[Article]{
+hits, err := momo.HybridSearch[Article](db, momo.HybridSpec{
 	Text:        articleBody,
 	TextConfig:  "english",
 	Query:       userInput,
@@ -350,11 +353,20 @@ hits, err := momo.HybridSearch[Article](db, momo.HybridSpec[Article]{
 // each hit has .Row (the model) and .Score
 ```
 
-The model needs a single-column primary key. Soft-deleted rows are left out.
+The model needs a single-column primary key, `Query` must not be empty (use a
+plain vector query for that), and `Text` and `Vector` must be columns of the
+model's table; otherwise the call returns `ErrValidation`. Soft-deleted rows are
+left out. The vector leg takes the dense `vector` type only (not `halfvec`,
+`sparsevec` or `bit`) and skips rows with a NULL embedding and rows whose
+cosine distance is NaN (zero vectors).
 `HybridQuery.SQL` returns the statement and its arguments without running it.
-Both legs scan the table unless indexes serve them (a GIN index on the
-`to_tsvector` expression, an hnsw or ivfflat index on the vector column), so
-the candidate counts bound the work after the scan, not the scan itself. For
+The vector leg can use an hnsw or ivfflat index on the vector column with
+`vector_cosine_ops`. The text leg binds the configuration as a parameter, and a
+GIN expression index on `to_tsvector('english', body)` needs a constant
+configuration in its definition, so PostgreSQL may not match it to a bound
+`regconfig`; check the plan with EXPLAIN. Without an
+index a leg scans the table, so the candidate counts bound the work after the
+scan, not the scan itself. For
 a different mix of signals, write your own score as shown in
 [full-text search](fulltext.md#hybrid-ranking-vector-plus-text).
 

@@ -30,12 +30,25 @@ const (
 // Each leg picks its own candidates (the best TextCandidates rows by
 // ts_rank_cd, and the nearest VectorCandidates rows by cosine distance), ranks
 // them, and a row scores the sum of 1/(RRFK+rank) over the legs it appears in.
-// Ties on the score are broken by primary key ascending, within each leg and
-// in the final order, so the result does not depend on row or insertion order.
-type HybridSpec[T any] struct {
-	Text       Column[string] // full-text column of the model
-	TextConfig string         // regconfig name such as "english"; bound as a parameter
-	Query      string         // websearch_to_tsquery input
+// Ties on the score are broken by primary key ascending, within each leg's
+// ranking and in the final order, so the result does not depend on row or
+// insertion order. The one exception is the candidate cut-off: the vector leg
+// orders by distance alone (so an hnsw or ivfflat index can serve it), and when
+// rows tie on distance at the cut-off, which of them become candidates is not
+// defined.
+//
+// The vector leg takes the dense vector type only (not halfvec, sparsevec or
+// bit) and skips rows with a NULL embedding and rows whose cosine distance is
+// NaN (a zero vector). The text leg computes to_tsvector over the column with
+// the bound TextConfig; a GIN expression index needs a constant configuration
+// in its definition, and a bound regconfig parameter may not match it, so
+// without a matching plan the text leg scans the table.
+type HybridSpec struct {
+	// Text is the full-text column of the model, a text column of the same
+	// table as Vector.
+	Text       Column[string]
+	TextConfig string // regconfig name such as "english"; bound as a parameter
+	Query      string // websearch_to_tsquery input
 	Vector     VectorColumn[vector.Vector]
 	// QueryVector must match the column's dimension (any dimension for a
 	// dimensionless column).
@@ -61,7 +74,7 @@ type HybridResult[T any] struct {
 type HybridQuery[T any] struct {
 	q    Querier
 	meta *Meta[T]
-	spec HybridSpec[T]
+	spec HybridSpec
 }
 
 // HybridSearch builds the fused full-text and vector query for model T. It
@@ -72,7 +85,7 @@ type HybridQuery[T any] struct {
 // The statement binds, in order: the text configuration, the query text, the
 // text candidate count, the query vector, the vector candidate count, the RRF
 // constant and the limit.
-func HybridSearch[T any, PT Modeler[T]](q Querier, spec HybridSpec[T]) HybridQuery[T] {
+func HybridSearch[T any, PT Modeler[T]](q Querier, spec HybridSpec) HybridQuery[T] {
 	return HybridQuery[T]{q: q, meta: metaOf[T, PT](), spec: spec}
 }
 
@@ -81,7 +94,7 @@ func hybridInvalid(format string, args ...any) error {
 }
 
 // normalize applies the defaults and checks the spec against the model.
-func (h HybridQuery[T]) normalize() (HybridSpec[T], error) {
+func (h HybridQuery[T]) normalize() (HybridSpec, error) {
 	s := h.spec
 	if h.q == nil {
 		return s, noQuerier("select", h.meta.Table)
@@ -97,6 +110,14 @@ func (h HybridQuery[T]) normalize() (HybridSpec[T], error) {
 	}
 	if s.Text.ColumnName() == "" || s.Vector.ColumnName() == "" {
 		return s, hybridInvalid("Text and Vector must name columns")
+	}
+	if s.Query == "" {
+		return s, hybridInvalid("Query is empty; a search with no text is a plain vector search")
+	}
+	for _, c := range []interface{ Table() string }{s.Text, s.Vector} {
+		if c.Table() != h.meta.Table {
+			return s, hybridInvalid("column of table %q does not belong to the model table %q", c.Table(), h.meta.Table)
+		}
 	}
 	if s.TextConfig == "" {
 		return s, hybridInvalid("TextConfig is empty; name a text search configuration such as english")
@@ -148,10 +169,12 @@ vec_hits AS (
   SELECT pk, row_number() OVER (ORDER BY dist ASC, pk ASC) AS rnk
   FROM (
     SELECT t.%[2]s AS pk, t.%[4]s <=> $4 AS dist
-    FROM %[1]s t%[6]s
-    ORDER BY dist ASC, t.%[2]s ASC
+    FROM %[1]s t
+    WHERE t.%[4]s IS NOT NULL%[6]s
+    ORDER BY t.%[4]s <=> $4
     LIMIT $5
   ) s
+  WHERE dist <> 'NaN'::float8
 ),
 fused AS (
   SELECT COALESCE(a.pk, b.pk) AS pk,
@@ -184,7 +207,7 @@ func (h HybridQuery[T]) SQL() (Compiled, error) {
 		pb.d = d
 		softDeletePred(h.meta, "t", false).AppendSQL(&pb)
 		softText = " AND " + string(pb.buf)
-		softVec = " WHERE " + string(pb.buf)
+		softVec = " AND " + string(pb.buf)
 	}
 	cols := ""
 	for i, c := range h.meta.Columns {

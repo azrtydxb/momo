@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -38,8 +39,8 @@ var hybridDocMeta = momo.Meta[hybridDoc]{
 
 func (d *hybridDoc) MomoMeta() *momo.Meta[hybridDoc] { return &hybridDocMeta }
 
-func hybridSpec() momo.HybridSpec[hybridDoc] {
-	return momo.HybridSpec[hybridDoc]{
+func hybridSpec() momo.HybridSpec {
+	return momo.HybridSpec{
 		Text:        momo.NewColumn[string]("docs", "body", 0),
 		TextConfig:  "english",
 		Query:       "vector databases",
@@ -100,16 +101,21 @@ func TestHybridSQLExplicitParameters(t *testing.T) {
 // Catches: a spec outside its documented ranges being sent to the database.
 func TestHybridValidation(t *testing.T) {
 	q := momo.New(fakedriver.New(dialect.Postgres))
-	for name, mut := range map[string]func(*momo.HybridSpec[hybridDoc]){
-		"negative RRFK":          func(s *momo.HybridSpec[hybridDoc]) { s.RRFK = -1 },
-		"text candidates low":    func(s *momo.HybridSpec[hybridDoc]) { s.TextCandidates = -1 },
-		"text candidates high":   func(s *momo.HybridSpec[hybridDoc]) { s.TextCandidates = 1001 },
-		"vector candidates high": func(s *momo.HybridSpec[hybridDoc]) { s.VectorCandidates = 1001 },
-		"zero limit":             func(s *momo.HybridSpec[hybridDoc]) { s.Limit = 0 },
-		"limit high":             func(s *momo.HybridSpec[hybridDoc]) { s.Limit = 1001 },
-		"no config":              func(s *momo.HybridSpec[hybridDoc]) { s.TextConfig = "" },
-		"wrong dimension":        func(s *momo.HybridSpec[hybridDoc]) { s.QueryVector = vector.Vector{1, 0} },
-		"no text column":         func(s *momo.HybridSpec[hybridDoc]) { s.Text = momo.NewColumn[string]("docs", "", 0) },
+	for name, mut := range map[string]func(*momo.HybridSpec){
+		"negative RRFK":          func(s *momo.HybridSpec) { s.RRFK = -1 },
+		"text candidates low":    func(s *momo.HybridSpec) { s.TextCandidates = -1 },
+		"text candidates high":   func(s *momo.HybridSpec) { s.TextCandidates = 1001 },
+		"vector candidates high": func(s *momo.HybridSpec) { s.VectorCandidates = 1001 },
+		"zero limit":             func(s *momo.HybridSpec) { s.Limit = 0 },
+		"limit high":             func(s *momo.HybridSpec) { s.Limit = 1001 },
+		"no config":              func(s *momo.HybridSpec) { s.TextConfig = "" },
+		"empty query":            func(s *momo.HybridSpec) { s.Query = "" },
+		"foreign text column":    func(s *momo.HybridSpec) { s.Text = momo.NewColumn[string]("other", "body", 0) },
+		"foreign vector column": func(s *momo.HybridSpec) {
+			s.Vector = momo.NewVectorColumn[vector.Vector]("other", "emb", 3, 0)
+		},
+		"wrong dimension": func(s *momo.HybridSpec) { s.QueryVector = vector.Vector{1, 0} },
+		"no text column":  func(s *momo.HybridSpec) { s.Text = momo.NewColumn[string]("docs", "", 0) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			spec := hybridSpec()
@@ -156,7 +162,7 @@ type hybridSoftDoc struct {
 	ID   int64
 	Body string
 	Emb  vector.Vector
-	Gone *int64
+	Gone *time.Time
 }
 
 var hybridSoftMeta = momo.Meta[hybridSoftDoc]{
@@ -165,6 +171,8 @@ var hybridSoftMeta = momo.Meta[hybridSoftDoc]{
 	Columns:    []momo.ColumnMeta{{Name: "id"}, {Name: "body"}, {Name: "emb"}, {Name: "deleted_at"}},
 	Identity:   -1,
 	Version:    -1,
+	Ptr:        func(m *hybridSoftDoc, i int) any { return []any{&m.ID, &m.Body, &m.Emb, &m.Gone}[i] },
+	Value:      func(m *hybridSoftDoc, i int) any { return []any{m.ID, m.Body, m.Emb, m.Gone}[i] },
 	SoftDelete: 3,
 	CreatedAt:  -1,
 	UpdatedAt:  -1,
@@ -177,8 +185,9 @@ func (d *hybridSoftDoc) MomoMeta() *momo.Meta[hybridSoftDoc] { return &hybridSof
 // schema-qualified table losing its schema.
 func TestHybridSQLSoftDeleteAndSchema(t *testing.T) {
 	q := momo.New(fakedriver.New(dialect.Postgres))
-	spec := momo.HybridSpec[hybridSoftDoc]{
+	spec := momo.HybridSpec{
 		Text:        momo.NewColumn[string]("soft_docs", "body", 0),
+		Query:       "x",
 		TextConfig:  "simple",
 		Vector:      momo.NewVectorColumn[vector.Vector]("soft_docs", "emb", 3, 0),
 		QueryVector: vector.Vector{1, 0, 0},
@@ -190,6 +199,9 @@ func TestHybridSQLSoftDeleteAndSchema(t *testing.T) {
 	}
 	if n := strings.Count(c.SQL, `"t"."deleted_at" IS NULL`); n != 2 {
 		t.Errorf("soft-delete filter appears %d times, want 2 (one per leg):\n%s", n, c.SQL)
+	}
+	if !strings.Contains(c.SQL, `WHERE t."emb" IS NOT NULL AND "t"."deleted_at" IS NULL`) {
+		t.Errorf("vector leg lacks the NULL and soft-delete filters:\n%s", c.SQL)
 	}
 	if !strings.Contains(c.SQL, `FROM "kb"."soft_docs" t`) {
 		t.Errorf("table lost its schema:\n%s", c.SQL)
