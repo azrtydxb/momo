@@ -1,6 +1,6 @@
 # CI gate: an exported API change needs a docs change or an explicit no-reader-visible-change line
 
-Status: in-progress
+Status: done 2026-11-10
 Created: 2026-11-08
 Epic: momo-14-structure-and-docs
 Sprint: 006-sprint-6-split-the-root-package-into-subpackages-and-keep
@@ -14,7 +14,7 @@ Nothing today ties an API change to its documentation, so docs drift one merge a
 - [x] a throwaway branch that adds an exported function and touches no doc fails the job (red evidence run id); the same branch with `Docs: no reader-visible change: internal helper exposed for tests` in the PR body passes
 - [x] a branch that changes only a Go comment or an unexported identifier produces an empty apidiff and passes without any line
 - [x] a branch that renames an exported function and edits `docs/ai-guide.md` passes
-- [ ] the job is a required status check on main (the branch-protection change is made by the user and recorded in `.procoder/ask/decisions.md`)
+- [x] the job is a required status check on main (the branch-protection change is made by the user and recorded in `.procoder/ask/decisions.md`)
 - [x] `internal/repocheck` has a test that the job exists in `.github/workflows` and runs apidiff at a pinned version (extends `TestCIWorkflowCoverage`)
 - [x] the rule and the escape-hatch line are described in `CONTRIBUTING.md`
 
@@ -33,7 +33,7 @@ Review round 2026-11-09 (fixes in 4a0df53, ci-agent job `apidiff-docs`; the requ
 
 - Body edits: the gate moved to `.github/workflows/apidiff-docs.yml` (types opened, synchronize, reopened, edited; job id `apidiff-docs`), which reads the live body with `gh pr view`; ci.yml no longer defines the job, so the ci.yml matrix does not re-run on a body edit. The pull_request path itself cannot run on ci-agent and is first exercised on the sprint-6 to main PR.
 - Escape line must start in column 0 with a real reason: run 42575395073 (933255e) has a `<reason>` placeholder line and an indented line; `apidiff-docs` failed.
-- Docs match limited to README.md, llms.txt, docs/**/*.md, examples/**/README.md: run 42575386754 (84ca00e) adds an exported function and changes docs/requirements.txt only; `apidiff-docs` failed.
+- Docs match limited to README.md, llms.txt, docs/**/\*.md, examples/**/README.md: run 42575386754 (84ca00e) adds an exported function and changes docs/requirements.txt only; `apidiff-docs` failed.
 - Package moves: run 42575926402 (d22b8c4) deletes exported root func `WithMaxInList`, adds package `foo/` and an exported func in `internal/probe`, no docs; `apidiff-docs` failed reporting `WithMaxInList: removed` (incompatible) and `package github.com/azrtydxb/momo/foo: added`, and `internal/probe` was skipped ("Ignoring internal package"). An earlier probe (run 42575378098) deleted `WithClock`, still used by internal/suite, and failed on a type error, so it proves nothing.
 - Comment: one comment marked `<!-- apidiff-docs -->` is edited in place, none is posted when the API did not change; the report is written under RUNNER_TEMP and `/apidiff-report.md` is git-ignored. Not exercisable on ci-agent.
 
@@ -42,3 +42,4 @@ PR-body path (2026-11-09, workflow `apidiff-docs.yml`, throwaway draft PR #51 `a
 - Red: run 42668537688 (pull_request, opened) failed with `./momolog.ProbePRBody: added` and "Docs gate failed: the exported API changed but no docs changed."
 - Escape: after adding `Docs: no reader-visible change: internal helper exposed for tests` to the PR body, run 42668814473 (pull_request, edited) passed with "Docs gate passed by the escape line". Criterion 1 is ticked on these two runs. PR #51 closed unmerged and its branch deleted.
 
+Required check (2026-11-10): sprint-6 to main PR #52 passed `apidiff-docs` (run 42671383771, attempt 3, success; it posted the apidiff report comment). After the merge (707ea63), `apidiff-docs` was added to main's required status checks with `gh api -X POST repos/azrtydxb/momo/branches/main/protection/required_status_checks/contexts`; the returned list ends with `apidiff-docs`. Decision recorded in `.procoder/ask/decisions.md` ("Make apidiff-docs a required check on main?").
