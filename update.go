@@ -67,7 +67,9 @@ func (u UpdateQuery[T]) Set(assigns ...Assignment) UpdateQuery[T] {
 // names its columns. The body may be a SelectQuery, an ExprSelect, a Union or
 // (on PostgreSQL only) an INSERT, UPDATE or DELETE with RETURNING; a
 // data-modifying body on another dialect fails with ErrUnsupported. Reference
-// the CTE with CTE and ColumnOf, for instance as the From source.
+// the CTE with CTE and ColumnOf, for instance as the From source. MariaDB does
+// not accept the clause here (ErrUnsupported), and BulkUpdate cannot be
+// combined with it (ErrValidation).
 func (u UpdateQuery[T]) With(name string, q Subquery, cols ...string) UpdateQuery[T] {
 	u.with = addCTE(u.with, name, q, cols, false)
 	return u
@@ -90,6 +92,12 @@ func (u UpdateQuery[T]) WithRecursive(name string, q Subquery, cols ...string) U
 // qualifying the assigned columns. Soft-deleted rows of src are not filtered:
 // add that predicate to Where. Interceptors apply to the target table only,
 // not to src.
+//
+// With a From source the unfiltered-mutation guard is stricter: at least one
+// Where predicate must reference a column of the target table, otherwise the
+// statement joins every target row to src and fails with ErrUnfilteredMutation
+// unless AllRows confirms it. A raw SQL fragment does not count as such a
+// reference. From cannot be combined with BulkUpdate (ErrValidation).
 func (u UpdateQuery[T]) From(src TableSource) UpdateQuery[T] { u.from = src; return u }
 
 // Where adds predicates combined with AND.
@@ -236,6 +244,11 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	if !hasEffectiveFilter(where) && !u.allRows {
 		return nil, nil, u.fail(ErrUnfilteredMutation, nil)
 	}
+	if u.from != nil && !u.allRows && !referencesTable(u.q.Dialect(), where, u.meta.Table) {
+		// Without a condition on the target, FROM is a cross join and every
+		// target row is updated.
+		return nil, nil, u.fail(ErrUnfilteredMutation, errors.New("with From, Where must reference the target table (or confirm with AllRows)"))
+	}
 	return sets, append(where, u.extra...), nil
 }
 
@@ -273,6 +286,9 @@ func (u UpdateQuery[T]) compileSQL() (Compiled, error) {
 		return Compiled{}, noQuerier("update", u.meta.Table)
 	}
 	if u.bulk != nil {
+		if u.from != nil || len(u.with) > 0 {
+			return Compiled{}, u.fail(ErrValidation, errors.New("BulkUpdate cannot be combined with With or From"))
+		}
 		return u.bulkSQL()
 	}
 	return compile(u.q.Dialect(), u.render)
@@ -327,6 +343,11 @@ func (u UpdateQuery[T]) render(b *Builder) {
 	// The target table and FROM source are the statement's scope, so a
 	// correlated subquery in SET or WHERE may reference them.
 	b.withScope(names, func() {
+		if len(u.with) > 0 && b.d.Flavor == dialect.FlavorMariaDB {
+			// Not verified against MariaDB, so refused rather than claimed.
+			b.unsupported("WITH before UPDATE on MariaDB")
+			return
+		}
 		writeWithClause(b, u.with)
 		b.WriteString("UPDATE ")
 		target.appendFrom(b)

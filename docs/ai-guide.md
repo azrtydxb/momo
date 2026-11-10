@@ -1114,16 +1114,24 @@ Joined and CTE-prefixed writes:
   MySQL and MariaDB render the multi-table forms (`UPDATE t, src SET t.col = ...`,
   `DELETE t FROM t, src WHERE ...`); SQLite has `UPDATE ... FROM` (3.33 or later) but no
   `DELETE ... USING` (`ErrUnsupported`).
+- With `From` or `Using` the unfiltered-mutation guard is stricter: at least one `Where` predicate
+  must reference a column of the target table, otherwise the statement joins every target row to
+  the source and fails with `ErrUnfilteredMutation` unless `AllRows()` confirms it. A condition
+  only on the source, or a raw `momo.SQL` fragment, does not count. `From` cannot be combined with
+  `BulkUpdate` (`ErrValidation`), and `RETURNING` with `From` works on PostgreSQL and SQLite only.
 - `With` and `WithRecursive` exist on `UpdateQuery`, `DeleteQuery` and `InsertQuery`, with the
   `SelectQuery` signature. PostgreSQL and SQLite render the WITH before the statement; MySQL
-  and MariaDB accept it before UPDATE and DELETE only (`ErrUnsupported` before INSERT). A WITH on
-  a bulk insert that would split into chunks at the parameter limit is `ErrValidation`.
+  accepts it before UPDATE and DELETE only (`ErrUnsupported` before INSERT), and MariaDB refuses it
+  there too (`ErrUnsupported`, not verified). A WITH on a bulk insert that would split into chunks
+  at the parameter limit is `ErrValidation`, and a `With` combined with `BulkUpdate` is
+  `ErrValidation`.
 - `InsertQuery`, `UpdateQuery` and `DeleteQuery` with `Returning` are `Subquery` values, usable as
   the body of `With` on any statement: a select with `.With("x", ins).From(momo.CTE("x"))` renders
   `WITH x AS (INSERT ... RETURNING ...) SELECT ... FROM x`. PostgreSQL has data-modifying
   CTEs; SQLite and MySQL return `ErrUnsupported`. A DML body renders with the handle's interceptors
   (with a background context) but runs no model hooks and no `beforeWrite` check; the outer
-  statement's `Exec` or `All` is what executes it.
+  statement's `Exec` or `All` is what executes it. An INSERT body is never chunked: one that
+  binds more parameters than the dialect allows fails with `ErrLimitExceeded`.
 
 Bulk and set-based writes (PostgreSQL):
 

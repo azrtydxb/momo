@@ -69,3 +69,24 @@ func writeWithClause(b *Builder, ctes []cte) {
 	}
 	b.writeByte(' ')
 }
+
+// referencesTable reports whether any predicate refers to a column of the
+// table exposed as qualifier. A statement with a second source (UPDATE ...
+// FROM, DELETE ... USING) whose WHERE never mentions its own target joins the
+// target to the source with no condition and so touches every target row; the
+// unfiltered-mutation guard uses this to refuse it. Raw SQL fragments record
+// no column references and do not count.
+func referencesTable(d *dialect.Dialect, ps []Predicate, qualifier string) bool {
+	for _, p := range ps {
+		if p == nil {
+			continue
+		}
+		b := NewBuilder(d)
+		b.pushScope(nil)
+		p.AppendSQL(b)
+		if _, ok := b.scopes[0].refs[qualifier]; ok {
+			return true
+		}
+	}
+	return false
+}

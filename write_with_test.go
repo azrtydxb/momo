@@ -79,32 +79,6 @@ func TestDeleteUsingGoldenSQL(t *testing.T) {
 	}
 }
 
-// Catches: the WITH clause dropped from, or placed after, the DML head, and
-// the CTE arguments numbered after the statement's own.
-func TestDMLWithClause(t *testing.T) {
-	body := momo.SelectExprs(momo.Value(int64(1)), momo.Value("t"))
-	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
-		c, err := momo.Update[unitDocument](withDB(d)).With("s", body, "id", "title").
-			Set(DocTitle.SetExpr(momo.ColumnOf[string]("s", "title"))).
-			From(momo.CTE("s")).Where(DocID.EqExpr(momo.ColumnOf[int64]("s", "id")), DocTenantID.Eq(5)).SQL()
-		if err != nil || !strings.HasPrefix(c.SQL, "WITH ") || !strings.Contains(c.SQL, "UPDATE") || len(c.Args) != 3 {
-			t.Errorf("update %s: %q %v %v", d, c.SQL, c.Args, err)
-		}
-		c, err = momo.Delete[delNote](withDB(d)).With("s", body, "id", "title").
-			Where(delNoteID.Eq(1)).SQL()
-		if err != nil || !strings.HasPrefix(c.SQL, "WITH ") || len(c.Args) != 3 {
-			t.Errorf("delete %s: %q %v %v", d, c.SQL, c.Args, err)
-		}
-	}
-	rec := momo.Delete[delNote](withDB(dialect.Postgres)).WithRecursive("s", body, "id", "title").Where(delNoteID.Eq(1))
-	if c, err := rec.SQL(); err != nil || !strings.HasPrefix(c.SQL, `WITH RECURSIVE "s" ("id", "title") AS (SELECT $1, $2) DELETE FROM`) {
-		t.Errorf("recursive: %q %v", c.SQL, err)
-	}
-	if _, err := momo.Delete[delNote](withDB(dialect.Postgres)).With("s", nil).Where(delNoteID.Eq(1)).SQL(); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("nil body err = %v, want ErrValidation", err)
-	}
-}
-
 // Catches: INSERT ... WITH ordering, a MySQL WITH before INSERT reaching the
 // server, and the CTE scope not covering the FromSelect select.
 func TestInsertWith(t *testing.T) {

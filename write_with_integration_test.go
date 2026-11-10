@@ -100,6 +100,14 @@ func TestDMLWithIntegration(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		createWithSrc(t, db)
 		ctx := context.Background()
+		if db.Dialect().Flavor == dialect.FlavorMariaDB {
+			// WITH before UPDATE and DELETE is not verified on MariaDB: refused.
+			_, err := momo.Delete[delNote](db).With("g", momo.SelectExprs(delSrcID).From(delSrc)).Where(delNoteID.Eq(2)).Exec(ctx)
+			if !errors.Is(err, momo.ErrUnsupported) {
+				t.Fatalf("mariadb delete with: err = %v, want ErrUnsupported", err)
+			}
+			return
+		}
 		body := momo.SelectExprs(delSrcID, momo.Value("from-cte")).From(delSrc).Where(delSrcID.Eq(1))
 		res, err := momo.Update[delNote](db).
 			With("s", body, "id", "title").

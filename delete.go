@@ -45,7 +45,8 @@ func Delete[T any, PT Modeler[T]](q Querier) DeleteQuery[T] {
 }
 
 // With prefixes the statement with a common table expression; see
-// UpdateQuery.With for the allowed bodies and the dialect rules.
+// UpdateQuery.With for the allowed bodies and the dialect rules (MariaDB
+// refuses the clause with ErrUnsupported).
 func (d DeleteQuery[T]) With(name string, q Subquery, cols ...string) DeleteQuery[T] {
 	d.with = addCTE(d.with, name, q, cols, false)
 	return d
@@ -67,6 +68,12 @@ func (d DeleteQuery[T]) WithRecursive(name string, q Subquery, cols ...string) D
 // fails with ErrUnsupported (use a subquery in Where). Soft-deleted rows of
 // src are not filtered: add that predicate to Where. Interceptors apply to the
 // target table only, not to src.
+//
+// With a Using source the unfiltered-mutation guard is stricter: at least one
+// Where predicate must reference a column of the target table, otherwise the
+// statement joins every target row to src and fails with ErrUnfilteredMutation
+// unless AllRows confirms it. A raw SQL fragment does not count as such a
+// reference.
 func (d DeleteQuery[T]) Using(src TableSource) DeleteQuery[T] { d.using = src; return d }
 
 // Where adds predicates combined with AND.
@@ -124,6 +131,11 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 	}
 	if !hasEffectiveFilter(where) && !d.allRows {
 		return nil, d.fail(ErrUnfilteredMutation, nil)
+	}
+	if d.using != nil && !d.allRows && !referencesTable(d.q.Dialect(), where, d.meta.Table) {
+		// Without a condition on the target, USING is a cross join and every
+		// target row is deleted.
+		return nil, d.fail(ErrUnfilteredMutation, errors.New("with Using, Where must reference the target table (or confirm with AllRows)"))
 	}
 	return append(where, d.extra...), nil
 }
@@ -203,6 +215,11 @@ func (d DeleteQuery[T]) render(b *Builder) {
 	// The target table and USING source are the statement's scope, so a
 	// correlated subquery in WHERE may reference them.
 	b.withScope(names, func() {
+		if len(d.with) > 0 && b.d.Flavor == dialect.FlavorMariaDB {
+			// Not verified against MariaDB, so refused rather than claimed.
+			b.unsupported("WITH before DELETE on MariaDB")
+			return
+		}
 		writeWithClause(b, d.with)
 		b.WriteString("DELETE ")
 		if d.using != nil && mysql {
