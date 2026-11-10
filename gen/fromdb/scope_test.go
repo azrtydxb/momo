@@ -253,7 +253,7 @@ func dependencySchema() *schema.Schema {
 				{Name: "id", Type: "bigint", Identity: "by_default"},
 				{Name: "n", Type: "integer", Default: "outer_fn()"},
 				{Name: "d", Type: "integer", Default: "dyn_caller()"},
-				{Name: "ref", Type: "oid"},
+				{Name: "ref", Type: "bigint"},
 			},
 			PrimaryKey: []string{"id"},
 			Checks: []schema.Check{
