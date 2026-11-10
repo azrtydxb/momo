@@ -53,7 +53,7 @@ Servers the integration jobs run against: PostgreSQL 16 and 17 with pgvector (se
 | `github.com/mattn/go-sqlite3`              | v1.14.53 | used by `driver/sqlitedriver` (cgo).                                       |
 | `go.yaml.in/yaml/v3`                       | v3.0.6   | `momo.yaml`.                                                               |
 | `golang.org/x/tools`                       | v0.52.0  | generator.                                                                 |
-| `modernc.org/sqlite`                       | v1.60.1  | pure-Go SQLite for `driver/sqlitepure` (no cgo, no vectors).               |
+| `modernc.org/sqlite`                       | v1.61.1  | pure-Go SQLite for `driver/sqlitepure` (no cgo, no vectors).               |
 
 <!-- /generated:dependencies -->
 
