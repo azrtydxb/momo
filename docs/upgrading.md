@@ -5,6 +5,19 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.7.0
+
+### New: `One` on writes with RETURNING
+
+`InsertQuery.One`, `UpdateQuery.One` and `DeleteQuery.One` run the statement
+and return the single returned row as `T`, so a sqlc `:one` style write no
+longer needs the `Rows` / `ScanModel` / `Close` loop. Without a `Returning`
+list it returns every column. It returns `ErrNotFound` when no row came back
+(an `ON CONFLICT DO NOTHING` insert, or a guarded update or delete that matched
+nothing) and `ErrTooManyRows` when more than one did, rolling back an implicit
+transaction. MySQL has no `RETURNING` and returns `ErrUnsupported`. This is
+additive; nothing to change.
+
 ## Upgrading to 0.6.0
 
 ### The Using and From guard is stricter

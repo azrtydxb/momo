@@ -167,3 +167,85 @@ func (r *ModelRows[T]) Close() error {
 	}
 	return r.rows.Close()
 }
+
+// oneRow reads the single row of a RETURNING statement into a new T. It
+// returns ErrNotFound when no row came back and ErrTooManyRows when more than
+// one did; in that case an implicit transaction is rolled back, so a write
+// that touched several rows is not committed. Inside an explicit transaction
+// the caller decides. The rows are always closed.
+func oneRow[T any](r *ModelRows[T], op, table string) (T, error) {
+	var zero, m T
+	defer func() { _ = r.Close() }()
+	if !r.Next() {
+		if err := r.Err(); err != nil {
+			return zero, err
+		}
+		return zero, &Error{Kind: ErrNotFound, Op: op, Table: table}
+	}
+	if err := r.ScanModel(&m); err != nil {
+		return zero, err
+	}
+	if r.Next() {
+		if a, ok := r.rows.(interface{ abort() }); ok {
+			a.abort()
+		}
+		return zero, &Error{Kind: ErrTooManyRows, Op: op, Table: table}
+	}
+	if err := r.Err(); err != nil {
+		return zero, err
+	}
+	if err := r.Close(); err != nil {
+		return zero, err
+	}
+	return m, nil
+}
+
+// One runs the INSERT and returns the single RETURNING row: ErrNotFound when
+// no row came back (ON CONFLICT DO NOTHING, or a DO UPDATE whose WHERE did
+// not hold) and ErrTooManyRows when more than one did. Without a Returning
+// list it returns every column, as ReturningAll does. On a dialect without
+// RETURNING it fails with ErrUnsupported.
+func (q InsertQuery[T]) One(ctx context.Context) (T, error) {
+	var zero T
+	if !q.i.returning.active() {
+		q = q.ReturningAll()
+	}
+	rows, err := q.Rows(ctx)
+	if err != nil {
+		return zero, err
+	}
+	return oneRow(rows, "insert", q.meta.Table)
+}
+
+// One runs the UPDATE and returns the single RETURNING row: ErrNotFound when
+// no row matched (a guarded update) and ErrTooManyRows when more than one
+// did. Without a Returning list it returns every column. It is not supported
+// with a version-checked Model update (ErrValidation; use Exec) or on a
+// dialect without RETURNING (ErrUnsupported).
+func (u UpdateQuery[T]) One(ctx context.Context) (T, error) {
+	var zero T
+	if !u.returning.active() {
+		u = u.ReturningAll()
+	}
+	rows, err := u.Rows(ctx)
+	if err != nil {
+		return zero, err
+	}
+	return oneRow(rows, "update", u.meta.Table)
+}
+
+// One runs the DELETE and returns the single RETURNING row: ErrNotFound when
+// no row matched and ErrTooManyRows when more than one did. Without a
+// Returning list it returns every column. On a dialect without RETURNING it
+// fails with ErrUnsupported.
+func (d DeleteQuery[T]) One(ctx context.Context) (T, error) {
+	var zero T
+	if !d.returning.active() {
+		d = d.ReturningAll()
+	}
+	rows, err := d.Rows(ctx)
+	if err != nil {
+		return zero, err
+	}
+	return oneRow(rows, "delete", d.meta.Table)
+}
