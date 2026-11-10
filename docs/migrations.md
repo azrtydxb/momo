@@ -1062,16 +1062,31 @@ ignores the live tables.
 `only` is the inverse of `skip`, for a project that moves onto momo one module
 at a time: when it is set, a table that matches none of its globs gets no model
 and no place in the init snapshot, and migrate (drift, baseline, diff) treats it
-as excluded, so no `migrate.exclude` entry is needed for it. `skip` applies
-within `only`. `only` limits tables only; views, functions and enums outside
-your modules are hidden with `migrate.exclude`.
+as excluded, so no `migrate.exclude` entry is needed for it. A glob matches the
+table name or `schema.name` (`only: ["app.*"]`), as `migrate.exclude` does, and
+an empty entry is an error. `skip` applies within `only`, and a skipped table
+still needs its `migrate.exclude` entry.
+
+`only` hides tables, and with them their triggers and policies. Inspection does
+not read a table outside `only`, so one the schema model cannot represent does
+not fail the run, and `migrate diff` ignores such a table in the snapshot, so it
+never plans `DROP TABLE` for it. It does not hide views, functions, enums or
+extensions of the modules you have not moved: drift still lists them as
+unmanaged and `--from-db` still writes the views and enums. Hide them with
+`migrate.exclude`. A foreign key from a modeled table to a table outside `only`
+is left out of the models and the snapshot with a warning, and the baseline
+reports it; add the target to `only` or accept the report.
 
 By default the models carry only the functions that a modeled table's triggers,
 column defaults, generated columns, checks, index expressions and predicates or
-policies call (and the functions those call), each on the model of the table
-that uses it, and a table's triggers and policies are on its own model. A
-function nothing modeled uses is not written. `functions: all` writes every
-function on the first model, as releases before 0.7.0 did.
+policies call (and the functions those call: their bodies and argument defaults,
+by a call or a `'name'::regproc` or `'name(args)'::regprocedure` literal), each on
+the model of the table that uses it, and a table's triggers and policies are on
+its own model. A function nothing modeled uses is not written. SQL built at run
+time (`EXECUTE` with a name put together from pieces) cannot be followed, so a
+function only that code reaches is not written and a fresh database built from
+the models lacks it. `functions: all` writes every function on the first model,
+as releases before 0.7.0 did, and is the workaround.
 
 `dbdefault: all` tags every NOT NULL PostgreSQL column that has a default with
 `dbdefault`, constant defaults such as `DEFAULT 1` included (by default only

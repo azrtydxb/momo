@@ -251,12 +251,12 @@ func (g *generator) collectTables() {
 	var kept []schema.Table
 	dropped := map[string]bool{}
 	for _, t := range g.clean.Tables {
-		if g.o.Config.outsideOnly(t.Name) {
+		if g.o.Config.outsideOnly(t.Schema, t.Name) {
 			dropped[tableKey(t.Schema, t.Name)] = true
-			g.add(SevNote, t.Name, "not matched by introspect.only: no model and not in the snapshot; migrate leaves the live table alone while introspect.only is set")
+			g.add(SevNote, t.Name, "not matched by introspect.only: no model and not in the snapshot (momo generate --from-db never reports this: inspection already leaves such tables out, so only a direct fromdb.Generate caller sees it)")
 			continue
 		}
-		if g.o.Config.skipped(t.Name) {
+		if g.o.Config.skipped(t.Schema, t.Name) {
 			dropped[tableKey(t.Schema, t.Name)] = true
 			g.add(SevNote, t.Name, "skipped by introspect.skip: no model and not in the snapshot; add it to migrate.exclude so the baseline ignores the live table")
 			continue

@@ -83,6 +83,9 @@ func (c *Config) Validate() error {
 		}
 	}
 	for i, g := range c.Only {
+		if strings.TrimSpace(g) == "" {
+			return fmt.Errorf("introspect.only[%d]: empty glob: it would match no table, so no model would be written", i)
+		}
 		if _, err := path.Match(g, ""); err != nil {
 			return fmt.Errorf("introspect.only[%d]: %q: %w", i, g, err)
 		}
@@ -159,9 +162,9 @@ func checkTags(where string, opts []string) error {
 }
 
 // skipped reports whether the table name matches a skip glob.
-func (c *Config) skipped(table string) bool {
+func (c *Config) skipped(schemaName, table string) bool {
 	for _, g := range c.Skip {
-		if ok, _ := path.Match(g, table); ok {
+		if matchTable(g, schemaName, table) {
 			return true
 		}
 	}
@@ -170,16 +173,26 @@ func (c *Config) skipped(table string) bool {
 
 // outsideOnly reports whether Only is set and the table matches none of its
 // globs.
-func (c *Config) outsideOnly(table string) bool {
+func (c *Config) outsideOnly(schemaName, table string) bool {
 	if len(c.Only) == 0 {
 		return false
 	}
 	for _, g := range c.Only {
-		if matchGlob(g, table) {
+		if matchTable(g, schemaName, table) {
 			return false
 		}
 	}
 	return true
+}
+
+// matchTable reports whether a skip or only glob matches a table: the bare
+// name, or schema.name for a table outside the current schema. migrate matches
+// the same way, so introspect.only and the migrate side agree on one table set.
+func matchTable(glob, schemaName, name string) bool {
+	if matchGlob(glob, name) {
+		return true
+	}
+	return schemaName != "" && matchGlob(glob, schemaName+"."+name)
 }
 
 // matchGlob reports whether name matches the glob. A malformed glob never

@@ -13,8 +13,10 @@ later releases can break more.
 `MomoConfig` of the alphabetically first model. It now writes only the
 functions that a modeled table uses: the ones its triggers call, its column
 defaults, generated columns, checks, index expressions and predicates and its
-policies call, and the functions those functions call in turn. Each one is
-written on the model of the table that uses it. A function that no modeled
+policies call, and the functions those functions call in turn (their bodies and
+argument defaults). A call is found by name, and so is a `'name'::regproc` or
+`'name(args)'::regprocedure` literal. Each one is written on the model of the
+table that uses it. A function that no modeled
 table uses is not written, and it is no longer in the init snapshot, so a
 database-wide function that nothing modeled needs does not appear in the
 models, and the model files no longer change when an unrelated function does.
@@ -28,7 +30,12 @@ and is no longer used is not in the new init snapshot either; add it to
 `migrate.exclude` if the database keeps it and you do not want drift to report
 it as unmanaged.
 
-To keep the old behaviour, set `introspect.functions: all`:
+SQL that is built at run time cannot be followed. A function that another
+function reaches only through `EXECUTE` with a name put together from pieces
+(`EXECUTE 'SELECT ' || prefix || '_target()'`), or through any other dynamic
+SQL, is not written, and a fresh database built from the models then lacks it.
+If your functions do that, use `introspect.functions: all`, which keeps the old
+behaviour:
 
 ```yaml
 introspect:
@@ -49,12 +56,27 @@ introspect:
   skip: [project_notes] # skip applies within only
 ```
 
-`skip` applies within `only`: a table must match `only` and not match `skip`.
-The triggers and policies of an excluded table are left out too. `only`
-limits tables, not views, functions or enums: hide those with
-`migrate.exclude`. Inspection still reads the tables outside `only`; a table
-the schema model cannot represent still needs an `introspect.skip` entry. An
-empty or absent `only` changes nothing.
+A glob matches the table name, or `schema.name` for a table outside the
+current schema (`only: ["app.*"]`), the same way `migrate.exclude` does. An
+empty entry in `only` is an error. `skip` applies within `only`: a table must
+match `only` and not match `skip`. A skipped table still needs its
+`migrate.exclude` entry. An empty or absent `only` changes nothing.
+
+What `only` hides, and what it does not:
+
+- It hides tables and, with them, their triggers and policies. Inspection does
+  not read a table outside `only`, so a table the schema model cannot represent
+  no longer fails `--from-db`, `baseline` or `drift`. `migrate diff` ignores
+  such a table in the snapshot as well, so a snapshot that still holds one
+  never plans `DROP TABLE` for it.
+- Views, functions, enums and extensions of the modules you have not moved are
+  not hidden: drift still lists them as unmanaged, and `--from-db` still writes
+  the views and enums. Hide them with `migrate.exclude` (globs over the name),
+  for example `exclude: [legacy_*, audit_log_view]`.
+- A foreign key from a modeled table to a table outside `only` is left out of
+  the models and the snapshot, with a warning, and the baseline reports it as
+  a difference. Move the target table into `only`, or accept the report. The
+  column itself is still modeled, without the relation.
 
 ### `introspect.dbdefault: all` tags every column that has a default
 

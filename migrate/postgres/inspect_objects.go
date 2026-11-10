@@ -126,6 +126,27 @@ func (in *inspector) excluded(ns, name string) bool {
 	return false
 }
 
+// outsideOnly reports whether Config.OnlyTables is set and no glob of it
+// matches the table name or schema.name.
+func (in *inspector) outsideOnly(ns, name string) bool {
+	if len(in.only) == 0 {
+		return false
+	}
+	ns = in.optSchema(ns)
+	for _, g := range in.only {
+		if ok, _ := path.Match(g, name); ok {
+			return false
+		}
+		if ns == "" {
+			continue
+		}
+		if ok, _ := path.Match(g, ns+"."+name); ok {
+			return false
+		}
+	}
+	return true
+}
+
 // optSchema is the Schema field value for a namespace: empty for the current one.
 func (in *inspector) optSchema(ns string) string {
 	if ns == in.current {
@@ -226,7 +247,7 @@ func (in *inspector) triggers(ctx context.Context, s *schema.Schema) error {
 		if err := r.Scan(&ns, &table, &t.Name, &tgtype, &when, &attrs, &fnNS, &fnNSQ, &fnName, &fnArgs); err != nil {
 			return err
 		}
-		if in.excluded(ns, table) || in.excluded(ns, t.Name) {
+		if in.excluded(ns, table) || in.excluded(ns, t.Name) || in.outsideOnly(ns, table) {
 			return nil
 		}
 		if len(attrs) > 0 {
@@ -271,6 +292,9 @@ func (in *inspector) policies(ctx context.Context, s *schema.Schema) error {
 		var using, check *string
 		if err := r.Scan(&ns, &p.Table, &p.Name, &cmd, &p.Permissive, &p.Roles, &using, &check); err != nil {
 			return err
+		}
+		if in.outsideOnly(ns, p.Table) {
+			return nil
 		}
 		p.Schema = in.optSchema(ns)
 		p.Command = policyCmds[cmd]
