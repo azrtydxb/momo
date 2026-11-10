@@ -950,7 +950,14 @@ and baseline keep that order. Changing the order of an existing key later is a
 drop and add of the primary key under an `ACCESS EXCLUSIVE` lock, and the drop
 is gated as destructive.
 `numeric` columns are Go strings (the `decimal-as-string` note); an
-`introspect.types` rule picks a decimal type instead.
+`introspect.types` rule picks a decimal type instead. `tsvector` columns become
+`types.TSVector` (`*types.TSVector` when nullable); an `introspect.types` rule
+still overrides that.
+
+`momo generate` leaves out type errors that come from files with momo's
+generated header, since it rewrites them. After you rename or remove a field,
+one `momo generate` run regenerates the stale file; an error in a hand-written
+file still stops it.
 
 A column type with no Go mapping is an error and nothing is written; add a rule
 to the `introspect` section of `momo.yaml`. Constraints the models cannot

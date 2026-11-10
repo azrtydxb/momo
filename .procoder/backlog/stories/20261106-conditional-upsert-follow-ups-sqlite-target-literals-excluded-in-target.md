@@ -1,10 +1,9 @@
 # Conditional upsert follow-ups: SQLite target literals, Excluded in target
 
-Status: open
+Status: done
 Created: 2026-11-06
 Epic: momo-05-writes-queries
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
-Carried: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query — SQLite integration criterion needs a SQLite driver and test opener, which arrive with the SQLite milestone; inline rendering, ErrValidation and docs are done and golden-tested
 
 ## Description
 
@@ -18,7 +17,7 @@ predicate gets a database error instead of `ErrValidation`.
 
 ## Acceptance criteria
 
-- [ ] On SQLite, the target predicate renders literal values (bool, integer,
+- [x] On SQLite, the target predicate renders literal values (bool, integer,
       string) inline instead of binding them, and a SQLite integration test
       upserts against a partial unique index with a typed predicate.
 - [x] `Excluded()` inside the target predicate is `ErrValidation` at build
@@ -26,7 +25,7 @@ predicate gets a database error instead of `ErrValidation`.
 - [x] Golden tests cover nested `Not`/`And`/`Or`/`In`/`Between`/`IsNull` in the
       action predicate, a chunked `Models` upsert with both predicates (argument
       numbering), and that `base.Where(a)` and `base.Where(b)` do not alias.
-- [ ] The README, `docs/capabilities.md` and `docs/ai-guide.md` drop the SQLite
+- [x] The README, `docs/capabilities.md` and `docs/ai-guide.md` drop the SQLite
       workaround once the first criterion is done.
 
 ## Evidence
@@ -39,3 +38,8 @@ Open: there is no SQLite driver in go.mod and no SQLite integration opener, so t
 - Criterion 4 (open, depends on criterion 1): README, docs/capabilities.md and docs/ai-guide.md describe the inline rendering, the Excluded rule and the exact literal forms, and keep `momo.SQL("live = 1")` as the proven fallback until a real SQLite run exists.
 - Review fix 2: `TestConflictTargetSQLiteFloatAndValuer` pins 1e6 as `1000000.0`, 123456789.5, 0.001, 1e-6 and 1e-7 (`1e-07`); `TestConflictTargetSQLiteErrorReasons` pins the NUL, NaN/Inf and NULL reasons and the wrapped Valuer error.
 - Review fix: `TestConflictTargetSQLiteUnrenderableIsValidation` (time, NaN, Inf, bytes, pointer, NULL, NUL string, Valuer to time) and `TestConflictTargetSQLiteFloatAndValuer` (floats, Valuer inlined as its bound value) cover the values that cannot or must be inlined.
+
+### Sprint 7
+
+- Criterion 1: TestConflictWherePartialIndexTarget no longer skips SQLite (upsert_conflict_where_integration_test.go): partial unique index `WHERE live = 1`, typed `Eq(true)` target upserts, and the no-target case yields SQLite's no-matching-constraint error. Passes in run 42769037273 (ci-agent, headSha 4d04a3d, all jobs green).
+- Criterion 4: README, docs/ai-guide.md and docs/capabilities.md drop the workaround caveat.
