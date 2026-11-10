@@ -189,9 +189,12 @@ type DriftReport struct {
 	Unmanaged []ObjectRef
 	// Unverified lists the views, triggers and policies present on both sides
 	// whose text (view query, trigger condition, policy expressions) Drift did
-	// not compare, because that needs DDL to canonicalize. A body changed
-	// outside the migrations does not appear in Changed. An empty list does not
-	// mean those bodies were verified, and Clean ignores it.
+	// not compare. Drift compares that text whenever the dialect implements
+	// Canonicalizer (PostgreSQL): a changed body is then in Changed and this
+	// list is empty. It lists objects only for a dialect that cannot
+	// canonicalize the snapshot's text, where a body changed outside the
+	// migrations does not appear in Changed. An empty list means no object was
+	// left uncompared, and Clean ignores it.
 	Unverified []ObjectRef
 	// CanonicalizeSkipped lists the tables whose declared text (check
 	// expressions, column defaults, generation expressions, index predicates

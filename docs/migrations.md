@@ -200,12 +200,24 @@ finding:
   triggers and policies). Example: `exclude: ["pg_stat_statements", "audit_*"]`.
 - `momo_migrations` is never reported.
 - A view query, trigger `WHEN` and policy `USING`/`WITH CHECK` changed outside
-  migrations is **not detected**; those objects are listed as `unverified:`
-  only. Exit 0 does not prove their text matches. Function bodies are compared.
-- Declared text (defaults, checks, index predicates) is canonicalized through a
-  scratch schema in a rolled-back transaction, which needs `CREATE` on the
-  database. Without it drift still runs but can show false `changed` entries
-  (never hides a real one).
+  migrations is reported as `changed:` (the detail names `query`, `when`,
+  `using` or `check`), and a body declared in another spelling than the server
+  reports (`id>0` against `id > 0`) is not drift. To compare them, drift
+  rewrites the snapshot's text through a scratch schema in a rolled-back
+  transaction (the same step as `baseline`), so a snapshot that declares any
+  such body needs **`CREATE` on the database** and a writable session. A role
+  without it gets exit 3 and an error wrapping `ErrCanonicalizePrivilege` that
+  names the privilege, never a clean report: a skipped comparison would hide a
+  policy loosened to `USING (true)`. No DDL runs against the application
+  schema (`TestDriftBodiesRunsDDLOnlyInRolledBackTransaction`,
+  `TestDriftBodiesNeedCreateOnDatabase`, `TestDriftReportsOutOfBandBodyChanges`).
+  `unverified:` lines appear only for a dialect that cannot canonicalize; they do
+  not affect the exit code. Function bodies are compared.
+- A snapshot without those bodies canonicalizes only its table text (defaults,
+  checks, index predicates) through the same scratch schema. There drift stays
+  tolerant: without `CREATE` it still runs and can show false `changed` entries
+  (never hides a real one), and lists the tables it compared as declared in
+  `CanonicalizeSkipped`.
 
 ## 2. CLI
 

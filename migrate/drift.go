@@ -398,24 +398,35 @@ func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
 // unmanaged) and reports what differs. See DriftReport for the three lists.
 //
 // It is read-only: it takes no lock, leaves nothing behind (a database without
-// a history table has an empty history) and changes no application object. A
-// dialect that implements TableCanonicalizer is asked to rewrite a copy of the
-// snapshot's table text (check expressions, column defaults, generation
-// expressions, index predicates and expressions) to the form the database
-// reports. On PostgreSQL that creates a scratch schema in a transaction that is
-// always rolled back, so nothing is committed and no application table is
-// written. When it cannot (a role without CREATE on the database, a read-only
-// session, a table whose scratch copy fails), Drift does not fail: it compares
-// that table's text as declared, which can show a phantom difference in text
-// only, and lists the table in DriftReport.CanonicalizeSkipped. Because PostgreSQL
-// rewrites the text of views and of policy and trigger expressions, drift
-// compares those objects by identity and definition apart from that text; a
-// changed view query, trigger condition or policy expression (a USING or WITH
-// CHECK of a row-level security policy) made outside migrations is NOT
-// detected. DriftReport.Unverified names those objects so a clean report is not
-// read as proof that their bodies match; Clean ignores it. Function bodies,
-// which PostgreSQL stores verbatim, are compared. The history table is left out
-// and Config.Exclude patterns hide matching objects on both sides. An index
+// a history table has an empty history) and changes no application object. PostgreSQL
+// rewrites the text it stores (view queries, check and default expressions,
+// trigger conditions, policy expressions), so the snapshot's declared text is
+// rewritten to the form the database reports before the comparison. A dialect
+// that implements Canonicalizer does that in a scratch schema inside a
+// transaction that is always rolled back, so nothing is committed and no
+// application table is written.
+//
+// When the snapshot declares a view, a trigger WHEN condition or a policy
+// expression (USING, WITH CHECK of a row-level security policy), Drift
+// canonicalizes the whole snapshot strictly, as Baseline does, and compares
+// that text: a body changed outside migrations is reported as Changed. That
+// needs the CREATE privilege on the database and a writable session. When the
+// role lacks CREATE the error wraps ErrCanonicalizePrivilege and names it;
+// any other canonicalization failure is returned too. Drift never skips these
+// bodies silently, because a skip would hide a real change (a policy loosened to
+// USING (true), say).
+//
+// A snapshot without those bodies, or a dialect that only implements
+// TableCanonicalizer, takes the tolerant path: only table text (check
+// expressions, column defaults, generation expressions, index predicates and
+// expressions) is rewritten. When that fails (a role without CREATE, a
+// read-only session, a table whose scratch copy fails), Drift does not fail: it
+// compares that table's text as declared, which can show a phantom difference in
+// text only, and lists the table in DriftReport.CanonicalizeSkipped. On that
+// path the views, triggers and policies it cannot compare are listed in
+// DriftReport.Unverified; Clean ignores it. Function bodies, which PostgreSQL
+// stores verbatim, are compared. The history table is left out and
+// Config.Exclude patterns hide matching objects on both sides. An index
 // PostgreSQL marks invalid (a failed CREATE INDEX CONCURRENTLY) is reported as
 // Changed with Detail "invalid index (failed CONCURRENTLY build)".
 func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
@@ -440,6 +451,7 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 	}
 	from := &schema.Schema{Dialect: live.Dialect}
 	var skipped []ObjectRef
+	exact := false
 	if latest != "" {
 		snap, err := snapshotUpTo(e.dir, latest)
 		if err != nil {
@@ -449,12 +461,23 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 			return nil, fmt.Errorf("%w: applied version %s has no snapshot at or before it; run momo migrate diff", ErrNoSnapshot, latest)
 		}
 		from = e.hide(snap.Schema)
-		if from, skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
+		if cz, ok := e.opts.dialect.(Canonicalizer); ok && hasBodyText(from) {
+			want, err := cloneSchema(from)
+			if err != nil {
+				return nil, err
+			}
+			if err := cz.Canonicalize(ctx, c, want); err != nil {
+				return nil, fmt.Errorf("migrate: canonicalize snapshot %s: %w", latest, err)
+			}
+			from, exact = want, true
+		} else if from, skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
 			return nil, err
 		}
 	}
-	rep := compare(from, live, false, invalid)
-	rep.Unverified = unverifiedBodies(from, live)
+	rep := compare(from, live, exact, invalid)
+	if !exact {
+		rep.Unverified = unverifiedBodies(from, live)
+	}
 	rep.CanonicalizeSkipped = skipped
 	return rep, nil
 }
@@ -507,6 +530,15 @@ func (e *Engine) canonicalSnapshot(ctx context.Context, c momo.PinnedConn, s *sc
 	return want, skipped, nil
 }
 
+// hasBodyText reports whether s declares a view query, a trigger condition or a
+// policy expression: the text Drift compares only after a strict
+// canonicalization.
+func hasBodyText(s *schema.Schema) bool {
+	return slices.ContainsFunc(s.Views, func(v schema.View) bool { return v.Query != "" }) ||
+		slices.ContainsFunc(s.Triggers, func(t schema.Trigger) bool { return t.When != "" }) ||
+		slices.ContainsFunc(s.Policies, func(p schema.Policy) bool { return p.Using != "" || p.Check != "" })
+}
+
 // tableHasText reports whether t declares text a database rewrites: a check
 // expression, a column default or generation expression, or an index predicate
 // or expression part. It is the rule the dialects use to pick the tables they
@@ -526,7 +558,8 @@ func tableHasText(t schema.Table) bool {
 }
 
 // unverifiedBodies lists the views, triggers and policies that exist in both
-// schemas and carry text that a non-exact comparison leaves out.
+// schemas and carry text that a non-exact comparison leaves out. Drift calls it
+// only when it did not canonicalize the snapshot strictly.
 func unverifiedBodies(from, live *schema.Schema) []ObjectRef {
 	var out []ObjectRef
 	type id struct{ kind, ns, name string }
