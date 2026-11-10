@@ -34,13 +34,14 @@ var rawSQLFuncs = map[string]int{
 	"MapRows":     2, // MapRows(ctx, q, sql, args...)
 	"Query":       2, // Query[T](ctx, q, sql, args...)
 	"QueryRows":   2, // QueryRows[T](ctx, q, sql, args...)
+	"RawQuery":    1, // RawQuery(q, sql, args...)
 	"SQL":         0, // SQL(sql, args...)
 	"TypedSQL":    0, // TypedSQL(sql, args...)
 	"RawSubquery": 0, // RawSubquery(sql, args...)
 }
 
 // Analyzer flags non-constant SQL strings passed to Momo's raw-SQL entry
-// points: momo.Exec, momo.Scalars, momo.MapRows, momo.Query and momo.QueryRows (argument index 2), momo.SQL,
+// points: momo.Exec, momo.Scalars, momo.MapRows, momo.Query and momo.QueryRows (argument index 2), momo.RawQuery (index 1), momo.SQL,
 // momo.TypedSQL and momo.RawSubquery (argument index 0). A string literal, a
 // constant, or an expression of constants is accepted.
 var Analyzer = &analysis.Analyzer{

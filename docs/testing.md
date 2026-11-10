@@ -206,6 +206,86 @@ for PostgreSQL does not build them, and a repository test
 any other build `sqlitetest.New` skips the test, the way `momotest.New` skips
 when the server URL is unset.
 
+## Listing the SQL: a query registry
+
+An application that leaves a code generator such as sqlc loses its `.sql`
+files, which it may lint statically or freeze for compatibility tests against
+the previous release. Momo lists the SQL without a database: register each
+named query as a builder, then ask the registry for the compiled text per
+dialect.
+
+`momo.RegisterQuery(name, build)` adds a query to the process-wide registry
+(`momo.DefaultQueries`); `momo.NewQueryRegistry` makes an isolated one for a
+test. `build` receives a `momo.Querier` that compiles but never executes (see
+`momo.NewOffline`) and returns anything with an `SQL()` method: a `Select`,
+`Insert`, `Update`, `Delete` or `Merge` query, or `momo.RawQuery` for a
+hand-written statement. Registering a name twice panics, naming the query. The
+values you bind in `build` are placeholders and never appear in the listing.
+`Registry.Compile(dialect.Postgres)` returns every query sorted by name with
+the dialect's placeholders (`$1` on PostgreSQL, `?` on MySQL and SQLite).
+
+`momotest.QueryGolden` writes that list to one golden file per dialect and
+fails when a query's SQL changed, a query was added or one was removed. Run the
+tests with `MOMO_UPDATE_GOLDEN=1` to accept an intended change, and review the
+diff in code review. It needs no database, so it runs in a plain `go test`.
+
+To freeze a release for an N-1 compatibility test, copy its golden file to
+`testdata/queries/<release>/postgres.sql`. The program below is the body of
+that test: it reads the previous release's file with `momotest.LoadQueryGolden`
+and prepares every statement against the current schema, so a dropped column or
+table fails the test. `PREPARE` plans a statement without running it, and the
+transaction rolls back at the end.
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/momotest"
+)
+
+func init() {
+	momo.RegisterQuery("open_tasks", func(q momo.Querier) momo.Compilable {
+		return momo.RawQuery(q, "SELECT id, title FROM tasks WHERE owner = $1 AND NOT done", 0)
+	})
+}
+
+func main() {
+	if err := run(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(ctx context.Context) error {
+	previous, err := momotest.LoadQueryGolden("testdata/queries/v1.4/postgres.sql")
+	if err != nil {
+		return err
+	}
+	pool, err := pgxdriver.NewPool(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	db := momo.New(pgxdriver.New(pool))
+
+	return db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		for i, q := range previous {
+			stmt := fmt.Sprintf("PREPARE compat_%d AS %s", i, q.SQL)
+			if _, err := tx.DriverTx().Exec(ctx, stmt, nil); err != nil {
+				return fmt.Errorf("the previous release's query %s fails on the new schema: %w", q.Name, err)
+			}
+		}
+		return nil
+	})
+}
+```
+
 ## Options
 
 | Option                  | Effect                                                                                          |

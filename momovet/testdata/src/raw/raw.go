@@ -24,6 +24,7 @@ func constants(ctx context.Context, db *momo.DB, user string) {
 	momo.MapRows(ctx, db, "SELECT * FROM t WHERE name = ?", user)
 	momo.Query[int](ctx, db, "SELECT id FROM t WHERE name = ?", user)
 	momo.QueryRows[int](ctx, db, "SELECT id FROM t WHERE name = ?", user)
+	momo.RawQuery(db, "SELECT id FROM t WHERE name = ?", user)
 	momo.SQL("x = ?", user)
 	momo.TypedSQL[int]("count(*)")
 	momo.RawSubquery("SELECT 1")
@@ -43,6 +44,8 @@ func concatenated(ctx context.Context, db *momo.DB, user string) {
 	momo.Query[int](ctx, db, "SELECT "+user) // want "non-constant SQL string passed to momo.Query"
 
 	momo.QueryRows[int](ctx, db, "SELECT "+user) // want "non-constant SQL string passed to momo.QueryRows"
+
+	momo.RawQuery(db, "SELECT "+user) // want "non-constant SQL string passed to momo.RawQuery"
 
 	momo.SQL("SELECT " + user) // want "non-constant SQL string passed to momo.SQL"
 

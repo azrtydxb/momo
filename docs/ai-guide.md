@@ -1714,6 +1714,12 @@ Rules:
 Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`.
 
+To list or freeze the SQL an app issues without a database, register named
+builders with `momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)`
+(use `momo.RawQuery` for hand-written SQL), read them with
+`QueryRegistry.Compile(dialect)` and freeze them with `momotest.QueryGolden`
+(`MOMO_UPDATE_GOLDEN=1` rewrites the files; registering a name twice panics).
+
 Use the public kit `github.com/azrtydxb/momo/momotest` (see
 [testing.md](testing.md)):
 
