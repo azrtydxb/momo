@@ -128,21 +128,21 @@ func openRaw[T any, PT Modeler[T]](ctx context.Context, q Querier, sql string, a
 	var names []string
 	if cn, ok := r.(ColumnNamer); ok {
 		if names, err = cn.Columns(); err != nil {
-			abortRows(r, err)
+			abortRawRows(r, err)
 			return nil, nil, err
 		}
 	}
 	sc, err := newRawScan(meta, names)
 	if err != nil {
-		abortRows(r, err)
+		abortRawRows(r, err)
 		return nil, nil, err
 	}
 	return r, sc, nil
 }
 
-// abortRows closes r after a failure that happened before any row was read.
+// abortRawRows closes r after a failure that happened before any row was read.
 // Rows opened under a hook report err to AfterQuery; a plain cursor is closed.
-func abortRows(r Rows, err error) {
+func abortRawRows(r Rows, err error) {
 	if h, ok := r.(*hookedRows); ok {
 		h.abort(err)
 		return
