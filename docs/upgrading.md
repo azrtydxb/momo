@@ -5,6 +5,20 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Regenerating with `--from-db` after the `dbdefault` tag
+
+`momo generate --from-db` now adds the `dbdefault` tag to every NOT NULL
+PostgreSQL column whose default is computed (`gen_random_uuid()`, `now()`,
+`CURRENT_TIMESTAMP`, `nextval(...)` and other function calls). A Go zero value
+is no longer written for such a column: `InsertQuery.Model` and `InsertQuery.Models` leave it out,
+the database default applies, and the value is read back with `RETURNING`.
+Review the regenerated models: a `bool`, number, empty string or zero time in
+such a field can no longer be written explicitly through `Model` (use `Values`
+or remove the tag), and a plain MySQL database refuses a zero value with
+`ErrUnsupported` because it cannot read the default back. Hand-written models
+are unaffected until they add the tag. See "Database defaults" in the
+[AI guide](ai-guide.md).
+
 ## Unreleased: advisory string helpers take options
 
 `advisory.XactLockString` and `advisory.TryXactLockString` take a trailing

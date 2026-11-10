@@ -110,7 +110,7 @@ func TestGenerateFromDB(t *testing.T) {
 		`momo:"pk,identity"`,
 		`momo:"size:200,unique"`,
 		"time.Time",
-		`momo:"default:now()"`,
+		`momo:"default:now(),dbdefault"`,
 		`momo:"enum:user_role"`,
 		"nullable",
 		`momo:"precision:10,scale:2"`,
@@ -535,5 +535,50 @@ func TestGenerateFromDBHostileNames(t *testing.T) {
 		if err != nil || res.Failed() != c.fail {
 			t.Errorf("%s in a column name: failed = %v, want %v (%v %v)", name, res.Failed(), c.fail, err, res.Findings)
 		}
+	}
+}
+
+// Catches: dbdefault written for a constant default (a needless RETURNING on
+// every insert), for a nullable column (nil would stop meaning NULL) or next
+// to a tag that already owns the column.
+func TestDBDefaultFits(t *testing.T) {
+	cases := []struct {
+		name string
+		col  schema.Column
+		opts []string
+		want bool
+	}{
+		{"function default", schema.Column{Default: "gen_random_uuid()"}, nil, true},
+		{"now", schema.Column{Default: "now()"}, nil, true},
+		{"current timestamp", schema.Column{Default: "CURRENT_TIMESTAMP"}, nil, true},
+		{"expression", schema.Column{Default: "(now() AT TIME ZONE 'utc'::text)"}, nil, true},
+		{"literal", schema.Column{Default: "'draft'::text"}, nil, false},
+		{"number", schema.Column{Default: "0"}, nil, false},
+		{"bool", schema.Column{Default: "false"}, nil, false},
+		{"no default", schema.Column{}, nil, false},
+		{"nullable", schema.Column{Default: "now()", Nullable: true}, nil, false},
+		{"identity", schema.Column{Default: "now()", Identity: "serial"}, nil, false},
+		{"read only rule", schema.Column{Default: "now()"}, []string{"default:now()", "read_only"}, false},
+		{"sequence default without identity", schema.Column{Default: "nextval('seq_n'::regclass)"}, nil, true},
+		{"created_at rule", schema.Column{Default: "now()"}, []string{"created_at"}, false},
+	}
+	for _, c := range cases {
+		if got := dbDefaultFits(dialect.Postgres, &c.col, c.opts); got != c.want {
+			t.Errorf("%s: dbDefaultFits = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// Catches: --from-db tagging a MySQL, MariaDB or SQLite default, where a zero
+// value would then fail (MySQL has no RETURNING) or be read back differently.
+func TestDBDefaultFitsOnlyOnPostgres(t *testing.T) {
+	col := schema.Column{Default: "CURRENT_TIMESTAMP"}
+	for _, d := range []dialect.Name{dialect.MySQL, dialect.SQLite} {
+		if dbDefaultFits(d, &col, nil) {
+			t.Errorf("%s: dbdefault must not be emitted", d)
+		}
+	}
+	if !dbDefaultFits(dialect.Postgres, &col, nil) {
+		t.Error("postgres: dbdefault expected")
 	}
 }

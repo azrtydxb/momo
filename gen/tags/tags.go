@@ -39,6 +39,10 @@ type Tags struct {
 	ReadOnly, CreateOnly, Immutable, Sensitive, Embedded                   bool
 	NoConstraint, BelongsTo, HasOne, HasMany, ManyToMany                   bool
 	Index, Unique                                                          bool
+
+	// DBDefault is the dbdefault option: a Model insert leaves the column to
+	// the database default while the field holds its zero value.
+	DBDefault bool
 }
 
 // Parse parses a raw tag value. An empty tag yields the zero Tags and no
@@ -154,6 +158,8 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return ""
 	case "serial":
 		return bare(&t.Serial)
+	case "dbdefault":
+		return bare(&t.DBDefault)
 	case "version":
 		return bare(&t.Version)
 	case "notnull":

@@ -295,6 +295,7 @@ Tag reference (all lower case):
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                         |
 | `idgen:<name>`                                                            | client-generated string id (`cuid`, `uuid`, `ulid` or a name registered with `WithIDGenerator`); filled on insert when the field is empty                                                                                                             |
+| `dbdefault`                                                               | leave the column to the database default while the field holds its zero value: a `Model`/`Models` insert omits it and reads the stored value back (see Database defaults)                                                                             |
 | `version`                                                                 | optimistic-lock column (integer type)                                                                                                                                                                                                                 |
 | `created_at[:unix\|unixmilli\|unixnano]`, `updated_at`                    | automatic timestamps; field type `time.Time`, `*time.Time`, `int64` or `*int64`                                                                                                                                                                       |
 | `soft_delete:timestamp\|unix\|bool`                                       | soft-delete marker; Go type `*time.Time`, `*int64` or `bool`                                                                                                                                                                                          |
@@ -501,6 +502,85 @@ func (n *Note) MomoConfig(c *momo.Config) { c.IDGen(&n.ID, "ulid") }
   function fails the insert with `ErrValidation`. The `ulid` generator does the
   same in the unlikely case that it runs out of ids within one millisecond.
 - The tag adds no database default: the column stays `text primary key`.
+
+### Database defaults
+
+`InsertQuery.Model` writes every writable column, so a column with
+`DEFAULT gen_random_uuid()` or `DEFAULT now()` is overwritten by the Go zero
+value. Tag the field `dbdefault` to leave it to the database instead:
+
+```go
+package main
+
+import (
+	"time"
+
+	"github.com/azrtydxb/momo"
+)
+
+func main() {}
+
+type Event struct {
+	momo.Model `momo:"table:events"`
+	ID         string    `momo:"pk,type:uuid,default:gen_random_uuid(),dbdefault"`
+	Title      string
+	OccurredAt time.Time `momo:"default:now(),dbdefault"`
+}
+```
+
+- When the field holds its zero value (the Go zero value, a nil pointer, or a
+  value whose `IsZero` method reports true, such as `time.Time{}`), `Model` and
+  `Models` leave the column out of the INSERT, so the database default applies,
+  and `Exec` reads the stored value back with `RETURNING` into the struct you
+  passed (the slice element for `Models`) once the statement has committed. A
+  non-zero value is written as given. A pointer to a zero value counts as set.
+- `Models` with a mix of zero and set rows writes `DEFAULT` for the zero rows
+  (PostgreSQL). SQLite cannot put `DEFAULT` in a multi-row VALUES list, and
+  `Unnest` and `Copy` have no per-row default, so they fail with `ErrUnsupported`
+  for such a mix: insert the rows separately or give every row a value. A
+  column that is zero in every row simply leaves the column list. `Copy` has
+  no `RETURNING` to read the value back, so it refuses a zero dbdefault column
+  with `ErrUnsupported`: set a value, or use `Models`.
+- MySQL has no `RETURNING`, so a zero dbdefault column fails with
+  `ErrUnsupported` there instead of leaving the struct stale: set the value, or
+  leave it out with `Omit` and read it yourself. MariaDB and SQLite read it
+  back with `RETURNING`.
+- Your own `Returning` list turns the automatic read-back off; `Rows` returns
+  the columns you named. A single `Model` that a conflict action skips
+  (`DoNothing`) returns no row: `Exec` reports 0 rows affected and leaves the
+  model as it was. A bulk `Models` insert that returns fewer rows than models
+  (a conflict action, a trigger or a rule dropped some) is matched by key when
+  it can be: the key is the conflict target, else the primary key, it must be
+  written from the model (not omitted, identity or read-only) and must not be a
+  `dbdefault` column that is zero in some row. The key is then added to the
+  `RETURNING` list, the returned rows are written back by key and the other
+  models stay untouched; the insert fails only when the conflict action is
+  `DoNothing` and a skipped model still has a `dbdefault` column unread. When
+  the rows cannot be matched by key the insert fails with `ErrUnsupported`
+  ("returned N rows for M models"), rolls back and writes nothing back: give
+  the columns a value, or use `Returning` and `Rows`. Inside a caller's `Tx`
+  the rollback is to a savepoint, not the caller's transaction, which stays
+  open. A pinned `OnConn` handle cannot roll back: it returns the same error,
+  says the returned rows were stored, and writes nothing back. The
+  conflict-target column of an insert that also uses an id generator cannot be
+  a `dbdefault` column that is zero in some row (`ErrValidation`). The
+  default `DO UPDATE` set of `Upsert` leaves a dbdefault column out when a row
+  leaves it to the database, so a conflict keeps the stored value.
+- The zero value means "use the default". On a `bool` or numeric column that
+  means `false` and `0` can never be written explicitly through `Model`: a
+  `dbdefault` field with `DEFAULT true` always stores true when it is `false`
+  in Go. Write such a value with `Values`, or do not tag the column. The same
+  holds for an empty string and a zero time. A pointer or nullable field is
+  refused by the generator, because nil would stop meaning NULL; write NULL
+  with `Values` and `SetNull`. `Omit` still wins: an omitted column is not
+  written, and a Go-side default hook still fills it.
+- `dbdefault` cannot be combined with `identity`, `serial`, `idgen`,
+  `read_only`, `version`, `soft_delete`, `created_at` or `updated_at`; the
+  generator reports it. It adds no database default (use `default:`), and
+  `momo generate --from-db` writes it for NOT NULL PostgreSQL columns whose
+  default is computed (a function call, `CURRENT_TIMESTAMP`, or a `nextval`
+  sequence on a column that is not identity or serial). It never writes it for
+  other dialects: plain MySQL cannot read the value back.
 
 ### Projections
 

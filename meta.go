@@ -34,6 +34,10 @@ const (
 	FlagSensitive
 	FlagCreatedAt
 	FlagUpdatedAt
+	// FlagDBDefault: a Model or Models insert leaves the column out when the
+	// field holds its zero value, so the database default applies, and reads
+	// the stored value back. Set by the dbdefault tag.
+	FlagDBDefault
 )
 
 // ColumnMeta describes one mapped field.
