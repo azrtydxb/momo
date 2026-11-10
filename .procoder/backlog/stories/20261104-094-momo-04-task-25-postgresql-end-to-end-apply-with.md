@@ -1,6 +1,6 @@
 # momo-04 Task 25: PostgreSQL end-to-end apply with the history contract
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each

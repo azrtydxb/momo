@@ -1,6 +1,6 @@
 # momo-11 Task 5: `momo import gorm|bun|ent` command
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-11-adoption
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
