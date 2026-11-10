@@ -106,7 +106,12 @@ func (o *pluginOptions) ops() apiquery.Ops {
 		if ops == nil {
 			ops = apiquery.Ops{}
 		}
-		if _, set := ops[apiquery.DefaultModel]; !set {
+		if _, set := ops[apiquery.DefaultModel]; set {
+			// A list in ops is the "*" entry. Either could make the other
+			// false: read_only: true with a list that offers create would
+			// leave every model writable.
+			o.fail("options \"read_only\" and \"ops\" of plugin %q both set the operations of every model: use one of them, or name models in ops", o.plugin)
+		} else {
 			for _, op := range apiquery.ReadOnlyOps {
 				ops[apiquery.DefaultModel] = append(ops[apiquery.DefaultModel], string(op))
 			}

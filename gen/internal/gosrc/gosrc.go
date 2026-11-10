@@ -125,17 +125,31 @@ var PkgName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // unreserved characters, each behind a slash and none of them dot-only.
 var BasePath = regexp.MustCompile(`^(/[A-Za-z0-9_~-][A-Za-z0-9._~-]*)*$`)
 
+// TemplateLocals are the names the generated functions use for their own
+// variables and parameters. An import alias with one of these names would be
+// shadowed inside the function, so Aliases never hands them out.
+var TemplateLocals = []string{
+	"ctx", "err", "ok", "id", "m", "in", "out", "q", "r", "w", "h", "s", "d", "p", "c", "f", "i", "k", "v",
+	"req", "resp", "res", "rows", "row", "sel", "ins", "upd", "sets", "keys", "data", "limit", "next", "items",
+	"names", "name", "col", "after", "filter", "order", "first", "conn", "cursor", "loaders", "fields", "grp",
+	"total", "orderCol", "desc", "vals", "cols", "ps", "all",
+}
+
 // Aliases allocates import aliases for generated code. It starts from the
 // aliases the generator's own code uses, so a model package named like one of
 // them gets a numbered alias instead of redeclaring it.
 type Aliases struct {
-	imports map[string]string // alias -> path
-	byPath  map[string]string // path -> alias
+	imports  map[string]string // alias -> path
+	byPath   map[string]string // path -> alias
+	reserved map[string]bool
 }
 
 // NewAliases returns an allocator that already holds fixed (alias to path).
 func NewAliases(fixed map[string]string) *Aliases {
-	a := &Aliases{imports: maps.Clone(fixed), byPath: map[string]string{}}
+	a := &Aliases{imports: maps.Clone(fixed), byPath: map[string]string{}, reserved: map[string]bool{}}
+	for _, n := range TemplateLocals {
+		a.reserved[n] = true
+	}
 	for alias, path := range fixed {
 		a.byPath[path] = alias
 	}
@@ -149,7 +163,7 @@ func (a *Aliases) Alias(path, want string) string {
 		return alias
 	}
 	alias := want
-	for n := 2; a.imports[alias] != ""; n++ {
+	for n := 2; a.imports[alias] != "" || a.reserved[alias]; n++ {
 		alias = want + strconv.Itoa(n)
 	}
 	a.imports[alias] = path

@@ -38,6 +38,9 @@ type hfield struct {
 	settable bool
 	// defaulted is set for a column the database fills in when it is omitted.
 	defaulted bool
+	// updatable is set for a column a PUT can assign: writable, and none of the
+	// version, soft-delete and timestamp columns momo owns.
+	updatable bool
 }
 
 type hmodel struct {
@@ -79,6 +82,8 @@ func handlerFields(g *gen.Graph, m *gen.Model) ([]hfield, []gen.Diagnostic) {
 				required:  requiredOnWrite(f, isPK),
 				settable:  !isPK && !f.Tags.Identity && !f.Tags.Serial && f.Access != gen.ReadOnly,
 				defaulted: f.Tags.Default != "",
+				updatable: !isPK && !f.Tags.Identity && !f.Tags.Serial && f.Access == gen.Writable &&
+					!f.Tags.Version && f.Tags.SoftDelete == "" && !f.Tags.CreatedAt && !f.Tags.UpdatedAt,
 			})
 		}
 	}
@@ -264,9 +269,16 @@ func decodeDTO(w http.ResponseWriter, data []byte, v any) bool {
 	return true
 }
 
-// checkKeys answers 400 when a required property is missing or a not-null
-// property is null.
-func checkKeys(w http.ResponseWriter, keys map[string]json.RawMessage, required []string, notNull map[string]bool) bool {
+// checkKeys answers 400 when a key is not exactly the name of a property (the
+// JSON decoder would match "Title" to "title", and the value would then be
+// ignored), a required property is missing or a not-null property is null.
+func checkKeys(w http.ResponseWriter, keys map[string]json.RawMessage, known map[string]bool, required []string, notNull map[string]bool) bool {
+	for k := range keys {
+		if !known[k] {
+			badRequest(w, "unknown property")
+			return false
+		}
+	}
 	for _, k := range required {
 		if _, ok := keys[k]; !ok {
 			badRequest(w, "missing required property "+k)
@@ -359,7 +371,9 @@ func dto{{M}}From(m *{{models}}.{{M}}) dto{{M}} {
 	if write {
 		var required []string
 		var notNull []string
+		known := ""
 		for _, f := range hm.fields {
+			known += "\t\"" + f.f.Column + "\": true,\n"
 			if f.required {
 				required = append(required, `"`+f.f.Column+`"`)
 			}
@@ -368,6 +382,10 @@ func dto{{M}}From(m *{{models}}.{{M}}) dto{{M}} {
 			}
 		}
 		b.WriteString(r.Replace(`
+// {{lm}}Columns are the properties of a {{M}}, by their exact names.
+var {{lm}}Columns = map[string]bool{
+` + known + `}
+
 // {{lm}}Required lists the properties a write must carry: not null, not filled
 // in by the database.
 var {{lm}}Required = []string{` + strings.Join(required, ", ") + `}
@@ -490,7 +508,7 @@ func (h *{{M}}Handler) get(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(r.Replace(`
 func (h *{{M}}Handler) create(w http.ResponseWriter, r *http.Request) {
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, {{lm}}Required, {{lm}}NotNull) {
+	if !ok || !checkKeys(w, keys, {{lm}}Columns, {{lm}}Required, {{lm}}NotNull) {
 		return
 	}
 	var in dto{{M}}
@@ -543,7 +561,7 @@ func (h *{{M}}Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, {{lm}}Required, {{lm}}NotNull) {
+	if !ok || !checkKeys(w, keys, {{lm}}Columns, {{lm}}Required, {{lm}}NotNull) {
 		return
 	}
 	var in dto{{M}}
@@ -551,23 +569,31 @@ func (h *{{M}}Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	m, err := momo.Select[{{models}}.{{M}}](h.DB).Where({{desc}}.{{PKI}}.Eq(id)).One(ctx)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	in.apply(&m, keys)
-	m.{{PK}} = id
-	upd := momo.Update[{{models}}.{{M}}](h.DB).Model(&m)
+	// Only the properties the request carried are written, in one statement:
+	// reading the row, merging and writing every column back would undo a
+	// concurrent change of a column the request did not mention.
+	var sets []momo.Assignment
 `))
 		for _, f := range hm.fields {
-			if f.emptyVec {
-				b.WriteString(r.Replace("\tif len(m." + f.f.GoName + ") == 0 {\n\t\tupd = upd.Set({{desc}}." + f.ident + ".SetDefault())\n\t}\n"))
+			if !f.updatable {
+				continue
 			}
+			var set string
+			switch {
+			case f.emptyVec:
+				set = "if len(in." + f.f.GoName + ") == 0 {\n\t\t\tsets = append(sets, {{desc}}." + f.ident + ".SetDefault())\n\t\t} else {\n\t\t\tsets = append(sets, {{desc}}." + f.ident + ".Set(in." + f.f.GoName + "))\n\t\t}"
+			case strings.HasPrefix(f.f.GoType, "*"):
+				set = "if in." + f.f.GoName + " == nil {\n\t\t\tsets = append(sets, {{desc}}." + f.ident + ".SetNull())\n\t\t} else {\n\t\t\tsets = append(sets, {{desc}}." + f.ident + ".Set(*in." + f.f.GoName + "))\n\t\t}"
+			default:
+				set = "sets = append(sets, {{desc}}." + f.ident + ".Set(in." + f.f.GoName + "))"
+			}
+			b.WriteString(r.Replace("\tif _, ok := keys[\"" + f.f.Column + "\"]; ok {\n\t\t" + set + "\n\t}\n"))
 		}
-		b.WriteString(r.Replace(`	if _, err := upd.Exec(ctx); err != nil {
-		writeError(w, err)
-		return
+		b.WriteString(r.Replace(`	if len(sets) > 0 {
+		if _, err := momo.Update[{{models}}.{{M}}](h.DB).Where({{desc}}.{{PKI}}.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	out, err := momo.Select[{{models}}.{{M}}](h.DB).Where({{desc}}.{{PKI}}.Eq(id)).One(ctx)
 	if err != nil {

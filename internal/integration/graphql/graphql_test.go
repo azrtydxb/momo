@@ -154,7 +154,7 @@ func TestGraphQLGenerator(t *testing.T) {
 	c := &counter{}
 	db := openDB(t, c)
 	exec := generated.NewExecutableSchema(generated.Config{Resolvers: &graph.Resolver{DB: db}})
-	srv := httptest.NewServer(model.NewServer(exec))
+	srv := httptest.NewServer(model.NewHandler(exec))
 	t.Cleanup(srv.Close)
 
 	// 3. batched relations: the statement count does not grow with the page size
@@ -208,12 +208,12 @@ func TestGraphQLGenerator(t *testing.T) {
 	if _, errs = postRaw(t, srv.URL, `query { documents(filter: `+nested+`) { edges { cursor } } }`); len(errs) != 1 || !strings.Contains(errs[0], "nested too deep") {
 		t.Fatalf("a filter nested over the limit: %v", errs)
 	}
-	shallow := httptest.NewServer(model.NewServerWithLimits(exec, model.Limits{MaxDepth: 3, MaxComplexity: 500}))
+	shallow := httptest.NewServer(model.NewHandlerWithLimits(exec, model.Limits{MaxDepth: 3, MaxComplexity: 500}))
 	t.Cleanup(shallow.Close)
 	if _, errs = postRaw(t, shallow.URL, fmt.Sprintf(pageQuery, 2, "")); len(errs) != 1 || !strings.Contains(errs[0], "too deep") {
 		t.Fatalf("a query deeper than MaxDepth: %v", errs)
 	}
-	cheap := httptest.NewServer(model.NewServerWithLimits(exec, model.Limits{MaxDepth: 8, MaxComplexity: 5}))
+	cheap := httptest.NewServer(model.NewHandlerWithLimits(exec, model.Limits{MaxDepth: 8, MaxComplexity: 5}))
 	t.Cleanup(cheap.Close)
 	if _, errs = postRaw(t, cheap.URL, fmt.Sprintf(pageQuery, 2, "")); len(errs) != 1 || !strings.Contains(strings.ToLower(errs[0]), "complex") {
 		t.Fatalf("a query dearer than MaxComplexity: %v", errs)
@@ -229,6 +229,18 @@ func TestGraphQLGenerator(t *testing.T) {
 	_, errs = postRaw(t, srv.URL, `query { documents(first: 5) { edges { node { id a: comments { id } b: comments { body } } } } }`)
 	if len(errs) != 0 {
 		t.Fatalf("two aliases of one relation on a small page: %v", errs)
+	}
+
+	// a request body over MaxRequestBytes is refused
+	big, err := http.Post(srv.URL, "application/json", strings.NewReader(`{"query":"query { documents { edges { cursor } } }","pad":"`+strings.Repeat("a", 2<<20)+`"}`)) // #nosec G107 -- the URL of the test server
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := big.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if big.StatusCode < 400 {
+		t.Fatalf("a request over the size limit got status %d", big.StatusCode)
 	}
 
 	// 6. a database error reaches the client as a fixed message

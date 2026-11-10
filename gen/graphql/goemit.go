@@ -226,7 +226,7 @@ func analyzeGo(g *gen.Graph, modelsPackage string) ([]gmodel, []gen.Diagnostic) 
 // glueImports are the import aliases the glue's own code uses.
 var glueImports = map[string]string{
 	"context": "context", "json": "encoding/json", "errors": "errors", "fmt": "fmt", "io": "io",
-	"strconv": "strconv", "time": "time", "slices": "slices",
+	"strconv": "strconv", "time": "time", "slices": "slices", "http": "net/http", "strings": "strings",
 	"momo":      "github.com/azrtydxb/momo",
 	"apiquery":  "github.com/azrtydxb/momo/gen/apiquery",
 	"graphql":   "github.com/99designs/gqlgen/graphql",
@@ -310,6 +310,13 @@ const (
 	// MaxRelationRows is the most rows a to-many relation returns per parent;
 	// the rows are the first ones by primary key.
 	MaxRelationRows = 100
+	// MaxPreloadRows bounds, per request, the rows the selected relations could
+	// load: the page size times the rows each parent could have, level by
+	// level (a to-many relation counts MaxRelationRows). A request whose worst
+	// case is above it is refused before any statement runs.
+	MaxPreloadRows = 10000
+	// MaxRequestBytes is the largest request body NewHandler reads.
+	MaxRequestBytes = 1 << 20
 )
 
 // Limits bound one request.
@@ -324,7 +331,8 @@ type Limits struct {
 var DefaultLimits = Limits{MaxDepth: 8, MaxComplexity: 500}
 
 // NewServer returns the gqlgen server of es with DefaultLimits and an error
-// presenter that never shows a database error to the client. Use it, not
+// presenter that never shows a database error to the client. Use NewHandler,
+// which also limits the size of a request, or this, never
 // handler.NewDefaultServer, to serve the generated schema.
 func NewServer(es graphql.ExecutableSchema) *handler.Server {
 	return NewServerWithLimits(es, DefaultLimits)
@@ -339,15 +347,34 @@ func NewServerWithLimits(es graphql.ExecutableSchema, l Limits) *handler.Server 
 	return srv
 }
 
+// NewHandler returns NewServer behind an http.MaxBytesReader of MaxRequestBytes.
+// Serve the schema with it, not with the bare server.
+func NewHandler(es graphql.ExecutableSchema) http.Handler {
+	return NewHandlerWithLimits(es, DefaultLimits)
+}
+
+// NewHandlerWithLimits is NewHandler with other limits.
+func NewHandlerWithLimits(es graphql.ExecutableSchema, l Limits) http.Handler {
+	srv := NewServerWithLimits(es, l)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBytes)
+		srv.ServeHTTP(w, r)
+	})
+}
+
 // depthLimit is a gqlgen extension that refuses a query nested deeper than its
-// value.
+// value. An introspection query (every top-level field starts with two
+// underscores) is exempt from the depth limit, because the standard
+// introspection query is deeper than a sensible limit; it still counts toward
+// MaxComplexity.
 type depthLimit int
 
 func (depthLimit) ExtensionName() string                  { return "DepthLimit" }
 func (depthLimit) Validate(graphql.ExecutableSchema) error { return nil }
 
 func (d depthLimit) InterceptOperation(ctx context.Context, next graphql.OperationHandler) graphql.ResponseHandler {
-	if oc := graphql.GetOperationContext(ctx); oc != nil && oc.Operation != nil && selectionDepth(oc.Operation.SelectionSet) > int(d) {
+	if oc := graphql.GetOperationContext(ctx); oc != nil && oc.Operation != nil && !onlyIntrospection(oc.Operation.SelectionSet) &&
+		selectionDepth(oc.Operation.SelectionSet, map[string]int{}) > int(d) {
 		return func(ctx context.Context) *graphql.Response {
 			return graphql.ErrorResponse(ctx, "query is too deep: at most %d levels", int(d))
 		}
@@ -355,18 +382,40 @@ func (d depthLimit) InterceptOperation(ctx context.Context, next graphql.Operati
 	return next(ctx)
 }
 
-func selectionDepth(set ast.SelectionSet) int {
+// onlyIntrospection reports whether every top-level field of set is an
+// introspection field.
+func onlyIntrospection(set ast.SelectionSet) bool {
+	if len(set) == 0 {
+		return false
+	}
+	for _, sel := range set {
+		f, ok := sel.(*ast.Field)
+		if !ok || !strings.HasPrefix(f.Name, "__") {
+			return false
+		}
+	}
+	return true
+}
+
+// selectionDepth is the depth of set. memo holds the depth of each fragment
+// already measured, so a fragment spread many times is measured once.
+func selectionDepth(set ast.SelectionSet, memo map[string]int) int {
 	deepest := 0
 	for _, sel := range set {
 		d := 0
 		switch s := sel.(type) {
 		case *ast.Field:
-			d = 1 + selectionDepth(s.SelectionSet)
+			d = 1 + selectionDepth(s.SelectionSet, memo)
 		case *ast.InlineFragment:
-			d = selectionDepth(s.SelectionSet)
+			d = selectionDepth(s.SelectionSet, memo)
 		case *ast.FragmentSpread:
 			if s.Definition != nil {
-				d = selectionDepth(s.Definition.SelectionSet)
+				if known, ok := memo[s.Name]; ok {
+					d = known
+				} else {
+					d = selectionDepth(s.Definition.SelectionSet, memo)
+					memo[s.Name] = d
+				}
 			}
 		}
 		deepest = max(deepest, d)
@@ -385,12 +434,20 @@ func invalid(msg string) error { return &InputError{Msg: msg} }
 // presentError shows the client a fixed message for an error of the database,
 // which would otherwise name the operation, the table and the constraint. The
 // errors of gqlgen itself (parse, validation, complexity) and InputError keep
-// their text.
+// their text; every other error, wrapped or not, is mapped by its sentinel.
 func presentError(ctx context.Context, err error) *gqlerror.Error {
 	out := graphql.DefaultErrorPresenter(ctx, err)
 	var input *InputError
 	var gqlErr *gqlerror.Error
-	if errors.As(err, &input) || errors.As(err, &gqlErr) {
+	// An error of gqlgen itself (parse, validation, complexity) is a gqlerror
+	// with no cause, and its text is for the client. An error of a resolver is
+	// wrapped in a gqlerror whose message is the text of its cause, which names
+	// the table and the constraint: it is mapped below, never passed through.
+	if errors.As(err, &gqlErr) && gqlErr.Err == nil {
+		return out
+	}
+	if errors.As(err, &input) {
+		out.Message = input.Msg
 		return out
 	}
 	code, msg := "INTERNAL", "internal error"
@@ -508,8 +565,9 @@ func parseOrder(columns map[string]string, field, direction string) (col string,
 }
 
 // fieldsAt returns the fields the request selects below the field being
-// resolved, following path. Outside a gqlgen request it returns nil, so no
-// relation is loaded.
+// resolved, following path. Every field of a name on the path counts, aliases
+// included, so their selections are merged. Outside a gqlgen request it returns
+// nil, so no relation is loaded.
 func fieldsAt(ctx context.Context, path ...string) []graphql.CollectedField {
 	fc := graphql.GetFieldContext(ctx)
 	if fc == nil {
@@ -518,13 +576,49 @@ func fieldsAt(ctx context.Context, path ...string) []graphql.CollectedField {
 	oc := graphql.GetOperationContext(ctx)
 	fields := graphql.CollectFields(oc, fc.Field.Selections, nil)
 	for _, name := range path {
-		i := slices.IndexFunc(fields, func(f graphql.CollectedField) bool { return f.Name == name })
-		if i < 0 {
+		var next []graphql.CollectedField
+		for _, f := range fields {
+			if f.Name == name {
+				next = append(next, graphql.CollectFields(oc, f.Selections, nil)...)
+			}
+		}
+		if next == nil {
 			return nil
 		}
-		fields = graphql.CollectFields(oc, fields[i].Selections, nil)
+		fields = next
 	}
 	return fields
+}
+
+// fieldGroup is every selection of one field name, with the sub-selections of
+// all of them: a: posts { id } b: posts { comments { id } } is one group.
+type fieldGroup struct {
+	Name string
+	Subs []graphql.CollectedField
+}
+
+// groupFields groups fields by name, in the order of first appearance.
+func groupFields(ctx context.Context, fields []graphql.CollectedField) []fieldGroup {
+	var groups []fieldGroup
+	for _, f := range fields {
+		subs := subFields(ctx, f)
+		i := slices.IndexFunc(groups, func(g fieldGroup) bool { return g.Name == f.Name })
+		if i < 0 {
+			groups = append(groups, fieldGroup{Name: f.Name, Subs: subs})
+			continue
+		}
+		groups[i].Subs = append(groups[i].Subs, subs...)
+	}
+	return groups
+}
+
+// checkPreloadBudget refuses a request whose selected relations could load more
+// than MaxPreloadRows: rows parents, each with perRow relation rows at most.
+func checkPreloadBudget(rows, perRow int) error {
+	if perRow > 0 && rows*perRow > MaxPreloadRows {
+		return invalid("the selected relations could load too many rows; ask for fewer rows or fewer nested relations")
+	}
+	return nil
 }
 
 // subFields returns the fields the request selects below f.
@@ -811,13 +905,8 @@ func {{lm}}Loaders(ctx context.Context, fields []graphql.CollectedField) []momo.
 		b.WriteString("\treturn nil\n}\n\n")
 	} else {
 		b.WriteString(r.Replace(`	var loaders []momo.Loader[{{models}}.{{M}}]
-	seen := map[string]bool{}
-	for _, f := range fields {
-		if seen[f.Name] {
-			continue
-		}
-		seen[f.Name] = true
-		switch f.Name {
+	for _, grp := range groupFields(ctx, fields) {
+		switch grp.Name {
 `))
 		for _, rel := range gm.rels {
 			t := all[rel.target]
@@ -825,9 +914,28 @@ func {{lm}}Loaders(ctx context.Context, fields []graphql.CollectedField) []momo.
 			if rel.r.Kind == gen.HasMany || rel.r.Kind == gen.ManyToMany {
 				opts = "momo.LoadOrderBy[" + t.modelAlias + "." + t.m.GoName + "](" + t.descAlias + "." + t.pkIdent + ".Asc()), momo.LoadPerParentLimit[" + t.modelAlias + "." + t.m.GoName + "](MaxRelationRows)"
 			}
-			b.WriteString(r.Replace("\tcase " + strconv.Quote(gosrc.LowerFirst(rel.r.GoName)) + ":\n\t\t\tloaders = append(loaders, {{desc}}." + rel.ident + ".Scope(" + opts + ").Then(" + gosrc.LowerFirst(t.m.GoName) + "Loaders(ctx, subFields(ctx, f))...))\n"))
+			b.WriteString(r.Replace("\tcase " + strconv.Quote(gosrc.LowerFirst(rel.r.GoName)) + ":\n\t\t\tloaders = append(loaders, {{desc}}." + rel.ident + ".Scope(" + opts + ").Then(" + gosrc.LowerFirst(t.m.GoName) + "Loaders(ctx, grp.Subs)...))\n"))
 		}
 		b.WriteString("\t\t}\n\t}\n\treturn loaders\n}\n\n")
+	}
+
+	b.WriteString(r.Replace(`// {{lm}}Cost is the most rows the relations selected on one {{M}} could load,
+// nested as deep as the request goes: a to-many relation counts MaxRelationRows.
+func {{lm}}Cost(ctx context.Context, fields []graphql.CollectedField) int {
+`))
+	if len(gm.rels) == 0 {
+		b.WriteString("\treturn 0\n}\n\n")
+	} else {
+		b.WriteString("\ttotal := 0\n\tfor _, grp := range groupFields(ctx, fields) {\n\t\tswitch grp.Name {\n")
+		for _, rel := range gm.rels {
+			t := all[rel.target]
+			mult := "1"
+			if rel.r.Kind == gen.HasMany || rel.r.Kind == gen.ManyToMany {
+				mult = "MaxRelationRows"
+			}
+			b.WriteString("\t\tcase " + strconv.Quote(gosrc.LowerFirst(rel.r.GoName)) + ":\n\t\t\ttotal += " + mult + " * (1 + " + gosrc.LowerFirst(t.m.GoName) + "Cost(ctx, grp.Subs))\n")
+		}
+		b.WriteString("\t\t}\n\t}\n\treturn total\n}\n\n")
 	}
 
 	b.WriteString(r.Replace(`
@@ -944,7 +1052,7 @@ func List{{Plural}}(ctx context.Context, q momo.Querier, first *int, after *stri
 	}
 `))
 	if len(gm.rels) > 0 {
-		b.WriteString(r.Replace("\tif loaders := {{lm}}Loaders(ctx, fieldsAt(ctx, \"edges\", \"node\")); len(loaders) > 0 {\n\t\tsel = sel.Preload(loaders...)\n\t}\n"))
+		b.WriteString(r.Replace("\tif err := checkPreloadBudget(limit, {{lm}}Cost(ctx, fieldsAt(ctx, \"edges\", \"node\"))); err != nil {\n\t\treturn nil, err\n\t}\n\tif loaders := {{lm}}Loaders(ctx, fieldsAt(ctx, \"edges\", \"node\")); len(loaders) > 0 {\n\t\tsel = sel.Preload(loaders...)\n\t}\n"))
 	}
 	b.WriteString(r.Replace(`	rows, err := sel.All(ctx)
 	if err != nil {
@@ -972,7 +1080,7 @@ func Get{{M}}(ctx context.Context, q momo.Querier, id int64) (*{{models}}.{{M}},
 	sel := momo.Select[{{models}}.{{M}}](q).Where({{desc}}.{{PKI}}.Eq(id))
 `))
 	if len(gm.rels) > 0 {
-		b.WriteString(r.Replace("\tif loaders := {{lm}}Loaders(ctx, fieldsAt(ctx)); len(loaders) > 0 {\n\t\tsel = sel.Preload(loaders...)\n\t}\n"))
+		b.WriteString(r.Replace("\tif err := checkPreloadBudget(1, {{lm}}Cost(ctx, fieldsAt(ctx))); err != nil {\n\t\treturn nil, err\n\t}\n\tif loaders := {{lm}}Loaders(ctx, fieldsAt(ctx)); len(loaders) > 0 {\n\t\tsel = sel.Preload(loaders...)\n\t}\n"))
 	}
 	b.WriteString(r.Replace(`	row, err := sel.One(ctx)
 	if errors.Is(err, momo.ErrNotFound) {
@@ -1051,8 +1159,8 @@ func resolverScaffold(ms []gmodel, pkg, importPath string) (root, queries []byte
 import "github.com/azrtydxb/momo"
 
 // Resolver is the root resolver. It is yours to edit: momo generate and gqlgen
-// never overwrite this file. Serve the schema with model.NewServer, which
-// applies the depth and complexity limits and the error presenter; the
+// never overwrite this file. Serve the schema with model.NewHandler, which
+// limits the request size, the depth and the complexity and presents errors; the
 // resolvers do no authentication or authorization, so wrap the handler.
 type Resolver struct {
 	DB *momo.DB

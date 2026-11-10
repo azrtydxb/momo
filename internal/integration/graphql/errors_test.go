@@ -45,7 +45,7 @@ func postErrors(t *testing.T, url string) string {
 // error through; and a mapping that never runs.
 func TestPresenterHidesDatabaseErrors(t *testing.T) {
 	var current error
-	srv := httptest.NewServer(model.NewServer(generated.NewExecutableSchema(generated.Config{Resolvers: failingRoot{&current}})))
+	srv := httptest.NewServer(model.NewHandler(generated.NewExecutableSchema(generated.Config{Resolvers: failingRoot{&current}})))
 	t.Cleanup(srv.Close)
 
 	leak := &momo.Error{Kind: momo.ErrUniqueViolation, Op: "insert", Table: "users", Err: errors.New(`duplicate key value violates unique constraint "users_email_key"`)}

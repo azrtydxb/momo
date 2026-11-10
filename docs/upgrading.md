@@ -38,6 +38,14 @@ GraphQL handler. Turn off operations with `ops` or `read_only: true`; see the
 [capabilities](capabilities.md) page for the options, the error mapping, the
 update semantics and the GraphQL limits.
 
+PUT and gRPC Update differ on purpose. An OpenAPI PUT must carry every required
+property and writes only the properties it carries, so a property it leaves out
+keeps whatever value the database has, including one a concurrent request just
+wrote. A gRPC Update has no way to leave a scalar out (a proto3 scalar at its
+zero value is a value), so it writes every writable column the message holds;
+a vector, a timestamp or a defaulted scalar left unset is not written. Neither
+reads the row first and writes it back.
+
 ### Advisory string helpers take options
 
 `advisory.XactLockString` and `advisory.TryXactLockString` take a trailing

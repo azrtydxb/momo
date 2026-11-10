@@ -80,6 +80,12 @@ type sfield struct {
 	defaulted bool
 	// scalar marks a field isZero can test (not a vector or a timestamp).
 	scalar bool
+	// updatable is set for a column an Update can assign: writable, and none of
+	// the version, soft-delete and timestamp columns momo owns.
+	updatable bool
+	// kind says how an Update assigns the column: scalar, optional (a pointer
+	// scalar), vector, time or timeptr.
+	kind string
 }
 
 // serverField maps one exposed column; msg is non-empty when it cannot.
@@ -103,10 +109,12 @@ func serverField(m *gen.Model, f *gen.Field, pf protoField) (sf sfield, msg stri
 		if ptr {
 			sf.stmt = "if m." + n + " != nil {\n\t\tout." + p + " = timestamppb.New(*m." + n + ")\n\t}"
 			sf.from = "if p." + p + " != nil {\n\t\tt := p." + p + ".AsTime()\n\t\tm." + n + " = &t\n\t} else {\n\t\tm." + n + " = nil\n\t}"
+			sf.kind = "timeptr"
 			return sf, ""
 		}
 		sf.lit = p + ": timestamppb.New(m." + n + "),"
 		sf.from = "if p." + p + " != nil {\n\t\tm." + n + " = p." + p + ".AsTime()\n\t}"
+		sf.kind = "time"
 		return sf, ""
 	case pf.repeated:
 		if f.GoType != "vector.Vector" {
@@ -115,6 +123,7 @@ func serverField(m *gen.Model, f *gen.Field, pf protoField) (sf sfield, msg stri
 		sf.lit = p + ": []float32(m." + n + "),"
 		sf.from = "if len(p." + p + ") > 0 {\n\t\tm." + n + " = vector.Vector(p." + p + ")\n\t}"
 		sf.emptyVec = true
+		sf.kind = "vector"
 		return sf, ""
 	}
 	pbGo, ok := pbScalarGo[pf.typ]
@@ -125,11 +134,16 @@ func serverField(m *gen.Model, f *gen.Field, pf protoField) (sf sfield, msg stri
 		sf.lit = p + ": m." + n + ","
 		sf.from = "m." + n + " = p." + p
 		sf.scalar = true
+		sf.kind = "scalar"
+		if ptr {
+			sf.kind = "optional"
+		}
 		return sf, ""
 	case !ptr && !pf.optional && convertible[base]:
 		sf.lit = p + ": " + pbGo + "(m." + n + "),"
 		sf.from = "m." + n + " = " + base + "(p." + p + ")"
 		sf.scalar = true
+		sf.kind = "scalar"
 		return sf, ""
 	}
 	return sf, unsupported
@@ -225,6 +239,7 @@ func serverSource(g *gen.Graph, lock *Lock, pkg, pbImport string, ops apiquery.O
 			sf.ident = identOf[f]
 			sf.settable = f != pk && !f.Tags.Identity && !f.Tags.Serial && f.Access != gen.ReadOnly
 			sf.defaulted = f.Tags.Default != ""
+			sf.updatable = sf.settable && f.Access == gen.Writable && !f.Tags.Version && f.Tags.SoftDelete == "" && !f.Tags.CreatedAt && !f.Tags.UpdatedAt
 			sm.fields = append(sm.fields, sf)
 			if f == pk {
 				sm.pk, havePK = sf, true
@@ -454,24 +469,44 @@ func (s *{{lm}}Server) Create(ctx context.Context, in *pb.{{M}}) (*pb.{{M}}, err
 // Update replaces the row: every writable column takes the value of the
 // message, except the vectors, timestamps and defaulted scalars it leaves out
 // (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
-// is a value, and so is an unset optional field, which stores NULL).
+// is a value, and so is an unset optional field, which stores NULL). It writes
+// the assignments in one statement and reads nothing first, so it never writes
+// back a value it read: a concurrent change of a column the message leaves out
+// is kept.
 func (s *{{lm}}Server) Update(ctx context.Context, in *pb.{{M}}) (*pb.{{M}}, error) {
 	id := in.Get{{PBPK}}()
-	m, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(id)).One(ctx)
-	if err != nil {
-		return nil, statusOf(err)
-	}
+	var m {{models}}.{{M}}
 	{{lm}}FromPB(in, &m)
-	m.{{PK}} = id
-	upd := momo.Update[{{models}}.{{M}}](s.db).Model(&m)
+	var sets []momo.Assignment
 `))
 		for _, f := range sm.fields {
-			if f.emptyVec {
-				b.WriteString(r.Replace("\tif len(m." + f.goName + ") == 0 {\n\t\tupd = upd.Set({{desc}}." + f.ident + ".SetDefault())\n\t}\n"))
+			if !f.updatable {
+				continue
 			}
+			set := "sets = append(sets, {{desc}}." + f.ident + ".Set(m." + f.goName + "))"
+			null := "if m." + f.goName + " == nil {\n\t\tsets = append(sets, {{desc}}." + f.ident + ".SetNull())\n\t} else {\n\t\tsets = append(sets, {{desc}}." + f.ident + ".Set(*m." + f.goName + "))\n\t}"
+			var code string
+			switch f.kind {
+			case "scalar":
+				code = set
+				if f.defaulted {
+					code = "if !isZero(in." + "Get" + f.pbName + "()) {\n\t\t" + set + "\n\t}"
+				}
+			case "optional", "timeptr":
+				code = null
+			case "vector":
+				code = "if len(in.Get" + f.pbName + "()) > 0 {\n\t\t" + set + "\n\t}"
+			case "time":
+				code = "if in.Get" + f.pbName + "() != nil {\n\t\t" + set + "\n\t}"
+			default:
+				continue
+			}
+			b.WriteString(r.Replace("\t" + code + "\n"))
 		}
-		b.WriteString(r.Replace(`	if _, err := upd.Exec(ctx); err != nil {
-		return nil, statusOf(err)
+		b.WriteString(r.Replace(`	if len(sets) > 0 {
+		if _, err := momo.Update[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			return nil, statusOf(err)
+		}
 	}
 	out, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(id)).One(ctx)
 	if err != nil {

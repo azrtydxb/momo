@@ -94,11 +94,16 @@ func TestGoSourceExample(t *testing.T) {
 		"package model",
 		"func ListDocuments(ctx context.Context, q momo.Querier, first *int, after *string, filter *DocumentFilter, order *DocumentOrder) (*DocumentConnection, error)",
 		"func GetDocument(ctx context.Context, q momo.Querier, id int64) (*example.Document, error)",
-		"documentdesc.Comments.Scope(momo.LoadOrderBy[example.Comment](commentdesc.ID.Asc()), momo.LoadPerParentLimit[example.Comment](MaxRelationRows)).Then(commentLoaders(ctx, subFields(ctx, f))...)",
-		"documentdesc.Tenant.Scope().Then(tenantLoaders(ctx, subFields(ctx, f))...)",
+		"documentdesc.Comments.Scope(momo.LoadOrderBy[example.Comment](commentdesc.ID.Asc()), momo.LoadPerParentLimit[example.Comment](MaxRelationRows)).Then(commentLoaders(ctx, grp.Subs)...)",
+		"documentdesc.Tenant.Scope().Then(tenantLoaders(ctx, grp.Subs)...)",
 		`documentLoaders(ctx, fieldsAt(ctx, "edges", "node"))`,
 		"sel = sel.Preload(loaders...)",
 		"func NewServer(es graphql.ExecutableSchema) *handler.Server",
+		"func NewHandler(es graphql.ExecutableSchema) http.Handler",
+		"http.MaxBytesReader(w, r.Body, MaxRequestBytes)",
+		"errors.As(err, &gqlErr) && gqlErr.Err == nil",
+		"selectionDepth(oc.Operation.SelectionSet, map[string]int{})",
+		"func onlyIntrospection(set ast.SelectionSet) bool",
 		"srv.Use(extension.FixedComplexityLimit(l.MaxComplexity))",
 		"srv.SetErrorPresenter(presentError)",
 		"MaxInValues = 100",
@@ -151,8 +156,8 @@ func TestGoSourceExample(t *testing.T) {
 	if !strings.Contains(string(rootSrc), "DB *momo.DB") {
 		t.Errorf("root resolver lacks the DB field:\n%s", rootSrc)
 	}
-	if !strings.HasPrefix(string(rootSrc), "// SPDX-License-Identifier: Apache-2.0\n") || !strings.Contains(string(rootSrc), "model.NewServer") {
-		t.Errorf("root resolver lacks its SPDX header or the NewServer advice:\n%s", rootSrc)
+	if !strings.HasPrefix(string(rootSrc), "// SPDX-License-Identifier: Apache-2.0\n") || !strings.Contains(string(rootSrc), "model.NewHandler") {
+		t.Errorf("root resolver lacks its SPDX header or the NewHandler advice:\n%s", rootSrc)
 	}
 	res := string(querySrc)
 	for _, must := range []string{
@@ -235,7 +240,7 @@ func TestHasInitialism(t *testing.T) {
 }
 
 func relModel(name, table string, fields ...*gen.Field) *gen.Model {
-	return &gen.Model{GoName: name, Table: table, PkgPath: "example.com/m", PkgName: "m", SubPkg: strings.ToLower(name), Fields: fields}
+	return &gen.Model{GoName: name, Table: table, PkgPath: "example.com/m", PkgName: "mod", SubPkg: strings.ToLower(name), Fields: fields}
 }
 
 // Catches: relations preloaded one level deep only, so a nested selection
@@ -255,11 +260,11 @@ func TestGoSourceNestedLoaders(t *testing.T) {
 	}
 	s := string(src)
 	for _, must := range []string{
-		"func thingLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[m.Thing]",
-		"thingdesc.Parts.Scope(momo.LoadOrderBy[m.Part](partdesc.ID.Asc()), momo.LoadPerParentLimit[m.Part](MaxRelationRows)).Then(partLoaders(ctx, subFields(ctx, f))...)",
-		"partdesc.Subs.Scope(momo.LoadOrderBy[m.Sub](subdesc.ID.Asc()), momo.LoadPerParentLimit[m.Sub](MaxRelationRows)).Then(subLoaders(ctx, subFields(ctx, f))...)",
-		"partdesc.Thing.Scope().Then(thingLoaders(ctx, subFields(ctx, f))...)",
-		"func subLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[m.Sub] {\n\treturn nil\n}",
+		"func thingLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[mod.Thing]",
+		"thingdesc.Parts.Scope(momo.LoadOrderBy[mod.Part](partdesc.ID.Asc()), momo.LoadPerParentLimit[mod.Part](MaxRelationRows)).Then(partLoaders(ctx, grp.Subs)...)",
+		"partdesc.Subs.Scope(momo.LoadOrderBy[mod.Sub](subdesc.ID.Asc()), momo.LoadPerParentLimit[mod.Sub](MaxRelationRows)).Then(subLoaders(ctx, grp.Subs)...)",
+		"partdesc.Thing.Scope().Then(thingLoaders(ctx, grp.Subs)...)",
+		"func subLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[mod.Sub] {\n\treturn nil\n}",
 	} {
 		if !strings.Contains(s, must) {
 			t.Errorf("glue lacks %q", must)

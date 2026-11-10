@@ -307,7 +307,8 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 		if ops.Has(apiquery.OpUpdate) {
 			item["put"] = obj{
 				"operationId": "update" + m.GoName,
-				"summary":     "Update a " + m.GoName + ": the body must carry every required property; an optional property that is absent keeps its stored value",
+				"summary":     "Update a " + m.GoName,
+				"description": "The body must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The key and the read-only columns are ignored.",
 				"parameters":  idParam,
 				"requestBody": body,
 				"responses":   with(errResp("404", "409", "413", "415"), "200", response("Updated", ref(m.GoName))),
