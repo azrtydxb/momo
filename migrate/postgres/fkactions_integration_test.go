@@ -102,7 +102,8 @@ func TestFKActionsNoActionIsNotRestrict(t *testing.T) {
 		mustExec(t, db.Driver(), fmt.Sprintf(`ALTER TABLE fk_%s ALTER CONSTRAINT fk_%s_parent_id_fkey DEFERRABLE INITIALLY DEFERRED`, c.Name, c.Name))
 	}
 	ctx := context.Background()
-	for _, c := range cases {
+	for i, c := range cases {
+		parent := 500 + i // each case its own parent: an earlier one commits its row
 		pc := pinned(t, db)
 		run := func(q string) error { _, err := pc.Exec(ctx, q, nil); return err }
 		if err := run("BEGIN"); err != nil {
@@ -114,9 +115,9 @@ func TestFKActionsNoActionIsNotRestrict(t *testing.T) {
 				t.Fatalf("%s: %s: %v", c.Name, q, err)
 			}
 		}
-		must(`INSERT INTO fk_parents (id) VALUES (500)`)
-		must(fmt.Sprintf(`INSERT INTO fk_%s (id, parent_id) VALUES (2, 500)`, c.Name))
-		delErr := run(`DELETE FROM fk_parents WHERE id = 500`)
+		must(fmt.Sprintf(`INSERT INTO fk_parents (id) VALUES (%d)`, parent))
+		must(fmt.Sprintf(`INSERT INTO fk_%s (id, parent_id) VALUES (2, %d)`, c.Name, parent))
+		delErr := run(fmt.Sprintf(`DELETE FROM fk_parents WHERE id = %d`, parent))
 		if c.OnDelete == "restrict" {
 			if delErr == nil {
 				t.Errorf("%s: RESTRICT must refuse the delete at once even when deferred", c.Name)
@@ -129,7 +130,7 @@ func TestFKActionsNoActionIsNotRestrict(t *testing.T) {
 			_ = run("ROLLBACK")
 			continue
 		}
-		must(`INSERT INTO fk_parents (id) VALUES (500)`)
+		must(fmt.Sprintf(`INSERT INTO fk_parents (id) VALUES (%d)`, parent))
 		if err := run("COMMIT"); err != nil {
 			t.Errorf("%s: parent put back before commit, the commit must pass: %v", c.Name, err)
 		}
