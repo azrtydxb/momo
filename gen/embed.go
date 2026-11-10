@@ -246,6 +246,11 @@ func baseType(t types.Type) string {
 		return baseType(n.Underlying())
 	}
 	if sl, ok := t.(*types.Slice); ok {
+		// A slice of an alias (type ID = uuid.UUID) is a slice of the aliased
+		// type: spell it that way.
+		if a, ok := sl.Elem().(*types.Alias); ok {
+			return baseType(types.NewSlice(types.Unalias(a)))
+		}
 		if b, ok := sl.Elem().Underlying().(*types.Basic); ok && b.Kind() == types.Byte {
 			return "[]byte"
 		}
