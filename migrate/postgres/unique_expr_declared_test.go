@@ -6,10 +6,12 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
@@ -68,8 +70,8 @@ func TestDeclaredUniqueExpressionIndexes(t *testing.T) {
 	if err := exec(`INSERT INTO principal (id, email) VALUES (1, 'Ann@Example.com')`); err != nil {
 		t.Fatal(err)
 	}
-	if err := exec(`INSERT INTO principal (id, email) VALUES (2, 'ann@example.com')`); err == nil {
-		t.Fatal("a case-different duplicate email was accepted")
+	if err := exec(`INSERT INTO principal (id, email) VALUES (2, 'ann@example.com')`); !errors.Is(err, momo.ErrUniqueViolation) {
+		t.Fatalf("a case-different duplicate email must fail with ErrUniqueViolation, got %v", err)
 	}
 
 	got := inspectNow(t, db)
