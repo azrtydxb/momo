@@ -1,0 +1,9 @@
+# pgvector search settings move to github.com/azrtydxb/momo/vecsearch; the type loses the Search prefix and the two methods become functions taking the receiver.
+SearchSettings Settings
+SearchSettings.Validate Settings.Validate
+IterativeScan IterativeScan
+IterativeOff IterativeOff
+IterativeRelaxedOrder IterativeRelaxedOrder
+IterativeStrictOrder IterativeStrictOrder
+Tx.SetSearch Apply
+DB.WithSearch With

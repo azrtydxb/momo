@@ -102,6 +102,16 @@ Tag options for relations:
 - `polytype:<column>` together with `polyvalue:<value>` makes a `has_one` or
   `has_many` polymorphic: the child row belongs to the parent only when its
   type column equals the value.
+- `fk_name:<name>` names the foreign key constraint of a `belongs_to` instead of
+  the derived `<table>_<column>_fkey` (for example `_fkey1` on a partitioned
+  table). `MomoConfig` can do the same with `c.FKName(&m.AuthorID, "name")`; the
+  field is the key field. Declaring it both ways is an error. A migration diff
+  and `baseline` compare the constraint by this name. Changing it later is a
+  drop and add of the foreign key (a rename is not generated). A name longer than
+  63 bytes, a repeated name on one table, `fk_name` on `has_one`/`has_many` and a
+  `FKName` whose field is not the key of a `belongs_to` are generator errors.
+  `generate --from-db` writes it only for names made of letters, digits, `_` and
+  `$`; any other foreign key name is reported and left out.
 - `on_delete`, `on_update` and `no_constraint` affect only the foreign key
   emitted for `belongs_to`. `has_one` and `has_many` create no constraint, and
   many-to-many join tables always get two foreign keys with
@@ -534,14 +544,18 @@ What this means in practice:
   kept children are not rewritten and a set of any size works.
 - **`Replace` locks the parent row** (`SELECT 1 ... FOR UPDATE`) on PostgreSQL
   and MySQL, so concurrent `Replace` calls on the same parent run one after the
-  other. SQLite serialises writers and skips the lock. The lock is a row lock:
+  other. SQLite serialises writers and skips the lock. `Replace` needs a
+  transaction, so on a `*DB` pinned with `OnConn` it fails with
+  `ErrUnsupported` (`Op` `"begin"`); run it on the pool or inside a `*Tx`.
+  `Link`, `Unlink` and `Count` accept a pinned handle. The lock is a row lock:
   a parent that does not exist locks nothing. On a `*Tx` the lock is held until
   the caller's transaction ends. `Link` and `Unlink` take no parent lock and
   can interleave with a concurrent `Replace`.
 - **Belongs-to is not linkable.** Every helper returns `ErrUnsupported`. Set the
   foreign key on the parent and update it.
 - **`Link`, `Unlink` and `Replace` return `ErrValidation`** when the parent key
-  is NULL, or, for many-to-many, when a child key is NULL. `Link` and `Unlink`
+  is NULL, or when a child key (the child primary key, or the join key for
+  many-to-many) is NULL. `Link` and `Unlink`
   with no children are no-ops that issue no statement. `Count` of a parent with
   a NULL key is zero.
 - **Chunks and transactions.** When `Link` or `Unlink` needs more than one chunk
@@ -598,7 +612,9 @@ err := momo.CreateGraph(ctx, db, &doc,
   transaction is opened.
 - On a `*DB` the graph runs in a new transaction. On a `*Tx` it runs in a
   savepoint, so a failure undoes the whole graph and leaves your transaction
-  usable. A dialect without savepoints returns `ErrUnsupported` there.
+  usable. A dialect without savepoints returns `ErrUnsupported` there. A `*DB`
+  pinned with `OnConn` also returns `ErrUnsupported` (`Op` `"begin"`), because
+  the graph needs a transaction; run it on the pool or inside a `*Tx`.
 
 ### FindOrCreate
 
@@ -682,15 +698,15 @@ db := momo.New(drv, momo.WithHook(relLogger{queryHook}))
 
 `RelationEvent` fields:
 
-| Field            | Meaning                                                                  |
-| ---------------- | ------------------------------------------------------------------------ |
-| `Parent`, `Name` | parent table and relation name                                           |
-| `Kind`           | belongs-to, has-one, has-many or many-to-many                            |
-| `Parents`        | number of parents the load ran for                                       |
-| `Queries`        | child statements compiled for the load; a failed load may have run fewer |
-| `Children`       | children loaded; set only when the statements succeeded, zero on error   |
-| `Duration`       | filled before `AfterRelation`                                            |
-| `Err`            | the load's error                                                         |
+| Field                                        | Meaning                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------ |
+| `RelationEvent.Parent`, `RelationEvent.Name` | parent table and relation name                                           |
+| `RelationEvent.Kind`                         | belongs-to, has-one, has-many or many-to-many                            |
+| `Parents`                                    | number of parents the load ran for                                       |
+| `Queries`                                    | child statements compiled for the load; a failed load may have run fewer |
+| `Children`                                   | children loaded; set only when the statements succeeded, zero on error   |
+| `Duration`                                   | filled before `AfterRelation`                                            |
+| `Err`                                        | the load's error                                                         |
 
 Events fire only for loads that execute statements. They do not fire when there
 are no parents, when the load fails while being prepared (validation or
@@ -703,27 +719,27 @@ pipelining, see [Pipelined loading](#4-pipelined-loading).
 Errors are `*momo.Error` values. Test them with `errors.Is(err, momo.ErrX)`.
 The `Op` field names the operation.
 
-| Operation                            | Error                 | When                                                                                                                                |
-| ------------------------------------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `Load`, `LoadAll`, `Preload`         | `ErrValidation`       | negative `LoadPerParentLimit`; invalid descriptor; scope binds too many arguments for the bind limit                                |
-|                                      | `ErrUnsupported`      | `LoadPerParentLimit` on belongs-to or has-one; `Each` or `Iter` on a query with preloads                                            |
-|                                      | `ErrTooManyRows`      | has-one matched more than one child for a parent                                                                                    |
-| `Joined`                             | `ErrUnsupported`      | not belongs-to, child key not unique, `GroupBy`, `Having`, locks, `Each`, `Iter`; used with `Load`, `LoadAll`, `Scope` or `Then`    |
-|                                      | `ErrValidation`       | select list does not have one expression per mapped field                                                                           |
-| `Has`, `HasNo`, `CountOrder`         | none of their own     | an error in the scope predicate surfaces when the query runs                                                                        |
-| `From`                               | `ErrValidation`       | many-to-many relation                                                                                                               |
-| `Link`, `Unlink`, `Replace`, `Count` | `ErrUnsupported`      | belongs-to                                                                                                                          |
-|                                      | `ErrValidation`       | `Link`, `Unlink`, `Replace`: NULL parent key, or NULL child key on many-to-many. `Count` with a NULL parent key returns 0, no error |
-|                                      | `ErrNotNullViolation` | has-one or has-many `Unlink` or `Replace` on a NOT NULL foreign key                                                                 |
-|                                      | `ErrUniqueViolation`  | has-one `Link` that would break a unique foreign key on the child                                                                   |
-|                                      | `ErrTxDone`           | the `*Tx` passed in is already committed or rolled back                                                                             |
-| `CreateGraph`                        | `ErrValidation`       | nil parent, a model listed as its own child, a NULL key that must be copied                                                         |
-|                                      | `ErrUnsupported`      | `*Tx` on a dialect without savepoints; identity read-back on a dialect without `RETURNING`                                          |
-| `FindOrCreate`                       | `ErrValidation`       | nil model, empty key, unmapped key column                                                                                           |
-|                                      | `ErrNotFound`         | re-select misses the winner's row under REPEATABLE READ or SERIALIZABLE                                                             |
-|                                      | `ErrUniqueViolation`  | the key is held by a soft-deleted row                                                                                               |
-|                                      | `ErrUnsupported`      | dialect without `ON CONFLICT` or `RETURNING`                                                                                        |
-| `UpsertByPK`                         | `ErrValidation`       | nil model                                                                                                                           |
+| Operation                            | Error                 | When                                                                                                                             |
+| ------------------------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `Load`, `LoadAll`, `Preload`         | `ErrValidation`       | negative `LoadPerParentLimit`; invalid descriptor; scope binds too many arguments for the bind limit                             |
+|                                      | `ErrUnsupported`      | `LoadPerParentLimit` on belongs-to or has-one; `Each` or `Iter` on a query with preloads                                         |
+|                                      | `ErrTooManyRows`      | has-one matched more than one child for a parent                                                                                 |
+| `Joined`                             | `ErrUnsupported`      | not belongs-to, child key not unique, `GroupBy`, `Having`, locks, `Each`, `Iter`; used with `Load`, `LoadAll`, `Scope` or `Then` |
+|                                      | `ErrValidation`       | select list does not have one expression per mapped field                                                                        |
+| `Has`, `HasNo`, `CountOrder`         | none of their own     | an error in the scope predicate surfaces when the query runs                                                                     |
+| `From`                               | `ErrValidation`       | many-to-many relation                                                                                                            |
+| `Link`, `Unlink`, `Replace`, `Count` | `ErrUnsupported`      | belongs-to                                                                                                                       |
+|                                      | `ErrValidation`       | `Link`, `Unlink`, `Replace`: NULL parent key, or NULL child key. `Count` with a NULL parent key returns 0, no error              |
+|                                      | `ErrNotNullViolation` | has-one or has-many `Unlink` or `Replace` on a NOT NULL foreign key                                                              |
+|                                      | `ErrUniqueViolation`  | has-one `Link` that would break a unique foreign key on the child                                                                |
+|                                      | `ErrTxDone`           | the `*Tx` passed in is already committed or rolled back                                                                          |
+| `CreateGraph`                        | `ErrValidation`       | nil parent, a model listed as its own child, a NULL key that must be copied                                                      |
+|                                      | `ErrUnsupported`      | `*Tx` on a dialect without savepoints; identity read-back on a dialect without `RETURNING`                                       |
+| `FindOrCreate`                       | `ErrValidation`       | nil model, empty key, unmapped key column                                                                                        |
+|                                      | `ErrNotFound`         | re-select misses the winner's row under REPEATABLE READ or SERIALIZABLE                                                          |
+|                                      | `ErrUniqueViolation`  | the key is held by a soft-deleted row                                                                                            |
+|                                      | `ErrUnsupported`      | dialect without `ON CONFLICT` or `RETURNING`                                                                                     |
+| `UpsertByPK`                         | `ErrValidation`       | nil model                                                                                                                        |
 
 Database errors (unique, foreign key, check, not-null violations, serialization
 failures) are classified the same way as for any other statement.

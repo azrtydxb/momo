@@ -266,6 +266,13 @@ func scanErr(err error) error {
 	})
 }
 
+// Columns reports the result column names (momo.ColumnNamer), so Query and
+// MapRows match columns by name.
+func (r sqlRows) Columns() ([]string, error) {
+	names, err := r.r.Columns()
+	return names, classify(err, r.stmt)
+}
+
 func (r sqlRows) Err() error   { return classify(r.r.Err(), r.stmt) }
 func (r sqlRows) Close() error { return classify(r.r.Close(), r.stmt) }
 

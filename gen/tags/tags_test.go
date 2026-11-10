@@ -46,6 +46,12 @@ func TestParseTags(t *testing.T) {
 				t.Fatalf("got %+v", g)
 			}
 		}},
+		{name: "dbdefault", raw: "pk,default:now(),dbdefault", check: func(t *testing.T, g Tags) {
+			if !g.DBDefault || !g.PK {
+				t.Fatalf("got %+v", g)
+			}
+		}},
+		{name: "dbdefault with value", raw: "dbdefault:yes", wantMsg: "dbdefault does not take a value"},
 		{name: "idgen without value", raw: "idgen", wantMsg: "idgen requires a value"},
 		{name: "unknown key", raw: "bogus", wantMsg: `unknown tag option "bogus"`},
 		{name: "retired vector key", raw: "vector:3", wantMsg: `unknown tag option "vector"`},
@@ -77,9 +83,9 @@ func TestTagGrammar(t *testing.T) {
 		"immutable", "sensitive", "embedded", "no_constraint", "belongs_to", "has_one",
 		"has_many", "many2many", "created_at", "updated_at", "column:c", "type:citext",
 		"collate:C", "default:now()", "check:x > 0", "comment:hello", "enum:e", "table:t",
-		"schema:s", "view:v,materialized", "prefix:p_", "fk:AuthorID", "join:document_tags", "rel:has_many", "polytype:owner_type", "polyvalue:document",
+		"schema:s", "view:v,materialized", "prefix:p_", "fk:AuthorID", "fk_name:t_a_fkey1", "join:document_tags", "rel:has_many", "polytype:owner_type", "polyvalue:document",
 		"on_delete:cascade", "on_update:cascade", "soft_delete:timestamp", "method:gin",
-		"size:1", "precision:10", "scale:2", "dim:3", "index", "unique", "sort:asc", "nulls:last", "idgen:cuid",
+		"size:1", "precision:10", "scale:2", "dim:3", "index", "unique", "sort:asc", "nulls:last", "idgen:cuid", "dbdefault",
 	} {
 		if _, probs := Parse(raw); len(probs) != 0 {
 			t.Fatalf("%q rejected: %+v", raw, probs)

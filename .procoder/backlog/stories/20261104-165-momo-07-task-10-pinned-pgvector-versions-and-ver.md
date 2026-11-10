@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-07-vectors-pgvector
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Criterion 1 unmet as written: TestPgvectorVersionPinned exists and passes but never failed before the implementation, since compose.yaml was already pinned by momo-01; no honest red exists, only a mutation check.
 
 ## Description
@@ -22,4 +22,6 @@ Implements plan momo-07-vectors Task 10: Pinned pgvector versions and version as
 - Mutation: setting pinnedPgvector to 0.8.6 made TestPgvectorVersionPinned and TestPgvectorPinsAgree fail; restored.
 - NOT met: criterion 1, "failed before the implementation". compose.yaml was already pinned by momo-01 and the unpinned pgvector/pgvector:pg17 image also reports 0.8.7, so no honest red existed. Red was shown only through the mutation above.
 - Gate: `procoder check` 0 blocking findings. Commit 71845d6.
+- Sprint 7 audit (2026-11-10): `TestPgvectorVersionPinned` is at internal/testdb/pgvector_version_test.go:16 and `TestPgvectorPinsAgree` enforces the compose and CI pins; nothing is left to build.
+- Carry reason: criterion 1 ("failed before the implementation") cannot be met by later work. compose.yaml was pinned by momo-01 before this task, and the unpinned image reports the same 0.8.7, so no honest red ever existed; the only red is the mutation run above. The test passes in ci-agent (ci-agent run 42784116091, headSha 2eda85d2041b0d0f6ec5200f96facc8aeddc8f96, conclusion success; `TestPgvectorVersionPinned` runs in the postgres integration job).
 

@@ -57,6 +57,7 @@ var postgresTypes = map[string]GoType{
 	"jsonb":            {Expr: "types.JSON[json.RawMessage]", Import: "encoding/json"},
 	"json":             {Expr: "types.JSON[json.RawMessage]", Import: "encoding/json"},
 	"hstore":           {Expr: "types.Hstore", Import: importTypes, Nilable: true},
+	"tsvector":         {Expr: "types.TSVector", Import: importTypes},
 	"numeric":          {Expr: "string", Note: "decimal-as-string: numeric is carried as a string; set an introspect types rule for a decimal type"},
 
 	"timestamp without time zone": {Expr: "time.Time", Import: "time"},
@@ -74,6 +75,7 @@ var postgresArrays = map[string]string{
 	"boolean":           "[]bool",
 	"text":              "[]string",
 	"character varying": "[]string",
+	"uuid":              "[]types.UUID",
 }
 
 // postgresVectors maps the pgvector family to its Go type.
@@ -131,7 +133,11 @@ func mapPostgres(s string) (GoType, bool) {
 	if elem, ok := strings.CutSuffix(s, "[]"); ok {
 		base, _, _ := splitType(elem)
 		if g, ok := postgresArrays[base]; ok {
-			return GoType{Expr: g, Nilable: true}, true
+			out := GoType{Expr: g, Nilable: true}
+			if strings.Contains(g, "types.") {
+				out.Import = importTypes
+			}
+			return out, true
 		}
 		return GoType{}, false
 	}

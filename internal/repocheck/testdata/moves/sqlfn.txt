@@ -1,0 +1,24 @@
+# Scalar SQL functions move to github.com/azrtydxb/momo/sqlfn and keep their names.
+Substr Substr
+SubstrFrom SubstrFrom
+Lower Lower
+Upper Upper
+Length Length
+LengthExpr LengthExpr
+CurrentSchema CurrentSchema
+CurrentSchemaExpr CurrentSchemaExpr
+Case Case
+CaseExpr CaseExpr
+Numeric Numeric
+ArithExpr ArithExpr
+Add Add
+AddExpr AddExpr
+Sub Sub
+SubExpr SubExpr
+Mul Mul
+MulExpr MulExpr
+CoalesceExpr CoalesceExpr
+Cast Cast
+CastExpr CastExpr
+Concat Concat
+ConcatExpr ConcatExpr

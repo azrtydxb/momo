@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -48,6 +50,20 @@ func serverVersion(t *testing.T, q momo.Querier) string {
 		t.Fatalf("VERSION(): %v, %d rows", err, len(v))
 	}
 	return v[0]
+}
+
+// usesVectorIndex matches the key column of an EXPLAIN FORMAT=JSON plan that
+// reads the table through the VECTOR INDEX named emb.
+var usesVectorIndex = regexp.MustCompile(`"key":\s*"emb"`)
+
+// explainJSON returns the EXPLAIN FORMAT=JSON plan of sql.
+func explainJSON(t *testing.T, q momo.Querier, sql string, args ...any) string {
+	t.Helper()
+	rows, err := momo.Scalars[string](context.Background(), q, "EXPLAIN FORMAT=JSON "+sql, args...)
+	if err != nil {
+		t.Fatalf("EXPLAIN %s: %v", sql, err)
+	}
+	return strings.Join(rows, "\n")
 }
 
 func vecText(t *testing.T, v vector.Vector) string {
@@ -99,12 +115,24 @@ func TestMariaDBVectorParity(t *testing.T) {
 
 	// Indexed path: the momo query, served from the VECTOR INDEX.
 	col := momo.NewVectorColumn[vector.Vector]("docs", "emb", vectorparity.Dim, 0)
-	sel := momo.Select[vecDoc](db).OrderBy(momo.CosineDistance(col, query).Asc()).Limit(vectorparity.TopK)
+	sel := momo.Select[vecDoc](db).OrderBy(vecop.Cosine(col, query).Asc()).Limit(vectorparity.TopK)
 	c, err := sel.SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("indexed query: %s", c.SQL)
+	// A silent full scan would also return 10 of 10 exact ids, so the overlap
+	// below proves nothing about the index. The plan must read through the
+	// VECTOR INDEX; the exact path, which forces a scan with "+ 0", is the
+	// control that shows this assertion can fail.
+	plan := explainJSON(t, db, c.SQL, c.Args...)
+	t.Logf("indexed plan: %s", plan)
+	if !usesVectorIndex.MatchString(plan) {
+		t.Fatalf("indexed query does not use the VECTOR INDEX (a full scan was substituted?):\n%s", plan)
+	}
+	if scan := explainJSON(t, db, "SELECT id FROM docs ORDER BY VEC_DISTANCE_COSINE(emb, VEC_FromText(?)) + 0, id LIMIT 10", vecText(t, query)); usesVectorIndex.MatchString(scan) {
+		t.Fatalf("control: the forced exact path also reads the VECTOR INDEX, so this check cannot tell a full scan:\n%s", scan)
+	}
 	got, err := sel.All(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -121,13 +149,13 @@ func TestMariaDBVectorParity(t *testing.T) {
 	}
 
 	// Euclidean distance is available too; the query vector itself is nearest.
-	l2, err := momo.Select[vecDoc](db).OrderBy(momo.L2Distance(col, query).Asc()).Limit(1).All(ctx)
+	l2, err := momo.Select[vecDoc](db).OrderBy(vecop.L2(col, query).Asc()).Limit(1).All(ctx)
 	if err != nil || len(l2) != 1 || l2[0].ID != 1 {
 		t.Fatalf("L2 nearest = %v, %v, want id 1", l2, err)
 	}
 
 	// Inner product has no MariaDB function: refused, never emulated.
-	_, err = momo.Select[vecDoc](db).OrderBy(momo.InnerProductDistance(col, query).Asc()).Limit(1).All(ctx)
+	_, err = momo.Select[vecDoc](db).OrderBy(vecop.InnerProduct(col, query).Asc()).Limit(1).All(ctx)
 	if !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("inner product: err = %v, want ErrUnsupported", err)
 	}
@@ -232,7 +260,7 @@ func TestMySQLVectorCapability(t *testing.T) {
 			t.Fatalf("round trip: %v, %v", got, err)
 		}
 		col := momo.NewVectorColumn[vector.Vector]("docs", "emb", 3, 0)
-		_, err = momo.Select[vecDoc](db).OrderBy(momo.L2Distance(col, vector.Vector{1, 2, 3}).Asc()).Limit(1).All(ctx)
+		_, err = momo.Select[vecDoc](db).OrderBy(vecop.L2(col, vector.Vector{1, 2, 3}).Asc()).Limit(1).All(ctx)
 		if !errors.Is(err, momo.ErrUnsupported) {
 			t.Fatalf("distance query: err = %v, want momo.ErrUnsupported", err)
 		}

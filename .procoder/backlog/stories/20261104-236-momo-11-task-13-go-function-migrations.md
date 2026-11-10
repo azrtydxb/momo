@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-11-adoption
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 
@@ -16,4 +16,6 @@ Implements plan momo-11-adoption Task 13: Go-function migrations (`.procoder/pla
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+Carry reason: superseded by a different shipped design. Plan task 13 specified `GoMigration{Up, Down func(ctx, momo.Querier) error, NoTx}` with Go downs dispatched by group rollback. What shipped (sprint 3 and later) is forward-only: `migrate/gomigration.go:47` `GoMigration{Version, Name, Up func(ctx, *momo.Tx), UpNoTx func(ctx, *momo.DB), Checksum}`, registered with `WithGoMigrations` (`migrate/gomigration.go:88`), kind "go" in history, run once under the migration lock (`migrate/gomigration_integration_test.go:45` `TestGoMigrationOrderedWithSQLRunsOnce`), failure/dirty/retry paths (lines 100, 141, 197, 262, 280). A rollback that reaches a Go migration is refused with `ErrGoMigrationNotReversible` (`migrate/errors.go:29`, `migrate/gomigration_diff_test.go:28` `TestRefuseGoRollback`), so "group rollback runs authored downs in reverse" for Go migrations contradicts the shipped contract. SQL group rollback in reverse order is covered by `migrate/rollback_test.go:19` `TestRollbackGroup`. No test named `TestGoMigrations` exists and none was invented; criteria are left unticked for the integrator to carry or rewrite (whether Go migrations should gain a Down is a product decision, not made here).
 

@@ -71,7 +71,9 @@ var partStrategies = map[string]string{"r": "range", "l": "list", "h": "hash"}
 // Inspect reads the objects in opts.Schemas (default: the connection's
 // current schema) into a schema. A table in the current schema has an empty
 // Table.Schema; Schema.Schemas lists only the other managed namespaces.
-// opts.Exclude is a drift-time filter and is not applied here.
+// opts.Exclude is applied again by the engine; the dialect also uses it to skip
+// a matching table, view, function or trigger before reading it, so one the
+// schema model cannot represent does not fail the whole inspection.
 func (d Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.InspectOptions) (*schema.Schema, error) {
 	s, _, err := d.InspectWithInvalid(ctx, c, opts)
 	return s, err
@@ -97,7 +99,7 @@ func (Dialect) InspectWithInvalid(ctx context.Context, c momo.PinnedConn, opts m
 	if len(managed) == 0 {
 		managed = []string{current}
 	}
-	in := &inspector{c: c, current: current, managed: managed}
+	in := &inspector{c: c, current: current, managed: managed, exclude: opts.Exclude}
 	out := &schema.Schema{FormatVersion: schema.FormatVersion, Dialect: dialect.Postgres, Tables: []schema.Table{}}
 	if err := in.namespaces(ctx, out); err != nil {
 		return nil, nil, fmt.Errorf("postgres inspect: schemas: %w", err)
@@ -111,7 +113,7 @@ func (Dialect) InspectWithInvalid(ctx context.Context, c momo.PinnedConn, opts m
 	if err := in.tables(ctx, out); err != nil {
 		return nil, nil, err
 	}
-	if err := (Dialect{}).inspectObjects(ctx, c, out, managed); err != nil {
+	if err := (Dialect{}).inspectObjects(ctx, c, out, managed, opts.Exclude); err != nil {
 		return nil, nil, fmt.Errorf("postgres inspect: %w", err)
 	}
 	out.Sort()
@@ -122,6 +124,8 @@ type inspector struct {
 	c       momo.PinnedConn
 	current string
 	managed []string
+	// exclude holds the Config.Exclude globs; objects they match are skipped.
+	exclude []string
 	// invalid names the indexes left invalid by a failed CONCURRENTLY build.
 	// The schema model has no field for them; InspectWithInvalid returns them.
 	invalid []string
@@ -201,6 +205,12 @@ func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 		return fmt.Errorf("postgres inspect: tables: %w", err)
 	}
 	for _, tr := range rows {
+		// An excluded table is skipped before its columns and constraints are
+		// read, so one the model cannot represent (a virtual generated column)
+		// does not fail the inspection.
+		if in.excluded(tr.ns, tr.name) {
+			continue
+		}
 		t := schema.Table{Name: tr.name}
 		if tr.ns != in.current {
 			t.Schema = tr.ns

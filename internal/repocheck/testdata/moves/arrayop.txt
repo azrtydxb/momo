@@ -1,0 +1,5 @@
+# Array predicates move to github.com/azrtydxb/momo/arrayop and drop the Array prefix.
+ArrayContains Contains
+ArrayContainedBy ContainedBy
+ArrayOverlaps Overlaps
+AnyOf AnyOf

@@ -1,0 +1,11 @@
+# Third-party versions that docs may name without a marker.
+# One entry per line: <version without a leading v> | <reason>.
+# A reason is required. Versions of momo, Go and go.mod dependencies do not
+# belong here: they come from the manifest, go.mod and driver/sqlitedriver.
+0.7.0 | pgvector release that added halfvec, sparsevec, l1 and jaccard
+0.8.0 | pgvector release that added iterative scans
+0.8.7 | pgvector version CI is pinned to (pgvector/pgvector image tag)
+1.26.1 | PgBouncer version of the tested edoburu/pgbouncer image tag
+8.4.13 | MySQL 8.4 LTS image tag the integration matrix runs
+9.7.4 | MySQL 9.7 LTS image tag the integration matrix runs
+11.8.9 | MariaDB 11.8 LTS image tag the integration matrix runs

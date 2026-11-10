@@ -45,10 +45,10 @@ uses Momo. It is the short form of the rules in section 12 of the
 ```markdown
 ## Momo (Go ORM)
 
-- PostgreSQL with pgvector is the only supported database for `momo migrate`; elsewhere it is the reference database. SQLite (cgo driver, not on Windows; vectors through sqlite-vec on that driver only) and MySQL 8.4, MySQL 9.7 and MariaDB 11.8 run queries and writes, and have library migration dialects (`migrate/sqlite`, `migrate/mysql`); check docs/capabilities.md before relying on a feature there.
+- PostgreSQL with pgvector is the reference database. The generated status in docs/capabilities.md lists the other databases and the dialects `momo migrate` runs; check it before relying on a feature there.
 - Run `momo generate` after every model change and commit the generated files. Never edit generated files.
 - A non-pointer model field is NOT NULL; a pointer field is nullable.
-- Pass user input only as arguments to `momo.SQL`, `momo.TypedSQL`, `momo.Exec` and `momo.Scalars`. Never build SQL by string concatenation.
+- Pass user input only as arguments to `momo.SQL`, `momo.TypedSQL`, `momo.Exec`, `momo.Scalars`, `momo.Query` and `momo.QueryRows`. Never build SQL by string concatenation.
 - Never bypass `ErrUnfilteredMutation` with `AllRows`; add a `Where`.
 - Check errors with `errors.Is` against the `momo.Err*` sentinels. Never match error text.
 - Use only the `tx` handle inside `db.Tx`. Retry the whole transaction on `ErrSerialization`, never inside it.

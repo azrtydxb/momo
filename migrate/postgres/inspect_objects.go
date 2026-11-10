@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 
@@ -43,7 +44,7 @@ ORDER BY 1,2,3`
 	// for a function that is not on the search_path), with identifiers quoted
 	// as quote_ident does. tgparentid <> 0 marks a trigger a partition child
 	// merely inherited; like inherited constraints it is hidden.
-	qTriggers = `SELECT n.nspname, c.relname, t.tgname, t.tgtype::int4, CASE WHEN t.tgqual IS NOT NULL THEN pg_get_triggerdef(t.oid, true) END, t.tgattr::text,
+	qTriggers = `SELECT n.nspname, c.relname, t.tgname, t.tgtype::int4, CASE WHEN t.tgqual IS NOT NULL THEN pg_get_triggerdef(t.oid, true) END, ARRAY(SELECT a.attname::text FROM unnest(t.tgattr) WITH ORDINALITY k(n, ord) JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attnum = k.n ORDER BY k.ord),
   pn.nspname, quote_ident(pn.nspname), quote_ident(p.proname), replace(oidvectortypes(p.proargtypes), ', ', ',')
 FROM pg_trigger t
 JOIN pg_class c ON c.oid = t.tgrelid
@@ -82,7 +83,7 @@ const (
 // given schemas. Table-level RLS flags and partition information are read
 // with the tables themselves (inspect.go); partition children are tables
 // carrying PartitionOf.
-func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.Schema, schemas []string) error {
+func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.Schema, schemas, exclude []string) error {
 	var cur *string
 	if err := queryOne(ctx, c, qCurrentSchema, nil, &cur); err != nil {
 		return fmt.Errorf("current schema: %w", err)
@@ -90,7 +91,7 @@ func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.
 	if cur == nil {
 		return fmt.Errorf("current_schema() is NULL: the search_path names no existing schema")
 	}
-	in := &inspector{c: c, current: *cur, managed: schemas}
+	in := &inspector{c: c, current: *cur, managed: schemas, exclude: exclude}
 	if err := in.views(ctx, s); err != nil {
 		return fmt.Errorf("views: %w", err)
 	}
@@ -104,6 +105,25 @@ func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.
 		return fmt.Errorf("policies: %w", err)
 	}
 	return nil
+}
+
+// excluded reports whether a Config.Exclude glob matches name or schema.name.
+// An excluded object is skipped before it is read, so one the model cannot
+// represent does not fail the whole inspection.
+func (in *inspector) excluded(ns, name string) bool {
+	ns = in.optSchema(ns)
+	for _, g := range in.exclude {
+		if ok, _ := path.Match(g, name); ok {
+			return true
+		}
+		if ns == "" {
+			continue
+		}
+		if ok, _ := path.Match(g, ns+"."+name); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // optSchema is the Schema field value for a namespace: empty for the current one.
@@ -134,6 +154,9 @@ func (in *inspector) views(ctx context.Context, s *schema.Schema) error {
 		var v rawView
 		if err := r.Scan(&v.oid, &v.ns, &v.name, &v.kind, &v.query); err != nil {
 			return err
+		}
+		if in.excluded(v.ns, v.name) {
+			return nil
 		}
 		v.materialized = v.kind == "m"
 		raws = append(raws, v)
@@ -180,6 +203,9 @@ func (in *inspector) functions(ctx context.Context, s *schema.Schema) error {
 		if err := r.Scan(&ns, &f.Name, &f.Args, &f.Returns, &f.Language, &vol, &body, &f.Strict, &f.SecurityDefiner); err != nil {
 			return err
 		}
+		if in.excluded(ns, f.Name) {
+			return nil
+		}
 		f.Schema = in.optSchema(ns)
 		f.Volatility = volatility[vol]
 		f.Body = deref(body)
@@ -195,14 +221,16 @@ func (in *inspector) triggers(ctx context.Context, s *schema.Schema) error {
 			t                                      schema.Trigger
 			tgtype                                 int32
 			when                                   *string
-			attrs                                  string
+			attrs                                  []string
 		)
 		if err := r.Scan(&ns, &table, &t.Name, &tgtype, &when, &attrs, &fnNS, &fnNSQ, &fnName, &fnArgs); err != nil {
 			return err
 		}
-		if strings.TrimSpace(attrs) != "" {
-			return &momo.Error{Kind: momo.ErrUnsupported, Op: "inspect", Table: table,
-				Err: fmt.Errorf("trigger %s on %s has an UPDATE OF column list, which the schema model cannot represent", t.Name, table)}
+		if in.excluded(ns, table) || in.excluded(ns, t.Name) {
+			return nil
+		}
+		if len(attrs) > 0 {
+			t.UpdateOf = attrs
 		}
 		t.Schema = in.optSchema(ns)
 		t.Table = table

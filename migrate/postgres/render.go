@@ -828,6 +828,22 @@ func renderCreateTrigger(c migrate.Change) ([]migrate.Statement, error) {
 	if !triggerFunc.MatchString(t.Function) {
 		return nil, fmt.Errorf("trigger %q: function %q must be a (qualified) identifier followed by ()", t.Name, t.Function)
 	}
+	if len(t.UpdateOf) > 0 {
+		upd := false
+		for i, e := range evs {
+			if e == "UPDATE" {
+				upd = true
+				cols := make([]string, len(t.UpdateOf))
+				for j, col := range t.UpdateOf {
+					cols[j] = ident(col)
+				}
+				evs[i] = "UPDATE OF " + strings.Join(cols, ", ")
+			}
+		}
+		if !upd {
+			return nil, fmt.Errorf("trigger %q: UpdateOf needs the UPDATE event", t.Name)
+		}
+	}
 	fn := strings.TrimSuffix(t.Function, "()")
 	args := make([]string, len(t.Args))
 	for i, a := range t.Args {

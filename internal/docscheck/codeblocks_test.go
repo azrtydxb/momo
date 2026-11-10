@@ -28,10 +28,10 @@ import (
 const (
 	markerRun         = "<!-- docscheck:run -->"
 	markerFragment    = "<!-- docscheck:fragment -->"
-	maxFragmentBlocks = 69
+	maxFragmentBlocks = 72
 )
 
-var goFence = regexp.MustCompile("^```go\\s*$")
+var goFence = regexp.MustCompile("^(\\s*)```go\\s*$")
 
 type docBlock struct {
 	file     string
@@ -71,30 +71,57 @@ func docBlocks(t *testing.T, root string) []docBlock {
 		if err != nil {
 			t.Fatal(err)
 		}
-		lines := strings.Split(string(b), "\n")
-		for i := 0; i < len(lines); i++ {
-			if !goFence.MatchString(lines[i]) {
-				continue
-			}
-			blk := docBlock{file: f, line: i + 1}
-			for k := i - 1; k >= 0; k-- {
-				prev := strings.TrimSpace(lines[k])
-				if prev == "" {
-					continue
-				}
-				blk.run = prev == markerRun
-				blk.fragment = prev == markerFragment
-				break
-			}
-			var body []string
-			for i++; i < len(lines) && strings.TrimSpace(lines[i]) != "```"; i++ {
-				body = append(body, lines[i])
-			}
-			blk.src = strings.Join(body, "\n") + "\n"
-			out = append(out, blk)
-		}
+		out = append(out, parseDocBlocks(f, string(b))...)
 	}
 	return out
+}
+
+// parseDocBlocks returns the ```go blocks of one page. A fence may be indented
+// (inside a list item); that indent is stripped from the block body.
+func parseDocBlocks(file, text string) []docBlock {
+	var out []docBlock
+	lines := strings.Split(text, "\n")
+	for i := 0; i < len(lines); i++ {
+		m := goFence.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		indent := m[1]
+		blk := docBlock{file: file, line: i + 1}
+		for k := i - 1; k >= 0; k-- {
+			prev := strings.TrimSpace(lines[k])
+			if prev == "" {
+				continue
+			}
+			blk.run = prev == markerRun
+			blk.fragment = prev == markerFragment
+			break
+		}
+		var body []string
+		for i++; i < len(lines) && strings.TrimSpace(lines[i]) != "```"; i++ {
+			body = append(body, strings.TrimPrefix(lines[i], indent))
+		}
+		blk.src = strings.Join(body, "\n") + "\n"
+		out = append(out, blk)
+	}
+	return out
+}
+
+func TestParseDocBlocksIndentedFence(t *testing.T) {
+	text := "1. Step:\n\n   <!-- docscheck:fragment -->\n\n   ```go\n   x := 1\n   _ = x\n   ```\n\n```go\npackage main\n```\n"
+	got := parseDocBlocks("p.md", text)
+	if len(got) != 2 {
+		t.Fatalf("found %d blocks, want 2 (the indented fence must be seen)", len(got))
+	}
+	if !got[0].fragment || got[0].line != 5 {
+		t.Errorf("indented block: fragment=%v line=%d, want true and 5", got[0].fragment, got[0].line)
+	}
+	if got[0].src != "x := 1\n_ = x\n" {
+		t.Errorf("indent not stripped from body: %q", got[0].src)
+	}
+	if got[1].src != "package main\n" {
+		t.Errorf("unindented block body: %q", got[1].src)
+	}
 }
 
 var declStart = regexp.MustCompile(`^(import|type|func|var|const)\b`)

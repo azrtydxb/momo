@@ -17,6 +17,13 @@ var coreAllowed = map[string]bool{
 	modPath + "/schema":  true,
 	modPath + "/vector":  true,
 	modPath + "/types":   true,
+
+	// Pure mechanics split out of the root package; they import only the
+	// standard library and dialect, never the root.
+	modPath + "/internal/sqlscan": true,
+	modPath + "/internal/redact":  true,
+	modPath + "/internal/keyenc":  true,
+	modPath + "/internal/chunk":   true,
 }
 
 func TestImportGraph(t *testing.T) {
