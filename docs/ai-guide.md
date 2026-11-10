@@ -1321,6 +1321,9 @@ momo.TypedSQL[int64]("balance + ?", delta)
 // Statements and scalar lists:
 affected, err := momo.Exec(ctx, q, `UPDATE tasks SET done = ? WHERE id IN (?)`, true, momo.In(ids))
 ids, err := momo.Scalars[int64](ctx, q, `SELECT id FROM tasks WHERE done = ?`, true)
+// Several columns into Row1..Row10 (positional), a model or a projection (matched by column name):
+rows, err := momo.Query[momo.Row2[int64, string]](ctx, q, `SELECT id, title FROM tasks WHERE done = ?`, true)
+for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT id, title FROM tasks`) { _, _ = row, err }
 // Helpers: momo.In(slice) (empty slice is a build error), momo.Ident("col"), momo.RawSubquery(sql, args...)
 ```
 
@@ -1333,10 +1336,23 @@ ids, err := momo.Scalars[int64](ctx, q, `SELECT id FROM tasks WHERE done = ?`, t
   are operators. On PostgreSQL a fragment may use native `$n` placeholders instead
   (see "Porting pgx and sqlc SQL" below); do not mix them with `?`/`@name`.
 - Returned results of raw queries bypass soft-delete, hooks and timestamps.
+- `Query[T]` (buffered, `[]T`) and `QueryRows[T]` (streaming `iter.Seq2[T, error]`)
+  are the multi-column raw read, for a hand-written `SELECT` or `... RETURNING`.
+  `T` is `Row1`..`Row10` (positional: the result must have exactly that many
+  columns) or a model or projection (matched by column name in any order, exact
+  then case-insensitive; an unmapped, missing or duplicated result column is
+  `ErrValidation`). `T` must have momo metadata: a model, a generated
+  projection or `Row1`..`Row10`; an ad-hoc struct does not work. By-name
+  matching needs every result column to map to a field and every field to be
+  in the result, so `SELECT d.*, count(*)` needs a projection or a `RowN`.
+  Placeholders, hooks (op `raw`), error classification and
+  argument redaction are those of `Exec`; interceptors, soft-delete filters and
+  `AfterLoad` do not apply to raw SQL. `QueryRows` closes the cursor on early
+  break, on an error and on a canceled context (`ErrCanceled`).
 
 #### Porting pgx and sqlc SQL
 
-On the PostgreSQL dialect, raw SQL (`Exec`, `Scalars`, `SQL`, `TypedSQL`,
+On the PostgreSQL dialect, raw SQL (`Exec`, `Scalars`, `Query`, `QueryRows`, `SQL`, `TypedSQL`,
 `RawSubquery`) accepts PostgreSQL's native `$1, $2, ...` placeholders, so a
 statement written for pgx or sqlc moves over unchanged:
 
@@ -1903,6 +1919,12 @@ Rules:
 Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 `pgvector/pgvector:0.8.7-pg16` and `0.8.7-pg17`.
 
+To list or freeze the SQL an app issues without a database, register named
+builders with `momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)`
+(use `momo.RawQuery` for hand-written SQL), read them with
+`QueryRegistry.Compile(dialect)` and freeze them with `momotest.QueryGolden`
+(`MOMO_UPDATE_GOLDEN=1` rewrites the files; registering a name twice panics).
+
 Use the public kit `github.com/azrtydxb/momo/momotest` (see
 [testing.md](testing.md)):
 
@@ -2048,7 +2070,7 @@ report)`, a development hook that reports once per statement shape per scope
    is filtered automatically; do not add the predicate.
 10. Page with `OrderBy` + `After` and a unique tie-break; pass one value per
     effective ORDER BY key (primary key included).
-11. Pass user input only as arguments to `momo.SQL`/`TypedSQL`/`Exec`/`Scalars`;
+11. Pass user input only as arguments to `momo.SQL`/`TypedSQL`/`Exec`/`Scalars`/`Query`/`QueryRows`;
     qualify column names in raw fragments inside joins.
 12. Inside `db.Tx`, use only the `tx` handle. Retry the whole transaction on
     `ErrSerialization` with jittered backoff; never retry inside it.

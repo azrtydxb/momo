@@ -96,7 +96,7 @@ Each of these bypasses every interceptor. Scope them explicitly or use row-level
 - Joined relation tables: for a `Joined` relation only the primary table is filtered; the joined table is not.
 - The association helpers (`Link`, `Unlink`, `Replace` and the like) and graph creation.
 - Subqueries and other sources rendered inside a statement: subquery operands, `UPDATE ... FROM` sources, and the `FromSelect` source of an insert.
-- Raw SQL of every kind: `momo.Exec`, `momo.MapRows`, `momo.Scalars`, `momo.SQL` fragments and `momo.RawSubquery`.
+- Raw SQL of every kind: `momo.Exec`, `momo.MapRows`, `momo.Scalars`, `momo.Query`, `momo.QueryRows`, `momo.SQL` fragments and `momo.RawSubquery`.
 - Bulk loading with COPY: `InsertQuery[T].Copy` runs the insert interceptors (deny only) and `BeforeInsert`, but a predicate an interceptor adds is ignored, and `momo.CopierOf(...).CopyFrom` skips them entirely.
 - Anything run on the driver directly, and any other `*momo.DB` over the same driver.
 
