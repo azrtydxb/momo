@@ -1,6 +1,6 @@
 # momo-12 Task 6: ORM-only microbenchmarks with p50, p95 and p99
 
-Status: open
+Status: done
 Created: 2026-11-04
 Epic: momo-12-performance
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
