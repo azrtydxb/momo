@@ -303,9 +303,9 @@ func TestHandlersOps(t *testing.T) {
 	}
 }
 
-// Catches: identity, key, read-only and defaulted columns counted as required,
-// which would make a client send the id and the creation time, and a required
-// column that is not enforced.
+// Catches: identity, key, read-only and defaulted columns counted as required
+// in the input schema, which would make a client send the id and the creation
+// time, and a required column that is not enforced.
 func TestRequiredProperties(t *testing.T) {
 	g := exampleGraph(t)
 	doc, ds := Document(g, Options{Title: "t", Version: "1", BasePath: "/v1"})
@@ -327,8 +327,8 @@ func TestRequiredProperties(t *testing.T) {
 		"Tag": {"name"}, "Tenant": {"name"},
 	}
 	for model, req := range want {
-		if !reflect.DeepEqual(d.Components.Schemas[model].Required, req) {
-			t.Errorf("%s required = %v, want %v", model, d.Components.Schemas[model].Required, req)
+		if !reflect.DeepEqual(d.Components.Schemas[model+"Input"].Required, req) {
+			t.Errorf("%sInput required = %v, want %v", model, d.Components.Schemas[model+"Input"].Required, req)
 		}
 	}
 	src, _ := Handlers(g, "handlers", Options{Title: "t", Version: "1"})
