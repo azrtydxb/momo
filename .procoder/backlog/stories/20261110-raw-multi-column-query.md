@@ -18,10 +18,10 @@ A hand-written statement that returns several columns has no momo path. `Exec` r
 
 ## Evidence
 
-All evidence is ci-agent run 42774576317 (headSha 2813509754f03ba58eb66c93c04f0bae141ce7b7), all 9 jobs green: unit, integration postgres, mysql84, mysql97, mariadb.
+All evidence is ci-agent run 42785541466 (headSha 539e69ae3af28902555959e238b46d8ec08813af), all 9 jobs green: unit, integration postgres, mysql84, mysql97, mariadb.
 
 - Query[T] on models, projections and Row1..Row10, unknown/missing/duplicate column and tuple arity errors: raw_query_test.go (TestQueryTupleRow, TestQueryModelMatchesByName, TestQueryTupleArityMismatch, TestQueryModelWithoutColumnNames), raw_query_integration_test.go (TestQueryMultiColumn, TestQueryColumnErrors).
 - Streaming, no buffering, close on early break and on error and cancel: TestQueryRows (unit), TestQueryRowsStreaming (integration).
 - Placeholders, classification (unique violation, canceled) and redaction parity with Exec, hooks (op raw): TestQueryTupleRow, TestQueryRunsHooksAndTx, TestQueryErrorsClassifiedLikeExec. Interceptors: not run, like Exec (db_interceptor.go).
-- *DB, *Tx, pinned handle (where the driver is a Pinner): TestQueryMultiColumn. Integration tests run through testopen.Each, i.e. every dialect opener registered in that CI job; SQLite was not separately confirmed in the run logs.
+- *DB, *Tx, pinned handle (where the driver is a Pinner): TestQueryMultiColumn. The integration tests (rqEach) run testopen.Each (PostgreSQL and SQLite) plus MySQL 8.4, MySQL 9.7 and MariaDB in their jobs; the MySQL-family jobs failed before the mysqldriver Columns() fix and pass now. Caveat: the CI logs do not use go test -v, so the SQLite subtests are not individually visible; whether SQLite ran in the postgres job (MOMO_INTEGRATION_DIALECTS=postgres) is unconfirmed.
 - Docs: docs/ai-guide.md (raw SQL section), docs/capabilities.md, docs/momovet.md, docs/PRIVACY_RULES.md, docs/agents.md, docs/ARCHITECTURE.md; there is no separate raw SQL page, so ai-guide is the raw SQL reference. apidiff-docs and docscheck green.

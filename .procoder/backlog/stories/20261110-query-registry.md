@@ -18,7 +18,7 @@ An app that moves from sqlc loses its `.sql` files, which it linted statically a
 
 ## Evidence
 
-All evidence is ci-agent run 42774576317 (headSha 2813509754f03ba58eb66c93c04f0bae141ce7b7), all 9 jobs green.
+All evidence is ci-agent run 42785541466 (headSha 539e69ae3af28902555959e238b46d8ec08813af), all 9 jobs green.
 
 - Register and compile per dialect without a database: raw_registry_test.go (TestQueryRegistryCompilesPerDialect, TestQueryRegistryCompileErrorNamesQuery, TestRegisterQueryUsesDefaultRegistry, TestOfflineNeverExecutes).
 - Golden helper that fails on changed, added or removed SQL: momotest/querygolden_test.go (TestQueryGoldenDetectsChanges, TestParseQueryGoldenRoundTrip).
