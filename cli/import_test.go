@@ -11,7 +11,7 @@ import (
 )
 
 func TestImportCommand(t *testing.T) {
-	src := filepath.Join("..", "..", "internal", "compat", "gormfixture")
+	src := filepath.Join("..", "internal", "compat", "gormfixture")
 	dst := t.TempDir()
 	var out, errOut bytes.Buffer
 	code := runImport(&out, &errOut, []string{"gorm", "--src", src, "--out", dst})
@@ -69,7 +69,7 @@ func TestImportHelpFlagAsValueIsNotHelp(t *testing.T) {
 }
 
 func TestImportWritesReportFile(t *testing.T) {
-	src := filepath.Join("..", "..", "internal", "compat", "gormfixture")
+	src := filepath.Join("..", "internal", "compat", "gormfixture")
 	dst := t.TempDir()
 	rf := filepath.Join(t.TempDir(), "report.txt")
 	var out, errOut bytes.Buffer
