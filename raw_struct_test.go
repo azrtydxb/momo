@@ -159,6 +159,33 @@ func TestQueryPlainStructOuterFieldShadowsEmbedded(t *testing.T) {
 	}
 }
 
+type CycleNode struct {
+	*CycleNode
+	ID int64
+}
+
+type CycleA struct {
+	*CycleB
+	ID int64
+}
+
+type CycleB struct {
+	*CycleA
+	Name string
+}
+
+// Catches: an embedded cycle recursing until the stack overflows instead of
+// failing with ErrValidation naming the cycle.
+func TestQueryPlainStructEmbeddedCycleIsAnError(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.Postgres))
+	if _, err := momo.Query[CycleNode](t.Context(), db, "SELECT 1"); !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "embedded cycle") {
+		t.Errorf("self embedding: err = %v", err)
+	}
+	if _, err := momo.Query[CycleA](t.Context(), db, "SELECT 1"); !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "embedded cycle") {
+		t.Errorf("mutual embedding: err = %v", err)
+	}
+}
+
 // Catches: a driver that cannot name columns breaking the plain-struct path
 // (it falls back to field order).
 func TestQueryPlainStructWithoutColumnNames(t *testing.T) {
