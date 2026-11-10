@@ -45,11 +45,12 @@ func fkEqual(a, b schema.ForeignKey) bool {
 // TestCompanionForeignKeyRefusals: a key that does not reference a unique
 // key, an unknown table or an unknown column is a diagnostic, not a schema.
 func TestCompanionForeignKeyRefusals(t *testing.T) {
+	// Load builds the schema to validate the companion, so the refusals are
+	// its diagnostics and no model survives.
 	g, diags, err := Load([]string{"./companionfkbad"}, Config{Dir: fixturesDir(t)})
-	if err != nil || len(diags) != 0 {
-		t.Fatalf("load: %v %v", err, diags)
+	if err != nil {
+		t.Fatal(err)
 	}
-	s, diags := BuildSchema(g.Models, pg())
 	joined := diagStrings(diags)
 	for _, want := range []string{
 		`foreign key "child_not_unique_fk": (company_id, id) is neither the primary key of parent`,
@@ -60,7 +61,7 @@ func TestCompanionForeignKeyRefusals(t *testing.T) {
 			t.Errorf("missing diagnostic %q in:\n%s", want, joined)
 		}
 	}
-	if child, _ := s.Table("child"); len(child.ForeignKeys) != 0 {
-		t.Errorf("refused keys reached the schema: %+v", child.ForeignKeys)
+	if len(g.Models) != 0 {
+		t.Errorf("refused keys must not produce models: %d", len(g.Models))
 	}
 }
