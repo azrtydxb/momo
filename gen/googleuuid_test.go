@@ -30,8 +30,12 @@ func TestGoogleUUIDFieldsMapWithoutTypeTag(t *testing.T) {
 	}
 	for col, want := range map[string]string{"id": "uuid", "owner_id": "uuid", "team_ids": "uuid[]"} {
 		c, found := tbl.Column(col)
-		if !found || c.Type != want {
-			t.Errorf("column %s = %q (found %v), want %q", col, c.Type, found, want)
+		if !found {
+			t.Errorf("column %s missing; table has %+v", col, tbl.Columns)
+			continue
+		}
+		if c.Type != want {
+			t.Errorf("column %s = %q, want %q", col, c.Type, want)
 		}
 	}
 	src, ds := EmitDescriptors(g.Models[0], g)

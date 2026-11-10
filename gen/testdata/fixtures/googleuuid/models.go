@@ -12,6 +12,6 @@ import (
 type Member struct {
 	momo.Model `momo:"table:members"`
 	ID         uuid.UUID   `momo:"pk"`
-	OwnerID    *uuid.UUID  `momo:"nullable"`
-	TeamIDs    []uuid.UUID `momo:"notnull"`
+	OwnerID    *uuid.UUID  `momo:"column:owner_id,nullable"`
+	TeamIDs    []uuid.UUID `momo:"column:team_ids,notnull"`
 }
