@@ -57,6 +57,10 @@ it `momo migrate diff`, holds no table for it. A view model gets no
 `CREATE TABLE`, and a foreign key never points at it. Declare the view itself
 with `c.View` in `MomoConfig`.
 
+The generated servers expose only list and get for a view model: there is no
+create, update or delete route, RPC or mutation, and naming a write operation
+for a view model in `ops` is a generator error.
+
 If you add `momo.View` to a model whose table really exists in the database,
 `momo migrate diff` now plans a `DROP TABLE` for that table (AutoMigrate skips
 it). Review the diff before you apply it.

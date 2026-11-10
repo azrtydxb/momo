@@ -272,7 +272,11 @@ func serverSourceHook(g *gen.Graph, lock *Lock, pkg, pbImport string, ops apique
 		}
 		sm.modelAlias = alias(mp, m.PkgName)
 		sm.descAlias = alias(dp, m.SubPkg+"desc")
-		sm.ops = ops.For(m.GoName)
+		sm.ops, err = ops.ForModel(m.GoName, m.IsView)
+		if err != nil {
+			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "gRPC " + err.Error()})
+			continue
+		}
 		models = append(models, sm)
 	}
 	if len(diags) > 0 {

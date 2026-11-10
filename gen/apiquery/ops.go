@@ -54,6 +54,30 @@ func (o Ops) Validate() error {
 	return nil
 }
 
+// ForModel returns the operations enabled for model. A view model is
+// read-only: its set is cut down to the read operations, because the runtime
+// refuses every write to a view. A write operation that ops names for the view
+// model itself (not through the DefaultModel entry) is an error.
+func (o Ops) ForModel(model string, view bool) (OpSet, error) {
+	set := o.For(model)
+	if !view {
+		return set, nil
+	}
+	if names, ok := o[model]; ok {
+		for _, n := range names {
+			if !slices.Contains(ReadOnlyOps, Op(n)) {
+				return nil, fmt.Errorf("view model %s is read-only, but ops lists the write operation %q for it: list only list and get", model, n)
+			}
+		}
+	}
+	for _, op := range AllOps {
+		if !slices.Contains(ReadOnlyOps, op) {
+			delete(set, op)
+		}
+	}
+	return set, nil
+}
+
 // For returns the operations enabled for model.
 func (o Ops) For(model string) OpSet {
 	names, ok := o[model]
