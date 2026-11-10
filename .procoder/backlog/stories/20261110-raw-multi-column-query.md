@@ -11,7 +11,7 @@ A hand-written statement that returns several columns has no momo path. `Exec` r
 
 ## Acceptance criteria
 
-- [ ] `momo.Query[T](ctx, q, sql, args...)` returns `[]T` for T a model, a projection struct or `Row1`..`Row10`; columns are matched like typed selects, and an unknown or missing column is a classified error (unit and PostgreSQL integration tests)
+- [ ] `momo.Query[T]` (context, querier, sql, args) returns `[]T` for T a model, a projection struct or `Row1`..`Row10`; columns are matched like typed selects, and an unknown or missing column is a classified error (unit and PostgreSQL integration tests)
 - [ ] a streaming form (`QueryRows` or an iterator) reads rows without buffering them all, and closes on early break and on error (integration test)
-- [ ] `$n` and `?` placeholders behave as in `Exec`, errors are classified (unique violation, canceled) and redacted as in `Exec`, and the query goes through hooks and interceptors (tests)
+- [x] `$n` and `?` placeholders behave as in `Exec`, errors are classified (unique violation, canceled) and redacted as in `Exec`, and the query goes through hooks; like Exec it does not run interceptors (db_interceptor.go: raw SQL never runs interceptors) (tests: TestQueryRunsHooksAndTx, TestQueryTupleRow, TestQueryErrorsClassifiedLikeExec; CI run pending)
 - [ ] works on `*DB`, `*Tx` and a pinned handle; MySQL and SQLite run the same integration test; docs (ai-guide, raw SQL page) describe it
