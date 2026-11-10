@@ -225,7 +225,12 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 	for _, m := range models {
 		// The input schema exists only for a model with a create or update
 		// route, so only then can its name clash with another model's.
-		if wops := opts.Ops.For(m.GoName); names[m.GoName+"Input"] && (wops.Has(apiquery.OpCreate) || wops.Has(apiquery.OpUpdate)) {
+		ops, err := opts.Ops.ForModel(m.GoName, m.IsView)
+		if err != nil {
+			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "OpenAPI " + err.Error()})
+			continue
+		}
+		if wops := ops; names[m.GoName+"Input"] && (wops.Has(apiquery.OpCreate) || wops.Has(apiquery.OpUpdate)) {
 			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "OpenAPI schema name " + m.GoName + "Input is the input schema of " + m.GoName + " and is also a model name"})
 			continue
 		}
@@ -283,7 +288,6 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "model " + m.GoName + " has no single exposed int64 primary key, so the API serves no routes for it"})
 			continue
 		}
-		ops := opts.Ops.For(m.GoName)
 		if ops.Has(apiquery.OpCreate) || ops.Has(apiquery.OpUpdate) {
 			in := obj{"type": "object", "properties": inProps}
 			if len(inRequired) > 0 {

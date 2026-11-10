@@ -146,10 +146,15 @@ func protoSource(g *gen.Graph, lock *Lock, pkg, goPackage string, ops apiquery.O
 		for _, n := range derivedMessages(m.GoName) {
 			taken[n] = m.GoName
 		}
+		mops, err := ops.ForModel(m.GoName, m.IsView)
+		if err != nil {
+			fail("gRPC " + err.Error())
+			continue
+		}
 		fields, hidden, ts, fd := fieldsOf(m, lock)
 		diags = append(diags, fd...)
 		needTimestamp = needTimestamp || ts
-		writeModel(&body, g, m, fields, hidden, lock, live, ops.For(m.GoName), &diags)
+		writeModel(&body, g, m, fields, hidden, lock, live, mops, &diags)
 	}
 
 	var out strings.Builder

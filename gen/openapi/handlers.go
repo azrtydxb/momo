@@ -164,6 +164,11 @@ func Handlers(g *gen.Graph, pkg string, opts Options) ([]byte, []gen.Diagnostic)
 			continue
 		}
 		pk := fields[i]
+		mops, err := opts.Ops.ForModel(m.GoName, m.IsView)
+		if err != nil {
+			skip(m, err.Error())
+			continue
+		}
 		mp, err := gosrc.ModelImport(m)
 		if err != nil {
 			skip(m, err.Error())
@@ -175,7 +180,7 @@ func Handlers(g *gen.Graph, pkg string, opts Options) ([]byte, []gen.Diagnostic)
 			continue
 		}
 		models = append(models, hmodel{
-			m: m, fields: fields, pk: pk, ops: opts.Ops.For(m.GoName),
+			m: m, fields: fields, pk: pk, ops: mops,
 			modelAlias: aliases.Alias(mp, m.PkgName),
 			descAlias:  aliases.Alias(dp, m.SubPkg+"desc"),
 		})
