@@ -1,0 +1,2481 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.6/upgrading/">
+      
+      
+        <link rel="prev" href="../supported-versions/">
+      
+      
+        <link rel="next" href="../reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Upgrading - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#upgrading" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Upgrading
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-060" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.6.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.6.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-using-and-from-guard-is-stricter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Using and From guard is stricter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-error-bodies-use-the-key-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI error bodies use the key error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generated-handlers-and-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated handlers and servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models-no-longer-produce-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models no longer produce a table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-input-and-output-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI input and output schemas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-hook-and-cancellation-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error hook and cancellation codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-050" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.5.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.5.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#regenerating-with-from-db-after-the-dbdefault-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regenerating with --from-db after the dbdefault tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advisory-string-helpers-take-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory string helpers take options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-hook-methods-are-now-wired-by-momo-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model hook methods are now wired by momo generate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-040" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.4.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.4.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#identifier-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Identifier table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rewrite recipe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-did-not-move" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What did not move
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-060" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.6.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.6.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-using-and-from-guard-is-stricter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Using and From guard is stricter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-error-bodies-use-the-key-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI error bodies use the key error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generated-handlers-and-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated handlers and servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models-no-longer-produce-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models no longer produce a table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-input-and-output-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI input and output schemas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-hook-and-cancellation-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error hook and cancellation codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-050" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.5.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.5.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#regenerating-with-from-db-after-the-dbdefault-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regenerating with --from-db after the dbdefault tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advisory-string-helpers-take-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory string helpers take options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-hook-methods-are-now-wired-by-momo-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model hook methods are now wired by momo generate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-040" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.4.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.4.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#identifier-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Identifier table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rewrite recipe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-did-not-move" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What did not move
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="upgrading">Upgrading<a class="headerlink" href="#upgrading" title="Permanent link">&para;</a></h1>
+<p>Momo is pre-v1 and makes no compatibility promise between releases; see the
+<a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
+the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
+later releases can break more.</p>
+<h2 id="upgrading-to-060">Upgrading to 0.6.0<a class="headerlink" href="#upgrading-to-060" title="Permanent link">&para;</a></h2>
+<h3 id="the-using-and-from-guard-is-stricter">The Using and From guard is stricter<a class="headerlink" href="#the-using-and-from-guard-is-stricter" title="Permanent link">&para;</a></h3>
+<p><code>UpdateQuery.From</code> and <code>DeleteQuery.Using</code> refuse a statement whose <code>Where</code>
+does not reference the target table, with <code>ErrUnfilteredMutation</code>. The guard
+now follows <code>Or</code>, <code>Not</code> and <code>JoinSQL</code>: an <code>Or</code> counts only when every branch
+references the target, an <code>And</code> when any term does, and <code>Not</code> swaps the two
+rules. <code>JoinSQL</code> with <code>AND</code> or <code>OR</code> follows the same rules, and <code>JoinSQL</code> with
+any other separator never counts. Statements that passed in 0.5.0 and are now
+refused: <code>Where(momo.Or(PostCols.ID.Eq(1), SrcCols.Title.Eq("x")))</code>, where one
+<code>Or</code> branch is off the target, and
+<code>Where(momo.Not(momo.And(PostCols.ID.Eq(1), SrcCols.Title.Eq("x"))))</code>, which is
+an <code>Or</code> of negations.</p>
+<p>Add a condition on the target to every branch, or call <code>AllRows()</code> when the
+statement is meant to touch every row. The guard checks that the condition
+references the target, not that it restricts it: <code>t.id = t.id</code> still passes.</p>
+<h3 id="openapi-error-bodies-use-the-key-error">OpenAPI error bodies use the key <code>error</code><a class="headerlink" href="#openapi-error-bodies-use-the-key-error" title="Permanent link">&para;</a></h3>
+<p>The OpenAPI document and the generated handlers now describe and send errors
+as <code>{"error": "&lt;message&gt;"}</code>. The <code>Error</code> schema property was <code>message</code> in 0.4.0.
+A client that reads <code>message</code> from an error response must read <code>error</code>. Error
+messages are fixed strings: a constraint violation no longer shows the table or
+constraint name.</p>
+<h3 id="generated-handlers-and-servers">Generated handlers and servers<a class="headerlink" href="#generated-handlers-and-servers" title="Permanent link">&para;</a></h3>
+<p>The ecosystem generators (<code>graphql</code>, <code>grpc</code>, <code>openapi</code>, enabled in the
+<code>plugins:</code> section of <code>momo.yaml</code>) generate servers that do no authentication
+and no authorization. Wrap the <code>http.ServeMux</code>, the <code>grpc.Server</code> or the
+GraphQL handler. Turn off operations of the <code>openapi</code> and <code>grpc</code> servers with
+<code>ops</code> or <code>read_only: true</code> (the <code>graphql</code> plugin has neither option); see the
+<a href="../capabilities/">capabilities</a> page for the options, the error mapping, the
+update semantics and the GraphQL limits.</p>
+<p>PUT and gRPC Update differ on purpose. An OpenAPI PUT must carry every required
+property and writes only the properties it carries, so a property it leaves out
+keeps whatever value the database has, including one a concurrent request just
+wrote. A gRPC Update has no way to leave a scalar out (a proto3 scalar at its
+zero value is a value), so it writes every writable column the message holds;
+a vector, a timestamp or a defaulted scalar left unset is not written. Neither
+reads the row first and writes it back.</p>
+<h3 id="view-models-no-longer-produce-a-table">View models no longer produce a table<a class="headerlink" href="#view-models-no-longer-produce-a-table" title="Permanent link">&para;</a></h3>
+<p>A model that embeds <code>momo.View</code> maps a view, so the generated schema, and with
+it <code>momo migrate diff</code>, holds no table for it. A view model gets no
+<code>CREATE TABLE</code>, and a foreign key never points at it. Declare the view itself
+with <code>c.View</code> in <code>MomoConfig</code>.</p>
+<p>The generated servers expose only list and get for a view model: there is no
+create, update or delete route, RPC or mutation, and naming a write operation
+for a view model in <code>ops</code> is a generator error.</p>
+<p>If you add <code>momo.View</code> to a model whose table really exists in the database,
+<code>momo migrate diff</code> now plans a <code>DROP TABLE</code> for that table (AutoMigrate skips
+it). Review the diff before you apply it.</p>
+<p><code>momo.RefreshMaterializedView</code> refreshes a materialized view (PostgreSQL only).</p>
+<h3 id="openapi-input-and-output-schemas">OpenAPI input and output schemas<a class="headerlink" href="#openapi-input-and-output-schemas" title="Permanent link">&para;</a></h3>
+<p>The OpenAPI document now has two schemas per model. <code>&lt;Model&gt;</code> (for example
+<code>Document</code>) is the output: every column, with the not-null columns, the key
+included, listed in <code>required</code>. A client generator now types <code>id</code> as required
+on a response. <code>&lt;Model&gt;Input</code> (<code>DocumentInput</code>) is new and is what a create and
+a PUT take: only the writable properties, so it has no key and no read-only,
+identity or serial column, and its <code>required</code> list is what it was on <code>&lt;Model&gt;</code>
+in 0.5.0 (not null, no database default). Every response keeps referencing
+<code>&lt;Model&gt;</code>; the request bodies of create and PUT now reference <code>&lt;Model&gt;Input</code>.
+A client generated from the old document sends the same JSON and keeps working;
+regenerate it to get the new types. A model whose name plus <code>Input</code> is also a
+model name (<code>Doc</code> and <code>DocInput</code>) is a generator diagnostic.</p>
+<p>The gRPC messages are unchanged: a model message is still what a client sends
+and receives. The field comments in the <code>.proto</code> file say which fields a request
+ignores (the key on Create, read-only columns on Create and Update, and the
+version, soft-delete and timestamp columns on Update).</p>
+<h3 id="error-hook-and-cancellation-codes">Error hook and cancellation codes<a class="headerlink" href="#error-hook-and-cancellation-codes" title="Permanent link">&para;</a></h3>
+<p>The <code>openapi</code> and <code>grpc</code> plugins take the option <code>on_error</code>, the name of a Go
+function in the generated package with the signature
+<code>func(ctx context.Context, op string, err error)</code>. The generated code calls it
+once for every error it answers from a statement (a database error, a missing
+row, a cancelled context), with the operation (the <code>operationId</code> for OpenAPI,
+for example <code>getDocument</code>; <code>DocumentService.Get</code> for gRPC) and the original
+error, before it writes the fixed message. Log, count or trace the error there.
+A panic in the hook is recovered, so it cannot stop the request from being
+answered. The <code>openapi</code> option needs <code>handlers: true</code>, because only the
+generated handlers call the hook. Without the option nothing changes.</p>
+<p>A request whose context was cancelled is now answered 499 (OpenAPI), <code>Canceled</code>
+(gRPC) and <code>CANCELED</code> (GraphQL) with a fixed message, and one whose deadline
+passed 504, <code>DeadlineExceeded</code> and <code>CANCELED</code>. These were 500 and <code>Internal</code>
+before. A client or proxy that retries on 500 will no longer retry them.</p>
+<h2 id="upgrading-to-050">Upgrading to 0.5.0<a class="headerlink" href="#upgrading-to-050" title="Permanent link">&para;</a></h2>
+<h3 id="regenerating-with-from-db-after-the-dbdefault-tag">Regenerating with <code>--from-db</code> after the <code>dbdefault</code> tag<a class="headerlink" href="#regenerating-with-from-db-after-the-dbdefault-tag" title="Permanent link">&para;</a></h3>
+<p><code>momo generate --from-db</code> now adds the <code>dbdefault</code> tag to every NOT NULL
+PostgreSQL column whose default is computed (<code>gen_random_uuid()</code>, <code>now()</code>,
+<code>CURRENT_TIMESTAMP</code>, <code>nextval(...)</code> and other function calls). A Go zero value
+is no longer written for such a column: <code>InsertQuery.Model</code> and <code>InsertQuery.Models</code> leave it out,
+the database default applies, and the value is read back with <code>RETURNING</code>.
+Review the regenerated models: a <code>bool</code>, number, empty string or zero time in
+such a field can no longer be written explicitly through <code>Model</code> (use <code>InsertQuery.Values</code>
+or remove the tag), and a plain MySQL database refuses a zero value with
+<code>ErrUnsupported</code> because it cannot read the default back. Hand-written models
+are unaffected until they add the tag. See "Database defaults" in the
+<a href="../ai-guide/">AI guide</a>.</p>
+<h3 id="advisory-string-helpers-take-options">Advisory string helpers take options<a class="headerlink" href="#advisory-string-helpers-take-options" title="Permanent link">&para;</a></h3>
+<p><code>advisory.XactLockString</code> and <code>advisory.TryXactLockString</code> take a trailing
+<code>...advisory.Option</code> (for <code>advisory.Hash64</code>). A call site is unchanged, but
+the function types changed: code that assigns one of these functions to a
+variable or field of the old func type no longer compiles. Wrap the call in a
+closure instead.</p>
+<h3 id="model-hook-methods-are-now-wired-by-momo-generate">Model hook methods are now wired by <code>momo generate</code><a class="headerlink" href="#model-hook-methods-are-now-wired-by-momo-generate" title="Permanent link">&para;</a></h3>
+<p><code>momo generate</code> detects methods named <code>BeforeInsert</code>, <code>BeforeUpdate</code>,
+<code>BeforeDelete</code> and <code>AfterLoad</code> on a model and fills <code>Meta.Hooks</code> with them.
+Two behaviors change for an existing model after you regenerate:</p>
+<ul>
+<li>A method with one of these names and the exact signature
+  <code>func(context.Context) error</code> now runs: before inserts, updates and deletes,
+  and after loads. Before, such a method was never called. If you had a method
+  with a hook name that was meant as plain code, rename it before you
+  regenerate.</li>
+<li>A method with one of these names and any other signature makes
+  <code>momo generate</code> fail with a positioned diagnostic
+  (<code>hook BeforeInsert on Doc must have signature func(context.Context) error</code>),
+  and a hook-named method on a projection is a diagnostic as well (a projection
+  runs no hooks). Fix the signature or rename the method.</li>
+</ul>
+<p>If you set <code>Meta.Hooks</code> by hand in a hand-written <code>Meta</code>, nothing changes.
+Generated files are rewritten by <code>momo generate</code>; the <code>Hooks:</code> field appears
+only for models that have a hook method.</p>
+<h3 id="view-models">View models<a class="headerlink" href="#view-models" title="Permanent link">&para;</a></h3>
+<p>A model that embeds <code>momo.View</code> (new) is marked as a view. Its writes fail with
+<code>ErrValidation</code>. Existing models are unaffected unless you add the marker.</p>
+<h2 id="upgrading-to-040">Upgrading to 0.4.0<a class="headerlink" href="#upgrading-to-040" title="Permanent link">&para;</a></h2>
+<p>Release 0.4.0 moves feature-specific helpers out of the root package <code>momo</code>
+into subpackages. Every move is a source break: the old identifier is gone and
+the new one lives under a new import path. The release notes are the 0.4.0
+entry of the <a href="https://github.com/azrtydxb/momo/blob/main/CHANGELOG.md">changelog</a>.</p>
+<p>Why there is no alias: a Go method lives in the package of its receiver type,
+and the subpackages import <code>momo</code>, so <code>momo</code> cannot import them back to keep
+the old names. A move therefore deletes the old identifier outright.</p>
+<h3 id="identifier-table">Identifier table<a class="headerlink" href="#identifier-table" title="Permanent link">&para;</a></h3>
+<p>One row per moved identifier. When a method became a function, the old name is
+the method and the new name is the function, which takes the former receiver
+as an argument.</p>
+<table>
+<thead>
+<tr>
+<th>Old identifier</th>
+<th>New import path</th>
+<th>New identifier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momo.ArrayContains</code></td>
+<td><code>github.com/azrtydxb/momo/arrayop</code></td>
+<td><code>arrayop.Contains</code></td>
+</tr>
+<tr>
+<td><code>momo.ArrayContainedBy</code></td>
+<td><code>github.com/azrtydxb/momo/arrayop</code></td>
+<td><code>arrayop.ContainedBy</code></td>
+</tr>
+<tr>
+<td><code>momo.ArrayOverlaps</code></td>
+<td><code>github.com/azrtydxb/momo/arrayop</code></td>
+<td><code>arrayop.Overlaps</code></td>
+</tr>
+<tr>
+<td><code>momo.AnyOf</code></td>
+<td><code>github.com/azrtydxb/momo/arrayop</code></td>
+<td><code>arrayop.AnyOf</code></td>
+</tr>
+<tr>
+<td><code>momo.TSExpr</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.Expr</code></td>
+</tr>
+<tr>
+<td><code>momo.ToTSVector</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.ToVector</code></td>
+</tr>
+<tr>
+<td><code>momo.WebsearchToTSQuery</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.WebsearchToQuery</code></td>
+</tr>
+<tr>
+<td><code>momo.PlainToTSQuery</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.PlainToQuery</code></td>
+</tr>
+<tr>
+<td><code>momo.PhraseToTSQuery</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.PhraseToQuery</code></td>
+</tr>
+<tr>
+<td><code>momo.ToTSQuery</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.ToQuery</code></td>
+</tr>
+<tr>
+<td><code>momo.TSMatch</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.Match</code></td>
+</tr>
+<tr>
+<td><code>momo.TSRank</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.Rank</code></td>
+</tr>
+<tr>
+<td><code>momo.TSRankCD</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.RankCD</code></td>
+</tr>
+<tr>
+<td><code>momo.TSHeadline</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.Headline</code></td>
+</tr>
+<tr>
+<td><code>momo.Substr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Substr</code></td>
+</tr>
+<tr>
+<td><code>momo.SubstrFrom</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.SubstrFrom</code></td>
+</tr>
+<tr>
+<td><code>momo.Lower</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Lower</code></td>
+</tr>
+<tr>
+<td><code>momo.Upper</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Upper</code></td>
+</tr>
+<tr>
+<td><code>momo.Length</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Length</code></td>
+</tr>
+<tr>
+<td><code>momo.LengthExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.LengthExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.CurrentSchema</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CurrentSchema</code></td>
+</tr>
+<tr>
+<td><code>momo.CurrentSchemaExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CurrentSchemaExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Case</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Case</code></td>
+</tr>
+<tr>
+<td><code>momo.CaseExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CaseExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Numeric</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Numeric</code></td>
+</tr>
+<tr>
+<td><code>momo.ArithExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.ArithExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Add</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Add</code></td>
+</tr>
+<tr>
+<td><code>momo.AddExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.AddExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Sub</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Sub</code></td>
+</tr>
+<tr>
+<td><code>momo.SubExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.SubExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Mul</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Mul</code></td>
+</tr>
+<tr>
+<td><code>momo.MulExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.MulExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.CoalesceExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CoalesceExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Cast</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Cast</code></td>
+</tr>
+<tr>
+<td><code>momo.CastExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CastExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Concat</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Concat</code></td>
+</tr>
+<tr>
+<td><code>momo.ConcatExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.ConcatExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONText</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.Text</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONPath</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.Path</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONContains</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.Contains</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONHasKey</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.HasKey</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONTextExpr</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.TextExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.AggExpr</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Call</code></td>
+</tr>
+<tr>
+<td><code>momo.Aggregate</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Func</code></td>
+</tr>
+<tr>
+<td><code>momo.StringAgg</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.String</code></td>
+</tr>
+<tr>
+<td><code>momo.ArrayAgg</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Array</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONBAgg</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.JSONB</code></td>
+</tr>
+<tr>
+<td><code>momo.PercentileCont</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.PercentileCont</code></td>
+</tr>
+<tr>
+<td><code>momo.PercentileDisc</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.PercentileDisc</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONPair</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Pair</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONField</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Field</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONObjectExpr</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.ObjectExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONBBuildObject</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.BuildObject</code></td>
+</tr>
+<tr>
+<td><code>momo.ToJSONExpr</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.JSONExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.ToJSONB</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.ToJSONB</code></td>
+</tr>
+<tr>
+<td><code>momo.EmptyJSONArray</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.EmptyJSONArray</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractField</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractField</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractExpr</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Extract</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Extract</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractYear</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractYear</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractMonth</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractMonth</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractDay</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractDay</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractHour</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractHour</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractMinute</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractMinute</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractSecond</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractSecond</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractQuarter</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractQuarter</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractDow</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractDow</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractISODow</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractISODow</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractDoy</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractDoy</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractEpoch</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractEpoch</code></td>
+</tr>
+<tr>
+<td><code>momo.TimeExpr</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Expr</code></td>
+</tr>
+<tr>
+<td><code>momo.AtTimeZone</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.AtTimeZone</code></td>
+</tr>
+<tr>
+<td><code>momo.AtTimeZoneExpr</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.AtTimeZoneExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalUnit</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalUnit</code></td>
+</tr>
+<tr>
+<td><code>momo.Interval</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Interval</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalOf</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalOf</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalExpr</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalSecond</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalSecond</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalMinute</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalMinute</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalHour</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalHour</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalDay</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalDay</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalWeek</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalWeek</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalMonth</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalMonth</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalYear</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalYear</code></td>
+</tr>
+<tr>
+<td><code>momo.AddInterval</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.AddInterval</code></td>
+</tr>
+<tr>
+<td><code>momo.SubInterval</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.SubInterval</code></td>
+</tr>
+<tr>
+<td><code>momo.Now</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Now</code></td>
+</tr>
+<tr>
+<td><code>momo.CurrentTimestamp</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.CurrentTimestamp</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncUnit</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncUnit</code></td>
+</tr>
+<tr>
+<td><code>momo.DateTrunc</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Trunc</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncSecond</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncSecond</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncMinute</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncMinute</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncHour</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncHour</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncDay</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncDay</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncWeek</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncWeek</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncMonth</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncMonth</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncQuarter</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncQuarter</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncYear</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncYear</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.AdvisoryXactLock</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.XactLock</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.AdvisoryXactLockString</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.XactLockString</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.TryAdvisoryXactLock</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.TryXactLock</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.TryAdvisoryXactLockString</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.TryXactLockString</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.AdvisoryXactLock</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.XactLock</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.AdvisoryXactLockString</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.XactLockString</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.TryAdvisoryXactLock</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.TryXactLock</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.TryAdvisoryXactLockString</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.TryXactLockString</code></td>
+</tr>
+<tr>
+<td><code>momo.SearchSettings</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.Settings</code></td>
+</tr>
+<tr>
+<td><code>momo.SearchSettings.Validate</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.Settings.Validate</code></td>
+</tr>
+<tr>
+<td><code>momo.IterativeScan</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.IterativeScan</code></td>
+</tr>
+<tr>
+<td><code>momo.IterativeOff</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.IterativeOff</code></td>
+</tr>
+<tr>
+<td><code>momo.IterativeRelaxedOrder</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.IterativeRelaxedOrder</code></td>
+</tr>
+<tr>
+<td><code>momo.IterativeStrictOrder</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.IterativeStrictOrder</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.SetSearch</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.Apply</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.WithSearch</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.With</code></td>
+</tr>
+<tr>
+<td><code>momo.DistanceExpr</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.Expr</code></td>
+</tr>
+<tr>
+<td><code>momo.L2Distance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.L2</code></td>
+</tr>
+<tr>
+<td><code>momo.InnerProductDistance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.InnerProduct</code></td>
+</tr>
+<tr>
+<td><code>momo.CosineDistance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.Cosine</code></td>
+</tr>
+<tr>
+<td><code>momo.L1Distance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.L1</code></td>
+</tr>
+<tr>
+<td><code>momo.HammingDistance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.Hamming</code></td>
+</tr>
+<tr>
+<td><code>momo.JaccardDistance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.Jaccard</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="rewrite-recipe">Rewrite recipe<a class="headerlink" href="#rewrite-recipe" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Commit your work first, because the next steps edit files in place, then
+   fetch the release: <code>go get github.com/azrtydxb/momo@v0.4.0</code>.</li>
+<li>Save the raw markdown of this page (not the rendered HTML) as <code>upgrading.md</code>
+   in your module root and run the block below from there. It turns the table
+   into <code>gofmt -r</code> rules and applies them to the Go files that import
+   <code>github.com/azrtydxb/momo</code> by that exact path, skipping <code>vendor/</code>. It
+   rewrites the rows of plain identifiers (functions, types and constants),
+   stops with an error when it finds no file or generates no rule, and does not
+   touch a file that imports momo under an alias or with a dot import; the
+   compiler lists what is left there.</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="nv">files</span><span class="o">=</span><span class="k">$(</span>grep<span class="w"> </span>-rl<span class="w"> </span>--include<span class="o">=</span><span class="s1">'*.go'</span><span class="w"> </span><span class="s1">'github.com/azrtydxb/momo"'</span><span class="w"> </span>.<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span>/vendor/<span class="k">)</span>
+<span class="nv">rules</span><span class="o">=</span><span class="k">$(</span>awk<span class="w"> </span>-F<span class="s1">'`'</span><span class="w"> </span><span class="s1">'NF == 7 &amp;&amp; $1 ~ /^\| *$/ &amp;&amp; $2 ~ /^momo\.[A-Za-z0-9]+$/ { printf "gofmt -r \"%s -&gt; %s\" -w \"$@\"\n", $2, $6 }'</span><span class="w"> </span>upgrading.md<span class="k">)</span>
+<span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$files</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"no Go file imports momo"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$rules</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"no rules: upgrading.md must be the raw markdown of this page"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$rules</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span><span class="nv">$files</span>
+</code></pre></div>
+<ol>
+<li>Rewrite the <code>momo.Tx.*</code> and <code>momo.DB.*</code> rows by hand, because the receiver
+   moves into the argument list: <code>recv.Old(ctx, args)</code> becomes
+   <code>pkg.New(ctx, recv, args)</code>. A <code>DB</code> advisory call must pass a transaction
+   (see the paragraph on the advisory locks below). The <code>Validate</code> method of the old
+   <code>SearchSettings</code> type is a plain rename: step 2 rewrites the type, and
+   <code>Validate</code> stays a method of <code>vecsearch.Settings</code>.</li>
+<li>In every file, import each new package that now appears in it (<code>arrayop.</code>,
+   <code>fts.</code>, ...) by the full path in the second column of the table, then build.
+   The compiler lists whatever is left.</li>
+</ol>
+<p>A row never changes the SQL a query produces; only the Go name and import path
+change.</p>
+<p>One type gained methods: <code>sqlfn.CurrentSchemaExpr</code> now has the comparison and
+ordering methods (<code>Eq</code>, <code>In</code>, <code>Asc</code>, ...) the other function results have, so
+<code>sqlfn.CurrentSchema().Eq("app")</code> compiles, where the old root function's
+result had no such method.</p>
+<p>The advisory lock methods became functions: <code>tx.AdvisoryXactLock(ctx, 42)</code>
+is now <code>advisory.XactLock(ctx, tx, 42)</code>, and the same for <code>advisory.XactLockString</code> and the
+<code>Try</code> forms. The transaction is the second argument and its type is
+<code>*momo.Tx</code>. The <code>DB</code> methods always returned <code>momo.ErrValidation</code>, because a
+transaction-scoped lock outside a transaction is released at once; the
+functions turn that into a compile error, so a caller that used the <code>DB</code> form
+must open a transaction with <code>db.Tx</code> or <code>db.Begin</code>. A dialect other than
+PostgreSQL still fails with <code>momo.ErrUnsupported</code>.</p>
+<h3 id="what-did-not-move">What did not move<a class="headerlink" href="#what-did-not-move" title="Permanent link">&para;</a></h3>
+<p>These stay in <code>momo</code>, with the reason:</p>
+<ul>
+<li><code>Func</code> and <code>FuncExpr</code>: the generic SQL function escape hatch, which the new
+  packages build on.</li>
+<li><code>Coalesce</code>, <code>Value</code>, <code>SQL</code> and <code>TypedSQL</code>: bound-value and raw-fragment
+  building blocks of the expression core. <code>sqlfn.CoalesceExpr</code> takes expression
+  arguments instead.</li>
+<li>The vector column types (<code>VectorColumn</code> and its variants): generated code
+  references them.</li>
+<li>The hook interfaces (<code>Hook</code>, <code>QueryEvent</code>, <code>RelationHook</code>, <code>RelationEvent</code>):
+  <code>DB</code> stores the hooks and calls them.</li>
+<li>The basic aggregates (<code>Agg[T]</code>, <code>CountAll</code>, <code>Sum</code>, <code>Avg</code>, <code>Min</code>, <code>Max</code>):
+  <code>Having</code> and select lists are typed on <code>Agg</code>.</li>
+<li><code>Tx.SetLocal</code>: a method of <code>Tx</code>, and other helpers call it.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
