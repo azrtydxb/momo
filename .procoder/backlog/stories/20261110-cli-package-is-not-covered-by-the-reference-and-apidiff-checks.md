@@ -1,6 +1,6 @@
 # The cli package is not covered by the reference and apidiff checks
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-10
 Epic: -
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -18,7 +18,9 @@ sprint-7 pre-PR integration review.
 
 ## Acceptance criteria
 
-- [ ] `cli` is in `APIPackages`, and `docs/reference.md` lists `cli.Main` and `cli.Run`, taken from the CI regenerated-docs artifact (the reference check passes on CI)
-- [ ] both exported names carry doc comments that say what a custom binary does with them
+- [x] `cli` is in `APIPackages`, and `docs/reference.md` lists `cli.Main` and `cli.Run`, taken from the CI regenerated-docs artifact (the reference check passes on CI)
+- [x] both exported names carry doc comments that say what a custom binary does with them
 
 ## Evidence
+
+- `cli` is in `APIPackages` (internal/docscheck/apiscan.go); docs/reference.md has the `cli` section with `cli.Main` and `cli.Run`, taken from the regenerated-docs artifact of ci-agent run 42835763522 (sha c1e1da6). The reference check (`TestReferenceListsEveryIdentifier`) failed on that run before the file was updated and passes in ci-agent run 42839158680 (sha 5e86d37, all 9 jobs success). Both names carry doc comments that say what a custom binary does with them (cli/cmd.go). The commits were made through the procoder commit gate.

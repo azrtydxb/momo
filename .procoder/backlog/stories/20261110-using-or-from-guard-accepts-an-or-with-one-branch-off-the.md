@@ -1,6 +1,6 @@
 # Using or From guard accepts an Or with one branch off the target
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-10
 Epic: -
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -29,9 +29,13 @@ terms does.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] Delete with Using and Update with From both refuse an Or whose branches do not all reference the target, unless AllRows is set (unit tests)
-- [ ] an And with one target term, and an Or whose branches all reference the target, are still accepted (unit tests)
-- [ ] the method docs and `docs/ai-guide.md` state the Or rule
+- [x] a regression test pins the fix: red before the change, green after
+- [x] Delete with Using and Update with From both refuse an Or whose branches do not all reference the target, unless AllRows is set (unit tests)
+- [x] an And with one target term, and an Or whose branches all reference the target, are still accepted (unit tests)
+- [x] the method docs and `docs/ai-guide.md` state the Or rule
 
 ## Evidence
+
+- Red: ci-agent run 42827421622 (throwaway branch worktree-agent-acf2b-red-orguard, sha 2ab5519, the test alone), unit job FAIL TestFromUsingGuardOr: an Or with one branch off the target returned no error on postgres, mysql and sqlite for Using and From.
+- Fix 5b76911: `referencesTable` (write_with.go) now recurses: an And is satisfied by any term, an Or only when every branch constrains the target, an empty Or never. The same test also covers the accepted cases (an And with one target term, an Or whose branches all reference the target, an Or of Ands, a target term beside a mixed Or) and AllRows. Method docs on DeleteQuery.Using and UpdateQuery.From and docs/ai-guide.md state the rule.
+- Green: ci-agent run 42839158680 (sha 5e86d37, all 9 jobs success), TestFromUsingGuardOr passes.
