@@ -18,7 +18,7 @@ Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Evidence
 
-CI: ci-agent run 42777902777, headSha 4cd988abc5c07830b5f393a59de4564e2d02a4d6, all 9 jobs green.
+CI: ci-agent run 42789114971, headSha 78817fec5b1b9a8b07953a6df2a897df6661c7b3, all 9 jobs green (includes the review fixes below).
 
 - Criterion 1 (zero field left out, read back via RETURNING): `insert_dbdefault_test.go` TestDBDefaultZeroFieldsAreLeftOutAndReadBack pins the SQL; `insert_dbdefault_integration_test.go` TestDBDefaultGenRandomUUIDAndNow (PostgreSQL gen_random_uuid() and now()).
 - Criterion 2 (non-zero written as given; mixed Models): TestDBDefaultSetValueIsWrittenAsGiven, TestDBDefaultModelsMixedRowsWriteDEFAULT (per-row DEFAULT), TestDBDefaultChunksShareOneColumnList; SQLite, Unnest and Copy refuse a mix with ErrUnsupported (TestDBDefaultMixedRowsRefusedWhereDEFAULTIsNotAvailable).
@@ -26,3 +26,12 @@ CI: ci-agent run 42777902777, headSha 4cd988abc5c07830b5f393a59de4564e2d02a4d6, 
 - Criterion 4 (docs): docs/ai-guide.md "Database defaults", llms.txt, docs/reference.md.
 
 Design choice to confirm: plain MySQL refuses instead of re-reading, since it has no RETURNING.
+
+Review fixes (same run):
+
+- `--from-db` emits dbdefault only for PostgreSQL: gen/fromdb TestDBDefaultFitsOnlyOnPostgres; a nextval default on a non-identity column gets the tag (TestDBDefaultFits). docs/upgrading.md has the regeneration note; the commit carries a BREAKING CHANGE footer.
+- The generator refuses dbdefault on a nullable field: gen/dbdefault_test.go TestDBDefaultNullableDiagnostic (an error-level diagnostic, the generator has no warning level).
+- docs/ai-guide.md states that false, 0, empty string and a zero time cannot be written through Model.
+- ON CONFLICT DO NOTHING that skips rows fails with ErrUnsupported and rolls back: TestDBDefaultDoNothingSkippedRowsFail.
+- Copy refuses a zero dbdefault column: TestDBDefaultCopyRefusesZeroColumn.
+- The dbdefault plan is computed once per statement (insert_dbdefault.go) and the write-back helper is shared with write_idgen.go; the bench gate shows no extra allocations.
