@@ -6,6 +6,7 @@ package pgxdriver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"testing"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/types"
-	"github.com/google/uuid"
 )
 
 // bindingTable creates a table with a uuid key and a jsonb column and drops it
@@ -46,17 +46,34 @@ func seedBindingRows(t *testing.T, db *momo.DB, table string) {
 	}
 }
 
+// googleUUID has the shape of github.com/google/uuid.UUID: a named [16]byte
+// with a canonical String method. The module does not depend on google/uuid
+// directly, so the test stands in for it with the same shape.
+type googleUUID [16]byte
+
+func (u googleUUID) String() string { return types.UUID(u).String() }
+
 // TestUUIDSliceBindsToAnyArray covers the Kuvryn Orbit pattern
-// "id = ANY($1::uuid[])" under the default exec mode, for the two Go slice
-// types an application holds: []uuid.UUID and []types.UUID.
+// "id = ANY($1::uuid[])" under the default exec mode, for the slice types an
+// application holds: []types.UUID and a slice of a google/uuid-shaped type.
 func TestUUIDSliceBindsToAnyArray(t *testing.T) {
 	db, table := bindingTable(t)
 	ctx := context.Background()
 	seedBindingRows(t, db, table)
 	query := "SELECT id::text FROM " + table + " WHERE id = ANY(?::uuid[]) ORDER BY id"
+	uncast := "SELECT id::text FROM " + table + " WHERE id = ANY(?) ORDER BY id"
 
-	t.Run("google uuid", func(t *testing.T) {
-		ids := []uuid.UUID{uuid.MustParse(bindingIDs[0]), uuid.MustParse(bindingIDs[2])}
+	parse := func(s string) types.UUID {
+		t.Helper()
+		u, err := types.ParseUUID(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+
+	t.Run("google uuid shape", func(t *testing.T) {
+		ids := []googleUUID{googleUUID(parse(bindingIDs[0])), googleUUID(parse(bindingIDs[2]))}
 		got, err := momo.Scalars[string](ctx, db, query, ids)
 		if err != nil {
 			t.Fatal(err)
@@ -67,14 +84,7 @@ func TestUUIDSliceBindsToAnyArray(t *testing.T) {
 	})
 
 	t.Run("types uuid", func(t *testing.T) {
-		var ids []types.UUID
-		for _, s := range []string{bindingIDs[1], bindingIDs[2]} {
-			u, err := types.ParseUUID(s)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ids = append(ids, u)
-		}
+		ids := []types.UUID{parse(bindingIDs[1]), parse(bindingIDs[2])}
 		got, err := momo.Scalars[string](ctx, db, query, ids)
 		if err != nil {
 			t.Fatal(err)
@@ -82,37 +92,63 @@ func TestUUIDSliceBindsToAnyArray(t *testing.T) {
 		if want := []string{bindingIDs[1], bindingIDs[2]}; !slices.Equal(got, want) {
 			t.Errorf("[]types.UUID = %v, want %v", got, want)
 		}
+		// The server infers uuid[] with no cast, too.
+		got, err = momo.Scalars[string](ctx, db, uncast, ids)
+		if err != nil || !slices.Equal(got, []string{bindingIDs[1], bindingIDs[2]}) {
+			t.Errorf("[]types.UUID without a cast = %v, %v", got, err)
+		}
 	})
 
-	t.Run("empty slice matches nothing", func(t *testing.T) {
-		got, err := momo.Scalars[string](ctx, db, query, []uuid.UUID{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(got) != 0 {
-			t.Errorf("empty []uuid.UUID matched %v", got)
+	t.Run("empty and nil slices match nothing", func(t *testing.T) {
+		for name, ids := range map[string][]types.UUID{"empty": {}, "nil": nil} {
+			got, err := momo.Scalars[string](ctx, db, query, ids)
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			if len(got) != 0 {
+				t.Errorf("%s []types.UUID matched %v", name, got)
+			}
 		}
 	})
 }
 
-// TestByteSliceBindsToJSONB covers a []byte of JSON text written to a jsonb
-// column and read back, under the default exec mode.
-func TestByteSliceBindsToJSONB(t *testing.T) {
+// TestJSONBBinding records how a jsonb column is written under the default
+// exec mode. The mode sends no parameter types, so a Go []byte is bytea text
+// and is rejected by jsonb; json.RawMessage and string carry the JSON text.
+func TestJSONBBinding(t *testing.T) {
 	db, table := bindingTable(t)
 	ctx := context.Background()
-	if _, err := momo.Exec(ctx, db, "INSERT INTO "+table+" (id, n, doc) VALUES (?::uuid, 1, ?)", bindingIDs[0], []byte(`{"a": 1, "b": [true, null]}`)); err != nil {
+	const doc = `{"a": 1, "b": [true, null]}`
+
+	for name, v := range map[string]any{
+		"json.RawMessage": json.RawMessage(doc),
+		"string":          doc,
+	} {
+		if _, err := momo.Exec(ctx, db, "DELETE FROM "+table); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := momo.Exec(ctx, db, "INSERT INTO "+table+" (id, n, doc) VALUES (?::uuid, 1, ?)", bindingIDs[0], v); err != nil {
+			t.Errorf("%s into jsonb: %v", name, err)
+			continue
+		}
+		got, err := momo.Scalars[string](ctx, db, "SELECT doc::text FROM "+table+" WHERE id = ?::uuid", bindingIDs[0])
+		if err != nil || !slices.Equal(got, []string{doc}) {
+			t.Errorf("%s round trip = %v, %v; want %s", name, got, err, doc)
+		}
+	}
+
+	// []byte is bytea: it needs a decode on the SQL side to reach jsonb.
+	if _, err := momo.Exec(ctx, db, "DELETE FROM "+table); err != nil {
 		t.Fatal(err)
 	}
-	got, err := momo.Scalars[string](ctx, db, "SELECT doc::text FROM "+table+" WHERE id = ?::uuid", bindingIDs[0])
-	if err != nil {
-		t.Fatal(err)
+	if _, err := momo.Exec(ctx, db, "INSERT INTO "+table+" (id, n, doc) VALUES (?::uuid, 1, convert_from(?::bytea, 'UTF8')::jsonb)", bindingIDs[1], []byte(doc)); err != nil {
+		t.Fatalf("[]byte through convert_from: %v", err)
 	}
-	if want := []string{`{"a": 1, "b": [true, null]}`}; !slices.Equal(got, want) {
-		t.Errorf("jsonb round trip = %v, want %v", got, want)
+	got, err := momo.Scalars[string](ctx, db, "SELECT doc::text FROM "+table+" WHERE id = ?::uuid", bindingIDs[1])
+	if err != nil || !slices.Equal(got, []string{doc}) {
+		t.Errorf("[]byte round trip = %v, %v; want %s", got, err, doc)
 	}
-	// The stored value is jsonb, not a string holding JSON text.
-	typ, err := momo.Scalars[string](ctx, db, "SELECT jsonb_typeof(doc) FROM "+table+" WHERE id = ?::uuid", bindingIDs[0])
-	if err != nil || len(typ) != 1 || typ[0] != "object" {
-		t.Errorf("jsonb_typeof = %v, %v; want object", typ, err)
+	if _, err := momo.Exec(ctx, db, "INSERT INTO "+table+" (id, n, doc) VALUES (?::uuid, 2, ?)", bindingIDs[2], []byte(doc)); err == nil {
+		t.Errorf("a bare []byte into jsonb succeeded; the docs say it is rejected")
 	}
 }
