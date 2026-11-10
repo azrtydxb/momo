@@ -12,20 +12,20 @@ The programs on this page are compiled against the models of the
 
 ## Cheat sheet
 
-| GORM                                     | Momo                                                                |
-| ---------------------------------------- | ------------------------------------------------------------------- |
-| `gorm:"primaryKey"`                      | `momo:"pk"`; add `identity` for a generated key                     |
-| `gorm:"size:200;not null;uniqueIndex"`   | `momo:"size:200,notnull,unique"`                                    |
-| `gorm:"column:author_id;index"`          | `momo:"column:author_id,index"`                                     |
-| `db.Where("name = ?", n).Find(&rows)`    | `momo.Select[T](db).Where(col.Eq(n)).All(ctx)`                      |
-| `db.First(&row, id)`                     | `momo.Select[T](db).Where(col.Eq(id)).One(ctx)`                     |
-| `db.Create(&row)`                        | `momo.Insert[T](db).Model(&row).Exec(ctx)`                          |
-| `db.Model(&row).Update("name", n)`       | `momo.Update[T](db).Set(col.Set(n)).Where(...).Exec(ctx)`           |
-| `db.Delete(&row)`                        | `momo.Delete[T](db).Where(...).Exec(ctx)`                           |
-| `db.Preload("Posts").Find(&rows)`        | `momo.Select[T](db).Preload(author.Posts).All(ctx)`, or `momo.Load` |
-| `db.Transaction(func(tx *gorm.DB)...)`   | `db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {...})`       |
-| `db.AutoMigrate(&T{})`                   | `momo migrate diff <name>`, then `momo migrate apply`               |
-| `errors.Is(err, gorm.ErrRecordNotFound)` | `errors.Is(err, momo.ErrNotFound)`                                  |
+| GORM                                     | Momo                                                                                   |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `gorm:"primaryKey"`                      | `momo:"pk"`; add `identity` for a generated key                                        |
+| `gorm:"size:200;not null;uniqueIndex"`   | `momo:"size:200,notnull,unique"`                                                       |
+| `gorm:"column:author_id;index"`          | `momo:"column:author_id,index"`                                                        |
+| `db.Where("name = ?", n).Find(&rows)`    | <code>momo.Select&#91;T&#93;(db).Where(col.Eq(n)).All(ctx)</code>                      |
+| `db.First(&row, id)`                     | <code>momo.Select&#91;T&#93;(db).Where(col.Eq(id)).One(ctx)</code>                     |
+| `db.Create(&row)`                        | <code>momo.Insert&#91;T&#93;(db).Model(&amp;row).Exec(ctx)</code>                      |
+| `db.Model(&row).Update("name", n)`       | <code>momo.Update&#91;T&#93;(db).Set(col.Set(n)).Where(...).Exec(ctx)</code>           |
+| `db.Delete(&row)`                        | <code>momo.Delete&#91;T&#93;(db).Where(...).Exec(ctx)</code>                           |
+| `db.Preload("Posts").Find(&rows)`        | <code>momo.Select&#91;T&#93;(db).Preload(author.Posts).All(ctx)</code>, or `momo.Load` |
+| `db.Transaction(func(tx *gorm.DB)...)`   | `db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {...})`                          |
+| `db.AutoMigrate(&T{})`                   | `momo migrate diff <name>`, then `momo migrate apply`                                  |
+| `errors.Is(err, gorm.ErrRecordNotFound)` | `errors.Is(err, momo.ErrNotFound)`                                                     |
 
 ## Models
 

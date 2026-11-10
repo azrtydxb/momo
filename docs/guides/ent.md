@@ -14,21 +14,21 @@ The programs on this page are compiled against the models of the
 
 ## Cheat sheet
 
-| Ent                                              | Momo                                                          |
-| ------------------------------------------------ | ------------------------------------------------------------- |
-| `field.String("name").NotEmpty().Unique()`       | `Name string` with `momo:"notnull,unique"`                    |
-| `field.String("bio").Optional().Nillable()`      | `Bio *string`                                                 |
-| `field.Int64("id")` (the implicit key)           | `ID int64` with `momo:"pk,identity"`                          |
-| `edge.To("posts", Post.Type)`                    | `Posts []Post` with `momo:"has_many,fk:AuthorID"`             |
-| `edge.From("author", Author.Type).Ref("posts")`  | `Author *Author` with `momo:"belongs_to,fk:AuthorID"`         |
-| `client.Author.Query().Where(author.NameEQ(n))`  | `momo.Select[T](db).Where(col.Eq(n)).All(ctx)`                |
-| `client.Author.Create().SetName(n).Save(ctx)`    | `momo.Insert[T](db).Model(&row).Exec(ctx)`                    |
-| `client.Author.UpdateOneID(id).SetName(n)`       | `momo.Update[T](db).Set(col.Set(n)).Where(...).Exec(ctx)`     |
-| `client.Author.DeleteOneID(id).Exec(ctx)`        | `momo.Delete[T](db).Where(...).Exec(ctx)`                     |
-| `.WithPosts()` (eager loading)                   | `.Preload(author.Posts)` on the select, or `momo.Load`        |
-| `client.Tx(ctx)`, `tx.Commit()`, `tx.Rollback()` | `db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {...})` |
-| `client.Schema.Create(ctx)`                      | `momo migrate diff <name>`, then `momo migrate apply`         |
-| `ent.IsNotFound(err)`                            | `errors.Is(err, momo.ErrNotFound)`                            |
+| Ent                                              | Momo                                                                         |
+| ------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `field.String("name").NotEmpty().Unique()`       | `Name string` with `momo:"notnull,unique"`                                   |
+| `field.String("bio").Optional().Nillable()`      | `Bio *string`                                                                |
+| `field.Int64("id")` (the implicit key)           | `ID int64` with `momo:"pk,identity"`                                         |
+| `edge.To("posts", Post.Type)`                    | `Posts []Post` with `momo:"has_many,fk:AuthorID"`                            |
+| `edge.From("author", Author.Type).Ref("posts")`  | `Author *Author` with `momo:"belongs_to,fk:AuthorID"`                        |
+| `client.Author.Query().Where(author.NameEQ(n))`  | <code>momo.Select&#91;T&#93;(db).Where(col.Eq(n)).All(ctx)</code>            |
+| `client.Author.Create().SetName(n).Save(ctx)`    | <code>momo.Insert&#91;T&#93;(db).Model(&amp;row).Exec(ctx)</code>            |
+| `client.Author.UpdateOneID(id).SetName(n)`       | <code>momo.Update&#91;T&#93;(db).Set(col.Set(n)).Where(...).Exec(ctx)</code> |
+| `client.Author.DeleteOneID(id).Exec(ctx)`        | <code>momo.Delete&#91;T&#93;(db).Where(...).Exec(ctx)</code>                 |
+| `.WithPosts()` (eager loading)                   | `.Preload(author.Posts)` on the select, or `momo.Load`                       |
+| `client.Tx(ctx)`, `tx.Commit()`, `tx.Rollback()` | `db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {...})`                |
+| `client.Schema.Create(ctx)`                      | `momo migrate diff <name>`, then `momo migrate apply`                        |
+| `ent.IsNotFound(err)`                            | `errors.Is(err, momo.ErrNotFound)`                                           |
 
 ## Models
 
