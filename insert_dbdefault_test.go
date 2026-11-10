@@ -157,7 +157,7 @@ func TestDBDefaultModelsAllZeroLeavesTheColumn(t *testing.T) {
 // A chunked bulk insert writes the same column list in every chunk, with
 // DEFAULT in the cells of the rows that leave the column to the database.
 func TestDBDefaultChunksShareOneColumnList(t *testing.T) {
-	db, drv := dbdSetup(dialect.Postgres, [][]any{{"g1"}, {"g2"}}, momo.WithMaxParams(4))
+	db, drv := dbdSetup(dialect.Postgres, [][]any{{"g1"}}, momo.WithMaxParams(4))
 	ms := []dbdRow{
 		{Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}, // chunk 1: both rows leave id to the database
 		{ID: "x", Title: "c", At: dbdStamp}, {ID: "y", Title: "d", At: dbdStamp},
