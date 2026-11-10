@@ -77,23 +77,25 @@ func TestFilteredANNIterativeScan(t *testing.T) {
 		"CREATE EXTENSION IF NOT EXISTS vector",
 		// A parallel HNSW build inserts in a nondeterministic order, which gave
 		// a different graph (and a different recall) from run to run. One worker
-		// with the fixed seed below builds the same graph every time.
+		// with the fixed seed below gets the same data every time; the HNSW graph
+		// itself can still differ between builds, so the sizing below argues from
+		// probabilities, not determinism.
 		"SET max_parallel_maintenance_workers = 0",
 		// No primary key on purpose: with a btree on id the planner may scan it
 		// in full and sort exactly, which returns 10 rows with the setting off.
 		// The HNSW index is then the only index path left.
 		"CREATE TABLE items (id bigint NOT NULL, grp text NOT NULL, emb vector(8) NOT NULL)",
 		"SELECT setseed(0.42)",
-		// 4% of the rows match the filter (800 of 20000). That is sized from two
-		// sides, because HNSW is approximate and the graph differs between builds
-		// (it returned 9 rows with the setting on, and 10 with it off, when
-		// every row had the same vector, see below): the plain scan examines ef_search = 40 candidates, so it finds about
-		// 1.6 matches and reaching 10 has a probability near 1e-6, so "off returns
-		// fewer than 10" holds on every build; the iterative scan keeps walking
+		// 4% of the rows match the filter (800 of 20000). HNSW is approximate
+		// and the graph differs between builds, so this is sized from two sides.
+		// The plain scan examines ef_search = 40 candidates, so it finds about
+		// 1.6 matches and reaching 10 has a probability near 1e-6: "off returns
+		// fewer than 10" holds on every build. The iterative scan keeps walking
 		// the graph until it has 10, and with 800 matches spread uniformly at
-		// random an unreachable or poorly connected region cannot hide all but 9
-		// of them. Both runs keep the default ef_search so the only difference
-		// between them is the iterative scan.
+		// random a poorly connected region cannot hide all but 9 of them. Both
+		// runs keep the default ef_search, so the only difference between them
+		// is the iterative scan. (When every row had the same vector, see below,
+		// the test returned 9 rows with the setting on and 10 with it off.)
 		// The "+ g * 0" ties the vector subquery to the row. Without it the
 		// planner evaluates the uncorrelated ARRAY(SELECT random()...) once and
 		// every row gets the same vector, a degenerate graph that no recall

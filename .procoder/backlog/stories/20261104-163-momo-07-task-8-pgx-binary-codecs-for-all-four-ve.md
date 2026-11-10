@@ -14,7 +14,7 @@ Implements plan momo-07-vectors Task 8: pgx binary codecs for all four vector ty
 
 - [x] `TestVectorBinaryCodec` exists as written in the plan, failed before the implementation, and passes now
 - [x] `BenchmarkVectorEncoding` exists as written in the plan, failed before the implementation, and passes now
-- [x] [S-50] `TestVectorBinaryCodec` round-trips all four types in binary mode and matches text-mode results; `BenchmarkVectorEncoding` results recorded under bench/results; fails if binary and text decode differently.
+- [ ] [S-50] `TestVectorBinaryCodec` round-trips all four types in binary mode and matches text-mode results; `BenchmarkVectorEncoding` results recorded under bench/results; fails if binary and text decode differently.
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
