@@ -160,8 +160,8 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 
 	schemas := obj{"Error": obj{
 		"type":       "object",
-		"properties": obj{"message": obj{"type": "string"}},
-		"required":   []string{"message"},
+		"properties": obj{"error": obj{"type": "string"}},
+		"required":   []string{"error"},
 	}}
 	paths := obj{}
 	seen := map[string]bool{}

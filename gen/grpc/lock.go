@@ -58,7 +58,7 @@ func LoadLock(path string) (*Lock, error) {
 		return nil, fmt.Errorf("grpc: read lock: %w", err)
 	}
 	var l Lock
-	if err := json.Unmarshal(data, &l); err != nil {
+	if err := json.Unmarshal(stripHeader(data), &l); err != nil {
 		return nil, fmt.Errorf("grpc: parse lock %s: %w", filepath.Base(path), err)
 	}
 	if l.Version != lockVersion {
@@ -115,6 +115,26 @@ func LoadLock(path string) (*Lock, error) {
 		}
 	}
 	return &l, nil
+}
+
+// stripHeader removes the leading "//" comment lines of a lock file: the
+// generated-file header the plugin writes in front of the JSON, which the
+// writer needs to tell a generated file from a handwritten one.
+func stripHeader(data []byte) []byte {
+	for bytes.HasPrefix(data, []byte("//")) {
+		i := bytes.IndexByte(data, '\n')
+		if i < 0 {
+			return nil
+		}
+		data = data[i+1:]
+	}
+	return data
+}
+
+// lockFile is the content of the lock file: the generated-file header, which
+// LoadLock skips, followed by the JSON of Marshal.
+func lockFile(marshaled []byte) []byte {
+	return append([]byte(gen.Header()+"\n"), marshaled...)
 }
 
 // Marshal returns the lock as indented JSON with sorted keys and a final

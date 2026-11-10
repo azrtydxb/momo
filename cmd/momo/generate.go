@@ -71,8 +71,10 @@ unique expression indexes, generated columns) are left out of the models and
 the snapshot and listed as warnings; the baseline then reports them. A column
 type with no Go mapping is an error and nothing is written.
 
-Plugins: only the plugins built into this binary can be enabled in momo.yaml.
-To run custom generator plugins, call gen.Emit with your plugins from Go code.
+Plugins: the plugins: section of momo.yaml enables the plugins built into this
+binary (graphql, grpc, openapi, viz) and sets their options; a relative dir is
+relative to momo.yaml. To run custom generator plugins, call gen.Emit with your
+plugins from Go code.
 `
 
 // runGenerate implements `momo generate [-c momo.yaml] [--check] [patterns...]`.
@@ -145,8 +147,8 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
-	if cfg.Plugins, err = selectPlugins(file.Plugins); err != nil {
-		return fail(stderr, err)
+	if cfg.Plugins, err = buildPlugins(file.Plugins, cfgDir); err != nil {
+		return fail(stderr, fmt.Errorf("momo.yaml: %w", err))
 	}
 
 	g, diags, err := gen.Load(patterns, cfg)
@@ -268,33 +270,6 @@ func checkPatterns(patterns []string, base string) error {
 		}
 	}
 	return nil
-}
-
-// selectPlugins returns the built-in plugins named in the config. Naming a
-// plugin that is not built in is a configuration error.
-func selectPlugins(want map[string]map[string]any) ([]gen.Plugin, error) {
-	if len(want) == 0 {
-		return nil, nil
-	}
-	have := map[string]gen.Plugin{}
-	for _, p := range plugins() {
-		have[p.Name()] = p
-	}
-	names := make([]string, 0, len(want))
-	for n := range want {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	var out []gen.Plugin
-	for _, n := range names {
-		p, ok := have[n]
-		if !ok {
-			return nil, fmt.Errorf("momo.yaml: unknown plugin %q: the momo binary only runs its built-in plugins; "+
-				"for custom generators call gen.Emit with your plugins from Go code", n)
-		}
-		out = append(out, p)
-	}
-	return out, nil
 }
 
 // relPath renders p relative to cwd, or unchanged when that is not possible.

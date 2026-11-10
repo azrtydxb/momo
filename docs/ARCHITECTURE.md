@@ -141,9 +141,9 @@ carries the format number and no release version.
 | `gen/fromdb`                            | models from a PostgreSQL database (`momo generate --from-db`) |
 | `gen/viz`                               | Mermaid and DOT diagrams (`momo viz`), also a `gen.Plugin`    |
 | `gen/apiquery`                          | cursor, limit and filter helpers for generated APIs           |
-| `gen/graphql`                           | GraphQL SDL from the model graph                              |
-| `gen/grpc`                              | `.proto` text with a field-number lock                        |
-| `gen/openapi`                           | OpenAPI 3.1 document                                          |
+| `gen/graphql`                           | GraphQL SDL, gqlgen glue and config, a `gen.Plugin`           |
+| `gen/grpc`                              | `.proto`, lock and gRPC servers, a `gen.Plugin`               |
+| `gen/openapi`                           | OpenAPI 3.1 document and handlers, a `gen.Plugin`             |
 | `gen/naming`, `gen/tags`, `gen/typemap` | naming presets, tag parsing, Go type to SQL type              |
 
 ### Other packages

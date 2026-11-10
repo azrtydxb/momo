@@ -113,8 +113,61 @@ func derivedTypes(name string) []string {
 // and a column, model or derived type name that collides with another is a
 // diagnostic and is left out. The output is deterministic.
 func SDL(g *gen.Graph) ([]byte, []gen.Diagnostic) {
-	var diags []gen.Diagnostic
-	diag := func(pos gen.Diagnostic) { diags = append(diags, pos) }
+	keep, byModel, diags := analyze(g)
+	diag := func(d gen.Diagnostic) { diags = append(diags, d) }
+	used := map[scalar]bool{}
+	var body strings.Builder
+	var query strings.Builder
+	for _, k := range keep {
+		for _, c := range k.cols {
+			used[c.sc] = true
+		}
+		writeModel(&body, k.m, k.cols, k.pk, byModel, &diags)
+		query.WriteString("  " + k.plural + "(first: Int, after: String, filter: " + k.m.GoName + "Filter, order: " + k.m.GoName + "Order): " + k.m.GoName + "Connection!\n")
+		if k.pk != "" {
+			query.WriteString("  " + k.single + "(id: ID!): " + k.m.GoName + "\n")
+		}
+	}
+	if len(keep) == 0 {
+		diag(gen.Diagnostic{Msg: "no model can be exposed, so the schema has no Query type"})
+	}
+
+	var out strings.Builder
+	out.WriteString("# " + strings.TrimPrefix(gen.Header(), "// ") + "\n")
+	if used[scTime] {
+		out.WriteString("\nscalar Time\n")
+	}
+	if used[scInt64] {
+		out.WriteString("\n# Int64 is a 64-bit integer encoded as a string.\nscalar Int64\n")
+	}
+	out.WriteString("\ntype PageInfo {\n  hasNextPage: Boolean!\n  endCursor: String\n}\n")
+	out.WriteString("\nenum OrderDirection {\n  ASC\n  DESC\n}\n")
+	for _, sc := range filterOrder {
+		if used[sc] {
+			out.WriteString("\n" + sharedFilter(sc))
+		}
+	}
+	out.WriteString(body.String())
+	if query.Len() > 0 {
+		out.WriteString("\ntype Query {\n" + query.String() + "}\n")
+	}
+	return []byte(out.String()), diags
+}
+
+// keptModel is a model that has a GraphQL type, with its exposed columns.
+type keptModel struct {
+	m      *gen.Model
+	cols   []column
+	pk     string // GraphQL field name of a single integer primary key
+	single string // query name for one row
+	plural string // query name for a page
+}
+
+// analyze decides which models of g get GraphQL types and which of their
+// columns are exposed, with the diagnostics for what cannot be exposed. SDL and
+// the Go glue of the server read the same result, so they never disagree.
+func analyze(g *gen.Graph) (keep []keptModel, byModel map[*gen.Model]bool, diags []gen.Diagnostic) {
+	diag := func(d gen.Diagnostic) { diags = append(diags, d) }
 	models := append([]*gen.Model(nil), g.Models...)
 	sort.SliceStable(models, func(i, j int) bool {
 		if models[i].GoName != models[j].GoName {
@@ -123,17 +176,9 @@ func SDL(g *gen.Graph) ([]byte, []gen.Diagnostic) {
 		return models[i].PkgPath < models[j].PkgPath
 	})
 
-	type kept struct {
-		m      *gen.Model
-		cols   []column
-		pk     string
-		single string
-		plural string
-	}
 	taken := map[string]string{}   // derived type name -> model
 	queries := map[string]string{} // query field name -> model
-	var keep []kept
-	byModel := map[*gen.Model]bool{}
+	byModel = map[*gen.Model]bool{}
 	for _, m := range models {
 		fail := func(msg string) { diag(gen.Diagnostic{Pos: m.Pos, Msg: msg}) }
 		if !validName(m.GoName) {
@@ -185,47 +230,10 @@ func SDL(g *gen.Graph) ([]byte, []gen.Diagnostic) {
 		for _, q := range qnames {
 			queries[q] = m.GoName
 		}
-		keep = append(keep, kept{m: m, cols: cols, pk: pk, single: single, plural: plural})
+		keep = append(keep, keptModel{m: m, cols: cols, pk: pk, single: single, plural: plural})
 		byModel[m] = true
 	}
-
-	used := map[scalar]bool{}
-	var body strings.Builder
-	var query strings.Builder
-	for _, k := range keep {
-		for _, c := range k.cols {
-			used[c.sc] = true
-		}
-		writeModel(&body, k.m, k.cols, k.pk, byModel, &diags)
-		query.WriteString("  " + k.plural + "(first: Int, after: String, filter: " + k.m.GoName + "Filter, order: " + k.m.GoName + "Order): " + k.m.GoName + "Connection!\n")
-		if k.pk != "" {
-			query.WriteString("  " + k.single + "(id: ID!): " + k.m.GoName + "\n")
-		}
-	}
-	if len(keep) == 0 {
-		diag(gen.Diagnostic{Msg: "no model can be exposed, so the schema has no Query type"})
-	}
-
-	var out strings.Builder
-	out.WriteString("# " + strings.TrimPrefix(gen.Header(), "// ") + "\n")
-	if used[scTime] {
-		out.WriteString("\nscalar Time\n")
-	}
-	if used[scInt64] {
-		out.WriteString("\n# Int64 is a 64-bit integer encoded as a string.\nscalar Int64\n")
-	}
-	out.WriteString("\ntype PageInfo {\n  hasNextPage: Boolean!\n  endCursor: String\n}\n")
-	out.WriteString("\nenum OrderDirection {\n  ASC\n  DESC\n}\n")
-	for _, sc := range filterOrder {
-		if used[sc] {
-			out.WriteString("\n" + sharedFilter(sc))
-		}
-	}
-	out.WriteString(body.String())
-	if query.Len() > 0 {
-		out.WriteString("\ntype Query {\n" + query.String() + "}\n")
-	}
-	return []byte(out.String()), diags
+	return keep, byModel, diags
 }
 
 func lowerFirst(s string) string {

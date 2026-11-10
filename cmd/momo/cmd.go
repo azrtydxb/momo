@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/migrate"
 )
 
@@ -25,8 +24,9 @@ Commands:
   viz       draw an ER diagram, Mermaid or DOT (flags: --format, --snapshot, --out)
   help      print this help ("momo help generate" for a command)
 
-Plugins: momo generate runs only the plugins built into this binary. For
-custom generator plugins use the Go API (gen.Emit with plugins).
+Plugins: momo generate runs the plugins built into this binary (graphql, grpc,
+openapi, viz) that the plugins: section of momo.yaml enables. For custom
+generator plugins use the Go API (gen.Emit with plugins).
 
 Exit codes:
   0  success, or generated code is current
@@ -48,14 +48,6 @@ func commands() []command {
 		{"migrate", runMigrateCmd},
 		{"viz", runViz},
 	}
-}
-
-// plugins returns the built-in generator plugins as a fresh slice, so no
-// global state is kept. It is empty until plugins ship with the binary.
-// External plugin registration is not supported by the binary; custom
-// generators use the Go API (gen.Emit with plugins).
-func plugins() []gen.Plugin {
-	return []gen.Plugin{}
 }
 
 // Run executes the momo CLI with args (without the program name) and returns

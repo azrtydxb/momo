@@ -65,12 +65,12 @@
       },
       "Error": {
         "properties": {
-          "message": {
+          "error": {
             "type": "string"
           }
         },
         "required": [
-          "message"
+          "error"
         ],
         "type": "object"
       },

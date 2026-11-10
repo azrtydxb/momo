@@ -69,7 +69,20 @@ type protoField struct {
 // XGetRequest) is a diagnostic and the model is left out. The output is
 // deterministic.
 func Proto(g *gen.Graph, lock *Lock, pkg string) ([]byte, []gen.Diagnostic) {
+	return protoSource(g, lock, pkg, "")
+}
+
+// goPackageRE is what a go_package option may hold: an import path, with an
+// optional ;name suffix.
+var goPackageRE = regexp.MustCompile(`^[A-Za-z0-9._~/-]+(;[A-Za-z_][A-Za-z0-9_]*)?$`)
+
+// protoSource is Proto with the go_package option set to goPackage when that
+// is not empty, which protoc-gen-go needs to place the Go stubs.
+func protoSource(g *gen.Graph, lock *Lock, pkg, goPackage string) ([]byte, []gen.Diagnostic) {
 	var diags []gen.Diagnostic
+	if goPackage != "" && !goPackageRE.MatchString(goPackage) {
+		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("invalid Go package %q for the protobuf go_package option", goPackage)}}
+	}
 	if !packageRE.MatchString(pkg) {
 		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("invalid protobuf package %q", pkg)}}
 	}
@@ -107,7 +120,7 @@ func Proto(g *gen.Graph, lock *Lock, pkg string) ([]byte, []gen.Diagnostic) {
 		for _, n := range derivedMessages(m.GoName) {
 			taken[n] = m.GoName
 		}
-		fields, hidden, ts, fd := fieldsOf(m)
+		fields, hidden, ts, fd := fieldsOf(m, lock)
 		diags = append(diags, fd...)
 		needTimestamp = needTimestamp || ts
 		writeModel(&body, g, m, fields, hidden, lock, &diags)
@@ -116,6 +129,9 @@ func Proto(g *gen.Graph, lock *Lock, pkg string) ([]byte, []gen.Diagnostic) {
 	var out strings.Builder
 	out.WriteString(gen.Header() + "\n\n")
 	out.WriteString("syntax = \"proto3\";\n\npackage " + pkg + ";\n")
+	if goPackage != "" {
+		out.WriteString("\noption go_package = " + strconv.Quote(goPackage) + ";\n")
+	}
 	if needTimestamp {
 		out.WriteString("\nimport \"google/protobuf/timestamp.proto\";\n")
 	}
@@ -127,9 +143,21 @@ func Proto(g *gen.Graph, lock *Lock, pkg string) ([]byte, []gen.Diagnostic) {
 // fieldsOf returns the exposed fields of m. hidden lists the columns of m
 // that are not exposed (sensitive, unmapped or badly named), so the lock does
 // not retire their numbers.
-func fieldsOf(m *gen.Model) (fields []protoField, hidden []string, timestamp bool, diags []gen.Diagnostic) {
+//
+// Two columns whose proto3 JSON names are equal when compared without regard
+// to case (foo_bar and foobar, Foo and foo) are a protoc error. The column
+// the lock already numbers keeps its field and the other is left out, so adding
+// a column never drops an existing field from the wire; without a lock entry
+// the first column wins.
+func fieldsOf(m *gen.Model, lock *Lock) (fields []protoField, hidden []string, timestamp bool, diags []gen.Diagnostic) {
+	type cand struct {
+		f        *gen.Field
+		pf       protoField
+		ts       bool
+		jsonName string
+	}
+	var cands []cand
 	seen := map[string]bool{}
-	jsonNames := map[string]string{}
 	for _, f := range m.Fields {
 		if seen[f.Column] {
 			continue
@@ -150,15 +178,41 @@ func fieldsOf(m *gen.Model) (fields []protoField, hidden []string, timestamp boo
 			diags = append(diags, gen.Diagnostic{Pos: f.Pos, Msg: fmt.Sprintf("column %q is not a valid protobuf field name", f.Column)})
 			continue
 		}
-		jn := jsonName(f.Column)
-		if other, dup := jsonNames[jn]; dup {
-			hidden = append(hidden, f.Column)
-			diags = append(diags, gen.Diagnostic{Pos: f.Pos, Msg: fmt.Sprintf("column %q of %s has the same proto3 JSON name %q as column %q", f.Column, m.GoName, jn, other)})
+		cands = append(cands, cand{
+			f: f, ts: ts, jsonName: jsonName(f.Column),
+			pf: protoField{column: f.Column, typ: typ, repeated: repeated, optional: f.Nullable && !repeated},
+		})
+	}
+
+	var locked map[string]int
+	if lock != nil && lock.Messages[m.GoName] != nil {
+		locked = lock.Messages[m.GoName].Fields
+	}
+	// winner maps a case-folded JSON name to the candidate that keeps it: the
+	// column with the lowest recorded number, else the first one.
+	winner := map[string]int{}
+	for i, c := range cands {
+		key := strings.ToLower(c.jsonName)
+		w, taken := winner[key]
+		if !taken {
+			winner[key] = i
 			continue
 		}
-		jsonNames[jn] = f.Column
-		timestamp = timestamp || ts
-		fields = append(fields, protoField{column: f.Column, typ: typ, repeated: repeated, optional: f.Nullable && !repeated})
+		n, isLocked := locked[c.f.Column]
+		wn, winnerLocked := locked[cands[w].f.Column]
+		if isLocked && (!winnerLocked || n < wn) {
+			winner[key] = i
+		}
+	}
+	for i, c := range cands {
+		key := strings.ToLower(c.jsonName)
+		if w := winner[key]; w != i {
+			hidden = append(hidden, c.f.Column)
+			diags = append(diags, gen.Diagnostic{Pos: c.f.Pos, Msg: fmt.Sprintf("column %q of %s has the same proto3 JSON name %q as column %q", c.f.Column, m.GoName, c.jsonName, cands[w].f.Column)})
+			continue
+		}
+		timestamp = timestamp || c.ts
+		fields = append(fields, c.pf)
 	}
 	return fields, hidden, timestamp, diags
 }
