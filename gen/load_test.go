@@ -111,6 +111,52 @@ func TestLoadCopiesPlugins(t *testing.T) {
 	}
 }
 
+// writeModule writes files into a fresh module and returns its directory.
+func writeModule(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// A rename leaves the previously generated file calling a field that is
+// gone. Load must not stop on that file, since generate rewrites it (#62).
+func TestLoadIgnoresErrorsInGeneratedFile(t *testing.T) {
+	dir := writeModule(t, map[string]string{
+		"go.mod":      "module example.com/stale\n\ngo 1.26\n",
+		"model.go":    "package stale\n\ntype Chunk struct {\n\tID             int64\n\tEmbeddingModel string\n}\n",
+		"momo_gen.go": Header() + "\n\npackage stale\n\nfunc (m *Chunk) Old() string { return m.Model2 }\n",
+	})
+	_, diags, err := Load([]string{"."}, Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 0 {
+		t.Fatalf("errors in a generated file must not surface: %v", diags)
+	}
+}
+
+// A type error in a hand-written file still fails, next to a stale
+// generated file.
+func TestLoadKeepsErrorsInHandwrittenFile(t *testing.T) {
+	dir := writeModule(t, map[string]string{
+		"go.mod":      "module example.com/stale2\n\ngo 1.26\n",
+		"model.go":    "package stale2\n\ntype Chunk struct{ ID int64 }\n\nvar bad int = \"x\"\n",
+		"momo_gen.go": Header() + "\n\npackage stale2\n\nfunc (m *Chunk) Old() string { return m.Model2 }\n",
+	})
+	_, diags, err := Load([]string{"."}, Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 1 || !strings.HasSuffix(diags[0].Pos.Filename, "model.go") {
+		t.Fatalf("want exactly the model.go error, got %v", diags)
+	}
+}
+
 type nopPlugin struct{}
 
 func (nopPlugin) Name() string                   { return "nop" }

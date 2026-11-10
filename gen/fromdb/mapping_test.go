@@ -29,6 +29,7 @@ func TestGenerateFromDBMapping(t *testing.T) {
 		{dialect.Postgres, "time without time zone", "types.TimeOfDay", 0, 0},
 		{dialect.Postgres, "vector(1536)", "vector.Vector", 0, 1536},
 		{dialect.Postgres, "halfvec(8)", "vector.HalfVector", 0, 8},
+		{dialect.Postgres, "tsvector", "types.TSVector", 0, 0},
 		{dialect.Postgres, "text[]", "[]string", 0, 0},
 		{dialect.Postgres, "bigint[]", "[]int64", 0, 0},
 		{dialect.Postgres, "bytea", "[]byte", 0, 0},
