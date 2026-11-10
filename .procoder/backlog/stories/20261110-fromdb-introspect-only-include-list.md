@@ -1,6 +1,6 @@
 # --from-db: an include list (introspect.only)
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-10
 Epic: -
 Sprint: 008-sprint-8-fix-the-kuvryn-orbit-port-issues-73-to-79-and-the
@@ -12,8 +12,14 @@ Type: story
 
 ## Acceptance criteria
 
-- [ ] the tests are shown failing on CI before the change
-- [ ] `introspect.only` limits `--from-db` models, the init snapshot and `migrate.exclude` to the matching tables; a test shows a table outside `only` gets no model and is excluded from migrate
-- [ ] `only` and `skip` together: `skip` applies within `only`; documented in docs/importers.md or the --from-db docs and in docs/upgrading.md under 0.7.0
+- [x] the tests are shown failing on CI before the change
+- [x] `introspect.only` limits `--from-db` models, the init snapshot and `migrate.exclude` to the matching tables; a test shows a table outside `only` gets no model and is excluded from migrate
+- [x] `only` and `skip` together: `skip` applies within `only`; documented in docs/importers.md or the --from-db docs and in docs/upgrading.md under 0.7.0
 
 ## Evidence
+
+Red, run 42904286499 on the throwaway branch worktree-agent-a74b43ddb346ed43c-red (commit d1d4052: config fields and a no-op migrate.applyOnly only; the branch is deleted): unit failed TestOnlyLimitsModelsAndSnapshot ("files = 2, want only the users model"), TestOnlyDropsObjectsOfOtherTables, TestIntrospectScopeValidation (only glob "[" accepted), migrate TestApplyOnlyHidesTablesOutsideTheList; integration postgres failed TestGenerateFromDBOnly ("tickets_model.go: a table outside only ... got a model"). TestOnlyAndSkipTogether passed in the red run, because skip alone already removes orders; it pins that skip still applies inside only.
+
+Green, run 42913355678 (commit 141e504, ci-agent: unit, integration postgres, mysql, apidiff-docs, lint all success). Tests: gen/fromdb TestOnlyLimitsModelsAndSnapshot (no model, no snapshot table), TestOnlyAndSkipTogether (skip applies within only), TestOnlyDropsObjectsOfOtherTables, TestIntrospectScopeValidation; migrate TestApplyOnlyHidesTablesOutsideTheList (a table outside only is hidden from drift, baseline and diff, so it is excluded from migrate); cli TestGenerateFromDBOnly against PostgreSQL (tickets and a skipped table get no model, the init snapshot has neither, baseline and drift exit 0 with the other tables unmanaged).
+
+Docs: docs/upgrading.md "Upgrading to 0.7.0" (only, skip within only), docs/migrations.md "The introspect section". Code: gen/fromdb/config.go (Only, outsideOnly), gen/fromdb/emit.go collectTables, migrate/drift.go applyOnly via Engine.hide, migrate.Config.OnlyTables set from introspect.only in cli/migrate.go engineOptions.
