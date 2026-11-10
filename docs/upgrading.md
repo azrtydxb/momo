@@ -15,7 +15,7 @@ PostgreSQL column whose default is computed (`gen_random_uuid()`, `now()`,
 is no longer written for such a column: `InsertQuery.Model` and `InsertQuery.Models` leave it out,
 the database default applies, and the value is read back with `RETURNING`.
 Review the regenerated models: a `bool`, number, empty string or zero time in
-such a field can no longer be written explicitly through `Model` (use `Values`
+such a field can no longer be written explicitly through `Model` (use `InsertQuery.Values`
 or remove the tag), and a plain MySQL database refuses a zero value with
 `ErrUnsupported` because it cannot read the default back. Hand-written models
 are unaffected until they add the tag. See "Database defaults" in the

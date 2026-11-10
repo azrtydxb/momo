@@ -569,10 +569,10 @@ type Event struct {
 - The zero value means "use the default". On a `bool` or numeric column that
   means `false` and `0` can never be written explicitly through `Model`: a
   `dbdefault` field with `DEFAULT true` always stores true when it is `false`
-  in Go. Write such a value with `Values`, or do not tag the column. The same
+  in Go. Write such a value with `InsertQuery.Values`, or do not tag the column. The same
   holds for an empty string and a zero time. A pointer or nullable field is
   refused by the generator, because nil would stop meaning NULL; write NULL
-  with `Values` and `SetNull`. `Omit` still wins: an omitted column is not
+  with `InsertQuery.Values` and `SetNull`. `Omit` still wins: an omitted column is not
   written, and a Go-side default hook still fills it.
 - `dbdefault` cannot be combined with `identity`, `serial`, `idgen`,
   `read_only`, `version`, `soft_delete`, `created_at` or `updated_at`; the
@@ -2022,7 +2022,7 @@ report)`, a development hook that reports once per statement shape per scope
   bound from a sensitive column is always `momo.RedactedArg` in what these hooks
   see. They are safe for concurrent use. For slog use `momolog.New`.
   `obs.NewSlowQuery(threshold, report, obs.WithPlainExplain(plainDB))` reports
-  each statement slower than the threshold and, only with `WithPlainExplain`,
+  each statement slower than the threshold and, only with `obs.WithPlainExplain`,
   adds a plain `EXPLAIN` plan (never `ANALYZE`; inside a transaction through a
   savepoint that is rolled back). See [observability](observability.md).
 - `momo.WithTenant(ctx, tenant)` and `momo.TenantFilter(ctx, column)` add a
