@@ -220,7 +220,7 @@ func newDescEmitter(m *Model, g *Graph) (*descEmitter, map[string]bool) {
 // usedIdents returns the identifiers taken in a descriptor package before the
 // relation names are chosen: the reserved names, the import aliases and the
 // field identifiers.
-func usedIdents(aliases map[string]string, fieldIDs []string) map[string]bool {
+func usedIdents(aliases map[string]bool, fieldIDs []string) map[string]bool {
 	used := DescriptorReserved()
 	for alias := range aliases {
 		used[alias] = true
