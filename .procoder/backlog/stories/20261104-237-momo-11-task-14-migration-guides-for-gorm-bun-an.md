@@ -18,5 +18,5 @@ Implements plan momo-11-adoption Task 14: Migration guides for GORM, Bun and Ent
 
 ## Evidence
 
-- docs/guides/gorm.md, bun.md, ent.md each have the seven required sections plus a Cheat sheet (so `grep -c '^## '` returns 8, not 7). Go blocks are complete programs compiled by TestDocsCodeBlocks (unit job of ci-agent run 42774384580, headSha 214cb28dc323466eca185bd46e7079ac8f4f6e08, all 9 jobs success); models come from examples/quickstart/models, not the plan's examples/guides/models, whose generated code cannot be produced without running the generator locally. Nav in mkdocs.yml and links in docs/README.md added.
+- docs/guides/gorm.md, bun.md, ent.md each have the seven required sections plus a Cheat sheet (so `grep -c '^## '` returns 8, not 7). Go blocks are complete programs compiled by TestDocsCodeBlocks (unit job of ci-agent run 42780875746, headSha 981b3c0777de48b0ac7870ec9e48304aa2dae545, all 9 jobs success); models come from examples/quickstart/models, not the plan's examples/guides/models, whose generated code cannot be produced without running the generator locally. Nav in mkdocs.yml and links in docs/README.md added.
 - Step 1 (failing check before the files exist) was not run, so it stays unticked.

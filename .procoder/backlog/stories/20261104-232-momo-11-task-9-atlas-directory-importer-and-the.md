@@ -18,6 +18,7 @@ Implements plan momo-11-adoption Task 9: Atlas directory importer and the shared
 ## Evidence
 
 - importer/history/atlas/atlas.go, internal/importtest/importtest.go, fixtures internal/compat/atlasfixture/migrations (atlas.sum computed with the Atlas HashFile algorithm read at ariga.io/atlas sql/migrate/dir.go:662 and :693, not with the Atlas CLI).
-- `TestHistoryImporters/atlas` (integration tag) passes in the integration (postgres) job of ci-agent run 42774384580, headSha 214cb28dc323466eca185bd46e7079ac8f4f6e08, all 9 jobs success.
+- `TestHistoryImporters/atlas` (integration tag) passes in the integration (postgres) job of ci-agent run 42780875746, headSha 981b3c0777de48b0ac7870ec9e48304aa2dae545, all 9 jobs success.
 - Commit f567583 went through the procoder gate.
 - Red-first not evidenced: the implementation was written before its test ran and no failing CI run was recorded, so the 'failed before the implementation' criterion stays unticked (the tests pass).
+- Review fix: Read now errors when an applied revision has no file (TestReadRefusesAppliedRevisionWithoutFile) and refuses duplicate numeric versions.

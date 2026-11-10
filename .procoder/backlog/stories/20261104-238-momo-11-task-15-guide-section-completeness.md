@@ -17,5 +17,5 @@ Implements plan momo-11-adoption Task 15: Guide section completeness (`.procoder
 
 ## Evidence
 
-- internal/docscheck/guides_test.go TestMigrationGuidesComplete passes in the unit job of ci-agent run 42774384580, headSha 214cb28dc323466eca185bd46e7079ac8f4f6e08, all 9 jobs success.
+- internal/docscheck/guides_test.go TestMigrationGuidesComplete passes in the unit job of ci-agent run 42780875746, headSha 981b3c0777de48b0ac7870ec9e48304aa2dae545, all 9 jobs success.
 - Red-first not evidenced: the implementation was written before its test ran and no failing CI run was recorded, so the 'failed before the implementation' criterion stays unticked (the tests pass).
