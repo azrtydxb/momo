@@ -8,6 +8,7 @@ Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 ## Description
 
 The Kuvryn Owl port's `--from-db` and `baseline` rehearsal is blocked or noisy in three ways:
+
 - #58: inspection fails outright on `AFTER UPDATE OF state ON submission`. Listing the trigger in `migrate.exclude`/`introspect.skip` doesn't help, because the error is raised before the filter runs.
 - #59: a foreign key named `_fkey1`, which PostgreSQL picks on partitioned tables, cannot be declared, so baseline reports it.
 - #60: a composite primary key is always declared in field order, but `PRIMARY KEY (name, scope, at)` on `(at, scope, name, value)` matters for btree order.

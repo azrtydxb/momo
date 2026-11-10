@@ -184,6 +184,10 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 	col := schema.Column{Name: f.Column, Nullable: nullable, Default: tg.Default, Collate: tg.Collate, Comment: tg.Comment}
 	if tg.Identity {
 		col.Identity = "by_default"
+		if tg.IdentityAlways {
+			col.Identity = "always"
+			b.applyIdentityAlways(f)
+		}
 	}
 	col.Type = b.columnType(f, core)
 	if tg.Serial {
@@ -194,6 +198,18 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 		b.enumUses = append(b.enumUses, enumUse{name: tg.Enum, pos: f.Pos})
 	}
 	return col
+}
+
+// applyIdentityAlways refuses identity:always for a MySQL dialect, which has
+// only AUTO_INCREMENT (the by-default kind). SQLite keeps it: its rowid alias
+// has one kind, and the schema normalizer maps always to by default there.
+func (b *schemaBuilder) applyIdentityAlways(f *Field) {
+	for _, d := range append(slices.Clone(b.dialects), b.primary) {
+		if d == dialect.MySQL {
+			b.diag(f.Pos, fmt.Sprintf("field %s: identity:always is not supported on %s; use identity", f.GoName, d))
+			return
+		}
+	}
 }
 
 // serialTypes are the integer column types a serial column can have.
@@ -498,14 +514,22 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 		return bad
 	}
 	for _, ix := range c.Indexes {
+		ix.Parts = slices.Clone(ix.Parts)
 		cols := make([]string, len(ix.Parts))
 		for i, p := range ix.Parts {
+			// An IndexExpr argument that is exactly a column name is a
+			// plain column key, which is how the database reports it.
+			if name := strings.TrimSpace(p.Expr); p.Column == "" && name != "" {
+				if _, ok := t.Column(name); ok {
+					ix.Parts[i] = schema.IndexPart{Column: name}
+					p = ix.Parts[i]
+				}
+			}
 			cols[i] = p.Column
 		}
 		if missing("index", ix.Name, cols) {
 			continue
 		}
-		ix.Parts = slices.Clone(ix.Parts)
 		b.addIndex(t, ix, m.Pos, "MomoConfig")
 	}
 	for _, u := range c.Uniques {
@@ -649,6 +673,100 @@ func (b *schemaBuilder) addRelations(m *Model) {
 			b.manyToMany(m, r)
 		}
 	}
+	b.companionForeignKeys(m)
+}
+
+// companionForeignKeys adds the foreign keys declared with Config.ForeignKey.
+// It runs after every model has its table, so the referenced table and its
+// unique key can be checked: the referenced columns must be the table's
+// primary key or the columns of a unique constraint or a non-partial unique
+// index, in any order.
+func (b *schemaBuilder) companionForeignKeys(m *Model) {
+	if m.Config == nil || len(m.Config.ForeignKeys) == 0 {
+		return
+	}
+	t := &b.s.Tables[b.index[m]]
+	for _, fk := range m.Config.ForeignKeys {
+		bad := func(format string, args ...any) {
+			b.diag(m.Pos, fmt.Sprintf("MomoConfig: foreign key %q: ", fk.Name)+fmt.Sprintf(format, args...))
+		}
+		if slices.ContainsFunc(t.ForeignKeys, func(o schema.ForeignKey) bool { return o.Name == fk.Name }) {
+			bad("the name is already used by another foreign key of table %s", t.Name)
+			continue
+		}
+		ns, name := m.Schema, fk.RefTable
+		if i := strings.IndexByte(name, '.'); i >= 0 {
+			ns, name = name[:i], name[i+1:]
+		}
+		ref := b.tableBy[ns+"\x00"+name]
+		if ref == nil {
+			bad("the referenced table %q is not the table of any model", fk.RefTable)
+			continue
+		}
+		target := &b.s.Tables[b.index[ref]]
+		missing := false
+		for _, c := range fk.RefColumns {
+			if _, ok := target.Column(c); !ok {
+				bad("column %q is not a column of table %s", c, target.Name)
+				missing = true
+			}
+		}
+		if missing {
+			continue
+		}
+		if !coversKey(target, fk.RefColumns) {
+			bad("(%s) is neither the primary key of %s nor the columns of a unique constraint or unique index on it", strings.Join(fk.RefColumns, ", "), target.Name)
+			continue
+		}
+		t.ForeignKeys = append(t.ForeignKeys, schema.ForeignKey{
+			Name:       fk.Name,
+			Columns:    slices.Clone(fk.Columns),
+			RefTable:   fk.RefTable,
+			RefColumns: slices.Clone(fk.RefColumns),
+			OnDelete:   fk.OnDelete,
+			OnUpdate:   fk.OnUpdate,
+		})
+	}
+}
+
+// coversKey reports whether cols are exactly the columns of t's primary key,
+// of one of its unique constraints or of one of its non-partial unique
+// indexes over plain columns, compared as sets.
+func coversKey(t *schema.Table, cols []string) bool {
+	same := func(key []string) bool {
+		if len(key) != len(cols) {
+			return false
+		}
+		a, c := slices.Clone(key), slices.Clone(cols)
+		slices.Sort(a)
+		slices.Sort(c)
+		return slices.Equal(a, c)
+	}
+	if same(t.PrimaryKey) {
+		return true
+	}
+	for _, u := range t.Uniques {
+		if same(u.Columns) {
+			return true
+		}
+	}
+	for _, ix := range t.Indexes {
+		if !ix.Unique || ix.Where != "" {
+			continue
+		}
+		key := make([]string, 0, len(ix.Parts))
+		for _, p := range ix.Parts {
+			if p.Column == "" {
+				key = nil
+				break
+			}
+			key = append(key, p.Column)
+		}
+		if key != nil && same(key) {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *schemaBuilder) belongsTo(m *Model, r *Relation) {
