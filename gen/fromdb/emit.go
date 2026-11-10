@@ -384,7 +384,12 @@ func (g *generator) columns(m *model) {
 	if len(t.PrimaryKey) == 0 {
 		g.add(SevNote, t.Name, "the table has no primary key")
 	} else if !pkInColumnOrder(t) {
-		g.add(SevWarn, t.Name, "the primary key columns are not in column order: the model declares the key in field order, so the baseline will report the table")
+		refs, ok := m.refs(t.PrimaryKey)
+		if ok {
+			m.stmts = append(m.stmts, "c.PrimaryKey("+strings.Join(refs, ", ")+")")
+		} else {
+			g.add(SevWarn, t.Name, "the primary key uses a column the models do not have: the baseline will report the table")
+		}
 	}
 }
 

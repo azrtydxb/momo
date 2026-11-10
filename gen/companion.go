@@ -35,6 +35,8 @@ type CompanionResult struct {
 	IDGens map[string]string
 	// FKNames maps a foreign key column to the constraint name set by FKName.
 	FKNames map[string]string
+	// PrimaryKey is the column order set by PrimaryKey, empty when not called.
+	PrimaryKey []string
 
 	Views       []schema.View
 	Functions   []schema.Function
@@ -582,6 +584,24 @@ func (r *companionReader) config(c call) {
 		r.columnText(c, r.res.Collates, "collate")
 	case "IDGen":
 		r.columnText(c, r.res.IDGens, "idgen")
+	case "PrimaryKey":
+		if len(r.res.PrimaryKey) > 0 {
+			r.diag(c.expr.Pos(), "duplicate PrimaryKey call")
+			return
+		}
+		if len(c.expr.Args) == 0 || c.expr.Ellipsis.IsValid() {
+			r.unsupported(c.expr)
+			return
+		}
+		var cols []string
+		for _, a := range c.expr.Args {
+			if f, ok := r.field(a); ok {
+				cols = append(cols, f.Column)
+			}
+		}
+		if len(cols) == len(c.expr.Args) {
+			r.res.PrimaryKey = cols
+		}
 	case "FKName":
 		r.columnText(c, r.res.FKNames, "foreign key name")
 	default:

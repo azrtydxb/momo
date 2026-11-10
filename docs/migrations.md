@@ -936,7 +936,10 @@ single-column indexes as tags, other indexes, unique constraints, checks and
 comments in the `MomoConfig` method, and every foreign key the generator can
 derive as a `belongs_to` field with its `on_delete` and `on_update` actions
 and, when the constraint name is not `<table>_<column>_fkey` (PostgreSQL picks
-`_fkey1` on a partitioned table), its `fk_name`.
+`_fkey1` on a partitioned table), its `fk_name`. A composite primary key whose
+column order differs from the field order is declared with
+`c.PrimaryKey(&m.Name, &m.Scope, &m.At)` in `MomoConfig`; the DDL, inspection
+and baseline keep that order.
 `numeric` columns are Go strings (the `decimal-as-string` note); an
 `introspect.types` rule picks a decimal type instead.
 

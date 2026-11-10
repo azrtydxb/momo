@@ -516,6 +516,17 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 			t.Uniques = append(t.Uniques, schema.Unique{Name: u.Name, Columns: slices.Clone(u.Columns)})
 		}
 	}
+	if len(c.PrimaryKey) > 0 {
+		have := slices.Clone(t.PrimaryKey)
+		want := slices.Clone(c.PrimaryKey)
+		slices.Sort(have)
+		slices.Sort(want)
+		if !slices.Equal(have, want) {
+			b.diag(m.Pos, fmt.Sprintf("MomoConfig: PrimaryKey lists (%s) but the fields tagged pk are (%s); it must name exactly those, once each", strings.Join(c.PrimaryKey, ", "), strings.Join(t.PrimaryKey, ", ")))
+		} else {
+			t.PrimaryKey = slices.Clone(c.PrimaryKey)
+		}
+	}
 	checks := map[string]string{}
 	for _, f := range m.Fields {
 		if f.Tags.Check != "" {
