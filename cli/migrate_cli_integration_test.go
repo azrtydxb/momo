@@ -2,7 +2,7 @@
 
 //go:build integration
 
-package main
+package cli
 
 import (
 	"context"

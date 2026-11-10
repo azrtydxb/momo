@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package cli
 
 import (
 	"bytes"
@@ -29,7 +29,7 @@ func TestVizCLI(t *testing.T) {
 		t.Fatalf("corrupt snapshot: exit %d, want 2", code)
 	}
 
-	chdir(t, "../../internal/testmodels/example")
+	chdir(t, "../internal/testmodels/example")
 	dst := filepath.Join(t.TempDir(), "schema.mmd")
 	out.Reset()
 	errb.Reset()

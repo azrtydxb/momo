@@ -37,7 +37,7 @@ checks.
    the root, the leaf packages and `internal/*`. `TestKnownPackages` forces
    every new package to be given a role in that file.
 4. Convention: `driver/*` import `momo` plus their database driver only.
-5. Convention: `gen`, `migrate/*` and `cmd/*` may import `golang.org/x/tools`,
+5. Convention: `gen`, `migrate/*`, `cli` and `cmd/*` may import `golang.org/x/tools`,
    YAML and drivers. An application binary that imports only `momo` and one
    driver never links them.
 6. Convention: generated code imports only `momo`, `vector`, `types`, `schema`
@@ -148,7 +148,9 @@ carries the format number and no release version.
 
 ### Other packages
 
-- `cmd/momo`: the CLI (`generate`, `migrate`, `viz`, `help`).
+- `cli`: the CLI as a library (`generate`, `migrate`, `viz`, `help`).
+  `cli.Main(plugins...)` builds a momo binary with your own generator
+  plugins; `cmd/momo` is a thin caller of it with none.
 - `momovet` and `cmd/momovet`: the analyzer for non-constant raw SQL; see
   [momovet](momovet.md).
 - `momotest`: a schema or a rolled-back transaction per test with your

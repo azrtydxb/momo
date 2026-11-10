@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package cli
 
 import (
 	"errors"
@@ -71,12 +71,14 @@ unique expression indexes, generated columns) are left out of the models and
 the snapshot and listed as warnings; the baseline then reports them. A column
 type with no Go mapping is an error and nothing is written.
 
-Plugins: only the plugins built into this binary can be enabled in momo.yaml.
-To run custom generator plugins, call gen.Emit with your plugins from Go code.
+Plugins: only the plugins built into this binary can be enabled in momo.yaml;
+the stock momo binary has none. To run your own generator plugins, build a
+binary with cli.Main(plugins...) from github.com/azrtydxb/momo/cli, or call
+gen.Emit with your plugins from Go code.
 `
 
 // runGenerate implements `momo generate [-c momo.yaml] [--check] [patterns...]`.
-func runGenerate(args []string, stdout, stderr io.Writer) int {
+func runGenerate(args []string, stdout, stderr io.Writer, available ...gen.Plugin) int {
 	for _, a := range args {
 		if a == "--" {
 			break
@@ -145,7 +147,7 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
-	if cfg.Plugins, err = selectPlugins(file.Plugins); err != nil {
+	if cfg.Plugins, err = selectPlugins(file.Plugins, available); err != nil {
 		return fail(stderr, err)
 	}
 
@@ -270,14 +272,15 @@ func checkPatterns(patterns []string, base string) error {
 	return nil
 }
 
-// selectPlugins returns the built-in plugins named in the config. Naming a
-// plugin that is not built in is a configuration error.
-func selectPlugins(want map[string]map[string]any) ([]gen.Plugin, error) {
+// selectPlugins returns the plugins named in the config, from those the
+// binary offers. Naming a plugin the binary does not offer is a configuration
+// error.
+func selectPlugins(want map[string]map[string]any, available []gen.Plugin) ([]gen.Plugin, error) {
 	if len(want) == 0 {
 		return nil, nil
 	}
 	have := map[string]gen.Plugin{}
-	for _, p := range plugins() {
+	for _, p := range available {
 		have[p.Name()] = p
 	}
 	names := make([]string, 0, len(want))
@@ -289,8 +292,8 @@ func selectPlugins(want map[string]map[string]any) ([]gen.Plugin, error) {
 	for _, n := range names {
 		p, ok := have[n]
 		if !ok {
-			return nil, fmt.Errorf("momo.yaml: unknown plugin %q: the momo binary only runs its built-in plugins; "+
-				"for custom generators call gen.Emit with your plugins from Go code", n)
+			return nil, fmt.Errorf("momo.yaml: unknown plugin %q: this binary only runs the plugins built into it; "+
+				"build a binary with cli.Main(plugins...) or call gen.Emit with your plugins from Go code", n)
 		}
 		out = append(out, p)
 	}

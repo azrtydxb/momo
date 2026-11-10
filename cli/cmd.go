@@ -1,10 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+// Package cli is the momo command line tool as a library. The momo binary
+// (cmd/momo) is a thin caller of Main; a team that writes its own gen.Plugin
+// builds a binary with the same behavior and its plugins selectable from
+// momo.yaml:
+//
+//	package main
+//
+//	import "github.com/azrtydxb/momo/cli"
+//
+//	func main() { cli.Main(myPlugin{}) }
+//
+// Build it with go build and run it where you would run momo: the commands,
+// flags, exit codes and diagnostics are the ones of `momo generate`, and a
+// plugin passed to Main is enabled by naming it in the plugins section of
+// momo.yaml. A plugin that is not passed to Main cannot be enabled: naming it
+// is a configuration error (exit 2).
+package cli
 
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/migrate"
@@ -25,8 +42,11 @@ Commands:
   viz       draw an ER diagram, Mermaid or DOT (flags: --format, --snapshot, --out)
   help      print this help ("momo help generate" for a command)
 
-Plugins: momo generate runs only the plugins built into this binary. For
-custom generator plugins use the Go API (gen.Emit with plugins).
+Plugins: momo generate runs the plugins built into this binary, selected in
+the plugins section of momo.yaml. The stock momo binary has none. To run your
+own generator plugins, build a binary with cli.Main(plugins...) from
+github.com/azrtydxb/momo/cli (see the package documentation), or call gen.Emit
+with your plugins from Go code.
 
 Exit codes:
   0  success, or generated code is current
@@ -42,33 +62,36 @@ type command struct {
 	run  func(args []string, stdout, stderr io.Writer) int
 }
 
-func commands() []command {
+func commands(plugins []gen.Plugin) []command {
 	return []command{
-		{"generate", runGenerate},
+		{"generate", func(args []string, stdout, stderr io.Writer) int {
+			return runGenerate(args, stdout, stderr, plugins...)
+		}},
 		{"migrate", runMigrateCmd},
 		{"viz", runViz},
 	}
 }
 
-// plugins returns the built-in generator plugins as a fresh slice, so no
-// global state is kept. It is empty until plugins ship with the binary.
-// External plugin registration is not supported by the binary; custom
-// generators use the Go API (gen.Emit with plugins).
-func plugins() []gen.Plugin {
-	return []gen.Plugin{}
+// Main runs the momo CLI with the process arguments and exits with its code.
+// The plugins are the generator plugins this binary offers: momo.yaml may
+// enable them by name. Main does not return.
+func Main(plugins ...gen.Plugin) {
+	os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr, plugins...))
 }
 
 // Run executes the momo CLI with args (without the program name) and returns
-// the process exit code.
-func Run(args []string, stdout, stderr io.Writer) int {
+// the process exit code. The plugins are the generator plugins the run
+// offers; momo.yaml enables them by name. It is the testable form of Main.
+func Run(args []string, stdout, stderr io.Writer, plugins ...gen.Plugin) int {
 	if len(args) == 0 {
 		_, _ = fmt.Fprint(stderr, usage)
 		return exitUsage
 	}
+	cmds := commands(plugins)
 	switch args[0] {
 	case "help", "-h", "--help":
 		if args[0] == "help" && len(args) > 1 {
-			for _, c := range commands() {
+			for _, c := range cmds {
 				if c.name == args[1] {
 					return c.run([]string{"-h"}, stdout, stderr)
 				}
@@ -79,7 +102,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprint(stdout, usage)
 		return exitOK
 	}
-	for _, c := range commands() {
+	for _, c := range cmds {
 		if c.name == args[0] {
 			return c.run(args[1:], stdout, stderr)
 		}

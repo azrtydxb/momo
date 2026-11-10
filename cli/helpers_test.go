@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package cli
 
 import (
 	"io/fs"
@@ -13,7 +13,7 @@ import (
 // requires the repository root (replace directive) and returns its root.
 func copyModule(t *testing.T, src string) string {
 	t.Helper()
-	repo, err := filepath.Abs("../..")
+	repo, err := filepath.Abs("..")
 	if err != nil {
 		t.Fatal(err)
 	}

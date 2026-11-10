@@ -130,11 +130,11 @@ func driversFor(all []driverInfo, n dialect.Name) []driverInfo {
 }
 
 // cliDialects returns the dialect names the momo command runs migrations for,
-// read from the dialect switch in cmd/momo: the dialect.* identifiers in the
+// read from the dialect switch in cli: the dialect.* identifiers in the
 // body of dialectImpl. It fails when that function is missing, so a refactor of
 // the switch cannot silently empty the answer.
 func cliDialects(root string) (map[string]bool, error) {
-	files, err := filepath.Glob(filepath.Join(root, "cmd", "momo", "*.go"))
+	files, err := filepath.Glob(filepath.Join(root, "cli", "*.go"))
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func cliDialects(root string) (map[string]bool, error) {
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("cmd/momo has no dialectImpl function; gendocs reads the CLI's dialect switch there")
+		return nil, fmt.Errorf("cli has no dialectImpl function; gendocs reads the CLI's dialect switch there")
 	}
 	return out, nil
 }
