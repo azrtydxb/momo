@@ -211,9 +211,13 @@ func (q InsertQuery[T]) execReadBack(ctx context.Context, cols []int) (Result, e
 			res.InsertID = int64(v.Uint()) // #nosec G115 -- an auto-increment key is positive
 		}
 	}
-	if len(got) != len(q.models) {
-		return Result{}, &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table,
-			Err: fmt.Errorf("the statement returned %d of %d rows (ON CONFLICT skipped some), so the stored dbdefault values cannot be matched to the models: give those columns a value, or drop DoNothing; the write is rolled back unless the handle is a pinned OnConn one", len(got), len(q.models))}
+	if len(got) < len(q.models) {
+		if err := q.shortfall(len(got)); err != nil {
+			return Result{}, err
+		}
+		if len(q.models) == 1 {
+			return res, nil // skipped by the conflict action: the model stays as it was
+		}
 	}
 	for r := range got {
 		if q.back[r] == nil {
@@ -228,6 +232,26 @@ func (q InsertQuery[T]) execReadBack(ctx context.Context, cols []int) (Result, e
 		}
 	}
 	return res, nil
+}
+
+// shortfall decides what fewer RETURNING rows than models mean for a read-back.
+// A single model that returns no row was skipped, and a statement without a
+// conflict action can lose rows only to a trigger or rule: both are tolerated
+// and the rows that did return are written back by position. With a conflict
+// action and several models the returned rows cannot be matched to the models,
+// so the insert fails (and is rolled back, to the savepoint inside a *Tx)
+// instead of leaving models stale. A pinned OnConn handle cannot roll back, so
+// it is tolerated there too and the write-back is partial.
+func (q InsertQuery[T]) shortfall(got int) error {
+	total := len(q.models)
+	if got >= total || total == 1 || !(q.i.conflict != conflictNone || q.i.upsert) {
+		return nil
+	}
+	if db, ok := q.q.(*DB); ok && db.pinned {
+		return nil
+	}
+	return &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table,
+		Err: fmt.Errorf("the statement returned %d rows for %d models, so the stored dbdefault values cannot be matched to the models: give those columns a value, or read them with Returning and Rows; the write is rolled back", got, total)}
 }
 
 // copyField stores the field of src for column ci into dst.

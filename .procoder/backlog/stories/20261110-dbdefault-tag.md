@@ -35,3 +35,5 @@ Review fixes (same run):
 - ON CONFLICT DO NOTHING that skips rows fails with ErrUnsupported and rolls back: TestDBDefaultDoNothingSkippedRowsFail.
 - Copy refuses a zero dbdefault column: TestDBDefaultCopyRefusesZeroColumn.
 - The dbdefault plan is computed once per statement (insert_dbdefault.go) and the write-back helper is shared with write_idgen.go; the bench gate shows no extra allocations.
+
+Second review round: a single Model skipped by DoNothing reports 0 rows and stays unchanged; a shortfall errors only with a conflict action and several models (otherwise tolerated, partial by position; partial on a pinned handle); the id-generator reconcile path applies the same rule and rejects a dbdefault conflict target with ErrValidation; the savepoint rollback inside a Tx is documented. Tests: insert_dbdefault_shortfall_test.go and insert_dbdefault_rollback_integration_test.go (rolled-back rows absent). The run id for these changes is recorded in the final report, not here, because a story edit would change the HEAD it names.

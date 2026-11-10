@@ -271,7 +271,7 @@ func TestDBDefaultDoNothingSkippedRowsFail(t *testing.T) {
 	db, drv := dbdSetup(dialect.Postgres, [][]any{{"gen-1"}})
 	ms := []dbdRow{{Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}}
 	_, err := momo.Insert[dbdRow](db).Models(ms).OnConflict(dbdTitle).DoNothing().Exec(context.Background())
-	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "ON CONFLICT skipped") {
+	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "returned 1 rows for 2 models") {
 		t.Fatalf("err = %v, want ErrUnsupported naming the skipped rows", err)
 	}
 	if drv.Rollbacks() != 1 || ms[0].ID != "" {

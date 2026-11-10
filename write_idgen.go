@@ -289,6 +289,11 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		}
 	}
 	dbCols := q.dbDefaultReadBack() // dbdefault columns come back with the ids
+	for _, ci := range keyCols {
+		if slices.Contains(dbCols, ci) {
+			return Result{}, q.verr(q.meta.Columns[ci].Name, "the conflict-target column %q takes its database default in some rows, so the stored rows cannot be matched to the models: give it a value or use another conflict target", q.meta.Columns[ci].Name)
+		}
+	}
 	for _, ci := range dbCols {
 		if !slices.Contains(idCols, ci) {
 			refs = append(refs, NewColumn[string](q.meta.Table, q.meta.Columns[ci].Name, 0))
@@ -347,6 +352,11 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 	}
 	if err := rows.Close(); err != nil {
 		return Result{}, err
+	}
+	if len(dbCols) > 0 && int(n) < len(q.models) {
+		if err := q.shortfall(int(n)); err != nil {
+			return Result{}, err
+		}
 	}
 	return Result{RowsAffected: n}, nil
 }

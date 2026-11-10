@@ -153,9 +153,12 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 // a mix; MySQL has no RETURNING to read the value back and fails with
 // ErrUnsupported when a dbdefault column is zero. Exec writes the stored
 // values of the unset rows back into the caller's elements after the
-// statement committed. When ON CONFLICT DO NOTHING skips some rows the
-// returned rows cannot be matched to the models: Exec then fails with
-// ErrUnsupported and rolls the insert back. A caller's own Returning list
+// statement committed. A single Model that a conflict action skips reports 0
+// rows affected and stays unchanged. With a conflict action and several
+// models, fewer returned rows than models cannot be matched: Exec fails with
+// ErrUnsupported and rolls the insert back (to a savepoint inside a Tx; a
+// pinned OnConn handle keeps the rows and writes back what returned). Without
+// a conflict action a shortfall is tolerated. A caller's own Returning list
 // turns the automatic read-back off: Rows returns the columns it names.
 func (q InsertQuery[T]) Models(ms []T) InsertQuery[T] {
 	if len(ms) == 0 {

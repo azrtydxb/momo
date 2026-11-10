@@ -546,10 +546,20 @@ type Event struct {
   leave it out with `Omit` and read it yourself. MariaDB and SQLite read it
   back with `RETURNING`.
 - Your own `Returning` list turns the automatic read-back off; `Rows` returns
-  the columns you named. When a conflict action skips rows (`DoNothing`) the
-  returned rows cannot be matched to the models, so `Exec` fails with
-  `ErrUnsupported` and rolls the insert back (a pinned `OnConn` handle cannot
-  roll back): give those columns a value, or use `Returning` and `Rows`. The
+  the columns you named. A single `Model` that a conflict action skips
+  (`DoNothing`) returns no row: `Exec` reports 0 rows affected and leaves the
+  model as it was. With several models and a conflict action, a returned row
+  count below the model count means the stored values cannot be matched to the
+  models, so `Exec` fails with `ErrUnsupported` and rolls the insert back; give
+  those columns a value, or use `Returning` and `Rows`. Inside a caller's `Tx`
+  the rollback is to a savepoint, not the caller's transaction, which stays
+  open. A pinned `OnConn` handle cannot roll back, so there the insert stays,
+  no error is returned and the write-back is partial. Without a conflict action
+  a shortfall (a trigger or rule that drops a row) is tolerated: the returned
+  rows are written back by position, so do not combine `dbdefault` with
+  row-dropping triggers on bulk inserts. The conflict-target column of an
+  insert that also uses an id generator cannot be a `dbdefault` column that is
+  zero in some row (`ErrValidation`). The
   default `DO UPDATE` set of `Upsert` leaves a dbdefault column out when a row
   leaves it to the database, so a conflict keeps the stored value.
 - The zero value means "use the default". On a `bool` or numeric column that
