@@ -14,9 +14,9 @@ import (
 // types and encodes each value from its Go type; a []uuid.UUID or
 // []types.UUID has no pgx type of its own, so without this step the call fails
 // with "failed to encode args". An element counts as a UUID when it is a
-// [16]byte-based array type with a String method, which both
-// github.com/google/uuid and momo's types.UUID are; the String form is the
-// canonical lowercase text. A nil slice stays NULL and an empty one becomes
+// [16]byte-based array type whose String method returns the canonical
+// 36-character 8-4-4-4-12 form, as github.com/google/uuid and momo's
+// types.UUID do; any other [16]byte type (a digest) is left untouched. A nil slice stays NULL and an empty one becomes
 // "{}". It returns args itself when nothing needed converting.
 func convertUUIDSliceArgs(args []any) []any {
 	var out []any
@@ -55,14 +55,35 @@ func uuidArrayLiteral(a any) (any, bool) {
 	if v.IsNil() {
 		return nil, true
 	}
-	var b strings.Builder
-	b.WriteByte('{')
-	for i := range v.Len() {
-		if i > 0 {
-			b.WriteByte(',')
+	parts := make([]string, v.Len())
+	for i := range parts {
+		p := v.Index(i).Interface().(fmt.Stringer).String()
+		if !canonicalUUID(p) {
+			return nil, false // a digest or other [16]byte type: leave it alone
 		}
-		b.WriteString(v.Index(i).Interface().(fmt.Stringer).String())
+		parts[i] = p
 	}
-	b.WriteByte('}')
-	return b.String(), true
+	return "{" + strings.Join(parts, ",") + "}", true
+}
+
+// canonicalUUID reports whether s has the 8-4-4-4-12 lowercase or uppercase
+// hex shape of a UUID.
+func canonicalUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		switch i {
+		case 8, 13, 18, 23:
+			if s[i] != '-' {
+				return false
+			}
+		default:
+			c := s[i]
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+				return false
+			}
+		}
+	}
+	return true
 }

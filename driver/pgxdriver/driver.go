@@ -76,7 +76,7 @@ func (d *driver) ClassifyError(err error) error { return ClassifyError(err) }
 func (d *driver) withMode(args []any) []any {
 	out := make([]any, 0, len(args)+1)
 	out = append(out, d.mode)
-	return append(out, convertUUIDSliceArgs(convertVectorArgs(d.vecFormat, args))...)
+	return append(out, convertVectorArgs(d.vecFormat, args)...)
 }
 
 func (d *driver) Query(ctx context.Context, sql string, args []any) (momo.Rows, error) {
