@@ -22,7 +22,7 @@ The Kuvryn Owl port's `--from-db` and `baseline` rehearsal is blocked or noisy i
 
 ## Evidence
 
-Final CI run: see the report of the sprint-7 agent; the criteria below are covered by these tests (all run in ci-agent).
+CI: ci-agent run 42780954032 on headSha bd2ac27668df480d8b40d7d6eaf9db336ec76031, all jobs success. The criteria below are covered by these tests.
 
 - UpdateOf: `TestPostgresInspectTriggerUpdateOf`, `TestPostgresTriggerUpdateOfRoundTrip`, `TestPostgresTriggerUpdateOfKeepsWrittenOrder` and `TestPostgresTriggerUpdateOfOrderRoundTrip` (UPDATE OF b, a keeps its written order, no drift), `TestRenderTriggerPolicyRLS` (UPDATE OF case), `TestGenerateFromDBTriggerUpdateOf` (`--from-db` emits it).
 - Exclude before reject: the PostgreSQL inspector applies `Exclude` while reading, skipping a matching table before its columns and constraints, a matching view or function before its definition, and a trigger whose name or table matches before its definition (migrate/postgres/inspect.go, inspect_objects.go). Extensions, enums and policies are still filtered afterwards. `generate --from-db` adds every `introspect.skip` glob to the inspection excludes (cmd/momo/generate_fromdb.go). Tests: `TestPostgresInspectExcludedTableIsNotRead` (a table with a VIRTUAL generated column, which inspection otherwise rejects; skipped when the server is older than PostgreSQL 18), `TestPostgresInspectExcludedViewAndFunction`, `TestPostgresInspectExcludeSkipsTrigger`.
