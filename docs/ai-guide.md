@@ -200,10 +200,13 @@ PgBouncer (transaction pooling):
 
 - `pgxdriver.New` defaults to `pgx.QueryExecModeExec` (unnamed statements,
   server-side binding). That is PgBouncer-safe; set nothing.
-- Under that default mode, `[]uuid.UUID` (github.com/google/uuid) and
-  `[]types.UUID` bind to `id = ANY(?::uuid[])`, and a `[]byte` of JSON text
-  binds to a `jsonb` column; the pgxdriver integration tests
-  `TestUUIDSliceBindsToAnyArray` and `TestByteSliceBindsToJSONB` prove it.
+- That mode sends no parameter types, so the driver converts what pgx cannot
+  encode. `[]uuid.UUID` (github.com/google/uuid), `[]types.UUID` and any slice
+  of a `[16]byte` type with a `String` method bind to `id = ANY(?::uuid[])`
+  (with or without the cast; a nil slice is NULL). A raw `[]byte` is `bytea`
+  text and a `jsonb` column rejects it: pass the JSON as `json.RawMessage` or
+  `string`, or use `types.JSON[T]`. The pgxdriver tests
+  `TestUUIDSliceBindsToAnyArray` and `TestJSONBBinding` pin this.
 - `pgxdriver.WithExecMode(m)` accepts `pgx.QueryExecModeCacheStatement`,
   `pgx.QueryExecModeCacheDescribe`, `pgx.QueryExecModeDescribeExec` (import
   `github.com/jackc/pgx/v5`; not tested through PgBouncer). The simple protocol is rejected
