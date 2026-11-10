@@ -1953,10 +1953,10 @@ builders with `momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)`
 (use `momo.RawQuery` for hand-written SQL), read them with
 `QueryRegistry.Compile(dialect)` and freeze them with `momotest.QueryGolden`
 (`MOMO_UPDATE_GOLDEN=1` rewrites the files; registering a name twice panics).
-The SQL of `Insert.Model` depends on the sample model's dbdefault fields (a
+The SQL of `InsertQuery[T].Model` depends on the sample model's dbdefault fields (a
 zero one is left out of the column list), so register it with the fields set as
-a real call sets them, or register `Insert.Values(col.Set(v), ...)` or
-`Insert.Omit(...).Model(&m)`, whose column list does not depend on values (see
+a real call sets them, or register `InsertQuery[T].Values` with `Set` for each column or
+`InsertQuery[T].Omit` before `InsertQuery[T].Model`, whose column list does not depend on values (see
 [testing.md](testing.md#listing-the-sql-a-query-registry)).
 
 Use the public kit `github.com/azrtydxb/momo/momotest` (see

@@ -21,11 +21,11 @@ drop it. A type that is not a struct and has no metadata is now an
 
 ### Registering Insert.Model needs a real-looking sample
 
-The SQL listed for `Insert.Model` through `momo.RegisterQuery` depends on the
+The SQL listed for `InsertQuery[T].Model` through `momo.RegisterQuery` depends on the
 sample model: a zero dbdefault field is left out of the column list. This is
 unchanged behavior, now documented in
 [testing.md](testing.md#listing-the-sql-a-query-registry), together with the
-ways to register a stable shape (`Values`, `Omit`, or a sample set as a real call
+ways to register a stable shape (`InsertQuery[T].Values`, `InsertQuery[T].Omit`, or a sample set as a real call
 sets it).
 
 ## Upgrading to 0.6.0
