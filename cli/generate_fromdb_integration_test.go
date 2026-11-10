@@ -315,3 +315,42 @@ func TestGenerateFromDBDBDefaultAll(t *testing.T) {
 		t.Fatalf("the generated metadata has no FlagDBDefault: %v\n%s", err, meta)
 	}
 }
+
+// TestGenerateFromDBOnlySchemaQualified is `only: ["app.*"]` end to end: the
+// glob matches schema.name like migrate.exclude does, so the tables of the app
+// schema get models and the table in the current schema does not.
+func TestGenerateFromDBOnlySchemaQualified(t *testing.T) {
+	dsn := testdb.PostgresURL(t)
+	execAll(t, dsn, []string{
+		`DROP SCHEMA IF EXISTS app CASCADE`,
+		`CREATE SCHEMA app`,
+		`CREATE TABLE app.widgets (id bigint PRIMARY KEY, name text NOT NULL)`,
+		`CREATE TABLE app.gadgets (id bigint PRIMARY KEY, name text NOT NULL)`,
+		`CREATE TABLE legacy_only (id bigint PRIMARY KEY)`,
+	})
+	t.Cleanup(func() { execAll(t, dsn, []string{`DROP SCHEMA IF EXISTS app CASCADE`}) })
+	root := copyModule(t, t.TempDir())
+	writeFile(t, filepath.Join(root, "momo.yaml"), `version: 1
+packages:
+  - ./models
+dialects: [postgres]
+migrate:
+  schemas: [public, app]
+  exclude: [vector, pgcrypto]
+introspect:
+  only: ["app.*"]
+`)
+	chdir(t, root)
+	t.Setenv("MOMO_TEST_URL", dsn)
+	if code, out, errOut := fromDB(t, "--no-snapshot"); code != 0 {
+		t.Fatalf("generate --from-db: exit %d\n%s%s", code, out, errOut)
+	}
+	for _, name := range []string{"widgets_model.go", "gadgets_model.go"} {
+		if _, err := os.Stat(filepath.Join(root, "models", name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "models", "legacy_only_model.go")); err == nil {
+		t.Fatal("a table outside only got a model")
+	}
+}
