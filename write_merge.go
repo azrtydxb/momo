@@ -298,7 +298,7 @@ func (m MergeQuery[T]) render(b *Builder) {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				upd.appendAssignment(b, a)
+				upd.appendAssignment(b, a, "")
 			}
 			if vi := m.meta.Version; vi >= 0 {
 				b.WriteString(", ")
@@ -586,7 +586,7 @@ func (u UpdateQuery[T]) bulkSQL() (Compiled, error) {
 			}
 			for _, a := range p.extra {
 				b.WriteString(", ")
-				u.appendAssignment(b, a)
+				u.appendAssignment(b, a, "")
 			}
 			if vi := u.meta.Version; vi >= 0 {
 				b.WriteString(", ")
