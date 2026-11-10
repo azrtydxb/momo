@@ -99,6 +99,9 @@ func (t *roTx) Query(ctx context.Context, q string, args []any) (momo.Rows, erro
 	if err := t.live("select"); err != nil {
 		return nil, err
 	}
+	if err := checkArgs("select", args); err != nil {
+		return nil, err
+	}
 	rows, err := t.conn.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, t.h.Classify("select", err)
@@ -121,6 +124,9 @@ func (t *roTx) Query(ctx context.Context, q string, args []any) (momo.Rows, erro
 
 func (t *roTx) Exec(ctx context.Context, q string, args []any) (int64, error) {
 	if err := t.live("exec"); err != nil {
+		return 0, err
+	}
+	if err := checkArgs("exec", args); err != nil {
 		return 0, err
 	}
 	res, err := t.conn.ExecContext(ctx, q, args...)

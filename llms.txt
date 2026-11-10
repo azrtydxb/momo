@@ -1,6 +1,6 @@
 # Momo
 
-> Momo is a Go ORM (github.com/azrtydxb/momo) that generates typed column and relation descriptors from plain Go structs. v0.4.0 is tested against PostgreSQL 16/17 with pgvector through pgx; the other databases are listed below and in docs/capabilities.md. Includes versioned SQL migrations, relations, transactions and vector search. Read the AI guide first. <!-- x-release-please-version -->
+> Momo is a Go ORM (github.com/azrtydxb/momo) that generates typed column and relation descriptors from plain Go structs. v0.5.0 is tested against PostgreSQL 16/17 with pgvector through pgx; the other databases are listed below and in docs/capabilities.md. Includes versioned SQL migrations, relations, transactions and vector search. Read the AI guide first. <!-- x-release-please-version -->
 
 Database status:
 
@@ -18,7 +18,7 @@ A database is usable when a driver package for it exists under `driver/`:
 
 ## Start here
 
-- [Guide for AI coding agents](https://github.com/azrtydxb/momo/blob/main/docs/ai-guide.md): setup, modeling, migrations, queries, relations, vectors, errors, testing, and DO/DON'T rules with every known v0.4.0 pitfall. <!-- x-release-please-version -->
+- [Guide for AI coding agents](https://github.com/azrtydxb/momo/blob/main/docs/ai-guide.md): setup, modeling, migrations, queries, relations, vectors, errors, testing, and DO/DON'T rules with every known v0.5.0 pitfall. <!-- x-release-please-version -->
 - [README](https://github.com/azrtydxb/momo/blob/main/README.md): install, worked example, command line overview.
 
 ## Reference
@@ -37,6 +37,7 @@ A database is usable when a driver package for it exists under `driver/`:
 
 - INSERT ... SELECT: `InsertQuery[T].FromSelect` with `SelectExprs` or `Select[T]` as the source; composes with `OnConflict`, `Returning` and `Upsert`.
 - Typed expressions: `momo.Func` and, in package `sqlfn`, `sqlfn.Case`, `sqlfn.Cast`, `sqlfn.Concat` and the arithmetic helpers `sqlfn.Add`, `sqlfn.Sub` and `sqlfn.Mul` work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr` without `momo.SQL`. Date/time (package `timeop`): `timeop.Extract`, `timeop.AtTimeZone`, `timeop.Trunc`, `timeop.Now`, `timeop.AddInterval`/`timeop.SubInterval`; `JoinSQL` composes raw fragments.
+- Database defaults: the `dbdefault` tag leaves a zero-valued column out of `Model`/`Models` inserts so the database default applies, and reads the stored value back with RETURNING.
 - Serial ids: the `serial` tag on an int field gives a PostgreSQL serial column, omitted from inserts and read back with RETURNING.
 
 ## Examples

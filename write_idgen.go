@@ -146,10 +146,11 @@ func (q InsertQuery[T]) isNonPKIDGen(ci int) bool {
 }
 
 // execSingle runs the only chunk of an insert. A statement that reconciles ids
-// runs in its own transaction (or savepoint), so a RETURNING row that matches
-// no model rolls the write back instead of leaving it committed.
+// (or reads dbdefault columns back) runs in its own transaction (or savepoint),
+// so a RETURNING row that matches no model rolls the write back instead of
+// leaving it committed.
 func (q InsertQuery[T]) execSingle(ctx context.Context, c InsertQuery[T]) (Result, error) {
-	if db, ok := q.q.(*DB); !c.reconcile || (ok && db.pinned) {
+	if db, ok := q.q.(*DB); !(c.reconcile || len(c.dbDefaultReadBack()) > 0) || (ok && db.pinned) {
 		return c.execOne(ctx)
 	}
 	var res Result
@@ -287,6 +288,17 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 			}
 		}
 	}
+	dbCols := q.dbDefaultReadBack() // dbdefault columns come back with the ids
+	for _, ci := range keyCols {
+		if slices.Contains(dbCols, ci) {
+			return Result{}, q.verr(q.meta.Columns[ci].Name, "the conflict-target column %q takes its database default in some rows, so the stored rows cannot be matched to the models: give it a value or use another conflict target", q.meta.Columns[ci].Name)
+		}
+	}
+	for _, ci := range dbCols {
+		if !slices.Contains(idCols, ci) {
+			refs = append(refs, NewColumn[string](q.meta.Table, q.meta.Columns[ci].Name, 0))
+		}
+	}
 	q2 := q
 	q2.i.returning = returningSet{cols: refs}
 	c, err := q2.SQL()
@@ -306,6 +318,7 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		}
 	}
 	var n int64
+	matched := make([]bool, len(q.models))
 	for rows.Next() {
 		var got T
 		if err := rows.ScanModel(&got); err != nil {
@@ -318,18 +331,20 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 			_ = rows.Close()
 			return Result{}, q.verr("", "idgen: a RETURNING row of %s matched no model on %s: the conflict-target columns must read back exactly as written (citext, char(n) and numeric columns may not); the write is rolled back unless the handle is a pinned OnConn one", q.meta.Table, strings.Join(keyNames(q.meta, keyCols), ", "))
 		}
+		matched[i] = true
 		if i >= len(q.back) || q.back[i] == nil {
 			continue
+		}
+		for _, ci := range dbCols {
+			if q.dbDefaultRow(i, ci) {
+				dst, src, col := q.back[i], got, ci
+				q.later(func() { copyField(q.meta, dst, &src, col) })
+			}
 		}
 		for _, ci := range idCols {
 			if id, ok := idString(q.meta.Value(&got, ci)); ok {
 				back, col := q.back[i], ci
-				apply := func() { setID(q.meta.Ptr(back, col), id) }
-				if q.pend != nil {
-					*q.pend = append(*q.pend, apply) // after the statement commits
-				} else {
-					apply()
-				}
+				q.later(func() { setID(q.meta.Ptr(back, col), id) }) // after the statement commits
 			}
 		}
 	}
@@ -338,6 +353,9 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	if err := rows.Close(); err != nil {
+		return Result{}, err
+	}
+	if err := q.unread(matched, dbCols); err != nil {
 		return Result{}, err
 	}
 	return Result{RowsAffected: n}, nil

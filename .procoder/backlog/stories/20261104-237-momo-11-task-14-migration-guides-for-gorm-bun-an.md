@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-11-adoption
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 
@@ -12,9 +12,11 @@ Implements plan momo-11-adoption Task 14: Migration guides for GORM, Bun and Ent
 ## Acceptance criteria
 
 - [ ] Step 1: Failing check
-- [ ] Step 2: Write the guides. GORM guide: Models (struct tags to Momo `momo:` tags and `MomoConfig`), Queries (`db.Find`/`Where` to `momo.Select[T]`), Relations (`Preload` to `momo.Load` and `.With`), Hooks (`BeforeCreate` to typed model hooks, S-85), Transactions (`db.Transaction` to `db.Tx`, no autom…
-- [ ] Step 3: Run the check, expect PASS for the headings check (`grep -c` returns 7 each).
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] Step 2: Write the guides. GORM guide: Models (struct tags to Momo `momo:` tags and `MomoConfig`), Queries (`db.Find`/`Where` to `momo.Select[T]`), Relations (`Preload` to `momo.Load` and `.With`), Hooks (`BeforeCreate` to typed model hooks, S-85), Transactions (`db.Transaction` to `db.Tx`, no autom…
+- [x] Step 3: Run the check, expect PASS for the headings check (`grep -c` returns 7 each).
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- docs/guides/gorm.md, bun.md, ent.md each have the seven required sections plus a Cheat sheet (so `grep -c '^## '` returns 8, not 7). Go blocks are complete programs compiled by TestDocsCodeBlocks (unit job of ci-agent run 42780875746, headSha 981b3c0777de48b0ac7870ec9e48304aa2dae545, all 9 jobs success); models come from examples/quickstart/models, not the plan's examples/guides/models, whose generated code cannot be produced without running the generator locally. Nav in mkdocs.yml and links in docs/README.md added.
+- Step 1 (failing check before the files exist) was not run, so it stays unticked.

@@ -181,7 +181,7 @@ func fakeRepo(t *testing.T, sqliteDriver bool) string {
 	write(t, root, "driver/internal/x.go", "package internal\n")
 	write(t, root, "migrate/postgres/d.go", "package postgres\n")
 	write(t, root, "migrate/sqlite/d.go", "package sqlite\n")
-	write(t, root, "cmd/momo/m.go", "package main\n\nimport \"github.com/azrtydxb/momo/dialect\"\n\nfunc dialectImpl(n string) {\n\tif n == string(dialect.Postgres) {\n\t\treturn\n\t}\n}\n")
+	write(t, root, "cli/m.go", "package cli\n\nimport \"github.com/azrtydxb/momo/dialect\"\n\nfunc dialectImpl(n string) {\n\tif n == string(dialect.Postgres) {\n\t\treturn\n\t}\n}\n")
 	if sqliteDriver {
 		status("lite", "dialect=sqlite usable=true cgo=true windows=false vectors=yes")
 	}

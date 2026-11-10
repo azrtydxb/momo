@@ -1,9 +1,9 @@
 # momo-05 Task 14: COPY bulk path through the driver (S-5, S-9)
 
-Status: open
+Status: done
 Created: 2026-11-04
 Epic: momo-05-writes-queries
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 
@@ -17,14 +17,16 @@ Implements plan momo-05-writes-queries Task 14: COPY bulk path through the drive
 
 ## Evidence
 
-Done (not ticked, see below):
+Done:
 
 - The COPY path exists: `InsertQuery.Copy` in `insert_copy.go`, with unit tests in `insert_copy_unit_test.go` (column and value order, implicit-transaction setup order, fail-closed on a pinned handle with a setup, hooks never see values, sensitive values, interceptor deny, BeforeInsert, unit-of-work write mark, cancelled context) and `TestCopyInsert` in `copy_test.go` (PostgreSQL: 2 rows, 70000 rows above the 65535 parameter limit, rollback inside a Tx; SQLite: ErrUnsupported).
 - Green: ci-agent run recorded in the final report passes lint, unit, fuzz-smoke and PostgreSQL integration with these tests.
 
-Remains open, with the reason:
+Criteria evidence:
 
 - Criterion 1 is ticked: red run 42462295742 (throwaway branch, only insert_copy.go removed) failed to compile with `ins(db).Copy undefined` in copy_test.go and insert_copy_unit_test.go; green run 42462290717 on 12b5c776b6d5b18562aa78396848de1375a2b60c passes TestCopyInsert and the unit tests (lint, unit, fuzz-smoke, PostgreSQL, MySQL and MariaDB integration all success).
 - Criterion 2 is ticked: mutation run 42464171855 (throwaway branch from e2e4686, chunk size set to ignore the dialect parameter limit, branch deleted) fails TestBulkInsertChunking in PostgreSQL integration: `bulk_test.go:28: momo: limit exceeded (op=insert table=documents): 200000 bind parameters exceed the postgres limit of 65535`. TestCopyInsert passes in run 42462290717 and the unrelated chunk-boundary unit tests in `bulk_unit_test.go` fail under the same mutation.
 - Criterion 3: the story close gate must pass once 1 and 2 are settled.
 - Gate and commit: the commit gate passed on the branch commits and on the merge into sprint-5 (0f930fd, 2026-11-08); green ci-agent run 42465035321 on a19267b.
+
+- Final check: TestCopyInsert and TestBulkInsertChunking pass in run 42769037273 (ci-agent, headSha 4d04a3d, all jobs green).

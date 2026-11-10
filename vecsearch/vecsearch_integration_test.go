@@ -79,7 +79,10 @@ func TestFilteredANNIterativeScan(t *testing.T) {
 		// a different graph (and a different recall) from run to run. One worker
 		// with the fixed seed below builds the same graph every time.
 		"SET max_parallel_maintenance_workers = 0",
-		"CREATE TABLE items (id bigint PRIMARY KEY, grp text NOT NULL, emb vector(8) NOT NULL)",
+		// No primary key on purpose: with a btree on id the planner may scan it
+		// in full and sort exactly, which returns 10 rows with the setting off.
+		// The HNSW index is then the only index path left.
+		"CREATE TABLE items (id bigint NOT NULL, grp text NOT NULL, emb vector(8) NOT NULL)",
 		"SELECT setseed(0.42)",
 		"INSERT INTO items SELECT g, CASE WHEN g % 100 = 0 THEN 'rare' ELSE 'common' END, ARRAY(SELECT random()::real FROM generate_series(1, 8))::vector FROM generate_series(1, 20000) AS g",
 		"CREATE INDEX items_emb ON items USING hnsw (emb vector_l2_ops)",
@@ -97,7 +100,13 @@ func TestFilteredANNIterativeScan(t *testing.T) {
 					return err
 				}
 			}
-			if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE "+name+" AS SELECT id FROM items WHERE grp = 'rare' ORDER BY emb <-> (SELECT emb FROM items WHERE id = 1) LIMIT 10"); err != nil {
+			const query = "SELECT id FROM items WHERE grp = 'rare' ORDER BY emb <-> (SELECT emb FROM items WHERE id = 1) LIMIT 10"
+			// Fail clearly, not flakily, when the plan is not the HNSW index scan.
+			assertPlan := "DO $do$ DECLARE r text; ok boolean := false; BEGIN FOR r IN EXECUTE $q$EXPLAIN " + query + "$q$ LOOP IF r LIKE '%Index Scan using items_emb%' THEN ok := true; END IF; END LOOP; IF NOT ok THEN RAISE EXCEPTION 'plan does not use the items_emb HNSW index'; END IF; END $do$"
+			if _, err := momo.Exec(ctx, tx, assertPlan); err != nil {
+				return err
+			}
+			if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE "+name+" AS "+query); err != nil {
 				return err
 			}
 			var err error

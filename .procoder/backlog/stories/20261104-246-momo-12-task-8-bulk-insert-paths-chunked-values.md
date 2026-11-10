@@ -1,9 +1,9 @@
 # momo-12 Task 8: Bulk insert paths: chunked VALUES, COPY and unnest
 
-Status: open
+Status: done
 Created: 2026-11-04
 Epic: momo-12-performance
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 

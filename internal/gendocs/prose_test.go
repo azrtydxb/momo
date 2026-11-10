@@ -271,12 +271,12 @@ func TestCLIDialectsComeFromTheDialectSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !real["postgres"] {
-		t.Errorf("cmd/momo dialectImpl dialects = %v, want postgres in it", real)
+		t.Errorf("cli dialectImpl dialects = %v, want postgres in it", real)
 	}
 	empty := t.TempDir()
-	write(t, empty, "cmd/momo/m.go", "package main\n")
+	write(t, empty, "cli/m.go", "package cli\n")
 	if _, err := cliDialects(empty); err == nil {
-		t.Error("cliDialects accepted a cmd/momo without dialectImpl")
+		t.Error("cliDialects accepted a cli without dialectImpl")
 	}
 }
 

@@ -7,6 +7,8 @@
 #     versions.txt  go list -m all of the bench module
 #     raw.txt       go test -bench output, BENCH_COUNT repetitions
 #     summary.txt   benchstat over raw.txt
+#     vector-encoding.txt  BenchmarkVectorEncoding (pgx text against binary
+#                   vector codecs); only when BENCH_PG_URL is set
 #
 # Usage: run.sh full|smoke|baseline
 #   full      BENCH_COUNT repetitions (default 10), for the dedicated machine
@@ -59,6 +61,12 @@ go list -m all >"$run/versions.txt"
 go run ./cmd/codesize >"$run/codesize.json"
 
 go test -tags integration -run '^$' -bench "$pattern" -benchmem -count "$count" ${benchtime[@]+"${benchtime[@]}"} ./... | tee "$run/raw.txt"
+
+# The pgx vector codec benchmark lives in the library module: text against
+# binary encoding of the four pgvector types (spec S-50). It needs a database.
+if [ "$mode" != baseline ] && [ -n "${BENCH_PG_URL:-}" ]; then
+	(cd "$benchdir/.." && MOMO_TEST_POSTGRES_URL="$BENCH_PG_URL" go test -tags integration -run '^$' -bench '^BenchmarkVectorEncoding$' -benchmem -count "$count" ${benchtime[@]+"${benchtime[@]}"} ./driver/pgxdriver) | tee "$run/vector-encoding.txt"
+fi
 
 if ! go run "$BENCHSTAT" "$run/raw.txt" >"$run/summary.txt" 2>"$run/benchstat.err"; then
 	echo "benchstat reported no comparable data; see benchstat.err" >"$run/summary.txt"

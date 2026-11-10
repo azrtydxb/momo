@@ -134,11 +134,14 @@ type Function struct {
 
 // Trigger is a table trigger.
 type Trigger struct {
-	Schema     string   `json:"schema,omitempty"`
-	Table      string   `json:"table"`
-	Name       string   `json:"name"`
-	Timing     string   `json:"timing"`           // "BEFORE", "AFTER", "INSTEAD OF"; SQLite uses Definition
-	Events     []string `json:"events,omitempty"` // "INSERT", "UPDATE", "DELETE", "TRUNCATE"
+	Schema string   `json:"schema,omitempty"`
+	Table  string   `json:"table"`
+	Name   string   `json:"name"`
+	Timing string   `json:"timing"`           // "BEFORE", "AFTER", "INSTEAD OF"; SQLite uses Definition
+	Events []string `json:"events,omitempty"` // "INSERT", "UPDATE", "DELETE", "TRUNCATE"
+	// UpdateOf limits the UPDATE event to changes of these columns
+	// (UPDATE OF a, b). PostgreSQL only; empty fires on any update.
+	UpdateOf   []string `json:"update_of,omitempty"`
 	ForEachRow bool     `json:"for_each_row,omitempty"`
 	When       string   `json:"when,omitempty"`
 	Function   string   `json:"function,omitempty"` // qualified function name

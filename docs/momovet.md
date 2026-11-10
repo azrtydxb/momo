@@ -11,6 +11,9 @@ A call to one of these functions of `github.com/azrtydxb/momo` whose SQL argumen
 | `momo.Exec`        | third (after the context and the querier) |
 | `momo.Scalars`     | third (after the context and the querier) |
 | `momo.MapRows`     | third (after the context and the querier) |
+| `momo.Query`       | third (after the context and the querier) |
+| `momo.QueryRows`   | third (after the context and the querier) |
+| `momo.RawQuery`    | second (after the querier)                |
 | `momo.SQL`         | first                                     |
 | `momo.TypedSQL`    | first                                     |
 | `momo.RawSubquery` | first                                     |

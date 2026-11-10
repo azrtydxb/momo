@@ -23,6 +23,12 @@ func (db *DB) OnConn(pc PinnedConn) *DB {
 	return nd
 }
 
+// IsPinned reports whether db is a handle from OnConn, whose statements all run
+// on one pinned connection. A *DB over a pool reports false. Session-scoped
+// helpers such as the session locks of package advisory use it to refuse a
+// pooled handle, where two statements can reach two connections.
+func (db *DB) IsPinned() bool { return db.pinned }
+
 // pinnedDriver is the Driver() of an OnConn handle. Everything that reaches
 // the database, including the optional Copier and Batcher paths, goes through
 // the pinned connection and never through the pool. Pool-level optional

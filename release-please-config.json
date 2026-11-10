@@ -7,6 +7,8 @@
   "changelog-path": "CHANGELOG.md",
   "packages": {
     ".": {
+      "include-component-in-tag": false,
+      "exclude-paths": ["otelmomo"],
       "extra-files": [
         "README.md",
         "llms.txt",
@@ -20,6 +22,13 @@
         "examples/custom-sql-migration/README.md",
         "examples/upgrade-database/README.md"
       ]
+    },
+    "otelmomo": {
+      "component": "otelmomo",
+      "include-component-in-tag": true,
+      "tag-separator": "/",
+      "release-type": "go",
+      "initial-version": "0.1.0"
     }
   }
 }

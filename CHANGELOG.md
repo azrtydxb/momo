@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.0](https://github.com/azrtydxb/momo/compare/v0.4.0...v0.5.0) (2026-11-10)
+
+_Momo now carries everything Kuvryn Orbit needs to move onto it: composite foreign keys, DML in CTEs, raw multi-column queries, database-defaulted columns and more row-lock modes. It also adds hybrid search, EXPLAIN and slow-query tooling, OpenTelemetry in the new `otelmomo` module, and a `cli` package for building your own `momo` binary. Upgrading needs a regenerate and one advisory call-site check: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.5.0/docs/upgrading.md). [Changes since 0.4.0](https://github.com/azrtydxb/momo/compare/v0.4.0...v0.5.0)._
+
+### ⚠ BREAKING CHANGES
+
+- **gen:** `momo generate --from-db` adds the `dbdefault` tag to NOT NULL PostgreSQL columns with a computed default. Regenerated models stop writing Go zero values to those columns and read the database value back with `RETURNING` ([#69](https://github.com/azrtydxb/momo/issues/69))
+- **gen:** `momo generate` wires methods named `BeforeInsert`, `BeforeUpdate`, `BeforeDelete` and `AfterLoad` into `Meta.Hooks`. A hook-named method with another signature now fails generation ([#70](https://github.com/azrtydxb/momo/pull/70))
+- **advisory:** `advisory.XactLockString` and `advisory.TryXactLockString` take a trailing `...advisory.Option`, so assigning them to a variable of the old func type no longer compiles ([#67](https://github.com/azrtydxb/momo/issues/67))
+- **cli:** the command line moved from `cmd/momo` into package `cli`. `go install github.com/azrtydxb/momo/cmd/momo@v0.5.0` still works ([#70](https://github.com/azrtydxb/momo/pull/70))
+
+### Features
+
+- **schema:** composite foreign keys through `Config.ForeignKey` with `ON DELETE` and `ON UPDATE` actions, unique expression indexes, `identity:always`, named foreign keys (`fk_name`, `Config.FKName`) and an explicit primary key column order (`Config.PrimaryKey`) ([#54](https://github.com/azrtydxb/momo/issues/54), [#55](https://github.com/azrtydxb/momo/issues/55), [#56](https://github.com/azrtydxb/momo/issues/56), [#59](https://github.com/azrtydxb/momo/issues/59), [#60](https://github.com/azrtydxb/momo/issues/60))
+- **types:** `[]types.UUID` maps to `uuid[]` and works with the array operators; `tsvector` maps to `types.TSVector` in `--from-db` ([#57](https://github.com/azrtydxb/momo/issues/57), [#61](https://github.com/azrtydxb/momo/issues/61))
+- **query:** `UpdateQuery.From`, `DeleteQuery.Using`, and `With` / `WithRecursive` on INSERT, UPDATE and DELETE, so a DML statement can be a CTE body on PostgreSQL ([#64](https://github.com/azrtydxb/momo/issues/64))
+- **query:** raw multi-column queries with `momo.Query` and `momo.QueryRows`, and a query registry for listing and freezing SQL: `momo.RegisterQuery`, `momotest.QueryGolden` ([#63](https://github.com/azrtydxb/momo/issues/63), [#66](https://github.com/azrtydxb/momo/issues/66))
+- **query:** `ForNoKeyUpdate` and `ForKeyShare` row locks, session advisory locks, `advisory.Hash64`, `timeop.ClockTimestamp` and `timeop.StatementTimestamp` ([#65](https://github.com/azrtydxb/momo/issues/65), [#67](https://github.com/azrtydxb/momo/issues/67), [#68](https://github.com/azrtydxb/momo/issues/68))
+- **insert:** the `dbdefault` tag leaves a zero-valued column to its database default and reads the value back ([#69](https://github.com/azrtydxb/momo/issues/69))
+- **vectors:** `momo.HybridSearch` combines full-text and vector ranking ([#70](https://github.com/azrtydxb/momo/pull/70))
+- **observability:** `momo.Explain`, `momo.ExplainAnalyze`, a slow-query hook (`obs.NewSlowQuery`), and OpenTelemetry spans and a duration histogram in the separately released `otelmomo` module ([#70](https://github.com/azrtydxb/momo/pull/70))
+- **momotest:** `momotest.AssertSQL` and `momotest.AssertUsesIndex` ([#70](https://github.com/azrtydxb/momo/pull/70))
+- **migrate:** `momo migrate lint`, `rollback`, `rebase` and `drift --strict`, and history import from Atlas, goose, golang-migrate and Bun ([#70](https://github.com/azrtydxb/momo/pull/70))
+- **cli:** build a custom `momo` binary with generator plugins through `cli.Main` ([#70](https://github.com/azrtydxb/momo/pull/70))
+- **models:** view models: embed `momo.View`, and every write path fails with `ErrValidation` ([#70](https://github.com/azrtydxb/momo/pull/70))
+
+### Bug Fixes
+
+- **gen:** trigger `UPDATE OF` keeps its written column order, and `momo generate` no longer fails on its own stale `momo_gen.go` ([#58](https://github.com/azrtydxb/momo/issues/58), [#62](https://github.com/azrtydxb/momo/issues/62))
+- **sqlite:** a NaN float is rejected with `ErrValidation` instead of being stored ([#70](https://github.com/azrtydxb/momo/pull/70))
+
 ## [0.4.0](https://github.com/azrtydxb/momo/compare/v0.3.0...v0.4.0) (2026-11-10)
 
 _Momo now runs on MySQL, MariaDB and SQLite as well as PostgreSQL, and the root package is split into feature subpackages whose docs are checked against the code. Upgrading needs import changes: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.4.0/docs/upgrading.md). [Changes since 0.3.0](https://github.com/azrtydxb/momo/compare/v0.3.0...v0.4.0)._

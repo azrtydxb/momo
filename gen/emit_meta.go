@@ -94,7 +94,11 @@ func emitPackageMeta(models, projections []*Model, g *Graph) ([]byte, []Diagnost
 	out.WriteString(Header() + "\n\n")
 	fmt.Fprintf(&out, "package %s\n\n", pkgName)
 	if len(sorted) > 0 {
-		out.WriteString("import (\n\t\"github.com/azrtydxb/momo\"\n\t\"github.com/azrtydxb/momo/schema\"\n)\n")
+		out.WriteString("import (\n")
+		if anyHooks(sorted) {
+			out.WriteString("\t\"context\"\n\n")
+		}
+		out.WriteString("\t\"github.com/azrtydxb/momo\"\n\t\"github.com/azrtydxb/momo/schema\"\n)\n")
 	} else {
 		out.WriteString("import \"github.com/azrtydxb/momo\"\n")
 	}
@@ -185,6 +189,10 @@ func emitModelMeta(b *strings.Builder, m *Model, t *schema.Table, lower string) 
 		}
 		w("},\n")
 	}
+	if m.IsView {
+		w("View: true,\n")
+	}
+	w("%s", hooksLiteral(m.GoName, m.Hooks))
 	w("}\n\n")
 	w("var %sTable = %s\n", lower, literal(reflect.ValueOf(*t)))
 }

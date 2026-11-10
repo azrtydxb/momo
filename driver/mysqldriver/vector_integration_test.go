@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -49,6 +50,20 @@ func serverVersion(t *testing.T, q momo.Querier) string {
 		t.Fatalf("VERSION(): %v, %d rows", err, len(v))
 	}
 	return v[0]
+}
+
+// usesVectorIndex matches the key column of an EXPLAIN FORMAT=JSON plan that
+// reads the table through the VECTOR INDEX named emb.
+var usesVectorIndex = regexp.MustCompile(`"key":\s*"emb"`)
+
+// explainJSON returns the EXPLAIN FORMAT=JSON plan of sql.
+func explainJSON(t *testing.T, q momo.Querier, sql string, args ...any) string {
+	t.Helper()
+	rows, err := momo.Scalars[string](context.Background(), q, "EXPLAIN FORMAT=JSON "+sql, args...)
+	if err != nil {
+		t.Fatalf("EXPLAIN %s: %v", sql, err)
+	}
+	return strings.Join(rows, "\n")
 }
 
 func vecText(t *testing.T, v vector.Vector) string {
@@ -106,6 +121,18 @@ func TestMariaDBVectorParity(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("indexed query: %s", c.SQL)
+	// A silent full scan would also return 10 of 10 exact ids, so the overlap
+	// below proves nothing about the index. The plan must read through the
+	// VECTOR INDEX; the exact path, which forces a scan with "+ 0", is the
+	// control that shows this assertion can fail.
+	plan := explainJSON(t, db, c.SQL, c.Args...)
+	t.Logf("indexed plan: %s", plan)
+	if !usesVectorIndex.MatchString(plan) {
+		t.Fatalf("indexed query does not use the VECTOR INDEX (a full scan was substituted?):\n%s", plan)
+	}
+	if scan := explainJSON(t, db, "SELECT id FROM docs ORDER BY VEC_DISTANCE_COSINE(emb, VEC_FromText(?)) + 0, id LIMIT 10", vecText(t, query)); usesVectorIndex.MatchString(scan) {
+		t.Fatalf("control: the forced exact path also reads the VECTOR INDEX, so this check cannot tell a full scan:\n%s", scan)
+	}
 	got, err := sel.All(ctx)
 	if err != nil {
 		t.Fatal(err)
