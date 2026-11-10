@@ -12,8 +12,11 @@ Implements plan momo-11-adoption Task 12: Bun migration history importer (`.proc
 ## Acceptance criteria
 
 - [ ] `TestHistoryImporters` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-93] `TestHistoryImporters` imports each fixture history, asserts status shows all versions applied and drift is zero; fails if an applied migration would re-run.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] [S-93] `TestHistoryImporters` imports each fixture history, asserts status shows all versions applied and drift is zero; fails if an applied migration would re-run.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- importer/history/bun/bun.go, fixture internal/compat/bunmigfixture/migrations. `TestHistoryImporters/bun` (import, status applied for all versions, drift clean via internal/importtest CheckImport), `bun/go-function-refused` and `bun/pending-refused` pass in the integration (postgres) job of ci-agent run 42774384580, headSha 214cb28dc323466eca185bd46e7079ac8f4f6e08, all 9 jobs success.
+- Table layout and file naming read from github.com/uptrace/bun@v1.3.0 migrate/migration.go, migrations.go (fnameRE), migrator.go.
+- Red-first not evidenced: the implementation was written before its test ran and no failing CI run was recorded, so the 'failed before the implementation' criterion stays unticked (the tests pass).

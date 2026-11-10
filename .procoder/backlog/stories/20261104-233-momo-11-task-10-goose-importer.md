@@ -12,8 +12,12 @@ Implements plan momo-11-adoption Task 10: goose importer (`.procoder/plans/momo-
 ## Acceptance criteria
 
 - [ ] `TestHistoryImporters` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-93, part] `TestHistoryImporters` passes for the part of S-93 this task delivers; the full criterion is verified in story 235.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] [S-93, part] `TestHistoryImporters` passes for the part of S-93 this task delivers; the full criterion is verified in story 235.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- importer/history/goose/goose.go, fixtures internal/compat/goosefixture/migrations.
+- `TestHistoryImporters/goose` (integration tag) passes in the integration (postgres) job of ci-agent run 42774384580, headSha 214cb28dc323466eca185bd46e7079ac8f4f6e08, all 9 jobs success.
+- Commit f567583 went through the procoder gate.
+- Red-first not evidenced: the implementation was written before its test ran and no failing CI run was recorded, so the 'failed before the implementation' criterion stays unticked (the tests pass).

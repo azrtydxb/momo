@@ -12,8 +12,10 @@ Implements plan momo-11-adoption Task 15: Guide section completeness (`.procoder
 ## Acceptance criteria
 
 - [ ] `TestMigrationGuidesComplete` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-95, part] `TestMigrationGuidesComplete` passes for the part of S-95 this task delivers; the full criterion is verified in story 255.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] [S-95, part] `TestMigrationGuidesComplete` passes for the part of S-95 this task delivers; the full criterion is verified in story 255.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- internal/docscheck/guides_test.go TestMigrationGuidesComplete passes in the unit job of ci-agent run 42774384580, headSha 214cb28dc323466eca185bd46e7079ac8f4f6e08, all 9 jobs success.
+- Red-first not evidenced: the implementation was written before its test ran and no failing CI run was recorded, so the 'failed before the implementation' criterion stays unticked (the tests pass).

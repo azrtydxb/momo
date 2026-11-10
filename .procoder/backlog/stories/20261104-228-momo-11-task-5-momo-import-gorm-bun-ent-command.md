@@ -13,7 +13,10 @@ Implements plan momo-11-adoption Task 5: `momo import gorm|bun|ent` command (`.p
 
 - [ ] `TestImportCommand` exists as written in the plan, failed before the implementation, and passes now
 - [ ] `TestImportRefusesUnsupported` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
+- `cmd/momo/import.go` (runImport, registered in `cmd/momo/cmd.go`); tests `cmd/momo/import_test.go` TestImportCommand, TestImportRefusesUnsupported, TestImportUsageErrors, TestImportWritesReportFile pass in the unit job of ci-agent run 42774384580, headSha 214cb28dc323466eca185bd46e7079ac8f4f6e08, all 9 jobs success.
+- Commit 5258b7e went through the procoder gate.
+- Red-first not evidenced: the implementation was written before its test ran and no failing CI run was recorded, so the 'failed before the implementation' criterion stays unticked (the tests pass).
