@@ -81,6 +81,9 @@ func (p *sqlPinned) Query(ctx context.Context, q string, args []any) (momo.Rows,
 		return nil, err
 	}
 	defer p.done()
+	if err := checkArgs("select", args); err != nil {
+		return nil, err
+	}
 	rows, err := c.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, p.h.Classify("select", err)
@@ -101,6 +104,9 @@ func (p *sqlPinned) Exec(ctx context.Context, q string, args []any) (int64, erro
 		return 0, err
 	}
 	defer p.done()
+	if err := checkArgs("exec", args); err != nil {
+		return 0, err
+	}
 	res, err := c.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, p.h.Classify("exec", err)
