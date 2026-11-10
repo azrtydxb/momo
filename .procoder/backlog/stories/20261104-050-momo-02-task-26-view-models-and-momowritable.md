@@ -1,30 +1,28 @@
-# momo-02 Task 26: View models and MomoWritable
+# momo-02 Task 26: View models and a write guard
 
-Status: open
+Status: done
 Created: 2026-11-04
 Epic: momo-02-generator
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 
-Implements plan momo-02-generator Task 26: View models and MomoWritable (`.procoder/plans/momo-02-generator.md:2748`). The plan task is the executable specification: follow its steps in order (failing test first, then the implementation, then the passing run) and its Interfaces exactly. Spec coverage: supporting work for the plan. Files: `momo/view.go`, `momo/view_test.go`, `gen/view.go`, `gen/view_test.go`, `gen/testdata/views/model/doc.go`, `gen/testdata/views/model/momo_gen.go` …. Scheduled after momo-05: compile-fail fixtures use the Insert/Update/Delete builders.
+Plan momo-02-generator Task 26 (`.procoder/plans/momo-02-generator.md:2823`) asked for a compile-time `WritableModeler[T]` and `MomoWritable` rule. User decision 2026-11-10 (`.procoder/ask/decisions.md`, "Sprint 7 backlog decisions", view models, stories 050 and 101): build a runtime guard instead. Views are marked with `momo.View`, and the write builders return `ErrValidation` for a view model. No signature changes; the compile-time design is dropped.
 
 ## Acceptance criteria
 
-- [ ] `TestViewModelsNotWritable` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] A model embeds `momo.View` next to `momo.Model`; the generator reads the marker and records it in the generated `Meta` (`View: true`), and the marker is not a column
+- [x] `Insert`, `Upsert`, `Update` (Set and Model), `SoftDelete`, `BulkUpdate`, `Delete` and `Merge` return `ErrValidation` naming the model when the model is a view; reads still work; no builder signature changes
+- [x] `TestViewModelsNotWritable` (unit, one assertion per write path) and `TestViewMarkerEmission` (generator emission) exist and pass
+- [x] `procoder check` gate is clean and the commits are made
 
 ## Evidence
 
-Needs decision: should momo add a compile-time rule that view models cannot be written?
+CI: ci-agent run 42784895483, headSha d5d4696, all jobs green.
 
-Audit: nothing of this exists. There is no `momo.View` marker, no `WritableModeler`, no `MomoWritable` emission (`git grep` finds none outside plans and the maintainability audit, which lists `WritableModeler`/`MomoWritable` among the contract's unreferenced APIs). Writes are constrained by the same `Modeler[T]` as reads: `Insert` at insert.go:84, `Update` at update.go:46, `Delete` at delete.go:38, `SoftDelete` at meta_softdelete.go:77. Views are declared with the structured companion call `c.View(schema.View{...})` (meta_companion.go, read by gen/companion.go:48) and read through projections (docs/projections.md) or a model mapped to the view's name.
-
-Options:
-
-1. Build the plan as written: `momo.View` marker, `WritableModeler[T]` (`*T` plus `MomoWritable()`) as the constraint of `Insert`/`Update`/`Delete`/`SoftDelete`, generated `MomoWritable` for table models only. Strongest guarantee (a write to a view fails to compile), but it is an exported-API break: every hand-written or previously generated model must be regenerated or gain the method, so it needs a `feat!` and a release note.
-2. Runtime guard only: a `view:` tag (or a `ReadOnly` flag on `Meta`) makes `Insert`/`Update`/`Delete` return `ErrUnsupported` when the statement is built. No API break, but the failure is at run time, not compile time.
-3. Keep the shipped design (views via the companion `c.View` plus projections, no write guard) and close this story as not needed.
-
-Nothing was built, so every criterion stays unticked. Stories 049 (plan gate names `TestViewModelsNotWritable`) and 051 (the "view model has no c.View" rule) depend on the answer.
-
+- `momo.View` marker: meta.go; `Meta.View` and `viewWriteErr`: meta.go. Generator: gen/model.go (marker discovery, `momo.View` by value, not a column; diagnostic on a projection), `Model.IsView` in gen/types.go, `View: true,` in gen/emit_meta.go.
+- Guard in Insert/Upsert (insert.go), Update, SoftDelete and BulkUpdate (update.go plan, write_merge.go planBulk), Delete (delete.go), Merge (write_merge.go render). `TestViewModelsNotWritable` (meta_view_test.go) checks each path for `ErrValidation` and the model name, and that `Select` still builds.
+- `TestViewMarkerEmission` (gen/view_test.go, fixture gen/testdata/fixtures/views/views.go): exactly one `View: true,`, on the view model only.
+- Docs: docs/ai-guide.md "View models", docs/upgrading.md, docs/reference.md (generated, `momo.View`).
+- Earlier run 42780991202 failed only on two docs checks (a compiled example block and the reference listing), fixed in d5d4696.
+- Not run: the compile-fail design of the plan (dropped by the decision).

@@ -16,7 +16,7 @@ Implements plan momo-02-generator Task 30: Field permissions at query build time
 
 ## Evidence
 
-Needs decision: should `ColumnRef` gain `AssignAny(v any) (Assignment, error)` and `Permission() Access`, as the plan's contract addition says?
+Carry reason: user decision 2026-11-10 (decisions.md): typed paths enforce permissions; ColumnRef interface not extended.
 
 Audit: the whole-model half of the task is already enforced by the builders: `columnAssignable` (db_result.go:24) makes `Update.Model` skip read-only, create-only and immutable columns and `Insert.Model` skip read-only ones; `Update.Set` of a restricted column is refused with `ErrValidation` (update.go:175). Neither `AssignAny` nor `Permission()` exists, and no code in the product has an untyped assign path that would call them (typed `Set` is compile-checked). Adding them changes the exported `ColumnRef` interface, and "converts v to the column's Go type" needs a conversion rule (the plan says: the same as `ParseEq`, i.e. from strings).
 
