@@ -249,14 +249,29 @@ func baseType(t types.Type) string {
 		if b, ok := sl.Elem().Underlying().(*types.Basic); ok && b.Kind() == types.Byte {
 			return "[]byte"
 		}
+		// A slice of another package's UUID type must not spell like
+		// []uuid.UUID, which the type map reads as github.com/google/uuid.
+		if n, ok := types.Unalias(sl.Elem()).(*types.Named); ok && n.Obj().Name() == "UUID" && !isGoogleUUID(n) && n.Obj().Pkg() != nil && n.Obj().Pkg().Name() == "uuid" {
+			return "[]" + baseType(n.Underlying())
+		}
 	}
 	return types.TypeString(t, qualifier)
+}
+
+const googleUUIDPath = "github.com/google/uuid"
+
+func isGoogleUUID(n *types.Named) bool {
+	return n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == googleUUIDPath && n.Obj().Name() == "UUID"
 }
 
 // knownNamed reports whether the type map knows the named type itself.
 func knownNamed(pkgPath, name string) bool {
 	switch {
 	case pkgPath == "time" && name == "Time", pkgPath == "database/sql" && strings.HasPrefix(name, "Null"):
+		return true
+	case pkgPath == googleUUIDPath && name == "UUID":
+		// github.com/google/uuid.UUID: matched by import path, so the
+		// generator needs no dependency on the package.
 		return true
 	case strings.HasSuffix(pkgPath, "/vector"), strings.HasSuffix(pkgPath, "/momo/types"):
 		return true

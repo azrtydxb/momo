@@ -67,6 +67,9 @@ func (c *Config) Validate() error {
 	if c.Package != "" && !token.IsIdentifier(c.Package) {
 		return fmt.Errorf("introspect.package: %q is not a Go identifier", c.Package)
 	}
+	if c.UUID != "" && c.UUID != "momo" && c.UUID != UUIDGoogle {
+		return fmt.Errorf("introspect.uuid: %q must be momo or google", c.UUID)
+	}
 	for i, g := range c.Skip {
 		if _, err := path.Match(g, ""); err != nil {
 			return fmt.Errorf("introspect.skip[%d]: %q: %w", i, g, err)

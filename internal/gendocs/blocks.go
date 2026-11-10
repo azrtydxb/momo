@@ -260,6 +260,7 @@ var typeRows = []typeRow{
 	{"[]byte", "[]byte", tags.Tags{}},
 	{"time.Time", "time.Time", tags.Tags{}},
 	{"types.UUID", "types.UUID", tags.Tags{}},
+	{"uuid.UUID (github.com/google/uuid)", "uuid.UUID", tags.Tags{}},
 	{"types.Date", "types.Date", tags.Tags{}},
 	{"types.JSON[T]", "types.JSON[T]", tags.Tags{}},
 	{"vector.Vector", "vector.Vector", tags.Tags{Dim: sentinel}},
@@ -276,6 +277,7 @@ var typeRows = []typeRow{
 	{"[]float32", "[]float32", tags.Tags{}},
 	{"[]float64", "[]float64", tags.Tags{}},
 	{"[]types.UUID", "[]types.UUID", tags.Tags{}},
+	{"[]uuid.UUID (github.com/google/uuid)", "[]uuid.UUID", tags.Tags{}},
 }
 
 // typemapBlock is the Go-to-column-type table, one column per dialect. A

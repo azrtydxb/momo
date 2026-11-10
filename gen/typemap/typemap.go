@@ -29,6 +29,11 @@ var nullTypes = map[string]string{
 	"sql.NullTime":    "time.Time",
 }
 
+// googleUUID is how the loader spells github.com/google/uuid.UUID for the type
+// map (see gen.baseType, which matches the import path). The type map names
+// the type by string, so it does not import the package.
+const googleUUID = "uuid.UUID"
+
 // Map returns the SQL type for goType on dialect d. Pointer and sql.Null*
 // wrappers map like the type they wrap: nullability is a column property, not
 // a type property. Unknown types, unsupported dialects and unrepresentable
@@ -75,7 +80,7 @@ func postgres(t string, tg tags.Tags) string {
 		return "bytea"
 	case "time.Time":
 		return "timestamp with time zone"
-	case "types.UUID":
+	case "types.UUID", googleUUID:
 		return "uuid"
 	case "types.Date":
 		return "date"
@@ -105,7 +110,7 @@ func postgres(t string, tg tags.Tags) string {
 // not arrays.
 func postgresElem(elem string, tg tags.Tags) string {
 	switch elem {
-	case "string", "int16", "int32", "int64", "bool", "float32", "float64", "types.UUID":
+	case "string", "int16", "int32", "int64", "bool", "float32", "float64", "types.UUID", googleUUID:
 		return postgres(elem, tg)
 	}
 	return ""
@@ -120,7 +125,7 @@ func sqlite(t string, _ tags.Tags) string {
 		return "INTEGER"
 	case "float32", "float64":
 		return "REAL"
-	case "string", "time.Time", "types.UUID", "types.Date":
+	case "string", "time.Time", "types.UUID", googleUUID, "types.Date":
 		return "TEXT"
 	case "[]byte":
 		return "BLOB"

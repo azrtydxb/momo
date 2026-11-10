@@ -5,6 +5,27 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.7.0
+
+### github.com/google/uuid types need no type tag
+
+A model or projection field of `uuid.UUID`, `*uuid.UUID` or `[]uuid.UUID` from
+`github.com/google/uuid` now maps to `uuid` or `uuid[]` on PostgreSQL (`TEXT`
+on SQLite; `[]uuid.UUID` has no SQLite column) with no `momo:"type:uuid"` tag.
+A tag you already wrote is still honored and can stay or go. The generator
+recognizes the type by its import path, so it adds no dependency to momo. Your
+own module imports `github.com/google/uuid` only because your models already
+do. `arrayop` predicates on a `[]uuid.UUID` column bind with a `::uuid[]`
+cast, like `[]types.UUID`.
+
+`momo generate --from-db` keeps writing `types.UUID` unless you set
+`introspect.uuid: google` in `momo.yaml`; then every `uuid` column becomes
+`uuid.UUID` (`*uuid.UUID` when nullable) and every `uuid[]` column
+`[]uuid.UUID`, with no type tag and an import of `github.com/google/uuid`. An
+`introspect.types` rule for `uuid` still wins. A `--from-db` re-run after you
+set the switch regenerates the model files that nobody edited; edited files
+conflict as usual.
+
 ## Upgrading to 0.6.0
 
 ### The Using and From guard is stricter

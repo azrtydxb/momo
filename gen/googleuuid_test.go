@@ -42,6 +42,7 @@ func TestGoogleUUIDFieldsMapWithoutTypeTag(t *testing.T) {
 	for _, want := range []string{
 		`momo.NewColumn[uuid.UUID](q, "id"`,
 		`momo.NewColumn[[]uuid.UUID](q, "team_ids"`,
+		`"github.com/google/uuid"`,
 	} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("descriptors lack %q:\n%s", want, src)
