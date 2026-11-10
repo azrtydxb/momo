@@ -1,6 +1,6 @@
 # momo-04 Task 8: Pure diff engine with explicit renames, destructive gating, staged NOT NULL, FK actions
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -17,7 +17,7 @@ Implements plan momo-04-migrations Task 8: Pure diff engine with explicit rename
 - [x] `TestStagedChangeDiff` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestFKActions` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestDiffNoChangeEmpty` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-74] `TestFKActions` asserts each action's effect on every dialect and that the no-constraint option produces no FK in inspection; fails if actions are lost in a round trip.
+- [x] [S-74] `TestFKActions` asserts each action's effect on every dialect and that the no-constraint option produces no FK in inspection; fails if actions are lost in a round trip.
 - [x] `procoder check` gate is clean and the task's commit is made
 - [x] `Column.Collate` and `Column.Comment` are diffed: a change to either yields a column change (momo-02 Task 10 builds them from `collate` and `comment` tags and MomoConfig), with a round-trip test
 
@@ -35,5 +35,11 @@ Implements plan momo-04-migrations Task 8: Pure diff engine with explicit rename
 
 - [S-74]: `TestFKActions` now exists per dialect: `migrate/postgres/fkactions_integration_test.go`, `migrate/mysql/fkactions_integration_test.go` (MySQL 8.4, 9.7, MariaDB), `migrate/sqlite/fkactions_test.go`. Each renders and applies every action (NO ACTION, RESTRICT, CASCADE, SET NULL, and SET DEFAULT except on MySQL, where InnoDB rejects it) on delete and on update, asserts the schema round-trips, runs the delete or update on a live row and checks the effect, and asserts the no-constraint table inspects with no foreign key. A second diff is empty.
 - Green: ci-agent run 42776939577 on 0dafa15e799e4e052ca9b05bc94eed3b231d421f (PostgreSQL and the three MySQL-family jobs), and ci.yml dispatch run 42779413962 on 0dafa15e799e4e052ca9b05bc94eed3b231d421f, every job success.
-- Unverified: the SQLite test is behind `integration && cgo`; I did not see it named in a run log, only that the jobs that build it passed. The first run failed with "NO ACTION" declared explicitly (the database reports it as no clause), which the tests now spell as the default.
 - The staged-NOT-NULL part of the Carried note is covered by story 20261106 (done).
+
+### Sprint 7, review round (2026-11-10)
+
+The first evidence above was replaced after review: the tests were rebuilt to run the real path. `internal/fkcase` builds the schemas from models through `gen.BuildSchema` (the on_delete, on_update and no_constraint tags), so the no-constraint table comes from a `no_constraint` relation and every action is spelled as a tag value. `TestFKActions` per dialect checks every action on live rows, the no-constraint table inspecting with no foreign key, and the diff against the inspection being empty; `TestFKActionsNoActionIsNotRestrict` (PostgreSQL) tells NO ACTION from RESTRICT with a deferred constraint; `TestFKActionsChangeOnExistingTable` changes OnDelete on an existing table and applies it on each dialect (a table rebuild on SQLite, with the row kept).
+
+- Green: ci-agent run 42790304107 on b6e2615b0419dbde9268124a8f3efeb3ea1bd517 (PostgreSQL and MySQL 8.4, 9.7, MariaDB jobs), merged to sprint-7 as 06f7936.
+- SQLite test named in a CI log: ci-agent run 42793140189 on throwaway branch worktree-agent-ad6b3740d97d2a3ae-v, headSha 1cfd319a9bec4b6e902d7b6a855800d77a370d48 (the final code plus one Makefile line that runs `go test -v -run TestFKActions ./migrate/...`). Its log shows `--- PASS: TestFKActions (0.02s)` and `--- PASS: TestFKActionsChangeOnExistingTable (0.01s)` followed by `ok github.com/azrtydxb/momo/migrate/sqlite 0.041s`; the same run shows the PostgreSQL tests, including `TestFKActionsNoActionIsNotRestrict`, passing. The MySQL variants are skipped in that job and run in the MySQL jobs of the run above.
