@@ -25,9 +25,15 @@ import (
 
 // statusOf maps a failed statement to a gRPC status with a fixed message: the
 // error of the database, which names tables and constraints, never reaches the
-// client.
-func statusOf(err error) error {
+// client. op names the call, for example DocumentService.Get. A call whose
+// context ended is answered Canceled or DeadlineExceeded, not Internal.
+func statusOf(ctx context.Context, op string, err error) error {
+	OnError(ctx, op, err)
 	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, "deadline exceeded")
+	case errors.Is(err, context.Canceled):
+		return status.Error(codes.Canceled, "request canceled")
 	case errors.Is(err, momo.ErrNotFound):
 		return status.Error(codes.NotFound, "not found")
 	case errors.Is(err, momo.ErrUniqueViolation):
@@ -40,6 +46,10 @@ func statusOf(err error) error {
 		return status.Error(codes.Unavailable, "temporarily unavailable; retry")
 	case errors.Is(err, momo.ErrValidation):
 		return status.Error(codes.InvalidArgument, "invalid request")
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, "deadline exceeded")
+	case ctx.Err() != nil:
+		return status.Error(codes.Canceled, "request canceled")
 	}
 	return status.Error(codes.Internal, "internal error")
 }
@@ -82,7 +92,7 @@ func commentFromPB(p *pb.Comment, m *example.Comment) {
 func (s *commentServer) Get(ctx context.Context, req *pb.CommentGetRequest) (*pb.Comment, error) {
 	m, err := momo.Select[example.Comment](s.db).Where(commentdesc.ID.Eq(req.GetId())).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "CommentService.Get", err)
 	}
 	return commentToPB(&m), nil
 }
@@ -93,7 +103,7 @@ func (s *commentServer) List(ctx context.Context, req *pb.CommentListRequest) (*
 	if after := req.GetAfter(); after != "" {
 		c, err := apiquery.DecodeCursor(after)
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "CommentService.List", err)
 		}
 		if len(c.Keys) != 1 {
 			return nil, status.Error(codes.InvalidArgument, "invalid page cursor")
@@ -107,13 +117,13 @@ func (s *commentServer) List(ctx context.Context, req *pb.CommentListRequest) (*
 	for _, f := range req.GetFilter() {
 		p, err := apiquery.ParseFilter(commentdesc.ColumnByName, apiquery.Filter{Column: f.GetColumn(), Op: f.GetOp(), Value: f.GetValue()})
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "CommentService.List", err)
 		}
 		sel = sel.Where(p)
 	}
 	rows, err := sel.All(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "CommentService.List", err)
 	}
 	resp := &pb.CommentListResponse{}
 	if len(rows) > limit {
@@ -132,20 +142,20 @@ func (s *commentServer) Create(ctx context.Context, in *pb.Comment) (*pb.Comment
 	ins := momo.Insert[example.Comment](s.db).Model(&m).ReturningAll()
 	rows, err := ins.Rows(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "CommentService.Create", err)
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "CommentService.Create", err)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "CommentService.Create", err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "CommentService.Create", err)
 	}
 	return commentToPB(&m), nil
 }
@@ -166,12 +176,12 @@ func (s *commentServer) Update(ctx context.Context, in *pb.Comment) (*pb.Comment
 	sets = append(sets, commentdesc.Body.Set(m.Body))
 	if len(sets) > 0 {
 		if _, err := momo.Update[example.Comment](s.db).Where(commentdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "CommentService.Update", err)
 		}
 	}
 	out, err := momo.Select[example.Comment](s.db).Where(commentdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "CommentService.Update", err)
 	}
 	return commentToPB(&out), nil
 }
@@ -179,10 +189,10 @@ func (s *commentServer) Update(ctx context.Context, in *pb.Comment) (*pb.Comment
 func (s *commentServer) Delete(ctx context.Context, req *pb.CommentDeleteRequest) (*pb.CommentDeleteResponse, error) {
 	res, err := momo.Delete[example.Comment](s.db).Where(commentdesc.ID.Eq(req.GetId())).Exec(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "CommentService.Delete", err)
 	}
 	if res.RowsAffected == 0 {
-		return nil, statusOf(momo.ErrNotFound)
+		return nil, statusOf(ctx, "CommentService.Delete", momo.ErrNotFound)
 	}
 	return &pb.CommentDeleteResponse{}, nil
 }
@@ -230,7 +240,7 @@ func documentFromPB(p *pb.Document, m *example.Document) {
 func (s *documentServer) Get(ctx context.Context, req *pb.DocumentGetRequest) (*pb.Document, error) {
 	m, err := momo.Select[example.Document](s.db).Where(documentdesc.ID.Eq(req.GetId())).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "DocumentService.Get", err)
 	}
 	return documentToPB(&m), nil
 }
@@ -241,7 +251,7 @@ func (s *documentServer) List(ctx context.Context, req *pb.DocumentListRequest) 
 	if after := req.GetAfter(); after != "" {
 		c, err := apiquery.DecodeCursor(after)
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "DocumentService.List", err)
 		}
 		if len(c.Keys) != 1 {
 			return nil, status.Error(codes.InvalidArgument, "invalid page cursor")
@@ -255,13 +265,13 @@ func (s *documentServer) List(ctx context.Context, req *pb.DocumentListRequest) 
 	for _, f := range req.GetFilter() {
 		p, err := apiquery.ParseFilter(documentdesc.ColumnByName, apiquery.Filter{Column: f.GetColumn(), Op: f.GetOp(), Value: f.GetValue()})
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "DocumentService.List", err)
 		}
 		sel = sel.Where(p)
 	}
 	rows, err := sel.All(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "DocumentService.List", err)
 	}
 	resp := &pb.DocumentListResponse{}
 	if len(rows) > limit {
@@ -286,20 +296,20 @@ func (s *documentServer) Create(ctx context.Context, in *pb.Document) (*pb.Docum
 	}
 	rows, err := ins.Rows(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "DocumentService.Create", err)
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "DocumentService.Create", err)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "DocumentService.Create", err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "DocumentService.Create", err)
 	}
 	return documentToPB(&m), nil
 }
@@ -327,12 +337,12 @@ func (s *documentServer) Update(ctx context.Context, in *pb.Document) (*pb.Docum
 	}
 	if len(sets) > 0 {
 		if _, err := momo.Update[example.Document](s.db).Where(documentdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "DocumentService.Update", err)
 		}
 	}
 	out, err := momo.Select[example.Document](s.db).Where(documentdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "DocumentService.Update", err)
 	}
 	return documentToPB(&out), nil
 }
@@ -340,10 +350,10 @@ func (s *documentServer) Update(ctx context.Context, in *pb.Document) (*pb.Docum
 func (s *documentServer) Delete(ctx context.Context, req *pb.DocumentDeleteRequest) (*pb.DocumentDeleteResponse, error) {
 	res, err := momo.Delete[example.Document](s.db).Where(documentdesc.ID.Eq(req.GetId())).Exec(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "DocumentService.Delete", err)
 	}
 	if res.RowsAffected == 0 {
-		return nil, statusOf(momo.ErrNotFound)
+		return nil, statusOf(ctx, "DocumentService.Delete", momo.ErrNotFound)
 	}
 	return &pb.DocumentDeleteResponse{}, nil
 }
@@ -378,7 +388,7 @@ func tagFromPB(p *pb.Tag, m *example.Tag) {
 func (s *tagServer) Get(ctx context.Context, req *pb.TagGetRequest) (*pb.Tag, error) {
 	m, err := momo.Select[example.Tag](s.db).Where(tagdesc.ID.Eq(req.GetId())).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TagService.Get", err)
 	}
 	return tagToPB(&m), nil
 }
@@ -389,7 +399,7 @@ func (s *tagServer) List(ctx context.Context, req *pb.TagListRequest) (*pb.TagLi
 	if after := req.GetAfter(); after != "" {
 		c, err := apiquery.DecodeCursor(after)
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "TagService.List", err)
 		}
 		if len(c.Keys) != 1 {
 			return nil, status.Error(codes.InvalidArgument, "invalid page cursor")
@@ -403,13 +413,13 @@ func (s *tagServer) List(ctx context.Context, req *pb.TagListRequest) (*pb.TagLi
 	for _, f := range req.GetFilter() {
 		p, err := apiquery.ParseFilter(tagdesc.ColumnByName, apiquery.Filter{Column: f.GetColumn(), Op: f.GetOp(), Value: f.GetValue()})
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "TagService.List", err)
 		}
 		sel = sel.Where(p)
 	}
 	rows, err := sel.All(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TagService.List", err)
 	}
 	resp := &pb.TagListResponse{}
 	if len(rows) > limit {
@@ -428,20 +438,20 @@ func (s *tagServer) Create(ctx context.Context, in *pb.Tag) (*pb.Tag, error) {
 	ins := momo.Insert[example.Tag](s.db).Model(&m).ReturningAll()
 	rows, err := ins.Rows(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TagService.Create", err)
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "TagService.Create", err)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TagService.Create", err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TagService.Create", err)
 	}
 	return tagToPB(&m), nil
 }
@@ -461,12 +471,12 @@ func (s *tagServer) Update(ctx context.Context, in *pb.Tag) (*pb.Tag, error) {
 	sets = append(sets, tagdesc.Name.Set(m.Name))
 	if len(sets) > 0 {
 		if _, err := momo.Update[example.Tag](s.db).Where(tagdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "TagService.Update", err)
 		}
 	}
 	out, err := momo.Select[example.Tag](s.db).Where(tagdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TagService.Update", err)
 	}
 	return tagToPB(&out), nil
 }
@@ -474,10 +484,10 @@ func (s *tagServer) Update(ctx context.Context, in *pb.Tag) (*pb.Tag, error) {
 func (s *tagServer) Delete(ctx context.Context, req *pb.TagDeleteRequest) (*pb.TagDeleteResponse, error) {
 	res, err := momo.Delete[example.Tag](s.db).Where(tagdesc.ID.Eq(req.GetId())).Exec(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TagService.Delete", err)
 	}
 	if res.RowsAffected == 0 {
-		return nil, statusOf(momo.ErrNotFound)
+		return nil, statusOf(ctx, "TagService.Delete", momo.ErrNotFound)
 	}
 	return &pb.TagDeleteResponse{}, nil
 }
@@ -512,7 +522,7 @@ func tenantFromPB(p *pb.Tenant, m *example.Tenant) {
 func (s *tenantServer) Get(ctx context.Context, req *pb.TenantGetRequest) (*pb.Tenant, error) {
 	m, err := momo.Select[example.Tenant](s.db).Where(tenantdesc.ID.Eq(req.GetId())).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TenantService.Get", err)
 	}
 	return tenantToPB(&m), nil
 }
@@ -523,7 +533,7 @@ func (s *tenantServer) List(ctx context.Context, req *pb.TenantListRequest) (*pb
 	if after := req.GetAfter(); after != "" {
 		c, err := apiquery.DecodeCursor(after)
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "TenantService.List", err)
 		}
 		if len(c.Keys) != 1 {
 			return nil, status.Error(codes.InvalidArgument, "invalid page cursor")
@@ -537,13 +547,13 @@ func (s *tenantServer) List(ctx context.Context, req *pb.TenantListRequest) (*pb
 	for _, f := range req.GetFilter() {
 		p, err := apiquery.ParseFilter(tenantdesc.ColumnByName, apiquery.Filter{Column: f.GetColumn(), Op: f.GetOp(), Value: f.GetValue()})
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "TenantService.List", err)
 		}
 		sel = sel.Where(p)
 	}
 	rows, err := sel.All(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TenantService.List", err)
 	}
 	resp := &pb.TenantListResponse{}
 	if len(rows) > limit {
@@ -562,20 +572,20 @@ func (s *tenantServer) Create(ctx context.Context, in *pb.Tenant) (*pb.Tenant, e
 	ins := momo.Insert[example.Tenant](s.db).Model(&m).ReturningAll()
 	rows, err := ins.Rows(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TenantService.Create", err)
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "TenantService.Create", err)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TenantService.Create", err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TenantService.Create", err)
 	}
 	return tenantToPB(&m), nil
 }
@@ -595,12 +605,12 @@ func (s *tenantServer) Update(ctx context.Context, in *pb.Tenant) (*pb.Tenant, e
 	sets = append(sets, tenantdesc.Name.Set(m.Name))
 	if len(sets) > 0 {
 		if _, err := momo.Update[example.Tenant](s.db).Where(tenantdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "TenantService.Update", err)
 		}
 	}
 	out, err := momo.Select[example.Tenant](s.db).Where(tenantdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TenantService.Update", err)
 	}
 	return tenantToPB(&out), nil
 }
@@ -608,10 +618,10 @@ func (s *tenantServer) Update(ctx context.Context, in *pb.Tenant) (*pb.Tenant, e
 func (s *tenantServer) Delete(ctx context.Context, req *pb.TenantDeleteRequest) (*pb.TenantDeleteResponse, error) {
 	res, err := momo.Delete[example.Tenant](s.db).Where(tenantdesc.ID.Eq(req.GetId())).Exec(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "TenantService.Delete", err)
 	}
 	if res.RowsAffected == 0 {
-		return nil, statusOf(momo.ErrNotFound)
+		return nil, statusOf(ctx, "TenantService.Delete", momo.ErrNotFound)
 	}
 	return &pb.TenantDeleteResponse{}, nil
 }

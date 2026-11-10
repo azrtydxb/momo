@@ -250,7 +250,7 @@ paths:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
     put:
-      description: The body must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The key and the read-only columns are ignored.
+      description: The body is the CommentInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Comment schema.
       operationId: updateComment
       parameters:
         - in: path
@@ -499,7 +499,7 @@ paths:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
     put:
-      description: The body must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The key and the read-only columns are ignored.
+      description: The body is the DocumentInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Document schema.
       operationId: updateDocument
       parameters:
         - in: path
@@ -730,7 +730,7 @@ paths:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
     put:
-      description: The body must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The key and the read-only columns are ignored.
+      description: The body is the TagInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Tag schema.
       operationId: updateTag
       parameters:
         - in: path
@@ -961,7 +961,7 @@ paths:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
     put:
-      description: The body must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The key and the read-only columns are ignored.
+      description: The body is the TenantInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Tenant schema.
       operationId: updateTenant
       parameters:
         - in: path
