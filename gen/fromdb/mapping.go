@@ -25,6 +25,8 @@ const (
 	// UUIDGoogle is the introspect.uuid value that writes github.com/google/uuid
 	// types for uuid columns; the default (empty or "momo") writes types.UUID.
 	UUIDGoogle = "google"
+	// UUIDMomo is the default introspect.uuid value: types.UUID.
+	UUIDMomo = "momo"
 )
 
 // GoType is the Go type chosen for a SQL column type.

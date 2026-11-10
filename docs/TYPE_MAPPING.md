@@ -173,21 +173,15 @@ except `NaN`, which SQLite does not have (see Floats).
   `NOT NULL` array column fails with a not-null violation; pass an empty
   non-nil slice (it stores `{}`), or give the column a `default '{}'` and omit
   it. The array predicates bind a nil value list as an empty array, never NULL.
-- Slices as arrays: only `[]string`, `[]int16`, `[]int32`, `[]int64`, `[]bool`,
-  `[]float32`, `[]float64` and `[]types.UUID` (`uuid[]`) map, and so does a `[]uuid.UUID` from
-  github.com/google/uuid (see the next item). `[]int` is not mapped, because its width is
-  platform dependent; use `[]int64`. `[]string` with a `size` tag becomes
-  `character varying(N)[]`. A nil slice binds as NULL, so inserting it into a
-  `NOT NULL` array column fails with a not-null violation; pass an empty
-  non-nil slice (it stores `{}`), or give the column a `default '{}'` and omit
-  it. The array predicates bind a nil value list as an empty array, never NULL.
 - `uuid.UUID`, `*uuid.UUID` and `[]uuid.UUID` from github.com/google/uuid map to
   `uuid` and `uuid[]` on PostgreSQL and `uuid.UUID` to `TEXT` on SQLite (canonical
   text; `[]uuid.UUID` has no SQLite column), with no `type:` tag. MySQL has no
   uuid mapping, as for `types.UUID`. The generator recognizes the type by its
   import path and adds no dependency to momo; your module requires
   github.com/google/uuid only when your models import it. `--from-db` writes
-  these types with `introspect.uuid: google`.
+  these types with `introspect.uuid: google`. A named type over `uuid.UUID`
+  (`type ID uuid.UUID`) is not mapped: give the field `type:uuid`. A UUID type
+  of another package is not mapped either.
 - Decimal: carry `numeric` as a string to avoid binary floating point. Values
   beyond `float64` precision round-trip exactly, and `numeric` also accepts
   `NaN`.

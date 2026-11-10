@@ -1054,7 +1054,7 @@ introspect:
 
 `uuid` is `momo` (the default, `types.UUID` and `[]types.UUID`) or `google`
 (`uuid.UUID`, `*uuid.UUID` and `[]uuid.UUID` from `github.com/google/uuid`).
-Neither writes a type tag. `google` makes the generated models import
+Neither writes a type tag. `introspect.uuid` has no effect on MySQL, which has no uuid mapping. `google` makes the generated models import
 `github.com/google/uuid`, so your module must require it.
 
 A rule's `tags` are momo tag options; one with the key of a generated option

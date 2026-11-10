@@ -251,7 +251,7 @@ func baseType(t types.Type) string {
 		}
 		// A slice of another package's UUID type must not spell like
 		// []uuid.UUID, which the type map reads as github.com/google/uuid.
-		if n, ok := types.Unalias(sl.Elem()).(*types.Named); ok && n.Obj().Name() == "UUID" && !isGoogleUUID(n) && n.Obj().Pkg() != nil && n.Obj().Pkg().Name() == "uuid" {
+		if n, ok := types.Unalias(sl.Elem()).(*types.Named); ok && n.Obj().Pkg() != nil && n.Obj().Name() == "UUID" && n.Obj().Pkg().Name() == "uuid" && !knownNamed(n.Obj().Pkg().Path(), "UUID") {
 			return "[]" + baseType(n.Underlying())
 		}
 	}
@@ -259,10 +259,6 @@ func baseType(t types.Type) string {
 }
 
 const googleUUIDPath = "github.com/google/uuid"
-
-func isGoogleUUID(n *types.Named) bool {
-	return n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == googleUUIDPath && n.Obj().Name() == "UUID"
-}
 
 // knownNamed reports whether the type map knows the named type itself.
 func knownNamed(pkgPath, name string) bool {
