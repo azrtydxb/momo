@@ -231,16 +231,22 @@ func TestGraphQLGenerator(t *testing.T) {
 		t.Fatalf("two aliases of one relation on a small page: %v", errs)
 	}
 
-	// a request body over MaxRequestBytes is refused
+	// a request body over MaxRequestBytes is refused: gqlgen answers a body it
+	// cannot read with errors and no data
 	big, err := http.Post(srv.URL, "application/json", strings.NewReader(`{"query":"query { documents { edges { cursor } } }","pad":"`+strings.Repeat("a", 2<<20)+`"}`)) // #nosec G107 -- the URL of the test server
 	if err != nil {
 		t.Fatal(err)
 	}
+	var bigOut struct {
+		Data   map[string]any   `json:"data"`
+		Errors []map[string]any `json:"errors"`
+	}
+	decodeErr := json.NewDecoder(big.Body).Decode(&bigOut)
 	if err := big.Body.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if big.StatusCode < 400 {
-		t.Fatalf("a request over the size limit got status %d", big.StatusCode)
+	if big.StatusCode < 400 && (decodeErr != nil || len(bigOut.Errors) == 0 || bigOut.Data != nil) {
+		t.Fatalf("a request over the size limit was served: status %d, %v, %v", big.StatusCode, bigOut, decodeErr)
 	}
 
 	// 6. a database error reaches the client as a fixed message

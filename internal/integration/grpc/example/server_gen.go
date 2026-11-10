@@ -153,18 +153,21 @@ func (s *commentServer) Create(ctx context.Context, in *pb.Comment) (*pb.Comment
 // Update replaces the row: every writable column takes the value of the
 // message, except the vectors, timestamps and defaulted scalars it leaves out
 // (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
-// is a value, and so is an unset optional field, which stores NULL).
+// is a value, and so is an unset optional field, which stores NULL). It writes
+// the assignments in one statement and reads nothing first, so it never writes
+// back a value it read: a concurrent change of a column the message leaves out
+// is kept.
 func (s *commentServer) Update(ctx context.Context, in *pb.Comment) (*pb.Comment, error) {
 	id := in.GetId()
-	m, err := momo.Select[example.Comment](s.db).Where(commentdesc.ID.Eq(id)).One(ctx)
-	if err != nil {
-		return nil, statusOf(err)
-	}
+	var m example.Comment
 	commentFromPB(in, &m)
-	m.ID = id
-	upd := momo.Update[example.Comment](s.db).Model(&m)
-	if _, err := upd.Exec(ctx); err != nil {
-		return nil, statusOf(err)
+	var sets []momo.Assignment
+	sets = append(sets, commentdesc.DocumentID.Set(m.DocumentID))
+	sets = append(sets, commentdesc.Body.Set(m.Body))
+	if len(sets) > 0 {
+		if _, err := momo.Update[example.Comment](s.db).Where(commentdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			return nil, statusOf(err)
+		}
 	}
 	out, err := momo.Select[example.Comment](s.db).Where(commentdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
@@ -304,21 +307,28 @@ func (s *documentServer) Create(ctx context.Context, in *pb.Document) (*pb.Docum
 // Update replaces the row: every writable column takes the value of the
 // message, except the vectors, timestamps and defaulted scalars it leaves out
 // (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
-// is a value, and so is an unset optional field, which stores NULL).
+// is a value, and so is an unset optional field, which stores NULL). It writes
+// the assignments in one statement and reads nothing first, so it never writes
+// back a value it read: a concurrent change of a column the message leaves out
+// is kept.
 func (s *documentServer) Update(ctx context.Context, in *pb.Document) (*pb.Document, error) {
 	id := in.GetId()
-	m, err := momo.Select[example.Document](s.db).Where(documentdesc.ID.Eq(id)).One(ctx)
-	if err != nil {
-		return nil, statusOf(err)
-	}
+	var m example.Document
 	documentFromPB(in, &m)
-	m.ID = id
-	upd := momo.Update[example.Document](s.db).Model(&m)
-	if len(m.Embedding) == 0 {
-		upd = upd.Set(documentdesc.Embedding.SetDefault())
+	var sets []momo.Assignment
+	sets = append(sets, documentdesc.TenantID.Set(m.TenantID))
+	sets = append(sets, documentdesc.Title.Set(m.Title))
+	sets = append(sets, documentdesc.Body.Set(m.Body))
+	if len(in.GetEmbedding()) > 0 {
+		sets = append(sets, documentdesc.Embedding.Set(m.Embedding))
 	}
-	if _, err := upd.Exec(ctx); err != nil {
-		return nil, statusOf(err)
+	if !isZero(in.GetStatus()) {
+		sets = append(sets, documentdesc.Status.Set(m.Status))
+	}
+	if len(sets) > 0 {
+		if _, err := momo.Update[example.Document](s.db).Where(documentdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			return nil, statusOf(err)
+		}
 	}
 	out, err := momo.Select[example.Document](s.db).Where(documentdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
@@ -439,18 +449,20 @@ func (s *tagServer) Create(ctx context.Context, in *pb.Tag) (*pb.Tag, error) {
 // Update replaces the row: every writable column takes the value of the
 // message, except the vectors, timestamps and defaulted scalars it leaves out
 // (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
-// is a value, and so is an unset optional field, which stores NULL).
+// is a value, and so is an unset optional field, which stores NULL). It writes
+// the assignments in one statement and reads nothing first, so it never writes
+// back a value it read: a concurrent change of a column the message leaves out
+// is kept.
 func (s *tagServer) Update(ctx context.Context, in *pb.Tag) (*pb.Tag, error) {
 	id := in.GetId()
-	m, err := momo.Select[example.Tag](s.db).Where(tagdesc.ID.Eq(id)).One(ctx)
-	if err != nil {
-		return nil, statusOf(err)
-	}
+	var m example.Tag
 	tagFromPB(in, &m)
-	m.ID = id
-	upd := momo.Update[example.Tag](s.db).Model(&m)
-	if _, err := upd.Exec(ctx); err != nil {
-		return nil, statusOf(err)
+	var sets []momo.Assignment
+	sets = append(sets, tagdesc.Name.Set(m.Name))
+	if len(sets) > 0 {
+		if _, err := momo.Update[example.Tag](s.db).Where(tagdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			return nil, statusOf(err)
+		}
 	}
 	out, err := momo.Select[example.Tag](s.db).Where(tagdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
@@ -571,18 +583,20 @@ func (s *tenantServer) Create(ctx context.Context, in *pb.Tenant) (*pb.Tenant, e
 // Update replaces the row: every writable column takes the value of the
 // message, except the vectors, timestamps and defaulted scalars it leaves out
 // (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
-// is a value, and so is an unset optional field, which stores NULL).
+// is a value, and so is an unset optional field, which stores NULL). It writes
+// the assignments in one statement and reads nothing first, so it never writes
+// back a value it read: a concurrent change of a column the message leaves out
+// is kept.
 func (s *tenantServer) Update(ctx context.Context, in *pb.Tenant) (*pb.Tenant, error) {
 	id := in.GetId()
-	m, err := momo.Select[example.Tenant](s.db).Where(tenantdesc.ID.Eq(id)).One(ctx)
-	if err != nil {
-		return nil, statusOf(err)
-	}
+	var m example.Tenant
 	tenantFromPB(in, &m)
-	m.ID = id
-	upd := momo.Update[example.Tenant](s.db).Model(&m)
-	if _, err := upd.Exec(ctx); err != nil {
-		return nil, statusOf(err)
+	var sets []momo.Assignment
+	sets = append(sets, tenantdesc.Name.Set(m.Name))
+	if len(sets) > 0 {
+		if _, err := momo.Update[example.Tenant](s.db).Where(tenantdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			return nil, statusOf(err)
+		}
 	}
 	out, err := momo.Select[example.Tenant](s.db).Where(tenantdesc.ID.Eq(id)).One(ctx)
 	if err != nil {

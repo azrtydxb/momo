@@ -250,6 +250,7 @@ paths:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
     put:
+      description: The body must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The key and the read-only columns are ignored.
       operationId: updateComment
       parameters:
         - in: path
@@ -307,7 +308,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
-      summary: "Update a Comment: the body must carry every required property; an optional property that is absent keeps its stored value"
+      summary: Update a Comment
   /v1/documents:
     get:
       operationId: listDocument
@@ -498,6 +499,7 @@ paths:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
     put:
+      description: The body must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The key and the read-only columns are ignored.
       operationId: updateDocument
       parameters:
         - in: path
@@ -555,7 +557,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
-      summary: "Update a Document: the body must carry every required property; an optional property that is absent keeps its stored value"
+      summary: Update a Document
   /v1/tags:
     get:
       operationId: listTag
@@ -728,6 +730,7 @@ paths:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
     put:
+      description: The body must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The key and the read-only columns are ignored.
       operationId: updateTag
       parameters:
         - in: path
@@ -785,7 +788,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
-      summary: "Update a Tag: the body must carry every required property; an optional property that is absent keeps its stored value"
+      summary: Update a Tag
   /v1/tenants:
     get:
       operationId: listTenant
@@ -958,6 +961,7 @@ paths:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
     put:
+      description: The body must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The key and the read-only columns are ignored.
       operationId: updateTenant
       parameters:
         - in: path
@@ -1015,4 +1019,4 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
-      summary: "Update a Tenant: the body must carry every required property; an optional property that is absent keeps its stored value"
+      summary: Update a Tenant

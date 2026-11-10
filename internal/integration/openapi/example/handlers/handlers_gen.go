@@ -103,9 +103,16 @@ func decodeDTO(w http.ResponseWriter, data []byte, v any) bool {
 	return true
 }
 
-// checkKeys answers 400 when a required property is missing or a not-null
-// property is null.
-func checkKeys(w http.ResponseWriter, keys map[string]json.RawMessage, required []string, notNull map[string]bool) bool {
+// checkKeys answers 400 when a key is not exactly the name of a property (the
+// JSON decoder would match "Title" to "title", and the value would then be
+// ignored), a required property is missing or a not-null property is null.
+func checkKeys(w http.ResponseWriter, keys map[string]json.RawMessage, known map[string]bool, required []string, notNull map[string]bool) bool {
+	for k := range keys {
+		if !known[k] {
+			badRequest(w, "unknown property")
+			return false
+		}
+	}
 	for _, k := range required {
 		if _, ok := keys[k]; !ok {
 			badRequest(w, "missing required property "+k)
@@ -156,6 +163,13 @@ func dtoCommentFrom(m *example.Comment) dtoComment {
 		Body:       m.Body,
 	}
 	return d
+}
+
+// commentColumns are the properties of a Comment, by their exact names.
+var commentColumns = map[string]bool{
+	"id":          true,
+	"document_id": true,
+	"body":        true,
 }
 
 // commentRequired lists the properties a write must carry: not null, not filled
@@ -271,7 +285,7 @@ func (h *CommentHandler) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *CommentHandler) create(w http.ResponseWriter, r *http.Request) {
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, commentRequired, commentNotNull) {
+	if !ok || !checkKeys(w, keys, commentColumns, commentRequired, commentNotNull) {
 		return
 	}
 	var in dtoComment
@@ -311,7 +325,7 @@ func (h *CommentHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, commentRequired, commentNotNull) {
+	if !ok || !checkKeys(w, keys, commentColumns, commentRequired, commentNotNull) {
 		return
 	}
 	var in dtoComment
@@ -319,17 +333,21 @@ func (h *CommentHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	m, err := momo.Select[example.Comment](h.DB).Where(commentdesc.ID.Eq(id)).One(ctx)
-	if err != nil {
-		writeError(w, err)
-		return
+	// Only the properties the request carried are written, in one statement:
+	// reading the row, merging and writing every column back would undo a
+	// concurrent change of a column the request did not mention.
+	var sets []momo.Assignment
+	if _, ok := keys["document_id"]; ok {
+		sets = append(sets, commentdesc.DocumentID.Set(in.DocumentID))
 	}
-	in.apply(&m, keys)
-	m.ID = id
-	upd := momo.Update[example.Comment](h.DB).Model(&m)
-	if _, err := upd.Exec(ctx); err != nil {
-		writeError(w, err)
-		return
+	if _, ok := keys["body"]; ok {
+		sets = append(sets, commentdesc.Body.Set(in.Body))
+	}
+	if len(sets) > 0 {
+		if _, err := momo.Update[example.Comment](h.DB).Where(commentdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	out, err := momo.Select[example.Comment](h.DB).Where(commentdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
@@ -393,6 +411,17 @@ func dtoDocumentFrom(m *example.Document) dtoDocument {
 		d.Embedding = vector.Vector{}
 	}
 	return d
+}
+
+// documentColumns are the properties of a Document, by their exact names.
+var documentColumns = map[string]bool{
+	"id":         true,
+	"tenant_id":  true,
+	"title":      true,
+	"body":       true,
+	"embedding":  true,
+	"status":     true,
+	"created_at": true,
 }
 
 // documentRequired lists the properties a write must carry: not null, not filled
@@ -520,7 +549,7 @@ func (h *DocumentHandler) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *DocumentHandler) create(w http.ResponseWriter, r *http.Request) {
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, documentRequired, documentNotNull) {
+	if !ok || !checkKeys(w, keys, documentColumns, documentRequired, documentNotNull) {
 		return
 	}
 	var in dtoDocument
@@ -566,7 +595,7 @@ func (h *DocumentHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, documentRequired, documentNotNull) {
+	if !ok || !checkKeys(w, keys, documentColumns, documentRequired, documentNotNull) {
 		return
 	}
 	var in dtoDocument
@@ -574,20 +603,34 @@ func (h *DocumentHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	m, err := momo.Select[example.Document](h.DB).Where(documentdesc.ID.Eq(id)).One(ctx)
-	if err != nil {
-		writeError(w, err)
-		return
+	// Only the properties the request carried are written, in one statement:
+	// reading the row, merging and writing every column back would undo a
+	// concurrent change of a column the request did not mention.
+	var sets []momo.Assignment
+	if _, ok := keys["tenant_id"]; ok {
+		sets = append(sets, documentdesc.TenantID.Set(in.TenantID))
 	}
-	in.apply(&m, keys)
-	m.ID = id
-	upd := momo.Update[example.Document](h.DB).Model(&m)
-	if len(m.Embedding) == 0 {
-		upd = upd.Set(documentdesc.Embedding.SetDefault())
+	if _, ok := keys["title"]; ok {
+		sets = append(sets, documentdesc.Title.Set(in.Title))
 	}
-	if _, err := upd.Exec(ctx); err != nil {
-		writeError(w, err)
-		return
+	if _, ok := keys["body"]; ok {
+		sets = append(sets, documentdesc.Body.Set(in.Body))
+	}
+	if _, ok := keys["embedding"]; ok {
+		if len(in.Embedding) == 0 {
+			sets = append(sets, documentdesc.Embedding.SetDefault())
+		} else {
+			sets = append(sets, documentdesc.Embedding.Set(in.Embedding))
+		}
+	}
+	if _, ok := keys["status"]; ok {
+		sets = append(sets, documentdesc.Status.Set(in.Status))
+	}
+	if len(sets) > 0 {
+		if _, err := momo.Update[example.Document](h.DB).Where(documentdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	out, err := momo.Select[example.Document](h.DB).Where(documentdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
@@ -638,6 +681,12 @@ func dtoTagFrom(m *example.Tag) dtoTag {
 		Name: m.Name,
 	}
 	return d
+}
+
+// tagColumns are the properties of a Tag, by their exact names.
+var tagColumns = map[string]bool{
+	"id":   true,
+	"name": true,
 }
 
 // tagRequired lists the properties a write must carry: not null, not filled
@@ -749,7 +798,7 @@ func (h *TagHandler) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *TagHandler) create(w http.ResponseWriter, r *http.Request) {
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, tagRequired, tagNotNull) {
+	if !ok || !checkKeys(w, keys, tagColumns, tagRequired, tagNotNull) {
 		return
 	}
 	var in dtoTag
@@ -789,7 +838,7 @@ func (h *TagHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, tagRequired, tagNotNull) {
+	if !ok || !checkKeys(w, keys, tagColumns, tagRequired, tagNotNull) {
 		return
 	}
 	var in dtoTag
@@ -797,17 +846,18 @@ func (h *TagHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	m, err := momo.Select[example.Tag](h.DB).Where(tagdesc.ID.Eq(id)).One(ctx)
-	if err != nil {
-		writeError(w, err)
-		return
+	// Only the properties the request carried are written, in one statement:
+	// reading the row, merging and writing every column back would undo a
+	// concurrent change of a column the request did not mention.
+	var sets []momo.Assignment
+	if _, ok := keys["name"]; ok {
+		sets = append(sets, tagdesc.Name.Set(in.Name))
 	}
-	in.apply(&m, keys)
-	m.ID = id
-	upd := momo.Update[example.Tag](h.DB).Model(&m)
-	if _, err := upd.Exec(ctx); err != nil {
-		writeError(w, err)
-		return
+	if len(sets) > 0 {
+		if _, err := momo.Update[example.Tag](h.DB).Where(tagdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	out, err := momo.Select[example.Tag](h.DB).Where(tagdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
@@ -858,6 +908,12 @@ func dtoTenantFrom(m *example.Tenant) dtoTenant {
 		Name: m.Name,
 	}
 	return d
+}
+
+// tenantColumns are the properties of a Tenant, by their exact names.
+var tenantColumns = map[string]bool{
+	"id":   true,
+	"name": true,
 }
 
 // tenantRequired lists the properties a write must carry: not null, not filled
@@ -969,7 +1025,7 @@ func (h *TenantHandler) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *TenantHandler) create(w http.ResponseWriter, r *http.Request) {
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, tenantRequired, tenantNotNull) {
+	if !ok || !checkKeys(w, keys, tenantColumns, tenantRequired, tenantNotNull) {
 		return
 	}
 	var in dtoTenant
@@ -1009,7 +1065,7 @@ func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys, data, ok := readBody(w, r)
-	if !ok || !checkKeys(w, keys, tenantRequired, tenantNotNull) {
+	if !ok || !checkKeys(w, keys, tenantColumns, tenantRequired, tenantNotNull) {
 		return
 	}
 	var in dtoTenant
@@ -1017,17 +1073,18 @@ func (h *TenantHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	m, err := momo.Select[example.Tenant](h.DB).Where(tenantdesc.ID.Eq(id)).One(ctx)
-	if err != nil {
-		writeError(w, err)
-		return
+	// Only the properties the request carried are written, in one statement:
+	// reading the row, merging and writing every column back would undo a
+	// concurrent change of a column the request did not mention.
+	var sets []momo.Assignment
+	if _, ok := keys["name"]; ok {
+		sets = append(sets, tenantdesc.Name.Set(in.Name))
 	}
-	in.apply(&m, keys)
-	m.ID = id
-	upd := momo.Update[example.Tenant](h.DB).Model(&m)
-	if _, err := upd.Exec(ctx); err != nil {
-		writeError(w, err)
-		return
+	if len(sets) > 0 {
+		if _, err := momo.Update[example.Tenant](h.DB).Where(tenantdesc.ID.Eq(id)).Set(sets...).Exec(ctx); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	out, err := momo.Select[example.Tenant](h.DB).Where(tenantdesc.ID.Eq(id)).One(ctx)
 	if err != nil {
