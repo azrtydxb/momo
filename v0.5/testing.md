@@ -1,0 +1,355 @@
+# Testing applications with momotest
+
+`github.com/azrtydxb/momo/momotest` gives your tests a real PostgreSQL
+database, isolated per test, with your project's migrations already applied. It
+replaces the hand-written scratch-database helper that every application would
+otherwise copy.
+
+Do not mock `momo.DB`, `momo.Tx` or `momo.Querier`. The query builders are the
+code under test; the constraints and the SQL are what you want to exercise.
+
+## Setup
+
+1. Point the tests at a server you may create schemas on:
+
+   ```sh
+   export MOMO_TEST_POSTGRES_URL=postgres://user:pass@localhost:5432/scratch
+   ```
+
+   The value must be a `postgres://` or `postgresql://` URL. Use a database you
+   do not mind filling with temporary schemas; a disposable container is
+   ideal.
+
+2. Embed the migrations in the package that owns the schema, so the binary and
+   its tests share them:
+
+   <!-- docscheck:fragment -->
+
+   ```go
+   //go:embed migrations
+   var files embed.FS
+
+   func Migrations() fs.FS { sub, _ := fs.Sub(files, "migrations"); return sub }
+   ```
+
+3. Keep tests that use the kit behind the `integration` build tag (or one of
+   your own), and run them with `-tags integration`. A plain `go test` then
+   never touches a database.
+
+When the variable is unset, the test is skipped. Set `MOMO_REQUIRE_INTEGRATION=1`
+in CI and the test fails instead, so a misconfigured job cannot pass by skipping
+everything. `momotest.WithEnv` reads a different variable.
+
+## One database per test: New
+
+<!-- docscheck:fragment -->
+
+```go
+func TestSignup(t *testing.T) {
+	t.Parallel()
+	db := momotest.New(t, momotest.WithMigrations(app.Migrations()))
+	// db is a *momo.DB on a schema no other test can see.
+}
+```
+
+`New` creates a schema, applies the migrations to it and returns a `*momo.DB`.
+When the test ends the pool is closed and the schema is dropped. Code under test
+may open and commit its own transactions. Use this mode when it does.
+
+## A rollback per test: NewTx
+
+<!-- docscheck:fragment -->
+
+```go
+func TestOverdraft(t *testing.T) {
+	t.Parallel()
+	tx := momotest.NewTx(t, momotest.WithMigrations(app.Migrations()))
+	// tx is a *momo.Tx; everything written through it is gone after the test.
+}
+```
+
+The migrations are applied once to a template schema, named after a hash of the
+migration files, the extension list and the momo version, and kept on the
+server between runs. The first `momotest.NewTx` in a test binary builds it (or finds it
+ready) under an advisory lock, over a short-lived administrator connection;
+after that success the binary remembers it, and each later test only opens its
+own small pool and begins a transaction, which is much cheaper than `New`. A
+changed migration gets a new template; old `momotest_tpl_*` schemas can be
+dropped at any time between runs.
+
+The `Tx` is adopted: `Commit` and `Rollback` on it return an error matching
+`momo.ErrAdoptedTx`, so a test cannot make its writes permanent. `tx.Tx` opens
+savepoints, so you can test a failing step and keep going. Two limits follow
+from using one transaction per test:
+
+- Code that must commit, or that needs two connections to see each other's work,
+  belongs in a test that uses `New`.
+- Parallel tests do not see each other's rows, but two that insert the same
+  unique key wait for each other until one finishes. Give parallel tests
+  distinct keys.
+- DDL, `TRUNCATE` and `LOCK TABLE` inside a `momotest.NewTx` test take locks that block
+  every other parallel test using the same template until this one ends. Run
+  such tests with `New`.
+- Identity and sequence values are consumed by a rolled-back transaction, so
+  never assert a literal generated id; compare with the id that `Insert` read
+  back.
+
+## Migrations must stay in their schema
+
+Migrations run in a schema of the test's own, with `public` after it on the
+search path. Write them unqualified. `momotest` refuses early, with the file
+name, a migration that contains `CREATE SCHEMA`, or `CREATE EXTENSION` for an
+extension not listed in `momotest.WithExtensions`: an extension exists once per
+database, so it would land in one test's schema and vanish under the others when
+that schema is dropped. List extensions in `momotest.WithExtensions` (names are matched
+in lower case); they are installed once in `public`.
+
+The check reads the SQL with comments and string literals removed, so a comment
+that mentions `create schema` is fine and `CREATE /* x */ EXTENSION foo` is still
+caught. Quoted identifiers are kept. Dollar-quoted bodies are checked as code,
+because a `DO` block can run `CREATE EXTENSION`: the cost is that text inside a
+dollar-quoted string that looks like that statement is also refused, with a
+message naming the file. Move such text into a normal string, or list the
+extension.
+
+`momotest.NewTx` remembers the result of the check and the template name per migration
+`fs.FS` value and extension list. Build the FS once, in a package variable or an
+`embed.FS`, so that the files are walked once; an FS rebuilt on every call (such
+as `fs.Sub` inside a function) is re-read each time, which still works. Only
+successes are remembered, so a failed read fails one test and the next one tries
+again. Changing the files behind a remembered FS while the test binary runs, for
+example rewriting the directory an `os.DirFS` points at, is not supported.
+
+## Leftover schemas
+
+Cleanup runs in `t.Cleanup`, so a killed test run (`kill -9`, a CI timeout)
+can leave `momotest_<hex>` schemas behind. They are harmless but accumulate. Drop
+them on a disposable server by recreating it, or with
+`DROP SCHEMA momotest_<hex> CASCADE` for each name in `pg_namespace` that matches
+`momotest\_%` and is not `momotest_tpl_%`. Template schemas `momotest_tpl_*` are
+meant to stay. `momotest` has no sweep helper: it never drops a schema it did
+not create in the current test.
+
+## Fixtures: Seed
+
+<!-- docscheck:fragment -->
+
+```go
+org := &models.Org{Name: "acme"}
+momotest.Seed(t, tx,
+	momotest.Insert(org),
+	momotest.Insert(&models.User{OrgID: org.ID, Email: "ada@acme.test"}),
+)
+```
+
+`momotest.Seed` runs its steps in the order given, so list a table before the tables that
+reference it. All steps run in one transaction (a savepoint when the querier is
+a `*momo.Tx`); if one fails, nothing is kept and the test fails. `Insert` reads
+generated columns, such as identity keys, back into the rows you pass, so later
+steps can use them. `momotest.Graph` inserts a root with the related rows it includes, as
+`momo.CreateGraph` does. A step is any `func(ctx, momo.Querier) error`, so
+custom fixtures fit too.
+
+## Fixtures from a file: LoadFixtures
+
+`momotest.LoadFixtures(t, q, path)` inserts the rows of a YAML file into `q`, a
+`*momo.DB` or a `*momo.Tx`, for data that is easier to read as a file than as Go
+structs. The file maps a table name to a list of rows, and each row maps a column
+name to a value:
+
+```yaml
+authors:
+  - id: 1
+    name: Ada
+documents:
+  - id: 1
+    author_id: 1
+    title: First
+  - id: 2
+    author_id: null
+    title: Orphan
+```
+
+Tables are inserted in file order and the rows of a table in list order, so
+list a table before the tables that reference it. Columns are written sorted by
+name and a YAML `null` becomes SQL `NULL`. Table and column names are quoted
+with `momo.Ident` and every value is a bound argument, so a value is never
+spliced into the SQL. A table name is one identifier, with no schema prefix.
+A value is a string, integer, float, bool, null, timestamp or `!!binary` (read as
+bytes); a nested map or list is refused. `momotest.LoadFixtures` writes plain `INSERT`
+statements and is tested on PostgreSQL and SQLite; it has not been run against
+MySQL or MariaDB. A file that is not a mapping of
+tables to lists of rows, a missing file, and a row the database refuses (a
+foreign key to a row that is not there, say) fail the test with a message that
+names the file, the table and the row. Each row is its own statement, so rows
+before a failing one stay unless you pass a transaction.
+
+## SQLite without a server: sqlitetest
+
+`github.com/azrtydxb/momo/momotest/sqlitetest` gives a test a SQLite database
+with sqlite-vec loaded, without a server and without an environment variable:
+`sqlitetest.New(t, opts...)` returns a `*momo.DB` on a new file in the test's
+own temporary directory. Every call opens a file of its own, so two databases in
+one test never see each other's tables and parallel tests do not collide. The
+database is closed and the file removed when the test ends. The options go to
+`momo.New`, for example `momo.WithHook`, and `momotest.LoadFixtures` fills it like any
+other database. The database starts empty: create the tables with your own DDL,
+for example `momo.SQLiteVectorType` for a vector column (see
+[Vector search](vectors.md)); `momotest.WithMigrations` and `momotest.NewTx` are
+PostgreSQL features and do not apply.
+
+SQLite lives in its own package, and not in `momotest`, because the SQLite
+driver is compiled from C sources: a test binary that imports only `momotest`
+for PostgreSQL does not build them, and a repository test
+(`TestMomotestAvoidsSQLite`) keeps it that way. Only a test that imports
+`sqlitetest` pays for them. The driver needs cgo and a non-Windows target; on
+any other build `sqlitetest.New` skips the test, the way `momotest.New` skips
+when the server URL is unset.
+
+## Asserting the SQL: AssertSQL
+
+`momotest.AssertSQL(t, compiled, want)` compares the SQL text of a compiled
+statement with `want`, ignoring differences in whitespace. Get `compiled` from
+the `SQL` method of any query (`Select`, `Insert`, `Update`, `Delete`, a raw
+subquery source); the statement is only compiled, never sent, so the assertion
+needs no database and the recording hook sees no statement. Because only the
+text is compared, put the values in the query and the text in `want`:
+
+```text
+c, err := momo.Select[User](db).Where(user.Email.Eq("a@example.test")).SQL()
+momotest.AssertSQL(t, c, `SELECT ... FROM "users" WHERE "users"."email" = $1`)
+```
+
+On a mismatch the failure holds both texts and `Compiled.String()`, which lists
+the bound arguments by placeholder (`$1, $2 bound`). It never holds an argument
+value, so a value bound from a `sensitive` column cannot reach the test log.
+
+## Asserting index use: AssertUsesIndex
+
+`momotest.AssertUsesIndex(t, q, compiled, "index_name")` runs a plain `EXPLAIN`
+of the statement through `momo.Explain` (never `EXPLAIN ANALYZE`, so the
+statement is not executed) and fails unless the plan reads that index. It works
+on PostgreSQL and SQLite and fails the test on any other dialect.
+
+- PostgreSQL: the index name must be a whole token in an `Index Scan`,
+  `Index Only Scan` or `Bitmap Index Scan` node. A name that only starts with
+  the asserted one (`orders_idx2` or `orders_idx-old` for `orders_idx`) does
+  not match. A mixed-case name that PostgreSQL prints quoted (`"MyIdx"`)
+  matches when you pass `MyIdx`.
+- SQLite: a plan line must say `USING INDEX name` or
+  `USING COVERING INDEX name`.
+
+A failure prints the plan, and says so when the plan contains a sequential scan.
+Small tables get sequential scans on PostgreSQL whatever indexes exist: load
+enough rows and run `ANALYZE` first, or use `tx.SetLocal(ctx, "enable_seqscan",
+"off")`. The database may echo literal values into a plan, so run the assertion
+on test data that is not sensitive.
+
+## Listing the SQL: a query registry
+
+An application that leaves a code generator such as sqlc loses its `.sql`
+files, which it may lint statically or freeze for compatibility tests against
+the previous release. Momo lists the SQL without a database: register each
+named query as a builder, then ask the registry for the compiled text per
+dialect.
+
+`momo.RegisterQuery(name, build)` adds a query to the process-wide registry
+(`momo.DefaultQueries`); `momo.NewQueryRegistry` makes an isolated one for a
+test. `build` receives a `momo.Querier` that compiles but never executes (see
+`momo.NewOffline`) and returns anything with an `SQL()` method: a `Select`,
+`Insert`, `Update`, `Delete` or `Merge` query, or `momo.RawQuery` for a
+hand-written statement. Registering a name twice panics, naming the query. The
+values you bind in `build` are placeholders and never appear in the listing.
+`Registry.Compile(dialect.Postgres)` returns every query sorted by name with
+the dialect's placeholders (`$1` on PostgreSQL, `?` on MySQL and SQLite).
+
+`momotest.QueryGolden` writes that list to one golden file per dialect and
+fails when a query's SQL changed, a query was added or one was removed. Run the
+tests with `MOMO_UPDATE_GOLDEN=1` to accept an intended change, and review the
+diff in code review. It needs no database, so it runs in a plain `go test`.
+
+To freeze a release for an N-1 compatibility test, copy its golden file to
+`testdata/queries/<release>/postgres.sql`. The program below is the body of
+that test: it reads the previous release's file with `momotest.LoadQueryGolden`
+and prepares every statement against the current schema, so a dropped column or
+table fails the test. `PREPARE` plans a statement without running it, and the
+transaction rolls back at the end.
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/momotest"
+)
+
+func init() {
+	momo.RegisterQuery("open_tasks", func(q momo.Querier) momo.Compilable {
+		return momo.RawQuery(q, "SELECT id, title FROM tasks WHERE owner = $1 AND NOT done", 0)
+	})
+}
+
+func main() {
+	if err := run(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(ctx context.Context) error {
+	previous, err := momotest.LoadQueryGolden("testdata/queries/v1.4/postgres.sql")
+	if err != nil {
+		return err
+	}
+	pool, err := pgxdriver.NewPool(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	db := momo.New(pgxdriver.New(pool))
+
+	return db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		for i, q := range previous {
+			stmt := fmt.Sprintf("PREPARE compat_%d AS %s", i, q.SQL)
+			if _, err := tx.DriverTx().Exec(ctx, stmt, nil); err != nil {
+				return fmt.Errorf("the previous release's query %s fails on the new schema: %w", q.Name, err)
+			}
+		}
+		return nil
+	})
+}
+```
+
+## Options
+
+| Option                           | Effect                                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `momotest.WithMigrations(fs.FS)` | Apply these migrations. The directory needs no `momo.sum`. Without it the database is empty.    |
+| `momotest.WithEnv(name)`         | Read the server URL from another variable.                                                      |
+| `momotest.WithExtensions(names)` | `CREATE EXTENSION IF NOT EXISTS` in `public` first; with `vector` the pool registers the codec. |
+| `momotest.WithMomoOptions(opts)` | Passed to `momo.New`, for example a hook.                                                       |
+| `momotest.WithMaxConns(n)`       | Pool size per test: 4 for `New`, 2 for `momotest.NewTx` by default.                             |
+
+## Concurrency
+
+Every call opens its own connection pool and, in `New`, its own schema, so
+`t.Parallel` and `-race` are safe. The one shared step, creating extensions and
+building a template, runs under a PostgreSQL advisory lock (keyed by
+`hashtext` of the names `momotest:extensions` and `momotest:template`), so tests
+in one binary and several test binaries running at once (`go test ./...`)
+cooperate. `New` also opens a short administrator connection to create and, at
+cleanup, drop its schema. A `momotest.NewTx` test holds one connection for its
+transaction, plus the pool's spare. Each parallel test holds a few connections; keep the server's
+`max_connections` above the number of parallel tests times the pool size, or
+lower the pool with `momotest.WithMaxConns` or the parallelism with `-parallel`.
+
+## Example
+
+[examples/testing](../examples/testing/) runs a small bank-account service
+through both modes, in parallel, with seeded fixtures. Its test is the
+reference for how to write yours.
