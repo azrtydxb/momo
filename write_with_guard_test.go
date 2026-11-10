@@ -128,7 +128,7 @@ func TestVersionedUpdateFrom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, frag := range []string{"UPDATE `documents`, `src` SET `documents`.`title` = ?", "`documents`.`version` = `documents`.`version` + 1"} {
+	for _, frag := range []string{"UPDATE `documents`, `src` SET `documents`.`tenant_id` = ?", "`documents`.`version` = `documents`.`version` + 1"} {
 		if !strings.Contains(my.SQL, frag) {
 			t.Errorf("mysql SQL lacks %q:\n%s", frag, my.SQL)
 		}
