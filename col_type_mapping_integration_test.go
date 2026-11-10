@@ -7,9 +7,11 @@ package momo_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,10 +38,18 @@ func roundTripAll[T any](eq func(got, want T) bool, wants ...T) liveCase {
 		ctx := context.Background()
 		tmTableSeq++
 		tbl := fmt.Sprintf("tm_%d", tmTableSeq)
+		ws := wants
+		if db.Dialect().Name == dialect.SQLite {
+			// SQLite rejects NaN (ErrValidation); TestTypeMappingNaNSQLite pins it.
+			ws = slices.DeleteFunc(slices.Clone(wants), func(w T) bool {
+				v := reflect.ValueOf(w)
+				return (v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64) && math.IsNaN(v.Float())
+			})
+		}
 		if _, err := momo.Exec(ctx, db, "CREATE TABLE "+tbl+" (id int PRIMARY KEY, v "+colType+")"); err != nil {
 			t.Fatalf("create %s: %v", colType, err)
 		}
-		for i, w := range wants {
+		for i, w := range ws {
 			if _, err := momo.Exec(ctx, db, "INSERT INTO "+tbl+" (id, v) VALUES (?, ?)", i, w); err != nil {
 				t.Fatalf("insert %#v into %s: %v", w, colType, err)
 			}
@@ -48,16 +58,16 @@ func roundTripAll[T any](eq func(got, want T) bool, wants ...T) liveCase {
 		if err != nil {
 			t.Fatalf("select %s: %v", colType, err)
 		}
-		if len(got) != len(wants) {
-			t.Fatalf("%s: got %d rows, want %d", colType, len(got), len(wants))
+		if len(got) != len(ws) {
+			t.Fatalf("%s: got %d rows, want %d", colType, len(got), len(ws))
 		}
-		for i := range wants {
-			same := reflect.DeepEqual(got[i], wants[i])
+		for i := range ws {
+			same := reflect.DeepEqual(got[i], ws[i])
 			if eq != nil {
-				same = eq(got[i], wants[i])
+				same = eq(got[i], ws[i])
 			}
 			if !same {
-				t.Errorf("%s: stored %#v, read back %#v", colType, wants[i], got[i])
+				t.Errorf("%s: stored %#v, read back %#v", colType, ws[i], got[i])
 			}
 		}
 	}
@@ -136,6 +146,8 @@ func liveCases(t *testing.T) map[string]liveCase {
 		"[]int64":   roundTripAll[[]int64](nil, []int64{math.MaxInt64, math.MinInt64}, []int64{}),
 		"[]bool":    roundTripAll[[]bool](nil, []bool{true, false}, []bool{}),
 		"[]float32": roundTripAll[[]float32](nil, []float32{math.MaxFloat32, -1.5}, []float32{}),
+		"[]types.UUID": roundTripAll[[]types.UUID](nil,
+			[]types.UUID{{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0xff}, {}}, []types.UUID{}, []types.UUID(nil)),
 		"[]float64": roundTripAll[[]float64](nil, []float64{math.MaxFloat64, -1.5}, []float64{}),
 		"string (decimal)": roundTripAll[string](nil,
 			"12345678901234567890.123456789", "-0.000000000000000001", "NaN"),
@@ -143,21 +155,21 @@ func liveCases(t *testing.T) map[string]liveCase {
 }
 
 // TestTypeMapping round-trips edge values for every row of the documented
-// type-mapping table through a live PostgreSQL column of the documented type.
-// A row without a live case, or a case without a row, fails.
+// type-mapping table through a live column of the documented type, on
+// PostgreSQL and on SQLite (rows the document marks unsupported or n/a for
+// SQLite are skipped there). A row without a live case, or a case without a row, fails.
 func TestTypeMapping(t *testing.T) {
 	cases := liveCases(t)
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		if d != dialect.Postgres {
-			t.Skipf("no live round trip for %s: the SQLite driver is not part of this build", d)
-		}
 		ctx := context.Background()
-		// hstore is a database-wide extension that migrate's drift checks
-		// would report as unmanaged: keep it out of the shared database.
-		db = testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_typemap_"))
-		for _, ext := range []string{"vector", "hstore"} {
-			if _, err := momo.Exec(ctx, db, "CREATE EXTENSION IF NOT EXISTS "+ext+" SCHEMA public"); err != nil {
-				t.Fatalf("create extension %s: %v", ext, err)
+		if d == dialect.Postgres {
+			// hstore is a database-wide extension that migrate's drift checks
+			// would report as unmanaged: keep it out of the shared database.
+			db = testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_typemap_"))
+			for _, ext := range []string{"vector", "hstore"} {
+				if _, err := momo.Exec(ctx, db, "CREATE EXTENSION IF NOT EXISTS "+ext+" SCHEMA public"); err != nil {
+					t.Fatalf("create extension %s: %v", ext, err)
+				}
 			}
 		}
 		doc := parseDocRows(t)
@@ -173,7 +185,16 @@ func TestTypeMapping(t *testing.T) {
 				continue
 			}
 			// The column type comes from the document itself.
-			colType := strings.ReplaceAll(cells[0], "(N)", "(3)")
+			colType := cells[0]
+			if d == dialect.SQLite {
+				colType = cells[1]
+				if colType == "unsupported" || colType == "n/a" {
+					// The document says no SQLite column is generated for this
+					// row; TestTypeMappingDoc checks the generator agrees.
+					continue
+				}
+			}
+			colType = strings.ReplaceAll(colType, "(N)", "(3)")
 			t.Run(r.goType, func(t *testing.T) { c(t, db, colType) })
 		}
 		for k := range cases {
@@ -227,6 +248,39 @@ func TestTypeMappingNaN(t *testing.T) {
 	back, err := momo.Scalars[float64](ctx, db, "SELECT ?::float8", math.NaN())
 	if err != nil || len(back) != 1 || !math.IsNaN(back[0]) {
 		t.Fatalf("bound NaN = %v, %v", back, err)
+	}
+}
+
+// TestTypeMappingNaNSQLite pins the SQLite edge the document states: SQLite
+// has no NaN, so binding one is ErrValidation (float32, float64 and pointers to
+// them, on the pool and inside a transaction), nothing is stored, and +Inf and
+// -Inf stay legal REAL values.
+func TestTypeMappingNaNSQLite(t *testing.T) {
+	db := testopen.SQLite(t)
+	ctx := context.Background()
+	if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_nan (id INTEGER PRIMARY KEY, v REAL)"); err != nil {
+		t.Fatal(err)
+	}
+	f32, f64 := float32(math.NaN()), math.NaN()
+	for i, v := range []any{math.NaN(), float32(math.NaN()), &f64, &f32} {
+		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_nan (id, v) VALUES (?, ?)", i, v); !errors.Is(err, momo.ErrValidation) {
+			t.Fatalf("insert %T NaN: err = %v, want ErrValidation", v, err)
+		}
+	}
+	if err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		_, err := momo.Exec(ctx, tx, "INSERT INTO tm_nan (id, v) VALUES (?, ?)", 9, math.NaN())
+		return err
+	}); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("insert NaN in a transaction: err = %v, want ErrValidation", err)
+	}
+	for i, v := range []float64{math.Inf(1), math.Inf(-1)} {
+		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_nan (id, v) VALUES (?, ?)", i, v); err != nil {
+			t.Fatalf("insert %v: %v", v, err)
+		}
+	}
+	got, err := momo.Scalars[float64](ctx, db, "SELECT v FROM tm_nan ORDER BY id")
+	if err != nil || len(got) != 2 || !math.IsInf(got[0], 1) || !math.IsInf(got[1], -1) {
+		t.Fatalf("rows = %v, %v; want only +Inf and -Inf", got, err)
 	}
 }
 
