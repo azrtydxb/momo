@@ -83,7 +83,7 @@ const (
 // given schemas. Table-level RLS flags and partition information are read
 // with the tables themselves (inspect.go); partition children are tables
 // carrying PartitionOf.
-func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.Schema, schemas, exclude []string) error {
+func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.Schema, schemas, exclude, only []string) error {
 	var cur *string
 	if err := queryOne(ctx, c, qCurrentSchema, nil, &cur); err != nil {
 		return fmt.Errorf("current schema: %w", err)
@@ -91,7 +91,7 @@ func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.
 	if cur == nil {
 		return fmt.Errorf("current_schema() is NULL: the search_path names no existing schema")
 	}
-	in := &inspector{c: c, current: *cur, managed: schemas, exclude: exclude}
+	in := &inspector{c: c, current: *cur, managed: schemas, exclude: exclude, only: only}
 	if err := in.views(ctx, s); err != nil {
 		return fmt.Errorf("views: %w", err)
 	}

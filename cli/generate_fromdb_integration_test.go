@@ -329,13 +329,23 @@ func TestGenerateFromDBOnlySchemaQualified(t *testing.T) {
 		`CREATE TABLE legacy_only (id bigint PRIMARY KEY)`,
 	})
 	t.Cleanup(func() { execAll(t, dsn, []string{`DROP SCHEMA IF EXISTS app CASCADE`}) })
+	// The test database runs in a schema of its own, which must come first.
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	var current string
+	if err := db.QueryRowContext(context.Background(), `SELECT current_schema()`).Scan(&current); err != nil {
+		t.Fatal(err)
+	}
 	root := copyModule(t, t.TempDir())
 	writeFile(t, filepath.Join(root, "momo.yaml"), `version: 1
 packages:
   - ./models
 dialects: [postgres]
 migrate:
-  schemas: [public, app]
+  schemas: [`+current+`, app]
   exclude: [vector, pgcrypto]
 introspect:
   only: ["app.*"]
