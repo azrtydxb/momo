@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — The two 'exists as written in the plan, failed before the implementation' criteria cannot be met: the plan's literal test bodies use NewCustom(ctx, ...) and a Diff without EnforceNotNull, an API that no longer exists, and the behaviour pre-existed (not_null_staging_test.go, custom_test.go), so no red state can be produced. S-11 is ticked (TestStagedChange, ci-agent run 42776939577); shipped tests are in migrate/staged_integration_test.go. Needs the owner to rewrite the two criteria to the shipped design.
 
 ## Description
 

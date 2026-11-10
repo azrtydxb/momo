@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — The plan's format 0 never existed: the first release wrote format 1 and the shipped design refuses artifacts without format_version (ErrMissingFormatVersion, momo.sum header), so there is no N-1 artifact and no migrate/testdata/format0 fixture to read. Refusal half is covered (TestFormatVersions in schema/load_test.go, TestHistoryFormatVersion, TestReleaseConfig). Needs the owner to rewrite the criteria or wait for a format 2.
 
 ## Description
 
