@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/azrtydxb/momo/compare/v0.5.0...v0.6.0) (2026-11-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* `UpdateQuery.From` and `DeleteQuery.Using` refuse more statements, because the guard now follows `Or`, `Not` and `JoinSQL`. A model that embeds `momo.View` no longer produces a table, so `momo migrate diff` plans a `DROP TABLE` if that table exists. Generated OpenAPI error bodies use the key `error`, and a create or PUT body uses the new `<Model>Input` schema. A cancelled request answers 499, `Canceled` or `CANCELED` instead of 500 or `Internal`. See docs/upgrading.md, "Upgrading to 0.6.0".
+
+### Features
+
+* sprint 7 generated servers, view models and guard fixes ([#80](https://github.com/azrtydxb/momo/issues/80)) ([f044483](https://github.com/azrtydxb/momo/commit/f044483e7f75d694a9225b2dcf2971d97a7cdbcb))
+
 ## [0.5.0](https://github.com/azrtydxb/momo/compare/v0.4.0...v0.5.0) (2026-11-10)
 
 _Momo now carries everything Kuvryn Orbit needs to move onto it: composite foreign keys, DML in CTEs, raw multi-column queries, database-defaulted columns and more row-lock modes. It also adds hybrid search, EXPLAIN and slow-query tooling, OpenTelemetry in the new `otelmomo` module, and a `cli` package for building your own `momo` binary. Upgrading needs a regenerate and one advisory call-site check: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.5.0/docs/upgrading.md). [Changes since 0.4.0](https://github.com/azrtydxb/momo/compare/v0.4.0...v0.5.0)._
