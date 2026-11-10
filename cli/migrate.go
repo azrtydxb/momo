@@ -389,7 +389,7 @@ func (l *cli) databaseURL() (string, error) {
 // when TLS is not enforced for a remote host.
 func (l *cli) noteURL(u string) {
 	l.secrets = append(l.secrets, u)
-	if w := TLSWarning(u, l.env); w != "" {
+	if w := tlsWarning(u, l.env); w != "" {
 		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))
 	}
 	if parsed, err := url.Parse(u); err == nil && parsed.User != nil {

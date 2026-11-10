@@ -131,6 +131,9 @@ func (u UpdateQuery[T]) versioned() bool {
 // plan resolves the SET assignments and WHERE predicates, applying the
 // guardrails. It does not render.
 func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
+	if err := viewWriteErr("update", u.meta); err != nil {
+		return nil, nil, err
+	}
 	if u.meta.Table == "" {
 		return nil, nil, u.fail(ErrValidation, errors.New("model has no table"))
 	}

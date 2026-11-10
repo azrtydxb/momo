@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// TLSWarning returns a non-empty warning when the connection string raw may
+// tlsWarning returns a non-empty warning when the connection string raw may
 // reach a remote host without TLS. That is the case when the effective sslmode
 // is disable, allow or prefer, or is not set at all (libpq then defaults to
 // prefer, which falls back to plaintext). raw is a postgres:// URL or a
@@ -20,7 +20,7 @@ import (
 // recommends verify-full, the only mode that checks the server's name.
 // It names the hosts only, never the URL, so it carries no credentials.
 // Redaction lives in migrate.RedactURLs; this file adds no second copy.
-func TLSWarning(raw string, env func(string) string) string {
+func tlsWarning(raw string, env func(string) string) string {
 	host, hostaddr, mode, ok := connHostsAndMode(raw)
 	if !ok {
 		return ""

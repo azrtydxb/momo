@@ -38,7 +38,7 @@ func TestCLITLSWarning(t *testing.T) {
 		`password='a\\' host=db.example.com sslmode=disable`,
 	}
 	for _, u := range warn {
-		w := TLSWarning(u, noEnv)
+		w := tlsWarning(u, noEnv)
 		if !strings.Contains(w, "TLS") || !strings.Contains(w, "verify-full") {
 			t.Errorf("want TLS warning recommending verify-full for %q, got %q", u, w)
 		}
@@ -73,7 +73,7 @@ func TestCLITLSWarning(t *testing.T) {
 		"",
 	}
 	for _, u := range quiet {
-		if w := TLSWarning(u, noEnv); w != "" {
+		if w := tlsWarning(u, noEnv); w != "" {
 			t.Errorf("no warning wanted for %q, got %q", u, w)
 		}
 	}
@@ -82,24 +82,24 @@ func TestCLITLSWarning(t *testing.T) {
 func TestCLITLSWarningUsesLibpqEnvironment(t *testing.T) {
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 	// PGSSLMODE supplies the mode when the string has none.
-	if w := TLSWarning("postgres://app:x@db.example.com/app", env(map[string]string{"PGSSLMODE": "disable"})); !strings.Contains(w, "sslmode=disable") {
+	if w := tlsWarning("postgres://app:x@db.example.com/app", env(map[string]string{"PGSSLMODE": "disable"})); !strings.Contains(w, "sslmode=disable") {
 		t.Errorf("PGSSLMODE=disable must warn: %q", w)
 	}
-	if w := TLSWarning("host=db.example.com dbname=app", env(map[string]string{"PGSSLMODE": "verify-full"})); w != "" {
+	if w := tlsWarning("host=db.example.com dbname=app", env(map[string]string{"PGSSLMODE": "verify-full"})); w != "" {
 		t.Errorf("PGSSLMODE=verify-full must be quiet: %q", w)
 	}
 	// An explicit sslmode wins over PGSSLMODE.
-	if w := TLSWarning("host=db.example.com sslmode=verify-full", env(map[string]string{"PGSSLMODE": "disable"})); w != "" {
+	if w := tlsWarning("host=db.example.com sslmode=verify-full", env(map[string]string{"PGSSLMODE": "disable"})); w != "" {
 		t.Errorf("an explicit sslmode wins over PGSSLMODE: %q", w)
 	}
 	// PGHOST supplies the host when the string has none.
-	if w := TLSWarning("dbname=app", env(map[string]string{"PGHOST": "db.example.com"})); !strings.Contains(w, "db.example.com") {
+	if w := tlsWarning("dbname=app", env(map[string]string{"PGHOST": "db.example.com"})); !strings.Contains(w, "db.example.com") {
 		t.Errorf("PGHOST must supply the remote host: %q", w)
 	}
-	if w := TLSWarning("dbname=app", env(map[string]string{"PGHOSTADDR": "192.0.2.7"})); !strings.Contains(w, "192.0.2.7") {
+	if w := tlsWarning("dbname=app", env(map[string]string{"PGHOSTADDR": "192.0.2.7"})); !strings.Contains(w, "192.0.2.7") {
 		t.Errorf("PGHOSTADDR must supply the remote host: %q", w)
 	}
-	if w := TLSWarning("dbname=app", env(map[string]string{"PGHOST": "/var/run/postgresql"})); w != "" {
+	if w := tlsWarning("dbname=app", env(map[string]string{"PGHOST": "/var/run/postgresql"})); w != "" {
 		t.Errorf("a socket PGHOST is local: %q", w)
 	}
 }

@@ -189,6 +189,9 @@ func emitModelMeta(b *strings.Builder, m *Model, t *schema.Table, lower string) 
 		}
 		w("},\n")
 	}
+	if m.IsView {
+		w("View: true,\n")
+	}
 	w("%s", hooksLiteral(m.GoName, m.Hooks))
 	w("}\n\n")
 	w("var %sTable = %s\n", lower, literal(reflect.ValueOf(*t)))

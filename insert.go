@@ -82,7 +82,11 @@ type InsertQuery[T any] struct {
 // Insert starts an INSERT for model T. Use Model or Models to write whole
 // models, or Values to write explicit columns.
 func Insert[T any, PT Modeler[T]](q Querier) InsertQuery[T] {
-	return InsertQuery[T]{q: q, meta: metaOf[T, PT]()}
+	i := InsertQuery[T]{q: q, meta: metaOf[T, PT]()}
+	if err := viewWriteErr("insert", i.meta); err != nil {
+		i.i.err = err
+	}
+	return i
 }
 
 func (q InsertQuery[T]) fail(err error) InsertQuery[T] {

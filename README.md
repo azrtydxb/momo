@@ -472,6 +472,10 @@ work the same way. See [docs/projections.md](docs/projections.md),
   writes the models and the init snapshot, so an existing schema is adopted
   without writing the structs by hand; see
   [adopting an existing database](docs/migrations.md#7-adopting-an-existing-database).
+- A team with its own generator plugins builds its own binary: a `main` that
+  calls `cli.Main(plugins...)` (package `github.com/azrtydxb/momo/cli`) gets
+  every command, flag and exit code of `momo`, and the plugins are enabled by
+  name in `momo.yaml`.
 - `momo migrate diff <name>` writes a migration for the difference between the
   models and the latest snapshot. It refuses destructive changes unless you
   pass `--allow-destructive`.

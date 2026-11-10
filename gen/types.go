@@ -97,6 +97,9 @@ type Model struct {
 	// Hooks names the detected hook methods (BeforeInsert, BeforeUpdate,
 	// BeforeDelete, AfterLoad).
 	Hooks map[string]bool
+	// IsView is set for a model that embeds momo.View: it maps a database
+	// view and Meta.View makes every write builder refuse it.
+	IsView bool
 
 	named *types.Named
 }
