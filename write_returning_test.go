@@ -74,7 +74,7 @@ func TestWriteOneUnsupportedOnMySQL(t *testing.T) {
 	if _, err := momo.Update[suite.Document](my).Set(suite.DocTitle.Set("x")).Where(suite.DocID.Eq(1)).One(ctx); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("update One err = %v, want ErrUnsupported", err)
 	}
-	if _, err := momo.Delete[suite.Document](my).Where(suite.DocID.Eq(1)).One(ctx); !errors.Is(err, momo.ErrUnsupported) {
+	if _, err := momo.ForceDelete[suite.Document](my).Where(suite.DocID.Eq(1)).One(ctx); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("delete One err = %v, want ErrUnsupported", err)
 	}
 }

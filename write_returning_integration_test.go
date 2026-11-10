@@ -128,7 +128,7 @@ func TestWriteOneReturnsTheRow(t *testing.T) {
 			t.Fatalf("update One = %+v", up)
 		}
 
-		del, err := momo.Delete[suite.Document](db).Where(suite.DocID.Eq(got.ID)).
+		del, err := momo.ForceDelete[suite.Document](db).Where(suite.DocID.Eq(got.ID)).
 			Returning(suite.DocID, suite.DocTitle).One(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -143,6 +143,9 @@ func TestWriteOneNotFound(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
+		if _, err := momo.Exec(ctx, db, "CREATE UNIQUE INDEX one_title_uq ON documents (tenant_id, title)"); err != nil {
+			t.Fatal(err)
+		}
 		first, err := momo.Insert[suite.Document](db).
 			Values(suite.DocTenantID.Set(1), suite.DocTitle.Set("a")).One(ctx)
 		if err != nil {
@@ -151,8 +154,8 @@ func TestWriteOneNotFound(t *testing.T) {
 
 		// ON CONFLICT DO NOTHING on an existing id returns no row.
 		_, err = momo.Insert[suite.Document](db).
-			Values(suite.DocID.Set(first.ID), suite.DocTenantID.Set(1), suite.DocTitle.Set("b")).
-			OnConflict(suite.DocID).DoNothing().ReturningAll().One(ctx)
+			Values(suite.DocTenantID.Set(1), suite.DocTitle.Set("a")).
+			OnConflict(suite.DocTenantID, suite.DocTitle).DoNothing().ReturningAll().One(ctx)
 		if !errors.Is(err, momo.ErrNotFound) {
 			t.Fatalf("DO NOTHING insert err = %v, want ErrNotFound", err)
 		}
@@ -164,7 +167,7 @@ func TestWriteOneNotFound(t *testing.T) {
 			t.Fatalf("guarded update err = %v, want ErrNotFound", err)
 		}
 
-		_, err = momo.Delete[suite.Document](db).Where(suite.DocID.Eq(first.ID + 1000)).One(ctx)
+		_, err = momo.ForceDelete[suite.Document](db).Where(suite.DocID.Eq(first.ID + 1000)).One(ctx)
 		if !errors.Is(err, momo.ErrNotFound) {
 			t.Fatalf("delete err = %v, want ErrNotFound", err)
 		}
@@ -183,7 +186,7 @@ func TestWriteOneTooManyRows(t *testing.T) {
 		if !errors.Is(err, momo.ErrTooManyRows) {
 			t.Fatalf("multi-row update err = %v, want ErrTooManyRows", err)
 		}
-		_, err = momo.Delete[suite.Document](db).Where(suite.DocTenantID.Eq(3)).One(ctx)
+		_, err = momo.ForceDelete[suite.Document](db).Where(suite.DocTenantID.Eq(3)).One(ctx)
 		if !errors.Is(err, momo.ErrTooManyRows) {
 			t.Fatalf("multi-row delete err = %v, want ErrTooManyRows", err)
 		}
