@@ -1117,11 +1117,11 @@ res, err := momo.Insert[models.Meter](q).
   calls AND. MySQL: both are `ErrUnsupported`. `Excluded()` in the target
   predicate is `ErrValidation` (use it in the `DoUpdate` `Where`). On SQLite the
   target predicate renders bool, integer, finite float and string values inline
-  (`"live" = 1`), because SQLite matches it against the index text; a value
+  (`"live" = 1`), because SQLite matches the expression, so write the same literal in the index; a value
   that cannot be inlined (time, bytes, pointer, NULL, NaN, a string with a NUL
   byte) is `ErrValidation`, and a type with `Value()` is inlined as that value.
-  This is golden-tested; the live SQLite integration test for it is skipped for now, so check it against your own SQLite database; `momo.SQL("live = 1")`
-  is the proven fallback. Write the literals in the index exactly as Momo renders them: integers as `2`, floats in plain decimal with `.0` for whole numbers (`2.0`) for magnitudes from 1e-6 up to 1e21, and exponent form (`1e-07`, `1e+21`) outside that range; otherwise use `momo.SQL`. The values appear in the SQL text, so they show up in
+  This is golden-tested and run against a real SQLite partial unique index
+  (write the index as `WHERE live = 1`). Write the literals in the index exactly as Momo renders them: integers as `2`, floats in plain decimal with `.0` for whole numbers (`2.0`) for magnitudes from 1e-6 up to 1e21, and exponent form (`1e-07`, `1e+21`) outside that range; otherwise use `momo.SQL`. The values appear in the SQL text, so they show up in
   logs and traces.
 - Mixing zero and non-zero identity values in one `Models` upsert is `ErrValidation`.
   Explicit identity or serial values do not advance the sequence: `setval` it yourself.
