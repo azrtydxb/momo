@@ -104,7 +104,7 @@ func (r *QueryRegistry) Compile(d dialect.Name) ([]RegisteredQuery, error) {
 		r.mu.Unlock()
 		c := build(q)
 		if c == nil {
-			return nil, fmt.Errorf("momo: registered query %q (%s): the builder returned nil", n, d)
+			return nil, validation("registry", "", "registered query %q (%s): the builder returned nil", n, d)
 		}
 		sql, err := c.SQL()
 		if err != nil {
