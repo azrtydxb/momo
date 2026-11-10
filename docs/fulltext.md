@@ -108,8 +108,9 @@ still receives the real values.
 
 ## Hybrid ranking: vector plus text
 
-Momo has no built-in fusion step (reciprocal rank fusion is not built). Combine
-the two signals in one score with the typed arithmetic helpers. The cosine
+For reciprocal rank fusion of the two signals, use `momo.HybridSearch` (see
+[hybrid search](vectors.md#hybrid-search)). To weigh the signals yourself,
+combine them in one score with the typed arithmetic helpers. The cosine
 distance is lower for better matches and the text rank is higher, so subtract a
 weighted rank from the distance and order ascending:
 

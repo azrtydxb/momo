@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // DeleteQuery builds a DELETE of one model table. It is a value: every
@@ -32,12 +34,47 @@ type DeleteQuery[T any] struct {
 	// extra holds the predicates interceptors added; plan appends them after
 	// the unfiltered-mutation guard, so they never count as a caller filter.
 	extra []Predicate
+	// with holds the WITH clause; using the USING source (DELETE ... USING).
+	with  []cte
+	using TableSource
 }
 
 // Delete starts a DELETE from T's table.
 func Delete[T any, PT Modeler[T]](q Querier) DeleteQuery[T] {
 	return DeleteQuery[T]{q: q, meta: metaOf[T, PT]()}
 }
+
+// With prefixes the statement with a common table expression; see
+// UpdateQuery.With for the allowed bodies and the dialect rules (MariaDB
+// refuses the clause with ErrUnsupported).
+func (d DeleteQuery[T]) With(name string, q Subquery, cols ...string) DeleteQuery[T] {
+	d.with = addCTE(d.with, name, q, cols, false)
+	return d
+}
+
+// WithRecursive is With for a recursive CTE.
+func (d DeleteQuery[T]) WithRecursive(name string, q Subquery, cols ...string) DeleteQuery[T] {
+	d.with = addCTE(d.with, name, q, cols, true)
+	return d
+}
+
+// Using adds a second source, rendering DELETE FROM t USING src WHERE ...: the
+// WHERE may reference src's columns. src is a table, aliased table, CTE or
+// FromSubquery, as in a join; join it to the target in Where. Calling Using
+// again replaces the source.
+//
+// PostgreSQL renders DELETE ... USING. MySQL and MariaDB render the
+// multi-table form DELETE t FROM t, src WHERE .... SQLite has no such form and
+// fails with ErrUnsupported (use a subquery in Where). Soft-deleted rows of
+// src are not filtered: add that predicate to Where. Interceptors apply to the
+// target table only, not to src.
+//
+// With a Using source the unfiltered-mutation guard is stricter: at least one
+// Where predicate must reference a column of the target table, otherwise the
+// statement joins every target row to src and fails with ErrUnfilteredMutation
+// unless AllRows confirms it. A raw SQL fragment does not count as such a
+// reference.
+func (d DeleteQuery[T]) Using(src TableSource) DeleteQuery[T] { d.using = src; return d }
 
 // Where adds predicates combined with AND.
 func (d DeleteQuery[T]) Where(ps ...Predicate) DeleteQuery[T] {
@@ -95,6 +132,11 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 	if !hasEffectiveFilter(where) && !d.allRows {
 		return nil, d.fail(ErrUnfilteredMutation, nil)
 	}
+	if d.using != nil && !d.allRows && !referencesTable(d.q.Dialect(), where, d.meta.Table) {
+		// Without a condition on the target, USING is a cross join and every
+		// target row is deleted.
+		return nil, d.fail(ErrUnfilteredMutation, errors.New("with Using, Where must reference the target table (or confirm with AllRows)"))
+	}
 	return append(where, d.extra...), nil
 }
 
@@ -127,24 +169,80 @@ func (d DeleteQuery[T]) compileSQL() (Compiled, error) {
 	if d.q == nil {
 		return Compiled{}, noQuerier("delete", d.meta.Table)
 	}
+	return compile(d.q.Dialect(), d.render)
+}
+
+func (DeleteQuery[T]) isDML() {}
+
+// isSubquery lets a DELETE be the body of a WITH clause (PostgreSQL only).
+func (DeleteQuery[T]) isSubquery() {}
+
+// AppendSQL renders the statement in parentheses as a WITH clause body. It
+// runs the handle's interceptors with a background context, as SQL does, but
+// not the beforeWrite checks of Exec. Only PostgreSQL accepts the result.
+func (d DeleteQuery[T]) AppendSQL(b *Builder) {
+	if d.q == nil {
+		b.SetErr(noQuerier("delete", d.meta.Table))
+		return
+	}
+	d, err := d.intercepted(context.Background())
+	if err != nil {
+		b.SetErr(err)
+		return
+	}
+	b.writeByte('(')
+	d.render(b)
+	b.writeByte(')')
+}
+
+// render writes the DELETE statement; interceptors already ran.
+func (d DeleteQuery[T]) render(b *Builder) {
 	where, err := d.plan()
 	if err != nil {
-		return Compiled{}, err
+		b.SetErr(err)
+		return
+	}
+	if d.using != nil && b.d.Name == dialect.SQLite {
+		b.unsupported("DELETE ... USING")
+		return
 	}
 	target := TableRef{Name: d.meta.Table, Schema: d.meta.Schema}
-	return compile(d.q.Dialect(), func(b *Builder) {
-		// The target table is the statement's scope, so a correlated
-		// subquery in WHERE may reference it.
-		b.withScope([]string{target.Qualifier()}, func() {
-			b.WriteString("DELETE FROM ")
-			target.appendFrom(b)
-			if len(where) > 0 {
-				b.WriteString(" WHERE ")
-				appendAnd(b, where)
+	names := append(cteNames(d.with), target.Qualifier())
+	if q, ok := d.using.(interface{ Qualifier() string }); ok {
+		names = append(names, q.Qualifier())
+	}
+	mysql := b.d.Name == dialect.MySQL
+	// The target table and USING source are the statement's scope, so a
+	// correlated subquery in WHERE may reference them.
+	b.withScope(names, func() {
+		if len(d.with) > 0 && b.d.Flavor == dialect.FlavorMariaDB {
+			// Not verified against MariaDB, so refused rather than claimed.
+			b.unsupported("WITH before DELETE on MariaDB")
+			return
+		}
+		writeWithClause(b, d.with)
+		b.WriteString("DELETE ")
+		if d.using != nil && mysql {
+			// Multi-table DELETE names the rows' table before FROM.
+			b.Ident(target.Qualifier())
+			b.writeByte(' ')
+		}
+		b.WriteString("FROM ")
+		target.appendFrom(b)
+		if d.using != nil {
+			if mysql {
+				b.WriteString(", ")
+			} else {
+				b.WriteString(" USING ")
 			}
-			renderReturning(b, d.meta, d.returning, func(col string) error {
-				return d.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, d.meta.Table))
-			})
+			d.using.appendFrom(b)
+		}
+		if len(where) > 0 {
+			b.WriteString(" WHERE ")
+			appendAnd(b, where)
+		}
+		renderReturning(b, d.meta, d.returning, func(col string) error {
+			return d.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, d.meta.Table))
 		})
 	})
 }

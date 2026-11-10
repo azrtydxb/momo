@@ -78,7 +78,9 @@ PostgreSQL version and the pgvector version. The database image is
 `make db-up` starts PostgreSQL with pgvector. Then `make bench` runs the whole
 suite ten times per benchmark and writes `bench/results/` under a directory named
 by UTC time, operating system and architecture, with `env.json`, `versions.txt`,
-`codesize.json`, `raw.txt` and `summary.txt`. `make bench-suite-smoke` runs one
+`codesize.json`, `raw.txt` and `summary.txt`, plus `vector-encoding.txt` (the
+`BenchmarkVectorEncoding` run of text against binary pgx vector codecs) when a
+database is configured. `make bench-suite-smoke` runs one
 iteration of everything and is what CI uses. `make bench-generate` regenerates
 the Momo metadata and the Ent client.
 
