@@ -1,6 +1,6 @@
 # Supported versions
 
-What Momo v0.4.0 is built and tested against. "Tested" means a job in <!-- x-release-please-version -->
+What Momo v0.5.0 is built and tested against. "Tested" means a job in <!-- x-release-please-version -->
 `.github/workflows/ci.yml` runs it. Anything not listed there is untested, not
 necessarily broken.
 
@@ -9,8 +9,8 @@ necessarily broken.
 | Item        | Value                                                                      |
 | ----------- | -------------------------------------------------------------------------- |
 | Module path | `github.com/azrtydxb/momo`                                                 |
-| Version     | v0.4.0 (tags use a `v` prefix) <!-- x-release-please-version -->           |
-| Install     | `go get github.com/azrtydxb/momo@v0.4.0` <!-- x-release-please-version --> |
+| Version     | v0.5.0 (tags use a `v` prefix) <!-- x-release-please-version -->           |
+| Install     | `go get github.com/azrtydxb/momo@v0.5.0` <!-- x-release-please-version --> |
 | CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path) |
 
 ## Databases
@@ -121,7 +121,7 @@ and the allocation gate (`make bench-gate`).
 
 | Item                | Statement                                                                                                                                                                                                                     |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pre-1.0             | the README states: "v0.4.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version -->                                                                                                         |
+| Pre-1.0             | the README states: "v0.5.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version -->                                                                                                         |
 | Versioning          | release-please with `bump-minor-pre-major: true` and Conventional Commits; breaking changes are marked `feat!:` or a `BREAKING CHANGE:` footer (CONTRIBUTING)                                                                 |
 | Deprecation process | none documented                                                                                                                                                                                                               |
 | Security fixes      | latest minor only (`SECURITY.md`)                                                                                                                                                                                             |
