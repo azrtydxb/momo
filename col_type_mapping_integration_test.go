@@ -136,6 +136,8 @@ func liveCases(t *testing.T) map[string]liveCase {
 		"[]int64":   roundTripAll[[]int64](nil, []int64{math.MaxInt64, math.MinInt64}, []int64{}),
 		"[]bool":    roundTripAll[[]bool](nil, []bool{true, false}, []bool{}),
 		"[]float32": roundTripAll[[]float32](nil, []float32{math.MaxFloat32, -1.5}, []float32{}),
+		"[]types.UUID": roundTripAll[[]types.UUID](nil,
+			[]types.UUID{{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0xff}, {}}, []types.UUID{}, []types.UUID(nil)),
 		"[]float64": roundTripAll[[]float64](nil, []float64{math.MaxFloat64, -1.5}, []float64{}),
 		"string (decimal)": roundTripAll[string](nil,
 			"12345678901234567890.123456789", "-0.000000000000000001", "NaN"),

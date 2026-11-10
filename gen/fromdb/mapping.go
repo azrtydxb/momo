@@ -74,6 +74,7 @@ var postgresArrays = map[string]string{
 	"boolean":           "[]bool",
 	"text":              "[]string",
 	"character varying": "[]string",
+	"uuid":              "[]types.UUID",
 }
 
 // postgresVectors maps the pgvector family to its Go type.
@@ -131,7 +132,11 @@ func mapPostgres(s string) (GoType, bool) {
 	if elem, ok := strings.CutSuffix(s, "[]"); ok {
 		base, _, _ := splitType(elem)
 		if g, ok := postgresArrays[base]; ok {
-			return GoType{Expr: g, Nilable: true}, true
+			out := GoType{Expr: g, Nilable: true}
+			if strings.Contains(g, "types.") {
+				out.Import = importTypes
+			}
+			return out, true
 		}
 		return GoType{}, false
 	}

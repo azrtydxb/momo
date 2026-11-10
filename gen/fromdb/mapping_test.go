@@ -31,6 +31,7 @@ func TestGenerateFromDBMapping(t *testing.T) {
 		{dialect.Postgres, "halfvec(8)", "vector.HalfVector", 0, 8},
 		{dialect.Postgres, "text[]", "[]string", 0, 0},
 		{dialect.Postgres, "bigint[]", "[]int64", 0, 0},
+		{dialect.Postgres, "uuid[]", "[]types.UUID", 0, 0},
 		{dialect.Postgres, "bytea", "[]byte", 0, 0},
 		{dialect.SQLite, "INTEGER", "int64", 0, 0},
 		{dialect.SQLite, "TEXT", "string", 0, 0},
@@ -51,7 +52,7 @@ func TestGenerateFromDBMapping(t *testing.T) {
 }
 
 func TestGenerateFromDBUnmapped(t *testing.T) {
-	for _, in := range []string{"geometry(point,4326)", "inet", "interval", "money", "bit varying(8)", "uuid[]", "time with time zone"} {
+	for _, in := range []string{"geometry(point,4326)", "inet", "interval", "money", "bit varying(8)", "inet[]", "time with time zone"} {
 		_, err := MapType(dialect.Postgres, in)
 		if !errors.Is(err, ErrUnmapped) {
 			t.Errorf("%q: want ErrUnmapped, got %v", in, err)
