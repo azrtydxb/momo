@@ -16,34 +16,81 @@ func (q InsertQuery[T]) dbDefaultCol(ci int) bool {
 		ci != q.meta.CreatedAt && ci != q.meta.UpdatedAt
 }
 
-// dbDefaultRow reports whether the insert leaves column ci of model m to the
-// database default: the column is tagged dbdefault, not listed in Omit (an
-// omitted column keeps its Go-side default), and the field holds its zero
-// value.
-func (q InsertQuery[T]) dbDefaultRow(m *T, ci int) bool {
-	return q.dbDefaultCol(ci) && !slices.Contains(q.i.omit, q.meta.Columns[ci].Name) &&
-		dbDefaultZero(q.meta.Value(m, ci))
+// dbdPlan records, once per statement, which cells of a model insert take the
+// database default: rows[r][ci] is true when model r leaves column ci to it,
+// count[ci] is the number of such rows. It is nil-free: a statement without a
+// dbdefault column has empty rows and a zero count everywhere.
+type dbdPlan struct {
+	rows  [][]bool
+	count []int
+}
+
+// withDBD returns q with its dbdefault plan computed. A column listed in Omit
+// keeps its Go-side default and never takes the database default.
+func (q InsertQuery[T]) withDBD() InsertQuery[T] {
+	if q.dbd != nil {
+		return q
+	}
+	p := &dbdPlan{count: make([]int, len(q.meta.Columns))}
+	var cols []int
+	for ci := range q.meta.Columns {
+		if q.dbDefaultCol(ci) && !slices.Contains(q.i.omit, q.meta.Columns[ci].Name) {
+			cols = append(cols, ci)
+		}
+	}
+	if len(cols) > 0 {
+		p.rows = make([][]bool, len(q.models))
+		for r := range q.models {
+			row := make([]bool, len(q.meta.Columns))
+			for _, ci := range cols {
+				if dbDefaultZero(q.meta.Value(&q.models[r], ci)) {
+					row[ci] = true
+					p.count[ci]++
+				}
+			}
+			p.rows[r] = row
+		}
+	}
+	q.dbd = p
+	return q
+}
+
+// slice returns the plan of models lo..hi, for a chunk of a bulk insert.
+func (p *dbdPlan) slice(lo, hi int) *dbdPlan {
+	if p == nil {
+		return nil
+	}
+	out := &dbdPlan{count: make([]int, len(p.count))}
+	if p.rows == nil {
+		return out
+	}
+	out.rows = p.rows[lo:hi]
+	for _, row := range out.rows {
+		for ci, set := range row {
+			if set {
+				out.count[ci]++
+			}
+		}
+	}
+	return out
+}
+
+// dbDefaultRow reports whether the insert leaves column ci of model r to the
+// database default.
+func (q InsertQuery[T]) dbDefaultRow(r, ci int) bool {
+	p := q.withDBD().dbd
+	return r < len(p.rows) && p.rows[r][ci]
 }
 
 // dbDefaultCount counts the models whose column ci takes the database default.
-func (q InsertQuery[T]) dbDefaultCount(ci int) int {
-	if !q.dbDefaultCol(ci) {
-		return 0
-	}
-	n := 0
-	for r := range q.models {
-		if q.dbDefaultRow(&q.models[r], ci) {
-			n++
-		}
-	}
-	return n
-}
+func (q InsertQuery[T]) dbDefaultCount(ci int) int { return q.withDBD().dbd.count[ci] }
 
 // dbDefaultDecision reports whether the INSERT column list drops column ci
 // because every row takes its database default. It fails with ErrUnsupported
-// when the dialect cannot read the stored value back (no RETURNING), and when
-// some rows set the column and others do not on a statement that cannot put
-// DEFAULT in the VALUES list of those rows (SQLite, Unnest, Copy).
+// when the dialect cannot read the stored value back (no RETURNING), when Copy
+// would leave the column to the database without a read-back, and when some
+// rows set the column and others do not on a statement that cannot put DEFAULT
+// in the VALUES list of those rows (SQLite, Unnest, Copy).
 func (q InsertQuery[T]) dbDefaultDecision(ci int) (drop bool, err error) {
 	n := q.dbDefaultCount(ci)
 	if n == 0 {
@@ -56,13 +103,17 @@ func (q InsertQuery[T]) dbDefaultDecision(ci int) (drop bool, err error) {
 				Err: fmt.Errorf("dbdefault column %q is zero and %s cannot read the stored value back (no RETURNING): set a value, or leave the column out with Omit and read it yourself", name, d.Name)}
 		}
 	}
+	if q.i.noRowDefault {
+		return false, &Error{Kind: ErrUnsupported, Op: "copy", Table: q.meta.Table, Column: name,
+			Err: fmt.Errorf("dbdefault column %q is zero and Copy returns no rows to read the stored value back: set a value, or use Models", name)}
+	}
 	if n == len(q.models) {
 		return true, nil
 	}
 	why := ""
 	switch {
-	case q.i.unnest || q.i.noRowDefault:
-		why = "this statement cannot put DEFAULT in a multi-row VALUES list"
+	case q.i.unnest:
+		why = "Unnest cannot put DEFAULT in a row"
 	case q.q != nil && !q.q.Dialect().DefaultInValues:
 		why = string(q.q.Dialect().Name) + " cannot put DEFAULT in a multi-row VALUES list"
 	}
@@ -89,11 +140,21 @@ func (q InsertQuery[T]) dbDefaultReadBack() []int {
 	return out
 }
 
+// later runs apply once the statement (all chunks) has committed when the
+// query collects write-backs, and at once otherwise.
+func (q InsertQuery[T]) later(apply func()) {
+	if q.pend != nil {
+		*q.pend = append(*q.pend, apply)
+		return
+	}
+	apply()
+}
+
 // execReadBack runs a model insert that leaves dbdefault columns to the
 // database, asking RETURNING for them (and for the generated key on MariaDB),
 // and writes the stored values into the caller's models once the statement has
 // committed. Rows are matched by position; when a conflict action skipped some
-// rows (DO NOTHING) the count differs and no model is touched.
+// rows (DO NOTHING) the count differs and the insert fails, see execSingle.
 func (q InsertQuery[T]) execReadBack(ctx context.Context, cols []int) (Result, error) {
 	idCol := -1
 	if q.wantsGeneratedKey() {
@@ -144,23 +205,19 @@ func (q InsertQuery[T]) execReadBack(ctx context.Context, cols []int) (Result, e
 		}
 	}
 	if len(got) != len(q.models) {
-		return res, nil
+		return Result{}, &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table,
+			Err: fmt.Errorf("the statement returned %d of %d rows (ON CONFLICT skipped some), so the stored dbdefault values cannot be matched to the models: give those columns a value, or drop DoNothing; the write is rolled back unless the handle is a pinned OnConn one", len(got), len(q.models))}
 	}
 	for r := range got {
 		if q.back[r] == nil {
 			continue
 		}
 		for _, ci := range all {
-			if ci != idCol && !q.dbDefaultRow(&q.models[r], ci) {
+			if ci != idCol && !q.dbDefaultRow(r, ci) {
 				continue
 			}
 			dst, src, col := q.back[r], &got[r], ci
-			apply := func() { copyField(q.meta, dst, src, col) }
-			if q.pend != nil {
-				*q.pend = append(*q.pend, apply) // after the statement commits
-			} else {
-				apply()
-			}
+			q.later(func() { copyField(q.meta, dst, src, col) })
 		}
 	}
 	return res, nil

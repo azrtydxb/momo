@@ -28,6 +28,7 @@ func (q InsertQuery[T]) render(b *Builder) {
 		b.SetErr(err)
 		return
 	}
+	q = q.withDBD()
 	b.withScope([]string{q.meta.Table}, func() { q.renderStatement(b) })
 }
 
@@ -208,12 +209,12 @@ func (q InsertQuery[T]) writeModelRows(b *Builder, p insertPlan[T]) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			if q.dbDefaultRow(&q.models[r], ci) {
+			if q.dbDefaultRow(r, ci) {
 				b.WriteString("DEFAULT") // a dbdefault column of a row that sets others
 			} else if p.vals != nil {
 				b.argFor(q.meta.Columns[ci].Flags, p.vals[r][i])
 			} else {
-				b.argFor(q.meta.Columns[ci].Flags, q.modelValue(&q.models[r], ci, p.now, p.fp))
+				b.argFor(q.meta.Columns[ci].Flags, q.modelValue(r, ci, p.now, p.fp))
 			}
 		}
 		b.writeByte(')')
@@ -393,11 +394,12 @@ func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) (
 // modelValue is the value a model insert binds for column ci: the field value,
 // except that an unset created-at or updated-at field takes the statement time
 // and an omitted column takes its Go-side default.
-func (q InsertQuery[T]) modelValue(m *T, ci int, now time.Time, fp fieldPlan[T]) any {
+func (q InsertQuery[T]) modelValue(r, ci int, now time.Time, fp fieldPlan[T]) any {
+	m := &q.models[r]
 	if f, ok := fp.def[ci]; ok && slices.Contains(q.i.omit, q.meta.Columns[ci].Name) {
 		return f(m)
 	}
-	if q.dbDefaultRow(m, ci) {
+	if q.dbDefaultRow(r, ci) {
 		return nil // DEFAULT: validators see the same nil as for an omitted column
 	}
 	v := q.meta.Value(m, ci)
@@ -516,7 +518,7 @@ func (q InsertQuery[T]) modelValues(fp fieldPlan[T], cols []int, now time.Time) 
 	for r := range q.models {
 		row := make([]any, len(cols))
 		for i, ci := range cols {
-			row[i] = q.modelValue(&q.models[r], ci, now, fp)
+			row[i] = q.modelValue(r, ci, now, fp)
 		}
 		vals[r] = row
 	}

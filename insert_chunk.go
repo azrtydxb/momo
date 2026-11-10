@@ -153,6 +153,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		return nil, err
 	}
 	q.idsDone = true
+	q = q.withDBD() // after hooks and ids: the plan is computed once and sliced per chunk
 	one := []InsertQuery[T]{q}
 	if q.i.unnest {
 		return one, nil // one array parameter per column: the bind count does not grow with the rows
@@ -193,6 +194,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	}
 	probe := r
 	probe.models = r.models[:1]
+	probe.dbd = r.dbd.slice(0, 1)
 	if r.pre != nil {
 		probe.pre = r.pre[:1]
 	}
@@ -202,7 +204,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	}
 	bound := 0 // cells the probe row binds: a dbdefault cell writes DEFAULT, no parameter
 	for _, ci := range cols {
-		if !probe.dbDefaultRow(&probe.models[0], ci) {
+		if !probe.dbDefaultRow(0, ci) {
 			bound++
 		}
 	}
@@ -220,6 +222,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		c := r
 		hi := min(lo+per, len(r.models))
 		c.models = r.models[lo:hi]
+		c.dbd = r.dbd.slice(lo, hi)
 		if len(r.back) == len(r.models) {
 			c.back = r.back[lo:hi]
 		}

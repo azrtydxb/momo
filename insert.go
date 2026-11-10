@@ -44,8 +44,8 @@ type insertCore struct {
 	// unnest renders a Models insert as one statement with an array parameter
 	// per column (Unnest, PostgreSQL only).
 	unnest bool
-	// noRowDefault is set by Copy: a COPY row cannot say DEFAULT, so rows
-	// that mix set and unset dbdefault values are refused.
+	// noRowDefault is set by Copy: a COPY row cannot say DEFAULT and Copy
+	// reads nothing back, so an unset dbdefault value is refused.
 	noRowDefault bool
 	// fixedCols, when set by plan, is the column list every chunk of a bulk
 	// insert writes, so the values computed once for the whole set line up
@@ -84,6 +84,8 @@ type InsertQuery[T any] struct {
 	// model for the planned columns, so chunks bind exactly what was checked
 	// and a Go-side default is evaluated once per row.
 	pre [][]any
+	// dbd is the dbdefault plan; see withDBD.
+	dbd *dbdPlan
 }
 
 // Insert starts an INSERT for model T. Use Model or Models to write whole
@@ -125,13 +127,14 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 //
 // A dbdefault column that is zero in every row leaves the column list; when
 // some rows set it and others do not, the unset rows write DEFAULT. SQLite,
-// Unnest and Copy cannot put DEFAULT in a row and fail with ErrUnsupported
-// for such a mix; MySQL has no RETURNING to read the value back and fails
-// with ErrUnsupported when a dbdefault column is zero. Exec writes the stored
+// and Unnest cannot put DEFAULT in a row and fail with ErrUnsupported for such
+// a mix; MySQL has no RETURNING to read the value back and fails with
+// ErrUnsupported when a dbdefault column is zero. Exec writes the stored
 // values of the unset rows back into the caller's elements after the
-// statement committed; with ON CONFLICT DO NOTHING that skips a row it writes
-// back nothing. A caller's own Returning list turns the automatic read-back
-// off: Rows returns the columns it names.
+// statement committed. When ON CONFLICT DO NOTHING skips some rows the
+// returned rows cannot be matched to the models: Exec then fails with
+// ErrUnsupported and rolls the insert back. A caller's own Returning list
+// turns the automatic read-back off: Rows returns the columns it names.
 func (q InsertQuery[T]) Models(ms []T) InsertQuery[T] {
 	if len(ms) == 0 {
 		return q.fail(q.verr("", "Models: no rows"))

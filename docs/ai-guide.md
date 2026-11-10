@@ -507,25 +507,35 @@ type Event struct {
   (PostgreSQL). SQLite cannot put `DEFAULT` in a multi-row VALUES list, and
   `Unnest` and `Copy` have no per-row default, so they fail with `ErrUnsupported`
   for such a mix: insert the rows separately or give every row a value. A
-  column that is zero in every row simply leaves the column list. `Copy` leaves
-  the column to the database but cannot read it back.
+  column that is zero in every row simply leaves the column list. `Copy` has
+  no `RETURNING` to read the value back, so it refuses a zero dbdefault column
+  with `ErrUnsupported`: set a value, or use `Models`.
 - MySQL has no `RETURNING`, so a zero dbdefault column fails with
   `ErrUnsupported` there instead of leaving the struct stale: set the value, or
   leave it out with `Omit` and read it yourself. MariaDB and SQLite read it
   back with `RETURNING`.
 - Your own `Returning` list turns the automatic read-back off; `Rows` returns
-  the columns you named. A conflict action that skips a row (`DoNothing`)
-  writes nothing back when the returned row count differs from the models. The
+  the columns you named. When a conflict action skips rows (`DoNothing`) the
+  returned rows cannot be matched to the models, so `Exec` fails with
+  `ErrUnsupported` and rolls the insert back (a pinned `OnConn` handle cannot
+  roll back): give those columns a value, or use `Returning` and `Rows`. The
   default `DO UPDATE` set of `Upsert` leaves a dbdefault column out when a row
   leaves it to the database, so a conflict keeps the stored value.
-- A nil pointer on a nullable column now means "default", not NULL; set NULL
+- The zero value means "use the default". On a `bool` or numeric column that
+  means `false` and `0` can never be written explicitly through `Model`: a
+  `dbdefault` field with `DEFAULT true` always stores true when it is `false`
+  in Go. Write such a value with `Values`, or do not tag the column. The same
+  holds for an empty string and a zero time. A pointer or nullable field is
+  refused by the generator, because nil would stop meaning NULL; write NULL
   with `Values` and `SetNull`. `Omit` still wins: an omitted column is not
   written, and a Go-side default hook still fills it.
 - `dbdefault` cannot be combined with `identity`, `serial`, `idgen`,
   `read_only`, `version`, `soft_delete`, `created_at` or `updated_at`; the
   generator reports it. It adds no database default (use `default:`), and
   `momo generate --from-db` writes it for NOT NULL PostgreSQL columns whose
-  default is computed (a function call, `CURRENT_TIMESTAMP`).
+  default is computed (a function call, `CURRENT_TIMESTAMP`, or a `nextval`
+  sequence on a column that is not identity or serial). It never writes it for
+  other dialects: plain MySQL cannot read the value back.
 
 ### Projections
 

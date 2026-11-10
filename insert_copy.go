@@ -154,6 +154,8 @@ func (q InsertQuery[T]) copyRows(ms []T) ([]string, [][]any, error) {
 	r := q
 	r.models = ms
 	r.i.noRowDefault = true
+	r.dbd = nil
+	r = r.withDBD() // the plan of the rows being copied
 	cols, err := r.modelCols(fp)
 	if err != nil {
 		return nil, nil, err

@@ -57,3 +57,21 @@ func TestDBDefaultTagRefusals(t *testing.T) {
 		})
 	}
 }
+
+// Catches: dbdefault accepted on a nullable field, where nil would silently
+// stop meaning NULL.
+func TestDBDefaultNullableDiagnostic(t *testing.T) {
+	for _, f := range []*Field{
+		fld("At", "*time.Time", "dbdefault"),
+		fld("Note", "string", "nullable,dbdefault"),
+	} {
+		_, diags := build(t, pg(), mdl("Thing", "things", f))
+		found := false
+		for _, d := range diags {
+			found = found || strings.Contains(d.Msg, "dbdefault on a nullable field")
+		}
+		if !found {
+			t.Errorf("%s: no nullable diagnostic in %v", f.GoName, diags)
+		}
+	}
+}

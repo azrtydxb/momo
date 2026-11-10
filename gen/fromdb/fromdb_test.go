@@ -462,11 +462,26 @@ func TestDBDefaultFits(t *testing.T) {
 		{"nullable", schema.Column{Default: "now()", Nullable: true}, nil, false},
 		{"identity", schema.Column{Default: "now()", Identity: "serial"}, nil, false},
 		{"read only rule", schema.Column{Default: "now()"}, []string{"default:now()", "read_only"}, false},
+		{"sequence default without identity", schema.Column{Default: "nextval('seq_n'::regclass)"}, nil, true},
 		{"created_at rule", schema.Column{Default: "now()"}, []string{"created_at"}, false},
 	}
 	for _, c := range cases {
-		if got := dbDefaultFits(&c.col, c.opts); got != c.want {
+		if got := dbDefaultFits(dialect.Postgres, &c.col, c.opts); got != c.want {
 			t.Errorf("%s: dbDefaultFits = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// Catches: --from-db tagging a MySQL, MariaDB or SQLite default, where a zero
+// value would then fail (MySQL has no RETURNING) or be read back differently.
+func TestDBDefaultFitsOnlyOnPostgres(t *testing.T) {
+	col := schema.Column{Default: "CURRENT_TIMESTAMP"}
+	for _, d := range []dialect.Name{dialect.MySQL, dialect.SQLite} {
+		if dbDefaultFits(d, &col, nil) {
+			t.Errorf("%s: dbdefault must not be emitted", d)
+		}
+	}
+	if !dbDefaultFits(dialect.Postgres, &col, nil) {
+		t.Error("postgres: dbdefault expected")
 	}
 }

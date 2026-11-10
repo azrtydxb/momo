@@ -264,3 +264,43 @@ func TestDBDefaultUpsertKeepsTheStoredValue(t *testing.T) {
 		t.Fatalf("model not read back: %+v", m)
 	}
 }
+
+// Catches: a conflict action that skips rows leaving the models stale while
+// Exec reports success.
+func TestDBDefaultDoNothingSkippedRowsFail(t *testing.T) {
+	db, drv := dbdSetup(dialect.Postgres, [][]any{{"gen-1"}})
+	ms := []dbdRow{{Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}}
+	_, err := momo.Insert[dbdRow](db).Models(ms).OnConflict(dbdTitle).DoNothing().Exec(context.Background())
+	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "ON CONFLICT skipped") {
+		t.Fatalf("err = %v, want ErrUnsupported naming the skipped rows", err)
+	}
+	if drv.Rollbacks() != 1 || ms[0].ID != "" {
+		t.Fatalf("rollbacks %d, model %+v: the write must be rolled back and the models untouched", drv.Rollbacks(), ms[0])
+	}
+}
+
+func TestDBDefaultDoNothingAllInsertedReadsBack(t *testing.T) {
+	db, _ := dbdSetup(dialect.Postgres, [][]any{{"g1"}, {"g2"}})
+	ms := []dbdRow{{Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}}
+	if _, err := momo.Insert[dbdRow](db).Models(ms).OnConflict(dbdTitle).DoNothing().Exec(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if ms[0].ID != "g1" || ms[1].ID != "g2" {
+		t.Fatalf("ids = %q %q", ms[0].ID, ms[1].ID)
+	}
+}
+
+// Catches: Copy silently dropping an all-zero dbdefault column with no way to
+// read the stored value back.
+func TestDBDefaultCopyRefusesZeroColumn(t *testing.T) {
+	drv := newCopyDriver(dialect.Postgres)
+	db := momo.New(drv)
+	_, err := momo.Insert[dbdRow](db).Copy(context.Background(), []dbdRow{{Title: "a", At: dbdStamp}})
+	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), `"id"`) {
+		t.Fatalf("err = %v, want ErrUnsupported naming the column", err)
+	}
+	set := []dbdRow{{ID: "x", Title: "a", At: dbdStamp}}
+	if _, err := momo.Insert[dbdRow](db).Copy(context.Background(), set); err != nil {
+		t.Fatalf("every dbdefault column set: %v", err)
+	}
+}

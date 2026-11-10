@@ -146,10 +146,11 @@ func (q InsertQuery[T]) isNonPKIDGen(ci int) bool {
 }
 
 // execSingle runs the only chunk of an insert. A statement that reconciles ids
-// runs in its own transaction (or savepoint), so a RETURNING row that matches
-// no model rolls the write back instead of leaving it committed.
+// (or reads dbdefault columns back) runs in its own transaction (or savepoint),
+// so a RETURNING row that matches no model rolls the write back instead of
+// leaving it committed.
 func (q InsertQuery[T]) execSingle(ctx context.Context, c InsertQuery[T]) (Result, error) {
-	if db, ok := q.q.(*DB); !c.reconcile || (ok && db.pinned) {
+	if db, ok := q.q.(*DB); !(c.reconcile || len(c.dbDefaultReadBack()) > 0) || (ok && db.pinned) {
 		return c.execOne(ctx)
 	}
 	var res Result
@@ -328,25 +329,15 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 			continue
 		}
 		for _, ci := range dbCols {
-			if q.dbDefaultRow(&q.models[i], ci) {
+			if q.dbDefaultRow(i, ci) {
 				dst, src, col := q.back[i], got, ci
-				apply := func() { copyField(q.meta, dst, &src, col) }
-				if q.pend != nil {
-					*q.pend = append(*q.pend, apply)
-				} else {
-					apply()
-				}
+				q.later(func() { copyField(q.meta, dst, &src, col) })
 			}
 		}
 		for _, ci := range idCols {
 			if id, ok := idString(q.meta.Value(&got, ci)); ok {
 				back, col := q.back[i], ci
-				apply := func() { setID(q.meta.Ptr(back, col), id) }
-				if q.pend != nil {
-					*q.pend = append(*q.pend, apply) // after the statement commits
-				} else {
-					apply()
-				}
+				q.later(func() { setID(q.meta.Ptr(back, col), id) }) // after the statement commits
 			}
 		}
 	}

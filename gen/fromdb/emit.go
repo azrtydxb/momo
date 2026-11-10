@@ -493,7 +493,7 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 		m.stmts = append(m.stmts, "c."+strings.ToUpper(e.key[:1])+e.key[1:]+"(&m."+name+", "+strconv.Quote(e.val)+")")
 	}
 	opts = mergeTags(opts, rule.Tags)
-	if dbDefaultFits(col, opts) {
+	if dbDefaultFits(g.o.Dialect, col, opts) {
 		opts = append(opts, "dbdefault")
 	}
 	goType := gt.Expr
@@ -591,9 +591,13 @@ func mergeTags(generated, user []string) []string {
 // NOT NULL column whose database default is computed (a function call such as
 // gen_random_uuid() or now(), or CURRENT_TIMESTAMP), which a Go zero value
 // would otherwise overwrite. A constant default is left alone, as is a column
-// whose other tags already decide how it is written.
-func dbDefaultFits(col *schema.Column, opts []string) bool {
-	if col.Nullable || col.Identity != "" || !computedDefault(col.Default) {
+// whose other tags already decide how it is written. A sequence default
+// (nextval(...)) on a column that is not identity or serial counts as
+// computed, so a zero id is no longer written over it. Only PostgreSQL
+// qualifies: the tag needs INSERT ... RETURNING to read the value back, which
+// plain MySQL lacks, and MariaDB and SQLite have no inspector here yet.
+func dbDefaultFits(d dialect.Name, col *schema.Column, opts []string) bool {
+	if d != dialect.Postgres || col.Nullable || col.Identity != "" || !computedDefault(col.Default) {
 		return false
 	}
 	for _, o := range opts {

@@ -227,6 +227,9 @@ func (b *schemaBuilder) checkDBDefault(m *Model, f *Field) {
 	if conflict != "" {
 		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault conflicts with %s", f.GoName, conflict))
 	}
+	if strings.HasPrefix(f.GoType, "*") || strings.HasPrefix(f.GoType, "sql.Null") || f.Nullable || tg.Nullable {
+		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault on a nullable field: nil means use the database default, so Model can never write NULL (use Values with SetNull); use a non-nullable type", f.GoName))
+	}
 }
 
 // serialTypes are the integer column types a serial column can have.
