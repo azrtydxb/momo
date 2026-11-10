@@ -25,31 +25,36 @@ type dbdPlan struct {
 	count []int
 }
 
+// noDBD is the shared plan of a statement without dbdefault cells.
+var noDBD = &dbdPlan{}
+
 // withDBD returns q with its dbdefault plan computed. A column listed in Omit
 // keeps its Go-side default and never takes the database default.
 func (q InsertQuery[T]) withDBD() InsertQuery[T] {
 	if q.dbd != nil {
 		return q
 	}
-	p := &dbdPlan{count: make([]int, len(q.meta.Columns))}
 	var cols []int
 	for ci := range q.meta.Columns {
 		if q.dbDefaultCol(ci) && !slices.Contains(q.i.omit, q.meta.Columns[ci].Name) {
 			cols = append(cols, ci)
 		}
 	}
-	if len(cols) > 0 {
-		p.rows = make([][]bool, len(q.models))
-		for r := range q.models {
-			row := make([]bool, len(q.meta.Columns))
-			for _, ci := range cols {
-				if dbDefaultZero(q.meta.Value(&q.models[r], ci)) {
-					row[ci] = true
-					p.count[ci]++
-				}
+	if len(cols) == 0 {
+		q.dbd = noDBD // no allocation for the common model without dbdefault columns
+		return q
+	}
+	p := &dbdPlan{count: make([]int, len(q.meta.Columns))}
+	p.rows = make([][]bool, len(q.models))
+	for r := range q.models {
+		row := make([]bool, len(q.meta.Columns))
+		for _, ci := range cols {
+			if dbDefaultZero(q.meta.Value(&q.models[r], ci)) {
+				row[ci] = true
+				p.count[ci]++
 			}
-			p.rows[r] = row
 		}
+		p.rows[r] = row
 	}
 	q.dbd = p
 	return q
@@ -57,13 +62,10 @@ func (q InsertQuery[T]) withDBD() InsertQuery[T] {
 
 // slice returns the plan of models lo..hi, for a chunk of a bulk insert.
 func (p *dbdPlan) slice(lo, hi int) *dbdPlan {
-	if p == nil {
-		return nil
+	if p == nil || p.rows == nil {
+		return p
 	}
 	out := &dbdPlan{count: make([]int, len(p.count))}
-	if p.rows == nil {
-		return out
-	}
 	out.rows = p.rows[lo:hi]
 	for _, row := range out.rows {
 		for ci, set := range row {
@@ -83,7 +85,12 @@ func (q InsertQuery[T]) dbDefaultRow(r, ci int) bool {
 }
 
 // dbDefaultCount counts the models whose column ci takes the database default.
-func (q InsertQuery[T]) dbDefaultCount(ci int) int { return q.withDBD().dbd.count[ci] }
+func (q InsertQuery[T]) dbDefaultCount(ci int) int {
+	if c := q.withDBD().dbd.count; ci < len(c) {
+		return c[ci]
+	}
+	return 0
+}
 
 // dbDefaultDecision reports whether the INSERT column list drops column ci
 // because every row takes its database default. It fails with ErrUnsupported
