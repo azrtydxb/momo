@@ -81,3 +81,39 @@ func TestDocsWorkflow(t *testing.T) {
 		t.Error("ci.yml must not install Python; docs tooling runs only in docs.yml")
 	}
 }
+
+// TestDocsPublishedOnRelease pins how a release reaches /vX.Y/ and latest. The
+// tag release-please creates with the workflow token does not trigger a tag
+// push, so release-please.yml must dispatch docs.yml with the new tag, and the
+// dispatched run may deploy only a release tag, never /dev/.
+func TestDocsPublishedOnRelease(t *testing.T) {
+	root := repoRoot(t)
+	docs, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "docs.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"workflow_dispatch:",
+		"tag:",
+		"github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'v') && !contains(inputs.tag, '-')",
+		"github.event_name == 'push' && github.ref == 'refs/heads/main'",
+		"ref: ${{ inputs.tag || github.ref }}",
+	} {
+		if !strings.Contains(string(docs), want) {
+			t.Errorf("docs.yml lacks %q", want)
+		}
+	}
+	rp, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release-please.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"actions: write",
+		"steps.release.outputs.release_created == 'true'",
+		`gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"`,
+	} {
+		if !strings.Contains(string(rp), want) {
+			t.Errorf("release-please.yml lacks %q", want)
+		}
+	}
+}
