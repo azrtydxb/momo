@@ -8,6 +8,7 @@ Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 ## Description
 
 Kuvryn Orbit needs three related things:
+
 - #65: `FOR NO KEY UPDATE` and `FOR KEY SHARE`, at 9 sites that must not block FK inserts.
 - #67: 64-bit `hashtextextended(key, seed)` advisory keys and session-level locks. 18 of Orbit's 20 lock sites use them, and its migration runner takes a session lock.
 - #68: `clock_timestamp()` and `statement_timestamp()`, used at about 47 lease and claim sites.

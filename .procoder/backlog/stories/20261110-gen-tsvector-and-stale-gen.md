@@ -8,6 +8,7 @@ Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 ## Description
 
 The NovaCRM port (Prisma to momo v0.4.0) hit two generator problems:
+
 - #61: `--from-db` refuses `tsvector` unless `momo.yaml` maps it, although `types.TSVector` exists.
 - #62: `momo generate` type-checks its own previous `momo_gen.go`. After a field rename or removal, that stale file stops compiling, so generate fails on the very file it is about to rewrite, and the user must delete it by hand.
 
