@@ -1181,6 +1181,10 @@ Rules:
 `SelectQuery.SQL()` returns `Compiled{SQL, Args}` without running. `Explain(ctx)`
 runs `EXPLAIN` (never `ANALYZE`) and returns plan text; it binds parameters and
 does not execute the query. Inside a `Tx`, it sees that transaction's settings.
+`momo.Explain(ctx, q, compiled)` plans any statement's `Compiled` (writes
+included, PostgreSQL, SQLite, MySQL and MariaDB) and `momo.ExplainAnalyze(ctx, q,
+compiled)` runs it under `EXPLAIN ANALYZE` (PostgreSQL only; a write is rolled
+back). Momo never calls either on its own; see [observability](observability.md).
 
 Select-time guards: `Limit`/`Offset` negative is `ErrValidation`.
 
@@ -1715,6 +1719,13 @@ tx := momotest.NewTx(t, momotest.WithMigrations(app.Migrations())) // rolled bac
 momotest.Seed(t, tx, momotest.Insert(&org), momotest.Insert(&user))
 ```
 
+`momotest.AssertSQL(t, query.SQL(), want)` compares compiled SQL ignoring
+whitespace without running it (the failure never shows an argument value), and
+`momotest.AssertUsesIndex(t, q, compiled, "index_name")` fails unless a plain
+`EXPLAIN` of the statement reads that index (PostgreSQL and SQLite; the plan can
+echo literal values, so use test data that is not sensitive). See
+[testing.md](testing.md).
+
 It reads `MOMO_TEST_POSTGRES_URL` (skip when unset, fail when
 `MOMO_REQUIRE_INTEGRATION=1`), is safe with `t.Parallel` and `-race`, and
 `WithExtensions("vector")` creates the extension first. What it does, if you
@@ -1787,6 +1798,10 @@ report)`, a development hook that reports once per statement shape per scope
   a `momo.WithQueryScope` scope; each needs its own scope on the context. A value
   bound from a sensitive column is always `momo.RedactedArg` in what these hooks
   see. They are safe for concurrent use. For slog use `momolog.New`.
+  `obs.NewSlowQuery(threshold, report, obs.WithPlainExplain(plainDB))` reports
+  each statement slower than the threshold and, only with `WithPlainExplain`,
+  adds a plain `EXPLAIN` plan (never `ANALYZE`; inside a transaction through a
+  savepoint that is rolled back). See [observability](observability.md).
 - `momo.WithTenant(ctx, tenant)` and `momo.TenantFilter(ctx, column)` add a
   `column = tenant` predicate. This is an application-side convenience and NOT a
   security boundary. It applies only where you add it to a `Where`: not to
