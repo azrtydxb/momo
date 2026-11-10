@@ -13,6 +13,7 @@ import (
 	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/internal/obstest"
+	"github.com/azrtydxb/momo/types"
 )
 
 // Catches: an array predicate that binds with the plain arg path, leaking the
@@ -59,6 +60,13 @@ var (
 	arrIDs   = momo.NewColumn[[]int32]("docs", "ids", 0)
 )
 
+var (
+	uidA    = types.UUID{1, 2, 3}
+	uidB    = types.UUID{0xff, 0xee}
+	arrUID  = momo.NewColumn[types.UUID]("docs", "uid", 0)
+	arrUIDs = momo.NewColumn[[]types.UUID]("docs", "uids", 0)
+)
+
 // Catches: a value interpolated instead of bound, a list expanded into one
 // bind per element, a wrong operator, and a nil slice bound as NULL.
 func TestArrayOperatorsGolden(t *testing.T) {
@@ -73,6 +81,11 @@ func TestArrayOperatorsGolden(t *testing.T) {
 		{"overlaps", arrayop.Overlaps(arrTags, "x'; DROP TABLE docs; --"), `"docs"."tags" && $1`, []any{[]string{"x'; DROP TABLE docs; --"}}},
 		{"overlaps ints", arrayop.Overlaps(arrIDs, 1, 2, 3), `"docs"."ids" && $1`, []any{[]int32{1, 2, 3}}},
 		{"any of", arrayop.AnyOf(arrTitle, "j", "k", "l"), `"docs"."title" = ANY($1)`, []any{[]string{"j", "k", "l"}}},
+		{"uuid any of", arrayop.AnyOf(arrUID, uidA, uidB), `"docs"."uid" = ANY($1::uuid[])`, []any{[]types.UUID{uidA, uidB}}},
+		{"uuid overlaps", arrayop.Overlaps(arrUIDs, uidA), `"docs"."uids" && $1::uuid[]`, []any{[]types.UUID{uidA}}},
+		{"uuid contains", arrayop.Contains(arrUIDs, uidA, uidB), `"docs"."uids" @> $1::uuid[]`, []any{[]types.UUID{uidA, uidB}}},
+		{"uuid contained by", arrayop.ContainedBy(arrUIDs, uidA), `"docs"."uids" <@ $1::uuid[]`, []any{[]types.UUID{uidA}}},
+		{"uuid overlaps nothing is an empty array", arrayop.Overlaps[types.UUID](arrUIDs), `"docs"."uids" && $1::uuid[]`, []any{[]types.UUID{}}},
 		{"no values is an empty array", arrayop.Overlaps[string](arrTags), `"docs"."tags" && $1`, []any{[]string{}}},
 		{"any of nothing", arrayop.AnyOf[string](arrTitle), `"docs"."title" = ANY($1)`, []any{[]string{}}},
 	}

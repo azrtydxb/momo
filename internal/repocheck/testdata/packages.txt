@@ -39,6 +39,7 @@ internal-leaf internal/sqliteconf
 internal-leaf internal/sqlstub
 
 internal-fixture internal/compat/...
+internal-fixture internal/importtest
 internal-fixture internal/docscheck
 internal-fixture internal/exprtest
 internal-fixture internal/fkcase

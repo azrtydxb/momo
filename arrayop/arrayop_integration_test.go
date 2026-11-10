@@ -14,6 +14,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/arrayop"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/types"
 )
 
 // kvRow is a two-field projection: a key and a count.
@@ -194,5 +195,87 @@ func TestNilSliceIntoNotNullArrayColumn(t *testing.T) {
 	}
 	if _, err := momo.Exec(ctx, db, "INSERT INTO arr_nn VALUES (2, ?)", []string{}); err != nil {
 		t.Fatalf("empty slice: %v", err)
+	}
+}
+
+// uidRow reads an id and a uuid[] column.
+type uidRow struct {
+	ID   int64
+	Uids []types.UUID
+}
+
+var uidRowMeta = momo.Meta[uidRow]{
+	Columns:  []momo.ColumnMeta{{Name: "id"}, {Name: "uids"}},
+	Ptr:      func(m *uidRow, i int) any { return [...]any{&m.ID, &m.Uids}[i] },
+	Value:    func(m *uidRow, i int) any { return [...]any{m.ID, m.Uids}[i] },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}
+
+func (*uidRow) MomoMeta() *momo.Meta[uidRow] { return &uidRowMeta }
+
+// Catches: a []types.UUID that does not bind as one uuid[] parameter, a uuid
+// array predicate with the wrong operator, a uuid[] value that does not scan
+// back, and a uuid column that = ANY cannot match.
+func TestArrayOperatorsOnUUIDLive(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	if _, err := momo.Exec(ctx, db, "CREATE TABLE arr_uids (id bigint PRIMARY KEY, uid uuid NOT NULL, uids uuid[] NOT NULL)"); err != nil {
+		t.Fatal(err)
+	}
+	a, b, c := types.UUID{1}, types.UUID{2}, types.UUID{3}
+	seed := []struct {
+		id   int64
+		uid  types.UUID
+		uids []types.UUID
+	}{
+		{1, a, []types.UUID{a, b}},
+		{2, b, []types.UUID{c}},
+		{3, c, []types.UUID{a, b, c}},
+		{4, a, []types.UUID{}},
+	}
+	for _, r := range seed {
+		if _, err := momo.Exec(ctx, db, "INSERT INTO arr_uids VALUES (?, ?, ?)", r.id, r.uid, r.uids); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := momo.NewColumn[int64]("arr_uids", "id", momo.FlagPK)
+	uid := momo.NewColumn[types.UUID]("arr_uids", "uid", 0)
+	uids := momo.NewColumn[[]types.UUID]("arr_uids", "uids", 0)
+	run := func(p momo.Predicate) []uidRow {
+		t.Helper()
+		rows, err := momo.Select[uidRow](db).From(momo.TableRef{Name: "arr_uids"}).
+			Columns(id, uids).Where(p).OrderBy(id.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
+	ids := func(p momo.Predicate) []int64 {
+		out := []int64{}
+		for _, r := range run(p) {
+			out = append(out, r.ID)
+		}
+		return out
+	}
+	cases := []struct {
+		name string
+		pred momo.Predicate
+		want []int64
+	}{
+		{"contains a,b", arrayop.Contains(uids, a, b), []int64{1, 3}},
+		{"contains nothing", arrayop.Contains[types.UUID](uids), []int64{1, 2, 3, 4}},
+		{"contained by a,b", arrayop.ContainedBy(uids, a, b), []int64{1, 4}},
+		{"overlaps c", arrayop.Overlaps(uids, c), []int64{2, 3}},
+		{"overlaps nothing", arrayop.Overlaps[types.UUID](uids), []int64{}},
+		{"uid any of b,c", arrayop.AnyOf(uid, b, c), []int64{2, 3}},
+		{"uid any of nothing", arrayop.AnyOf[types.UUID](uid), []int64{}},
+	}
+	for _, tc := range cases {
+		if got := ids(tc.pred); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: ids = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	if rows := run(id.Eq(1)); len(rows) != 1 || !reflect.DeepEqual(rows[0].Uids, []types.UUID{a, b}) {
+		t.Fatalf("scan uuid[] = %+v", rows)
 	}
 }
