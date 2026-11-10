@@ -40,7 +40,11 @@ func roundTrip[C types.Codec](t *testing.T, db *momo.DB, d dialect.Name, name st
 	if err != nil || len(got) != 1 {
 		t.Fatalf("%s: select: %v (%d rows)", name, err, len(got))
 	}
-	txt, err := momo.Scalars[string](ctx, db, "SELECT CAST(v AS text) FROM "+tbl+" WHERE id = 1")
+	castText := "text"
+	if d == dialect.MySQL {
+		castText = "CHAR"
+	}
+	txt, err := momo.Scalars[string](ctx, db, "SELECT CAST(v AS "+castText+") FROM "+tbl+" WHERE id = 1")
 	if err != nil || len(txt) != 1 {
 		t.Fatalf("%s: select text: %v", name, err)
 	}
@@ -63,41 +67,68 @@ func TestCodecsRoundTripLive(t *testing.T) {
 			}
 		}
 
-		t.Run("JSON", func(t *testing.T) {
-			in := &types.JSON[doc]{V: doc{Name: `q"uote\`, Tags: []string{"a", "b"}}}
-			got, _ := roundTrip(t, db, d, "json", in)
-			if !reflect.DeepEqual(got, in) {
-				t.Fatalf("got %+v, want %+v", got, in)
-			}
+		codecRoundTrips(t, db, d)
+	})
+}
+
+// mysqlServers lists the opener of every supported MySQL-family server.
+var mysqlServers = []struct {
+	name string
+	open func(*testing.T, ...momo.Option) *momo.DB
+}{
+	{"mysql84", testopen.MySQL84},
+	{"mysql97", testopen.MySQL97},
+	{"mariadb118", testopen.MariaDB},
+}
+
+// TestCodecsRoundTripLiveMySQL runs the same round trip on MySQL 8.4, 9.7 and
+// MariaDB: every codec's SQLType there is TEXT, and the text must survive.
+func TestCodecsRoundTripLiveMySQL(t *testing.T) {
+	for _, s := range mysqlServers {
+		t.Run(s.name, func(t *testing.T) {
+			db := s.open(t)
+			codecRoundTrips(t, db, db.Dialect().Name)
 		})
-		t.Run("Date", func(t *testing.T) {
-			in := &types.Date{Time: time.Date(1969, 12, 31, 0, 0, 0, 0, time.UTC)}
-			got, txt := roundTrip(t, db, d, "date", in)
-			if txt != "1969-12-31" || !got.Time.Equal(in.Time) {
-				t.Fatalf("got %v stored as %q", got.Time, txt)
-			}
-		})
-		t.Run("TimeOfDay", func(t *testing.T) {
-			// Last microsecond of the day: rounding would turn it into 24:00:00.
-			in := &types.TimeOfDay{Nanos: 86399999999000}
-			got, txt := roundTrip(t, db, d, "tod", in)
-			if txt != "23:59:59.999999" || got.Nanos != in.Nanos {
-				t.Fatalf("got %d stored as %q", got.Nanos, txt)
-			}
-		})
-		t.Run("UUID", func(t *testing.T) {
-			in := &types.UUID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0xff}
-			got, txt := roundTrip(t, db, d, "uuid", in)
-			if txt != "01020304-0506-0708-090a-0b0c0d0e0fff" || *got != *in {
-				t.Fatalf("got %v stored as %q", got, txt)
-			}
-		})
-		t.Run("Hstore", func(t *testing.T) {
-			in := &types.Hstore{"k": sp("v"), "n": nil, "e": sp(""), `q"\`: sp(`a"b\c => d, `)}
-			got, _ := roundTrip(t, db, d, "hstore", in)
-			if !reflect.DeepEqual(got, in) {
-				t.Fatalf("got %v, want %v", got, in)
-			}
-		})
+	}
+}
+
+// codecRoundTrips stores and reads every codec on db through a column of its
+// own SQLType for d.
+func codecRoundTrips(t *testing.T, db *momo.DB, d dialect.Name) {
+	t.Run("JSON", func(t *testing.T) {
+		in := &types.JSON[doc]{V: doc{Name: `q"uote\`, Tags: []string{"a", "b"}}}
+		got, _ := roundTrip(t, db, d, "json", in)
+		if !reflect.DeepEqual(got, in) {
+			t.Fatalf("got %+v, want %+v", got, in)
+		}
+	})
+	t.Run("Date", func(t *testing.T) {
+		in := &types.Date{Time: time.Date(1969, 12, 31, 0, 0, 0, 0, time.UTC)}
+		got, txt := roundTrip(t, db, d, "date", in)
+		if txt != "1969-12-31" || !got.Time.Equal(in.Time) {
+			t.Fatalf("got %v stored as %q", got.Time, txt)
+		}
+	})
+	t.Run("TimeOfDay", func(t *testing.T) {
+		// Last microsecond of the day: rounding would turn it into 24:00:00.
+		in := &types.TimeOfDay{Nanos: 86399999999000}
+		got, txt := roundTrip(t, db, d, "tod", in)
+		if txt != "23:59:59.999999" || got.Nanos != in.Nanos {
+			t.Fatalf("got %d stored as %q", got.Nanos, txt)
+		}
+	})
+	t.Run("UUID", func(t *testing.T) {
+		in := &types.UUID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0xff}
+		got, txt := roundTrip(t, db, d, "uuid", in)
+		if txt != "01020304-0506-0708-090a-0b0c0d0e0fff" || *got != *in {
+			t.Fatalf("got %v stored as %q", got, txt)
+		}
+	})
+	t.Run("Hstore", func(t *testing.T) {
+		in := &types.Hstore{"k": sp("v"), "n": nil, "e": sp(""), `q"\`: sp(`a"b\c => d, `)}
+		got, _ := roundTrip(t, db, d, "hstore", in)
+		if !reflect.DeepEqual(got, in) {
+			t.Fatalf("got %v, want %v", got, in)
+		}
 	})
 }
