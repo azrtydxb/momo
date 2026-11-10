@@ -579,8 +579,11 @@ type Event struct {
   generator reports it. It adds no database default (use `default:`), and
   `momo generate --from-db` writes it for NOT NULL PostgreSQL columns whose
   default is computed (a function call, `CURRENT_TIMESTAMP`, or a `nextval`
-  sequence on a column that is not identity or serial). It never writes it for
-  other dialects: plain MySQL cannot read the value back.
+  sequence on a column that is not identity or serial); with
+  `introspect.dbdefault: all` it writes it for every NOT NULL column that has a
+  default, a constant one such as `DEFAULT 1` included. A hand-written model can
+  put `dbdefault` on any NOT NULL column that has a database default. It never
+  writes it for other dialects: plain MySQL cannot read the value back.
 
 ### Model hooks
 

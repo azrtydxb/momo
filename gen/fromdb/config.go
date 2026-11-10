@@ -82,6 +82,17 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("introspect.skip[%d]: %q: %w", i, g, err)
 		}
 	}
+	for i, g := range c.Only {
+		if _, err := path.Match(g, ""); err != nil {
+			return fmt.Errorf("introspect.only[%d]: %q: %w", i, g, err)
+		}
+	}
+	if c.Functions != "" && c.Functions != "all" {
+		return fmt.Errorf("introspect.functions: %q must be empty or \"all\"", c.Functions)
+	}
+	if c.DBDefault != "" && c.DBDefault != "all" {
+		return fmt.Errorf("introspect.dbdefault: %q must be empty or \"all\"", c.DBDefault)
+	}
 	for k, r := range c.Types {
 		if strings.TrimSpace(k) == "" {
 			return errors.New("introspect.types: empty SQL type key")
@@ -155,6 +166,20 @@ func (c *Config) skipped(table string) bool {
 		}
 	}
 	return false
+}
+
+// outsideOnly reports whether Only is set and the table matches none of its
+// globs.
+func (c *Config) outsideOnly(table string) bool {
+	if len(c.Only) == 0 {
+		return false
+	}
+	for _, g := range c.Only {
+		if matchGlob(g, table) {
+			return false
+		}
+	}
+	return true
 }
 
 // matchGlob reports whether name matches the glob. A malformed glob never

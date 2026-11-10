@@ -1037,6 +1037,9 @@ introspect:
   package: models # default: the directory name
   out: ./models # default: the first local entry of packages
   skip: ["_prisma_*"] # table globs: no model, not in the snapshot
+  only: [] # table globs: models only for these tables; skip applies within
+  functions: "" # "all": every database function on the first model
+  dbdefault: "" # "all": dbdefault on every NOT NULL column with a default
   types: # SQL type to Go type, for every column of that type
     inet: { go: string }
     numeric(12,2):
@@ -1055,6 +1058,26 @@ A rule's `tags` are momo tag options; one with the key of a generated option
 replaces it. A Go type needs no `import` for `types.`, `vector.`, `time.`,
 `json.` or `sql.`. Add skipped tables to `migrate.exclude` too, so the baseline
 ignores the live tables.
+
+`only` is the inverse of `skip`, for a project that moves onto momo one module
+at a time: when it is set, a table that matches none of its globs gets no model
+and no place in the init snapshot, and migrate (drift, baseline, diff) treats it
+as excluded, so no `migrate.exclude` entry is needed for it. `skip` applies
+within `only`. `only` limits tables only; views, functions and enums outside
+your modules are hidden with `migrate.exclude`.
+
+By default the models carry only the functions that a modeled table's triggers,
+column defaults, generated columns, checks, index expressions and predicates or
+policies call (and the functions those call), each on the model of the table
+that uses it, and a table's triggers and policies are on its own model. A
+function nothing modeled uses is not written. `functions: all` writes every
+function on the first model, as releases before 0.7.0 did.
+
+`dbdefault: all` tags every NOT NULL PostgreSQL column that has a default with
+`dbdefault`, constant defaults such as `DEFAULT 1` included (by default only
+computed defaults are tagged), so `Insert.Model` leaves an unset field to the
+database default. A nullable column is never tagged. See "Database defaults" in
+the [AI guide](ai-guide.md).
 
 ### Running it again
 

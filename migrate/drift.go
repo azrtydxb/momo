@@ -96,7 +96,29 @@ func applyExclude(s *schema.Schema, globs []string) *schema.Schema {
 // applyOnly returns s without the tables that match none of globs, and without
 // their triggers and policies. s is not modified.
 func applyOnly(s *schema.Schema, globs []string) *schema.Schema {
-	return s
+	if len(globs) == 0 {
+		return s
+	}
+	match, err := excludeMatcher(globs)
+	if err != nil {
+		return s
+	}
+	c := *s
+	gone := map[string]bool{}
+	c.Tables = slices.DeleteFunc(slices.Clone(s.Tables), func(t schema.Table) bool {
+		if match(t.Schema, t.Name) {
+			return false
+		}
+		gone[t.Schema+"\x00"+t.Name] = true
+		return true
+	})
+	c.Triggers = slices.DeleteFunc(slices.Clone(s.Triggers), func(t schema.Trigger) bool {
+		return gone[t.Schema+"\x00"+t.Table]
+	})
+	c.Policies = slices.DeleteFunc(slices.Clone(s.Policies), func(p schema.Policy) bool {
+		return gone[p.Schema+"\x00"+p.Table]
+	})
+	return &c
 }
 
 // object is one comparable database object: its identity, its normalized JSON

@@ -5,6 +5,80 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.7.0
+
+### `--from-db` writes only the functions the modeled tables use
+
+`momo generate --from-db` used to write every database function into the
+`MomoConfig` of the alphabetically first model. It now writes only the
+functions that a modeled table uses: the ones its triggers call, its column
+defaults, generated columns, checks, index expressions and predicates and its
+policies call, and the functions those functions call in turn. Each one is
+written on the model of the table that uses it. A function that no modeled
+table uses is not written, and it is no longer in the init snapshot, so a
+database-wide function that nothing modeled needs does not appear in the
+models, and the model files no longer change when an unrelated function does.
+
+Triggers and policies moved the same way: they are written on the model of
+their own table instead of the first model. The functions a view calls stay on
+the first model, with the view. After you regenerate, a model file that held
+other tables' functions changes (a `.new` file next to a hand-edited one, see
+"Running it again" in [migrations](migrations.md)). A function that was written
+and is no longer used is not in the new init snapshot either; add it to
+`migrate.exclude` if the database keeps it and you do not want drift to report
+it as unmanaged.
+
+To keep the old behaviour, set `introspect.functions: all`:
+
+```yaml
+introspect:
+  functions: all # every database function on the first model
+```
+
+### `introspect.only` limits `--from-db` to a list of tables
+
+`introspect.only` is a list of table name globs, the inverse of
+`introspect.skip`. When it is set, a table that matches none of the globs gets
+no model, no place in the init snapshot, and `momo migrate` leaves the live
+table alone (drift, baseline and diff treat it as excluded), so you do not need
+a `migrate.exclude` entry for every table you have not moved yet:
+
+```yaml
+introspect:
+  only: [accounts, projects, project_*]
+  skip: [project_notes] # skip applies within only
+```
+
+`skip` applies within `only`: a table must match `only` and not match `skip`.
+The triggers and policies of an excluded table are left out too. `only`
+limits tables, not views, functions or enums: hide those with
+`migrate.exclude`. Inspection still reads the tables outside `only`; a table
+the schema model cannot represent still needs an `introspect.skip` entry. An
+empty or absent `only` changes nothing.
+
+### `introspect.dbdefault: all` tags every column that has a default
+
+By default `--from-db` writes `dbdefault` only on NOT NULL columns whose
+default is computed (`now()`, `gen_random_uuid()`), so regenerating does not
+change what an existing model writes. A column such as
+`version bigint NOT NULL DEFAULT 1` is generated as `` `momo:"default:1"` ``,
+and `InsertQuery.Model` writes 0 for a model that left `Version` unset.
+`introspect.dbdefault: all` adds `dbdefault` to every NOT NULL PostgreSQL column
+that has a default, constant ones included, so an unset field takes the default
+and the stored value is read back:
+
+```yaml
+introspect:
+  dbdefault: all
+```
+
+A nullable column is never tagged, because a nil pointer would stop meaning
+NULL. The zero value now means "use the default" on those columns: a `bool` or
+number field can no longer write `false` or `0` through `Model` (use
+`InsertQuery.Values`). Hand-written models can use the `dbdefault` tag on any
+NOT NULL column that has a database default: see "Database defaults" in the
+[AI guide](ai-guide.md).
+
 ## Upgrading to 0.6.0
 
 ### The Using and From guard is stricter
