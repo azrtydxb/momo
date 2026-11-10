@@ -37,6 +37,12 @@ func lockID(key string) int64 {
 // transaction-mode pooler such as PgBouncer; run migrations on a direct or
 // session-pooled connection.
 //
+// When the session is broken (for example the apply was cancelled while a
+// statement ran), unlock cannot release the lock itself: the connection is
+// discarded, and PostgreSQL frees the session lock when that backend exits,
+// which happens shortly after unlock returns, not before. A caller that must
+// take the lock again at once retries on ErrLocked for a short, bounded time.
+//
 // Order: run the reset returned by Setup before unlock, so a small
 // statement_timeout cannot cancel the unlock statement.
 func (Dialect) Lock(ctx context.Context, c momo.PinnedConn, key string) (unlock func() error, holder func(context.Context) (string, error), err error) {
