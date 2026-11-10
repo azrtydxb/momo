@@ -45,6 +45,29 @@ func TestMariaDBLockOfUnsupported(t *testing.T) {
 	}
 }
 
+// Catches: a PostgreSQL-only lock mode, with or without LockOf, reaching
+// MySQL, MariaDB or SQLite instead of failing the build.
+func TestPostgresOnlyLockModesRefused(t *testing.T) {
+	dialects := map[string]*dialect.Dialect{
+		"mysql":   dialect.MySQLFlavor(dialect.FlavorMySQL),
+		"mariadb": dialect.MySQLFlavor(dialect.FlavorMariaDB),
+		"sqlite":  dialect.For(dialect.SQLite),
+	}
+	for name, d := range dialects {
+		for _, mode := range []string{"FOR NO KEY UPDATE", "FOR KEY SHARE"} {
+			for _, of := range [][]string{nil, {"a"}} {
+				sq := SelectQuery[struct{}]{}
+				sq.s.lock, sq.s.lockOf = mode, of
+				b := NewBuilder(d)
+				sq.writeLock(b)
+				if err := b.Err(); !errors.Is(err, ErrUnsupported) {
+					t.Errorf("%s %s of=%v: err = %v, want ErrUnsupported", name, mode, of, err)
+				}
+			}
+		}
+	}
+}
+
 // Catches: a bare OFFSET reaching MySQL or MariaDB, where it is a syntax error.
 func TestMySQLBareOffsetGetsLimit(t *testing.T) {
 	s := selectCore{limit: -1, offset: 5}

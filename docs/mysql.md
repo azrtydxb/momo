@@ -111,7 +111,9 @@ no `RETURNING` at all.
 `LOCK IN SHARE MODE`. `LockOf` (`FOR UPDATE OF`) is MySQL only; on MariaDB it is
 `ErrUnsupported`. Savepoints and the four standard isolation levels work;
 read-only transactions use `START TRANSACTION READ ONLY`. Any other isolation
-level is `ErrUnsupported`.
+level is `ErrUnsupported`. `ForNoKeyUpdate` and `ForKeyShare` are PostgreSQL
+only and return `ErrUnsupported` here. `timeop.ClockTimestamp` renders
+`SYSDATE(6)`; `timeop.StatementTimestamp` is `ErrUnsupported`.
 
 ## Errors
 

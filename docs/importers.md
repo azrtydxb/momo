@@ -20,8 +20,51 @@ is written as a literal in those files: a naming strategy set in another
 package, or an index added by a migration, is not visible. Each reader's
 package comment lists its limits.
 
-The `momo import` command is not wired yet. Today the readers are a
-Go API: call `Read`, check the report, then `Emit`.
+## The `momo import` command
+
+```sh
+momo import gorm --src ./old/models --out ./models
+momo import bun  --src ./old/models --out ./models --report import-report.txt
+momo import ent  --src ./ent/schema --out ./models --package models
+```
+
+The command runs the reader, prints the import report to standard output and
+writes the Momo structs to `<out>/models.go` with a generated-file header.
+`--package` sets the Go package name (the default is derived from `--out`),
+and `--report` also writes the report to a file.
+
+Exit codes: `0` the models were written, `1` the report holds an `unsupported`
+change and nothing was written, `2` a usage or input error. Fix or convert the
+listed constructs by hand, or remove them from the source, and run it again.
+The command never overwrites a file that does not carry the generated-file
+header.
+
+## Importing migration history
+
+The `importer/history` package converts the migration history of another tool
+into a Momo migration directory, so a database that already ran those
+migrations does not run them again. Four readers produce the input:
+
+| Package                          | Reads                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `importer/history/atlas`         | an Atlas directory (`<version>_<name>.sql`, `atlas.sum`) and the rows of `atlas_schema_revisions` |
+| `importer/history/goose`         | a goose directory and the `goose_db_version` table                                                |
+| `importer/history/golangmigrate` | `<version>_<title>.up.sql` and `.down.sql` files and `schema_migrations`                          |
+| `importer/history/bun`           | Bun's SQL migrations and the `bun_migrations` table                                               |
+
+Each package exports `Read`, which returns a `history.Source`. `history.Convert`
+refuses a source that is dirty, that holds migrations the tool never applied, or
+that holds migrations it cannot convert (Bun and goose Go-function migrations).
+A source version that is not a 14-digit timestamp is mapped to
+`19700101000000` plus its position in the list, and the mapping is reported as a
+`version-mapped` change; the original version stays in the history `name`
+column. `history.Baseline` replays the converted SQL on an empty scratch
+database to write one schema snapshot per migration, `history.WriteImport`
+writes the directory and `history.HistoryRows` gives the `momo_migrations` rows
+that mark every migration as applied. The Atlas reader verifies `atlas.sum`
+with Atlas's directory hash and refuses a directory whose files were edited.
+golang-migrate records only its current version, so every migration up to it is
+read as applied.
 
 ## The import report
 
