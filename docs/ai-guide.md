@@ -46,11 +46,12 @@ A database is usable when a driver package for it exists under `driver/`:
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only in the CLI. No `migrate rollback`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
 - `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
-- Reciprocal-rank-fusion hybrid search
-  does not exist. Use `momo.SQL` / `momo.TypedSQL` for it. Full-text search
+- Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL only,
+  see [vectors.md](vectors.md#hybrid-search)). Full-text search
   (`types.TSVector`, `fts.Match`, `fts.RankCD`, `fts.Headline`, the
-  query builders) exists on PostgreSQL; combine it with a vector distance in
-  one score as shown in [fulltext.md](fulltext.md).
+  query builders) exists on PostgreSQL; to weigh the signals yourself, combine
+  a vector distance with a text rank in one score as shown in
+  [fulltext.md](fulltext.md).
 
 Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/quickstart/).
 
@@ -1633,8 +1634,9 @@ Pitfalls:
   `pgxpool.NewWithConfig`, then `pgxdriver.WithVectorFormat(pgxdriver.VectorBinary)`
   with a describe-based exec mode). Default text transport is correct; skip unless
   profiling says otherwise. `NewPool` does not call `ConfigureVectors`.
-- Reciprocal-rank-fusion hybrid search does not exist; combine a distance and a
-  text rank in one score instead ([fulltext.md](fulltext.md)).
+- Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL only,
+  [vectors.md](vectors.md#hybrid-search)); for a custom mix, combine a distance
+  and a text rank in one score ([fulltext.md](fulltext.md)).
 
 Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-search/).
 

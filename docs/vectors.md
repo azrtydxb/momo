@@ -23,9 +23,8 @@ MariaDB. This page describes what is built. Every Go snippet below is an `Exampl
 
 ## Not available
 
-- Hybrid search: Momo has no built-in fusion of PostgreSQL full-text and vector
-  results. Combine a distance and a text rank yourself; see the hybrid pattern
-  in [full-text search](fulltext.md).
+- Hybrid search on SQLite and MySQL: `momo.HybridSearch` needs PostgreSQL and
+  returns `ErrUnsupported` elsewhere; see [Hybrid search](#hybrid-search).
 - MySQL: the server stores vectors but has no distance function, so a distance
   query fails with `ErrUnsupported`; see "MariaDB and MySQL" below. The
   `momo migrate` command does not run `migrate/mysql`, which renders its
@@ -325,6 +324,39 @@ of 20000 rows returns fewer than 10 rows with iterative scan off, and 10 with
 and it can be shorter than k when the filter matches fewer rows than that
 bound allows. `strict_order` (hnsw only) keeps exact distance order while it
 scans.
+
+## Hybrid search
+
+`momo.HybridSearch` fuses a PostgreSQL full-text leg and a cosine-distance
+vector leg with reciprocal rank fusion (RRF) in one statement. Each leg picks
+its own best `TextCandidates` and `VectorCandidates` rows (default 100, at most
+1000), ranks them, and a row scores the sum of `1/(RRFK+rank)` over the legs it
+appears in (`RRFK` defaults to 60 and must be at least 1). The text leg ranks
+with `ts_rank_cd` over `websearch_to_tsquery`; the vector leg uses `<=>`.
+Ties break on the primary key ascending, in each leg and in the final order,
+so the result does not depend on insertion order.
+
+<!-- docscheck:fragment -->
+
+```go
+hits, err := momo.HybridSearch[Article](db, momo.HybridSpec[Article]{
+	Text:        articleBody,
+	TextConfig:  "english",
+	Query:       userInput,
+	Vector:      articleEmb,
+	QueryVector: queryEmbedding,
+	Limit:       10,
+}).All(ctx)
+// each hit has .Row (the model) and .Score
+```
+
+The model needs a single-column primary key. Soft-deleted rows are left out.
+`HybridQuery.SQL` returns the statement and its arguments without running it.
+Both legs scan the table unless indexes serve them (a GIN index on the
+`to_tsvector` expression, an hnsw or ivfflat index on the vector column), so
+the candidate counts bound the work after the scan, not the scan itself. For
+a different mix of signals, write your own score as shown in
+[full-text search](fulltext.md#hybrid-ranking-vector-plus-text).
 
 ## Verifying index use
 
