@@ -303,15 +303,12 @@ func columnsOf(m *gen.Model) ([]column, []gen.Diagnostic) {
 // singleIntPK returns the GraphQL field name of m's primary key when it is a
 // single integer column, else "".
 func singleIntPK(g *gen.Graph, m *gen.Model, cols []column) string {
-	if g.Schema == nil {
-		return ""
-	}
-	t, ok := g.TableOf(m)
-	if !ok || len(t.PrimaryKey) != 1 {
+	pk := g.PrimaryKey(m)
+	if len(pk) != 1 {
 		return ""
 	}
 	for _, c := range cols {
-		if c.name == t.PrimaryKey[0] && isInteger(c.sc) {
+		if c.name == pk[0] && isInteger(c.sc) {
 			return c.field
 		}
 	}

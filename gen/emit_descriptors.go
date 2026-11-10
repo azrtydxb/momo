@@ -217,6 +217,20 @@ func newDescEmitter(m *Model, g *Graph) (*descEmitter, map[string]bool) {
 	return e, aliases
 }
 
+// usedIdents returns the identifiers taken in a descriptor package before the
+// relation names are chosen: the reserved names, the import aliases and the
+// field identifiers.
+func usedIdents(aliases map[string]string, fieldIDs []string) map[string]bool {
+	used := DescriptorReserved()
+	for alias := range aliases {
+		used[alias] = true
+	}
+	for _, id := range fieldIDs {
+		used[id] = true
+	}
+	return used
+}
+
 // DescriptorIdents returns the Go names, in the descriptor package of m, of
 // the descriptor of each field (in field order) and of each relation (in
 // relation order). A name that collides with a helper, a keyword, an import
@@ -226,13 +240,7 @@ func newDescEmitter(m *Model, g *Graph) (*descEmitter, map[string]bool) {
 func DescriptorIdents(m *Model, g *Graph) (fields, relations []string) {
 	_, aliases := newDescEmitter(m, g)
 	fields = fieldIdents(m, aliases)
-	used := DescriptorReserved()
-	for alias := range aliases {
-		used[alias] = true
-	}
-	for _, id := range fields {
-		used[id] = true
-	}
+	used := usedIdents(aliases, fields)
 	for _, r := range m.Relations {
 		name := Identifier(r.GoName, used)
 		used[name] = true
@@ -247,13 +255,7 @@ func DescriptorIdents(m *Model, g *Graph) (fields, relations []string) {
 func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	e, aliases := newDescEmitter(m, g)
 	ids := fieldIdents(m, aliases)
-	used := DescriptorReserved()
-	for alias := range aliases {
-		used[alias] = true
-	}
-	for _, id := range ids {
-		used[id] = true
-	}
+	used := usedIdents(aliases, ids)
 	type col struct {
 		name, typ, ctor, colName, flags string
 		dim                             int  // vector columns only
