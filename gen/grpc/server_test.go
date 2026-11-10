@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/gen/apiquery"
 	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -74,6 +75,13 @@ func TestServerSourceExample(t *testing.T) {
 		"Embedding: []float32(m.Embedding),",
 		"ins = ins.Omit(documentdesc.Embedding)",
 		"codes.NotFound",
+		"codes.AlreadyExists",
+		"codes.FailedPrecondition",
+		"codes.Unavailable",
+		"func isZero[T comparable](v T) bool",
+		"if !isZero(p.Status) {",
+		"if isZero(m.Status) {\n\t\tins = ins.Omit(documentdesc.Status)",
+		"do no authentication or authorization",
 		`"google.golang.org/grpc/status"`,
 		`"example.com/app/pb"`,
 	} {
@@ -83,6 +91,12 @@ func TestServerSourceExample(t *testing.T) {
 	}
 	if strings.Contains(s, ".With(") {
 		t.Error("the server must use the typed builders only")
+	}
+	if strings.Contains(s, "p.CreatedAt") && strings.Contains(s, "m.CreatedAt = p.CreatedAt") {
+		t.Error("a read-only column is written from the request")
+	}
+	if strings.Contains(s, "m.ID = p.Id") {
+		t.Error("the primary key is written from the message")
 	}
 	again, _ := ServerSource(g, lock, "example", testPB)
 	if string(again) != s {
@@ -181,5 +195,46 @@ func TestPluginGenerate(t *testing.T) {
 		if string(o.Data) != string(outs[i].Data) {
 			t.Errorf("%s changed on the second run", o.Path)
 		}
+	}
+}
+
+// Catches: an operation that is switched off still being served, or a read-only
+// service whose proto still offers writes.
+func TestGRPCOps(t *testing.T) {
+	g := exampleGraph(t)
+	ops := apiquery.Ops{apiquery.DefaultModel: {"list", "get"}, "Tag": {"list", "create"}}
+	lock := &Lock{}
+	proto, diags := protoSource(g, lock, "momo.example.v1", "", ops)
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	p := string(proto)
+	for _, no := range []string{"rpc Create(Document)", "rpc Update(Document)", "rpc Delete(DocumentDeleteRequest)", "rpc Get(TagGetRequest)", "rpc Delete(TagDeleteRequest)"} {
+		if strings.Contains(p, no) {
+			t.Errorf("proto offers %q although the operation is off", no)
+		}
+	}
+	for _, yes := range []string{"rpc Get(DocumentGetRequest)", "rpc List(DocumentListRequest)", "rpc Create(Tag)", "rpc List(TagListRequest)"} {
+		if !strings.Contains(p, yes) {
+			t.Errorf("proto lacks %q", yes)
+		}
+	}
+	src, diags := serverSource(g, lock, "example", testPB, ops)
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	s := string(src)
+	for _, no := range []string{"func (s *documentServer) Create", "func (s *documentServer) Update", "func (s *documentServer) Delete", "func (s *tagServer) Get(", "func (s *tagServer) Update"} {
+		if strings.Contains(s, no) {
+			t.Errorf("server implements %q although the operation is off", no)
+		}
+	}
+	for _, yes := range []string{"func (s *documentServer) Get(", "func (s *documentServer) List(", "func (s *tagServer) Create("} {
+		if !strings.Contains(s, yes) {
+			t.Errorf("server lacks %q", yes)
+		}
+	}
+	if _, diags := protoSource(g, &Lock{}, "momo.example.v1", "", apiquery.Ops{"*": {"drop"}}); len(diags) != 1 {
+		t.Errorf("unknown operation accepted: %v", diags)
 	}
 }

@@ -34,9 +34,9 @@ func protocPath(t *testing.T) string {
 	p := os.Getenv("PROTOC")
 	if p == "" {
 		if os.Getenv("MOMO_REQUIRE_INTEGRATION") == "1" {
-			t.Fatal("PROTOC is required: install protoc v36.2 and set PROTOC to its path (see internal/integration/tools.lock)")
+			t.Fatal("PROTOC is required: run make protoc and set PROTOC=$(pwd)/internal/integration/protoc-dist/bin/protoc (the version is pinned in internal/integration/tools.lock)")
 		}
-		t.Skip("PROTOC is not set; run make protoc and set PROTOC=$(pwd)/internal/integration/bin/protoc")
+		t.Skip("PROTOC is not set; run make protoc and set PROTOC=$(pwd)/internal/integration/protoc-dist/bin/protoc")
 	}
 	return p
 }
@@ -101,36 +101,39 @@ func TestProtoGenerator(t *testing.T) {
 		}
 	}
 
-	// (b) protoc output equals the committed stubs
-	protoc := protocPath(t)
-	tools := t.TempDir()
-	genGo := goTool(t, modRoot, tools, "google.golang.org/protobuf/cmd/protoc-gen-go")
-	genGRPC := goTool(t, modRoot, tools, "google.golang.org/grpc/cmd/protoc-gen-go-grpc")
-	tmp := t.TempDir()
-	args := []string{
-		"--plugin=protoc-gen-go=" + genGo, "--plugin=protoc-gen-go-grpc=" + genGRPC,
-		"--proto_path=" + outDir,
-		"--go_out=" + tmp, "--go_opt=paths=source_relative",
-		"--go-grpc_out=" + tmp, "--go-grpc_opt=paths=source_relative",
-		"momo.proto",
-	}
-	if out, err := exec.Command(protoc, args...).CombinedOutput(); err != nil { // #nosec G204 -- protoc is the tool this test exists to run
-		t.Fatalf("protoc: %v\n%s", err, out)
-	}
-	for _, name := range []string{"momo.pb.go", "momo_grpc.pb.go"} {
-		got, err := os.ReadFile(filepath.Join(tmp, name)) // #nosec G304 -- a file protoc just wrote under t.TempDir
-		if err != nil {
-			t.Fatal(err)
+	// (b) protoc output equals the committed stubs. Only this part needs protoc:
+	// without PROTOC the subtest is skipped and the rest still runs.
+	t.Run("protoc", func(t *testing.T) {
+		protoc := protocPath(t)
+		tools := t.TempDir()
+		genGo := goTool(t, modRoot, tools, "google.golang.org/protobuf/cmd/protoc-gen-go")
+		genGRPC := goTool(t, modRoot, tools, "google.golang.org/grpc/cmd/protoc-gen-go-grpc")
+		tmp := t.TempDir()
+		args := []string{
+			"--plugin=protoc-gen-go=" + genGo, "--plugin=protoc-gen-go-grpc=" + genGRPC,
+			"--proto_path=" + outDir,
+			"--go_out=" + tmp, "--go_opt=paths=source_relative",
+			"--go-grpc_out=" + tmp, "--go-grpc_opt=paths=source_relative",
+			"momo.proto",
 		}
-		ok, err := golden.Diff(filepath.Join(outDir, "pb", name), got, false)
-		if err != nil {
-			t.Fatal(err)
+		if out, err := exec.Command(protoc, args...).CombinedOutput(); err != nil { // #nosec G204 -- protoc is the tool this test exists to run
+			t.Fatalf("protoc: %v\n%s", err, out)
 		}
-		if !ok {
-			t.Fatalf("pb/%s is stale; rerun protoc with the committed options", name)
+		for _, name := range []string{"momo.pb.go", "momo_grpc.pb.go"} {
+			got, err := os.ReadFile(filepath.Join(tmp, name)) // #nosec G304 -- a file protoc just wrote under t.TempDir
+			if err != nil {
+				t.Fatal(err)
+			}
+			ok, err := golden.Diff(filepath.Join(outDir, "pb", name), got, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !ok {
+				t.Fatalf("pb/%s is stale; rerun protoc with the committed options", name)
+			}
 		}
-	}
-	checkJSONNameRule(t, protoc)
+		checkJSONNameRule(t, protoc)
+	})
 
 	// (c) the stubs and the server compile
 	build := exec.Command("go", "build", "./grpc/...")
@@ -194,14 +197,50 @@ func TestProtoGenerator(t *testing.T) {
 		t.Fatalf("first page = %v, %v", first, err)
 	}
 	second, err := client.List(ctx, &pb.DocumentListRequest{Limit: 2, After: first.NextCursor})
-	if err != nil || len(second.Items) == 0 || second.Items[0].Id == first.Items[1].Id {
+	if err != nil || len(second.Items) == 0 {
 		t.Fatalf("keyset page = %v, %v", second, err)
+	}
+	seen := map[int64]bool{}
+	for _, d := range first.Items {
+		seen[d.Id] = true
+	}
+	for _, d := range second.Items {
+		if seen[d.Id] {
+			t.Fatalf("id %d is on both pages: %v %v", d.Id, first.Items, second.Items)
+		}
+	}
+	if second.Items[0].Id <= first.Items[len(first.Items)-1].Id {
+		t.Fatalf("page 2 starts at %d, not after page 1's last id %d: the cursor was ignored", second.Items[0].Id, first.Items[len(first.Items)-1].Id)
+	}
+	// the tail page has no next cursor
+	tail := second
+	for pages := 0; tail.NextCursor != "" && pages < 20; pages++ {
+		if tail, err = client.List(ctx, &pb.DocumentListRequest{Limit: 2, After: tail.NextCursor}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if tail.NextCursor != "" || len(tail.Items) == 0 || len(tail.Items) > 2 {
+		t.Fatalf("tail page = %v", tail)
+	}
+	if rest, err := client.List(ctx, &pb.DocumentListRequest{Limit: 200}); err != nil || rest.NextCursor != "" {
+		t.Fatalf("a page that holds every row must have no next cursor: %v, %v", rest, err)
 	}
 	if _, err := client.Delete(ctx, &pb.DocumentDeleteRequest{Id: created.Id}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.Get(ctx, &pb.DocumentGetRequest{Id: created.Id}); status.Code(err) != codes.NotFound {
 		t.Fatalf("get after delete: want NotFound, got %v", err)
+	}
+
+	// constraint errors map to fixed, specific codes
+	tags := pb.NewTagServiceClient(conn)
+	if _, err := tags.Create(ctx, &pb.Tag{Name: "t1"}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("duplicate unique value: want AlreadyExists, got %v", err)
+	} else if strings.Contains(err.Error(), "tags") || strings.Contains(err.Error(), "constraint \"") {
+		t.Fatalf("the status leaks database detail: %v", err)
+	}
+	if _, err := pb.NewCommentServiceClient(conn).Create(ctx, &pb.Comment{DocumentId: 999999, Body: "x"}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("dangling foreign key: want FailedPrecondition, got %v", err)
 	}
 
 	// (e) renaming a Go field keeps the field number recorded for its column

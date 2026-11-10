@@ -4,6 +4,7 @@ package openapi
 
 import (
 	"encoding/json"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -16,6 +17,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/gen/apiquery"
 	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -121,6 +123,13 @@ func TestHandlersMatchDocument(t *testing.T) {
 		"momo.Delete[example.Document](h.DB)",
 		"ins.Omit(documentdesc.Embedding)",
 		"DisallowUnknownFields",
+		"StatusUnsupportedMediaType",
+		"StatusRequestEntityTooLarge",
+		"momo.ErrUniqueViolation",
+		"StatusServiceUnavailable",
+		"missing required property",
+		"ins.Omit(documentdesc.Status)",
+		"do no authentication or\n// authorization: wrap the mux",
 	} {
 		if !strings.Contains(s, must) {
 			t.Errorf("handlers lack %q", must)
@@ -161,8 +170,11 @@ func TestHandlersRules(t *testing.T) {
 		{Name: "pairs", PrimaryKey: []string{"a", "b"}},
 	}}}
 	src, diags := Handlers(g, "api", Options{Title: "t", Version: "1"})
-	if len(diags) != 0 {
-		t.Fatalf("diags = %v", diags)
+	if len(diags) != 1 || !strings.Contains(diags[0].Msg, "Pair") {
+		t.Fatalf("want one diagnostic for the skipped Pair, got %v", diags)
+	}
+	if !strings.Contains(string(src), "// Not served: Pair (no single exposed int64 primary key)") {
+		t.Errorf("the skipped model is not named in the output:\n%s", src)
 	}
 	s := string(src)
 	if strings.Contains(s, "secret") || strings.Contains(s, "Secret") {
@@ -183,8 +195,13 @@ func TestHandlersRules(t *testing.T) {
 	if _, diags = Handlers(g, "Bad Name", Options{}); len(diags) != 1 {
 		t.Errorf("bad package accepted: %v", diags)
 	}
-	if _, diags = Handlers(g, "api", Options{BasePath: "v1"}); len(diags) != 1 {
-		t.Errorf("bad base path accepted: %v", diags)
+	for _, bp := range []string{"v1", "/a b", "/a/../b", "/{id}", "/v1?x"} {
+		if src, diags = Handlers(g, "api", Options{BasePath: bp}); src != nil || len(diags) != 1 {
+			t.Errorf("base path %q accepted: %v", bp, diags)
+		}
+	}
+	if src, diags = Handlers(g, "api", Options{Ops: apiquery.Ops{"*": {"drop"}}}); src != nil || len(diags) != 1 {
+		t.Errorf("unknown operation accepted: %v", diags)
 	}
 }
 
@@ -235,5 +252,122 @@ func TestPluginGenerate(t *testing.T) {
 	}
 	if p.Name() != "openapi" || p.APIVersion() != gen.PluginAPIVersion {
 		t.Errorf("name %q version %d", p.Name(), p.APIVersion())
+	}
+}
+
+// Catches: an operation that was switched off still being routed or documented,
+// and a read-only API that still writes.
+func TestHandlersOps(t *testing.T) {
+	g := exampleGraph(t)
+	opts := Options{Title: "t", Version: "1", BasePath: "/v1", Ops: apiquery.Ops{apiquery.DefaultModel: {"list", "get"}, "Tag": {"list", "create", "delete"}}}
+	src, diags := Handlers(g, "handlers", opts)
+	if len(diags) != 0 {
+		t.Fatalf("diagnostics: %v", diags)
+	}
+	s := string(src)
+	for _, no := range []string{
+		`"POST /v1/documents"`, `"PUT /v1/documents/{id}"`, `"DELETE /v1/documents/{id}"`,
+		`"GET /v1/tags/{id}"`, `"PUT /v1/tags/{id}"`,
+		"func (h *DocumentHandler) create", "func (h *DocumentHandler) update", "func (h *DocumentHandler) delete",
+	} {
+		if strings.Contains(s, no) {
+			t.Errorf("handlers contain %s although the operation is off", no)
+		}
+	}
+	for _, yes := range []string{`"GET /v1/documents"`, `"GET /v1/documents/{id}"`, `"POST /v1/tags"`, `"DELETE /v1/tags/{id}"`} {
+		if !strings.Contains(s, yes) {
+			t.Errorf("handlers lack %s", yes)
+		}
+	}
+	doc, ds := Document(g, opts)
+	if len(ds) != 0 {
+		t.Fatal(ds)
+	}
+	var d struct {
+		Paths map[string]map[string]json.RawMessage `json:"paths"`
+	}
+	if err := json.Unmarshal(doc, &d); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := d.Paths["/v1/documents"]["post"]; ok {
+		t.Error("the document lists POST /v1/documents")
+	}
+	if _, ok := d.Paths["/v1/documents/{id}"]["put"]; ok {
+		t.Error("the document lists PUT /v1/documents/{id}")
+	}
+	if _, ok := d.Paths["/v1/tags/{id}"]["get"]; ok {
+		t.Error("the document lists GET /v1/tags/{id}")
+	}
+	if _, ok := d.Paths["/v1/tags/{id}"]["delete"]; !ok {
+		t.Error("the document lacks DELETE /v1/tags/{id}")
+	}
+}
+
+// Catches: identity, key, read-only and defaulted columns counted as required,
+// which would make a client send the id and the creation time, and a required
+// column that is not enforced.
+func TestRequiredProperties(t *testing.T) {
+	g := exampleGraph(t)
+	doc, ds := Document(g, Options{Title: "t", Version: "1", BasePath: "/v1"})
+	if len(ds) != 0 {
+		t.Fatal(ds)
+	}
+	var d struct {
+		Components struct {
+			Schemas map[string]struct {
+				Required []string `json:"required"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(doc, &d); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"Comment": {"document_id", "body"}, "Document": {"tenant_id", "title", "body"},
+		"Tag": {"name"}, "Tenant": {"name"},
+	}
+	for model, req := range want {
+		if !reflect.DeepEqual(d.Components.Schemas[model].Required, req) {
+			t.Errorf("%s required = %v, want %v", model, d.Components.Schemas[model].Required, req)
+		}
+	}
+	src, _ := Handlers(g, "handlers", Options{Title: "t", Version: "1"})
+	if !strings.Contains(string(src), `var documentRequired = []string{"tenant_id", "title", "body"}`) {
+		t.Errorf("the handlers do not enforce the same required set:\n%s", src)
+	}
+}
+
+// Catches: a plugin that leaves a stale handlers_gen.go serving routes the
+// document no longer lists, or that fails the whole run for one bad model.
+func TestPluginStaleHandlersAndSkippedModel(t *testing.T) {
+	g := exampleGraph(t)
+	root := t.TempDir()
+	dir := filepath.Join(root, "api")
+	opts := Options{Title: "t", Version: "1", Handlers: true}
+	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	if err := (Plugin{Dir: dir, Options: opts}).Generate(g, w); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	opts.Handlers = false
+	w = gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	err := (Plugin{Dir: dir, Options: opts}).Generate(g, w)
+	var de *gen.ErrDiagnostics
+	if !errors.As(err, &de) || !strings.Contains(err.Error(), "handlers_gen.go") {
+		t.Fatalf("a stale handlers_gen.go was not reported: %v", err)
+	}
+
+	bad := &gen.Graph{Models: append(append([]*gen.Model(nil), g.Models...), handlerModel("Pair", "pairs", hf("A", "a", "int32"), hf("B", "b", "int32"))), Schema: g.Schema}
+	w = gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	opts.Handlers = true
+	if err := (Plugin{Dir: filepath.Join(root, "other"), Options: opts}).Generate(bad, w); err != nil {
+		t.Fatalf("one bad model failed the whole run: %v", err)
+	}
+	for _, o := range w.Outputs() {
+		if !strings.Contains(string(o.Data), "Pair") {
+			t.Errorf("%s does not name the skipped model", o.Path)
+		}
 	}
 }

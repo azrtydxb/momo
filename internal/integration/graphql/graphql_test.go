@@ -10,9 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
-
-	"github.com/99designs/gqlgen/graphql/handler"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/gen"
@@ -21,6 +20,7 @@ import (
 	"github.com/azrtydxb/momo/internal/integration/fixture"
 	"github.com/azrtydxb/momo/internal/integration/graphql/example/graph"
 	"github.com/azrtydxb/momo/internal/integration/graphql/example/graph/generated"
+	"github.com/azrtydxb/momo/internal/integration/graphql/example/graph/model"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 )
 
@@ -44,6 +44,16 @@ func openDB(t *testing.T, c *counter) *momo.DB {
 
 func post(t *testing.T, url, q string) map[string]any {
 	t.Helper()
+	data, errs := postRaw(t, url, q)
+	if len(errs) != 0 {
+		t.Fatalf("graphql errors: %v", errs)
+	}
+	return data
+}
+
+// postRaw posts a query and returns its data and the messages of its errors.
+func postRaw(t *testing.T, url, q string) (map[string]any, []string) {
+	t.Helper()
 	body, err := json.Marshal(map[string]string{"query": q})
 	if err != nil {
 		t.Fatal(err)
@@ -66,10 +76,11 @@ func post(t *testing.T, url, q string) map[string]any {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Errors) != 0 {
-		t.Fatalf("graphql errors: %v", out.Errors)
+	var msgs []string
+	for _, e := range out.Errors {
+		msgs = append(msgs, e.Message)
 	}
-	return out.Data
+	return out.Data, msgs
 }
 
 func connection(t *testing.T, data map[string]any) (ids []string, endCursor string) {
@@ -142,9 +153,8 @@ func TestGraphQLGenerator(t *testing.T) {
 	// 2. serve the gqlgen server over HTTP, backed by the database
 	c := &counter{}
 	db := openDB(t, c)
-	srv := httptest.NewServer(handler.NewDefaultServer(generated.NewExecutableSchema(generated.Config{
-		Resolvers: &graph.Resolver{DB: db},
-	})))
+	exec := generated.NewExecutableSchema(generated.Config{Resolvers: &graph.Resolver{DB: db}})
+	srv := httptest.NewServer(model.NewServer(exec))
 	t.Cleanup(srv.Close)
 
 	// 3. batched relations: the statement count does not grow with the page size
@@ -181,5 +191,42 @@ func TestGraphQLGenerator(t *testing.T) {
 	}
 	if ids5, last5 := connection(t, first5); len(ids5) != 5 || last5 == "" {
 		t.Fatalf("page of 5 = %v cursor=%q", ids5, last5)
+	}
+	if last := ids1[len(ids1)-1]; ids2[0] <= last && len(last) == len(ids2[0]) {
+		t.Fatalf("page 2 starts at %s, not after page 1's last id %s: the cursor was ignored", ids2[0], last)
+	}
+
+	// 5. the limits: the in list, the filter depth, the query depth and the complexity
+	_, errs := postRaw(t, srv.URL, `query { documents(filter: {title: {in: [`+strings.Repeat(`"a",`, model.MaxInValues)+`"a"]}}) { edges { cursor } } }`)
+	if len(errs) != 1 || !strings.Contains(errs[0], "in takes at most") {
+		t.Fatalf("an in list over the limit: %v", errs)
+	}
+	nested := `{title: {eq: "a"}}`
+	for i := 0; i <= model.MaxFilterDepth; i++ {
+		nested = `{not: ` + nested + `}`
+	}
+	if _, errs = postRaw(t, srv.URL, `query { documents(filter: `+nested+`) { edges { cursor } } }`); len(errs) != 1 || !strings.Contains(errs[0], "nested too deep") {
+		t.Fatalf("a filter nested over the limit: %v", errs)
+	}
+	shallow := httptest.NewServer(model.NewServerWithLimits(exec, model.Limits{MaxDepth: 3, MaxComplexity: 500}))
+	t.Cleanup(shallow.Close)
+	if _, errs = postRaw(t, shallow.URL, fmt.Sprintf(pageQuery, 2, "")); len(errs) != 1 || !strings.Contains(errs[0], "too deep") {
+		t.Fatalf("a query deeper than MaxDepth: %v", errs)
+	}
+	cheap := httptest.NewServer(model.NewServerWithLimits(exec, model.Limits{MaxDepth: 8, MaxComplexity: 5}))
+	t.Cleanup(cheap.Close)
+	if _, errs = postRaw(t, cheap.URL, fmt.Sprintf(pageQuery, 2, "")); len(errs) != 1 || !strings.Contains(strings.ToLower(errs[0]), "complex") {
+		t.Fatalf("a query dearer than MaxComplexity: %v", errs)
+	}
+
+	// 6. a database error reaches the client as a fixed message
+	_, errs = postRaw(t, srv.URL, `query { documents(filter: {title: {eq: "a"}}, order: {field: ID, direction: SIDEWAYS}) { edges { cursor } } }`)
+	if len(errs) == 0 {
+		t.Fatal("an unknown order direction was accepted")
+	}
+	for _, e := range errs {
+		if strings.Contains(e, "documents") || strings.Contains(e, "momo:") || strings.Contains(e, "SQL") {
+			t.Fatalf("the error leaks internals: %q", e)
+		}
 	}
 }

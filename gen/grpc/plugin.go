@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/gen/apiquery"
 )
 
 // Plugin is the gen.Plugin that writes the .proto file, its field-number lock
@@ -22,6 +23,8 @@ type Plugin struct {
 	// from the .proto file. It becomes the go_package option and the import of
 	// the adapters.
 	GoPackage string
+	// Ops chooses the operations each service offers; nil offers every one.
+	Ops apiquery.Ops
 }
 
 // Name returns "grpc".
@@ -39,7 +42,7 @@ func (p Plugin) Generate(g *gen.Graph, w *gen.Writer) error {
 	if err != nil {
 		return err
 	}
-	src, diags := protoSource(g, lock, p.ProtoPackage, p.GoPackage)
+	src, diags := protoSource(g, lock, p.ProtoPackage, p.GoPackage, p.Ops)
 	if len(diags) > 0 {
 		return &gen.ErrDiagnostics{Diagnostics: diags}
 	}
@@ -60,7 +63,7 @@ func (p Plugin) Generate(g *gen.Graph, w *gen.Writer) error {
 	if pkg == "" {
 		pkg = filepath.Base(p.Dir)
 	}
-	srv, diags := ServerSource(g, lock, pkg, p.GoPackage)
+	srv, diags := serverSource(g, lock, pkg, p.GoPackage, p.Ops)
 	if len(diags) > 0 {
 		return &gen.ErrDiagnostics{Diagnostics: diags}
 	}

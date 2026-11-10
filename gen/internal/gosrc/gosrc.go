@@ -5,6 +5,7 @@
 package gosrc
 
 import (
+	"maps"
 	"regexp"
 	"sort"
 	"strconv"
@@ -116,3 +117,45 @@ func LowerFirst(s string) string {
 	}
 	return strings.ToLower(s[:1]) + s[1:]
 }
+
+// PkgName matches a Go package name the generators accept.
+var PkgName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// BasePath matches the base path of an HTTP API: empty, or segments of
+// unreserved characters, each behind a slash and none of them dot-only.
+var BasePath = regexp.MustCompile(`^(/[A-Za-z0-9_~-][A-Za-z0-9._~-]*)*$`)
+
+// Aliases allocates import aliases for generated code. It starts from the
+// aliases the generator's own code uses, so a model package named like one of
+// them gets a numbered alias instead of redeclaring it.
+type Aliases struct {
+	imports map[string]string // alias -> path
+	byPath  map[string]string // path -> alias
+}
+
+// NewAliases returns an allocator that already holds fixed (alias to path).
+func NewAliases(fixed map[string]string) *Aliases {
+	a := &Aliases{imports: maps.Clone(fixed), byPath: map[string]string{}}
+	for alias, path := range fixed {
+		a.byPath[path] = alias
+	}
+	return a
+}
+
+// Alias returns the alias of path, allocating want (or want with a number
+// appended) the first time.
+func (a *Aliases) Alias(path, want string) string {
+	if alias, ok := a.byPath[path]; ok {
+		return alias
+	}
+	alias := want
+	for n := 2; a.imports[alias] != ""; n++ {
+		alias = want + strconv.Itoa(n)
+	}
+	a.imports[alias] = path
+	a.byPath[path] = alias
+	return alias
+}
+
+// Candidates returns every alias with its path, for Imports.
+func (a *Aliases) Candidates() map[string]string { return a.imports }

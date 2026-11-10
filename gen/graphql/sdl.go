@@ -7,10 +7,12 @@ package graphql
 
 import (
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/gen/internal/gosrc"
 	"github.com/azrtydxb/momo/gen/naming"
 )
 
@@ -29,7 +31,10 @@ type scalar struct {
 
 var (
 	scString = scalar{"String", "StringFilter"}
-	scInt    = scalar{"Int", "IntFilter"}
+	// scStringEq is a text column the server cannot search with contains: a
+	// nullable one, or any string type but string. It has no contains operator.
+	scStringEq = scalar{"String", "StringEqFilter"}
+	scInt      = scalar{"Int", "IntFilter"}
 	// scInt64 carries 64-bit and unsigned 32-bit integers, which do not fit
 	// the 32-bit GraphQL Int. It is a custom scalar encoded as a string.
 	scInt64 = scalar{"Int64", "Int64Filter"}
@@ -39,7 +44,7 @@ var (
 )
 
 // filterOrder is the order in which shared filter inputs are emitted.
-var filterOrder = []scalar{scString, scInt, scInt64, scBool, scFloat, scTime}
+var filterOrder = []scalar{scString, scStringEq, scInt, scInt64, scBool, scFloat, scTime}
 
 // reservedTypes are the names of the shared types and the built-in scalars;
 // no model may derive one of them.
@@ -47,7 +52,7 @@ var reservedTypes = map[string]bool{
 	"Query": true, "Mutation": true, "Subscription": true,
 	"PageInfo": true, "OrderDirection": true,
 	"Time": true, "Int64": true, "Int": true, "Float": true, "String": true, "Boolean": true, "ID": true,
-	"StringFilter": true, "IntFilter": true, "Int64Filter": true, "BoolFilter": true, "FloatFilter": true, "TimeFilter": true,
+	"StringFilter": true, "StringEqFilter": true, "IntFilter": true, "Int64Filter": true, "BoolFilter": true, "FloatFilter": true, "TimeFilter": true,
 }
 
 // scalarFor maps a field's base Go type to a scalar. skip is set for types
@@ -73,6 +78,10 @@ func scalarFor(baseType string) (sc scalar, skip, ok bool) {
 	}
 	return scalar{}, false, false
 }
+
+// orderable reports whether a page can be ordered by c: keyset pagination needs
+// a key that is never null.
+func orderable(c column) bool { return !c.null }
 
 func isInteger(sc scalar) bool { return sc == scInt || sc == scInt64 }
 
@@ -203,8 +212,12 @@ func analyze(g *gen.Graph) (keep []keptModel, byModel map[*gen.Model]bool, diags
 			fail("model " + m.GoName + " has no exposed columns, so it has no GraphQL type")
 			continue
 		}
-		single := lowerFirst(m.GoName)
-		plural := lowerFirst(naming.Plural(m.GoName))
+		if !slices.ContainsFunc(cols, orderable) {
+			fail("model " + m.GoName + " has no column a page can be ordered by (all are nullable), so it has no GraphQL type")
+			continue
+		}
+		single := gosrc.LowerFirst(m.GoName)
+		plural := gosrc.LowerFirst(naming.Plural(m.GoName))
 		pk := singleIntPK(g, m, cols)
 		qnames := []string{plural}
 		if pk != "" {
@@ -236,13 +249,6 @@ func analyze(g *gen.Graph) (keep []keptModel, byModel map[*gen.Model]bool, diags
 	return keep, byModel, diags
 }
 
-func lowerFirst(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToLower(s[:1]) + s[1:]
-}
-
 // columnsOf returns the exposed columns of m in field order, using the same
 // allowlist as the generated ColumnByName: no sensitive fields and no
 // repeated column. A column whose derived names are invalid or collide with an
@@ -262,6 +268,9 @@ func columnsOf(m *gen.Model) ([]column, []gen.Diagnostic) {
 		sc, skip, ok := scalarFor(f.BaseType)
 		if skip {
 			continue
+		}
+		if sc == scString && (f.BaseType != "string" || f.Nullable) {
+			sc = scStringEq
 		}
 		if !ok {
 			diags = append(diags, gen.Diagnostic{Pos: f.Pos, Msg: "no GraphQL filter for " + f.BaseType})
@@ -328,7 +337,7 @@ func writeModel(b *strings.Builder, m *gen.Model, cols []column, pk string, expo
 		if r.Target == nil || !exposed[r.Target] {
 			continue
 		}
-		field := lowerFirst(r.GoName)
+		field := gosrc.LowerFirst(r.GoName)
 		switch {
 		case !validName(field):
 			*diags = append(*diags, gen.Diagnostic{Pos: r.Pos, Msg: "relation " + r.GoName + " of " + name + " is not a valid GraphQL name"})
@@ -359,7 +368,9 @@ func writeModel(b *strings.Builder, m *gen.Model, cols []column, pk string, expo
 
 	b.WriteString("\nenum " + name + "OrderField {\n")
 	for _, c := range cols {
-		b.WriteString("  " + c.enum + "\n")
+		if orderable(c) {
+			b.WriteString("  " + c.enum + "\n")
+		}
 	}
 	b.WriteString("}\n")
 	b.WriteString("\ninput " + name + "Order {\n  field: " + name + "OrderField!\n  direction: OrderDirection!\n}\n")
@@ -370,6 +381,8 @@ func sharedFilter(sc scalar) string {
 	switch sc {
 	case scString:
 		return "input StringFilter {\n  eq: String\n  ne: String\n  in: [String!]\n  contains: String\n}\n"
+	case scStringEq:
+		return "input StringEqFilter {\n  eq: String\n  ne: String\n  in: [String!]\n}\n"
 	case scBool:
 		return "input BoolFilter {\n  eq: Boolean\n  ne: Boolean\n}\n"
 	}

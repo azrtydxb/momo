@@ -4,13 +4,21 @@
 # Installs the protoc release pinned in internal/integration/tools.lock into
 # internal/integration/protoc-dist (bin/protoc and include/). The archive is
 # downloaded from the protobuf releases and its SHA-256 must equal the pin in
-# tools.lock, else nothing is installed.
+# tools.lock, else nothing is installed. tools.lock is the only place the
+# version is written: it is read from the archive names. Supported: Linux
+# x86_64 and aarch64, macOS arm64 and x86_64 (Windows: install protoc by hand
+# and set PROTOC).
 set -euo pipefail
 
-VERSION=36.2
 root=$(cd "$(dirname "$0")/.." && pwd)
 dist=$root/internal/integration/protoc-dist
 lock=$root/internal/integration/tools.lock
+
+VERSION=$(awk 'NR == 1 { split($1, p, "-"); print p[2] }' "$lock")
+if [ -z "$VERSION" ]; then
+	echo "fetch-protoc: cannot read the version from tools.lock" >&2
+	exit 1
+fi
 
 if [ -x "$dist/bin/protoc" ] && [ "$("$dist/bin/protoc" --version)" = "libprotoc $VERSION" ]; then
 	echo "protoc $VERSION is installed: $dist/bin/protoc"
@@ -19,7 +27,9 @@ fi
 
 case "$(uname -s)-$(uname -m)" in
 Linux-x86_64) archive=protoc-$VERSION-linux-x86_64.zip ;;
+Linux-aarch64 | Linux-arm64) archive=protoc-$VERSION-linux-aarch_64.zip ;;
 Darwin-arm64) archive=protoc-$VERSION-osx-aarch_64.zip ;;
+Darwin-x86_64) archive=protoc-$VERSION-osx-x86_64.zip ;;
 *)
 	echo "fetch-protoc: no pinned protoc archive for $(uname -s)-$(uname -m)" >&2
 	exit 1

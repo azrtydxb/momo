@@ -94,10 +94,16 @@ func TestGoSourceExample(t *testing.T) {
 		"package model",
 		"func ListDocuments(ctx context.Context, q momo.Querier, first *int, after *string, filter *DocumentFilter, order *DocumentOrder) (*DocumentConnection, error)",
 		"func GetDocument(ctx context.Context, q momo.Querier, id int64) (*example.Document, error)",
-		`loaders = append(loaders, documentdesc.Comments.Scope())`,
-		`loaders = append(loaders, documentdesc.Tags.Scope())`,
-		`wanted(ctx, "edges", "node", "comments")`,
+		"documentdesc.Comments.Scope(momo.LoadOrderBy[example.Comment](commentdesc.ID.Asc()), momo.LoadPerParentLimit[example.Comment](MaxRelationRows)).Then(commentLoaders(ctx, subFields(ctx, f))...)",
+		"documentdesc.Tenant.Scope().Then(tenantLoaders(ctx, subFields(ctx, f))...)",
+		`documentLoaders(ctx, fieldsAt(ctx, "edges", "node"))`,
 		"sel = sel.Preload(loaders...)",
+		"func NewServer(es graphql.ExecutableSchema) *handler.Server",
+		"srv.Use(extension.FixedComplexityLimit(l.MaxComplexity))",
+		"srv.SetErrorPresenter(presentError)",
+		"MaxInValues = 100",
+		"if depth > MaxFilterDepth {",
+		"errors.Is(err, momo.ErrUniqueViolation)",
 		"apiquery.ClampLimit(limit)",
 		"apiquery.DecodeCursor(*after)",
 		"apiquery.ParseFilter(lookup",
@@ -112,8 +118,8 @@ func TestGoSourceExample(t *testing.T) {
 			t.Errorf("glue lacks %q", must)
 		}
 	}
-	if strings.Contains(s, ".With(") {
-		t.Error("relations must load through Preload, never the CTE method With")
+	if strings.Contains(s, ".With(") || strings.Contains(s, "wanted(") {
+		t.Error("relations must load through Preload, never the CTE method With, and through the nested loaders")
 	}
 	if strings.Contains(s, "type BoolFilter") || strings.Contains(s, "type FloatFilter") {
 		t.Error("a filter no column uses was emitted")
@@ -144,6 +150,9 @@ func TestGoSourceExample(t *testing.T) {
 	rootSrc, querySrc := resolverScaffold(ms, "graph", testImport)
 	if !strings.Contains(string(rootSrc), "DB *momo.DB") {
 		t.Errorf("root resolver lacks the DB field:\n%s", rootSrc)
+	}
+	if !strings.HasPrefix(string(rootSrc), "// SPDX-License-Identifier: Apache-2.0\n") || !strings.Contains(string(rootSrc), "model.NewServer") {
+		t.Errorf("root resolver lacks its SPDX header or the NewServer advice:\n%s", rootSrc)
 	}
 	res := string(querySrc)
 	for _, must := range []string{
@@ -221,6 +230,108 @@ func TestHasInitialism(t *testing.T) {
 	for in, want := range map[string]bool{"documents": false, "apiKeys": true, "user_id": true, "tenant": false, "urlMaps": true, "grid": false} {
 		if got := hasInitialism(in); got != want {
 			t.Errorf("hasInitialism(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func relModel(name, table string, fields ...*gen.Field) *gen.Model {
+	return &gen.Model{GoName: name, Table: table, PkgPath: "example.com/m", PkgName: "m", SubPkg: strings.ToLower(name), Fields: fields}
+}
+
+// Catches: relations preloaded one level deep only, so a nested selection
+// (thing { parts { subs } }) costs a statement per row at the second level.
+func TestGoSourceNestedLoaders(t *testing.T) {
+	thing := relModel("Thing", "things", gf("ID", "id", "int64"))
+	part := relModel("Part", "parts", gf("ID", "id", "int64"), gf("ThingID", "thing_id", "int64"))
+	sub := relModel("Sub", "subs", gf("ID", "id", "int64"), gf("PartID", "part_id", "int64"))
+	thing.Relations = []*gen.Relation{{GoName: "Parts", Kind: gen.HasMany, Target: part}}
+	part.Relations = []*gen.Relation{{GoName: "Subs", Kind: gen.HasMany, Target: sub}, {GoName: "Thing", Kind: gen.BelongsTo, Target: thing}}
+	g := &gen.Graph{Models: []*gen.Model{thing, part, sub}, Schema: &schema.Schema{Tables: []schema.Table{
+		{Name: "things", PrimaryKey: []string{"id"}}, {Name: "parts", PrimaryKey: []string{"id"}}, {Name: "subs", PrimaryKey: []string{"id"}},
+	}}}
+	src, diags := GoSource(g, "model", "")
+	if len(diags) != 0 {
+		t.Fatalf("diagnostics: %v", diags)
+	}
+	s := string(src)
+	for _, must := range []string{
+		"func thingLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[m.Thing]",
+		"thingdesc.Parts.Scope(momo.LoadOrderBy[m.Part](partdesc.ID.Asc()), momo.LoadPerParentLimit[m.Part](MaxRelationRows)).Then(partLoaders(ctx, subFields(ctx, f))...)",
+		"partdesc.Subs.Scope(momo.LoadOrderBy[m.Sub](subdesc.ID.Asc()), momo.LoadPerParentLimit[m.Sub](MaxRelationRows)).Then(subLoaders(ctx, subFields(ctx, f))...)",
+		"partdesc.Thing.Scope().Then(thingLoaders(ctx, subFields(ctx, f))...)",
+		"func subLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[m.Sub] {\n\treturn nil\n}",
+	} {
+		if !strings.Contains(s, must) {
+			t.Errorf("glue lacks %q", must)
+		}
+	}
+	if _, err := parser.ParseFile(token.NewFileSet(), "momo_gen.go", src, 0); err != nil {
+		t.Fatalf("glue does not parse: %v\n%s", err, src)
+	}
+}
+
+// Catches: the schema advertising an operation the server rejects: contains on
+// a column that is not a plain string, and a nullable column in the order enum.
+func TestSDLAdvertisesOnlyWhatTheServerAccepts(t *testing.T) {
+	odd := gf("Odd", "odd", "sql.NullString")
+	g := glueModel(gf("ID", "id", "int64"), gf("Title", "title", "string"), gf("Note", "note", "*string"), gf("Count", "count", "*int32"), odd)
+	sdl, diags := SDL(g)
+	_ = diags // the glue refuses sql.NullString; the SDL alone stays valid
+	s := string(sdl)
+	body, _, _ := strings.Cut(s[strings.Index(s, "input ThingFilter"):], "}\n")
+	for field, want := range map[string]string{"title": "StringFilter", "note": "StringEqFilter", "odd": "StringEqFilter", "count": "IntFilter"} {
+		if !strings.Contains(body, "  "+field+": "+want+"\n") {
+			t.Errorf("filter field %s should be %s:\n%s", field, want, body)
+		}
+	}
+	if i := strings.Index(s, "input StringEqFilter"); i < 0 || strings.Contains(s[i:i+120], "contains") {
+		t.Errorf("StringEqFilter missing or offers contains:\n%s", s)
+	}
+	enum, _, _ := strings.Cut(s[strings.Index(s, "enum ThingOrderField"):], "}\n")
+	for _, no := range []string{"NOTE", "COUNT", "ODD"} {
+		if strings.Contains(enum, "  "+no+"\n") {
+			t.Errorf("nullable column %s is in the order enum:\n%s", no, enum)
+		}
+	}
+	for _, yes := range []string{"ID", "TITLE"} {
+		if !strings.Contains(enum, "  "+yes+"\n") {
+			t.Errorf("column %s is not in the order enum:\n%s", yes, enum)
+		}
+	}
+}
+
+// Catches: an enum value in the schema that the Go glue cannot order by (it
+// would answer "unknown order field") or a glue ordering the schema hides.
+func TestEveryAdvertisedOrderFieldWorks(t *testing.T) {
+	g := exampleGraph(t)
+	sdl, diags := SDL(g)
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	glue, diags := GoSource(g, "model", testModels)
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	for _, name := range []string{"Comment", "Document", "Tag", "Tenant"} {
+		enum, _, _ := strings.Cut(string(sdl)[strings.Index(string(sdl), "enum "+name+"OrderField"):], "}\n")
+		var values []string
+		for _, line := range strings.Split(enum, "\n")[1:] {
+			if v := strings.TrimSpace(line); v != "" {
+				values = append(values, v)
+			}
+		}
+		if len(values) == 0 {
+			t.Fatalf("%s has no order values", name)
+		}
+		cols := string(glue)[strings.Index(string(glue), "var "+strings.ToLower(name[:1])+name[1:]+"OrderColumns"):]
+		cols, _, _ = strings.Cut(cols, "}\n")
+		for _, v := range values {
+			if !strings.Contains(cols, `"`+v+`": "`) {
+				t.Errorf("%s: order value %s is advertised but the glue cannot order by it:\n%s", name, v, cols)
+			}
+		}
+		if got := strings.Count(cols, `": "`); got != len(values) {
+			t.Errorf("%s: the glue orders by %d columns, the schema lists %d", name, got, len(values))
 		}
 	}
 }

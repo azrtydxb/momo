@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/gen/apiquery"
 )
 
 var (
@@ -60,6 +61,18 @@ type protoField struct {
 	optional bool
 }
 
+// lockType is the type the lock records for the field: the protobuf type with
+// its cardinality, so a change of either gives the field a new number.
+func (f protoField) lockType() string {
+	switch {
+	case f.repeated:
+		return "repeated " + f.typ
+	case f.optional:
+		return "optional " + f.typ
+	}
+	return f.typ
+}
+
 // Proto returns the .proto source for the models of g in the proto package
 // pkg, and the diagnostics for columns and models that cannot be exposed.
 // Field numbers come from lock, which Proto updates; the caller writes it with
@@ -69,7 +82,7 @@ type protoField struct {
 // XGetRequest) is a diagnostic and the model is left out. The output is
 // deterministic.
 func Proto(g *gen.Graph, lock *Lock, pkg string) ([]byte, []gen.Diagnostic) {
-	return protoSource(g, lock, pkg, "")
+	return protoSource(g, lock, pkg, "", nil)
 }
 
 // goPackageRE is what a go_package option may hold: an import path, with an
@@ -78,8 +91,11 @@ var goPackageRE = regexp.MustCompile(`^[A-Za-z0-9._~/-]+(;[A-Za-z_][A-Za-z0-9_]*
 
 // protoSource is Proto with the go_package option set to goPackage when that
 // is not empty, which protoc-gen-go needs to place the Go stubs.
-func protoSource(g *gen.Graph, lock *Lock, pkg, goPackage string) ([]byte, []gen.Diagnostic) {
+func protoSource(g *gen.Graph, lock *Lock, pkg, goPackage string, ops apiquery.Ops) ([]byte, []gen.Diagnostic) {
 	var diags []gen.Diagnostic
+	if err := ops.Validate(); err != nil {
+		return nil, []gen.Diagnostic{{Msg: "gRPC " + err.Error()}}
+	}
 	if goPackage != "" && !goPackageRE.MatchString(goPackage) {
 		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("invalid Go package %q for the protobuf go_package option", goPackage)}}
 	}
@@ -94,6 +110,14 @@ func protoSource(g *gen.Graph, lock *Lock, pkg, goPackage string) ([]byte, []gen
 		return models[i].PkgPath < models[j].PkgPath
 	})
 
+	// live holds every message name this run writes, so a lock entry under a
+	// name still in use is never taken over by a renamed model.
+	live := map[string]bool{}
+	for _, m := range models {
+		for _, n := range derivedMessages(m.GoName) {
+			live[n] = true
+		}
+	}
 	var body strings.Builder
 	taken := map[string]string{"Filter": ""}
 	needTimestamp := false
@@ -123,7 +147,7 @@ func protoSource(g *gen.Graph, lock *Lock, pkg, goPackage string) ([]byte, []gen
 		fields, hidden, ts, fd := fieldsOf(m, lock)
 		diags = append(diags, fd...)
 		needTimestamp = needTimestamp || ts
-		writeModel(&body, g, m, fields, hidden, lock, &diags)
+		writeModel(&body, g, m, fields, hidden, lock, live, ops.For(m.GoName), &diags)
 	}
 
 	var out strings.Builder
@@ -239,12 +263,14 @@ func jsonName(field string) string {
 }
 
 // message writes one message whose fields are numbered through the lock.
-func message(b *strings.Builder, lock *Lock, name string, fields []protoField, hidden []string, diags *[]gen.Diagnostic) {
+func message(b *strings.Builder, lock *Lock, name, table string, live map[string]bool, fields []protoField, hidden []string, diags *[]gen.Diagnostic) {
 	cols := make([]string, len(fields))
+	types := make(map[string]string, len(fields))
 	for i, f := range fields {
 		cols[i] = f.column
+		types[f.column] = f.lockType()
 	}
-	nums, d := lock.AssignKeeping(name, cols, hidden)
+	nums, d := lock.AssignTyped(name, table, live, cols, types, hidden)
 	*diags = append(*diags, d...)
 	b.WriteString("\nmessage " + name + " {\n")
 	ml := lock.Messages[name]
@@ -279,9 +305,9 @@ func message(b *strings.Builder, lock *Lock, name string, fields []protoField, h
 	b.WriteString("}\n")
 }
 
-func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoField, hidden []string, lock *Lock, diags *[]gen.Diagnostic) {
+func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoField, hidden []string, lock *Lock, live map[string]bool, ops apiquery.OpSet, diags *[]gen.Diagnostic) {
 	name := m.GoName
-	message(b, lock, name, fields, hidden, diags)
+	message(b, lock, name, m.Table, live, fields, hidden, diags)
 
 	// The key of the row: the primary key columns of the schema table.
 	var key []protoField
@@ -301,16 +327,26 @@ func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoFi
 	if len(key) == 0 {
 		*diags = append(*diags, gen.Diagnostic{Pos: m.Pos, Msg: "model " + name + " has no exposed primary key, so Get and Delete cannot address a row"})
 	}
-	message(b, lock, name+"GetRequest", key, nil, diags)
-	message(b, lock, name+"DeleteRequest", key, nil, diags)
+	message(b, lock, name+"GetRequest", m.Table+"#get", live, key, nil, diags)
+	message(b, lock, name+"DeleteRequest", m.Table+"#delete", live, key, nil, diags)
 	b.WriteString("\nmessage " + name + "DeleteResponse {}\n")
 	b.WriteString("\nmessage " + name + "ListRequest {\n  string after = 1;\n  int32 limit = 2;\n  repeated Filter filter = 3;\n}\n")
 	b.WriteString("\nmessage " + name + "ListResponse {\n  repeated " + name + " items = 1;\n  string next_cursor = 2;\n}\n")
 	b.WriteString("\nservice " + name + "Service {\n")
-	b.WriteString("  rpc Get(" + name + "GetRequest) returns (" + name + ");\n")
-	b.WriteString("  rpc List(" + name + "ListRequest) returns (" + name + "ListResponse);\n")
-	b.WriteString("  rpc Create(" + name + ") returns (" + name + ");\n")
-	b.WriteString("  rpc Update(" + name + ") returns (" + name + ");\n")
-	b.WriteString("  rpc Delete(" + name + "DeleteRequest) returns (" + name + "DeleteResponse);\n")
+	rpcs := []struct {
+		op   apiquery.Op
+		line string
+	}{
+		{apiquery.OpGet, "  rpc Get(" + name + "GetRequest) returns (" + name + ");\n"},
+		{apiquery.OpList, "  rpc List(" + name + "ListRequest) returns (" + name + "ListResponse);\n"},
+		{apiquery.OpCreate, "  rpc Create(" + name + ") returns (" + name + ");\n"},
+		{apiquery.OpUpdate, "  rpc Update(" + name + ") returns (" + name + ");\n"},
+		{apiquery.OpDelete, "  rpc Delete(" + name + "DeleteRequest) returns (" + name + "DeleteResponse);\n"},
+	}
+	for _, r := range rpcs {
+		if ops.Has(r.op) {
+			b.WriteString(r.line)
+		}
+	}
 	b.WriteString("}\n")
 }

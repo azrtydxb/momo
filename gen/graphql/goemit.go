@@ -4,7 +4,7 @@ package graphql
 
 import (
 	"fmt"
-	"regexp"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,8 +49,16 @@ func bindKind(sc scalar, goType string) (keyKind, bool) {
 // gcol is an exposed column with the model field that holds it.
 type gcol struct {
 	column
-	f    *gen.Field
-	kind keyKind
+	f     *gen.Field
+	kind  keyKind
+	ident string // the name of the column's descriptor in the descriptor package
+}
+
+// grel is an exposed relation with the name of its descriptor.
+type grel struct {
+	r      *gen.Relation
+	ident  string
+	target *gen.Model
 }
 
 // gmodel is a model with a GraphQL type, ready for the Go glue.
@@ -59,8 +67,9 @@ type gmodel struct {
 	modelAlias string
 	descAlias  string
 	cols       []gcol
-	rels       []*gen.Relation
+	rels       []grel
 	pk         gcol
+	pkIdent    string
 }
 
 // commonInitialisms are the words gqlgen upper-cases in a Go name; a resolver
@@ -114,22 +123,23 @@ func upperFirst(s string) string {
 
 // exposedRelations returns the relations of m that SDL exposes as fields: the
 // target has a type and the field name is valid and not taken by a column.
-func exposedRelations(m *gen.Model, cols []gcol, byModel map[*gen.Model]bool) []*gen.Relation {
+func exposedRelations(g *gen.Graph, m *gen.Model, cols []gcol, byModel map[*gen.Model]bool) []grel {
 	taken := map[string]bool{}
 	for _, c := range cols {
 		taken[c.field] = true
 	}
-	var out []*gen.Relation
-	for _, r := range m.Relations {
+	_, idents := gen.DescriptorIdents(m, g)
+	var out []grel
+	for i, r := range m.Relations {
 		if r.Target == nil || !byModel[r.Target] {
 			continue
 		}
-		field := lowerFirst(r.GoName)
+		field := gosrc.LowerFirst(r.GoName)
 		if !validName(field) || taken[field] {
 			continue
 		}
 		taken[field] = true
-		out = append(out, r)
+		out = append(out, grel{r: r, ident: idents[i], target: r.Target})
 	}
 	return out
 }
@@ -139,20 +149,8 @@ func exposedRelations(m *gen.Model, cols []gcol, byModel map[*gen.Model]bool) []
 func analyzeGo(g *gen.Graph, modelsPackage string) ([]gmodel, []gen.Diagnostic) {
 	keep, byModel, diags := analyze(g)
 	var out []gmodel
-	aliasOf := map[string]string{}
-	taken := map[string]bool{"context": true, "errors": true, "fmt": true, "io": true, "strconv": true, "time": true, "json": true, "momo": true, "apiquery": true, "graphql": true}
-	alias := func(path, want string) string {
-		if a, ok := aliasOf[path]; ok {
-			return a
-		}
-		a := want
-		for n := 2; taken[a]; n++ {
-			a = want + strconv.Itoa(n)
-		}
-		taken[a] = true
-		aliasOf[path] = a
-		return a
-	}
+	aliases := gosrc.NewAliases(glueImports)
+	alias := aliases.Alias
 	for _, k := range keep {
 		m := k.m
 		fail := func(f *gen.Field, msg string) {
@@ -169,7 +167,10 @@ func analyzeGo(g *gen.Graph, modelsPackage string) ([]gmodel, []gen.Diagnostic) 
 			ok = false
 		}
 		byCol := map[string]*gen.Field{}
-		for _, f := range m.Fields {
+		identOf := map[*gen.Field]string{}
+		fieldIdents, _ := gen.DescriptorIdents(m, g)
+		for i, f := range m.Fields {
+			identOf[f] = fieldIdents[i]
 			if _, dup := byCol[f.Column]; !dup {
 				byCol[f.Column] = f
 			}
@@ -185,7 +186,7 @@ func analyzeGo(g *gen.Graph, modelsPackage string) ([]gmodel, []gen.Diagnostic) 
 				fail(f, "the GraphQL server cannot bind the type "+f.GoType+" of "+m.GoName+"."+f.GoName+" to "+c.sc.name)
 				ok = false
 			default:
-				gc := gcol{column: c, f: f, kind: kind}
+				gc := gcol{column: c, f: f, kind: kind, ident: identOf[f]}
 				gm.cols = append(gm.cols, gc)
 				if c.field == k.pk {
 					gm.pk = gc
@@ -215,21 +216,29 @@ func analyzeGo(g *gen.Graph, modelsPackage string) ([]gmodel, []gen.Diagnostic) 
 		}
 		gm.modelAlias = alias(mp, m.PkgName)
 		gm.descAlias = alias(dp, m.SubPkg+"desc")
-		gm.rels = exposedRelations(m, gm.cols, byModel)
+		gm.rels = exposedRelations(g, m, gm.cols, byModel)
+		gm.pkIdent = gm.pk.ident
 		out = append(out, gm)
 	}
 	return out, diags
 }
 
-// importsOf lists the import aliases the models of ms use.
+// glueImports are the import aliases the glue's own code uses.
+var glueImports = map[string]string{
+	"context": "context", "json": "encoding/json", "errors": "errors", "fmt": "fmt", "io": "io",
+	"strconv": "strconv", "time": "time", "slices": "slices",
+	"momo":      "github.com/azrtydxb/momo",
+	"apiquery":  "github.com/azrtydxb/momo/gen/apiquery",
+	"graphql":   "github.com/99designs/gqlgen/graphql",
+	"handler":   "github.com/99designs/gqlgen/graphql/handler",
+	"extension": "github.com/99designs/gqlgen/graphql/handler/extension",
+	"ast":       "github.com/vektah/gqlparser/v2/ast",
+	"gqlerror":  "github.com/vektah/gqlparser/v2/gqlerror",
+}
+
+// importsOf lists the import aliases the models of ms use, with the glue's own.
 func importsOf(ms []gmodel) map[string]string {
-	imp := map[string]string{
-		"context": "context", "json": "encoding/json", "errors": "errors", "fmt": "fmt", "io": "io",
-		"strconv": "strconv", "time": "time",
-		"momo":     "github.com/azrtydxb/momo",
-		"apiquery": "github.com/azrtydxb/momo/gen/apiquery",
-		"graphql":  "github.com/99designs/gqlgen/graphql",
-	}
+	imp := maps.Clone(glueImports)
 	for _, m := range ms {
 		mp, _ := gosrc.ModelImport(m.m)
 		dp, _ := gosrc.DescImport(m.m)
@@ -243,7 +252,7 @@ func importsOf(ms []gmodel) map[string]string {
 // types the schema binds to, the list and get functions and the scalar
 // marshalers. It reads the same models and columns as SDL.
 func GoSource(g *gen.Graph, pkg, modelsPackage string) ([]byte, []gen.Diagnostic) {
-	if !pkgNameRE.MatchString(pkg) {
+	if !gosrc.PkgName.MatchString(pkg) {
 		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("invalid Go package name %q for the GraphQL glue", pkg)}}
 	}
 	ms, diags := analyzeGo(g, modelsPackage)
@@ -265,8 +274,12 @@ func GoSource(g *gen.Graph, pkg, modelsPackage string) ([]byte, []gen.Diagnostic
 			b.WriteString(filterSource(sc))
 		}
 	}
+	byModel := map[*gen.Model]gmodel{}
 	for _, m := range ms {
-		writeGoModel(&b, m)
+		byModel[m.m] = m
+	}
+	for _, m := range ms {
+		writeGoModel(&b, m, byModel)
 	}
 	body := b.String()
 
@@ -278,19 +291,129 @@ func GoSource(g *gen.Graph, pkg, modelsPackage string) ([]byte, []gen.Diagnostic
 	return []byte(out.String()), nil
 }
 
-var pkgNameRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-
 const glueHelpers = `// PageInfo describes the page a connection holds.
 type PageInfo struct {
 	HasNextPage bool
 	EndCursor   *string
 }
 
-type lookupFunc func(name string) (momo.ColumnRef, error)
+// The limits that bound what one request may cost. Document them to your
+// clients; NewServer enforces the first two, the rest are enforced where the
+// request is turned into statements.
+const (
+	// MaxInValues is the longest list an in operator accepts.
+	MaxInValues = 100
+	// MaxFilterDepth is the deepest nesting of and, or and not in a filter.
+	MaxFilterDepth = 4
+	// MaxFilterTerms is the most terms in one and or or list.
+	MaxFilterTerms = 20
+	// MaxRelationRows is the most rows a to-many relation returns per parent;
+	// the rows are the first ones by primary key.
+	MaxRelationRows = 100
+)
 
-func invalid(msg string) error {
-	return &momo.Error{Kind: momo.ErrValidation, Op: "graphql", Err: errors.New(msg)}
+// Limits bound one request.
+type Limits struct {
+	// MaxDepth is the deepest selection a query may have, fragments included.
+	MaxDepth int
+	// MaxComplexity bounds the fields a query selects (gqlgen counts one each).
+	MaxComplexity int
 }
+
+// DefaultLimits are the limits NewServer uses.
+var DefaultLimits = Limits{MaxDepth: 8, MaxComplexity: 500}
+
+// NewServer returns the gqlgen server of es with DefaultLimits and an error
+// presenter that never shows a database error to the client. Use it, not
+// handler.NewDefaultServer, to serve the generated schema.
+func NewServer(es graphql.ExecutableSchema) *handler.Server {
+	return NewServerWithLimits(es, DefaultLimits)
+}
+
+// NewServerWithLimits is NewServer with other limits.
+func NewServerWithLimits(es graphql.ExecutableSchema, l Limits) *handler.Server {
+	srv := handler.NewDefaultServer(es)
+	srv.Use(extension.FixedComplexityLimit(l.MaxComplexity))
+	srv.Use(depthLimit(l.MaxDepth))
+	srv.SetErrorPresenter(presentError)
+	return srv
+}
+
+// depthLimit is a gqlgen extension that refuses a query nested deeper than its
+// value.
+type depthLimit int
+
+func (depthLimit) ExtensionName() string                  { return "DepthLimit" }
+func (depthLimit) Validate(graphql.ExecutableSchema) error { return nil }
+
+func (d depthLimit) InterceptOperation(ctx context.Context, next graphql.OperationHandler) graphql.ResponseHandler {
+	if oc := graphql.GetOperationContext(ctx); oc != nil && oc.Operation != nil && selectionDepth(oc.Operation.SelectionSet) > int(d) {
+		return func(ctx context.Context) *graphql.Response {
+			return graphql.ErrorResponse(ctx, "query is too deep: at most %d levels", int(d))
+		}
+	}
+	return next(ctx)
+}
+
+func selectionDepth(set ast.SelectionSet) int {
+	deepest := 0
+	for _, sel := range set {
+		d := 0
+		switch s := sel.(type) {
+		case *ast.Field:
+			d = 1 + selectionDepth(s.SelectionSet)
+		case *ast.InlineFragment:
+			d = selectionDepth(s.SelectionSet)
+		case *ast.FragmentSpread:
+			if s.Definition != nil {
+				d = selectionDepth(s.Definition.SelectionSet)
+			}
+		}
+		deepest = max(deepest, d)
+	}
+	return deepest
+}
+
+// InputError is a request the server refuses; its message is written for the
+// client and is shown as it is.
+type InputError struct{ Msg string }
+
+func (e *InputError) Error() string { return e.Msg }
+
+func invalid(msg string) error { return &InputError{Msg: msg} }
+
+// presentError shows the client a fixed message for an error of the database,
+// which would otherwise name the operation, the table and the constraint. The
+// errors of gqlgen itself (parse, validation, complexity) and InputError keep
+// their text.
+func presentError(ctx context.Context, err error) *gqlerror.Error {
+	out := graphql.DefaultErrorPresenter(ctx, err)
+	var input *InputError
+	var gqlErr *gqlerror.Error
+	if errors.As(err, &input) || errors.As(err, &gqlErr) {
+		return out
+	}
+	code, msg := "INTERNAL", "internal error"
+	switch {
+	case errors.Is(err, momo.ErrNotFound):
+		code, msg = "NOT_FOUND", "not found"
+	case errors.Is(err, momo.ErrUniqueViolation):
+		code, msg = "CONFLICT", "a unique constraint refused the change"
+	case errors.Is(err, momo.ErrForeignKeyViolation):
+		code, msg = "CONFLICT", "a foreign key constraint refused the change"
+	case errors.Is(err, momo.ErrCheckViolation), errors.Is(err, momo.ErrNotNullViolation):
+		code, msg = "BAD_INPUT", "a constraint refused the value"
+	case errors.Is(err, momo.ErrBusy), errors.Is(err, momo.ErrSerialization):
+		code, msg = "UNAVAILABLE", "temporarily unavailable; retry"
+	case errors.Is(err, momo.ErrValidation):
+		code, msg = "BAD_INPUT", "invalid input"
+	}
+	out.Message = msg
+	out.Extensions = map[string]any{"code": code}
+	return out
+}
+
+type lookupFunc func(name string) (momo.ColumnRef, error)
 
 func cmpPred(lookup lookupFunc, col, op, val string) (momo.Predicate, error) {
 	return apiquery.ParseFilter(lookup, apiquery.Filter{Column: col, Op: op, Value: val})
@@ -307,8 +430,12 @@ func all(ps []momo.Predicate) momo.Predicate {
 	return momo.And(ps...)
 }
 
-// combine joins the predicates of the children of a filter with join.
+// combine joins the predicates of the children of a filter with join. The list
+// is bounded, and the caller bounds the nesting.
 func combine[F any](children []*F, pred func(*F) (momo.Predicate, error), join func(...momo.Predicate) momo.Predicate) (momo.Predicate, error) {
+	if len(children) > MaxFilterTerms {
+		return nil, invalid("a filter list has too many terms")
+	}
 	var ps []momo.Predicate
 	for _, c := range children {
 		p, err := pred(c)
@@ -350,6 +477,9 @@ func (o cmpOps[T]) predicates(lookup lookupFunc, col string, format func(T) stri
 		if len(o.in) == 0 {
 			return nil, invalid("in needs at least one value")
 		}
+		if len(o.in) > MaxInValues {
+			return nil, invalid("in takes at most 100 values")
+		}
 		alts := make([]momo.Predicate, 0, len(o.in))
 		for _, v := range o.in {
 			p, err := cmpPred(lookup, col, "eq", format(v))
@@ -377,33 +507,29 @@ func parseOrder(columns map[string]string, field, direction string) (col string,
 	return "", false, invalid("unknown order direction")
 }
 
-// wanted reports whether the request selects the field at path below the field
-// being resolved. Outside a gqlgen request it reports true, so everything is
-// loaded.
-func wanted(ctx context.Context, path ...string) bool {
+// fieldsAt returns the fields the request selects below the field being
+// resolved, following path. Outside a gqlgen request it returns nil, so no
+// relation is loaded.
+func fieldsAt(ctx context.Context, path ...string) []graphql.CollectedField {
 	fc := graphql.GetFieldContext(ctx)
 	if fc == nil {
-		return true
+		return nil
 	}
 	oc := graphql.GetOperationContext(ctx)
 	fields := graphql.CollectFields(oc, fc.Field.Selections, nil)
-	for i, name := range path {
-		var next *graphql.CollectedField
-		for j := range fields {
-			if fields[j].Name == name {
-				next = &fields[j]
-				break
-			}
+	for _, name := range path {
+		i := slices.IndexFunc(fields, func(f graphql.CollectedField) bool { return f.Name == name })
+		if i < 0 {
+			return nil
 		}
-		if next == nil {
-			return false
-		}
-		if i == len(path)-1 {
-			return true
-		}
-		fields = graphql.CollectFields(oc, next.Selections, nil)
+		fields = graphql.CollectFields(oc, fields[i].Selections, nil)
 	}
-	return false
+	return fields
+}
+
+// subFields returns the fields the request selects below f.
+func subFields(ctx context.Context, f graphql.CollectedField) []graphql.CollectedField {
+	return graphql.CollectFields(graphql.GetOperationContext(ctx), f.Selections, nil)
 }
 `
 
@@ -565,15 +691,16 @@ func keyParse(c gcol) string {
 	return "return time.Parse(time.RFC3339Nano, s)"
 }
 
-func writeGoModel(b *strings.Builder, gm gmodel) {
+func writeGoModel(b *strings.Builder, gm gmodel, all map[*gen.Model]gmodel) {
 	m := gm.m
 	pkCol := gm.pk.name
 	r := strings.NewReplacer(
 		"{{M}}", m.GoName,
-		"{{lm}}", lowerFirst(m.GoName),
+		"{{lm}}", gosrc.LowerFirst(m.GoName),
 		"{{models}}", gm.modelAlias,
 		"{{desc}}", gm.descAlias,
 		"{{PK}}", gm.pk.f.GoName,
+		"{{PKI}}", gm.pk.ident,
 		"{{pkcol}}", pkCol,
 		"{{Plural}}", upperFirst(gm.plural),
 	)
@@ -609,15 +736,19 @@ type {{M}}Filter struct {
 	b.WriteString("}\n")
 
 	b.WriteString(r.Replace(`
-func (f *{{M}}Filter) predicate() (momo.Predicate, error) {
+func (f *{{M}}Filter) predicate(depth int) (momo.Predicate, error) {
 	if f == nil {
 		return nil, nil
 	}
+	if depth > MaxFilterDepth {
+		return nil, invalid("a filter is nested too deep")
+	}
+	nested := func(c *{{M}}Filter) (momo.Predicate, error) { return c.predicate(depth + 1) }
 	steps := []func() (momo.Predicate, error){
-		func() (momo.Predicate, error) { return combine(f.And, (*{{M}}Filter).predicate, momo.And) },
-		func() (momo.Predicate, error) { return combine(f.Or, (*{{M}}Filter).predicate, momo.Or) },
+		func() (momo.Predicate, error) { return combine(f.And, nested, momo.And) },
+		func() (momo.Predicate, error) { return combine(f.Or, nested, momo.Or) },
 		func() (momo.Predicate, error) {
-			p, err := f.Not.predicate()
+			p, err := f.Not.predicate(depth + 1)
 			if err != nil || p == nil {
 				return nil, err
 			}
@@ -628,9 +759,11 @@ func (f *{{M}}Filter) predicate() (momo.Predicate, error) {
 		call := "f." + c.f.GoName + ".predicate({{desc}}.ColumnByName, " + strconv.Quote(c.name)
 		switch {
 		case c.sc == scString && c.f.GoType == "string":
-			call += ", func(s string) momo.Predicate { return momo.ContainsLiteral({{desc}}." + c.f.GoName + ", s) })"
+			call += ", func(s string) momo.Predicate { return momo.ContainsLiteral({{desc}}." + c.ident + ", s) })"
 		case c.sc == scString:
 			call += ", nil)"
+		case c.sc == scStringEq:
+			call += ")"
 		default:
 			call += ")"
 		}
@@ -649,12 +782,45 @@ func (f *{{M}}Filter) predicate() (momo.Predicate, error) {
 	}
 	return all(ps), nil
 }
+`))
+	b.WriteString(r.Replace(`
+// {{lm}}Loaders returns the loaders of the relations the request selects on {{M}}
+// rows, nested as deep as the request goes. Each relation costs one statement
+// per level however many rows the page has, and a to-many relation returns at
+// most MaxRelationRows rows per parent.
+func {{lm}}Loaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[{{models}}.{{M}}] {
+`))
+	if len(gm.rels) == 0 {
+		b.WriteString("\treturn nil\n}\n\n")
+	} else {
+		b.WriteString(r.Replace(`	var loaders []momo.Loader[{{models}}.{{M}}]
+	seen := map[string]bool{}
+	for _, f := range fields {
+		if seen[f.Name] {
+			continue
+		}
+		seen[f.Name] = true
+		switch f.Name {
+`))
+		for _, rel := range gm.rels {
+			t := all[rel.target]
+			opts := ""
+			if rel.r.Kind == gen.HasMany || rel.r.Kind == gen.ManyToMany {
+				opts = "momo.LoadOrderBy[" + t.modelAlias + "." + t.m.GoName + "](" + t.descAlias + "." + t.pkIdent + ".Asc()), momo.LoadPerParentLimit[" + t.modelAlias + "." + t.m.GoName + "](MaxRelationRows)"
+			}
+			b.WriteString(r.Replace("\tcase " + strconv.Quote(gosrc.LowerFirst(rel.r.GoName)) + ":\n\t\t\tloaders = append(loaders, {{desc}}." + rel.ident + ".Scope(" + opts + ").Then(" + gosrc.LowerFirst(t.m.GoName) + "Loaders(ctx, subFields(ctx, f))...))\n"))
+		}
+		b.WriteString("\t\t}\n\t}\n\treturn loaders\n}\n\n")
+	}
 
+	b.WriteString(r.Replace(`
 // {{lm}}OrderColumns maps an order field value to its column.
 var {{lm}}OrderColumns = map[string]string{
 `))
 	for _, c := range gm.cols {
-		b.WriteString("\t" + strconv.Quote(c.enum) + ": " + strconv.Quote(c.name) + ",\n")
+		if orderable(c.column) {
+			b.WriteString("\t" + strconv.Quote(c.enum) + ": " + strconv.Quote(c.name) + ",\n")
+		}
 	}
 	b.WriteString(r.Replace(`}
 
@@ -664,7 +830,7 @@ func {{lm}}Key(col string, d *{{models}}.{{M}}) (string, bool) {
 	switch col {
 `))
 	for _, c := range gm.cols {
-		if c.null {
+		if !orderable(c.column) {
 			continue
 		}
 		b.WriteString("\tcase " + strconv.Quote(c.name) + ":\n\t\treturn " + keyFormat(c) + ", true\n")
@@ -678,7 +844,7 @@ func {{lm}}KeyValue(col, s string) (any, error) {
 	switch col {
 `))
 	for _, c := range gm.cols {
-		if c.null {
+		if !orderable(c.column) {
 			continue
 		}
 		b.WriteString("\tcase " + strconv.Quote(c.name) + ":\n\t\t" + keyParse(c) + "\n")
@@ -727,11 +893,11 @@ func List{{Plural}}(ctx context.Context, q momo.Querier, first *int, after *stri
 		items = []momo.Orderable{momo.Desc(ref)}
 	}
 	if orderCol != "{{pkcol}}" {
-		items = append(items, {{desc}}.{{PK}}.Asc())
+		items = append(items, {{desc}}.{{PKI}}.Asc())
 	}
 	sel := momo.Select[{{models}}.{{M}}](q).OrderBy(items...).Limit(int64(limit + 1))
 	if filter != nil {
-		p, err := filter.predicate()
+		p, err := filter.predicate(0)
 		if err != nil {
 			return nil, err
 		}
@@ -761,11 +927,7 @@ func List{{Plural}}(ctx context.Context, q momo.Querier, first *int, after *stri
 	}
 `))
 	if len(gm.rels) > 0 {
-		b.WriteString(r.Replace("\tvar loaders []momo.Loader[{{models}}.{{M}}]\n"))
-		for _, rel := range gm.rels {
-			b.WriteString(r.Replace("\tif wanted(ctx, \"edges\", \"node\", " + strconv.Quote(lowerFirst(rel.GoName)) + ") {\n\t\tloaders = append(loaders, {{desc}}." + rel.GoName + ".Scope())\n\t}\n"))
-		}
-		b.WriteString("\tif len(loaders) > 0 {\n\t\tsel = sel.Preload(loaders...)\n\t}\n")
+		b.WriteString(r.Replace("\tif loaders := {{lm}}Loaders(ctx, fieldsAt(ctx, \"edges\", \"node\")); len(loaders) > 0 {\n\t\tsel = sel.Preload(loaders...)\n\t}\n"))
 	}
 	b.WriteString(r.Replace(`	rows, err := sel.All(ctx)
 	if err != nil {
@@ -790,14 +952,10 @@ func List{{Plural}}(ctx context.Context, q momo.Querier, first *int, after *stri
 // Get{{M}} returns the {{M}} with the given id, or nil when there is none. It
 // selects the relations the request asks for.
 func Get{{M}}(ctx context.Context, q momo.Querier, id int64) (*{{models}}.{{M}}, error) {
-	sel := momo.Select[{{models}}.{{M}}](q).Where({{desc}}.{{PK}}.Eq(id))
+	sel := momo.Select[{{models}}.{{M}}](q).Where({{desc}}.{{PKI}}.Eq(id))
 `))
 	if len(gm.rels) > 0 {
-		b.WriteString(r.Replace("\tvar loaders []momo.Loader[{{models}}.{{M}}]\n"))
-		for _, rel := range gm.rels {
-			b.WriteString(r.Replace("\tif wanted(ctx, " + strconv.Quote(lowerFirst(rel.GoName)) + ") {\n\t\tloaders = append(loaders, {{desc}}." + rel.GoName + ".Scope())\n\t}\n"))
-		}
-		b.WriteString("\tif len(loaders) > 0 {\n\t\tsel = sel.Preload(loaders...)\n\t}\n")
+		b.WriteString(r.Replace("\tif loaders := {{lm}}Loaders(ctx, fieldsAt(ctx)); len(loaders) > 0 {\n\t\tsel = sel.Preload(loaders...)\n\t}\n"))
 	}
 	b.WriteString(r.Replace(`	row, err := sel.One(ctx)
 	if errors.Is(err, momo.ErrNotFound) {
@@ -871,12 +1029,14 @@ func gqlgenConfig(ms []gmodel, importPath string) []byte {
 // follows the schema layout: it never touches resolver.go once it exists and
 // rewrites schema.resolvers.go keeping the bodies of the resolvers.
 func resolverScaffold(ms []gmodel, pkg, importPath string) (root, queries []byte) {
-	root = []byte("package " + pkg + `
+	root = []byte("// SPDX-License-Identifier: Apache-2.0\n\npackage " + pkg + `
 
 import "github.com/azrtydxb/momo"
 
 // Resolver is the root resolver. It is yours to edit: momo generate and gqlgen
-// never overwrite this file.
+// never overwrite this file. Serve the schema with model.NewServer, which
+// applies the depth and complexity limits and the error presenter; the
+// resolvers do no authentication or authorization, so wrap the handler.
 type Resolver struct {
 	DB *momo.DB
 }

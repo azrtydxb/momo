@@ -5,6 +5,25 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to the next release
+
+### OpenAPI error bodies use the key `error`
+
+The OpenAPI document and the generated handlers now describe and send errors
+as `{"error": "<message>"}`. The `Error` schema property was `message` in 0.4.0.
+A client that reads `message` from an error response must read `error`. Error
+messages are fixed strings: a constraint violation no longer shows the table or
+constraint name.
+
+### Generated handlers and servers
+
+The ecosystem generators (`graphql`, `grpc`, `openapi`, enabled in the
+`plugins:` section of `momo.yaml`) generate servers that do no authentication
+and no authorization. Wrap the `http.ServeMux`, the `grpc.Server` or the
+GraphQL handler. Turn off operations with `ops` or `read_only: true`; see the
+[capabilities](capabilities.md) page for the options, the error mapping, the
+update semantics and the GraphQL limits.
+
 ## Upgrading to 0.4.0
 
 Release 0.4.0 moves feature-specific helpers out of the root package `momo`

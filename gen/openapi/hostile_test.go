@@ -11,6 +11,19 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
+// withIDKeys gives every table of the models the primary key id, as the loader
+// records one, so the document serves them.
+func withIDKeys(g *gen.Graph) {
+	g.Schema = &schema.Schema{}
+	seen := map[string]bool{}
+	for _, m := range g.Models {
+		if !seen[m.Table] {
+			seen[m.Table] = true
+			g.Schema.Tables = append(g.Schema.Tables, schema.Table{Name: m.Table, PrimaryKey: []string{"id"}})
+		}
+	}
+}
+
 func modelWith(name, table string, fields ...*gen.Field) *gen.Model {
 	return &gen.Model{GoName: name, Table: table, Fields: fields}
 }
@@ -31,6 +44,7 @@ func TestDocumentHostileTables(t *testing.T) {
 		modelWith("Error", "errors", id),
 		modelWith("Fine", "fine_things", id),
 	}}
+	withIDKeys(g)
 	raw, diags := Document(g, Options{Title: "t", Version: "1"})
 	var doc struct {
 		Paths map[string]json.RawMessage `json:"paths"`
@@ -118,6 +132,7 @@ func TestDocumentComponentNames(t *testing.T) {
 		modelWith("Bad Name", "bad_name", id),
 		modelWith("Näive", "naive", id),
 	}}
+	withIDKeys(g)
 	raw, diags := Document(g, Options{Title: "t", Version: "1"})
 	var doc struct {
 		Paths      map[string]json.RawMessage `json:"paths"`
@@ -163,6 +178,7 @@ func TestDocumentFilterParametersAreNotNullable(t *testing.T) {
 		&gen.Field{GoName: "Note", Column: "note", BaseType: "sql.NullString"},
 		&gen.Field{GoName: "Opt", Column: "opt", BaseType: "int32", Nullable: true},
 	)}}
+	withIDKeys(g)
 	raw, _ := Document(g, Options{Title: "t", Version: "1"})
 	var doc struct {
 		Paths map[string]struct {

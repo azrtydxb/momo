@@ -4,15 +4,12 @@ package grpc
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/gen/apiquery"
 	"github.com/azrtydxb/momo/gen/internal/gosrc"
 )
-
-var goPkgNameRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // pbScalarGo is the Go type protoc-gen-go uses for a proto scalar.
 var pbScalarGo = map[string]string{
@@ -73,6 +70,16 @@ type sfield struct {
 	from string
 	// emptyVec marks a vector the database cannot store when empty.
 	emptyVec bool
+	// ident is the name of the column's descriptor in the descriptor package.
+	ident string
+	// settable is false for the key, identity and read-only columns, which a
+	// request never writes.
+	settable bool
+	// defaulted marks a column the database fills in; a scalar left at its zero
+	// value is omitted on create and keeps its stored value on update.
+	defaulted bool
+	// scalar marks a field isZero can test (not a vector or a timestamp).
+	scalar bool
 }
 
 // serverField maps one exposed column; msg is non-empty when it cannot.
@@ -117,10 +124,12 @@ func serverField(m *gen.Model, f *gen.Field, pf protoField) (sf sfield, msg stri
 	case base == pbGo && ptr == pf.optional:
 		sf.lit = p + ": m." + n + ","
 		sf.from = "m." + n + " = p." + p
+		sf.scalar = true
 		return sf, ""
 	case !ptr && !pf.optional && convertible[base]:
 		sf.lit = p + ": " + pbGo + "(m." + n + "),"
 		sf.from = "m." + n + " = " + base + "(p." + p + ")"
+		sf.scalar = true
 		return sf, ""
 	}
 	return sf, unsupported
@@ -132,6 +141,7 @@ type smodel struct {
 	pk         sfield
 	modelAlias string
 	descAlias  string
+	ops        apiquery.OpSet
 }
 
 // ServerSource returns the Go source of the gRPC server adapters for the
@@ -145,13 +155,21 @@ type smodel struct {
 // update reads the row first, so a column that is not in the message keeps its
 // value. The output is deterministic.
 func ServerSource(g *gen.Graph, lock *Lock, pkg, pbImport string) ([]byte, []gen.Diagnostic) {
-	if !goPkgNameRE.MatchString(pkg) {
+	return serverSource(g, lock, pkg, pbImport, nil)
+}
+
+// serverSource is ServerSource with the operations ops enables per model.
+func serverSource(g *gen.Graph, lock *Lock, pkg, pbImport string, ops apiquery.Ops) ([]byte, []gen.Diagnostic) {
+	if err := ops.Validate(); err != nil {
+		return nil, []gen.Diagnostic{{Msg: "gRPC " + err.Error()}}
+	}
+	if !gosrc.PkgName.MatchString(pkg) {
 		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("invalid Go package name %q for the gRPC server", pkg)}}
 	}
 	if !goPackageRE.MatchString(pbImport) || strings.Contains(pbImport, ";") {
 		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("invalid import path %q for the generated protobuf package", pbImport)}}
 	}
-	imports := map[string]string{
+	aliases := gosrc.NewAliases(map[string]string{
 		"context": "context", "errors": "errors", "strconv": "strconv",
 		"momo":        "github.com/azrtydxb/momo",
 		"vector":      "github.com/azrtydxb/momo/vector",
@@ -160,25 +178,8 @@ func ServerSource(g *gen.Graph, lock *Lock, pkg, pbImport string) ([]byte, []gen
 		"status":      "google.golang.org/grpc/status",
 		"timestamppb": "google.golang.org/protobuf/types/known/timestamppb",
 		"pb":          pbImport,
-	}
-	aliasOf := map[string]string{}
-	taken := map[string]bool{}
-	for a := range imports {
-		taken[a] = true
-	}
-	alias := func(path, want string) string {
-		if a, ok := aliasOf[path]; ok {
-			return a
-		}
-		a := want
-		for n := 2; taken[a]; n++ {
-			a = want + strconv.Itoa(n)
-		}
-		taken[a] = true
-		aliasOf[path] = a
-		imports[a] = path
-		return a
-	}
+	})
+	alias := aliases.Alias
 
 	var diags []gen.Diagnostic
 	var models []smodel
@@ -200,8 +201,11 @@ func ServerSource(g *gen.Graph, lock *Lock, pkg, pbImport string) ([]byte, []gen
 			taken2[n] = m.GoName
 		}
 		pfs, _, _, _ := fieldsOf(m, lock)
+		idents, _ := gen.DescriptorIdents(m, g)
 		byCol := map[string]*gen.Field{}
-		for _, f := range m.Fields {
+		identOf := map[*gen.Field]string{}
+		for i, f := range m.Fields {
+			identOf[f] = idents[i]
 			if _, dup := byCol[f.Column]; !dup {
 				byCol[f.Column] = f
 			}
@@ -218,6 +222,9 @@ func ServerSource(g *gen.Graph, lock *Lock, pkg, pbImport string) ([]byte, []gen
 				bad = true
 				continue
 			}
+			sf.ident = identOf[f]
+			sf.settable = f != pk && !f.Tags.Identity && !f.Tags.Serial && f.Access != gen.ReadOnly
+			sf.defaulted = f.Tags.Default != ""
 			sm.fields = append(sm.fields, sf)
 			if f == pk {
 				sm.pk, havePK = sf, true
@@ -238,6 +245,7 @@ func ServerSource(g *gen.Graph, lock *Lock, pkg, pbImport string) ([]byte, []gen
 		}
 		sm.modelAlias = alias(mp, m.PkgName)
 		sm.descAlias = alias(dp, m.SubPkg+"desc")
+		sm.ops = ops.For(m.GoName)
 		models = append(models, sm)
 	}
 	if len(diags) > 0 {
@@ -254,22 +262,36 @@ func ServerSource(g *gen.Graph, lock *Lock, pkg, pbImport string) ([]byte, []gen
 	var out strings.Builder
 	out.WriteString(gen.Header() + "\n\n")
 	out.WriteString("// Package " + pkg + " holds gRPC server adapters for the models, generated from the\n// same graph as the .proto file.\npackage " + pkg + "\n\n")
-	out.WriteString(gosrc.Imports(body, imports))
+	out.WriteString(gosrc.Imports(body, aliases.Candidates()))
 	out.WriteString(body)
 	return []byte(out.String()), nil
 }
 
-const serverPreamble = `// statusOf maps a failed statement to a gRPC status: not found is NotFound, a
-// rejected value is InvalidArgument and anything else is Internal without a
-// detail.
+const serverPreamble = `// statusOf maps a failed statement to a gRPC status with a fixed message: the
+// error of the database, which names tables and constraints, never reaches the
+// client.
 func statusOf(err error) error {
 	switch {
 	case errors.Is(err, momo.ErrNotFound):
 		return status.Error(codes.NotFound, "not found")
+	case errors.Is(err, momo.ErrUniqueViolation):
+		return status.Error(codes.AlreadyExists, "a unique constraint refused the change")
+	case errors.Is(err, momo.ErrForeignKeyViolation):
+		return status.Error(codes.FailedPrecondition, "a foreign key constraint refused the change")
+	case errors.Is(err, momo.ErrCheckViolation), errors.Is(err, momo.ErrNotNullViolation):
+		return status.Error(codes.InvalidArgument, "a constraint refused the value")
+	case errors.Is(err, momo.ErrBusy), errors.Is(err, momo.ErrSerialization):
+		return status.Error(codes.Unavailable, "temporarily unavailable; retry")
 	case errors.Is(err, momo.ErrValidation):
-		return status.Error(codes.InvalidArgument, err.Error())
+		return status.Error(codes.InvalidArgument, "invalid request")
 	}
 	return status.Error(codes.Internal, "internal error")
+}
+
+// isZero reports whether v is the zero value of its type.
+func isZero[T comparable](v T) bool {
+	var zero T
+	return v == zero
 }
 `
 
@@ -282,10 +304,13 @@ func writeServer(b *strings.Builder, sm smodel) {
 		"{{models}}", sm.modelAlias,
 		"{{desc}}", sm.descAlias,
 		"{{PK}}", sm.pk.goName,
+		"{{PKI}}", sm.pk.ident,
 		"{{PBPK}}", sm.pk.pbName,
 	)
+	has := sm.ops.Has
 	b.WriteString(r.Replace(`
-// {{lm}}Server implements pb.{{M}}ServiceServer on top of momo.
+// {{lm}}Server implements pb.{{M}}ServiceServer on top of momo. It does no
+// authentication or authorization: wrap the grpc.Server with interceptors.
 type {{lm}}Server struct {
 	pb.Unimplemented{{M}}ServiceServer
 	db *momo.DB
@@ -310,29 +335,45 @@ func {{lm}}ToPB(m *{{models}}.{{M}}) *pb.{{M}} {
 			b.WriteString("\t" + f.stmt + "\n")
 		}
 	}
-	b.WriteString(r.Replace(`	return out
-}
+	b.WriteString("\treturn out\n}\n")
 
-// {{lm}}FromPB copies the message onto m. An empty vector leaves the vector of m alone.
+	if has(apiquery.OpCreate) || has(apiquery.OpUpdate) {
+		b.WriteString(r.Replace(`
+// {{lm}}FromPB copies the message onto m. The key, identity and read-only
+// columns are never written. A vector or timestamp left out, and a scalar of a
+// column the database fills in left at its zero value, leave m alone.
 func {{lm}}FromPB(p *pb.{{M}}, m *{{models}}.{{M}}) {
 `))
-	for _, f := range sm.fields {
-		b.WriteString("\t" + f.from + "\n")
+		for _, f := range sm.fields {
+			if !f.settable {
+				continue
+			}
+			from := f.from
+			if f.defaulted && f.scalar {
+				from = "if !isZero(p." + f.pbName + ") {\n\t\t" + f.from + "\n\t}"
+			}
+			b.WriteString("\t" + from + "\n")
+		}
+		b.WriteString("}\n")
 	}
-	b.WriteString("}\n")
 
-	b.WriteString(r.Replace(`
+	if has(apiquery.OpGet) {
+		b.WriteString(r.Replace(`
 func (s *{{lm}}Server) Get(ctx context.Context, req *pb.{{M}}GetRequest) (*pb.{{M}}, error) {
-	m, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PK}}.Eq(req.Get{{PBPK}}())).One(ctx)
+	m, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(req.Get{{PBPK}}())).One(ctx)
 	if err != nil {
 		return nil, statusOf(err)
 	}
 	return {{lm}}ToPB(&m), nil
 }
+`))
+	}
 
+	if has(apiquery.OpList) {
+		b.WriteString(r.Replace(`
 func (s *{{lm}}Server) List(ctx context.Context, req *pb.{{M}}ListRequest) (*pb.{{M}}ListResponse, error) {
 	limit := apiquery.ClampLimit(int(req.GetLimit()))
-	sel := momo.Select[{{models}}.{{M}}](s.db).OrderBy({{desc}}.{{PK}}.Asc()).Limit(int64(limit + 1))
+	sel := momo.Select[{{models}}.{{M}}](s.db).OrderBy({{desc}}.{{PKI}}.Asc()).Limit(int64(limit + 1))
 	if after := req.GetAfter(); after != "" {
 		c, err := apiquery.DecodeCursor(after)
 		if err != nil {
@@ -368,18 +409,25 @@ func (s *{{lm}}Server) List(ctx context.Context, req *pb.{{M}}ListRequest) (*pb.
 	}
 	return resp, nil
 }
+`))
+	}
 
+	if has(apiquery.OpCreate) {
+		b.WriteString(r.Replace(`
 func (s *{{lm}}Server) Create(ctx context.Context, in *pb.{{M}}) (*pb.{{M}}, error) {
 	var m {{models}}.{{M}}
 	{{lm}}FromPB(in, &m)
 	ins := momo.Insert[{{models}}.{{M}}](s.db).Model(&m).ReturningAll()
 `))
-	for _, f := range sm.fields {
-		if f.emptyVec {
-			b.WriteString(r.Replace("\tif len(m." + f.goName + ") == 0 {\n\t\tins = ins.Omit({{desc}}." + f.goName + ")\n\t}\n"))
+		for _, f := range sm.fields {
+			switch {
+			case f.emptyVec:
+				b.WriteString(r.Replace("\tif len(m." + f.goName + ") == 0 {\n\t\tins = ins.Omit({{desc}}." + f.ident + ")\n\t}\n"))
+			case f.settable && f.defaulted && f.scalar:
+				b.WriteString(r.Replace("\tif isZero(m." + f.goName + ") {\n\t\tins = ins.Omit({{desc}}." + f.ident + ")\n\t}\n"))
+			}
 		}
-	}
-	b.WriteString(r.Replace(`	rows, err := ins.Rows(ctx)
+		b.WriteString(r.Replace(`	rows, err := ins.Rows(ctx)
 	if err != nil {
 		return nil, statusOf(err)
 	}
@@ -398,10 +446,18 @@ func (s *{{lm}}Server) Create(ctx context.Context, in *pb.{{M}}) (*pb.{{M}}, err
 	}
 	return {{lm}}ToPB(&m), nil
 }
+`))
+	}
 
+	if has(apiquery.OpUpdate) {
+		b.WriteString(r.Replace(`
+// Update replaces the row: every writable column takes the value of the
+// message, except the vectors, timestamps and defaulted scalars it leaves out
+// (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
+// is a value, and so is an unset optional field, which stores NULL).
 func (s *{{lm}}Server) Update(ctx context.Context, in *pb.{{M}}) (*pb.{{M}}, error) {
 	id := in.Get{{PBPK}}()
-	m, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PK}}.Eq(id)).One(ctx)
+	m, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(id)).One(ctx)
 	if err != nil {
 		return nil, statusOf(err)
 	}
@@ -409,23 +465,27 @@ func (s *{{lm}}Server) Update(ctx context.Context, in *pb.{{M}}) (*pb.{{M}}, err
 	m.{{PK}} = id
 	upd := momo.Update[{{models}}.{{M}}](s.db).Model(&m)
 `))
-	for _, f := range sm.fields {
-		if f.emptyVec {
-			b.WriteString(r.Replace("\tif len(m." + f.goName + ") == 0 {\n\t\tupd = upd.Set({{desc}}." + f.goName + ".SetDefault())\n\t}\n"))
+		for _, f := range sm.fields {
+			if f.emptyVec {
+				b.WriteString(r.Replace("\tif len(m." + f.goName + ") == 0 {\n\t\tupd = upd.Set({{desc}}." + f.ident + ".SetDefault())\n\t}\n"))
+			}
 		}
-	}
-	b.WriteString(r.Replace(`	if _, err := upd.Exec(ctx); err != nil {
+		b.WriteString(r.Replace(`	if _, err := upd.Exec(ctx); err != nil {
 		return nil, statusOf(err)
 	}
-	out, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PK}}.Eq(id)).One(ctx)
+	out, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(id)).One(ctx)
 	if err != nil {
 		return nil, statusOf(err)
 	}
 	return {{lm}}ToPB(&out), nil
 }
+`))
+	}
 
+	if has(apiquery.OpDelete) {
+		b.WriteString(r.Replace(`
 func (s *{{lm}}Server) Delete(ctx context.Context, req *pb.{{M}}DeleteRequest) (*pb.{{M}}DeleteResponse, error) {
-	res, err := momo.Delete[{{models}}.{{M}}](s.db).Where({{desc}}.{{PK}}.Eq(req.Get{{PBPK}}())).Exec(ctx)
+	res, err := momo.Delete[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(req.Get{{PBPK}}())).Exec(ctx)
 	if err != nil {
 		return nil, statusOf(err)
 	}
@@ -435,4 +495,5 @@ func (s *{{lm}}Server) Delete(ctx context.Context, req *pb.{{M}}DeleteRequest) (
 	return &pb.{{M}}DeleteResponse{}, nil
 }
 `))
+	}
 }

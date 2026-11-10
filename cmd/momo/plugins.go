@@ -4,11 +4,13 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/gen/apiquery"
 	"github.com/azrtydxb/momo/gen/graphql"
 	"github.com/azrtydxb/momo/gen/grpc"
 	"github.com/azrtydxb/momo/gen/openapi"
@@ -63,6 +65,59 @@ func (o *pluginOptions) boolean(key string) bool {
 	return b
 }
 
+// ops reads the ops and read_only options: ops is a list of operations for
+// every model, or a map from model name to a list (the key * names the models
+// not listed); read_only is the shorthand for the list get and list, as the
+// default of the models ops does not name.
+func (o *pluginOptions) ops() apiquery.Ops {
+	readOnly := o.boolean("read_only")
+	o.used["ops"] = true
+	strs := func(v any, what string) []string {
+		list, ok := v.([]any)
+		if !ok {
+			o.fail("option \"ops\" of plugin %q: %s must be a list of operations", o.plugin, what)
+			return nil
+		}
+		out := make([]string, len(list))
+		for i, e := range list {
+			str, ok := e.(string)
+			if !ok {
+				o.fail("option \"ops\" of plugin %q: %s holds a value that is not a name", o.plugin, what)
+				return nil
+			}
+			out[i] = str
+		}
+		return out
+	}
+	var ops apiquery.Ops
+	switch v := o.opts["ops"].(type) {
+	case nil:
+	case []any:
+		ops = apiquery.Ops{apiquery.DefaultModel: strs(v, "the list")}
+	case map[string]any:
+		ops = apiquery.Ops{}
+		for model, list := range v {
+			ops[model] = strs(list, "the entry for "+model)
+		}
+	default:
+		o.fail("option \"ops\" of plugin %q must be a list of operations or a map from model name to a list", o.plugin)
+	}
+	if readOnly {
+		if ops == nil {
+			ops = apiquery.Ops{}
+		}
+		if _, set := ops[apiquery.DefaultModel]; !set {
+			for _, op := range apiquery.ReadOnlyOps {
+				ops[apiquery.DefaultModel] = append(ops[apiquery.DefaultModel], string(op))
+			}
+		}
+	}
+	if err := ops.Validate(); err != nil && o.err == nil {
+		o.err = fmt.Errorf("option \"ops\" of plugin %q: %w", o.plugin, err)
+	}
+	return ops
+}
+
 // dir returns the output directory option: required, and resolved against
 // the output base when it is relative.
 func (o *pluginOptions) dir() string {
@@ -83,12 +138,7 @@ func (o *pluginOptions) resolve(d string) string {
 
 // finish reports an option nobody asked for, else the first option error.
 func (o *pluginOptions) finish() error {
-	keys := make([]string, 0, len(o.opts))
-	for k := range o.opts {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
+	for _, k := range slices.Sorted(maps.Keys(o.opts)) {
 		if !o.used[k] {
 			return fmt.Errorf("unknown option %q for plugin %q", k, o.plugin)
 		}
@@ -105,13 +155,8 @@ var builtinPlugins = []string{"graphql", "grpc", "openapi", "viz"}
 // name or option is an error; there is no registry, so a custom generator uses
 // the Go API (gen.Emit with plugins).
 func buildPlugins(cfg map[string]map[string]any, out string) ([]gen.Plugin, error) {
-	names := make([]string, 0, len(cfg))
-	for n := range cfg {
-		names = append(names, n)
-	}
-	sort.Strings(names)
 	var ps []gen.Plugin
-	for _, n := range names {
+	for _, n := range slices.Sorted(maps.Keys(cfg)) {
 		o := newPluginOptions(n, out, cfg[n])
 		var p gen.Plugin
 		switch n {
@@ -128,6 +173,7 @@ func buildPlugins(cfg map[string]map[string]any, out string) ([]gen.Plugin, erro
 				Package:      o.str("package"),
 				ProtoPackage: o.str("proto_package"),
 				GoPackage:    o.str("go_package"),
+				Ops:          o.ops(),
 			}
 		case "openapi":
 			p = openapi.Plugin{
@@ -138,6 +184,7 @@ func buildPlugins(cfg map[string]map[string]any, out string) ([]gen.Plugin, erro
 					Version:  o.str("version"),
 					BasePath: o.str("base_path"),
 					Handlers: o.boolean("handlers"),
+					Ops:      o.ops(),
 				},
 			}
 		case "viz":

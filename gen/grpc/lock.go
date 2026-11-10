@@ -39,10 +39,19 @@ type Lock struct {
 // its number. A column that disappears moves its number to Reserved, and the
 // number is never handed out again, and its name goes to ReservedNames while
 // no column uses it, so the .proto can reserve both.
+//
+// Table is the table the message came from. A model whose Go type is renamed
+// keeps its table, so the new message adopts the numbers of the old one. Types
+// records the protobuf type of each field ("string", "optional int64",
+// "repeated float"); a column whose type changes keeps its name and gets a new
+// number, and the old number is reserved, because a reader of the old schema
+// would decode the new bytes as the old type.
 type MessageLock struct {
-	Fields        map[string]int `json:"fields"`
-	Reserved      []int          `json:"reserved,omitempty"`
-	ReservedNames []string       `json:"reserved_names,omitempty"`
+	Table         string            `json:"table,omitempty"`
+	Types         map[string]string `json:"types,omitempty"`
+	Fields        map[string]int    `json:"fields"`
+	Reserved      []int             `json:"reserved,omitempty"`
+	ReservedNames []string          `json:"reserved_names,omitempty"`
 }
 
 // LoadLock reads the lock at path. A missing file is an empty lock. A file
@@ -98,6 +107,11 @@ func LoadLock(path string) (*Lock, error) {
 		for _, n := range m.Reserved {
 			if err := check(n, "a reserved entry"); err != nil {
 				return nil, err
+			}
+		}
+		for c := range m.Types {
+			if _, ok := m.Fields[c]; !ok {
+				return nil, fmt.Errorf("grpc: lock message %q: type recorded for %q, which is not a field", name, c)
 			}
 		}
 		names := map[string]bool{}
@@ -167,6 +181,17 @@ func (l *Lock) Assign(message string, columns []string) (map[string]int, []gen.D
 // toggling a column's visibility never frees its number. A retired column's
 // name is recorded in ReservedNames until a column uses it again.
 func (l *Lock) AssignKeeping(message string, columns, hidden []string) (map[string]int, []gen.Diagnostic) {
+	return l.AssignTyped(message, "", nil, columns, nil, hidden)
+}
+
+// AssignTyped is AssignKeeping for a message that comes from table and whose
+// columns have the protobuf types in types (a missing entry is not checked).
+// When the lock has no entry for message but has one recorded for the same
+// table under a name that is not in live, the message adopts that entry, so
+// renaming a Go type keeps its field numbers. A column whose recorded type
+// differs from its type now moves its old number to Reserved and gets a new
+// one.
+func (l *Lock) AssignTyped(message, table string, live map[string]bool, columns []string, types map[string]string, hidden []string) (map[string]int, []gen.Diagnostic) {
 	if l.Messages == nil {
 		l.Messages = map[string]*MessageLock{}
 	}
@@ -174,12 +199,32 @@ func (l *Lock) AssignKeeping(message string, columns, hidden []string) (map[stri
 		l.Version = lockVersion
 	}
 	m := l.Messages[message]
+	if m == nil && table != "" {
+		var olds []string
+		for k, old := range l.Messages {
+			if old != nil && old.Table == table && !live[k] {
+				olds = append(olds, k)
+			}
+		}
+		sort.Strings(olds)
+		if len(olds) > 0 {
+			m = l.Messages[olds[0]]
+			l.Messages[message] = m
+			delete(l.Messages, olds[0])
+		}
+	}
 	if m == nil {
 		m = &MessageLock{Fields: map[string]int{}}
 		l.Messages[message] = m
 	}
 	if m.Fields == nil {
 		m.Fields = map[string]int{}
+	}
+	if table != "" {
+		m.Table = table
+	}
+	if m.Types == nil {
+		m.Types = map[string]string{}
 	}
 	var diags []gen.Diagnostic
 	present := map[string]bool{}
@@ -206,6 +251,16 @@ func (l *Lock) AssignKeeping(message string, columns, hidden []string) (map[stri
 		m.Reserved = append(m.Reserved, m.Fields[c])
 		m.ReservedNames = append(m.ReservedNames, c)
 		delete(m.Fields, c)
+		delete(m.Types, c)
+	}
+	// A column whose type changed gives up its number: it keeps its name.
+	for _, c := range columns {
+		if old, ok := m.Types[c]; ok && types[c] != "" && old != types[c] {
+			if n, has := m.Fields[c]; has {
+				m.Reserved = append(m.Reserved, n)
+				delete(m.Fields, c)
+			}
+		}
 	}
 	sort.Ints(m.Reserved)
 	// A name in use again is no longer reserved: protoc refuses a field whose
@@ -242,6 +297,16 @@ func (l *Lock) AssignKeeping(message string, columns, hidden []string) (map[stri
 		}
 		m.Fields[c] = next
 		out[c] = next
+	}
+	for _, c := range columns {
+		if t := types[c]; t != "" {
+			if _, numbered := m.Fields[c]; numbered {
+				m.Types[c] = t
+			}
+		}
+	}
+	if len(m.Types) == 0 {
+		m.Types = nil
 	}
 	return out, diags
 }

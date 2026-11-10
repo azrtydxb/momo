@@ -120,16 +120,22 @@ func TestOpenAPIGenerator(t *testing.T) {
 	fixture.Apply(t, db)
 	mux := http.NewServeMux()
 	(&handlers.DocumentHandler{DB: db}).Routes(mux)
+	(&handlers.TagHandler{DB: db}).Routes(mux)
+	(&handlers.CommentHandler{DB: db}).Routes(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	resp, err := http.Post(srv.URL+"/v1/documents", "application/json",
-		strings.NewReader(`{"tenant_id":1,"title":"openapi","status":"draft"}`))
-	if err != nil {
-		t.Fatal(err)
+	// create: a missing required property is a 400, and a defaulted one is not required
+	var rejected map[string]string
+	decodeClose(t, send(t, http.MethodPost, srv.URL+"/v1/documents", `{"tenant_id":1,"title":"openapi"}`), http.StatusBadRequest, &rejected)
+	if !strings.Contains(rejected["error"], "body") {
+		t.Fatalf("create without a required property: %v", rejected)
 	}
 	var created map[string]any
-	decodeClose(t, resp, http.StatusCreated, &created)
+	decodeClose(t, send(t, http.MethodPost, srv.URL+"/v1/documents", `{"tenant_id":1,"title":"openapi","body":"b"}`), http.StatusCreated, &created)
+	if created["status"] != "draft" {
+		t.Fatalf("the database default was not applied: %v", created)
+	}
 	id := fmt.Sprint(created["id"])
 
 	var got map[string]any
@@ -139,26 +145,56 @@ func TestOpenAPIGenerator(t *testing.T) {
 		t.Fatalf("GET keys %v do not match Document schema properties %v", have, want)
 	}
 
-	// update: the whole document goes back, with a new title
-	got["title"] = "openapi v2"
-	body, err := json.Marshal(got)
-	if err != nil {
-		t.Fatal(err)
-	}
-	put, err := http.NewRequest(http.MethodPut, srv.URL+"/v1/documents/"+id, bytes.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	presp, err := http.DefaultClient.Do(put)
-	if err != nil {
-		t.Fatal(err)
+	// update: a partial PUT is refused and changes nothing; a full one replaces
+	decodeClose(t, send(t, http.MethodPut, srv.URL+"/v1/documents/"+id, `{"title":"only a title"}`), http.StatusBadRequest, &rejected)
+	var after map[string]any
+	decodeClose(t, mustGet(t, srv.URL+"/v1/documents/"+id), http.StatusOK, &after)
+	if !reflect.DeepEqual(after, got) {
+		t.Fatalf("a refused PUT changed the row: %v -> %v", got, after)
 	}
 	var updated map[string]any
-	decodeClose(t, presp, http.StatusOK, &updated)
-	if updated["title"] != "openapi v2" {
-		t.Fatalf("PUT returned %v", updated)
+	decodeClose(t, send(t, http.MethodPut, srv.URL+"/v1/documents/"+id, `{"tenant_id":1,"title":"openapi v2","body":"b2"}`), http.StatusOK, &updated)
+	if updated["title"] != "openapi v2" || updated["body"] != "b2" || updated["status"] != "draft" {
+		t.Fatalf("PUT returned %v (an absent optional property must keep its value)", updated)
+	}
+	decodeClose(t, send(t, http.MethodPut, srv.URL+"/v1/documents/"+id, `{"tenant_id":null,"title":"x","body":"y"}`), http.StatusBadRequest, &rejected)
+
+	// body rules
+	for name, c := range map[string]struct {
+		ctype, body string
+		status      int
+	}{
+		"not json":      {"text/plain", `{}`, http.StatusUnsupportedMediaType},
+		"trailing data": {"application/json", `{"tenant_id":1,"title":"t","body":"b"} {"x":1}`, http.StatusBadRequest},
+		"unknown key":   {"application/json", `{"tenant_id":1,"title":"t","body":"b","nope":1}`, http.StatusBadRequest},
+		"not an object": {"application/json", `[1]`, http.StatusBadRequest},
+		"too large":     {"application/json", `{"title":"` + strings.Repeat("a", 2<<20) + `"}`, http.StatusRequestEntityTooLarge},
+	} {
+		req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/documents", strings.NewReader(c.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", c.ctype)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var e map[string]string
+		decodeClose(t, resp, c.status, &e)
+		if e["error"] == "" {
+			t.Errorf("%s: no error message", name)
+		}
 	}
 
+	// constraint errors: fixed messages, specific statuses
+	var conflict map[string]string
+	decodeClose(t, send(t, http.MethodPost, srv.URL+"/v1/tags", `{"name":"t1"}`), http.StatusConflict, &conflict)
+	if strings.Contains(conflict["error"], "tags") || strings.Contains(conflict["error"], "constraint \"") {
+		t.Fatalf("the error leaks database detail: %v", conflict)
+	}
+	decodeClose(t, send(t, http.MethodPost, srv.URL+"/v1/comments", `{"document_id":999999,"body":"x"}`), http.StatusConflict, &conflict)
+
+	// filters and keyset paging
 	var list struct {
 		Items      []map[string]any `json:"items"`
 		NextCursor *string          `json:"next_cursor"`
@@ -167,19 +203,44 @@ func TestOpenAPIGenerator(t *testing.T) {
 	if len(list.Items) != 1 {
 		t.Fatalf("filtered list has %d items, want 1", len(list.Items))
 	}
-
-	// keyset paging: a page of two, then the next page, without overlap
-	var page1, page2 struct {
+	type page struct {
 		Items      []map[string]any `json:"items"`
 		NextCursor *string          `json:"next_cursor"`
 	}
+	var page1, page2 page
 	decodeClose(t, mustGet(t, srv.URL+"/v1/documents?limit=2"), http.StatusOK, &page1)
 	if len(page1.Items) != 2 || page1.NextCursor == nil {
 		t.Fatalf("first page = %v cursor=%v", page1.Items, page1.NextCursor)
 	}
 	decodeClose(t, mustGet(t, srv.URL+"/v1/documents?limit=2&after="+*page1.NextCursor), http.StatusOK, &page2)
-	if len(page2.Items) == 0 || page2.Items[0]["id"] == page1.Items[1]["id"] {
-		t.Fatalf("second page overlaps the first: %v", page2.Items)
+	if len(page2.Items) == 0 {
+		t.Fatal("second page is empty")
+	}
+	seen := map[float64]bool{}
+	for _, it := range page1.Items {
+		seen[it["id"].(float64)] = true
+	}
+	for _, it := range page2.Items {
+		if seen[it["id"].(float64)] {
+			t.Fatalf("id %v is on both pages", it["id"])
+		}
+	}
+	if last := page1.Items[len(page1.Items)-1]["id"].(float64); page2.Items[0]["id"].(float64) <= last {
+		t.Fatalf("page 2 starts at %v, not after page 1's last id %v: the cursor was ignored", page2.Items[0]["id"], last)
+	}
+	tail := page2
+	for pages := 0; tail.NextCursor != nil && pages < 20; pages++ {
+		cur := *tail.NextCursor
+		tail = page{}
+		decodeClose(t, mustGet(t, srv.URL+"/v1/documents?limit=2&after="+cur), http.StatusOK, &tail)
+	}
+	if tail.NextCursor != nil || len(tail.Items) == 0 {
+		t.Fatalf("tail page = %v cursor=%v", tail.Items, tail.NextCursor)
+	}
+	var everything page
+	decodeClose(t, mustGet(t, srv.URL+"/v1/documents?limit=200"), http.StatusOK, &everything)
+	if everything.NextCursor != nil {
+		t.Fatalf("a page that holds every row must have a null next_cursor, got %v", *everything.NextCursor)
 	}
 
 	var bad map[string]string
@@ -188,14 +249,7 @@ func TestOpenAPIGenerator(t *testing.T) {
 		t.Fatal("400 response lacks an error message")
 	}
 
-	req, err := http.NewRequest(http.MethodDelete, srv.URL+"/v1/documents/"+id, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dresp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	dresp := send(t, http.MethodDelete, srv.URL+"/v1/documents/"+id, "")
 	if err := dresp.Body.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -209,6 +263,21 @@ func TestOpenAPIGenerator(t *testing.T) {
 	if gone.StatusCode != http.StatusNotFound {
 		t.Fatalf("GET after DELETE: status %d, want 404", gone.StatusCode)
 	}
+}
+
+// send makes a request with a JSON body.
+func send(t *testing.T, method, url, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
 }
 
 func mustGet(t *testing.T, url string) *http.Response {
