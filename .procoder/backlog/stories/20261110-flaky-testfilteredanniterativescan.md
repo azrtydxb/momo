@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-10
 Epic: -
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 Type: bug
 Severity: s3
 
