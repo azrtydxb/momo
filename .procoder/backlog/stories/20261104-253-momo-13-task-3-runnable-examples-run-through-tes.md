@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-13-docs-release
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — Superseded plan task: its single TestExamples over testopen.Each with Run(ctx, db) library functions was replaced by self-contained examples/<name>/main.go programs, each with its own example_test.go on examples/internal/exampletest, PostgreSQL only. User decision 2026-11-10 (.procoder/ask/decisions.md, Sprint 7 backlog decisions): examples stay PostgreSQL only and S-21 in .procoder/specs/momo.md is reworded to match; TestExamplesAreWired (internal/repocheck) fails when an example has no test. The story criteria still name TestExamples and both databases, and a criterion may not be weakened, so the story is carried, not closed.
 
 ## Description
 
@@ -11,8 +12,8 @@ Implements plan momo-13-docs-release Task 3: Runnable examples, run through test
 
 ## Acceptance criteria
 
-- [ ] `TestExamples` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-21] `TestExamples` runs every example end to end against both databases in CI; docs/ contains architecture, capability matrix, migration safety and recovery guide, contributor guide and supported versions; fails if an example is not wired into the test.
+- [ ] Every example has its own `example_test.go` built on `examples/internal/exampletest`, and `TestExamplesAreWired` fails when an example has no test (decision 2026-11-10: the plan's single `TestExamples` is replaced by these per-example PostgreSQL tests)
+- [ ] [S-21] Every example runs end to end against PostgreSQL in CI through its own `example_test.go`; docs/ contains architecture, capability matrix, migration safety and recovery guide, contributor guide and supported versions; fails if an example is not wired into the test.
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

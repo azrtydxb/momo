@@ -316,3 +316,17 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   stored as NULL.
 - **Runnable examples (S-21, story 253):** PostgreSQL only. S-21 is reworded;
   the examples demonstrate PostgreSQL features.
+
+## Sprint 7 docs decisions (2026-11-10)
+
+- **llms.txt at the site root (stories 256, 259):** root copy. mike publishes
+  only under /dev/, /vX.Y/ and /latest/, so on every release deploy the docs.yml
+  deploy job also copies the released version's llms.txt and llms-full.txt to
+  the gh-pages root, so /llms.txt answers 200. The links of the root llms.txt
+  point into latest/. The step runs for release tags only, not for /dev/. The
+  root criterion is ticked only with deploy evidence from a release.
+- **Runnable docs blocks (S-23, story 256):** PostgreSQL only, the same as the
+  examples (S-21). S-23 and the matching criterion of story 256 are reworded to
+  say the runnable blocks are executed against PostgreSQL. Story 253's criteria
+  are reworded to the per-example PostgreSQL tests that exist, so it is no
+  longer carried for that reason.
