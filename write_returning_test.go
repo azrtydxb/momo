@@ -64,3 +64,72 @@ func TestReturningValidation(t *testing.T) {
 		t.Fatalf("Rows on versioned Model update err = %v", err)
 	}
 }
+
+func TestWriteOneUnsupportedOnMySQL(t *testing.T) {
+	my := momo.New(fakedriver.New(dialect.MySQL))
+	ctx := context.Background()
+	if _, err := momo.Insert[suite.Document](my).Values(suite.DocTenantID.Set(1)).One(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("insert One err = %v, want ErrUnsupported", err)
+	}
+	if _, err := momo.Update[suite.Document](my).Set(suite.DocTitle.Set("x")).Where(suite.DocID.Eq(1)).One(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("update One err = %v, want ErrUnsupported", err)
+	}
+	if _, err := momo.ForceDelete[suite.Document](my).Where(suite.DocID.Eq(1)).One(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("delete One err = %v, want ErrUnsupported", err)
+	}
+}
+
+func TestWriteOneRefusesBulkInsert(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv)
+	rows := []suite.Document{{TenantID: 1, Title: "a"}, {TenantID: 1, Title: "b"}}
+	_, err := momo.Insert[suite.Document](db).Models(rows).One(context.Background())
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("bulk insert One err = %v, want ErrValidation", err)
+	}
+	if n := len(drv.Calls()); n != 0 {
+		t.Fatalf("the refused bulk insert ran %d statements", n)
+	}
+}
+
+func TestWriteOneRunsHooks(t *testing.T) {
+	var updates, loads int
+	boom := errors.New("boom")
+	var loadErr error
+	setHooks(t, momo.HookSet[hookedDoc]{
+		BeforeUpdate: func(context.Context, *hookedDoc) error { updates++; return nil },
+		AfterLoad:    func(context.Context, *hookedDoc) error { loads++; return loadErr },
+	})
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows(hookedRow())
+	db := momo.New(drv)
+	ctx := context.Background()
+	m := hookedDoc{ID: 1, Title: "hook"}
+	got, err := momo.Update[hookedDoc](db).Model(&m).One(ctx)
+	if err != nil || got.Title != "hook" {
+		t.Fatalf("One = %+v, %v", got, err)
+	}
+	if updates != 1 || loads != 1 {
+		t.Fatalf("BeforeUpdate ran %d times, AfterLoad %d; want 1 and 1", updates, loads)
+	}
+	// An AfterLoad error fails One, unlike no row at all.
+	loadErr = boom
+	if _, err := momo.Update[hookedDoc](db).Model(&m).One(ctx); !errors.Is(err, boom) {
+		t.Fatalf("AfterLoad error = %v, want boom", err)
+	}
+}
+
+func TestWriteOneKeepsTheFromGuard(t *testing.T) {
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	src := momo.NewColumn[int64]("src", "id", 0)
+	_, err := momo.Update[suite.Document](pg).Set(suite.DocTitle.Set("x")).
+		From(momo.TableRef{Name: "src"}).Where(src.Eq(1)).One(context.Background())
+	if !errors.Is(err, momo.ErrUnfilteredMutation) {
+		t.Fatalf("Update From One err = %v, want ErrUnfilteredMutation", err)
+	}
+	_, err = momo.ForceDelete[suite.Document](pg).
+		Using(momo.TableRef{Name: "src"}).Where(src.Eq(1)).One(context.Background())
+	if !errors.Is(err, momo.ErrUnfilteredMutation) {
+		t.Fatalf("Delete Using One err = %v, want ErrUnfilteredMutation", err)
+	}
+}
