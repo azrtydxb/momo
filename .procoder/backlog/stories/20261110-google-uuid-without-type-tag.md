@@ -1,6 +1,6 @@
 # Types: map google/uuid.UUID and []uuid.UUID without a type tag
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-10
 Epic: -
 Sprint: 008-sprint-8-fix-the-kuvryn-orbit-port-issues-73-to-79-and-the
@@ -12,9 +12,14 @@ A field of `github.com/google/uuid.UUID` needs `momo:"type:uuid"` on every field
 
 ## Acceptance criteria
 
-- [ ] the tests are shown failing on CI before the change
-- [ ] a model field of `uuid.UUID`, `*uuid.UUID` and `[]uuid.UUID` maps to uuid and uuid[] with no type tag, and round-trips on PostgreSQL
-- [ ] one `--from-db` config switch generates google/uuid fields with no type tags
-- [ ] the momo root module gains no new required dependency for users who do not use google/uuid, or the docs state the dependency
+- [x] the tests are shown failing on CI before the change
+- [x] a model field of `uuid.UUID`, `*uuid.UUID` and `[]uuid.UUID` maps to uuid and uuid[] with no type tag, and round-trips on PostgreSQL
+- [x] one `--from-db` config switch generates google/uuid fields with no type tags
+- [x] the momo root module gains no new required dependency for users who do not use google/uuid, or the docs state the dependency
 
 ## Evidence
+
+- Red first: throwaway branch worktree-agent-a418febe208302c67-red76 (commit fd4b346, tests only), ci-agent run 42904209450 failed: TestMapGoogleUUID (gen/typemap), TestGoogleUUIDFieldsMapWithoutTypeTag (gen), TestArrayOperatorsGoogleUUIDGolden (arrayop), TestGenerateFromDBGoogleUUID, TestGenerateFromDBDefaultUUIDIsMomo and TestConfigValidateUUID (gen/fromdb). The branch is deleted after this story.
+- Green: branch worktree-agent-a418febe208302c67 at ba9e070, ci-agent run 42921314183, all 9 jobs success. Integration jobs cover TestGoogleUUIDLive (PostgreSQL: uuid, *uuid.UUID NULL, uuid[], arrayop Contains/ContainedBy/Overlaps/AnyOf on a []uuid.UUID column), TestGoogleUUIDLiveSQLite (TEXT round trip) and the TestTypeMapping rows for uuid.UUID and []uuid.UUID.
+- Dependency: the generator and arrayop match the type by import path and import nothing from google/uuid. The root go.mod already required it indirectly; tests import it, so tidy made it a direct requirement (tests only), listed in docs/supported-versions.md. Docs: docs/upgrading.md "Upgrading to 0.7.0", docs/TYPE_MAPPING.md, docs/migrations.md; generated blocks taken from CI regenerated-docs artifacts (runs 42912798690, 42918912824).
+- MySQL: no uuid mapping in typemap, same as types.UUID (documented). SQLite: uuid.UUID is TEXT; []uuid.UUID has no SQLite column.
