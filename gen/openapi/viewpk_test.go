@@ -9,9 +9,11 @@ import (
 	"github.com/azrtydxb/momo/gen"
 )
 
-// Catches: propertiesOf looking a model up in Graph.Schema by table name,
-// which does not hold a view model, so the primary key of a view model was
-// taken for an ordinary required column.
+// Guards the primary key of a view model in propertiesOf, which reads it
+// through Graph.TableOf. The pk tag on the field marks it too, so this test
+// cannot tell the two sources apart and does not fail with the old lookup;
+// it pins the behavior that a view model's key is not a required write
+// property.
 func TestViewModelPrimaryKeyIsNotRequired(t *testing.T) {
 	dir, err := filepath.Abs("../testdata/fixtures")
 	if err != nil {

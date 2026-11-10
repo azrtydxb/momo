@@ -32,3 +32,10 @@ Built, test-first. Red: ci-agent run 42828122935, headSha 10b7955 (stub helper, 
 - `TestViewsAsModels`: a view, a view over a view and a materialized view are created by migration statements, read as models, the materialized view is stale until `RefreshMaterializedView`, `Insert` on a view model returns ErrValidation, replacing the base view rebuilds the dependent, and dropping everything works in dependency order (PostgreSQL would refuse a wrong order).
 
 Still unmet, so the story is carried: `TestViewInsertDoesNotCompile` and the "mutation builders do not compile" clause of S-37 belong to the compile-time design that the 2026-11-10 decision dropped in favour of the runtime guard. The criteria are not rewritten here; they need the user to retire or reword them. `TestViewsAsModels` exists in an adapted form (hand-written view models in the test, runtime guard instead of compile failure), not as the plan wrote it. `internal/compat/viewmodels` was not built: the hand-written models in the test cover it.
+
+### Sprint 7 review fixes (2026-11-10)
+
+- View models in the ecosystem plugins: `Graph.TableOf` (gen/emit_meta.go) reads the view tables first; the grpc, gosrc, graphql, viz and openapi lookups use it. Red: ci-agent run 42843095672 (throwaway branch, implementation reverted, headSha 5dad868): `TestViewModelKeepsItsKey` (grpc), `TestSinglePKOfViewModel`, `TestSingleIntPKOfViewModel` and `TestKeyOfViewModel` FAIL. The openapi test cannot fail with the old lookup (the pk tag marks the field too), so it only guards.
+- Name parts over 63 bytes are refused (`TestRefreshMaterializedViewRefusals`) and a view model sharing a table name with a table or view model is diagnosed (`TestViewModelSharingATableNameIsDiagnosed`): both FAIL in the same red run.
+- Added `CONCURRENTLY` and schema-qualified refreshes to `TestViewsAsModels`, and `TestBelongsToViewModelAddsNoForeignKey`; these pass on the old code too (coverage, not a fix).
+- Green: ci-agent run 42843104817, headSha f13269b.
