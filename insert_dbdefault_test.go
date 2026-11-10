@@ -268,10 +268,10 @@ func TestDBDefaultUpsertKeepsTheStoredValue(t *testing.T) {
 // Catches: a conflict action that skips rows leaving the models stale while
 // Exec reports success.
 func TestDBDefaultDoNothingSkippedRowsFail(t *testing.T) {
-	db, drv := dbdSetup(dialect.Postgres, [][]any{{"gen-1"}})
+	db, drv := dbdSetup(dialect.Postgres, [][]any{{"gen-1", "a"}})
 	ms := []dbdRow{{Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}}
 	_, err := momo.Insert[dbdRow](db).Models(ms).OnConflict(dbdTitle).DoNothing().Exec(context.Background())
-	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "returned 1 rows for 2 models") {
+	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "DO NOTHING skipped model 1") {
 		t.Fatalf("err = %v, want ErrUnsupported naming the skipped rows", err)
 	}
 	if drv.Rollbacks() != 1 || ms[0].ID != "" {
@@ -280,7 +280,7 @@ func TestDBDefaultDoNothingSkippedRowsFail(t *testing.T) {
 }
 
 func TestDBDefaultDoNothingAllInsertedReadsBack(t *testing.T) {
-	db, _ := dbdSetup(dialect.Postgres, [][]any{{"g1"}, {"g2"}})
+	db, _ := dbdSetup(dialect.Postgres, [][]any{{"g1", "a"}, {"g2", "b"}})
 	ms := []dbdRow{{Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}}
 	if _, err := momo.Insert[dbdRow](db).Models(ms).OnConflict(dbdTitle).DoNothing().Exec(context.Background()); err != nil {
 		t.Fatal(err)

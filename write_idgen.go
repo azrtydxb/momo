@@ -318,6 +318,7 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		}
 	}
 	var n int64
+	matched := make([]bool, len(q.models))
 	for rows.Next() {
 		var got T
 		if err := rows.ScanModel(&got); err != nil {
@@ -330,6 +331,7 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 			_ = rows.Close()
 			return Result{}, q.verr("", "idgen: a RETURNING row of %s matched no model on %s: the conflict-target columns must read back exactly as written (citext, char(n) and numeric columns may not); the write is rolled back unless the handle is a pinned OnConn one", q.meta.Table, strings.Join(keyNames(q.meta, keyCols), ", "))
 		}
+		matched[i] = true
 		if i >= len(q.back) || q.back[i] == nil {
 			continue
 		}
@@ -353,10 +355,8 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 	if err := rows.Close(); err != nil {
 		return Result{}, err
 	}
-	if len(dbCols) > 0 && int(n) < len(q.models) {
-		if err := q.shortfall(int(n)); err != nil {
-			return Result{}, err
-		}
+	if err := q.unread(matched, dbCols); err != nil {
+		return Result{}, err
 	}
 	return Result{RowsAffected: n}, nil
 }

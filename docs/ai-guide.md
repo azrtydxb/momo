@@ -548,18 +548,22 @@ type Event struct {
 - Your own `Returning` list turns the automatic read-back off; `Rows` returns
   the columns you named. A single `Model` that a conflict action skips
   (`DoNothing`) returns no row: `Exec` reports 0 rows affected and leaves the
-  model as it was. With several models and a conflict action, a returned row
-  count below the model count means the stored values cannot be matched to the
-  models, so `Exec` fails with `ErrUnsupported` and rolls the insert back; give
-  those columns a value, or use `Returning` and `Rows`. Inside a caller's `Tx`
+  model as it was. A bulk `Models` insert that returns fewer rows than models
+  (a conflict action, a trigger or a rule dropped some) is matched by key when
+  it can be: the key is the conflict target, else the primary key, it must be
+  written from the model (not omitted, identity or read-only) and must not be a
+  `dbdefault` column that is zero in some row. The key is then added to the
+  `RETURNING` list, the returned rows are written back by key and the other
+  models stay untouched; the insert fails only when the conflict action is
+  `DoNothing` and a skipped model still has a `dbdefault` column unread. When
+  the rows cannot be matched by key the insert fails with `ErrUnsupported`
+  ("returned N rows for M models"), rolls back and writes nothing back: give
+  the columns a value, or use `Returning` and `Rows`. Inside a caller's `Tx`
   the rollback is to a savepoint, not the caller's transaction, which stays
-  open. A pinned `OnConn` handle cannot roll back, so there the insert stays,
-  no error is returned and the write-back is partial. Without a conflict action
-  a shortfall (a trigger or rule that drops a row) is tolerated: the returned
-  rows are written back by position, so do not combine `dbdefault` with
-  row-dropping triggers on bulk inserts. The conflict-target column of an
-  insert that also uses an id generator cannot be a `dbdefault` column that is
-  zero in some row (`ErrValidation`). The
+  open. A pinned `OnConn` handle cannot roll back: it returns the same error,
+  says the returned rows were stored, and writes nothing back. The
+  conflict-target column of an insert that also uses an id generator cannot be
+  a `dbdefault` column that is zero in some row (`ErrValidation`). The
   default `DO UPDATE` set of `Upsert` leaves a dbdefault column out when a row
   leaves it to the database, so a conflict keeps the stored value.
 - The zero value means "use the default". On a `bool` or numeric column that

@@ -27,17 +27,73 @@ func TestDBDefaultSingleModelDoNothingSkippedIsNotAnError(t *testing.T) {
 	}
 }
 
-// Catches: a trigger or rule that drops a row turning a valid insert into an
-// error that blames a conflict that does not exist.
-func TestDBDefaultShortfallWithoutConflictIsTolerated(t *testing.T) {
-	db, _ := dbdSetup(dialect.Postgres, [][]any{{"g1"}})
+// Catches: a short bulk result that cannot be matched by key (the key is the
+// dbdefault id) writing the returned values onto the wrong models.
+func TestDBDefaultShortBulkWithoutKeyFailsAndWritesNothing(t *testing.T) {
+	db, drv := dbdSetup(dialect.Postgres, [][]any{{"g1"}})
 	ms := []dbdRow{{Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}}
-	res, err := momo.Insert[dbdRow](db).Models(ms).Exec(context.Background())
+	_, err := momo.Insert[dbdRow](db).Models(ms).Exec(context.Background())
+	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "returned 1 rows for 2 models") {
+		t.Fatalf("err = %v, want the count-mismatch ErrUnsupported", err)
+	}
+	if ms[0].ID != "" || ms[1].ID != "" || drv.Rollbacks() != 1 {
+		t.Fatalf("models %+v rollbacks %d: nothing may be written back and the insert is rolled back", ms, drv.Rollbacks())
+	}
+}
+
+// dbdKeyed has a caller-set key next to a dbdefault column, so a short result
+// can be matched by key.
+type dbdKeyed struct {
+	ID   int64
+	Slug string
+}
+
+var dbdKeyedMeta = momo.Meta[dbdKeyed]{
+	Table: "dbd_keyed",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK},
+		{Name: "slug", Flags: momo.FlagHasDefault | momo.FlagDBDefault},
+	},
+	Ptr:      func(m *dbdKeyed, i int) any { return [...]any{&m.ID, &m.Slug}[i] },
+	Value:    func(m *dbdKeyed, i int) any { return [...]any{m.ID, m.Slug}[i] },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+	PK: []int{0},
+}
+
+func (*dbdKeyed) MomoMeta() *momo.Meta[dbdKeyed] { return &dbdKeyedMeta }
+
+// Catches: a trigger-dropped row failing a valid insert, or the returned rows
+// landing on the wrong models, when the key is known.
+func TestDBDefaultShortBulkMatchedByKey(t *testing.T) {
+	db, _ := dbdSetup(dialect.Postgres, [][]any{{"s1", int64(1)}, {"s3", int64(3)}})
+	ms := []dbdKeyed{{ID: 1}, {ID: 2}, {ID: 3}}
+	res, err := momo.Insert[dbdKeyed](db).Models(ms).Exec(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.RowsAffected != 1 || ms[0].ID != "g1" || ms[1].ID != "" {
-		t.Fatalf("res %+v, models %+v: the returned rows are written back by position", res, ms)
+	if res.RowsAffected != 2 || ms[0].Slug != "s1" || ms[1].Slug != "" || ms[2].Slug != "s3" {
+		t.Fatalf("res %+v models %+v: matched by key, the unmatched model untouched", res, ms)
+	}
+}
+
+// Catches: DoNothing leaving a skipped model's dbdefault value unread without
+// an error, even though the other rows were matched by key.
+func TestDBDefaultDoNothingUnmatchedModelFails(t *testing.T) {
+	db, _ := dbdSetup(dialect.Postgres, [][]any{{"s1", int64(1)}})
+	pk := momo.NewColumn[int64]("dbd_keyed", "id", momo.FlagPK)
+	ms := []dbdKeyed{{ID: 1}, {ID: 2}}
+	_, err := momo.Insert[dbdKeyed](db).Models(ms).OnConflict(pk).DoNothing().Exec(context.Background())
+	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "DO NOTHING skipped model 1") || ms[0].Slug != "" {
+		t.Fatalf("err %v models %+v", err, ms)
+	}
+	// With the skipped model's cells set there is nothing unread: no error.
+	db2, _ := dbdSetup(dialect.Postgres, [][]any{{"s1", int64(1)}})
+	set := []dbdKeyed{{ID: 1}, {ID: 2, Slug: "mine"}}
+	if _, err := momo.Insert[dbdKeyed](db2).Models(set).OnConflict(pk).DoNothing().Exec(context.Background()); err != nil {
+		t.Fatalf("a skipped model without dbdefault cells to read: %v", err)
+	}
+	if set[0].Slug != "s1" {
+		t.Fatalf("models %+v", set)
 	}
 }
 
@@ -45,25 +101,25 @@ type dbdPinned struct{ *fakedriver.Driver }
 
 func (dbdPinned) Release() error { return nil }
 
-// Catches: an error for a row that a pinned handle already committed (it
-// cannot roll back).
-func TestDBDefaultDoNothingShortfallOnPinnedHandleIsPartial(t *testing.T) {
+// Catches: a pinned handle (no rollback) hiding that the rows were stored.
+func TestDBDefaultDoNothingShortfallOnPinnedHandleReportsStored(t *testing.T) {
 	drv := fakedriver.New(dialect.Postgres)
-	drv.SetRows([][]any{{"g1"}})
+	drv.SetRows([][]any{{"g1", "a"}})
 	db := momo.New(drv).OnConn(dbdPinned{drv})
 	ms := []dbdRow{{Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}}
-	if _, err := momo.Insert[dbdRow](db).Models(ms).OnConflict(dbdTitle).DoNothing().Exec(context.Background()); err != nil {
-		t.Fatalf("pinned handle: %v", err)
+	_, err := momo.Insert[dbdRow](db).Models(ms).OnConflict(dbdTitle).DoNothing().Exec(context.Background())
+	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "were stored") {
+		t.Fatalf("pinned handle: err = %v, want an error saying the rows were stored", err)
 	}
-	if ms[0].ID != "g1" {
-		t.Fatalf("partial write-back missing: %+v", ms)
+	if ms[0].ID != "" {
+		t.Fatalf("nothing may be written back: %+v", ms)
 	}
 }
 
 // Catches: the rollback reaching the caller's transaction instead of a
 // savepoint inside it.
 func TestDBDefaultDoNothingShortfallRollsBackToSavepointInTx(t *testing.T) {
-	db, drv := dbdSetup(dialect.Postgres, [][]any{{"g1"}})
+	db, drv := dbdSetup(dialect.Postgres, [][]any{{"g1", "a"}})
 	ms := []dbdRow{{Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}}
 	var insertErr error
 	err := db.Tx(context.Background(), momo.TxOptions{}, func(tx *momo.Tx) error {
@@ -133,8 +189,8 @@ func TestDBDefaultReconcileShortfallMatchesReadBack(t *testing.T) {
 	name := momo.NewColumn[string]("dbd_gen", "name", momo.FlagUnique)
 	ms := []dbdGen{{Name: "a"}, {Name: "b"}}
 	_, err := momo.Insert[dbdGen](db).Models(ms).OnConflict(name).DoNothing().Exec(context.Background())
-	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "returned 1 rows for 2 models") {
-		t.Fatalf("err = %v, want the same count-mismatch ErrUnsupported as the read-back path", err)
+	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "DO NOTHING skipped model 1") {
+		t.Fatalf("err = %v, want the same unread-model ErrUnsupported as the read-back path", err)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 )
 
 // dbDefaultCol reports whether column ci carries the dbdefault tag and a model
@@ -160,8 +161,9 @@ func (q InsertQuery[T]) later(apply func()) {
 // execReadBack runs a model insert that leaves dbdefault columns to the
 // database, asking RETURNING for them (and for the generated key on MariaDB),
 // and writes the stored values into the caller's models once the statement has
-// committed. Rows are matched by position; when a conflict action skipped some
-// rows (DO NOTHING) the count differs and the insert fails, see execSingle.
+// committed. Rows are matched by position when every model came back, by key
+// when a bulk insert came back short and the key is known, and otherwise the
+// insert fails, see execSingle and countMismatch.
 func (q InsertQuery[T]) execReadBack(ctx context.Context, cols []int) (Result, error) {
 	idCol := -1
 	if q.wantsGeneratedKey() {
@@ -171,8 +173,15 @@ func (q InsertQuery[T]) execReadBack(ctx context.Context, cols []int) (Result, e
 	if idCol >= 0 {
 		all = append(all, idCol)
 	}
-	refs := make([]ColumnRef, len(all))
-	for i, ci := range all {
+	keyCols := q.matchKey(cols) // lets a short bulk result be matched by key
+	ret := slices.Clone(all)
+	for _, ci := range keyCols {
+		if !slices.Contains(ret, ci) {
+			ret = append(ret, ci)
+		}
+	}
+	refs := make([]ColumnRef, len(ret))
+	for i, ci := range ret {
 		refs[i] = NewColumn[string](q.meta.Table, q.meta.Columns[ci].Name, 0)
 	}
 	q2 := q
@@ -211,47 +220,123 @@ func (q InsertQuery[T]) execReadBack(ctx context.Context, cols []int) (Result, e
 			res.InsertID = int64(v.Uint()) // #nosec G115 -- an auto-increment key is positive
 		}
 	}
-	if len(got) < len(q.models) {
-		if err := q.shortfall(len(got)); err != nil {
-			return Result{}, err
-		}
-		if len(q.models) == 1 {
-			return res, nil // skipped by the conflict action: the model stays as it was
-		}
-	}
-	for r := range got {
+	total := len(q.models)
+	write := func(r int, src *T) {
 		if q.back[r] == nil {
-			continue
+			return
 		}
 		for _, ci := range all {
 			if ci != idCol && !q.dbDefaultRow(r, ci) {
 				continue
 			}
-			dst, src, col := q.back[r], &got[r], ci
+			dst, col := q.back[r], ci
 			q.later(func() { copyField(q.meta, dst, src, col) })
+		}
+	}
+	switch {
+	case len(got) == total:
+		for r := range got {
+			write(r, &got[r])
+		}
+	case total == 1:
+		// skipped by the conflict action: the model stays as it was
+	case keyCols == nil:
+		return Result{}, q.countMismatch(len(got))
+	default:
+		byKey := make(map[string]int, total)
+		for i := range q.models {
+			if _, dup := byKey[idKey(q.meta, &q.models[i], keyCols)]; !dup {
+				byKey[idKey(q.meta, &q.models[i], keyCols)] = i
+			}
+		}
+		matched := make([]bool, total)
+		for g := range got {
+			i, ok := byKey[idKey(q.meta, &got[g], keyCols)]
+			if !ok {
+				return Result{}, q.verr("", "a RETURNING row of %s matched no model on %s: the key columns must read back exactly as written (citext, char(n) and numeric columns may not); %s", q.meta.Table, strings.Join(keyNames(q.meta, keyCols), ", "), q.rollbackNote())
+			}
+			matched[i] = true
+			write(i, &got[g])
+		}
+		if err := q.unread(matched, cols); err != nil {
+			return Result{}, err
 		}
 	}
 	return res, nil
 }
 
-// shortfall decides what fewer RETURNING rows than models mean for a read-back.
-// A single model that returns no row was skipped, and a statement without a
-// conflict action can lose rows only to a trigger or rule: both are tolerated
-// and the rows that did return are written back by position. With a conflict
-// action and several models the returned rows cannot be matched to the models,
-// so the insert fails (and is rolled back, to the savepoint inside a *Tx)
-// instead of leaving models stale. A pinned OnConn handle cannot roll back, so
-// it is tolerated there too and the write-back is partial.
-func (q InsertQuery[T]) shortfall(got int) error {
-	total := len(q.models)
-	if got >= total || total == 1 || !(q.i.conflict != conflictNone || q.i.upsert) {
-		return nil
+// isPinned reports whether the statement runs on a pinned OnConn handle, which
+// cannot open a transaction and so cannot roll an insert back.
+func (q InsertQuery[T]) isPinned() bool {
+	db, ok := q.q.(*DB)
+	return ok && db.pinned
+}
+
+// rollbackNote says what became of the write when a read-back fails.
+func (q InsertQuery[T]) rollbackNote() string {
+	if q.isPinned() {
+		return "the returned rows were stored (a pinned OnConn handle cannot roll back) and no model was updated"
 	}
-	if db, ok := q.q.(*DB); ok && db.pinned {
-		return nil
-	}
+	return "the write is rolled back (to a savepoint inside a Tx) and no model was updated"
+}
+
+// countMismatch is the error for a bulk insert that returned fewer rows than
+// models when the rows cannot be matched to the models by key.
+func (q InsertQuery[T]) countMismatch(got int) error {
 	return &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table,
-		Err: fmt.Errorf("the statement returned %d rows for %d models, so the stored dbdefault values cannot be matched to the models: give those columns a value, or read them with Returning and Rows; the write is rolled back", got, total)}
+		Err: fmt.Errorf("the statement returned %d rows for %d models, so the stored dbdefault values cannot be matched to the models: give those columns a value, or read them with Returning and Rows; %s", got, len(q.models), q.rollbackNote())}
+}
+
+// unread fails when ON CONFLICT DO NOTHING left a model without its stored
+// dbdefault values: matched[i] says whether model i came back. Other conflict
+// actions and statements without one leave unmatched models untouched.
+func (q InsertQuery[T]) unread(matched []bool, cols []int) error {
+	if q.i.conflict != conflictNothing || len(q.models) < 2 {
+		return nil // a single skipped Model just reports 0 rows
+	}
+	for i, m := range matched {
+		if m {
+			continue
+		}
+		for _, ci := range cols {
+			if q.dbDefaultRow(i, ci) {
+				return &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table, Column: q.meta.Columns[ci].Name,
+					Err: fmt.Errorf("ON CONFLICT DO NOTHING skipped model %d, so its dbdefault column %q stays unread: give the column a value, or read it with Returning and Rows; %s", i, q.meta.Columns[ci].Name, q.rollbackNote())}
+			}
+		}
+	}
+	return nil
+}
+
+// matchKey returns the columns that identify a model in the RETURNING rows of
+// a bulk insert: the conflict target, else the primary key. It is nil when the
+// rows cannot be matched by key: a single model, no key, or a key column the
+// statement does not write from the model (omitted, identity, read-only) or
+// that takes its database default in some row.
+func (q InsertQuery[T]) matchKey(cols []int) []int {
+	if len(q.models) < 2 {
+		return nil
+	}
+	key := q.meta.PK
+	if rq, err := q.resolveUpsert(); err == nil && len(rq.i.target) > 0 {
+		key = key[:0:0]
+		for _, n := range rq.i.target {
+			ci := q.column(n)
+			if ci < 0 {
+				return nil
+			}
+			key = append(key, ci)
+		}
+	}
+	if len(key) == 0 {
+		return nil
+	}
+	for _, ci := range key {
+		if slices.Contains(cols, ci) || !q.writable(ci) || slices.Contains(q.i.omit, q.meta.Columns[ci].Name) {
+			return nil
+		}
+	}
+	return key
 }
 
 // copyField stores the field of src for column ci into dst.

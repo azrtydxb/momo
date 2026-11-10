@@ -148,17 +148,19 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 // With an empty list the query fails with ErrValidation.
 //
 // A dbdefault column that is zero in every row leaves the column list; when
-// some rows set it and others do not, the unset rows write DEFAULT. SQLite,
+// some rows set it and others do not, the unset rows write DEFAULT. SQLite
 // and Unnest cannot put DEFAULT in a row and fail with ErrUnsupported for such
 // a mix; MySQL has no RETURNING to read the value back and fails with
 // ErrUnsupported when a dbdefault column is zero. Exec writes the stored
 // values of the unset rows back into the caller's elements after the
 // statement committed. A single Model that a conflict action skips reports 0
-// rows affected and stays unchanged. With a conflict action and several
-// models, fewer returned rows than models cannot be matched: Exec fails with
-// ErrUnsupported and rolls the insert back (to a savepoint inside a Tx; a
-// pinned OnConn handle keeps the rows and writes back what returned). Without
-// a conflict action a shortfall is tolerated. A caller's own Returning list
+// rows affected and stays unchanged. A bulk insert that returns fewer rows than
+// models is matched by key (conflict target, else primary key) when the key is
+// written from the model and not a zero dbdefault column; unmatched models stay
+// untouched, and Exec fails only when DoNothing left a dbdefault column
+// unread. Without a usable key a short result fails with ErrUnsupported and
+// writes nothing back; the insert is rolled back (to a savepoint inside a Tx;
+// a pinned OnConn handle keeps the rows and says so). A caller's own Returning list
 // turns the automatic read-back off: Rows returns the columns it names.
 func (q InsertQuery[T]) Models(ms []T) InsertQuery[T] {
 	if len(ms) == 0 {
