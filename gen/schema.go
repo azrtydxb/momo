@@ -184,6 +184,10 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 	col := schema.Column{Name: f.Column, Nullable: nullable, Default: tg.Default, Collate: tg.Collate, Comment: tg.Comment}
 	if tg.Identity {
 		col.Identity = "by_default"
+		if tg.IdentityAlways {
+			col.Identity = "always"
+			b.applyIdentityAlways(f)
+		}
 	}
 	col.Type = b.columnType(f, core)
 	if tg.Serial {
@@ -194,6 +198,18 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 		b.enumUses = append(b.enumUses, enumUse{name: tg.Enum, pos: f.Pos})
 	}
 	return col
+}
+
+// applyIdentityAlways refuses identity:always for a MySQL dialect, which has
+// only AUTO_INCREMENT (the by-default kind). SQLite keeps it: its rowid alias
+// has one kind, and the schema normalizer maps always to by default there.
+func (b *schemaBuilder) applyIdentityAlways(f *Field) {
+	for _, d := range append(slices.Clone(b.dialects), b.primary) {
+		if d == dialect.MySQL {
+			b.diag(f.Pos, fmt.Sprintf("field %s: identity:always is not supported on %s; use identity", f.GoName, d))
+			return
+		}
+	}
 }
 
 // serialTypes are the integer column types a serial column can have.

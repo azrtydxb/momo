@@ -55,9 +55,10 @@ var legacyDDL = []string{
 		account_id bigint NOT NULL REFERENCES accounts (id),
 		role text NOT NULL,
 		PRIMARY KEY (project_id, account_id))`,
-	// A composite foreign key into the composite primary key (issue 54).
+	// A composite foreign key into the composite primary key (issue 54) on a
+	// GENERATED ALWAYS identity key (issue 56).
 	`CREATE TABLE project_notes (
-		id bigserial PRIMARY KEY,
+		id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 		project_id bigint NOT NULL,
 		account_id bigint NOT NULL,
 		body text NOT NULL,
@@ -121,7 +122,7 @@ introspect:
 		}
 	}
 	notes, err := os.ReadFile(filepath.Join(root, "models", "project_notes_model.go")) //nolint:gosec // test path
-	if err != nil || !strings.Contains(string(notes), `c.ForeignKey("project_notes_member_fkey"`) {
+	if err != nil || !strings.Contains(string(notes), `c.ForeignKey("project_notes_member_fkey"`) || !strings.Contains(string(notes), "identity:always") {
 		t.Fatalf("the composite foreign key is not declared: %v\n%s", err, notes)
 	}
 	accts, err := os.ReadFile(filepath.Join(root, "models", "accounts_model.go")) //nolint:gosec // test path

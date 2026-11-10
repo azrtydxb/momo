@@ -463,9 +463,7 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 	}
 	switch col.Identity {
 	case "always":
-		g.add(SevWarn, m.t.Name+"."+col.Name, "identity always is declared as identity by default: the models cannot declare generated always, so the baseline will report the column")
-		col.Identity = "by_default"
-		opts = append(opts, "identity")
+		opts = append(opts, "identity:always")
 	case "by_default":
 		opts = append(opts, "identity")
 	case "serial":

@@ -259,6 +259,29 @@ func TestGenerateFromDBUniqueExpressionIndex(t *testing.T) {
 	}
 }
 
+// TestGenerateFromDBIdentityAlways covers issue 56: a GENERATED ALWAYS column
+// is declared identity:always, without a warning, and stays always in the
+// snapshot.
+func TestGenerateFromDBIdentityAlways(t *testing.T) {
+	s := sampleSchema()
+	s.Tables[1].Columns[0].Identity = "always"
+	res, files := generate(t, s, Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	for _, f := range res.Findings {
+		if f.Severity == SevWarn {
+			t.Errorf("unexpected warning: %v", f)
+		}
+	}
+	mustContain(t, "users", files["users"], `momo:"pk,identity:always"`)
+	for _, tb := range res.Snapshot.Tables {
+		if tb.Name == "users" && tb.Columns[0].Identity != "always" {
+			t.Errorf("snapshot identity = %q, want always", tb.Columns[0].Identity)
+		}
+	}
+}
+
 func TestGenerateFromDBUnmappedColumn(t *testing.T) {
 	s := sampleSchema()
 	s.Tables[1].Columns = append(s.Tables[1].Columns, schema.Column{Name: "ip", Type: "inet"})
