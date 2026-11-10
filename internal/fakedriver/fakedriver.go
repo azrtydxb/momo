@@ -192,3 +192,9 @@ func (c *cursor) Close() error {
 	c.s.closed++
 	return nil
 }
+
+// NewDialect returns a fake driver for an explicit dialect value, for example
+// a MySQL-family flavor from dialect.MySQLFlavor.
+func NewDialect(d *dialect.Dialect) *Driver {
+	return &Driver{d: d, s: &state{}}
+}

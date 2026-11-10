@@ -40,7 +40,7 @@ func (sq SelectQuery[T]) renderBare(b *Builder, onConflictFollows bool) {
 // error on the builder and stops the statement.
 func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 	s := &sq.s
-	s.writeWith(b)
+	writeWithClause(b, s.with)
 	b.WriteString("SELECT ")
 	if len(s.distinctOn) > 0 {
 		sq.renderDistinctOn(b)
@@ -59,42 +59,6 @@ func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 	sq.writeOrderBy(b)
 	s.writeLimitOffset(b)
 	sq.writeLock(b)
-}
-
-// writeWith writes the WITH clause, if any.
-func (s *selectCore) writeWith(b *Builder) {
-	if len(s.with) == 0 {
-		return
-	}
-	b.WriteString("WITH ")
-	for _, c := range s.with {
-		if c.recursive {
-			if !b.d.RecursiveCTE {
-				b.unsupported("WITH RECURSIVE")
-			}
-			b.WriteString("RECURSIVE ")
-			break
-		}
-	}
-	for i, c := range s.with {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		b.Ident(c.name)
-		if len(c.cols) > 0 {
-			b.WriteString(" (")
-			for j, col := range c.cols {
-				if j > 0 {
-					b.WriteString(", ")
-				}
-				b.Ident(col)
-			}
-			b.writeByte(')')
-		}
-		b.WriteString(" AS ")
-		c.q.AppendSQL(b)
-	}
-	b.writeByte(' ')
 }
 
 // writeSelectList writes the select list: the model's columns, or the explicit
