@@ -197,3 +197,24 @@ func TestWriteOneTooManyRows(t *testing.T) {
 		}
 	}, momo.WithImplicitTx())
 }
+
+// Without WithImplicitTx or a transaction, a multi-row write is already
+// applied when One returns ErrTooManyRows: the documented caveat.
+func TestWriteOneTooManyRowsOnPlainDB(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		suite.CreateDocuments(t, db, suite.CapsOf(db))
+		ctx := context.Background()
+		if _, err := momo.Exec(ctx, db, "INSERT INTO documents (tenant_id, title) VALUES (3, 'a'), (3, 'b')"); err != nil {
+			t.Fatal(err)
+		}
+		_, err := momo.Update[suite.Document](db).Set(suite.DocTitle.Set("z")).
+			Where(suite.DocTenantID.Eq(3)).One(ctx)
+		if !errors.Is(err, momo.ErrTooManyRows) {
+			t.Fatalf("multi-row update err = %v, want ErrTooManyRows", err)
+		}
+		n, err := momo.Select[suite.Document](db).Where(suite.DocTenantID.Eq(3), suite.DocTitle.Eq("z")).Count(ctx)
+		if err != nil || n != 2 {
+			t.Fatalf("rows changed = %d, %v; want 2", n, err)
+		}
+	})
+}
