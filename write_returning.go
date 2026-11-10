@@ -200,13 +200,23 @@ func oneRow[T any](r *ModelRows[T], op, table string) (T, error) {
 	return m, nil
 }
 
-// One runs the INSERT and returns the single RETURNING row: ErrNotFound when
+// One runs a single-row INSERT and returns its RETURNING row: ErrNotFound when
 // no row came back (ON CONFLICT DO NOTHING, or a DO UPDATE whose WHERE did
 // not hold) and ErrTooManyRows when more than one did. Without a Returning
 // list it returns every column, as ReturningAll does. On a dialect without
-// RETURNING it fails with ErrUnsupported.
+// RETURNING (MySQL, and MariaDB for UPDATE and DELETE) it fails with
+// ErrUnsupported.
+//
+// A multi-row Models insert is refused with ErrValidation before anything runs:
+// a bulk insert can be split into chunks that commit together, which One
+// cannot roll back after the fact. Use Rows for a bulk insert. AfterLoad runs
+// on the returned row before the write commits, so an AfterLoad error rolls an
+// implicit transaction back, unlike SelectQuery.One.
 func (q InsertQuery[T]) One(ctx context.Context) (T, error) {
 	var zero T
+	if len(q.models) > 1 {
+		return zero, q.verr("", "One reads one row; use Rows for a bulk insert")
+	}
 	if !q.i.returning.active() {
 		q = q.ReturningAll()
 	}
@@ -221,7 +231,14 @@ func (q InsertQuery[T]) One(ctx context.Context) (T, error) {
 // no row matched (a guarded update) and ErrTooManyRows when more than one
 // did. Without a Returning list it returns every column. It is not supported
 // with a version-checked Model update (ErrValidation; use Exec) or on a
-// dialect without RETURNING (ErrUnsupported).
+// dialect without RETURNING (ErrUnsupported: MySQL, and MariaDB, where UPDATE
+// ... RETURNING is not implemented).
+//
+// Without WithImplicitTx or an explicit transaction the statement has already
+// changed every matched row when One returns ErrTooManyRows; run One inside
+// db.Tx and roll back on ErrTooManyRows. AfterLoad runs on the returned row
+// before the write commits, so an AfterLoad error rolls an implicit
+// transaction back, unlike SelectQuery.One.
 func (u UpdateQuery[T]) One(ctx context.Context) (T, error) {
 	var zero T
 	if !u.returning.active() {
@@ -236,8 +253,15 @@ func (u UpdateQuery[T]) One(ctx context.Context) (T, error) {
 
 // One runs the DELETE and returns the single RETURNING row: ErrNotFound when
 // no row matched and ErrTooManyRows when more than one did. Without a
-// Returning list it returns every column. On a dialect without RETURNING it
-// fails with ErrUnsupported.
+// Returning list it returns every column. On a dialect without RETURNING
+// (MySQL, and MariaDB, where DELETE ... RETURNING is not implemented) it fails
+// with ErrUnsupported.
+//
+// Without WithImplicitTx or an explicit transaction the statement has already
+// changed every matched row when One returns ErrTooManyRows; run One inside
+// db.Tx and roll back on ErrTooManyRows. AfterLoad runs on the returned row
+// before the write commits, so an AfterLoad error rolls an implicit
+// transaction back, unlike SelectQuery.One.
 func (d DeleteQuery[T]) One(ctx context.Context) (T, error) {
 	var zero T
 	if !d.returning.active() {
