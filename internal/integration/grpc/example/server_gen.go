@@ -28,7 +28,7 @@ import (
 // client. op names the call, for example DocumentService.Get. A call whose
 // context ended is answered Canceled or DeadlineExceeded, not Internal.
 func statusOf(ctx context.Context, op string, err error) error {
-	OnError(ctx, op, err)
+	runErrorHook(ctx, op, err)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, "deadline exceeded")
@@ -58,6 +58,14 @@ func statusOf(ctx context.Context, op string, err error) error {
 func isZero[T comparable](v T) bool {
 	var zero T
 	return v == zero
+}
+
+// runErrorHook calls the on_error hook OnError. A panic in the hook is
+// recovered, so a failing log or metric call cannot stop the request from being
+// answered (grpc-go does not recover a panic of a handler).
+func runErrorHook(ctx context.Context, op string, err error) {
+	defer func() { _ = recover() }()
+	OnError(ctx, op, err)
 }
 
 // commentServer implements pb.CommentServiceServer on top of momo. It does no

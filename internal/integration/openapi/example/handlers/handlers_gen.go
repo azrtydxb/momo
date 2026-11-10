@@ -51,7 +51,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // the operationId of the endpoint. A request whose context ended is answered
 // 499 (cancelled) or 504 (deadline), not as a server error.
 func writeError(w http.ResponseWriter, r *http.Request, op string, err error) {
-	OnError(r.Context(), op, err)
+	runErrorHook(r.Context(), op, err)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		writeJSON(w, http.StatusGatewayTimeout, errorBody{Error: "request timed out"})
@@ -151,6 +151,14 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+// runErrorHook calls the on_error hook OnError. A panic in the hook is
+// recovered, so a failing log or metric call cannot stop the request from being
+// answered.
+func runErrorHook(ctx context.Context, op string, err error) {
+	defer func() { _ = recover() }()
+	OnError(ctx, op, err)
 }
 
 // CommentHandler serves the Comment endpoints of the OpenAPI document.
