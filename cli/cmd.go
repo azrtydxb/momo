@@ -23,6 +23,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/migrate"
 )
 
