@@ -1,6 +1,6 @@
 # momo-08 Task 7: MariaDB VECTOR and MySQL VECTOR storage, distance and index capability
 
-Status: open
+Status: done
 Created: 2026-11-04
 Epic: momo-08-mysql
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -22,3 +22,4 @@ Implements plan momo-08-mysql Task 7: MariaDB VECTOR and MySQL VECTOR storage, d
 - Red run: branch worktree-agent-a6796cc82be02e264-red (implementation reverted, tests kept; deleted), ci-agent run 42460111115: unit failed TestMySQLVectorSQL, TestMySQLVectorBindWrapping, TestMySQLVectorSensitiveArg, TestMySQLVectorType, TestMariaDBVectorIndexRules, TestMariaDBVectorIndexClause, TestDialectValues; mysql84/mysql97/mariadb integration failed.
 - Green run: ci-agent run 42460943118 on 36d1f7e2b0f41784a703bbb9b3794b109b03d8e8: lint and fuzz-smoke success; `ok driver/mysqldriver` (TestMariaDBVectorParity, TestMySQLVectorCapability) on mysql84, mysql97 and mariadb; internal/vectorparity ok. Only internal/docscheck fails there, on docs/PRIVACY_RULES.md and docs/momovet.md merged from sprint-5 (other stories).
 - Deviations from the plan text: the helpers live in root vector_mysql.go and `momo.MySQLVectorType` (not migrate/mysql, which another agent builds); pgvector parity is checked through a shared Go reference (internal/vectorparity, TestPostgresVectorParityReference) because the MariaDB job has no PostgreSQL; TestMySQLVectorCapability uses VERSION() plus MySQLVectorType since no migrate/mysql engine exists yet.
+- Re-verified on current sprint-7 code: ci-agent run 42780640447 on 8cf94c3ee066c5a183bd60c56ec1b3afeb505e37, all 9 jobs success. The tests live in driver/mysqldriver/vector_integration_test.go (TestMariaDBVectorParity, TestMySQLVectorCapability, integration jobs mysql84, mysql97, mariadb ok) and col_vector_mysql_test.go (unit ok).
