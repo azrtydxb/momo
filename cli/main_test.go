@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -17,6 +18,9 @@ import (
 func buildCustomBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "custombin")
+	if runtime.GOOS == "windows" {
+		bin += ".exe" // go build -o adds no suffix, and exec finds none without it
+	}
 	cmd := exec.Command("go", "build", "-o", bin, "./cli/testdata/custombin") //nolint:gosec // fixed arguments
 	cmd.Dir = ".."
 	if out, err := cmd.CombinedOutput(); err != nil {
