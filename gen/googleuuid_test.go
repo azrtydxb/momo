@@ -57,3 +57,52 @@ func TestGoogleUUIDFieldsMapWithoutTypeTag(t *testing.T) {
 		t.Fatalf("expected the []uuid.UUID field to be unsupported on sqlite, got %v", sdiags)
 	}
 }
+
+// Catches: a UUID type of another package that happens to be named uuid being
+// read as github.com/google/uuid. A slice of it spells like []uuid.UUID, so
+// without the guard in baseType it would silently map to uuid[]; the scalar
+// resolves to its underlying [16]byte and must stay unmapped too.
+func TestForeignUUIDPackageIsNotMapped(t *testing.T) {
+	_, diags, err := Load([]string{"./foreignuuid"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, d := range diags {
+		got = append(got, d.String())
+	}
+	all := strings.Join(got, "\n")
+	for _, field := range []string{"field V:", "field Vs:"} {
+		if !strings.Contains(all, field) || !strings.Contains(all, "has no SQL mapping on postgres") {
+			t.Errorf("expected an unmapped diagnostic for %s, got:\n%s", field, all)
+		}
+	}
+}
+
+// Catches: the mapping depending on how the package is spelled. An import
+// alias (gu) and a type alias (type ID = gu.UUID) are the same type as
+// uuid.UUID and map the same way.
+func TestGoogleUUIDThroughAliases(t *testing.T) {
+	g, diags, err := Load([]string{"./googleuuidalias"}, Config{Dir: fixturesDir(t)})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("load: %v %v", err, diags)
+	}
+	s, sdiags := BuildSchema(g.Models, Config{Dialects: []dialect.Name{dialect.Postgres}})
+	if len(sdiags) != 0 {
+		t.Fatalf("schema diags: %v", sdiags)
+	}
+	tbl, ok := s.Table("items")
+	if !ok {
+		t.Fatal("items table missing")
+	}
+	for col, want := range map[string]string{"a": "uuid", "b": "uuid", "c": "uuid[]", "d": "uuid[]"} {
+		c, found := tbl.Column(col)
+		if !found {
+			t.Errorf("column %s missing; table has %+v", col, tbl.Columns)
+			continue
+		}
+		if c.Type != want {
+			t.Errorf("column %s = %q, want %q", col, c.Type, want)
+		}
+	}
+}

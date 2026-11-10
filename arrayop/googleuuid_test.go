@@ -47,3 +47,19 @@ func TestArrayOperatorsGoogleUUIDGolden(t *testing.T) {
 		}
 	}
 }
+
+// UUID is a 16-byte type named UUID that is not github.com/google/uuid.
+type UUID [16]byte
+
+// Catches: the ::uuid[] cast applied to any slice whose element is named UUID.
+// Only types.UUID and github.com/google/uuid.UUID are uuid values.
+func TestArrayOperatorsForeignUUIDGetsNoCast(t *testing.T) {
+	col := momo.NewColumn[[]UUID]("docs", "uids", 0)
+	got, err := exprtest.Compile(dialect.Postgres, arrayop.Overlaps(col, UUID{1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `SELECT COUNT(*) FROM "docs" WHERE "docs"."uids" && $1`; got.SQL != want {
+		t.Errorf("got %s, want %s", got.SQL, want)
+	}
+}
