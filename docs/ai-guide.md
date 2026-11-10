@@ -1364,7 +1364,9 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   name (`UserID` is `user_id`, `HTTPServer` is `http_server`), `momo:"-"` skips
   a field, the fields of an embedded struct count as the outer struct's own
   (unless it is a `time.Time`, a `sql.Scanner` or has a column tag; an outer
-  field shadows an embedded one, two fields on one column are `ErrValidation`),
+  field shadows an embedded one, two fields on one column and an embedding
+  cycle are `ErrValidation`; an embedded pointer struct is allocated for every
+  row and stays non-nil even when all of its columns are NULL),
   and a pointer field receives NULL as nil (NULL into a non-pointer field is
   the driver's scan error). Names compare exactly, then case-insensitively. The
   reflection plan is built once per type and cached

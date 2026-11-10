@@ -28,7 +28,9 @@ import (
 // `momo:"column:x"` tag or else the snake_case of the field name (UserID is
 // user_id); `momo:"-"` skips a field; the fields of an embedded struct count as
 // the outer struct's own, unless it is a time.Time, a sql.Scanner or carries a
-// column tag; a pointer field receives NULL as nil (a non-pointer field that
+// column tag; an embedded pointer struct is allocated for every row that has
+// a column in it and stays non-nil even when all of its columns are NULL (an
+// embedding cycle is an ErrValidation); a pointer field receives NULL as nil (a non-pointer field that
 // meets NULL is the driver's scan error). The same rule as below applies: a
 // result column no field maps to, or a field no result column fills, is an
 // ErrValidation that names it. The reflection plan is built once per type and

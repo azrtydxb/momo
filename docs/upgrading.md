@@ -17,7 +17,13 @@ or `Row1`..`Row10` still scans through its generated metadata. The type
 parameters changed from `[T any, PT Modeler[T]]` to `[T any]`: a call that
 names only `T` compiles as before, and a call that named `PT` explicitly must
 drop it. A type that is not a struct and has no metadata is now an
-`ErrValidation` at run time instead of a compile error.
+`ErrValidation` at run time instead of a compile error: `Query[*Task]` (a
+pointer type) now fails at run time, not at compile time.
+
+A struct without generated metadata, for example a model before `go generate`
+has run or after a stale generation, now compiles and takes the reflection path
+instead of failing to compile, so a stale or missing generation shows up only at
+run time. Run `go generate`, and keep a test that calls `Query` for each model.
 
 ### Registering Insert.Model needs a real-looking sample
 

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -60,7 +61,9 @@ func buildStructMeta[T any](rt reflect.Type) (*Meta[T], error) {
 		return nil, &Error{Kind: ErrValidation, Op: "raw", Err: fmt.Errorf("%s is not a struct and has no momo metadata; Query and QueryRows read into a model, a projection, Row1..Row10 or a plain struct", rt)}
 	}
 	var fields []structField
-	collectStructFields(rt, nil, 0, &fields)
+	if err := collectStructFields(rt, nil, 0, nil, &fields); err != nil {
+		return nil, err
+	}
 	byName := map[string]int{}
 	var out []structField
 	for _, f := range fields {
@@ -113,7 +116,8 @@ var (
 // collectStructFields lists the scannable fields of rt: exported, not tagged
 // momo:"-", with an embedded struct flattened unless it is itself a column
 // (a time.Time, a sql.Scanner, or one with a column tag).
-func collectStructFields(rt reflect.Type, prefix []int, depth int, out *[]structField) {
+func collectStructFields(rt reflect.Type, prefix []int, depth int, stack []reflect.Type, out *[]structField) error {
+	stack = append(stack, rt)
 	for i := range rt.NumField() {
 		f := rt.Field(i)
 		col := ""
@@ -137,7 +141,12 @@ func collectStructFields(rt reflect.Type, prefix []int, depth int, out *[]struct
 				ft = ft.Elem()
 			}
 			if ft.Kind() == reflect.Struct && !isLeafStruct(ft) {
-				collectStructFields(ft, path, depth+1, out)
+				if slices.Contains(stack, ft) {
+					return &Error{Kind: ErrValidation, Op: "raw", Err: fmt.Errorf("%s: embedded cycle through %s; tag the embedded field momo:\"-\"", stack[0], ft)}
+				}
+				if err := collectStructFields(ft, path, depth+1, stack, out); err != nil {
+					return err
+				}
 				continue
 			}
 		}
@@ -149,6 +158,7 @@ func collectStructFields(rt reflect.Type, prefix []int, depth int, out *[]struct
 		}
 		*out = append(*out, structField{name: col, path: path, depth: depth})
 	}
+	return nil
 }
 
 func isLeafStruct(t reflect.Type) bool {
