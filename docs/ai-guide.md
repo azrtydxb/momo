@@ -46,11 +46,12 @@ A database is usable when a driver package for it exists under `driver/`:
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - Forward migrations only in the CLI. No `migrate rollback`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
 - `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
-- Reciprocal-rank-fusion hybrid search
-  does not exist. Use `momo.SQL` / `momo.TypedSQL` for it. Full-text search
+- Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL only,
+  see [vectors.md](vectors.md#hybrid-search)). Full-text search
   (`types.TSVector`, `fts.Match`, `fts.RankCD`, `fts.Headline`, the
-  query builders) exists on PostgreSQL; combine it with a vector distance in
-  one score as shown in [fulltext.md](fulltext.md).
+  query builders) exists on PostgreSQL; to weigh the signals yourself, combine
+  a vector distance with a text rank in one score as shown in
+  [fulltext.md](fulltext.md).
 
 Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/quickstart/).
 
@@ -1152,6 +1153,35 @@ res, err := momo.Insert[models.Meter](q).
   Explicit identity or serial values do not advance the sequence: `setval` it yourself.
   A `FromSelect` into a serial table cannot supply ids at all (`ErrValidation`).
 
+Joined and CTE-prefixed writes:
+
+- `UpdateQuery.From(src)` renders `UPDATE t SET ... FROM src WHERE ...` and `DeleteQuery.Using(src)`
+  renders `DELETE FROM t USING src WHERE ...`. `src` is a table, aliased table, `momo.CTE(name)`
+  or `momo.FromSubquery(q, alias)`, as in a join; reference its columns with `momo.ColumnOf` or the
+  model's columns, join it to the target in `Where`, and assign from it with `col.SetExpr(srcCol)`.
+  The soft-delete filter and interceptors do not apply to `src`: add that predicate to `Where`.
+  MySQL and MariaDB render the multi-table forms (`UPDATE t, src SET t.col = ...`,
+  `DELETE t FROM t, src WHERE ...`); SQLite has `UPDATE ... FROM` (3.33 or later) but no
+  `DELETE ... USING` (`ErrUnsupported`).
+- With `From` or `Using` the unfiltered-mutation guard is stricter: at least one `Where` predicate
+  must reference a column of the target table, otherwise the statement joins every target row to
+  the source and fails with `ErrUnfilteredMutation` unless `AllRows()` confirms it. A condition
+  only on the source, or a raw `momo.SQL` fragment, does not count. `From` cannot be combined with
+  `BulkUpdate` (`ErrValidation`), and `RETURNING` with `From` works on PostgreSQL and SQLite only.
+- `With` and `WithRecursive` exist on `UpdateQuery`, `DeleteQuery` and `InsertQuery`, with the
+  `SelectQuery` signature. PostgreSQL and SQLite render the WITH before the statement; MySQL
+  accepts it before UPDATE and DELETE only (`ErrUnsupported` before INSERT), and MariaDB refuses it
+  there too (`ErrUnsupported`, not verified). A WITH on a bulk insert that would split into chunks
+  at the parameter limit is `ErrValidation`, and a `With` combined with `BulkUpdate` is
+  `ErrValidation`.
+- `InsertQuery`, `UpdateQuery` and `DeleteQuery` with `Returning` are `Subquery` values, usable as
+  the body of `With` on any statement: a select with `.With("x", ins).From(momo.CTE("x"))` renders
+  `WITH x AS (INSERT ... RETURNING ...) SELECT ... FROM x`. PostgreSQL has data-modifying
+  CTEs; SQLite and MySQL return `ErrUnsupported`. A DML body renders with the handle's interceptors
+  (with a background context) but runs no model hooks and no `beforeWrite` check; the outer
+  statement's `Exec` or `All` is what executes it. An INSERT body is never chunked: one that
+  binds more parameters than the dialect allows fails with `ErrLimitExceeded`.
+
 Bulk and set-based writes (PostgreSQL):
 
 - `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `FromSQLDB` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
@@ -1681,8 +1711,9 @@ Pitfalls:
   `pgxpool.NewWithConfig`, then `pgxdriver.WithVectorFormat(pgxdriver.VectorBinary)`
   with a describe-based exec mode). Default text transport is correct; skip unless
   profiling says otherwise. `NewPool` does not call `ConfigureVectors`.
-- Reciprocal-rank-fusion hybrid search does not exist; combine a distance and a
-  text rank in one score instead ([fulltext.md](fulltext.md)).
+- Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL only,
+  [vectors.md](vectors.md#hybrid-search)); for a custom mix, combine a distance
+  and a text rank in one score ([fulltext.md](fulltext.md)).
 
 Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-search/).
 
