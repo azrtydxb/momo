@@ -3,6 +3,7 @@
 Status: open
 Created: 2026-11-10
 Epic: -
+Sprint: 008-sprint-8-fix-the-kuvryn-orbit-port-issues-73-to-79-and-the
 Type: story
 
 ## Description

@@ -330,3 +330,18 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   say the runnable blocks are executed against PostgreSQL. Story 253's criteria
   are reworded to the per-example PostgreSQL tests that exist, so it is no
   longer carried for that reason.
+
+## Sprint 8 design decisions (2026-11-10, integrator; the user said to keep going without waiting, and may overrule)
+
+- **#74, database-wide functions in `--from-db`:** by default only the
+  functions that a modeled table's triggers, defaults, checks or policies
+  reference are written, each on the model of the table that uses it.
+  `introspect.functions: all` restores the old behaviour. Reason: the old
+  default put every schema function on the alphabetically first model and
+  changed its header hash on every migration.
+- **#77, constant defaults:** a new `introspect.dbdefault: all` tags every
+  column that has a default with `dbdefault`. The default stays "computed
+  defaults only", so regenerating does not change what existing models write.
+- **#79, registry SQL of `Insert.Model`:** document the value dependence in the
+  registry section, and add an explicit column list to the typed insert if it
+  has none.
