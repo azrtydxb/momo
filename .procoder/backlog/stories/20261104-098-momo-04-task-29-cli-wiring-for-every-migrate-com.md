@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — S-26 unmet: the windows-latest job runs go test ./... without cgo or the integration tag, so the SQLite and sqlite-vec packages never run on Windows (ci.yml line 144 runs only the pure-Go pair with the tag). Whether that satisfies the criterion's wording, or the sqlite-vec packages must be added with a cgo toolchain, is a decision for the story owner. All other criteria ticked (run 42776939577).
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — S-10 needs CLI commands rebase, lint, rollback and new, which are not built; [update 2026-11-08: `new --custom` is built since issue 37, so only rebase, lint and rollback are missing]; S-26 needs the SQLite+sqlite-vec packages on the Windows job. Carried until those land.
 
 ## Description

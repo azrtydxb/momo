@@ -1,6 +1,6 @@
 # momo-04 Task 25: PostgreSQL end-to-end apply with the history contract
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -12,8 +12,8 @@ Implements plan momo-04-migrations Task 25: PostgreSQL end-to-end apply with the
 
 ## Acceptance criteria
 
-- [ ] `TestCreateIndexConcurrentlyApply` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestPostgresApplyRecovery` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestCreateIndexConcurrentlyApply` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestPostgresApplyRecovery` exists as written in the plan, failed before the implementation, and passes now
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
@@ -23,3 +23,6 @@ Implements plan momo-04-migrations Task 25: PostgreSQL end-to-end apply with the
 - Deviation from the plan sketch: the plan's `testopen.Postgres` plus `WithSum`/`NewEngine` are used through the package's existing `engineOn` helper (adds the per-test schema config), and a `queryOne` helper releases its pinned connection promptly. The tests additionally assert the history row is `applied` (concurrent index) and that no `applied` row exists after the failed migration.
 - `make fmt-check vet staticcheck gosec tidy-check` clean. In the full integration run `TestDriftOneFailingTableFallsBackAlone` and `TestMigrateLifecycle` (hstore reported as unmanaged) failed once each on the database shared with parallel agents, and both pass in isolation.
 
+### Red proof (2026-11-10)
+
+Throwaway branches (deleted) with the implementation broken, ci-agent integration (postgres) job: `TestCreateIndexConcurrentlyApply` FAILS with the no-transaction path disabled in migrate/runner.go (`if false && (noTx || hasNoTx(...))`), run 42829125567 on 2e497e0; `TestPostgresApplyRecovery` FAILS with every migration routed through the autocommit runner (`if true {`), run 42827578312 on 937e286. Both pass on sprint-7 (see above). The tests use the package's `engineOn` helper instead of the plan sketch's setup, as noted earlier.
