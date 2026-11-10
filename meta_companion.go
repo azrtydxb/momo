@@ -14,17 +14,34 @@ type Config struct{}
 // are read statically by the generator and are no-ops at runtime.
 type IndexOpts struct{}
 
+// ForeignKeyOpts carries the optional referential actions of a foreign key
+// declaration. Its methods are read statically by the generator and are
+// no-ops at runtime.
+type ForeignKeyOpts struct{}
+
 // Index declares a non-unique index over the given field references. Read
 // statically by the generator; never executed for its effect.
 func (c *Config) Index(name string, cols ...any) *IndexOpts { return &IndexOpts{} }
 
-// IndexExpr declares an expression index. Read statically by the generator;
-// never executed for its effect.
+// IndexExpr declares an expression index. Each argument is one key: an
+// expression such as "lower(email)", or the exact name of a column of the
+// table, which is a plain column key (so "company_id", "lower(name)" mixes the
+// two). Chain Unique for a unique index and Where for a partial one. Read
+// statically by the generator; never executed for its effect.
 func (c *Config) IndexExpr(name string, exprs ...string) *IndexOpts { return &IndexOpts{} }
 
 // Unique declares a unique index over the given field references. Read
 // statically by the generator; never executed for its effect.
 func (c *Config) Unique(name string, cols ...any) *IndexOpts { return &IndexOpts{} }
+
+// ForeignKey declares a named foreign key over one or more fields of the model:
+// cols is a []any literal of field references, refTable the referenced table
+// and refColumns its columns, which must be its primary key or the columns of
+// a unique constraint or unique index on it. Read statically by the generator;
+// never executed for its effect.
+func (c *Config) ForeignKey(name string, cols []any, refTable string, refColumns []string) *ForeignKeyOpts {
+	return &ForeignKeyOpts{}
+}
 
 // Check declares a named check constraint. Read statically by the generator;
 // never executed for its effect.
@@ -81,6 +98,9 @@ func (c *Config) Partition(p schema.Partition) {}
 // executed.
 func (c *Config) PartitionOf(p schema.PartitionOf) {}
 
+// Unique makes the index a unique index. Read statically; no-op at runtime.
+func (o *IndexOpts) Unique() *IndexOpts { return o }
+
 // Where sets the partial-index predicate. Read statically; no-op at runtime.
 func (o *IndexOpts) Where(pred string) *IndexOpts { return o }
 
@@ -104,3 +124,11 @@ func (o *IndexOpts) Nulls(field any, order string) *IndexOpts { return o }
 // Concurrently marks the index to be built concurrently. Read statically;
 // no-op at runtime.
 func (o *IndexOpts) Concurrently() *IndexOpts { return o }
+
+// OnDelete sets the ON DELETE action of a foreign key ("CASCADE", "RESTRICT",
+// "SET NULL", "SET DEFAULT" or "NO ACTION"). Read statically; no-op at runtime.
+func (o *ForeignKeyOpts) OnDelete(action string) *ForeignKeyOpts { return o }
+
+// OnUpdate sets the ON UPDATE action of a foreign key, with the same values as
+// OnDelete. Read statically; no-op at runtime.
+func (o *ForeignKeyOpts) OnUpdate(action string) *ForeignKeyOpts { return o }

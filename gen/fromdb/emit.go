@@ -463,9 +463,7 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 	}
 	switch col.Identity {
 	case "always":
-		g.add(SevWarn, m.t.Name+"."+col.Name, "identity always is declared as identity by default: the models cannot declare generated always, so the baseline will report the column")
-		col.Identity = "by_default"
-		opts = append(opts, "identity")
+		opts = append(opts, "identity:always")
 	case "by_default":
 		opts = append(opts, "identity")
 	case "serial":
@@ -668,9 +666,6 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		g.add(SevWarn, obj, "%s: the models cannot declare this constraint, so it is left out of the models and the snapshot and the baseline will report it", why)
 		return false
 	}
-	if len(fk.Columns) != 1 || len(fk.RefColumns) != 1 {
-		return drop("composite foreign keys are not supported")
-	}
 	ns, name := t.Schema, fk.RefTable
 	if i := strings.IndexByte(name, '.'); i >= 0 {
 		ns, name = name[:i], name[i+1:]
@@ -678,6 +673,9 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	target := g.byKey[tableKey(ns, name)]
 	if target == nil {
 		return drop("it references " + fk.RefTable + ", which has no model")
+	}
+	if len(fk.Columns) != 1 || len(fk.RefColumns) != 1 {
+		return g.compositeForeignKey(m, target, fk, drop)
 	}
 	if len(target.t.PrimaryKey) != 1 || target.t.PrimaryKey[0] != fk.RefColumns[0] {
 		return drop("it does not reference the single-column primary key of " + fk.RefTable)
@@ -718,6 +716,44 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	return true
 }
 
+// compositeForeignKey declares a multi-column foreign key with a
+// c.ForeignKey statement. It reports whether it did; drop explains why not.
+func (g *generator) compositeForeignKey(m *model, target *model, fk schema.ForeignKey, drop func(string) bool) bool {
+	if len(fk.Columns) != len(fk.RefColumns) || len(fk.Columns) == 0 {
+		return drop("its column lists differ in length")
+	}
+	if !fkActions[fk.OnDelete] || !fkActions[fk.OnUpdate] {
+		return drop("its referential action is not supported")
+	}
+	refs, ok := m.refs(fk.Columns)
+	if !ok {
+		return drop("a column is not modeled")
+	}
+	for _, c := range fk.RefColumns {
+		if colByName(target.t, c) == nil {
+			return drop("the referenced column " + c + " is not modeled")
+		}
+	}
+	s := "c.ForeignKey(" + strconv.Quote(fk.Name) + ", []any{" + strings.Join(refs, ", ") + "}, " +
+		strconv.Quote(fk.RefTable) + ", []string{" + quoteAll(fk.RefColumns) + "})"
+	if fk.OnDelete != "" {
+		s += ".OnDelete(" + strconv.Quote(fk.OnDelete) + ")"
+	}
+	if fk.OnUpdate != "" {
+		s += ".OnUpdate(" + strconv.Quote(fk.OnUpdate) + ")"
+	}
+	m.stmts = append(m.stmts, s)
+	return true
+}
+
+func quoteAll(in []string) string {
+	out := make([]string, len(in))
+	for i, s := range in {
+		out[i] = strconv.Quote(s)
+	}
+	return strings.Join(out, ", ")
+}
+
 func colByName(t *schema.Table, name string) *schema.Column {
 	for i := range t.Columns {
 		if t.Columns[i].Name == name {
@@ -748,17 +784,19 @@ func (g *generator) index(m *model, ix schema.Index) bool {
 			exprs++
 		}
 	}
-	allExpr := exprs == len(ix.Parts)
-	if cols != len(ix.Parts) && !allExpr {
-		return drop("it mixes columns and expressions")
+	if cols+exprs != len(ix.Parts) {
+		return drop("a key part is neither a column nor an expression")
 	}
+	// An index with any expression is written with IndexExpr, which takes the
+	// expressions and the plain column names as strings.
+	allExpr := exprs > 0
 	if allExpr {
-		if ix.Unique {
-			return drop("a unique expression index has no declaration")
-		}
 		for _, p := range ix.Parts {
 			if p.Desc || p.Nulls != "" || p.OpClass != "" {
-				return drop("an expression key with an order or operator class has no declaration")
+				return drop("a key with an order or operator class has no declaration next to an expression")
+			}
+			if p.Column != "" && (!plainIdent(p.Column) || m.byCol[p.Column] == nil) {
+				return drop("it uses a column the models do not have, or one whose name is not a plain identifier")
 			}
 		}
 	} else if _, ok := m.refs(partColumns(ix.Parts)); !ok {
@@ -772,6 +810,20 @@ func (g *generator) index(m *model, ix schema.Index) bool {
 		return true
 	}
 	m.stmts = append(m.stmts, indexStmt(m, ix, method, allExpr))
+	return true
+}
+
+// plainIdent reports whether s is a lower-case identifier that needs no
+// quoting, so an IndexExpr string naming it is read back as the column.
+func plainIdent(s string) bool {
+	if s == "" || s[0] >= '0' && s[0] <= '9' {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_') {
+			return false
+		}
+	}
 	return true
 }
 
@@ -842,7 +894,11 @@ func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
 	if allExpr {
 		call = "c.IndexExpr"
 		for _, p := range ix.Parts {
-			args = append(args, strconv.Quote(p.Expr))
+			if p.Column != "" {
+				args = append(args, strconv.Quote(p.Column))
+			} else {
+				args = append(args, strconv.Quote(p.Expr))
+			}
 		}
 	} else {
 		if ix.Unique {
@@ -859,6 +915,10 @@ func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
 	}
 	s += ")"
 	opts := 0
+	if allExpr && ix.Unique {
+		s += ".Unique()"
+		opts++
+	}
 	if ix.Where != "" {
 		s += ".Where(" + strconv.Quote(ix.Where) + ")"
 		opts++
