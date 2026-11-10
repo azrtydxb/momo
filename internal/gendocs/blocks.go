@@ -201,8 +201,8 @@ var features = []feature{
 			"timeop.IntervalOf", "timeop.IntervalExpr", "timeop.AddInterval", "timeop.SubInterval",
 		},
 		PG: "yes",
-		SQLite: "every `ExtractField`, `TruncUnit`, interval and `Now` run on both SQLite drivers; month arithmetic overflows into the next month " +
-			"(Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); `Now` is millisecond text; `timeop.AtTimeZone` is PostgreSQL only",
+		SQLite: "every `timeop.ExtractField`, `timeop.TruncUnit`, interval and `timeop.Now` run on both SQLite drivers; month arithmetic overflows into the next month " +
+			"(Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); `timeop.Now` is millisecond text; `timeop.AtTimeZone` is PostgreSQL only",
 		MySQL: "SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server; `timeop.AtTimeZone` is PostgreSQL only",
 	},
 }

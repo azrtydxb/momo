@@ -194,7 +194,7 @@ ordering methods (`Eq`, `In`, `Asc`, ...) the other function results have, so
 result had no such method.
 
 The advisory lock methods became functions: `tx.AdvisoryXactLock(ctx, 42)`
-is now `advisory.XactLock(ctx, tx, 42)`, and the same for the `String` and
+is now `advisory.XactLock(ctx, tx, 42)`, and the same for `advisory.XactLockString` and the
 `Try` forms. The transaction is the second argument and its type is
 `*momo.Tx`. The `DB` methods always returned `momo.ErrValidation`, because a
 transaction-scoped lock outside a transaction is released at once; the

@@ -54,7 +54,7 @@ func tenantDB(drv momo.Driver, tenantID int64) *momo.DB {
 }
 ```
 
-Inserts are not filtered by a predicate: the tenant column of a new row is the model's own value, so set it in a `BeforeInsert` model hook and do not trust the caller to set it. `BeforeInsert` runs only for `Model` and `Models` inserts: `Values`, `ValuesRows` and `FromSelect` inserts have no model and skip it, so a tenant handle that relies on the hook must also deny those forms, or deny inserts altogether and write through a trusted handle.
+Inserts are not filtered by a predicate: the tenant column of a new row is the model's own value, so set it in a `BeforeInsert` model hook and do not trust the caller to set it. `BeforeInsert` runs only for `Model` and `Models` inserts: `InsertQuery.Values`, `ValuesRows` and `FromSelect` inserts have no model and skip it, so a tenant handle that relies on the hook must also deny those forms, or deny inserts altogether and write through a trusted handle.
 
 A read-only handle denies every write:
 

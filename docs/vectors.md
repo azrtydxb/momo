@@ -38,12 +38,12 @@ method, a `Value` method that produces the pgvector text form and a `Scan`
 method that reads it back. Validation errors wrap `vector.ErrInvalidVector`,
 which the root package re-exports as `momo.ErrInvalidVector`.
 
-| Go type               | PostgreSQL type | Notes                                                         |
-| --------------------- | --------------- | ------------------------------------------------------------- |
-| `vector.Vector`       | `vector(n)`     | float32, dimension 1 to 16000 (`vector.MaxDim`)               |
-| `vector.HalfVector`   | `halfvec(n)`    | float32 in Go, float16 in storage, each value within 65504    |
-| `vector.SparseVector` | `sparsevec(n)`  | `Dim`, zero-based strictly increasing `Indices`, `Values`     |
-| `vector.Bits`         | `bit(n)`        | `Len` bits packed most significant bit first, trailing bits 0 |
+| Go type               | PostgreSQL type | Notes                                                                         |
+| --------------------- | --------------- | ----------------------------------------------------------------------------- |
+| `vector.Vector`       | `vector(n)`     | float32, dimension 1 to 16000 (`vector.MaxDim`)                               |
+| `vector.HalfVector`   | `halfvec(n)`    | float32 in Go, float16 in storage, each value within 65504                    |
+| `vector.SparseVector` | `sparsevec(n)`  | `Dim`, zero-based strictly increasing `Indices`, `vector.SparseVector.Values` |
+| `vector.Bits`         | `bit(n)`        | `Len` bits packed most significant bit first, trailing bits 0                 |
 
 Value rules, enforced before a value reaches the server:
 
@@ -270,7 +270,7 @@ transaction mode.
 | `IVFFlatMaxProbes`      | `ivfflat.max_probes`                               | 1 to 32768                                                                                    |
 | `ExactSearch`           | `enable_indexscan`, `enable_bitmapscan` set to off | bool                                                                                          |
 
-`Settings.Validate` reports a value outside its range as
+`vecsearch.Settings.Validate` reports a value outside its range as
 `ErrValidation`. The iterative fields, `HNSWMaxScanTuples`,
 `HNSWScanMemMultiplier` and `IVFFlatMaxProbes` need pgvector 0.8.0 or newer. When any of them is set,
 `vecsearch.Apply` reads `pg_extension` and returns `ErrUnsupported` on an older or
@@ -354,7 +354,7 @@ hits, err := momo.HybridSearch[Article](db, momo.HybridSpec{
 ```
 
 The model needs a single-column primary key, `Query` must not be empty (use a
-plain vector query for that), and `Text` and `Vector` must be columns of the
+plain vector query for that), and `HybridSpec.Text` and `HybridSpec.Vector` must be columns of the
 model's table; otherwise the call returns `ErrValidation`. Soft-deleted rows are
 left out. The vector leg takes the dense `vector` type only (not `halfvec`,
 `sparsevec` or `bit`) and skips rows with a NULL embedding and rows whose
@@ -465,7 +465,7 @@ pgvector: bit 0 is the top bit of byte 0). Both are validated before
 they are bound (NaN, Inf, an empty vector, a bad bit length are
 `ErrInvalidVector`), because a blob has no text form that would reject them
 later. A `*vector.Vector` or `*vector.Bits` field is nullable: nil binds `NULL`.
-`HalfVector` and `SparseVector` have no sqlite-vec type, so binding one, or
+`vector.HalfVector` and `vector.SparseVector` have no sqlite-vec type, so binding one, or
 searching with one, is `ErrUnsupported` when the query is built. A bit vector
 read from SQLite has a `Len` of 8 times its byte count, so the column length is
 the authority for a length that is not a multiple of 8.
