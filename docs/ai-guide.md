@@ -44,7 +44,7 @@ A database is usable when a driver package for it exists under `driver/`:
 
 - PostgreSQL is the reference database. Check the dialect columns of docs/capabilities.md before relying on a feature on another database. Keep `dialects:` at `[postgres]` for generated migrations. `momo migrate` exits 2 for a dialect it does not link; library migrations go through `migrate.NewEngine`.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
-- Forward migrations only in the CLI. No `migrate rollback`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
+- Forward migrations only in the CLI. No `migrate rollback`, `lint` or `rebase` command; the Go API has `migrate.Engine.Rollback` and `migrate.Engine.Rebase`.
 - `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
 - Reciprocal-rank-fusion hybrid search
   does not exist. Use `momo.SQL` / `momo.TypedSQL` for it. Full-text search
@@ -678,7 +678,7 @@ Known issues, as rules (each is a filed bug):
   `momo migrate diff <name>` to regenerate it with a new version, then
   `momo migrate hash` (a pending file needs no `rehash`); see [migrations.md](migrations.md) section 2. Still
   run `validate` in CI.
-- The CLI has no rollback. Undo with a new forward migration (`Engine.Rollback`
+- The CLI has no rollback. Undo with a new forward migration (`migrate.Engine.Rollback`
   runs hand-written `.down.sql` files from Go only). `resolve --rolled-back` runs
   no SQL.
 - There is no `--force-unlock` (an unknown flag, exit 2). The migration lock is a
@@ -1066,7 +1066,7 @@ res, err := momo.Insert[models.Meter](q).
   database). `FromSelect` runs no model hooks.
 - The soft-delete filter on a `SelectExprs` source (including inside `NotExists`) is
   added only when `From` gets a `TableRef` that carries the soft-delete marker.
-  Generated table refs do; a hand-built `TableRef{Name: ...}` does not and then
+  Generated `article.Table` refs do; a hand-built `TableRef{Name: ...}` does not and then
   counts soft-deleted rows, so set its `SoftDelete` and `SoftDeleteKind`.
 - Only the listed columns are written. Nothing is injected: no automatic
   created_at/updated_at, no Go-side defaults, no field validators. List those columns
@@ -1502,12 +1502,12 @@ func (i *Item) MomoConfig(c *momo.Config) {
 Column types (the Go type picks the SQL type; `dim` is required for sparsevec and bit,
 optional for vector and halfvec):
 
-| Go type               | SQL            | Distance builders                                                   |
-| --------------------- | -------------- | ------------------------------------------------------------------- |
-| `vector.Vector`       | `vector(n)`    | `vecop.L2`, `vecop.InnerProduct`, `vecop.Cosine`, `vecop.L1`        |
-| `vector.HalfVector`   | `halfvec(n)`   | same four                                                           |
-| `vector.SparseVector` | `sparsevec(n)` | same four (`Dim`, zero-based strictly increasing `Indices`, Values) |
-| `vector.Bits`         | `bit(n)`       | `vecop.Hamming`, `vecop.Jaccard`                                    |
+| Go type               | SQL            | Distance builders                                                                         |
+| --------------------- | -------------- | ----------------------------------------------------------------------------------------- |
+| `vector.Vector`       | `vector(n)`    | `vecop.L2`, `vecop.InnerProduct`, `vecop.Cosine`, `vecop.L1`                              |
+| `vector.HalfVector`   | `halfvec(n)`   | same four                                                                                 |
+| `vector.SparseVector` | `sparsevec(n)` | same four (`Dim`, zero-based strictly increasing `Indices`, `vector.SparseVector.Values`) |
+| `vector.Bits`         | `bit(n)`       | `vecop.Hamming`, `vecop.Jaccard`                                                          |
 
 The distance builders live in package `github.com/azrtydxb/momo/vecop`.
 A pointer field (`*vector.Vector`) is nullable (`momo.NullVectorColumn`).
@@ -1641,7 +1641,7 @@ Details: [vectors.md](vectors.md). Example: [vector-search](../examples/vector-s
 ## 10. Errors
 
 Momo errors are `*momo.Error{Kind, Op, Table, Column, Constraint, Err}`. Check
-with `errors.Is(err, momo.ErrX)` (matches the error's kind) and reach the driver error with
+with `errors.Is(err, momo.ErrX)` (matches `momo.Error.Kind`) and reach the driver error with
 `errors.As` (for example `*pgconn.PgError`). `e.Detail()` returns the raw driver detail
 (for PostgreSQL the key text) that `Error()` hides. `Detail()` is unmasked and can quote sensitive values: never log it or return it to a client. Never string-match error text.
 

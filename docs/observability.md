@@ -5,11 +5,11 @@ Momo calls the hooks you register with `momo.WithHook` around every statement
 that also implements it). The interfaces live in the root package because `DB`
 calls them. Ready-made implementations:
 
-| Hook       | Constructor                                | What it does                                                                            |
-| ---------- | ------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `Recorder` | `&obs.Recorder{}` (package `obs`)          | Keeps every finished statement and relation load for assertions in tests.               |
-| `NPlusOne` | `obs.NewNPlusOne(n, report)` (`obs`)       | Reports a relation that was loaded more than `n` times inside one `obs.WithScope`.      |
-| slog hook  | `momolog.New(logger, opts...)` (`momolog`) | Logs one `log/slog` record per statement and one per relation load (see [slog](#slog)). |
+| Hook           | Constructor                                | What it does                                                                            |
+| -------------- | ------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `obs.Recorder` | `&obs.Recorder{}` (package `obs`)          | Keeps every finished statement and relation load for assertions in tests.               |
+| `obs.NPlusOne` | `obs.NewNPlusOne(n, report)` (`obs`)       | Reports a relation that was loaded more than `n` times inside one `obs.WithScope`.      |
+| slog hook      | `momolog.New(logger, opts...)` (`momolog`) | Logs one `log/slog` record per statement and one per relation load (see [slog](#slog)). |
 
 `obs` imports only `momo` and the standard library. All of these hooks are safe
 for concurrent use.
@@ -19,7 +19,7 @@ for concurrent use.
 A hook sees bound argument values only when the DB was opened with
 `momo.WithArgLogging`. A value bound from a column tagged `sensitive` reaches
 every hook as `momo.RedactedArg` (`[redacted]`), never as the real value, and
-the hooks here cannot recover it. `Recorder` stores a copy of the arguments and
+the hooks here cannot recover it. `obs.Recorder` stores a copy of the arguments and
 hands out copies. The slog hook logs arguments only when you also pass
 `momolog.Values(true)`.
 
@@ -35,7 +35,7 @@ rec.Relations() // the momo.RelationEvent of each relation load, with its Err
 rec.Reset()
 ```
 
-`Event.CtxSQL` is the value `Recorder` put into the context in `BeforeQuery`; it
+`Event.CtxSQL` is the value `obs.Recorder` put into the context in `BeforeQuery`; it
 equals `SQL` when the context reached `AfterQuery` intact, which makes it a
 check that the hook chain passes the context through.
 
@@ -64,7 +64,7 @@ ctx := obs.WithScope(r.Context()) // one request, one job
 `obs.NPlusOne` counts relation loads per relation within a scope. It reports
 once per relation and scope, when the count first exceeds the threshold. One
 batched `Load` is one load however many parents it covers, so it never triggers
-a finding; a `Load` inside a loop over the parents does. `Finding.Parents` is
+a finding; a `Load` inside a loop over the parents does. `obs.Finding.Parents` is
 the parent count of the load that crossed the threshold; 1 is the usual sign of
 a loop. A context without a scope is not tracked, a scope tracks at most 1024
 relations, and a panic in `report` is recovered and dropped. `report` runs on

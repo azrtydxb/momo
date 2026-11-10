@@ -172,14 +172,21 @@ func resolveRef(pkgs []*Package, ref string) (ok, checked bool) {
 	return true, false
 }
 
-var bareRe = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*$`)
+var bareRe = regexp.MustCompile(`^\*?([A-Z][A-Za-z0-9_]*)(?:\.([A-Z][A-Za-z0-9_]*))?$`)
 
-// bareOwners returns the names of the feature packages that export name at top
-// level when the root package does not. A bare name in the docs means the root
-// package, so a non-empty result is a name a reader would write as momo.Name
-// and fail to compile. It is nil for a name the root exports, and for a name
-// no checked package exports (prose).
-func bareOwners(pkgs []*Package, name string) []string {
+// bareOwners returns the names of the feature packages that a bare span would
+// have to be qualified with. A bare name in the docs means the root package,
+// so a non-empty result is a name a reader would write as momo.Name and fail
+// to compile. text is "Name" (a top-level identifier) or "Type.Member" (a
+// method or field), with an optional leading *. The result is nil when the
+// root package exports it, and when no checked package does (prose, other
+// libraries).
+func bareOwners(pkgs []*Package, text string) []string {
+	m := bareRe.FindStringSubmatch(text)
+	if m == nil {
+		return nil
+	}
+	name, member := m[1], m[2]
 	var owners []string
 	for _, p := range pkgs {
 		if p.Dir == "." {
@@ -188,7 +195,7 @@ func bareOwners(pkgs []*Package, name string) []string {
 			}
 			continue
 		}
-		if p.HasTop(name) {
+		if p.HasTop(name) && (member == "" || p.HasMember(name, member)) {
 			owners = append(owners, p.Name)
 		}
 	}
@@ -239,9 +246,6 @@ func TestBareNamesAreRootNames(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, r := range extractSpans(string(b), rel == "docs/upgrading.md") {
-			if !bareRe.MatchString(r.text) {
-				continue
-			}
 			owners := bareOwners(pkgs, r.text)
 			if len(owners) == 0 {
 				continue
@@ -256,9 +260,9 @@ func TestBareNamesAreRootNames(t *testing.T) {
 			if !ok {
 				var sug []string
 				for _, o := range owners {
-					sug = append(sug, o+"."+r.text)
+					sug = append(sug, o+"."+strings.TrimPrefix(r.text, "*"))
 				}
-				t.Errorf("%s:%d: bare `%s` means the root package, which does not export it; write `%s`, or list the page and package in %s with a reason", rel, r.line, r.text, strings.Join(sug, "` or `"), bareAllowFile)
+				t.Errorf("%s:%d: bare `%s` means the root package, which does not export it; write `%s` (qualify, do not drop the backticks), or list the page and package in %s with a reason", rel, r.line, r.text, strings.Join(sug, "` or `"), bareAllowFile)
 			}
 		}
 	}
@@ -270,13 +274,32 @@ func TestBareNamesAreRootNames(t *testing.T) {
 }
 
 func TestBareOwners(t *testing.T) {
-	root := parseSrc(t, ".", "package momo\nfunc Select() {}\nfunc Func() {}\n")
+	root := parseSrc(t, ".", "package momo\nfunc Select() {}\nfunc Func() {}\ntype Relation struct{}\nfunc (Relation) Has() {}\n")
 	sqlfn := parseSrc(t, "sqlfn", "package sqlfn\nfunc Case() {}\nfunc Func() {}\n")
-	pkgs := []*Package{root, sqlfn}
-	for name, want := range map[string]string{"Case": "sqlfn", "Select": "", "Func": "", "Prose": ""} {
+	migrate := parseSrc(t, "migrate", "package migrate\ntype Engine struct{}\nfunc (Engine) Apply() {}\n")
+	pkgs := []*Package{root, sqlfn, migrate}
+	for name, want := range map[string]string{
+		"Case":         "sqlfn",
+		"*Case":        "sqlfn",
+		"Select":       "",
+		"Func":         "",
+		"Prose":        "",
+		"Relation.Has": "",
+		"Engine.Apply": "migrate",
+		"Engine.Nope":  "", // no checked package has that member
+		"Other.Apply":  "",
+	} {
 		if got := strings.Join(bareOwners(pkgs, name), ","); got != want {
 			t.Errorf("bareOwners(%q) = %q, want %q", name, got, want)
 		}
+	}
+	// A leading * and a [] prefix do not hide a name.
+	var got []string
+	for _, r := range extractSpans("`*Case` `[]Case` `Engine[T].Apply` `momo.Select`", false) {
+		got = append(got, r.text)
+	}
+	if want := "*Case,Case,Engine.Apply,momo.Select"; strings.Join(got, ",") != want {
+		t.Errorf("extractSpans = %s, want %s", strings.Join(got, ","), want)
 	}
 }
 

@@ -39,12 +39,12 @@ method, a `Value` method that produces the pgvector text form and a `Scan`
 method that reads it back. Validation errors wrap `vector.ErrInvalidVector`,
 which the root package re-exports as `momo.ErrInvalidVector`.
 
-| Go type               | PostgreSQL type | Notes                                                         |
-| --------------------- | --------------- | ------------------------------------------------------------- |
-| `vector.Vector`       | `vector(n)`     | float32, dimension 1 to 16000 (`vector.MaxDim`)               |
-| `vector.HalfVector`   | `halfvec(n)`    | float32 in Go, float16 in storage, each value within 65504    |
-| `vector.SparseVector` | `sparsevec(n)`  | `Dim`, zero-based strictly increasing `Indices`, Values       |
-| `vector.Bits`         | `bit(n)`        | `Len` bits packed most significant bit first, trailing bits 0 |
+| Go type               | PostgreSQL type | Notes                                                                         |
+| --------------------- | --------------- | ----------------------------------------------------------------------------- |
+| `vector.Vector`       | `vector(n)`     | float32, dimension 1 to 16000 (`vector.MaxDim`)                               |
+| `vector.HalfVector`   | `halfvec(n)`    | float32 in Go, float16 in storage, each value within 65504                    |
+| `vector.SparseVector` | `sparsevec(n)`  | `Dim`, zero-based strictly increasing `Indices`, `vector.SparseVector.Values` |
+| `vector.Bits`         | `bit(n)`        | `Len` bits packed most significant bit first, trailing bits 0                 |
 
 Value rules, enforced before a value reaches the server:
 
@@ -271,7 +271,7 @@ transaction mode.
 | `IVFFlatMaxProbes`      | `ivfflat.max_probes`                               | 1 to 32768                                                                                    |
 | `ExactSearch`           | `enable_indexscan`, `enable_bitmapscan` set to off | bool                                                                                          |
 
-`Settings.Validate` reports a value outside its range as
+`vecsearch.Settings.Validate` reports a value outside its range as
 `ErrValidation`. The iterative fields, `HNSWMaxScanTuples`,
 `HNSWScanMemMultiplier` and `IVFFlatMaxProbes` need pgvector 0.8.0 or newer. When any of them is set,
 `vecsearch.Apply` reads `pg_extension` and returns `ErrUnsupported` on an older or

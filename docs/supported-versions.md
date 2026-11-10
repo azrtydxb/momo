@@ -108,14 +108,14 @@ and the allocation gate (`make bench-gate`).
 
 ## Feature version floors
 
-| Feature                                               | Floor                                                                                                                                                        | Source                           |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
-| Iterative vector scan settings                        | pgvector 0.8.0                                                                                                                                               | `vecsearch/vecsearch.go` (Apply) |
-| `MERGE` (`momo.Merge`)                                | PostgreSQL 15; `.Returning` needs PostgreSQL 17                                                                                                              | `write_merge.go`                 |
-| Window functions (`LoadPerParentLimit`)               | none enforced; tested on PostgreSQL 16 and 17                                                                                                                | `rel_load.go`, CI                |
-| `RETURNING`, `ON CONFLICT`, row locking, savepoints   | none enforced; tested on PostgreSQL 16 and 17                                                                                                                | `dialect/dialect.go`, CI         |
-| Generated identity columns, `OVERRIDING SYSTEM VALUE` | none enforced; tested on PostgreSQL 16 and 17                                                                                                                | CI                               |
-| `momo.yaml`, migration files, `momo.sum`, snapshots   | format versions `1` (`schema.FormatVersion`, `migrate.SnapshotFormat`, `migrate.SumFormat`); a newer snapshot format is refused with `schema.ErrNewerFormat` | `migrate/`                       |
+| Feature                                               | Floor                                                                                                                                                        | Source                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| Iterative vector scan settings                        | pgvector 0.8.0                                                                                                                                               | `vecsearch/vecsearch.go` (`vecsearch.Apply`) |
+| `MERGE` (`momo.Merge`)                                | PostgreSQL 15; `.Returning` needs PostgreSQL 17                                                                                                              | `write_merge.go`                             |
+| Window functions (`LoadPerParentLimit`)               | none enforced; tested on PostgreSQL 16 and 17                                                                                                                | `rel_load.go`, CI                            |
+| `RETURNING`, `ON CONFLICT`, row locking, savepoints   | none enforced; tested on PostgreSQL 16 and 17                                                                                                                | `dialect/dialect.go`, CI                     |
+| Generated identity columns, `OVERRIDING SYSTEM VALUE` | none enforced; tested on PostgreSQL 16 and 17                                                                                                                | CI                                           |
+| `momo.yaml`, migration files, `momo.sum`, snapshots   | format versions `1` (`schema.FormatVersion`, `migrate.SnapshotFormat`, `migrate.SumFormat`); a newer snapshot format is refused with `schema.ErrNewerFormat` | `migrate/`                                   |
 
 ## Stability policy
 

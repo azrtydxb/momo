@@ -47,7 +47,7 @@ checks.
 
 ### `dialect`
 
-`dialect.Dialect` describes one database: its Name (`postgres`, `sqlite` or
+`dialect.Dialect` describes one database: its `dialect.Dialect.Name` (`postgres`, `sqlite` or
 `mysql`), the MySQL `dialect.Flavor` (`mysql` or `mariadb`), the per-statement bind
 limit `MaxParams` and a set of capability flags such as `Returning`,
 `OnConflict`, `OnDuplicateKey`, `Locking`, `RowValues`, `Savepoints`,
@@ -115,7 +115,7 @@ Codec types for columns that have no plain Go equivalent: `types.JSON[T]`, `type
 
 ### `migrate`
 
-The migration engine: `migrate.Engine` with `Engine.Diff`, `Plan`, `Engine.Apply`, `Status`,
+The migration engine: `migrate.Engine` with `migrate.Engine.Diff`, `Plan`, `migrate.Engine.Apply`, `Status`,
 `Baseline`, `Drift`, `Resolve`, `Rehash`, `Inspect`, `AutoMigrate`, `Rollback`
 and `Rebase`, plus `migrate.ValidateOffline`. A migration directory holds
 `<version>_<name>.up.sql`, optional hand-written `.down.sql`, snapshots and
@@ -128,7 +128,7 @@ library APIs. See
 
 ### `gen`
 
-The generator. `gen.Load` reads model packages into a Graph, `gen.Emit`
+The generator. `gen.Load` reads model packages into a `gen.Graph`, `gen.Emit`
 writes the generated files through the `Writer`, which is the only file writer
 (it refuses targets that are not generated, formats the output and is
 deterministic). `gen.Plugin` is the extension interface. Generated Go files

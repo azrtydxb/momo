@@ -29,12 +29,12 @@ A Momo model is never an exact copy of an ORM model, because the ORMs differ in
 behaviour you do not see in the struct: GORM replaces a zero value with the
 column default, Ent saves an edge only when its setter was called, and so on.
 The importer does not paper over these differences. Every one becomes a
-`migrate.Change` in the report, with the source position (`file:line:col`), the model,
-the field and a message. `Report.String()` prints one line per change, sorted by
+`importer.Change` in the report, with the source position (`file:line:col`), the model,
+the field and a message. `importer.Report.String()` prints one line per change, sorted by
 position, in the form `source: kind: Model.Field: message`.
 
-Read the report before you trust the converted models. `Report.Has(kind)` and
-`Report.Of(kind)` filter it in code. The kinds are:
+Read the report before you trust the converted models. `importer.Report.Has(kind)` and
+`importer.Report.Of(kind)` filter it in code. The kinds are:
 
 | Kind                  | Meaning                                                                                                                                  |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |

@@ -38,7 +38,7 @@ code under test; the constraints and the SQL are what you want to exercise.
 
 When the variable is unset, the test is skipped. Set `MOMO_REQUIRE_INTEGRATION=1`
 in CI and the test fails instead, so a misconfigured job cannot pass by skipping
-everything. `WithEnv` reads a different variable.
+everything. `momotest.WithEnv` reads a different variable.
 
 ## One database per test: New
 
@@ -70,7 +70,7 @@ func TestOverdraft(t *testing.T) {
 
 The migrations are applied once to a template schema, named after a hash of the
 migration files, the extension list and the momo version, and kept on the
-server between runs. The first `NewTx` in a test binary builds it (or finds it
+server between runs. The first `momotest.NewTx` in a test binary builds it (or finds it
 ready) under an advisory lock, over a short-lived administrator connection;
 after that success the binary remembers it, and each later test only opens its
 own small pool and begins a transaction, which is much cheaper than `New`. A
@@ -87,7 +87,7 @@ from using one transaction per test:
 - Parallel tests do not see each other's rows, but two that insert the same
   unique key wait for each other until one finishes. Give parallel tests
   distinct keys.
-- DDL, `TRUNCATE` and `LOCK TABLE` inside a `NewTx` test take locks that block
+- DDL, `TRUNCATE` and `LOCK TABLE` inside a `momotest.NewTx` test take locks that block
   every other parallel test using the same template until this one ends. Run
   such tests with `New`.
 - Identity and sequence values are consumed by a rolled-back transaction, so
@@ -99,9 +99,9 @@ from using one transaction per test:
 Migrations run in a schema of the test's own, with `public` after it on the
 search path. Write them unqualified. `momotest` refuses early, with the file
 name, a migration that contains `CREATE SCHEMA`, or `CREATE EXTENSION` for an
-extension not listed in `WithExtensions`: an extension exists once per
+extension not listed in `momotest.WithExtensions`: an extension exists once per
 database, so it would land in one test's schema and vanish under the others when
-that schema is dropped. List extensions in `WithExtensions` (names are matched
+that schema is dropped. List extensions in `momotest.WithExtensions` (names are matched
 in lower case); they are installed once in `public`.
 
 The check reads the SQL with comments and string literals removed, so a comment
@@ -112,7 +112,7 @@ dollar-quoted string that looks like that statement is also refused, with a
 message naming the file. Move such text into a normal string, or list the
 extension.
 
-`NewTx` remembers the result of the check and the template name per migration
+`momotest.NewTx` remembers the result of the check and the template name per migration
 `fs.FS` value and extension list. Build the FS once, in a package variable or an
 `embed.FS`, so that the files are walked once; an FS rebuilt on every call (such
 as `fs.Sub` inside a function) is re-read each time, which still works. Only
@@ -142,11 +142,11 @@ momotest.Seed(t, tx,
 )
 ```
 
-`Seed` runs its steps in the order given, so list a table before the tables that
+`momotest.Seed` runs its steps in the order given, so list a table before the tables that
 reference it. All steps run in one transaction (a savepoint when the querier is
 a `*momo.Tx`); if one fails, nothing is kept and the test fails. `Insert` reads
 generated columns, such as identity keys, back into the rows you pass, so later
-steps can use them. `Graph` inserts a root with the related rows it includes, as
+steps can use them. `momotest.Graph` inserts a root with the related rows it includes, as
 `momo.CreateGraph` does. A step is any `func(ctx, momo.Querier) error`, so
 custom fixtures fit too.
 
@@ -176,7 +176,7 @@ name and a YAML `null` becomes SQL `NULL`. Table and column names are quoted
 with `momo.Ident` and every value is a bound argument, so a value is never
 spliced into the SQL. A table name is one identifier, with no schema prefix.
 A value is a string, integer, float, bool, null, timestamp or `!!binary` (read as
-bytes); a nested map or list is refused. `LoadFixtures` writes plain `INSERT`
+bytes); a nested map or list is refused. `momotest.LoadFixtures` writes plain `INSERT`
 statements and is tested on PostgreSQL and SQLite; it has not been run against
 MySQL or MariaDB. A file that is not a mapping of
 tables to lists of rows, a missing file, and a row the database refuses (a
@@ -192,10 +192,10 @@ with sqlite-vec loaded, without a server and without an environment variable:
 own temporary directory. Every call opens a file of its own, so two databases in
 one test never see each other's tables and parallel tests do not collide. The
 database is closed and the file removed when the test ends. The options go to
-`momo.New`, for example `momo.WithHook`, and `LoadFixtures` fills it like any
+`momo.New`, for example `momo.WithHook`, and `momotest.LoadFixtures` fills it like any
 other database. The database starts empty: create the tables with your own DDL,
 for example `momo.SQLiteVectorType` for a vector column (see
-[Vector search](vectors.md)); `momotest.WithMigrations` and `NewTx` are
+[Vector search](vectors.md)); `momotest.WithMigrations` and `momotest.NewTx` are
 PostgreSQL features and do not apply.
 
 SQLite lives in its own package, and not in `momotest`, because the SQLite
@@ -208,13 +208,13 @@ when the server URL is unset.
 
 ## Options
 
-| Option                  | Effect                                                                                          |
-| ----------------------- | ----------------------------------------------------------------------------------------------- |
-| `WithMigrations(fs.FS)` | Apply these migrations. The directory needs no `momo.sum`. Without it the database is empty.    |
-| `WithEnv(name)`         | Read the server URL from another variable.                                                      |
-| `WithExtensions(names)` | `CREATE EXTENSION IF NOT EXISTS` in `public` first; with `vector` the pool registers the codec. |
-| `WithMomoOptions(opts)` | Passed to `momo.New`, for example a hook.                                                       |
-| `WithMaxConns(n)`       | Pool size per test: 4 for `New`, 2 for `NewTx` by default.                                      |
+| Option                           | Effect                                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `momotest.WithMigrations(fs.FS)` | Apply these migrations. The directory needs no `momo.sum`. Without it the database is empty.    |
+| `momotest.WithEnv(name)`         | Read the server URL from another variable.                                                      |
+| `momotest.WithExtensions(names)` | `CREATE EXTENSION IF NOT EXISTS` in `public` first; with `vector` the pool registers the codec. |
+| `momotest.WithMomoOptions(opts)` | Passed to `momo.New`, for example a hook.                                                       |
+| `momotest.WithMaxConns(n)`       | Pool size per test: 4 for `New`, 2 for `momotest.NewTx` by default.                             |
 
 ## Concurrency
 
@@ -224,10 +224,10 @@ building a template, runs under a PostgreSQL advisory lock (keyed by
 `hashtext` of the names `momotest:extensions` and `momotest:template`), so tests
 in one binary and several test binaries running at once (`go test ./...`)
 cooperate. `New` also opens a short administrator connection to create and, at
-cleanup, drop its schema. A `NewTx` test holds one connection for its
+cleanup, drop its schema. A `momotest.NewTx` test holds one connection for its
 transaction, plus the pool's spare. Each parallel test holds a few connections; keep the server's
 `max_connections` above the number of parallel tests times the pool size, or
-lower the pool with `WithMaxConns` or the parallelism with `-parallel`.
+lower the pool with `momotest.WithMaxConns` or the parallelism with `-parallel`.
 
 ## Example
 

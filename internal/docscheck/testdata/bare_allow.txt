@@ -1,5 +1,3 @@
 # Pages whose bare backticked names are not root (momo) names.
 # Format: path package reason (see TestBareNamesAreRootNames).
-docs/migrations.md migrate the page documents the migrate package; its sections name it
-docs/observability.md obs the page documents package obs; its table names the package
-docs/testing.md momotest the page documents package momotest; its sections name it
+docs/migrations.md migrate the page documents the migrate package; its sections name it and write Engine.Apply, Engine.Rollback
