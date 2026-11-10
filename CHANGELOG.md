@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.0](https://github.com/azrtydxb/momo/compare/v0.3.0...v0.4.0) (2026-11-10)
+
+_Momo now runs on MySQL, MariaDB and SQLite as well as PostgreSQL, and the root package is split into feature subpackages whose docs are checked against the code. Upgrading needs import changes: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.4.0/docs/upgrading.md). [Changes since 0.3.0](https://github.com/azrtydxb/momo/compare/v0.3.0...v0.4.0)._
+
+### ⚠ BREAKING CHANGES
+
+- **packages:** feature APIs moved out of the root `momo` package into `arrayop`, `fts`, `sqlfn`, `jsonop`, `agg`, `timeop`, `advisory`, `vecsearch`, `vecop` and `obs`; advisory locks are free functions taking `*momo.Tx`. `docs/upgrading.md` lists every moved identifier with its replacement and a rewrite recipe ([#52](https://github.com/azrtydxb/momo/issues/52))
+- **core:** `Error()` no longer includes raw server text, the simple protocol is refused, and typed `In` is capped at the bind limit ([#46](https://github.com/azrtydxb/momo/issues/46))
+- **gen:** generated files must be regenerated once with `momo generate` after upgrading; `generate --check` reports the header change until then. The exported constant `gen.Version` is removed ([#24](https://github.com/azrtydxb/momo/issues/24))
+
+### Features
+
+- **drivers:** `driver/mysqldriver` for MySQL 8.4, 9.7 and MariaDB 11.8; `driver/sqlitepure`, a pure-Go SQLite driver without cgo; sqlite-vec typed vectors on the cgo SQLite driver ([#46](https://github.com/azrtydxb/momo/issues/46))
+- **migrate:** `migrate/mysql` and `migrate/sqlite` (rebuild-based ALTER) with AutoMigrate, Go migrations recorded in history, externally managed extensions and role verification ([#46](https://github.com/azrtydxb/momo/issues/46))
+- **importer:** read GORM, Bun and Ent models into momo schemas ([#46](https://github.com/azrtydxb/momo/issues/46))
+- **query:** full-text search, array operators, typed JSON operators, date/time expressions, unnest sources, window functions, FILTER, DISTINCT ON, LATERAL, ordered aggregates, advisory transaction locks, FOR UPDATE OF, `LoadCounts` for many parents and PostgreSQL `$n` in raw SQL ([#27](https://github.com/azrtydxb/momo/issues/27) to [#45](https://github.com/azrtydxb/momo/issues/45))
+- **write:** `Copy`, `Merge` (PostgreSQL 15+), `BulkUpdate`, `Truncate`, `InsertQuery.Unnest`, and Go-side id generators (cuid, uuid, ulid) ([#46](https://github.com/azrtydxb/momo/issues/46))
+- **tx:** a per-transaction setup hook, implicit transactions for RLS tenant scoping, and read replicas ([#46](https://github.com/azrtydxb/momo/issues/46))
+- **momotest:** a public test kit for applications built on momo ([#46](https://github.com/azrtydxb/momo/issues/46))
+- **docs:** generated capability matrix, type-mapping table and API reference; every backticked identifier in the docs must resolve, and an exported API change needs a docs change ([#52](https://github.com/azrtydxb/momo/issues/52))
+
+### Security
+
+- encode errors are redacted and sensitive arguments masked, LIKE uses an explicit escape, the migration history table is schema-qualified and its owner checked ([#46](https://github.com/azrtydxb/momo/issues/46))
+
 ## 0.3.0 (2026-11-07)
 
 _Momo now carries a real PostgreSQL application end to end: kuvryn-license runs fully on it, its queries all on the typed API. Supported backend: PostgreSQL with pgvector (pgx driver). [Changes since 0.2.0](https://github.com/azrtydxb/momo/compare/v0.2.0...v0.3.0)._

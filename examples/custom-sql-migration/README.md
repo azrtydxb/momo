@@ -2,7 +2,7 @@
 
 ## What this shows
 
-Hand-written SQL migrations next to generated ones. Momo v0.3.0 supports them <!-- x-release-please-version -->
+Hand-written SQL migrations next to generated ones. Momo v0.4.0 supports them <!-- x-release-please-version -->
 as plain files: there is no `momo migrate new --custom` command yet (it reports
 "not available yet"), so you create the files yourself.
 
