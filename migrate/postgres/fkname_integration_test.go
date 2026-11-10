@@ -17,7 +17,8 @@ func TestPostgresForeignKeyNameRoundTrip(t *testing.T) {
 	db := testopen.Postgres(t)
 	cols := []schema.Column{{Name: "id", Type: "bigint"}, {Name: "tenant_id", Type: "bigint"}, {Name: "created_at", Type: "timestamp with time zone"}}
 	roundTrip(t, db, &schema.Schema{
-		Dialect: "postgres",
+		Dialect:    "postgres",
+		Extensions: []schema.Extension{{Name: "vector"}}, // installed in the test database; inspection reports every extension
 		Tables: []schema.Table{
 			{Name: "tenant", Columns: []schema.Column{{Name: "id", Type: "bigint"}}, PrimaryKey: []string{"id"}},
 			{

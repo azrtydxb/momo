@@ -18,7 +18,8 @@ import (
 func TestPostgresPrimaryKeyOrderRoundTrip(t *testing.T) {
 	db := testopen.Postgres(t)
 	got := roundTrip(t, db, &schema.Schema{
-		Dialect: "postgres",
+		Dialect:    "postgres",
+		Extensions: []schema.Extension{{Name: "vector"}}, // installed in the test database; inspection reports every extension
 		Tables: []schema.Table{{
 			Name: "health_sample",
 			Columns: []schema.Column{
