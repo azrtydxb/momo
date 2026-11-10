@@ -18,3 +18,6 @@ Implements plan momo-04-migrations Task 32: Views and materialized views as read
 
 ## Evidence
 
+### Sprint 7 (2026-11-10)
+
+Carry reason: blocked on story 20261104-050 (momo-02 task 26), which defines `momo.View`, `WritableModeler` and the generator output this task consumes. `git grep -n "WritableModeler\|RefreshMaterializedView"` finds nothing in the code, so `internal/compat/viewmodels`, the compile-fail fixture and `views.go` cannot be written yet. The migration half already works: views and materialized views are created, replaced and dropped in dependency order (migrate/order_test.go, migrate/postgres/managed_objects_test.go) and drift now compares their queries.
