@@ -9,6 +9,7 @@ calls them. Ready-made implementations:
 | ---------- | ------------------------------------------ | --------------------------------------------------------------------------------------- |
 | `Recorder` | `&obs.Recorder{}` (package `obs`)          | Keeps every finished statement and relation load for assertions in tests.               |
 | `NPlusOne` | `obs.NewNPlusOne(n, report)` (`obs`)       | Reports a relation that was loaded more than `n` times inside one `obs.WithScope`.      |
+| slow query | `obs.NewSlowQuery(d, report, opts...)`     | Reports each statement slower than `d`, with an opt-in plain `EXPLAIN` plan.            |
 | slog hook  | `momolog.New(logger, opts...)` (`momolog`) | Logs one `log/slog` record per statement and one per relation load (see [slog](#slog)). |
 
 `obs` imports only `momo` and the standard library. All of these hooks are safe
@@ -70,6 +71,45 @@ a loop. A context without a scope is not tracked, a scope tracks at most 1024
 relations, and a panic in `report` is recovered and dropped. `report` runs on
 the loading goroutine and must not query the database. Create the detector with
 `obs.NewNPlusOne`; its zero value must not be used.
+
+## Slow queries
+
+`obs.NewSlowQuery(threshold, report)` calls `report` with an `obs.SlowQuery`
+(`SQL`, `Duration`, and `Plan` or `PlanSkipped`) for each statement that took
+longer than `threshold`.
+
+```text
+plain := momo.New(drv) // a DB without the slow-query hook
+db := momo.New(drv, momo.WithHook(obs.NewSlowQuery(200*time.Millisecond,
+    func(q obs.SlowQuery) { log.Printf("slow %s: %s %v", q.Duration, q.SQL, q.Plan) },
+    obs.WithPlainExplain(plain),
+)))
+```
+
+Without `obs.WithPlainExplain` the report has no plan. With it, the hook runs
+one plain `EXPLAIN` for the slow statement, never `EXPLAIN ANALYZE`, so nothing
+runs twice. Outside a transaction the plan comes from the querier you pass;
+inside a transaction it runs on that transaction in a savepoint that is always
+rolled back, so a plan that fails cannot abort your transaction. Cases where
+there is no plan say why in `PlanSkipped`: a statement with bound arguments on a
+DB opened without `momo.WithArgLogging`, a statement that binds a sensitive
+value, a transaction that is already aborted (PostgreSQL), and an `EXPLAIN` the
+database rejected. The statements the hook issues for the plan are not reported
+again. `report` runs on the goroutine that ran the statement and must not query
+the database. The plan can echo literal values.
+
+## Explain
+
+`momo.Explain(ctx, q, compiled)` returns the database's plan for any compiled
+statement (the value of a query's `SQL` method) without running it: `EXPLAIN` on
+PostgreSQL, `EXPLAIN QUERY PLAN` on SQLite and `EXPLAIN FORMAT=JSON` on MySQL
+and MariaDB. `momo.ExplainAnalyze(ctx, q, compiled)` runs the statement under
+`EXPLAIN (ANALYZE, FORMAT TEXT)` and returns the plan with actual timings. It
+executes the statement, so a `SELECT` runs as it is and a write runs inside a
+transaction (a savepoint on a `Tx`) that is always rolled back. It is PostgreSQL
+only: other dialects return `ErrUnsupported` and send nothing. Momo calls
+neither on its own, and hooks see both as Op `explain`.
+`SelectQuery.Explain` stays the shorthand for a select.
 
 ## slog
 
