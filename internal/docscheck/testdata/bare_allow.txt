@@ -1,0 +1,2 @@
+# Pages whose bare backticked names are not root (momo) names.
+# Format: path package reason (see TestBareNamesAreRootNames).

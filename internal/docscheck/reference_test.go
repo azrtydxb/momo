@@ -33,10 +33,11 @@ import (
 //
 // Name and Member must start with an upper-case letter. Everything else is
 // prose and is not checked: SQL, file names (go.mod), other libraries
-// (sql.DB, pgx.Conn: their first segment is not a module package), lower-case
-// members, and bare names such as `Select`, which cannot be told apart from
-// words. A reference that has the shape but does not resolve fails; there is no
-// allow list, so fix the doc (or write the name as plain text).
+// (sql.DB, pgx.Conn: their first segment is not a module package) and
+// lower-case members. A reference that has the shape but does not resolve
+// fails; there is no allow list, so fix the doc (or write the name as plain
+// text). A bare name such as `Select` is not resolved here; it means the root
+// package, which TestBareNamesAreRootNames checks.
 
 var (
 	spanRe = regexp.MustCompile("`([^`\n]+)`")
@@ -81,6 +82,18 @@ var fenceRe = regexp.MustCompile("^\\s*(`{3,}|~{3,})")
 // upgrade table's first column names identifiers that no longer exist.
 func extractRefs(text string, skipFirstCell bool) []docRef {
 	var out []docRef
+	for _, r := range extractSpans(text, skipFirstCell) {
+		if refRe.MatchString(r.text) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// extractSpans returns every inline code span of one page, after stripTypeArgs,
+// under the same fence and first-cell rules as extractRefs.
+func extractSpans(text string, skipFirstCell bool) []docRef {
+	var out []docRef
 	var open string // the opening fence; empty outside a block
 	for i, line := range strings.Split(text, "\n") {
 		if m := fenceRe.FindStringSubmatch(line); m != nil {
@@ -108,10 +121,7 @@ func extractRefs(text string, skipFirstCell bool) []docRef {
 			if loc[0] < limit {
 				continue
 			}
-			s := stripTypeArgs(line[loc[2]:loc[3]])
-			if refRe.MatchString(s) {
-				out = append(out, docRef{line: i + 1, text: s})
-			}
+			out = append(out, docRef{line: i + 1, text: stripTypeArgs(line[loc[2]:loc[3]])})
 		}
 	}
 	return out
@@ -160,6 +170,114 @@ func resolveRef(pkgs []*Package, ref string) (ok, checked bool) {
 		return root.HasMember(a, b), true
 	}
 	return true, false
+}
+
+var bareRe = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*$`)
+
+// bareOwners returns the names of the feature packages that export name at top
+// level when the root package does not. A bare name in the docs means the root
+// package, so a non-empty result is a name a reader would write as momo.Name
+// and fail to compile. It is nil for a name the root exports, and for a name
+// no checked package exports (prose).
+func bareOwners(pkgs []*Package, name string) []string {
+	var owners []string
+	for _, p := range pkgs {
+		if p.Dir == "." {
+			if p.HasTop(name) {
+				return nil
+			}
+			continue
+		}
+		if p.HasTop(name) {
+			owners = append(owners, p.Name)
+		}
+	}
+	sort.Strings(owners)
+	return owners
+}
+
+const bareAllowFile = "testdata/bare_allow.txt"
+
+// bareAllow reads bareAllowFile: one "path package reason" per line, meaning
+// that the bare names of that package are intended on that page (its section
+// names the package, or the name is a method or field there). The reason is
+// required.
+func bareAllow(t *testing.T) map[[2]string]bool {
+	t.Helper()
+	out := map[[2]string]bool{}
+	for l := range readList(t, bareAllowFile) {
+		f := strings.Fields(l)
+		if len(f) < 3 {
+			t.Errorf("%s: %q needs \"path package reason\"", bareAllowFile, l)
+			continue
+		}
+		out[[2]string{f[0], f[1]}] = true
+	}
+	return out
+}
+
+// TestBareNamesAreRootNames: a bare backticked name such as `Case` means the
+// root package. When only a feature package exports it, the doc must write
+// pkg.Name (sqlfn.Case), or the page's package must be listed in
+// bareAllowFile with a reason. Listed entries that match nothing are stale.
+func TestBareNamesAreRootNames(t *testing.T) {
+	root := repoRoot(t)
+	pkgs, err := ReferencePackages(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allow := bareAllow(t)
+	used := map[[2]string]bool{}
+	for _, f := range docPages(t, root) {
+		rel, _ := filepath.Rel(root, f)
+		rel = filepath.ToSlash(rel)
+		if rel == "docs/reference.md" { // generated from the code
+			continue
+		}
+		b, err := os.ReadFile(f) // #nosec G304 -- the repository's own docs
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range extractSpans(string(b), rel == "docs/upgrading.md") {
+			if !bareRe.MatchString(r.text) {
+				continue
+			}
+			owners := bareOwners(pkgs, r.text)
+			if len(owners) == 0 {
+				continue
+			}
+			ok := false
+			for _, o := range owners {
+				if allow[[2]string{rel, o}] {
+					used[[2]string{rel, o}] = true
+					ok = true
+				}
+			}
+			if !ok {
+				var sug []string
+				for _, o := range owners {
+					sug = append(sug, o+"."+r.text)
+				}
+				t.Errorf("%s:%d: bare `%s` means the root package, which does not export it; write `%s`, or list the page and package in %s with a reason", rel, r.line, r.text, strings.Join(sug, "` or `"), bareAllowFile)
+			}
+		}
+	}
+	for k := range allow {
+		if !used[k] {
+			t.Errorf("%s: %s %s matches no bare name; remove the line", bareAllowFile, k[0], k[1])
+		}
+	}
+}
+
+func TestBareOwners(t *testing.T) {
+	root := parseSrc(t, ".", "package momo\nfunc Select() {}\nfunc Func() {}\n")
+	sqlfn := parseSrc(t, "sqlfn", "package sqlfn\nfunc Case() {}\nfunc Func() {}\n")
+	pkgs := []*Package{root, sqlfn}
+	for name, want := range map[string]string{"Case": "sqlfn", "Select": "", "Func": "", "Prose": ""} {
+		if got := strings.Join(bareOwners(pkgs, name), ","); got != want {
+			t.Errorf("bareOwners(%q) = %q, want %q", name, got, want)
+		}
+	}
 }
 
 // docPages returns docs/*.md (and one level below), README.md and llms.txt.
