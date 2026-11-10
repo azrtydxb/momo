@@ -38,6 +38,7 @@ const usage = `Usage: momo <command> [flags]
 
 Commands:
   generate  generate code for model packages, or models from a database (flags: -c momo.yaml, --check, --from-db)
+  import    convert GORM, Bun or Ent models to Momo models (momo import gorm|bun|ent --src <dir> --out <dir>)
   migrate   manage schema migrations (momo migrate help)
   viz       draw an ER diagram, Mermaid or DOT (flags: --format, --snapshot, --out)
   help      print this help ("momo help generate" for a command)
@@ -67,6 +68,7 @@ func commands(plugins []gen.Plugin) []command {
 		{"generate", func(args []string, stdout, stderr io.Writer) int {
 			return runGenerate(args, stdout, stderr, plugins...)
 		}},
+		{"import", runImportCmd},
 		{"migrate", runMigrateCmd},
 		{"viz", runViz},
 	}
