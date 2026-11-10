@@ -198,6 +198,12 @@ finding:
 - Hide objects you do not manage with `migrate.exclude` (globs over `name` or
   `schema.name`; they apply to tables, views, functions, enums, extensions,
   triggers and policies). Example: `exclude: ["pg_stat_statements", "audit_*"]`.
+  PostgreSQL inspection applies the globs to triggers before it reads them, so a
+  trigger or table you exclude can never fail `generate --from-db`, `baseline` or
+  `drift`.
+- A trigger limited to some columns (`AFTER UPDATE OF state`) is
+  `schema.Trigger.UpdateOf`: PostgreSQL renders `UPDATE OF "state"`, inspection
+  reads the list back and `generate --from-db` writes it into the model.
 - `momo_migrations` is never reported.
 - A view query, trigger `WHEN` and policy `USING`/`WITH CHECK` changed outside
   migrations is **not detected**; those objects are listed as `unverified:`
@@ -928,7 +934,9 @@ nullability (a pointer, or the `nullable` tag for slices), defaults, `size`,
 `precision` and `scale`, enums, primary keys, identity and serial columns,
 single-column indexes as tags, other indexes, unique constraints, checks and
 comments in the `MomoConfig` method, and every foreign key the generator can
-derive as a `belongs_to` field with its `on_delete` and `on_update` actions.
+derive as a `belongs_to` field with its `on_delete` and `on_update` actions
+and, when the constraint name is not `<table>_<column>_fkey` (PostgreSQL picks
+`_fkey1` on a partitioned table), its `fk_name`.
 `numeric` columns are Go strings (the `decimal-as-string` note); an
 `introspect.types` rule picks a decimal type instead.
 

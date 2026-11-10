@@ -320,7 +320,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
 Config methods: `Index`, `IndexExpr`, `Unique`, `Check`, `Enum`, `Default`,
-`Comment`, `Collate`, `IDGen`, `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`,
+`Comment`, `Collate`, `IDGen`, `FKName`, `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`,
 `PartitionOf`. Index chain: `Where(pred)`, `Method(m)`, `With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
@@ -359,7 +359,7 @@ it is not a column):
 Extra relation options: `polytype:<column>` + `polyvalue:<value>` (both, on
 `has_one`/`has_many` only: polymorphic), `on_delete:` / `on_update:`
 (`cascade`, `restrict`, `set_null`, `set_default`, `no_action`; they affect only
-the FK emitted for `belongs_to`), `no_constraint` (emit no FK). `has_one` and
+the FK emitted for `belongs_to`), `no_constraint` (emit no FK), `fk_name:<name>` (constraint name when not `<table>_<col>_fkey`; or `Config.FKName(&m.FKField, name)`). `has_one` and
 `has_many` create no FK constraint themselves; the `belongs_to` on the other
 side does. Many-to-many join tables get a composite primary key plus two FKs with
 `ON DELETE CASCADE`.

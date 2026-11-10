@@ -33,6 +33,8 @@ type CompanionResult struct {
 	Collates map[string]string
 	// IDGens maps a column to the id generator named by an IDGen call.
 	IDGens map[string]string
+	// FKNames maps a foreign key column to the constraint name set by FKName.
+	FKNames map[string]string
 
 	Views       []schema.View
 	Functions   []schema.Function
@@ -66,6 +68,7 @@ func ReadCompanion(pkg *packages.Package, m *Model) (*CompanionResult, []Diagnos
 			Comments: map[string]string{},
 			Collates: map[string]string{},
 			IDGens:   map[string]string{},
+			FKNames:  map[string]string{},
 		},
 		byPath:  map[string]*Field{},
 		indexAt: map[string]string{},
@@ -579,6 +582,8 @@ func (r *companionReader) config(c call) {
 		r.columnText(c, r.res.Collates, "collate")
 	case "IDGen":
 		r.columnText(c, r.res.IDGens, "idgen")
+	case "FKName":
+		r.columnText(c, r.res.FKNames, "foreign key name")
 	default:
 		r.unsupported(c.expr)
 	}

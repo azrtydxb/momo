@@ -686,9 +686,6 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	if f == nil {
 		return drop("its column is not modeled")
 	}
-	if want := t.Name + "_" + fk.Columns[0] + "_fkey"; fk.Name != want {
-		return drop("its name differs from the derived name " + want)
-	}
 	if !fkActions[fk.OnDelete] || !fkActions[fk.OnUpdate] {
 		return drop("its referential action is not supported")
 	}
@@ -697,6 +694,12 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		return drop("the column types differ")
 	}
 	opts := []string{"belongs_to", "fk:" + f.name}
+	if want := t.Name + "_" + fk.Columns[0] + "_fkey"; fk.Name != want {
+		if strings.ContainsAny(fk.Name, ",\"`\\") {
+			return drop("its name " + fk.Name + " cannot be written in a struct tag")
+		}
+		opts = append(opts, "fk_name:"+fk.Name)
+	}
 	for _, a := range []struct{ key, val string }{{"on_delete", fk.OnDelete}, {"on_update", fk.OnUpdate}} {
 		if a.val != "" {
 			opts = append(opts, a.key+":"+strings.ToLower(strings.ReplaceAll(a.val, " ", "_")))

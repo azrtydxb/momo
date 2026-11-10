@@ -681,9 +681,23 @@ func (b *schemaBuilder) belongsTo(m *Model, r *Relation) {
 	if !ok1 || !ok2 {
 		return
 	}
+	name := m.Table + "_" + local.Column + "_fkey"
+	var cfg string
+	if m.Config != nil {
+		cfg = m.Config.FKNames[local.Column]
+	}
+	switch {
+	case r.FKName != "" && cfg != "":
+		b.diag(r.Pos, fmt.Sprintf("relation %s: the foreign key name is declared by both the fk_name tag and MomoConfig", r.GoName))
+		return
+	case r.FKName != "":
+		name = r.FKName
+	case cfg != "":
+		name = cfg
+	}
 	t := &b.s.Tables[b.index[m]]
 	t.ForeignKeys = append(t.ForeignKeys, schema.ForeignKey{
-		Name:       m.Table + "_" + local.Column + "_fkey",
+		Name:       name,
 		Columns:    []string{local.Column},
 		RefTable:   target.Name,
 		RefColumns: []string{target.PrimaryKey[0]},

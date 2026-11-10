@@ -133,6 +133,8 @@ type Relation struct {
 	PolyValue string
 	// OnDelete and OnUpdate are the raw on_delete and on_update tag values.
 	OnDelete, OnUpdate string
+	// FKName is the raw fk_name tag value: the constraint name, empty for the derived one.
+	FKName string
 	// NoConstraint is the no_constraint tag: the relation has no database
 	// foreign key.
 	NoConstraint bool
