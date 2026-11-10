@@ -28,7 +28,7 @@ func TestDocsRequirementsPinned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, version := range map[string]string{"mkdocs": "1.6.1", "mkdocs-material": "9.7.7", "mike": "2.2.0"} {
+	for name, version := range map[string]string{"mkdocs": "1.6.1", "mkdocs-material": "9.8.0", "mike": "2.2.0"} {
 		if !hashedPin(name, version).MatchString(string(b)) {
 			t.Errorf("docs/requirements.txt does not pin %s==%s with a sha256 hash", name, version)
 		}
