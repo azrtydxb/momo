@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.0](https://github.com/azrtydxb/momo/compare/v0.5.0...v0.6.0) (2026-11-10)
+
+_`momo generate` can now generate OpenAPI, gRPC and GraphQL servers over your models, and view models are read-only end to end. The guard on `UPDATE ... FROM` and `DELETE ... USING` is stricter. Upgrading may need code changes: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.6.0/docs/upgrading.md). [Changes since 0.5.0](https://github.com/azrtydxb/momo/compare/v0.5.0...v0.6.0)._
+
+### ⚠ BREAKING CHANGES
+
+- **query:** `UpdateQuery.From` and `DeleteQuery.Using` refuse more statements with `ErrUnfilteredMutation`. The guard now follows `Or`, `Not` and `JoinSQL`: an `Or` branch, or a negated `And`, that does not reference the target table no longer passes ([#80](https://github.com/azrtydxb/momo/pull/80))
+- **gen:** a model that embeds `momo.View` no longer produces a table, so `momo migrate diff` plans a `DROP TABLE` if a table of that name exists ([#80](https://github.com/azrtydxb/momo/pull/80))
+- **openapi:** generated error bodies use the key `error`, and a create or PUT request body uses the new `<Model>Input` schema ([#80](https://github.com/azrtydxb/momo/pull/80))
+- **gen:** a cancelled request to a generated server answers 499, `Canceled` or `CANCELED` instead of 500 or `Internal`, and a request past its deadline answers 504 or `DeadlineExceeded` ([#80](https://github.com/azrtydxb/momo/pull/80))
+
+### Features
+
+- **gen:** built-in `openapi`, `grpc` and `graphql` plugins, enabled in the `plugins` section of `momo.yaml`. They generate an OpenAPI 3.1 document with `net/http` handlers, a `.proto` file with a gRPC server, and gqlgen glue with batched relation loading ([#80](https://github.com/azrtydxb/momo/pull/80))
+- **gen:** the `openapi` and `grpc` plugins take `ops`, `read_only` and an `on_error` hook. Generated servers map errors to fixed messages, and GraphQL limits depth, complexity, preloaded rows and body size ([#80](https://github.com/azrtydxb/momo/pull/80))
+- **views:** `momo.RefreshMaterializedView` (PostgreSQL), and generated servers expose only list and get for a view model ([#80](https://github.com/azrtydxb/momo/pull/80))
+- **docs:** the `cli` package is in the API reference, and a release also publishes `llms.txt` and `llms-full.txt` at the site root ([#80](https://github.com/azrtydxb/momo/pull/80))
+
+### Bug Fixes
+
+- **gen:** the plugin generators find a view model's primary key, and a view model that shares a table name with another model is reported ([#80](https://github.com/azrtydxb/momo/pull/80))
+- **deps:** modernc.org/sqlite 1.61.1, google.golang.org/grpc 1.85.0, gqlgen 0.17.98 ([#47](https://github.com/azrtydxb/momo/pull/47), [#48](https://github.com/azrtydxb/momo/pull/48), [#49](https://github.com/azrtydxb/momo/pull/49))
+
 ## [0.5.0](https://github.com/azrtydxb/momo/compare/v0.4.0...v0.5.0) (2026-11-10)
 
 _Momo now carries everything Kuvryn Orbit needs to move onto it: composite foreign keys, DML in CTEs, raw multi-column queries, database-defaulted columns and more row-lock modes. It also adds hybrid search, EXPLAIN and slow-query tooling, OpenTelemetry in the new `otelmomo` module, and a `cli` package for building your own `momo` binary. Upgrading needs a regenerate and one advisory call-site check: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.5.0/docs/upgrading.md). [Changes since 0.4.0](https://github.com/azrtydxb/momo/compare/v0.4.0...v0.5.0)._
