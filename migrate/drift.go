@@ -407,14 +407,16 @@ func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
 // application table is written.
 //
 // When the snapshot declares a view, a trigger WHEN condition or a policy
-// expression (USING, WITH CHECK of a row-level security policy), Drift
-// canonicalizes the whole snapshot strictly, as Baseline does, and compares
-// that text: a body changed outside migrations is reported as Changed. That
-// needs the CREATE privilege on the database and a writable session. When the
-// role lacks CREATE the error wraps ErrCanonicalizePrivilege and names it;
-// any other canonicalization failure is returned too. Drift never skips these
-// bodies silently, because a skip would hide a real change (a policy loosened to
-// USING (true), say).
+// expression (USING, WITH CHECK of a row-level security policy), Drift first
+// canonicalizes the whole snapshot, as Baseline does, and compares that text: a
+// body changed outside migrations is then reported as Changed. That needs the
+// CREATE privilege on the database and a writable session. When it cannot (a
+// role without CREATE, a read-only session), Drift does not fail by default: it
+// falls back to the tolerant path below and lists those views, triggers and
+// policies in DriftReport.Unverified, so a read-only role keeps its report and
+// the report says what it could not check. Use DriftWith with Strict to make that
+// case an error (wrapping ErrCanonicalizePrivilege when the privilege is the
+// cause) instead of a fallback.
 //
 // A snapshot without those bodies, or a dialect that only implements
 // TableCanonicalizer, takes the tolerant path: only table text (check
@@ -430,6 +432,22 @@ func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
 // PostgreSQL marks invalid (a failed CREATE INDEX CONCURRENTLY) is reported as
 // Changed with Detail "invalid index (failed CONCURRENTLY build)".
 func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
+	return e.DriftWith(ctx, DriftOptions{})
+}
+
+// DriftOptions controls DriftWith.
+type DriftOptions struct {
+	// Strict makes Drift fail when it cannot compare the text of views,
+	// trigger conditions and policy expressions, instead of listing them in
+	// DriftReport.Unverified. The error wraps ErrCanonicalizePrivilege when the
+	// role lacks CREATE on the database. Use it where a clean report must mean
+	// that those bodies match, for example to catch a row-level security policy
+	// loosened out of band.
+	Strict bool
+}
+
+// DriftWith is Drift with options. See Drift for what it compares.
+func (e *Engine) DriftWith(ctx context.Context, o DriftOptions) (*DriftReport, error) {
 	c, err := e.pin(ctx)
 	if err != nil {
 		return nil, err
@@ -466,10 +484,18 @@ func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := cz.Canonicalize(ctx, c, want); err != nil {
-				return nil, fmt.Errorf("migrate: canonicalize snapshot %s: %w", latest, err)
+			cerr := cz.Canonicalize(ctx, c, want)
+			switch {
+			case cerr == nil:
+				from, exact = want, true
+			case o.Strict || ctx.Err() != nil:
+				return nil, fmt.Errorf("migrate: canonicalize snapshot %s: %w", latest, cerr)
+			default:
+				// Tolerant fallback: table text only, bodies stay Unverified.
+				if from, skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
+					return nil, err
+				}
 			}
-			from, exact = want, true
 		} else if from, skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
 			return nil, err
 		}

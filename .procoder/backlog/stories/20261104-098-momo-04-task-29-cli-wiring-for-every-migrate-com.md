@@ -1,6 +1,6 @@
 # momo-04 Task 29: CLI wiring for every migrate command and exit codes
 
-Status: done 2026-11-10
+Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -17,7 +17,7 @@ Implements plan momo-04-migrations Task 29: CLI wiring for every migrate command
 - [x] `TestCLIExitOneOnDrift` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestWindowsPaths` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-10] `TestCLIContracts`: each command's exit codes and outputs as documented in Interfaces; offline commands run with no database URL set; fails if an offline command opens a connection.
-- [x] [S-26] The windows-latest CI job runs `go test ./...` for the generator, CLI and SQLite+sqlite-vec packages; `TestWindowsPaths` asserts generated imports and migration paths use forward slashes; fails if the job is skipped.
+- [ ] [S-26] The windows-latest CI job runs `go test ./...` for the generator, CLI and SQLite+sqlite-vec packages; `TestWindowsPaths` asserts generated imports and migration paths use forward slashes; fails if the job is skipped.
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
@@ -58,4 +58,5 @@ Implements plan momo-04-migrations Task 29: CLI wiring for every migrate command
 
 - [S-10]: `TestCLIContracts`, `TestOfflineCommandsNoDatabase` (validate, lint and rebase never read the database URL), `TestMigrateLintExitCodes` (1 on errors, 0 on warnings and clean), `TestMigrateRollbackAndRebaseNeedTheirInputs` (exit 2 without a URL, without `--onto`, for a missing directory), `TestMigrateRollbackCLI` (integration: exit 1 with no down file and nothing run, then rolled back, pending again, applied anew). Green: ci-agent run 42776939577 on 0dafa15e799e4e052ca9b05bc94eed3b231d421f, all jobs success.
 - Deviations: `rebase --onto` takes a directory only (the plan also allows a version); `lint --db` means "only the pending migrations", there is no row-count rule; the rebase success path is covered by `TestMigrateRebase` at engine level, not through the CLI.
-- [S-26] (2026-11-10): the windows-latest job of ci.yml runs `go test ./...`, which includes `TestWindowsPaths` and the new lint/rebase CLI tests: ci.yml dispatch run 42779413962 on 0dafa15e799e4e052ca9b05bc94eed3b231d421f, every job success. `TestWindowsPaths` asserts forward slashes. Limitation: the story's own wording asks for the SQLite+sqlite-vec packages on that job; `go test ./...` there covers them only without cgo-only tests, as before.
+- [S-26] (2026-11-10), unticked: the windows-latest job of ci.yml runs `go test ./...` (ci.yml dispatch run 42779413962 on 0dafa15e799e4e052ca9b05bc94eed3b231d421f, every job success), which runs `TestWindowsPaths` and the lint and rebase CLI unit tests. That proves the forward-slash half only. The criterion also asks for the SQLite+sqlite-vec packages on that job: their tests need cgo and the `integration` tag and the job runs neither (`go test ./...` without tags, no cgo), so they never run on Windows.
+- Carry reason: S-26 needs a Windows job that runs the SQLite packages (`driver/sqlitepure`, `internal/sqlshared`, or the cgo ones with a toolchain). `.github/workflows/ci.yml` line 144 already runs the pure-Go pair with the integration tag; whether that satisfies the story's wording (the sqlite-vec packages are not in it) needs a decision from the story owner. Carried until then.

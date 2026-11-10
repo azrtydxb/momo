@@ -40,7 +40,11 @@ var (
 	lintSpace        = regexp.MustCompile(`\s+`)
 
 	lintAlterTable   = regexp.MustCompile(`^alter table (?:if exists )?(?:only )?(\S+) (.*)$`)
-	lintAddColumn    = regexp.MustCompile(`\badd (?:column )?(?:if not exists )?\S+ [^,]*\bnot null\b`)
+	lintAddColumn    = regexp.MustCompile(`\badd (?:column )?(?:if not exists )?("[^"]+"|\w+) \w+[^,]*\bnot null\b`)
+	lintAddConstrKw  = regexp.MustCompile(`\badd (?:constraint|check|foreign|primary|unique|exclude)\b`)
+	lintCheckParens  = regexp.MustCompile(`\bcheck \([^)]*\)`)
+	lintAddNNCheck   = regexp.MustCompile(`\badd constraint (\S+) check \(\s*\(?\s*("?\w+"?)\s+is not null\s*\)?\s*\)`)
+	lintValidate     = regexp.MustCompile(`\bvalidate constraint (\S+)`)
 	lintDefault      = regexp.MustCompile(`\bdefault\b`)
 	lintSetNotNull   = regexp.MustCompile(`\balter (?:column )?\S+ set not null\b`)
 	lintTypeChange   = regexp.MustCompile(`\balter (?:column )?\S+ (?:set data )?type\b`)
@@ -100,9 +104,14 @@ func lintStatements(version string, stmts []Statement, parentTables map[string]b
 			parents[full] = true
 		}
 	}
+	// A reference with a schema matches that schema's table only; a bare one
+	// resolves through the search_path, so it matches by name.
 	existing := func(ref string) bool {
 		full, bare := lintTable(ref)
-		return parents[full] || parents[bare]
+		if full != bare {
+			return parents[full]
+		}
+		return parents[bare]
 	}
 	pg := dialectName == "postgres"
 	var out []Finding
@@ -110,6 +119,9 @@ func lintStatements(version string, stmts []Statement, parentTables map[string]b
 		out = append(out, Finding{Severity: sev, Rule: rule, Version: version, Statement: n + 1, Message: msg, Alternative: alt})
 	}
 	var addedValues []string
+	// notNullChecks maps table.constraint to the column of a CHECK (col IS NOT
+	// NULL) added in this migration; validated holds the ones validated here.
+	notNullChecks, validated := map[string]string{}, map[string]bool{}
 	for i, st := range stmts {
 		if st.Hint == "rebuild" {
 			add(i, SeverityWarning, RuleSQLiteRebuild,
@@ -122,7 +134,7 @@ func lintStatements(version string, stmts []Statement, parentTables map[string]b
 			continue
 		}
 		for _, v := range addedValues {
-			if strings.Contains(orig, "'"+v+"'") {
+			if lintUsesValue(orig, v) {
 				add(i, SeverityError, RuleEnumAddAndUse,
 					"the enum value "+v+" is used in the migration that adds it",
 					"move the use to a later migration; a new enum value is unusable until its transaction commits")
@@ -132,7 +144,8 @@ func lintStatements(version string, stmts []Statement, parentTables map[string]b
 			if m := lintAddEnumValue.FindStringSubmatch(orig); m != nil {
 				addedValues = append(addedValues, m[1])
 			}
-			lintPostgres(i, low, existing, add)
+			lintNotNullChecks(low, notNullChecks, validated)
+			lintPostgres(i, low, existing, add, notNullChecks, validated)
 		}
 		if !destructiveOK {
 			destructive := lintDropTable.MatchString(low)
@@ -149,16 +162,55 @@ func lintStatements(version string, stmts []Statement, parentTables map[string]b
 	return out
 }
 
-func lintPostgres(i int, low string, existing func(string) bool, add func(int, Severity, string, string, string)) {
+// lintAddsNotNullColumn reports whether an ALTER TABLE action list adds a column
+// that is NOT NULL and has no default. A constraint is not a column, and a NOT
+// NULL inside a CHECK (...) is not the column's own.
+func lintAddsNotNullColumn(rest string) bool {
+	if lintAddConstrKw.MatchString(rest) {
+		return false
+	}
+	rest = lintCheckParens.ReplaceAllString(rest, "check ()")
+	return lintAddColumn.MatchString(rest) && !lintDefault.MatchString(rest) && !strings.Contains(rest, "generated") &&
+		!strings.Contains(rest, " serial") && !strings.Contains(rest, " bigserial") && !strings.Contains(rest, " smallserial")
+}
+
+// lintUsesValue reports whether stmt uses the enum value v where a value can
+// stand: after a comparison operator, DEFAULT, inside IN (...) or VALUES (...).
+// A comment string or an identifier that happens to read like the value does
+// not count.
+func lintUsesValue(stmt, v string) bool {
+	lit := regexp.QuoteMeta("'" + v + "'")
+	return regexp.MustCompile(`(?i)(?:[=<>]\s*|\bdefault\s+|\bin\s*\([^)]*|\bvalues\s*\([^)]*)` + lit).MatchString(stmt)
+}
+
+// lintNotNullChecks records the CHECK (col IS NOT NULL) constraints a
+// statement adds and the constraints it validates.
+func lintNotNullChecks(low string, checks map[string]string, validated map[string]bool) {
+	m := lintAlterTable.FindStringSubmatch(low)
+	if m == nil {
+		return
+	}
+	_, table := lintTable(m[1])
+	if c := lintAddNNCheck.FindStringSubmatch(m[2]); c != nil {
+		checks[table+"."+strings.Trim(c[1], `"`)] = strings.Trim(c[2], `"`)
+		if !strings.Contains(m[2], "not valid") {
+			validated[table+"."+strings.Trim(c[1], `"`)] = true
+		}
+	}
+	if v := lintValidate.FindStringSubmatch(m[2]); v != nil {
+		validated[table+"."+strings.Trim(v[1], `";`)] = true
+	}
+}
+
+func lintPostgres(i int, low string, existing func(string) bool, add func(int, Severity, string, string, string), checks map[string]string, validated map[string]bool) {
 	if m := lintAlterTable.FindStringSubmatch(low); m != nil && existing(m[1]) {
 		rest := m[2]
 		switch {
-		case lintAddColumn.MatchString(rest) && !lintDefault.MatchString(rest) && !strings.Contains(rest, "generated") &&
-			!strings.Contains(rest, " serial") && !strings.Contains(rest, " bigserial") && !strings.Contains(rest, " smallserial"):
+		case lintAddsNotNullColumn(rest):
 			add(i, SeverityError, RuleNotNullWithoutDefault,
 				"ADD COLUMN ... NOT NULL without a DEFAULT fails on a table with rows",
 				"add the column nullable, backfill in a separate migration, then SET NOT NULL")
-		case lintSetNotNull.MatchString(rest):
+		case lintSetNotNull.MatchString(rest) && !lintNotNullValidated(m[1], rest, checks, validated):
 			add(i, SeverityWarning, RuleNotNullWithoutDefault,
 				"SET NOT NULL scans the whole table under an ACCESS EXCLUSIVE lock and fails when a row is NULL",
 				"backfill first (momo migrate diff --stage, a data migration, then --enforce-not-null); on a large table add CHECK (col IS NOT NULL) NOT VALID and VALIDATE it first")
@@ -179,6 +231,20 @@ func lintPostgres(i int, low string, existing func(string) bool, add func(int, S
 			"CREATE INDEX without CONCURRENTLY blocks writes to the table while it builds",
 			"CREATE INDEX CONCURRENTLY in a -- momo:no-transaction migration")
 	}
+}
+
+// lintNotNullValidated reports whether the column of a SET NOT NULL already has
+// a validated CHECK (col IS NOT NULL) in this migration: PostgreSQL then skips
+// the table scan, so the statement is the cheap last step of the advice.
+func lintNotNullValidated(table, rest string, checks map[string]string, validated map[string]bool) bool {
+	_, tbl := lintTable(table)
+	col := strings.Trim(strings.Fields(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(rest), "alter column "), "alter "))[0], `"`)
+	for k, c := range checks {
+		if strings.HasPrefix(k, tbl+".") && c == col && validated[k] {
+			return true
+		}
+	}
+	return false
 }
 
 // Lint checks the migrations that are pending in the database (see Plan) and
@@ -224,34 +290,52 @@ func (e *Engine) lintPending(pending []Pending) ([]Finding, error) {
 	}
 	name := string(e.opts.dialect.Dialect().Name)
 	var out []Finding
+	// Many migrations share one parent snapshot (custom ones copy it), so read
+	// each snapshot once.
+	cache := map[string]map[string]bool{}
 	for _, p := range pending {
 		if p.Kind != "sql" {
 			continue
 		}
-		parent, err := parentTableNames(snaps, p.Version)
-		if err != nil {
-			return nil, err
+		best := latestSnapshotBefore(snaps, p.Version)
+		key := ""
+		if best != nil {
+			key = best.Version
+		}
+		parent, ok := cache[key]
+		if !ok {
+			var err error
+			if parent, err = tablesOfSnapshot(best); err != nil {
+				return nil, err
+			}
+			cache[key] = parent
 		}
 		out = append(out, lintStatements(p.Version, p.Statements, parent, name, dirs[p.Version].Destructive)...)
 	}
 	return out, nil
 }
 
-// parentTableNames returns the tables of the latest snapshot older than
-// version, keyed by bare name and by schema.name; nil when there is none.
-func parentTableNames(snaps []File, version string) (map[string]bool, error) {
+// latestSnapshotBefore returns the snapshot with the greatest version older
+// than version, or nil when there is none.
+func latestSnapshotBefore(snaps []File, version string) *File {
 	var best *File
 	for i := range snaps {
 		if snaps[i].Version < version && (best == nil || snaps[i].Version > best.Version) {
 			best = &snaps[i]
 		}
 	}
-	if best == nil {
+	return best
+}
+
+// tablesOfSnapshot returns the tables of snapshot f, keyed by bare name and by
+// schema.name; nil when f is nil.
+func tablesOfSnapshot(f *File) (map[string]bool, error) {
+	if f == nil {
 		return nil, nil
 	}
-	s, err := ReadSnapshot(strings.NewReader(string(best.Body)))
+	s, err := ReadSnapshot(strings.NewReader(string(f.Body)))
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", best.Path, err)
+		return nil, fmt.Errorf("%s: %w", f.Path, err)
 	}
 	out := map[string]bool{}
 	for _, t := range s.Schema.Tables {

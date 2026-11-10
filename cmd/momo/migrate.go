@@ -48,7 +48,9 @@ Commands:
   new --custom <name>   write an empty hand-written migration: an up file, a snapshot copied
               from the latest one and the extended momo.sum (offline)
   baseline --version N [--force]   record migrations as applied without running them (needs a database)
-  drift       compare the live database with the latest applied snapshot (needs a database)
+  drift [--strict]   compare the live database with the latest applied snapshot (needs a database);
+              view, trigger and policy text is compared when the role has CREATE on the database,
+              else listed as unverified; --strict makes that an error (exit 3)
   resolve --version N --applied|--rolled-back   settle a dirty migration (needs a database)
   rehash --version N [--accept]   show, and with --accept store, the new checksum of an
               applied migration whose file was edited (needs a database; run hash first)
@@ -571,8 +573,10 @@ func (l *cli) statusCmd(fs *flag.FlagSet) func([]string) int {
 }
 
 func (l *cli) driftCmd(fs *flag.FlagSet) func([]string) int {
+	var strict bool
+	fs.BoolVar(&strict, "strict", false, "fail when view, trigger and policy text cannot be compared (needs CREATE on the database)")
 	return l.withEngine(fs, nil, func(ctx context.Context, e *migrate.Engine, _ []string) int {
-		rep, err := e.Drift(ctx)
+		rep, err := e.DriftWith(ctx, migrate.DriftOptions{Strict: strict})
 		if err != nil {
 			return l.failure(err)
 		}
@@ -907,6 +911,25 @@ func (l *cli) newCmd(fs *flag.FlagSet) func([]string) int {
 	}
 }
 
+// offlineEngine returns an engine on the migration directory that has no
+// database: lint (without --db), rebase, diff and new never touch one.
+func (l *cli) offlineEngine() (*migrate.Engine, string, int) {
+	d, err := l.dialectImpl()
+	if err != nil {
+		return nil, "", l.errf(exitUsage, "%v", err)
+	}
+	opts, err := l.engineOptions(d)
+	if err != nil {
+		return nil, "", l.errf(exitUsage, "%v", err)
+	}
+	dir := l.migrationDir()
+	e, err := migrate.NewEngine(nil, dirFS(dir), opts...)
+	if err != nil {
+		return nil, "", l.errf(exitUsage, "%v", err)
+	}
+	return e, dir, exitOK
+}
+
 // lintCmd reports risky operations in the migration files. Without --db it
 // reads the directory only; with --db it asks the database which migrations
 // are pending and checks those.
@@ -935,18 +958,11 @@ func (l *cli) lintCmd(fs *flag.FlagSet) func([]string) int {
 				return l.failure(err)
 			}
 		} else {
-			d, err := l.dialectImpl()
-			if err != nil {
-				return l.errf(exitUsage, "%v", err)
+			e, _, code := l.offlineEngine()
+			if e == nil {
+				return code
 			}
-			opts, err := l.engineOptions(d)
-			if err != nil {
-				return l.errf(exitUsage, "%v", err)
-			}
-			e, err := migrate.NewEngine(nil, dirFS(l.migrationDir()), opts...)
-			if err != nil {
-				return l.errf(exitUsage, "%v", err)
-			}
+			var err error
 			if findings, err = e.LintAll(); err != nil {
 				return l.failure(err)
 			}
@@ -1026,18 +1042,9 @@ func (l *cli) rebaseCmd(fs *flag.FlagSet) func([]string) int {
 		if fi, err := os.Stat(target); err != nil || !fi.IsDir() {
 			return l.errf(exitUsage, "--onto %q is not a directory", onto)
 		}
-		d, err := l.dialectImpl()
-		if err != nil {
-			return l.errf(exitUsage, "%v", err)
-		}
-		opts, err := l.engineOptions(d)
-		if err != nil {
-			return l.errf(exitUsage, "%v", err)
-		}
-		dir := l.migrationDir()
-		e, err := migrate.NewEngine(nil, dirFS(dir), opts...)
-		if err != nil {
-			return l.errf(exitUsage, "%v", err)
+		e, dir, code := l.offlineEngine()
+		if e == nil {
+			return code
 		}
 		desired, code := l.desiredSchema()
 		if desired == nil {
@@ -1049,23 +1056,12 @@ func (l *cli) rebaseCmd(fs *flag.FlagSet) func([]string) int {
 		if err != nil {
 			return l.failure(err)
 		}
+		var files map[string][]byte
 		if m != nil {
-			written, err := writeNewFiles(dir, m.Files)
-			for _, p := range written {
-				l.say("%s", l.rel(p))
-			}
-			if err != nil {
-				if errors.Is(err, iofs.ErrExist) {
-					return l.errf(exitFindings, "%v", err)
-				}
-				return l.errf(exitUsage, "%v", err)
-			}
+			files = m.Files
 		}
-		for _, f := range removed {
-			if err := os.Remove(filepath.Join(dir, filepath.FromSlash(f))); err != nil {
-				return l.errf(exitDatabase, "remove %s: %v", f, err)
-			}
-			l.say("removed: %s", f)
+		if code := l.applyRebase(dir, removed, files); code != exitOK {
+			return code
 		}
 		if m == nil {
 			l.say("no changes: the target already matches the models")
@@ -1083,6 +1079,45 @@ func (l *cli) rebaseCmd(fs *flag.FlagSet) func([]string) int {
 		}
 		return exitOK
 	}
+}
+
+// applyRebase deletes the branch files a rebase replaces and writes the
+// regenerated migration. Every path is checked before anything changes, so a
+// path that cannot be deleted refuses the whole rebase with the directory
+// untouched; a failure after that (a delete or a write) leaves a half-rebased
+// directory, and the message says how to get back: restore the directory from
+// version control and run the rebase again.
+func (l *cli) applyRebase(dir string, removed []string, files map[string][]byte) int {
+	paths := make([]string, len(removed))
+	for i, f := range removed {
+		paths[i] = filepath.Join(dir, filepath.FromSlash(f))
+		fi, err := os.Lstat(paths[i])
+		if err != nil || !fi.Mode().IsRegular() {
+			return l.errf(exitFindings, "rebase refused: %s is not a regular file that can be removed; nothing was changed", f)
+		}
+	}
+	recovery := fmt.Sprintf("the migration directory %s is half rebased; restore it from version control (git checkout -- %s), fix the cause and run momo migrate rebase again", l.rel(dir), l.rel(dir))
+	for i, p := range paths {
+		if err := os.Remove(p); err != nil {
+			return l.errf(exitDatabase, "remove %s: %v; removed %d of %d files; %s", removed[i], err, i, len(paths), recovery)
+		}
+		l.say("removed: %s", removed[i])
+	}
+	if files == nil {
+		return exitOK
+	}
+	written, err := writeNewFiles(dir, files)
+	for _, p := range written {
+		l.say("%s", l.rel(p))
+	}
+	if err != nil {
+		code := exitUsage
+		if errors.Is(err, iofs.ErrExist) {
+			code = exitFindings
+		}
+		return l.errf(code, "%v; %d old files were removed; %s", err, len(paths), recovery)
+	}
+	return exitOK
 }
 
 // desiredSchema loads the models and builds the schema they declare.

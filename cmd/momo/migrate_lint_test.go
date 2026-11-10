@@ -62,6 +62,7 @@ func TestMigrateRollbackAndRebaseNeedTheirInputs(t *testing.T) {
 		"rebase without --onto":           {"--config", cfg, "rebase"},
 		"rebase onto a missing directory": {"--config", cfg, "rebase", "--onto", filepath.Join(dir, "nope")},
 		"lint stray argument":             {"--config", cfg, "lint", "extra"},
+		"drift --strict is a known flag":  {"--config", cfg, "drift", "--strict"},
 	} {
 		var out, errOut bytes.Buffer
 		if code := runMigrate(&out, &errOut, args, noEnv); code != 2 {

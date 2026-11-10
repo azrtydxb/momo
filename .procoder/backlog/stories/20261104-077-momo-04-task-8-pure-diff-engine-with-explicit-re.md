@@ -1,6 +1,6 @@
 # momo-04 Task 8: Pure diff engine with explicit renames, destructive gating, staged NOT NULL, FK actions
 
-Status: done 2026-11-10
+Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -17,7 +17,7 @@ Implements plan momo-04-migrations Task 8: Pure diff engine with explicit rename
 - [x] `TestStagedChangeDiff` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestFKActions` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestDiffNoChangeEmpty` exists as written in the plan, failed before the implementation, and passes now
-- [x] [S-74] `TestFKActions` asserts each action's effect on every dialect and that the no-constraint option produces no FK in inspection; fails if actions are lost in a round trip.
+- [ ] [S-74] `TestFKActions` asserts each action's effect on every dialect and that the no-constraint option produces no FK in inspection; fails if actions are lost in a round trip.
 - [x] `procoder check` gate is clean and the task's commit is made
 - [x] `Column.Collate` and `Column.Comment` are diffed: a change to either yields a column change (momo-02 Task 10 builds them from `collate` and `comment` tags and MomoConfig), with a round-trip test
 

@@ -7,152 +7,167 @@ package postgres_test
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/fkcase"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
-	"github.com/azrtydxb/momo/migrate/migratetest"
 	"github.com/azrtydxb/momo/schema"
 )
 
-// fkCase is one child table whose foreign key carries one referential action.
-type fkCase struct{ name, onDelete, onUpdate string }
-
-// fkCases covers every action the diff and the dialects know, on delete and on
-// update. Parent i is 10+i, so the cases never touch each other's rows.
-var fkCases = []fkCase{
-	{"del_noaction", "NO ACTION", ""}, {"del_restrict", "RESTRICT", ""}, {"del_cascade", "CASCADE", ""},
-	{"del_setnull", "SET NULL", ""}, {"del_setdefault", "SET DEFAULT", ""},
-	{"upd_noaction", "", "NO ACTION"}, {"upd_restrict", "", "RESTRICT"}, {"upd_cascade", "", "CASCADE"},
-	{"upd_setnull", "", "SET NULL"}, {"upd_setdefault", "", "SET DEFAULT"},
+type pgRunner struct {
+	t  *testing.T
+	db *momo.DB
 }
 
-// declared spells an action as a model does: NO ACTION is the default, which
-// the database reports as no clause, so it is declared by leaving it out.
-func declared(action string) string {
-	if action == "NO ACTION" {
-		return ""
-	}
-	return action
+func (r pgRunner) Exec(q string) error {
+	_, err := r.db.Driver().Exec(context.Background(), q, nil)
+	return err
 }
 
-func fkActionSchema() *schema.Schema {
-	tables := []schema.Table{{
-		Name:       "fk_parents",
-		Columns:    []schema.Column{{Name: "id", Type: "bigint"}},
-		PrimaryKey: []string{"id"},
-	}}
-	for _, c := range fkCases {
-		tables = append(tables, schema.Table{
-			Name:       "fk_" + c.name,
-			Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "p", Type: "bigint", Nullable: true, Default: "0"}},
-			PrimaryKey: []string{"id"},
-			ForeignKeys: []schema.ForeignKey{{
-				Name: "fk_" + c.name + "_p", Columns: []string{"p"}, RefTable: "fk_parents", RefColumns: []string{"id"},
-				OnDelete: declared(c.onDelete), OnUpdate: declared(c.onUpdate),
-			}},
-		})
-	}
-	// A relation with the no_constraint tag: the column exists, the database
-	// constraint does not.
-	tables = append(tables, schema.Table{
-		Name:       "fk_loose",
-		Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "parent_id", Type: "bigint", Nullable: true}},
-		PrimaryKey: []string{"id"},
-	})
-	return &schema.Schema{Dialect: "postgres", Tables: tables}
-}
-
-func fkScalar(t *testing.T, db *momo.DB, q string) string {
-	t.Helper()
-	rows, err := db.Driver().Query(context.Background(), q, nil)
+func (r pgRunner) Scalar(q string) string {
+	r.t.Helper()
+	rows, err := r.db.Driver().Query(context.Background(), q, nil)
 	if err != nil {
-		t.Fatalf("%s: %v", q, err)
+		r.t.Fatalf("%s: %v", q, err)
 	}
 	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
-		t.Fatalf("%s: no row", q)
+		r.t.Fatalf("%s: no row", q)
 	}
 	var s string
 	if err := rows.Scan(&s); err != nil {
-		t.Fatalf("%s: %v", q, err)
+		r.t.Fatalf("%s: %v", q, err)
 	}
 	return s
 }
 
-func fkExec(db *momo.DB, q string) error {
-	_, err := db.Driver().Exec(context.Background(), q, nil)
-	return err
+func (pgRunner) TextType() string { return "text" }
+
+func fkSchema(t *testing.T, cases []fkcase.Case, ext []schema.Extension) *schema.Schema {
+	t.Helper()
+	s, err := fkcase.Schema(dialect.Postgres, cases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Extensions = ext // database-wide; the test database installs vector
+	return s
 }
 
-// TestFKActions: every referential action survives render, apply and
-// inspection, does what it says on a live row, and a relation without a
-// database constraint leaves no foreign key to inspect.
+// TestFKActions: the models' foreign key tags become constraints through the
+// real schema builder and diff, every referential action survives render,
+// apply and inspection, does what it says on live rows, and a relation with
+// the no_constraint tag leaves no foreign key to inspect.
 //
 // Catches: an action dropped by the renderer or the inspector (a CASCADE that
-// round-trips as NO ACTION would pass a schema comparison that ignored it, but
-// not the row that is still there after the delete).
+// round-trips as NO ACTION leaves the child row behind), a no_constraint that
+// still creates a key, and NO ACTION rendered as RESTRICT.
 func TestFKActions(t *testing.T) {
 	db := testopen.Postgres(t)
-	desired := fkActionSchema()
+	cases := fkcase.Cases(true)
+	desired := fkSchema(t, cases, nil)
 	applyStatements(t, db, planStatements(t, &schema.Schema{Dialect: "postgres"}, desired, migrate.DiffOptions{}))
 
 	got := inspectNow(t, db)
 	desired.Extensions = got.Extensions
-	if !schema.Equal(got, desired) {
-		t.Fatalf("the actions did not round-trip:\n%s", migratetest.Diff(got, desired))
+	// The diff, not schema.Equal: the model spells NO ACTION out and the database
+	// reports it as no clause, which the diff treats as the same.
+	if again := planStatements(t, got, desired, migrate.DiffOptions{}); len(again) != 0 {
+		t.Fatalf("the inspection differs from the models: %+v", again)
 	}
 	for _, tb := range got.Tables {
-		want := 1
-		if tb.Name == "fk_parents" || tb.Name == "fk_loose" {
-			want = 0
-		}
-		if len(tb.ForeignKeys) != want {
+		if want := fkcase.WantForeignKeys(tb.Name); len(tb.ForeignKeys) != want {
 			t.Errorf("table %s has %d foreign keys in the inspection, want %d", tb.Name, len(tb.ForeignKeys), want)
 		}
 	}
-	if again := planStatements(t, got, desired, migrate.DiffOptions{}); len(again) != 0 {
-		t.Fatalf("a second diff must be empty: %+v", again)
+	if tb, ok := got.Table(fkcase.Loose); !ok || len(tb.ForeignKeys) != 0 {
+		t.Fatalf("the no_constraint table must exist without a foreign key: %+v", tb)
 	}
+	fkcase.Check(t, pgRunner{t, db}, cases)
+}
 
-	if err := fkExec(db, `INSERT INTO fk_parents (id) VALUES (0)`); err != nil {
-		t.Fatal(err)
+// NO ACTION and RESTRICT differ only when the constraint is deferred: NO ACTION
+// is checked at the end of the transaction, RESTRICT at once. So a parent that
+// is deleted and put back inside one transaction passes for NO ACTION and is
+// refused for RESTRICT. This tells the two apart, which a plain delete cannot.
+func TestFKActionsNoActionIsNotRestrict(t *testing.T) {
+	db := testopen.Postgres(t)
+	cases := []fkcase.Case{{Name: "del_noaction", OnDelete: "no_action"}, {Name: "del_restrict", OnDelete: "restrict"}, {Name: "del_default"}}
+	applyStatements(t, db, planStatements(t, &schema.Schema{Dialect: "postgres"}, fkSchema(t, cases, nil), migrate.DiffOptions{}))
+	for _, c := range cases {
+		mustExec(t, db.Driver(), fmt.Sprintf(`ALTER TABLE fk_%s ALTER CONSTRAINT fk_%s_parent_id_fkey DEFERRABLE INITIALLY DEFERRED`, c.Name, c.Name))
 	}
-	for i, c := range fkCases {
-		parent := 10 + i
-		tbl := "fk_" + c.name
-		if err := fkExec(db, fmt.Sprintf(`INSERT INTO fk_parents (id) VALUES (%d)`, parent)); err != nil {
+	ctx := context.Background()
+	for _, c := range cases {
+		pc := pinned(t, db)
+		run := func(q string) error { _, err := pc.Exec(ctx, q, nil); return err }
+		if err := run("BEGIN"); err != nil {
 			t.Fatal(err)
 		}
-		if err := fkExec(db, fmt.Sprintf(`INSERT INTO %s (id, p) VALUES (1, %d)`, tbl, parent)); err != nil {
-			t.Fatal(err)
-		}
-		var op string
-		if c.onDelete != "" {
-			op = fmt.Sprintf(`DELETE FROM fk_parents WHERE id = %d`, parent)
-		} else {
-			op = fmt.Sprintf(`UPDATE fk_parents SET id = %d WHERE id = %d`, parent+100, parent)
-		}
-		err := fkExec(db, op)
-		child := fkScalar(t, db, fmt.Sprintf(`SELECT coalesce((SELECT coalesce(p::text, 'NULL') FROM %s WHERE id = 1), 'GONE')`, tbl))
-		var wantErr bool
-		var wantChild string
-		switch action := c.onDelete + c.onUpdate; action {
-		case "NO ACTION", "RESTRICT":
-			wantErr, wantChild = true, fmt.Sprint(parent)
-		case "CASCADE":
-			wantChild = fmt.Sprint(parent + 100)
-			if c.onDelete != "" {
-				wantChild = "GONE"
+		must := func(q string) {
+			t.Helper()
+			if err := run(q); err != nil {
+				t.Fatalf("%s: %s: %v", c.Name, q, err)
 			}
-		case "SET NULL":
-			wantChild = "NULL"
-		case "SET DEFAULT":
-			wantChild = "0"
 		}
-		if (err != nil) != wantErr || child != wantChild {
-			t.Errorf("%s: %s gave error %v and child %q, want error=%v and child %q", c.name, op, err, child, wantErr, wantChild)
+		must(`INSERT INTO fk_parents (id) VALUES (500)`)
+		must(fmt.Sprintf(`INSERT INTO fk_%s (id, parent_id) VALUES (2, 500)`, c.Name))
+		delErr := run(`DELETE FROM fk_parents WHERE id = 500`)
+		if c.OnDelete == "restrict" {
+			if delErr == nil {
+				t.Errorf("%s: RESTRICT must refuse the delete at once even when deferred", c.Name)
+			}
+			_ = run("ROLLBACK")
+			continue
 		}
+		if delErr != nil {
+			t.Errorf("%s: NO ACTION is checked at commit, the delete must pass inside the transaction: %v", c.Name, delErr)
+			_ = run("ROLLBACK")
+			continue
+		}
+		must(`INSERT INTO fk_parents (id) VALUES (500)`)
+		if err := run("COMMIT"); err != nil {
+			t.Errorf("%s: parent put back before commit, the commit must pass: %v", c.Name, err)
+		}
+	}
+}
+
+// Changing an action on an existing table is a drop and an add of the key; the
+// new action is the one the database enforces afterwards.
+func TestFKActionsChangeOnExistingTable(t *testing.T) {
+	db := testopen.Postgres(t)
+	cases := fkcase.Cases(true)
+	applyStatements(t, db, planStatements(t, &schema.Schema{Dialect: "postgres"}, fkSchema(t, cases, nil), migrate.DiffOptions{}))
+	before := inspectNow(t, db)
+
+	changed := slices.Clone(cases)
+	for i := range changed {
+		if changed[i].Name == "del_cascade" {
+			changed[i].OnDelete = "set_null"
+		}
+	}
+	v2 := fkSchema(t, changed, before.Extensions)
+	stmts := planStatements(t, before, v2, migrate.DiffOptions{})
+	var sql []string
+	for _, s := range stmts {
+		sql = append(sql, s.SQL)
+	}
+	if len(stmts) == 0 || !strings.Contains(strings.Join(sql, ";\n"), "ON DELETE SET NULL") {
+		t.Fatalf("changing the action must render the new key:\n%s", strings.Join(sql, ";\n"))
+	}
+	applyStatements(t, db, stmts)
+	if again := planStatements(t, inspectNow(t, db), v2, migrate.DiffOptions{}); len(again) != 0 {
+		t.Fatalf("after the change the diff must be empty: %+v", again)
+	}
+	r := pgRunner{t, db}
+	mustExec(t, db.Driver(), `INSERT INTO fk_parents (id) VALUES (600)`)
+	mustExec(t, db.Driver(), `INSERT INTO fk_del_cascade (id, parent_id) VALUES (7, 600)`)
+	mustExec(t, db.Driver(), `DELETE FROM fk_parents WHERE id = 600`)
+	if got := r.Scalar(`SELECT COALESCE(parent_id::text, 'NULL') FROM fk_del_cascade WHERE id = 7`); got != "NULL" {
+		t.Fatalf("the changed key must SET NULL, the child has parent_id %s", got)
 	}
 }

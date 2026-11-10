@@ -51,6 +51,9 @@ func TestMigrateLintQuietOnSafeSQL(t *testing.T) {
 		"ALTER TABLE docs VALIDATE CONSTRAINT fk;",
 		"ALTER TABLE docs DROP CONSTRAINT fk;",
 		"ALTER TABLE docs ALTER COLUMN title DROP NOT NULL;",
+		// The advice of the SET NOT NULL warning must itself pass lint.
+		"ALTER TABLE docs ADD CONSTRAINT title_set CHECK (title IS NOT NULL) NOT VALID;",
+		"ALTER TABLE docs ADD COLUMN flag boolean CHECK (flag IS NOT NULL) DEFAULT true;",
 		"CREATE TABLE fresh (id int NOT NULL);",
 		"CREATE INDEX fresh_id ON fresh (id);",
 		"ALTER TABLE fresh ADD COLUMN x int NOT NULL;",

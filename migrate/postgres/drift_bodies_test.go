@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -205,8 +206,13 @@ func TestDriftBodiesRunsDDLOnlyInRolledBackTransaction(t *testing.T) {
 
 // The privilege Drift needs to compare view, trigger and policy bodies is
 // CREATE on the database (the scratch schema). The non-superuser application
-// role lacks it: Drift returns an error wrapping ErrCanonicalizePrivilege that
-// names it, and never reports a clean drift for bodies it could not compare.
+// role lacks it. By default Drift still reports, listing the bodies it could not
+// compare in Unverified; with Strict it fails with an error wrapping
+// ErrCanonicalizePrivilege that names the privilege.
+//
+// Catches: a drift that errors for a read-only CI role that worked before (the
+// default), and a strict mode that quietly reports clean for a policy loosened
+// out of band.
 func TestDriftBodiesNeedCreateOnDatabase(t *testing.T) {
 	admin := testopen.Postgres(t)
 	// The role's default privileges are installed when it is opened, so open it
@@ -223,15 +229,43 @@ func TestDriftBodiesNeedCreateOnDatabase(t *testing.T) {
 	mustExec(t, admin.Driver(), `DROP POLICY docs_pos ON docs`)
 	mustExec(t, admin.Driver(), `CREATE POLICY docs_pos ON docs FOR SELECT USING (true)`)
 
-	rep, err := canonEngine(t, app.Driver(), fsys).Drift(context.Background())
-	if !errors.Is(err, migrate.ErrCanonicalizePrivilege) {
-		t.Fatalf("want ErrCanonicalizePrivilege, got %+v %v", rep, err)
-	}
-	for _, want := range []string{"CREATE", "database", "privilege"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("the error must mention %q: %v", want, err)
+	t.Run("default lists the bodies as unverified", func(t *testing.T) {
+		rep, err := canonEngine(t, app.Driver(), fsys).Drift(context.Background())
+		if err != nil {
+			t.Fatalf("a role without CREATE must still get a report: %v", err)
 		}
-	}
+		var got []string
+		for _, r := range rep.Unverified {
+			got = append(got, r.Kind+":"+r.Name)
+		}
+		want := []string{"policy:docs.docs_pos", "trigger:docs.docs_touch", "view:m_count", "view:v_docs", "view:v_titles"}
+		if !slices.Equal(got, want) {
+			t.Fatalf("Unverified = %v, want %v", got, want)
+		}
+		if !rep.Clean() {
+			t.Fatalf("the bodies were not compared, so nothing differs: %+v", rep)
+		}
+	})
+	t.Run("strict fails naming the privilege", func(t *testing.T) {
+		rep, err := canonEngine(t, app.Driver(), fsys).DriftWith(context.Background(), migrate.DriftOptions{Strict: true})
+		if !errors.Is(err, migrate.ErrCanonicalizePrivilege) {
+			t.Fatalf("want ErrCanonicalizePrivilege, got %+v %v", rep, err)
+		}
+		for _, want := range []string{"CREATE", "database", "privilege"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("the error must mention %q: %v", want, err)
+			}
+		}
+	})
+	t.Run("strict with the privilege reports the change", func(t *testing.T) {
+		rep, err := canonEngine(t, admin.Driver(), fsys).DriftWith(context.Background(), migrate.DriftOptions{Strict: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := changedBy(rep)["policy:docs.docs_pos"]; !ok || !strings.Contains(got, "using") {
+			t.Fatalf("want the loosened policy changed, got %+v", rep)
+		}
+	})
 }
 
 // A snapshot without view, trigger or policy bodies needs no privilege for

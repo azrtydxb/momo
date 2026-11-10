@@ -6,143 +6,142 @@ package mysql_test
 
 import (
 	"context"
-	"fmt"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/fkcase"
+	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
 	mmysql "github.com/azrtydxb/momo/migrate/mysql"
-	"github.com/azrtydxb/momo/schema"
 )
 
-// fkCase is one child table whose foreign key carries one referential action.
-// MySQL accepts SET DEFAULT in the grammar but InnoDB rejects it, so it is not
-// a case here. Parent i is 10+i, so the cases never touch each other's rows.
-type fkCase struct{ name, onDelete, onUpdate string }
-
-var fkCases = []fkCase{
-	{"del_noaction", "NO ACTION", ""}, {"del_restrict", "RESTRICT", ""}, {"del_cascade", "CASCADE", ""}, {"del_setnull", "SET NULL", ""},
-	{"upd_noaction", "", "NO ACTION"}, {"upd_restrict", "", "RESTRICT"}, {"upd_cascade", "", "CASCADE"}, {"upd_setnull", "", "SET NULL"},
+type myRunner struct {
+	t  *testing.T
+	db *momo.DB
 }
 
-// declared spells an action as a model does: NO ACTION is the default, which
-// the database reports as no clause, so it is declared by leaving it out.
-func declared(action string) string {
-	if action == "NO ACTION" {
-		return ""
-	}
-	return action
+func (r myRunner) Exec(q string) error {
+	_, err := r.db.Driver().Exec(context.Background(), q, nil)
+	return err
 }
 
-func fkActionSchema() *schema.Schema {
-	tables := []schema.Table{parentsTable()}
-	for _, c := range fkCases {
-		tables = append(tables, schema.Table{
-			Name:       "fk_" + c.name,
-			Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "p", Type: "int", Nullable: true}},
-			PrimaryKey: []string{"id"},
-			ForeignKeys: []schema.ForeignKey{{
-				Name: "fk_" + c.name + "_p", Columns: []string{"p"}, RefTable: "parents", RefColumns: []string{"a"},
-				OnDelete: declared(c.onDelete), OnUpdate: declared(c.onUpdate),
-			}},
-		})
-	}
-	// A relation with the no_constraint tag: the column exists, the database
-	// constraint does not.
-	tables = append(tables, schema.Table{
-		Name:       "fk_loose",
-		Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "parent_id", Type: "int", Nullable: true}},
-		PrimaryKey: []string{"id"},
-	})
-	return &schema.Schema{Dialect: "mysql", Tables: tables}
-}
-
-func fkScalar(t *testing.T, db *momo.DB, q string) string {
-	t.Helper()
-	rows, err := db.Driver().Query(context.Background(), q, nil)
+func (r myRunner) Scalar(q string) string {
+	r.t.Helper()
+	rows, err := r.db.Driver().Query(context.Background(), q, nil)
 	if err != nil {
-		t.Fatalf("%s: %v", q, err)
+		r.t.Fatalf("%s: %v", q, err)
 	}
 	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
-		t.Fatalf("%s: no row", q)
+		r.t.Fatalf("%s: no row", q)
 	}
 	var s string
 	if err := rows.Scan(&s); err != nil {
-		t.Fatalf("%s: %v", q, err)
+		r.t.Fatalf("%s: %v", q, err)
 	}
 	return s
 }
 
-func fkExec(db *momo.DB, q string) error {
-	_, err := db.Driver().Exec(context.Background(), q, nil)
-	return err
-}
+func (myRunner) TextType() string { return "CHAR" }
 
-// TestFKActions: every referential action survives render, apply and
-// inspection, does what it says on a live row, and a relation without a
-// database constraint leaves no foreign key to inspect.
+// TestFKActions: the models' foreign key tags become constraints through the
+// real schema builder and diff, every referential action InnoDB accepts
+// survives render, apply and inspection, does what it says on live rows, and a
+// relation with the no_constraint tag leaves no foreign key to inspect. SET
+// DEFAULT is not a case: InnoDB rejects it. InnoDB treats NO ACTION as RESTRICT,
+// so the two are not told apart here (PostgreSQL's test does).
 //
 // Catches: an action dropped by the renderer or the inspector (a CASCADE that
-// round-trips as NO ACTION leaves the child row behind after the delete).
+// round-trips as NO ACTION leaves the child row behind), and a no_constraint
+// that still creates a key.
 func TestFKActions(t *testing.T) {
+	ctx := context.Background()
 	for _, tg := range targets {
 		t.Run(tg.name, func(t *testing.T) {
 			db := tg.open(t)
 			dir := t.TempDir()
 			eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(dir))
-			desired := fkActionSchema()
+			cases := fkcase.Cases(false)
+			desired, err := fkcase.Schema(dialect.MySQL, cases)
+			if err != nil {
+				t.Fatal(err)
+			}
 			applyExample(t, dir, eng, desired, "fk_actions")
-			assertLive(t, eng, desired)
+
+			live, err := eng.Inspect(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The diff, not schema.Equal: the model spells NO ACTION out and the
+			// server reports it as no clause, which the diff treats as the same.
+			if changes, _, err := migrate.Diff(live, desired, migrate.DiffOptions{}); err != nil || len(changes) != 0 {
+				t.Fatalf("the inspection differs from the models: %+v %v", changes, err)
+			}
+			if again, err := eng.Diff(ctx, desired, "noop", migrate.DiffOptions{}); err != nil || again != nil {
+				t.Fatalf("a second Engine.Diff must write nothing: %v %v", again, err)
+			}
+			for _, tb := range live.Tables {
+				if want := fkcase.WantForeignKeys(tb.Name); len(tb.ForeignKeys) != want {
+					t.Errorf("table %s has %d foreign keys in the inspection, want %d", tb.Name, len(tb.ForeignKeys), want)
+				}
+			}
+			if tb, ok := live.Table(fkcase.Loose); !ok || len(tb.ForeignKeys) != 0 {
+				t.Fatalf("the no_constraint table must exist without a foreign key: %+v", tb)
+			}
+			fkcase.Check(t, myRunner{t, db}, cases)
+		})
+	}
+}
+
+// Changing an action on an existing table drops and re-adds the key; the new
+// action is the one the server enforces afterwards.
+func TestFKActionsChangeOnExistingTable(t *testing.T) {
+	for _, tg := range targets {
+		t.Run(tg.name, func(t *testing.T) {
+			db := tg.open(t)
+			dir := t.TempDir()
+			eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(dir))
+			cases := fkcase.Cases(false)
+			v1, err := fkcase.Schema(dialect.MySQL, cases)
+			if err != nil {
+				t.Fatal(err)
+			}
+			applyExample(t, dir, eng, v1, "fk_v1")
+
+			changed := slices.Clone(cases)
+			for i := range changed {
+				if changed[i].Name == "del_cascade" {
+					changed[i].OnDelete = "set_null"
+				}
+			}
+			v2, err := fkcase.Schema(dialect.MySQL, changed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			applyExample(t, dir, eng, v2, "fk_v2")
 
 			live, err := eng.Inspect(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, tb := range live.Tables {
-				want := 1
-				if tb.Name == "parents" || tb.Name == "fk_loose" {
-					want = 0
-				}
-				if len(tb.ForeignKeys) != want {
-					t.Errorf("table %s has %d foreign keys in the inspection, want %d", tb.Name, len(tb.ForeignKeys), want)
-				}
+			if changes, _, err := migrate.Diff(live, v2, migrate.DiffOptions{}); err != nil || len(changes) != 0 {
+				t.Fatalf("after the change the diff must be empty: %+v %v", changes, err)
 			}
-
-			for i, c := range fkCases {
-				parent := 10 + i
-				tbl := "fk_" + c.name
-				if err := fkExec(db, fmt.Sprintf(`INSERT INTO parents (id, a, b) VALUES (%d, %d, 0)`, parent, parent)); err != nil {
-					t.Fatal(err)
-				}
-				if err := fkExec(db, fmt.Sprintf(`INSERT INTO %s (id, p) VALUES (1, %d)`, tbl, parent)); err != nil {
-					t.Fatal(err)
-				}
-				var op string
-				if c.onDelete != "" {
-					op = fmt.Sprintf(`DELETE FROM parents WHERE a = %d`, parent)
-				} else {
-					op = fmt.Sprintf(`UPDATE parents SET a = %d WHERE a = %d`, parent+100, parent)
-				}
-				err := fkExec(db, op)
-				child := fkScalar(t, db, fmt.Sprintf(`SELECT COALESCE((SELECT COALESCE(CAST(p AS CHAR), 'NULL') FROM %s WHERE id = 1), 'GONE')`, tbl))
-				var wantErr bool
-				var wantChild string
-				switch c.onDelete + c.onUpdate {
-				case "NO ACTION", "RESTRICT":
-					wantErr, wantChild = true, fmt.Sprint(parent)
-				case "CASCADE":
-					wantChild = fmt.Sprint(parent + 100)
-					if c.onDelete != "" {
-						wantChild = "GONE"
-					}
-				case "SET NULL":
-					wantChild = "NULL"
-				}
-				if (err != nil) != wantErr || child != wantChild {
-					t.Errorf("%s: %s gave error %v and child %q, want error=%v and child %q", c.name, op, err, child, wantErr, wantChild)
-				}
+			r := myRunner{t, db}
+			if err := r.Exec(`INSERT INTO fk_parents (id) VALUES (600)`); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.Exec(`INSERT INTO fk_del_cascade (id, parent_id) VALUES (7, 600)`); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.Exec(`DELETE FROM fk_parents WHERE id = 600`); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.Scalar(`SELECT COALESCE(CAST(parent_id AS CHAR), 'NULL') FROM fk_del_cascade WHERE id = 7`); got != "NULL" {
+				t.Fatalf("the changed key must SET NULL, the child has parent_id %s", got)
 			}
 		})
 	}

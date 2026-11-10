@@ -204,15 +204,18 @@ finding:
   `using` or `check`), and a body declared in another spelling than the server
   reports (`id>0` against `id > 0`) is not drift. To compare them, drift
   rewrites the snapshot's text through a scratch schema in a rolled-back
-  transaction (the same step as `baseline`), so a snapshot that declares any
-  such body needs **`CREATE` on the database** and a writable session. A role
-  without it gets exit 3 and an error wrapping `ErrCanonicalizePrivilege` that
-  names the privilege, never a clean report: a skipped comparison would hide a
-  policy loosened to `USING (true)`. No DDL runs against the application
-  schema (`TestDriftBodiesRunsDDLOnlyInRolledBackTransaction`,
-  `TestDriftBodiesNeedCreateOnDatabase`, `TestDriftReportsOutOfBandBodyChanges`).
-  `unverified:` lines appear only for a dialect that cannot canonicalize; they do
-  not affect the exit code. Function bodies are compared.
+  transaction (the same step as `baseline`), which needs **`CREATE` on the
+  database** and a writable session. No DDL runs against the application
+  schema (`TestDriftBodiesRunsDDLOnlyInRolledBackTransaction`).
+- A role that cannot do that (a read-only CI role, say) still gets a report:
+  the bodies are listed as `unverified: <kind> <name>` and do not affect the
+  exit code, so exit 0 does not prove they match. `momo migrate drift --strict`
+  (`Engine.DriftWith(ctx, DriftOptions{Strict: true})`) turns that case into an
+  error: exit 3 with a message wrapping `ErrCanonicalizePrivilege` that names
+  the privilege. Use `--strict` where a clean report must mean the policies
+  were checked, since a policy loosened to `USING (true)` hides in `unverified:`
+  otherwise (`TestDriftBodiesNeedCreateOnDatabase`, both modes, as `momo_app`).
+  Function bodies are compared in both modes.
 - A snapshot without those bodies canonicalizes only its table text (defaults,
   checks, index predicates) through the same scratch schema. There drift stays
   tolerant: without `CREATE` it still runs and can show false `changed` entries
@@ -237,7 +240,7 @@ Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
 | `hash`                                                                                                                | no              | Recompute `momo.sum`, list files it accepts as `changed:`/`added:`/`removed:`, write it.      | never                                                                                           |
 | `new --custom <name>`                                                                                                 | no              | Write an empty hand-written migration (section 6).                                            | a file would be overwritten                                                                     |
 | `baseline --version N [--force]`                                                                                      | yes             | Record migrations through N as applied without running them (section 7).                      | database differs from snapshot                                                                  |
-| `drift`                                                                                                               | yes             | Section 1.                                                                                    | any change, missing or unmanaged                                                                |
+| `drift [--strict]`                                                                                                    | yes             | Section 1.                                                                                    | any change, missing or unmanaged                                                                |
 | `resolve --version N --applied` or `--rolled-back`                                                                    | yes             | Settle a dirty migration (section 4).                                                         | never                                                                                           |
 | `rehash --version N [--accept]`                                                                                       | yes             | Show, and with `--accept` store, the new checksum of an edited applied migration (section 4). | without `--accept`, when the file differs                                                       |
 | `lint [--db]`                                                                                                         | no (`--db` yes) | Report risky operations with a safer alternative (section 5).                                 | a finding has severity `error` (warnings alone exit 0)                                          |
