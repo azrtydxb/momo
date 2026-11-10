@@ -238,3 +238,35 @@ func TestGRPCOps(t *testing.T) {
 		t.Errorf("unknown operation accepted: %v", diags)
 	}
 }
+
+// Catches: an Update that reads the row first and writes the values back,
+// which loses a concurrent update of a column the message did not change.
+func TestUpdateDoesNotReadBeforeWriting(t *testing.T) {
+	g := exampleGraph(t)
+	lock := &Lock{}
+	Proto(g, lock, "momo.example.v1")
+	src, diags := ServerSource(g, lock, "example", testPB)
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	s := string(src)
+	i := strings.Index(s, "func (s *documentServer) Update(")
+	if i < 0 {
+		t.Fatal("no Update")
+	}
+	upd := s[i:]
+	if j := strings.Index(upd, "\nfunc (s *documentServer) Delete("); j > 0 {
+		upd = upd[:j]
+	}
+	first := strings.Index(upd, "momo.Select")
+	write := strings.Index(upd, ".Set(sets...)")
+	if write < 0 {
+		t.Fatalf("Update does not write assignments:\n%s", upd)
+	}
+	if first >= 0 && first < write {
+		t.Errorf("Update reads the row before writing it:\n%s", upd)
+	}
+	if strings.Contains(upd, ".Model(&m)") {
+		t.Errorf("Update writes every column of a read model:\n%s", upd)
+	}
+}

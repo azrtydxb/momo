@@ -371,3 +371,60 @@ func TestPluginStaleHandlersAndSkippedModel(t *testing.T) {
 		}
 	}
 }
+
+// Catches: a PUT that reads a row, merges and writes every column back, which
+// loses a concurrent update of a column the request did not carry, and a key
+// matched case-insensitively and then ignored.
+func TestHandlersUpdateWritesOnlyCarriedKeys(t *testing.T) {
+	src, diags := Handlers(exampleGraph(t), "handlers", Options{Title: "t", Version: "1"})
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	s := string(src)
+	i := strings.Index(s, "func (h *DocumentHandler) update(")
+	if i < 0 {
+		t.Fatal("no update handler")
+	}
+	upd := s[i:]
+	if j := strings.Index(upd, "\nfunc (h *DocumentHandler) delete("); j > 0 {
+		upd = upd[:j]
+	}
+	for _, must := range []string{
+		`if _, ok := keys["title"]; ok {`,
+		"documentdesc.Title.Set(in.Title)",
+		".Set(sets...)",
+	} {
+		if !strings.Contains(upd, must) {
+			t.Errorf("update lacks %q:\n%s", must, upd)
+		}
+	}
+	if strings.Contains(upd, ".Model(&m)") || strings.Contains(upd, "in.apply(&m, keys)") {
+		t.Errorf("update still writes the whole row:\n%s", upd)
+	}
+	if !strings.Contains(s, "unknown property") {
+		t.Error("a key that is not an exact column name is not refused")
+	}
+}
+
+// Catches: the PUT rules only in the summary, which clients do not show.
+func TestPutDescriptionStatesTheRules(t *testing.T) {
+	doc, diags := Document(exampleGraph(t), Options{Title: "t", Version: "1", BasePath: "/v1"})
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	var d struct {
+		Paths map[string]map[string]struct {
+			Summary, Description string
+		} `json:"paths"`
+	}
+	if err := json.Unmarshal(doc, &d); err != nil {
+		t.Fatal(err)
+	}
+	put := d.Paths["/v1/documents/{id}"]["put"]
+	if !strings.Contains(put.Description, "keeps its stored value") || !strings.Contains(put.Description, "every required property") {
+		t.Errorf("PUT description = %q", put.Description)
+	}
+	if len(put.Summary) > 60 {
+		t.Errorf("the summary should be short, got %q", put.Summary)
+	}
+}

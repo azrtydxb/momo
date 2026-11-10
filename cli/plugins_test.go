@@ -123,6 +123,14 @@ func TestPluginOps(t *testing.T) {
 	if got := ps[0].(openapi.Plugin).Options.Ops; !reflect.DeepEqual(got, apiquery.Ops{"Doc": {"list", "delete"}, "*": {"list", "get"}}) {
 		t.Errorf("read_only with a model entry: %v", got)
 	}
+	for name, cfg := range map[string]map[string]any{
+		"read_only with an ops list": {"dir": "a", "title": "t", "version": "1", "read_only": true, "ops": []any{"list", "create"}},
+		"read_only with a * entry":   {"dir": "a", "title": "t", "version": "1", "read_only": true, "ops": map[string]any{"*": []any{"list", "create"}}},
+	} {
+		if _, err := buildPlugins(map[string]map[string]any{"openapi": cfg}, ""); err == nil {
+			t.Errorf("%s: accepted, although the model would stay writable", name)
+		}
+	}
 	for name, ops := range map[string]any{"unknown": []any{"drop"}, "empty": []any{}, "not a list": "list", "number": []any{1}} {
 		if _, err := buildPlugins(map[string]map[string]any{"grpc": {"dir": "rpc", "ops": ops}}, ""); err == nil {
 			t.Errorf("%s: accepted", name)

@@ -219,6 +219,18 @@ func TestGraphQLGenerator(t *testing.T) {
 		t.Fatalf("a query dearer than MaxComplexity: %v", errs)
 	}
 
+	// the rows the selected relations could load are bounded per request: 200
+	// documents with two to-many relations of up to 100 rows each is 40000
+	_, errs = postRaw(t, srv.URL, `query { documents(first: 200) { edges { node { id comments { id } tags { id } } } } }`)
+	if len(errs) != 1 || !strings.Contains(errs[0], "too many rows") {
+		t.Fatalf("a selection that could load too many rows: %v", errs)
+	}
+	// two aliases of one relation load it once, so a small page passes
+	_, errs = postRaw(t, srv.URL, `query { documents(first: 5) { edges { node { id a: comments { id } b: comments { body } } } } }`)
+	if len(errs) != 0 {
+		t.Fatalf("two aliases of one relation on a small page: %v", errs)
+	}
+
 	// 6. a database error reaches the client as a fixed message
 	_, errs = postRaw(t, srv.URL, `query { documents(filter: {title: {eq: "a"}}, order: {field: ID, direction: SIDEWAYS}) { edges { cursor } } }`)
 	if len(errs) == 0 {

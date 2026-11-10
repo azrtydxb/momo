@@ -167,6 +167,7 @@ func TestOpenAPIGenerator(t *testing.T) {
 		"not json":      {"text/plain", `{}`, http.StatusUnsupportedMediaType},
 		"trailing data": {"application/json", `{"tenant_id":1,"title":"t","body":"b"} {"x":1}`, http.StatusBadRequest},
 		"unknown key":   {"application/json", `{"tenant_id":1,"title":"t","body":"b","nope":1}`, http.StatusBadRequest},
+		"wrong case":    {"application/json", `{"tenant_id":1,"title":"t","body":"b","Status":"published"}`, http.StatusBadRequest},
 		"not an object": {"application/json", `[1]`, http.StatusBadRequest},
 		"too large":     {"application/json", `{"title":"` + strings.Repeat("a", 2<<20) + `"}`, http.StatusRequestEntityTooLarge},
 	} {

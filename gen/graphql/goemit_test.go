@@ -335,3 +335,30 @@ func TestEveryAdvertisedOrderFieldWorks(t *testing.T) {
 		}
 	}
 }
+
+// Catches: nested relations bounded per parent only, so a deep selection on a
+// big page loads millions of rows, and same-named fields (aliases) whose
+// sub-selections are dropped except for the first.
+func TestGoSourceBoundsRowsAndMergesAliases(t *testing.T) {
+	g := exampleGraph(t)
+	src, diags := GoSource(g, "model", testModels)
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	s := string(src)
+	for _, must := range []string{
+		"func groupFields(ctx context.Context, fields []graphql.CollectedField) []fieldGroup",
+		"func documentCost(ctx context.Context, fields []graphql.CollectedField) int",
+		"MaxPreloadRows",
+		"checkPreloadBudget(limit, documentCost(ctx, fieldsAt(ctx, \"edges\", \"node\")))",
+		"for _, grp := range groupFields(ctx, fields) {",
+		"grp.Subs",
+	} {
+		if !strings.Contains(s, must) {
+			t.Errorf("glue lacks %q", must)
+		}
+	}
+	if strings.Contains(s, "seen[f.Name]") {
+		t.Error("the loaders keep only the first field of a name")
+	}
+}
