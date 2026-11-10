@@ -1719,7 +1719,11 @@ tx := momotest.NewTx(t, momotest.WithMigrations(app.Migrations())) // rolled bac
 momotest.Seed(t, tx, momotest.Insert(&org), momotest.Insert(&user))
 ```
 
-`momotest.AssertSQL(t, query.SQL(), want)` compares compiled SQL ignoring
+`momotest.LoadFixtures(t, q, "fixtures.yaml")` inserts a YAML file of
+`table: [rows]` in file order (columns sorted, `null` is `NULL`, values bound),
+and `sqlitetest.New(t)` (package `momotest/sqlitetest`, cgo) returns a
+`*momo.DB` on a throwaway SQLite file per test. `momotest.AssertSQL(t,
+query.SQL(), want)` compares compiled SQL ignoring
 whitespace without running it (the failure never shows an argument value), and
 `momotest.AssertUsesIndex(t, q, compiled, "index_name")` fails unless a plain
 `EXPLAIN` of the statement reads that index (PostgreSQL and SQLite; the plan can

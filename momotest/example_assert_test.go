@@ -31,6 +31,23 @@ func (printTB) Fatalf(format string, args ...any) {
 	fmt.Println("fatal:", first)
 }
 
+// LoadFixtures inserts the rows of a YAML file in file order, one INSERT per
+// row. The example runs against a recording driver; in a test q is the
+// *momo.DB or *momo.Tx of the test.
+func ExampleLoadFixtures() {
+	drv := fakedriver.New(dialect.Postgres)
+	momotest.LoadFixtures(printTB{}, momo.New(drv), "testdata/fixtures.yaml")
+	for _, c := range drv.Calls() {
+		table, _, _ := strings.Cut(strings.TrimPrefix(c.SQL, `INSERT INTO "`), `"`)
+		fmt.Println("insert into", table)
+	}
+	// Output:
+	// insert into tags
+	// insert into authors
+	// insert into documents
+	// insert into documents
+}
+
 // A test compiles a query with its SQL method and compares the text. Nothing
 // is executed and no database is needed; the message of a failure never shows
 // an argument value.

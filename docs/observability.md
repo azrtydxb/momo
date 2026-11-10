@@ -5,12 +5,13 @@ Momo calls the hooks you register with `momo.WithHook` around every statement
 that also implements it). The interfaces live in the root package because `DB`
 calls them. Ready-made implementations:
 
-| Hook       | Constructor                                | What it does                                                                            |
-| ---------- | ------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `Recorder` | `&obs.Recorder{}` (package `obs`)          | Keeps every finished statement and relation load for assertions in tests.               |
-| `NPlusOne` | `obs.NewNPlusOne(n, report)` (`obs`)       | Reports a relation that was loaded more than `n` times inside one `obs.WithScope`.      |
-| slow query | `obs.NewSlowQuery(d, report, opts...)`     | Reports each statement slower than `d`, with an opt-in plain `EXPLAIN` plan.            |
-| slog hook  | `momolog.New(logger, opts...)` (`momolog`) | Logs one `log/slog` record per statement and one per relation load (see [slog](#slog)). |
+| Hook       | Constructor                                  | What it does                                                                                      |
+| ---------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `Recorder` | `&obs.Recorder{}` (package `obs`)            | Keeps every finished statement and relation load for assertions in tests.                         |
+| `NPlusOne` | `obs.NewNPlusOne(n, report)` (`obs`)         | Reports a relation that was loaded more than `n` times inside one `obs.WithScope`.                |
+| slow query | `obs.NewSlowQuery(d, report, opts...)`       | Reports each statement slower than `d`, with an opt-in plain `EXPLAIN` plan.                      |
+| slog hook  | `momolog.New(logger, opts...)` (`momolog`)   | Logs one `log/slog` record per statement and one per relation load (see [slog](#slog)).           |
+| OTel hook  | `otelmomo.New(tp, mp, opts...)` (`otelmomo`) | Emits a client span and a duration histogram per statement (see [OpenTelemetry](#opentelemetry)). |
 
 `obs` imports only `momo` and the standard library. All of these hooks are safe
 for concurrent use.
@@ -128,6 +129,31 @@ A statement record (`momo.query`) has `op`, `table`, `relation` (when set),
 `momo.WithArgLogging`, `args`. A relation record (`momo.relation`) has `parent`,
 `name`, `kind`, `parents`, `children`, `queries`, `duration` and `err` (when
 set). Errors are logged through `Error()` only.
+
+## OpenTelemetry
+
+`otelmomo` is a separate module, `github.com/azrtydxb/momo/otelmomo`, so the
+Momo core links no OpenTelemetry package (a test runs `go list -deps` on the core
+to keep it that way). Add it to your `go.mod` only if you want it.
+
+```text
+h, err := otelmomo.New(tracerProvider, meterProvider, otelmomo.WithNamespace("appdb"))
+if err != nil {
+    return err // a nil provider is an error; there is no global fallback
+}
+db := momo.New(drv, momo.WithHook(h))
+```
+
+The providers are passed in; the package reads no global provider. Each
+statement becomes a client span named `<OPERATION> <table>` (`SELECT authors`),
+or `<OPERATION>` when no table is known, with the database client attributes
+`db.system.name` (`postgresql`, `sqlite`, `mysql`, `mariadb`),
+`db.operation.name`, `db.collection.name`, `db.namespace` (from `WithNamespace`)
+and `db.query.text`. The query text is the parameterized SQL; the value of a
+bound argument is never recorded, not even with `momo.WithArgLogging`. A failed
+statement sets the span status to error and `error.type`. The same hook records
+the `db.client.operation.duration` histogram (unit `s`) with the same
+attributes plus `error.type` on failure.
 
 ## Tenants
 
