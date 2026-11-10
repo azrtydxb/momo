@@ -22,3 +22,4 @@ Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 - Red (criterion 1): ci-agent run 42768493330 on throwaway branch worktree-agent-a9cf43902d9e90e16-red (deleted), headSha fbd5d54, unit failed: 'llms.txt:39: bare Case ... write sqlfn.Case'.
 - Criteria 2 and 3: TestBareOwners (Select, Func pass); all other bare feature-package names qualified. Green: ci-agent run 42780640447 on 8cf94c3ee066c5a183bd60c56ec1b3afeb505e37, all 9 jobs success.
 - Criterion 4: CONTRIBUTING.md paragraph next to the docs rules.
+- Extended after review: the rule also checks Type.Member (migrate.Engine.Apply, not Engine.Apply) and a leading *; the allow file now holds only docs/migrations.md; obs and momotest names in observability.md and testing.md are qualified. Not implemented: rejecting every X.Y whose X is not a root type (it would hit stdlib and third-party names such as Time.Equal); only a type that a feature package exports with that member is rejected.

@@ -17,3 +17,4 @@ Implements plan momo-08-mysql Task 9: MySQL documentation and capability matrix 
 ## Evidence
 
 - Already built in an earlier sprint: dialect/matrix_test.go TestCapabilityMatrixMatchesDialect (rows Returning, InsertReturning, OnConflict, OnDuplicateKey, NullsOrdering, TransactionalDDL, Merge, ILike) against docs/mysql.md; docs/README.md indexes the page. ci-agent run 42780640447 on 8cf94c3ee066c5a183bd60c56ec1b3afeb505e37, all 9 jobs success (dialect package ok in unit).
+- Red-first for criterion 1 and the extended matrix (now also Locking, RowValues, Savepoints, Vector.Storage, Vector.Metrics, Vector.Indexes, with rows in docs/mysql.md): ci-agent run 42785752323 on throwaway branch worktree-agent-a9cf43902d9e90e16-red (deleted), headSha 776ffc7, docs/mysql.md InsertReturning mariadb set to no: all jobs failed with 'matrix_test.go:71: docs/mysql.md InsertReturning mariadb = "no", dialect says yes'.

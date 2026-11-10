@@ -35,7 +35,7 @@ rec.Relations() // the momo.RelationEvent of each relation load, with its Err
 rec.Reset()
 ```
 
-`Event.CtxSQL` is the value `obs.Recorder` put into the context in `BeforeQuery`; it
+`obs.Event.CtxSQL` is the value `obs.Recorder` put into the context in `BeforeQuery`; it
 equals `SQL` when the context reached `AfterQuery` intact, which makes it a
 check that the hook chain passes the context through.
 

@@ -403,7 +403,7 @@ virtual tables and the shadow tables of virtual tables are left out. An
 `INTEGER PRIMARY KEY` of a rowid table is reported with identity `by_default`,
 and the schema normalizer gives that column the same identity on the model side,
 so the two compare equal. A trigger is its `CREATE TRIGGER` text
-(`Trigger.Definition`), compared after whitespace and case outside quotes are
+(`schema.Trigger.Definition`), compared after whitespace and case outside quotes are
 normalized. Extensions, native enums, functions, policies, partitions,
 row-level security and schemas do not exist on SQLite and are never reported.
 
