@@ -52,13 +52,20 @@ Commands:
   resolve --version N --applied|--rolled-back   settle a dirty migration (needs a database)
   rehash --version N [--accept]   show, and with --accept store, the new checksum of an
               applied migration whose file was edited (needs a database; run hash first)
+  lint [--db]   report risky operations in the migrations, each with a safer alternative
+              (offline; checks every migration in the directory, or with --db only the
+              ones the database has not applied; exits 1 when a finding is an error,
+              warnings alone exit 0)
+  rollback [--group] [--lock-wait 30s]   run the .down.sql of the last applied migration, or
+              with --group of every migration of the last apply (needs a database)
+  rebase --onto <dir> [name]   regenerate this branch's generated migrations that <dir> (the
+              target branch's migrations, from git) lacks, on top of its latest snapshot
+              (offline; deletes the branch's old files and writes one new migration)
 
 The PostgreSQL migration lock is a session advisory lock: it is released when its
 holder's connection ends, and there is no flag to force it. When apply keeps
 exiting 3 with "held by pid=N", find that session in pg_stat_activity and end it
 with pg_terminate_backend(N) once you know it is dead. apply waits for --lock-wait.
-
-Not available yet: rebase, lint, rollback.
 
 The database URL comes from --url, else the environment variable named by
 migrate.url_env.<dialect> in momo.yaml, else MOMO_DATABASE_URL. Offline
@@ -82,14 +89,6 @@ directory; not supported") because its files would otherwise go unhashed.
 Files whose name starts with a dot (.DS_Store, .git, the .momo-*.tmp files of an
 interrupted write) are not part of a migration directory and are never hashed.
 `
-
-// notAvailable lists the documented subcommands whose engine support has not
-// landed; they report a clear error instead of pretending to work.
-var notAvailable = map[string]string{
-	"rebase":   "migrate rebase needs Engine.Rebase",
-	"lint":     "migrate lint needs Engine.Lint",
-	"rollback": "migrate rollback needs down migrations",
-}
 
 // runMigrateCmd adapts runMigrate to the command table.
 func runMigrateCmd(args []string, stdout, stderr io.Writer) int {
@@ -191,9 +190,6 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 		_, _ = fmt.Fprint(out, migrateUsage)
 		return exitOK
 	}
-	if why, ok := notAvailable[name]; ok {
-		return l.errf(exitUsage, "migrate %s is not available yet (%s)", name, why)
-	}
 	run := map[string]func(*flag.FlagSet) func([]string) int{
 		"diff":     l.diffCmd,
 		"new":      l.newCmd,
@@ -206,6 +202,9 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 		"resolve":  l.resolveCmd,
 		"hash":     l.hashCmd,
 		"rehash":   l.rehashCmd,
+		"lint":     l.lintCmd,
+		"rollback": l.rollbackCmd,
+		"rebase":   l.rebaseCmd,
 	}[name]
 	if run == nil {
 		// The word is user input and may be a pasted URL: it goes through errf.
@@ -443,7 +442,8 @@ func (l *cli) failure(err error) int {
 	switch {
 	case errors.Is(err, migrate.ErrDestructive), errors.Is(err, migrate.ErrStagedRequired),
 		errors.Is(err, migrate.ErrBaselineMismatch), errors.Is(err, migrate.ErrBranchConflict),
-		errors.Is(err, migrate.ErrOutOfOrder), errors.Is(err, migrate.ErrChainInvalid), errors.Is(err, migrate.ErrGoMigrationUnregistered):
+		errors.Is(err, migrate.ErrOutOfOrder), errors.Is(err, migrate.ErrChainInvalid), errors.Is(err, migrate.ErrGoMigrationUnregistered),
+		errors.Is(err, migrate.ErrNoDown), errors.Is(err, migrate.ErrGoMigrationNotReversible):
 		return l.errf(exitFindings, "%v", err)
 	case errors.Is(err, migrate.ErrNoSnapshot):
 		return l.errf(exitUsage, "%v", err)
@@ -903,6 +903,184 @@ func (l *cli) newCmd(fs *flag.FlagSet) func([]string) int {
 			return l.errf(exitUsage, "%v", err)
 		}
 		l.say("hint: write the SQL in the .up.sql file, then run momo migrate hash and momo migrate validate")
+		return exitOK
+	}
+}
+
+// lintCmd reports risky operations in the migration files. Without --db it
+// reads the directory only; with --db it asks the database which migrations
+// are pending and checks those.
+func (l *cli) lintCmd(fs *flag.FlagSet) func([]string) int {
+	var withDB bool
+	fs.BoolVar(&withDB, "db", false, "only check the migrations the database has not applied")
+	return func(args []string) int {
+		pos, stop := l.setup(fs, args)
+		if stop != nil {
+			return *stop
+		}
+		if code := l.noPositional(pos); code >= 0 {
+			return code
+		}
+		var findings []migrate.Finding
+		if withDB {
+			ctx, cancel := interruptContext()
+			defer cancel()
+			e, closeFn, code := l.openEngine(ctx)
+			if e == nil {
+				return code
+			}
+			defer closeFn()
+			var err error
+			if findings, err = e.Lint(ctx); err != nil {
+				return l.failure(err)
+			}
+		} else {
+			d, err := l.dialectImpl()
+			if err != nil {
+				return l.errf(exitUsage, "%v", err)
+			}
+			opts, err := l.engineOptions(d)
+			if err != nil {
+				return l.errf(exitUsage, "%v", err)
+			}
+			e, err := migrate.NewEngine(nil, dirFS(l.migrationDir()), opts...)
+			if err != nil {
+				return l.errf(exitUsage, "%v", err)
+			}
+			if findings, err = e.LintAll(); err != nil {
+				return l.failure(err)
+			}
+		}
+		for _, f := range findings {
+			l.say("%s %s statement %d: %s: %s", f.Severity, f.Version, f.Statement, f.Rule, f.Message)
+			l.say("  alternative: %s", f.Alternative)
+		}
+		if migrate.HasErrors(findings) {
+			return exitFindings
+		}
+		if len(findings) == 0 {
+			l.say("no lint findings")
+		}
+		return exitOK
+	}
+}
+
+// rollbackCmd runs the down migration of the last applied migration or group.
+func (l *cli) rollbackCmd(fs *flag.FlagSet) func([]string) int {
+	var group bool
+	var wait string
+	fs.BoolVar(&group, "group", false, "roll back every migration of the last apply")
+	fs.StringVar(&wait, "lock-wait", "", "how long to wait for the migration lock (default 30s)")
+	var waitD time.Duration
+	extra := func() ([]migrate.Option, error) {
+		if wait == "" {
+			return nil, nil
+		}
+		d, err := time.ParseDuration(wait)
+		if err != nil || d < 0 {
+			return nil, fmt.Errorf("--lock-wait: %q is not a duration", wait)
+		}
+		waitD = d
+		return []migrate.Option{migrate.WithLockWait(d)}, nil
+	}
+	return l.withEngine(fs, extra, func(ctx context.Context, e *migrate.Engine, _ []string) int {
+		rep, err := e.Rollback(ctx, migrate.RollbackOptions{Group: group, LockWait: waitD})
+		if err != nil {
+			return l.failure(err)
+		}
+		if rep == nil || len(rep.Applied) == 0 {
+			l.say("nothing to roll back")
+			return exitOK
+		}
+		for _, a := range rep.Applied {
+			l.say("rolled back %s (%d statements, %s)", a.Version, a.Statements, a.Duration.Round(time.Millisecond))
+		}
+		return exitOK
+	})
+}
+
+// rebaseCmd regenerates this branch's generated migrations on top of the
+// target branch's. The target is a directory the user produced with git.
+func (l *cli) rebaseCmd(fs *flag.FlagSet) func([]string) int {
+	var onto string
+	fs.StringVar(&onto, "onto", "", "directory with the target branch's migrations")
+	return func(args []string) int {
+		pos, stop := l.setup(fs, args)
+		if stop != nil {
+			return *stop
+		}
+		if onto == "" {
+			return l.errf(exitUsage, "rebase needs --onto <directory of the target branch's migrations>")
+		}
+		if len(pos) > 1 {
+			return l.errf(exitUsage, "rebase takes at most one migration name")
+		}
+		name := "rebase"
+		if len(pos) == 1 {
+			name = pos[0]
+		}
+		target := onto
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(l.cwd, target)
+		}
+		if fi, err := os.Stat(target); err != nil || !fi.IsDir() {
+			return l.errf(exitUsage, "--onto %q is not a directory", onto)
+		}
+		d, err := l.dialectImpl()
+		if err != nil {
+			return l.errf(exitUsage, "%v", err)
+		}
+		opts, err := l.engineOptions(d)
+		if err != nil {
+			return l.errf(exitUsage, "%v", err)
+		}
+		dir := l.migrationDir()
+		e, err := migrate.NewEngine(nil, dirFS(dir), opts...)
+		if err != nil {
+			return l.errf(exitUsage, "%v", err)
+		}
+		desired, code := l.desiredSchema()
+		if desired == nil {
+			return code
+		}
+		ctx, cancel := interruptContext()
+		defer cancel()
+		removed, m, err := e.Rebase(ctx, os.DirFS(target), desired, name)
+		if err != nil {
+			return l.failure(err)
+		}
+		if m != nil {
+			written, err := writeNewFiles(dir, m.Files)
+			for _, p := range written {
+				l.say("%s", l.rel(p))
+			}
+			if err != nil {
+				if errors.Is(err, iofs.ErrExist) {
+					return l.errf(exitFindings, "%v", err)
+				}
+				return l.errf(exitUsage, "%v", err)
+			}
+		}
+		for _, f := range removed {
+			if err := os.Remove(filepath.Join(dir, filepath.FromSlash(f))); err != nil {
+				return l.errf(exitDatabase, "remove %s: %v", f, err)
+			}
+			l.say("removed: %s", f)
+		}
+		if m == nil {
+			l.say("no changes: the target already matches the models")
+		}
+		rep, err := migrate.ValidateOffline(dirFS(dir))
+		if err != nil {
+			return l.errf(exitDatabase, "%v", err)
+		}
+		for _, p := range rep.Problems {
+			l.say("problem: %s", p)
+		}
+		if len(rep.Problems) > 0 {
+			l.say("hint: the directory must hold every migration of the target; merge the target's files in, then run momo migrate hash")
+			return exitFindings
+		}
 		return exitOK
 	}
 }
