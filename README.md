@@ -202,11 +202,11 @@ momo migrate apply
 another TLS mode against any database you do not reach over a trusted local
 connection.
 
-Momo v0.4.0 writes forward migrations only. There is no rollback command, so <!-- x-release-please-version -->
-undo a change with a new migration.
+Momo v0.4.0 writes forward migrations only. `momo migrate rollback` runs a <!-- x-release-please-version -->
+`.down.sql` you wrote by hand; otherwise undo a change with a new migration.
 
 Run `momo migrate help` for the other commands: `plan`, `status`, `validate`,
-`hash`, `drift`, `baseline`, and `resolve`. Run migrations over a direct connection to
+`lint`, `rebase`, `hash`, `drift`, `baseline`, and `resolve`. Run migrations over a direct connection to
 PostgreSQL, not through a transaction-mode pooler: the migration lock is a
 session advisory lock.
 

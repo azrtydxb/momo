@@ -28,6 +28,21 @@ func TestMigrationsGuideSections(t *testing.T) {
 		"## 4. Failure and recovery",
 		"## 5. Production safety checklist",
 		"### Lock",
+		// Task 31 step 2: the sections the guide must carry.
+		"### Format versions",
+		"## 2. CLI",
+		"## 3a. SQLite",
+		"momo_migration_lock",
+		"**The rebuild**",
+		"### Roles and extensions",
+		"### NOT NULL columns",
+		"--enforce-not-null",
+		"--rename-table",
+		"ErrBranchConflict",
+		"momo migrate rebase",
+		"momo migrate lint",
+		"momo migrate rollback",
+		"## 6. Custom SQL migrations",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("docs/migrations.md lacks %q", want)

@@ -82,7 +82,7 @@ func TestMigrateUsageErrors(t *testing.T) {
 		{"resolve states are exclusive", []string{"--config", cfg, "resolve", "--version", "1", "--applied", "--rolled-back", "--url", u}, 2},
 		{"bad lock wait", []string{"--config", cfg, "apply", "--lock-wait", "soon", "--url", u}, 2},
 		{"unknown dialect", []string{"--config", cfg, "--dialect", "oracle", "validate"}, 2},
-		{"not available yet", []string{"--config", cfg, "rollback"}, 2},
+		{"rollback needs a database url", []string{"--config", cfg, "rollback"}, 2},
 		{"new needs --custom", []string{"--config", cfg, "new", "x"}, 2},
 		{"new --custom needs a name", []string{"--config", cfg, "new", "--custom"}, 2},
 		{"new --custom needs a snapshot", []string{"--config", cfg, "new", "--custom", "x"}, 2},

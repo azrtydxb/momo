@@ -200,12 +200,27 @@ finding:
   triggers and policies). Example: `exclude: ["pg_stat_statements", "audit_*"]`.
 - `momo_migrations` is never reported.
 - A view query, trigger `WHEN` and policy `USING`/`WITH CHECK` changed outside
-  migrations is **not detected**; those objects are listed as `unverified:`
-  only. Exit 0 does not prove their text matches. Function bodies are compared.
-- Declared text (defaults, checks, index predicates) is canonicalized through a
-  scratch schema in a rolled-back transaction, which needs `CREATE` on the
-  database. Without it drift still runs but can show false `changed` entries
-  (never hides a real one).
+  migrations is reported as `changed:` (the detail names `query`, `when`,
+  `using` or `check`), and a body declared in another spelling than the server
+  reports (`id>0` against `id > 0`) is not drift. To compare them, drift
+  rewrites the snapshot's text through a scratch schema in a rolled-back
+  transaction (the same step as `baseline`), which needs **`CREATE` on the
+  database** and a writable session. No DDL runs against the application
+  schema (`TestDriftBodiesRunsDDLOnlyInRolledBackTransaction`).
+- A role that cannot do that (a read-only CI role, say) still gets a report:
+  the bodies are listed as `unverified: <kind> <name>` and do not affect the
+  exit code, so exit 0 does not prove they match. `momo migrate drift --strict`
+  (`Engine.DriftWith(ctx, DriftOptions{Strict: true})`) turns that case into an
+  error: exit 3 with a message wrapping `ErrCanonicalizePrivilege` that names
+  the privilege. Use `--strict` where a clean report must mean the policies
+  were checked, since a policy loosened to `USING (true)` hides in `unverified:`
+  otherwise (`TestDriftBodiesNeedCreateOnDatabase`, both modes, as `momo_app`).
+  Function bodies are compared in both modes.
+- A snapshot without those bodies canonicalizes only its table text (defaults,
+  checks, index predicates) through the same scratch schema. There drift stays
+  tolerant: without `CREATE` it still runs and can show false `changed` entries
+  (never hides a real one), and lists the tables it compared as declared in
+  `CanonicalizeSkipped`.
 
 ## 2. CLI
 
@@ -225,9 +240,12 @@ Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
 | `hash`                                                                                                                | no              | Recompute `momo.sum`, list files it accepts as `changed:`/`added:`/`removed:`, write it.      | never                                                                                           |
 | `new --custom <name>`                                                                                                 | no              | Write an empty hand-written migration (section 6).                                            | a file would be overwritten                                                                     |
 | `baseline --version N [--force]`                                                                                      | yes             | Record migrations through N as applied without running them (section 7).                      | database differs from snapshot                                                                  |
-| `drift`                                                                                                               | yes             | Section 1.                                                                                    | any change, missing or unmanaged                                                                |
+| `drift [--strict]`                                                                                                    | yes             | Section 1.                                                                                    | any change, missing or unmanaged                                                                |
 | `resolve --version N --applied` or `--rolled-back`                                                                    | yes             | Settle a dirty migration (section 4).                                                         | never                                                                                           |
 | `rehash --version N [--accept]`                                                                                       | yes             | Show, and with `--accept` store, the new checksum of an edited applied migration (section 4). | without `--accept`, when the file differs                                                       |
+| `lint [--db]`                                                                                                         | no (`--db` yes) | Report risky operations with a safer alternative (section 5).                                 | a finding has severity `error` (warnings alone exit 0)                                          |
+| `rollback [--group] [--lock-wait 30s]`                                                                                | yes             | Run the `.down.sql` of the last applied migration, or of its group.                           | a version has no down file (`ErrNoDown`) or is a Go migration                                   |
+| `rebase --onto <dir> [name]`                                                                                          | no              | Regenerate this branch's generated migrations on top of `<dir>` (section 4).                  | the result is not a valid chain, or a branch file is hand-written                               |
 
 `validate` checks: files parse and directives are known; `momo.sum` matches;
 versions unique and increasing; each snapshot's parent exists; no two snapshots
@@ -241,12 +259,20 @@ latest applied one, so a late-merged older migration is never applied after newe
 ones (`TestApplyRefusesForkedChain`, `TestApplyRefusesPendingOlderThanApplied`,
 `TestApplyRefusesBrokenChain`, `TestMigrateChainRefusalsExitOne`).
 
-Recovering from `ErrBranchConflict` or `ErrOutOfOrder` (there is no `rebase`
-command yet). Both mean two teammates branched from the same snapshot and both
+Recovering from `ErrBranchConflict` or `ErrOutOfOrder`. Both mean two teammates branched from the same snapshot and both
 merged: two snapshots share a parent, and one of the new migrations has a
 version older than the other. Fix it in the files of the branch that merged
 last, before it is applied anywhere. The late migration is still pending, so it
 needs no `rehash`:
+
+With a checkout of the target branch's migration directory (Momo has no git
+dependency, so make it with `git archive` or a second checkout),
+`momo migrate rebase --onto <dir> [name]` does steps 1 and 2 below in one
+command and validates the result. It refuses, naming the file, a branch
+migration without `-- momo:generated` or with a hand-written `.down.sql`, and a
+target directory that is not a valid chain. `--onto` takes a directory only. The
+branch directory must hold every migration of the target, as after a merge;
+the command prints `problem:` lines and exits 1 when it does not. By hand:
 
 1. Delete its `<version>_<name>.up.sql` and `<version>_<name>.snapshot.json`
    (a generated migration; for a hand-written one rename the `.up.sql` to a
@@ -262,11 +288,9 @@ If the older migration was already applied somewhere, do not rewrite it: leave
 the chain as it is and add a new migration for the difference.
 
 `momo migrate new --custom <name>` writes an empty hand-written migration
-(section 6). Not wired into the CLI yet: `rebase`, `lint`,
-`rollback`. Each exits 2 with `migrate <name> is not available yet`. The engine
-already has two of them, for Go callers:
+(section 6).
 
-- `Engine.Rollback(ctx, RollbackOptions{Group: false})` runs the `.down.sql` of
+- `momo migrate rollback [--group]` (`Engine.Rollback(ctx, RollbackOptions{Group: false})`) runs the `.down.sql` of
   the last applied migration (the applied row with the greatest `applied_at`);
   with `Group: true` it runs the downs of every row that shares the greatest
   `apply_id`, in descending version order. It takes the same lock and session
@@ -279,14 +303,15 @@ already has two of them, for Go callers:
   (dirty, settle it with `resolve`). A rollback undoes schema, not data: write
   the down so that it can run on a populated table (`TestRollbackGroup`,
   `TestRollbackNoDown`).
-- `Engine.Rebase(ctx, target, desired, name)` takes the directory of the target
+- `momo migrate rebase` (`Engine.Rebase(ctx, target, desired, name)`) takes the directory of the target
   branch (from `git`, Momo has no git dependency). It lists every file of the
   branch's migrations that the target lacks, refuses with the file name when one
   has no `-- momo:generated` header, and regenerates one migration on top of
   the target's latest snapshot. It first validates the target (momo.sum, chain,
   snapshots) and refuses a broken one, and it refuses a branch migration that
   has a hand-written `.down.sql`, naming the file. It writes nothing: the
-  caller deletes the returned files and writes the new ones (`TestMigrateRebase`).
+  caller deletes the returned files and writes the new ones, which the command
+  does (`TestMigrateRebase`).
 
 There is no `--force-unlock`: the PostgreSQL lock is a session advisory lock that
 the server frees when its holder's connection ends (section 3). `--lock-wait`
@@ -733,6 +758,37 @@ prints a `risk:` hint (PostgreSQL only) for an `ADD COLUMN` with one on an exist
 only knows the built-in names it lists; a function you wrote yourself is not
 checked.
 
+### Lint (`momo migrate lint`)
+
+`momo migrate lint` reads the migration files and reports operations that lock
+a table for long, rewrite it, or lose data. Each finding has a severity, the
+rule, the version and 1-based statement number, and a safer alternative. It
+needs no database: it checks every migration in the directory, or with `--db`
+only the ones the database has not applied (`Engine.LintAll`, `Engine.Lint`,
+`LintSQL`). It exits 1 when any finding is an `error`; warnings alone exit 0. A
+table the migration creates itself is empty and never reported: a rule fires
+only on a table of the parent snapshot (`TestMigrateLint`,
+`TestMigrateLintQuietOnSafeSQL`, `TestMigrateLintExitCodes`).
+
+| Rule                            | Severity | Fires on                                                                  | Alternative                                                             |
+| ------------------------------- | -------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `not-null-without-default`      | error    | `ADD COLUMN ... NOT NULL` without `DEFAULT` (serial and generated exempt) | add nullable, backfill in a separate migration, then `SET NOT NULL`     |
+| `not-null-without-default`      | warning  | `ALTER COLUMN ... SET NOT NULL` (the last step of the staged flow)        | backfill first; on a large table validate a `CHECK ... NOT VALID` first |
+| `column-type-change`            | error    | `ALTER COLUMN ... TYPE`                                                   | add a new column, dual-write, backfill, switch reads, drop the old one  |
+| `blocking-index`                | error    | `CREATE INDEX` without `CONCURRENTLY`                                     | `CREATE INDEX CONCURRENTLY` in a `-- momo:no-transaction` migration     |
+| `foreign-key-without-not-valid` | error    | `ADD ... FOREIGN KEY` or `CHECK` without `NOT VALID`                      | add `NOT VALID`, then `VALIDATE CONSTRAINT` in a separate migration     |
+| `enum-add-and-use`              | error    | `ALTER TYPE ... ADD VALUE 'x'` and a later statement that mentions `'x'`  | use the value in a later migration                                      |
+| `destructive-without-directive` | error    | `DROP TABLE`, `DROP COLUMN`, `DROP SCHEMA`, `DROP TYPE`, `TRUNCATE`       | add `-- momo:destructive` after a review                                |
+| `sqlite-rebuild`                | warning  | a statement with the SQLite `rebuild` hint (`LintSQL` callers)            | batch the data copy or split the table                                  |
+
+The rules are text heuristics on the comment-free statement. The PostgreSQL
+rules (the first six) run for the `postgres` dialect only; the destructive rule
+runs for every dialect. A statement built inside a `DO` block or a function is
+not seen, and a keyword inside a string literal can cause a false report.
+`SET NOT NULL` is a warning, not an error, because the staged flow (below) ends
+with it. The plan also sketches a `--db` row count rule for SQLite rebuilds;
+`momo migrate` does not select SQLite, so it is not built.
+
 ### Other items
 
 - **Backfills**: Momo has no data-migration step. Do them in a hand-written
@@ -1030,7 +1086,11 @@ database:
   on its schema: `GRANT CREATE ON SCHEMA app TO app_role`.
 - With `CREATE` on the schema but not on the database, `baseline` works for a
   snapshot without table text (`TestBaselineAsAppRole`) and fails with
-  `ErrCanonicalizePrivilege` otherwise (section 7).
+  `ErrCanonicalizePrivilege` otherwise (section 7). `drift` fails with it when
+  the snapshot declares a view, a trigger `WHEN` or a policy expression, and
+  runs without it for table text only, listing the tables in
+  `CanonicalizeSkipped` (`TestDriftBodiesNeedCreateOnDatabase`,
+  `TestDriftTablesOnlyRunsAsApplicationRole`).
 
 ### Extensions managed outside momo
 

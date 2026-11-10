@@ -44,7 +44,7 @@ A database is usable when a driver package for it exists under `driver/`:
 
 - PostgreSQL is the reference database. Check the dialect columns of docs/capabilities.md before relying on a feature on another database. Keep `dialects:` at `[postgres]` for generated migrations. `momo migrate` exits 2 for a dialect it does not link; library migrations go through `migrate.NewEngine`.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
-- Forward migrations only in the CLI. No `migrate rollback`, `lint` or `rebase` command; the Go API has `Engine.Rollback` and `Engine.Rebase`.
+- `diff` writes forward migrations only. `momo migrate rollback [--group]` runs a hand-written `.down.sql`, `momo migrate lint` reports risky operations, and `momo migrate rebase --onto <dir>` regenerates a branch's migrations on a target's.
 - `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
 - Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL only,
   see [vectors.md](vectors.md#hybrid-search)). Full-text search
@@ -704,14 +704,16 @@ Known issues, as rules (each is a filed bug):
   `changed:/added:/removed:` list first.
 - `apply` refuses a forked snapshot chain (same error as `validate`) and a pending
   version older than the latest applied one (`ErrOutOfOrder`); both exit 1, as
-  does a broken chain (`ErrChainInvalid`). There is no `rebase` command: delete
-  the late migration's `.up.sql` and `.snapshot.json`, run
+  does a broken chain (`ErrChainInvalid`). Fix it with
+  `momo migrate rebase --onto <target branch's migration directory>`, or by hand:
+  delete the late migration's `.up.sql` and `.snapshot.json`, run
   `momo migrate diff <name>` to regenerate it with a new version, then
   `momo migrate hash` (a pending file needs no `rehash`); see [migrations.md](migrations.md) section 2. Still
   run `validate` in CI.
-- The CLI has no rollback. Undo with a new forward migration (`Engine.Rollback`
-  runs hand-written `.down.sql` files from Go only). `resolve --rolled-back` runs
-  no SQL.
+- `momo migrate rollback [--group]` runs the hand-written `.down.sql` of the last
+  applied migration (or group); `diff` never writes one. Without a down file it
+  exits 1 and runs nothing; prefer a new forward migration. `resolve --rolled-back`
+  runs no SQL.
 - There is no `--force-unlock` (an unknown flag, exit 2). The migration lock is a
   session advisory lock, freed when its holder disconnects. A stuck lock: find
   the session in `pg_stat_activity` and `pg_terminate_backend` it.
@@ -1934,7 +1936,8 @@ report)`, a development hook that reports once per statement shape per scope
     there; use iterative scan for filtered ANN searches; expect seq scans on small
     tables.
 19. Migrations: `diff`, review SQL, commit all files, `apply`. Never edit an
-    applied migration; undo with a new one. The CLI has no rollback.
+    applied migration; undo with a new one (`momo migrate rollback` needs a
+    hand-written `.down.sql`). Run `momo migrate lint` in CI.
 20. NOT NULL additions without a default: `diff --stage`, apply, backfill, check
     no NULLs remain, then `diff --enforce-not-null` (or give the column a
     default).
