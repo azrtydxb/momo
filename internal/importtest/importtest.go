@@ -14,6 +14,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/importer/history"
+	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
@@ -40,7 +41,9 @@ func CheckImport(t *testing.T, live *momo.DB, in Input) {
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
-	scratch := testopen.Postgres(t)
+	// The scratch database is a database of its own: testopen.Postgres(t)
+	// returns the per-test schema live already uses.
+	scratch := testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_import_"))
 	snaps, err := history.Baseline(ctx, scratch, mpg.New(), conv)
 	if err != nil {
 		t.Fatalf("baseline: %v", err)

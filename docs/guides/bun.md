@@ -21,13 +21,13 @@ The programs on this page are compiled against the models of the
 | `bun:",nullzero"`                            | a pointer field (Momo writes the zero value otherwise)        |
 | `bun:"rel:has-many,join:id=author_id"`       | `momo:"has_many,fk:AuthorID"`                                 |
 | `bun:"rel:belongs-to,join:author_id=id"`     | `momo:"belongs_to,fk:AuthorID"`                               |
-| `db.NewSelect().Model(&rows).Where(...)`     | `momo.Select[T](db).Where(col.Eq(v)).All(ctx)`                |
-| `db.NewInsert().Model(&row).Exec(ctx)`       | `momo.Insert[T](db).Model(&row).Exec(ctx)`                    |
-| `db.NewUpdate().Model(&row).WherePK()`       | `momo.Update[T](db).Set(col.Set(v)).Where(...).Exec(ctx)`     |
-| `db.NewDelete().Model(&row).WherePK()`       | `momo.Delete[T](db).Where(...).Exec(ctx)`                     |
+| `NewSelect().Model(&rows).Where(...)`        | `momo.Select[T]` with `Where` and `All`                       |
+| `NewInsert().Model(&row).Exec(ctx)`          | `momo.Insert[T]` with `Model` and `Exec`                      |
+| `NewUpdate().Model(&row).WherePK()`          | `momo.Update[T]` with `Set`, `Where` and `Exec`               |
+| `NewDelete().Model(&row).WherePK()`          | `momo.Delete[T]` with `Where` and `Exec`                      |
 | `.Relation("Posts")`                         | `.Preload(author.Posts)` on the select, or `momo.Load`        |
 | `db.RunInTx(ctx, nil, func(ctx, tx bun.Tx))` | `db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {...})` |
-| `migrate.NewMigrator(db, migrations)`        | `momo migrate diff <name>`, then `momo migrate apply`         |
+| `bun migrate.NewMigrator(db, migrations)`    | `momo migrate diff <name>`, then `momo migrate apply`         |
 | `errors.Is(err, sql.ErrNoRows)`              | `errors.Is(err, momo.ErrNotFound)`                            |
 
 ## Models
