@@ -21,6 +21,8 @@ const (
 	momoModelName = "Model"
 	// momoProjectionName is the marker type of a projection.
 	momoProjectionName = "Projection"
+	// momoViewName is the marker type of a model backed by a view.
+	momoViewName = "View"
 )
 
 // discoverAll finds the models and projections of one loaded package. It
@@ -88,6 +90,8 @@ type discovery struct {
 	nonModel *types.Named
 	// companionBad is set when this model's MomoConfig has diagnostics.
 	companionBad bool
+	// viewIdx is the field index of an embedded momo.View, or -1.
+	viewIdx int
 }
 
 func (d *discovery) diag(pos token.Pos, msg string) {
@@ -108,6 +112,7 @@ func (d *discovery) run() *Model {
 		return nil
 	}
 	marker, projMarker := -1, -1
+	d.viewIdx = -1
 	idx := 0
 	for _, f := range d.st.Fields.List {
 		n := len(f.Names)
@@ -120,6 +125,15 @@ func (d *discovery) run() *Model {
 				}
 			case markerPointer:
 				d.diag(f.Pos(), "momo.Model must be embedded by value in "+d.ts.Name.Name)
+				return nil
+			}
+			switch d.markerKind(f.Type, momoViewName) {
+			case markerValue:
+				if d.viewIdx < 0 {
+					d.viewIdx = idx
+				}
+			case markerPointer:
+				d.diag(f.Pos(), "momo.View must be embedded by value in "+d.ts.Name.Name)
 				return nil
 			}
 			switch d.markerKind(f.Type, momoProjectionName) {
@@ -272,7 +286,7 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 			if idx == marker && !projection {
 				mt = d.parseTags(f.Tag, "momo.Model marker")
 			}
-			if idx != marker {
+			if idx != marker && idx != d.viewIdx {
 				v := strct.Field(idx)
 				et := d.parseTags(f.Tag, fieldLabel(f))
 				if !et.Skip {
@@ -316,8 +330,15 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	d.fl.diags = nil
 	m.Fields = fields
 	if projection {
+		// A projection runs no hooks, so a hook-named method on it would be
+		// silently ignored.
+		d.diags = append(d.diags, projectionHookDiags(named, d.pkg.Fset)...)
+		if d.viewIdx >= 0 {
+			d.diag(d.ts.Pos(), "momo.View is only valid on a model, not on projection "+m.GoName)
+		}
 		return m // no table, indexes or companion
 	}
+	m.IsView = d.viewIdx >= 0
 	m.Schema = mt.Schema
 	m.Table = mt.Table
 	if m.Table == "" {
@@ -330,6 +351,10 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	m.Config, cdiags = ReadCompanion(d.pkg, m)
 	d.diags = append(d.diags, cdiags...)
 	d.companionBad = d.companionBad || len(cdiags) > 0
+	var hdiags []Diagnostic
+	m.Hooks, hdiags = DetectHooks(named, d.pkg.Fset)
+	d.diags = append(d.diags, hdiags...)
+	d.companionBad = d.companionBad || len(hdiags) > 0
 	return m
 }
 

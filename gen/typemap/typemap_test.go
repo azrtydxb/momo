@@ -61,6 +61,7 @@ func TestGeneratorTypeMapFullTable(t *testing.T) {
 		{"[]string", tags.Tags{Size: 8}, "character varying(8)[]", ""},
 		{"[]int32", tags.Tags{}, "integer[]", ""},
 		{"[]int64", tags.Tags{}, "bigint[]", ""},
+		{"[]types.UUID", tags.Tags{}, "uuid[]", ""},
 		{"[]bool", tags.Tags{}, "boolean[]", ""},
 		{"[]float64", tags.Tags{}, "double precision[]", ""},
 		{"*[]string", tags.Tags{}, "text[]", ""},

@@ -23,8 +23,8 @@ type Item struct {
 
 // MomoConfig declares the vector index. pgvector's hnsw method has no default
 // operator class, so name the one that matches the distance you query with:
-// vector_cosine_ops serves CosineDistance, vector_l2_ops serves L2Distance,
-// vector_ip_ops serves InnerProductDistance. An index whose operator class
+// vector_cosine_ops serves vecop.Cosine, vector_l2_ops serves vecop.L2,
+// vector_ip_ops serves vecop.InnerProduct. An index whose operator class
 // differs from the query's distance is silently not used.
 //
 // For an IVFFlat index (faster to build, smaller, needs data first) write

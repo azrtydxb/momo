@@ -44,10 +44,19 @@ type insertCore struct {
 	// unnest renders a Models insert as one statement with an array parameter
 	// per column (Unnest, PostgreSQL only).
 	unnest bool
+	// noRowDefault is set by Copy: a COPY row cannot say DEFAULT and Copy
+	// reads nothing back, so an unset dbdefault value is refused.
+	noRowDefault bool
+	// fixedCols, when set by plan, is the column list every chunk of a bulk
+	// insert writes, so the values computed once for the whole set line up
+	// with each chunk even when a chunk alone would drop a dbdefault column.
+	fixedCols []int
 	// sel and selCols are the row source and target columns of FromSelect.
 	sel     Subquery
 	selCols []string
-	err     error
+	// with holds the WITH clause.
+	with []cte
+	err  error
 }
 
 // InsertQuery builds and runs an INSERT into T's table.
@@ -77,12 +86,34 @@ type InsertQuery[T any] struct {
 	// model for the planned columns, so chunks bind exactly what was checked
 	// and a Go-side default is evaluated once per row.
 	pre [][]any
+	// dbd is the dbdefault plan; see withDBD.
+	dbd *dbdPlan
 }
 
 // Insert starts an INSERT for model T. Use Model or Models to write whole
 // models, or Values to write explicit columns.
 func Insert[T any, PT Modeler[T]](q Querier) InsertQuery[T] {
 	return InsertQuery[T]{q: q, meta: metaOf[T, PT]()}
+}
+
+// With prefixes the INSERT with a common table expression that FromSelect's
+// select can read: WITH x AS (...) INSERT INTO t (cols) SELECT ... FROM x.
+// cols optionally names the CTE's columns. The body may be a SelectQuery, an
+// ExprSelect, a Union or (PostgreSQL only) another INSERT, UPDATE or DELETE
+// with RETURNING; a data-modifying body on another dialect fails with
+// ErrUnsupported. MySQL and MariaDB do not accept WITH before INSERT and fail
+// with ErrUnsupported; put the WITH inside the select there. A WITH clause
+// cannot be combined with a bulk insert that is split into chunks at the
+// parameter limit (ErrValidation), since it would run once per chunk.
+func (q InsertQuery[T]) With(name string, body Subquery, cols ...string) InsertQuery[T] {
+	q.i.with = addCTE(q.i.with, name, body, cols, false)
+	return q
+}
+
+// WithRecursive is With for a recursive CTE.
+func (q InsertQuery[T]) WithRecursive(name string, body Subquery, cols ...string) InsertQuery[T] {
+	q.i.with = addCTE(q.i.with, name, body, cols, true)
+	return q
 }
 
 func (q InsertQuery[T]) fail(err error) InsertQuery[T] {
@@ -99,7 +130,11 @@ func (q InsertQuery[T]) verr(col, format string, args ...any) error {
 }
 
 // Model adds one model, writing every column except identity, read-only and
-// omitted columns. Zero values are written, never skipped.
+// omitted columns. Zero values are written, never skipped, except in a column
+// tagged dbdefault: when that field holds its zero value (or a nil pointer)
+// the column is left out of the INSERT so the database default applies, and
+// Exec reads the stored value back into the model with RETURNING. See Models
+// for several rows and the dialects that cannot do this.
 func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 	if m == nil {
 		return q.fail(q.verr("", "Model(nil)"))
@@ -111,6 +146,22 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 
 // Models adds every element of ms as one row of a multi-row VALUES list.
 // With an empty list the query fails with ErrValidation.
+//
+// A dbdefault column that is zero in every row leaves the column list; when
+// some rows set it and others do not, the unset rows write DEFAULT. SQLite
+// and Unnest cannot put DEFAULT in a row and fail with ErrUnsupported for such
+// a mix; MySQL has no RETURNING to read the value back and fails with
+// ErrUnsupported when a dbdefault column is zero. Exec writes the stored
+// values of the unset rows back into the caller's elements after the
+// statement committed. A single Model that a conflict action skips reports 0
+// rows affected and stays unchanged. A bulk insert that returns fewer rows than
+// models is matched by key (conflict target, else primary key) when the key is
+// written from the model and not a zero dbdefault column; unmatched models stay
+// untouched, and Exec fails only when DoNothing left a dbdefault column
+// unread. Without a usable key a short result fails with ErrUnsupported and
+// writes nothing back; the insert is rolled back (to a savepoint inside a Tx;
+// a pinned OnConn handle keeps the rows and says so). A caller's own Returning list
+// turns the automatic read-back off: Rows returns the columns it names.
 func (q InsertQuery[T]) Models(ms []T) InsertQuery[T] {
 	if len(ms) == 0 {
 		return q.fail(q.verr("", "Models: no rows"))

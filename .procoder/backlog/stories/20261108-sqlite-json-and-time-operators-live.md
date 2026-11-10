@@ -1,9 +1,9 @@
 # SQLite: run and support the JSON operators and time expressions
 
-Status: open
+Status: done
 Created: 2026-11-08
 Epic: momo-14-structure-and-docs
-Sprint: -
+Sprint: 006-sprint-6-split-the-root-package-into-subpackages-and-keep
 
 ## Description
 
@@ -11,11 +11,19 @@ The JSON operators (`JSONText`, `JSONPath`, `JSONHasKey`, `JSONContains`) and th
 
 ## Acceptance criteria
 
-- [ ] the JSON integration suite passes on SQLite for text extraction, path extraction and has-key, with the SQL NULL versus JSON null cases from the package doc asserted (integration job for SQLite, run id in evidence)
-- [ ] the time integration suite passes on SQLite for `Extract` on every `ExtractField`, `DateTrunc` on every `TruncUnit`, `AddInterval` and `SubInterval` including month overflow (Feb 28 plus one month), and `Now` in the stored timestamp text format
-- [ ] `JSONContains` on SQLite is either implemented and covered by an integration test, or returns `ErrUnsupported` with a test and the reason in the package doc
-- [ ] no `t.Skip` for SQLite remains in `expr_json_integration_test.go` or `expr_time_integration_test.go` (search output), apart from `AtTimeZone`, which is PostgreSQL only and documented as such
-- [ ] `docs/capabilities.md` rows for JSON operators and date and time expressions are regenerated from the capability data (story generated-capability-matrix-and-type-table) and show SQLite as supported with the measured limits
-- [ ] the story stays blocked, not closed, if no SQLite driver exists at sprint close; the close note says so
+- [x] the JSON integration suite passes on SQLite for text extraction, path extraction and has-key, with the SQL NULL versus JSON null cases from the package doc asserted (integration job for SQLite, run id in evidence)
+- [x] the time integration suite passes on SQLite for `Extract` on every `ExtractField`, `DateTrunc` on every `TruncUnit`, `AddInterval` and `SubInterval` including month overflow (Feb 28 plus one month), and `Now` in the stored timestamp text format
+- [x] `JSONContains` on SQLite is either implemented and covered by an integration test, or returns `ErrUnsupported` with a test and the reason in the package doc
+- [x] no `t.Skip` for SQLite remains in `expr_json_integration_test.go` or `expr_time_integration_test.go` (search output), apart from `AtTimeZone`, which is PostgreSQL only and documented as such
+- [x] `docs/capabilities.md` rows for JSON operators and date and time expressions are regenerated from the capability data (story generated-capability-matrix-and-type-table) and show SQLite as supported with the measured limits
+- [x] the story stays blocked, not closed, if no SQLite driver exists at sprint close; the close note says so
 
 ## Evidence
+
+- Run 42497123151 (ci-agent, headSha 0586dbf, all jobs green) covers criteria 1 to 4. SQLite runs inside the integration (postgres) cell through `testopen.Each`; the pure-Go driver runs in `unit` (`make test-sqlitepure`) through `internal/sqlshared/expr_integration_test.go`.
+- Criteria 1, 2: `expr_json_integration_test.go` (booleans read as `1`/`0`, SQL NULL versus JSON null, has-key) and `expr_time_integration_test.go` (all ExtractField and TruncUnit values, Feb 28 + 1 month, Jan 31 + 1 month = Mar 3 on SQLite, `Now` text format).
+- Criterion 3: `JSONContains` stays `ErrUnsupported` on SQLite, asserted in both suites; the reason is in the package doc of `expr_json.go`.
+- Criterion 4: the only remaining `t.Skip` is `AtTimeZone is PostgreSQL only` (`grep -n Skip expr_json_integration_test.go expr_time_integration_test.go`).
+- Red: the new tests passed against the unchanged code (run 42494472904, integration green), because the behaviour was already correct. Mutation check instead: inverting SQLite `JSONHasKey` (`IS NOT NULL` to `IS NULL`) failed `unit` and `integration (postgres)` in run 42497130770.
+- Criterion 5: the hand-edited rows were removed from `docs/capabilities.md` and the section "JSON operators and date and time expressions" is now the generated `features` block (`internal/gendocs`, feature data in `internal/gendocs/blocks.go`). It shows SQLite as supported with the measured limits (`jsonop.Contains` is `ErrUnsupported`, a JSON boolean extracts as `1` or `0`, month arithmetic overflows, `Now` is millisecond text). The block is current and `make gen-check` passes in run 42631299561 (ci-agent, headSha b26c95d, all jobs green); `TestFeatureIdentifiersExist` checks every named `jsonop` and `timeop` identifier exists.
+- Criterion 6: satisfied by the reason that SQLite drivers exist (`driver/sqlitedriver`, `driver/sqlitepure`), so the story is not blocked at sprint close.

@@ -14,7 +14,7 @@ func TestVectorDocPins(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc := string(raw)
-	for _, want := range []string{"v0.1.6", "0.8.7", "vec_version", "k=60", "TextCandidates", "fewer than k rows", "hamming"} {
+	for _, want := range []string{"sqlite-vec", "0.8.7", "vec_version", "momo.HybridSearch", "fewer than k rows", "hamming"} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("docs/vectors.md lacks %q", want)
 		}

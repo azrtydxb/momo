@@ -51,13 +51,19 @@ nav:
       - MySQL and MariaDB: mysql.md
       - Migrations: migrations.md
       - Importing from other ORMs: importers.md
+      - Coming from GORM: guides/gorm.md
+      - Coming from Bun: guides/bun.md
+      - Coming from Ent: guides/ent.md
       - Read replicas: replicas.md
       - Testing applications: testing.md
+      - Observability hooks: observability.md
       - Interceptors: PRIVACY_RULES.md
       - momovet raw-SQL check: momovet.md
   - Reference:
       - Capabilities: capabilities.md
       - Performance: PERFORMANCE.md
       - Supported versions: supported-versions.md
+      - Upgrading: upgrading.md
+      - API reference: reference.md
       - Architecture: ARCHITECTURE.md
   - Contributing: contributing.md

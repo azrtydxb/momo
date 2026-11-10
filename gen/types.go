@@ -94,6 +94,12 @@ type Model struct {
 	// Projection is set for a struct that embeds momo.Projection: it has
 	// Fields but no Table, Relations, Indexes or companion.
 	Projection bool
+	// Hooks names the detected hook methods (BeforeInsert, BeforeUpdate,
+	// BeforeDelete, AfterLoad).
+	Hooks map[string]bool
+	// IsView is set for a model that embeds momo.View: it maps a database
+	// view and Meta.View makes every write builder refuse it.
+	IsView bool
 
 	named *types.Named
 }
@@ -133,6 +139,8 @@ type Relation struct {
 	PolyValue string
 	// OnDelete and OnUpdate are the raw on_delete and on_update tag values.
 	OnDelete, OnUpdate string
+	// FKName is the raw fk_name tag value: the constraint name, empty for the derived one.
+	FKName string
 	// NoConstraint is the no_constraint tag: the relation has no database
 	// foreign key.
 	NoConstraint bool

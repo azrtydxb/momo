@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Command momo is the momo command line tool. Subcommands are registered in
-// cmd.go; see `momo help` for the list and the exit-code contract. The binary
-// runs only its built-in plugins; custom generators use the Go API (gen.Emit
-// with plugins).
+// Command momo is the momo command line tool. It is a thin caller of
+// cli.Main; see `momo help` for the commands and the exit-code contract. The
+// stock binary ships no generator plugins; to run your own, build a binary
+// with cli.Main(plugins...) (see package cli).
 package main
 
-import "os"
+import "github.com/azrtydxb/momo/cli"
 
 func main() {
-	os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
+	cli.Main()
 }

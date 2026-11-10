@@ -154,6 +154,12 @@ func TestRenderTriggerPolicyRLS(t *testing.T) {
 	if st[0].SQL != want {
 		t.Fatalf("got %q want %q", st[0].SQL, want)
 	}
+	up := &schema.Trigger{Table: "sub", Name: "u", Timing: "AFTER", Events: []string{"INSERT", "UPDATE"}, UpdateOf: []string{"state", "o"}, ForEachRow: true, Function: "f()"}
+	st = renderSQL(t, migrate.Change{Kind: migrate.CreateTrigger, Table: "sub", Name: "u", After: up})
+	wantU := `CREATE TRIGGER "u" AFTER INSERT OR UPDATE OF "state", "o" ON "sub" FOR EACH ROW EXECUTE FUNCTION f()`
+	if st[0].SQL != wantU {
+		t.Fatalf("got %q want %q", st[0].SQL, wantU)
+	}
 	p := &schema.Policy{Table: "docs", Name: "p", Command: "SELECT", Permissive: true, Roles: []string{"app"}, Using: "true", Check: "true"}
 	st = renderSQL(t, migrate.Change{Kind: migrate.CreatePolicy, Table: "docs", Name: "p", After: p})
 	wantP := `CREATE POLICY "p" ON "docs" AS PERMISSIVE FOR SELECT TO "app" USING (true) WITH CHECK (true)`

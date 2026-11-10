@@ -15,9 +15,12 @@ import (
 type Name string
 
 const (
+	// Postgres names the PostgreSQL dialect.
 	Postgres Name = "postgres"
-	SQLite   Name = "sqlite"
-	MySQL    Name = "mysql"
+	// SQLite names the SQLite dialect.
+	SQLite Name = "sqlite"
+	// MySQL names the MySQL and MariaDB dialect.
+	MySQL Name = "mysql"
 )
 
 // Flavor distinguishes servers that share the MySQL dialect. It is set on
@@ -25,7 +28,9 @@ const (
 type Flavor string
 
 const (
-	FlavorMySQL   Flavor = "mysql"
+	// FlavorMySQL is Oracle MySQL.
+	FlavorMySQL Flavor = "mysql"
+	// FlavorMariaDB is MariaDB.
 	FlavorMariaDB Flavor = "mariadb"
 )
 

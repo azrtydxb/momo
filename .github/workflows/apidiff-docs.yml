@@ -1,0 +1,64 @@
+# The docs gate for pull requests: an exported API change needs a docs change or
+# a "Docs: no reader-visible change: <reason>" line (CONTRIBUTING.md).
+#
+# This is its own workflow so it can also run when the pull request body is
+# edited (an author adds the escape line to unblock the check) without
+# re-running the whole ci.yml matrix. The job id apidiff-docs is the required
+# status check name on main.
+name: apidiff-docs
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "apidiff-docs-${{ github.event.pull_request.number }}"
+  cancel-in-progress: true
+
+jobs:
+  apidiff-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      # The event payload is stale on a re-run, so read the body live.
+      - name: Read the live pull request body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body -q .body > "$RUNNER_TEMP/pr-body.txt"
+      - name: apidiff docs gate
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+          PR_BODY_FILE: ${{ runner.temp }}/pr-body.txt
+        run: make apidiff-gate
+      - name: Comment the apidiff report
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          report="$RUNNER_TEMP/apidiff-report.md"
+          test -f "$report" || exit 0
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- apidiff-docs -->")) | .id' | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@"$report" >/dev/null
+          elif grep -q 'No exported API change' "$report"; then
+            echo "no API change and no earlier comment: nothing to post"
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -F body=@"$report" >/dev/null
+          fi

@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 
@@ -18,3 +18,6 @@ Implements plan momo-04-migrations Task 30: Format-version tests across persiste
 
 ## Evidence
 
+### Sprint 7 (2026-11-10)
+
+Carry reason: the plan's "format 0" does not exist in the product. The first release already wrote format 1 and the shipped design refuses a snapshot with no `format_version` on purpose (`ErrMissingFormatVersion`, schema/load.go:15; migrate/snapshot.go:60) and a `momo.sum` with no header (migrate/sum.go:117), so there is no N-1 artifact to read and no `migrate/testdata/format0` fixture to write. The refusal half of S-22 is covered: `TestFormatVersions` (schema/load_test.go), `TestHistoryFormatVersion` (migrate/history_test.go, newer history refused with "upgrade momo"), `TestHistoryFormatCheckedWithoutWrites`, `TestReleaseConfig` (internal/repocheck/release_test.go). Criteria stay unticked until a format 2 exists to make a format 1 fixture meaningful.

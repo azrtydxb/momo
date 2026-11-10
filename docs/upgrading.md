@@ -1,0 +1,262 @@
+# Upgrading
+
+Momo is pre-v1 and makes no compatibility promise between releases; see the
+[stability policy](supported-versions.md#stability-policy). Read this page and
+the `CHANGELOG.md` entry of a release before you upgrade, and expect that
+later releases can break more.
+
+## Upgrading to 0.5.0
+
+### Regenerating with `--from-db` after the `dbdefault` tag
+
+`momo generate --from-db` now adds the `dbdefault` tag to every NOT NULL
+PostgreSQL column whose default is computed (`gen_random_uuid()`, `now()`,
+`CURRENT_TIMESTAMP`, `nextval(...)` and other function calls). A Go zero value
+is no longer written for such a column: `InsertQuery.Model` and `InsertQuery.Models` leave it out,
+the database default applies, and the value is read back with `RETURNING`.
+Review the regenerated models: a `bool`, number, empty string or zero time in
+such a field can no longer be written explicitly through `Model` (use `InsertQuery.Values`
+or remove the tag), and a plain MySQL database refuses a zero value with
+`ErrUnsupported` because it cannot read the default back. Hand-written models
+are unaffected until they add the tag. See "Database defaults" in the
+[AI guide](ai-guide.md).
+
+### Advisory string helpers take options
+
+`advisory.XactLockString` and `advisory.TryXactLockString` take a trailing
+`...advisory.Option` (for `advisory.Hash64`). A call site is unchanged, but
+the function types changed: code that assigns one of these functions to a
+variable or field of the old func type no longer compiles. Wrap the call in a
+closure instead.
+
+### Model hook methods are now wired by `momo generate`
+
+`momo generate` detects methods named `BeforeInsert`, `BeforeUpdate`,
+`BeforeDelete` and `AfterLoad` on a model and fills `Meta.Hooks` with them.
+Two behaviors change for an existing model after you regenerate:
+
+- A method with one of these names and the exact signature
+  `func(context.Context) error` now runs: before inserts, updates and deletes,
+  and after loads. Before, such a method was never called. If you had a method
+  with a hook name that was meant as plain code, rename it before you
+  regenerate.
+- A method with one of these names and any other signature makes
+  `momo generate` fail with a positioned diagnostic
+  (`hook BeforeInsert on Doc must have signature func(context.Context) error`),
+  and a hook-named method on a projection is a diagnostic as well (a projection
+  runs no hooks). Fix the signature or rename the method.
+
+If you set `Meta.Hooks` by hand in a hand-written `Meta`, nothing changes.
+Generated files are rewritten by `momo generate`; the `Hooks:` field appears
+only for models that have a hook method.
+
+### View models
+
+A model that embeds `momo.View` (new) is marked as a view. Its writes fail with
+`ErrValidation`. Existing models are unaffected unless you add the marker.
+
+## Upgrading to 0.4.0
+
+Release 0.4.0 moves feature-specific helpers out of the root package `momo`
+into subpackages. Every move is a source break: the old identifier is gone and
+the new one lives under a new import path. The release notes are the 0.4.0
+entry of the [changelog](https://github.com/azrtydxb/momo/blob/main/CHANGELOG.md).
+
+Why there is no alias: a Go method lives in the package of its receiver type,
+and the subpackages import `momo`, so `momo` cannot import them back to keep
+the old names. A move therefore deletes the old identifier outright.
+
+### Identifier table
+
+One row per moved identifier. When a method became a function, the old name is
+the method and the new name is the function, which takes the former receiver
+as an argument.
+
+| Old identifier                      | New import path                      | New identifier                    |
+| ----------------------------------- | ------------------------------------ | --------------------------------- |
+| `momo.ArrayContains`                | `github.com/azrtydxb/momo/arrayop`   | `arrayop.Contains`                |
+| `momo.ArrayContainedBy`             | `github.com/azrtydxb/momo/arrayop`   | `arrayop.ContainedBy`             |
+| `momo.ArrayOverlaps`                | `github.com/azrtydxb/momo/arrayop`   | `arrayop.Overlaps`                |
+| `momo.AnyOf`                        | `github.com/azrtydxb/momo/arrayop`   | `arrayop.AnyOf`                   |
+| `momo.TSExpr`                       | `github.com/azrtydxb/momo/fts`       | `fts.Expr`                        |
+| `momo.ToTSVector`                   | `github.com/azrtydxb/momo/fts`       | `fts.ToVector`                    |
+| `momo.WebsearchToTSQuery`           | `github.com/azrtydxb/momo/fts`       | `fts.WebsearchToQuery`            |
+| `momo.PlainToTSQuery`               | `github.com/azrtydxb/momo/fts`       | `fts.PlainToQuery`                |
+| `momo.PhraseToTSQuery`              | `github.com/azrtydxb/momo/fts`       | `fts.PhraseToQuery`               |
+| `momo.ToTSQuery`                    | `github.com/azrtydxb/momo/fts`       | `fts.ToQuery`                     |
+| `momo.TSMatch`                      | `github.com/azrtydxb/momo/fts`       | `fts.Match`                       |
+| `momo.TSRank`                       | `github.com/azrtydxb/momo/fts`       | `fts.Rank`                        |
+| `momo.TSRankCD`                     | `github.com/azrtydxb/momo/fts`       | `fts.RankCD`                      |
+| `momo.TSHeadline`                   | `github.com/azrtydxb/momo/fts`       | `fts.Headline`                    |
+| `momo.Substr`                       | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Substr`                    |
+| `momo.SubstrFrom`                   | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.SubstrFrom`                |
+| `momo.Lower`                        | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Lower`                     |
+| `momo.Upper`                        | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Upper`                     |
+| `momo.Length`                       | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Length`                    |
+| `momo.LengthExpr`                   | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.LengthExpr`                |
+| `momo.CurrentSchema`                | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.CurrentSchema`             |
+| `momo.CurrentSchemaExpr`            | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.CurrentSchemaExpr`         |
+| `momo.Case`                         | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Case`                      |
+| `momo.CaseExpr`                     | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.CaseExpr`                  |
+| `momo.Numeric`                      | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Numeric`                   |
+| `momo.ArithExpr`                    | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.ArithExpr`                 |
+| `momo.Add`                          | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Add`                       |
+| `momo.AddExpr`                      | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.AddExpr`                   |
+| `momo.Sub`                          | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Sub`                       |
+| `momo.SubExpr`                      | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.SubExpr`                   |
+| `momo.Mul`                          | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Mul`                       |
+| `momo.MulExpr`                      | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.MulExpr`                   |
+| `momo.CoalesceExpr`                 | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.CoalesceExpr`              |
+| `momo.Cast`                         | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Cast`                      |
+| `momo.CastExpr`                     | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.CastExpr`                  |
+| `momo.Concat`                       | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.Concat`                    |
+| `momo.ConcatExpr`                   | `github.com/azrtydxb/momo/sqlfn`     | `sqlfn.ConcatExpr`                |
+| `momo.JSONText`                     | `github.com/azrtydxb/momo/jsonop`    | `jsonop.Text`                     |
+| `momo.JSONPath`                     | `github.com/azrtydxb/momo/jsonop`    | `jsonop.Path`                     |
+| `momo.JSONContains`                 | `github.com/azrtydxb/momo/jsonop`    | `jsonop.Contains`                 |
+| `momo.JSONHasKey`                   | `github.com/azrtydxb/momo/jsonop`    | `jsonop.HasKey`                   |
+| `momo.JSONTextExpr`                 | `github.com/azrtydxb/momo/jsonop`    | `jsonop.TextExpr`                 |
+| `momo.AggExpr`                      | `github.com/azrtydxb/momo/agg`       | `agg.Call`                        |
+| `momo.Aggregate`                    | `github.com/azrtydxb/momo/agg`       | `agg.Func`                        |
+| `momo.StringAgg`                    | `github.com/azrtydxb/momo/agg`       | `agg.String`                      |
+| `momo.ArrayAgg`                     | `github.com/azrtydxb/momo/agg`       | `agg.Array`                       |
+| `momo.JSONBAgg`                     | `github.com/azrtydxb/momo/agg`       | `agg.JSONB`                       |
+| `momo.PercentileCont`               | `github.com/azrtydxb/momo/agg`       | `agg.PercentileCont`              |
+| `momo.PercentileDisc`               | `github.com/azrtydxb/momo/agg`       | `agg.PercentileDisc`              |
+| `momo.JSONPair`                     | `github.com/azrtydxb/momo/agg`       | `agg.Pair`                        |
+| `momo.JSONField`                    | `github.com/azrtydxb/momo/agg`       | `agg.Field`                       |
+| `momo.JSONObjectExpr`               | `github.com/azrtydxb/momo/agg`       | `agg.ObjectExpr`                  |
+| `momo.JSONBBuildObject`             | `github.com/azrtydxb/momo/agg`       | `agg.BuildObject`                 |
+| `momo.ToJSONExpr`                   | `github.com/azrtydxb/momo/agg`       | `agg.JSONExpr`                    |
+| `momo.ToJSONB`                      | `github.com/azrtydxb/momo/agg`       | `agg.ToJSONB`                     |
+| `momo.EmptyJSONArray`               | `github.com/azrtydxb/momo/agg`       | `agg.EmptyJSONArray`              |
+| `momo.ExtractField`                 | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractField`             |
+| `momo.ExtractExpr`                  | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractExpr`              |
+| `momo.Extract`                      | `github.com/azrtydxb/momo/timeop`    | `timeop.Extract`                  |
+| `momo.ExtractYear`                  | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractYear`              |
+| `momo.ExtractMonth`                 | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractMonth`             |
+| `momo.ExtractDay`                   | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractDay`               |
+| `momo.ExtractHour`                  | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractHour`              |
+| `momo.ExtractMinute`                | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractMinute`            |
+| `momo.ExtractSecond`                | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractSecond`            |
+| `momo.ExtractQuarter`               | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractQuarter`           |
+| `momo.ExtractDow`                   | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractDow`               |
+| `momo.ExtractISODow`                | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractISODow`            |
+| `momo.ExtractDoy`                   | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractDoy`               |
+| `momo.ExtractEpoch`                 | `github.com/azrtydxb/momo/timeop`    | `timeop.ExtractEpoch`             |
+| `momo.TimeExpr`                     | `github.com/azrtydxb/momo/timeop`    | `timeop.Expr`                     |
+| `momo.AtTimeZone`                   | `github.com/azrtydxb/momo/timeop`    | `timeop.AtTimeZone`               |
+| `momo.AtTimeZoneExpr`               | `github.com/azrtydxb/momo/timeop`    | `timeop.AtTimeZoneExpr`           |
+| `momo.IntervalUnit`                 | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalUnit`             |
+| `momo.Interval`                     | `github.com/azrtydxb/momo/timeop`    | `timeop.Interval`                 |
+| `momo.IntervalOf`                   | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalOf`               |
+| `momo.IntervalExpr`                 | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalExpr`             |
+| `momo.IntervalSecond`               | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalSecond`           |
+| `momo.IntervalMinute`               | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalMinute`           |
+| `momo.IntervalHour`                 | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalHour`             |
+| `momo.IntervalDay`                  | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalDay`              |
+| `momo.IntervalWeek`                 | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalWeek`             |
+| `momo.IntervalMonth`                | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalMonth`            |
+| `momo.IntervalYear`                 | `github.com/azrtydxb/momo/timeop`    | `timeop.IntervalYear`             |
+| `momo.AddInterval`                  | `github.com/azrtydxb/momo/timeop`    | `timeop.AddInterval`              |
+| `momo.SubInterval`                  | `github.com/azrtydxb/momo/timeop`    | `timeop.SubInterval`              |
+| `momo.Now`                          | `github.com/azrtydxb/momo/timeop`    | `timeop.Now`                      |
+| `momo.CurrentTimestamp`             | `github.com/azrtydxb/momo/timeop`    | `timeop.CurrentTimestamp`         |
+| `momo.TruncUnit`                    | `github.com/azrtydxb/momo/timeop`    | `timeop.TruncUnit`                |
+| `momo.DateTrunc`                    | `github.com/azrtydxb/momo/timeop`    | `timeop.Trunc`                    |
+| `momo.TruncSecond`                  | `github.com/azrtydxb/momo/timeop`    | `timeop.TruncSecond`              |
+| `momo.TruncMinute`                  | `github.com/azrtydxb/momo/timeop`    | `timeop.TruncMinute`              |
+| `momo.TruncHour`                    | `github.com/azrtydxb/momo/timeop`    | `timeop.TruncHour`                |
+| `momo.TruncDay`                     | `github.com/azrtydxb/momo/timeop`    | `timeop.TruncDay`                 |
+| `momo.TruncWeek`                    | `github.com/azrtydxb/momo/timeop`    | `timeop.TruncWeek`                |
+| `momo.TruncMonth`                   | `github.com/azrtydxb/momo/timeop`    | `timeop.TruncMonth`               |
+| `momo.TruncQuarter`                 | `github.com/azrtydxb/momo/timeop`    | `timeop.TruncQuarter`             |
+| `momo.TruncYear`                    | `github.com/azrtydxb/momo/timeop`    | `timeop.TruncYear`                |
+| `momo.Tx.AdvisoryXactLock`          | `github.com/azrtydxb/momo/advisory`  | `advisory.XactLock`               |
+| `momo.Tx.AdvisoryXactLockString`    | `github.com/azrtydxb/momo/advisory`  | `advisory.XactLockString`         |
+| `momo.Tx.TryAdvisoryXactLock`       | `github.com/azrtydxb/momo/advisory`  | `advisory.TryXactLock`            |
+| `momo.Tx.TryAdvisoryXactLockString` | `github.com/azrtydxb/momo/advisory`  | `advisory.TryXactLockString`      |
+| `momo.DB.AdvisoryXactLock`          | `github.com/azrtydxb/momo/advisory`  | `advisory.XactLock`               |
+| `momo.DB.AdvisoryXactLockString`    | `github.com/azrtydxb/momo/advisory`  | `advisory.XactLockString`         |
+| `momo.DB.TryAdvisoryXactLock`       | `github.com/azrtydxb/momo/advisory`  | `advisory.TryXactLock`            |
+| `momo.DB.TryAdvisoryXactLockString` | `github.com/azrtydxb/momo/advisory`  | `advisory.TryXactLockString`      |
+| `momo.SearchSettings`               | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.Settings`              |
+| `momo.SearchSettings.Validate`      | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.Settings.Validate`     |
+| `momo.IterativeScan`                | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.IterativeScan`         |
+| `momo.IterativeOff`                 | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.IterativeOff`          |
+| `momo.IterativeRelaxedOrder`        | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.IterativeRelaxedOrder` |
+| `momo.IterativeStrictOrder`         | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.IterativeStrictOrder`  |
+| `momo.Tx.SetSearch`                 | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.Apply`                 |
+| `momo.DB.WithSearch`                | `github.com/azrtydxb/momo/vecsearch` | `vecsearch.With`                  |
+| `momo.DistanceExpr`                 | `github.com/azrtydxb/momo/vecop`     | `vecop.Expr`                      |
+| `momo.L2Distance`                   | `github.com/azrtydxb/momo/vecop`     | `vecop.L2`                        |
+| `momo.InnerProductDistance`         | `github.com/azrtydxb/momo/vecop`     | `vecop.InnerProduct`              |
+| `momo.CosineDistance`               | `github.com/azrtydxb/momo/vecop`     | `vecop.Cosine`                    |
+| `momo.L1Distance`                   | `github.com/azrtydxb/momo/vecop`     | `vecop.L1`                        |
+| `momo.HammingDistance`              | `github.com/azrtydxb/momo/vecop`     | `vecop.Hamming`                   |
+| `momo.JaccardDistance`              | `github.com/azrtydxb/momo/vecop`     | `vecop.Jaccard`                   |
+
+### Rewrite recipe
+
+1. Commit your work first, because the next steps edit files in place, then
+   fetch the release: `go get github.com/azrtydxb/momo@v0.4.0`.
+2. Save the raw markdown of this page (not the rendered HTML) as `upgrading.md`
+   in your module root and run the block below from there. It turns the table
+   into `gofmt -r` rules and applies them to the Go files that import
+   `github.com/azrtydxb/momo` by that exact path, skipping `vendor/`. It
+   rewrites the rows of plain identifiers (functions, types and constants),
+   stops with an error when it finds no file or generates no rule, and does not
+   touch a file that imports momo under an alias or with a dot import; the
+   compiler lists what is left there.
+
+   ```sh
+   files=$(grep -rl --include='*.go' 'github.com/azrtydxb/momo"' . | grep -v /vendor/)
+   rules=$(awk -F'`' 'NF == 7 && $1 ~ /^\| *$/ && $2 ~ /^momo\.[A-Za-z0-9]+$/ { printf "gofmt -r \"%s -> %s\" -w \"$@\"\n", $2, $6 }' upgrading.md)
+   [ -n "$files" ] || { echo "no Go file imports momo" >&2; exit 1; }
+   [ -n "$rules" ] || { echo "no rules: upgrading.md must be the raw markdown of this page" >&2; exit 1; }
+   echo "$rules" | sh -s -- $files
+   ```
+
+3. Rewrite the `momo.Tx.*` and `momo.DB.*` rows by hand, because the receiver
+   moves into the argument list: `recv.Old(ctx, args)` becomes
+   `pkg.New(ctx, recv, args)`. A `DB` advisory call must pass a transaction
+   (see the paragraph on the advisory locks below). The `Validate` method of the old
+   `SearchSettings` type is a plain rename: step 2 rewrites the type, and
+   `Validate` stays a method of `vecsearch.Settings`.
+4. In every file, import each new package that now appears in it (`arrayop.`,
+   `fts.`, ...) by the full path in the second column of the table, then build.
+   The compiler lists whatever is left.
+
+A row never changes the SQL a query produces; only the Go name and import path
+change.
+
+One type gained methods: `sqlfn.CurrentSchemaExpr` now has the comparison and
+ordering methods (`Eq`, `In`, `Asc`, ...) the other function results have, so
+`sqlfn.CurrentSchema().Eq("app")` compiles, where the old root function's
+result had no such method.
+
+The advisory lock methods became functions: `tx.AdvisoryXactLock(ctx, 42)`
+is now `advisory.XactLock(ctx, tx, 42)`, and the same for `advisory.XactLockString` and the
+`Try` forms. The transaction is the second argument and its type is
+`*momo.Tx`. The `DB` methods always returned `momo.ErrValidation`, because a
+transaction-scoped lock outside a transaction is released at once; the
+functions turn that into a compile error, so a caller that used the `DB` form
+must open a transaction with `db.Tx` or `db.Begin`. A dialect other than
+PostgreSQL still fails with `momo.ErrUnsupported`.
+
+### What did not move
+
+These stay in `momo`, with the reason:
+
+- `Func` and `FuncExpr`: the generic SQL function escape hatch, which the new
+  packages build on.
+- `Coalesce`, `Value`, `SQL` and `TypedSQL`: bound-value and raw-fragment
+  building blocks of the expression core. `sqlfn.CoalesceExpr` takes expression
+  arguments instead.
+- The vector column types (`VectorColumn` and its variants): generated code
+  references them.
+- The hook interfaces (`Hook`, `QueryEvent`, `RelationHook`, `RelationEvent`):
+  `DB` stores the hooks and calls them.
+- The basic aggregates (`Agg[T]`, `CountAll`, `Sum`, `Avg`, `Min`, `Max`):
+  `Having` and select lists are typed on `Agg`.
+- `Tx.SetLocal`: a method of `Tx`, and other helpers call it.
