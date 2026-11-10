@@ -3,6 +3,7 @@
 package momo_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -83,5 +84,94 @@ func TestViewModelsNotWritable(t *testing.T) {
 
 	if _, err := momo.Select[viewItem](pg).SQL(); err != nil {
 		t.Errorf("a view model must still be readable: %v", err)
+	}
+}
+
+// viewKid is a view-backed child, so a graph can reach a view as a child.
+type viewKid struct {
+	ID       int64
+	ParentID int64
+}
+
+var viewKidMeta = &momo.Meta[viewKid]{
+	Table: "kid_view",
+	View:  true,
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK},
+		{Name: "parent_id"},
+	},
+	Ptr:      func(m *viewKid, i int) any { return [...]any{&m.ID, &m.ParentID}[i] },
+	Value:    func(m *viewKid, i int) any { return [...]any{m.ID, m.ParentID}[i] },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+	PK: []int{0},
+}
+
+func (*viewKid) MomoMeta() *momo.Meta[viewKid] { return viewKidMeta }
+
+// tablePar is a table model that owns viewKid children.
+type tablePar struct {
+	ID   int64
+	Kids []viewKid
+}
+
+var tableParMeta = &momo.Meta[tablePar]{
+	Table:    "pars",
+	Columns:  []momo.ColumnMeta{{Name: "id", Flags: momo.FlagPK}},
+	Ptr:      func(m *tablePar, _ int) any { return &m.ID },
+	Value:    func(m *tablePar, _ int) any { return m.ID },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+	PK: []int{0},
+}
+
+func (*tablePar) MomoMeta() *momo.Meta[tablePar] { return tableParMeta }
+
+var parKids = momo.Relation[tablePar, viewKid]{
+	Name: "Kids", Kind: momo.HasMany,
+	Parent: momo.TableRef{Name: "pars"}, Child: momo.TableRef{Name: "kid_view"},
+	ParentMeta: tableParMeta, ChildMeta: viewKidMeta,
+	ParentCols: []string{"id"}, ChildCols: []string{"parent_id"}, ChildPK: []string{"id"},
+	ParentKey:   func(p *tablePar) ([]any, bool) { return []any{p.ID}, true },
+	ChildKey:    func(c *viewKid) ([]any, bool) { return []any{c.ParentID}, true },
+	SetChildKey: func(c *viewKid, k []any) { c.ParentID = k[0].(int64) },
+	GetMany:     func(p *tablePar) []viewKid { return p.Kids },
+	SetMany:     func(p *tablePar, cs []viewKid) { p.Kids = cs },
+}
+
+// TestViewModelsNotWritableThroughOtherInsertPaths covers the insert paths
+// that do not start at Insert: CreateGraph (view as parent and as child),
+// OnConflict, Copy, Exec of Models and Upsert, and SoftDelete.
+func TestViewModelsNotWritableThroughOtherInsertPaths(t *testing.T) {
+	ctx := context.Background()
+	m := viewItem{ID: 1, Name: "n"}
+	id := momo.NewColumn[int64]("item_view", "id", momo.FlagPK)
+
+	db := momo.New(fakedriver.New(dialect.Postgres))
+	if err := momo.CreateGraph(ctx, db, &m); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("CreateGraph with a view parent: err = %v, want ErrValidation", err)
+	}
+
+	d := fakedriver.New(dialect.Postgres)
+	d.SetRows([][]any{{int64(5)}})
+	par := &tablePar{ID: 5, Kids: []viewKid{{}, {}}}
+	err := momo.CreateGraph(ctx, momo.New(d), par, parKids.Include())
+	if !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "view model") {
+		t.Errorf("CreateGraph with view children: err = %v, want ErrValidation naming the view model", err)
+	}
+
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	if _, err := momo.Insert[viewItem](pg).Model(&m).OnConflict(id).DoNothing().SQL(); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("OnConflict: err = %v, want ErrValidation", err)
+	}
+	if _, err := momo.Insert[viewItem](pg).Copy(ctx, []viewItem{m}); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("Copy: err = %v, want ErrValidation", err)
+	}
+	if _, err := momo.Insert[viewItem](pg).Models([]viewItem{m, m}).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("Models.Exec: err = %v, want ErrValidation", err)
+	}
+	if _, err := momo.Upsert[viewItem](pg).Model(&m).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("Upsert.Exec: err = %v, want ErrValidation", err)
+	}
+	if _, err := momo.SoftDelete[viewItem](pg).Where(id.Eq(1)).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("SoftDelete.Exec: err = %v, want ErrValidation", err)
 	}
 }

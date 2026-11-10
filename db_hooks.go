@@ -95,6 +95,9 @@ func afterLoad[T any](ctx context.Context, meta *Meta[T], m *T) error {
 // the query's models. An interceptor denial therefore never reaches a hook.
 // It returns the query to execute.
 func (q InsertQuery[T]) beforeWrite(ctx context.Context) (InsertQuery[T], error) {
+	if err := viewWriteErr("insert", q.meta); err != nil {
+		return q, err // a view model: no interceptor or hook runs for it
+	}
 	if q.i.err != nil {
 		return q, nil
 	}

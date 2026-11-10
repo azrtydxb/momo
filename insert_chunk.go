@@ -145,6 +145,9 @@ func (q InsertQuery[T]) rowsOne(ctx context.Context) (*ModelRows[T], error) {
 // query itself when no split is needed (or when rendering will report the
 // error), so validation errors keep their single-statement form.
 func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
+	if err := viewWriteErr("insert", q.meta); err != nil {
+		return nil, err
+	}
 	q, err := q.generateIDs(true)
 	if err != nil {
 		return nil, err
