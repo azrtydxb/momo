@@ -17,3 +17,5 @@ Implements plan momo-09-observability-testing Task 16: otelmomo metrics (`.proco
 ## Evidence
 
 - Built in otelmomo/otelmomo.go (db.client.operation.duration via dbconv.NewClientOperationDuration) with TestOtelMetrics in otelmomo/otelmomo_test.go. Green: ci-agent run 42778091550 (headSha 79a4a965871045b635c90908822154c8c19c4503, all 9 jobs success). The wrong-unit mutation (plan step 5) was not run.
+
+- Review fix: the histogram uses the semantic convention bucket boundaries [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10] (`metric.WithExplicitBucketBoundaries`); TestOtelMetrics asserts them.

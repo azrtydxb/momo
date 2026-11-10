@@ -70,7 +70,7 @@ func TestMomotestSQLAssert(t *testing.T) {
 		t.Fatalf("mismatch reported %d errors, want 1", len(bad.errs))
 	}
 	msg := bad.errs[0]
-	if !strings.Contains(msg, "SQL mismatch") || !strings.Contains(msg, c.SQL) || !strings.Contains(msg, c.SQL+" LIMIT 1") || !strings.Contains(msg, "args: 1 bound") {
+	if !strings.Contains(msg, "SQL mismatch") || !strings.Contains(msg, c.SQL) || !strings.Contains(msg, c.SQL+" LIMIT 1") || !strings.Contains(msg, "$1 bound") {
 		t.Fatalf("message lacks both SQL texts or the argument count: %s", msg)
 	}
 	if strings.Contains(msg, "hunter2") {
@@ -87,8 +87,8 @@ func TestMomotestSQLAssert(t *testing.T) {
 	}
 	sbad := &recTB{TB: t}
 	AssertSQL(sbad, sc, sc.SQL+" LIMIT 1")
-	if len(sbad.errs) != 1 || !strings.Contains(sbad.errs[0], momo.RedactedArg) || strings.Contains(sbad.errs[0], "hunter2") {
-		t.Fatalf("sensitive dump must show %s and never the value: %v", momo.RedactedArg, sbad.errs)
+	if len(sbad.errs) != 1 || strings.Contains(sbad.errs[0], "hunter2") {
+		t.Fatalf("sensitive mismatch must fail once and never show the value: %v", sbad.errs)
 	}
 }
 

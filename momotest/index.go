@@ -40,12 +40,11 @@ func AssertUsesIndex(tb testing.TB, q momo.Querier, c momo.Compiled, index strin
 	if found {
 		return
 	}
-	plan := strings.Join(lines, "\n")
+	msg := "the plan does not use index %q"
 	if seq {
-		tb.Errorf("momotest.AssertUsesIndex: the plan contains a sequential scan and does not use index %q\nplan:\n%s", index, plan)
-		return
+		msg = "the plan contains a sequential scan and does not use index %q"
 	}
-	tb.Errorf("momotest.AssertUsesIndex: the plan does not use index %q\nplan:\n%s", index, plan)
+	tb.Errorf("momotest.AssertUsesIndex: "+msg+"\nplan:\n%s", index, strings.Join(lines, "\n"))
 }
 
 // planUsesIndex scans the plan lines. found reports that index appears as a
@@ -53,11 +52,15 @@ func AssertUsesIndex(tb testing.TB, q momo.Querier, c momo.Compiled, index strin
 // sequentially.
 func planUsesIndex(d dialect.Name, lines []string, index string) (found, seq bool) {
 	name := regexp.QuoteMeta(index)
+	// The name is printed quoted when it needs quoting ("MyIdx") and ends at
+	// whitespace or the end of the line, so a name that merely starts with the
+	// asserted one (idx-2, idx.old, idx2) is not a match.
+	token := `(?:"` + name + `"|` + name + `)(?:\s|$)`
 	var use *regexp.Regexp
 	if d == dialect.Postgres {
-		use = regexp.MustCompile(`Index (?:Only )?Scan(?: Backward)? using ` + name + `\b|Bitmap Index Scan on ` + name + `\b`)
+		use = regexp.MustCompile(`Index (?:Only )?Scan(?: Backward)? using ` + token + `|Bitmap Index Scan on ` + token)
 	} else {
-		use = regexp.MustCompile(`USING (?:COVERING )?INDEX ` + name + `\b`)
+		use = regexp.MustCompile(`USING (?:COVERING )?INDEX ` + token)
 	}
 	for _, l := range lines {
 		if use.MatchString(l) {

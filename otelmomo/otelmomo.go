@@ -20,6 +20,10 @@ import (
 
 const scope = "github.com/azrtydxb/momo/otelmomo"
 
+// durationBuckets are the bucket boundaries, in seconds, that the database
+// client semantic conventions advise for db.client.operation.duration.
+var durationBuckets = []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10}
+
 type config struct{ namespace string }
 
 // Option configures New.
@@ -52,7 +56,7 @@ func New(tp trace.TracerProvider, mp metric.MeterProvider, opts ...Option) (momo
 	for _, o := range opts {
 		o(&c)
 	}
-	dur, err := dbconv.NewClientOperationDuration(mp.Meter(scope))
+	dur, err := dbconv.NewClientOperationDuration(mp.Meter(scope), metric.WithExplicitBucketBoundaries(durationBuckets...))
 	if err != nil {
 		return nil, fmt.Errorf("otelmomo: create db.client.operation.duration: %w", err)
 	}

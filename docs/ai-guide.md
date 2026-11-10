@@ -1183,8 +1183,8 @@ runs `EXPLAIN` (never `ANALYZE`) and returns plan text; it binds parameters and
 does not execute the query. Inside a `Tx`, it sees that transaction's settings.
 `momo.Explain(ctx, q, compiled)` plans any statement's `Compiled` (writes
 included, PostgreSQL, SQLite, MySQL and MariaDB) and `momo.ExplainAnalyze(ctx, q,
-compiled)` runs it under `EXPLAIN ANALYZE` (PostgreSQL only; a write is rolled
-back). Momo never calls either on its own; see [observability](observability.md).
+compiled)` runs it under `EXPLAIN ANALYZE` (PostgreSQL only; always rolled
+back, but a rollback cannot undo `nextval`, `NOTIFY` or `dblink` effects). Momo never calls either on its own; see [observability](observability.md).
 
 Select-time guards: `Limit`/`Offset` negative is `ErrValidation`.
 

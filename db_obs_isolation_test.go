@@ -28,10 +28,12 @@ func TestOtelImportsDetector(t *testing.T) {
 	}
 }
 
-// TestCoreHasNoOTel: the core module links no OpenTelemetry package. The
-// OpenTelemetry hook lives in the separate otelmomo module.
+// TestCoreHasNoOTel: no package of the core module links an OpenTelemetry
+// package. ./... covers the whole root module and, as a package pattern, stops
+// at nested modules, so the OpenTelemetry hook in the otelmomo module is the
+// one place that may import it.
 func TestCoreHasNoOTel(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", "github.com/azrtydxb/momo").CombinedOutput()
+	out, err := exec.Command("go", "list", "-deps", "./...").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list -deps: %v\n%s", err, out)
 	}

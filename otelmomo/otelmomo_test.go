@@ -4,6 +4,7 @@ package otelmomo_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -154,8 +155,12 @@ func TestOtelMetrics(t *testing.T) {
 		if hist.Unit != "s" {
 			t.Fatalf("unit = %q, want s", hist.Unit)
 		}
+		wantBounds := []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10}
 		var sawSelect, sawError bool
 		for _, dp := range data.DataPoints {
+			if !slices.Equal(dp.Bounds, wantBounds) {
+				t.Fatalf("bucket bounds = %v, want the semantic convention bounds %v", dp.Bounds, wantBounds)
+			}
 			sys, has := dp.Attributes.Value(attribute.Key("db.system.name"))
 			if !has {
 				t.Fatalf("data point lacks db.system.name: %v", dp.Attributes)

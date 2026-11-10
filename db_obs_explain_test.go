@@ -118,6 +118,17 @@ func TestExplainAnalyzeExplicit(t *testing.T) {
 			t.Fatal("ExplainAnalyze of a SELECT returned no plan")
 		}
 
+		// A SELECT can write through a function; ANALYZE must not keep that.
+		if _, err := momo.Exec(ctx, db, `CREATE FUNCTION obs_write() RETURNS int LANGUAGE sql AS $f$ INSERT INTO authors (id, name) VALUES (98, 'fn') RETURNING 1 $f$`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := momo.ExplainAnalyze(ctx, db, momo.Compiled{SQL: `SELECT obs_write()`}); err != nil {
+			t.Fatal(err)
+		}
+		if n := obsAuthorCount(t, db, 98); n != 0 {
+			t.Fatalf("ExplainAnalyze of a SELECT kept the write of a function it called: %d rows", n)
+		}
+
 		// Inside a transaction the write is rolled back to a savepoint and the
 		// transaction stays usable.
 		err = db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {

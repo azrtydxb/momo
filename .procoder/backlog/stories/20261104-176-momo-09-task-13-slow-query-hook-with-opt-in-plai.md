@@ -21,3 +21,4 @@ Implements plan momo-09-observability-testing Task 13: Slow-query hook with opt-
 - Deviation: a statement that binds a sensitive value is never explained (PlanSkipped says so), an addition for S-42.
 - Plan mutations (no recursion guard, no savepoint, ANALYZE) were not run; the probe branch only ran the Explain, goroutine, streaming and index mutations.
 - Docs: docs/observability.md "Slow queries", docs/ai-guide.md.
+- Review fixes: a statement that failed with a cancellation or timeout gets no plan (obs/slowquery_test.go); inside a transaction the EXPLAIN runs without a deadline on the caller's connection (the 2 s deadline applies only outside a transaction); savepoint failures are classified (unsupported, context ended, tx finished, aborted, other); recursion-guard unit tests cover the in-tx and the other-querier paths. The integration test skips MySQL and MariaDB (recursive CTE depth).

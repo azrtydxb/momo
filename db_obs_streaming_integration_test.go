@@ -21,6 +21,9 @@ const (
 	streamRows = 1_000_000
 	// streamSample is how often (in rows) the test reads the heap.
 	streamSample = 100_000
+	// streamMaxGrowB is the heap growth bound for streaming: 16 MiB, the figure
+	// docs/PERFORMANCE.md lists. Change both together.
+	streamMaxGrowB = 16 << 20
 )
 
 func heapAlloc() uint64 {
@@ -34,7 +37,12 @@ func heapAlloc() uint64 {
 // the heap stays flat: Each must not buffer the result set.
 func TestStreamingBoundedMemory(t *testing.T) {
 	ctx := context.Background()
-	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		if d == dialect.MySQL {
+			// The seed uses a recursive CTE past cte_max_recursion_depth and
+			// the || concatenation operator, which is OR on MySQL.
+			t.Skip("seed SQL is PostgreSQL and SQLite only")
+		}
 		relfixture.CreateSchema(t, db)
 		if _, err := momo.Exec(ctx, db, `INSERT INTO images (id, owner_type, owner_id, url)
 WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < 1000000)

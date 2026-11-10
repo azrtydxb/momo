@@ -220,8 +220,8 @@ c, err := momo.Select[User](db).Where(user.Email.Eq("a@example.test")).SQL()
 momotest.AssertSQL(t, c, `SELECT ... FROM "users" WHERE "users"."email" = $1`)
 ```
 
-On a mismatch the failure holds both texts, the number of bound arguments,
-`Compiled.String()` and a `$n=[redacted]` list. It never holds an argument
+On a mismatch the failure holds both texts and `Compiled.String()`, which lists
+the bound arguments by placeholder (`$1, $2 bound`). It never holds an argument
 value, so a value bound from a `sensitive` column cannot reach the test log.
 
 ## Asserting index use: AssertUsesIndex
@@ -233,7 +233,9 @@ on PostgreSQL and SQLite and fails the test on any other dialect.
 
 - PostgreSQL: the index name must be a whole token in an `Index Scan`,
   `Index Only Scan` or `Bitmap Index Scan` node. A name that only starts with
-  the asserted one (`orders_idx2` for `orders_idx`) does not match.
+  the asserted one (`orders_idx2` or `orders_idx-old` for `orders_idx`) does
+  not match. A mixed-case name that PostgreSQL prints quoted (`"MyIdx"`)
+  matches when you pass `MyIdx`.
 - SQLite: a plan line must say `USING INDEX name` or
   `USING COVERING INDEX name`.
 

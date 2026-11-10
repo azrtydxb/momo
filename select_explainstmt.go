@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -35,19 +34,19 @@ func Explain(ctx context.Context, q Querier, c Compiled) ([]string, error) {
 }
 
 // ExplainAnalyze runs c under EXPLAIN (ANALYZE, FORMAT TEXT) and returns the
-// plan with actual timings. ANALYZE executes the statement: a SELECT runs as
-// is; anything else runs inside a transaction (or, on a *Tx, a savepoint) that
-// is always rolled back, so the write leaves no trace. PostgreSQL only: other
-// dialects return ErrUnsupported and issue nothing. Momo never calls
-// ExplainAnalyze on its own.
+// plan with actual timings. ANALYZE executes the statement, so every call runs
+// inside a transaction (or, on a *Tx, a savepoint) that is always rolled back:
+// a write leaves no row behind, and a SELECT that calls a writing function does
+// not keep its writes. A rollback cannot undo effects outside the transaction:
+// sequence values taken by nextval, NOTIFY sent by a function, work done
+// through dblink or a foreign data wrapper, and anything else the statement does
+// outside the database. PostgreSQL only: other dialects return ErrUnsupported
+// and issue nothing. Momo never calls ExplainAnalyze on its own.
 func ExplainAnalyze(ctx context.Context, q Querier, c Compiled) ([]string, error) {
 	if q.Dialect().Name != dialect.Postgres {
 		return nil, &Error{Kind: ErrUnsupported, Op: "explain analyze"}
 	}
 	sql := "EXPLAIN (ANALYZE, FORMAT TEXT) " + c.SQL
-	if isReadStatement(c.SQL) {
-		return planLines(ctx, q, sql, c)
-	}
 	var lines []string
 	run := func(tx *Tx) error {
 		var err error
@@ -69,22 +68,6 @@ func ExplainAnalyze(ctx context.Context, q Querier, c Compiled) ([]string, error
 		err = nil
 	}
 	return lines, err
-}
-
-// isReadStatement reports whether the first keyword is SELECT or VALUES. WITH
-// counts as a write because a CTE may contain a data-modifying statement.
-func isReadStatement(sql string) bool {
-	k := firstKeyword(sql)
-	return k == "SELECT" || k == "VALUES"
-}
-
-// firstKeyword returns the upper-cased first word of sql.
-func firstKeyword(sql string) string {
-	s := strings.TrimLeft(sql, " \t\r\n(")
-	if i := strings.IndexAny(s, " \t\r\n("); i >= 0 {
-		s = s[:i]
-	}
-	return strings.ToUpper(s)
 }
 
 // planLines runs the explain statement sql with the arguments (and the

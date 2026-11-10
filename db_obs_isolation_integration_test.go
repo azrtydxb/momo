@@ -14,6 +14,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/obs"
 )
 
 // TestNoHiddenGoroutines: queries, hooks and transactions start no goroutine of
@@ -29,7 +30,11 @@ func TestNoHiddenGoroutines(t *testing.T) {
 		runtime.GC()
 		before := runtime.NumGoroutine()
 
-		hdb := momo.New(db.Driver(), momo.WithHook(&obstest.Recorder{}))
+		// The slow-query hook with plan capture is the one hook that issues
+		// statements of its own; threshold -1 makes every statement slow, so
+		// it captures a plan for each, in and out of a transaction.
+		slow := obs.NewSlowQuery(-1, func(obs.SlowQuery) {}, obs.WithPlainExplain(db))
+		hdb := momo.New(db.Driver(), momo.WithHook(&obstest.Recorder{}), momo.WithHook(slow))
 		obsSeed(t, hdb)
 		for i := 0; i < 200; i++ {
 			obsDocs(t, hdb)

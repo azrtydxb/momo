@@ -54,7 +54,7 @@ func TestExplainAnalyzeUnsupportedIssuesNothing(t *testing.T) {
 	}
 }
 
-func TestExplainAnalyzeReadRunsAsIs(t *testing.T) {
+func TestExplainAnalyzeReadIsRolledBack(t *testing.T) {
 	drv := fakedriver.New(dialect.Postgres)
 	drv.SetRows([][]any{{"Seq Scan on authors (actual time=0.01..0.02 rows=1 loops=1)"}})
 	lines, err := momo.ExplainAnalyze(t.Context(), momo.New(drv), momo.Compiled{SQL: "SELECT id FROM authors WHERE id = $1", Args: []any{int64(1)}})
@@ -64,12 +64,17 @@ func TestExplainAnalyzeReadRunsAsIs(t *testing.T) {
 	if len(lines) != 1 || !strings.Contains(lines[0], "actual time") {
 		t.Fatalf("lines = %q", lines)
 	}
-	calls := drv.Calls()
-	if len(calls) != 1 || !strings.HasPrefix(calls[0].SQL, "EXPLAIN (ANALYZE, FORMAT TEXT) SELECT") {
-		t.Fatalf("calls = %+v, want one EXPLAIN ANALYZE of the SELECT", calls)
+	var analyzed int
+	for _, c := range drv.Calls() {
+		if strings.HasPrefix(c.SQL, "EXPLAIN (ANALYZE, FORMAT TEXT) SELECT") {
+			analyzed++
+		}
 	}
-	if drv.Commits() != 0 || drv.Rollbacks() != 0 {
-		t.Fatalf("a read opened a transaction: commits=%d rollbacks=%d", drv.Commits(), drv.Rollbacks())
+	if analyzed != 1 {
+		t.Fatalf("calls = %+v, want one EXPLAIN ANALYZE of the SELECT", drv.Calls())
+	}
+	if drv.Commits() != 0 || drv.Rollbacks() != 1 {
+		t.Fatalf("a SELECT can call a writing function: commits=%d rollbacks=%d, want it rolled back", drv.Commits(), drv.Rollbacks())
 	}
 }
 

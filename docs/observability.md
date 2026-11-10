@@ -106,9 +106,12 @@ statement (the value of a query's `SQL` method) without running it: `EXPLAIN` on
 PostgreSQL, `EXPLAIN QUERY PLAN` on SQLite and `EXPLAIN FORMAT=JSON` on MySQL
 and MariaDB. `momo.ExplainAnalyze(ctx, q, compiled)` runs the statement under
 `EXPLAIN (ANALYZE, FORMAT TEXT)` and returns the plan with actual timings. It
-executes the statement, so a `SELECT` runs as it is and a write runs inside a
-transaction (a savepoint on a `Tx`) that is always rolled back. It is PostgreSQL
-only: other dialects return `ErrUnsupported` and send nothing. Momo calls
+executes the statement, so every call, a `SELECT` included, runs inside a
+transaction (a savepoint on a `Tx`) that is always rolled back. A rollback
+cannot undo what happens outside the transaction: sequence values taken by
+`nextval`, `NOTIFY` sent by a function, work done through `dblink` or a foreign
+data wrapper. A `SELECT` that calls such a function still has those effects. It
+is PostgreSQL only: other dialects return `ErrUnsupported` and send nothing. Momo calls
 neither on its own, and hooks see both as Op `explain`.
 `SelectQuery.Explain` stays the shorthand for a select.
 
@@ -135,6 +138,14 @@ set). Errors are logged through `Error()` only.
 `otelmomo` is a separate module, `github.com/azrtydxb/momo/otelmomo`, so the
 Momo core links no OpenTelemetry package (a test runs `go list -deps` on the core
 to keep it that way). Add it to your `go.mod` only if you want it.
+
+The module has its own release tags, `otelmomo/vX.Y.Z`, made by release-please
+(`go get github.com/azrtydxb/momo/otelmomo@latest`). It requires momo `v0.4.0`,
+whose exported API it compiles against, so it needs no unreleased momo code;
+the `replace` directive in its `go.mod` only points in-repository builds at the
+working tree and is ignored by anyone who imports it. A repository test fails if
+that require ever becomes a pseudo-version or names a momo version newer than
+the last release.
 
 ```text
 h, err := otelmomo.New(tracerProvider, meterProvider, otelmomo.WithNamespace("appdb"))

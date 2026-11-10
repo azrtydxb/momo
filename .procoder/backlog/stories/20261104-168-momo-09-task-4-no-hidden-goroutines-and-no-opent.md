@@ -20,3 +20,5 @@ Implements plan momo-09-observability-testing Task 4: No hidden goroutines and n
 
 - Built: db_obs_isolation_test.go (TestOtelImportsDetector, TestCoreHasNoOTel, unit) and db_obs_isolation_integration_test.go (TestNoHiddenGoroutines, both dialects). Green: ci-agent run 42778091550 (headSha 79a4a965871045b635c90908822154c8c19c4503, all 9 jobs success).
 - Red proof was by mutation, not before the implementation (the tests guard an invariant that already held): ci-agent run 42778360116 on throwaway branch worktree-agent-a789ccf8e0cfe8888-mut (c1d5189, deliberate breaks) adds `go func() { select {} }()` to `momo.New`; TestNoHiddenGoroutines fails on postgres and sqlite. The OTel mutation (plan step 5) and the detector mutation (step 2) were not run; TestOtelImportsDetector asserts the detector result directly.
+
+- Review fixes: TestCoreHasNoOTel now runs `go list -deps ./...` over the whole root module; TestNoHiddenGoroutines also runs the slow-query hook with plan capture, in and out of a transaction.
