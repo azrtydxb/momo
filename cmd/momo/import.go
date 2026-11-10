@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/importer"
@@ -40,13 +41,22 @@ Exit codes: 0 models written, 1 the report holds an unsupported change
 // It returns 0 when the models are written, 1 when the report has an
 // unsupported change (nothing is written) and 2 for a usage or input error.
 func runImport(out, errOut io.Writer, args []string) int {
-	for _, a := range args {
+	// -h and --help mean help only in a flag position, not as the value of a
+	// flag such as --src.
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		if a == "--" {
 			break
 		}
 		if a == "-h" || a == "-help" || a == "--help" {
 			_, _ = fmt.Fprint(out, importUsage)
 			return exitOK
+		}
+		switch strings.TrimLeft(a, "-") {
+		case "src", "out", "package", "report":
+			if strings.HasPrefix(a, "-") && !strings.Contains(a, "=") {
+				i++ // the next argument is this flag's value
+			}
 		}
 	}
 	if len(args) == 0 || len(args[0]) == 0 || args[0][0] == '-' {

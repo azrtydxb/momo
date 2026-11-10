@@ -35,9 +35,13 @@ var sqlSuffixes = []struct {
 // Source.Unsupported, and history.Convert refuses the source. Applied state
 // comes from the bun_migrations table; its name column holds the version
 // prefix (the text before the first underscore is used, so a full file stem
-// matches too). bun_migration_locks is ignored. A row with no file in the
+// matches too). table is the migrations table, "" for bun_migrations.
+// bun_migration_locks is ignored. A row with no file in the
 // directory is an error.
-func Read(dir fs.FS, c momo.PinnedConn) (history.Source, error) {
+func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
+	if table == "" {
+		table = "bun_migrations"
+	}
 	src := history.Source{Tool: "bun", Applied: []string{}}
 	ents, err := fs.ReadDir(dir, ".")
 	if err != nil {
@@ -87,8 +91,14 @@ func Read(dir fs.FS, c momo.PinnedConn) (history.Source, error) {
 			versions = append(versions, version)
 		}
 		if isUp {
+			if p.hasUp {
+				return src, fmt.Errorf("bun: %s and %s both define the up migration of version %s", p.upFile, n, version)
+			}
 			p.up, p.upFile, p.hasUp = b, n, true
 		} else {
+			if p.down != nil {
+				return src, fmt.Errorf("bun: two down files for version %s", version)
+			}
 			p.down = b
 		}
 	}
@@ -101,22 +111,29 @@ func Read(dir fs.FS, c momo.PinnedConn) (history.Source, error) {
 		}
 		src.Migrations = append(src.Migrations, history.Raw{Version: v, Name: p.name, Up: p.up, Down: p.down, Origin: p.upFile})
 	}
-	rows, err := c.Query(context.Background(), "SELECT name FROM bun_migrations ORDER BY id", nil)
+	if err := histutil.CheckDuplicates(versions); err != nil {
+		return src, err
+	}
+	tbl, err := histutil.QuoteTable(table)
 	if err != nil {
-		return src, fmt.Errorf("bun: read bun_migrations: %w", err)
+		return src, err
+	}
+	rows, err := c.Query(context.Background(), "SELECT name FROM "+tbl+" ORDER BY id", nil)
+	if err != nil {
+		return src, fmt.Errorf("bun: read %s: %w", table, err)
 	}
 	defer func() { _ = rows.Close() }()
 	recorded := map[string]bool{}
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			return src, fmt.Errorf("bun: read bun_migrations: %w", err)
+			return src, fmt.Errorf("bun: read %s: %w", table, err)
 		}
 		v, _, _ := strings.Cut(name, "_")
 		recorded[v] = true
 	}
 	if err := rows.Err(); err != nil {
-		return src, fmt.Errorf("bun: read bun_migrations: %w", err)
+		return src, fmt.Errorf("bun: read %s: %w", table, err)
 	}
 	for _, m := range src.Migrations {
 		if recorded[m.Version] {
@@ -132,7 +149,7 @@ func Read(dir fs.FS, c momo.PinnedConn) (history.Source, error) {
 			left = append(left, v)
 		}
 		sort.Strings(left)
-		return src, fmt.Errorf("bun: bun_migrations lists %s as applied but the directory has no file for it", strings.Join(left, ", "))
+		return src, fmt.Errorf("bun: %s lists %s as applied but the directory has no file for it", table, strings.Join(left, ", "))
 	}
 	return src, nil
 }

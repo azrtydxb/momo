@@ -60,6 +60,14 @@ func TestImportUsageErrors(t *testing.T) {
 	}
 }
 
+func TestImportHelpFlagAsValueIsNotHelp(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := runImport(&out, &errOut, []string{"gorm", "--src", "-h", "--out", t.TempDir()})
+	if code != 2 || strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("-h as the value of --src must not print help: exit %d, out %q", code, out.String())
+	}
+}
+
 func TestImportWritesReportFile(t *testing.T) {
 	src := filepath.Join("..", "..", "internal", "compat", "gormfixture")
 	dst := t.TempDir()

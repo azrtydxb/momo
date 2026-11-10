@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"testing/fstest"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/importtest"
@@ -45,4 +46,28 @@ func TestHistoryImporters(t *testing.T) {
 		}
 		importtest.CheckImport(t, live, importtest.Input{Tool: "goose", Source: src, Exclude: []string{"goose_db_version"}})
 	})
+}
+
+func TestReadRefusesDuplicateVersions(t *testing.T) {
+	ctx := context.Background()
+	live := testopen.Postgres(t)
+	if _, err := momo.Exec(ctx, live, `CREATE TABLE goose_db_version (id serial PRIMARY KEY, version_id bigint NOT NULL, is_applied boolean NOT NULL, tstamp timestamp NULL DEFAULT now())`); err != nil {
+		t.Fatal(err)
+	}
+	pn, ok := live.Driver().(momo.Pinner)
+	if !ok {
+		t.Fatal("driver does not implement momo.Pinner")
+	}
+	conn, err := pn.Pin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Release() }()
+	fsys := fstest.MapFS{
+		"00001_a.sql": {Data: []byte("-- +goose Up\nSELECT 1;\n")},
+		"1_b.sql":     {Data: []byte("-- +goose Up\nSELECT 2;\n")},
+	}
+	if _, err := Read(fsys, conn, "goose_db_version"); err == nil {
+		t.Fatal("00001 and 1 are the same goose version and must be refused")
+	}
 }

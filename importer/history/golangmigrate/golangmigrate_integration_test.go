@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"testing/fstest"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/importer/history"
@@ -91,6 +92,33 @@ func TestHistoryImporters(t *testing.T) {
 		}
 		if _, _, err := history.Convert(src); !errors.Is(err, history.ErrSourcePending) {
 			t.Fatalf("a migration the source never applied must be refused, got %v", err)
+		}
+	})
+
+	t.Run("golangmigrate/wrong-directory-refused", func(t *testing.T) {
+		live := testopen.Postgres(t)
+		if _, err := momo.Exec(ctx, live, `CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := momo.Exec(ctx, live, `INSERT INTO schema_migrations (version, dirty) VALUES (5, false)`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Read(fstest.MapFS{}, pin(t, live), "schema_migrations"); err == nil {
+			t.Fatal("a recorded version with an empty directory must be refused")
+		}
+	})
+
+	t.Run("golangmigrate/duplicate-versions-refused", func(t *testing.T) {
+		live := testopen.Postgres(t)
+		if _, err := momo.Exec(ctx, live, `CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`); err != nil {
+			t.Fatal(err)
+		}
+		fsys := fstest.MapFS{
+			"01_a.up.sql": {Data: []byte("SELECT 1;")},
+			"1_b.up.sql":  {Data: []byte("SELECT 2;")},
+		}
+		if _, err := Read(fsys, pin(t, live), "schema_migrations"); err == nil {
+			t.Fatal("01 and 1 are the same version and must be refused")
 		}
 	})
 }

@@ -80,3 +80,13 @@ func TestReadReadsTxmodeNone(t *testing.T) {
 		t.Fatal("atlas:txmode none must set NoTx")
 	}
 }
+
+func TestReadRefusesAppliedRevisionWithoutFile(t *testing.T) {
+	_, err := Read(fixture(t), []Revision{
+		{Version: "20260101000000", Applied: 1, Total: 1},
+		{Version: "20250101000000", Applied: 1, Total: 1},
+	})
+	if err == nil || !strings.Contains(err.Error(), "20250101000000") {
+		t.Fatalf("an applied revision without a file must be refused by version, got %v", err)
+	}
+}

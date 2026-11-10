@@ -134,6 +134,13 @@ func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
 	sort.SliceStable(src.Migrations, func(i, j int) bool {
 		return histutil.LessNumeric(src.Migrations[i].Version, src.Migrations[j].Version)
 	})
+	vs := make([]string, len(src.Migrations))
+	for i, m := range src.Migrations {
+		vs[i] = m.Version
+	}
+	if err := histutil.CheckDuplicates(vs); err != nil {
+		return src, err
+	}
 	tbl, err := histutil.QuoteTable(table)
 	if err != nil {
 		return src, err

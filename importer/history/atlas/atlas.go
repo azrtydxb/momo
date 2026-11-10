@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/importer/history"
+	"github.com/azrtydxb/momo/importer/history/internal/histutil"
 )
 
 // SumFile is the name of the Atlas directory checksum file.
@@ -89,6 +90,13 @@ func Read(dir fs.FS, revisions []Revision) (history.Source, error) {
 		}
 		return a < b
 	})
+	vs := make([]string, len(src.Migrations))
+	for i, m := range src.Migrations {
+		vs[i] = m.Version
+	}
+	if err := histutil.CheckDuplicates(vs); err != nil {
+		return src, err
+	}
 	done := map[string]bool{}
 	for _, r := range revisions {
 		if r.Error != "" || r.Applied < r.Total {
@@ -100,7 +108,16 @@ func Read(dir fs.FS, revisions []Revision) (history.Source, error) {
 	for _, m := range src.Migrations {
 		if done[m.Version] {
 			src.Applied = append(src.Applied, m.Version)
+			delete(done, m.Version)
 		}
+	}
+	if len(done) > 0 {
+		left := make([]string, 0, len(done))
+		for v := range done {
+			left = append(left, v)
+		}
+		sort.Strings(left)
+		return src, fmt.Errorf("atlas: atlas_schema_revisions lists %s as applied but the directory has no file for it", strings.Join(left, ", "))
 	}
 	return src, nil
 }

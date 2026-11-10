@@ -78,6 +78,9 @@ func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
 		}
 		src.Migrations = append(src.Migrations, history.Raw{Version: v, Name: p.name, Up: p.up, Down: p.down, Origin: p.upFile})
 	}
+	if err := histutil.CheckDuplicates(versions); err != nil {
+		return src, err
+	}
 	tbl, err := histutil.QuoteTable(table)
 	if err != nil {
 		return src, err
@@ -114,7 +117,7 @@ func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
 			src.Applied = append(src.Applied, m.Version)
 		}
 	}
-	if cur != 0 && len(src.Migrations) > 0 && !hasVersion(src.Migrations, cur) {
+	if cur != 0 && !hasVersion(src.Migrations, cur) {
 		return src, errors.New("golangmigrate: " + table + " is at version " + strconv.FormatInt(cur, 10) + ", which has no file in the directory")
 	}
 	return src, nil
