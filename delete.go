@@ -73,7 +73,8 @@ func (d DeleteQuery[T]) WithRecursive(name string, q Subquery, cols ...string) D
 // Where predicate must reference a column of the target table, otherwise the
 // statement joins every target row to src and fails with ErrUnfilteredMutation
 // unless AllRows confirms it. A raw SQL fragment does not count as such a
-// reference.
+// reference. An Or counts only when every branch references the target, because a
+// branch off the target can be true on its own; an And counts when any term does.
 func (d DeleteQuery[T]) Using(src TableSource) DeleteQuery[T] { d.using = src; return d }
 
 // Where adds predicates combined with AND.

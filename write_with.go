@@ -70,23 +70,50 @@ func writeWithClause(b *Builder, ctes []cte) {
 	b.writeByte(' ')
 }
 
-// referencesTable reports whether any predicate refers to a column of the
-// table exposed as qualifier. A statement with a second source (UPDATE ...
-// FROM, DELETE ... USING) whose WHERE never mentions its own target joins the
-// target to the source with no condition and so touches every target row; the
-// unfiltered-mutation guard uses this to refuse it. Raw SQL fragments record
-// no column references and do not count.
+// referencesTable reports whether the predicates constrain the table exposed
+// as qualifier. A statement with a second source (UPDATE ... FROM, DELETE ...
+// USING) whose WHERE never constrains its own target joins the target to the
+// source with no condition and so touches every target row; the
+// unfiltered-mutation guard uses this to refuse it. The predicates are ANDed,
+// so one that constrains the target is enough. Inside a predicate an And is
+// satisfied by any of its terms, but an Or only when every branch is, because
+// a branch off the target can be true on its own. Raw SQL fragments record no
+// column references and do not count.
 func referencesTable(d *dialect.Dialect, ps []Predicate, qualifier string) bool {
 	for _, p := range ps {
-		if p == nil {
-			continue
-		}
-		b := NewBuilder(d)
-		b.pushScope(nil)
-		p.AppendSQL(b)
-		if _, ok := b.scopes[0].refs[qualifier]; ok {
+		if constrainsTable(d, p, qualifier) {
 			return true
 		}
 	}
 	return false
+}
+
+func constrainsTable(d *dialect.Dialect, p Predicate, qualifier string) bool {
+	switch j := p.(type) {
+	case nil:
+		return false
+	case junction:
+		if j.op == " OR " {
+			if len(j.parts) == 0 {
+				return false
+			}
+			for _, part := range j.parts {
+				if !constrainsTable(d, part, qualifier) {
+					return false
+				}
+			}
+			return true
+		}
+		for _, part := range j.parts {
+			if constrainsTable(d, part, qualifier) {
+				return true
+			}
+		}
+		return false
+	}
+	b := NewBuilder(d)
+	b.pushScope(nil)
+	p.AppendSQL(b)
+	_, ok := b.scopes[0].refs[qualifier]
+	return ok
 }

@@ -97,7 +97,9 @@ func (u UpdateQuery[T]) WithRecursive(name string, q Subquery, cols ...string) U
 // Where predicate must reference a column of the target table, otherwise the
 // statement joins every target row to src and fails with ErrUnfilteredMutation
 // unless AllRows confirms it. A raw SQL fragment does not count as such a
-// reference. From cannot be combined with BulkUpdate (ErrValidation).
+// reference. An Or counts only when every branch references the target, because a
+// branch off the target can be true on its own; an And counts when any term does.
+// From cannot be combined with BulkUpdate (ErrValidation).
 func (u UpdateQuery[T]) From(src TableSource) UpdateQuery[T] { u.from = src; return u }
 
 // Where adds predicates combined with AND.
