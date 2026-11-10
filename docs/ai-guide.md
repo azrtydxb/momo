@@ -1129,7 +1129,7 @@ return rows2.Err()
   it returns every column. It returns `ErrNotFound` when no row came back (an
   `OnConflict(...).DoNothing()` insert, or a guarded update or delete that
   matched nothing) and `ErrTooManyRows` when more than one did; an implicit
-  transaction is then rolled back. Dialects without `RETURNING` (MySQL) return
+  transaction (`WithImplicitTx`) is then rolled back. Dialects without `RETURNING` (MySQL) return
   `ErrUnsupported`; MariaDB supports it on insert only.
 - A `ReadOnly` / `identity` column is never written by `InsertQuery.Model`.
 - `InsertQuery.Models([]T{})` (empty) is `ErrValidation`.

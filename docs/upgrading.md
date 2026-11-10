@@ -14,7 +14,7 @@ and return the single returned row as `T`, so a sqlc `:one` style write no
 longer needs the `Rows` / `ScanModel` / `Close` loop. Without a `Returning`
 list it returns every column. It returns `ErrNotFound` when no row came back
 (an `ON CONFLICT DO NOTHING` insert, or a guarded update or delete that matched
-nothing) and `ErrTooManyRows` when more than one did, rolling back an implicit
+nothing) and `ErrTooManyRows` when more than one did, rolling back a `WithImplicitTx`
 transaction. MySQL has no `RETURNING` and returns `ErrUnsupported`. This is
 additive; nothing to change.
 

@@ -190,10 +190,10 @@ func TestWriteOneTooManyRows(t *testing.T) {
 		if !errors.Is(err, momo.ErrTooManyRows) {
 			t.Fatalf("multi-row delete err = %v, want ErrTooManyRows", err)
 		}
-		// The implicit transaction was rolled back: both rows are intact.
+		// With WithImplicitTx the statement ran in a transaction that was rolled back: both rows are intact.
 		n, err := momo.Select[suite.Document](db).Where(suite.DocTenantID.Eq(3), suite.DocTitle.In("a", "b")).Count(ctx)
 		if err != nil || n != 2 {
 			t.Fatalf("rows after refused writes = %d, %v; want 2", n, err)
 		}
-	})
+	}, momo.WithImplicitTx())
 }
