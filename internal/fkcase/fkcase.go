@@ -56,23 +56,34 @@ func field(name, goType, tag string, i int) *gen.Field {
 	}
 }
 
-func model(goName, table string) *gen.Model {
-	return &gen.Model{
+// model builds a table with an integer key and, unless it is the parent, a
+// nullable parent_id column with the default 0 (the target of SET DEFAULT).
+// MySQL has no default mapping for int64, so its columns carry a type tag.
+func model(goName, table string, d dialect.Name, child bool) *gen.Model {
+	idTag, fkTag := "pk", ""
+	if d == dialect.MySQL {
+		idTag, fkTag = "pk,type:bigint", "type:bigint"
+	}
+	m := &gen.Model{
 		GoName: goName, PkgPath: "ex/m", Table: table,
-		Fields: []*gen.Field{field("ID", "int64", "pk", 0), field("ParentID", "*int64", "", 1)},
+		Fields: []*gen.Field{field("ID", "int64", idTag, 0)},
 		Pos:    token.Position{Filename: "m.go", Line: 3, Column: 6},
 		Config: &gen.CompanionResult{
-			Defaults: map[string]string{"parent_id": "0"}, Comments: map[string]string{}, Collates: map[string]string{},
+			Defaults: map[string]string{}, Comments: map[string]string{}, Collates: map[string]string{},
 		},
 	}
+	if child {
+		m.Fields = append(m.Fields, field("ParentID", "*int64", fkTag, 1))
+		m.Config.Defaults["parent_id"] = "0"
+	}
+	return m
 }
 
 // Schema builds the schema of a parent table, one child table per case and a
 // table whose relation has no database constraint, for dialect d. It fails on
 // any diagnostic of the schema builder.
 func Schema(d dialect.Name, cases []Case) (*schema.Schema, error) {
-	parent := model("FKParent", Parent)
-	parent.Fields = parent.Fields[:1]
+	parent := model("FKParent", Parent, d, false)
 	models := []*gen.Model{parent}
 	rel := func(m *gen.Model, onDelete, onUpdate string, loose bool) {
 		m.Relations = []*gen.Relation{{
@@ -82,11 +93,11 @@ func Schema(d dialect.Name, cases []Case) (*schema.Schema, error) {
 		}}
 	}
 	for i, c := range cases {
-		m := model(fmt.Sprintf("FKChild%d", i), "fk_"+c.Name)
+		m := model(fmt.Sprintf("FKChild%d", i), "fk_"+c.Name, d, true)
 		rel(m, c.OnDelete, c.OnUpdate, false)
 		models = append(models, m)
 	}
-	loose := model("FKLoose", Loose)
+	loose := model("FKLoose", Loose, d, true)
 	rel(loose, "", "", true)
 	models = append(models, loose)
 

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/testdb"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
@@ -220,7 +221,9 @@ func TestDriftBodiesNeedCreateOnDatabase(t *testing.T) {
 	app := openAppRole(t)
 	createDeclaredLive(t, admin.Driver())
 	fsys := canonFS(t, declaredObjects())
-	if err := canonEngine(t, admin.Driver(), fsys).Baseline(context.Background(), canonVersion, false); err != nil {
+	// The subtests have their own t, so name the schema of this test once.
+	sch := testdb.Schema(t)
+	if err := canonEngine(t, admin.Driver(), fsys, sch).Baseline(context.Background(), canonVersion, false); err != nil {
 		t.Fatalf("baseline: %v", err)
 	}
 	// The history table must belong to the role that reads it.
@@ -230,7 +233,7 @@ func TestDriftBodiesNeedCreateOnDatabase(t *testing.T) {
 	mustExec(t, admin.Driver(), `CREATE POLICY docs_pos ON docs FOR SELECT USING (true)`)
 
 	t.Run("default lists the bodies as unverified", func(t *testing.T) {
-		rep, err := canonEngine(t, app.Driver(), fsys).Drift(context.Background())
+		rep, err := canonEngine(t, app.Driver(), fsys, sch).Drift(context.Background())
 		if err != nil {
 			t.Fatalf("a role without CREATE must still get a report: %v", err)
 		}
@@ -247,7 +250,7 @@ func TestDriftBodiesNeedCreateOnDatabase(t *testing.T) {
 		}
 	})
 	t.Run("strict fails naming the privilege", func(t *testing.T) {
-		rep, err := canonEngine(t, app.Driver(), fsys).DriftWith(context.Background(), migrate.DriftOptions{Strict: true})
+		rep, err := canonEngine(t, app.Driver(), fsys, sch).DriftWith(context.Background(), migrate.DriftOptions{Strict: true})
 		if !errors.Is(err, migrate.ErrCanonicalizePrivilege) {
 			t.Fatalf("want ErrCanonicalizePrivilege, got %+v %v", rep, err)
 		}
@@ -258,7 +261,9 @@ func TestDriftBodiesNeedCreateOnDatabase(t *testing.T) {
 		}
 	})
 	t.Run("strict with the privilege reports the change", func(t *testing.T) {
-		rep, err := canonEngine(t, admin.Driver(), fsys).DriftWith(context.Background(), migrate.DriftOptions{Strict: true})
+		// The administrator reads the history table again, so it must own it.
+		mustExec(t, admin.Driver(), `ALTER TABLE momo_migrations OWNER TO CURRENT_USER`)
+		rep, err := canonEngine(t, admin.Driver(), fsys, sch).DriftWith(context.Background(), migrate.DriftOptions{Strict: true})
 		if err != nil {
 			t.Fatal(err)
 		}

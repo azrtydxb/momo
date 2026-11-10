@@ -41,6 +41,7 @@ internal-leaf internal/sqlstub
 internal-fixture internal/compat/...
 internal-fixture internal/docscheck
 internal-fixture internal/exprtest
+internal-fixture internal/fkcase
 internal-fixture internal/fakedriver
 internal-fixture internal/gendocs/...
 internal-fixture internal/obstest
