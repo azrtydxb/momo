@@ -5,6 +5,105 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.6.0
+
+### The Using and From guard is stricter
+
+`UpdateQuery.From` and `DeleteQuery.Using` refuse a statement whose `Where`
+does not reference the target table, with `ErrUnfilteredMutation`. The guard
+now follows `Or`, `Not` and `JoinSQL`: an `Or` counts only when every branch
+references the target, an `And` when any term does, and `Not` swaps the two
+rules. `JoinSQL` with `AND` or `OR` follows the same rules, and `JoinSQL` with
+any other separator never counts. Statements that passed in 0.5.0 and are now
+refused: `Where(momo.Or(PostCols.ID.Eq(1), SrcCols.Title.Eq("x")))`, where one
+`Or` branch is off the target, and
+`Where(momo.Not(momo.And(PostCols.ID.Eq(1), SrcCols.Title.Eq("x"))))`, which is
+an `Or` of negations.
+
+Add a condition on the target to every branch, or call `AllRows()` when the
+statement is meant to touch every row. The guard checks that the condition
+references the target, not that it restricts it: `t.id = t.id` still passes.
+
+### OpenAPI error bodies use the key `error`
+
+The OpenAPI document and the generated handlers now describe and send errors
+as `{"error": "<message>"}`. The `Error` schema property was `message` in 0.4.0.
+A client that reads `message` from an error response must read `error`. Error
+messages are fixed strings: a constraint violation no longer shows the table or
+constraint name.
+
+### Generated handlers and servers
+
+The ecosystem generators (`graphql`, `grpc`, `openapi`, enabled in the
+`plugins:` section of `momo.yaml`) generate servers that do no authentication
+and no authorization. Wrap the `http.ServeMux`, the `grpc.Server` or the
+GraphQL handler. Turn off operations of the `openapi` and `grpc` servers with
+`ops` or `read_only: true` (the `graphql` plugin has neither option); see the
+[capabilities](capabilities.md) page for the options, the error mapping, the
+update semantics and the GraphQL limits.
+
+PUT and gRPC Update differ on purpose. An OpenAPI PUT must carry every required
+property and writes only the properties it carries, so a property it leaves out
+keeps whatever value the database has, including one a concurrent request just
+wrote. A gRPC Update has no way to leave a scalar out (a proto3 scalar at its
+zero value is a value), so it writes every writable column the message holds;
+a vector, a timestamp or a defaulted scalar left unset is not written. Neither
+reads the row first and writes it back.
+
+### View models no longer produce a table
+
+A model that embeds `momo.View` maps a view, so the generated schema, and with
+it `momo migrate diff`, holds no table for it. A view model gets no
+`CREATE TABLE`, and a foreign key never points at it. Declare the view itself
+with `c.View` in `MomoConfig`.
+
+The generated servers expose only list and get for a view model: there is no
+create, update or delete route, RPC or mutation, and naming a write operation
+for a view model in `ops` is a generator error.
+
+If you add `momo.View` to a model whose table really exists in the database,
+`momo migrate diff` now plans a `DROP TABLE` for that table (AutoMigrate skips
+it). Review the diff before you apply it.
+
+`momo.RefreshMaterializedView` refreshes a materialized view (PostgreSQL only).
+
+### OpenAPI input and output schemas
+
+The OpenAPI document now has two schemas per model. `<Model>` (for example
+`Document`) is the output: every column, with the not-null columns, the key
+included, listed in `required`. A client generator now types `id` as required
+on a response. `<Model>Input` (`DocumentInput`) is new and is what a create and
+a PUT take: only the writable properties, so it has no key and no read-only,
+identity or serial column, and its `required` list is what it was on `<Model>`
+in 0.5.0 (not null, no database default). Every response keeps referencing
+`<Model>`; the request bodies of create and PUT now reference `<Model>Input`.
+A client generated from the old document sends the same JSON and keeps working;
+regenerate it to get the new types. A model whose name plus `Input` is also a
+model name (`Doc` and `DocInput`) is a generator diagnostic.
+
+The gRPC messages are unchanged: a model message is still what a client sends
+and receives. The field comments in the `.proto` file say which fields a request
+ignores (the key on Create, read-only columns on Create and Update, and the
+version, soft-delete and timestamp columns on Update).
+
+### Error hook and cancellation codes
+
+The `openapi` and `grpc` plugins take the option `on_error`, the name of a Go
+function in the generated package with the signature
+`func(ctx context.Context, op string, err error)`. The generated code calls it
+once for every error it answers from a statement (a database error, a missing
+row, a cancelled context), with the operation (the `operationId` for OpenAPI,
+for example `getDocument`; `DocumentService.Get` for gRPC) and the original
+error, before it writes the fixed message. Log, count or trace the error there.
+A panic in the hook is recovered, so it cannot stop the request from being
+answered. The `openapi` option needs `handlers: true`, because only the
+generated handlers call the hook. Without the option nothing changes.
+
+A request whose context was cancelled is now answered 499 (OpenAPI), `Canceled`
+(gRPC) and `CANCELED` (GraphQL) with a fixed message, and one whose deadline
+passed 504, `DeadlineExceeded` and `CANCELED`. These were 500 and `Internal`
+before. A client or proxy that retries on 500 will no longer retry them.
+
 ## Upgrading to 0.5.0
 
 ### Regenerating with `--from-db` after the `dbdefault` tag

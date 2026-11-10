@@ -841,7 +841,22 @@ The generator sets `Meta.View`. Reads work as for any model; `Insert`,
 `Upsert`, `Update`, `SoftDelete`, `BulkUpdate`, `Delete` and `Merge` return
 `ErrValidation` naming the model, at run time (there is no compile-time
 check). Declare the view itself with `c.View(schema.View{...})` in
-`MomoConfig`.
+`MomoConfig`. The schema the generator builds holds that view and no table for
+the view model, so a migration never issues `CREATE TABLE` for it, and no
+foreign key refers to it. `Materialized: true` declares a materialized view;
+refresh it with `momo.RefreshMaterializedView(ctx, db, "name", false)` (a
+name with a schema prefix, two parts joined by a dot, is split and quoted; the last argument adds
+`CONCURRENTLY`, which needs a unique index in the view's `Indexes`). It is
+PostgreSQL only and returns `ErrUnsupported` elsewhere.
+
+### Generated servers
+
+The `momo` binary has built-in `graphql`, `grpc` and `openapi` plugins, enabled
+in the `plugins` section of `momo.yaml`. They generate servers over your models
+with no authentication or authorization: wrap them. The `openapi` and `grpc`
+plugins take `ops`, `read_only` and `on_error`; the OpenAPI document has a
+`<Model>` output schema and a `<Model>Input` request schema. See
+[capabilities](capabilities.md) for the options, error mapping and limits.
 
 ### Custom generator binary
 
@@ -1516,7 +1531,9 @@ Joined and CTE-prefixed writes:
 - With `From` or `Using` the unfiltered-mutation guard is stricter: at least one `Where` predicate
   must reference a column of the target table, otherwise the statement joins every target row to
   the source and fails with `ErrUnfilteredMutation` unless `AllRows()` confirms it. A condition
-  only on the source, or a raw `momo.SQL` fragment, does not count. `From` cannot be combined with
+  only on the source, or a raw `momo.SQL` fragment, does not count. An `Or` counts only when every
+  branch references the target (one branch off the target can be true on its own, which touches
+  every target row); an `And` counts when any term does. `momo.Not` swaps the rules (a negated `And` needs every term on the target, a negated `Or` any term), and `momo.JoinSQL` with `AND` or `OR` follows the same rules as `And` and `Or`. The guard checks that `Where` references the target, not that it restricts it: a constant-true predicate such as `t.id = t.id` passes. `From` cannot be combined with
   `BulkUpdate` (`ErrValidation`), and `RETURNING` with `From` works on PostgreSQL and SQLite only.
 - `UpdateQuery.With` and `UpdateQuery.WithRecursive` exist on `UpdateQuery`, `DeleteQuery` and `InsertQuery`, with the
   `SelectQuery` signature. PostgreSQL and SQLite render the WITH before the statement; MySQL
@@ -7623,16 +7640,25 @@ session advisory lock.
 
 ## Generator and CLI
 
-| Item                     | Status                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `momo generate`          | yes; flags `-c momo.yaml`, `--check` (exit 1 when generated files are stale); `--from-db` writes models and the init snapshot from a PostgreSQL database                                                                                                                                                                                                                                              |
-| Generated output         | typed column descriptors, `Meta`, relation descriptors, permission-typed columns (`read_only`, `create_only`, `immutable`), vector columns                                                                                                                                                                                                                                                            |
-| Custom generator plugins | Build your own binary with `cli.Main(plugins...)` (package `cli`) or use the Go API (`gen.Emit`); the stock binary ships none                                                                                                                                                                                                                                                                         |
-| `momo migrate`           | `diff`, `new --custom`, `plan`, `apply`, `status`, `validate`, `hash`, `rehash`, `baseline`, `drift`, `resolve`, `lint`, `rollback`, `rebase`; flags `--dir` (migration directory, overrides `migrate.dir`) and, on `diff`, `--stage` (stage NOT NULL columns without a default) and `--enforce-not-null` (emit SET NOT NULL after the backfill, see [migrations.md](migrations.md#not-null-columns)) |
-| `momo help [command]`    | yes                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Exit codes               | 0 success; 1 findings (stale files, drift, validation problems, refusals); 2 usage or configuration error; 3 database, lock or execution error (`migrate` only)                                                                                                                                                                                                                                       |
-| Database URL             | `--url` (warns; `--url -` reads stdin), else `migrate.url_env.<dialect>` in `momo.yaml`, else `MOMO_DATABASE_URL`                                                                                                                                                                                                                                                                                     |
-| Dialect selection        | `--dialect`, else the only configured dialect, else `postgres`                                                                                                                                                                                                                                                                                                                                        |
+| Item                          | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `momo generate`               | yes; flags `-c momo.yaml`, `--check` (exit 1 when generated files are stale); `--from-db` writes models and the init snapshot from a PostgreSQL database                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Generated output              | typed column descriptors, `Meta`, relation descriptors, permission-typed columns (`read_only`, `create_only`, `immutable`), vector columns                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Custom generator plugins      | Built-in: `graphql`, `grpc`, `openapi` and `viz`, enabled and configured in the `plugins:` section of `momo.yaml`; your own plugins come from a binary built with `cli.Main(plugins...)`, or from `gen.Emit`                                                                                                                                                                                                                                                                                                                                                         |
+| Ecosystem generators          | GraphQL (gqlgen), gRPC (protoc with a field-number lock) and OpenAPI 3.1 (optional `net/http` handlers) servers over the typed API; filters go through the generated `ColumnByName` allowlist and pages use keyset cursors                                                                                                                                                                                                                                                                                                                                           |
+| Generated servers: access     | Generated handlers, gRPC services and GraphQL resolvers do no authentication or authorization; wrap the mux, the grpc.Server or the handler. `ops: [list, get]` (all models) or `ops: {Model: [...], "*": [...]}` and `read_only: true` choose the operations of `openapi` and `grpc`; the default serves all five                                                                                                                                                                                                                                                   |
+| Generated servers: views      | A model that embeds `momo.View` is read-only in `openapi` and `grpc`: only list and get are served, whatever `ops` says for `*`; naming a write operation for the view model itself is a generator diagnostic. GraphQL serves queries only                                                                                                                                                                                                                                                                                                                           |
+| Generated servers: errors     | Fixed messages, no table or constraint names: not found 404 / NotFound, unique 409 / AlreadyExists, foreign key 409 / FailedPrecondition, check and not-null 400 / InvalidArgument, busy or serialization failure 503 / Unavailable; a cancelled request 499 / Canceled / `CANCELED`, a passed deadline 504 / DeadlineExceeded / `CANCELED`; GraphQL sends the same through an error presenter                                                                                                                                                                       |
+| Generated servers: error hook | The `openapi` and `grpc` options `on_error: OnError` call `OnError(ctx, op, err)`, a function of the generated package, once for every error a handler or call answers, with the operation (`getDocument`, `DocumentService.Get`) and the original error, before the fixed message is written; the generated code compiles without it; `openapi` needs `handlers: true` for it (a diagnostic otherwise), and a panic in the hook is recovered                                                                                                                        |
+| OpenAPI schemas               | `<Model>` is the output (every column, not-null columns including the key in `required`); `<Model>Input` is what create and PUT take (writable properties only, no key or read-only column). The gRPC message is one for both directions; its field comments say which fields a request ignores                                                                                                                                                                                                                                                                      |
+| Generated servers: writes     | A key that is not exactly a property name is a 400. OpenAPI create needs every required property (not null, no default, not a key, not read-only), else 400; PUT needs the same and only the properties it carries are written, in one statement that reads nothing first; bodies are application/json (415), at most 1 MiB (413), one object. gRPC Update writes every writable column in one statement without reading the row first; a proto3 scalar cannot be absent, so a defaulted scalar at its zero value keeps its stored value                             |
+| GraphQL limits                | `model.NewHandler` limits the request body to 1 MiB, the depth to 8 (an introspection query is exempt) and the complexity to 500 (`NewHandlerWithLimits` changes them), and refuses a request whose selected relations could load more than 10000 rows (page size times 100 per to-many level, counted level by level); `in` lists hold at most 100 values, filters nest at most 4 deep with at most 20 terms per list, and a to-many relation returns at most 100 rows per parent (the first by primary key); relations are preloaded to the depth of the selection |
+| gRPC field numbers            | The lock records each field's type and cardinality: a change retires the old number into `reserved` and assigns a new one; messages are keyed by table, so renaming a Go type keeps its numbers                                                                                                                                                                                                                                                                                                                                                                      |
+| `momo migrate`                | `diff`, `new --custom`, `plan`, `apply`, `status`, `validate`, `hash`, `rehash`, `baseline`, `drift`, `resolve`, `lint`, `rollback`, `rebase`; flags `--dir` (migration directory, overrides `migrate.dir`) and, on `diff`, `--stage` (stage NOT NULL columns without a default) and `--enforce-not-null` (emit SET NOT NULL after the backfill, see [migrations.md](migrations.md#not-null-columns))                                                                                                                                                                |
+| `momo help [command]`         | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Exit codes                    | 0 success; 1 findings (stale files, drift, validation problems, refusals); 2 usage or configuration error; 3 database, lock or execution error (`migrate` only)                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Database URL                  | `--url` (warns; `--url -` reads stdin), else `migrate.url_env.<dialect>` in `momo.yaml`, else `MOMO_DATABASE_URL`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Dialect selection             | `--dialect`, else the only configured dialect, else `postgres`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## Hooks and events
 
@@ -8021,6 +8047,105 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 [stability policy](supported-versions.md#stability-policy). Read this page and
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
+
+## Upgrading to 0.6.0
+
+### The Using and From guard is stricter
+
+`UpdateQuery.From` and `DeleteQuery.Using` refuse a statement whose `Where`
+does not reference the target table, with `ErrUnfilteredMutation`. The guard
+now follows `Or`, `Not` and `JoinSQL`: an `Or` counts only when every branch
+references the target, an `And` when any term does, and `Not` swaps the two
+rules. `JoinSQL` with `AND` or `OR` follows the same rules, and `JoinSQL` with
+any other separator never counts. Statements that passed in 0.5.0 and are now
+refused: `Where(momo.Or(PostCols.ID.Eq(1), SrcCols.Title.Eq("x")))`, where one
+`Or` branch is off the target, and
+`Where(momo.Not(momo.And(PostCols.ID.Eq(1), SrcCols.Title.Eq("x"))))`, which is
+an `Or` of negations.
+
+Add a condition on the target to every branch, or call `AllRows()` when the
+statement is meant to touch every row. The guard checks that the condition
+references the target, not that it restricts it: `t.id = t.id` still passes.
+
+### OpenAPI error bodies use the key `error`
+
+The OpenAPI document and the generated handlers now describe and send errors
+as `{"error": "<message>"}`. The `Error` schema property was `message` in 0.4.0.
+A client that reads `message` from an error response must read `error`. Error
+messages are fixed strings: a constraint violation no longer shows the table or
+constraint name.
+
+### Generated handlers and servers
+
+The ecosystem generators (`graphql`, `grpc`, `openapi`, enabled in the
+`plugins:` section of `momo.yaml`) generate servers that do no authentication
+and no authorization. Wrap the `http.ServeMux`, the `grpc.Server` or the
+GraphQL handler. Turn off operations of the `openapi` and `grpc` servers with
+`ops` or `read_only: true` (the `graphql` plugin has neither option); see the
+[capabilities](capabilities.md) page for the options, the error mapping, the
+update semantics and the GraphQL limits.
+
+PUT and gRPC Update differ on purpose. An OpenAPI PUT must carry every required
+property and writes only the properties it carries, so a property it leaves out
+keeps whatever value the database has, including one a concurrent request just
+wrote. A gRPC Update has no way to leave a scalar out (a proto3 scalar at its
+zero value is a value), so it writes every writable column the message holds;
+a vector, a timestamp or a defaulted scalar left unset is not written. Neither
+reads the row first and writes it back.
+
+### View models no longer produce a table
+
+A model that embeds `momo.View` maps a view, so the generated schema, and with
+it `momo migrate diff`, holds no table for it. A view model gets no
+`CREATE TABLE`, and a foreign key never points at it. Declare the view itself
+with `c.View` in `MomoConfig`.
+
+The generated servers expose only list and get for a view model: there is no
+create, update or delete route, RPC or mutation, and naming a write operation
+for a view model in `ops` is a generator error.
+
+If you add `momo.View` to a model whose table really exists in the database,
+`momo migrate diff` now plans a `DROP TABLE` for that table (AutoMigrate skips
+it). Review the diff before you apply it.
+
+`momo.RefreshMaterializedView` refreshes a materialized view (PostgreSQL only).
+
+### OpenAPI input and output schemas
+
+The OpenAPI document now has two schemas per model. `<Model>` (for example
+`Document`) is the output: every column, with the not-null columns, the key
+included, listed in `required`. A client generator now types `id` as required
+on a response. `<Model>Input` (`DocumentInput`) is new and is what a create and
+a PUT take: only the writable properties, so it has no key and no read-only,
+identity or serial column, and its `required` list is what it was on `<Model>`
+in 0.5.0 (not null, no database default). Every response keeps referencing
+`<Model>`; the request bodies of create and PUT now reference `<Model>Input`.
+A client generated from the old document sends the same JSON and keeps working;
+regenerate it to get the new types. A model whose name plus `Input` is also a
+model name (`Doc` and `DocInput`) is a generator diagnostic.
+
+The gRPC messages are unchanged: a model message is still what a client sends
+and receives. The field comments in the `.proto` file say which fields a request
+ignores (the key on Create, read-only columns on Create and Update, and the
+version, soft-delete and timestamp columns on Update).
+
+### Error hook and cancellation codes
+
+The `openapi` and `grpc` plugins take the option `on_error`, the name of a Go
+function in the generated package with the signature
+`func(ctx context.Context, op string, err error)`. The generated code calls it
+once for every error it answers from a statement (a database error, a missing
+row, a cancelled context), with the operation (the `operationId` for OpenAPI,
+for example `getDocument`; `DocumentService.Get` for gRPC) and the original
+error, before it writes the fixed message. Log, count or trace the error there.
+A panic in the hook is recovered, so it cannot stop the request from being
+answered. The `openapi` option needs `handlers: true`, because only the
+generated handlers call the hook. Without the option nothing changes.
+
+A request whose context was cancelled is now answered 499 (OpenAPI), `Canceled`
+(gRPC) and `CANCELED` (GraphQL) with a fixed message, and one whose deadline
+passed 504, `DeadlineExceeded` and `CANCELED`. These were 500 and `Internal`
+before. A client or proxy that retries on 500 will no longer retry them.
 
 ## Upgrading to 0.5.0
 
@@ -8700,6 +8825,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.ReadOnlyVectorColumn.As`         | method | As returns the same column qualified by a table alias.                                                                                                                                                                                                                            |
 | `momo.RecordPoolWait`                  | func   | RecordPoolWait adds d to the pool wait of the statement whose context is ctx.                                                                                                                                                                                                     |
 | `momo.RedactedArg`                     | const  | RedactedArg replaces, in QueryEvent.Args, every value bound from a column tagged sensitive.                                                                                                                                                                                       |
+| `momo.RefreshMaterializedView`         | func   | RefreshMaterializedView runs REFRESH MATERIALIZED VIEW on q.                                                                                                                                                                                                                      |
 | `momo.RegisterQuery`                   | func   | RegisterQuery registers build under name in the DefaultQueries registry.                                                                                                                                                                                                          |
 | `momo.RegisteredQuery`                 | type   | RegisteredQuery is the compiled SQL of one named query for one dialect.                                                                                                                                                                                                           |
 | `momo.Relation`                        | type   | Relation describes relation Name from parent P to child C.                                                                                                                                                                                                                        |
@@ -9321,6 +9447,15 @@ Import path: `github.com/azrtydxb/momo/arrayop`
 | `arrayop.Contains`    | func | Contains is true when the array column contains every one of vals (PostgreSQL @>).                                         |
 | `arrayop.Overlaps`    | func | Overlaps is true when the array column shares at least one element with vals (PostgreSQL &&).                              |
 
+## cli
+
+Import path: `github.com/azrtydxb/momo/cli`
+
+| Identifier | Kind | Synopsis                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cli.Main` | func | Main is the entry point of a custom momo binary: put it in a main function and the binary behaves as momo does (commands, flags, exit codes, diagnostics) with the given generator plugins selectable by name from the plugins section of momo.yaml.                                                                                                                             |
+| `cli.Run`  | func | Run executes the momo CLI with args (without the program name), writes its output to stdout and its diagnostics to stderr, and returns the process exit code: 0 for success or current generated code, 1 for stale generated files or generator diagnostics, 2 for a usage, configuration or infrastructure error, and 3 for a database, lock or execution error (momo migrate). |
+
 ## fts
 
 Import path: `github.com/azrtydxb/momo/fts`
@@ -9660,16 +9795,17 @@ carries the format number and no release version.
 | `gen/fromdb`                            | models from a PostgreSQL database (`momo generate --from-db`) |
 | `gen/viz`                               | Mermaid and DOT diagrams (`momo viz`), also a `gen.Plugin`    |
 | `gen/apiquery`                          | cursor, limit and filter helpers for generated APIs           |
-| `gen/graphql`                           | GraphQL SDL from the model graph                              |
-| `gen/grpc`                              | `.proto` text with a field-number lock                        |
-| `gen/openapi`                           | OpenAPI 3.1 document                                          |
+| `gen/graphql`                           | GraphQL SDL, gqlgen glue and config, a `gen.Plugin`           |
+| `gen/grpc`                              | `.proto`, lock and gRPC servers, a `gen.Plugin`               |
+| `gen/openapi`                           | OpenAPI 3.1 document and handlers, a `gen.Plugin`             |
 | `gen/naming`, `gen/tags`, `gen/typemap` | naming presets, tag parsing, Go type to SQL type              |
 
 ### Other packages
 
 - `cli`: the CLI as a library (`generate`, `migrate`, `viz`, `help`).
   `cli.Main(plugins...)` builds a momo binary with your own generator
-  plugins; `cmd/momo` is a thin caller of it with none.
+  plugins; `cmd/momo` is a thin caller of it with the built-in `graphql`,
+  `grpc`, `openapi` and `viz` plugins.
 - `momovet` and `cmd/momovet`: the analyzer for non-constant raw SQL; see
   [momovet](momovet.md).
 - `momotest`: a schema or a rolled-back transaction per test with your

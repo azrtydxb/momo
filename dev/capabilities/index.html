@@ -2484,7 +2484,43 @@ session advisory lock.</p>
 </tr>
 <tr>
 <td>Custom generator plugins</td>
-<td>Build your own binary with <code>cli.Main(plugins...)</code> (package <code>cli</code>) or use the Go API (<code>gen.Emit</code>); the stock binary ships none</td>
+<td>Built-in: <code>graphql</code>, <code>grpc</code>, <code>openapi</code> and <code>viz</code>, enabled and configured in the <code>plugins:</code> section of <code>momo.yaml</code>; your own plugins come from a binary built with <code>cli.Main(plugins...)</code>, or from <code>gen.Emit</code></td>
+</tr>
+<tr>
+<td>Ecosystem generators</td>
+<td>GraphQL (gqlgen), gRPC (protoc with a field-number lock) and OpenAPI 3.1 (optional <code>net/http</code> handlers) servers over the typed API; filters go through the generated <code>ColumnByName</code> allowlist and pages use keyset cursors</td>
+</tr>
+<tr>
+<td>Generated servers: access</td>
+<td>Generated handlers, gRPC services and GraphQL resolvers do no authentication or authorization; wrap the mux, the grpc.Server or the handler. <code>ops: [list, get]</code> (all models) or <code>ops: {Model: [...], "*": [...]}</code> and <code>read_only: true</code> choose the operations of <code>openapi</code> and <code>grpc</code>; the default serves all five</td>
+</tr>
+<tr>
+<td>Generated servers: views</td>
+<td>A model that embeds <code>momo.View</code> is read-only in <code>openapi</code> and <code>grpc</code>: only list and get are served, whatever <code>ops</code> says for <code>*</code>; naming a write operation for the view model itself is a generator diagnostic. GraphQL serves queries only</td>
+</tr>
+<tr>
+<td>Generated servers: errors</td>
+<td>Fixed messages, no table or constraint names: not found 404 / NotFound, unique 409 / AlreadyExists, foreign key 409 / FailedPrecondition, check and not-null 400 / InvalidArgument, busy or serialization failure 503 / Unavailable; a cancelled request 499 / Canceled / <code>CANCELED</code>, a passed deadline 504 / DeadlineExceeded / <code>CANCELED</code>; GraphQL sends the same through an error presenter</td>
+</tr>
+<tr>
+<td>Generated servers: error hook</td>
+<td>The <code>openapi</code> and <code>grpc</code> options <code>on_error: OnError</code> call <code>OnError(ctx, op, err)</code>, a function of the generated package, once for every error a handler or call answers, with the operation (<code>getDocument</code>, <code>DocumentService.Get</code>) and the original error, before the fixed message is written; the generated code compiles without it; <code>openapi</code> needs <code>handlers: true</code> for it (a diagnostic otherwise), and a panic in the hook is recovered</td>
+</tr>
+<tr>
+<td>OpenAPI schemas</td>
+<td><code>&lt;Model&gt;</code> is the output (every column, not-null columns including the key in <code>required</code>); <code>&lt;Model&gt;Input</code> is what create and PUT take (writable properties only, no key or read-only column). The gRPC message is one for both directions; its field comments say which fields a request ignores</td>
+</tr>
+<tr>
+<td>Generated servers: writes</td>
+<td>A key that is not exactly a property name is a 400. OpenAPI create needs every required property (not null, no default, not a key, not read-only), else 400; PUT needs the same and only the properties it carries are written, in one statement that reads nothing first; bodies are application/json (415), at most 1 MiB (413), one object. gRPC Update writes every writable column in one statement without reading the row first; a proto3 scalar cannot be absent, so a defaulted scalar at its zero value keeps its stored value</td>
+</tr>
+<tr>
+<td>GraphQL limits</td>
+<td><code>model.NewHandler</code> limits the request body to 1 MiB, the depth to 8 (an introspection query is exempt) and the complexity to 500 (<code>NewHandlerWithLimits</code> changes them), and refuses a request whose selected relations could load more than 10000 rows (page size times 100 per to-many level, counted level by level); <code>in</code> lists hold at most 100 values, filters nest at most 4 deep with at most 20 terms per list, and a to-many relation returns at most 100 rows per parent (the first by primary key); relations are preloaded to the depth of the selection</td>
+</tr>
+<tr>
+<td>gRPC field numbers</td>
+<td>The lock records each field's type and cardinality: a change retires the old number into <code>reserved</code> and assigns a new one; messages are keyed by table, so renaming a Go type keeps its numbers</td>
 </tr>
 <tr>
 <td><code>momo migrate</code></td>

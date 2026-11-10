@@ -1071,6 +1071,89 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-060" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.6.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.6.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-using-and-from-guard-is-stricter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Using and From guard is stricter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-error-bodies-use-the-key-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI error bodies use the key error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generated-handlers-and-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated handlers and servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models-no-longer-produce-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models no longer produce a table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-input-and-output-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI input and output schemas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-hook-and-cancellation-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error hook and cancellation codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-050" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1307,6 +1390,89 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-060" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.6.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.6.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-using-and-from-guard-is-stricter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Using and From guard is stricter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-error-bodies-use-the-key-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI error bodies use the key error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generated-handlers-and-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated handlers and servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models-no-longer-produce-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models no longer produce a table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-input-and-output-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI input and output schemas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-hook-and-cancellation-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error hook and cancellation codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-050" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1442,6 +1608,85 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-060">Upgrading to 0.6.0<a class="headerlink" href="#upgrading-to-060" title="Permanent link">&para;</a></h2>
+<h3 id="the-using-and-from-guard-is-stricter">The Using and From guard is stricter<a class="headerlink" href="#the-using-and-from-guard-is-stricter" title="Permanent link">&para;</a></h3>
+<p><code>UpdateQuery.From</code> and <code>DeleteQuery.Using</code> refuse a statement whose <code>Where</code>
+does not reference the target table, with <code>ErrUnfilteredMutation</code>. The guard
+now follows <code>Or</code>, <code>Not</code> and <code>JoinSQL</code>: an <code>Or</code> counts only when every branch
+references the target, an <code>And</code> when any term does, and <code>Not</code> swaps the two
+rules. <code>JoinSQL</code> with <code>AND</code> or <code>OR</code> follows the same rules, and <code>JoinSQL</code> with
+any other separator never counts. Statements that passed in 0.5.0 and are now
+refused: <code>Where(momo.Or(PostCols.ID.Eq(1), SrcCols.Title.Eq("x")))</code>, where one
+<code>Or</code> branch is off the target, and
+<code>Where(momo.Not(momo.And(PostCols.ID.Eq(1), SrcCols.Title.Eq("x"))))</code>, which is
+an <code>Or</code> of negations.</p>
+<p>Add a condition on the target to every branch, or call <code>AllRows()</code> when the
+statement is meant to touch every row. The guard checks that the condition
+references the target, not that it restricts it: <code>t.id = t.id</code> still passes.</p>
+<h3 id="openapi-error-bodies-use-the-key-error">OpenAPI error bodies use the key <code>error</code><a class="headerlink" href="#openapi-error-bodies-use-the-key-error" title="Permanent link">&para;</a></h3>
+<p>The OpenAPI document and the generated handlers now describe and send errors
+as <code>{"error": "&lt;message&gt;"}</code>. The <code>Error</code> schema property was <code>message</code> in 0.4.0.
+A client that reads <code>message</code> from an error response must read <code>error</code>. Error
+messages are fixed strings: a constraint violation no longer shows the table or
+constraint name.</p>
+<h3 id="generated-handlers-and-servers">Generated handlers and servers<a class="headerlink" href="#generated-handlers-and-servers" title="Permanent link">&para;</a></h3>
+<p>The ecosystem generators (<code>graphql</code>, <code>grpc</code>, <code>openapi</code>, enabled in the
+<code>plugins:</code> section of <code>momo.yaml</code>) generate servers that do no authentication
+and no authorization. Wrap the <code>http.ServeMux</code>, the <code>grpc.Server</code> or the
+GraphQL handler. Turn off operations of the <code>openapi</code> and <code>grpc</code> servers with
+<code>ops</code> or <code>read_only: true</code> (the <code>graphql</code> plugin has neither option); see the
+<a href="../capabilities/">capabilities</a> page for the options, the error mapping, the
+update semantics and the GraphQL limits.</p>
+<p>PUT and gRPC Update differ on purpose. An OpenAPI PUT must carry every required
+property and writes only the properties it carries, so a property it leaves out
+keeps whatever value the database has, including one a concurrent request just
+wrote. A gRPC Update has no way to leave a scalar out (a proto3 scalar at its
+zero value is a value), so it writes every writable column the message holds;
+a vector, a timestamp or a defaulted scalar left unset is not written. Neither
+reads the row first and writes it back.</p>
+<h3 id="view-models-no-longer-produce-a-table">View models no longer produce a table<a class="headerlink" href="#view-models-no-longer-produce-a-table" title="Permanent link">&para;</a></h3>
+<p>A model that embeds <code>momo.View</code> maps a view, so the generated schema, and with
+it <code>momo migrate diff</code>, holds no table for it. A view model gets no
+<code>CREATE TABLE</code>, and a foreign key never points at it. Declare the view itself
+with <code>c.View</code> in <code>MomoConfig</code>.</p>
+<p>The generated servers expose only list and get for a view model: there is no
+create, update or delete route, RPC or mutation, and naming a write operation
+for a view model in <code>ops</code> is a generator error.</p>
+<p>If you add <code>momo.View</code> to a model whose table really exists in the database,
+<code>momo migrate diff</code> now plans a <code>DROP TABLE</code> for that table (AutoMigrate skips
+it). Review the diff before you apply it.</p>
+<p><code>momo.RefreshMaterializedView</code> refreshes a materialized view (PostgreSQL only).</p>
+<h3 id="openapi-input-and-output-schemas">OpenAPI input and output schemas<a class="headerlink" href="#openapi-input-and-output-schemas" title="Permanent link">&para;</a></h3>
+<p>The OpenAPI document now has two schemas per model. <code>&lt;Model&gt;</code> (for example
+<code>Document</code>) is the output: every column, with the not-null columns, the key
+included, listed in <code>required</code>. A client generator now types <code>id</code> as required
+on a response. <code>&lt;Model&gt;Input</code> (<code>DocumentInput</code>) is new and is what a create and
+a PUT take: only the writable properties, so it has no key and no read-only,
+identity or serial column, and its <code>required</code> list is what it was on <code>&lt;Model&gt;</code>
+in 0.5.0 (not null, no database default). Every response keeps referencing
+<code>&lt;Model&gt;</code>; the request bodies of create and PUT now reference <code>&lt;Model&gt;Input</code>.
+A client generated from the old document sends the same JSON and keeps working;
+regenerate it to get the new types. A model whose name plus <code>Input</code> is also a
+model name (<code>Doc</code> and <code>DocInput</code>) is a generator diagnostic.</p>
+<p>The gRPC messages are unchanged: a model message is still what a client sends
+and receives. The field comments in the <code>.proto</code> file say which fields a request
+ignores (the key on Create, read-only columns on Create and Update, and the
+version, soft-delete and timestamp columns on Update).</p>
+<h3 id="error-hook-and-cancellation-codes">Error hook and cancellation codes<a class="headerlink" href="#error-hook-and-cancellation-codes" title="Permanent link">&para;</a></h3>
+<p>The <code>openapi</code> and <code>grpc</code> plugins take the option <code>on_error</code>, the name of a Go
+function in the generated package with the signature
+<code>func(ctx context.Context, op string, err error)</code>. The generated code calls it
+once for every error it answers from a statement (a database error, a missing
+row, a cancelled context), with the operation (the <code>operationId</code> for OpenAPI,
+for example <code>getDocument</code>; <code>DocumentService.Get</code> for gRPC) and the original
+error, before it writes the fixed message. Log, count or trace the error there.
+A panic in the hook is recovered, so it cannot stop the request from being
+answered. The <code>openapi</code> option needs <code>handlers: true</code>, because only the
+generated handlers call the hook. Without the option nothing changes.</p>
+<p>A request whose context was cancelled is now answered 499 (OpenAPI), <code>Canceled</code>
+(gRPC) and <code>CANCELED</code> (GraphQL) with a fixed message, and one whose deadline
+passed 504, <code>DeadlineExceeded</code> and <code>CANCELED</code>. These were 500 and <code>Internal</code>
+before. A client or proxy that retries on 500 will no longer retry them.</p>
 <h2 id="upgrading-to-050">Upgrading to 0.5.0<a class="headerlink" href="#upgrading-to-050" title="Permanent link">&para;</a></h2>
 <h3 id="regenerating-with-from-db-after-the-dbdefault-tag">Regenerating with <code>--from-db</code> after the <code>dbdefault</code> tag<a class="headerlink" href="#regenerating-with-from-db-after-the-dbdefault-tag" title="Permanent link">&para;</a></h3>
 <p><code>momo generate --from-db</code> now adds the <code>dbdefault</code> tag to every NOT NULL

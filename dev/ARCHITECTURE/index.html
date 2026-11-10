@@ -1659,15 +1659,15 @@ carries the format number and no release version.</p>
 </tr>
 <tr>
 <td><code>gen/graphql</code></td>
-<td>GraphQL SDL from the model graph</td>
+<td>GraphQL SDL, gqlgen glue and config, a <code>gen.Plugin</code></td>
 </tr>
 <tr>
 <td><code>gen/grpc</code></td>
-<td><code>.proto</code> text with a field-number lock</td>
+<td><code>.proto</code>, lock and gRPC servers, a <code>gen.Plugin</code></td>
 </tr>
 <tr>
 <td><code>gen/openapi</code></td>
-<td>OpenAPI 3.1 document</td>
+<td>OpenAPI 3.1 document and handlers, a <code>gen.Plugin</code></td>
 </tr>
 <tr>
 <td><code>gen/naming</code>, <code>gen/tags</code>, <code>gen/typemap</code></td>
@@ -1679,7 +1679,8 @@ carries the format number and no release version.</p>
 <ul>
 <li><code>cli</code>: the CLI as a library (<code>generate</code>, <code>migrate</code>, <code>viz</code>, <code>help</code>).
   <code>cli.Main(plugins...)</code> builds a momo binary with your own generator
-  plugins; <code>cmd/momo</code> is a thin caller of it with none.</li>
+  plugins; <code>cmd/momo</code> is a thin caller of it with the built-in <code>graphql</code>,
+  <code>grpc</code>, <code>openapi</code> and <code>viz</code> plugins.</li>
 <li><code>momovet</code> and <code>cmd/momovet</code>: the analyzer for non-constant raw SQL; see
   <a href="../momovet/">momovet</a>.</li>
 <li><code>momotest</code>: a schema or a rolled-back transaction per test with your

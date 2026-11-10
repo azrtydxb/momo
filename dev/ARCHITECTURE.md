@@ -141,16 +141,17 @@ carries the format number and no release version.
 | `gen/fromdb`                            | models from a PostgreSQL database (`momo generate --from-db`) |
 | `gen/viz`                               | Mermaid and DOT diagrams (`momo viz`), also a `gen.Plugin`    |
 | `gen/apiquery`                          | cursor, limit and filter helpers for generated APIs           |
-| `gen/graphql`                           | GraphQL SDL from the model graph                              |
-| `gen/grpc`                              | `.proto` text with a field-number lock                        |
-| `gen/openapi`                           | OpenAPI 3.1 document                                          |
+| `gen/graphql`                           | GraphQL SDL, gqlgen glue and config, a `gen.Plugin`           |
+| `gen/grpc`                              | `.proto`, lock and gRPC servers, a `gen.Plugin`               |
+| `gen/openapi`                           | OpenAPI 3.1 document and handlers, a `gen.Plugin`             |
 | `gen/naming`, `gen/tags`, `gen/typemap` | naming presets, tag parsing, Go type to SQL type              |
 
 ### Other packages
 
 - `cli`: the CLI as a library (`generate`, `migrate`, `viz`, `help`).
   `cli.Main(plugins...)` builds a momo binary with your own generator
-  plugins; `cmd/momo` is a thin caller of it with none.
+  plugins; `cmd/momo` is a thin caller of it with the built-in `graphql`,
+  `grpc`, `openapi` and `viz` plugins.
 - `momovet` and `cmd/momovet`: the analyzer for non-constant raw SQL; see
   [momovet](momovet.md).
 - `momotest`: a schema or a rolled-back transaction per test with your

@@ -513,6 +513,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#generated-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#custom-generator-binary" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1534,6 +1545,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#generated-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#custom-generator-binary" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2357,7 +2379,20 @@ documentation. DON'T edit <code>Meta.Hooks</code> in generated code.</p>
 <code>Upsert</code>, <code>Update</code>, <code>SoftDelete</code>, <code>BulkUpdate</code>, <code>Delete</code> and <code>Merge</code> return
 <code>ErrValidation</code> naming the model, at run time (there is no compile-time
 check). Declare the view itself with <code>c.View(schema.View{...})</code> in
-<code>MomoConfig</code>.</p>
+<code>MomoConfig</code>. The schema the generator builds holds that view and no table for
+the view model, so a migration never issues <code>CREATE TABLE</code> for it, and no
+foreign key refers to it. <code>Materialized: true</code> declares a materialized view;
+refresh it with <code>momo.RefreshMaterializedView(ctx, db, "name", false)</code> (a
+name with a schema prefix, two parts joined by a dot, is split and quoted; the last argument adds
+<code>CONCURRENTLY</code>, which needs a unique index in the view's <code>Indexes</code>). It is
+PostgreSQL only and returns <code>ErrUnsupported</code> elsewhere.</p>
+<h3 id="generated-servers">Generated servers<a class="headerlink" href="#generated-servers" title="Permanent link">&para;</a></h3>
+<p>The <code>momo</code> binary has built-in <code>graphql</code>, <code>grpc</code> and <code>openapi</code> plugins, enabled
+in the <code>plugins</code> section of <code>momo.yaml</code>. They generate servers over your models
+with no authentication or authorization: wrap them. The <code>openapi</code> and <code>grpc</code>
+plugins take <code>ops</code>, <code>read_only</code> and <code>on_error</code>; the OpenAPI document has a
+<code>&lt;Model&gt;</code> output schema and a <code>&lt;Model&gt;Input</code> request schema. See
+<a href="../capabilities/">capabilities</a> for the options, error mapping and limits.</p>
 <h3 id="custom-generator-binary">Custom generator binary<a class="headerlink" href="#custom-generator-binary" title="Permanent link">&para;</a></h3>
 <p>The <code>momo</code> binary runs no custom plugins. To run your own <code>gen.Plugin</code>, write a
 <code>main</code> that calls <code>cli.Main(plugins...)</code> from <code>github.com/azrtydxb/momo/cli</code>
@@ -2976,7 +3011,9 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
 <li>With <code>From</code> or <code>Using</code> the unfiltered-mutation guard is stricter: at least one <code>Where</code> predicate
   must reference a column of the target table, otherwise the statement joins every target row to
   the source and fails with <code>ErrUnfilteredMutation</code> unless <code>AllRows()</code> confirms it. A condition
-  only on the source, or a raw <code>momo.SQL</code> fragment, does not count. <code>From</code> cannot be combined with
+  only on the source, or a raw <code>momo.SQL</code> fragment, does not count. An <code>Or</code> counts only when every
+  branch references the target (one branch off the target can be true on its own, which touches
+  every target row); an <code>And</code> counts when any term does. <code>momo.Not</code> swaps the rules (a negated <code>And</code> needs every term on the target, a negated <code>Or</code> any term), and <code>momo.JoinSQL</code> with <code>AND</code> or <code>OR</code> follows the same rules as <code>And</code> and <code>Or</code>. The guard checks that <code>Where</code> references the target, not that it restricts it: a constant-true predicate such as <code>t.id = t.id</code> passes. <code>From</code> cannot be combined with
   <code>BulkUpdate</code> (<code>ErrValidation</code>), and <code>RETURNING</code> with <code>From</code> works on PostgreSQL and SQLite only.</li>
 <li><code>UpdateQuery.With</code> and <code>UpdateQuery.WithRecursive</code> exist on <code>UpdateQuery</code>, <code>DeleteQuery</code> and <code>InsertQuery</code>, with the
   <code>SelectQuery</code> signature. PostgreSQL and SQLite render the WITH before the statement; MySQL
