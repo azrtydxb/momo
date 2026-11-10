@@ -12,6 +12,18 @@ components:
           format: int64
           type: integer
       required:
+        - id
+        - document_id
+        - body
+      type: object
+    CommentInput:
+      properties:
+        body:
+          type: string
+        document_id:
+          format: int64
+          type: integer
+      required:
         - document_id
         - body
       type: object
@@ -29,6 +41,30 @@ components:
         id:
           format: int64
           type: integer
+        status:
+          type: string
+        tenant_id:
+          format: int64
+          type: integer
+        title:
+          type: string
+      required:
+        - id
+        - tenant_id
+        - title
+        - body
+        - embedding
+        - status
+        - created_at
+      type: object
+    DocumentInput:
+      properties:
+        body:
+          type: string
+        embedding:
+          items:
+            type: number
+          type: array
         status:
           type: string
         tenant_id:
@@ -56,6 +92,14 @@ components:
         name:
           type: string
       required:
+        - id
+        - name
+      type: object
+    TagInput:
+      properties:
+        name:
+          type: string
+      required:
         - name
       type: object
     Tenant:
@@ -63,6 +107,14 @@ components:
         id:
           format: int64
           type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+      type: object
+    TenantInput:
+      properties:
         name:
           type: string
       required:
@@ -127,19 +179,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: Invalid request
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     post:
       operationId: createComment
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Comment"
+              $ref: "#/components/schemas/CommentInput"
         required: true
       responses:
         "201":
@@ -172,12 +236,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The request body is not application/json
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
   /v1/comments/{id}:
     delete:
       operationId: deleteComment
@@ -209,12 +285,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: A unique or foreign key constraint refused the change
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     get:
       operationId: getComment
       parameters:
@@ -243,12 +331,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: Not found
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     put:
       description: The body is the CommentInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Comment schema.
       operationId: updateComment
@@ -263,7 +363,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Comment"
+              $ref: "#/components/schemas/CommentInput"
         required: true
       responses:
         "200":
@@ -302,12 +402,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The request body is not application/json
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
       summary: Update a Comment
   /v1/documents:
     get:
@@ -376,19 +488,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: Invalid request
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     post:
       operationId: createDocument
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Document"
+              $ref: "#/components/schemas/DocumentInput"
         required: true
       responses:
         "201":
@@ -421,12 +545,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The request body is not application/json
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
   /v1/documents/{id}:
     delete:
       operationId: deleteDocument
@@ -458,12 +594,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: A unique or foreign key constraint refused the change
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     get:
       operationId: getDocument
       parameters:
@@ -492,12 +640,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: Not found
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     put:
       description: The body is the DocumentInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Document schema.
       operationId: updateDocument
@@ -512,7 +672,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Document"
+              $ref: "#/components/schemas/DocumentInput"
         required: true
       responses:
         "200":
@@ -551,12 +711,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The request body is not application/json
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
       summary: Update a Document
   /v1/tags:
     get:
@@ -607,19 +779,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: Invalid request
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     post:
       operationId: createTag
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Tag"
+              $ref: "#/components/schemas/TagInput"
         required: true
       responses:
         "201":
@@ -652,12 +836,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The request body is not application/json
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
   /v1/tags/{id}:
     delete:
       operationId: deleteTag
@@ -689,12 +885,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: A unique or foreign key constraint refused the change
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     get:
       operationId: getTag
       parameters:
@@ -723,12 +931,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: Not found
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     put:
       description: The body is the TagInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Tag schema.
       operationId: updateTag
@@ -743,7 +963,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Tag"
+              $ref: "#/components/schemas/TagInput"
         required: true
       responses:
         "200":
@@ -782,12 +1002,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The request body is not application/json
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
       summary: Update a Tag
   /v1/tenants:
     get:
@@ -838,19 +1070,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: Invalid request
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     post:
       operationId: createTenant
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Tenant"
+              $ref: "#/components/schemas/TenantInput"
         required: true
       responses:
         "201":
@@ -883,12 +1127,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The request body is not application/json
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
   /v1/tenants/{id}:
     delete:
       operationId: deleteTenant
@@ -920,12 +1176,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: A unique or foreign key constraint refused the change
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     get:
       operationId: getTenant
       parameters:
@@ -954,12 +1222,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: Not found
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
     put:
       description: The body is the TenantInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Tenant schema.
       operationId: updateTenant
@@ -974,7 +1254,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Tenant"
+              $ref: "#/components/schemas/TenantInput"
         required: true
       responses:
         "200":
@@ -1013,10 +1293,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The request body is not application/json
+        "499":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The client cancelled the request
         "503":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
           description: The database is busy or the transaction conflicted; retry
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          description: The deadline of the request passed
       summary: Update a Tenant
