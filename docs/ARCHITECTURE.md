@@ -150,7 +150,8 @@ carries the format number and no release version.
 
 - `cli`: the CLI as a library (`generate`, `migrate`, `viz`, `help`).
   `cli.Main(plugins...)` builds a momo binary with your own generator
-  plugins; `cmd/momo` is a thin caller of it with none.
+  plugins; `cmd/momo` is a thin caller of it with the built-in `graphql`,
+  `grpc`, `openapi` and `viz` plugins.
 - `momovet` and `cmd/momovet`: the analyzer for non-constant raw SQL; see
   [momovet](momovet.md).
 - `momotest`: a schema or a rolled-back transaction per test with your

@@ -7,6 +7,23 @@ later releases can break more.
 
 ## Upgrading to 0.6.0
 
+### The Using and From guard is stricter
+
+`UpdateQuery.From` and `DeleteQuery.Using` refuse a statement whose `Where`
+does not reference the target table, with `ErrUnfilteredMutation`. The guard
+now follows `Or`, `Not` and `JoinSQL`: an `Or` counts only when every branch
+references the target, an `And` when any term does, and `Not` swaps the two
+rules. `JoinSQL` with `AND` or `OR` follows the same rules, and `JoinSQL` with
+any other separator never counts. Statements that passed in 0.5.0 and are now
+refused: `Where(momo.Or(PostCols.ID.Eq(1), SrcCols.Title.Eq("x")))`, where one
+`Or` branch is off the target, and
+`Where(momo.Not(momo.And(PostCols.ID.Eq(1), SrcCols.Title.Eq("x"))))`, which is
+an `Or` of negations.
+
+Add a condition on the target to every branch, or call `AllRows()` when the
+statement is meant to touch every row. The guard checks that the condition
+references the target, not that it restricts it: `t.id = t.id` still passes.
+
 ### OpenAPI error bodies use the key `error`
 
 The OpenAPI document and the generated handlers now describe and send errors
@@ -20,7 +37,8 @@ constraint name.
 The ecosystem generators (`graphql`, `grpc`, `openapi`, enabled in the
 `plugins:` section of `momo.yaml`) generate servers that do no authentication
 and no authorization. Wrap the `http.ServeMux`, the `grpc.Server` or the
-GraphQL handler. Turn off operations with `ops` or `read_only: true`; see the
+GraphQL handler. Turn off operations of the `openapi` and `grpc` servers with
+`ops` or `read_only: true` (the `graphql` plugin has neither option); see the
 [capabilities](capabilities.md) page for the options, the error mapping, the
 update semantics and the GraphQL limits.
 

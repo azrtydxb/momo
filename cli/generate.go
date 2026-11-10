@@ -303,7 +303,7 @@ func selectPlugins(want map[string]map[string]any, available []gen.Plugin, out s
 	for _, n := range slices.Sorted(maps.Keys(want)) {
 		p, ok := have[n]
 		if !ok {
-			return nil, fmt.Errorf("momo.yaml: unknown plugin %q: this binary only runs the plugins built into it; "+
+			return nil, fmt.Errorf("unknown plugin %q: this binary only runs the plugins built into it; "+
 				"build a binary with cli.Main(plugins...) or call gen.Emit with your plugins from Go code", n)
 		}
 		res = append(res, p)

@@ -617,6 +617,15 @@ name with a schema prefix, two parts joined by a dot, is split and quoted; the l
 `CONCURRENTLY`, which needs a unique index in the view's `Indexes`). It is
 PostgreSQL only and returns `ErrUnsupported` elsewhere.
 
+### Generated servers
+
+The `momo` binary has built-in `graphql`, `grpc` and `openapi` plugins, enabled
+in the `plugins` section of `momo.yaml`. They generate servers over your models
+with no authentication or authorization: wrap them. The `openapi` and `grpc`
+plugins take `ops`, `read_only` and `on_error`; the OpenAPI document has a
+`<Model>` output schema and a `<Model>Input` request schema. See
+[capabilities](capabilities.md) for the options, error mapping and limits.
+
 ### Custom generator binary
 
 The `momo` binary runs no custom plugins. To run your own `gen.Plugin`, write a
