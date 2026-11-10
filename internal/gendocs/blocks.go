@@ -275,6 +275,7 @@ var typeRows = []typeRow{
 	{"[]bool", "[]bool", tags.Tags{}},
 	{"[]float32", "[]float32", tags.Tags{}},
 	{"[]float64", "[]float64", tags.Tags{}},
+	{"[]types.UUID", "[]types.UUID", tags.Tags{}},
 }
 
 // typemapBlock is the Go-to-column-type table, one column per dialect. A
