@@ -13,5 +13,6 @@ Append-only tables need ids that a client can never supply. `identity` always re
 
 - [ ] a tag option `identity:always` renders `GENERATED ALWAYS AS IDENTITY`; plain `identity` is unchanged (unit test pins both)
 - [ ] the PostgreSQL inspector reports the kind, `--from-db` emits `identity:always`, and baseline on such a database reports no mismatch (integration test)
-- [ ] inserts omit the column and read it back with RETURNING (integration test); diff refuses to switch between the two kinds with an error naming a hand-written migration, as it does for serial
+- [ ] inserts omit the column and read it back with RETURNING (integration test)
+- [ ] diff switches between the two kinds with ALTER COLUMN ... SET GENERATED (metadata-only), proven by an integration test (TestDeclaredIdentityAlways)
 - [ ] docs describe it; issue #56 is referenced in the commit
