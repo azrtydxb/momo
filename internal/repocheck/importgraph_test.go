@@ -4,6 +4,7 @@ package repocheck
 
 import (
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -37,6 +38,24 @@ func TestImportGraph(t *testing.T) {
 		for _, dep := range strings.Fields(string(out)) {
 			if !coreAllowed[dep] {
 				t.Errorf("%s depends on %s, which the core may not import", pkg, dep)
+			}
+		}
+	}
+}
+
+// ecosystemDeps are the packages the ecosystem generators' servers need
+// (gqlgen, gRPC, the JSON Schema validator, golang.org/x/tools). The runtime
+// and the shared API helpers must stay free of them, so a user of the
+// framework does not build them.
+var ecosystemDeps = regexp.MustCompile(`gqlgen|grpc|jsonschema|golang\.org/x/tools`)
+
+// Catches: the runtime or the shared generated-API helpers importing a server
+// library, which would put it in the dependency graph of every user.
+func TestRuntimeAvoidsEcosystemDeps(t *testing.T) {
+	for _, pkg := range []string{modPath, modPath + "/gen/apiquery"} {
+		for _, dep := range deps(t, pkg) {
+			if ecosystemDeps.MatchString(dep) {
+				t.Errorf("%s depends on %s, which only the ecosystem generators' servers may use", pkg, dep)
 			}
 		}
 	}

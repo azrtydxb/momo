@@ -82,11 +82,13 @@ func TestSDLRules(t *testing.T) {
 		"  code: String!\n",
 		"  things(first: Int, after: String, filter: ThingFilter, order: ThingOrder): ThingConnection!\n",
 		"  thing(id: ID!): Thing\n",
-		"  NOTE_TEXT\n",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("schema lacks %q:\n%s", want, s)
 		}
+	}
+	if enum := s[strings.Index(s, "enum ThingOrderField"):]; strings.Contains(strings.SplitN(enum, "}", 2)[0], "NOTE_TEXT") {
+		t.Errorf("a nullable column cannot be an order key:\n%s", s)
 	}
 	if strings.Contains(s, "(id: ID!): Owner") {
 		t.Errorf("a string key must not get a single-object query:\n%s", s)

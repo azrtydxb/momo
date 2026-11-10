@@ -88,4 +88,50 @@ func TestProtoJSONNameCollision(t *testing.T) {
 	if _, ok := lock.Messages["Thing"].Fields["fooBar"]; ok {
 		t.Error("the rejected column was numbered")
 	}
+
+	// protoc compares JSON names exactly: foo_bar and foobar, or Foo and foo,
+	// are different names and both fields stay (see TestProtoGenerator).
+	for _, pair := range [][2]string{{"foo_bar", "foobar"}, {"Foo", "foo"}} {
+		m := &gen.Model{GoName: "Thing", Table: "things", Fields: []*gen.Field{
+			{GoName: "ID", Column: "id", BaseType: "int64"},
+			{GoName: "A", Column: pair[0], BaseType: "string"},
+			{GoName: "B", Column: pair[1], BaseType: "string"},
+		}}
+		g := &gen.Graph{Models: []*gen.Model{m}, Schema: &schema.Schema{Tables: []schema.Table{{Name: "things", PrimaryKey: []string{"id"}}}}}
+		src, diags := Proto(g, &Lock{}, "acme.v1")
+		s := string(src)
+		if !strings.Contains(s, " "+pair[0]+" = ") || !strings.Contains(s, " "+pair[1]+" = ") || len(diags) != 0 {
+			t.Errorf("%v: both columns should stay (diags %v):\n%s", pair, diags, s)
+		}
+	}
+}
+
+// Catches: a new column placed before an existing one taking the field of the
+// column the lock already numbers, which would silently drop that field from
+// the wire.
+func TestProtoJSONNameCollisionKeepsLockedColumn(t *testing.T) {
+	lock := &Lock{Version: 1, Messages: map[string]*MessageLock{
+		"Thing": {Fields: map[string]int{"id": 1, "fooBar": 2}},
+	}}
+	m := &gen.Model{GoName: "Thing", Table: "things", Fields: []*gen.Field{
+		{GoName: "ID", Column: "id", BaseType: "int64"},
+		{GoName: "New", Column: "foo_bar", BaseType: "string"},
+		{GoName: "Old", Column: "fooBar", BaseType: "string"},
+	}}
+	g := &gen.Graph{Models: []*gen.Model{m}, Schema: &schema.Schema{Tables: []schema.Table{{Name: "things", PrimaryKey: []string{"id"}}}}}
+	src, diags := Proto(g, lock, "acme.v1")
+	s := string(src)
+	if !strings.Contains(s, " string fooBar = 2;") || strings.Contains(s, "foo_bar") {
+		t.Errorf("the locked column should keep its field:\n%s", s)
+	}
+	if len(diags) != 1 || !strings.Contains(diags[0].Msg, `column "foo_bar" of Thing has the same proto3 JSON name "fooBar" as column "fooBar"`) {
+		t.Fatalf("diags = %v", diags)
+	}
+	ml := lock.Messages["Thing"]
+	if ml.Fields["fooBar"] != 2 || ml.Fields["id"] != 1 {
+		t.Errorf("lock changed the recorded numbers: %+v", ml)
+	}
+	if _, ok := ml.Fields["foo_bar"]; ok || len(ml.Reserved) != 0 {
+		t.Errorf("the newcomer was numbered or a number was reserved: %+v", ml)
+	}
 }

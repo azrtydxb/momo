@@ -5,6 +5,33 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.6.0
+
+### OpenAPI error bodies use the key `error`
+
+The OpenAPI document and the generated handlers now describe and send errors
+as `{"error": "<message>"}`. The `Error` schema property was `message` in 0.4.0.
+A client that reads `message` from an error response must read `error`. Error
+messages are fixed strings: a constraint violation no longer shows the table or
+constraint name.
+
+### Generated handlers and servers
+
+The ecosystem generators (`graphql`, `grpc`, `openapi`, enabled in the
+`plugins:` section of `momo.yaml`) generate servers that do no authentication
+and no authorization. Wrap the `http.ServeMux`, the `grpc.Server` or the
+GraphQL handler. Turn off operations with `ops` or `read_only: true`; see the
+[capabilities](capabilities.md) page for the options, the error mapping, the
+update semantics and the GraphQL limits.
+
+PUT and gRPC Update differ on purpose. An OpenAPI PUT must carry every required
+property and writes only the properties it carries, so a property it leaves out
+keeps whatever value the database has, including one a concurrent request just
+wrote. A gRPC Update has no way to leave a scalar out (a proto3 scalar at its
+zero value is a value), so it writes every writable column the message holds;
+a vector, a timestamp or a defaulted scalar left unset is not written. Neither
+reads the row first and writes it back.
+
 ## Upgrading to 0.5.0
 
 ### Regenerating with `--from-db` after the `dbdefault` tag

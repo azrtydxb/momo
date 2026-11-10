@@ -1,0 +1,23 @@
+version: 1
+# Generates the committed example output of the ecosystem generators from the
+# example models. Run `make gen-integration` after a change of a generator.
+# Paths are relative to this file.
+packages:
+  - ../testmodels/example
+plugins:
+  graphql:
+    dir: graphql/example/graph
+    package: graph
+    models_package: github.com/azrtydxb/momo/internal/testmodels/example
+  grpc:
+    dir: grpc/example
+    package: example
+    proto_package: momo.example.v1
+    go_package: github.com/azrtydxb/momo/internal/integration/grpc/example/pb
+  openapi:
+    dir: openapi/example/handlers
+    package: handlers
+    title: momo example
+    version: 1.0.0
+    base_path: /v1
+    handlers: true

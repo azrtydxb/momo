@@ -74,7 +74,11 @@ func syntheticGraph() *gen.Graph {
 // key.
 func TestDocumentRules(t *testing.T) {
 	raw, diags := Document(syntheticGraph(), Options{Title: "t", Version: "1", BasePath: "/api/"})
-	if len(diags) != 1 || !strings.Contains(diags[0].Msg, "no OpenAPI mapping for map[string]string") {
+	joined := ""
+	for _, d := range diags {
+		joined += d.Msg + "\n"
+	}
+	if len(diags) != 2 || !strings.Contains(joined, "no OpenAPI mapping for map[string]string") || !strings.Contains(joined, "model Pair has no single exposed int64 primary key") {
 		t.Fatalf("diags = %v", diags)
 	}
 	s := string(raw)
@@ -100,10 +104,13 @@ func TestDocumentRules(t *testing.T) {
 	if _, ok := doc.Paths["/api/pairs/{id}"]; ok {
 		t.Errorf("item path for a composite key")
 	}
+	if _, ok := doc.Paths["/api/pairs"]; ok {
+		t.Errorf("a collection path for a model the handlers do not serve")
+	}
 	if !regexp.MustCompile(`"type": \[\s*"string",\s*"null"\s*\]`).MatchString(s) {
 		t.Errorf("nullable column lacks the 3.1 type array:\n%s", s)
 	}
-	if _, d := Document(syntheticGraph(), Options{BasePath: "api"}); len(d) < 3 {
+	if _, d := Document(syntheticGraph(), Options{BasePath: "api"}); len(d) < 2 {
 		t.Errorf("missing title, version and bad base path not reported: %v", d)
 	}
 }

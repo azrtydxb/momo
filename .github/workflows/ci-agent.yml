@@ -35,6 +35,11 @@ jobs:
       - run: make tidy-check
       - id: gen-check
         run: make gen-check
+      - name: gen-integration is current
+        run: |
+          make gen-integration
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
       - if: failure() && steps.gen-check.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:

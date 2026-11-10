@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"go/token"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -71,10 +73,10 @@ expression index keys with an order or operator class, generated columns) are le
 the snapshot and listed as warnings; the baseline then reports them. A column
 type with no Go mapping is an error and nothing is written.
 
-Plugins: only the plugins built into this binary can be enabled in momo.yaml;
-the stock momo binary has none. To run your own generator plugins, build a
-binary with cli.Main(plugins...) from github.com/azrtydxb/momo/cli, or call
-gen.Emit with your plugins from Go code.
+Plugins: the plugins: section of momo.yaml enables the plugins built into this
+binary (graphql, grpc, openapi, viz) and sets their options; a relative dir is
+relative to momo.yaml. Your own plugins come from a binary built with
+cli.Main(plugins...) from github.com/azrtydxb/momo/cli, or from gen.Emit.
 `
 
 // runGenerate implements `momo generate [-c momo.yaml] [--check] [patterns...]`.
@@ -147,8 +149,8 @@ func runGenerate(args []string, stdout, stderr io.Writer, available ...gen.Plugi
 	if err != nil {
 		return fail(stderr, err)
 	}
-	if cfg.Plugins, err = selectPlugins(file.Plugins, available); err != nil {
-		return fail(stderr, err)
+	if cfg.Plugins, err = selectPlugins(file.Plugins, available, cfgDir); err != nil {
+		return fail(stderr, fmt.Errorf("momo.yaml: %w", err))
 	}
 
 	g, diags, err := gen.Load(patterns, cfg)
@@ -272,32 +274,41 @@ func checkPatterns(patterns []string, base string) error {
 	return nil
 }
 
-// selectPlugins returns the plugins named in the config, from those the
-// binary offers. Naming a plugin the binary does not offer is a configuration
-// error.
-func selectPlugins(want map[string]map[string]any, available []gen.Plugin) ([]gen.Plugin, error) {
+// selectPlugins returns the plugins the config names: the built-in ones
+// (graphql, grpc, openapi, viz) built from their options by buildPlugins, and
+// the others from those the binary offers. Naming a plugin that is neither is a
+// configuration error. The result is in the order of the sorted names.
+func selectPlugins(want map[string]map[string]any, available []gen.Plugin, out string) ([]gen.Plugin, error) {
 	if len(want) == 0 {
 		return nil, nil
+	}
+	builtin := map[string]map[string]any{}
+	for n, opts := range want {
+		if slices.Contains(builtinPlugins, n) {
+			builtin[n] = opts
+		}
+	}
+	built, err := buildPlugins(builtin, out)
+	if err != nil {
+		return nil, err
 	}
 	have := map[string]gen.Plugin{}
 	for _, p := range available {
 		have[p.Name()] = p
 	}
-	names := make([]string, 0, len(want))
-	for n := range want {
-		names = append(names, n)
+	for _, p := range built {
+		have[p.Name()] = p
 	}
-	sort.Strings(names)
-	var out []gen.Plugin
-	for _, n := range names {
+	var res []gen.Plugin
+	for _, n := range slices.Sorted(maps.Keys(want)) {
 		p, ok := have[n]
 		if !ok {
 			return nil, fmt.Errorf("momo.yaml: unknown plugin %q: this binary only runs the plugins built into it; "+
 				"build a binary with cli.Main(plugins...) or call gen.Emit with your plugins from Go code", n)
 		}
-		out = append(out, p)
+		res = append(res, p)
 	}
-	return out, nil
+	return res, nil
 }
 
 // relPath renders p relative to cwd, or unchanged when that is not possible.

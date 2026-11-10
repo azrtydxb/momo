@@ -43,11 +43,11 @@ Commands:
   viz       draw an ER diagram, Mermaid or DOT (flags: --format, --snapshot, --out)
   help      print this help ("momo help generate" for a command)
 
-Plugins: momo generate runs the plugins built into this binary, selected in
-the plugins section of momo.yaml. The stock momo binary has none. To run your
-own generator plugins, build a binary with cli.Main(plugins...) from
-github.com/azrtydxb/momo/cli (see the package documentation), or call gen.Emit
-with your plugins from Go code.
+Plugins: momo generate runs the plugins built into this binary (graphql, grpc,
+openapi, viz), enabled and configured in the plugins section of momo.yaml, and
+any plugin you pass to cli.Main(plugins...) from github.com/azrtydxb/momo/cli
+(see the package documentation). Or call gen.Emit with your plugins from Go
+code.
 
 Exit codes:
   0  success, or generated code is current

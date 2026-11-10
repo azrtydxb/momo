@@ -21,3 +21,6 @@ gen/testdata/scratch-*/
 
 # Work directories of the upgrade fixture recipe test (removed by t.Cleanup).
 internal/repocheck/testdata/upgrade_fixture/new-*/
+
+# protoc installed by make protoc.
+/internal/integration/protoc-dist/
