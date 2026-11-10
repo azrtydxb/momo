@@ -75,6 +75,11 @@ func (d DeleteQuery[T]) WithRecursive(name string, q Subquery, cols ...string) D
 // unless AllRows confirms it. A raw SQL fragment does not count as such a
 // reference. An Or counts only when every branch references the target, because a
 // branch off the target can be true on its own; an And counts when any term does.
+// Not swaps the two rules (De Morgan): a negated And needs every term on the
+// target, a negated Or any term. JoinSQL with AND or OR follows the same rules
+// as And and Or; with another separator it does not count. The guard checks
+// that Where references the target, not that it restricts it: a constant-true
+// predicate such as t.id = t.id passes.
 func (d DeleteQuery[T]) Using(src TableSource) DeleteQuery[T] { d.using = src; return d }
 
 // Where adds predicates combined with AND.

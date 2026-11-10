@@ -87,7 +87,8 @@ func Main(plugins ...gen.Plugin) {
 // Run executes the momo CLI with args (without the program name), writes its
 // output to stdout and its diagnostics to stderr, and returns the process exit
 // code: 0 for success or current generated code, 1 for stale generated files or
-// generator diagnostics, 2 for a usage, configuration or infrastructure error.
+// generator diagnostics, 2 for a usage, configuration or infrastructure error,
+// and 3 for a database, lock or execution error (momo migrate).
 // The plugins are the generator plugins this run offers; momo.yaml enables them
 // by name, and naming one that is not passed here is a configuration error. Run
 // is the testable form of Main: a custom binary calls Main, a test calls Run

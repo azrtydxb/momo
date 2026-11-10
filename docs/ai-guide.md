@@ -1286,7 +1286,7 @@ Joined and CTE-prefixed writes:
   the source and fails with `ErrUnfilteredMutation` unless `AllRows()` confirms it. A condition
   only on the source, or a raw `momo.SQL` fragment, does not count. An `Or` counts only when every
   branch references the target (one branch off the target can be true on its own, which touches
-  every target row); an `And` counts when any term does. `From` cannot be combined with
+  every target row); an `And` counts when any term does. `momo.Not` swaps the rules (a negated `And` needs every term on the target, a negated `Or` any term), and `momo.JoinSQL` with `AND` or `OR` follows the same rules as `And` and `Or`. The guard checks that `Where` references the target, not that it restricts it: a constant-true predicate such as `t.id = t.id` passes. `From` cannot be combined with
   `BulkUpdate` (`ErrValidation`), and `RETURNING` with `From` works on PostgreSQL and SQLite only.
 - `UpdateQuery.With` and `UpdateQuery.WithRecursive` exist on `UpdateQuery`, `DeleteQuery` and `InsertQuery`, with the
   `SelectQuery` signature. PostgreSQL and SQLite render the WITH before the statement; MySQL

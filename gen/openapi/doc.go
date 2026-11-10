@@ -223,7 +223,9 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 	seen := map[string]bool{}
 	collections := map[string]string{}
 	for _, m := range models {
-		if names[m.GoName+"Input"] {
+		// The input schema exists only for a model with a create or update
+		// route, so only then can its name clash with another model's.
+		if wops := opts.Ops.For(m.GoName); names[m.GoName+"Input"] && (wops.Has(apiquery.OpCreate) || wops.Has(apiquery.OpUpdate)) {
 			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "OpenAPI schema name " + m.GoName + "Input is the input schema of " + m.GoName + " and is also a model name"})
 			continue
 		}

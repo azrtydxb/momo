@@ -60,7 +60,9 @@ once for every error it answers from a statement (a database error, a missing
 row, a cancelled context), with the operation (the `operationId` for OpenAPI,
 for example `getDocument`; `DocumentService.Get` for gRPC) and the original
 error, before it writes the fixed message. Log, count or trace the error there.
-Without the option nothing changes.
+A panic in the hook is recovered, so it cannot stop the request from being
+answered. The `openapi` option needs `handlers: true`, because only the
+generated handlers call the hook. Without the option nothing changes.
 
 A request whose context was cancelled is now answered 499 (OpenAPI), `Canceled`
 (gRPC) and `CANCELED` (GraphQL) with a fixed message, and one whose deadline

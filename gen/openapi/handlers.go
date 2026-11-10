@@ -203,10 +203,20 @@ func Handlers(g *gen.Graph, pkg string, opts Options) ([]byte, []gen.Diagnostic)
 // name of the hook writeError calls, or "".
 func preambleSource(onError string) string {
 	hook := ""
+	out := preamble
 	if onError != "" {
-		hook = "\t" + onError + "(r.Context(), op, err)\n"
+		hook = "\trunErrorHook(r.Context(), op, err)\n"
+		out += strings.NewReplacer("{{name}}", onError, "{{extra}}", "").Replace(`
+// runErrorHook calls the on_error hook {{name}}. A panic in the hook is
+// recovered, so a failing log or metric call cannot stop the request from being
+// answered{{extra}}.
+func runErrorHook(ctx context.Context, op string, err error) {
+	defer func() { _ = recover() }()
+	{{name}}(ctx, op, err)
+}
+`)
 	}
-	return strings.Replace(preamble, "{{hook}}", hook, 1)
+	return strings.Replace(out, "{{hook}}", hook, 1)
 }
 
 const preamble = `// maxBodyBytes is the largest request body a handler reads: 1 MiB.

@@ -167,8 +167,9 @@ type smodel struct {
 // returns the generated <Model>ServiceServer. The adapters use the typed
 // builders only; List filters through the generated ColumnByName allowlist,
 // pages with keyset cursors on the primary key and clamps the limit. An
-// update reads the row first, so a column that is not in the message keeps its
-// value. A failed call returns a status with a fixed message (Canceled and
+// update writes the assignments of the message in one statement and reads
+// nothing first, so a column the message leaves out (a vector, a timestamp or a
+// defaulted scalar) keeps its stored value. A failed call returns a status with a fixed message (Canceled and
 // DeadlineExceeded when its context ended). The output is deterministic.
 func ServerSource(g *gen.Graph, lock *Lock, pkg, pbImport string) ([]byte, []gen.Diagnostic) {
 	return serverSource(g, lock, pkg, pbImport, nil)
@@ -297,10 +298,20 @@ func serverSourceHook(g *gen.Graph, lock *Lock, pkg, pbImport string, ops apique
 // the name of the hook statusOf calls, or "".
 func serverPreambleSource(onError string) string {
 	hook := ""
+	out := serverPreamble
 	if onError != "" {
-		hook = "\t" + onError + "(ctx, op, err)\n"
+		hook = "\trunErrorHook(ctx, op, err)\n"
+		out += strings.NewReplacer("{{name}}", onError, "{{extra}}", " (grpc-go does not recover a panic of a handler)").Replace(`
+// runErrorHook calls the on_error hook {{name}}. A panic in the hook is
+// recovered, so a failing log or metric call cannot stop the request from being
+// answered{{extra}}.
+func runErrorHook(ctx context.Context, op string, err error) {
+	defer func() { _ = recover() }()
+	{{name}}(ctx, op, err)
+}
+`)
 	}
-	return strings.Replace(serverPreamble, "{{hook}}", hook, 1)
+	return strings.Replace(out, "{{hook}}", hook, 1)
 }
 
 const serverPreamble = `// statusOf maps a failed statement to a gRPC status with a fixed message: the

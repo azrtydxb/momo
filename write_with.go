@@ -5,6 +5,7 @@ package momo
 import (
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
 )
@@ -75,45 +76,68 @@ func writeWithClause(b *Builder, ctes []cte) {
 // USING) whose WHERE never constrains its own target joins the target to the
 // source with no condition and so touches every target row; the
 // unfiltered-mutation guard uses this to refuse it. The predicates are ANDed,
-// so one that constrains the target is enough. Inside a predicate an And is
-// satisfied by any of its terms, but an Or only when every branch is, because
-// a branch off the target can be true on its own. Raw SQL fragments record no
-// column references and do not count.
+// so one that constrains the target is enough.
+//
+// Inside a predicate an And (or a JoinSQL with AND) is satisfied by any of its
+// terms, but an Or (or a JoinSQL with OR) only when every branch is, because a
+// branch off the target can be true on its own. A Not swaps the two rules (De
+// Morgan): NOT (a AND b) is NOT a OR NOT b, so every term of a negated And must
+// constrain the target and any term of a negated Or is enough; a double
+// negation is the original again. A JoinSQL with any other separator, and raw
+// SQL fragments, record no column references and do not count.
+//
+// This checks that the WHERE references the target, not that it restricts it:
+// a constant-true predicate such as t.id = t.id passes.
 func referencesTable(d *dialect.Dialect, ps []Predicate, qualifier string) bool {
 	for _, p := range ps {
-		if constrainsTable(d, p, qualifier) {
+		if constrainsTable(d, p, qualifier, false) {
 			return true
 		}
 	}
 	return false
 }
 
-func constrainsTable(d *dialect.Dialect, p Predicate, qualifier string) bool {
-	switch j := p.(type) {
+// constrainsTable reports whether e, when true (or, with negated, when false),
+// is limited to rows of the target table. See referencesTable.
+func constrainsTable(d *dialect.Dialect, e Expr, qualifier string, negated bool) bool {
+	switch j := e.(type) {
 	case nil:
 		return false
+	case not:
+		return constrainsTable(d, j.p, qualifier, !negated)
 	case junction:
-		if j.op == " OR " {
-			if len(j.parts) == 0 {
-				return false
-			}
-			for _, part := range j.parts {
-				if !constrainsTable(d, part, qualifier) {
-					return false
-				}
-			}
-			return true
-		}
-		for _, part := range j.parts {
-			if constrainsTable(d, part, qualifier) {
-				return true
-			}
+		return combineConstrains(d, j.parts, qualifier, negated, j.op == " OR ")
+	case joinExpr:
+		switch strings.ToUpper(strings.Trim(j.sep, " \t\r\n")) {
+		case "AND":
+			return combineConstrains(d, j.parts, qualifier, negated, false)
+		case "OR":
+			return combineConstrains(d, j.parts, qualifier, negated, true)
 		}
 		return false
 	}
 	b := NewBuilder(d)
 	b.pushScope(nil)
-	p.AppendSQL(b)
+	e.AppendSQL(b)
 	_, ok := b.scopes[0].refs[qualifier]
 	return ok
+}
+
+// combineConstrains applies the And and Or rules: an And needs any part and an
+// Or needs every part, and negation swaps them. No parts never constrain.
+func combineConstrains[E Expr](d *dialect.Dialect, parts []E, qualifier string, negated, or bool) bool {
+	if len(parts) == 0 {
+		return false
+	}
+	all := or != negated // an Or, or a negated And, needs every part
+	for _, part := range parts {
+		c := constrainsTable(d, part, qualifier, negated)
+		if all && !c {
+			return false
+		}
+		if !all && c {
+			return true
+		}
+	}
+	return all
 }
