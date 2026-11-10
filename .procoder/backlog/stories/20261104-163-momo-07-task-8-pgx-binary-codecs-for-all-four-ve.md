@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-07-vectors-pgvector
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — The S-50 criterion needs BenchmarkVectorEncoding results recorded under bench/results from a make bench run on dedicated hardware; CI's bench-module job does not set BENCH_PG_URL, so it never writes vector-encoding.txt. TestVectorBinaryCodec and the other criteria are ticked with CI evidence.
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Criterion [S-50] unmet: BenchmarkVectorEncoding results are not recorded under bench/results (the directory does not exist; plan assigns it to momo-12). Binary codecs themselves exist in driver/pgxdriver/vector_codec.go with TestVectorBinaryCodec.
 
 ## Description
@@ -14,7 +15,7 @@ Implements plan momo-07-vectors Task 8: pgx binary codecs for all four vector ty
 
 - [x] `TestVectorBinaryCodec` exists as written in the plan, failed before the implementation, and passes now
 - [x] `BenchmarkVectorEncoding` exists as written in the plan, failed before the implementation, and passes now
-- [x] [S-50] `TestVectorBinaryCodec` round-trips all four types in binary mode and matches text-mode results; `BenchmarkVectorEncoding` results recorded under bench/results; fails if binary and text decode differently.
+- [ ] [S-50] `TestVectorBinaryCodec` round-trips all four types in binary mode and matches text-mode results; `BenchmarkVectorEncoding` results recorded under bench/results; fails if binary and text decode differently.
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

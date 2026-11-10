@@ -192,15 +192,13 @@ func flagExpr(f *Field) string {
 	return strings.Join(parts, "|")
 }
 
-// EmitDescriptors returns the source of the per-model descriptor subpackage:
-// typed columns, the alias-aware As constructor and one descriptor per
-// relation. The result is gofmt-formatted and starts with Header().
-func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
+// newDescEmitter returns the emitter of m with every import alias the output
+// will use registered, and the set of those aliases. Registering them before
+// any identifier is chosen means a field named like an alias is renamed instead
+// of redeclaring the import.
+func newDescEmitter(m *Model, g *Graph) (*descEmitter, map[string]bool) {
 	e := &descEmitter{m: m, imports: map[string]string{"momo": momoImportPath}, namer: graphNamer(g)}
 
-	// Register every import alias the output will use before any identifier
-	// is chosen, so a field named like an alias is renamed instead of
-	// redeclaring the import.
 	for _, f := range m.Fields {
 		if _, v := fieldVar(m, f); v != nil {
 			t, _ := derefType(v.Type())
@@ -216,6 +214,38 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	for alias := range e.imports {
 		aliases[alias] = true
 	}
+	return e, aliases
+}
+
+// DescriptorIdents returns the Go names, in the descriptor package of m, of
+// the descriptor of each field (in field order) and of each relation (in
+// relation order). A name that collides with a helper, a keyword, an import
+// alias of that package or an earlier name gets an underscore appended, so
+// generated code that refers to a descriptor must use these names and never
+// the Go name of the field or relation.
+func DescriptorIdents(m *Model, g *Graph) (fields, relations []string) {
+	_, aliases := newDescEmitter(m, g)
+	fields = fieldIdents(m, aliases)
+	used := DescriptorReserved()
+	for alias := range aliases {
+		used[alias] = true
+	}
+	for _, id := range fields {
+		used[id] = true
+	}
+	for _, r := range m.Relations {
+		name := Identifier(r.GoName, used)
+		used[name] = true
+		relations = append(relations, name)
+	}
+	return fields, relations
+}
+
+// EmitDescriptors returns the source of the per-model descriptor subpackage:
+// typed columns, the alias-aware As constructor and one descriptor per
+// relation. The result is gofmt-formatted and starts with Header().
+func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
+	e, aliases := newDescEmitter(m, g)
 	ids := fieldIdents(m, aliases)
 	used := DescriptorReserved()
 	for alias := range aliases {

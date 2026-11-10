@@ -1,6 +1,6 @@
 # momo-11 Task 5: `momo import gorm|bun|ent` command
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-11-adoption
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -11,8 +11,8 @@ Implements plan momo-11-adoption Task 5: `momo import gorm|bun|ent` command (`.p
 
 ## Acceptance criteria
 
-- [ ] `TestImportCommand` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestImportRefusesUnsupported` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestImportCommand` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestImportRefusesUnsupported` exists as written in the plan, failed before the implementation, and passes now
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
@@ -21,3 +21,7 @@ Implements plan momo-11-adoption Task 5: `momo import gorm|bun|ent` command (`.p
 - Commit 5258b7e went through the procoder gate.
 - Red-first not evidenced: the implementation was written before its test ran and no failing CI run was recorded, so the 'failed before the implementation' criterion stays unticked (the tests pass).
 - Review fix: -h/--help is help only in a flag position (TestImportHelpFlagAsValueIsNotHelp).
+
+### Red proof (2026-11-10)
+
+Throwaway branch (deleted), runImport made a no-op returning 0: `TestImportCommand` and `TestImportRefusesUnsupported` FAIL in the unit job, ci-agent run 42827469571 on 35dc039. They pass on sprint-7 (run 42780875746).

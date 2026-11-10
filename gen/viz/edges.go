@@ -149,7 +149,7 @@ func keyOf(g *gen.Graph, m *gen.Model) []string {
 	if g.Schema == nil {
 		return nil
 	}
-	if t, ok := g.Schema.Table(m.Table); ok {
+	if t, ok := g.TableOf(m); ok {
 		return append([]string(nil), t.PrimaryKey...)
 	}
 	return nil

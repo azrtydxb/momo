@@ -123,3 +123,25 @@ jobs:
           version="${tag%.*}"
           mike deploy --push --update-aliases "$version" latest
           mike set-default --push latest
+      # mike publishes only under /dev/, /vX.Y/ and /latest/, so the site root
+      # has no llms.txt. Copy the release's files there. The links of llms.txt
+      # are relative to a version directory, so they are pointed into latest/.
+      - name: Copy llms.txt and llms-full.txt to the site root
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+        run: |
+          git fetch origin gh-pages
+          git worktree add --detach "$RUNNER_TEMP/pages" origin/gh-pages
+          cd "$RUNNER_TEMP/pages"
+          tag="${DISPATCH_TAG:-$GITHUB_REF_NAME}"
+          src="${tag%.*}"
+          sed 's#](\([^)]*\))#](latest/\1)#' "$src/llms.txt" > llms.txt
+          cp "$src/llms-full.txt" llms-full.txt
+          git add llms.txt llms-full.txt
+          if git diff --cached --quiet; then
+            echo "root llms files are current"
+          else
+            git commit -m "docs: root llms.txt and llms-full.txt from $tag"
+            git push origin HEAD:gh-pages
+          fi
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}

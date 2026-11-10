@@ -22,6 +22,22 @@
         ],
         "type": "object"
       },
+      "CommentInput": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "document_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "document_id",
+          "body"
+        ],
+        "type": "object"
+      },
       "Document": {
         "properties": {
           "body": {
@@ -63,14 +79,43 @@
         ],
         "type": "object"
       },
-      "Error": {
+      "DocumentInput": {
         "properties": {
-          "message": {
+          "body": {
+            "type": "string"
+          },
+          "embedding": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
             "type": "string"
           }
         },
         "required": [
-          "message"
+          "tenant_id",
+          "title",
+          "body"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
         ],
         "type": "object"
       },
@@ -90,6 +135,17 @@
         ],
         "type": "object"
       },
+      "TagInput": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "Tenant": {
         "properties": {
           "id": {
@@ -102,6 +158,17 @@
         },
         "required": [
           "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "TenantInput": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
           "name"
         ],
         "type": "object"
@@ -197,6 +264,36 @@
               }
             },
             "description": "Invalid request"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
@@ -206,7 +303,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Comment"
+                "$ref": "#/components/schemas/CommentInput"
               }
             }
           },
@@ -232,6 +329,66 @@
               }
             },
             "description": "Invalid request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is larger than 1 MiB"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       }
@@ -254,6 +411,16 @@
           "204": {
             "description": "Deleted"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -263,6 +430,46 @@
               }
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
@@ -290,6 +497,16 @@
             },
             "description": "Comment"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -299,10 +516,41 @@
               }
             },
             "description": "Not found"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
       "put": {
+        "description": "The body is the CommentInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Comment schema.",
         "operationId": "updateComment",
         "parameters": [
           {
@@ -319,7 +567,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Comment"
+                "$ref": "#/components/schemas/CommentInput"
               }
             }
           },
@@ -355,8 +603,69 @@
               }
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is larger than 1 MiB"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
-        }
+        },
+        "summary": "Update a Comment"
       }
     },
     "/v1/documents": {
@@ -464,6 +773,36 @@
               }
             },
             "description": "Invalid request"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
@@ -473,7 +812,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Document"
+                "$ref": "#/components/schemas/DocumentInput"
               }
             }
           },
@@ -499,6 +838,66 @@
               }
             },
             "description": "Invalid request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is larger than 1 MiB"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       }
@@ -521,6 +920,16 @@
           "204": {
             "description": "Deleted"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -530,6 +939,46 @@
               }
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
@@ -557,6 +1006,16 @@
             },
             "description": "Document"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -566,10 +1025,41 @@
               }
             },
             "description": "Not found"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
       "put": {
+        "description": "The body is the DocumentInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Document schema.",
         "operationId": "updateDocument",
         "parameters": [
           {
@@ -586,7 +1076,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Document"
+                "$ref": "#/components/schemas/DocumentInput"
               }
             }
           },
@@ -622,8 +1112,69 @@
               }
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is larger than 1 MiB"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
-        }
+        },
+        "summary": "Update a Document"
       }
     },
     "/v1/tags": {
@@ -701,6 +1252,36 @@
               }
             },
             "description": "Invalid request"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
@@ -710,7 +1291,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Tag"
+                "$ref": "#/components/schemas/TagInput"
               }
             }
           },
@@ -736,6 +1317,66 @@
               }
             },
             "description": "Invalid request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is larger than 1 MiB"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       }
@@ -758,6 +1399,16 @@
           "204": {
             "description": "Deleted"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -767,6 +1418,46 @@
               }
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
@@ -794,6 +1485,16 @@
             },
             "description": "Tag"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -803,10 +1504,41 @@
               }
             },
             "description": "Not found"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
       "put": {
+        "description": "The body is the TagInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Tag schema.",
         "operationId": "updateTag",
         "parameters": [
           {
@@ -823,7 +1555,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Tag"
+                "$ref": "#/components/schemas/TagInput"
               }
             }
           },
@@ -859,8 +1591,69 @@
               }
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is larger than 1 MiB"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
-        }
+        },
+        "summary": "Update a Tag"
       }
     },
     "/v1/tenants": {
@@ -938,6 +1731,36 @@
               }
             },
             "description": "Invalid request"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
@@ -947,7 +1770,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Tenant"
+                "$ref": "#/components/schemas/TenantInput"
               }
             }
           },
@@ -973,6 +1796,66 @@
               }
             },
             "description": "Invalid request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is larger than 1 MiB"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       }
@@ -995,6 +1878,16 @@
           "204": {
             "description": "Deleted"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -1004,6 +1897,46 @@
               }
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
@@ -1031,6 +1964,16 @@
             },
             "description": "Tenant"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -1040,10 +1983,41 @@
               }
             },
             "description": "Not found"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
         }
       },
       "put": {
+        "description": "The body is the TenantInput schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the Tenant schema.",
         "operationId": "updateTenant",
         "parameters": [
           {
@@ -1060,7 +2034,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Tenant"
+                "$ref": "#/components/schemas/TenantInput"
               }
             }
           },
@@ -1096,8 +2070,69 @@
               }
             },
             "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A unique or foreign key constraint refused the change"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is larger than 1 MiB"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "499": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The client cancelled the request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The database is busy or the transaction conflicted; retry"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The deadline of the request passed"
           }
-        }
+        },
+        "summary": "Update a Tenant"
       }
     }
   }

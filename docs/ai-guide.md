@@ -609,7 +609,22 @@ The generator sets `Meta.View`. Reads work as for any model; `Insert`,
 `Upsert`, `Update`, `SoftDelete`, `BulkUpdate`, `Delete` and `Merge` return
 `ErrValidation` naming the model, at run time (there is no compile-time
 check). Declare the view itself with `c.View(schema.View{...})` in
-`MomoConfig`.
+`MomoConfig`. The schema the generator builds holds that view and no table for
+the view model, so a migration never issues `CREATE TABLE` for it, and no
+foreign key refers to it. `Materialized: true` declares a materialized view;
+refresh it with `momo.RefreshMaterializedView(ctx, db, "name", false)` (a
+name with a schema prefix, two parts joined by a dot, is split and quoted; the last argument adds
+`CONCURRENTLY`, which needs a unique index in the view's `Indexes`). It is
+PostgreSQL only and returns `ErrUnsupported` elsewhere.
+
+### Generated servers
+
+The `momo` binary has built-in `graphql`, `grpc` and `openapi` plugins, enabled
+in the `plugins` section of `momo.yaml`. They generate servers over your models
+with no authentication or authorization: wrap them. The `openapi` and `grpc`
+plugins take `ops`, `read_only` and `on_error`; the OpenAPI document has a
+`<Model>` output schema and a `<Model>Input` request schema. See
+[capabilities](capabilities.md) for the options, error mapping and limits.
 
 ### Custom generator binary
 
@@ -1284,7 +1299,9 @@ Joined and CTE-prefixed writes:
 - With `From` or `Using` the unfiltered-mutation guard is stricter: at least one `Where` predicate
   must reference a column of the target table, otherwise the statement joins every target row to
   the source and fails with `ErrUnfilteredMutation` unless `AllRows()` confirms it. A condition
-  only on the source, or a raw `momo.SQL` fragment, does not count. `From` cannot be combined with
+  only on the source, or a raw `momo.SQL` fragment, does not count. An `Or` counts only when every
+  branch references the target (one branch off the target can be true on its own, which touches
+  every target row); an `And` counts when any term does. `momo.Not` swaps the rules (a negated `And` needs every term on the target, a negated `Or` any term), and `momo.JoinSQL` with `AND` or `OR` follows the same rules as `And` and `Or`. The guard checks that `Where` references the target, not that it restricts it: a constant-true predicate such as `t.id = t.id` passes. `From` cannot be combined with
   `BulkUpdate` (`ErrValidation`), and `RETURNING` with `From` works on PostgreSQL and SQLite only.
 - `UpdateQuery.With` and `UpdateQuery.WithRecursive` exist on `UpdateQuery`, `DeleteQuery` and `InsertQuery`, with the
   `SelectQuery` signature. PostgreSQL and SQLite render the WITH before the statement; MySQL

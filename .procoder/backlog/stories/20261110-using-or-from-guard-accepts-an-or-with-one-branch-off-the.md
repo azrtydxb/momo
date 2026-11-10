@@ -1,6 +1,6 @@
 # Using or From guard accepts an Or with one branch off the target
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-10
 Epic: -
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -29,9 +29,14 @@ terms does.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] Delete with Using and Update with From both refuse an Or whose branches do not all reference the target, unless AllRows is set (unit tests)
-- [ ] an And with one target term, and an Or whose branches all reference the target, are still accepted (unit tests)
-- [ ] the method docs and `docs/ai-guide.md` state the Or rule
+- [x] a regression test pins the fix: red before the change, green after
+- [x] Delete with Using and Update with From both refuse an Or whose branches do not all reference the target, unless AllRows is set (unit tests)
+- [x] an And with one target term, and an Or whose branches all reference the target, are still accepted (unit tests)
+- [x] the method docs and `docs/ai-guide.md` state the Or rule
 
 ## Evidence
+
+- Red: ci-agent run 42827421622 (throwaway branch worktree-agent-acf2b-red-orguard, sha 2ab5519, the test alone), unit job FAIL TestFromUsingGuardOr: an Or with one branch off the target returned no error on postgres, mysql and sqlite for Using and From.
+- Fix 5b76911: `referencesTable` (write_with.go) now recurses: an And is satisfied by any term, an Or only when every branch constrains the target, an empty Or never. The same test also covers the accepted cases (an And with one target term, an Or whose branches all reference the target, an Or of Ands, a target term beside a mixed Or) and AllRows. Method docs on DeleteQuery.Using and UpdateQuery.From and docs/ai-guide.md state the rule.
+- Green: ci-agent run 42839158680 (sha 5e86d37, all 9 jobs success), TestFromUsingGuardOr passes.
+- Review round 2026-11-10: two guard bypasses found and fixed. `Not` was treated as a leaf, so `Not(And(t, s))` passed, and `JoinSQL` with OR or AND was a leaf too. Tests first (7ee9b7b), red on ci-agent run 42843378815 (throwaway branch worktree-agent-acf2b-red-review): FAIL TestFromUsingGuardNot and TestFromUsingGuardJoinSQL. Fix ccfd470: `constrainsTable` (write_with.go) tracks negation (De Morgan: a negated And needs every term on the target, a negated Or any term, a double Not is the original) and applies the And and Or rules to JoinSQL with AND or OR; any other separator does not count. The From and Using docs and docs/ai-guide.md state the Not and JoinSQL rules and that the guard checks that Where references the target, not that it restricts it (t.id = t.id passes).

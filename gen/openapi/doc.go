@@ -15,6 +15,7 @@ import (
 
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/gen/apiquery"
+	"github.com/azrtydxb/momo/gen/internal/gosrc"
 )
 
 // Options configures Document.
@@ -26,6 +27,16 @@ type Options struct {
 	// Handlers asks the plugin to also emit net/http handlers; Document does
 	// not read it.
 	Handlers bool
+	// Ops chooses the operations served per model; nil serves every one. The
+	// document and the handlers both read it.
+	Ops apiquery.Ops
+	// OnError names a function in the handlers package with the signature
+	// func(ctx context.Context, op string, err error). Every handler calls it
+	// once for each error it answers from a statement, with the operation name
+	// (the operationId of the document, for example getDocument) and the
+	// original error, before it writes the fixed message. Empty means no hook.
+	// Document does not read it.
+	OnError string
 }
 
 // obj is a JSON object. encoding/json writes the keys of a map in sorted
@@ -90,11 +101,39 @@ func schemaWith(baseType string, nullable, typeNull bool) (obj, bool) {
 }
 
 type property struct {
-	column   string
-	schema   obj
+	column string
+	schema obj
+	// required is set when a create and an update must carry the key: a
+	// column that is not null and that the database does not fill in.
 	required bool
+	// notNull is set for a column the output schema lists in required: a
+	// response always carries it, whatever the database default or access.
+	notNull bool
+	// writable is set for a column a request may carry: not the key, not an
+	// identity or serial column and not read-only. It is the input schema.
+	writable bool
 	vector   bool
 	base     string // base Go type, for the filter and key schemas
+	field    *gen.Field
+}
+
+// requiredOnWrite reports whether a write must carry f: it is not null, not
+// part of the primary key, not an identity or read-only column, has no
+// database default and is not a vector (which the database may leave empty).
+func requiredOnWrite(f *gen.Field, pk bool) bool {
+	return !isNullable(f) && !pk && !f.Tags.PK && !f.Tags.Identity && !f.Tags.Serial &&
+		f.Access != gen.ReadOnly && f.Tags.Default == "" && !strings.HasPrefix(f.BaseType, "vector.")
+}
+
+// isNullable reports whether the column can hold NULL.
+func isNullable(f *gen.Field) bool {
+	return f.Nullable || strings.HasPrefix(f.BaseType, "*") || strings.HasPrefix(f.BaseType, "sql.Null")
+}
+
+// writableColumn reports whether a request may carry f: it is not part of the
+// primary key and not an identity, serial or read-only column.
+func writableColumn(f *gen.Field, pk bool) bool {
+	return !pk && !f.Tags.PK && !f.Tags.Identity && !f.Tags.Serial && f.Access != gen.ReadOnly
 }
 
 // schemaNameRE is what OpenAPI allows in a component name.
@@ -106,7 +145,15 @@ var schemaNameRE = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 // escaped, so a table name can never add path segments or template variables.
 var pathSegmentRE = regexp.MustCompile(`^[A-Za-z0-9_~-][A-Za-z0-9._~-]*$`)
 
-func propertiesOf(m *gen.Model) ([]property, []gen.Diagnostic) {
+func propertiesOf(g *gen.Graph, m *gen.Model) ([]property, []gen.Diagnostic) {
+	pks := map[string]bool{}
+	if g.Schema != nil {
+		if t, ok := g.TableOf(m); ok {
+			for _, c := range t.PrimaryKey {
+				pks[c] = true
+			}
+		}
+	}
 	var props []property
 	var diags []gen.Diagnostic
 	seen := map[string]bool{}
@@ -120,8 +167,7 @@ func propertiesOf(m *gen.Model) ([]property, []gen.Diagnostic) {
 			diags = append(diags, gen.Diagnostic{Pos: f.Pos, Msg: "no OpenAPI mapping for " + f.BaseType})
 			continue
 		}
-		nullable := f.Nullable || strings.HasPrefix(f.BaseType, "*") || strings.HasPrefix(f.BaseType, "sql.Null")
-		props = append(props, property{column: f.Column, schema: s, required: !nullable, vector: strings.HasPrefix(f.BaseType, "vector."), base: f.BaseType})
+		props = append(props, property{column: f.Column, schema: s, required: requiredOnWrite(f, pks[f.Column]), notNull: !isNullable(f), writable: writableColumn(f, pks[f.Column]), vector: strings.HasPrefix(f.BaseType, "vector."), base: f.BaseType, field: f})
 	}
 	return props, diags
 }
@@ -146,8 +192,14 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 		diags = append(diags, gen.Diagnostic{Msg: "OpenAPI options need a Title and a Version"})
 	}
 	base := strings.TrimRight(opts.BasePath, "/")
-	if base != "" && !strings.HasPrefix(base, "/") {
-		diags = append(diags, gen.Diagnostic{Msg: fmt.Sprintf("OpenAPI BasePath %q must be empty or start with a slash", opts.BasePath)})
+	if !gosrc.BasePath.MatchString(base) {
+		diags = append(diags, gen.Diagnostic{Msg: fmt.Sprintf("OpenAPI BasePath %q must be empty or slash-separated segments of letters, digits and . _ ~ -", opts.BasePath)})
+	}
+	if err := opts.Ops.Validate(); err != nil {
+		diags = append(diags, gen.Diagnostic{Msg: "OpenAPI " + err.Error()})
+	}
+	if len(diags) > 0 {
+		return nil, diags // an invalid option: no document at all
 	}
 
 	models := append([]*gen.Model(nil), g.Models...)
@@ -160,13 +212,28 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 
 	schemas := obj{"Error": obj{
 		"type":       "object",
-		"properties": obj{"message": obj{"type": "string"}},
-		"required":   []string{"message"},
+		"properties": obj{"error": obj{"type": "string"}},
+		"required":   []string{"error"},
 	}}
 	paths := obj{}
+	names := map[string]bool{}
+	for _, m := range models {
+		names[m.GoName] = true
+	}
 	seen := map[string]bool{}
 	collections := map[string]string{}
 	for _, m := range models {
+		// The input schema exists only for a model with a create or update
+		// route, so only then can its name clash with another model's.
+		ops, err := opts.Ops.ForModel(m.GoName, m.IsView)
+		if err != nil {
+			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "OpenAPI " + err.Error()})
+			continue
+		}
+		if wops := ops; names[m.GoName+"Input"] && (wops.Has(apiquery.OpCreate) || wops.Has(apiquery.OpUpdate)) {
+			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "OpenAPI schema name " + m.GoName + "Input is the input schema of " + m.GoName + " and is also a model name"})
+			continue
+		}
 		if seen[m.GoName] || m.GoName == "Error" {
 			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "OpenAPI schema name " + m.GoName + " is duplicated or reserved"})
 			continue
@@ -185,23 +252,49 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 		}
 		collections[m.Table] = m.GoName
 		seen[m.GoName] = true
-		props, pd := propertiesOf(m)
+		props, pd := propertiesOf(g, m)
 		diags = append(diags, pd...)
 
+		// The output schema is what a response carries: every column, with
+		// the not-null ones (the key included) required. The input schema,
+		// added below for a model with a write route, is what a request may
+		// carry.
 		properties := obj{}
-		var required []string
+		var outRequired []string
+		inProps := obj{}
+		var inRequired []string
 		for _, p := range props {
 			properties[p.column] = p.schema
-			if p.required {
-				required = append(required, p.column)
+			if p.notNull {
+				outRequired = append(outRequired, p.column)
+			}
+			if p.writable {
+				inProps[p.column] = p.schema
+				if p.required {
+					inRequired = append(inRequired, p.column)
+				}
 			}
 		}
 		schema := obj{"type": "object", "properties": properties}
-		if len(required) > 0 {
-			schema["required"] = required
+		if len(outRequired) > 0 {
+			schema["required"] = outRequired
 		}
 		schemas[m.GoName] = schema
 
+		pk := servedPK(g, m)
+		if pk == nil {
+			// The model keeps its schema and gets no route: the handlers do not
+			// serve it either.
+			diags = append(diags, gen.Diagnostic{Pos: m.Pos, Msg: "model " + m.GoName + " has no single exposed int64 primary key, so the API serves no routes for it"})
+			continue
+		}
+		if ops.Has(apiquery.OpCreate) || ops.Has(apiquery.OpUpdate) {
+			in := obj{"type": "object", "properties": inProps}
+			if len(inRequired) > 0 {
+				in["required"] = inRequired
+			}
+			schemas[m.GoName+"Input"] = in
+		}
 		collection := base + "/" + m.Table
 		params := []any{
 			obj{"name": "limit", "in": "query", "schema": obj{"type": "integer", "minimum": 1, "maximum": apiquery.MaxLimit, "default": apiquery.DefaultLimit}},
@@ -222,42 +315,75 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 			},
 			"required": []string{"items", "next_cursor"},
 		}
-		body := obj{"required": true, "content": obj{"application/json": obj{"schema": ref(m.GoName)}}}
-		badRequest := response("Invalid request", ref("Error"))
-		paths[collection] = obj{
-			"get": obj{
+		body := obj{"required": true, "content": obj{"application/json": obj{"schema": ref(m.GoName + "Input")}}}
+		errResp := func(extra ...string) obj {
+			r := obj{
+				"400": response("Invalid request", ref("Error")),
+				"499": response("The client cancelled the request", ref("Error")),
+				"503": response("The database is busy or the transaction conflicted; retry", ref("Error")),
+				"504": response("The deadline of the request passed", ref("Error")),
+			}
+			for _, code := range extra {
+				switch code {
+				case "404":
+					r[code] = response("Not found", ref("Error"))
+				case "409":
+					r[code] = response("A unique or foreign key constraint refused the change", ref("Error"))
+				case "413":
+					r[code] = response("The request body is larger than 1 MiB", ref("Error"))
+				case "415":
+					r[code] = response("The request body is not application/json", ref("Error"))
+				}
+			}
+			return r
+		}
+		with := func(r obj, code string, v obj) obj { r[code] = v; return r }
+		item := obj{}
+		coll := obj{}
+		if ops.Has(apiquery.OpList) {
+			coll["get"] = obj{
 				"operationId": "list" + m.GoName,
 				"parameters":  params,
-				"responses":   obj{"200": response("A page of "+m.GoName+" rows", listBody), "400": badRequest},
-			},
-			"post": obj{
+				"responses":   with(errResp(), "200", response("A page of "+m.GoName+" rows", listBody)),
+			}
+		}
+		if ops.Has(apiquery.OpCreate) {
+			coll["post"] = obj{
 				"operationId": "create" + m.GoName,
 				"requestBody": body,
-				"responses":   obj{"201": response("Created", ref(m.GoName)), "400": badRequest},
-			},
-		}
-
-		if idSchema, ok := singlePK(g, m, props); ok {
-			idParam := []any{obj{"name": "id", "in": "path", "required": true, "schema": idSchema}}
-			notFound := response("Not found", ref("Error"))
-			paths[collection+"/{id}"] = obj{
-				"get": obj{
-					"operationId": "get" + m.GoName,
-					"parameters":  idParam,
-					"responses":   obj{"200": response(m.GoName, ref(m.GoName)), "404": notFound},
-				},
-				"put": obj{
-					"operationId": "update" + m.GoName,
-					"parameters":  idParam,
-					"requestBody": body,
-					"responses":   obj{"200": response("Updated", ref(m.GoName)), "400": badRequest, "404": notFound},
-				},
-				"delete": obj{
-					"operationId": "delete" + m.GoName,
-					"parameters":  idParam,
-					"responses":   obj{"204": response("Deleted", nil), "404": notFound},
-				},
+				"responses":   with(errResp("409", "413", "415"), "201", response("Created", ref(m.GoName))),
 			}
+		}
+		idParam := []any{obj{"name": "id", "in": "path", "required": true, "schema": obj{"type": "integer", "format": "int64"}}}
+		if ops.Has(apiquery.OpGet) {
+			item["get"] = obj{
+				"operationId": "get" + m.GoName,
+				"parameters":  idParam,
+				"responses":   with(errResp("404"), "200", response(m.GoName, ref(m.GoName))),
+			}
+		}
+		if ops.Has(apiquery.OpUpdate) {
+			item["put"] = obj{
+				"operationId": "update" + m.GoName,
+				"summary":     "Update a " + m.GoName,
+				"description": "The body is the " + m.GoName + "Input schema and must carry every required property. An optional property that is absent keeps its stored value, and only the properties the body carries are written. The response is the " + m.GoName + " schema.",
+				"parameters":  idParam,
+				"requestBody": body,
+				"responses":   with(errResp("404", "409", "413", "415"), "200", response("Updated", ref(m.GoName))),
+			}
+		}
+		if ops.Has(apiquery.OpDelete) {
+			item["delete"] = obj{
+				"operationId": "delete" + m.GoName,
+				"parameters":  idParam,
+				"responses":   with(errResp("404", "409"), "204", response("Deleted", nil)),
+			}
+		}
+		if len(coll) > 0 {
+			paths[collection] = coll
+		}
+		if len(item) > 0 {
+			paths[collection+"/{id}"] = item
 		}
 	}
 
@@ -276,20 +402,20 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 	return buf.Bytes(), diags
 }
 
-// singlePK returns the schema of m's primary key when it is a single exposed
-// column; a composite key has no {id} path.
-func singlePK(g *gen.Graph, m *gen.Model, props []property) (obj, bool) {
-	if g.Schema == nil {
-		return nil, false
+// servedPK returns the primary key field of m when the handlers serve the
+// model: a single exposed int64 column. The document describes exactly the
+// routes the handlers register, so a model without such a key has no paths.
+func servedPK(g *gen.Graph, m *gen.Model) *gen.Field {
+	pk := gosrc.SinglePK(g, m)
+	if pk == nil {
+		return nil
 	}
-	t, ok := g.Schema.Table(m.Table)
-	if !ok || len(t.PrimaryKey) != 1 {
-		return nil, false
+	goType := pk.GoType
+	if goType == "" { // a field built by hand, without the spelling the loader records
+		goType = pk.BaseType
 	}
-	for _, p := range props {
-		if p.column == t.PrimaryKey[0] {
-			return valueSchema(p.base)
-		}
+	if goType != "int64" || pk.Tags.Sensitive {
+		return nil
 	}
-	return nil, false
+	return pk
 }

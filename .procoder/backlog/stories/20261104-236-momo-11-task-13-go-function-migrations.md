@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-11-adoption
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — Plan task 13 specified Go migrations with Down functions dispatched by group rollback; the shipped design is forward-only (GoMigration has no Down, a rollback reaching one is refused with ErrGoMigrationNotReversible, TestRefuseGoRollback). No TestGoMigrations exists. Whether Go migrations should gain a Down is a product decision; not invented here.
 
 ## Description
 

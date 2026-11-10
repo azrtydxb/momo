@@ -48,3 +48,25 @@ func TestCompanionManagedObjectsCompile(t *testing.T) {
 	var d compDoc
 	d.managed(&Config{})
 }
+
+type compSchemaDoc struct {
+	Model
+	ID int64
+}
+
+func (d *compSchemaDoc) MomoConfig(c *Config) {
+	c.View(schema.View{Name: "v", Query: "SELECT 1"})
+	c.Function(schema.Function{Name: "f", Returns: "trigger", Language: "plpgsql", Body: "BEGIN RETURN NEW; END"})
+	c.Trigger(schema.Trigger{Table: "t", Name: "tr", Timing: "BEFORE", Events: []string{"INSERT"}, Function: "f"})
+	c.Policy(schema.Policy{Table: "t", Name: "p", Command: "ALL", Permissive: true, Using: "true"})
+	c.RLS(schema.RLS{Enabled: true, Forced: true})
+	c.Partition(schema.Partition{Strategy: "range", Key: "RANGE (id)"})
+	c.PartitionOf(schema.PartitionOf{Parent: "t", Bound: "FOR VALUES FROM (1) TO (2)"})
+}
+
+// TestCompanionSchemaDSLCompiles checks that the structured companion methods
+// accept the schema types and run as no-ops.
+func TestCompanionSchemaDSLCompiles(t *testing.T) {
+	var d compSchemaDoc
+	d.MomoConfig(&Config{})
+}

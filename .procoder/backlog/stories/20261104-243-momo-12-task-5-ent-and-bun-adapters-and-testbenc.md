@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-12-performance
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — The S-19 criterion needs a committed make bench reference run on dedicated hardware, which a person has to run; the adapters and TestBenchEquivalence are in place.
 
 ## Description
 
