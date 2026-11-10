@@ -283,7 +283,7 @@ func (sq SelectQuery[T]) writeLock(b *Builder) {
 	s := &sq.s
 	if s.lock == "" {
 		if len(s.lockOf) > 0 {
-			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf needs ForUpdate or ForShare")))
+			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf needs ForUpdate, ForShare, ForNoKeyUpdate or ForKeyShare")))
 		}
 		return
 	}

@@ -351,18 +351,20 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 	return sq
 }
 
-// LockOf narrows the row lock of ForUpdate, ForShare, ForNoKeyUpdate or ForKeyShare to the named tables
-// (FOR UPDATE OF t1, t2). A joined select needs it to lock only the claimed
-// side: a LEFT JOIN cannot lock its nullable side, and a job-claim join
-// locks the job table and leaves the parent alone. Each name is the
-// qualifier the table has in the query, its alias when it has one, and is
-// quoted as an identifier. The names render after the lock mode and before
-// NOWAIT or SKIP LOCKED, whatever the call order. Without a ForUpdate or
-// ForShare the build fails with ErrValidation; like them, LockOf returns
-// ErrUnsupported on SQLite. Each name must be the table or alias of the FROM or
-// a joined table, else the build fails with ErrValidation naming it. A lock
-// cannot be combined with DISTINCT, DISTINCT ON, GROUP BY or HAVING (ErrValidation); other
-// invalid combinations, such as aggregates or UNION, are left to the server.
+// LockOf narrows the row lock of ForUpdate, ForShare, ForNoKeyUpdate or
+// ForKeyShare to the named tables (FOR UPDATE OF t1, t2). A joined select
+// needs it to lock only the claimed side: a LEFT JOIN cannot lock its
+// nullable side, and a job-claim join locks the job table and leaves the
+// parent alone. Each name is the qualifier the table has in the query, its
+// alias when it has one, and is quoted as an identifier. The names render
+// after the lock mode and before NOWAIT or SKIP LOCKED, whatever the call
+// order. Without one of the four lock modes the build fails with
+// ErrValidation; like them, LockOf returns ErrUnsupported on SQLite, and
+// MySQL and MariaDB refuse the PostgreSQL-only modes. Each name must be the
+// table or alias of the FROM or a joined table, else the build fails with
+// ErrValidation naming it. A lock cannot be combined with DISTINCT,
+// DISTINCT ON, GROUP BY or HAVING (ErrValidation); other invalid
+// combinations, such as aggregates or UNION, are left to the server.
 func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
 	if len(tables) == 0 {
 		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf needs at least one table"))

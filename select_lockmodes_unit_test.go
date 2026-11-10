@@ -13,31 +13,30 @@ import (
 
 func TestNoKeyUpdateAndKeyShareGolden(t *testing.T) {
 	pg := momo.New(fakedriver.New(dialect.Postgres))
-	d := momo.TableRef{Name: "documents", Alias: "d"}
-	other := momo.TableRef{Name: "tenants", Alias: "t"}
-	join := momo.Select[unitDocument](pg).From(d).Join(other, DocTenantID.As("d").EqExpr(DocID.As("t")))
+	base := momo.Select[unitDocument](pg)
 
 	cases := []struct {
 		name string
 		q    momo.SelectQuery[unitDocument]
 		tail string
 	}{
-		{"no key update", join.ForNoKeyUpdate(), " FOR NO KEY UPDATE"},
-		{"no key update nowait", join.ForNoKeyUpdate("NOWAIT"), " FOR NO KEY UPDATE NOWAIT"},
-		{"no key update skip locked of", join.ForNoKeyUpdate("SKIP LOCKED").LockOf("d"), ` FOR NO KEY UPDATE OF "d" SKIP LOCKED`},
-		{"of before mode", join.LockOf("d").ForNoKeyUpdate(), ` FOR NO KEY UPDATE OF "d"`},
-		{"key share", join.ForKeyShare(), " FOR KEY SHARE"},
-		{"key share nowait of", join.ForKeyShare("NOWAIT").LockOf("d", "t"), ` FOR KEY SHARE OF "d", "t" NOWAIT`},
-		{"key share skip locked", join.ForKeyShare("SKIP LOCKED"), " FOR KEY SHARE SKIP LOCKED"},
+		{"no key update", base.ForNoKeyUpdate(), " FOR NO KEY UPDATE"},
+		{"no key update nowait", base.ForNoKeyUpdate("NOWAIT"), " FOR NO KEY UPDATE NOWAIT"},
+		{"no key update skip locked of", base.ForNoKeyUpdate("SKIP LOCKED").LockOf("documents"), ` FOR NO KEY UPDATE OF "documents" SKIP LOCKED`},
+		{"of before mode", base.LockOf("documents").ForNoKeyUpdate(), ` FOR NO KEY UPDATE OF "documents"`},
+		{"key share", base.ForKeyShare(), " FOR KEY SHARE"},
+		{"key share nowait of", base.ForKeyShare("NOWAIT").LockOf("documents"), ` FOR KEY SHARE OF "documents" NOWAIT`},
+		{"key share skip locked", base.ForKeyShare("SKIP LOCKED"), " FOR KEY SHARE SKIP LOCKED"},
 	}
+	const head = `SELECT ` + unitDocCols + ` FROM "documents" WHERE "documents"."deleted_at" IS NULL`
 	for _, c := range cases {
 		got, err := c.q.SQL()
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
 		}
-		if len(got.SQL) < len(c.tail) || got.SQL[len(got.SQL)-len(c.tail):] != c.tail {
-			t.Errorf("%s: SQL %q does not end with %q", c.name, got.SQL, c.tail)
+		if got.SQL != head+c.tail {
+			t.Errorf("%s:\n got %s\nwant %s", c.name, got.SQL, head+c.tail)
 		}
 	}
 }
@@ -50,6 +49,8 @@ func TestNoKeyUpdateAndKeyShareUnsupported(t *testing.T) {
 			"ForNoKeyUpdate NOWAIT": momo.Select[unitDocument](db).ForNoKeyUpdate("NOWAIT"),
 			"ForKeyShare":           momo.Select[unitDocument](db).ForKeyShare(),
 			"ForKeyShare SKIP":      momo.Select[unitDocument](db).ForKeyShare("SKIP LOCKED"),
+			"ForNoKeyUpdate OF":     momo.Select[unitDocument](db).ForNoKeyUpdate().LockOf("documents"),
+			"ForKeyShare OF":        momo.Select[unitDocument](db).ForKeyShare().LockOf("documents"),
 		} {
 			if _, err := q.SQL(); !errors.Is(err, momo.ErrUnsupported) {
 				t.Errorf("%s on %s = %v, want ErrUnsupported", name, n, err)

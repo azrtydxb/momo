@@ -413,6 +413,10 @@ func nowExpr(name string, pg, my string) Expr {
 		case dialect.Postgres:
 			b.WriteString(pg)
 		case dialect.MySQL:
+			if my == "" {
+				b.Unsupported(name)
+				return
+			}
 			b.WriteString(my)
 		case dialect.SQLite:
 			b.WriteString("strftime(" + sqliteTimeFmt + ", 'now')")
@@ -436,9 +440,11 @@ func CurrentTimestamp() Expr {
 // ClockTimestamp is the wall-clock time at the moment it is evaluated:
 // clock_timestamp() on PostgreSQL, which changes within a statement and a
 // transaction, unlike Now. Use it to sample database time after a row lock is
-// acquired (a lease or fence deadline). MySQL has no such function distinct
-// from NOW(6) inside a statement, so it renders SYSDATE(6), the time the call
-// runs; SQLite renders the same millisecond text as Now.
+// acquired (a lease or fence deadline).
+//
+// Other dialects differ: SQLite's value is fixed per statement, like Now.
+// MySQL renders SYSDATE(6), the time the call runs, but only when the server
+// is not started with sysdate-is-now, which makes SYSDATE behave like NOW.
 func ClockTimestamp() Expr {
 	return nowExpr("ClockTimestamp", "clock_timestamp()", "SYSDATE(6)")
 }
@@ -448,18 +454,7 @@ func ClockTimestamp() Expr {
 // transaction that runs several statements. MySQL has no such function and
 // returns momo.ErrUnsupported when the query is built; SQLite renders the same
 // millisecond text as Now, which is fixed per statement there.
-func StatementTimestamp() Expr {
-	return newExpr(func(b *momo.Builder) {
-		switch b.Dialect().Name {
-		case dialect.Postgres:
-			b.WriteString("statement_timestamp()")
-		case dialect.SQLite:
-			b.WriteString("strftime(" + sqliteTimeFmt + ", 'now')")
-		default:
-			b.Unsupported("StatementTimestamp")
-		}
-	})
-}
+func StatementTimestamp() Expr { return nowExpr("StatementTimestamp", "statement_timestamp()", "") }
 
 // ---------------------------------------------------------------- Trunc
 
