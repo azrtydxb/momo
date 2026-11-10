@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
 	mmysql "github.com/azrtydxb/momo/migrate/mysql"
 	"github.com/azrtydxb/momo/schema"
@@ -27,6 +26,15 @@ var fkCases = []fkCase{
 	{"upd_noaction", "", "NO ACTION"}, {"upd_restrict", "", "RESTRICT"}, {"upd_cascade", "", "CASCADE"}, {"upd_setnull", "", "SET NULL"},
 }
 
+// declared spells an action as a model does: NO ACTION is the default, which
+// the database reports as no clause, so it is declared by leaving it out.
+func declared(action string) string {
+	if action == "NO ACTION" {
+		return ""
+	}
+	return action
+}
+
 func fkActionSchema() *schema.Schema {
 	tables := []schema.Table{parentsTable()}
 	for _, c := range fkCases {
@@ -36,7 +44,7 @@ func fkActionSchema() *schema.Schema {
 			PrimaryKey: []string{"id"},
 			ForeignKeys: []schema.ForeignKey{{
 				Name: "fk_" + c.name + "_p", Columns: []string{"p"}, RefTable: "parents", RefColumns: []string{"a"},
-				OnDelete: c.onDelete, OnUpdate: c.onUpdate,
+				OnDelete: declared(c.onDelete), OnUpdate: declared(c.onUpdate),
 			}},
 		})
 	}

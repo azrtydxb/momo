@@ -76,9 +76,9 @@ warns when it sees one.
 
 Exit codes:
   0  success
-  1  findings: drift, validate problems, status dirty or mismatch, destructive or staged
-     refusal, baseline mismatch (database differs from the snapshot), branch conflict,
-     diff refusing to overwrite an existing file
+  1  findings: drift, validate problems, lint errors, status dirty or mismatch, destructive
+     or staged refusal, baseline mismatch (database differs from the snapshot), branch
+     conflict, rollback without a down file, diff refusing to overwrite an existing file
   2  usage or configuration error, including a directory without any snapshot
   3  database, lock or execution error, including an unreadable migration directory
 

@@ -29,6 +29,15 @@ var fkCases = []fkCase{
 	{"upd_setnull", "", "SET NULL"}, {"upd_setdefault", "", "SET DEFAULT"},
 }
 
+// declared spells an action as a model does: NO ACTION is the default, which
+// the database reports as no clause, so it is declared by leaving it out.
+func declared(action string) string {
+	if action == "NO ACTION" {
+		return ""
+	}
+	return action
+}
+
 func fkActionSchema() *schema.Schema {
 	tables := []schema.Table{{
 		Name:       "fk_parents",
@@ -42,7 +51,7 @@ func fkActionSchema() *schema.Schema {
 			PrimaryKey: []string{"id"},
 			ForeignKeys: []schema.ForeignKey{{
 				Name: "fk_" + c.name + "_p", Columns: []string{"p"}, RefTable: "fk_parents", RefColumns: []string{"id"},
-				OnDelete: c.onDelete, OnUpdate: c.onUpdate,
+				OnDelete: declared(c.onDelete), OnUpdate: declared(c.onUpdate),
 			}},
 		})
 	}

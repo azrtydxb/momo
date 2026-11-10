@@ -217,6 +217,8 @@ func TestDriftBodiesNeedCreateOnDatabase(t *testing.T) {
 	if err := canonEngine(t, admin.Driver(), fsys).Baseline(context.Background(), canonVersion, false); err != nil {
 		t.Fatalf("baseline: %v", err)
 	}
+	// The history table must belong to the role that reads it.
+	mustExec(t, admin.Driver(), `ALTER TABLE momo_migrations OWNER TO momo_app`)
 	// Loosen the policy so a skipped comparison would be a missed finding.
 	mustExec(t, admin.Driver(), `DROP POLICY docs_pos ON docs`)
 	mustExec(t, admin.Driver(), `CREATE POLICY docs_pos ON docs FOR SELECT USING (true)`)
@@ -244,6 +246,7 @@ func TestDriftTablesOnlyRunsAsApplicationRole(t *testing.T) {
 	if err := canonEngine(t, admin.Driver(), fsys).Baseline(context.Background(), canonVersion, false); err != nil {
 		t.Fatalf("baseline: %v", err)
 	}
+	mustExec(t, admin.Driver(), `ALTER TABLE momo_migrations OWNER TO momo_app`)
 	rep, err := canonEngine(t, app.Driver(), fsys).Drift(context.Background())
 	if err != nil {
 		t.Fatalf("a snapshot without bodies must not need CREATE: %v", err)
