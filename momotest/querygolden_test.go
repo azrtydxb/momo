@@ -14,20 +14,20 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 )
 
-// recTB records failures instead of failing the real test.
-type recTB struct {
+// goldenTB records failures instead of failing the real test.
+type goldenTB struct {
 	testing.TB
 	errs []string
 }
 
-func (r *recTB) Helper()                   {}
-func (r *recTB) Errorf(f string, a ...any) { r.errs = append(r.errs, fmt.Sprintf(f, a...)) }
-func (r *recTB) Fatalf(f string, a ...any) {
+func (r *goldenTB) Helper()                   {}
+func (r *goldenTB) Errorf(f string, a ...any) { r.errs = append(r.errs, fmt.Sprintf(f, a...)) }
+func (r *goldenTB) Fatalf(f string, a ...any) {
 	r.errs = append(r.errs, fmt.Sprintf(f, a...))
 	runtime.Goexit()
 }
-func (r *recTB) failed() bool { return len(r.errs) > 0 }
-func (r *recTB) text() string { return strings.Join(r.errs, "\n") }
+func (r *goldenTB) failed() bool { return len(r.errs) > 0 }
+func (r *goldenTB) text() string { return strings.Join(r.errs, "\n") }
 
 func registryWith(sql ...string) *momo.QueryRegistry {
 	r := momo.NewQueryRegistry()
@@ -46,7 +46,7 @@ func registryWith(sql ...string) *momo.QueryRegistry {
 func TestQueryGoldenDetectsChanges(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(UpdateGoldenEnv, "1")
-	tb := &recTB{}
+	tb := &goldenTB{}
 	run(func() { QueryGolden(tb, registryWith("SELECT 1", "SELECT a FROM t WHERE id = $1"), dir) })
 	if tb.failed() {
 		t.Fatalf("update mode failed: %s", tb.text())
@@ -57,7 +57,7 @@ func TestQueryGoldenDetectsChanges(t *testing.T) {
 	}
 
 	t.Setenv(UpdateGoldenEnv, "")
-	tb = &recTB{}
+	tb = &goldenTB{}
 	run(func() { QueryGolden(tb, registryWith("SELECT 1", "SELECT a FROM t WHERE id = $1"), dir) })
 	if tb.failed() {
 		t.Fatalf("unchanged SQL failed: %s", tb.text())
@@ -68,14 +68,14 @@ func TestQueryGoldenDetectsChanges(t *testing.T) {
 		"- removed q2": registryWith("SELECT 1"),
 		"+ added q3":   registryWith("SELECT 1", "SELECT a FROM t WHERE id = $1", "SELECT 3"),
 	} {
-		tb = &recTB{}
+		tb = &goldenTB{}
 		run(func() { QueryGolden(tb, reg, dir) })
 		if !tb.failed() || !strings.Contains(tb.text(), want) {
 			t.Errorf("errors = %q, want a report containing %q", tb.text(), want)
 		}
 	}
 
-	tb = &recTB{}
+	tb = &goldenTB{}
 	run(func() { QueryGolden(tb, registryWith("SELECT 1"), dir, dialect.SQLite) })
 	if !tb.failed() || !strings.Contains(tb.text(), UpdateGoldenEnv) {
 		t.Errorf("a missing golden file: errors = %q, want a hint about %s", tb.text(), UpdateGoldenEnv)
@@ -134,10 +134,10 @@ func TestQueryGoldenStableForMultilineSQL(t *testing.T) {
 		`)
 	})
 	t.Setenv(UpdateGoldenEnv, "1")
-	tb := &recTB{}
+	tb := &goldenTB{}
 	run(func() { QueryGolden(tb, reg, dir) })
 	t.Setenv(UpdateGoldenEnv, "")
-	tb2 := &recTB{}
+	tb2 := &goldenTB{}
 	run(func() { QueryGolden(tb2, reg, dir) })
 	if tb.failed() || tb2.failed() {
 		t.Fatalf("update: %q; check: %q", tb.text(), tb2.text())
