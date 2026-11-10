@@ -24,13 +24,15 @@ const schemaPkgPath = "github.com/azrtydxb/momo/schema"
 // CompanionResult is the statically read MomoConfig of a model. Maps are keyed
 // by column name; they are only read by key.
 type CompanionResult struct {
-	Indexes  []schema.Index
-	Uniques  []schema.Unique
-	Checks   []schema.Check
-	Enums    []schema.Enum
-	Defaults map[string]string
-	Comments map[string]string
-	Collates map[string]string
+	Indexes []schema.Index
+	Uniques []schema.Unique
+	// ForeignKeys are the foreign keys declared with Config.ForeignKey.
+	ForeignKeys []schema.ForeignKey
+	Checks      []schema.Check
+	Enums       []schema.Enum
+	Defaults    map[string]string
+	Comments    map[string]string
+	Collates    map[string]string
 	// IDGens maps a column to the id generator named by an IDGen call.
 	IDGens map[string]string
 
@@ -71,6 +73,7 @@ func ReadCompanion(pkg *packages.Package, m *Model) (*CompanionResult, []Diagnos
 		indexAt: map[string]string{},
 		checkAt: map[string]string{},
 		enumAt:  map[string]string{},
+		fkAt:    map[string]string{},
 	}
 	for _, f := range m.Fields {
 		r.byPath[pathKey(f.Path)] = f
@@ -101,7 +104,7 @@ type companionReader struct {
 	optSeen map[string]bool
 	// indexAt, checkAt and enumAt record where each name comes from: a tag
 	// description for tag-produced names, a file:line for companion names.
-	indexAt, checkAt, enumAt map[string]string
+	indexAt, checkAt, enumAt, fkAt map[string]string
 }
 
 func pathKey(p []int) string {
@@ -255,6 +258,9 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 	// call is on the IndexOpts returned by the one before it.
 	for i, c := range calls {
 		want := "IndexOpts"
+		if calls[0].name == "ForeignKey" {
+			want = "ForeignKeyOpts"
+		}
 		if i == 0 {
 			want = "Config"
 		}
@@ -268,9 +274,12 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 	case "Index", "Unique", "IndexExpr":
 		r.index(calls)
 		return
+	case "ForeignKey":
+		r.foreignKey(calls)
+		return
 	}
 	if len(calls) > 1 {
-		r.unsupported(es.X) // only index methods return IndexOpts
+		r.unsupported(es.X) // only index and foreign key methods return options
 		return
 	}
 	r.config(first)
@@ -447,6 +456,92 @@ func (r *companionReader) index(calls []call) {
 	}
 	// A unique with options is a unique index: constraints cannot be partial.
 	r.res.Indexes = append(r.res.Indexes, ix)
+}
+
+// foreignKey reads c.ForeignKey(name, []any{&m.A, &m.B}, "table", []string{"x", "y"})
+// with its optional OnDelete and OnUpdate.
+func (r *companionReader) foreignKey(calls []call) {
+	first := calls[0]
+	args := first.expr.Args
+	if len(args) != 4 {
+		r.unsupported(first.expr)
+		return
+	}
+	startDiags := len(r.diags)
+	name, _ := r.str(args[0])
+	fk := schema.ForeignKey{Name: name}
+	fieldsLit, ok := args[1].(*ast.CompositeLit)
+	if !ok || !r.isAnySlice(fieldsLit) {
+		r.unsupported(args[1])
+	} else {
+		for _, el := range fieldsLit.Elts {
+			if f, ok := r.field(el); ok {
+				fk.Columns = append(fk.Columns, f.Column)
+			}
+		}
+	}
+	fk.RefTable, _ = r.str(args[2])
+	refLit, ok := args[3].(*ast.CompositeLit)
+	if !ok || !r.isStringSlice(refLit) {
+		r.unsupported(args[3])
+	} else {
+		for _, el := range refLit.Elts {
+			if s, ok := r.str(el); ok {
+				fk.RefColumns = append(fk.RefColumns, s)
+			}
+		}
+	}
+	seen := map[string]bool{}
+	for _, c := range calls[1:] {
+		if len(c.expr.Args) != 1 || (c.name != "OnDelete" && c.name != "OnUpdate") {
+			r.unsupported(c.expr)
+			continue
+		}
+		if seen[c.name] {
+			r.diag(c.expr.Pos(), fmt.Sprintf("duplicate %s on foreign key %q", c.name, name))
+			continue
+		}
+		seen[c.name] = true
+		v, ok := r.str(c.expr.Args[0])
+		if !ok {
+			continue
+		}
+		a, valid := action(v)
+		if !valid || a == "" {
+			r.diag(c.expr.Args[0].Pos(), fmt.Sprintf("%s %q is not a referential action", c.name, v))
+			continue
+		}
+		if c.name == "OnDelete" {
+			fk.OnDelete = a
+		} else {
+			fk.OnUpdate = a
+		}
+	}
+	if len(r.diags) != startDiags {
+		return
+	}
+	if len(fk.Columns) == 0 || len(fk.Columns) != len(fk.RefColumns) {
+		r.diag(first.expr.Pos(), fmt.Sprintf("foreign key %q: %d columns reference %d columns; the lists must be non-empty and of equal length", name, len(fk.Columns), len(fk.RefColumns)))
+		return
+	}
+	if !r.declare(r.fkAt, "foreign key", name, args[0].Pos()) {
+		return
+	}
+	r.res.ForeignKeys = append(r.res.ForeignKeys, fk)
+}
+
+// isAnySlice reports whether the composite literal is a []any.
+func (r *companionReader) isAnySlice(lit *ast.CompositeLit) bool {
+	t := r.pkg.TypesInfo.TypeOf(lit)
+	if t == nil {
+		return false
+	}
+	s, ok := t.Underlying().(*types.Slice)
+	if !ok {
+		return false
+	}
+	i, ok := s.Elem().Underlying().(*types.Interface)
+	return ok && i.Empty()
 }
 
 func (r *companionReader) part(ix *schema.Index, e ast.Expr) *schema.IndexPart {

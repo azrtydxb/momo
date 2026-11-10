@@ -53,6 +53,14 @@ var legacyDDL = []string{
 		account_id bigint NOT NULL REFERENCES accounts (id),
 		role text NOT NULL,
 		PRIMARY KEY (project_id, account_id))`,
+	// A composite foreign key into the composite primary key (issue 54).
+	`CREATE TABLE project_notes (
+		id bigserial PRIMARY KEY,
+		project_id bigint NOT NULL,
+		account_id bigint NOT NULL,
+		body text NOT NULL,
+		CONSTRAINT project_notes_member_fkey FOREIGN KEY (project_id, account_id)
+			REFERENCES project_members (project_id, account_id) ON DELETE CASCADE)`,
 }
 
 func execAll(t *testing.T, dsn string, stmts []string) {
@@ -105,10 +113,14 @@ introspect:
 	if code != 0 {
 		t.Fatalf("generate --from-db: exit %d\n%s%s", code, out, errOut)
 	}
-	for _, want := range []string{"accounts_model.go", "project_members_model.go", "projects_model.go", "tickets_model.go"} {
+	for _, want := range []string{"accounts_model.go", "project_members_model.go", "project_notes_model.go", "projects_model.go", "tickets_model.go"} {
 		if _, err := os.Stat(filepath.Join(root, "models", want)); err != nil {
 			t.Fatalf("missing %s: %v\n%s", want, err, out)
 		}
+	}
+	notes, err := os.ReadFile(filepath.Join(root, "models", "project_notes_model.go")) //nolint:gosec // test path
+	if err != nil || !strings.Contains(string(notes), `c.ForeignKey("project_notes_member_fkey"`) {
+		t.Fatalf("the composite foreign key is not declared: %v\n%s", err, notes)
 	}
 	files, _ := filepath.Glob(filepath.Join(root, "migrations", "postgres", "*_init.up.sql"))
 	if len(files) != 1 {

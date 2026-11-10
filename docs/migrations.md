@@ -927,17 +927,19 @@ written wherever the naming preset would derive another name), Go types,
 nullability (a pointer, or the `nullable` tag for slices), defaults, `size`,
 `precision` and `scale`, enums, primary keys, identity and serial columns,
 single-column indexes as tags, other indexes, unique constraints, checks and
-comments in the `MomoConfig` method, and every foreign key the generator can
-derive as a `belongs_to` field with its `on_delete` and `on_update` actions.
+comments in the `MomoConfig` method, every foreign key the generator can
+derive as a `belongs_to` field with its `on_delete` and `on_update` actions, and
+every composite (multi-column) foreign key to a modeled table as a
+`c.ForeignKey(...)` statement in `MomoConfig`.
 `numeric` columns are Go strings (the `decimal-as-string` note); an
 `introspect.types` rule picks a decimal type instead.
 
 A column type with no Go mapping is an error and nothing is written; add a rule
 to the `introspect` section of `momo.yaml`. Constraints the models cannot
 declare are left out of the models and the snapshot and printed as warnings, so
-the two agree and the baseline reports them: composite foreign keys, foreign
-keys whose name is not table, column and `_fkey`, foreign keys that do not
-reference a single-column primary key, unique expression indexes, generated
+the two agree and the baseline reports them: foreign keys to a table with no
+model, single-column foreign keys whose name is not table, column and `_fkey` or
+that do not reference a single-column primary key, unique expression indexes, generated
 columns, `generated always` identity (modeled as by default), and PostgreSQL
 schemas other than the current one.
 

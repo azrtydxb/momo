@@ -319,11 +319,24 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 `<table>_<col>_idx` produced by an `index` tag (the `Plan` field above already
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
-Config methods: `Index`, `IndexExpr`, `Unique`, `Check`, `Enum`, `Default`,
+Config methods: `Index`, `IndexExpr`, `Unique`, `ForeignKey`, `Check`, `Enum`, `Default`,
 `Comment`, `Collate`, `IDGen`, `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`,
 `PartitionOf`. Index chain: `Where(pred)`, `Method(m)`, `With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
+
+A composite (multi-column) foreign key is declared in `MomoConfig`, not with a
+tag: `c.ForeignKey("note_document_fk", []any{&n.CompanyID, &n.DocumentID},
+"document", []string{"company_id", "id"}).OnDelete("CASCADE")`. The first list
+holds `&receiver.Field` pointers, the table name and the referenced columns are
+string literals, and `OnDelete`/`OnUpdate` take `CASCADE`, `RESTRICT`,
+`SET NULL`, `SET DEFAULT` or `NO ACTION`. The referenced table must be the
+table of a model, and the referenced columns, in any order, must be its primary
+key, a unique constraint (`c.Unique`) or a non-partial unique index over plain
+columns; otherwise the generator reports a diagnostic. The key is a plain
+constraint: `diff` adds, replaces and drops it like a single-column key, and
+`generate --from-db` writes it back. There is no `belongs_to` form for a
+composite key; the relation still needs a single-column key.
 
 Many-to-many needs `join:` with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry `join:` too):

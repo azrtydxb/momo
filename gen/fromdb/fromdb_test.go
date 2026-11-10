@@ -155,7 +155,7 @@ func TestGenerateFromDBUnrepresentable(t *testing.T) {
 	s := sampleSchema()
 	orders := &s.Tables[0]
 	orders.ForeignKeys = append(orders.ForeignKeys, schema.ForeignKey{
-		Name: "legacy_fk", Columns: []string{"id", "user_id"}, RefTable: "users", RefColumns: []string{"id", "id"},
+		Name: "legacy_fk", Columns: []string{"id", "user_id"}, RefTable: "ghost", RefColumns: []string{"id", "id"},
 	})
 	orders.Indexes = append(orders.Indexes, schema.Index{
 		Name: "orders_lower_idx", Unique: true, Parts: []schema.IndexPart{{Expr: "lower(note)"}},
@@ -170,7 +170,7 @@ func TestGenerateFromDBUnrepresentable(t *testing.T) {
 		ix = ix || (f.Severity == SevWarn && strings.Contains(f.Object, "orders_lower_idx"))
 	}
 	if !fk || !ix {
-		t.Errorf("want warnings for the composite foreign key and the unique expression index: %v", res.Findings)
+		t.Errorf("want warnings for the foreign key to an unmodeled table and the unique expression index: %v", res.Findings)
 	}
 	for _, tb := range res.Snapshot.Tables {
 		if tb.Name != "orders" {
@@ -182,6 +182,47 @@ func TestGenerateFromDBUnrepresentable(t *testing.T) {
 	}
 	if strings.Contains(files["orders"], "legacy_fk") {
 		t.Error("the model declares the foreign key it cannot represent")
+	}
+}
+
+// TestGenerateFromDBCompositeForeignKey covers issue 54: a multi-column key
+// into a unique constraint is written as a c.ForeignKey statement and stays in
+// the snapshot, so the baseline sees no difference.
+func TestGenerateFromDBCompositeForeignKey(t *testing.T) {
+	s := &schema.Schema{FormatVersion: schema.FormatVersion, Dialect: dialect.Postgres, Tables: []schema.Table{
+		{
+			Name:       "document",
+			Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "company_id", Type: "bigint"}},
+			PrimaryKey: []string{"id"},
+			Uniques:    []schema.Unique{{Name: "document_company_id_id_key", Columns: []string{"company_id", "id"}}},
+		},
+		{
+			Name: "note",
+			Columns: []schema.Column{
+				{Name: "id", Type: "bigint"}, {Name: "company_id", Type: "bigint"}, {Name: "document_id", Type: "bigint"},
+			},
+			PrimaryKey: []string{"id"},
+			ForeignKeys: []schema.ForeignKey{{
+				Name: "note_company_doc_fkey", Columns: []string{"company_id", "document_id"},
+				RefTable: "document", RefColumns: []string{"company_id", "id"}, OnDelete: "CASCADE",
+			}},
+		},
+	}}
+	res, files := generate(t, s, Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	for _, f := range res.Findings {
+		if f.Severity == SevWarn {
+			t.Errorf("unexpected warning: %v", f)
+		}
+	}
+	mustContain(t, "note", files["note"],
+		`c.ForeignKey("note_company_doc_fkey", []any{&m.CompanyID, &m.DocumentID}, "document", []string{"company_id", "id"}).OnDelete("CASCADE")`)
+	for _, tb := range res.Snapshot.Tables {
+		if tb.Name == "note" && len(tb.ForeignKeys) != 1 {
+			t.Errorf("snapshot lost the composite key: %+v", tb.ForeignKeys)
+		}
 	}
 }
 

@@ -668,9 +668,6 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		g.add(SevWarn, obj, "%s: the models cannot declare this constraint, so it is left out of the models and the snapshot and the baseline will report it", why)
 		return false
 	}
-	if len(fk.Columns) != 1 || len(fk.RefColumns) != 1 {
-		return drop("composite foreign keys are not supported")
-	}
 	ns, name := t.Schema, fk.RefTable
 	if i := strings.IndexByte(name, '.'); i >= 0 {
 		ns, name = name[:i], name[i+1:]
@@ -678,6 +675,9 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	target := g.byKey[tableKey(ns, name)]
 	if target == nil {
 		return drop("it references " + fk.RefTable + ", which has no model")
+	}
+	if len(fk.Columns) != 1 || len(fk.RefColumns) != 1 {
+		return g.compositeForeignKey(m, target, fk, drop)
 	}
 	if len(target.t.PrimaryKey) != 1 || target.t.PrimaryKey[0] != fk.RefColumns[0] {
 		return drop("it does not reference the single-column primary key of " + fk.RefTable)
@@ -716,6 +716,44 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	rel = uniqueName(m.used, rel)
 	m.rels = append(m.rels, &relation{name: rel, target: target.name, opts: opts})
 	return true
+}
+
+// compositeForeignKey declares a multi-column foreign key with a
+// c.ForeignKey statement. It reports whether it did; drop explains why not.
+func (g *generator) compositeForeignKey(m *model, target *model, fk schema.ForeignKey, drop func(string) bool) bool {
+	if len(fk.Columns) != len(fk.RefColumns) || len(fk.Columns) == 0 {
+		return drop("its column lists differ in length")
+	}
+	if !fkActions[fk.OnDelete] || !fkActions[fk.OnUpdate] {
+		return drop("its referential action is not supported")
+	}
+	refs, ok := m.refs(fk.Columns)
+	if !ok {
+		return drop("a column is not modeled")
+	}
+	for _, c := range fk.RefColumns {
+		if colByName(target.t, c) == nil {
+			return drop("the referenced column " + c + " is not modeled")
+		}
+	}
+	s := "c.ForeignKey(" + strconv.Quote(fk.Name) + ", []any{" + strings.Join(refs, ", ") + "}, " +
+		strconv.Quote(fk.RefTable) + ", []string{" + quoteAll(fk.RefColumns) + "})"
+	if fk.OnDelete != "" {
+		s += ".OnDelete(" + strconv.Quote(fk.OnDelete) + ")"
+	}
+	if fk.OnUpdate != "" {
+		s += ".OnUpdate(" + strconv.Quote(fk.OnUpdate) + ")"
+	}
+	m.stmts = append(m.stmts, s)
+	return true
+}
+
+func quoteAll(in []string) string {
+	out := make([]string, len(in))
+	for i, s := range in {
+		out[i] = strconv.Quote(s)
+	}
+	return strings.Join(out, ", ")
 }
 
 func colByName(t *schema.Table, name string) *schema.Column {
