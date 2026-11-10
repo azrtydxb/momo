@@ -498,14 +498,22 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 		return bad
 	}
 	for _, ix := range c.Indexes {
+		ix.Parts = slices.Clone(ix.Parts)
 		cols := make([]string, len(ix.Parts))
 		for i, p := range ix.Parts {
+			// An IndexExpr argument that is exactly a column name is a
+			// plain column key, which is how the database reports it.
+			if name := strings.TrimSpace(p.Expr); p.Column == "" && name != "" {
+				if _, ok := t.Column(name); ok {
+					ix.Parts[i] = schema.IndexPart{Column: name}
+					p = ix.Parts[i]
+				}
+			}
 			cols[i] = p.Column
 		}
 		if missing("index", ix.Name, cols) {
 			continue
 		}
-		ix.Parts = slices.Clone(ix.Parts)
 		b.addIndex(t, ix, m.Pos, "MomoConfig")
 	}
 	for _, u := range c.Uniques {

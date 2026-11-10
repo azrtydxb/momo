@@ -627,6 +627,14 @@ func (r *companionReader) indexOption(ix *schema.Index, c call) {
 		if need(0) {
 			ix.Concurrently = true
 		}
+	case "Unique":
+		if need(0) {
+			if ix.Unique {
+				r.diag(c.expr.Pos(), fmt.Sprintf("index %q is already unique", ix.Name))
+				return
+			}
+			ix.Unique = true
+		}
 	default:
 		r.unsupported(c.expr)
 	}

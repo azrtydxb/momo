@@ -786,17 +786,19 @@ func (g *generator) index(m *model, ix schema.Index) bool {
 			exprs++
 		}
 	}
-	allExpr := exprs == len(ix.Parts)
-	if cols != len(ix.Parts) && !allExpr {
-		return drop("it mixes columns and expressions")
+	if cols+exprs != len(ix.Parts) {
+		return drop("a key part is neither a column nor an expression")
 	}
+	// An index with any expression is written with IndexExpr, which takes the
+	// expressions and the plain column names as strings.
+	allExpr := exprs > 0
 	if allExpr {
-		if ix.Unique {
-			return drop("a unique expression index has no declaration")
-		}
 		for _, p := range ix.Parts {
 			if p.Desc || p.Nulls != "" || p.OpClass != "" {
-				return drop("an expression key with an order or operator class has no declaration")
+				return drop("a key with an order or operator class has no declaration next to an expression")
+			}
+			if p.Column != "" && (!plainIdent(p.Column) || m.byCol[p.Column] == nil) {
+				return drop("it uses a column the models do not have, or one whose name is not a plain identifier")
 			}
 		}
 	} else if _, ok := m.refs(partColumns(ix.Parts)); !ok {
@@ -810,6 +812,20 @@ func (g *generator) index(m *model, ix schema.Index) bool {
 		return true
 	}
 	m.stmts = append(m.stmts, indexStmt(m, ix, method, allExpr))
+	return true
+}
+
+// plainIdent reports whether s is a lower-case identifier that needs no
+// quoting, so an IndexExpr string naming it is read back as the column.
+func plainIdent(s string) bool {
+	if s == "" || s[0] >= '0' && s[0] <= '9' {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_') {
+			return false
+		}
+	}
 	return true
 }
 
@@ -880,7 +896,11 @@ func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
 	if allExpr {
 		call = "c.IndexExpr"
 		for _, p := range ix.Parts {
-			args = append(args, strconv.Quote(p.Expr))
+			if p.Column != "" {
+				args = append(args, strconv.Quote(p.Column))
+			} else {
+				args = append(args, strconv.Quote(p.Expr))
+			}
 		}
 	} else {
 		if ix.Unique {
@@ -897,6 +917,10 @@ func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
 	}
 	s += ")"
 	opts := 0
+	if allExpr && ix.Unique {
+		s += ".Unique()"
+		opts++
+	}
 	if ix.Where != "" {
 		s += ".Where(" + strconv.Quote(ix.Where) + ")"
 		opts++

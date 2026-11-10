@@ -158,7 +158,7 @@ func TestGenerateFromDBUnrepresentable(t *testing.T) {
 		Name: "legacy_fk", Columns: []string{"id", "user_id"}, RefTable: "ghost", RefColumns: []string{"id", "id"},
 	})
 	orders.Indexes = append(orders.Indexes, schema.Index{
-		Name: "orders_lower_idx", Unique: true, Parts: []schema.IndexPart{{Expr: "lower(note)"}},
+		Name: "orders_lower_idx", Unique: true, Parts: []schema.IndexPart{{Expr: "lower(note)", Desc: true}},
 	})
 	res, files := generate(t, s, Config{})
 	if res.Failed() {
@@ -170,7 +170,7 @@ func TestGenerateFromDBUnrepresentable(t *testing.T) {
 		ix = ix || (f.Severity == SevWarn && strings.Contains(f.Object, "orders_lower_idx"))
 	}
 	if !fk || !ix {
-		t.Errorf("want warnings for the foreign key to an unmodeled table and the unique expression index: %v", res.Findings)
+		t.Errorf("want warnings for the foreign key to an unmodeled table and the ordered expression key: %v", res.Findings)
 	}
 	for _, tb := range res.Snapshot.Tables {
 		if tb.Name != "orders" {
@@ -222,6 +222,39 @@ func TestGenerateFromDBCompositeForeignKey(t *testing.T) {
 	for _, tb := range res.Snapshot.Tables {
 		if tb.Name == "note" && len(tb.ForeignKeys) != 1 {
 			t.Errorf("snapshot lost the composite key: %+v", tb.ForeignKeys)
+		}
+	}
+}
+
+// TestGenerateFromDBUniqueExpressionIndex covers issue 55: unique expression
+// indexes, alone, mixed with a column and partial, are written as IndexExpr
+// statements and stay in the snapshot.
+func TestGenerateFromDBUniqueExpressionIndex(t *testing.T) {
+	s := sampleSchema()
+	users := &s.Tables[1]
+	users.Indexes = append(users.Indexes,
+		schema.Index{Name: "users_email_lower_key", Unique: true, Parts: []schema.IndexPart{{Expr: "lower((email)::text)"}}},
+		schema.Index{Name: "users_role_name_key", Unique: true, Where: "(role IS NOT NULL)",
+			Parts: []schema.IndexPart{{Column: "role"}, {Expr: "lower(full_name)"}}},
+		schema.Index{Name: "users_name_lower_idx", Parts: []schema.IndexPart{{Expr: "lower(full_name)"}}},
+	)
+	res, files := generate(t, s, Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	for _, f := range res.Findings {
+		if f.Severity == SevWarn {
+			t.Errorf("unexpected warning: %v", f)
+		}
+	}
+	mustContain(t, "users", files["users"],
+		`c.IndexExpr("users_email_lower_key", "lower((email)::text)").Unique()`,
+		`c.IndexExpr("users_role_name_key", "role", "lower(full_name)").Unique().Where("(role IS NOT NULL)")`,
+		`c.IndexExpr("users_name_lower_idx", "lower(full_name)")`,
+	)
+	for _, tb := range res.Snapshot.Tables {
+		if tb.Name == "users" && len(tb.Indexes) != 4 {
+			t.Errorf("snapshot indexes = %d, want 4", len(tb.Indexes))
 		}
 	}
 }

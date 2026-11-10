@@ -321,9 +321,19 @@ yields `accounts_plan_idx`); the generator refuses the duplicate.
 
 Config methods: `Index`, `IndexExpr`, `Unique`, `ForeignKey`, `Check`, `Enum`, `Default`,
 `Comment`, `Collate`, `IDGen`, `View`, `Function`, `Trigger`, `Policy`, `RLS`, `Partition`,
-`PartitionOf`. Index chain: `Where(pred)`, `Method(m)`, `With(k, v)`,
+`PartitionOf`. Index chain: `Unique()` (on `Index` or `IndexExpr`), `Where(pred)`, `Method(m)`, `With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
+
+A unique expression index is `IndexExpr` with `Unique()`:
+`c.IndexExpr("principal_email_key", "lower(email)").Unique()`. Each string is one
+key: an expression, or the exact name of a column of the table, which is a plain
+column key, so `c.IndexExpr("template_name_key", "company_id", "lower(name)").Unique()`
+indexes `(company_id, lower(name))`. Add `Where("deleted_at IS NULL")` for a
+partial one. It is an index, not a constraint, so it cannot be a foreign key
+target. `generate --from-db` writes unique, mixed and partial expression
+indexes back this way; an expression key with `DESC`, `NULLS` or an operator
+class has no declaration.
 
 A composite (multi-column) foreign key is declared in `MomoConfig`, not with a
 tag: `c.ForeignKey("note_document_fk", []any{&n.CompanyID, &n.DocumentID},

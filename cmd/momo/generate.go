@@ -67,7 +67,7 @@ exits 1 when a file would change. A file whose table is gone is listed as "orpha
 never deleted.
 
 Constraints the models cannot declare (renamed or single-column non-primary-key foreign keys,
-unique expression indexes, generated columns) are left out of the models and
+expression index keys with an order or operator class, generated columns) are left out of the models and
 the snapshot and listed as warnings; the baseline then reports them. A column
 type with no Go mapping is an error and nothing is written.
 

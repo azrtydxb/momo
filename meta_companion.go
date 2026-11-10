@@ -23,8 +23,11 @@ type ForeignKeyOpts struct{}
 // statically by the generator; never executed for its effect.
 func (c *Config) Index(name string, cols ...any) *IndexOpts { return &IndexOpts{} }
 
-// IndexExpr declares an expression index. Read statically by the generator;
-// never executed for its effect.
+// IndexExpr declares an expression index. Each argument is one key: an
+// expression such as "lower(email)", or the exact name of a column of the
+// table, which is a plain column key (so "company_id", "lower(name)" mixes the
+// two). Chain Unique for a unique index and Where for a partial one. Read
+// statically by the generator; never executed for its effect.
 func (c *Config) IndexExpr(name string, exprs ...string) *IndexOpts { return &IndexOpts{} }
 
 // Unique declares a unique index over the given field references. Read
@@ -94,6 +97,9 @@ func (c *Config) Partition(p schema.Partition) {}
 // must be a composite literal; read statically by the generator, never
 // executed.
 func (c *Config) PartitionOf(p schema.PartitionOf) {}
+
+// Unique makes the index a unique index. Read statically; no-op at runtime.
+func (o *IndexOpts) Unique() *IndexOpts { return o }
 
 // Where sets the partial-index predicate. Read statically; no-op at runtime.
 func (o *IndexOpts) Where(pred string) *IndexOpts { return o }

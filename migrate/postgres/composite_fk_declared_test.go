@@ -53,10 +53,10 @@ func TestDeclaredCompositeForeignKeys(t *testing.T) {
 		sql.WriteString(s.SQL + "\n")
 	}
 	for _, frag := range []string{
-		`FOREIGN KEY ("company_id", "document_id") REFERENCES "document" ("company_id", "id") ON DELETE CASCADE ON UPDATE RESTRICT`,
-		`FOREIGN KEY ("company_id", "template_id", "version_no") REFERENCES "document" ("company_id", "template_id", "version_no")`,
+		`FOREIGN KEY (company_id, document_id) REFERENCES document (company_id, id) ON DELETE CASCADE ON UPDATE RESTRICT`,
+		`FOREIGN KEY (company_id, template_id, version_no) REFERENCES document (company_id, template_id, version_no)`,
 	} {
-		if !strings.Contains(sql.String(), frag) {
+		if !strings.Contains(strings.ReplaceAll(sql.String(), `"`, ""), frag) {
 			t.Errorf("rendered SQL lacks %q:\n%s", frag, sql.String())
 		}
 	}

@@ -939,7 +939,7 @@ to the `introspect` section of `momo.yaml`. Constraints the models cannot
 declare are left out of the models and the snapshot and printed as warnings, so
 the two agree and the baseline reports them: foreign keys to a table with no
 model, single-column foreign keys whose name is not table, column and `_fkey` or
-that do not reference a single-column primary key, unique expression indexes, generated
+that do not reference a single-column primary key, expression keys with an order or operator class, generated
 columns, `generated always` identity (modeled as by default), and PostgreSQL
 schemas other than the current one.
 
