@@ -78,7 +78,7 @@ schemas without being fooled by spelling differences.
   `Merge`, built from generated column descriptors (`Column[T]`,
   `NullColumn[T]`, `VectorColumn[V]`) and expression builders. Query values
   are immutable: each method returns a modified copy.
-- Raw SQL escape hatches: `momo.Exec`, `momo.Scalars`, `momo.SQL`,
+- Raw SQL escape hatches: `momo.Exec`, `momo.Scalars`, `momo.Query`, `momo.QueryRows`, `momo.SQL`,
   `momo.TypedSQL` and `RawSubquery`, with `?` positional and `@name` named
   placeholders.
 - Relations: generated `Relation` descriptors, `Load`, `LoadAll`, `Preload`

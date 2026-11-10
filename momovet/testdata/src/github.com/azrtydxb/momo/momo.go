@@ -26,6 +26,14 @@ func MapRows(ctx context.Context, q Querier, sql string, args ...any) ([]map[str
 	return nil, nil
 }
 
+func Query[T any](ctx context.Context, q Querier, sql string, args ...any) ([]T, error) {
+	return nil, nil
+}
+
+func QueryRows[T any](ctx context.Context, q Querier, sql string, args ...any) func(func(T, error) bool) {
+	return nil
+}
+
 func SQL(sql string, args ...any) Predicate { return nil }
 
 func TypedSQL[T any](sql string, args ...any) Expression[T] { return nil }
