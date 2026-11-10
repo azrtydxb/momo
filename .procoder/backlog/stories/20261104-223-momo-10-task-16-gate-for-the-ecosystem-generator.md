@@ -16,11 +16,14 @@ Implements plan momo-10-ecosystem-generators Task 16: Gate for the ecosystem gen
 - [x] Step 3: Run `go test -count=1 -v ./gen/viz ./gen/graphql ./gen/grpc ./gen/openapi -run 'TestViz|TestGraphQLSDL|TestGraphQLScaffold|TestProtoLockStableNumbers|TestOpenAPIDocumentGolden'` and confirm each named test shows `--- PASS`.
 - [x] Step 4: Run `go list -deps ./momo ./gen/apiquery | grep -E 'gqlgen|grpc|jsonschema|x/tools'`; expect no output, so the runtime and the shared helpers stay out of the framework graph.
 - [ ] Step 5: Record the results in the pull request description for this plan. No commit is made by this task.
-- [ ] `procoder check` gate is clean
+- [x] `procoder check` gate is clean`procoder check` gate is clean
 
 ## Evidence
+
 - Step 1: `make test` and `make test-race` (unit job) cover gen/apiquery, viz, graphql, grpc, openapi and cmd/momo: green in CI run 42779257792.
 - Step 2: `make test-integration-postgres` now also runs `cd internal/integration && MOMO_REQUIRE_INTEGRATION=1 PROTOC=... go test -race ./...` after `make protoc` (SHA-256 checked against tools.lock): green in run 42779257792 (integration postgres) on b6b30a8.
 - Step 3: the named tests run in the same unit job (gen packages); TestGraphQLGenerator/TestProtoGenerator/TestOpenAPIGenerator PASS in run 42774579231.
 - Step 4: internal/repocheck TestRuntimeAvoidsEcosystemDeps runs `go list -deps` over the root and gen/apiquery and rejects gqlgen, grpc, jsonschema and x/tools: green in the unit job. (golang.org/x/tools is already a root dependency for the loader, so the check applies to the runtime and apiquery graphs only, as the plan does.)
 - Step 5 (record the results in the PR description) belongs to the integrator and is not ticked.
+- Review round: steps 1 to 4 and the integration suite re-ran green in ci-agent run 42796596700 (headSha 40b42404, the branch merged with origin/sprint-7): unit, integration (postgres), integration-mysql (mysql84, mysql97, mariadb), fuzz-smoke, bench-module, lint (including gen-integration is current) and apidiff-docs. Step 5 (the pull request description) is the integrator's.
+- Gate: every commit passed the procoder commit hook; `procoder check --paths-from <73 files changed against origin/sprint-7>`: 58 clean, 0 unchecked, 0 blocking (the six story files were the only unformatted ones and were formatted).
