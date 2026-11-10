@@ -33,5 +33,5 @@ the plan's SQLite NaN `ErrValidation` float64 codec validator does not exist.
 ### Sprint 7
 
 - Criterion 2 ticked: TestTypeMapping now also round-trips every documented SQLite column (rows marked unsupported/n/a skipped; NaN skipped on SQLite) on a live SQLite; TestTypeMappingNaNSQLite pins that NaN is stored as NULL and +Inf survives. MySQL: the document lists every Go type as unsupported (the generator emits no MySQL models), so there is no MySQL mapping to test. Run 42769037273 (ci-agent, headSha 4d04a3d, all jobs green).
-- Criterion 1 stays unticked. Carry reason: red-first is unprovable (the mapping pre-existed the tests).
-- Needs decision: SQLite NaN is stored as NULL and documented as such in docs/TYPE_MAPPING.md; the plan wanted ErrValidation from a float64 validator. Options: keep the documented NULL behaviour, or reject NaN with ErrValidation in the SQLite argument path.
+- Criterion 1 (red-first) stays unticked: the mapping pre-existed the tests.
+- Decision (user, .procoder/ask/decisions.md): SQLite rejects a bound float NaN with ErrValidation. Built in internal/sqlshared/args.go (checkArgs, called from every pool, transaction, pinned and read-only query and exec, so both the cgo and the pure driver); TestTypeMappingNaNSQLite asserts it and docs/TYPE_MAPPING.md states it.

@@ -7,6 +7,7 @@ package momo_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -39,7 +40,7 @@ func roundTripAll[T any](eq func(got, want T) bool, wants ...T) liveCase {
 		tbl := fmt.Sprintf("tm_%d", tmTableSeq)
 		ws := wants
 		if db.Dialect().Name == dialect.SQLite {
-			// SQLite stores NaN as NULL; TestTypeMappingNaN pins that edge.
+			// SQLite rejects NaN (ErrValidation); TestTypeMappingNaNSQLite pins it.
 			ws = slices.DeleteFunc(slices.Clone(wants), func(w T) bool {
 				v := reflect.ValueOf(w)
 				return (v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64) && math.IsNaN(v.Float())
@@ -249,28 +250,35 @@ func TestTypeMappingNaN(t *testing.T) {
 }
 
 // TestTypeMappingNaNSQLite pins the SQLite edge the document states: SQLite
-// has no NaN, so a bound NaN is stored as NULL (and +Inf is a legal REAL).
+// has no NaN, so binding one is ErrValidation (float32, float64 and pointers to
+// them, on the pool and inside a transaction), nothing is stored, and +Inf and
+// -Inf stay legal REAL values.
 func TestTypeMappingNaNSQLite(t *testing.T) {
 	db := testopen.SQLite(t)
 	ctx := context.Background()
 	if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_nan (id INTEGER PRIMARY KEY, v REAL)"); err != nil {
 		t.Fatal(err)
 	}
-	for i, v := range []float64{math.NaN(), math.Inf(1)} {
+	f32, f64 := float32(math.NaN()), math.NaN()
+	for i, v := range []any{math.NaN(), float32(math.NaN()), &f64, &f32} {
+		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_nan (id, v) VALUES (?, ?)", i, v); !errors.Is(err, momo.ErrValidation) {
+			t.Fatalf("insert %T NaN: err = %v, want ErrValidation", v, err)
+		}
+	}
+	if err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		_, err := momo.Exec(ctx, tx, "INSERT INTO tm_nan (id, v) VALUES (?, ?)", 9, math.NaN())
+		return err
+	}); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("insert NaN in a transaction: err = %v, want ErrValidation", err)
+	}
+	for i, v := range []float64{math.Inf(1), math.Inf(-1)} {
 		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_nan (id, v) VALUES (?, ?)", i, v); err != nil {
 			t.Fatalf("insert %v: %v", v, err)
 		}
 	}
-	isNull, err := momo.Scalars[int64](ctx, db, "SELECT v IS NULL FROM tm_nan ORDER BY id")
-	if err != nil || len(isNull) != 2 || isNull[0] != 1 || isNull[1] != 0 {
-		t.Fatalf("v IS NULL = %v, %v; want NaN stored as NULL and +Inf kept", isNull, err)
-	}
-	if got, err := momo.Scalars[float64](ctx, db, "SELECT v FROM tm_nan WHERE id = 0"); err == nil {
-		t.Fatalf("scanning the NaN-stored NULL into float64 = %v, want an error", got)
-	}
-	inf, err := momo.Scalars[float64](ctx, db, "SELECT v FROM tm_nan WHERE id = 1")
-	if err != nil || len(inf) != 1 || !math.IsInf(inf[0], 1) {
-		t.Fatalf("+Inf read back as %v, %v", inf, err)
+	got, err := momo.Scalars[float64](ctx, db, "SELECT v FROM tm_nan ORDER BY id")
+	if err != nil || len(got) != 2 || !math.IsInf(got[0], 1) || !math.IsInf(got[1], -1) {
+		t.Fatalf("rows = %v, %v; want only +Inf and -Inf", got, err)
 	}
 }
 

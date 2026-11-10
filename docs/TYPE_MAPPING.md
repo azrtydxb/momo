@@ -126,8 +126,9 @@ except `NaN`, which SQLite does not have (see Floats).
   exceeds `math.MaxInt64`.
 - Floats: `NaN`, `+Inf` and `-Inf` are legal `double precision` and `real`
   values and round-trip. Compare with `math.IsNaN`, since `NaN != NaN`. SQLite
-  has no `NaN`: a bound `NaN` is stored as `NULL`, so scanning it back into a
-  plain `float64` is an error. `+Inf` and `-Inf` are legal `REAL` values.
+  has no `NaN`: binding a `float32` or `float64` `NaN` (or a pointer to one) is
+  `ErrValidation` and nothing is stored, rather than a silent `NULL`. `+Inf` and
+  `-Inf` are legal `REAL` values.
 - Strings: any valid UTF-8 round-trips, including quotes and backslashes (they
   are bound, never interpolated). PostgreSQL rejects U+0000 in `text`. A string
   longer than `size` is a database error on `character varying(N)`.
