@@ -65,6 +65,8 @@ type Graph struct {
 	Plugins     []Plugin
 	// Namer is the naming preset the graph was loaded with.
 	Namer naming.Namer
+	// viewTables are the tables of the view models, which are not in Schema.
+	viewTables map[*Model]*schema.Table
 }
 
 // Model is a discovered model type.

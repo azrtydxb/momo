@@ -31,7 +31,16 @@ import (
 // The output is canonical: models are processed in sorted order, every named
 // collection is sorted by schema.Sort, and column order is declaration order.
 func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
+	s, _, diags := buildSchema(models, cfg)
+	return s, diags
+}
+
+// buildSchema is BuildSchema that also returns the table built for each view
+// model. The tables are not part of the schema (a view is not created as a
+// table) but the metadata emitter needs their columns.
+func buildSchema(models []*Model, cfg Config) (*schema.Schema, map[*Model]*schema.Table, []Diagnostic) {
 	b := &schemaBuilder{
+		viewTab: map[*Model]*schema.Table{},
 		namer:   cfg.Naming,
 		typeDef: cfg.TypeDefaults,
 		primary: dialect.Postgres,
@@ -100,7 +109,7 @@ func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 		}
 		return x.Column < y.Column
 	})
-	return s, dedupeDiagnostics(b.diags)
+	return s, b.viewTab, dedupeDiagnostics(b.diags)
 }
 
 func tableKey(m *Model) string { return m.Schema + "\x00" + m.Table }
@@ -143,6 +152,9 @@ type schemaBuilder struct {
 	// seen holds managed objects and join tables already merged, so an
 	// identical repeat is kept once.
 	seen map[string]any
+	// viewTab holds the table built for each view model, kept out of the
+	// schema.
+	viewTab map[*Model]*schema.Table
 }
 
 func (b *schemaBuilder) diag(pos token.Position, msg string) {
@@ -170,7 +182,8 @@ func (b *schemaBuilder) addModel(m *Model) {
 	b.applyCompanion(m, &t)
 	if m.IsView {
 		// The companion's views, functions and policies are merged above; the
-		// table built for diagnostics is not part of the schema.
+		// table is not part of the schema, only the emitter reads it.
+		b.viewTab[m] = &t
 		b.dialectCheck()
 		return
 	}

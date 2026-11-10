@@ -115,6 +115,9 @@ func tableOf(g *Graph, m *Model) *schema.Table {
 	if g == nil || g.Schema == nil {
 		return nil
 	}
+	if t, ok := g.viewTables[m]; ok {
+		return t
+	}
 	for i := range g.Schema.Tables {
 		t := &g.Schema.Tables[i]
 		if t.Name == m.Table && t.Schema == m.Schema {
