@@ -42,7 +42,13 @@ func Query[T any, PT Modeler[T]](ctx context.Context, q Querier, sql string, arg
 	}
 	defer func() { _ = r.Close() }()
 	var out []T
-	for r.Next() {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, newError(ErrCanceled, "raw", "", err)
+		}
+		if !r.Next() {
+			break
+		}
 		var v T
 		if err := sc.scan(r, &v); err != nil {
 			return nil, err
@@ -122,16 +128,26 @@ func openRaw[T any, PT Modeler[T]](ctx context.Context, q Querier, sql string, a
 	var names []string
 	if cn, ok := r.(ColumnNamer); ok {
 		if names, err = cn.Columns(); err != nil {
-			_ = r.Close()
+			abortRows(r, err)
 			return nil, nil, err
 		}
 	}
 	sc, err := newRawScan(meta, names)
 	if err != nil {
-		_ = r.Close()
+		abortRows(r, err)
 		return nil, nil, err
 	}
 	return r, sc, nil
+}
+
+// abortRows closes r after a failure that happened before any row was read.
+// Rows opened under a hook report err to AfterQuery; a plain cursor is closed.
+func abortRows(r Rows, err error) {
+	if h, ok := r.(*hookedRows); ok {
+		h.abort(err)
+		return
+	}
+	_ = r.Close()
 }
 
 // rawScan scans raw result rows into a T through the type's metadata.

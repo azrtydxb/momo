@@ -83,8 +83,8 @@ func TestQueryTupleArityMismatch(t *testing.T) {
 	if !errors.Is(err, momo.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
-	if drv.Closed() < 1 {
-		t.Fatalf("rows closed %d times, want 1", drv.Closed())
+	if drv.Closed() != 1 {
+		t.Fatalf("rows closed %d times, want exactly 1", drv.Closed())
 	}
 }
 
@@ -214,5 +214,93 @@ func TestQueryRows(t *testing.T) {
 	}
 	if !errors.Is(cancelErr, momo.ErrCanceled) {
 		t.Fatalf("canceled stream err = %v, want ErrCanceled", cancelErr)
+	}
+}
+
+// Catches: a column-matching failure that leaves AfterQuery reporting success.
+func TestQueryMatchFailureReachesHook(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1), "t"}})
+	var got error
+	called := 0
+	db := momo.New(namedDriver{drv, []string{"id", "nope"}}, momo.WithHook(errHook{&called, &got}))
+	_, err := momo.Query[hookedDoc](t.Context(), db, "SELECT 1")
+	if !errors.Is(err, momo.ErrValidation) || called != 1 || !errors.Is(got, momo.ErrValidation) {
+		t.Fatalf("err = %v, AfterQuery calls = %d, hook err = %v; want ErrValidation reported once", err, called, got)
+	}
+}
+
+type errHook struct {
+	called *int
+	err    *error
+}
+
+func (errHook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Context { return ctx }
+func (h errHook) AfterQuery(_ context.Context, e *momo.QueryEvent) {
+	*h.called++
+	*h.err = e.Err
+}
+
+// Catches: the buffered form ignoring a canceled context between rows.
+func TestQueryChecksContextBetweenRows(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1)}, {int64(2)}})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := momo.Query[momo.Row1[int64]](ctx, momo.New(drv), "SELECT id FROM t")
+	if !errors.Is(err, momo.ErrCanceled) {
+		t.Fatalf("err = %v, want ErrCanceled", err)
+	}
+}
+
+// Catches: a scan error mid-stream not being yielded once and closing the cursor.
+func TestQueryRowsScanErrorMidStream(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1)}, {"not a number"}, {int64(3)}})
+	n, errs := 0, 0
+	for _, err := range momo.QueryRows[momo.Row1[int64]](t.Context(), momo.New(drv), "SELECT id FROM t") {
+		if err != nil {
+			errs++
+			continue
+		}
+		n++
+	}
+	if n != 1 || errs != 1 || drv.Closed() != 1 {
+		t.Fatalf("rows %d, errors %d, closed %d; want 1, 1, 1", n, errs, drv.Closed())
+	}
+}
+
+// Catches: a canceled context leaving the cursor open.
+func TestQueryRowsCancelClosesCursor(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1)}, {int64(2)}})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var last error
+	for _, err := range momo.QueryRows[momo.Row1[int64]](ctx, momo.New(drv), "SELECT id FROM t") {
+		last = err
+		cancel()
+	}
+	if !errors.Is(last, momo.ErrCanceled) || drv.Closed() != 1 {
+		t.Fatalf("last err = %v, closed %d; want ErrCanceled and 1", last, drv.Closed())
+	}
+}
+
+// Catches: a panic in the loop body leaking the cursor.
+func TestQueryRowsPanicClosesCursor(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1)}, {int64(2)}})
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("the panic must propagate")
+			}
+		}()
+		for range momo.QueryRows[momo.Row1[int64]](t.Context(), momo.New(drv), "SELECT id FROM t") {
+			panic("boom")
+		}
+	}()
+	if drv.Closed() != 1 {
+		t.Fatalf("cursor closed %d times, want 1", drv.Closed())
 	}
 }

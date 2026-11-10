@@ -1145,7 +1145,11 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   `T` is `Row1`..`Row10` (positional: the result must have exactly that many
   columns) or a model or projection (matched by column name in any order, exact
   then case-insensitive; an unmapped, missing or duplicated result column is
-  `ErrValidation`). Placeholders, hooks (op `raw`), error classification and
+  `ErrValidation`). `T` must have momo metadata: a model, a generated
+  projection or `Row1`..`Row10`; an ad-hoc struct does not work. By-name
+  matching needs every result column to map to a field and every field to be
+  in the result, so `SELECT d.*, count(*)` needs a projection or a `RowN`.
+  Placeholders, hooks (op `raw`), error classification and
   argument redaction are those of `Exec`; interceptors, soft-delete filters and
   `AfterLoad` do not apply to raw SQL. `QueryRows` closes the cursor on early
   break, on an error and on a canceled context (`ErrCanceled`).

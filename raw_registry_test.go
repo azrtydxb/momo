@@ -65,6 +65,7 @@ func TestQueryRegistryDuplicatePanics(t *testing.T) {
 func TestQueryRegistryRejectsBadRegistrations(t *testing.T) {
 	for name, f := range map[string]func(){
 		"empty name": func() { momo.NewQueryRegistry().Register("", func(momo.Querier) momo.Compilable { return nil }) },
+		"newline":    func() { momo.NewQueryRegistry().Register("a\nb", func(momo.Querier) momo.Compilable { return nil }) },
 		"nil build":  func() { momo.NewQueryRegistry().Register("x", nil) },
 	} {
 		func() {
@@ -111,4 +112,25 @@ func TestOfflineNeverExecutes(t *testing.T) {
 	if _, err := momo.Exec(t.Context(), db, "SELECT 1"); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("Exec on an offline handle = %v, want ErrUnsupported", err)
 	}
+}
+
+// Catches: whitespace in a raw string literal leaking into the listing.
+func TestQueryRegistryTrimsSQL(t *testing.T) {
+	r := momo.NewQueryRegistry()
+	r.Register("indented", func(q momo.Querier) momo.Compilable {
+		return momo.RawQuery(q, "\n\t\tSELECT id\n\t\t  FROM t\n\t")
+	})
+	got, err := r.Compile(dialect.SQLite)
+	if err != nil || len(got) != 1 || got[0].SQL != "SELECT id\n\t\t  FROM t" {
+		t.Fatalf("Compile = %+v, %v", got, err)
+	}
+}
+
+func TestNewOfflineUnknownDialectPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("an unknown dialect must panic")
+		}
+	}()
+	momo.NewOffline("oracle")
 }

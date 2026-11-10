@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -60,13 +61,15 @@ func RegisterQuery(name string, build func(q Querier) Compilable) {
 // (see NewOffline) and returns the statement, for example a SelectQuery or a
 // RawQuery. It runs once per Compile and dialect, so it must not touch a
 // database, and the argument values it binds are placeholders that never
-// reach the listed SQL. Register panics when name is empty, build is nil or
+// reach the listed SQL. Register panics when name is empty or contains a line break, build is nil or
 // name is already registered, programming errors like a duplicate
 // http.HandleFunc pattern.
 func (r *QueryRegistry) Register(name string, build func(q Querier) Compilable) {
 	switch {
 	case name == "":
 		panic("momo: RegisterQuery: the query name is empty")
+	case strings.ContainsAny(name, "\r\n"):
+		panic(fmt.Sprintf("momo: RegisterQuery(%q): the query name contains a line break", name))
 	case build == nil:
 		panic(fmt.Sprintf("momo: RegisterQuery(%q): the builder is nil", name))
 	}
@@ -80,29 +83,38 @@ func (r *QueryRegistry) Register(name string, build func(q Querier) Compilable) 
 
 // Names returns the registered names in sorted order.
 func (r *QueryRegistry) Names() []string {
+	names, _ := r.snapshot()
+	return names
+}
+
+// snapshot returns the sorted names and their builders under one lock.
+func (r *QueryRegistry) snapshot() ([]string, []func(Querier) Compilable) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]string, 0, len(r.builds))
+	names := make([]string, 0, len(r.builds))
 	for n := range r.builds {
-		out = append(out, n)
+		names = append(names, n)
 	}
-	slices.Sort(out)
-	return out
+	slices.Sort(names)
+	builds := make([]func(Querier) Compilable, len(names))
+	for i, n := range names {
+		builds[i] = r.builds[n]
+	}
+	return names, builds
 }
 
 // Compile renders every registered query for dialect d, sorted by name,
-// without a database. A builder that fails, returns nil or renders an error
-// (for example ErrUnsupported on a dialect that lacks the feature) fails the
-// whole call with an error naming the query.
+// without a database. The SQL has surrounding whitespace trimmed, so the text
+// is stable whatever the indentation of a raw string literal. A builder that
+// fails, returns nil or renders an error (for example ErrUnsupported on a
+// dialect that lacks the feature) fails the whole call with an error naming
+// the query. An unknown dialect panics, see NewOffline.
 func (r *QueryRegistry) Compile(d dialect.Name) ([]RegisteredQuery, error) {
-	names := r.Names()
+	names, builds := r.snapshot()
 	q := NewOffline(d)
 	out := make([]RegisteredQuery, 0, len(names))
-	for _, n := range names {
-		r.mu.Lock()
-		build := r.builds[n]
-		r.mu.Unlock()
-		c := build(q)
+	for i, n := range names {
+		c := builds[i](q)
 		if c == nil {
 			return nil, validation("registry", "", "registered query %q (%s): the builder returned nil", n, d)
 		}
@@ -110,7 +122,7 @@ func (r *QueryRegistry) Compile(d dialect.Name) ([]RegisteredQuery, error) {
 		if err != nil {
 			return nil, fmt.Errorf("momo: registered query %q (%s): %w", n, d, err)
 		}
-		out = append(out, RegisteredQuery{Name: n, SQL: sql.SQL})
+		out = append(out, RegisteredQuery{Name: n, SQL: strings.TrimSpace(sql.SQL)})
 	}
 	return out, nil
 }
@@ -141,7 +153,15 @@ func (r rawCompiled) SQL() (Compiled, error) { return r.c, r.err }
 // ErrUnsupported. Use it to call SQL on a query builder in a unit test. The
 // dialect is the default one for d, without a MySQL flavor or a server
 // version.
-func NewOffline(d dialect.Name) *DB { return New(offlineDriver{dialect.For(d)}) }
+//
+// NewOffline panics for a dialect name that is not postgres, mysql or sqlite.
+func NewOffline(d dialect.Name) *DB {
+	dd := dialect.For(d)
+	if dd == nil {
+		panic(fmt.Sprintf("momo: NewOffline: unknown dialect %q", d))
+	}
+	return New(offlineDriver{dd})
+}
 
 var errOffline = errors.New("the offline handle has no database")
 

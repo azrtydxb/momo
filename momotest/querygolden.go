@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -68,14 +69,32 @@ func QueryGolden(t testing.TB, reg *momo.QueryRegistry, dir string, dialects ...
 	}
 }
 
-// FormatQueryGolden renders queries in the golden file format.
+// FormatQueryGolden renders queries in the golden file format. An SQL line
+// that would read as an entry header ("-- name: ..." with any number of
+// backslashes between "--" and " name:") gets one more backslash, which
+// ParseQueryGolden removes, so any SQL round-trips.
 func FormatQueryGolden(qs []momo.RegisteredQuery) string {
 	var b strings.Builder
 	for _, q := range qs {
-		b.WriteString(goldenMarker + q.Name + "\n" + q.SQL + ";\n\n")
+		b.WriteString(goldenMarker + q.Name + "\n")
+		lines := strings.Split(strings.TrimSpace(q.SQL), "\n")
+		for i, line := range lines {
+			if escapedHeader.MatchString(line) {
+				line = "--\\" + line[2:]
+			}
+			b.WriteString(line)
+			if i < len(lines)-1 {
+				b.WriteString("\n")
+			}
+		}
+		b.WriteString(";\n\n")
 	}
 	return b.String()
 }
+
+// escapedHeader matches a line that is, or after unescaping would be, a
+// header: "--", zero or more backslashes, " name: ".
+var escapedHeader = regexp.MustCompile(`^--\\* name: `)
 
 // LoadQueryGolden reads a golden file written by QueryGolden, for example the
 // file of the previous release, so a test can run those statements against
@@ -91,15 +110,35 @@ func LoadQueryGolden(path string) ([]momo.RegisteredQuery, error) {
 // ParseQueryGolden parses the golden file format.
 func ParseQueryGolden(text string) ([]momo.RegisteredQuery, error) {
 	var out []momo.RegisteredQuery
-	for _, block := range strings.Split("\n"+text, "\n"+goldenMarker)[1:] {
-		name, body, _ := strings.Cut(block, "\n")
-		body = strings.TrimSpace(body)
-		body = strings.TrimSuffix(body, ";")
-		if name == "" {
-			return nil, fmt.Errorf("a golden entry has no name")
+	var body []string
+	flush := func() {
+		if len(out) == 0 {
+			return
 		}
-		out = append(out, momo.RegisteredQuery{Name: name, SQL: body})
+		sql := strings.TrimSpace(strings.Join(body, "\n"))
+		// The entry ends with the terminating semicolon.
+		out[len(out)-1].SQL = strings.TrimSpace(strings.TrimSuffix(sql, ";"))
+		body = nil
 	}
+	for _, line := range strings.Split(text, "\n") {
+		switch {
+		case strings.HasPrefix(line, goldenMarker):
+			flush()
+			name := strings.TrimSpace(strings.TrimPrefix(line, goldenMarker))
+			if name == "" {
+				return nil, fmt.Errorf("a golden entry has no name")
+			}
+			out = append(out, momo.RegisteredQuery{Name: name})
+		case len(out) == 0:
+			// Text before the first entry is ignored.
+		default:
+			if escapedHeader.MatchString(line) {
+				line = "--" + line[3:]
+			}
+			body = append(body, line)
+		}
+	}
+	flush()
 	return out, nil
 }
 
@@ -107,13 +146,14 @@ func ParseQueryGolden(text string) ([]momo.RegisteredQuery, error) {
 func diffQueries(want, got []momo.RegisteredQuery) string {
 	w := make(map[string]string, len(want))
 	for _, q := range want {
-		w[q.Name] = q.SQL
+		w[q.Name] = strings.TrimSpace(q.SQL)
 	}
 	var b strings.Builder
 	seen := make(map[string]bool, len(got))
 	for _, q := range got {
 		seen[q.Name] = true
 		old, ok := w[q.Name]
+		q.SQL = strings.TrimSpace(q.SQL)
 		switch {
 		case !ok:
 			fmt.Fprintf(&b, "+ added %s:\n    %s\n", q.Name, q.SQL)

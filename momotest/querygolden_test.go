@@ -96,3 +96,50 @@ func TestParseQueryGoldenRoundTrip(t *testing.T) {
 		t.Fatalf("empty = %+v, %v", out, err)
 	}
 }
+
+// Catches: SQL that does not survive the golden file: surrounding whitespace,
+// indented multi-line text, and a line that looks like an entry header.
+func TestQueryGoldenRoundTripsAwkwardSQL(t *testing.T) {
+	in := []momo.RegisteredQuery{
+		{Name: "padded", SQL: "SELECT 1"},
+		{Name: "indented", SQL: "SELECT a,\n\t\tb\n    FROM t"},
+		{Name: "header_like", SQL: "SELECT 1\n-- name: fake\n--\\ name: also\nFROM t"},
+		{Name: "trailing_semicolon", SQL: "SELECT 1;"},
+	}
+	out, err := ParseQueryGolden(FormatQueryGolden(in))
+	if err != nil || len(out) != len(in) {
+		t.Fatalf("round trip = %+v, %v", out, err)
+	}
+	for i := range in {
+		if out[i] != in[i] {
+			t.Errorf("entry %s: got %q, want %q", in[i].Name, out[i].SQL, in[i].SQL)
+		}
+	}
+	padded, err := ParseQueryGolden(FormatQueryGolden([]momo.RegisteredQuery{{Name: "p", SQL: "\n  SELECT 1  \n"}}))
+	if err != nil || len(padded) != 1 || padded[0].SQL != "SELECT 1" {
+		t.Fatalf("padded SQL = %+v, %v; want it trimmed", padded, err)
+	}
+}
+
+// Catches: multi-line SQL reported as changed forever, even right after an
+// update.
+func TestQueryGoldenStableForMultilineSQL(t *testing.T) {
+	dir := t.TempDir()
+	reg := momo.NewQueryRegistry()
+	reg.Register("multi", func(q momo.Querier) momo.Compilable {
+		return momo.RawQuery(q, `
+			SELECT id,
+			       name -- name: not a header
+			  FROM t
+		`)
+	})
+	t.Setenv(UpdateGoldenEnv, "1")
+	tb := &recTB{}
+	run(func() { QueryGolden(tb, reg, dir) })
+	t.Setenv(UpdateGoldenEnv, "")
+	tb2 := &recTB{}
+	run(func() { QueryGolden(tb2, reg, dir) })
+	if tb.failed() || tb2.failed() {
+		t.Fatalf("update: %q; check: %q", tb.text(), tb2.text())
+	}
+}

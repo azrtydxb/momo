@@ -32,6 +32,18 @@ var rqRowMeta = momo.Meta[rqRow]{
 
 func (*rqRow) MomoMeta() *momo.Meta[rqRow] { return &rqRowMeta }
 
+// rqEach runs fn on PostgreSQL and SQLite (testopen.Each) and on each MySQL
+// flavor; a dialect the job did not select is skipped.
+func rqEach(t *testing.T, fn func(t *testing.T, db *momo.DB, d dialect.Name)) {
+	t.Helper()
+	testopen.Each(t, fn)
+	for name, open := range map[string]func(*testing.T, ...momo.Option) *momo.DB{
+		"mysql84": testopen.MySQL84, "mysql97": testopen.MySQL97, "mariadb": testopen.MariaDB,
+	} {
+		t.Run(name, func(t *testing.T) { fn(t, open(t), dialect.MySQL) })
+	}
+}
+
 func rqSetup(t *testing.T, db *momo.DB) {
 	t.Helper()
 	ctx := context.Background()
@@ -48,7 +60,7 @@ func rqSetup(t *testing.T, db *momo.DB) {
 // Catches: multi-column raw results mis-scanned on a real driver (tuple and
 // name-matched projection), on a *DB, a *Tx and a pinned handle.
 func TestQueryMultiColumn(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	rqEach(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		rqSetup(t, db)
 		ctx := context.Background()
 		const stmt = "SELECT name, id FROM rq_items WHERE id > ? ORDER BY id"
@@ -93,7 +105,7 @@ func TestQueryMultiColumn(t *testing.T) {
 // Catches: an unknown, missing or surplus column going unreported on a real
 // driver.
 func TestQueryColumnErrors(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	rqEach(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		rqSetup(t, db)
 		ctx := context.Background()
 		for name, stmt := range map[string]string{
@@ -113,7 +125,7 @@ func TestQueryColumnErrors(t *testing.T) {
 // Catches: the streaming form buffering, or leaking its cursor on an early
 // break (the next statement would then block on a one-connection pool).
 func TestQueryRowsStreaming(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	rqEach(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		rqSetup(t, db)
 		ctx := context.Background()
 		n := 0
@@ -146,7 +158,7 @@ func TestQueryRowsStreaming(t *testing.T) {
 // Catches: Query classifying errors differently from Exec, or exposing the
 // bound value in a message Exec keeps clean.
 func TestQueryErrorsClassifiedLikeExec(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	rqEach(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		rqSetup(t, db)
 		ctx := context.Background()
 		const secret = "s3cret-value-xyz"
