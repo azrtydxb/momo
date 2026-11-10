@@ -283,11 +283,15 @@ func (sq SelectQuery[T]) writeLock(b *Builder) {
 	s := &sq.s
 	if s.lock == "" {
 		if len(s.lockOf) > 0 {
-			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf needs ForUpdate or ForShare")))
+			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf needs ForUpdate, ForShare, ForNoKeyUpdate or ForKeyShare")))
 		}
 		return
 	}
 	if !b.d.Locking {
+		b.unsupported(s.lock)
+		return
+	}
+	if (s.lock == "FOR NO KEY UPDATE" || s.lock == "FOR KEY SHARE") && b.d.Name != dialect.Postgres {
 		b.unsupported(s.lock)
 		return
 	}
