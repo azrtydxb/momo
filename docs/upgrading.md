@@ -5,6 +5,14 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Unreleased: advisory string helpers take options
+
+`advisory.XactLockString` and `advisory.TryXactLockString` take a trailing
+`...advisory.Option` (for `advisory.Hash64`). A call site is unchanged, but
+the function types changed: code that assigns one of these functions to a
+variable or field of the old func type no longer compiles. Wrap the call in a
+closure instead.
+
 ## Upgrading to 0.4.0
 
 Release 0.4.0 moves feature-specific helpers out of the root package `momo`
