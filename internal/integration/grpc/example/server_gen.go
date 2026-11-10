@@ -23,20 +23,35 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// statusOf maps a failed statement to a gRPC status: not found is NotFound, a
-// rejected value is InvalidArgument and anything else is Internal without a
-// detail.
+// statusOf maps a failed statement to a gRPC status with a fixed message: the
+// error of the database, which names tables and constraints, never reaches the
+// client.
 func statusOf(err error) error {
 	switch {
 	case errors.Is(err, momo.ErrNotFound):
 		return status.Error(codes.NotFound, "not found")
+	case errors.Is(err, momo.ErrUniqueViolation):
+		return status.Error(codes.AlreadyExists, "a unique constraint refused the change")
+	case errors.Is(err, momo.ErrForeignKeyViolation):
+		return status.Error(codes.FailedPrecondition, "a foreign key constraint refused the change")
+	case errors.Is(err, momo.ErrCheckViolation), errors.Is(err, momo.ErrNotNullViolation):
+		return status.Error(codes.InvalidArgument, "a constraint refused the value")
+	case errors.Is(err, momo.ErrBusy), errors.Is(err, momo.ErrSerialization):
+		return status.Error(codes.Unavailable, "temporarily unavailable; retry")
 	case errors.Is(err, momo.ErrValidation):
-		return status.Error(codes.InvalidArgument, err.Error())
+		return status.Error(codes.InvalidArgument, "invalid request")
 	}
 	return status.Error(codes.Internal, "internal error")
 }
 
-// commentServer implements pb.CommentServiceServer on top of momo.
+// isZero reports whether v is the zero value of its type.
+func isZero[T comparable](v T) bool {
+	var zero T
+	return v == zero
+}
+
+// commentServer implements pb.CommentServiceServer on top of momo. It does no
+// authentication or authorization: wrap the grpc.Server with interceptors.
 type commentServer struct {
 	pb.UnimplementedCommentServiceServer
 	db *momo.DB
@@ -56,9 +71,10 @@ func commentToPB(m *example.Comment) *pb.Comment {
 	return out
 }
 
-// commentFromPB copies the message onto m. An empty vector leaves the vector of m alone.
+// commentFromPB copies the message onto m. The key, identity and read-only
+// columns are never written. A vector or timestamp left out, and a scalar of a
+// column the database fills in left at its zero value, leave m alone.
 func commentFromPB(p *pb.Comment, m *example.Comment) {
-	m.ID = p.Id
 	m.DocumentID = p.DocumentId
 	m.Body = p.Body
 }
@@ -134,6 +150,10 @@ func (s *commentServer) Create(ctx context.Context, in *pb.Comment) (*pb.Comment
 	return commentToPB(&m), nil
 }
 
+// Update replaces the row: every writable column takes the value of the
+// message, except the vectors, timestamps and defaulted scalars it leaves out
+// (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
+// is a value, and so is an unset optional field, which stores NULL).
 func (s *commentServer) Update(ctx context.Context, in *pb.Comment) (*pb.Comment, error) {
 	id := in.GetId()
 	m, err := momo.Select[example.Comment](s.db).Where(commentdesc.ID.Eq(id)).One(ctx)
@@ -164,7 +184,8 @@ func (s *commentServer) Delete(ctx context.Context, req *pb.CommentDeleteRequest
 	return &pb.CommentDeleteResponse{}, nil
 }
 
-// documentServer implements pb.DocumentServiceServer on top of momo.
+// documentServer implements pb.DocumentServiceServer on top of momo. It does no
+// authentication or authorization: wrap the grpc.Server with interceptors.
 type documentServer struct {
 	pb.UnimplementedDocumentServiceServer
 	db *momo.DB
@@ -188,18 +209,18 @@ func documentToPB(m *example.Document) *pb.Document {
 	return out
 }
 
-// documentFromPB copies the message onto m. An empty vector leaves the vector of m alone.
+// documentFromPB copies the message onto m. The key, identity and read-only
+// columns are never written. A vector or timestamp left out, and a scalar of a
+// column the database fills in left at its zero value, leave m alone.
 func documentFromPB(p *pb.Document, m *example.Document) {
-	m.ID = p.Id
 	m.TenantID = p.TenantId
 	m.Title = p.Title
 	m.Body = p.Body
 	if len(p.Embedding) > 0 {
 		m.Embedding = vector.Vector(p.Embedding)
 	}
-	m.Status = p.Status
-	if p.CreatedAt != nil {
-		m.CreatedAt = p.CreatedAt.AsTime()
+	if !isZero(p.Status) {
+		m.Status = p.Status
 	}
 }
 
@@ -257,6 +278,9 @@ func (s *documentServer) Create(ctx context.Context, in *pb.Document) (*pb.Docum
 	if len(m.Embedding) == 0 {
 		ins = ins.Omit(documentdesc.Embedding)
 	}
+	if isZero(m.Status) {
+		ins = ins.Omit(documentdesc.Status)
+	}
 	rows, err := ins.Rows(ctx)
 	if err != nil {
 		return nil, statusOf(err)
@@ -277,6 +301,10 @@ func (s *documentServer) Create(ctx context.Context, in *pb.Document) (*pb.Docum
 	return documentToPB(&m), nil
 }
 
+// Update replaces the row: every writable column takes the value of the
+// message, except the vectors, timestamps and defaulted scalars it leaves out
+// (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
+// is a value, and so is an unset optional field, which stores NULL).
 func (s *documentServer) Update(ctx context.Context, in *pb.Document) (*pb.Document, error) {
 	id := in.GetId()
 	m, err := momo.Select[example.Document](s.db).Where(documentdesc.ID.Eq(id)).One(ctx)
@@ -310,7 +338,8 @@ func (s *documentServer) Delete(ctx context.Context, req *pb.DocumentDeleteReque
 	return &pb.DocumentDeleteResponse{}, nil
 }
 
-// tagServer implements pb.TagServiceServer on top of momo.
+// tagServer implements pb.TagServiceServer on top of momo. It does no
+// authentication or authorization: wrap the grpc.Server with interceptors.
 type tagServer struct {
 	pb.UnimplementedTagServiceServer
 	db *momo.DB
@@ -329,9 +358,10 @@ func tagToPB(m *example.Tag) *pb.Tag {
 	return out
 }
 
-// tagFromPB copies the message onto m. An empty vector leaves the vector of m alone.
+// tagFromPB copies the message onto m. The key, identity and read-only
+// columns are never written. A vector or timestamp left out, and a scalar of a
+// column the database fills in left at its zero value, leave m alone.
 func tagFromPB(p *pb.Tag, m *example.Tag) {
-	m.ID = p.Id
 	m.Name = p.Name
 }
 
@@ -406,6 +436,10 @@ func (s *tagServer) Create(ctx context.Context, in *pb.Tag) (*pb.Tag, error) {
 	return tagToPB(&m), nil
 }
 
+// Update replaces the row: every writable column takes the value of the
+// message, except the vectors, timestamps and defaulted scalars it leaves out
+// (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
+// is a value, and so is an unset optional field, which stores NULL).
 func (s *tagServer) Update(ctx context.Context, in *pb.Tag) (*pb.Tag, error) {
 	id := in.GetId()
 	m, err := momo.Select[example.Tag](s.db).Where(tagdesc.ID.Eq(id)).One(ctx)
@@ -436,7 +470,8 @@ func (s *tagServer) Delete(ctx context.Context, req *pb.TagDeleteRequest) (*pb.T
 	return &pb.TagDeleteResponse{}, nil
 }
 
-// tenantServer implements pb.TenantServiceServer on top of momo.
+// tenantServer implements pb.TenantServiceServer on top of momo. It does no
+// authentication or authorization: wrap the grpc.Server with interceptors.
 type tenantServer struct {
 	pb.UnimplementedTenantServiceServer
 	db *momo.DB
@@ -455,9 +490,10 @@ func tenantToPB(m *example.Tenant) *pb.Tenant {
 	return out
 }
 
-// tenantFromPB copies the message onto m. An empty vector leaves the vector of m alone.
+// tenantFromPB copies the message onto m. The key, identity and read-only
+// columns are never written. A vector or timestamp left out, and a scalar of a
+// column the database fills in left at its zero value, leave m alone.
 func tenantFromPB(p *pb.Tenant, m *example.Tenant) {
-	m.ID = p.Id
 	m.Name = p.Name
 }
 
@@ -532,6 +568,10 @@ func (s *tenantServer) Create(ctx context.Context, in *pb.Tenant) (*pb.Tenant, e
 	return tenantToPB(&m), nil
 }
 
+// Update replaces the row: every writable column takes the value of the
+// message, except the vectors, timestamps and defaulted scalars it leaves out
+// (a proto3 message cannot say a scalar is absent, so a scalar at its zero value
+// is a value, and so is an unset optional field, which stores NULL).
 func (s *tenantServer) Update(ctx context.Context, in *pb.Tenant) (*pb.Tenant, error) {
 	id := in.GetId()
 	m, err := momo.Select[example.Tenant](s.db).Where(tenantdesc.ID.Eq(id)).One(ctx)

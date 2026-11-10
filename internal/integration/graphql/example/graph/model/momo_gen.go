@@ -10,10 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
+	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/gen/apiquery"
 	"github.com/azrtydxb/momo/internal/testmodels/example"
@@ -21,6 +24,8 @@ import (
 	documentdesc "github.com/azrtydxb/momo/internal/testmodels/example/document"
 	tagdesc "github.com/azrtydxb/momo/internal/testmodels/example/tag"
 	tenantdesc "github.com/azrtydxb/momo/internal/testmodels/example/tenant"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 // PageInfo describes the page a connection holds.
@@ -29,11 +34,123 @@ type PageInfo struct {
 	EndCursor   *string
 }
 
-type lookupFunc func(name string) (momo.ColumnRef, error)
+// The limits that bound what one request may cost. Document them to your
+// clients; NewServer enforces the first two, the rest are enforced where the
+// request is turned into statements.
+const (
+	// MaxInValues is the longest list an in operator accepts.
+	MaxInValues = 100
+	// MaxFilterDepth is the deepest nesting of and, or and not in a filter.
+	MaxFilterDepth = 4
+	// MaxFilterTerms is the most terms in one and or or list.
+	MaxFilterTerms = 20
+	// MaxRelationRows is the most rows a to-many relation returns per parent;
+	// the rows are the first ones by primary key.
+	MaxRelationRows = 100
+)
 
-func invalid(msg string) error {
-	return &momo.Error{Kind: momo.ErrValidation, Op: "graphql", Err: errors.New(msg)}
+// Limits bound one request.
+type Limits struct {
+	// MaxDepth is the deepest selection a query may have, fragments included.
+	MaxDepth int
+	// MaxComplexity bounds the fields a query selects (gqlgen counts one each).
+	MaxComplexity int
 }
+
+// DefaultLimits are the limits NewServer uses.
+var DefaultLimits = Limits{MaxDepth: 8, MaxComplexity: 500}
+
+// NewServer returns the gqlgen server of es with DefaultLimits and an error
+// presenter that never shows a database error to the client. Use it, not
+// handler.NewDefaultServer, to serve the generated schema.
+func NewServer(es graphql.ExecutableSchema) *handler.Server {
+	return NewServerWithLimits(es, DefaultLimits)
+}
+
+// NewServerWithLimits is NewServer with other limits.
+func NewServerWithLimits(es graphql.ExecutableSchema, l Limits) *handler.Server {
+	srv := handler.NewDefaultServer(es)
+	srv.Use(extension.FixedComplexityLimit(l.MaxComplexity))
+	srv.Use(depthLimit(l.MaxDepth))
+	srv.SetErrorPresenter(presentError)
+	return srv
+}
+
+// depthLimit is a gqlgen extension that refuses a query nested deeper than its
+// value.
+type depthLimit int
+
+func (depthLimit) ExtensionName() string                   { return "DepthLimit" }
+func (depthLimit) Validate(graphql.ExecutableSchema) error { return nil }
+
+func (d depthLimit) InterceptOperation(ctx context.Context, next graphql.OperationHandler) graphql.ResponseHandler {
+	if oc := graphql.GetOperationContext(ctx); oc != nil && oc.Operation != nil && selectionDepth(oc.Operation.SelectionSet) > int(d) {
+		return func(ctx context.Context) *graphql.Response {
+			return graphql.ErrorResponse(ctx, "query is too deep: at most %d levels", int(d))
+		}
+	}
+	return next(ctx)
+}
+
+func selectionDepth(set ast.SelectionSet) int {
+	deepest := 0
+	for _, sel := range set {
+		d := 0
+		switch s := sel.(type) {
+		case *ast.Field:
+			d = 1 + selectionDepth(s.SelectionSet)
+		case *ast.InlineFragment:
+			d = selectionDepth(s.SelectionSet)
+		case *ast.FragmentSpread:
+			if s.Definition != nil {
+				d = selectionDepth(s.Definition.SelectionSet)
+			}
+		}
+		deepest = max(deepest, d)
+	}
+	return deepest
+}
+
+// InputError is a request the server refuses; its message is written for the
+// client and is shown as it is.
+type InputError struct{ Msg string }
+
+func (e *InputError) Error() string { return e.Msg }
+
+func invalid(msg string) error { return &InputError{Msg: msg} }
+
+// presentError shows the client a fixed message for an error of the database,
+// which would otherwise name the operation, the table and the constraint. The
+// errors of gqlgen itself (parse, validation, complexity) and InputError keep
+// their text.
+func presentError(ctx context.Context, err error) *gqlerror.Error {
+	out := graphql.DefaultErrorPresenter(ctx, err)
+	var input *InputError
+	var gqlErr *gqlerror.Error
+	if errors.As(err, &input) || errors.As(err, &gqlErr) {
+		return out
+	}
+	code, msg := "INTERNAL", "internal error"
+	switch {
+	case errors.Is(err, momo.ErrNotFound):
+		code, msg = "NOT_FOUND", "not found"
+	case errors.Is(err, momo.ErrUniqueViolation):
+		code, msg = "CONFLICT", "a unique constraint refused the change"
+	case errors.Is(err, momo.ErrForeignKeyViolation):
+		code, msg = "CONFLICT", "a foreign key constraint refused the change"
+	case errors.Is(err, momo.ErrCheckViolation), errors.Is(err, momo.ErrNotNullViolation):
+		code, msg = "BAD_INPUT", "a constraint refused the value"
+	case errors.Is(err, momo.ErrBusy), errors.Is(err, momo.ErrSerialization):
+		code, msg = "UNAVAILABLE", "temporarily unavailable; retry"
+	case errors.Is(err, momo.ErrValidation):
+		code, msg = "BAD_INPUT", "invalid input"
+	}
+	out.Message = msg
+	out.Extensions = map[string]any{"code": code}
+	return out
+}
+
+type lookupFunc func(name string) (momo.ColumnRef, error)
 
 func cmpPred(lookup lookupFunc, col, op, val string) (momo.Predicate, error) {
 	return apiquery.ParseFilter(lookup, apiquery.Filter{Column: col, Op: op, Value: val})
@@ -50,8 +167,12 @@ func all(ps []momo.Predicate) momo.Predicate {
 	return momo.And(ps...)
 }
 
-// combine joins the predicates of the children of a filter with join.
+// combine joins the predicates of the children of a filter with join. The list
+// is bounded, and the caller bounds the nesting.
 func combine[F any](children []*F, pred func(*F) (momo.Predicate, error), join func(...momo.Predicate) momo.Predicate) (momo.Predicate, error) {
+	if len(children) > MaxFilterTerms {
+		return nil, invalid("a filter list has too many terms")
+	}
 	var ps []momo.Predicate
 	for _, c := range children {
 		p, err := pred(c)
@@ -93,6 +214,9 @@ func (o cmpOps[T]) predicates(lookup lookupFunc, col string, format func(T) stri
 		if len(o.in) == 0 {
 			return nil, invalid("in needs at least one value")
 		}
+		if len(o.in) > MaxInValues {
+			return nil, invalid("in takes at most 100 values")
+		}
 		alts := make([]momo.Predicate, 0, len(o.in))
 		for _, v := range o.in {
 			p, err := cmpPred(lookup, col, "eq", format(v))
@@ -120,33 +244,29 @@ func parseOrder(columns map[string]string, field, direction string) (col string,
 	return "", false, invalid("unknown order direction")
 }
 
-// wanted reports whether the request selects the field at path below the field
-// being resolved. Outside a gqlgen request it reports true, so everything is
-// loaded.
-func wanted(ctx context.Context, path ...string) bool {
+// fieldsAt returns the fields the request selects below the field being
+// resolved, following path. Outside a gqlgen request it returns nil, so no
+// relation is loaded.
+func fieldsAt(ctx context.Context, path ...string) []graphql.CollectedField {
 	fc := graphql.GetFieldContext(ctx)
 	if fc == nil {
-		return true
+		return nil
 	}
 	oc := graphql.GetOperationContext(ctx)
 	fields := graphql.CollectFields(oc, fc.Field.Selections, nil)
-	for i, name := range path {
-		var next *graphql.CollectedField
-		for j := range fields {
-			if fields[j].Name == name {
-				next = &fields[j]
-				break
-			}
+	for _, name := range path {
+		i := slices.IndexFunc(fields, func(f graphql.CollectedField) bool { return f.Name == name })
+		if i < 0 {
+			return nil
 		}
-		if next == nil {
-			return false
-		}
-		if i == len(path)-1 {
-			return true
-		}
-		fields = graphql.CollectFields(oc, next.Selections, nil)
+		fields = graphql.CollectFields(oc, fields[i].Selections, nil)
 	}
-	return false
+	return fields
+}
+
+// subFields returns the fields the request selects below f.
+func subFields(ctx context.Context, f graphql.CollectedField) []graphql.CollectedField {
+	return graphql.CollectFields(graphql.GetOperationContext(ctx), f.Selections, nil)
 }
 
 // MarshalInt64 writes a 64-bit integer as a JSON string, the encoding of the
@@ -278,15 +398,19 @@ type CommentFilter struct {
 	Body       *StringFilter
 }
 
-func (f *CommentFilter) predicate() (momo.Predicate, error) {
+func (f *CommentFilter) predicate(depth int) (momo.Predicate, error) {
 	if f == nil {
 		return nil, nil
 	}
+	if depth > MaxFilterDepth {
+		return nil, invalid("a filter is nested too deep")
+	}
+	nested := func(c *CommentFilter) (momo.Predicate, error) { return c.predicate(depth + 1) }
 	steps := []func() (momo.Predicate, error){
-		func() (momo.Predicate, error) { return combine(f.And, (*CommentFilter).predicate, momo.And) },
-		func() (momo.Predicate, error) { return combine(f.Or, (*CommentFilter).predicate, momo.Or) },
+		func() (momo.Predicate, error) { return combine(f.And, nested, momo.And) },
+		func() (momo.Predicate, error) { return combine(f.Or, nested, momo.Or) },
 		func() (momo.Predicate, error) {
-			p, err := f.Not.predicate()
+			p, err := f.Not.predicate(depth + 1)
 			if err != nil || p == nil {
 				return nil, err
 			}
@@ -309,6 +433,14 @@ func (f *CommentFilter) predicate() (momo.Predicate, error) {
 		}
 	}
 	return all(ps), nil
+}
+
+// commentLoaders returns the loaders of the relations the request selects on Comment
+// rows, nested as deep as the request goes. Each relation costs one statement
+// per level however many rows the page has, and a to-many relation returns at
+// most MaxRelationRows rows per parent.
+func commentLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[example.Comment] {
+	return nil
 }
 
 // commentOrderColumns maps an order field value to its column.
@@ -389,7 +521,7 @@ func ListComments(ctx context.Context, q momo.Querier, first *int, after *string
 	}
 	sel := momo.Select[example.Comment](q).OrderBy(items...).Limit(int64(limit + 1))
 	if filter != nil {
-		p, err := filter.predicate()
+		p, err := filter.predicate(0)
 		if err != nil {
 			return nil, err
 		}
@@ -483,15 +615,19 @@ type DocumentFilter struct {
 	CreatedAt *TimeFilter
 }
 
-func (f *DocumentFilter) predicate() (momo.Predicate, error) {
+func (f *DocumentFilter) predicate(depth int) (momo.Predicate, error) {
 	if f == nil {
 		return nil, nil
 	}
+	if depth > MaxFilterDepth {
+		return nil, invalid("a filter is nested too deep")
+	}
+	nested := func(c *DocumentFilter) (momo.Predicate, error) { return c.predicate(depth + 1) }
 	steps := []func() (momo.Predicate, error){
-		func() (momo.Predicate, error) { return combine(f.And, (*DocumentFilter).predicate, momo.And) },
-		func() (momo.Predicate, error) { return combine(f.Or, (*DocumentFilter).predicate, momo.Or) },
+		func() (momo.Predicate, error) { return combine(f.And, nested, momo.And) },
+		func() (momo.Predicate, error) { return combine(f.Or, nested, momo.Or) },
 		func() (momo.Predicate, error) {
-			p, err := f.Not.predicate()
+			p, err := f.Not.predicate(depth + 1)
 			if err != nil || p == nil {
 				return nil, err
 			}
@@ -521,6 +657,30 @@ func (f *DocumentFilter) predicate() (momo.Predicate, error) {
 		}
 	}
 	return all(ps), nil
+}
+
+// documentLoaders returns the loaders of the relations the request selects on Document
+// rows, nested as deep as the request goes. Each relation costs one statement
+// per level however many rows the page has, and a to-many relation returns at
+// most MaxRelationRows rows per parent.
+func documentLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[example.Document] {
+	var loaders []momo.Loader[example.Document]
+	seen := map[string]bool{}
+	for _, f := range fields {
+		if seen[f.Name] {
+			continue
+		}
+		seen[f.Name] = true
+		switch f.Name {
+		case "comments":
+			loaders = append(loaders, documentdesc.Comments.Scope(momo.LoadOrderBy[example.Comment](commentdesc.ID.Asc()), momo.LoadPerParentLimit[example.Comment](MaxRelationRows)).Then(commentLoaders(ctx, subFields(ctx, f))...))
+		case "tags":
+			loaders = append(loaders, documentdesc.Tags.Scope(momo.LoadOrderBy[example.Tag](tagdesc.ID.Asc()), momo.LoadPerParentLimit[example.Tag](MaxRelationRows)).Then(tagLoaders(ctx, subFields(ctx, f))...))
+		case "tenant":
+			loaders = append(loaders, documentdesc.Tenant.Scope().Then(tenantLoaders(ctx, subFields(ctx, f))...))
+		}
+	}
+	return loaders
 }
 
 // documentOrderColumns maps an order field value to its column.
@@ -616,7 +776,7 @@ func ListDocuments(ctx context.Context, q momo.Querier, first *int, after *strin
 	}
 	sel := momo.Select[example.Document](q).OrderBy(items...).Limit(int64(limit + 1))
 	if filter != nil {
-		p, err := filter.predicate()
+		p, err := filter.predicate(0)
 		if err != nil {
 			return nil, err
 		}
@@ -644,17 +804,7 @@ func ListDocuments(ctx context.Context, q momo.Querier, first *int, after *strin
 		}
 		sel = sel.After(vals...)
 	}
-	var loaders []momo.Loader[example.Document]
-	if wanted(ctx, "edges", "node", "comments") {
-		loaders = append(loaders, documentdesc.Comments.Scope())
-	}
-	if wanted(ctx, "edges", "node", "tags") {
-		loaders = append(loaders, documentdesc.Tags.Scope())
-	}
-	if wanted(ctx, "edges", "node", "tenant") {
-		loaders = append(loaders, documentdesc.Tenant.Scope())
-	}
-	if len(loaders) > 0 {
+	if loaders := documentLoaders(ctx, fieldsAt(ctx, "edges", "node")); len(loaders) > 0 {
 		sel = sel.Preload(loaders...)
 	}
 	rows, err := sel.All(ctx)
@@ -681,17 +831,7 @@ func ListDocuments(ctx context.Context, q momo.Querier, first *int, after *strin
 // selects the relations the request asks for.
 func GetDocument(ctx context.Context, q momo.Querier, id int64) (*example.Document, error) {
 	sel := momo.Select[example.Document](q).Where(documentdesc.ID.Eq(id))
-	var loaders []momo.Loader[example.Document]
-	if wanted(ctx, "comments") {
-		loaders = append(loaders, documentdesc.Comments.Scope())
-	}
-	if wanted(ctx, "tags") {
-		loaders = append(loaders, documentdesc.Tags.Scope())
-	}
-	if wanted(ctx, "tenant") {
-		loaders = append(loaders, documentdesc.Tenant.Scope())
-	}
-	if len(loaders) > 0 {
+	if loaders := documentLoaders(ctx, fieldsAt(ctx)); len(loaders) > 0 {
 		sel = sel.Preload(loaders...)
 	}
 	row, err := sel.One(ctx)
@@ -732,15 +872,19 @@ type TagFilter struct {
 	Name *StringFilter
 }
 
-func (f *TagFilter) predicate() (momo.Predicate, error) {
+func (f *TagFilter) predicate(depth int) (momo.Predicate, error) {
 	if f == nil {
 		return nil, nil
 	}
+	if depth > MaxFilterDepth {
+		return nil, invalid("a filter is nested too deep")
+	}
+	nested := func(c *TagFilter) (momo.Predicate, error) { return c.predicate(depth + 1) }
 	steps := []func() (momo.Predicate, error){
-		func() (momo.Predicate, error) { return combine(f.And, (*TagFilter).predicate, momo.And) },
-		func() (momo.Predicate, error) { return combine(f.Or, (*TagFilter).predicate, momo.Or) },
+		func() (momo.Predicate, error) { return combine(f.And, nested, momo.And) },
+		func() (momo.Predicate, error) { return combine(f.Or, nested, momo.Or) },
 		func() (momo.Predicate, error) {
-			p, err := f.Not.predicate()
+			p, err := f.Not.predicate(depth + 1)
 			if err != nil || p == nil {
 				return nil, err
 			}
@@ -762,6 +906,14 @@ func (f *TagFilter) predicate() (momo.Predicate, error) {
 		}
 	}
 	return all(ps), nil
+}
+
+// tagLoaders returns the loaders of the relations the request selects on Tag
+// rows, nested as deep as the request goes. Each relation costs one statement
+// per level however many rows the page has, and a to-many relation returns at
+// most MaxRelationRows rows per parent.
+func tagLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[example.Tag] {
+	return nil
 }
 
 // tagOrderColumns maps an order field value to its column.
@@ -837,7 +989,7 @@ func ListTags(ctx context.Context, q momo.Querier, first *int, after *string, fi
 	}
 	sel := momo.Select[example.Tag](q).OrderBy(items...).Limit(int64(limit + 1))
 	if filter != nil {
-		p, err := filter.predicate()
+		p, err := filter.predicate(0)
 		if err != nil {
 			return nil, err
 		}
@@ -927,15 +1079,19 @@ type TenantFilter struct {
 	Name *StringFilter
 }
 
-func (f *TenantFilter) predicate() (momo.Predicate, error) {
+func (f *TenantFilter) predicate(depth int) (momo.Predicate, error) {
 	if f == nil {
 		return nil, nil
 	}
+	if depth > MaxFilterDepth {
+		return nil, invalid("a filter is nested too deep")
+	}
+	nested := func(c *TenantFilter) (momo.Predicate, error) { return c.predicate(depth + 1) }
 	steps := []func() (momo.Predicate, error){
-		func() (momo.Predicate, error) { return combine(f.And, (*TenantFilter).predicate, momo.And) },
-		func() (momo.Predicate, error) { return combine(f.Or, (*TenantFilter).predicate, momo.Or) },
+		func() (momo.Predicate, error) { return combine(f.And, nested, momo.And) },
+		func() (momo.Predicate, error) { return combine(f.Or, nested, momo.Or) },
 		func() (momo.Predicate, error) {
-			p, err := f.Not.predicate()
+			p, err := f.Not.predicate(depth + 1)
 			if err != nil || p == nil {
 				return nil, err
 			}
@@ -957,6 +1113,14 @@ func (f *TenantFilter) predicate() (momo.Predicate, error) {
 		}
 	}
 	return all(ps), nil
+}
+
+// tenantLoaders returns the loaders of the relations the request selects on Tenant
+// rows, nested as deep as the request goes. Each relation costs one statement
+// per level however many rows the page has, and a to-many relation returns at
+// most MaxRelationRows rows per parent.
+func tenantLoaders(ctx context.Context, fields []graphql.CollectedField) []momo.Loader[example.Tenant] {
+	return nil
 }
 
 // tenantOrderColumns maps an order field value to its column.
@@ -1032,7 +1196,7 @@ func ListTenants(ctx context.Context, q momo.Querier, first *int, after *string,
 	}
 	sel := momo.Select[example.Tenant](q).OrderBy(items...).Limit(int64(limit + 1))
 	if filter != nil {
-		p, err := filter.predicate()
+		p, err := filter.predicate(0)
 		if err != nil {
 			return nil, err
 		}

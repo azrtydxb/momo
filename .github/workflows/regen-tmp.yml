@@ -38,7 +38,10 @@ jobs:
       - run: make protoc
       - name: golden files
         continue-on-error: true
-        run: go test -count=1 -update ./gen/openapi ./gen/graphql ./gen/grpc
+        run: |
+          go test -count=1 -run '^TestOpenAPIDocumentGolden$' ./gen/openapi -update
+          go test -count=1 -run '^TestGraphQLSDL$' ./gen/graphql -update
+          go test -count=1 -run '^TestProtoEmitGolden$' ./gen/grpc -update
       - name: docs
         continue-on-error: true
         run: go generate ./...

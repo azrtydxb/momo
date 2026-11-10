@@ -3,6 +3,12 @@
   "version": 1,
   "messages": {
     "Comment": {
+      "table": "comments",
+      "types": {
+        "body": "string",
+        "document_id": "int64",
+        "id": "int64"
+      },
       "fields": {
         "body": 3,
         "document_id": 2,
@@ -10,16 +16,34 @@
       }
     },
     "CommentDeleteRequest": {
+      "table": "comments#delete",
+      "types": {
+        "id": "int64"
+      },
       "fields": {
         "id": 1
       }
     },
     "CommentGetRequest": {
+      "table": "comments#get",
+      "types": {
+        "id": "int64"
+      },
       "fields": {
         "id": 1
       }
     },
     "Document": {
+      "table": "documents",
+      "types": {
+        "body": "string",
+        "created_at": "google.protobuf.Timestamp",
+        "embedding": "repeated float",
+        "id": "int64",
+        "status": "string",
+        "tenant_id": "int64",
+        "title": "string"
+      },
       "fields": {
         "body": 4,
         "created_at": 7,
@@ -31,43 +55,77 @@
       }
     },
     "DocumentDeleteRequest": {
+      "table": "documents#delete",
+      "types": {
+        "id": "int64"
+      },
       "fields": {
         "id": 1
       }
     },
     "DocumentGetRequest": {
+      "table": "documents#get",
+      "types": {
+        "id": "int64"
+      },
       "fields": {
         "id": 1
       }
     },
     "Tag": {
+      "table": "tags",
+      "types": {
+        "id": "int64",
+        "name": "string"
+      },
       "fields": {
         "id": 1,
         "name": 2
       }
     },
     "TagDeleteRequest": {
+      "table": "tags#delete",
+      "types": {
+        "id": "int64"
+      },
       "fields": {
         "id": 1
       }
     },
     "TagGetRequest": {
+      "table": "tags#get",
+      "types": {
+        "id": "int64"
+      },
       "fields": {
         "id": 1
       }
     },
     "Tenant": {
+      "table": "tenants",
+      "types": {
+        "id": "int64",
+        "name": "string"
+      },
       "fields": {
         "id": 1,
         "name": 2
       }
     },
     "TenantDeleteRequest": {
+      "table": "tenants#delete",
+      "types": {
+        "id": "int64"
+      },
       "fields": {
         "id": 1
       }
     },
     "TenantGetRequest": {
+      "table": "tenants#get",
+      "types": {
+        "id": "int64"
+      },
       "fields": {
         "id": 1
       }

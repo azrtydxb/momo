@@ -3,6 +3,7 @@
 package openapi
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -78,10 +79,16 @@ func toYAML(doc []byte, notes []gen.Diagnostic) ([]byte, error) {
 	if err := yaml.Unmarshal(doc, &v); err != nil {
 		return nil, fmt.Errorf("openapi: document is not valid: %w", err)
 	}
-	body, err := yaml.Marshal(v)
-	if err != nil {
+	var enc bytes.Buffer
+	e := yaml.NewEncoder(&enc)
+	e.SetIndent(2)
+	if err := e.Encode(v); err != nil {
 		return nil, fmt.Errorf("openapi: encode YAML: %w", err)
 	}
+	if err := e.Close(); err != nil {
+		return nil, fmt.Errorf("openapi: encode YAML: %w", err)
+	}
+	body := enc.Bytes()
 	var b strings.Builder
 	b.WriteString("# " + strings.TrimPrefix(gen.Header(), "// ") + "\n")
 	for _, n := range notes {

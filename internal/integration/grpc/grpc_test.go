@@ -148,6 +148,8 @@ func TestProtoGenerator(t *testing.T) {
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
 	pb.RegisterDocumentServiceServer(srv, example.NewDocumentServer(db))
+	pb.RegisterTagServiceServer(srv, example.NewTagServer(db))
+	pb.RegisterCommentServiceServer(srv, example.NewCommentServer(db))
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(lis) }()
 	t.Cleanup(func() {
