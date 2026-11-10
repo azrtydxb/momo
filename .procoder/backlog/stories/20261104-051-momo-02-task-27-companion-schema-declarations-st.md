@@ -11,10 +11,10 @@ Implements plan momo-02-generator Task 27: Companion schema declarations (struct
 
 ## Acceptance criteria
 
-- [ ] `TestCompanionSchemaMethods` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestCompanionSchemaDiagnostics` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestCompanionSchemaDSLCompiles` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestCompanionSchemaMethods` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestCompanionSchemaDiagnostics` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestCompanionSchemaDSLCompiles` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
@@ -27,3 +27,13 @@ Carry reason: the feature shipped under other names; only the `momo.View` marker
 
 The plan's three test names (`TestCompanionSchemaMethods`, `TestCompanionSchemaDiagnostics`, `TestCompanionSchemaDSLCompiles`) do not exist; their intent is covered by the tests above. Criteria left unticked for the integrator to carry or retire.
 
+### Sprint 7 close-out (2026-11-10)
+
+The three plan tests now exist: `TestCompanionSchemaMethods` and `TestCompanionSchemaDiagnostics` (gen/companion_schema_test.go, fixtures gen/testdata/fixtures/companionschema and companionschemabad) and `TestCompanionSchemaDSLCompiles` (meta_companion_test.go). Deviations from the plan text: the fixtures carry the licence header, the view model uses the shipped shape (`momo.Model` plus `momo.View`), and the plan's `view model X has no c.View` diagnostic is not built (see above: a view can be declared outside the Go models).
+
+The code existed before the tests, so red was shown by breaking it on throwaway branches (tests identical):
+
+- ci-agent run 42828247513, headSha afb8fa2 (RLS merge into the table disabled, structured-argument diagnostic silenced): `TestCompanionSchemaMethods` and `TestCompanionSchemaDiagnostics` FAIL.
+- ci-agent run 42828291415, headSha 5d49263 (`Config.RLS` removed): the root package fails to build (`c.RLS undefined`), so `TestCompanionSchemaDSLCompiles` cannot pass.
+
+Green: ci-agent run 42838538032, headSha 5e36833, all 9 jobs. `procoder check` over the files changed against origin/sprint-7: 27 clean, 0 blocking.
