@@ -27,7 +27,12 @@ func TestBenchResultsLayout(t *testing.T) {
 	if len(matches) != 1 {
 		t.Fatalf("want one run directory, got %v", matches)
 	}
-	for _, f := range []string{"env.json", "versions.txt", "raw.txt", "summary.txt"} {
+	files := []string{"env.json", "versions.txt", "raw.txt", "summary.txt"}
+	if os.Getenv("BENCH_PG_URL") != "" {
+		// The pgx vector codec benchmark (spec S-50) is recorded with the run.
+		files = append(files, "vector-encoding.txt")
+	}
+	for _, f := range files {
 		if _, err := os.Stat(filepath.Join(matches[0], f)); err != nil {
 			t.Fatalf("missing %s: %v", f, err)
 		}
