@@ -5,6 +5,29 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.7.0
+
+### Query and QueryRows read into a plain struct
+
+`momo.Query[T]` and `momo.QueryRows[T]` now accept any struct, with no
+generated metadata: fields scan by column name (`momo:"column:x"` tag, else the
+snake_case of the field name), and a result column with no field, or a field
+with no result column, is an `ErrValidation` that names it. A model, projection
+or `Row1`..`Row10` still scans through its generated metadata. The type
+parameters changed from `[T any, PT Modeler[T]]` to `[T any]`: a call that
+names only `T` compiles as before, and a call that named `PT` explicitly must
+drop it. A type that is not a struct and has no metadata is now an
+`ErrValidation` at run time instead of a compile error.
+
+### Registering Insert.Model needs a real-looking sample
+
+The SQL listed for `Insert.Model` through `momo.RegisterQuery` depends on the
+sample model: a zero dbdefault field is left out of the column list. This is
+unchanged behavior, now documented in
+[testing.md](testing.md#listing-the-sql-a-query-registry), together with the
+ways to register a stable shape (`Values`, `Omit`, or a sample set as a real call
+sets it).
+
 ## Upgrading to 0.6.0
 
 ### The Using and From guard is stricter

@@ -122,6 +122,7 @@ func TestQueryPlainStructRejectsBadTypes(t *testing.T) {
 		B string `momo:"column:x"`
 	}
 	type none struct{ hidden int }
+	_ = none{hidden: 1}
 	ctx := t.Context()
 	drv := fakedriver.New(dialect.Postgres)
 	db := momo.New(drv)
