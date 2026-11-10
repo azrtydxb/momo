@@ -44,6 +44,22 @@ func DetectHooks(named *types.Named, fset *token.FileSet) (map[string]bool, []Di
 	return found, diags
 }
 
+// projectionHookDiags reports every hook-named method of a projection: a
+// projection runs no hooks, so the method would be silently ignored.
+func projectionHookDiags(named *types.Named, fset *token.FileSet) []Diagnostic {
+	var diags []Diagnostic
+	ms := types.NewMethodSet(types.NewPointer(named))
+	for _, name := range hookNames {
+		if sel := ms.Lookup(nil, name); sel != nil {
+			diags = append(diags, Diagnostic{
+				Pos: fset.Position(sel.Obj().Pos()),
+				Msg: "method " + name + " on projection " + named.Obj().Name() + " is never called: projections run no hooks",
+			})
+		}
+	}
+	return diags
+}
+
 // isHookSignature reports whether sig is func(context.Context) error.
 func isHookSignature(sig *types.Signature) bool {
 	if sig.Variadic() || sig.Params().Len() != 1 || sig.Results().Len() != 1 {

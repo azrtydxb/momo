@@ -5,6 +5,34 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.5.0
+
+### Model hook methods are now wired by `momo generate`
+
+`momo generate` detects methods named `BeforeInsert`, `BeforeUpdate`,
+`BeforeDelete` and `AfterLoad` on a model and fills `Meta.Hooks` with them.
+Two behaviors change for an existing model after you regenerate:
+
+- A method with one of these names and the exact signature
+  `func(context.Context) error` now runs: before inserts, updates and deletes,
+  and after loads. Before, such a method was never called. If you had a method
+  with a hook name that was meant as plain code, rename it before you
+  regenerate.
+- A method with one of these names and any other signature makes
+  `momo generate` fail with a positioned diagnostic
+  (`hook BeforeInsert on Doc must have signature func(context.Context) error`),
+  and a hook-named method on a projection is a diagnostic as well (a projection
+  runs no hooks). Fix the signature or rename the method.
+
+If you set `Meta.Hooks` by hand in a hand-written `Meta`, nothing changes.
+Generated files are rewritten by `momo generate`; the `Hooks:` field appears
+only for models that have a hook method.
+
+### View models
+
+A model that embeds `momo.View` (new) is marked as a view. Its writes fail with
+`ErrValidation`. Existing models are unaffected unless you add the marker.
+
 ## Upgrading to 0.4.0
 
 Release 0.4.0 moves feature-specific helpers out of the root package `momo`
