@@ -474,7 +474,7 @@ func (n *Note) MomoConfig(c *momo.Config) { c.IDGen(&n.ID, "ulid") }
 
 ### Database defaults
 
-`Insert.Model` writes every writable column, so a column with
+`InsertQuery.Model` writes every writable column, so a column with
 `DEFAULT gen_random_uuid()` or `DEFAULT now()` is overwritten by the Go zero
 value. Tag the field `dbdefault` to leave it to the database instead:
 
