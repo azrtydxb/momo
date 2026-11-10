@@ -7,6 +7,7 @@ package momo_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -126,13 +127,14 @@ func TestConflictWhereExcludedComparison(t *testing.T) {
 // predicate that is qualified or bound wrongly.
 func TestConflictWherePartialIndexTarget(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		// SQLite matches a conflict-target WHERE against the index predicate by
+		// expression, so the index is written with the literal Momo renders for
+		// the typed predicate (live = 1), not with a bare column.
+		idx := "CREATE UNIQUE INDEX jobs_lock_live_holder ON jobs_lock (holder) WHERE live"
 		if d == dialect.SQLite {
-			// SQLite matches a conflict-target WHERE against the index predicate
-			// textually, so a bound parameter never matches. Open story
-			// 20261106-conditional-upsert-follow-ups-sqlite-target-literals.
-			t.Skip("SQLite conflict-target predicates must be literals")
+			idx = "CREATE UNIQUE INDEX jobs_lock_live_holder ON jobs_lock (holder) WHERE live = 1"
 		}
-		createJobsLock(t, db, "CREATE UNIQUE INDEX jobs_lock_live_holder ON jobs_lock (holder) WHERE live")
+		createJobsLock(t, db, idx)
 		ctx := context.Background()
 		t0 := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 		// jobs_lock.name is the primary key; the partial index covers holder.
@@ -165,6 +167,12 @@ func TestConflictWherePartialIndexTarget(t *testing.T) {
 		_, err = ins("three").DoNothing().Exec(ctx)
 		if err == nil {
 			t.Fatal("expected PostgreSQL to reject the target without its WHERE")
+		}
+		if d == dialect.SQLite {
+			if !strings.Contains(err.Error(), "does not match any PRIMARY KEY or UNIQUE constraint") {
+				t.Fatalf("want SQLite's no-matching-constraint error, got %v", err)
+			}
+			return
 		}
 		var pgErr *pgconn.PgError
 		if !errors.As(err, &pgErr) || pgErr.Code != "42P10" {

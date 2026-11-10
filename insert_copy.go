@@ -107,6 +107,9 @@ func (q InsertQuery[T]) noCopy() error {
 // copyShape rejects a query Copy cannot honour, before anything else runs.
 func (q InsertQuery[T]) copyShape(ms []T) error {
 	i := q.i
+	if err := viewWriteErr("copy", q.meta); err != nil {
+		return err
+	}
 	switch {
 	case i.err != nil:
 		return i.err
@@ -153,6 +156,9 @@ func (q InsertQuery[T]) copyRows(ms []T) ([]string, [][]any, error) {
 	}
 	r := q
 	r.models = ms
+	r.i.noRowDefault = true
+	r.dbd = nil
+	r = r.withDBD() // the plan of the rows being copied
 	cols, err := r.modelCols(fp)
 	if err != nil {
 		return nil, nil, err

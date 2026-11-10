@@ -11,6 +11,10 @@ for example 20261108T093000Z-linux-amd64. It holds:
   codesize.json   generated-code size and compile cost of bench/models/momo
   raw.txt         go test -bench output, BENCH_COUNT repetitions (default 10)
   summary.txt     benchstat over raw.txt
+  vector-encoding.txt
+                  BenchmarkVectorEncoding of driver/pgxdriver: text against
+                  binary pgx codecs for vector, halfvec, sparsevec and bit
+                  (written when BENCH_PG_URL is set)
   benchstat.err   benchstat diagnostics
 
 This file describes the layout only. The numbers and their interpretation live

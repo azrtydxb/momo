@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-05-writes-queries
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 
@@ -21,3 +21,6 @@ Implements plan momo-05-writes-queries Task 11: Fuzzed raw arguments and typed I
 - Green: ci-agent run 42453190263 on d8088d5 (unit, lint, fuzz-smoke, integration postgres).
 - Gate: the commit hook ran the procoder format and lint gate on every commit of this story with 0 blocking findings.
 - Red-first not provable: the typed In empty-list rendering and NamedArg already existed, so FuzzRawArgs and TestEmptyResultNotNotFoundIntegration pass without any implementation change; those two criteria stay unticked.
+
+- Audit 2026-11-10: FuzzRawArgs (raw_args_fuzz_test.go), TestEmptyResultNotNotFoundIntegration (select_empty_result_test.go) and TestRawArgs (raw_args_integration_test.go) pass in run 42769037273 (ci-agent, headSha 4d04a3d, all jobs green).
+- Carry reason: the two unticked criteria demand red-first history; the implementation (NamedArg, empty-IN rendering in expr.go) predates these tests, so a failing-before run cannot exist. The tests are in place and green.

@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-02-generator
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 
@@ -18,4 +18,6 @@ Implements plan momo-02-generator Task 25: Plan gate for the generator (`.procod
 - [ ] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
+
+Carry reason: the gate cannot pass as written. Step 2 names `TestViewModelsNotWritable`, `TestCompanionSchemaMethods` and `TestCompanionSchemaDiagnostics`, which do not exist (stories 050 and 051: Needs decision / carried). Steps 1, 3 and 4 use paths of the first plan (`./momo`, the root package was never moved there); the shipped equivalents run on every CI run: unit tests with `-race` (`make test-race`), the import-graph rules in `internal/repocheck` (dependency rule 1), and `go vet`/gofmt in the lint job (.github/workflows/ci.yml). Every other test named in Step 2 exists (checked with grep): `TestEmitDescriptorsGolden`, `TestGenerateDiagnostics`, `TestGenerateDeterministic`, `TestGenerateCheck`, `TestGenerateCrossPackage`, `TestGenerateRefusesHandwritten`, `TestGenerateNameCollisions`, `TestEmbeddedAndMixins`, `TestNamingPresets`, `TestColumnByName`, `TestFieldPermissions`, `TestGeneratorPlugin`, `TestTagVocabulary`, `TestParseTags`, `TestConfigLoad`, `TestNamingOverridesFromConfig`, `TestGoGenerateIntegration`, `TestCompanionDSLCompiles`, `TestRelationDescriptorShape`, `TestModelHookEmission`, `TestZeroHookSet`, `TestFieldPermissionsRuntime` (these last three added in this sprint, story 053 and 054), `TestGeneratedHeaderRegexp`, `TestCLIExitCodes`, `TestPluginsUseWriter`. Close this story after 050 and 051 are decided and the CI run of the sprint branch is green. Criteria left unticked.
 

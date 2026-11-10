@@ -17,7 +17,16 @@ on:
       - "examples/**"
       - "internal/docscheck/**"
       - ".github/workflows/docs.yml"
-  workflow_dispatch: {}
+  # A release tag created by release-please with the workflow token does not
+  # trigger the tag push above, so release-please.yml dispatches this
+  # workflow with the new tag; an empty tag only builds.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to publish as /vX.Y/ and latest (empty: build only)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -45,6 +54,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -74,7 +84,9 @@ jobs:
 
   deploy:
     needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')))
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-'))))
+      || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'v') && !contains(inputs.tag, '-'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # One deploy at a time across refs: mike pushes to the shared gh-pages branch.
@@ -87,6 +99,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -99,11 +112,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Publish /dev/
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: mike deploy --push dev
       - name: Publish the release version and move latest
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
         run: |
-          version="${GITHUB_REF_NAME%.*}"
+          tag="${DISPATCH_TAG:-$GITHUB_REF_NAME}"
+          version="${tag%.*}"
           mike deploy --push --update-aliases "$version" latest
           mike set-default --push latest

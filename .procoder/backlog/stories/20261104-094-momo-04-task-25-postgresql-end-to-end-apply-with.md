@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Red-first criteria unverifiable: the tested behaviour pre-existed when the plan tests were written. Decided 2026-11-06: carry rather than tick.
 
 ## Description

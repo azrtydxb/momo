@@ -1,9 +1,9 @@
 # momo-04 Task 31: Docs for migration safety and recovery
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 
@@ -11,12 +11,18 @@ Implements plan momo-04-migrations Task 31: Docs for migration safety and recove
 
 ## Acceptance criteria
 
-- [ ] Step 1: Failing check
-- [ ] Step 2: Write the guide with sections: Files and formats (`momo.sum`, snapshots, history table, the format versions), Commands and exit codes (copy the Task 29 table), Transactional and non-transactional migrations, Recovering a dirty migration (`momo migrate status`, repair manually, `momo migrate…
-- [ ] Step 3: Run the check, expect PASS, then commit `git commit -m "docs: migration safety and recovery guide"`.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] Step 1: Failing check
+- [x] Step 2: Write the guide with sections: Files and formats (`momo.sum`, snapshots, history table, the format versions), Commands and exit codes (copy the Task 29 table), Transactional and non-transactional migrations, Recovering a dirty migration (`momo migrate status`, repair manually, `momo migrate…
+- [x] Step 3: Run the check, expect PASS, then commit `git commit -m "docs: migration safety and recovery guide"`.
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
 - docs/migrations.md already covers files and formats, commands and exit codes, locks, transactional and no-transaction migrations, dirty-migration recovery with migrate resolve, destructive changes, baseline, drift, branch conflicts and roles, and docs/README.md indexes it. TestMigrationsGuideSections (internal/docscheck) pins those sections; it passed on the red run because the guide already existed, so it is a guard, not a red-to-green proof.
-- Left open: Step 2 also names SQLite table rebuilds and the SQLite momo_migration_lock, which do not exist in the code (docs/capabilities.md: migrations are PostgreSQL only), and --force-unlock was removed, so those parts cannot be written.
+- Left open (superseded: SQLite section 3a and its lock were written in sprint 5, see below): Step 2 also names SQLite table rebuilds and the SQLite momo_migration_lock, which do not exist in the code (docs/capabilities.md: migrations are PostgreSQL only), and --force-unlock was removed, so those parts cannot be written.
+
+### Sprint 7 (2026-11-10)
+
+- Step 1: the check `test -f docs/migrations.md && grep -q 'momo migrate resolve' docs/migrations.md` fails before the guide: `git cat-file -e 4ccb323~1:docs/migrations.md` reports the path does not exist in the parent of the commit that added it (4ccb323).
+- Step 2: every section the step names exists now. SQLite table rebuilds and the `momo_migration_lock` are section 3a (`**The rebuild**`, `sqlite.ForceUnlock`); the lock section says there is no `--force-unlock` on PostgreSQL (it was removed); lint, rebase and rollback are in sections 2, 4 and 5. `TestMigrationsGuideSections` (internal/docscheck/migrations_test.go) now pins each section and term.
+- Step 3: the guide is indexed in docs/README.md (same test). Green: ci-agent run 42776939577 on 0dafa15e799e4e052ca9b05bc94eed3b231d421f, all jobs success.
