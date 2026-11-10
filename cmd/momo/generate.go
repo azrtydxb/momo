@@ -66,8 +66,8 @@ change in the database: that one is kept as it is (delete the file to reset it).
 exits 1 when a file would change. A file whose table is gone is listed as "orphan" and is
 never deleted.
 
-Constraints the models cannot declare (composite or renamed foreign keys,
-unique expression indexes, generated columns) are left out of the models and
+Constraints the models cannot declare (renamed or single-column non-primary-key foreign keys,
+expression index keys with an order or operator class, generated columns) are left out of the models and
 the snapshot and listed as warnings; the baseline then reports them. A column
 type with no Go mapping is an error and nothing is written.
 

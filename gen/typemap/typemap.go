@@ -100,12 +100,12 @@ func postgres(t string, tg tags.Tags) string {
 }
 
 // postgresElem is the PostgreSQL element type of a slice column: the scalar
-// Go types that have a plain array type. Sized strings keep their length
+// Go types that have a plain array type, and types.UUID (uuid[]). Sized strings keep their length
 // (character varying(N)[]). Nested slices, byte slices and codec types are
 // not arrays.
 func postgresElem(elem string, tg tags.Tags) string {
 	switch elem {
-	case "string", "int16", "int32", "int64", "bool", "float32", "float64":
+	case "string", "int16", "int32", "int64", "bool", "float32", "float64", "types.UUID":
 		return postgres(elem, tg)
 	}
 	return ""
