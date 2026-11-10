@@ -238,3 +238,23 @@ func TestPostgresAlterColumnRoundTrip(t *testing.T) {
 		t.Fatalf("alter round trip has a diff:\n%s", jsonDiff(got, v2))
 	}
 }
+
+// Catches: the UPDATE OF column list being dropped on render or read, which
+// would make a second diff recreate the trigger forever.
+func TestPostgresTriggerUpdateOfRoundTrip(t *testing.T) {
+	db := testopen.Postgres(t)
+	roundTrip(t, db, &schema.Schema{
+		Dialect:    "postgres",
+		Extensions: []schema.Extension{{Name: "vector"}}, // installed in the test database; inspection reports every extension
+		Tables: []schema.Table{{
+			Name:       "submission",
+			Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "state", Type: "text"}},
+			PrimaryKey: []string{"id"},
+		}},
+		Functions: []schema.Function{{Name: "submission_event_state", Returns: "trigger", Language: "plpgsql", Volatility: "VOLATILE", Body: "BEGIN RETURN NEW; END;"}},
+		Triggers: []schema.Trigger{{
+			Table: "submission", Name: "submission_event_upd", Timing: "AFTER", Events: []string{"UPDATE"},
+			UpdateOf: []string{"state"}, ForEachRow: true, Function: "submission_event_state()",
+		}},
+	})
+}

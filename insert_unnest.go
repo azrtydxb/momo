@@ -86,7 +86,7 @@ func (q InsertQuery[T]) writeUnnest(b *Builder, d *dialect.Dialect, p insertPlan
 			if p.vals != nil {
 				col[r] = p.vals[r][i]
 			} else {
-				col[r] = q.modelValue(&q.models[r], ci, p.now, p.fp)
+				col[r] = q.modelValue(r, ci, p.now, p.fp)
 			}
 		}
 		b.argFor(q.meta.Columns[ci].Flags, typedColumn(col))

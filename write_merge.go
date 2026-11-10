@@ -252,6 +252,9 @@ func (m MergeQuery[T]) render(b *Builder) {
 	case !d.Merge:
 		b.unsupported("MERGE")
 		return
+	case viewWriteErr("merge", m.meta) != nil:
+		b.SetErr(viewWriteErr("merge", m.meta))
+		return
 	case m.meta.Table == "":
 		b.SetErr(m.verr("", "%T has no table", *new(T)))
 		return
@@ -298,7 +301,7 @@ func (m MergeQuery[T]) render(b *Builder) {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				upd.appendAssignment(b, a)
+				upd.appendAssignment(b, a, "")
 			}
 			if vi := m.meta.Version; vi >= 0 {
 				b.WriteString(", ")
@@ -464,6 +467,8 @@ func (u UpdateQuery[T]) planBulk() (bulkPlan, error) {
 	var p bulkPlan
 	s := u.bulk
 	switch {
+	case viewWriteErr("update", u.meta) != nil:
+		return p, viewWriteErr("update", u.meta)
 	case u.meta.Table == "":
 		return p, u.fail(ErrValidation, errors.New("model has no table"))
 	case len(u.assigns) > 0 || u.modelSet || u.softDelete:
@@ -586,7 +591,7 @@ func (u UpdateQuery[T]) bulkSQL() (Compiled, error) {
 			}
 			for _, a := range p.extra {
 				b.WriteString(", ")
-				u.appendAssignment(b, a)
+				u.appendAssignment(b, a, "")
 			}
 			if vi := u.meta.Version; vi >= 0 {
 				b.WriteString(", ")

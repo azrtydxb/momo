@@ -9,7 +9,7 @@ distance expressions, and search settings are part of the core API. Schema
 migrations are built in as well: `momo migrate diff` compares your structs with
 the last snapshot and writes the SQL.
 
-Status: v0.4.0, pre-v1, with no compatibility promise between releases. This <!-- x-release-please-version -->
+Status: v0.5.0, pre-v1, with no compatibility promise between releases. This <!-- x-release-please-version -->
 release is tested against PostgreSQL with pgvector. The databases below are
 generated from the driver packages; see [capabilities](docs/capabilities.md)
 for what each one supports.
@@ -35,8 +35,8 @@ Add the library to your module and install the CLI:
 <!-- x-release-please-start-version -->
 
 ```sh
-go get github.com/azrtydxb/momo@v0.4.0
-go install github.com/azrtydxb/momo/cmd/momo@v0.4.0
+go get github.com/azrtydxb/momo@v0.5.0
+go install github.com/azrtydxb/momo/cmd/momo@v0.5.0
 ```
 
 <!-- x-release-please-end -->
@@ -202,11 +202,11 @@ momo migrate apply
 another TLS mode against any database you do not reach over a trusted local
 connection.
 
-Momo v0.4.0 writes forward migrations only. There is no rollback command, so <!-- x-release-please-version -->
-undo a change with a new migration.
+Momo v0.5.0 writes forward migrations only. `momo migrate rollback` runs a <!-- x-release-please-version -->
+`.down.sql` you wrote by hand; otherwise undo a change with a new migration.
 
 Run `momo migrate help` for the other commands: `plan`, `status`, `validate`,
-`hash`, `drift`, `baseline`, and `resolve`. Run migrations over a direct connection to
+`lint`, `rebase`, `hash`, `drift`, `baseline`, and `resolve`. Run migrations over a direct connection to
 PostgreSQL, not through a transaction-mode pooler: the migration lock is a
 session advisory lock.
 
@@ -331,7 +331,7 @@ func readAndChange(ctx context.Context, q momo.Querier, authorID int64) error {
 The full example, with the model and the partial-index form, is in
 [docs/ai-guide.md](docs/ai-guide.md) under upserts.
 
-To conflict on a partial unique index, give the index predicate with `OnConflict(cols...).Where(...)` before `DoNothing` or `DoUpdate`. Both forms work on PostgreSQL; MySQL returns `ErrUnsupported`. On SQLite, bool, integer, finite float and string values in the target predicate render inline (`"live" = 1`) because SQLite matches the predicate against the index text; any other value, and `Excluded()`, is `ErrValidation`. This is golden-tested but not yet run against a real SQLite, so `momo.SQL("live = 1")` remains the proven fallback. The values appear in the SQL text, so they show up in logs and traces.
+To conflict on a partial unique index, give the index predicate with `OnConflict(cols...).Where(...)` before `DoNothing` or `DoUpdate`. Both forms work on PostgreSQL; MySQL returns `ErrUnsupported`. On SQLite, bool, integer, finite float and string values in the target predicate render inline (`"live" = 1`) because SQLite matches the expression, so write the same literal in the index; any other value, and `Excluded()`, is `ErrValidation`. Write the index predicate with the same literal (`WHERE live = 1`); this is golden-tested and run against a real SQLite partial unique index. The values appear in the SQL text, so they show up in logs and traces.
 
 ### 6. Load relations
 
@@ -472,6 +472,10 @@ work the same way. See [docs/projections.md](docs/projections.md),
   writes the models and the init snapshot, so an existing schema is adopted
   without writing the structs by hand; see
   [adopting an existing database](docs/migrations.md#7-adopting-an-existing-database).
+- A team with its own generator plugins builds its own binary: a `main` that
+  calls `cli.Main(plugins...)` (package `github.com/azrtydxb/momo/cli`) gets
+  every command, flag and exit code of `momo`, and the plugins are enabled by
+  name in `momo.yaml`.
 - `momo migrate diff <name>` writes a migration for the difference between the
   models and the latest snapshot. It refuses destructive changes unless you
   pass `--allow-destructive`.

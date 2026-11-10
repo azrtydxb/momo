@@ -21,6 +21,7 @@ import (
 	"go/format"
 	"go/token"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -384,7 +385,12 @@ func (g *generator) columns(m *model) {
 	if len(t.PrimaryKey) == 0 {
 		g.add(SevNote, t.Name, "the table has no primary key")
 	} else if !pkInColumnOrder(t) {
-		g.add(SevWarn, t.Name, "the primary key columns are not in column order: the model declares the key in field order, so the baseline will report the table")
+		refs, ok := m.refs(t.PrimaryKey)
+		if ok {
+			m.stmts = append(m.stmts, "c.PrimaryKey("+strings.Join(refs, ", ")+")")
+		} else {
+			g.add(SevWarn, t.Name, "the primary key uses a column the models do not have: the baseline will report the table")
+		}
 	}
 }
 
@@ -463,9 +469,7 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 	}
 	switch col.Identity {
 	case "always":
-		g.add(SevWarn, m.t.Name+"."+col.Name, "identity always is declared as identity by default: the models cannot declare generated always, so the baseline will report the column")
-		col.Identity = "by_default"
-		opts = append(opts, "identity")
+		opts = append(opts, "identity:always")
 	case "by_default":
 		opts = append(opts, "identity")
 	case "serial":
@@ -493,6 +497,9 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 		m.stmts = append(m.stmts, "c."+strings.ToUpper(e.key[:1])+e.key[1:]+"(&m."+name+", "+strconv.Quote(e.val)+")")
 	}
 	opts = mergeTags(opts, rule.Tags)
+	if dbDefaultFits(g.o.Dialect, col, opts) {
+		opts = append(opts, "dbdefault")
+	}
 	goType := gt.Expr
 	if col.Nullable && !gt.Nilable {
 		goType = "*" + goType
@@ -584,6 +591,42 @@ func mergeTags(generated, user []string) []string {
 	return out
 }
 
+// dbDefaultFits reports whether the field of col gets the dbdefault tag: a
+// NOT NULL column whose database default is computed (a function call such as
+// gen_random_uuid() or now(), or CURRENT_TIMESTAMP), which a Go zero value
+// would otherwise overwrite. A constant default is left alone, as is a column
+// whose other tags already decide how it is written. A sequence default
+// (nextval(...)) on a column that is not identity or serial counts as
+// computed, so a zero id is no longer written over it. Only PostgreSQL
+// qualifies: the tag needs INSERT ... RETURNING to read the value back, which
+// plain MySQL lacks, and MariaDB and SQLite have no inspector here yet.
+func dbDefaultFits(d dialect.Name, col *schema.Column, opts []string) bool {
+	if d != dialect.Postgres || col.Nullable || col.Identity != "" || !computedDefault(col.Default) {
+		return false
+	}
+	for _, o := range opts {
+		switch k, _, _ := strings.Cut(o, ":"); k {
+		case "identity", "serial", "read_only", "version", "soft_delete", "created_at", "updated_at", "idgen", "dbdefault":
+			return false
+		}
+	}
+	return true
+}
+
+// computedDefault reports whether a default expression is evaluated by the
+// database per row rather than a literal.
+func computedDefault(d string) bool {
+	d = strings.ToLower(strings.TrimSpace(d))
+	if d == "" || strings.HasPrefix(d, "'") || strings.HasPrefix(d, "-") || (d[0] >= '0' && d[0] <= '9') {
+		return false
+	}
+	switch d {
+	case "true", "false", "null":
+		return false
+	}
+	return strings.Contains(d, "(") || strings.HasPrefix(d, "current_") || strings.HasPrefix(d, "localtime")
+}
+
 func removeKey(opts []string, k string) []string {
 	var out []string
 	for _, o := range opts {
@@ -657,6 +700,10 @@ func (g *generator) constraints(m *model) {
 	g.tableObjects(m)
 }
 
+// fkNameOK is what a constraint name may hold to be written as an fk_name tag
+// value: no comma, colon, quote or space.
+var fkNameOK = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_$]{0,62}$`)
+
 var fkActions = map[string]bool{"": true, "CASCADE": true, "RESTRICT": true, "SET NULL": true, "SET DEFAULT": true}
 
 // foreignKey declares fk as a belongs_to relation when the generator can
@@ -668,9 +715,6 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		g.add(SevWarn, obj, "%s: the models cannot declare this constraint, so it is left out of the models and the snapshot and the baseline will report it", why)
 		return false
 	}
-	if len(fk.Columns) != 1 || len(fk.RefColumns) != 1 {
-		return drop("composite foreign keys are not supported")
-	}
 	ns, name := t.Schema, fk.RefTable
 	if i := strings.IndexByte(name, '.'); i >= 0 {
 		ns, name = name[:i], name[i+1:]
@@ -679,15 +723,15 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	if target == nil {
 		return drop("it references " + fk.RefTable + ", which has no model")
 	}
+	if len(fk.Columns) != 1 || len(fk.RefColumns) != 1 {
+		return g.compositeForeignKey(m, target, fk, drop)
+	}
 	if len(target.t.PrimaryKey) != 1 || target.t.PrimaryKey[0] != fk.RefColumns[0] {
 		return drop("it does not reference the single-column primary key of " + fk.RefTable)
 	}
 	f := m.byCol[fk.Columns[0]]
 	if f == nil {
 		return drop("its column is not modeled")
-	}
-	if want := t.Name + "_" + fk.Columns[0] + "_fkey"; fk.Name != want {
-		return drop("its name differs from the derived name " + want)
 	}
 	if !fkActions[fk.OnDelete] || !fkActions[fk.OnUpdate] {
 		return drop("its referential action is not supported")
@@ -697,6 +741,12 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		return drop("the column types differ")
 	}
 	opts := []string{"belongs_to", "fk:" + f.name}
+	if want := t.Name + "_" + fk.Columns[0] + "_fkey"; fk.Name != want {
+		if !fkNameOK.MatchString(fk.Name) {
+			return drop("its name " + fk.Name + " cannot be written in a struct tag")
+		}
+		opts = append(opts, "fk_name:"+fk.Name)
+	}
 	for _, a := range []struct{ key, val string }{{"on_delete", fk.OnDelete}, {"on_update", fk.OnUpdate}} {
 		if a.val != "" {
 			opts = append(opts, a.key+":"+strings.ToLower(strings.ReplaceAll(a.val, " ", "_")))
@@ -716,6 +766,44 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	rel = uniqueName(m.used, rel)
 	m.rels = append(m.rels, &relation{name: rel, target: target.name, opts: opts})
 	return true
+}
+
+// compositeForeignKey declares a multi-column foreign key with a
+// c.ForeignKey statement. It reports whether it did; drop explains why not.
+func (g *generator) compositeForeignKey(m *model, target *model, fk schema.ForeignKey, drop func(string) bool) bool {
+	if len(fk.Columns) != len(fk.RefColumns) || len(fk.Columns) == 0 {
+		return drop("its column lists differ in length")
+	}
+	if !fkActions[fk.OnDelete] || !fkActions[fk.OnUpdate] {
+		return drop("its referential action is not supported")
+	}
+	refs, ok := m.refs(fk.Columns)
+	if !ok {
+		return drop("a column is not modeled")
+	}
+	for _, c := range fk.RefColumns {
+		if colByName(target.t, c) == nil {
+			return drop("the referenced column " + c + " is not modeled")
+		}
+	}
+	s := "c.ForeignKey(" + strconv.Quote(fk.Name) + ", []any{" + strings.Join(refs, ", ") + "}, " +
+		strconv.Quote(fk.RefTable) + ", []string{" + quoteAll(fk.RefColumns) + "})"
+	if fk.OnDelete != "" {
+		s += ".OnDelete(" + strconv.Quote(fk.OnDelete) + ")"
+	}
+	if fk.OnUpdate != "" {
+		s += ".OnUpdate(" + strconv.Quote(fk.OnUpdate) + ")"
+	}
+	m.stmts = append(m.stmts, s)
+	return true
+}
+
+func quoteAll(in []string) string {
+	out := make([]string, len(in))
+	for i, s := range in {
+		out[i] = strconv.Quote(s)
+	}
+	return strings.Join(out, ", ")
 }
 
 func colByName(t *schema.Table, name string) *schema.Column {
@@ -748,17 +836,19 @@ func (g *generator) index(m *model, ix schema.Index) bool {
 			exprs++
 		}
 	}
-	allExpr := exprs == len(ix.Parts)
-	if cols != len(ix.Parts) && !allExpr {
-		return drop("it mixes columns and expressions")
+	if cols+exprs != len(ix.Parts) {
+		return drop("a key part is neither a column nor an expression")
 	}
+	// An index with any expression is written with IndexExpr, which takes the
+	// expressions and the plain column names as strings.
+	allExpr := exprs > 0
 	if allExpr {
-		if ix.Unique {
-			return drop("a unique expression index has no declaration")
-		}
 		for _, p := range ix.Parts {
 			if p.Desc || p.Nulls != "" || p.OpClass != "" {
-				return drop("an expression key with an order or operator class has no declaration")
+				return drop("a key with an order or operator class has no declaration next to an expression")
+			}
+			if p.Column != "" && (!plainIdent(p.Column) || m.byCol[p.Column] == nil) {
+				return drop("it uses a column the models do not have, or one whose name is not a plain identifier")
 			}
 		}
 	} else if _, ok := m.refs(partColumns(ix.Parts)); !ok {
@@ -772,6 +862,20 @@ func (g *generator) index(m *model, ix schema.Index) bool {
 		return true
 	}
 	m.stmts = append(m.stmts, indexStmt(m, ix, method, allExpr))
+	return true
+}
+
+// plainIdent reports whether s is a lower-case identifier that needs no
+// quoting, so an IndexExpr string naming it is read back as the column.
+func plainIdent(s string) bool {
+	if s == "" || s[0] >= '0' && s[0] <= '9' {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_') {
+			return false
+		}
+	}
 	return true
 }
 
@@ -842,7 +946,11 @@ func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
 	if allExpr {
 		call = "c.IndexExpr"
 		for _, p := range ix.Parts {
-			args = append(args, strconv.Quote(p.Expr))
+			if p.Column != "" {
+				args = append(args, strconv.Quote(p.Column))
+			} else {
+				args = append(args, strconv.Quote(p.Expr))
+			}
 		}
 	} else {
 		if ix.Unique {
@@ -859,6 +967,10 @@ func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
 	}
 	s += ")"
 	opts := 0
+	if allExpr && ix.Unique {
+		s += ".Unique()"
+		opts++
+	}
 	if ix.Where != "" {
 		s += ".Where(" + strconv.Quote(ix.Where) + ")"
 		opts++

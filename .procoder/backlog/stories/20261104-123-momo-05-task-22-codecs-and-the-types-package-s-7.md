@@ -1,10 +1,9 @@
 # momo-05 Task 22: Codecs and the types package (S-73)
 
-Status: open
+Status: done
 Created: 2026-11-04
 Epic: momo-05-writes-queries
-Sprint: -
-Carried: 002-generator-from-go-structs-with-its-type-prerequisites — S-73 requires every dialect; only PostgreSQL exists so far. Carried until the SQLite and MySQL dialects land.
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 
@@ -13,7 +12,7 @@ Implements plan momo-05-writes-queries Task 22: Codecs and the types package (S-
 ## Acceptance criteria
 
 - [x] `TestCodecsRoundTrip` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-73] `TestCodecsRoundTrip` round-trips each type on every dialect; fails if a codec's SQL type and encoding disagree.
+- [x] [S-73] `TestCodecsRoundTrip` round-trips each type on every dialect; fails if a codec's SQL type and encoding disagree.
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
@@ -34,3 +33,7 @@ Implements plan momo-05-writes-queries Task 22: Codecs and the types package (S-
 - Mutation check, all killed by `TestCodecsRoundTripLive/postgres`: Date SQLType `date`->`int`; UUID `uuid`->`int`; Hstore `hstore`->`jsonb`; TimeOfDay microsecond truncation changed to millisecond. A changed date layout (`2006/01/02`) survived because PostgreSQL accepts and normalises it; the `%06d` -> `%03d` mutant is equivalent.
 - Fuzz targets added in `types/codec_fuzz_test.go`: `FuzzUUIDScan`, `FuzzTimeOfDayScan`, `FuzzDateScan`, `FuzzJSONScan` (15s each, no failures); `FuzzHstore` already existed. No decoder allocates from or narrows a wire integer.
 - Gates: `make fmt-check vet staticcheck gosec tidy-check` exit 0.
+
+### Every dialect (sprint 7)
+
+- SQLite and MySQL now exist. TestCodecsRoundTripLive runs on PostgreSQL and SQLite through testopen.Each; new TestCodecsRoundTripLiveMySQL runs the same round trip on mysql84, mysql97 and mariadb (CAST AS CHAR for the text view). All pass in run 42769037273 (ci-agent, headSha 4d04a3d, all jobs green).

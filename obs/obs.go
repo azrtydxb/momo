@@ -2,12 +2,14 @@
 
 // Package obs holds ready-made observability hooks for Momo: a Recorder that
 // keeps every statement and relation load, an NPlusOne detector that reports a
-// relation loaded once per row. For log/slog use package momolog, whose hook
+// relation loaded once per row, and a slow-query hook (NewSlowQuery) that can
+// capture a plain EXPLAIN plan. For log/slog use package momolog, whose hook
 // also logs relation loads.
 //
-// Both hooks implement momo.Hook and momo.RelationHook, so one momo.WithHook
-// call registers them for statement events and relation load events. Both are
-// safe for concurrent use, as the hook contract requires.
+// The Recorder and NPlusOne implement momo.Hook and momo.RelationHook, so one
+// momo.WithHook call registers them for statement events and relation load
+// events. All three are safe for concurrent use, as the hook contract
+// requires.
 //
 // The hooks see the argument values the DB hands to every hook: nil unless the
 // DB was opened with momo.WithArgLogging, and with the value bound from a
