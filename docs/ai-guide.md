@@ -734,9 +734,9 @@ combinators `momo.And`, `momo.Or`, `momo.Not`, `momo.Like`, `momo.ILike`,
 `Eq(nil)` is not expressible.
 
 Array columns (a PostgreSQL type). A `[]string` field is generated as `text[]`;
-`[]int16`, `[]int32`, `[]int64`, `[]bool`, `[]float32` and `[]float64` map to
-`smallint[]`, `integer[]`, `bigint[]`, `boolean[]`, `real[]` and
-`double precision[]`. The predicates are generic functions over a typed column,
+`[]int16`, `[]int32`, `[]int64`, `[]bool`, `[]float32`, `[]float64` and
+`[]types.UUID` map to `smallint[]`, `integer[]`, `bigint[]`, `boolean[]`,
+`real[]`, `double precision[]` and `uuid[]`. The predicates are generic functions over a typed column,
 in the package `github.com/azrtydxb/momo/arrayop`:
 `arrayop.Contains(col, vals...)` (`@>`), `arrayop.ContainedBy` (`<@`),
 `arrayop.Overlaps` (`&&`) and `arrayop.AnyOf(scalarCol, vals...)`

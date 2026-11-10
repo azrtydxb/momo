@@ -17,6 +17,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/types"
 )
 
 // build returns the predicate left op $n, or left = ANY($n) when op is empty,
@@ -33,15 +34,27 @@ func build(feature string, left momo.Expr, op string, vals any) momo.Predicate {
 			return
 		}
 		fl := b.RenderSensitive(left, momo.FlagsOf(left))
+		cast := castFor(vals)
 		if op == "" {
 			b.WriteString(" = ANY(")
 			b.ArgFor(fl, vals)
-			b.WriteString(")")
+			b.WriteString(cast + ")")
 			return
 		}
 		b.WriteString(op)
 		b.ArgFor(fl, vals)
+		b.WriteString(cast)
 	})
+}
+
+// castFor is the explicit array cast the bind carries. A uuid array is cast
+// ($1::uuid[]) so the server types the parameter even where it cannot infer it
+// from the other operand; the other element types infer fine and stay bare.
+func castFor(vals any) string {
+	if _, ok := vals.([]types.UUID); ok {
+		return "::uuid[]"
+	}
+	return ""
 }
 
 // boundSlice clones vs and turns nil into an empty slice, which binds as an

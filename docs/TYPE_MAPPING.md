@@ -65,6 +65,7 @@ has no array columns, so the generator rejects them there.
 | `[]bool`                     | boolean[]                | unsupported | unsupported |
 | `[]float32`                  | real[]                   | unsupported | unsupported |
 | `[]float64`                  | double precision[]       | unsupported | unsupported |
+| `[]types.UUID`               | uuid[]                   | unsupported | unsupported |
 
 <!-- /generated:typemap -->
 
@@ -163,14 +164,18 @@ except `NaN`, which SQLite does not have (see Floats).
 - `[]string` on `text[]`: elements containing commas, quotes, the text `NULL`,
   or empty strings round-trip; an empty slice reads back empty.
 - Slices as arrays: only `[]string`, `[]int16`, `[]int32`, `[]int64`, `[]bool`,
-  `[]float32` and `[]float64` map. `[]int` is not mapped, because its width is
+  `[]float32`, `[]float64` and `[]types.UUID` (`uuid[]`) map. A `[]uuid.UUID` from
+  github.com/google/uuid does not: the scalar `uuid.UUID` has no mapping either,
+  so use `types.UUID` or a `type:` override. `[]int` is not mapped, because its width is
   platform dependent; use `[]int64`. `[]string` with a `size` tag becomes
   `character varying(N)[]`. A nil slice binds as NULL, so inserting it into a
   `NOT NULL` array column fails with a not-null violation; pass an empty
   non-nil slice (it stores `{}`), or give the column a `default '{}'` and omit
   it. The array predicates bind a nil value list as an empty array, never NULL.
 - Slices as arrays: only `[]string`, `[]int16`, `[]int32`, `[]int64`, `[]bool`,
-  `[]float32` and `[]float64` map. `[]int` is not mapped, because its width is
+  `[]float32`, `[]float64` and `[]types.UUID` (`uuid[]`) map. A `[]uuid.UUID` from
+  github.com/google/uuid does not: the scalar `uuid.UUID` has no mapping either,
+  so use `types.UUID` or a `type:` override. `[]int` is not mapped, because its width is
   platform dependent; use `[]int64`. `[]string` with a `size` tag becomes
   `character varying(N)[]`. A nil slice binds as NULL, so inserting it into a
   `NOT NULL` array column fails with a not-null violation; pass an empty

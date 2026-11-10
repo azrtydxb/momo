@@ -27,7 +27,7 @@ func TestSliceFieldsMapToArrayColumns(t *testing.T) {
 	}
 	for col, want := range map[string]string{
 		"products": "text[]", "scores": "integer[]", "counts": "bigint[]",
-		"flags": "boolean[]", "weights": "double precision[]", "aliases": "text[]",
+		"flags": "boolean[]", "weights": "double precision[]", "aliases": "text[]", "teams": "uuid[]",
 	} {
 		c, found := tbl.Column(col)
 		if !found || c.Type != want {
@@ -47,6 +47,7 @@ func TestSliceFieldsMapToArrayColumns(t *testing.T) {
 		`momo.NewColumn[[]string](q, "products"`,
 		`momo.NewColumn[[]int32](q, "scores"`,
 		`momo.NewColumn[[]float64](q, "weights"`,
+		`momo.NewColumn[[]types.UUID](q, "teams"`,
 	} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("descriptors lack %q:\n%s", want, src)

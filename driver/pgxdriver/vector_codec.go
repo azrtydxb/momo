@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
+	"github.com/azrtydxb/momo/types"
 	"github.com/azrtydxb/momo/vector"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -149,6 +151,7 @@ func oidFromInt64(v int64) (uint32, error) {
 // NULL). Values that fail validation are left as they
 // are so the error surfaces from the usual path.
 func convertVectorArgs(f VectorFormat, args []any) []any {
+	args = convertUUIDArrayArgs(args)
 	if f != VectorText {
 		return args
 	}
@@ -609,4 +612,32 @@ func halfToFloat32(h uint16) float32 {
 		return math.Float32frombits(sign | 0x7f800000 | mant<<13)
 	}
 	return math.Float32frombits(sign | (exp+127-15)<<23 | mant<<13)
+}
+
+// convertUUIDArrayArgs sends a []types.UUID as a uuid[] text literal. pgx
+// cannot encode the elements (types.UUID is a driver.Valuer, which pgx only
+// honours for scalars), and an unprepared exec has no registered Go type for
+// the slice. The server types the text literal from the other operand, so it
+// binds as uuid[] either way. A nil slice stays nil and binds as NULL; the
+// input slice is not modified.
+func convertUUIDArrayArgs(args []any) []any {
+	var out []any
+	for i, a := range args {
+		us, ok := a.([]types.UUID)
+		if !ok || us == nil {
+			continue
+		}
+		parts := make([]string, len(us))
+		for j, u := range us {
+			parts[j] = u.String()
+		}
+		if out == nil {
+			out = append([]any(nil), args...)
+		}
+		out[i] = "{" + strings.Join(parts, ",") + "}"
+	}
+	if out == nil {
+		return args
+	}
+	return out
 }
