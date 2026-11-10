@@ -17,3 +17,5 @@ Implements plan momo-02-generator Task 24: Generated-code size and compile-time 
 
 ## Evidence
 
+Carry reason: superseded by a different design that shipped. Generated-code size and compile cost (the S-19 half this task delivers) is measured by `bench/codesize` (`Measure` at bench/codesize/codesize.go:37 reports generated files, bytes, lines and the median package compile time) with the command in `bench/cmd/codesize/main.go:16`, and `TestCodeSizeReport` (bench/codesize/codesize_test.go:13) pins the report. The plan's `internal/tools/genstats`, `TestGenStatsOutput` and `bench/generated-code/README.md` would duplicate it with a second JSON schema and do not fit the bench module layout (the plan's `package genstats` test next to a `main` is also not buildable as written). Criteria left unticked for the integrator to carry.
+

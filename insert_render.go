@@ -12,6 +12,10 @@ import (
 )
 
 func (q InsertQuery[T]) render(b *Builder) {
+	if err := viewWriteErr("insert", q.meta); err != nil {
+		b.SetErr(err)
+		return
+	}
 	if q.i.err != nil {
 		b.SetErr(q.i.err)
 		return

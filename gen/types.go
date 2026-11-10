@@ -94,6 +94,12 @@ type Model struct {
 	// Projection is set for a struct that embeds momo.Projection: it has
 	// Fields but no Table, Relations, Indexes or companion.
 	Projection bool
+	// Hooks names the detected hook methods (BeforeInsert, BeforeUpdate,
+	// BeforeDelete, AfterLoad).
+	Hooks map[string]bool
+	// IsView is set for a model that embeds momo.View: it maps a database
+	// view and Meta.View makes every write builder refuse it.
+	IsView bool
 
 	named *types.Named
 }

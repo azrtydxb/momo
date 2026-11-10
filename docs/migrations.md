@@ -1,7 +1,7 @@
 # Migration safety and recovery
 
 Momo v0.4.0, PostgreSQL (SQLite and MySQL as libraries, sections 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
-`migrate/`, `cmd/momo/`, `schema/` and `dialect/`; the tests that pin a
+`migrate/`, `cli/`, `schema/` and `dialect/`; the tests that pin a
 behavior are named. For the first run see README, [Create and apply the
 migration](../README.md#3-create-and-apply-the-migration).
 

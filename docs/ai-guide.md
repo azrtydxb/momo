@@ -582,6 +582,42 @@ type Event struct {
   sequence on a column that is not identity or serial). It never writes it for
   other dialects: plain MySQL cannot read the value back.
 
+### Model hooks
+
+Give a model a method named `BeforeInsert`, `BeforeUpdate`, `BeforeDelete` or
+`AfterLoad` with the exact signature `func(context.Context) error` and
+`momo generate` wires it into `Meta.Hooks`; nothing else to register. A method
+with a hook name and another signature fails the generator with a positioned
+diagnostic, and a hook-named method on a projection is a diagnostic too
+(projections run no hooks). The semantics (which builders run which hook, the
+copy `BeforeInsert` receives, the error kind) are in the `HookSet`
+documentation. DON'T edit `Meta.Hooks` in generated code.
+
+### View models
+
+A model that maps a database view embeds `momo.View` next to `momo.Model`:
+
+```text
+type ActiveUser struct {
+	momo.Model `momo:"table:active_users"`
+	momo.View
+	ID int64 `momo:"pk"`
+}
+```
+
+The generator sets `Meta.View`. Reads work as for any model; `Insert`,
+`Upsert`, `Update`, `SoftDelete`, `BulkUpdate`, `Delete` and `Merge` return
+`ErrValidation` naming the model, at run time (there is no compile-time
+check). Declare the view itself with `c.View(schema.View{...})` in
+`MomoConfig`.
+
+### Custom generator binary
+
+The `momo` binary runs no custom plugins. To run your own `gen.Plugin`, write a
+`main` that calls `cli.Main(plugins...)` from `github.com/azrtydxb/momo/cli`
+and build it; it behaves as `momo` does and the plugins are enabled by name in
+the `plugins` section of `momo.yaml`.
+
 ### Projections
 
 A projection reads a column subset or aggregate into a non-table struct. Embed

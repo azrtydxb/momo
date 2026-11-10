@@ -54,7 +54,7 @@ func tenantDB(drv momo.Driver, tenantID int64) *momo.DB {
 }
 ```
 
-Inserts are not filtered by a predicate: the tenant column of a new row is the model's own value, so set it in a `BeforeInsert` model hook and do not trust the caller to set it. `BeforeInsert` runs only for `Model` and `Models` inserts: `InsertQuery.Values`, `ValuesRows` and `FromSelect` inserts have no model and skip it, so a tenant handle that relies on the hook must also deny those forms, or deny inserts altogether and write through a trusted handle.
+Inserts are not filtered by a predicate: the tenant column of a new row is the model's own value, so set it in a `BeforeInsert` model method (`func (m *Model) BeforeInsert(ctx context.Context) error`, wired into `Meta.Hooks` by `momo generate`) and do not trust the caller to set it. `BeforeInsert` runs only for `Model` and `Models` inserts: `InsertQuery.Values`, `ValuesRows` and `FromSelect` inserts have no model and skip it, so a tenant handle that relies on the hook must also deny those forms, or deny inserts altogether and write through a trusted handle.
 
 A read-only handle denies every write:
 
@@ -105,4 +105,4 @@ For isolation that holds even when application code is wrong, use database row-l
 ## Related
 
 - Sensitive columns are masked in hook events: bound values of columns tagged sensitive reach hooks as `momo.RedactedArg`.
-- Typed model hooks (`Meta.Hooks`) change values on a model before a write and after a read; see the `HookSet` documentation for how to set them and for what a Before hook may leave behind when a statement then fails.
+- Typed model hooks (`Meta.Hooks`) change values on a model before a write and after a read; `momo generate` fills them from model methods named `BeforeInsert`, `BeforeUpdate`, `BeforeDelete` and `AfterLoad` with the signature `func(context.Context) error`, so there is nothing to set by hand; see the `HookSet` documentation for the semantics and for what a Before hook may leave behind when a statement then fails.

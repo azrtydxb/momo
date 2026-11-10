@@ -15,6 +15,21 @@ import "github.com/azrtydxb/momo/schema"
 // It is zero-sized and has no behavior at runtime.
 type Model struct{}
 
+// View is embedded next to Model in a struct that maps a database view or
+// materialized view. The generator records it in Meta.View, and every write
+// builder (Insert, Upsert, Update, SoftDelete, BulkUpdate, Delete, Merge)
+// then fails with ErrValidation naming the model; reads work as for any
+// model. Declare the view itself in the model's MomoConfig with c.View.
+//
+//	type ActiveUser struct {
+//	    momo.Model `momo:"table:active_users"`
+//	    momo.View
+//	    ID int64 `momo:"pk"`
+//	}
+//
+// It is zero-sized and has no behavior at runtime.
+type View struct{}
+
 // Projection is embedded in a struct to declare it a result type for typed
 // projections. Its fields are scanned positionally from the select list.
 type Projection struct{}
@@ -84,6 +99,19 @@ type Meta[T any] struct {
 	// Hooks are the typed model hooks the write and read builders call. See
 	// HookSet.
 	Hooks HookSet[T]
+	// View marks a model backed by a database view. Generated code sets it
+	// for a model that embeds View. Insert, Upsert, Update, SoftDelete,
+	// BulkUpdate, Delete and Merge refuse such a model with ErrValidation.
+	View bool
+}
+
+// viewWriteErr is the ErrValidation error of a write to a view model, or nil
+// when meta is not a view.
+func viewWriteErr[T any](op string, meta *Meta[T]) error {
+	if meta == nil || !meta.View {
+		return nil
+	}
+	return validation(op, meta.Table, "%T is a view model and cannot be written", *new(T))
 }
 
 // Modeler is implemented (by generated code) on pointers to model and

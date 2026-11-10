@@ -5,7 +5,9 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
-## Regenerating with `--from-db` after the `dbdefault` tag
+## Upgrading to 0.5.0
+
+### Regenerating with `--from-db` after the `dbdefault` tag
 
 `momo generate --from-db` now adds the `dbdefault` tag to every NOT NULL
 PostgreSQL column whose default is computed (`gen_random_uuid()`, `now()`,
@@ -19,13 +21,39 @@ or remove the tag), and a plain MySQL database refuses a zero value with
 are unaffected until they add the tag. See "Database defaults" in the
 [AI guide](ai-guide.md).
 
-## Unreleased: advisory string helpers take options
+### Advisory string helpers take options
 
 `advisory.XactLockString` and `advisory.TryXactLockString` take a trailing
 `...advisory.Option` (for `advisory.Hash64`). A call site is unchanged, but
 the function types changed: code that assigns one of these functions to a
 variable or field of the old func type no longer compiles. Wrap the call in a
 closure instead.
+
+### Model hook methods are now wired by `momo generate`
+
+`momo generate` detects methods named `BeforeInsert`, `BeforeUpdate`,
+`BeforeDelete` and `AfterLoad` on a model and fills `Meta.Hooks` with them.
+Two behaviors change for an existing model after you regenerate:
+
+- A method with one of these names and the exact signature
+  `func(context.Context) error` now runs: before inserts, updates and deletes,
+  and after loads. Before, such a method was never called. If you had a method
+  with a hook name that was meant as plain code, rename it before you
+  regenerate.
+- A method with one of these names and any other signature makes
+  `momo generate` fail with a positioned diagnostic
+  (`hook BeforeInsert on Doc must have signature func(context.Context) error`),
+  and a hook-named method on a projection is a diagnostic as well (a projection
+  runs no hooks). Fix the signature or rename the method.
+
+If you set `Meta.Hooks` by hand in a hand-written `Meta`, nothing changes.
+Generated files are rewritten by `momo generate`; the `Hooks:` field appears
+only for models that have a hook method.
+
+### View models
+
+A model that embeds `momo.View` (new) is marked as a view. Its writes fail with
+`ErrValidation`. Existing models are unaffected unless you add the marker.
 
 ## Upgrading to 0.4.0
 
