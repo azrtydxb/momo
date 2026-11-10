@@ -1,6 +1,6 @@
 # momo-05 Task 23: Documented type mapping with round-trip test per mapping (S-31)
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -11,7 +11,7 @@ Implements plan momo-05-writes-queries Task 23: Documented type mapping with rou
 
 ## Acceptance criteria
 
-- [ ] `TestTypeMapping` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestTypeMapping` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-31] `TestTypeMapping` round-trips one value (including edge values: max int64, NaN where legal, pre-1970 time, non-UTC zone) per mapping in the documented table on both dialects; fails if a documented mapping is untested.
 - [x] `procoder check` gate is clean and the task's commit is made (gate: 0 blocking; make fmt-check vet staticcheck gosec tidy-check exit 0)
 
@@ -35,3 +35,6 @@ the plan's SQLite NaN `ErrValidation` float64 codec validator does not exist.
 - Criterion 2 ticked: TestTypeMapping now also round-trips every documented SQLite column (rows marked unsupported/n/a skipped; NaN skipped on SQLite) on a live SQLite; TestTypeMappingNaNSQLite pins that NaN is stored as NULL and +Inf survives. MySQL: the document lists every Go type as unsupported (the generator emits no MySQL models), so there is no MySQL mapping to test. Run 42769037273 (ci-agent, headSha 4d04a3d, all jobs green).
 - Criterion 1 (red-first) stays unticked: the mapping pre-existed the tests.
 - Decision (user, .procoder/ask/decisions.md): SQLite rejects a bound float NaN with ErrValidation. Built in internal/sqlshared/args.go (checkArgs, called from every pool, transaction, pinned and read-only query and exec, so both the cgo and the pure driver); TestTypeMappingNaNSQLite asserts it and docs/TYPE_MAPPING.md states it.
+
+- Red-first proof (sprint 7, 2026-11-10): throwaway branch worktree-agent-aa035f65774515fc5-red (deleted since), commit 3e78a08, kept the tests and broke the implementation. ci-agent run 42827833696, integration (postgres) job: TestTypeMapping/postgres/types.Date failed (types.Date.Scan shifted a day). Criterion 1 is ticked on that proof; the test was written after the mapping.
+- Green: ci-agent run 42827849607, headSha 326e54e, all 9 jobs success.
