@@ -109,6 +109,9 @@ func (d DeleteQuery[T]) fail(kind error, err error) error {
 
 // plan resolves the WHERE predicates and applies the guardrail.
 func (d DeleteQuery[T]) plan() ([]Predicate, error) {
+	if err := viewWriteErr("delete", d.meta); err != nil {
+		return nil, err
+	}
 	if d.meta.Table == "" {
 		return nil, d.fail(ErrValidation, errors.New("model has no table"))
 	}

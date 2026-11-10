@@ -6,12 +6,9 @@ package postgres_test
 
 import (
 	"context"
-	"errors"
 	"slices"
-	"strings"
 	"testing"
 
-	"github.com/azrtydxb/momo"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
@@ -153,18 +150,46 @@ func TestPostgresObjectInspectionDetails(t *testing.T) {
 	}
 }
 
-func TestPostgresInspectTriggerUpdateOfUnsupported(t *testing.T) {
+func TestPostgresInspectTriggerUpdateOf(t *testing.T) {
 	db := testopen.Postgres(t)
 	d := db.Driver()
-	mustExec(t, d, `CREATE TABLE t1 (a int, b int)`)
-	mustExec(t, d, `CREATE FUNCTION touch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$`)
-	mustExec(t, d, `CREATE TRIGGER t1_upd BEFORE UPDATE OF a ON t1 FOR EACH ROW EXECUTE FUNCTION touch()`)
-	_, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{})
-	if !errors.Is(err, momo.ErrUnsupported) {
-		t.Fatalf("err = %v, want ErrUnsupported", err)
+	mustExec(t, d, `CREATE TABLE submission (id bigint, state text, other text)`)
+	mustExec(t, d, `CREATE FUNCTION submission_event_state() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$`)
+	mustExec(t, d, `CREATE TRIGGER submission_event_upd AFTER UPDATE OF state ON submission
+    FOR EACH ROW WHEN (OLD.state IS DISTINCT FROM NEW.state) EXECUTE FUNCTION submission_event_state()`)
+	mustExec(t, d, `CREATE TRIGGER submission_multi BEFORE INSERT OR UPDATE OF state, other ON submission FOR EACH ROW EXECUTE FUNCTION submission_event_state()`)
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "t1_upd") {
-		t.Fatalf("error must name the trigger: %v", err)
+	byName := map[string]schema.Trigger{}
+	for _, tr := range got.Triggers {
+		byName[tr.Name] = tr
+	}
+	if u := byName["submission_event_upd"]; !slices.Equal(u.UpdateOf, []string{"state"}) || u.When == "" || !slices.Equal(u.Events, []string{"UPDATE"}) {
+		t.Fatalf("submission_event_upd: %+v", u)
+	}
+	if u := byName["submission_multi"]; !slices.Equal(u.UpdateOf, []string{"state", "other"}) || !slices.Equal(u.Events, []string{"INSERT", "UPDATE"}) {
+		t.Fatalf("submission_multi: %+v", u)
+	}
+}
+
+// Catches: an object matched by Exclude still being read, so one the model
+// cannot represent would fail the whole inspection.
+func TestPostgresInspectExcludeSkipsTrigger(t *testing.T) {
+	db := testopen.Postgres(t)
+	d := db.Driver()
+	mustExec(t, d, `CREATE TABLE t1 (a int)`)
+	mustExec(t, d, `CREATE TABLE t2 (a int)`)
+	mustExec(t, d, `CREATE FUNCTION touch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$`)
+	mustExec(t, d, `CREATE TRIGGER t1_upd BEFORE UPDATE ON t1 FOR EACH ROW EXECUTE FUNCTION touch()`)
+	mustExec(t, d, `CREATE TRIGGER t2_upd BEFORE UPDATE ON t2 FOR EACH ROW EXECUTE FUNCTION touch()`)
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{Exclude: []string{"t1_upd", "t2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Triggers) != 0 {
+		t.Fatalf("both triggers are excluded, by name and by table: %+v", got.Triggers)
 	}
 }
 

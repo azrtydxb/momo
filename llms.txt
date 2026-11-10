@@ -37,6 +37,7 @@ A database is usable when a driver package for it exists under `driver/`:
 
 - INSERT ... SELECT: `InsertQuery[T].FromSelect` with `SelectExprs` or `Select[T]` as the source; composes with `OnConflict`, `Returning` and `Upsert`.
 - Typed expressions: `momo.Func` and, in package `sqlfn`, `sqlfn.Case`, `sqlfn.Cast`, `sqlfn.Concat` and the arithmetic helpers `sqlfn.Add`, `sqlfn.Sub` and `sqlfn.Mul` work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr` without `momo.SQL`. Date/time (package `timeop`): `timeop.Extract`, `timeop.AtTimeZone`, `timeop.Trunc`, `timeop.Now`, `timeop.AddInterval`/`timeop.SubInterval`; `JoinSQL` composes raw fragments.
+- Database defaults: the `dbdefault` tag leaves a zero-valued column out of `Model`/`Models` inserts so the database default applies, and reads the stored value back with RETURNING.
 - Serial ids: the `serial` tag on an int field gives a PostgreSQL serial column, omitted from inserts and read back with RETURNING.
 
 ## Examples

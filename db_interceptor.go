@@ -49,7 +49,7 @@ type Operation struct {
 // primary table is filtered); the association helpers (Link, Unlink, Replace
 // and the like); subqueries and other sources rendered inside a statement
 // (subquery operands, UPDATE ... FROM, the FromSelect source of an insert);
-// raw SQL of any kind (Exec, MapRows, Scalars, SQL fragments and RawSubquery);
+// raw SQL of any kind (Exec, MapRows, Scalars, Query, QueryRows, SQL fragments and RawSubquery);
 // the raw driver CopyFrom (InsertQuery.Copy does run the insert interceptors,
 // deny only); and anything run on the driver directly. A predicate an
 // interceptor adds to an insert, a Copy or a Truncate is ignored, and one added

@@ -74,6 +74,9 @@ func (q InsertQuery[T]) execOne(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if cols := q.dbDefaultReadBack(); len(cols) > 0 {
+		return q.execReadBack(ctx, cols)
+	}
 	if q.wantsGeneratedKey() {
 		n, id, err := q.q.conn().execInsertID(ctx, "insert", q.meta.Table, c)
 		if err != nil {
@@ -145,11 +148,15 @@ func (q InsertQuery[T]) rowsOne(ctx context.Context) (*ModelRows[T], error) {
 // query itself when no split is needed (or when rendering will report the
 // error), so validation errors keep their single-statement form.
 func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
+	if err := viewWriteErr("insert", q.meta); err != nil {
+		return nil, err
+	}
 	q, err := q.generateIDs(true)
 	if err != nil {
 		return nil, err
 	}
 	q.idsDone = true
+	q = q.withDBD() // after hooks and ids: the plan is computed once and sliced per chunk
 	one := []InsertQuery[T]{q}
 	if q.i.unnest {
 		return one, nil // one array parameter per column: the bind count does not grow with the rows
@@ -174,6 +181,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	if err != nil || len(cols) == 0 {
 		return one, nil
 	}
+	r.i.fixedCols = cols // every chunk writes the columns of the whole set
 	r.clock = q.q.conn().now()
 	// Compute and validate every row before the first chunk runs, so a bad
 	// row late in a bulk insert executes nothing. The computed values are
@@ -189,6 +197,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	}
 	probe := r
 	probe.models = r.models[:1]
+	probe.dbd = r.dbd.slice(0, 1)
 	if r.pre != nil {
 		probe.pre = r.pre[:1]
 	}
@@ -196,7 +205,13 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	if err != nil {
 		return one, nil
 	}
-	fixed := len(c1.Args) - len(cols) // parameters outside the VALUES rows
+	bound := 0 // cells the probe row binds: a dbdefault cell writes DEFAULT, no parameter
+	for _, ci := range cols {
+		if !probe.dbDefaultRow(0, ci) {
+			bound++
+		}
+	}
+	fixed := len(c1.Args) - bound // parameters outside the VALUES rows
 	per := (d.MaxParams - fixed) / len(cols)
 	if per < 1 {
 		return nil, &Error{Kind: ErrLimitExceeded, Op: "insert", Table: q.meta.Table,
@@ -214,6 +229,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		c := r
 		hi := min(lo+per, len(r.models))
 		c.models = r.models[lo:hi]
+		c.dbd = r.dbd.slice(lo, hi)
 		if len(r.back) == len(r.models) {
 			c.back = r.back[lo:hi]
 		}

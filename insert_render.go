@@ -12,6 +12,10 @@ import (
 )
 
 func (q InsertQuery[T]) render(b *Builder) {
+	if err := viewWriteErr("insert", q.meta); err != nil {
+		b.SetErr(err)
+		return
+	}
 	if q.i.err != nil {
 		b.SetErr(q.i.err)
 		return
@@ -28,6 +32,7 @@ func (q InsertQuery[T]) render(b *Builder) {
 		b.SetErr(err)
 		return
 	}
+	q = q.withDBD()
 	if len(q.i.with) > 0 && b.d.Name == dialect.MySQL {
 		// MySQL and MariaDB accept WITH only before SELECT, UPDATE and DELETE.
 		b.unsupported("WITH before INSERT (put the WITH inside FromSelect's select)")
@@ -234,10 +239,12 @@ func (q InsertQuery[T]) writeModelRows(b *Builder, p insertPlan[T]) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			if p.vals != nil {
+			if q.dbDefaultRow(r, ci) {
+				b.WriteString("DEFAULT") // a dbdefault column of a row that sets others
+			} else if p.vals != nil {
 				b.argFor(q.meta.Columns[ci].Flags, p.vals[r][i])
 			} else {
-				b.argFor(q.meta.Columns[ci].Flags, q.modelValue(&q.models[r], ci, p.now, p.fp))
+				b.argFor(q.meta.Columns[ci].Flags, q.modelValue(r, ci, p.now, p.fp))
 			}
 		}
 		b.writeByte(')')
@@ -363,6 +370,9 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPla
 
 // modelCols returns the columns a model insert writes, in metadata order.
 func (q InsertQuery[T]) modelCols(fp fieldPlan[T]) ([]int, error) {
+	if q.i.fixedCols != nil {
+		return q.i.fixedCols, nil
+	}
 	omit := map[int]struct{}{}
 	for _, n := range q.i.omit {
 		ci := q.column(n)
@@ -379,7 +389,13 @@ func (q InsertQuery[T]) modelCols(fp fieldPlan[T]) ([]int, error) {
 		case skip && hasDefault && q.writable(i):
 			cols = append(cols, i) // omitted, so the Go-side default is written
 		case !skip && (q.writable(i) || q.insertsIdentity(i)):
-			cols = append(cols, i)
+			drop, err := q.dbDefaultDecision(i)
+			if err != nil {
+				return nil, err
+			}
+			if !drop {
+				cols = append(cols, i)
+			}
 		}
 	}
 	return cols, nil
@@ -408,9 +424,13 @@ func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) (
 // modelValue is the value a model insert binds for column ci: the field value,
 // except that an unset created-at or updated-at field takes the statement time
 // and an omitted column takes its Go-side default.
-func (q InsertQuery[T]) modelValue(m *T, ci int, now time.Time, fp fieldPlan[T]) any {
+func (q InsertQuery[T]) modelValue(r, ci int, now time.Time, fp fieldPlan[T]) any {
+	m := &q.models[r]
 	if f, ok := fp.def[ci]; ok && slices.Contains(q.i.omit, q.meta.Columns[ci].Name) {
 		return f(m)
+	}
+	if q.dbDefaultRow(r, ci) {
+		return nil // DEFAULT: validators see the same nil as for an omitted column
 	}
 	v := q.meta.Value(m, ci)
 	if (ci == q.meta.CreatedAt || ci == q.meta.UpdatedAt) && timestampUnset(v) {
@@ -528,7 +548,7 @@ func (q InsertQuery[T]) modelValues(fp fieldPlan[T], cols []int, now time.Time) 
 	for r := range q.models {
 		row := make([]any, len(cols))
 		for i, ci := range cols {
-			row[i] = q.modelValue(&q.models[r], ci, now, fp)
+			row[i] = q.modelValue(r, ci, now, fp)
 		}
 		vals[r] = row
 	}

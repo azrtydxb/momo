@@ -43,6 +43,7 @@ func newRelation(v *types.Var, t tags.Tags, fset *token.FileSet) *Relation {
 		PolyValue:    t.PolyValue,
 		OnDelete:     t.OnDelete,
 		OnUpdate:     t.OnUpdate,
+		FKName:       t.FkName,
 		NoConstraint: t.NoConstraint,
 		Pos:          fset.Position(v.Pos()),
 		tags:         t,

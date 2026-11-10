@@ -1,7 +1,7 @@
 # Migration safety and recovery
 
 Momo v0.4.0, PostgreSQL (SQLite and MySQL as libraries, sections 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
-`migrate/`, `cmd/momo/`, `schema/` and `dialect/`; the tests that pin a
+`migrate/`, `cli/`, `schema/` and `dialect/`; the tests that pin a
 behavior are named. For the first run see README, [Create and apply the
 migration](../README.md#3-create-and-apply-the-migration).
 
@@ -95,12 +95,12 @@ is derived from the code, not covered by a test.
 Two independent checks, both SHA-256 of the file bytes:
 
 1. `momo.sum` must match the directory: every file present, none added,
-   removed or changed. `Apply`, `Status` and `Baseline` refuse otherwise
+   removed or changed. `Engine.Apply`, `Status` and `Baseline` refuse otherwise
    (`ErrChecksumMismatch`, naming the files). A missing `momo.sum` is an error
    that names `momo migrate hash`. `momo.sum` itself carries a directory hash;
    a hand-edited `momo.sum` is rejected.
 2. The history row of an applied migration stores the checksum of its up file.
-   `Apply` refuses when that file changed since (the error says
+   `Engine.Apply` refuses when that file changed since (the error says
    `... changed after version V was applied`).
 
 `Plan` and `Drift` do not check either.
@@ -198,6 +198,19 @@ finding:
 - Hide objects you do not manage with `migrate.exclude` (globs over `name` or
   `schema.name`; they apply to tables, views, functions, enums, extensions,
   triggers and policies). Example: `exclude: ["pg_stat_statements", "audit_*"]`.
+  PostgreSQL inspection applies the globs while it reads, before an object is
+  examined: a matching table is skipped before its columns, constraints, indexes
+  and partitions are read, a matching view or function before its definition is
+  read, and a trigger whose own name or table matches before its definition is
+  read. So an object the schema model cannot represent (for example a table with
+  a `VIRTUAL` generated column) no longer fails `generate --from-db`, `baseline`
+  or `drift` once you exclude it. Extensions, enums and policies are not skipped
+  early; they are filtered afterwards as before. `generate --from-db` also
+  passes every `introspect.skip` glob to inspection the same way, so a skipped
+  table is never read (the globs also match views and functions of that name).
+- A trigger limited to some columns (`AFTER UPDATE OF state`) is
+  `schema.Trigger.UpdateOf`: PostgreSQL renders `UPDATE OF "state"`, inspection
+  reads the list back and `generate --from-db` writes it into the model.
 - `momo_migrations` is never reported.
 - A view query, trigger `WHEN` and policy `USING`/`WITH CHECK` changed outside
   migrations is reported as `changed:` (the detail names `query`, `when`,
@@ -294,7 +307,7 @@ the chain as it is and add a new migration for the difference.
   the last applied migration (the applied row with the greatest `applied_at`);
   with `Group: true` it runs the downs of every row that shares the greatest
   `apply_id`, in descending version order. It takes the same lock and session
-  timeouts as `Apply`, refuses a dirty database or a checksum mismatch, and
+  timeouts as `Engine.Apply`, refuses a dirty database or a checksum mismatch, and
   returns `ErrNoDown` before running anything when any selected version has no
   down file. A transactional down runs in one transaction together with the
   history update; the row becomes `rolled_back`, so the version is pending
@@ -428,7 +441,7 @@ virtual tables and the shadow tables of virtual tables are left out. An
 `INTEGER PRIMARY KEY` of a rowid table is reported with identity `by_default`,
 and the schema normalizer gives that column the same identity on the model side,
 so the two compare equal. A trigger is its `CREATE TRIGGER` text
-(`Trigger.Definition`), compared after whitespace and case outside quotes are
+(`schema.Trigger.Definition`), compared after whitespace and case outside quotes are
 normalized. Extensions, native enums, functions, policies, partitions,
 row-level security and schemas do not exist on SQLite and are never reported.
 
@@ -985,9 +998,16 @@ nullability (a pointer, or the `nullable` tag for slices), defaults, `size`,
 `identity:always`) and serial columns,
 single-column indexes as tags, other indexes, unique constraints, checks and
 comments in the `MomoConfig` method, every foreign key the generator can
-derive as a `belongs_to` field with its `on_delete` and `on_update` actions, and
-every composite (multi-column) foreign key to a modeled table as a
-`c.ForeignKey(...)` statement in `MomoConfig`.
+derive as a `belongs_to` field with its `on_delete` and `on_update` actions
+(with `fk_name` when the constraint name is not `<table>_<column>_fkey`;
+PostgreSQL picks `_fkey1` on a partitioned table), and every composite
+(multi-column) foreign key to a modeled table as a `c.ForeignKey(...)`
+statement in `MomoConfig`. A composite primary key whose
+column order differs from the field order is declared with
+`c.PrimaryKey(&m.Name, &m.Scope, &m.At)` in `MomoConfig`; the DDL, inspection
+and baseline keep that order. Changing the order of an existing key later is a
+drop and add of the primary key under an `ACCESS EXCLUSIVE` lock, and the drop
+is gated as destructive.
 `numeric` columns are Go strings (the `decimal-as-string` note); an
 `introspect.types` rule picks a decimal type instead. `tsvector` columns become
 `types.TSVector` (`*types.TSVector` when nullable); an `introspect.types` rule

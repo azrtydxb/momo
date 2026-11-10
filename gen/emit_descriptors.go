@@ -176,6 +176,7 @@ var flagOrder = []struct {
 	{"FlagSensitive", func(f *Field) bool { return f.Tags.Sensitive }},
 	{"FlagCreatedAt", func(f *Field) bool { return f.Tags.CreatedAt }},
 	{"FlagUpdatedAt", func(f *Field) bool { return f.Tags.UpdatedAt }},
+	{"FlagDBDefault", func(f *Field) bool { return f.Tags.DBDefault }},
 }
 
 func flagExpr(f *Field) string {

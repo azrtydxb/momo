@@ -21,6 +21,7 @@ import (
 	"go/format"
 	"go/token"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -384,7 +385,12 @@ func (g *generator) columns(m *model) {
 	if len(t.PrimaryKey) == 0 {
 		g.add(SevNote, t.Name, "the table has no primary key")
 	} else if !pkInColumnOrder(t) {
-		g.add(SevWarn, t.Name, "the primary key columns are not in column order: the model declares the key in field order, so the baseline will report the table")
+		refs, ok := m.refs(t.PrimaryKey)
+		if ok {
+			m.stmts = append(m.stmts, "c.PrimaryKey("+strings.Join(refs, ", ")+")")
+		} else {
+			g.add(SevWarn, t.Name, "the primary key uses a column the models do not have: the baseline will report the table")
+		}
 	}
 }
 
@@ -491,6 +497,9 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 		m.stmts = append(m.stmts, "c."+strings.ToUpper(e.key[:1])+e.key[1:]+"(&m."+name+", "+strconv.Quote(e.val)+")")
 	}
 	opts = mergeTags(opts, rule.Tags)
+	if dbDefaultFits(g.o.Dialect, col, opts) {
+		opts = append(opts, "dbdefault")
+	}
 	goType := gt.Expr
 	if col.Nullable && !gt.Nilable {
 		goType = "*" + goType
@@ -582,6 +591,42 @@ func mergeTags(generated, user []string) []string {
 	return out
 }
 
+// dbDefaultFits reports whether the field of col gets the dbdefault tag: a
+// NOT NULL column whose database default is computed (a function call such as
+// gen_random_uuid() or now(), or CURRENT_TIMESTAMP), which a Go zero value
+// would otherwise overwrite. A constant default is left alone, as is a column
+// whose other tags already decide how it is written. A sequence default
+// (nextval(...)) on a column that is not identity or serial counts as
+// computed, so a zero id is no longer written over it. Only PostgreSQL
+// qualifies: the tag needs INSERT ... RETURNING to read the value back, which
+// plain MySQL lacks, and MariaDB and SQLite have no inspector here yet.
+func dbDefaultFits(d dialect.Name, col *schema.Column, opts []string) bool {
+	if d != dialect.Postgres || col.Nullable || col.Identity != "" || !computedDefault(col.Default) {
+		return false
+	}
+	for _, o := range opts {
+		switch k, _, _ := strings.Cut(o, ":"); k {
+		case "identity", "serial", "read_only", "version", "soft_delete", "created_at", "updated_at", "idgen", "dbdefault":
+			return false
+		}
+	}
+	return true
+}
+
+// computedDefault reports whether a default expression is evaluated by the
+// database per row rather than a literal.
+func computedDefault(d string) bool {
+	d = strings.ToLower(strings.TrimSpace(d))
+	if d == "" || strings.HasPrefix(d, "'") || strings.HasPrefix(d, "-") || (d[0] >= '0' && d[0] <= '9') {
+		return false
+	}
+	switch d {
+	case "true", "false", "null":
+		return false
+	}
+	return strings.Contains(d, "(") || strings.HasPrefix(d, "current_") || strings.HasPrefix(d, "localtime")
+}
+
 func removeKey(opts []string, k string) []string {
 	var out []string
 	for _, o := range opts {
@@ -655,6 +700,10 @@ func (g *generator) constraints(m *model) {
 	g.tableObjects(m)
 }
 
+// fkNameOK is what a constraint name may hold to be written as an fk_name tag
+// value: no comma, colon, quote or space.
+var fkNameOK = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_$]{0,62}$`)
+
 var fkActions = map[string]bool{"": true, "CASCADE": true, "RESTRICT": true, "SET NULL": true, "SET DEFAULT": true}
 
 // foreignKey declares fk as a belongs_to relation when the generator can
@@ -684,9 +733,6 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	if f == nil {
 		return drop("its column is not modeled")
 	}
-	if want := t.Name + "_" + fk.Columns[0] + "_fkey"; fk.Name != want {
-		return drop("its name differs from the derived name " + want)
-	}
 	if !fkActions[fk.OnDelete] || !fkActions[fk.OnUpdate] {
 		return drop("its referential action is not supported")
 	}
@@ -695,6 +741,12 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		return drop("the column types differ")
 	}
 	opts := []string{"belongs_to", "fk:" + f.name}
+	if want := t.Name + "_" + fk.Columns[0] + "_fkey"; fk.Name != want {
+		if !fkNameOK.MatchString(fk.Name) {
+			return drop("its name " + fk.Name + " cannot be written in a struct tag")
+		}
+		opts = append(opts, "fk_name:"+fk.Name)
+	}
 	for _, a := range []struct{ key, val string }{{"on_delete", fk.OnDelete}, {"on_update", fk.OnUpdate}} {
 		if a.val != "" {
 			opts = append(opts, a.key+":"+strings.ToLower(strings.ReplaceAll(a.val, " ", "_")))

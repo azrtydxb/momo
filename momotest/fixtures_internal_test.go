@@ -116,3 +116,27 @@ docs:
 		t.Fatalf("timestamp = %#v, want a time.Time", got["t"])
 	}
 }
+
+// TestParseFixturesDeterministic: the same file parses to the same rows in the
+// same order every time. A parser that ranges over a map would not.
+func TestParseFixturesDeterministic(t *testing.T) {
+	const doc = "t1:\n  - b: 1\n    a: 2\n    c: 3\nt2:\n  - z: 1\n    y: 2\nt3:\n  - m: 1\n"
+	first, err := parseFixtures([]byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 100; i++ {
+		got, err := parseFixtures([]byte(doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(first) {
+			t.Fatalf("run %d: %d rows, want %d", i, len(got), len(first))
+		}
+		for j := range got {
+			if got[j].table != first[j].table || got[j].n != first[j].n || !slices.Equal(got[j].cols, first[j].cols) {
+				t.Fatalf("run %d row %d: %+v differs from %+v", i, j, got[j], first[j])
+			}
+		}
+	}
+}

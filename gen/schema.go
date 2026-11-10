@@ -193,11 +193,47 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 	if tg.Serial {
 		b.applySerial(f, &col)
 	}
+	if tg.DBDefault {
+		b.checkDBDefault(m, f)
+	}
 	if tg.Enum != "" {
 		col.Enum = tg.Enum
 		b.enumUses = append(b.enumUses, enumUse{name: tg.Enum, pos: f.Pos})
 	}
 	return col
+}
+
+// checkDBDefault reports a dbdefault field whose other tags already decide how
+// the column is written: the database generates identity and serial values,
+// read-only fields are never written, and the version, soft-delete, timestamp
+// and idgen columns are filled by Momo.
+func (b *schemaBuilder) checkDBDefault(m *Model, f *Field) {
+	tg := f.Tags
+	conflict := ""
+	switch {
+	case tg.Identity:
+		conflict = "identity"
+	case tg.Serial:
+		conflict = "serial"
+	case f.Access == ReadOnly:
+		conflict = "read_only"
+	case tg.Version:
+		conflict = "version"
+	case tg.SoftDelete != "":
+		conflict = "soft_delete"
+	case tg.CreatedAt:
+		conflict = "created_at"
+	case tg.UpdatedAt:
+		conflict = "updated_at"
+	case tg.IDGen != "" || (m.Config != nil && m.Config.IDGens[f.Column] != ""):
+		conflict = "idgen"
+	}
+	if conflict != "" {
+		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault conflicts with %s", f.GoName, conflict))
+	}
+	if strings.HasPrefix(f.GoType, "*") || strings.HasPrefix(f.GoType, "sql.Null") || f.Nullable || tg.Nullable {
+		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault on a nullable field: nil means use the database default, so Model can never write NULL (use Values with SetNull); use a non-nullable type", f.GoName))
+	}
 }
 
 // applyIdentityAlways refuses identity:always for a MySQL dialect, which has
@@ -540,6 +576,17 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 			t.Uniques = append(t.Uniques, schema.Unique{Name: u.Name, Columns: slices.Clone(u.Columns)})
 		}
 	}
+	if len(c.PrimaryKey) > 0 {
+		have := slices.Clone(t.PrimaryKey)
+		want := slices.Clone(c.PrimaryKey)
+		slices.Sort(have)
+		slices.Sort(want)
+		if !slices.Equal(have, want) {
+			b.diag(m.Pos, fmt.Sprintf("MomoConfig: PrimaryKey lists (%s) but the fields tagged pk are (%s); it must name exactly those, once each", strings.Join(c.PrimaryKey, ", "), strings.Join(t.PrimaryKey, ", ")))
+		} else {
+			t.PrimaryKey = slices.Clone(c.PrimaryKey)
+		}
+	}
 	checks := map[string]string{}
 	for _, f := range m.Fields {
 		if f.Tags.Check != "" {
@@ -645,6 +692,9 @@ func (b *schemaBuilder) dialectCheck() {
 	b.feats = nil
 }
 
+// maxConstraintName is the longest constraint name PostgreSQL keeps (NAMEDATALEN-1).
+const maxConstraintName = 63
+
 var referentialActions = map[string]bool{
 	"CASCADE": true, "RESTRICT": true, "SET NULL": true, "SET DEFAULT": true, "NO ACTION": true,
 }
@@ -666,6 +716,9 @@ func (b *schemaBuilder) addRelations(m *Model) {
 		if r.Target == nil || b.tableBy[tableKey(r.Target)] != r.Target {
 			continue // an unresolved target is reported where relations are discovered
 		}
+		if r.FKName != "" && r.Kind != BelongsTo {
+			b.diag(r.Pos, fmt.Sprintf("relation %s: fk_name applies to belongs_to only; has_one and has_many create no constraint", r.GoName))
+		}
 		switch r.Kind {
 		case BelongsTo:
 			b.belongsTo(m, r)
@@ -673,7 +726,30 @@ func (b *schemaBuilder) addRelations(m *Model) {
 			b.manyToMany(m, r)
 		}
 	}
+	b.checkFKNameConfig(m)
 	b.companionForeignKeys(m)
+}
+
+// checkFKNameConfig reports FKName calls on a column that is not the key of a
+// belongs_to relation that creates a constraint.
+func (b *schemaBuilder) checkFKNameConfig(m *Model) {
+	if m.Config == nil {
+		return
+	}
+	for col := range m.Config.FKNames {
+		found := false
+		for _, r := range m.Relations {
+			if r.Kind != BelongsTo || r.NoConstraint {
+				continue
+			}
+			for _, f := range m.Fields {
+				found = found || (f.GoName == r.FK && f.Column == col)
+			}
+		}
+		if !found {
+			b.diag(m.Pos, fmt.Sprintf("MomoConfig: FKName on column %q, which is not the key of a belongs_to relation that creates a constraint", col))
+		}
+	}
 }
 
 // companionForeignKeys adds the foreign keys declared with Config.ForeignKey.
@@ -689,6 +765,10 @@ func (b *schemaBuilder) companionForeignKeys(m *Model) {
 	for _, fk := range m.Config.ForeignKeys {
 		bad := func(format string, args ...any) {
 			b.diag(m.Pos, fmt.Sprintf("MomoConfig: foreign key %q: ", fk.Name)+fmt.Sprintf(format, args...))
+		}
+		if len(fk.Name) > maxConstraintName {
+			bad("the name is longer than %d bytes", maxConstraintName)
+			continue
 		}
 		if slices.ContainsFunc(t.ForeignKeys, func(o schema.ForeignKey) bool { return o.Name == fk.Name }) {
 			bad("the name is already used by another foreign key of table %s", t.Name)
@@ -793,15 +873,39 @@ func (b *schemaBuilder) belongsTo(m *Model, r *Relation) {
 	}
 	target := &b.s.Tables[b.index[r.Target]]
 	if len(target.PrimaryKey) != 1 {
-		b.diag(r.Pos, fmt.Sprintf("relation %s: target %s needs a single-column primary key for a foreign key, but its key is (%s); composite foreign key targets are not supported", r.GoName, r.Target.GoName, strings.Join(target.PrimaryKey, ", ")))
+		b.diag(r.Pos, fmt.Sprintf("relation %s: target %s needs a single-column primary key for a foreign key, but its key is (%s); declare a composite foreign key with Config.ForeignKey in MomoConfig", r.GoName, r.Target.GoName, strings.Join(target.PrimaryKey, ", ")))
 		return
 	}
 	if !ok1 || !ok2 {
 		return
 	}
+	name := m.Table + "_" + local.Column + "_fkey"
+	var cfg string
+	if m.Config != nil {
+		cfg = m.Config.FKNames[local.Column]
+	}
+	switch {
+	case r.FKName != "" && cfg != "":
+		b.diag(r.Pos, fmt.Sprintf("relation %s: the foreign key name is declared by both the fk_name tag and MomoConfig", r.GoName))
+		return
+	case r.FKName != "":
+		name = r.FKName
+	case cfg != "":
+		name = cfg
+	}
+	if len(name) > maxConstraintName {
+		b.diag(r.Pos, fmt.Sprintf("relation %s: foreign key name %q is longer than %d bytes", r.GoName, name, maxConstraintName))
+		return
+	}
 	t := &b.s.Tables[b.index[m]]
+	for _, fk := range t.ForeignKeys {
+		if fk.Name == name {
+			b.diag(r.Pos, fmt.Sprintf("relation %s: foreign key name %q is already used by another foreign key of table %s", r.GoName, name, t.Name))
+			return
+		}
+	}
 	t.ForeignKeys = append(t.ForeignKeys, schema.ForeignKey{
-		Name:       m.Table + "_" + local.Column + "_fkey",
+		Name:       name,
 		Columns:    []string{local.Column},
 		RefTable:   target.Name,
 		RefColumns: []string{target.PrimaryKey[0]},

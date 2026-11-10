@@ -18,9 +18,9 @@ type Problem struct{ Msg string }
 type Tags struct {
 	Skip bool
 
-	Column, Type, Collate, Default, Check, Comment, Enum, Table, Schema, Prefix string
-	Fk, Join, OnDelete, OnUpdate, SoftDelete, TimeUnit, IndexName, UniqueName   string
-	Sort, Nulls, Method, View                                                   string
+	Column, Type, Collate, Default, Check, Comment, Enum, Table, Schema, Prefix       string
+	Fk, FkName, Join, OnDelete, OnUpdate, SoftDelete, TimeUnit, IndexName, UniqueName string
+	Sort, Nulls, Method, View                                                         string
 
 	// IDGen is the idgen option: the name of a Go-side id generator.
 	IDGen string
@@ -39,6 +39,10 @@ type Tags struct {
 	ReadOnly, CreateOnly, Immutable, Sensitive, Embedded                   bool
 	NoConstraint, BelongsTo, HasOne, HasMany, ManyToMany                   bool
 	Index, Unique                                                          bool
+
+	// DBDefault is the dbdefault option: a Model insert leaves the column to
+	// the database default while the field holds its zero value.
+	DBDefault bool
 }
 
 // Parse parses a raw tag value. An empty tag yields the zero Tags and no
@@ -154,6 +158,8 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return ""
 	case "serial":
 		return bare(&t.Serial)
+	case "dbdefault":
+		return bare(&t.DBDefault)
 	case "version":
 		return bare(&t.Version)
 	case "notnull":
@@ -212,6 +218,8 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return str(&t.IDGen)
 	case "fk":
 		return str(&t.Fk)
+	case "fk_name":
+		return str(&t.FkName)
 	case "join":
 		return str(&t.Join)
 	case "on_delete":
