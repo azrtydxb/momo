@@ -244,7 +244,7 @@ migrate:
     postgres: migrations/postgres
   url_env:
     postgres: MOMO_TEST_URL
-  exclude: [vector, pgcrypto]
+  exclude: [vector, pgcrypto, project_notes]
 introspect:
   only: [accounts, projects, project_*]
   skip: [project_notes]
