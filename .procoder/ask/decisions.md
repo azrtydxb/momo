@@ -287,3 +287,17 @@ govulncheck, windows, macos and title; apidiff-docs is not among them.
 Decision (2026-11-09): I add it. `apidiff-docs` is added to main's required
 status checks with `gh api` right after the sprint-6 to main PR passes it, and
 the story's last criterion is ticked with that evidence.
+
+## When v0.5.0 ships
+
+Sprint 7 carries the GitHub issues from the Kuvryn Owl, Kuvryn Orbit and
+NovaCRM ports (#54 to #69) and 69 older backlog stories from the first plan.
+The ports wait on the issues.
+
+- Release v0.5.0 as soon as the #54 to #69 fixes are merged and green; the
+  backlog stories finish in sprint 7 and ship in v0.6.0.
+- v0.5.0 waits for every sprint-7 story.
+
+Decision (2026-11-10): ship the issues first. When every issue story is merged
+into sprint-7 and green, sprint-7 goes to main and v0.5.0 is released; backlog
+stories still in flight continue on a follow-up branch and ship in v0.6.0.
