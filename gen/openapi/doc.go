@@ -248,17 +248,29 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 		props, pd := propertiesOf(g, m)
 		diags = append(diags, pd...)
 
+		// The output schema is what a response carries: every column, with
+		// the not-null ones (the key included) required. The input schema,
+		// added below for a model with a write route, is what a request may
+		// carry.
 		properties := obj{}
-		var required []string
+		var outRequired []string
+		inProps := obj{}
+		var inRequired []string
 		for _, p := range props {
 			properties[p.column] = p.schema
-			if p.required {
-				required = append(required, p.column)
+			if p.notNull {
+				outRequired = append(outRequired, p.column)
+			}
+			if p.writable {
+				inProps[p.column] = p.schema
+				if p.required {
+					inRequired = append(inRequired, p.column)
+				}
 			}
 		}
 		schema := obj{"type": "object", "properties": properties}
-		if len(required) > 0 {
-			schema["required"] = required
+		if len(outRequired) > 0 {
+			schema["required"] = outRequired
 		}
 		schemas[m.GoName] = schema
 
@@ -270,6 +282,13 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 			continue
 		}
 		ops := opts.Ops.For(m.GoName)
+		if ops.Has(apiquery.OpCreate) || ops.Has(apiquery.OpUpdate) {
+			in := obj{"type": "object", "properties": inProps}
+			if len(inRequired) > 0 {
+				in["required"] = inRequired
+			}
+			schemas[m.GoName+"Input"] = in
+		}
 		collection := base + "/" + m.Table
 		params := []any{
 			obj{"name": "limit", "in": "query", "schema": obj{"type": "integer", "minimum": 1, "maximum": apiquery.MaxLimit, "default": apiquery.DefaultLimit}},
@@ -290,11 +309,13 @@ func Document(g *gen.Graph, opts Options) ([]byte, []gen.Diagnostic) {
 			},
 			"required": []string{"items", "next_cursor"},
 		}
-		body := obj{"required": true, "content": obj{"application/json": obj{"schema": ref(m.GoName)}}}
+		body := obj{"required": true, "content": obj{"application/json": obj{"schema": ref(m.GoName + "Input")}}}
 		errResp := func(extra ...string) obj {
 			r := obj{
 				"400": response("Invalid request", ref("Error")),
+				"499": response("The client cancelled the request", ref("Error")),
 				"503": response("The database is busy or the transaction conflicted; retry", ref("Error")),
+				"504": response("The deadline of the request passed", ref("Error")),
 			}
 			for _, code := range extra {
 				switch code {
