@@ -1,6 +1,6 @@
 # momo-02 Task 29: Model hooks (S-85) in generated metadata
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-02-generator
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each

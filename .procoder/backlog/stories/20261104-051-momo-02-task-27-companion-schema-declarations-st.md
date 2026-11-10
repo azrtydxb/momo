@@ -1,6 +1,6 @@
 # momo-02 Task 27: Companion schema declarations (structured, read statically)
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-02-generator
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each

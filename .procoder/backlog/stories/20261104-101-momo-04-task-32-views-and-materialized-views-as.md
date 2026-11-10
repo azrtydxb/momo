@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — TestViewInsertDoesNotCompile and the mutation-builders-do-not-compile clause of S-37 belong to the compile-time design dropped by the 2026-11-10 runtime-guard decision; the user must retire or reword them. RefreshMaterializedView, the view-model-has-no-table fix and TestViewsAsModels (adapted) are built; green ci-agent run 42838538032.
 
 ## Description
 

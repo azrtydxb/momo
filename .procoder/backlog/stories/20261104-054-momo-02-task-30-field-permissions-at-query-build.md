@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-02-generator
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — User decision 2026-11-10 (decisions.md): the untyped AssignAny/Permission design is not built; typed paths enforce permissions. TestFieldPermissionsRuntime exists but is not the plan's test; criterion stays unticked, superseded.
 
 ## Description
 
