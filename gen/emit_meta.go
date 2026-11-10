@@ -58,8 +58,8 @@ func emitPackageMeta(models, projections []*Model, g *Graph) ([]byte, []Diagnost
 			diags = append(diags, Diagnostic{Pos: m.Pos, Msg: "model " + m.GoName + " is not in package " + pkgPath})
 			continue
 		}
-		t := tableOf(g, m)
-		if t == nil {
+		t, ok := g.TableOf(m)
+		if !ok {
 			diags = append(diags, Diagnostic{Pos: m.Pos, Msg: "no schema table for model " + m.GoName})
 			continue
 		}
@@ -110,12 +110,6 @@ func emitPackageMeta(models, projections []*Model, g *Graph) ([]byte, []Diagnost
 	return src, nil
 }
 
-// tableOf finds the schema table of a model in the graph.
-func tableOf(g *Graph, m *Model) *schema.Table {
-	t, _ := g.TableOf(m)
-	return t
-}
-
 // TableOf returns the table that describes the columns of m: the schema table
 // of a table model, or the table built for a view model, which the schema
 // does not hold because a view is not created as a table. Plugins use it
@@ -135,6 +129,17 @@ func (g *Graph) TableOf(m *Model) (*schema.Table, bool) {
 		}
 	}
 	return nil, false
+}
+
+// PrimaryKey returns the primary key columns of the table of m, in key order,
+// or nil when the graph has no table for m. The slice belongs to the schema:
+// callers must not modify it.
+func (g *Graph) PrimaryKey(m *Model) []string {
+	t, ok := g.TableOf(m)
+	if !ok {
+		return nil
+	}
+	return t.PrimaryKey
 }
 
 func lowerFirst(s string) string {
