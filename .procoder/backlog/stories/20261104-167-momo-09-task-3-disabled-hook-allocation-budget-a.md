@@ -1,6 +1,6 @@
 # momo-09 Task 3: Disabled-hook allocation budget and docs/PERFORMANCE.md
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-09-observability-testing
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -24,3 +24,4 @@ Implements plan momo-09-observability-testing Task 3: Disabled-hook allocation b
 - Matrix check: a throwaway branch (budget set to 0 to print the measurement, deleted afterwards) ran the full ci.yml matrix, run 42461281129: all four integration combinations (Go 1.26 and 1.27, PostgreSQL 16 and 17) print `measured allocs/op = 32`, so the budget needs no per-version slack.
 - BenchmarkSelectNoHooks runs in the bench-module job through make bench-hooks (the bench-module job of run 42458619130, which was later cancelled when a newer commit superseded it; the step itself had completed): `32 allocs/op`, equal to the recorded budget. The benchmark cannot fail before an implementation exists, so its red proof is the budget test above.
 - Plan Step 4 (baseline worktree measurement) was replaced by the CI measurement above, since nothing may run on the laptop. Plan Step 7 (mutation) was not run.
+- Audit: already built in an earlier sprint (db_obs_budget_integration_test.go, db_obs_budget_test.go, db_obs_hooks_bench_test.go, docs/PERFORMANCE.md). Re-verified on the sprint-7 merge: ci-agent run 42778091550 (headSha 79a4a965871045b635c90908822154c8c19c4503, all 9 jobs success); `integration (postgres)` runs TestSelectNoHooksAllocBudget and TestPerformanceDocRecordsBudget, `bench-module` runs BenchmarkSelectNoHooks.

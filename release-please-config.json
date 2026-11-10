@@ -20,6 +20,12 @@
         "examples/custom-sql-migration/README.md",
         "examples/upgrade-database/README.md"
       ]
+    },
+    "otelmomo": {
+      "component": "otelmomo",
+      "include-component-in-tag": true,
+      "tag-separator": "/",
+      "release-type": "go"
     }
   }
 }

@@ -5,11 +5,13 @@ Momo calls the hooks you register with `momo.WithHook` around every statement
 that also implements it). The interfaces live in the root package because `DB`
 calls them. Ready-made implementations:
 
-| Hook           | Constructor                                | What it does                                                                            |
-| -------------- | ------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `obs.Recorder` | `&obs.Recorder{}` (package `obs`)          | Keeps every finished statement and relation load for assertions in tests.               |
-| `obs.NPlusOne` | `obs.NewNPlusOne(n, report)` (`obs`)       | Reports a relation that was loaded more than `n` times inside one `obs.WithScope`.      |
-| slog hook      | `momolog.New(logger, opts...)` (`momolog`) | Logs one `log/slog` record per statement and one per relation load (see [slog](#slog)). |
+| Hook           | Constructor                                  | What it does                                                                                      |
+| -------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `obs.Recorder` | `&obs.Recorder{}` (package `obs`)            | Keeps every finished statement and relation load for assertions in tests.                         |
+| `obs.NPlusOne` | `obs.NewNPlusOne(n, report)` (`obs`)         | Reports a relation that was loaded more than `n` times inside one `obs.WithScope`.                |
+| slow query     | `obs.NewSlowQuery(d, report, opts...)`       | Reports each statement slower than `d`, with an opt-in plain `EXPLAIN` plan.                      |
+| slog hook      | `momolog.New(logger, opts...)` (`momolog`)   | Logs one `log/slog` record per statement and one per relation load (see [slog](#slog)).           |
+| OTel hook      | `otelmomo.New(tp, mp, opts...)` (`otelmomo`) | Emits a client span and a duration histogram per statement (see [OpenTelemetry](#opentelemetry)). |
 
 `obs` imports only `momo` and the standard library. All of these hooks are safe
 for concurrent use.
@@ -71,6 +73,48 @@ relations, and a panic in `report` is recovered and dropped. `report` runs on
 the loading goroutine and must not query the database. Create the detector with
 `obs.NewNPlusOne`; its zero value must not be used.
 
+## Slow queries
+
+`obs.NewSlowQuery(threshold, report)` calls `report` with an `obs.SlowQuery`
+(`SQL`, `Duration`, and `Plan` or `PlanSkipped`) for each statement that took
+longer than `threshold`.
+
+```text
+plain := momo.New(drv) // a DB without the slow-query hook
+db := momo.New(drv, momo.WithHook(obs.NewSlowQuery(200*time.Millisecond,
+    func(q obs.SlowQuery) { log.Printf("slow %s: %s %v", q.Duration, q.SQL, q.Plan) },
+    obs.WithPlainExplain(plain),
+)))
+```
+
+Without `obs.WithPlainExplain` the report has no plan. With it, the hook runs
+one plain `EXPLAIN` for the slow statement, never `EXPLAIN ANALYZE`, so nothing
+runs twice. Outside a transaction the plan comes from the querier you pass;
+inside a transaction it runs on that transaction in a savepoint that is always
+rolled back, so a plan that fails cannot abort your transaction. Cases where
+there is no plan say why in `PlanSkipped`: a statement with bound arguments on a
+DB opened without `momo.WithArgLogging`, a statement that binds a sensitive
+value, a transaction that is already aborted (PostgreSQL), and an `EXPLAIN` the
+database rejected. The statements the hook issues for the plan are not reported
+again. `report` runs on the goroutine that ran the statement and must not query
+the database. The plan can echo literal values.
+
+## Explain
+
+`momo.Explain(ctx, q, compiled)` returns the database's plan for any compiled
+statement (the value of a query's `SQL` method) without running it: `EXPLAIN` on
+PostgreSQL, `EXPLAIN QUERY PLAN` on SQLite and `EXPLAIN FORMAT=JSON` on MySQL
+and MariaDB. `momo.ExplainAnalyze(ctx, q, compiled)` runs the statement under
+`EXPLAIN (ANALYZE, FORMAT TEXT)` and returns the plan with actual timings. It
+executes the statement, so every call, a `SELECT` included, runs inside a
+transaction (a savepoint on a `Tx`) that is always rolled back. A rollback
+cannot undo what happens outside the transaction: sequence values taken by
+`nextval`, `NOTIFY` sent by a function, work done through `dblink` or a foreign
+data wrapper. A `SELECT` that calls such a function still has those effects. It
+is PostgreSQL only: other dialects return `ErrUnsupported` and send nothing. Momo calls
+neither on its own, and hooks see both as Op `explain`.
+`SelectQuery.Explain` stays the shorthand for a select.
+
 ## slog
 
 The slog hook is `momolog.New`; there is one slog hook, not two.
@@ -88,6 +132,40 @@ A statement record (`momo.query`) has `op`, `table`, `relation` (when set),
 `momo.WithArgLogging`, `args`. A relation record (`momo.relation`) has `parent`,
 `name`, `kind`, `parents`, `children`, `queries`, `duration` and `err` (when
 set). Errors are logged through `Error()` only.
+
+## OpenTelemetry
+
+`otelmomo` is a separate module, `github.com/azrtydxb/momo/otelmomo`, so the
+Momo core links no OpenTelemetry package (a test runs `go list -deps` on the core
+to keep it that way). Add it to your `go.mod` only if you want it.
+
+The module has its own release tags, `otelmomo/vX.Y.Z`, made by release-please
+(`go get github.com/azrtydxb/momo/otelmomo@latest`). It requires a released momo
+version (see its `go.mod`) whose exported API it compiles against, so it needs
+no unreleased momo code;
+the `replace` directive in its `go.mod` only points in-repository builds at the
+working tree and is ignored by anyone who imports it. A repository test fails if
+that require ever becomes a pseudo-version or names a momo version newer than
+the last release.
+
+```text
+h, err := otelmomo.New(tracerProvider, meterProvider, otelmomo.WithNamespace("appdb"))
+if err != nil {
+    return err // a nil provider is an error; there is no global fallback
+}
+db := momo.New(drv, momo.WithHook(h))
+```
+
+The providers are passed in; the package reads no global provider. Each
+statement becomes a client span named `<OPERATION> <table>` (`SELECT authors`),
+or `<OPERATION>` when no table is known, with the database client attributes
+`db.system.name` (`postgresql`, `sqlite`, `mysql`, `mariadb`),
+`db.operation.name`, `db.collection.name`, `db.namespace` (from `WithNamespace`)
+and `db.query.text`. The query text is the parameterized SQL; the value of a
+bound argument is never recorded, not even with `momo.WithArgLogging`. A failed
+statement sets the span status to error and `error.type`. The same hook records
+the `db.client.operation.duration` histogram (unit `s`) with the same
+attributes plus `error.type` on failure.
 
 ## Tenants
 

@@ -19,6 +19,12 @@ updates:
     cooldown:
       default-days: 7
   - package-ecosystem: gomod
+    directory: /otelmomo
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: gomod
     directory: /internal/integration
     schedule:
       interval: weekly

@@ -206,6 +206,45 @@ for PostgreSQL does not build them, and a repository test
 any other build `sqlitetest.New` skips the test, the way `momotest.New` skips
 when the server URL is unset.
 
+## Asserting the SQL: AssertSQL
+
+`momotest.AssertSQL(t, compiled, want)` compares the SQL text of a compiled
+statement with `want`, ignoring differences in whitespace. Get `compiled` from
+the `SQL` method of any query (`Select`, `Insert`, `Update`, `Delete`, a raw
+subquery source); the statement is only compiled, never sent, so the assertion
+needs no database and the recording hook sees no statement. Because only the
+text is compared, put the values in the query and the text in `want`:
+
+```text
+c, err := momo.Select[User](db).Where(user.Email.Eq("a@example.test")).SQL()
+momotest.AssertSQL(t, c, `SELECT ... FROM "users" WHERE "users"."email" = $1`)
+```
+
+On a mismatch the failure holds both texts and `Compiled.String()`, which lists
+the bound arguments by placeholder (`$1, $2 bound`). It never holds an argument
+value, so a value bound from a `sensitive` column cannot reach the test log.
+
+## Asserting index use: AssertUsesIndex
+
+`momotest.AssertUsesIndex(t, q, compiled, "index_name")` runs a plain `EXPLAIN`
+of the statement through `momo.Explain` (never `EXPLAIN ANALYZE`, so the
+statement is not executed) and fails unless the plan reads that index. It works
+on PostgreSQL and SQLite and fails the test on any other dialect.
+
+- PostgreSQL: the index name must be a whole token in an `Index Scan`,
+  `Index Only Scan` or `Bitmap Index Scan` node. A name that only starts with
+  the asserted one (`orders_idx2` or `orders_idx-old` for `orders_idx`) does
+  not match. A mixed-case name that PostgreSQL prints quoted (`"MyIdx"`)
+  matches when you pass `MyIdx`.
+- SQLite: a plan line must say `USING INDEX name` or
+  `USING COVERING INDEX name`.
+
+A failure prints the plan, and says so when the plan contains a sequential scan.
+Small tables get sequential scans on PostgreSQL whatever indexes exist: load
+enough rows and run `ANALYZE` first, or use `tx.SetLocal(ctx, "enable_seqscan",
+"off")`. The database may echo literal values into a plan, so run the assertion
+on test data that is not sensitive.
+
 ## Options
 
 | Option                           | Effect                                                                                          |
