@@ -22,6 +22,18 @@ is caught. Lower the budget in the same change whenever the path gets cheaper.
 
 To reproduce, run `make db-up`, then `make bench-hooks`. The benchmark opens a database, so it only compiles with the `integration` build tag and `make bench-smoke` skips it; the `bench-module` CI job runs `make bench-hooks` against the pgvector service.
 
+## Streaming memory bound
+
+`SelectQuery.Each` hands rows to a callback one at a time and must not buffer
+the result set. `TestStreamingBoundedMemory` iterates one million rows with
+`Each`, reads the heap after a forced collection every 100000 rows, and fails
+when the heap has grown by more than the bound below, so an `Each` that
+collects the rows first is caught.
+
+| Limit                             | Value |
+| --------------------------------- | ----- |
+| Streaming heap growth bound (MiB) | 16    |
+
 ## Comparison suite
 
 The `bench/` module compares Momo with handwritten pgx and database/sql, GORM,
@@ -66,7 +78,9 @@ PostgreSQL version and the pgvector version. The database image is
 `make db-up` starts PostgreSQL with pgvector. Then `make bench` runs the whole
 suite ten times per benchmark and writes `bench/results/` under a directory named
 by UTC time, operating system and architecture, with `env.json`, `versions.txt`,
-`codesize.json`, `raw.txt` and `summary.txt`. `make bench-suite-smoke` runs one
+`codesize.json`, `raw.txt` and `summary.txt`, plus `vector-encoding.txt` (the
+`BenchmarkVectorEncoding` run of text against binary pgx vector codecs) when a
+database is configured. `make bench-suite-smoke` runs one
 iteration of everything and is what CI uses. `make bench-generate` regenerates
 the Momo metadata and the Ent client.
 

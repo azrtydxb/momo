@@ -709,6 +709,90 @@
   
   
     <li class="md-nav__item">
+      <a href="guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="replicas/" class="md-nav__link">
         
   
@@ -1191,7 +1275,10 @@ PostgreSQL.</p>
 <li><a href="projections/">Projections</a>: declaring a projection, <code>From</code> and <code>Columns</code>, the generated metadata, tuple rows (<code>Row1</code> to <code>Row10</code>), the soft-delete filter.</li>
 <li><a href="relations/">Relations</a>: declaring, loading, filtering and writing relations, with error behavior and limits.</li>
 <li><a href="migrations/">Migration safety and recovery</a>: snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.</li>
-<li><a href="importers/">Importing models from other ORMs</a>: the GORM, Bun and Ent readers (static, they never execute your code), the import report and what each report kind means; the <code>momo import</code> command is not wired yet.</li>
+<li><a href="importers/">Importing models from other ORMs</a>: the GORM, Bun and Ent readers (static, they never execute your code), the <code>momo import</code> command, the import report and what each report kind means, and the readers that import Atlas, goose, golang-migrate and Bun migration history.</li>
+<li><a href="guides/gorm/">Coming from GORM</a>: a call-by-call cheat sheet from GORM models, queries, relations, hooks, transactions, migrations and errors to Momo.</li>
+<li><a href="guides/bun/">Coming from Bun</a>: the same mapping for Bun users.</li>
+<li><a href="guides/ent/">Coming from Ent</a>: the same mapping for Ent users, with the <code>momo import ent</code> path.</li>
 <li><a href="replicas/">Read replicas</a>: <code>WithReplicas</code>, which statements go to a replica, reading your own writes, and what happens when a replica is down.</li>
 <li><a href="testing/">Testing applications</a>: the <code>momotest</code> kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.</li>
 <li><a href="PRIVACY_RULES/">Interceptors</a>: application-level per-handle rules that add predicates or deny typed statements, the tenant recipe, and the paths they do not cover (not a security boundary).</li>

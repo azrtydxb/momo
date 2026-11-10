@@ -735,6 +735,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1355,8 +1439,9 @@ subquery or CTE and refer to its alias. A golden test pins the placeholders.</p>
 <code>RedactedArg</code>) when an operand reads a column marked sensitive; the driver
 still receives the real values.</p>
 <h2 id="hybrid-ranking-vector-plus-text">Hybrid ranking: vector plus text<a class="headerlink" href="#hybrid-ranking-vector-plus-text" title="Permanent link">&para;</a></h2>
-<p>Momo has no built-in fusion step (reciprocal rank fusion is not built). Combine
-the two signals in one score with the typed arithmetic helpers. The cosine
+<p>For reciprocal rank fusion of the two signals, use <code>momo.HybridSearch</code> (see
+<a href="../vectors/#hybrid-search">hybrid search</a>). To weigh the signals yourself,
+combine them in one score with the typed arithmetic helpers. The cosine
 distance is lower for better matches and the text rank is higher, so subtract a
 weighted rank from the distance and order ascending:</p>
 <!-- docscheck:fragment -->

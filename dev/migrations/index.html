@@ -953,6 +953,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#lint-momo-migrate-lint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lint (momo migrate lint)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#other-items" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1130,6 +1141,90 @@
     
   
     Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
   
 
     
@@ -1876,6 +1971,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#lint-momo-migrate-lint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lint (momo migrate lint)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#other-items" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2051,7 +2157,7 @@
 
 <h1 id="migration-safety-and-recovery">Migration safety and recovery<a class="headerlink" href="#migration-safety-and-recovery" title="Permanent link">&para;</a></h1>
 <p>Momo v0.4.0, PostgreSQL (SQLite and MySQL as libraries, sections 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
-<code>migrate/</code>, <code>cmd/momo/</code>, <code>schema/</code> and <code>dialect/</code>; the tests that pin a
+<code>migrate/</code>, <code>cli/</code>, <code>schema/</code> and <code>dialect/</code>; the tests that pin a
 behavior are named. For the first run see README, <a href="https://github.com/azrtydxb/momo/blob/main/README.md#3-create-and-apply-the-migration">Create and apply the
 migration</a>.</p>
 <p>With a dialect the <code>momo migrate</code> command does not link, it exits 2
@@ -2179,12 +2285,12 @@ is derived from the code, not covered by a test.</p>
 <p>Two independent checks, both SHA-256 of the file bytes:</p>
 <ol>
 <li><code>momo.sum</code> must match the directory: every file present, none added,
-   removed or changed. <code>Apply</code>, <code>Status</code> and <code>Baseline</code> refuse otherwise
+   removed or changed. <code>Engine.Apply</code>, <code>Status</code> and <code>Baseline</code> refuse otherwise
    (<code>ErrChecksumMismatch</code>, naming the files). A missing <code>momo.sum</code> is an error
    that names <code>momo migrate hash</code>. <code>momo.sum</code> itself carries a directory hash;
    a hand-edited <code>momo.sum</code> is rejected.</li>
 <li>The history row of an applied migration stores the checksum of its up file.
-   <code>Apply</code> refuses when that file changed since (the error says
+   <code>Engine.Apply</code> refuses when that file changed since (the error says
    <code>... changed after version V was applied</code>).</li>
 </ol>
 <p><code>Plan</code> and <code>Drift</code> do not check either.</p>
@@ -2343,15 +2449,43 @@ finding:</p>
 <li>Extension versions are ignored when either side leaves the version empty.</li>
 <li>Hide objects you do not manage with <code>migrate.exclude</code> (globs over <code>name</code> or
   <code>schema.name</code>; they apply to tables, views, functions, enums, extensions,
-  triggers and policies). Example: <code>exclude: ["pg_stat_statements", "audit_*"]</code>.</li>
+  triggers and policies). Example: <code>exclude: ["pg_stat_statements", "audit_*"]</code>.
+  PostgreSQL inspection applies the globs while it reads, before an object is
+  examined: a matching table is skipped before its columns, constraints, indexes
+  and partitions are read, a matching view or function before its definition is
+  read, and a trigger whose own name or table matches before its definition is
+  read. So an object the schema model cannot represent (for example a table with
+  a <code>VIRTUAL</code> generated column) no longer fails <code>generate --from-db</code>, <code>baseline</code>
+  or <code>drift</code> once you exclude it. Extensions, enums and policies are not skipped
+  early; they are filtered afterwards as before. <code>generate --from-db</code> also
+  passes every <code>introspect.skip</code> glob to inspection the same way, so a skipped
+  table is never read (the globs also match views and functions of that name).</li>
+<li>A trigger limited to some columns (<code>AFTER UPDATE OF state</code>) is
+  <code>schema.Trigger.UpdateOf</code>: PostgreSQL renders <code>UPDATE OF "state"</code>, inspection
+  reads the list back and <code>generate --from-db</code> writes it into the model.</li>
 <li><code>momo_migrations</code> is never reported.</li>
 <li>A view query, trigger <code>WHEN</code> and policy <code>USING</code>/<code>WITH CHECK</code> changed outside
-  migrations is <strong>not detected</strong>; those objects are listed as <code>unverified:</code>
-  only. Exit 0 does not prove their text matches. Function bodies are compared.</li>
-<li>Declared text (defaults, checks, index predicates) is canonicalized through a
-  scratch schema in a rolled-back transaction, which needs <code>CREATE</code> on the
-  database. Without it drift still runs but can show false <code>changed</code> entries
-  (never hides a real one).</li>
+  migrations is reported as <code>changed:</code> (the detail names <code>query</code>, <code>when</code>,
+  <code>using</code> or <code>check</code>), and a body declared in another spelling than the server
+  reports (<code>id&gt;0</code> against <code>id &gt; 0</code>) is not drift. To compare them, drift
+  rewrites the snapshot's text through a scratch schema in a rolled-back
+  transaction (the same step as <code>baseline</code>), which needs <strong><code>CREATE</code> on the
+  database</strong> and a writable session. No DDL runs against the application
+  schema (<code>TestDriftBodiesRunsDDLOnlyInRolledBackTransaction</code>).</li>
+<li>A role that cannot do that (a read-only CI role, say) still gets a report:
+  the bodies are listed as <code>unverified: &lt;kind&gt; &lt;name&gt;</code> and do not affect the
+  exit code, so exit 0 does not prove they match. <code>momo migrate drift --strict</code>
+  (<code>Engine.DriftWith(ctx, DriftOptions{Strict: true})</code>) turns that case into an
+  error: exit 3 with a message wrapping <code>ErrCanonicalizePrivilege</code> that names
+  the privilege. Use <code>--strict</code> where a clean report must mean the policies
+  were checked, since a policy loosened to <code>USING (true)</code> hides in <code>unverified:</code>
+  otherwise (<code>TestDriftBodiesNeedCreateOnDatabase</code>, both modes, as <code>momo_app</code>).
+  Function bodies are compared in both modes.</li>
+<li>A snapshot without those bodies canonicalizes only its table text (defaults,
+  checks, index predicates) through the same scratch schema. There drift stays
+  tolerant: without <code>CREATE</code> it still runs and can show false <code>changed</code> entries
+  (never hides a real one), and lists the tables it compared as declared in
+  <code>CanonicalizeSkipped</code>.</li>
 </ul>
 <h2 id="2-cli">2. CLI<a class="headerlink" href="#2-cli" title="Permanent link">&para;</a></h2>
 <p><code>momo</code> has four commands: <code>generate</code>, <code>migrate</code>, <code>viz</code>, <code>help</code>. Global exit codes:
@@ -2417,7 +2551,7 @@ finding:</p>
 <td>database differs from snapshot</td>
 </tr>
 <tr>
-<td><code>drift</code></td>
+<td><code>drift [--strict]</code></td>
 <td>yes</td>
 <td>Section 1.</td>
 <td>any change, missing or unmanaged</td>
@@ -2434,6 +2568,24 @@ finding:</p>
 <td>Show, and with <code>--accept</code> store, the new checksum of an edited applied migration (section 4).</td>
 <td>without <code>--accept</code>, when the file differs</td>
 </tr>
+<tr>
+<td><code>lint [--db]</code></td>
+<td>no (<code>--db</code> yes)</td>
+<td>Report risky operations with a safer alternative (section 5).</td>
+<td>a finding has severity <code>error</code> (warnings alone exit 0)</td>
+</tr>
+<tr>
+<td><code>rollback [--group] [--lock-wait 30s]</code></td>
+<td>yes</td>
+<td>Run the <code>.down.sql</code> of the last applied migration, or of its group.</td>
+<td>a version has no down file (<code>ErrNoDown</code>) or is a Go migration</td>
+</tr>
+<tr>
+<td><code>rebase --onto &lt;dir&gt; [name]</code></td>
+<td>no</td>
+<td>Regenerate this branch's generated migrations on top of <code>&lt;dir&gt;</code> (section 4).</td>
+<td>the result is not a valid chain, or a branch file is hand-written</td>
+</tr>
 </tbody>
 </table>
 <p><code>validate</code> checks: files parse and directives are known; <code>momo.sum</code> matches;
@@ -2447,12 +2599,19 @@ refuses with <code>ErrOutOfOrder</code> (exit 1) when a pending version is older
 latest applied one, so a late-merged older migration is never applied after newer
 ones (<code>TestApplyRefusesForkedChain</code>, <code>TestApplyRefusesPendingOlderThanApplied</code>,
 <code>TestApplyRefusesBrokenChain</code>, <code>TestMigrateChainRefusalsExitOne</code>).</p>
-<p>Recovering from <code>ErrBranchConflict</code> or <code>ErrOutOfOrder</code> (there is no <code>rebase</code>
-command yet). Both mean two teammates branched from the same snapshot and both
+<p>Recovering from <code>ErrBranchConflict</code> or <code>ErrOutOfOrder</code>. Both mean two teammates branched from the same snapshot and both
 merged: two snapshots share a parent, and one of the new migrations has a
 version older than the other. Fix it in the files of the branch that merged
 last, before it is applied anywhere. The late migration is still pending, so it
 needs no <code>rehash</code>:</p>
+<p>With a checkout of the target branch's migration directory (Momo has no git
+dependency, so make it with <code>git archive</code> or a second checkout),
+<code>momo migrate rebase --onto &lt;dir&gt; [name]</code> does steps 1 and 2 below in one
+command and validates the result. It refuses, naming the file, a branch
+migration without <code>-- momo:generated</code> or with a hand-written <code>.down.sql</code>, and a
+target directory that is not a valid chain. <code>--onto</code> takes a directory only. The
+branch directory must hold every migration of the target, as after a merge;
+the command prints <code>problem:</code> lines and exits 1 when it does not. By hand:</p>
 <ol>
 <li>Delete its <code>&lt;version&gt;_&lt;name&gt;.up.sql</code> and <code>&lt;version&gt;_&lt;name&gt;.snapshot.json</code>
    (a generated migration; for a hand-written one rename the <code>.up.sql</code> to a
@@ -2467,15 +2626,13 @@ needs no <code>rehash</code>:</p>
 <p>If the older migration was already applied somewhere, do not rewrite it: leave
 the chain as it is and add a new migration for the difference.</p>
 <p><code>momo migrate new --custom &lt;name&gt;</code> writes an empty hand-written migration
-(section 6). Not wired into the CLI yet: <code>rebase</code>, <code>lint</code>,
-<code>rollback</code>. Each exits 2 with <code>migrate &lt;name&gt; is not available yet</code>. The engine
-already has two of them, for Go callers:</p>
+(section 6).</p>
 <ul>
-<li><code>Engine.Rollback(ctx, RollbackOptions{Group: false})</code> runs the <code>.down.sql</code> of
+<li><code>momo migrate rollback [--group]</code> (<code>Engine.Rollback(ctx, RollbackOptions{Group: false})</code>) runs the <code>.down.sql</code> of
   the last applied migration (the applied row with the greatest <code>applied_at</code>);
   with <code>Group: true</code> it runs the downs of every row that shares the greatest
   <code>apply_id</code>, in descending version order. It takes the same lock and session
-  timeouts as <code>Apply</code>, refuses a dirty database or a checksum mismatch, and
+  timeouts as <code>Engine.Apply</code>, refuses a dirty database or a checksum mismatch, and
   returns <code>ErrNoDown</code> before running anything when any selected version has no
   down file. A transactional down runs in one transaction together with the
   history update; the row becomes <code>rolled_back</code>, so the version is pending
@@ -2484,14 +2641,15 @@ already has two of them, for Go callers:</p>
   (dirty, settle it with <code>resolve</code>). A rollback undoes schema, not data: write
   the down so that it can run on a populated table (<code>TestRollbackGroup</code>,
   <code>TestRollbackNoDown</code>).</li>
-<li><code>Engine.Rebase(ctx, target, desired, name)</code> takes the directory of the target
+<li><code>momo migrate rebase</code> (<code>Engine.Rebase(ctx, target, desired, name)</code>) takes the directory of the target
   branch (from <code>git</code>, Momo has no git dependency). It lists every file of the
   branch's migrations that the target lacks, refuses with the file name when one
   has no <code>-- momo:generated</code> header, and regenerates one migration on top of
   the target's latest snapshot. It first validates the target (momo.sum, chain,
   snapshots) and refuses a broken one, and it refuses a branch migration that
   has a hand-written <code>.down.sql</code>, naming the file. It writes nothing: the
-  caller deletes the returned files and writes the new ones (<code>TestMigrateRebase</code>).</li>
+  caller deletes the returned files and writes the new ones, which the command
+  does (<code>TestMigrateRebase</code>).</li>
 </ul>
 <p>There is no <code>--force-unlock</code>: the PostgreSQL lock is a session advisory lock that
 the server frees when its holder's connection ends (section 3). <code>--lock-wait</code>
@@ -2610,7 +2768,7 @@ virtual tables and the shadow tables of virtual tables are left out. An
 <code>INTEGER PRIMARY KEY</code> of a rowid table is reported with identity <code>by_default</code>,
 and the schema normalizer gives that column the same identity on the model side,
 so the two compare equal. A trigger is its <code>CREATE TRIGGER</code> text
-(<code>Trigger.Definition</code>), compared after whitespace and case outside quotes are
+(<code>schema.Trigger.Definition</code>), compared after whitespace and case outside quotes are
 normalized. Extensions, native enums, functions, policies, partitions,
 row-level security and schemas do not exist on SQLite and are never reported.</p>
 <p><strong>Enums.</strong> SQLite has no enum type. A TEXT column that carries
@@ -2908,6 +3066,83 @@ well-known functions) rewrites the table under <code>ACCESS EXCLUSIVE</code>; <c
 prints a <code>risk:</code> hint (PostgreSQL only) for an <code>ADD COLUMN</code> with one on an existing table. It
 only knows the built-in names it lists; a function you wrote yourself is not
 checked.</p>
+<h3 id="lint-momo-migrate-lint">Lint (<code>momo migrate lint</code>)<a class="headerlink" href="#lint-momo-migrate-lint" title="Permanent link">&para;</a></h3>
+<p><code>momo migrate lint</code> reads the migration files and reports operations that lock
+a table for long, rewrite it, or lose data. Each finding has a severity, the
+rule, the version and 1-based statement number, and a safer alternative. It
+needs no database: it checks every migration in the directory, or with <code>--db</code>
+only the ones the database has not applied (<code>Engine.LintAll</code>, <code>Engine.Lint</code>,
+<code>LintSQL</code>). It exits 1 when any finding is an <code>error</code>; warnings alone exit 0. A
+table the migration creates itself is empty and never reported: a rule fires
+only on a table of the parent snapshot (<code>TestMigrateLint</code>,
+<code>TestMigrateLintQuietOnSafeSQL</code>, <code>TestMigrateLintExitCodes</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Severity</th>
+<th>Fires on</th>
+<th>Alternative</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>not-null-without-default</code></td>
+<td>error</td>
+<td><code>ADD COLUMN ... NOT NULL</code> without <code>DEFAULT</code> (serial and generated exempt)</td>
+<td>add nullable, backfill in a separate migration, then <code>SET NOT NULL</code></td>
+</tr>
+<tr>
+<td><code>not-null-without-default</code></td>
+<td>warning</td>
+<td><code>ALTER COLUMN ... SET NOT NULL</code> (the last step of the staged flow)</td>
+<td>backfill first; on a large table validate a <code>CHECK ... NOT VALID</code> first</td>
+</tr>
+<tr>
+<td><code>column-type-change</code></td>
+<td>error</td>
+<td><code>ALTER COLUMN ... TYPE</code></td>
+<td>add a new column, dual-write, backfill, switch reads, drop the old one</td>
+</tr>
+<tr>
+<td><code>blocking-index</code></td>
+<td>error</td>
+<td><code>CREATE INDEX</code> without <code>CONCURRENTLY</code></td>
+<td><code>CREATE INDEX CONCURRENTLY</code> in a <code>-- momo:no-transaction</code> migration</td>
+</tr>
+<tr>
+<td><code>foreign-key-without-not-valid</code></td>
+<td>error</td>
+<td><code>ADD ... FOREIGN KEY</code> or <code>CHECK</code> without <code>NOT VALID</code></td>
+<td>add <code>NOT VALID</code>, then <code>VALIDATE CONSTRAINT</code> in a separate migration</td>
+</tr>
+<tr>
+<td><code>enum-add-and-use</code></td>
+<td>error</td>
+<td><code>ALTER TYPE ... ADD VALUE 'x'</code> and a later statement that mentions <code>'x'</code></td>
+<td>use the value in a later migration</td>
+</tr>
+<tr>
+<td><code>destructive-without-directive</code></td>
+<td>error</td>
+<td><code>DROP TABLE</code>, <code>DROP COLUMN</code>, <code>DROP SCHEMA</code>, <code>DROP TYPE</code>, <code>TRUNCATE</code></td>
+<td>add <code>-- momo:destructive</code> after a review</td>
+</tr>
+<tr>
+<td><code>sqlite-rebuild</code></td>
+<td>warning</td>
+<td>a statement with the SQLite <code>rebuild</code> hint (<code>LintSQL</code> callers)</td>
+<td>batch the data copy or split the table</td>
+</tr>
+</tbody>
+</table>
+<p>The rules are text heuristics on the comment-free statement. The PostgreSQL
+rules (the first six) run for the <code>postgres</code> dialect only; the destructive rule
+runs for every dialect. A statement built inside a <code>DO</code> block or a function is
+not seen, and a keyword inside a string literal can cause a false report.
+<code>SET NOT NULL</code> is a warning, not an error, because the staged flow (below) ends
+with it. The plan also sketches a <code>--db</code> row count rule for SQLite rebuilds;
+<code>momo migrate</code> does not select SQLite, so it is not built.</p>
 <h3 id="other-items">Other items<a class="headerlink" href="#other-items" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Backfills</strong>: Momo has no data-migration step. Do them in a hand-written
@@ -3088,19 +3323,35 @@ models and the init snapshot, so nothing has to be written by hand first.</p>
 <p>The models carry exact table and column names (a <code>table</code> or <code>column</code> tag is
 written wherever the naming preset would derive another name), Go types,
 nullability (a pointer, or the <code>nullable</code> tag for slices), defaults, <code>size</code>,
-<code>precision</code> and <code>scale</code>, enums, primary keys, identity and serial columns,
+<code>precision</code> and <code>scale</code>, enums, primary keys, identity (<code>identity</code> or
+<code>identity:always</code>) and serial columns,
 single-column indexes as tags, other indexes, unique constraints, checks and
-comments in the <code>MomoConfig</code> method, and every foreign key the generator can
-derive as a <code>belongs_to</code> field with its <code>on_delete</code> and <code>on_update</code> actions.
+comments in the <code>MomoConfig</code> method, every foreign key the generator can
+derive as a <code>belongs_to</code> field with its <code>on_delete</code> and <code>on_update</code> actions
+(with <code>fk_name</code> when the constraint name is not <code>&lt;table&gt;_&lt;column&gt;_fkey</code>;
+PostgreSQL picks <code>_fkey1</code> on a partitioned table), and every composite
+(multi-column) foreign key to a modeled table as a <code>c.ForeignKey(...)</code>
+statement in <code>MomoConfig</code>. A composite primary key whose
+column order differs from the field order is declared with
+<code>c.PrimaryKey(&amp;m.Name, &amp;m.Scope, &amp;m.At)</code> in <code>MomoConfig</code>; the DDL, inspection
+and baseline keep that order. Changing the order of an existing key later is a
+drop and add of the primary key under an <code>ACCESS EXCLUSIVE</code> lock, and the drop
+is gated as destructive.
 <code>numeric</code> columns are Go strings (the <code>decimal-as-string</code> note); an
-<code>introspect.types</code> rule picks a decimal type instead.</p>
+<code>introspect.types</code> rule picks a decimal type instead. <code>tsvector</code> columns become
+<code>types.TSVector</code> (<code>*types.TSVector</code> when nullable); an <code>introspect.types</code> rule
+still overrides that.</p>
+<p><code>momo generate</code> leaves out type errors that come from files with momo's
+generated header, since it rewrites them. After you rename or remove a field,
+one <code>momo generate</code> run regenerates the stale file; an error in a hand-written
+file still stops it.</p>
 <p>A column type with no Go mapping is an error and nothing is written; add a rule
 to the <code>introspect</code> section of <code>momo.yaml</code>. Constraints the models cannot
 declare are left out of the models and the snapshot and printed as warnings, so
-the two agree and the baseline reports them: composite foreign keys, foreign
-keys whose name is not table, column and <code>_fkey</code>, foreign keys that do not
-reference a single-column primary key, unique expression indexes, generated
-columns, <code>generated always</code> identity (modeled as by default), and PostgreSQL
+the two agree and the baseline reports them: foreign keys to a table with no
+model, single-column foreign keys whose name is not table, column and <code>_fkey</code> or
+that do not reference a single-column primary key, expression keys with an order or operator class, generated
+columns, and PostgreSQL
 schemas other than the current one.</p>
 <h3 id="the-introspect-section">The introspect section<a class="headerlink" href="#the-introspect-section" title="Permanent link">&para;</a></h3>
 <p><code>momo.yaml</code> holds what the database cannot say, and it is applied again on every
@@ -3172,7 +3423,11 @@ database:</p>
   on its schema: <code>GRANT CREATE ON SCHEMA app TO app_role</code>.</li>
 <li>With <code>CREATE</code> on the schema but not on the database, <code>baseline</code> works for a
   snapshot without table text (<code>TestBaselineAsAppRole</code>) and fails with
-  <code>ErrCanonicalizePrivilege</code> otherwise (section 7).</li>
+  <code>ErrCanonicalizePrivilege</code> otherwise (section 7). <code>drift</code> fails with it when
+  the snapshot declares a view, a trigger <code>WHEN</code> or a policy expression, and
+  runs without it for table text only, listing the tables in
+  <code>CanonicalizeSkipped</code> (<code>TestDriftBodiesNeedCreateOnDatabase</code>,
+  <code>TestDriftTablesOnlyRunsAsApplicationRole</code>).</li>
 </ul>
 <h3 id="extensions-managed-outside-momo">Extensions managed outside momo<a class="headerlink" href="#extensions-managed-outside-momo" title="Permanent link">&para;</a></h3>
 <p>Set <code>migrate.external_extensions</code> in <code>momo.yaml</code> for an extension that a

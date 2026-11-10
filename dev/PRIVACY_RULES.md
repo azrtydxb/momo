@@ -54,7 +54,7 @@ func tenantDB(drv momo.Driver, tenantID int64) *momo.DB {
 }
 ```
 
-Inserts are not filtered by a predicate: the tenant column of a new row is the model's own value, so set it in a `BeforeInsert` model hook and do not trust the caller to set it. `BeforeInsert` runs only for `Model` and `Models` inserts: `Values`, `ValuesRows` and `FromSelect` inserts have no model and skip it, so a tenant handle that relies on the hook must also deny those forms, or deny inserts altogether and write through a trusted handle.
+Inserts are not filtered by a predicate: the tenant column of a new row is the model's own value, so set it in a `BeforeInsert` model method (`func (m *Model) BeforeInsert(ctx context.Context) error`, wired into `Meta.Hooks` by `momo generate`) and do not trust the caller to set it. `BeforeInsert` runs only for `Model` and `Models` inserts: `InsertQuery.Values`, `ValuesRows` and `FromSelect` inserts have no model and skip it, so a tenant handle that relies on the hook must also deny those forms, or deny inserts altogether and write through a trusted handle.
 
 A read-only handle denies every write:
 
@@ -96,7 +96,7 @@ Each of these bypasses every interceptor. Scope them explicitly or use row-level
 - Joined relation tables: for a `Joined` relation only the primary table is filtered; the joined table is not.
 - The association helpers (`Link`, `Unlink`, `Replace` and the like) and graph creation.
 - Subqueries and other sources rendered inside a statement: subquery operands, `UPDATE ... FROM` sources, and the `FromSelect` source of an insert.
-- Raw SQL of every kind: `momo.Exec`, `momo.MapRows`, `momo.Scalars`, `momo.SQL` fragments and `momo.RawSubquery`.
+- Raw SQL of every kind: `momo.Exec`, `momo.MapRows`, `momo.Scalars`, `momo.Query`, `momo.QueryRows`, `momo.SQL` fragments and `momo.RawSubquery`.
 - Bulk loading with COPY: `InsertQuery[T].Copy` runs the insert interceptors (deny only) and `BeforeInsert`, but a predicate an interceptor adds is ignored, and `momo.CopierOf(...).CopyFrom` skips them entirely.
 - Anything run on the driver directly, and any other `*momo.DB` over the same driver.
 
@@ -105,4 +105,4 @@ For isolation that holds even when application code is wrong, use database row-l
 ## Related
 
 - Sensitive columns are masked in hook events: bound values of columns tagged sensitive reach hooks as `momo.RedactedArg`.
-- Typed model hooks (`Meta.Hooks`) change values on a model before a write and after a read; see the `HookSet` documentation for how to set them and for what a Before hook may leave behind when a statement then fails.
+- Typed model hooks (`Meta.Hooks`) change values on a model before a write and after a read; `momo generate` fills them from model methods named `BeforeInsert`, `BeforeUpdate`, `BeforeDelete` and `AfterLoad` with the signature `func(context.Context) error`, so there is nothing to set by hand; see the `HookSet` documentation for the semantics and for what a Before hook may leave behind when a statement then fails.

@@ -8,7 +8,7 @@ documentation, which is the source of truth.
 ## Layering
 
 ```text
-              cmd/momo (CLI)         cmd/momovet (analyzer binary)
+              cmd/momo → cli         cmd/momovet (analyzer binary)
                  │
    ┌─────────────┼──────────────┐
    gen (plugin interface)       migrate ── migrate/{postgres,sqlite,mysql}
@@ -37,7 +37,7 @@ checks.
    the root, the leaf packages and `internal/*`. `TestKnownPackages` forces
    every new package to be given a role in that file.
 4. Convention: `driver/*` import `momo` plus their database driver only.
-5. Convention: `gen`, `migrate/*` and `cmd/*` may import `golang.org/x/tools`,
+5. Convention: `gen`, `migrate/*`, `cli` and `cmd/*` may import `golang.org/x/tools`,
    YAML and drivers. An application binary that imports only `momo` and one
    driver never links them.
 6. Convention: generated code imports only `momo`, `vector`, `types`, `schema`
@@ -47,8 +47,8 @@ checks.
 
 ### `dialect`
 
-`dialect.Dialect` describes one database: its `Name` (`postgres`, `sqlite` or
-`mysql`), the MySQL `Flavor` (`mysql` or `mariadb`), the per-statement bind
+`dialect.Dialect` describes one database: its `dialect.Dialect.Name` (`postgres`, `sqlite` or
+`mysql`), the MySQL `dialect.Flavor` (`mysql` or `mariadb`), the per-statement bind
 limit `MaxParams` and a set of capability flags such as `Returning`,
 `OnConflict`, `OnDuplicateKey`, `Locking`, `RowValues`, `Savepoints`,
 `ILike` and `Merge`. It also quotes identifiers and writes placeholders.
@@ -62,8 +62,8 @@ The neutral description of a database schema: tables, columns, indexes,
 foreign keys, checks, enums, views, functions, triggers and policies. It is
 what the generator produces from your models, what a migration snapshot
 stores, and what each migration dialect inspects from a live database.
-`schema.Load` reads a stored schema and refuses a newer `FormatVersion` with
-`ErrNewerFormat`. `schema.Equal` and the `Normalize*` functions compare
+`schema.Load` reads a stored schema and refuses a newer `schema.FormatVersion` with
+`schema.ErrNewerFormat`. `schema.Equal` and the `Normalize*` functions compare
 schemas without being fooled by spelling differences.
 
 ### `momo` (root runtime)
@@ -78,7 +78,7 @@ schemas without being fooled by spelling differences.
   `Merge`, built from generated column descriptors (`Column[T]`,
   `NullColumn[T]`, `VectorColumn[V]`) and expression builders. Query values
   are immutable: each method returns a modified copy.
-- Raw SQL escape hatches: `momo.Exec`, `momo.Scalars`, `momo.SQL`,
+- Raw SQL escape hatches: `momo.Exec`, `momo.Scalars`, `momo.Query`, `momo.QueryRows`, `momo.SQL`,
   `momo.TypedSQL` and `RawSubquery`, with `?` positional and `@name` named
   placeholders.
 - Relations: generated `Relation` descriptors, `Load`, `LoadAll`, `Preload`
@@ -93,15 +93,15 @@ schemas without being fooled by spelling differences.
 
 ### `vector`
 
-The pgvector value types `Vector`, `HalfVector`, `SparseVector` and `Bits`,
+The pgvector value types `vector.Vector`, `vector.HalfVector`, `vector.SparseVector` and `vector.Bits`,
 each a `sql.Scanner` and `driver.Valuer` with a `Validate` method, and
 `ErrInvalidVector`. A vector field declares its dimension with the tag
 `dim:<n>`; the Go type selects the SQL type. See [vectors](vectors.md).
 
 ### `types`
 
-Codec types for columns that have no plain Go equivalent: `JSON[T]`, `Date`,
-`TimeOfDay`, `UUID`, `Hstore` and the full-text `TSVector` and `TSQuery`. See
+Codec types for columns that have no plain Go equivalent: `types.JSON[T]`, `types.Date`,
+`types.TimeOfDay`, `types.UUID`, `types.Hstore` and the full-text `types.TSVector` and `types.TSQuery`. See
 [type mapping](TYPE_MAPPING.md).
 
 ### `driver/*`
@@ -115,9 +115,9 @@ Codec types for columns that have no plain Go equivalent: `JSON[T]`, `Date`,
 
 ### `migrate`
 
-The migration engine: `Engine` with `Diff`, `Plan`, `Apply`, `Status`,
+The migration engine: `migrate.Engine` with `migrate.Engine.Diff`, `Plan`, `migrate.Engine.Apply`, `Status`,
 `Baseline`, `Drift`, `Resolve`, `Rehash`, `Inspect`, `AutoMigrate`, `Rollback`
-and `Rebase`, plus `ValidateOffline`. A migration directory holds
+and `Rebase`, plus `migrate.ValidateOffline`. A migration directory holds
 `<version>_<name>.up.sql`, optional hand-written `.down.sql`, snapshots and
 `momo.sum`. A database implements `migrate.Dialect`; the implementations are
 `migrate/postgres`, `migrate/sqlite` and `migrate/mysql`, and
@@ -128,7 +128,7 @@ library APIs. See
 
 ### `gen`
 
-The generator. `gen.Load` reads model packages into a `Graph`, `gen.Emit`
+The generator. `gen.Load` reads model packages into a `gen.Graph`, `gen.Emit`
 writes the generated files through the `Writer`, which is the only file writer
 (it refuses targets that are not generated, formats the output and is
 deterministic). `gen.Plugin` is the extension interface. Generated Go files
@@ -148,7 +148,9 @@ carries the format number and no release version.
 
 ### Other packages
 
-- `cmd/momo`: the CLI (`generate`, `migrate`, `viz`, `help`).
+- `cli`: the CLI as a library (`generate`, `migrate`, `viz`, `help`).
+  `cli.Main(plugins...)` builds a momo binary with your own generator
+  plugins; `cmd/momo` is a thin caller of it with none.
 - `momovet` and `cmd/momovet`: the analyzer for non-constant raw SQL; see
   [momovet](momovet.md).
 - `momotest`: a schema or a rolled-back transaction per test with your

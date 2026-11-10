@@ -644,6 +644,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -813,6 +897,39 @@
     <span class="md-ellipsis">
       
         SQLite without a server: sqlitetest
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asserting-the-sql-assertsql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asserting the SQL: AssertSQL
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asserting-index-use-assertusesindex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asserting index use: AssertUsesIndex
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-the-sql-a-query-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listing the SQL: a query registry
       
     </span>
   </a>
@@ -1321,6 +1438,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#asserting-the-sql-assertsql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asserting the SQL: AssertSQL
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asserting-index-use-assertusesindex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asserting index use: AssertUsesIndex
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-the-sql-a-query-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listing the SQL: a query registry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#options" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1407,7 +1557,7 @@ code under test; the constraints and the SQL are what you want to exercise.</p>
 </ol>
 <p>When the variable is unset, the test is skipped. Set <code>MOMO_REQUIRE_INTEGRATION=1</code>
 in CI and the test fails instead, so a misconfigured job cannot pass by skipping
-everything. <code>WithEnv</code> reads a different variable.</p>
+everything. <code>momotest.WithEnv</code> reads a different variable.</p>
 <h2 id="one-database-per-test-new">One database per test: New<a class="headerlink" href="#one-database-per-test-new" title="Permanent link">&para;</a></h2>
 <!-- docscheck:fragment -->
 
@@ -1431,7 +1581,7 @@ may open and commit its own transactions. Use this mode when it does.</p>
 </code></pre></div>
 <p>The migrations are applied once to a template schema, named after a hash of the
 migration files, the extension list and the momo version, and kept on the
-server between runs. The first <code>NewTx</code> in a test binary builds it (or finds it
+server between runs. The first <code>momotest.NewTx</code> in a test binary builds it (or finds it
 ready) under an advisory lock, over a short-lived administrator connection;
 after that success the binary remembers it, and each later test only opens its
 own small pool and begins a transaction, which is much cheaper than <code>New</code>. A
@@ -1447,7 +1597,7 @@ from using one transaction per test:</p>
 <li>Parallel tests do not see each other's rows, but two that insert the same
   unique key wait for each other until one finishes. Give parallel tests
   distinct keys.</li>
-<li>DDL, <code>TRUNCATE</code> and <code>LOCK TABLE</code> inside a <code>NewTx</code> test take locks that block
+<li>DDL, <code>TRUNCATE</code> and <code>LOCK TABLE</code> inside a <code>momotest.NewTx</code> test take locks that block
   every other parallel test using the same template until this one ends. Run
   such tests with <code>New</code>.</li>
 <li>Identity and sequence values are consumed by a rolled-back transaction, so
@@ -1458,9 +1608,9 @@ from using one transaction per test:</p>
 <p>Migrations run in a schema of the test's own, with <code>public</code> after it on the
 search path. Write them unqualified. <code>momotest</code> refuses early, with the file
 name, a migration that contains <code>CREATE SCHEMA</code>, or <code>CREATE EXTENSION</code> for an
-extension not listed in <code>WithExtensions</code>: an extension exists once per
+extension not listed in <code>momotest.WithExtensions</code>: an extension exists once per
 database, so it would land in one test's schema and vanish under the others when
-that schema is dropped. List extensions in <code>WithExtensions</code> (names are matched
+that schema is dropped. List extensions in <code>momotest.WithExtensions</code> (names are matched
 in lower case); they are installed once in <code>public</code>.</p>
 <p>The check reads the SQL with comments and string literals removed, so a comment
 that mentions <code>create schema</code> is fine and <code>CREATE /* x */ EXTENSION foo</code> is still
@@ -1469,7 +1619,7 @@ because a <code>DO</code> block can run <code>CREATE EXTENSION</code>: the cost 
 dollar-quoted string that looks like that statement is also refused, with a
 message naming the file. Move such text into a normal string, or list the
 extension.</p>
-<p><code>NewTx</code> remembers the result of the check and the template name per migration
+<p><code>momotest.NewTx</code> remembers the result of the check and the template name per migration
 <code>fs.FS</code> value and extension list. Build the FS once, in a package variable or an
 <code>embed.FS</code>, so that the files are walked once; an FS rebuilt on every call (such
 as <code>fs.Sub</code> inside a function) is re-read each time, which still works. Only
@@ -1493,11 +1643,11 @@ not create in the current test.</p>
 <span class="w">    </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Insert</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">models</span><span class="p">.</span><span class="nx">User</span><span class="p">{</span><span class="nx">OrgID</span><span class="p">:</span><span class="w"> </span><span class="nx">org</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span><span class="w"> </span><span class="nx">Email</span><span class="p">:</span><span class="w"> </span><span class="s">"ada@acme.test"</span><span class="p">}),</span>
 <span class="p">)</span>
 </code></pre></div>
-<p><code>Seed</code> runs its steps in the order given, so list a table before the tables that
+<p><code>momotest.Seed</code> runs its steps in the order given, so list a table before the tables that
 reference it. All steps run in one transaction (a savepoint when the querier is
 a <code>*momo.Tx</code>); if one fails, nothing is kept and the test fails. <code>Insert</code> reads
 generated columns, such as identity keys, back into the rows you pass, so later
-steps can use them. <code>Graph</code> inserts a root with the related rows it includes, as
+steps can use them. <code>momotest.Graph</code> inserts a root with the related rows it includes, as
 <code>momo.CreateGraph</code> does. A step is any <code>func(ctx, momo.Querier) error</code>, so
 custom fixtures fit too.</p>
 <h2 id="fixtures-from-a-file-loadfixtures">Fixtures from a file: LoadFixtures<a class="headerlink" href="#fixtures-from-a-file-loadfixtures" title="Permanent link">&para;</a></h2>
@@ -1522,7 +1672,7 @@ name and a YAML <code>null</code> becomes SQL <code>NULL</code>. Table and colum
 with <code>momo.Ident</code> and every value is a bound argument, so a value is never
 spliced into the SQL. A table name is one identifier, with no schema prefix.
 A value is a string, integer, float, bool, null, timestamp or <code>!!binary</code> (read as
-bytes); a nested map or list is refused. <code>LoadFixtures</code> writes plain <code>INSERT</code>
+bytes); a nested map or list is refused. <code>momotest.LoadFixtures</code> writes plain <code>INSERT</code>
 statements and is tested on PostgreSQL and SQLite; it has not been run against
 MySQL or MariaDB. A file that is not a mapping of
 tables to lists of rows, a missing file, and a row the database refuses (a
@@ -1536,10 +1686,10 @@ with sqlite-vec loaded, without a server and without an environment variable:
 own temporary directory. Every call opens a file of its own, so two databases in
 one test never see each other's tables and parallel tests do not collide. The
 database is closed and the file removed when the test ends. The options go to
-<code>momo.New</code>, for example <code>momo.WithHook</code>, and <code>LoadFixtures</code> fills it like any
+<code>momo.New</code>, for example <code>momo.WithHook</code>, and <code>momotest.LoadFixtures</code> fills it like any
 other database. The database starts empty: create the tables with your own DDL,
 for example <code>momo.SQLiteVectorType</code> for a vector column (see
-<a href="../vectors/">Vector search</a>); <code>momotest.WithMigrations</code> and <code>NewTx</code> are
+<a href="../vectors/">Vector search</a>); <code>momotest.WithMigrations</code> and <code>momotest.NewTx</code> are
 PostgreSQL features and do not apply.</p>
 <p>SQLite lives in its own package, and not in <code>momotest</code>, because the SQLite
 driver is compiled from C sources: a test binary that imports only <code>momotest</code>
@@ -1548,6 +1698,111 @@ for PostgreSQL does not build them, and a repository test
 <code>sqlitetest</code> pays for them. The driver needs cgo and a non-Windows target; on
 any other build <code>sqlitetest.New</code> skips the test, the way <code>momotest.New</code> skips
 when the server URL is unset.</p>
+<h2 id="asserting-the-sql-assertsql">Asserting the SQL: AssertSQL<a class="headerlink" href="#asserting-the-sql-assertsql" title="Permanent link">&para;</a></h2>
+<p><code>momotest.AssertSQL(t, compiled, want)</code> compares the SQL text of a compiled
+statement with <code>want</code>, ignoring differences in whitespace. Get <code>compiled</code> from
+the <code>SQL</code> method of any query (<code>Select</code>, <code>Insert</code>, <code>Update</code>, <code>Delete</code>, a raw
+subquery source); the statement is only compiled, never sent, so the assertion
+needs no database and the recording hook sees no statement. Because only the
+text is compared, put the values in the query and the text in <code>want</code>:</p>
+<div class="highlight"><pre><span></span><code>c, err := momo.Select[User](db).Where(user.Email.Eq("a@example.test")).SQL()
+momotest.AssertSQL(t, c, `SELECT ... FROM "users" WHERE "users"."email" = $1`)
+</code></pre></div>
+<p>On a mismatch the failure holds both texts and <code>Compiled.String()</code>, which lists
+the bound arguments by placeholder (<code>$1, $2 bound</code>). It never holds an argument
+value, so a value bound from a <code>sensitive</code> column cannot reach the test log.</p>
+<h2 id="asserting-index-use-assertusesindex">Asserting index use: AssertUsesIndex<a class="headerlink" href="#asserting-index-use-assertusesindex" title="Permanent link">&para;</a></h2>
+<p><code>momotest.AssertUsesIndex(t, q, compiled, "index_name")</code> runs a plain <code>EXPLAIN</code>
+of the statement through <code>momo.Explain</code> (never <code>EXPLAIN ANALYZE</code>, so the
+statement is not executed) and fails unless the plan reads that index. It works
+on PostgreSQL and SQLite and fails the test on any other dialect.</p>
+<ul>
+<li>PostgreSQL: the index name must be a whole token in an <code>Index Scan</code>,
+  <code>Index Only Scan</code> or <code>Bitmap Index Scan</code> node. A name that only starts with
+  the asserted one (<code>orders_idx2</code> or <code>orders_idx-old</code> for <code>orders_idx</code>) does
+  not match. A mixed-case name that PostgreSQL prints quoted (<code>"MyIdx"</code>)
+  matches when you pass <code>MyIdx</code>.</li>
+<li>SQLite: a plan line must say <code>USING INDEX name</code> or
+  <code>USING COVERING INDEX name</code>.</li>
+</ul>
+<p>A failure prints the plan, and says so when the plan contains a sequential scan.
+Small tables get sequential scans on PostgreSQL whatever indexes exist: load
+enough rows and run <code>ANALYZE</code> first, or use <code>tx.SetLocal(ctx, "enable_seqscan",
+"off")</code>. The database may echo literal values into a plan, so run the assertion
+on test data that is not sensitive.</p>
+<h2 id="listing-the-sql-a-query-registry">Listing the SQL: a query registry<a class="headerlink" href="#listing-the-sql-a-query-registry" title="Permanent link">&para;</a></h2>
+<p>An application that leaves a code generator such as sqlc loses its <code>.sql</code>
+files, which it may lint statically or freeze for compatibility tests against
+the previous release. Momo lists the SQL without a database: register each
+named query as a builder, then ask the registry for the compiled text per
+dialect.</p>
+<p><code>momo.RegisterQuery(name, build)</code> adds a query to the process-wide registry
+(<code>momo.DefaultQueries</code>); <code>momo.NewQueryRegistry</code> makes an isolated one for a
+test. <code>build</code> receives a <code>momo.Querier</code> that compiles but never executes (see
+<code>momo.NewOffline</code>) and returns anything with an <code>SQL()</code> method: a <code>Select</code>,
+<code>Insert</code>, <code>Update</code>, <code>Delete</code> or <code>Merge</code> query, or <code>momo.RawQuery</code> for a
+hand-written statement. Registering a name twice panics, naming the query. The
+values you bind in <code>build</code> are placeholders and never appear in the listing.
+<code>Registry.Compile(dialect.Postgres)</code> returns every query sorted by name with
+the dialect's placeholders (<code>$1</code> on PostgreSQL, <code>?</code> on MySQL and SQLite).</p>
+<p><code>momotest.QueryGolden</code> writes that list to one golden file per dialect and
+fails when a query's SQL changed, a query was added or one was removed. Run the
+tests with <code>MOMO_UPDATE_GOLDEN=1</code> to accept an intended change, and review the
+diff in code review. It needs no database, so it runs in a plain <code>go test</code>.</p>
+<p>To freeze a release for an N-1 compatibility test, copy its golden file to
+<code>testdata/queries/&lt;release&gt;/postgres.sql</code>. The program below is the body of
+that test: it reads the previous release's file with <code>momotest.LoadQueryGolden</code>
+and prepares every statement against the current schema, so a dropped column or
+table fails the test. <code>PREPARE</code> plans a statement without running it, and the
+transaction rolls back at the end.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">"context"</span>
+<span class="w">    </span><span class="s">"fmt"</span>
+<span class="w">    </span><span class="s">"log"</span>
+<span class="w">    </span><span class="s">"os"</span>
+
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/driver/pgxdriver"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/momotest"</span>
+<span class="p">)</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">init</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">RegisterQuery</span><span class="p">(</span><span class="s">"open_tasks"</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">q</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Querier</span><span class="p">)</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Compilable</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">RawQuery</span><span class="p">(</span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">"SELECT id, title FROM tasks WHERE owner = $1 AND NOT done"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">run</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">());</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">run</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">previous</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">LoadQueryGolden</span><span class="p">(</span><span class="s">"testdata/queries/v1.4/postgres.sql"</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">NewPool</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">Getenv</span><span class="p">(</span><span class="s">"MOMO_EXAMPLE_DSN"</span><span class="p">))</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">))</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">db</span><span class="p">.</span><span class="nx">Tx</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">TxOptions</span><span class="p">{},</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">tx</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Tx</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">previous</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">stmt</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Sprintf</span><span class="p">(</span><span class="s">"PREPARE compat_%d AS %s"</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">.</span><span class="nx">SQL</span><span class="p">)</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">tx</span><span class="p">.</span><span class="nx">DriverTx</span><span class="p">().</span><span class="nx">Exec</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">stmt</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">"the previous release's query %s fails on the new schema: %w"</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="p">}</span>
+</code></pre></div>
 <h2 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1558,24 +1813,24 @@ when the server URL is unset.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>WithMigrations(fs.FS)</code></td>
+<td><code>momotest.WithMigrations(fs.FS)</code></td>
 <td>Apply these migrations. The directory needs no <code>momo.sum</code>. Without it the database is empty.</td>
 </tr>
 <tr>
-<td><code>WithEnv(name)</code></td>
+<td><code>momotest.WithEnv(name)</code></td>
 <td>Read the server URL from another variable.</td>
 </tr>
 <tr>
-<td><code>WithExtensions(names)</code></td>
+<td><code>momotest.WithExtensions(names)</code></td>
 <td><code>CREATE EXTENSION IF NOT EXISTS</code> in <code>public</code> first; with <code>vector</code> the pool registers the codec.</td>
 </tr>
 <tr>
-<td><code>WithMomoOptions(opts)</code></td>
+<td><code>momotest.WithMomoOptions(opts)</code></td>
 <td>Passed to <code>momo.New</code>, for example a hook.</td>
 </tr>
 <tr>
-<td><code>WithMaxConns(n)</code></td>
-<td>Pool size per test: 4 for <code>New</code>, 2 for <code>NewTx</code> by default.</td>
+<td><code>momotest.WithMaxConns(n)</code></td>
+<td>Pool size per test: 4 for <code>New</code>, 2 for <code>momotest.NewTx</code> by default.</td>
 </tr>
 </tbody>
 </table>
@@ -1586,10 +1841,10 @@ building a template, runs under a PostgreSQL advisory lock (keyed by
 <code>hashtext</code> of the names <code>momotest:extensions</code> and <code>momotest:template</code>), so tests
 in one binary and several test binaries running at once (<code>go test ./...</code>)
 cooperate. <code>New</code> also opens a short administrator connection to create and, at
-cleanup, drop its schema. A <code>NewTx</code> test holds one connection for its
+cleanup, drop its schema. A <code>momotest.NewTx</code> test holds one connection for its
 transaction, plus the pool's spare. Each parallel test holds a few connections; keep the server's
 <code>max_connections</code> above the number of parallel tests times the pool size, or
-lower the pool with <code>WithMaxConns</code> or the parallelism with <code>-parallel</code>.</p>
+lower the pool with <code>momotest.WithMaxConns</code> or the parallelism with <code>-parallel</code>.</p>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
 <p><a href="https://github.com/azrtydxb/momo/tree/main/examples/testing/">examples/testing</a> runs a small bank-account service
 through both modes, in parallel, with seeded fixtures. Its test is the

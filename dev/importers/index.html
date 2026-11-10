@@ -16,7 +16,7 @@
         <link rel="prev" href="../migrations/">
       
       
-        <link rel="next" href="../replicas/">
+        <link rel="next" href="../guides/gorm/">
       
       
         
@@ -676,6 +676,28 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#the-momo-import-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The momo import command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#importing-migration-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Importing migration history
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-import-report" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -690,6 +712,90 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1123,6 +1229,28 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#the-momo-import-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The momo import command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#importing-migration-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Importing migration history
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-import-report" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1187,18 +1315,73 @@ never compile, load or execute your code, so reading a project cannot run its
 is written as a literal in those files: a naming strategy set in another
 package, or an index added by a migration, is not visible. Each reader's
 package comment lists its limits.</p>
-<p>The <code>momo import</code> command is not wired yet. Today the readers are a
-Go API: call <code>Read</code>, check the report, then <code>Emit</code>.</p>
+<h2 id="the-momo-import-command">The <code>momo import</code> command<a class="headerlink" href="#the-momo-import-command" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>momo<span class="w"> </span>import<span class="w"> </span>gorm<span class="w"> </span>--src<span class="w"> </span>./old/models<span class="w"> </span>--out<span class="w"> </span>./models
+momo<span class="w"> </span>import<span class="w"> </span>bun<span class="w">  </span>--src<span class="w"> </span>./old/models<span class="w"> </span>--out<span class="w"> </span>./models<span class="w"> </span>--report<span class="w"> </span>import-report.txt
+momo<span class="w"> </span>import<span class="w"> </span>ent<span class="w">  </span>--src<span class="w"> </span>./ent/schema<span class="w"> </span>--out<span class="w"> </span>./models<span class="w"> </span>--package<span class="w"> </span>models
+</code></pre></div>
+<p>The command runs the reader, prints the import report to standard output and
+writes the Momo structs to <code>&lt;out&gt;/models.go</code> with a generated-file header.
+<code>--package</code> sets the Go package name (the default is derived from <code>--out</code>),
+and <code>--report</code> also writes the report to a file.</p>
+<p>Exit codes: <code>0</code> the models were written, <code>1</code> the report holds an <code>unsupported</code>
+change and nothing was written, <code>2</code> a usage or input error. Fix or convert the
+listed constructs by hand, or remove them from the source, and run it again.
+The command never overwrites a file that does not carry the generated-file
+header.</p>
+<h2 id="importing-migration-history">Importing migration history<a class="headerlink" href="#importing-migration-history" title="Permanent link">&para;</a></h2>
+<p>The <code>importer/history</code> package converts the migration history of another tool
+into a Momo migration directory, so a database that already ran those
+migrations does not run them again. Four readers produce the input:</p>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Reads</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>importer/history/atlas</code></td>
+<td>an Atlas directory (<code>&lt;version&gt;_&lt;name&gt;.sql</code>, <code>atlas.sum</code>) and the rows of <code>atlas_schema_revisions</code></td>
+</tr>
+<tr>
+<td><code>importer/history/goose</code></td>
+<td>a goose directory and the <code>goose_db_version</code> table</td>
+</tr>
+<tr>
+<td><code>importer/history/golangmigrate</code></td>
+<td><code>&lt;version&gt;_&lt;title&gt;.up.sql</code> and <code>.down.sql</code> files and <code>schema_migrations</code></td>
+</tr>
+<tr>
+<td><code>importer/history/bun</code></td>
+<td>Bun's SQL migrations and the <code>bun_migrations</code> table</td>
+</tr>
+</tbody>
+</table>
+<p>Each package exports <code>Read</code>, which returns a <code>history.Source</code>. <code>history.Convert</code>
+refuses a source that is dirty, that holds migrations the tool never applied, or
+that holds migrations it cannot convert (Bun and goose Go-function migrations).
+A source version that is not a 14-digit timestamp is mapped to
+<code>19700101000000</code> plus its position in the list, and the mapping is reported as a
+<code>version-mapped</code> change; the original version stays in the history <code>name</code>
+column. <code>history.Baseline</code> replays the converted SQL on an empty scratch
+database to write one schema snapshot per migration, <code>history.WriteImport</code>
+writes the directory and <code>history.HistoryRows</code> gives the <code>momo_migrations</code> rows
+that mark every migration as applied. The Atlas reader verifies <code>atlas.sum</code>
+with Atlas's directory hash and refuses a directory whose files were edited.
+golang-migrate records only its current version, so every migration up to it is
+read as applied.</p>
 <h2 id="the-import-report">The import report<a class="headerlink" href="#the-import-report" title="Permanent link">&para;</a></h2>
 <p>A Momo model is never an exact copy of an ORM model, because the ORMs differ in
 behaviour you do not see in the struct: GORM replaces a zero value with the
 column default, Ent saves an edge only when its setter was called, and so on.
 The importer does not paper over these differences. Every one becomes a
-<code>Change</code> in the report, with the source position (<code>file:line:col</code>), the model,
-the field and a message. <code>Report.String()</code> prints one line per change, sorted by
+<code>importer.Change</code> in the report, with the source position (<code>file:line:col</code>), the model,
+the field and a message. <code>importer.Report.String()</code> prints one line per change, sorted by
 position, in the form <code>source: kind: Model.Field: message</code>.</p>
-<p>Read the report before you trust the converted models. <code>Report.Has(kind)</code> and
-<code>Report.Of(kind)</code> filter it in code. The kinds are:</p>
+<p>Read the report before you trust the converted models. <code>importer.Report.Has(kind)</code> and
+<code>importer.Report.Of(kind)</code> filter it in code. The kinds are:</p>
 <table>
 <thead>
 <tr>

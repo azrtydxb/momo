@@ -642,6 +642,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -987,6 +1071,67 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-050" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.5.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.5.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#regenerating-with-from-db-after-the-dbdefault-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regenerating with --from-db after the dbdefault tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advisory-string-helpers-take-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory string helpers take options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-hook-methods-are-now-wired-by-momo-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model hook methods are now wired by momo generate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-040" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1162,6 +1307,67 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-050" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.5.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.5.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#regenerating-with-from-db-after-the-dbdefault-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regenerating with --from-db after the dbdefault tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advisory-string-helpers-take-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory string helpers take options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-hook-methods-are-now-wired-by-momo-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model hook methods are now wired by momo generate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-040" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1236,6 +1442,47 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-050">Upgrading to 0.5.0<a class="headerlink" href="#upgrading-to-050" title="Permanent link">&para;</a></h2>
+<h3 id="regenerating-with-from-db-after-the-dbdefault-tag">Regenerating with <code>--from-db</code> after the <code>dbdefault</code> tag<a class="headerlink" href="#regenerating-with-from-db-after-the-dbdefault-tag" title="Permanent link">&para;</a></h3>
+<p><code>momo generate --from-db</code> now adds the <code>dbdefault</code> tag to every NOT NULL
+PostgreSQL column whose default is computed (<code>gen_random_uuid()</code>, <code>now()</code>,
+<code>CURRENT_TIMESTAMP</code>, <code>nextval(...)</code> and other function calls). A Go zero value
+is no longer written for such a column: <code>InsertQuery.Model</code> and <code>InsertQuery.Models</code> leave it out,
+the database default applies, and the value is read back with <code>RETURNING</code>.
+Review the regenerated models: a <code>bool</code>, number, empty string or zero time in
+such a field can no longer be written explicitly through <code>Model</code> (use <code>InsertQuery.Values</code>
+or remove the tag), and a plain MySQL database refuses a zero value with
+<code>ErrUnsupported</code> because it cannot read the default back. Hand-written models
+are unaffected until they add the tag. See "Database defaults" in the
+<a href="../ai-guide/">AI guide</a>.</p>
+<h3 id="advisory-string-helpers-take-options">Advisory string helpers take options<a class="headerlink" href="#advisory-string-helpers-take-options" title="Permanent link">&para;</a></h3>
+<p><code>advisory.XactLockString</code> and <code>advisory.TryXactLockString</code> take a trailing
+<code>...advisory.Option</code> (for <code>advisory.Hash64</code>). A call site is unchanged, but
+the function types changed: code that assigns one of these functions to a
+variable or field of the old func type no longer compiles. Wrap the call in a
+closure instead.</p>
+<h3 id="model-hook-methods-are-now-wired-by-momo-generate">Model hook methods are now wired by <code>momo generate</code><a class="headerlink" href="#model-hook-methods-are-now-wired-by-momo-generate" title="Permanent link">&para;</a></h3>
+<p><code>momo generate</code> detects methods named <code>BeforeInsert</code>, <code>BeforeUpdate</code>,
+<code>BeforeDelete</code> and <code>AfterLoad</code> on a model and fills <code>Meta.Hooks</code> with them.
+Two behaviors change for an existing model after you regenerate:</p>
+<ul>
+<li>A method with one of these names and the exact signature
+  <code>func(context.Context) error</code> now runs: before inserts, updates and deletes,
+  and after loads. Before, such a method was never called. If you had a method
+  with a hook name that was meant as plain code, rename it before you
+  regenerate.</li>
+<li>A method with one of these names and any other signature makes
+  <code>momo generate</code> fail with a positioned diagnostic
+  (<code>hook BeforeInsert on Doc must have signature func(context.Context) error</code>),
+  and a hook-named method on a projection is a diagnostic as well (a projection
+  runs no hooks). Fix the signature or rename the method.</li>
+</ul>
+<p>If you set <code>Meta.Hooks</code> by hand in a hand-written <code>Meta</code>, nothing changes.
+Generated files are rewritten by <code>momo generate</code>; the <code>Hooks:</code> field appears
+only for models that have a hook method.</p>
+<h3 id="view-models">View models<a class="headerlink" href="#view-models" title="Permanent link">&para;</a></h3>
+<p>A model that embeds <code>momo.View</code> (new) is marked as a view. Its writes fail with
+<code>ErrValidation</code>. Existing models are unaffected unless you add the marker.</p>
 <h2 id="upgrading-to-040">Upgrading to 0.4.0<a class="headerlink" href="#upgrading-to-040" title="Permanent link">&para;</a></h2>
 <p>Release 0.4.0 moves feature-specific helpers out of the root package <code>momo</code>
 into subpackages. Every move is a source break: the old identifier is gone and
@@ -1901,7 +2148,7 @@ ordering methods (<code>Eq</code>, <code>In</code>, <code>Asc</code>, ...) the o
 <code>sqlfn.CurrentSchema().Eq("app")</code> compiles, where the old root function's
 result had no such method.</p>
 <p>The advisory lock methods became functions: <code>tx.AdvisoryXactLock(ctx, 42)</code>
-is now <code>advisory.XactLock(ctx, tx, 42)</code>, and the same for the <code>String</code> and
+is now <code>advisory.XactLock(ctx, tx, 42)</code>, and the same for <code>advisory.XactLockString</code> and the
 <code>Try</code> forms. The transaction is the second argument and its type is
 <code>*momo.Tx</code>. The <code>DB</code> methods always returned <code>momo.ErrValidation</code>, because a
 transaction-scoped lock outside a transaction is released at once; the

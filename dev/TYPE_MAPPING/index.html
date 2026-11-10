@@ -757,6 +757,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1268,8 +1352,8 @@
 survives a round trip, and where the edges are. The tables are checked by
 tests: <code>TestTypeMappingDoc</code> fails when a row here disagrees with the generator's
 type map or a codec's <code>SQLType</code>, and <code>TestTypeMapping</code> creates a column of each
-documented PostgreSQL type on a live server and round-trips edge values through
-it.</p>
+documented PostgreSQL type on a live server, and the generated SQLite type on a
+live SQLite database, and round-trips edge values through it.</p>
 <h2 id="how-a-type-is-chosen">How a type is chosen<a class="headerlink" href="#how-a-type-is-chosen" title="Permanent link">&para;</a></h2>
 <ol>
 <li>A field whose type implements the codec contract (<code>types.Codec</code>: <code>Scan</code>,
@@ -1474,6 +1558,12 @@ has no array columns, so the generator rejects them there.</p>
 <td>unsupported</td>
 <td>unsupported</td>
 </tr>
+<tr>
+<td><code>[]types.UUID</code></td>
+<td>uuid[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
 </tbody>
 </table>
 <!-- /generated:typemap -->
@@ -1556,7 +1646,9 @@ document because nothing generates one.</p>
 </tbody>
 </table>
 <h2 id="edge-values-and-behavior">Edge values and behavior<a class="headerlink" href="#edge-values-and-behavior" title="Permanent link">&para;</a></h2>
-<p>Each statement below is asserted by a test against PostgreSQL.</p>
+<p>Each statement below is asserted by a test against PostgreSQL. The generated
+SQLite column of every row is also round-tripped on a live SQLite database,
+except <code>NaN</code>, which SQLite does not have (see Floats).</p>
 <ul>
 <li>Integers: <code>math.MaxInt64</code> and <code>math.MinInt64</code> round-trip through <code>bigint</code>;
   <code>int</code> is 64-bit and maps to <code>bigint</code>. A value that does not fit the column
@@ -1564,7 +1656,10 @@ document because nothing generates one.</p>
   silent truncation. <code>uint64</code> has no mapping and is rejected when bound if it
   exceeds <code>math.MaxInt64</code>.</li>
 <li>Floats: <code>NaN</code>, <code>+Inf</code> and <code>-Inf</code> are legal <code>double precision</code> and <code>real</code>
-  values and round-trip. Compare with <code>math.IsNaN</code>, since <code>NaN != NaN</code>.</li>
+  values and round-trip. Compare with <code>math.IsNaN</code>, since <code>NaN != NaN</code>. SQLite
+  has no <code>NaN</code>: binding a <code>float32</code> or <code>float64</code> <code>NaN</code> (or a pointer to one) is
+  <code>ErrValidation</code> and nothing is stored, rather than a silent <code>NULL</code>. <code>+Inf</code> and
+  <code>-Inf</code> are legal <code>REAL</code> values.</li>
 <li>Strings: any valid UTF-8 round-trips, including quotes and backslashes (they
   are bound, never interpolated). PostgreSQL rejects U+0000 in <code>text</code>. A string
   longer than <code>size</code> is a database error on <code>character varying(N)</code>.</li>
@@ -1599,14 +1694,18 @@ document because nothing generates one.</p>
 <li><code>[]string</code> on <code>text[]</code>: elements containing commas, quotes, the text <code>NULL</code>,
   or empty strings round-trip; an empty slice reads back empty.</li>
 <li>Slices as arrays: only <code>[]string</code>, <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>,
-  <code>[]float32</code> and <code>[]float64</code> map. <code>[]int</code> is not mapped, because its width is
+  <code>[]float32</code>, <code>[]float64</code> and <code>[]types.UUID</code> (<code>uuid[]</code>) map. A <code>[]uuid.UUID</code> from
+  github.com/google/uuid does not: the scalar <code>uuid.UUID</code> has no mapping either,
+  so use <code>types.UUID</code> or a <code>type:</code> override. <code>[]int</code> is not mapped, because its width is
   platform dependent; use <code>[]int64</code>. <code>[]string</code> with a <code>size</code> tag becomes
   <code>character varying(N)[]</code>. A nil slice binds as NULL, so inserting it into a
   <code>NOT NULL</code> array column fails with a not-null violation; pass an empty
   non-nil slice (it stores <code>{}</code>), or give the column a <code>default '{}'</code> and omit
   it. The array predicates bind a nil value list as an empty array, never NULL.</li>
 <li>Slices as arrays: only <code>[]string</code>, <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>,
-  <code>[]float32</code> and <code>[]float64</code> map. <code>[]int</code> is not mapped, because its width is
+  <code>[]float32</code>, <code>[]float64</code> and <code>[]types.UUID</code> (<code>uuid[]</code>) map. A <code>[]uuid.UUID</code> from
+  github.com/google/uuid does not: the scalar <code>uuid.UUID</code> has no mapping either,
+  so use <code>types.UUID</code> or a <code>type:</code> override. <code>[]int</code> is not mapped, because its width is
   platform dependent; use <code>[]int64</code>. <code>[]string</code> with a <code>size</code> tag becomes
   <code>character varying(N)[]</code>. A nil slice binds as NULL, so inserting it into a
   <code>NOT NULL</code> array column fails with a not-null violation; pass an empty

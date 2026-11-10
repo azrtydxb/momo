@@ -480,6 +480,50 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#database-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database defaults
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model hooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-generator-binary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom generator binary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#projections" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -876,6 +920,90 @@
     
   
     Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
   
 
     
@@ -1373,6 +1501,50 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#database-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database defaults
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model hooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-generator-binary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom generator binary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#projections" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1581,20 +1753,21 @@ DON'T, the call either fails, silently does the wrong thing, or is a known bug.<
 <ul>
 <li>PostgreSQL is the reference database. Check the dialect columns of docs/capabilities.md before relying on a feature on another database. Keep <code>dialects:</code> at <code>[postgres]</code> for generated migrations. <code>momo migrate</code> exits 2 for a dialect it does not link; library migrations go through <code>migrate.NewEngine</code>.</li>
 <li>Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.</li>
-<li>Forward migrations only in the CLI. No <code>migrate rollback</code>, <code>lint</code> or <code>rebase</code> command; the Go API has <code>Engine.Rollback</code> and <code>Engine.Rebase</code>.</li>
+<li><code>diff</code> writes forward migrations only. <code>momo migrate rollback [--group]</code> runs a hand-written <code>.down.sql</code>, <code>momo migrate lint</code> reports risky operations, and <code>momo migrate rebase --onto &lt;dir&gt;</code> regenerates a branch's migrations on a target's.</li>
 <li><code>momo generate --from-db DATABASE_URL</code> turns a live PostgreSQL database into models and an init snapshot (see <a href="../migrations/#7-adopting-an-existing-database">migrations</a>). Other databases: write models by hand.</li>
-<li>Reciprocal-rank-fusion hybrid search
-  does not exist. Use <code>momo.SQL</code> / <code>momo.TypedSQL</code> for it. Full-text search
+<li>Reciprocal-rank-fusion hybrid search is <code>momo.HybridSearch</code> (PostgreSQL only,
+  see <a href="../vectors/#hybrid-search">vectors.md</a>). Full-text search
   (<code>types.TSVector</code>, <code>fts.Match</code>, <code>fts.RankCD</code>, <code>fts.Headline</code>, the
-  query builders) exists on PostgreSQL; combine it with a vector distance in
-  one score as shown in <a href="../fulltext/">fulltext.md</a>.</li>
+  query builders) exists on PostgreSQL; to weigh the signals yourself, combine
+  a vector distance with a text rank in one score as shown in
+  <a href="../fulltext/">fulltext.md</a>.</li>
 </ul>
 <p>Details: <a href="../capabilities/">capabilities.md</a>. Example: <a href="https://github.com/azrtydxb/momo/tree/main/examples/quickstart/">quickstart</a>.</p>
 <h2 id="2-install-and-tooling">2. Install and tooling<a class="headerlink" href="#2-install-and-tooling" title="Permanent link">&para;</a></h2>
 <!-- x-release-please-start-version -->
 
 <div class="highlight"><pre><span></span><code>go<span class="w"> </span>get<span class="w"> </span>github.com/azrtydxb/momo@v0.4.0<span class="w">                </span><span class="c1"># adds the library to go.mod and writes go.sum</span>
-go<span class="w"> </span>install<span class="w"> </span>github.com/azrtydxb/momo/cmd/momo@v0.4.0<span class="w">   </span><span class="c1"># the CLI: generate, migrate, help</span>
+go<span class="w"> </span>install<span class="w"> </span>github.com/azrtydxb/momo/cmd/momo@v0.4.0<span class="w">   </span><span class="c1"># the CLI: generate, migrate, import, viz, help</span>
 </code></pre></div>
 <!-- x-release-please-end -->
 
@@ -1708,6 +1881,13 @@ sequential statements; correct, just slower).</p>
 <ul>
 <li><code>pgxdriver.New</code> defaults to <code>pgx.QueryExecModeExec</code> (unnamed statements,
   server-side binding). That is PgBouncer-safe; set nothing.</li>
+<li>That mode sends no parameter types, so the driver converts what pgx cannot
+  encode. <code>[]uuid.UUID</code> (github.com/google/uuid), <code>[]types.UUID</code> and any slice
+  of a <code>[16]byte</code> type that implements <code>fmt.Stringer</code> bind to <code>id = ANY(?::uuid[])</code>
+  (with or without the cast; a nil slice is NULL). A raw <code>[]byte</code> is <code>bytea</code>
+  text and a <code>jsonb</code> column rejects it: pass the JSON as <code>json.RawMessage</code> or
+  <code>string</code>, or use <code>types.JSON[T]</code>. The pgxdriver tests
+  <code>TestUUIDSliceBindsToAnyArray</code> and <code>TestJSONBBinding</code> pin this.</li>
 <li><code>pgxdriver.WithExecMode(m)</code> accepts <code>pgx.QueryExecModeCacheStatement</code>,
   <code>pgx.QueryExecModeCacheDescribe</code>, <code>pgx.QueryExecModeDescribeExec</code> (import
   <code>github.com/jackc/pgx/v5</code>; not tested through PgBouncer). The simple protocol is rejected
@@ -1789,11 +1969,11 @@ diagnostic and nothing is written for that package.</p>
 </tr>
 <tr>
 <td><code>pk</code></td>
-<td>primary key; several <code>pk</code> fields make a composite key (a tag <code>belongs_to</code> target needs a single-column key)</td>
+<td>primary key; several <code>pk</code> fields make a composite key, declared in field order unless <code>Config.PrimaryKey</code> lists the fields in another order (a tag <code>belongs_to</code> target needs a single-column key)</td>
 </tr>
 <tr>
-<td><code>identity</code></td>
-<td>database-generated identity (<code>GENERATED BY DEFAULT AS IDENTITY</code>)</td>
+<td><code>identity</code>, <code>identity:always</code></td>
+<td>database-generated identity (<code>GENERATED BY DEFAULT AS IDENTITY</code>; <code>identity:always</code> is <code>GENERATED ALWAYS AS IDENTITY</code>, so a client-supplied value is refused by the database; not on MySQL)</td>
 </tr>
 <tr>
 <td><code>serial</code></td>
@@ -1830,6 +2010,10 @@ diagnostic and nothing is written for that package.</p>
 <tr>
 <td><code>idgen:&lt;name&gt;</code></td>
 <td>client-generated string id (<code>cuid</code>, <code>uuid</code>, <code>ulid</code> or a name registered with <code>WithIDGenerator</code>); filled on insert when the field is empty</td>
+</tr>
+<tr>
+<td><code>dbdefault</code></td>
+<td>leave the column to the database default while the field holds its zero value: a <code>Model</code>/<code>Models</code> insert omits it and reads the stored value back (see Database defaults)</td>
 </tr>
 <tr>
 <td><code>version</code></td>
@@ -1884,11 +2068,32 @@ string literals only.</p>
 <p>An index name declared in <code>MomoConfig</code> must not collide with an auto-named
 <code>&lt;table&gt;_&lt;col&gt;_idx</code> produced by an <code>index</code> tag (the <code>Plan</code> field above already
 yields <code>accounts_plan_idx</code>); the generator refuses the duplicate.</p>
-<p>Config methods: <code>Index</code>, <code>IndexExpr</code>, <code>Unique</code>, <code>Check</code>, <code>Enum</code>, <code>Default</code>,
-<code>Comment</code>, <code>Collate</code>, <code>IDGen</code>, <code>View</code>, <code>Function</code>, <code>Trigger</code>, <code>Policy</code>, <code>RLS</code>, <code>Partition</code>,
-<code>PartitionOf</code>. Index chain: <code>Where(pred)</code>, <code>Method(m)</code>, <code>With(k, v)</code>,
+<p>Config methods: <code>Config.Index</code>, <code>Config.IndexExpr</code>, <code>Config.Unique</code>, <code>Config.ForeignKey</code>, <code>Config.Check</code>, <code>Config.Enum</code>, <code>Config.Default</code>,
+<code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.PrimaryKey</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
+<code>Config.PartitionOf</code>. Index chain: <code>IndexOpts.Unique()</code> (on <code>Config.Index</code> or <code>Config.IndexExpr</code>), <code>Where(pred)</code>, <code>Method(m)</code>, <code>IndexOpts.With(k, v)</code>,
 <code>Opclass(field, op)</code>, <code>Desc(field)</code>, <code>Nulls(field, "first"|"last")</code>,
 <code>Concurrently()</code> (<code>diff</code> writes the index as <code>CREATE INDEX CONCURRENTLY</code> in its own no-transaction migration).</p>
+<p>A unique expression index is <code>Config.IndexExpr</code> with <code>IndexOpts.Unique()</code>:
+<code>c.IndexExpr("principal_email_key", "lower(email)").Unique()</code>. Each string is one
+key: an expression, or the exact name of a column of the table, which is a plain
+column key, so <code>c.IndexExpr("template_name_key", "company_id", "lower(name)").Unique()</code>
+indexes <code>(company_id, lower(name))</code>. Add <code>Where("deleted_at IS NULL")</code> for a
+partial one. It is an index, not a constraint, so it cannot be a foreign key
+target. <code>generate --from-db</code> writes unique, mixed and partial expression
+indexes back this way; an expression key with <code>DESC</code>, <code>NULLS</code> or an operator
+class has no declaration.</p>
+<p>A composite (multi-column) foreign key is declared in <code>MomoConfig</code>, not with a
+tag: <code>c.ForeignKey("note_document_fk", []any{&amp;n.CompanyID, &amp;n.DocumentID},
+"document", []string{"company_id", "id"}).OnDelete("CASCADE")</code>. The first list
+holds <code>&amp;receiver.Field</code> pointers, the table name and the referenced columns are
+string literals, and <code>OnDelete</code>/<code>OnUpdate</code> take <code>CASCADE</code>, <code>RESTRICT</code>,
+<code>SET NULL</code>, <code>SET DEFAULT</code> or <code>NO ACTION</code>. The referenced table must be the
+table of a model, and the referenced columns, in any order, must be its primary
+key, a unique constraint (<code>c.Unique</code>) or a non-partial unique index over plain
+columns; otherwise the generator reports a diagnostic. The key is a plain
+constraint: <code>diff</code> adds, replaces and drops it like a single-column key, and
+<code>generate --from-db</code> writes it back. There is no <code>belongs_to</code> form for a
+composite key; the relation still needs a single-column key.</p>
 <p>Many-to-many needs <code>join:</code> with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry <code>join:</code> too):</p>
 <!-- docscheck:fragment -->
@@ -1948,7 +2153,7 @@ it is not a column):</p>
 <p>Extra relation options: <code>polytype:&lt;column&gt;</code> + <code>polyvalue:&lt;value&gt;</code> (both, on
 <code>has_one</code>/<code>has_many</code> only: polymorphic), <code>on_delete:</code> / <code>on_update:</code>
 (<code>cascade</code>, <code>restrict</code>, <code>set_null</code>, <code>set_default</code>, <code>no_action</code>; they affect only
-the FK emitted for <code>belongs_to</code>), <code>no_constraint</code> (emit no FK). <code>has_one</code> and
+the FK emitted for <code>belongs_to</code>), <code>no_constraint</code> (emit no FK), <code>fk_name:&lt;name&gt;</code> (constraint name when not <code>&lt;table&gt;_&lt;col&gt;_fkey</code>; or <code>Config.FKName(&amp;m.FKField, name)</code>). <code>has_one</code> and
 <code>has_many</code> create no FK constraint themselves; the <code>belongs_to</code> on the other
 side does. Many-to-many join tables get a composite primary key plus two FKs with
 <code>ON DELETE CASCADE</code>.</p>
@@ -2015,7 +2220,7 @@ on the field, with the tag or in <code>MomoConfig</code>:</p>
   on the same field is refused by the generator. A name that is neither built in
   nor registered fails the insert with <code>ErrValidation</code>.</li>
 <li>A column named in <code>Omit</code> always takes a fresh generated id, which is bound
-  and written back like any other. <code>Values</code> and <code>ValuesRows</code> that leave the id
+  and written back like any other. <code>InsertQuery.Values</code> and <code>InsertQuery.ValuesRows</code> that leave the id
   out get one too. <code>SQL()</code> shows a generated id in the arguments but does not
   store it in the model.</li>
 <li>On an <code>OnConflict</code> upsert whose target is not the primary key, the row in the
@@ -2055,6 +2260,109 @@ on the field, with the tag or in <code>MomoConfig</code>:</p>
   same in the unlikely case that it runs out of ids within one millisecond.</li>
 <li>The tag adds no database default: the column stays <code>text primary key</code>.</li>
 </ul>
+<h3 id="database-defaults">Database defaults<a class="headerlink" href="#database-defaults" title="Permanent link">&para;</a></h3>
+<p><code>InsertQuery.Model</code> writes every writable column, so a column with
+<code>DEFAULT gen_random_uuid()</code> or <code>DEFAULT now()</code> is overwritten by the Go zero
+value. Tag the field <code>dbdefault</code> to leave it to the database instead:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">"time"</span>
+
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo"</span>
+<span class="p">)</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span>
+
+<span class="kd">type</span><span class="w"> </span><span class="nx">Event</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:events"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">string</span><span class="w">    </span><span class="s">`momo:"pk,type:uuid,default:gen_random_uuid(),dbdefault"`</span>
+<span class="w">    </span><span class="nx">Title</span><span class="w">      </span><span class="kt">string</span>
+<span class="w">    </span><span class="nx">OccurredAt</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Time</span><span class="w"> </span><span class="s">`momo:"default:now(),dbdefault"`</span>
+<span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>When the field holds its zero value (the Go zero value, a nil pointer, or a
+  value whose <code>IsZero</code> method reports true, such as <code>time.Time{}</code>), <code>Model</code> and
+  <code>Models</code> leave the column out of the INSERT, so the database default applies,
+  and <code>Exec</code> reads the stored value back with <code>RETURNING</code> into the struct you
+  passed (the slice element for <code>Models</code>) once the statement has committed. A
+  non-zero value is written as given. A pointer to a zero value counts as set.</li>
+<li><code>Models</code> with a mix of zero and set rows writes <code>DEFAULT</code> for the zero rows
+  (PostgreSQL). SQLite cannot put <code>DEFAULT</code> in a multi-row VALUES list, and
+  <code>Unnest</code> and <code>Copy</code> have no per-row default, so they fail with <code>ErrUnsupported</code>
+  for such a mix: insert the rows separately or give every row a value. A
+  column that is zero in every row simply leaves the column list. <code>Copy</code> has
+  no <code>RETURNING</code> to read the value back, so it refuses a zero dbdefault column
+  with <code>ErrUnsupported</code>: set a value, or use <code>Models</code>.</li>
+<li>MySQL has no <code>RETURNING</code>, so a zero dbdefault column fails with
+  <code>ErrUnsupported</code> there instead of leaving the struct stale: set the value, or
+  leave it out with <code>Omit</code> and read it yourself. MariaDB and SQLite read it
+  back with <code>RETURNING</code>.</li>
+<li>Your own <code>Returning</code> list turns the automatic read-back off; <code>Rows</code> returns
+  the columns you named. A single <code>Model</code> that a conflict action skips
+  (<code>DoNothing</code>) returns no row: <code>Exec</code> reports 0 rows affected and leaves the
+  model as it was. A bulk <code>Models</code> insert that returns fewer rows than models
+  (a conflict action, a trigger or a rule dropped some) is matched by key when
+  it can be: the key is the conflict target, else the primary key, it must be
+  written from the model (not omitted, identity or read-only) and must not be a
+  <code>dbdefault</code> column that is zero in some row. The key is then added to the
+  <code>RETURNING</code> list, the returned rows are written back by key and the other
+  models stay untouched; the insert fails only when the conflict action is
+  <code>DoNothing</code> and a skipped model still has a <code>dbdefault</code> column unread. When
+  the rows cannot be matched by key the insert fails with <code>ErrUnsupported</code>
+  ("returned N rows for M models"), rolls back and writes nothing back: give
+  the columns a value, or use <code>Returning</code> and <code>Rows</code>. Inside a caller's <code>Tx</code>
+  the rollback is to a savepoint, not the caller's transaction, which stays
+  open. A pinned <code>OnConn</code> handle cannot roll back: it returns the same error,
+  says the returned rows were stored, and writes nothing back. The
+  conflict-target column of an insert that also uses an id generator cannot be
+  a <code>dbdefault</code> column that is zero in some row (<code>ErrValidation</code>). The
+  default <code>DO UPDATE</code> set of <code>Upsert</code> leaves a dbdefault column out when a row
+  leaves it to the database, so a conflict keeps the stored value.</li>
+<li>The zero value means "use the default". On a <code>bool</code> or numeric column that
+  means <code>false</code> and <code>0</code> can never be written explicitly through <code>Model</code>: a
+  <code>dbdefault</code> field with <code>DEFAULT true</code> always stores true when it is <code>false</code>
+  in Go. Write such a value with <code>InsertQuery.Values</code>, or do not tag the column. The same
+  holds for an empty string and a zero time. A pointer or nullable field is
+  refused by the generator, because nil would stop meaning NULL; write NULL
+  with <code>InsertQuery.Values</code> and <code>SetNull</code>. <code>Omit</code> still wins: an omitted column is not
+  written, and a Go-side default hook still fills it.</li>
+<li><code>dbdefault</code> cannot be combined with <code>identity</code>, <code>serial</code>, <code>idgen</code>,
+  <code>read_only</code>, <code>version</code>, <code>soft_delete</code>, <code>created_at</code> or <code>updated_at</code>; the
+  generator reports it. It adds no database default (use <code>default:</code>), and
+  <code>momo generate --from-db</code> writes it for NOT NULL PostgreSQL columns whose
+  default is computed (a function call, <code>CURRENT_TIMESTAMP</code>, or a <code>nextval</code>
+  sequence on a column that is not identity or serial). It never writes it for
+  other dialects: plain MySQL cannot read the value back.</li>
+</ul>
+<h3 id="model-hooks">Model hooks<a class="headerlink" href="#model-hooks" title="Permanent link">&para;</a></h3>
+<p>Give a model a method named <code>BeforeInsert</code>, <code>BeforeUpdate</code>, <code>BeforeDelete</code> or
+<code>AfterLoad</code> with the exact signature <code>func(context.Context) error</code> and
+<code>momo generate</code> wires it into <code>Meta.Hooks</code>; nothing else to register. A method
+with a hook name and another signature fails the generator with a positioned
+diagnostic, and a hook-named method on a projection is a diagnostic too
+(projections run no hooks). The semantics (which builders run which hook, the
+copy <code>BeforeInsert</code> receives, the error kind) are in the <code>HookSet</code>
+documentation. DON'T edit <code>Meta.Hooks</code> in generated code.</p>
+<h3 id="view-models">View models<a class="headerlink" href="#view-models" title="Permanent link">&para;</a></h3>
+<p>A model that maps a database view embeds <code>momo.View</code> next to <code>momo.Model</code>:</p>
+<div class="highlight"><pre><span></span><code>type ActiveUser struct {
+    momo.Model `momo:"table:active_users"`
+    momo.View
+    ID int64 `momo:"pk"`
+}
+</code></pre></div>
+<p>The generator sets <code>Meta.View</code>. Reads work as for any model; <code>Insert</code>,
+<code>Upsert</code>, <code>Update</code>, <code>SoftDelete</code>, <code>BulkUpdate</code>, <code>Delete</code> and <code>Merge</code> return
+<code>ErrValidation</code> naming the model, at run time (there is no compile-time
+check). Declare the view itself with <code>c.View(schema.View{...})</code> in
+<code>MomoConfig</code>.</p>
+<h3 id="custom-generator-binary">Custom generator binary<a class="headerlink" href="#custom-generator-binary" title="Permanent link">&para;</a></h3>
+<p>The <code>momo</code> binary runs no custom plugins. To run your own <code>gen.Plugin</code>, write a
+<code>main</code> that calls <code>cli.Main(plugins...)</code> from <code>github.com/azrtydxb/momo/cli</code>
+and build it; it behaves as <code>momo</code> does and the plugins are enabled by name in
+the <code>plugins</code> section of <code>momo.yaml</code>.</p>
 <h3 id="projections">Projections<a class="headerlink" href="#projections" title="Permanent link">&para;</a></h3>
 <p>A projection reads a column subset or aggregate into a non-table struct. Embed
 <code>momo.Projection</code> by value; <code>momo generate</code> emits its <code>MomoMeta</code> into
@@ -2092,7 +2400,7 @@ generator emitted it, delete it (method and <code>Meta</code> variable); the gen
 redeclares it.</p>
 <p>A projection cannot be inserted, updated or deleted (it embeds <code>Projection</code>, not
 <code>Model</code>). Computed columns (a distance, <code>momo.CountAll()</code>) are valid entries in
-<code>Columns</code>. The select list is positional and not aliased: the <code>Name</code> you give a
+<code>Columns</code>. The select list is positional and not aliased: the name you give a
 computed column in <code>Columns</code> of the meta (for example <code>distance</code>) is only a label.</p>
 <p>Tuple rows: for an aggregate, join or few-column read use <code>momo.Row1</code> to
 <code>momo.Row10</code> instead of declaring a projection (no struct, no generated meta).
@@ -2145,7 +2453,7 @@ momo<span class="w"> </span>migrate<span class="w"> </span>drift<span class="w">
   change) are refused without <code>--allow-destructive</code>. Type changes rewrite the
   table under <code>ACCESS EXCLUSIVE</code> and fail on rows that do not cast.</li>
 <li>A <code>NOT NULL</code> column without a default on a table that exists in the snapshot is
-  refused (<code>ErrStagedRequired</code>). Give it a <code>default:</code>, or stage it: <code>diff --stage</code>,
+  refused (<code>migrate.ErrStagedRequired</code>). Give it a <code>default:</code>, or stage it: <code>diff --stage</code>,
   apply, backfill, check <code>SELECT count(*) FROM t WHERE c IS NULL</code> is 0, then
   <code>diff --enforce-not-null</code>. The flag enforces every nullable column the model
   has as NOT NULL, not only staged ones; with NULLs left, <code>apply</code> fails (exit 3)
@@ -2226,22 +2534,24 @@ changed, <code>diff</code> writes files (exit 0) and <code>grep</code> fails the
   <code>ADD UNIQUE</code> as <code>CREATE UNIQUE INDEX CONCURRENTLY</code> plus <code>USING INDEX</code>. Both
   can still fail on existing violating data. Hand-written changes are not flagged.</li>
 <li>NEVER edit an applied migration. <code>apply</code> and <code>status</code> refuse
-  (<code>ErrChecksumMismatch</code>) and <code>momo migrate hash</code> alone does NOT fix it (the
+  (<code>migrate.ErrChecksumMismatch</code>) and <code>momo migrate hash</code> alone does NOT fix it (the
   history row keeps the old checksum). Preferred: <code>git checkout -- &lt;file&gt;</code> and
   write a new migration. A cosmetic edit you accept: <code>hash</code>, then
   <code>momo migrate rehash --version V --accept</code>. Editing a still-pending migration
   is fine; then run <code>hash</code>. <code>hash</code> accepts every edit, so read its
   <code>changed:/added:/removed:</code> list first.</li>
 <li><code>apply</code> refuses a forked snapshot chain (same error as <code>validate</code>) and a pending
-  version older than the latest applied one (<code>ErrOutOfOrder</code>); both exit 1, as
-  does a broken chain (<code>ErrChainInvalid</code>). There is no <code>rebase</code> command: delete
-  the late migration's <code>.up.sql</code> and <code>.snapshot.json</code>, run
+  version older than the latest applied one (<code>migrate.ErrOutOfOrder</code>); both exit 1, as
+  does a broken chain (<code>migrate.ErrChainInvalid</code>). Fix it with
+  <code>momo migrate rebase --onto &lt;target branch's migration directory&gt;</code>, or by hand:
+  delete the late migration's <code>.up.sql</code> and <code>.snapshot.json</code>, run
   <code>momo migrate diff &lt;name&gt;</code> to regenerate it with a new version, then
   <code>momo migrate hash</code> (a pending file needs no <code>rehash</code>); see <a href="../migrations/">migrations.md</a> section 2. Still
   run <code>validate</code> in CI.</li>
-<li>The CLI has no rollback. Undo with a new forward migration (<code>Engine.Rollback</code>
-  runs hand-written <code>.down.sql</code> files from Go only). <code>resolve --rolled-back</code> runs
-  no SQL.</li>
+<li><code>momo migrate rollback [--group]</code> runs the hand-written <code>.down.sql</code> of the last
+  applied migration (or group); <code>diff</code> never writes one. Without a down file it
+  exits 1 and runs nothing; prefer a new forward migration. <code>resolve --rolled-back</code>
+  runs no SQL.</li>
 <li>There is no <code>--force-unlock</code> (an unknown flag, exit 2). The migration lock is a
   session advisory lock, freed when its holder disconnects. A stuck lock: find
   the session in <code>pg_stat_activity</code> and <code>pg_terminate_backend</code> it.</li>
@@ -2288,14 +2598,14 @@ combinators <code>momo.And</code>, <code>momo.Or</code>, <code>momo.Not</code>, 
 <code>momo.EscapeLike(s)</code> escapes user text for <code>Like</code>. Find NULLs with <code>IsNull()</code>;
 <code>Eq(nil)</code> is not expressible.</p>
 <p>Array columns (a PostgreSQL type). A <code>[]string</code> field is generated as <code>text[]</code>;
-<code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>, <code>[]float32</code> and <code>[]float64</code> map to
-<code>smallint[]</code>, <code>integer[]</code>, <code>bigint[]</code>, <code>boolean[]</code>, <code>real[]</code> and
-<code>double precision[]</code>. The predicates are generic functions over a typed column,
+<code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>, <code>[]float32</code>, <code>[]float64</code> and
+<code>[]types.UUID</code> map to <code>smallint[]</code>, <code>integer[]</code>, <code>bigint[]</code>, <code>boolean[]</code>,
+<code>real[]</code>, <code>double precision[]</code> and <code>uuid[]</code>. The predicates are generic functions over a typed column,
 in the package <code>github.com/azrtydxb/momo/arrayop</code>:
 <code>arrayop.Contains(col, vals...)</code> (<code>@&gt;</code>), <code>arrayop.ContainedBy</code> (<code>&lt;@</code>),
 <code>arrayop.Overlaps</code> (<code>&amp;&amp;</code>) and <code>arrayop.AnyOf(scalarCol, vals...)</code>
 (<code>= ANY($n)</code>). Each binds the values as one array parameter, so the bind
-count does not grow with the list. <code>Overlaps</code> and <code>AnyOf</code> with no values are
+count does not grow with the list. <code>arrayop.Overlaps</code> and <code>arrayop.AnyOf</code> with no values are
 false. On other dialects they fail the build with
 <code>ErrUnsupported</code>; use <code>In</code> there.</p>
 <p>Searching with user input safely. <code>Like</code> and <code>ILike</code> always render
@@ -2327,9 +2637,12 @@ Both are checked at build time, the list cap first, so the stricter one wins.
 return <code>ErrLimitExceeded</code> instead of more than n rows, never a truncated slice.</p>
 <p>Other builder methods: <code>Distinct</code>, <code>Join</code>, <code>LeftJoin</code>, <code>CrossJoin</code>,
 <code>GroupBy</code>, <code>Having</code>, <code>ForUpdate</code> (with the options <code>"NOWAIT"</code> or
-<code>"SKIP LOCKED"</code>), <code>ForShare</code>, <code>LockOf</code> (names the tables a lock covers, for
+<code>"SKIP LOCKED"</code>), <code>ForShare</code>, <code>ForNoKeyUpdate</code> and <code>ForKeyShare</code> (PostgreSQL
+only: <code>FOR NO KEY UPDATE</code> does not block foreign-key inserts on the locked
+row, <code>FOR KEY SHARE</code> is the weakest lock; same options; MySQL and SQLite
+return <code>ErrUnsupported</code>), <code>LockOf</code> (names the tables a lock covers, for
 example <code>ForUpdate("SKIP LOCKED").LockOf("d")</code> on a joined job claim; the names must be
-table or alias names, not CTEs), <code>With</code>, <code>WithRecursive</code>, <code>Union</code>,
+table or alias names, not CTEs), <code>SelectQuery.With</code>, <code>WithRecursive</code>, <code>Union</code>,
 <code>FromSubquery</code>, <code>Each</code> (a context and a callback per row) and <code>Iter</code> (a
 context; it returns <code>iter.Seq2[T, error]</code>). <code>Count</code> and <code>Exists</code> wrap the whole
 statement, so they keep a lock clause and lock the rows they count. Aggregates: <code>momo.CountAll</code>,
@@ -2337,11 +2650,23 @@ statement, so they keep a lock clause and lock the rows they count. Aggregates: 
 <p>Advisory locks (PostgreSQL, inside a transaction), in the package
 <code>github.com/azrtydxb/momo/advisory</code>: <code>advisory.XactLock(ctx, tx, key)</code> waits
 for a transaction-scoped lock on an int64 key, <code>advisory.TryXactLock</code> returns
-whether it was granted, and the <code>String</code> variants (<code>advisory.XactLockString</code>,
-<code>advisory.TryXactLockString</code>) hash a text key with <code>hashtext</code>. The lock ends at
-commit or rollback. They take a <code>*Tx</code>, so a <code>*DB</code> does not compile: open a
-transaction first. Other dialects fail with <code>ErrUnsupported</code>. Never store a
-hashed key, it can change across PostgreSQL major versions.</p>
+whether it was granted, and the string variants (<code>advisory.XactLockString</code>,
+<code>advisory.TryXactLockString</code>) hash a text key with <code>hashtext</code>; pass
+<code>advisory.Hash64(seed)</code> to hash with the 64-bit <code>hashtextextended(key, seed)</code>
+instead (seed 0 matches <code>pg_advisory_xact_lock(hashtextextended(key, 0))</code> in
+existing SQL). The lock ends at commit or rollback. They take a <code>*Tx</code>, so a
+<code>*DB</code> does not compile: open a transaction first. Other dialects fail with
+<code>ErrUnsupported</code>. Never store a hashed key, it can change across PostgreSQL
+major versions.</p>
+<p>Session-level advisory locks: <code>advisory.Lock</code>, <code>advisory.TryLock</code>,
+<code>advisory.Unlock</code> and the string variants (<code>advisory.LockString</code>, <code>advisory.TryLockString</code>,
+<code>advisory.UnlockString</code>, which take the same <code>advisory.Hash64</code> option) take <code>pg_advisory_lock</code>
+and friends. They need a handle whose statements stay on one connection:
+<code>db.OnConn(pc)</code> over a connection from <code>Pinner.Pin</code>. A pooled <code>*DB</code> fails with
+<code>ErrValidation</code>, because the lock and the unlock could reach different
+connections. The lock lasts until <code>advisory.Unlock</code> or until the connection closes, so
+unlock before <code>pc.Release()</code> (or <code>Discard</code> the connection if the unlock fails).
+<code>db.IsPinned()</code> reports whether a handle is pinned.</p>
 <p>Typed expressions (no <code>momo.SQL</code> needed). Computed values (<code>momo.Func</code> and, in the
 package <code>github.com/azrtydxb/momo/sqlfn</code>, <code>sqlfn.Substr</code>, <code>sqlfn.Lower</code>,
 <code>sqlfn.Upper</code>, <code>sqlfn.Length</code>, <code>sqlfn.Case</code>, <code>sqlfn.Add</code>/<code>sqlfn.Sub</code>/<code>sqlfn.Mul</code>,
@@ -2407,7 +2732,9 @@ expression itself there.</p>
 <span class="nx">timeop</span><span class="p">.</span><span class="nx">AtTimeZone</span><span class="p">(</span><span class="nx">doc</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span><span class="w"> </span><span class="s">"Europe/Brussels"</span><span class="p">)</span><span class="w">      </span><span class="c1">// zone is a validated literal; ErrUnsupported on SQLite and MySQL</span>
 <span class="c1">// Local-day buckets: timeop.Trunc(timeop.TruncDay, timeop.AtTimeZone(col, zone)); a bare timestamptz truncates in the session zone.</span>
 <span class="nx">timeop</span><span class="p">.</span><span class="nx">Trunc</span><span class="p">(</span><span class="nx">timeop</span><span class="p">.</span><span class="nx">TruncDay</span><span class="p">,</span><span class="w"> </span><span class="nx">doc</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">)</span><span class="w">           </span><span class="c1">// Second..Year, weeks start on Monday</span>
-<span class="nx">timeop</span><span class="p">.</span><span class="nx">Now</span><span class="p">()</span><span class="w">                                             </span><span class="c1">// also CurrentTimestamp(); the database clock, not WithClock</span>
+<span class="nx">timeop</span><span class="p">.</span><span class="nx">Now</span><span class="p">()</span><span class="w">                                             </span><span class="c1">// also CurrentTimestamp(); the database clock, not WithClock; fixed at transaction start on PostgreSQL</span>
+<span class="nx">timeop</span><span class="p">.</span><span class="nx">ClockTimestamp</span><span class="p">()</span><span class="w">                                  </span><span class="c1">// clock_timestamp(): real time at evaluation, for a lease or fence sampled after a row lock; SYSDATE(6) on MySQL</span>
+<span class="nx">timeop</span><span class="p">.</span><span class="nx">StatementTimestamp</span><span class="p">()</span><span class="w">                              </span><span class="c1">// statement_timestamp(): start of the current statement; MySQL is ErrUnsupported</span>
 <span class="c1">// Intervals are an operand of AddInterval/SubInterval, not an expression of their own.</span>
 <span class="nx">timeop</span><span class="p">.</span><span class="nx">SubInterval</span><span class="p">(</span><span class="nx">timeop</span><span class="p">.</span><span class="nx">Now</span><span class="p">(),</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalOf</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalDay</span><span class="p">))</span><span class="w">              </span><span class="c1">// literal count</span>
 <span class="nx">timeop</span><span class="p">.</span><span class="nx">AddInterval</span><span class="p">(</span><span class="nx">doc</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalExpr</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Value</span><span class="p">(</span><span class="kt">int64</span><span class="p">(</span><span class="nx">n</span><span class="p">)),</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalHour</span><span class="p">))</span><span class="w"> </span><span class="c1">// bound or column count</span>
@@ -2473,7 +2800,7 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
 <span class="k">return</span><span class="w"> </span><span class="nx">rows2</span><span class="p">.</span><span class="nx">Err</span><span class="p">()</span>
 </code></pre></div>
 <ul>
-<li>DO choose <code>Model</code> when the struct is the truth, <code>Values</code> when "unset" must mean
+<li>DO choose <code>Model</code> when the struct is the truth, <code>InsertQuery.Values</code> when "unset" must mean
   "database default". A zero <code>Priority</code> with <code>Model</code> is stored as 0, NOT as the
   column default.</li>
 <li><code>Exec</code> does not fill the identity into your struct; use <code>Returning(...).Rows</code>.
@@ -2595,12 +2922,12 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   database). <code>FromSelect</code> runs no model hooks.</li>
 <li>The soft-delete filter on a <code>SelectExprs</code> source (including inside <code>NotExists</code>) is
   added only when <code>From</code> gets a <code>TableRef</code> that carries the soft-delete marker.
-  Generated <code>Table</code> refs do; a hand-built <code>TableRef{Name: ...}</code> does not and then
+  Generated <code>article.Table</code> refs do; a hand-built <code>TableRef{Name: ...}</code> does not and then
   counts soft-deleted rows, so set its <code>SoftDelete</code> and <code>SoftDeleteKind</code>.</li>
 <li>Only the listed columns are written. Nothing is injected: no automatic
   created_at/updated_at, no Go-side defaults, no field validators. List those columns
   and select their values. Identity, serial, read-only and non-writable columns, unmapped or
-  repeated columns, and mixing with <code>Model</code>/<code>Values</code>/<code>Omit</code> are <code>ErrValidation</code>.</li>
+  repeated columns, and mixing with <code>Model</code>/<code>InsertQuery.Values</code>/<code>Omit</code> are <code>ErrValidation</code>.</li>
 <li>Composes with <code>OnConflict</code> (<code>DoNothing</code>, <code>DoUpdate</code>, both <code>Where</code>s), <code>Returning</code>,
   <code>ReturningAll</code>, <code>Rows</code> and <code>Upsert[T]</code> (default DO UPDATE set = the listed
   columns). Placeholders number across the select first, then ON CONFLICT (<code>$n</code> on
@@ -2626,20 +2953,49 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   calls AND. MySQL: both are <code>ErrUnsupported</code>. <code>Excluded()</code> in the target
   predicate is <code>ErrValidation</code> (use it in the <code>DoUpdate</code> <code>Where</code>). On SQLite the
   target predicate renders bool, integer, finite float and string values inline
-  (<code>"live" = 1</code>), because SQLite matches it against the index text; a value
+  (<code>"live" = 1</code>), because SQLite matches the expression, so write the same literal in the index; a value
   that cannot be inlined (time, bytes, pointer, NULL, NaN, a string with a NUL
   byte) is <code>ErrValidation</code>, and a type with <code>Value()</code> is inlined as that value.
-  This is golden-tested; the live SQLite integration test for it is skipped for now, so check it against your own SQLite database; <code>momo.SQL("live = 1")</code>
-  is the proven fallback. Write the literals in the index exactly as Momo renders them: integers as <code>2</code>, floats in plain decimal with <code>.0</code> for whole numbers (<code>2.0</code>) for magnitudes from 1e-6 up to 1e21, and exponent form (<code>1e-07</code>, <code>1e+21</code>) outside that range; otherwise use <code>momo.SQL</code>. The values appear in the SQL text, so they show up in
+  This is golden-tested and run against a real SQLite partial unique index
+  (write the index as <code>WHERE live = 1</code>). Write the literals in the index exactly as Momo renders them: integers as <code>2</code>, floats in plain decimal with <code>.0</code> for whole numbers (<code>2.0</code>) for magnitudes from 1e-6 up to 1e21, and exponent form (<code>1e-07</code>, <code>1e+21</code>) outside that range; otherwise use <code>momo.SQL</code>. The values appear in the SQL text, so they show up in
   logs and traces.</li>
 <li>Mixing zero and non-zero identity values in one <code>Models</code> upsert is <code>ErrValidation</code>.
   Explicit identity or serial values do not advance the sequence: <code>setval</code> it yourself.
   A <code>FromSelect</code> into a serial table cannot supply ids at all (<code>ErrValidation</code>).</li>
 </ul>
+<p>Joined and CTE-prefixed writes:</p>
+<ul>
+<li><code>UpdateQuery.From(src)</code> renders <code>UPDATE t SET ... FROM src WHERE ...</code> and <code>DeleteQuery.Using(src)</code>
+  renders <code>DELETE FROM t USING src WHERE ...</code>. <code>src</code> is a table, aliased table, <code>momo.CTE(name)</code>
+  or <code>momo.FromSubquery(q, alias)</code>, as in a join; reference its columns with <code>momo.ColumnOf</code> or the
+  model's columns, join it to the target in <code>Where</code>, and assign from it with <code>col.SetExpr(srcCol)</code>.
+  The soft-delete filter and interceptors do not apply to <code>src</code>: add that predicate to <code>Where</code>.
+  MySQL and MariaDB render the multi-table forms (<code>UPDATE t, src SET t.col = ...</code>,
+  <code>DELETE t FROM t, src WHERE ...</code>); SQLite has <code>UPDATE ... FROM</code> (3.33 or later) but no
+  <code>DELETE ... USING</code> (<code>ErrUnsupported</code>).</li>
+<li>With <code>From</code> or <code>Using</code> the unfiltered-mutation guard is stricter: at least one <code>Where</code> predicate
+  must reference a column of the target table, otherwise the statement joins every target row to
+  the source and fails with <code>ErrUnfilteredMutation</code> unless <code>AllRows()</code> confirms it. A condition
+  only on the source, or a raw <code>momo.SQL</code> fragment, does not count. <code>From</code> cannot be combined with
+  <code>BulkUpdate</code> (<code>ErrValidation</code>), and <code>RETURNING</code> with <code>From</code> works on PostgreSQL and SQLite only.</li>
+<li><code>UpdateQuery.With</code> and <code>UpdateQuery.WithRecursive</code> exist on <code>UpdateQuery</code>, <code>DeleteQuery</code> and <code>InsertQuery</code>, with the
+  <code>SelectQuery</code> signature. PostgreSQL and SQLite render the WITH before the statement; MySQL
+  accepts it before UPDATE and DELETE only (<code>ErrUnsupported</code> before INSERT), and MariaDB refuses it
+  there too (<code>ErrUnsupported</code>, not verified). A WITH on a bulk insert that would split into chunks
+  at the parameter limit is <code>ErrValidation</code>, and a <code>UpdateQuery.With</code> combined with <code>BulkUpdate</code> is
+  <code>ErrValidation</code>.</li>
+<li><code>InsertQuery</code>, <code>UpdateQuery</code> and <code>DeleteQuery</code> with <code>Returning</code> are <code>Subquery</code> values, usable as
+  the body of <code>SelectQuery.With</code> on any statement: a select with <code>.With("x", ins).From(momo.CTE("x"))</code> renders
+  <code>WITH x AS (INSERT ... RETURNING ...) SELECT ... FROM x</code>. PostgreSQL has data-modifying
+  CTEs; SQLite and MySQL return <code>ErrUnsupported</code>. A DML body renders with the handle's interceptors
+  (with a background context) but runs no model hooks and no <code>beforeWrite</code> check; the outer
+  statement's <code>Exec</code> or <code>All</code> is what executes it. An INSERT body is never chunked: one that
+  binds more parameters than the dialect allows fails with <code>ErrLimitExceeded</code>.</li>
+</ul>
 <p>Bulk and set-based writes (PostgreSQL):</p>
 <ul>
-<li><code>InsertQuery[T].Copy</code> streams models through the driver COPY path. It returns <code>ErrUnsupported</code> on SQLite and MySQL and through <code>FromSQLDB</code> (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the <code>BeforeInsert</code> hook over a copy of the models, validates fields like <code>Models</code>, and counts as a write for <code>NewUnitOfWork</code>. It skips <code>OnConflict</code>, <code>Returning</code> and chunking, and it cannot be combined with <code>Model</code>, <code>Models</code>, <code>Values</code>, <code>FromSelect</code>, <code>OnConflict</code> or <code>Upsert</code> (<code>ErrValidation</code>). On a <code>*DB</code> with <code>WithImplicitTx</code> it runs in its own transaction, so <code>WithTxSetup</code> applies; on a pinned <code>OnConn</code> handle with <code>WithTxSetup</code> it fails closed with <code>ErrUnsupported</code>.</li>
-<li><code>InsertQuery[T].Unnest()</code> (the method, not the package-level FROM source <code>momo.Unnest</code>) renders a <code>Model</code> or <code>Models</code> insert as <code>INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])</code>: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses <code>MaxParams</code> and <code>WithMaxParams</code> and never chunks (and is not split into a transaction of several statements). Other dialects return <code>ErrUnsupported</code>. <code>Values</code>, <code>ValuesRows</code> and <code>FromSelect</code> return <code>ErrValidation</code>, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, <code>time.Time</code> and <code>[]byte</code> columns bind as typed slices (<code>[]*T</code> when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to <code>[]any</code>, which pgx may reject for an array type, so use plain <code>Models</code> for such a model. <code>OnConflict</code>, <code>Upsert</code> and <code>Returning</code> work as for <code>Models</code>; interceptors, <code>BeforeInsert</code>, field validators, automatic timestamps and id generators run as for <code>Models</code>. A <code>FlagSensitive</code> column's array shows as <code>RedactedArg</code> in <code>QueryEvent.Args</code>.</li>
+<li><code>InsertQuery[T].Copy</code> streams models through the driver COPY path. It returns <code>ErrUnsupported</code> on SQLite and MySQL and through <code>FromSQLDB</code> (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the <code>BeforeInsert</code> hook over a copy of the models, validates fields like <code>Models</code>, and counts as a write for <code>NewUnitOfWork</code>. It skips <code>OnConflict</code>, <code>Returning</code> and chunking, and it cannot be combined with <code>Model</code>, <code>Models</code>, <code>InsertQuery.Values</code>, <code>FromSelect</code>, <code>OnConflict</code> or <code>Upsert</code> (<code>ErrValidation</code>). On a <code>*DB</code> with <code>WithImplicitTx</code> it runs in its own transaction, so <code>WithTxSetup</code> applies; on a pinned <code>OnConn</code> handle with <code>WithTxSetup</code> it fails closed with <code>ErrUnsupported</code>.</li>
+<li><code>InsertQuery[T].Unnest()</code> (the method, not the package-level FROM source <code>momo.Unnest</code>) renders a <code>Model</code> or <code>Models</code> insert as <code>INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])</code>: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses <code>MaxParams</code> and <code>WithMaxParams</code> and never chunks (and is not split into a transaction of several statements). Other dialects return <code>ErrUnsupported</code>. <code>InsertQuery.Values</code>, <code>InsertQuery.ValuesRows</code> and <code>FromSelect</code> return <code>ErrValidation</code>, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, <code>time.Time</code> and <code>[]byte</code> columns bind as typed slices (<code>[]*T</code> when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to <code>[]any</code>, which pgx may reject for an array type, so use plain <code>Models</code> for such a model. <code>OnConflict</code>, <code>Upsert</code> and <code>Returning</code> work as for <code>Models</code>; interceptors, <code>BeforeInsert</code>, field validators, automatic timestamps and id generators run as for <code>Models</code>. A <code>FlagSensitive</code> column's array shows as <code>RedactedArg</code> in <code>QueryEvent.Args</code>.</li>
 <li><code>Merge</code> is PostgreSQL 15 or later; <code>.Returning</code> needs 17 or later. An older server, a driver without <code>ServerVersioner</code>, or a dialect other than PostgreSQL returns <code>ErrUnsupported</code> before the statement runs. It needs <code>On</code> and at least one WHEN clause (<code>ErrValidation</code>). An interceptor that adds predicates makes it fail with <code>ErrValidation</code>, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.</li>
 <li><code>BulkUpdate</code> updates only the keys in its row list, binds one parameter per value (over the limit is <code>ErrLimitExceeded</code>, it does not chunk), and keeps the version and updated-at columns current.</li>
 <li><code>Truncate</code> is <code>TRUNCATE TABLE</code> (no <code>RESTART IDENTITY</code>, no <code>CASCADE</code>), and <code>DELETE FROM</code> plus a sequence reset on SQLite. It runs the interceptors with the kind <code>truncate</code>, which a tenant-scoped handle should deny, and MySQL refuses it inside a transaction.</li>
@@ -2655,6 +3011,9 @@ as arguments):</p>
 <span class="c1">// Statements and scalar lists:</span>
 <span class="nx">affected</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Exec</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">`UPDATE tasks SET done = ? WHERE id IN (?)`</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">In</span><span class="p">(</span><span class="nx">ids</span><span class="p">))</span>
 <span class="nx">ids</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Scalars</span><span class="p">[</span><span class="kt">int64</span><span class="p">](</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">`SELECT id FROM tasks WHERE done = ?`</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">)</span>
+<span class="c1">// Several columns into Row1..Row10 (positional), a model or a projection (matched by column name):</span>
+<span class="nx">rows</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Query</span><span class="p">[</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Row2</span><span class="p">[</span><span class="kt">int64</span><span class="p">,</span><span class="w"> </span><span class="kt">string</span><span class="p">]](</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">`SELECT id, title FROM tasks WHERE done = ?`</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">)</span>
+<span class="k">for</span><span class="w"> </span><span class="nx">row</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">QueryRows</span><span class="p">[</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Row2</span><span class="p">[</span><span class="kt">int64</span><span class="p">,</span><span class="w"> </span><span class="kt">string</span><span class="p">]](</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">`SELECT id, title FROM tasks`</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">row</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="p">}</span>
 <span class="c1">// Helpers: momo.In(slice) (empty slice is a build error), momo.Ident("col"), momo.RawSubquery(sql, args...)</span>
 </code></pre></div>
 <ul>
@@ -2667,9 +3026,22 @@ as arguments):</p>
   are operators. On PostgreSQL a fragment may use native <code>$n</code> placeholders instead
   (see "Porting pgx and sqlc SQL" below); do not mix them with <code>?</code>/<code>@name</code>.</li>
 <li>Returned results of raw queries bypass soft-delete, hooks and timestamps.</li>
+<li><code>Query[T]</code> (buffered, <code>[]T</code>) and <code>QueryRows[T]</code> (streaming <code>iter.Seq2[T, error]</code>)
+  are the multi-column raw read, for a hand-written <code>SELECT</code> or <code>... RETURNING</code>.
+  <code>T</code> is <code>Row1</code>..<code>Row10</code> (positional: the result must have exactly that many
+  columns) or a model or projection (matched by column name in any order, exact
+  then case-insensitive; an unmapped, missing or duplicated result column is
+  <code>ErrValidation</code>). <code>T</code> must have momo metadata: a model, a generated
+  projection or <code>Row1</code>..<code>Row10</code>; an ad-hoc struct does not work. By-name
+  matching needs every result column to map to a field and every field to be
+  in the result, so <code>SELECT d.*, count(*)</code> needs a projection or a <code>RowN</code>.
+  Placeholders, hooks (op <code>raw</code>), error classification and
+  argument redaction are those of <code>Exec</code>; interceptors, soft-delete filters and
+  <code>AfterLoad</code> do not apply to raw SQL. <code>QueryRows</code> closes the cursor on early
+  break, on an error and on a canceled context (<code>ErrCanceled</code>).</li>
 </ul>
 <h4 id="porting-pgx-and-sqlc-sql">Porting pgx and sqlc SQL<a class="headerlink" href="#porting-pgx-and-sqlc-sql" title="Permanent link">&para;</a></h4>
-<p>On the PostgreSQL dialect, raw SQL (<code>Exec</code>, <code>Scalars</code>, <code>SQL</code>, <code>TypedSQL</code>,
+<p>On the PostgreSQL dialect, raw SQL (<code>Exec</code>, <code>Scalars</code>, <code>Query</code>, <code>QueryRows</code>, <code>SQL</code>, <code>TypedSQL</code>,
 <code>RawSubquery</code>) accepts PostgreSQL's native <code>$1, $2, ...</code> placeholders, so a
 statement written for pgx or sqlc moves over unchanged:</p>
 <!-- docscheck:fragment -->
@@ -2706,7 +3078,11 @@ statement written for pgx or sqlc moves over unchanged:</p>
 </ul>
 <p><code>SelectQuery.SQL()</code> returns <code>Compiled{SQL, Args}</code> without running. <code>Explain(ctx)</code>
 runs <code>EXPLAIN</code> (never <code>ANALYZE</code>) and returns plan text; it binds parameters and
-does not execute the query. Inside a <code>Tx</code>, it sees that transaction's settings.</p>
+does not execute the query. Inside a <code>Tx</code>, it sees that transaction's settings.
+<code>momo.Explain(ctx, q, compiled)</code> plans any statement's <code>Compiled</code> (writes
+included, PostgreSQL, SQLite, MySQL and MariaDB) and <code>momo.ExplainAnalyze(ctx, q,
+compiled)</code> runs it under <code>EXPLAIN ANALYZE</code> (PostgreSQL only; always rolled
+back, but a rollback cannot undo <code>nextval</code>, <code>NOTIFY</code> or <code>dblink</code> effects). Momo never calls either on its own; see <a href="../observability/">observability</a>.</p>
 <p>Select-time guards: <code>Limit</code>/<code>Offset</code> negative is <code>ErrValidation</code>.</p>
 <p>Details: README sections 5-7, <a href="../capabilities/">capabilities.md</a>.
 Examples: <a href="https://github.com/azrtydxb/momo/tree/main/examples/crud-zero-null/">crud-zero-null</a>,
@@ -3081,7 +3457,7 @@ optional for vector and halfvec):</p>
 <tr>
 <td><code>vector.SparseVector</code></td>
 <td><code>sparsevec(n)</code></td>
-<td>same four (<code>Dim</code>, zero-based strictly increasing <code>Indices</code>, <code>Values</code>)</td>
+<td>same four (<code>Dim</code>, zero-based strictly increasing <code>Indices</code>, <code>vector.SparseVector.Values</code>)</td>
 </tr>
 <tr>
 <td><code>vector.Bits</code></td>
@@ -3124,7 +3500,7 @@ halfvec within 65504; max dim 16000 (<code>vector.MaxDim</code>). Failures wrap
 </table>
 <ul>
 <li>A <code>vector</code> column above 2000 dims cannot have an ANN index; store it as
-  <code>HalfVector</code> (up to 4000 for an index).</li>
+  <code>vector.HalfVector</code> (up to 4000 for an index).</li>
 <li>Dimensionless columns: a <code>vector.Vector</code> or <code>vector.HalfVector</code> field without
   <code>dim</code> maps to bare <code>vector</code> or <code>halfvec</code> and holds embeddings of any size
   (NovaCRM <code>KbChunk.embedding</code>). Its descriptor has <code>Dim()</code> zero, so a distance
@@ -3134,7 +3510,7 @@ halfvec within 65504; max dim 16000 (<code>vector.MaxDim</code>). Failures wrap
   are refused (error wraps <code>schema.ErrInvalidVectorIndex</code>, names the column), as
   are expression parts; it is searched by sequential scan.</li>
 <li><code>hnsw</code> params: <code>m</code> 2..100 (16), <code>ef_construction</code> 4..1000 (64, at least 2*m).
-  <code>ivfflat</code> REQUIRES <code>With("lists", "N")</code> (1..32768).</li>
+  <code>ivfflat</code> REQUIRES <code>IndexOpts.With("lists", "N")</code> (1..32768).</li>
 <li>An index covers one plain column; expression parts are rejected.</li>
 <li>Index opclass must match the distance function: <code>vector_cosine_ops</code> with
   <code>vecop.Cosine</code>, <code>vector_l2_ops</code> with <code>vecop.L2</code>, <code>vector_ip_ops</code> with
@@ -3226,13 +3602,14 @@ or a missing extension: <code>ErrUnsupported</code>.</p>
   <code>pgxpool.NewWithConfig</code>, then <code>pgxdriver.WithVectorFormat(pgxdriver.VectorBinary)</code>
   with a describe-based exec mode). Default text transport is correct; skip unless
   profiling says otherwise. <code>NewPool</code> does not call <code>ConfigureVectors</code>.</li>
-<li>Reciprocal-rank-fusion hybrid search does not exist; combine a distance and a
-  text rank in one score instead (<a href="../fulltext/">fulltext.md</a>).</li>
+<li>Reciprocal-rank-fusion hybrid search is <code>momo.HybridSearch</code> (PostgreSQL only,
+  <a href="../vectors/#hybrid-search">vectors.md</a>); for a custom mix, combine a distance
+  and a text rank in one score (<a href="../fulltext/">fulltext.md</a>).</li>
 </ul>
 <p>Details: <a href="../vectors/">vectors.md</a>. Example: <a href="https://github.com/azrtydxb/momo/tree/main/examples/vector-search/">vector-search</a>.</p>
 <h2 id="10-errors">10. Errors<a class="headerlink" href="#10-errors" title="Permanent link">&para;</a></h2>
 <p>Momo errors are <code>*momo.Error{Kind, Op, Table, Column, Constraint, Err}</code>. Check
-with <code>errors.Is(err, momo.ErrX)</code> (matches <code>Kind</code>) and reach the driver error with
+with <code>errors.Is(err, momo.ErrX)</code> (matches <code>momo.Error.Kind</code>) and reach the driver error with
 <code>errors.As</code> (for example <code>*pgconn.PgError</code>). <code>e.Detail()</code> returns the raw driver detail
 (for PostgreSQL the key text) that <code>Error()</code> hides. <code>Detail()</code> is unmasked and can quote sensitive values: never log it or return it to a client. Never string-match error text.</p>
 <!-- docscheck:fragment -->
@@ -3347,9 +3724,9 @@ reports a column only for NOT NULL). Use <code>Constraint</code> for those three
 invalid text representation) hide the message because it may quote the value; the
 <code>*pgconn.PgError</code> is still reachable.</p>
 <p>Migration errors (package <code>migrate</code> and the CLI, exit codes in section 5):
-<code>migrate.ErrChecksumMismatch</code>, <code>ErrDirty</code>, <code>ErrLocked</code>, <code>ErrDestructive</code>,
-<code>ErrBranchConflict</code>, <code>ErrStagedRequired</code>, <code>ErrBaselineMismatch</code>, <code>ErrNoSnapshot</code>,
-<code>ErrNoDown</code>; <code>schema.ErrNewerFormat</code> (a snapshot written by a newer momo).</p>
+<code>migrate.ErrChecksumMismatch</code>, <code>migrate.ErrDirty</code>, <code>migrate.ErrLocked</code>, <code>migrate.ErrDestructive</code>,
+<code>migrate.ErrBranchConflict</code>, <code>migrate.ErrStagedRequired</code>, <code>migrate.ErrBaselineMismatch</code>, <code>migrate.ErrNoSnapshot</code>,
+<code>migrate.ErrNoDown</code>; <code>schema.ErrNewerFormat</code> (a snapshot written by a newer momo).</p>
 <p>Rules:</p>
 <ul>
 <li>DO use <code>errors.Is</code>, not <code>==</code> (errors are wrapped).</li>
@@ -3361,6 +3738,11 @@ invalid text representation) hide the message because it may quote the value; th
 <h2 id="11-testing-apps-that-use-momo">11. Testing apps that use Momo<a class="headerlink" href="#11-testing-apps-that-use-momo" title="Permanent link">&para;</a></h2>
 <p>Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 <code>pgvector/pgvector:0.8.7-pg16</code> and <code>0.8.7-pg17</code>.</p>
+<p>To list or freeze the SQL an app issues without a database, register named
+builders with <code>momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)</code>
+(use <code>momo.RawQuery</code> for hand-written SQL), read them with
+<code>QueryRegistry.Compile(dialect)</code> and freeze them with <code>momotest.QueryGolden</code>
+(<code>MOMO_UPDATE_GOLDEN=1</code> rewrites the files; registering a name twice panics).</p>
 <p>Use the public kit <code>github.com/azrtydxb/momo/momotest</code> (see
 <a href="../testing/">testing.md</a>):</p>
 <!-- docscheck:fragment -->
@@ -3371,9 +3753,19 @@ invalid text representation) hide the message because it may quote the value; th
 <span class="nx">tx</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">NewTx</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">WithMigrations</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">Migrations</span><span class="p">()))</span><span class="w"> </span><span class="c1">// rolled back after; Commit refused</span>
 <span class="nx">momotest</span><span class="p">.</span><span class="nx">Seed</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Insert</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">org</span><span class="p">),</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Insert</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">user</span><span class="p">))</span>
 </code></pre></div>
+<p><code>momotest.LoadFixtures(t, q, "fixtures.yaml")</code> inserts a YAML file of
+<code>table: [rows]</code> in file order (columns sorted, <code>null</code> is <code>NULL</code>, values bound),
+and <code>sqlitetest.New(t)</code> (package <code>momotest/sqlitetest</code>, cgo) returns a
+<code>*momo.DB</code> on a throwaway SQLite file per test. <code>momotest.AssertSQL(t,
+query.SQL(), want)</code> compares compiled SQL ignoring
+whitespace without running it (the failure never shows an argument value), and
+<code>momotest.AssertUsesIndex(t, q, compiled, "index_name")</code> fails unless a plain
+<code>EXPLAIN</code> of the statement reads that index (PostgreSQL and SQLite; the plan can
+echo literal values, so use test data that is not sensitive). See
+<a href="../testing/">testing.md</a>.</p>
 <p>It reads <code>MOMO_TEST_POSTGRES_URL</code> (skip when unset, fail when
 <code>MOMO_REQUIRE_INTEGRATION=1</code>), is safe with <code>t.Parallel</code> and <code>-race</code>, and
-<code>WithExtensions("vector")</code> creates the extension first. What it does, if you
+<code>momotest.WithExtensions("vector")</code> creates the extension first. What it does, if you
 need to do it by hand (the examples' own harness is internal to the Momo
 module):</p>
 <ol>
@@ -3419,9 +3811,9 @@ steps.</p>
 <li><code>momolog.New(logger, opts...)</code> returns a hook that logs one record per
   statement (op, table, relation, sql, duration, rows, err) and, because it also
   implements <code>momo.RelationHook</code>, one record per relation load (parent, name,
-  kind, parents, children, queries, duration, err). Options: <code>Level</code>,
-  <code>SlowOver</code> (statements slower than the duration log at WARN) and <code>Values</code>.
-  Argument values are logged only with <code>Values(true)</code> and <code>momo.WithArgLogging</code>
+  kind, parents, children, queries, duration, err). Options: <code>momolog.Level</code>,
+  <code>momolog.SlowOver</code> (statements slower than the duration log at WARN) and <code>momolog.Values</code>.
+  Argument values are logged only with <code>momolog.Values(true)</code> and <code>momo.WithArgLogging</code>
   together; a sensitive column's value is <code>momo.RedactedArg</code>.</li>
 <li><code>momo.WithQueryScope(ctx)</code> groups statements for <code>momo.NewNPlusOneHook(threshold,
 report)</code>, a development hook that reports once per statement shape per scope
@@ -3438,7 +3830,11 @@ report)</code>, a development hook that reports once per statement shape per sco
   separate from <code>momo.NewNPlusOneHook</code>, which counts repeated statement shapes in
   a <code>momo.WithQueryScope</code> scope; each needs its own scope on the context. A value
   bound from a sensitive column is always <code>momo.RedactedArg</code> in what these hooks
-  see. They are safe for concurrent use. For slog use <code>momolog.New</code>.</li>
+  see. They are safe for concurrent use. For slog use <code>momolog.New</code>.
+  <code>obs.NewSlowQuery(threshold, report, obs.WithPlainExplain(plainDB))</code> reports
+  each statement slower than the threshold and, only with <code>obs.WithPlainExplain</code>,
+  adds a plain <code>EXPLAIN</code> plan (never <code>ANALYZE</code>; inside a transaction through a
+  savepoint that is rolled back). See <a href="../observability/">observability</a>.</li>
 <li><code>momo.WithTenant(ctx, tenant)</code> and <code>momo.TenantFilter(ctx, column)</code> add a
   <code>column = tenant</code> predicate. This is an application-side convenience and NOT a
   security boundary. It applies only where you add it to a <code>Where</code>: not to
@@ -3484,7 +3880,7 @@ report)</code>, a development hook that reports once per statement shape per sco
    is filtered automatically; do not add the predicate.</li>
 <li>Page with <code>OrderBy</code> + <code>After</code> and a unique tie-break; pass one value per
     effective ORDER BY key (primary key included).</li>
-<li>Pass user input only as arguments to <code>momo.SQL</code>/<code>TypedSQL</code>/<code>Exec</code>/<code>Scalars</code>;
+<li>Pass user input only as arguments to <code>momo.SQL</code>/<code>TypedSQL</code>/<code>Exec</code>/<code>Scalars</code>/<code>Query</code>/<code>QueryRows</code>;
     qualify column names in raw fragments inside joins.</li>
 <li>Inside <code>db.Tx</code>, use only the <code>tx</code> handle. Retry the whole transaction on
     <code>ErrSerialization</code> with jittered backoff; never retry inside it.</li>
@@ -3507,7 +3903,8 @@ report)</code>, a development hook that reports once per statement shape per sco
     there; use iterative scan for filtered ANN searches; expect seq scans on small
     tables.</li>
 <li>Migrations: <code>diff</code>, review SQL, commit all files, <code>apply</code>. Never edit an
-    applied migration; undo with a new one. The CLI has no rollback.</li>
+    applied migration; undo with a new one (<code>momo migrate rollback</code> needs a
+    hand-written <code>.down.sql</code>). Run <code>momo migrate lint</code> in CI.</li>
 <li>NOT NULL additions without a default: <code>diff --stage</code>, apply, backfill, check
     no NULLs remain, then <code>diff --enforce-not-null</code> (or give the column a
     default).</li>

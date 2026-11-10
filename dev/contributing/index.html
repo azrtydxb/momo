@@ -640,6 +640,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1302,6 +1386,7 @@ included here so the site and the repository stay in sync.</p>
 <p>Dialect coverage is expressed as subtests from <code>testopen.Each</code>, one per dialect built into this version; integration tests have no name suffix. <code>make test-integration-&lt;dialect&gt;</code> sets that dialect's URL variables and runs the whole suite.</p>
 <h2 id="documentation-pages-and-go-code-blocks">Documentation pages and Go code blocks<a class="headerlink" href="#documentation-pages-and-go-code-blocks" title="Permanent link">&para;</a></h2>
 <p>A new page under <code>docs/</code> must be added to the <code>nav</code> in <code>mkdocs.yml</code> and linked from <code>docs/README.md</code>; <code>TestEveryDocPageInNav</code> and <code>TestDocsIndexLinksEveryPage</code> fail otherwise. Every Go block in <code>docs/</code> is checked by <code>TestDocsCodeBlocks</code>: write a complete <code>package main</code> program (it is compiled), or, for a snippet that cannot stand alone, put the comment <code>&lt;!-- docscheck:fragment --&gt;</code> on the line before the fence (it must still parse as Go). The number of fragments is capped by <code>maxFragmentBlocks</code> in <code>internal/docscheck/codeblocks_test.go</code>, so prefer a program. A block marked <code>&lt;!-- docscheck:run --&gt;</code> is also executed against PostgreSQL.</p>
+<p>An identifier in a backticked span is checked by <code>TestDocsIdentifiersResolve</code>: <code>pkg.Name</code> must exist. A bare name such as <code>Select</code> means the root <code>momo</code> package. When only a feature package exports it (<code>Case</code> is in <code>sqlfn</code>), <code>TestBareNamesAreRootNames</code> fails with the file, the line and the suggestion <code>sqlfn.Case</code>; write the qualified name; the same holds for a method such as <code>migrate.Engine.Apply</code>. A collision in prose is fixed by qualifying, never by removing the backticks. A page whose section names the package may keep bare names if <code>internal/docscheck/testdata/bare_allow.txt</code> lists the page and the package with a reason.</p>
 <h2 id="exported-api-changes-need-a-docs-change">Exported API changes need a docs change<a class="headerlink" href="#exported-api-changes-need-a-docs-change" title="Permanent link">&para;</a></h2>
 <p>The <code>apidiff-docs</code> CI job (<code>make apidiff-gate</code>, <code>scripts/apidiff-docs-gate.sh</code>) runs <code>golang.org/x/exp/cmd/apidiff</code>, pinned in the Makefile, between the base branch and your branch for the root package and every non-internal subpackage. Any exported change, compatible or incompatible, fails the job unless one of two things holds:</p>
 <ul>

@@ -644,6 +644,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1309,7 +1393,7 @@
 <span class="w">    </span><span class="p">}))</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Inserts are not filtered by a predicate: the tenant column of a new row is the model's own value, so set it in a <code>BeforeInsert</code> model hook and do not trust the caller to set it. <code>BeforeInsert</code> runs only for <code>Model</code> and <code>Models</code> inserts: <code>Values</code>, <code>ValuesRows</code> and <code>FromSelect</code> inserts have no model and skip it, so a tenant handle that relies on the hook must also deny those forms, or deny inserts altogether and write through a trusted handle.</p>
+<p>Inserts are not filtered by a predicate: the tenant column of a new row is the model's own value, so set it in a <code>BeforeInsert</code> model method (<code>func (m *Model) BeforeInsert(ctx context.Context) error</code>, wired into <code>Meta.Hooks</code> by <code>momo generate</code>) and do not trust the caller to set it. <code>BeforeInsert</code> runs only for <code>Model</code> and <code>Models</code> inserts: <code>InsertQuery.Values</code>, <code>ValuesRows</code> and <code>FromSelect</code> inserts have no model and skip it, so a tenant handle that relies on the hook must also deny those forms, or deny inserts altogether and write through a trusted handle.</p>
 <p>A read-only handle denies every write:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
 
@@ -1345,7 +1429,7 @@
 <li>Joined relation tables: for a <code>Joined</code> relation only the primary table is filtered; the joined table is not.</li>
 <li>The association helpers (<code>Link</code>, <code>Unlink</code>, <code>Replace</code> and the like) and graph creation.</li>
 <li>Subqueries and other sources rendered inside a statement: subquery operands, <code>UPDATE ... FROM</code> sources, and the <code>FromSelect</code> source of an insert.</li>
-<li>Raw SQL of every kind: <code>momo.Exec</code>, <code>momo.MapRows</code>, <code>momo.Scalars</code>, <code>momo.SQL</code> fragments and <code>momo.RawSubquery</code>.</li>
+<li>Raw SQL of every kind: <code>momo.Exec</code>, <code>momo.MapRows</code>, <code>momo.Scalars</code>, <code>momo.Query</code>, <code>momo.QueryRows</code>, <code>momo.SQL</code> fragments and <code>momo.RawSubquery</code>.</li>
 <li>Bulk loading with COPY: <code>InsertQuery[T].Copy</code> runs the insert interceptors (deny only) and <code>BeforeInsert</code>, but a predicate an interceptor adds is ignored, and <code>momo.CopierOf(...).CopyFrom</code> skips them entirely.</li>
 <li>Anything run on the driver directly, and any other <code>*momo.DB</code> over the same driver.</li>
 </ul>
@@ -1353,7 +1437,7 @@
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Sensitive columns are masked in hook events: bound values of columns tagged sensitive reach hooks as <code>momo.RedactedArg</code>.</li>
-<li>Typed model hooks (<code>Meta.Hooks</code>) change values on a model before a write and after a read; see the <code>HookSet</code> documentation for how to set them and for what a Before hook may leave behind when a statement then fails.</li>
+<li>Typed model hooks (<code>Meta.Hooks</code>) change values on a model before a write and after a read; <code>momo generate</code> fills them from model methods named <code>BeforeInsert</code>, <code>BeforeUpdate</code>, <code>BeforeDelete</code> and <code>AfterLoad</code> with the signature <code>func(context.Context) error</code>, so there is nothing to set by hand; see the <code>HookSet</code> documentation for the semantics and for what a Before hook may leave behind when a statement then fails.</li>
 </ul>
 
 

@@ -642,6 +642,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1746,7 +1830,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Date and time expressions</td>
 <td><code>timeop.Extract</code>, <code>timeop.AtTimeZone</code>, <code>timeop.Trunc</code>, <code>timeop.Now</code>, <code>timeop.CurrentTimestamp</code>, <code>timeop.IntervalOf</code>, <code>timeop.IntervalExpr</code>, <code>timeop.AddInterval</code>, <code>timeop.SubInterval</code></td>
 <td>yes</td>
-<td>every <code>ExtractField</code>, <code>TruncUnit</code>, interval and <code>Now</code> run on both SQLite drivers; month arithmetic overflows into the next month (Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); <code>Now</code> is millisecond text; <code>timeop.AtTimeZone</code> is PostgreSQL only</td>
+<td>every <code>timeop.ExtractField</code>, <code>timeop.TruncUnit</code>, interval and <code>timeop.Now</code> run on both SQLite drivers; month arithmetic overflows into the next month (Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); <code>timeop.Now</code> is millisecond text; <code>timeop.AtTimeZone</code> is PostgreSQL only</td>
 <td>SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server; <code>timeop.AtTimeZone</code> is PostgreSQL only</td>
 </tr>
 </tbody>
@@ -1780,7 +1864,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Insert as one <code>unnest</code> statement</td>
 <td>yes: <code>InsertQuery[T].Unnest()</code> sends one array parameter per column, so the bind count does not grow with the rows and <code>MaxParams</code> / <code>WithMaxParams</code> do not apply (one statement, no chunking)</td>
 <td><code>ErrUnsupported</code> on SQLite and MySQL</td>
-<td><code>Model</code> / <code>Models</code> only (<code>Values</code>, <code>ValuesRows</code> and <code>FromSelect</code> give <code>ErrValidation</code>); needs the table schema in the generated metadata, or <code>ErrValidation</code>. Int, float, bool, string, <code>time.Time</code> and <code>[]byte</code> columns bind as typed arrays (<code>[]*T</code> when a value is NULL); other element types (uuid, json, decimal, named enums) fall back to <code>[]any</code>, which pgx may reject, so use plain <code>Models</code> for such a model. <code>OnConflict</code>, <code>Upsert</code> and <code>Returning</code> work as for <code>Models</code>; interceptors, <code>BeforeInsert</code>, field validators, automatic timestamps and id generators run as for <code>Models</code>. A <code>FlagSensitive</code> column's array is <code>RedactedArg</code> in <code>QueryEvent.Args</code>. Not the package-level FROM source <code>momo.Unnest</code></td>
+<td><code>Model</code> / <code>Models</code> only (<code>InsertQuery.Values</code>, <code>InsertQuery.ValuesRows</code> and <code>FromSelect</code> give <code>ErrValidation</code>); needs the table schema in the generated metadata, or <code>ErrValidation</code>. Int, float, bool, string, <code>time.Time</code> and <code>[]byte</code> columns bind as typed arrays (<code>[]*T</code> when a value is NULL); other element types (uuid, json, decimal, named enums) fall back to <code>[]any</code>, which pgx may reject, so use plain <code>Models</code> for such a model. <code>OnConflict</code>, <code>Upsert</code> and <code>Returning</code> work as for <code>Models</code>; interceptors, <code>BeforeInsert</code>, field validators, automatic timestamps and id generators run as for <code>Models</code>. A <code>FlagSensitive</code> column's array is <code>RedactedArg</code> in <code>QueryEvent.Args</code>. Not the package-level FROM source <code>momo.Unnest</code></td>
 </tr>
 <tr>
 <td>Select</td>
@@ -1793,6 +1877,12 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>yes; without <code>Where</code> they fail with <code>ErrUnfilteredMutation</code> unless <code>.AllRows()</code></td>
 <td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
 <td><code>UpdateQuery[T].Set(...)</code>, <code>Delete[T]</code></td>
+</tr>
+<tr>
+<td>UPDATE ... FROM, DELETE ... USING, WITH on DML, DML as a CTE body</td>
+<td>yes: <code>UpdateQuery.From</code>, <code>DeleteQuery.Using</code>, <code>InsertQuery.With</code> / <code>InsertQuery.WithRecursive</code> on <code>InsertQuery</code>, <code>UpdateQuery</code> and <code>DeleteQuery</code>, and an INSERT, UPDATE or DELETE with <code>Returning</code> as a <code>SelectQuery.With</code> body</td>
+<td>SQLite: <code>UPDATE ... FROM</code> and WITH before any DML yes, <code>DELETE ... USING</code> and a data-modifying CTE body <code>ErrUnsupported</code>. MySQL and MariaDB: multi-table <code>UPDATE t, src SET ...</code> and <code>DELETE t FROM t, src</code>; WITH before UPDATE and DELETE on MySQL only (MariaDB <code>ErrUnsupported</code>, not verified); WITH before INSERT and a data-modifying CTE body <code>ErrUnsupported</code></td>
+<td><code>From</code> / <code>Using</code> take a table, <code>momo.CTE</code> or <code>momo.FromSubquery</code>; the soft-delete filter and interceptors do not apply to that source. With <code>From</code> or <code>Using</code>, <code>Where</code> must reference the target table or the statement is <code>ErrUnfilteredMutation</code> unless <code>AllRows</code>. A WITH on a chunked bulk insert or on <code>BulkUpdate</code> is <code>ErrValidation</code>; an INSERT CTE body over the parameter limit is <code>ErrLimitExceeded</code></td>
 </tr>
 <tr>
 <td>Soft delete</td>
@@ -1814,7 +1904,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 </tr>
 <tr>
 <td>Array columns and operators</td>
-<td>yes: <code>[]string</code> maps to <code>text[]</code>, also <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>, <code>[]float32</code>, <code>[]float64</code>; one bind per slice</td>
+<td>yes: <code>[]string</code> maps to <code>text[]</code>, also <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>, <code>[]float32</code>, <code>[]float64</code>, <code>[]types.UUID</code> (<code>uuid[]</code>); one bind per slice</td>
 <td><code>ErrUnsupported</code> at build time</td>
 <td><code>arrayop.Contains</code> (<code>@&gt;</code>), <code>arrayop.ContainedBy</code> (<code>&lt;@</code>), <code>arrayop.Overlaps</code> (<code>&amp;&amp;</code>), <code>arrayop.AnyOf</code> (<code>= ANY</code>)</td>
 </tr>
@@ -1858,7 +1948,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Raw SQL</td>
 <td>yes</td>
 <td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
-<td><code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.SQL</code>, <code>TypedSQL</code>, <code>RawSubquery</code>, <code>Named</code>, <code>In</code>, <code>Ident</code></td>
+<td><code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.Query</code>, <code>momo.QueryRows</code>, <code>momo.SQL</code>, <code>TypedSQL</code>, <code>RawSubquery</code>, <code>Named</code>, <code>In</code>, <code>Ident</code></td>
 </tr>
 <tr>
 <td><code>EXPLAIN</code></td>
@@ -1901,7 +1991,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Upsert / <code>ON CONFLICT</code></td>
 <td>yes (<code>OnConflict: true</code>)</td>
 <td>MySQL and MariaDB: <code>ON DUPLICATE KEY UPDATE</code> through the same calls, with the conflict target limited to the only unique key of the table (otherwise <code>ErrUnsupported</code>); see <a href="../mysql/">mysql.md</a></td>
-<td><code>Upsert[T]</code> (target = primary key) or <code>InsertQuery[T].OnConflict(cols...).DoNothing()</code> / <code>.DoUpdate(assigns...)</code> with <code>SetExcluded</code>. Upsert neither advances nor checks the version column. <code>OnConflict(...).Where(preds)</code> (partial-index target) and <code>.DoUpdate(...).Where(preds)</code> (conditional update, <code>col.Excluded()</code>): PostgreSQL yes; SQLite: bool, integer, finite float and string values in the target predicate render inline so they match the index text (golden-tested, not yet run against a real SQLite; <code>momo.SQL("live = 1")</code> is the proven fallback; the values show up in logs and traces; write index literals as Momo renders them, integers as <code>2</code> and floats in plain decimal with <code>.0</code> for whole numbers for magnitudes from 1e-6 up to 1e21 and exponent form (<code>1e-07</code>, <code>1e+21</code>) outside that range, otherwise use <code>momo.SQL</code>), any other value or <code>Excluded()</code> there is <code>ErrValidation</code>; MySQL <code>ErrUnsupported</code>.</td>
+<td><code>Upsert[T]</code> (target = primary key) or <code>InsertQuery[T].OnConflict(cols...).DoNothing()</code> / <code>.DoUpdate(assigns...)</code> with <code>SetExcluded</code>. Upsert neither advances nor checks the version column. <code>OnConflict(...).Where(preds)</code> (partial-index target) and <code>.DoUpdate(...).Where(preds)</code> (conditional update, <code>col.Excluded()</code>): PostgreSQL yes; SQLite: bool, integer, finite float and string values in the target predicate render inline so they match the index expression (golden-tested and run against a real SQLite partial unique index written as <code>WHERE live = 1</code>; the values show up in logs and traces; write index literals as Momo renders them, integers as <code>2</code> and floats in plain decimal with <code>.0</code> for whole numbers for magnitudes from 1e-6 up to 1e21 and exponent form (<code>1e-07</code>, <code>1e+21</code>) outside that range, otherwise use <code>momo.SQL</code>), any other value or <code>Excluded()</code> there is <code>ErrValidation</code>; MySQL <code>ErrUnsupported</code>.</td>
 </tr>
 <tr>
 <td>Graph writes</td>
@@ -1983,6 +2073,12 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td><code>ForShare()</code></td>
 </tr>
 <tr>
+<td><code>FOR NO KEY UPDATE</code> / <code>FOR KEY SHARE</code></td>
+<td>yes, with <code>NOWAIT</code>, <code>SKIP LOCKED</code> and <code>OF</code></td>
+<td>SQLite and MySQL: <code>ErrUnsupported</code></td>
+<td><code>ForNoKeyUpdate()</code>, <code>ForKeyShare()</code></td>
+</tr>
+<tr>
 <td><code>FOR UPDATE OF &lt;table&gt;</code></td>
 <td>yes; names are quoted aliases or table names</td>
 <td>SQLite: <code>ErrUnsupported</code>; MySQL: yes; MariaDB: <code>ErrUnsupported</code></td>
@@ -1995,10 +2091,16 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td><code>advisory.XactLock</code>, <code>advisory.XactLockString</code>, <code>advisory.TryXactLock</code>, <code>advisory.TryXactLockString</code> (package <code>github.com/azrtydxb/momo/advisory</code>, taking the <code>*Tx</code>); a <code>DB</code> does not compile, because a transaction lock outside a transaction is meaningless. String and int64 keys share one bigint key space, and <code>hashtext</code> is not stable across PostgreSQL major versions, so never store a hashed key</td>
 </tr>
 <tr>
+<td>Advisory session locks</td>
+<td>yes: <code>pg_advisory_lock</code>, <code>pg_try_advisory_lock</code>, <code>pg_advisory_unlock</code> on a pinned connection (<code>db.OnConn</code>); 64-bit text keys through <code>advisory.Hash64</code></td>
+<td><code>ErrUnsupported</code>; a pooled <code>*DB</code> is <code>ErrValidation</code></td>
+<td><code>advisory.Lock</code>, <code>advisory.TryLock</code>, <code>advisory.Unlock</code> and the string forms</td>
+</tr>
+<tr>
 <td>CTE</td>
 <td>yes</td>
 <td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
-<td><code>With(name, subquery, cols...)</code>; <code>CTE(name)</code> as table source</td>
+<td><code>SelectQuery.With(name, subquery, cols...)</code>; <code>CTE(name)</code> as table source</td>
 </tr>
 <tr>
 <td>Recursive CTE</td>
@@ -2185,8 +2287,8 @@ covers MySQL only; for MariaDB see
 <tbody>
 <tr>
 <td>Value types</td>
-<td><code>vector.Vector</code> (<code>vector(n)</code>, 1 to 16000), <code>HalfVector</code> (<code>halfvec</code>), <code>SparseVector</code> (<code>sparsevec</code>), <code>Bits</code> (<code>bit(n)</code>)</td>
-<td><code>vector.Vector</code> (float32 BLOB with a length CHECK, <code>SQLiteVectorType</code>) and <code>Bits</code> (<code>SQLiteBitsType</code>); <code>HalfVector</code> and <code>SparseVector</code>: <code>ErrUnsupported</code></td>
+<td><code>vector.Vector</code> (<code>vector(n)</code>, 1 to 16000), <code>vector.HalfVector</code> (<code>halfvec</code>), <code>vector.SparseVector</code> (<code>sparsevec</code>), <code>vector.Bits</code> (<code>bit(n)</code>)</td>
+<td><code>vector.Vector</code> (float32 BLOB with a length CHECK, <code>SQLiteVectorType</code>) and <code>vector.Bits</code> (<code>SQLiteBitsType</code>); <code>vector.HalfVector</code> and <code>vector.SparseVector</code>: <code>ErrUnsupported</code></td>
 <td>no</td>
 </tr>
 <tr>
@@ -2245,7 +2347,7 @@ covers MySQL only; for MariaDB see
 </tr>
 <tr>
 <td>Hybrid search (full text plus vector, RRF)</td>
-<td>no</td>
+<td>yes, <code>momo.HybridSearch</code> (cosine distance, reciprocal rank fusion)</td>
 <td>no</td>
 <td>no</td>
 </tr>
@@ -2284,17 +2386,17 @@ session advisory lock.</p>
 <tr>
 <td>Apply</td>
 <td>yes, forward only; <code>--to N</code>, <code>--lock-wait</code></td>
-<td><code>momo migrate apply</code>; <code>Engine.Apply</code></td>
+<td><code>momo migrate apply</code>; <code>migrate.Engine.Apply</code></td>
 </tr>
 <tr>
 <td>Pending list</td>
 <td>yes</td>
-<td><code>momo migrate plan</code>; <code>Engine.Plan</code></td>
+<td><code>momo migrate plan</code>; <code>migrate.Engine.Plan</code></td>
 </tr>
 <tr>
 <td>Status per version</td>
 <td>yes; states <code>pending</code>, <code>applied</code>, <code>dirty</code>, <code>mismatch</code>, <code>missing</code></td>
-<td><code>momo migrate status</code>; <code>Engine.Status</code></td>
+<td><code>momo migrate status</code>; <code>migrate.Engine.Status</code></td>
 </tr>
 <tr>
 <td>Concurrent index</td>
@@ -2314,7 +2416,7 @@ session advisory lock.</p>
 <tr>
 <td>Checksums</td>
 <td>yes, file <code>momo.sum</code></td>
-<td><code>momo migrate hash</code>, <code>rehash</code>, <code>validate</code>; <code>ErrChecksumMismatch</code></td>
+<td><code>momo migrate hash</code>, <code>rehash</code>, <code>validate</code>; <code>migrate.ErrChecksumMismatch</code></td>
 </tr>
 <tr>
 <td>Validate</td>
@@ -2323,8 +2425,8 @@ session advisory lock.</p>
 </tr>
 <tr>
 <td>Drift detection</td>
-<td>yes: <code>Changed</code>, <code>Missing</code>, <code>Unmanaged</code>; <code>Unverified</code> lists view, trigger and policy text that is not compared</td>
-<td><code>momo migrate drift</code>; <code>Engine.Drift</code></td>
+<td>yes: <code>Changed</code>, <code>Missing</code>, <code>Unmanaged</code>; view, trigger and policy text is compared with CREATE on the database, else listed as <code>Unverified</code>; <code>--strict</code> makes that an error</td>
+<td><code>momo migrate drift [--strict]</code>; <code>migrate.Engine.Drift</code>, <code>migrate.Engine.DriftWith</code></td>
 </tr>
 <tr>
 <td>Baseline an existing database</td>
@@ -2339,17 +2441,27 @@ session advisory lock.</p>
 <tr>
 <td>Additive auto-migrate</td>
 <td>yes; never drops or alters types; skipped changes are reported</td>
-<td><code>Engine.AutoMigrate</code></td>
+<td><code>migrate.Engine.AutoMigrate</code></td>
 </tr>
 <tr>
 <td>Rollback</td>
-<td>Go API only: <code>Engine.Rollback</code> runs hand-written <code>.down.sql</code> files; the <code>momo migrate</code> command has no rollback, so undo with a new migration. <code>resolve --rolled-back</code> only records that you undid a dirty migration by hand; it runs no SQL</td>
-<td><code>Engine.Rollback</code>, <code>RollbackOptions</code></td>
+<td>yes, <code>momo migrate rollback [--group]</code> runs hand-written <code>.down.sql</code> files (<code>migrate.ErrNoDown</code> when one is missing); <code>resolve --rolled-back</code> only records that you undid a dirty migration by hand and runs no SQL</td>
+<td><code>momo migrate rollback</code>; <code>migrate.Engine.Rollback</code>, <code>migrate.RollbackOptions</code></td>
 </tr>
 <tr>
-<td><code>rebase</code>, <code>lint</code>, <code>new --custom</code></td>
-<td><code>Engine.Rebase</code> exists as a Go API and <code>momo migrate new --custom &lt;name&gt;</code> writes an empty hand-written migration; <code>momo migrate rebase</code> and <code>lint</code> are not built (there is no <code>Engine.Lint</code>)</td>
-<td><code>Engine.Rebase</code>, <code>Engine.NewCustom</code>; the CLI prints "Not available yet: rebase, lint, rollback"</td>
+<td>Rebase</td>
+<td>yes, <code>momo migrate rebase --onto &lt;dir&gt; [name]</code> regenerates this branch's generated migrations on top of the target branch's directory</td>
+<td><code>momo migrate rebase</code>; <code>migrate.Engine.Rebase</code></td>
+</tr>
+<tr>
+<td>Lint</td>
+<td>yes, <code>momo migrate lint [--db]</code> reports risky operations with severity and a safer alternative; exits 1 on an error</td>
+<td><code>momo migrate lint</code>; <code>migrate.Engine.Lint</code>, <code>migrate.Engine.LintAll</code>, <code>migrate.LintSQL</code></td>
+</tr>
+<tr>
+<td>Custom migration</td>
+<td>yes, <code>momo migrate new --custom &lt;name&gt;</code> writes an empty hand-written migration</td>
+<td><code>momo migrate new --custom</code>; <code>migrate.Engine.NewCustom</code></td>
 </tr>
 </tbody>
 </table>
@@ -2372,19 +2484,15 @@ session advisory lock.</p>
 </tr>
 <tr>
 <td>Custom generator plugins</td>
-<td>Go API only (<code>gen.Emit</code> with plugins); the binary ships and loads none</td>
+<td>Build your own binary with <code>cli.Main(plugins...)</code> (package <code>cli</code>) or use the Go API (<code>gen.Emit</code>); the stock binary ships none</td>
 </tr>
 <tr>
 <td><code>momo migrate</code></td>
-<td><code>diff</code>, <code>new --custom</code>, <code>plan</code>, <code>apply</code>, <code>status</code>, <code>validate</code>, <code>hash</code>, <code>rehash</code>, <code>baseline</code>, <code>drift</code>, <code>resolve</code>; flags <code>--dir</code> (migration directory, overrides <code>migrate.dir</code>) and, on <code>diff</code>, <code>--stage</code> (stage NOT NULL columns without a default) and <code>--enforce-not-null</code> (emit SET NOT NULL after the backfill, see <a href="../migrations/#not-null-columns">migrations.md</a>)</td>
+<td><code>diff</code>, <code>new --custom</code>, <code>plan</code>, <code>apply</code>, <code>status</code>, <code>validate</code>, <code>hash</code>, <code>rehash</code>, <code>baseline</code>, <code>drift</code>, <code>resolve</code>, <code>lint</code>, <code>rollback</code>, <code>rebase</code>; flags <code>--dir</code> (migration directory, overrides <code>migrate.dir</code>) and, on <code>diff</code>, <code>--stage</code> (stage NOT NULL columns without a default) and <code>--enforce-not-null</code> (emit SET NOT NULL after the backfill, see <a href="../migrations/#not-null-columns">migrations.md</a>)</td>
 </tr>
 <tr>
 <td><code>momo help [command]</code></td>
 <td>yes</td>
-</tr>
-<tr>
-<td>Not built</td>
-<td><code>momo migrate rebase</code>, <code>lint</code> and <code>rollback</code> commands (the engine has <code>Rebase</code> and <code>Rollback</code> for Go callers)</td>
 </tr>
 <tr>
 <td>Exit codes</td>
@@ -2448,7 +2556,7 @@ session advisory lock.</p>
 <tr>
 <td>slog hook</td>
 <td>yes</td>
-<td><code>momolog.New</code> with <code>Level</code>, <code>SlowOver</code>, <code>Values</code>; values logged only with <code>Values(true)</code> and <code>WithArgLogging</code></td>
+<td><code>momolog.New</code> with <code>momolog.Level</code>, <code>momolog.SlowOver</code>, <code>momolog.Values</code>; values logged only with <code>momolog.Values(true)</code> and <code>WithArgLogging</code></td>
 </tr>
 <tr>
 <td>OpenTelemetry hook</td>

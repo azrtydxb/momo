@@ -697,6 +697,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#hybrid-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#verifying-index-use" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -859,6 +870,90 @@
     
   
     Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
   
 
     
@@ -1433,6 +1528,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#hybrid-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#verifying-index-use" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1530,9 +1636,8 @@ MariaDB. This page describes what is built. Every Go snippet below is an <code>E
 </ul>
 <h2 id="not-available">Not available<a class="headerlink" href="#not-available" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Hybrid search: Momo has no built-in fusion of PostgreSQL full-text and vector
-  results. Combine a distance and a text rank yourself; see the hybrid pattern
-  in <a href="../fulltext/">full-text search</a>.</li>
+<li>Hybrid search on SQLite and MySQL: <code>momo.HybridSearch</code> needs PostgreSQL and
+  returns <code>ErrUnsupported</code> elsewhere; see <a href="#hybrid-search">Hybrid search</a>.</li>
 <li>MySQL: the server stores vectors but has no distance function, so a distance
   query fails with <code>ErrUnsupported</code>; see "MariaDB and MySQL" below. The
   <code>momo migrate</code> command does not run <code>migrate/mysql</code>, which renders its
@@ -1566,7 +1671,7 @@ which the root package re-exports as <code>momo.ErrInvalidVector</code>.</p>
 <tr>
 <td><code>vector.SparseVector</code></td>
 <td><code>sparsevec(n)</code></td>
-<td><code>Dim</code>, zero-based strictly increasing <code>Indices</code>, <code>Values</code></td>
+<td><code>Dim</code>, zero-based strictly increasing <code>Indices</code>, <code>vector.SparseVector.Values</code></td>
 </tr>
 <tr>
 <td><code>vector.Bits</code></td>
@@ -1864,7 +1969,7 @@ transaction mode.</p>
 </tr>
 </tbody>
 </table>
-<p><code>Settings.Validate</code> reports a value outside its range as
+<p><code>vecsearch.Settings.Validate</code> reports a value outside its range as
 <code>ErrValidation</code>. The iterative fields, <code>HNSWMaxScanTuples</code>,
 <code>HNSWScanMemMultiplier</code> and <code>IVFFlatMaxProbes</code> need pgvector 0.8.0 or newer. When any of them is set,
 <code>vecsearch.Apply</code> reads <code>pg_extension</code> and returns <code>ErrUnsupported</code> on an older or
@@ -1909,6 +2014,46 @@ of 20000 rows returns fewer than 10 rows with iterative scan off, and 10 with
 and it can be shorter than k when the filter matches fewer rows than that
 bound allows. <code>strict_order</code> (hnsw only) keeps exact distance order while it
 scans.</p>
+<h2 id="hybrid-search">Hybrid search<a class="headerlink" href="#hybrid-search" title="Permanent link">&para;</a></h2>
+<p><code>momo.HybridSearch</code> fuses a PostgreSQL full-text leg and a cosine-distance
+vector leg with reciprocal rank fusion (RRF) in one statement. Each leg picks
+its own best <code>TextCandidates</code> and <code>VectorCandidates</code> rows (default 100, at most
+1000), ranks them, and a row scores the sum of <code>1/(RRFK+rank)</code> over the legs it
+appears in (<code>RRFK</code> defaults to 60 and must be at least 1). The text leg ranks
+with <code>ts_rank_cd</code> over <code>websearch_to_tsquery</code>; the vector leg uses <code>&lt;=&gt;</code>.
+Ties break on the primary key ascending, in each leg's ranking and in the final
+order, so the result does not depend on insertion order. The vector leg orders
+by distance alone so an hnsw or ivfflat index can serve it; when rows tie on
+distance exactly at the candidate cut-off, which of them become candidates is
+not defined.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">hits</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">HybridSearch</span><span class="p">[</span><span class="nx">Article</span><span class="p">](</span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">HybridSpec</span><span class="p">{</span>
+<span class="w">    </span><span class="nx">Text</span><span class="p">:</span><span class="w">        </span><span class="nx">articleBody</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">TextConfig</span><span class="p">:</span><span class="w">  </span><span class="s">"english"</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">Query</span><span class="p">:</span><span class="w">       </span><span class="nx">userInput</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">Vector</span><span class="p">:</span><span class="w">      </span><span class="nx">articleEmb</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">QueryVector</span><span class="p">:</span><span class="w"> </span><span class="nx">queryEmbedding</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">Limit</span><span class="p">:</span><span class="w">       </span><span class="mi">10</span><span class="p">,</span>
+<span class="p">}).</span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+<span class="c1">// each hit has .Row (the model) and .Score</span>
+</code></pre></div>
+<p>The model needs a single-column primary key, <code>Query</code> must not be empty (use a
+plain vector query for that), and <code>HybridSpec.Text</code> and <code>HybridSpec.Vector</code> must be columns of the
+model's table; otherwise the call returns <code>ErrValidation</code>. Soft-deleted rows are
+left out. The vector leg takes the dense <code>vector</code> type only (not <code>halfvec</code>,
+<code>sparsevec</code> or <code>bit</code>) and skips rows with a NULL embedding and rows whose
+cosine distance is NaN (zero vectors).
+<code>HybridQuery.SQL</code> returns the statement and its arguments without running it.
+The vector leg can use an hnsw or ivfflat index on the vector column with
+<code>vector_cosine_ops</code>. The text leg binds the configuration as a parameter, and a
+GIN expression index on <code>to_tsvector('english', body)</code> needs a constant
+configuration in its definition, so PostgreSQL may not match it to a bound
+<code>regconfig</code>; check the plan with EXPLAIN. Without an
+index a leg scans the table, so the candidate counts bound the work after the
+scan, not the scan itself. For
+a different mix of signals, write your own score as shown in
+<a href="../fulltext/#hybrid-ranking-vector-plus-text">full-text search</a>.</p>
 <h2 id="verifying-index-use">Verifying index use<a class="headerlink" href="#verifying-index-use" title="Permanent link">&para;</a></h2>
 <p><code>SelectQuery.Explain(ctx)</code> runs <code>EXPLAIN</code> (never <code>EXPLAIN ANALYZE</code>), binds
 the parameters and returns the plan text. It does not execute the query. Run
@@ -1992,7 +2137,7 @@ pgvector: bit 0 is the top bit of byte 0). Both are validated before
 they are bound (NaN, Inf, an empty vector, a bad bit length are
 <code>ErrInvalidVector</code>), because a blob has no text form that would reject them
 later. A <code>*vector.Vector</code> or <code>*vector.Bits</code> field is nullable: nil binds <code>NULL</code>.
-<code>HalfVector</code> and <code>SparseVector</code> have no sqlite-vec type, so binding one, or
+<code>vector.HalfVector</code> and <code>vector.SparseVector</code> have no sqlite-vec type, so binding one, or
 searching with one, is <code>ErrUnsupported</code> when the query is built. A bit vector
 read from SQLite has a <code>Len</code> of 8 times its byte count, so the column length is
 the authority for a length that is not a multiple of 8.</p>

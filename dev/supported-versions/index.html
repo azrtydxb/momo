@@ -642,6 +642,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1628,7 +1712,7 @@ and the allocation gate (<code>make bench-gate</code>).</p>
 <tr>
 <td>Iterative vector scan settings</td>
 <td>pgvector 0.8.0</td>
-<td><code>vecsearch/vecsearch.go</code> (<code>Apply</code>)</td>
+<td><code>vecsearch/vecsearch.go</code> (<code>vecsearch.Apply</code>)</td>
 </tr>
 <tr>
 <td><code>MERGE</code> (<code>momo.Merge</code>)</td>
@@ -1652,7 +1736,7 @@ and the allocation gate (<code>make bench-gate</code>).</p>
 </tr>
 <tr>
 <td><code>momo.yaml</code>, migration files, <code>momo.sum</code>, snapshots</td>
-<td>format versions <code>1</code> (<code>FormatVersion</code>, <code>SnapshotFormat</code>, <code>SumFormat</code>); a newer snapshot format is refused with <code>ErrNewerFormat</code></td>
+<td>format versions <code>1</code> (<code>schema.FormatVersion</code>, <code>migrate.SnapshotFormat</code>, <code>migrate.SumFormat</code>); a newer snapshot format is refused with <code>schema.ErrNewerFormat</code></td>
 <td><code>migrate/</code></td>
 </tr>
 </tbody>

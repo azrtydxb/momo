@@ -724,6 +724,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1241,7 +1325,7 @@ uses Momo. It is the short form of the rules in section 12 of the
 <span class="k">-</span><span class="w"> </span>PostgreSQL with pgvector is the reference database. The generated status in docs/capabilities.md lists the other databases and the dialects <span class="sb">`momo migrate`</span> runs; check it before relying on a feature there.
 <span class="k">-</span><span class="w"> </span>Run <span class="sb">`momo generate`</span> after every model change and commit the generated files. Never edit generated files.
 <span class="k">-</span><span class="w"> </span>A non-pointer model field is NOT NULL; a pointer field is nullable.
-<span class="k">-</span><span class="w"> </span>Pass user input only as arguments to <span class="sb">`momo.SQL`</span>, <span class="sb">`momo.TypedSQL`</span>, <span class="sb">`momo.Exec`</span> and <span class="sb">`momo.Scalars`</span>. Never build SQL by string concatenation.
+<span class="k">-</span><span class="w"> </span>Pass user input only as arguments to <span class="sb">`momo.SQL`</span>, <span class="sb">`momo.TypedSQL`</span>, <span class="sb">`momo.Exec`</span>, <span class="sb">`momo.Scalars`</span>, <span class="sb">`momo.Query`</span> and <span class="sb">`momo.QueryRows`</span>. Never build SQL by string concatenation.
 <span class="k">-</span><span class="w"> </span>Never bypass <span class="sb">`ErrUnfilteredMutation`</span> with <span class="sb">`AllRows`</span>; add a <span class="sb">`Where`</span>.
 <span class="k">-</span><span class="w"> </span>Check errors with <span class="sb">`errors.Is`</span> against the <span class="sb">`momo.Err*`</span> sentinels. Never match error text.
 <span class="k">-</span><span class="w"> </span>Use only the <span class="sb">`tx`</span> handle inside <span class="sb">`db.Tx`</span>. Retry the whole transaction on <span class="sb">`ErrSerialization`</span>, never inside it.

@@ -913,6 +913,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1694,6 +1778,16 @@ see <a href="https://github.com/azrtydxb/momo/blob/main/README.md#3-create-and-a
 <li><code>polytype:&lt;column&gt;</code> together with <code>polyvalue:&lt;value&gt;</code> makes a <code>has_one</code> or
   <code>has_many</code> polymorphic: the child row belongs to the parent only when its
   type column equals the value.</li>
+<li><code>fk_name:&lt;name&gt;</code> names the foreign key constraint of a <code>belongs_to</code> instead of
+  the derived <code>&lt;table&gt;_&lt;column&gt;_fkey</code> (for example <code>_fkey1</code> on a partitioned
+  table). <code>MomoConfig</code> can do the same with <code>c.FKName(&amp;m.AuthorID, "name")</code>; the
+  field is the key field. Declaring it both ways is an error. A migration diff
+  and <code>baseline</code> compare the constraint by this name. Changing it later is a
+  drop and add of the foreign key (a rename is not generated). A name longer than
+  63 bytes, a repeated name on one table, <code>fk_name</code> on <code>has_one</code>/<code>has_many</code> and a
+  <code>FKName</code> whose field is not the key of a <code>belongs_to</code> are generator errors.
+  <code>generate --from-db</code> writes it only for names made of letters, digits, <code>_</code> and
+  <code>$</code>; any other foreign key name is reported and left out.</li>
 <li><code>on_delete</code>, <code>on_update</code> and <code>no_constraint</code> affect only the foreign key
   emitted for <code>belongs_to</code>. <code>has_one</code> and <code>has_many</code> create no constraint, and
   many-to-many join tables always get two foreign keys with
@@ -2257,11 +2351,11 @@ one event per relation load:</p>
 </thead>
 <tbody>
 <tr>
-<td><code>Parent</code>, <code>Name</code></td>
+<td><code>RelationEvent.Parent</code>, <code>RelationEvent.Name</code></td>
 <td>parent table and relation name</td>
 </tr>
 <tr>
-<td><code>Kind</code></td>
+<td><code>RelationEvent.Kind</code></td>
 <td>belongs-to, has-one, has-many or many-to-many</td>
 </tr>
 <tr>

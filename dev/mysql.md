@@ -53,16 +53,22 @@ Transport security is the DSN's business and defaults to none: add `tls=true`
 The rows below are checked against `dialect.MySQLFlavor` by
 `TestCapabilityMatrixMatchesDialect`.
 
-| Capability       | mysql | mariadb |
-| ---------------- | ----- | ------- |
-| Returning        | no    | no      |
-| InsertReturning  | no    | yes     |
-| OnConflict       | no    | no      |
-| OnDuplicateKey   | yes   | yes     |
-| NullsOrdering    | no    | no      |
-| TransactionalDDL | no    | no      |
-| Merge            | no    | no      |
-| ILike            | no    | no      |
+| Capability       | mysql | mariadb    |
+| ---------------- | ----- | ---------- |
+| Returning        | no    | no         |
+| InsertReturning  | no    | yes        |
+| OnConflict       | no    | no         |
+| OnDuplicateKey   | yes   | yes        |
+| NullsOrdering    | no    | no         |
+| TransactionalDDL | no    | no         |
+| Merge            | no    | no         |
+| ILike            | no    | no         |
+| Locking          | yes   | yes        |
+| RowValues        | yes   | yes        |
+| Savepoints       | yes   | yes        |
+| Vector.Storage   | yes   | yes        |
+| Vector.Metrics   | none  | l2, cosine |
+| Vector.Indexes   | none  | vector     |
 
 `Returning` is the UPDATE and DELETE form. MariaDB 11.8 can return rows from an
 INSERT only (`INSERT ... RETURNING`), which is why it has `InsertReturning`
@@ -105,7 +111,9 @@ no `RETURNING` at all.
 `LOCK IN SHARE MODE`. `LockOf` (`FOR UPDATE OF`) is MySQL only; on MariaDB it is
 `ErrUnsupported`. Savepoints and the four standard isolation levels work;
 read-only transactions use `START TRANSACTION READ ONLY`. Any other isolation
-level is `ErrUnsupported`.
+level is `ErrUnsupported`. `ForNoKeyUpdate` and `ForKeyShare` are PostgreSQL
+only and return `ErrUnsupported` here. `timeop.ClockTimestamp` renders
+`SYSDATE(6)`; `timeop.StatementTimestamp` is `ErrUnsupported`.
 
 ## Errors
 

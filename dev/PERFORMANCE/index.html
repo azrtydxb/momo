@@ -642,6 +642,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -942,6 +1026,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#streaming-memory-bound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming memory bound
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#comparison-suite" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1206,6 +1301,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#streaming-memory-bound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming memory bound
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#comparison-suite" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1326,6 +1432,26 @@ is caught. Lower the budget in the same change whenever the path gets cheaper.</
 </tbody>
 </table>
 <p>To reproduce, run <code>make db-up</code>, then <code>make bench-hooks</code>. The benchmark opens a database, so it only compiles with the <code>integration</code> build tag and <code>make bench-smoke</code> skips it; the <code>bench-module</code> CI job runs <code>make bench-hooks</code> against the pgvector service.</p>
+<h2 id="streaming-memory-bound">Streaming memory bound<a class="headerlink" href="#streaming-memory-bound" title="Permanent link">&para;</a></h2>
+<p><code>SelectQuery.Each</code> hands rows to a callback one at a time and must not buffer
+the result set. <code>TestStreamingBoundedMemory</code> iterates one million rows with
+<code>Each</code>, reads the heap after a forced collection every 100000 rows, and fails
+when the heap has grown by more than the bound below, so an <code>Each</code> that
+collects the rows first is caught.</p>
+<table>
+<thead>
+<tr>
+<th>Limit</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Streaming heap growth bound (MiB)</td>
+<td>16</td>
+</tr>
+</tbody>
+</table>
 <h2 id="comparison-suite">Comparison suite<a class="headerlink" href="#comparison-suite" title="Permanent link">&para;</a></h2>
 <p>The <code>bench/</code> module compares Momo with handwritten pgx and database/sql, GORM,
 Ent and Bun on one PostgreSQL server. Every operation is defined once in
@@ -1365,7 +1491,9 @@ PostgreSQL version and the pgvector version. The database image is
 <p><code>make db-up</code> starts PostgreSQL with pgvector. Then <code>make bench</code> runs the whole
 suite ten times per benchmark and writes <code>bench/results/</code> under a directory named
 by UTC time, operating system and architecture, with <code>env.json</code>, <code>versions.txt</code>,
-<code>codesize.json</code>, <code>raw.txt</code> and <code>summary.txt</code>. <code>make bench-suite-smoke</code> runs one
+<code>codesize.json</code>, <code>raw.txt</code> and <code>summary.txt</code>, plus <code>vector-encoding.txt</code> (the
+<code>BenchmarkVectorEncoding</code> run of text against binary pgx vector codecs) when a
+database is configured. <code>make bench-suite-smoke</code> runs one
 iteration of everything and is what CI uses. <code>make bench-generate</code> regenerates
 the Momo metadata and the Ent client.</p>
 <h3 id="regression-policy">Regression policy<a class="headerlink" href="#regression-policy" title="Permanent link">&para;</a></h3>

@@ -779,6 +779,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1421,6 +1505,36 @@ unknown flavor, because it has no error to return.)</p>
 <td>no</td>
 <td>no</td>
 </tr>
+<tr>
+<td>Locking</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>RowValues</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Savepoints</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Vector.Storage</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Vector.Metrics</td>
+<td>none</td>
+<td>l2, cosine</td>
+</tr>
+<tr>
+<td>Vector.Indexes</td>
+<td>none</td>
+<td>vector</td>
+</tr>
 </tbody>
 </table>
 <p><code>Returning</code> is the UPDATE and DELETE form. MariaDB 11.8 can return rows from an
@@ -1462,7 +1576,9 @@ no <code>RETURNING</code> at all.</p>
 <code>LOCK IN SHARE MODE</code>. <code>LockOf</code> (<code>FOR UPDATE OF</code>) is MySQL only; on MariaDB it is
 <code>ErrUnsupported</code>. Savepoints and the four standard isolation levels work;
 read-only transactions use <code>START TRANSACTION READ ONLY</code>. Any other isolation
-level is <code>ErrUnsupported</code>.</p>
+level is <code>ErrUnsupported</code>. <code>ForNoKeyUpdate</code> and <code>ForKeyShare</code> are PostgreSQL
+only and return <code>ErrUnsupported</code> here. <code>timeop.ClockTimestamp</code> renders
+<code>SYSDATE(6)</code>; <code>timeop.StatementTimestamp</code> is <code>ErrUnsupported</code>.</p>
 <h2 id="errors">Errors<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
 <p>Server errors map by number: 1062 unique, 1451 and 1452 (and 1216, 1217)
 foreign key, 1048 and 1364 not null, 3819 (MySQL) and 4025 (MariaDB) check,

@@ -642,6 +642,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../replicas/" class="md-nav__link">
         
   
@@ -1413,7 +1497,7 @@ they follow. It lists no planned packages. For what each database supports see
 <a href="../capabilities/">capabilities</a>; for exact signatures read the package
 documentation, which is the source of truth.</p>
 <h2 id="layering">Layering<a class="headerlink" href="#layering" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>              cmd/momo (CLI)         cmd/momovet (analyzer binary)
+<div class="highlight"><pre><span></span><code>              cmd/momo → cli         cmd/momovet (analyzer binary)
                  │
    ┌─────────────┼──────────────┐
    gen (plugin interface)       migrate ── migrate/{postgres,sqlite,mysql}
@@ -1441,7 +1525,7 @@ checks.</p>
    the root, the leaf packages and <code>internal/*</code>. <code>TestKnownPackages</code> forces
    every new package to be given a role in that file.</li>
 <li>Convention: <code>driver/*</code> import <code>momo</code> plus their database driver only.</li>
-<li>Convention: <code>gen</code>, <code>migrate/*</code> and <code>cmd/*</code> may import <code>golang.org/x/tools</code>,
+<li>Convention: <code>gen</code>, <code>migrate/*</code>, <code>cli</code> and <code>cmd/*</code> may import <code>golang.org/x/tools</code>,
    YAML and drivers. An application binary that imports only <code>momo</code> and one
    driver never links them.</li>
 <li>Convention: generated code imports only <code>momo</code>, <code>vector</code>, <code>types</code>, <code>schema</code>
@@ -1449,8 +1533,8 @@ checks.</p>
 </ol>
 <h2 id="packages">Packages<a class="headerlink" href="#packages" title="Permanent link">&para;</a></h2>
 <h3 id="dialect"><code>dialect</code><a class="headerlink" href="#dialect" title="Permanent link">&para;</a></h3>
-<p><code>dialect.Dialect</code> describes one database: its <code>Name</code> (<code>postgres</code>, <code>sqlite</code> or
-<code>mysql</code>), the MySQL <code>Flavor</code> (<code>mysql</code> or <code>mariadb</code>), the per-statement bind
+<p><code>dialect.Dialect</code> describes one database: its <code>dialect.Dialect.Name</code> (<code>postgres</code>, <code>sqlite</code> or
+<code>mysql</code>), the MySQL <code>dialect.Flavor</code> (<code>mysql</code> or <code>mariadb</code>), the per-statement bind
 limit <code>MaxParams</code> and a set of capability flags such as <code>Returning</code>,
 <code>OnConflict</code>, <code>OnDuplicateKey</code>, <code>Locking</code>, <code>RowValues</code>, <code>Savepoints</code>,
 <code>ILike</code> and <code>Merge</code>. It also quotes identifiers and writes placeholders.
@@ -1462,8 +1546,8 @@ MySQL or MariaDB variant. The query builder consults these flags and returns
 foreign keys, checks, enums, views, functions, triggers and policies. It is
 what the generator produces from your models, what a migration snapshot
 stores, and what each migration dialect inspects from a live database.
-<code>schema.Load</code> reads a stored schema and refuses a newer <code>FormatVersion</code> with
-<code>ErrNewerFormat</code>. <code>schema.Equal</code> and the <code>Normalize*</code> functions compare
+<code>schema.Load</code> reads a stored schema and refuses a newer <code>schema.FormatVersion</code> with
+<code>schema.ErrNewerFormat</code>. <code>schema.Equal</code> and the <code>Normalize*</code> functions compare
 schemas without being fooled by spelling differences.</p>
 <h3 id="momo-root-runtime"><code>momo</code> (root runtime)<a class="headerlink" href="#momo-root-runtime" title="Permanent link">&para;</a></h3>
 <ul>
@@ -1477,7 +1561,7 @@ schemas without being fooled by spelling differences.</p>
   <code>Merge</code>, built from generated column descriptors (<code>Column[T]</code>,
   <code>NullColumn[T]</code>, <code>VectorColumn[V]</code>) and expression builders. Query values
   are immutable: each method returns a modified copy.</li>
-<li>Raw SQL escape hatches: <code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.SQL</code>,
+<li>Raw SQL escape hatches: <code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.Query</code>, <code>momo.QueryRows</code>, <code>momo.SQL</code>,
   <code>momo.TypedSQL</code> and <code>RawSubquery</code>, with <code>?</code> positional and <code>@name</code> named
   placeholders.</li>
 <li>Relations: generated <code>Relation</code> descriptors, <code>Load</code>, <code>LoadAll</code>, <code>Preload</code>
@@ -1491,13 +1575,13 @@ schemas without being fooled by spelling differences.</p>
   <code>errors.Is</code>, never on message text.</li>
 </ul>
 <h3 id="vector"><code>vector</code><a class="headerlink" href="#vector" title="Permanent link">&para;</a></h3>
-<p>The pgvector value types <code>Vector</code>, <code>HalfVector</code>, <code>SparseVector</code> and <code>Bits</code>,
+<p>The pgvector value types <code>vector.Vector</code>, <code>vector.HalfVector</code>, <code>vector.SparseVector</code> and <code>vector.Bits</code>,
 each a <code>sql.Scanner</code> and <code>driver.Valuer</code> with a <code>Validate</code> method, and
 <code>ErrInvalidVector</code>. A vector field declares its dimension with the tag
 <code>dim:&lt;n&gt;</code>; the Go type selects the SQL type. See <a href="../vectors/">vectors</a>.</p>
 <h3 id="types"><code>types</code><a class="headerlink" href="#types" title="Permanent link">&para;</a></h3>
-<p>Codec types for columns that have no plain Go equivalent: <code>JSON[T]</code>, <code>Date</code>,
-<code>TimeOfDay</code>, <code>UUID</code>, <code>Hstore</code> and the full-text <code>TSVector</code> and <code>TSQuery</code>. See
+<p>Codec types for columns that have no plain Go equivalent: <code>types.JSON[T]</code>, <code>types.Date</code>,
+<code>types.TimeOfDay</code>, <code>types.UUID</code>, <code>types.Hstore</code> and the full-text <code>types.TSVector</code> and <code>types.TSQuery</code>. See
 <a href="../TYPE_MAPPING/">type mapping</a>.</p>
 <h3 id="driver"><code>driver/*</code><a class="headerlink" href="#driver" title="Permanent link">&para;</a></h3>
 <table>
@@ -1532,9 +1616,9 @@ each a <code>sql.Scanner</code> and <code>driver.Valuer</code> with a <code>Vali
 </tbody>
 </table>
 <h3 id="migrate"><code>migrate</code><a class="headerlink" href="#migrate" title="Permanent link">&para;</a></h3>
-<p>The migration engine: <code>Engine</code> with <code>Diff</code>, <code>Plan</code>, <code>Apply</code>, <code>Status</code>,
+<p>The migration engine: <code>migrate.Engine</code> with <code>migrate.Engine.Diff</code>, <code>Plan</code>, <code>migrate.Engine.Apply</code>, <code>Status</code>,
 <code>Baseline</code>, <code>Drift</code>, <code>Resolve</code>, <code>Rehash</code>, <code>Inspect</code>, <code>AutoMigrate</code>, <code>Rollback</code>
-and <code>Rebase</code>, plus <code>ValidateOffline</code>. A migration directory holds
+and <code>Rebase</code>, plus <code>migrate.ValidateOffline</code>. A migration directory holds
 <code>&lt;version&gt;_&lt;name&gt;.up.sql</code>, optional hand-written <code>.down.sql</code>, snapshots and
 <code>momo.sum</code>. A database implements <code>migrate.Dialect</code>; the implementations are
 <code>migrate/postgres</code>, <code>migrate/sqlite</code> and <code>migrate/mysql</code>, and
@@ -1543,7 +1627,7 @@ command runs is generated in <a href="../capabilities/">capabilities</a>; the ot
 library APIs. See
 <a href="../migrations/">migrations</a>.</p>
 <h3 id="gen"><code>gen</code><a class="headerlink" href="#gen" title="Permanent link">&para;</a></h3>
-<p>The generator. <code>gen.Load</code> reads model packages into a <code>Graph</code>, <code>gen.Emit</code>
+<p>The generator. <code>gen.Load</code> reads model packages into a <code>gen.Graph</code>, <code>gen.Emit</code>
 writes the generated files through the <code>Writer</code>, which is the only file writer
 (it refuses targets that are not generated, formats the output and is
 deterministic). <code>gen.Plugin</code> is the extension interface. Generated Go files
@@ -1593,7 +1677,9 @@ carries the format number and no release version.</p>
 </table>
 <h3 id="other-packages">Other packages<a class="headerlink" href="#other-packages" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>cmd/momo</code>: the CLI (<code>generate</code>, <code>migrate</code>, <code>viz</code>, <code>help</code>).</li>
+<li><code>cli</code>: the CLI as a library (<code>generate</code>, <code>migrate</code>, <code>viz</code>, <code>help</code>).
+  <code>cli.Main(plugins...)</code> builds a momo binary with your own generator
+  plugins; <code>cmd/momo</code> is a thin caller of it with none.</li>
 <li><code>momovet</code> and <code>cmd/momovet</code>: the analyzer for non-constant raw SQL; see
   <a href="../momovet/">momovet</a>.</li>
 <li><code>momotest</code>: a schema or a rolled-back transaction per test with your

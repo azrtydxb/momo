@@ -96,4 +96,16 @@
          <loc>https://azrtydxb.github.io/momo/dev/vectors/</loc>
          <lastmod>2026-11-10</lastmod>
     </url>
+    <url>
+         <loc>https://azrtydxb.github.io/momo/dev/guides/bun/</loc>
+         <lastmod>2026-11-10</lastmod>
+    </url>
+    <url>
+         <loc>https://azrtydxb.github.io/momo/dev/guides/ent/</loc>
+         <lastmod>2026-11-10</lastmod>
+    </url>
+    <url>
+         <loc>https://azrtydxb.github.io/momo/dev/guides/gorm/</loc>
+         <lastmod>2026-11-10</lastmod>
+    </url>
 </urlset>
