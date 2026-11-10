@@ -52,7 +52,7 @@ MYSQL84_URL ?= root:momo@tcp(127.0.0.1:3306)/
 MYSQL97_URL ?= root:momo@tcp(127.0.0.1:3307)/
 MARIADB_URL ?= root:momo@tcp(127.0.0.1:3308)/
 
-.PHONY: bench-gate bench bench-baseline bench-suite-smoke bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-sqlite test-sqlitepure test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec apidiff-gate db-up db-down
+.PHONY: bench-gate bench bench-baseline bench-suite-smoke bench-generate bench-hooks test-bench-module test-bench-module-integration bench-env test test-race test-compilefail test-fuzz test-integration test-integration-postgres test-integration-sqlite test-sqlitepure test-integration-mysql84 test-integration-mysql97 test-integration-mariadb bench-smoke fmt-check vet tidy-check staticcheck govulncheck gosec apidiff-gate db-up db-down protoc gen-integration
 
 test:
 	$(GO) test -count=1 ./...
@@ -78,6 +78,8 @@ test-integration-postgres:
 	cd internal/compat/gormfixture && MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=postgres MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' $(GO) test -tags integration -count=1 ./...
 	cd internal/compat/bunfixture && MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=postgres MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' $(GO) test -tags integration -count=1 ./...
 	cd internal/compat/entfixture && MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=postgres MOMO_TEST_POSTGRES_URL='$(PG_URL)' MOMO_TEST_POSTGRES_APP_URL='$(PG_APP_URL)' $(GO) test -tags integration -count=1 ./...
+	$(MAKE) protoc
+	cd internal/integration && MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=postgres MOMO_TEST_POSTGRES_URL='$(PG_URL)' PROTOC=$(CURDIR)/internal/integration/protoc-dist/bin/protoc $(GO) test -race -count=1 -timeout 25m ./...
 
 test-integration-mysql84:
 	MOMO_REQUIRE_INTEGRATION=1 MOMO_INTEGRATION_DIALECTS=mysql84 MOMO_TEST_MYSQL84_URL='$(MYSQL84_URL)' $(GO) test -tags integration -race -count=1 -timeout 25m ./...
@@ -215,3 +217,13 @@ db-down:
 # Fails when the exported API changed and no docs changed; see CONTRIBUTING.md.
 apidiff-gate:
 	APIDIFF='$(APIDIFF)' bash scripts/apidiff-docs-gate.sh
+
+# protoc installs the protoc release pinned in internal/integration/tools.lock,
+# after checking its SHA-256, into internal/integration/protoc-dist.
+protoc:
+	bash scripts/fetch-protoc.sh
+
+# gen-integration regenerates the committed example output of the ecosystem
+# generators (GraphQL, gRPC, OpenAPI) under internal/integration.
+gen-integration: protoc
+	bash scripts/gen-integration.sh
