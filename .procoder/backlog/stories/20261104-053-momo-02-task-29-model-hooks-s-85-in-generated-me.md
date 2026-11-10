@@ -18,3 +18,9 @@ Implements plan momo-02-generator Task 29: Model hooks (S-85) in generated metad
 
 ## Evidence
 
+Built (gen/hooks.go `DetectHooks`, `Model.Hooks`, `Hooks:` line in gen/emit_meta.go, golden gen/testdata/golden/hooks/momo_gen.go taken from the CI log). CI: ci-agent run 42773371002, headSha 5acef91, all 9 jobs green: `TestModelHookEmission`, `TestZeroHookSet` and `TestModelHookSignature` (gen/hooks_test.go) pass.
+
+Deviations from the plan text: the shipped `momo.HookSet` fields are `func(ctx, *T) error` (db_hooks.go), not `func(*T, context.Context)`, so the generator emits a closure per hook (`func(ctx context.Context, m *Doc) error { return m.BeforeInsert(ctx) }`) instead of a method expression, and imports `context` when a model has hooks. `DetectHooks` also takes the `*token.FileSet` for the diagnostic position.
+
+Red evidence is not separate: tests and implementation were pushed together, and the first run (42769490088) failed only on the then-missing golden file. The "failed before the implementation" part of the three test criteria is therefore not shown, and they stay unticked.
+
