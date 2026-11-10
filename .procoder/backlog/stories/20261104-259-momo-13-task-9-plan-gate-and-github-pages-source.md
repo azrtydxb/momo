@@ -11,14 +11,17 @@ Implements plan momo-13-docs-release Task 9: Plan gate and GitHub Pages source (
 
 ## Acceptance criteria
 
-- [ ] Step 1: Run the Go gate. `make fmt-check vet test` and `go test ./internal/docscheck/ ./internal/repocheck/ -count=1`. Expected: exit 0 for each.
-- [ ] Step 2: Run the example and block gate against the PostgreSQL service. `make db-up`, then `make test-integration-postgres` (the examples and the runnable blocks run through `testopen.Each`). Expected: `ok`. Then `make db-down`.
-- [ ] Step 3: Build the site as CI does. With the venv from Task 6: `mkdocs build --strict --site-dir "$SCRATCH/site"` exits 0, then `MOMO_DOCS_SITE="$SCRATCH/site" go test -tags docs -count=1 -run '^TestLLMsTxt$' ./internal/docscheck/` prints `ok`.
-- [ ] Step 4: Set the Pages source after the first deploy. The `gh-pages` branch is created by the first `mike deploy --push dev` on main (Task 8), so run this step after that deploy succeeds. Requires repository administration rights.
+- [x] Step 1: Run the Go gate. `make fmt-check vet test` and `go test ./internal/docscheck/ ./internal/repocheck/ -count=1`. Expected: exit 0 for each.
+- [x] Step 2: Run the example and block gate against the PostgreSQL service. `make db-up`, then `make test-integration-postgres` (the examples and the runnable blocks run through `testopen.Each`). Expected: `ok`. Then `make db-down`.
+- [x] Step 3: Build the site as CI does. With the venv from Task 6: `mkdocs build --strict --site-dir "$SCRATCH/site"` exits 0, then `MOMO_DOCS_SITE="$SCRATCH/site" go test -tags docs -count=1 -run '^TestLLMsTxt$' ./internal/docscheck/` prints `ok`.
+- [x] Step 4: Set the Pages source after the first deploy. The `gh-pages` branch is created by the first `mike deploy --push dev` on main (Task 8), so run this step after that deploy succeeds. Requires repository administration rights.
 - [ ] Step 5: Verify the Pages source and the published files. `gh api repos/azrtydxb/momo/pages --jq '.source.branch, .html_url'` must print `gh-pages` and `https://azrtydxb.github.io/momo/`. Then `curl -fsI https://azrtydxb.github.io/momo/llms.txt` must report `HTTP/2 200` (retry for up to ten minutes…
-- [ ] `procoder check` gate is clean
+- [x] `procoder check` gate is clean
 
 ## Evidence
 
 - Steps 1 to 3 are covered by the docs workflow, run 42456103295: strict mkdocs build, TestLLMsTxt, code blocks and runnable blocks.
 - Left open: steps 4 and 5 (set the Pages source on gh-pages, check the published llms.txt) need the first mike deploy from main and repository administration rights; they cannot run before docs.yml is on main.
+- Steps 1 and 2: ci-agent run 42768951858 (sha 3e1eed0, success): unit, apidiff-docs and the integration jobs. Step 3: docs run 42768951678 (same sha, success) runs the strict mkdocs build and TestLLMsTxt.
+- Step 4: gh-pages existed (`gh api repos/azrtydxb/momo/branches/gh-pages --jq .name` printed gh-pages); Pages did not (GET returned 404), so `gh api -X POST repos/azrtydxb/momo/pages -f source[branch]=gh-pages -f source[path]=/` created it.
+- Step 5 left open: `gh api repos/azrtydxb/momo/pages` prints gh-pages and https://azrtydxb.github.io/momo/, but `curl -fsI https://azrtydxb.github.io/momo/llms.txt` returns 404 and will keep doing so: mike publishes only under version directories (gh-pages holds .nojekyll, dev/, versions.json), so the file is at /dev/llms.txt (200). Needs decision: change the check to /dev/llms.txt (or /latest/llms.txt once a release is deployed), or add a root redirect. The /latest/ part waits on story 256.
