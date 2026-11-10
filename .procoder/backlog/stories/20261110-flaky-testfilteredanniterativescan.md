@@ -25,4 +25,5 @@ Fix (test only, no production change): drop the primary key so the HNSW index is
 
 ## Evidence
 
-(filled after CI)
+- Criterion 1: vecsearch/vecsearch_integration_test.go now has no primary key on `items` and asserts via EXPLAIN that the query uses `items_emb`. CI run 42790202590 (headSha 329a774) green with it; throwaway branch worktree-agent-a99e7a5da869a6911-v (deleted) ran the job with `-v -run TestFilteredANNIterativeScan`, run 42790197487 (headSha 6ca63cf) green: `--- PASS: TestFilteredANNIterativeScan (1.35s)` in the integration (postgres) log.
+- Criteria 2 and 3: see the two final ci-agent run ids in the final report; the flake is probabilistic, so a green run is evidence, not proof.
