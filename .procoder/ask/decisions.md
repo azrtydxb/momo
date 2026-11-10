@@ -301,3 +301,18 @@ The ports wait on the issues.
 Decision (2026-11-10): ship the issues first. When every issue story is merged
 into sprint-7 and green, sprint-7 goes to main and v0.5.0 is released; backlog
 stories still in flight continue on a follow-up branch and ship in v0.6.0.
+
+## Sprint 7 backlog decisions (2026-11-10)
+
+- **View models (stories 050, 101):** runtime guard. Views are marked
+  (`momo.View`), and Insert, Update and Delete return `ErrValidation` for a view
+  model at runtime. No signature change; the compile-time `WritableModeler`
+  design is dropped.
+- **Untyped assign with field permissions (story 054):** not built. Typed paths
+  already enforce read-only and insert-only columns; adding methods to the
+  exported `ColumnRef` interface would break implementers. Carried as
+  superseded.
+- **NaN on SQLite:** rejected with `ErrValidation` when bound, instead of being
+  stored as NULL.
+- **Runnable examples (S-21, story 253):** PostgreSQL only. S-21 is reworded;
+  the examples demonstrate PostgreSQL features.
