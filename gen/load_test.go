@@ -157,6 +157,28 @@ func TestLoadKeepsErrorsInHandwrittenFile(t *testing.T) {
 	}
 }
 
+// A hand-written name that clashes with a generated one is reported at the
+// generated file, and must still fail.
+func TestLoadKeepsRedeclaredInGeneratedFile(t *testing.T) {
+	dir := writeModule(t, map[string]string{
+		"go.mod":      "module example.com/stale3\n\ngo 1.26\n",
+		"model.go":    "package stale3\n\ntype Chunk struct{ ID int64 }\n\nfunc ChunkMeta() int { return 1 }\n",
+		"momo_gen.go": Header() + "\n\npackage stale3\n\nfunc ChunkMeta() int { return 2 }\n\nfunc (m *Chunk) Old() string { return m.Model2 }\n",
+	})
+	_, diags, err := Load([]string{"."}, Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var redeclared, stale bool
+	for _, d := range diags {
+		redeclared = redeclared || strings.Contains(d.Msg, "redeclared")
+		stale = stale || strings.Contains(d.Msg, "Model2")
+	}
+	if !redeclared || stale {
+		t.Fatalf("want the redeclaration kept and the stale reference dropped, got %v", diags)
+	}
+}
+
 type nopPlugin struct{}
 
 func (nopPlugin) Name() string                   { return "nop" }

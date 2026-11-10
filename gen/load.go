@@ -62,9 +62,11 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 	for _, p := range pkgs {
 		for _, e := range p.Errors {
 			d := errorDiagnostic(e)
-			// generate is about to rewrite files it generated, so a stale one
-			// (a renamed or removed field) must not stop it.
-			if isGeneratedFile(d.Pos.Filename, cfg.Dir) {
+			// generate is about to rewrite files it generated, so a stale
+			// reference in one (a renamed or removed field) must not stop it.
+			// Other errors, such as a redeclaration against a hand-written
+			// name, are real and stay.
+			if staleReference(d.Msg) && isGeneratedFile(d.Pos.Filename, cfg.Dir) {
 				continue
 			}
 			key := d.String()
@@ -123,6 +125,14 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 	g.Schema, sdiags = BuildSchema(g.Models, cfg)
 	diags = append(diags, sdiags...)
 	return g, diags, nil
+}
+
+// staleReference reports whether a type error says the code names something
+// that no longer exists.
+func staleReference(msg string) bool {
+	return strings.Contains(msg, "undefined") ||
+		strings.Contains(msg, "has no field or method") ||
+		strings.Contains(msg, "unknown field")
 }
 
 // isGeneratedFile reports whether the file starts with momo's generated
