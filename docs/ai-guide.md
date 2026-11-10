@@ -200,6 +200,10 @@ PgBouncer (transaction pooling):
 
 - `pgxdriver.New` defaults to `pgx.QueryExecModeExec` (unnamed statements,
   server-side binding). That is PgBouncer-safe; set nothing.
+- Under that default mode, `[]uuid.UUID` (github.com/google/uuid) and
+  `[]types.UUID` bind to `id = ANY(?::uuid[])`, and a `[]byte` of JSON text
+  binds to a `jsonb` column; the pgxdriver integration tests
+  `TestUUIDSliceBindsToAnyArray` and `TestByteSliceBindsToJSONB` prove it.
 - `pgxdriver.WithExecMode(m)` accepts `pgx.QueryExecModeCacheStatement`,
   `pgx.QueryExecModeCacheDescribe`, `pgx.QueryExecModeDescribeExec` (import
   `github.com/jackc/pgx/v5`; not tested through PgBouncer). The simple protocol is rejected
@@ -778,7 +782,10 @@ return `ErrLimitExceeded` instead of more than n rows, never a truncated slice.
 
 Other builder methods: `Distinct`, `Join`, `LeftJoin`, `CrossJoin`,
 `GroupBy`, `Having`, `ForUpdate` (with the options `"NOWAIT"` or
-`"SKIP LOCKED"`), `ForShare`, `LockOf` (names the tables a lock covers, for
+`"SKIP LOCKED"`), `ForShare`, `ForNoKeyUpdate` and `ForKeyShare` (PostgreSQL
+only: `FOR NO KEY UPDATE` does not block foreign-key inserts on the locked
+row, `FOR KEY SHARE` is the weakest lock; same options; MySQL and SQLite
+return `ErrUnsupported`), `LockOf` (names the tables a lock covers, for
 example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim; the names must be
 table or alias names, not CTEs), `With`, `WithRecursive`, `Union`,
 `FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
@@ -790,10 +797,23 @@ Advisory locks (PostgreSQL, inside a transaction), in the package
 `github.com/azrtydxb/momo/advisory`: `advisory.XactLock(ctx, tx, key)` waits
 for a transaction-scoped lock on an int64 key, `advisory.TryXactLock` returns
 whether it was granted, and the `String` variants (`advisory.XactLockString`,
-`advisory.TryXactLockString`) hash a text key with `hashtext`. The lock ends at
-commit or rollback. They take a `*Tx`, so a `*DB` does not compile: open a
-transaction first. Other dialects fail with `ErrUnsupported`. Never store a
-hashed key, it can change across PostgreSQL major versions.
+`advisory.TryXactLockString`) hash a text key with `hashtext`; pass
+`advisory.Hash64(seed)` to hash with the 64-bit `hashtextextended(key, seed)`
+instead (seed 0 matches `pg_advisory_xact_lock(hashtextextended(key, 0))` in
+existing SQL). The lock ends at commit or rollback. They take a `*Tx`, so a
+`*DB` does not compile: open a transaction first. Other dialects fail with
+`ErrUnsupported`. Never store a hashed key, it can change across PostgreSQL
+major versions.
+
+Session-level advisory locks: `advisory.Lock`, `advisory.TryLock`,
+`advisory.Unlock` and the `String` variants (`LockString`, `TryLockString`,
+`UnlockString`, which take the same `Hash64` option) take `pg_advisory_lock`
+and friends. They need a handle whose statements stay on one connection:
+`db.OnConn(pc)` over a connection from `Pinner.Pin`. A pooled `*DB` fails with
+`ErrValidation`, because the lock and the unlock could reach different
+connections. The lock lasts until `Unlock` or until the connection closes, so
+unlock before `pc.Release()` (or `Discard` the connection if the unlock fails).
+`db.IsPinned()` reports whether a handle is pinned.
 
 Typed expressions (no `momo.SQL` needed). Computed values (`momo.Func` and, in the
 package `github.com/azrtydxb/momo/sqlfn`, `sqlfn.Substr`, `sqlfn.Lower`,
@@ -862,7 +882,9 @@ timeop.Extract(timeop.ExtractEpoch, doc.CreatedAt)         // float64, also Year
 timeop.AtTimeZone(doc.CreatedAt, "Europe/Brussels")      // zone is a validated literal; ErrUnsupported on SQLite and MySQL
 // Local-day buckets: timeop.Trunc(timeop.TruncDay, timeop.AtTimeZone(col, zone)); a bare timestamptz truncates in the session zone.
 timeop.Trunc(timeop.TruncDay, doc.CreatedAt)           // Second..Year, weeks start on Monday
-timeop.Now()                                             // also CurrentTimestamp(); the database clock, not WithClock
+timeop.Now()                                             // also CurrentTimestamp(); the database clock, not WithClock; fixed at transaction start on PostgreSQL
+timeop.ClockTimestamp()                                  // clock_timestamp(): real time at evaluation, for a lease or fence sampled after a row lock; SYSDATE(6) on MySQL
+timeop.StatementTimestamp()                              // statement_timestamp(): start of the current statement; MySQL is ErrUnsupported
 // Intervals are an operand of AddInterval/SubInterval, not an expression of their own.
 timeop.SubInterval(timeop.Now(), timeop.IntervalOf(7, timeop.IntervalDay))              // literal count
 timeop.AddInterval(doc.CreatedAt, timeop.IntervalExpr(momo.Value(int64(n)), timeop.IntervalHour)) // bound or column count
