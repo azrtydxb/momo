@@ -40,6 +40,9 @@ import (
 // A nil tx fails with momo.ErrValidation. Other dialects than PostgreSQL fail
 // with momo.ErrUnsupported.
 func XactLock(ctx context.Context, tx *momo.Tx, key int64) error {
+	if err := check(tx); err != nil {
+		return err
+	}
 	return lock(ctx, tx, "pg_advisory_xact_lock", key, nil)
 }
 
@@ -88,6 +91,9 @@ func keyExpr(key any, opts []Option) (string, []any) {
 // PostgreSQL major versions: never store a hashed key, and use the int64 form
 // when the key space is large enough for collisions to matter.
 func XactLockString(ctx context.Context, tx *momo.Tx, key string, opts ...Option) error {
+	if err := check(tx); err != nil {
+		return err
+	}
 	return lock(ctx, tx, "pg_advisory_xact_lock", key, opts)
 }
 
@@ -95,12 +101,18 @@ func XactLockString(ctx context.Context, tx *momo.Tx, key string, opts ...Option
 // lock was granted instead of waiting for it (pg_try_advisory_xact_lock). A
 // true result holds the lock until the transaction ends.
 func TryXactLock(ctx context.Context, tx *momo.Tx, key int64) (bool, error) {
+	if err := check(tx); err != nil {
+		return false, err
+	}
 	return try(ctx, tx, "pg_try_advisory_xact_lock", key, nil)
 }
 
 // TryXactLockString is TryXactLock with a hashtext text key. See
 // XactLockString for the key space.
 func TryXactLockString(ctx context.Context, tx *momo.Tx, key string, opts ...Option) (bool, error) {
+	if err := check(tx); err != nil {
+		return false, err
+	}
 	return try(ctx, tx, "pg_try_advisory_xact_lock", key, opts)
 }
 
@@ -114,23 +126,13 @@ func check(tx *momo.Tx) error {
 	return nil
 }
 
-func lock(ctx context.Context, tx *momo.Tx, fn string, key any, opts []Option) error {
-	if err := check(tx); err != nil {
-		return err
-	}
+func lock(ctx context.Context, q momo.Querier, fn string, key any, opts []Option) error {
 	k, args := keyExpr(key, opts)
-	_, err := momo.Exec(ctx, tx, "SELECT "+fn+"("+k+")", args...)
+	_, err := momo.Exec(ctx, q, "SELECT "+fn+"("+k+")", args...)
 	return err
 }
 
-func try(ctx context.Context, tx *momo.Tx, fn string, key any, opts []Option) (bool, error) {
-	if err := check(tx); err != nil {
-		return false, err
-	}
-	return scalarBool(ctx, tx, fn, key, opts)
-}
-
-func scalarBool(ctx context.Context, q momo.Querier, fn string, key any, opts []Option) (bool, error) {
+func try(ctx context.Context, q momo.Querier, fn string, key any, opts []Option) (bool, error) {
 	k, args := keyExpr(key, opts)
 	got, err := momo.Scalars[bool](ctx, q, "SELECT "+fn+"("+k+")", args...)
 	if err != nil {
@@ -163,8 +165,7 @@ func Lock(ctx context.Context, db *momo.DB, key int64) error {
 	if err := checkSession(db); err != nil {
 		return err
 	}
-	_, err := momo.Exec(ctx, db, "SELECT pg_advisory_lock(?)", key)
-	return err
+	return lock(ctx, db, "pg_advisory_lock", key, nil)
 }
 
 // LockString is Lock with a text key, hashed on the server; see
@@ -173,9 +174,7 @@ func LockString(ctx context.Context, db *momo.DB, key string, opts ...Option) er
 	if err := checkSession(db); err != nil {
 		return err
 	}
-	k, args := keyExpr(key, opts)
-	_, err := momo.Exec(ctx, db, "SELECT pg_advisory_lock("+k+")", args...)
-	return err
+	return lock(ctx, db, "pg_advisory_lock", key, opts)
 }
 
 // TryLock is the non-blocking form of Lock (pg_try_advisory_lock): it reports
@@ -185,7 +184,7 @@ func TryLock(ctx context.Context, db *momo.DB, key int64) (bool, error) {
 	if err := checkSession(db); err != nil {
 		return false, err
 	}
-	return scalarBool(ctx, db, "pg_try_advisory_lock", key, nil)
+	return try(ctx, db, "pg_try_advisory_lock", key, nil)
 }
 
 // TryLockString is TryLock with a text key, hashed on the server.
@@ -193,7 +192,7 @@ func TryLockString(ctx context.Context, db *momo.DB, key string, opts ...Option)
 	if err := checkSession(db); err != nil {
 		return false, err
 	}
-	return scalarBool(ctx, db, "pg_try_advisory_lock", key, opts)
+	return try(ctx, db, "pg_try_advisory_lock", key, opts)
 }
 
 // Unlock releases one hold of the session-scoped lock for key
@@ -203,7 +202,7 @@ func Unlock(ctx context.Context, db *momo.DB, key int64) (bool, error) {
 	if err := checkSession(db); err != nil {
 		return false, err
 	}
-	return scalarBool(ctx, db, "pg_advisory_unlock", key, nil)
+	return try(ctx, db, "pg_advisory_unlock", key, nil)
 }
 
 // UnlockString is Unlock for a text key. Pass the same Hash64 option the lock
@@ -212,5 +211,5 @@ func UnlockString(ctx context.Context, db *momo.DB, key string, opts ...Option) 
 	if err := checkSession(db); err != nil {
 		return false, err
 	}
-	return scalarBool(ctx, db, "pg_advisory_unlock", key, opts)
+	return try(ctx, db, "pg_advisory_unlock", key, opts)
 }
