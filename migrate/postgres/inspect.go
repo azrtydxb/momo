@@ -71,7 +71,8 @@ var partStrategies = map[string]string{"r": "range", "l": "list", "h": "hash"}
 // Inspect reads the objects in opts.Schemas (default: the connection's
 // current schema) into a schema. A table in the current schema has an empty
 // Table.Schema; Schema.Schemas lists only the other managed namespaces.
-// opts.Exclude is a drift-time filter and is not applied here.
+// opts.Exclude is applied by the engine; the dialect only uses it to skip a
+// trigger it cannot represent before rejecting it.
 func (d Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.InspectOptions) (*schema.Schema, error) {
 	s, _, err := d.InspectWithInvalid(ctx, c, opts)
 	return s, err
@@ -97,7 +98,7 @@ func (Dialect) InspectWithInvalid(ctx context.Context, c momo.PinnedConn, opts m
 	if len(managed) == 0 {
 		managed = []string{current}
 	}
-	in := &inspector{c: c, current: current, managed: managed}
+	in := &inspector{c: c, current: current, managed: managed, exclude: opts.Exclude}
 	out := &schema.Schema{FormatVersion: schema.FormatVersion, Dialect: dialect.Postgres, Tables: []schema.Table{}}
 	if err := in.namespaces(ctx, out); err != nil {
 		return nil, nil, fmt.Errorf("postgres inspect: schemas: %w", err)
@@ -111,7 +112,7 @@ func (Dialect) InspectWithInvalid(ctx context.Context, c momo.PinnedConn, opts m
 	if err := in.tables(ctx, out); err != nil {
 		return nil, nil, err
 	}
-	if err := (Dialect{}).inspectObjects(ctx, c, out, managed); err != nil {
+	if err := (Dialect{}).inspectObjects(ctx, c, out, managed, opts.Exclude); err != nil {
 		return nil, nil, fmt.Errorf("postgres inspect: %w", err)
 	}
 	out.Sort()
@@ -122,6 +123,8 @@ type inspector struct {
 	c       momo.PinnedConn
 	current string
 	managed []string
+	// exclude holds the Config.Exclude globs; objects they match are skipped.
+	exclude []string
 	// invalid names the indexes left invalid by a failed CONCURRENTLY build.
 	// The schema model has no field for them; InspectWithInvalid returns them.
 	invalid []string
