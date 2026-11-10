@@ -4,10 +4,51 @@ package fromdb
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/schema"
 )
+
+func tsvectorSchema() *schema.Schema {
+	return &schema.Schema{
+		FormatVersion: schema.FormatVersion,
+		Dialect:       dialect.Postgres,
+		Tables: []schema.Table{{
+			Name: "kb_articles",
+			Columns: []schema.Column{
+				{Name: "id", Type: "bigint", Identity: "serial"},
+				{Name: "search_tsv", Type: "tsvector"},
+				{Name: "alt_tsv", Type: "tsvector", Nullable: true},
+			},
+			PrimaryKey: []string{"id"},
+		}},
+	}
+}
+
+func TestGenerateFromDBTSVector(t *testing.T) {
+	res, files := generate(t, tsvectorSchema(), Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	mustMatch(t, "kb_articles", files["kb_articles"],
+		`SearchTsv\s+types\.TSVector\s`,
+		`AltTsv\s+\*types\.TSVector\s`,
+	)
+}
+
+func TestGenerateFromDBTSVectorRuleOverrides(t *testing.T) {
+	cfg := Config{Types: map[string]TypeRule{"tsvector": {Go: "string"}}}
+	res, files := generate(t, tsvectorSchema(), cfg)
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	mustMatch(t, "kb_articles", files["kb_articles"], `SearchTsv\s+string\s`)
+	if strings.Contains(files["kb_articles"], "types.TSVector") {
+		t.Errorf("the rule must replace the default mapping:\n%s", files["kb_articles"])
+	}
+}
 
 func TestGenerateFromDBMapping(t *testing.T) {
 	cases := []struct {
