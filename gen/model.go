@@ -330,6 +330,10 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	m.Config, cdiags = ReadCompanion(d.pkg, m)
 	d.diags = append(d.diags, cdiags...)
 	d.companionBad = d.companionBad || len(cdiags) > 0
+	var hdiags []Diagnostic
+	m.Hooks, hdiags = DetectHooks(named, d.pkg.Fset)
+	d.diags = append(d.diags, hdiags...)
+	d.companionBad = d.companionBad || len(hdiags) > 0
 	return m
 }
 

@@ -25,6 +25,13 @@ import (
 //     Iter, and for every model a write scans from its RETURNING rows
 //     (ModelRows.ScanModel), after the row is scanned.
 //
+// momo generate fills the hooks from the model's own methods: a method named
+// BeforeInsert, BeforeUpdate, BeforeDelete or AfterLoad with the signature
+// func(context.Context) error becomes the hook of that name, with the model
+// as its receiver. A method with a hook name and another signature is a
+// generator diagnostic, and a model without such methods keeps the zero
+// HookSet.
+//
 // Set the hooks on the metadata value that MomoMeta returns, for example in
 // the declaration of the package-level Meta:
 //
