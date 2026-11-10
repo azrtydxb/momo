@@ -1094,7 +1094,7 @@ res, err := momo.Insert[models.Meter](q).
   calls AND. MySQL: both are `ErrUnsupported`. `Excluded()` in the target
   predicate is `ErrValidation` (use it in the `DoUpdate` `Where`). On SQLite the
   target predicate renders bool, integer, finite float and string values inline
-  (`"live" = 1`), because SQLite matches it against the index text; a value
+  (`"live" = 1`), because SQLite matches the expression, so write the same literal in the index; a value
   that cannot be inlined (time, bytes, pointer, NULL, NaN, a string with a NUL
   byte) is `ErrValidation`, and a type with `Value()` is inlined as that value.
   This is golden-tested and run against a real SQLite partial unique index

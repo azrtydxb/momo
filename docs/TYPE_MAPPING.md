@@ -4,8 +4,8 @@ This page lists which SQL column type Momo uses for each Go field type, what
 survives a round trip, and where the edges are. The tables are checked by
 tests: `TestTypeMappingDoc` fails when a row here disagrees with the generator's
 type map or a codec's `SQLType`, and `TestTypeMapping` creates a column of each
-documented PostgreSQL type on a live server and round-trips edge values through
-it.
+documented PostgreSQL type on a live server, and the generated SQLite type on a
+live SQLite database, and round-trips edge values through it.
 
 ## How a type is chosen
 

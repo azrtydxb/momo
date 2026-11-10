@@ -37,9 +37,10 @@ func roundTripAll[T any](eq func(got, want T) bool, wants ...T) liveCase {
 		ctx := context.Background()
 		tmTableSeq++
 		tbl := fmt.Sprintf("tm_%d", tmTableSeq)
+		ws := wants
 		if db.Dialect().Name == dialect.SQLite {
 			// SQLite stores NaN as NULL; TestTypeMappingNaN pins that edge.
-			wants = slices.DeleteFunc(slices.Clone(wants), func(w T) bool {
+			ws = slices.DeleteFunc(slices.Clone(wants), func(w T) bool {
 				v := reflect.ValueOf(w)
 				return (v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64) && math.IsNaN(v.Float())
 			})
@@ -47,7 +48,7 @@ func roundTripAll[T any](eq func(got, want T) bool, wants ...T) liveCase {
 		if _, err := momo.Exec(ctx, db, "CREATE TABLE "+tbl+" (id int PRIMARY KEY, v "+colType+")"); err != nil {
 			t.Fatalf("create %s: %v", colType, err)
 		}
-		for i, w := range wants {
+		for i, w := range ws {
 			if _, err := momo.Exec(ctx, db, "INSERT INTO "+tbl+" (id, v) VALUES (?, ?)", i, w); err != nil {
 				t.Fatalf("insert %#v into %s: %v", w, colType, err)
 			}
@@ -56,16 +57,16 @@ func roundTripAll[T any](eq func(got, want T) bool, wants ...T) liveCase {
 		if err != nil {
 			t.Fatalf("select %s: %v", colType, err)
 		}
-		if len(got) != len(wants) {
-			t.Fatalf("%s: got %d rows, want %d", colType, len(got), len(wants))
+		if len(got) != len(ws) {
+			t.Fatalf("%s: got %d rows, want %d", colType, len(got), len(ws))
 		}
-		for i := range wants {
-			same := reflect.DeepEqual(got[i], wants[i])
+		for i := range ws {
+			same := reflect.DeepEqual(got[i], ws[i])
 			if eq != nil {
-				same = eq(got[i], wants[i])
+				same = eq(got[i], ws[i])
 			}
 			if !same {
-				t.Errorf("%s: stored %#v, read back %#v", colType, wants[i], got[i])
+				t.Errorf("%s: stored %#v, read back %#v", colType, ws[i], got[i])
 			}
 		}
 	}
@@ -263,6 +264,9 @@ func TestTypeMappingNaNSQLite(t *testing.T) {
 	isNull, err := momo.Scalars[int64](ctx, db, "SELECT v IS NULL FROM tm_nan ORDER BY id")
 	if err != nil || len(isNull) != 2 || isNull[0] != 1 || isNull[1] != 0 {
 		t.Fatalf("v IS NULL = %v, %v; want NaN stored as NULL and +Inf kept", isNull, err)
+	}
+	if got, err := momo.Scalars[float64](ctx, db, "SELECT v FROM tm_nan WHERE id = 0"); err == nil {
+		t.Fatalf("scanning the NaN-stored NULL into float64 = %v, want an error", got)
 	}
 	inf, err := momo.Scalars[float64](ctx, db, "SELECT v FROM tm_nan WHERE id = 1")
 	if err != nil || len(inf) != 1 || !math.IsInf(inf[0], 1) {
