@@ -1075,7 +1075,7 @@ function on the first model, as releases before 0.7.0 did.
 
 `dbdefault: all` tags every NOT NULL PostgreSQL column that has a default with
 `dbdefault`, constant defaults such as `DEFAULT 1` included (by default only
-computed defaults are tagged), so `Insert.Model` leaves an unset field to the
+computed defaults are tagged), so `InsertQuery.Model` leaves an unset field to the
 database default. A nullable column is never tagged. See "Database defaults" in
 the [AI guide](ai-guide.md).
 
