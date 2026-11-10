@@ -34,6 +34,24 @@ unchanged behavior, now documented in
 ways to register a stable shape (`InsertQuery[T].Values`, `InsertQuery[T].Omit`, or a sample set as a real call
 sets it).
 
+### New: `One` on writes with RETURNING
+
+`InsertQuery.One`, `UpdateQuery.One` and `DeleteQuery.One` run the statement
+and return the single returned row as `T`, so a sqlc `:one` style write no
+longer needs the `Rows` / `ScanModel` / `Close` loop. Without a `Returning`
+list it returns every column. It returns `ErrNotFound` when no row came back
+(an `ON CONFLICT DO NOTHING` insert, or a guarded update or delete that matched
+nothing) and `ErrTooManyRows` when more than one did.
+
+Without `WithImplicitTx` or an explicit transaction the statement has already
+changed every matched row; run `One` inside `db.Tx` and roll back on
+`ErrTooManyRows`. `InsertQuery.One` is for a single-row insert: a multi-row
+`Models` insert is `ErrValidation`, use `Rows`. `AfterLoad` runs before the
+write commits, so an `AfterLoad` error rolls the write back, unlike
+`SelectQuery.One`. MySQL has no `RETURNING` and returns `ErrUnsupported`;
+`UPDATE` and `DELETE` with `RETURNING` are not implemented for MariaDB. This is
+additive; nothing to change.
+
 ## Upgrading to 0.6.0
 
 ### The Using and From guard is stricter

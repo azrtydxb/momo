@@ -1123,6 +1123,19 @@ return rows2.Err()
 - `Exec` does not fill the identity into your struct; use `Returning(...).Rows`.
   `ReturningAll()` returns every mapped column. `CreateGraph` reads identities
   back itself.
+- A write that returns one row reads it with `One(ctx) (T, error)` on
+  `InsertQuery`, `UpdateQuery` and `DeleteQuery`, instead of the `Rows` loop.
+  Without a `Returning` list it returns every column. It returns `ErrNotFound`
+  when no row came back (an `OnConflict(...).DoNothing()` insert, or a guarded
+  update or delete that matched nothing) and `ErrTooManyRows` when more than
+  one did. Without `WithImplicitTx` or an explicit transaction the statement has
+  already changed every matched row: run `One` inside `db.Tx` and roll back on
+  `ErrTooManyRows`. With `WithImplicitTx` it is rolled back for you.
+  `InsertQuery.One` is for a single-row insert: a multi-row `Models` insert is
+  `ErrValidation` (use `Rows`). `AfterLoad` runs before the write commits, so an
+  `AfterLoad` error rolls the write back, unlike `SelectQuery.One`. MySQL returns
+  `ErrUnsupported`; on MariaDB only insert has `RETURNING` in momo, so `UpdateQuery.One`
+  and `DeleteQuery.One` return `ErrUnsupported` (not implemented).
 - A `ReadOnly` / `identity` column is never written by `InsertQuery.Model`.
 - `InsertQuery.Models([]T{})` (empty) is `ErrValidation`.
 

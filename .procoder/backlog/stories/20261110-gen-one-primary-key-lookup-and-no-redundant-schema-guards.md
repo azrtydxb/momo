@@ -1,6 +1,6 @@
 # gen: one primary-key lookup and no redundant schema guards
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-10
 Epic: -
 Sprint: 008-sprint-8-fix-the-kuvryn-orbit-port-issues-73-to-79-and-the
@@ -26,14 +26,40 @@ out of the release.
 
 ## Acceptance criteria
 
-- [ ] One exported helper returns a model's primary key columns, and the four
+- [x] One exported helper returns a model's primary key columns, and the four
       plugins call it. Every generator golden and the regenerated integration
       examples are unchanged on CI.
-- [ ] No `g.Schema != nil` or `g.Schema == nil` guard is left around a
+- [x] No `g.Schema != nil` or `g.Schema == nil` guard is left around a
       `Graph.TableOf` call, and the private `tableOf` is gone.
-- [ ] `DescriptorIdents` and `EmitDescriptors` share one helper for the used
+- [x] `DescriptorIdents` and `EmitDescriptors` share one helper for the used
       identifiers.
-- [ ] `buildPlugins` either loses the unreachable branch or has a test that
+- [x] `buildPlugins` either loses the unreachable branch or has a test that
       calls it with an unknown name.
 
 ## Evidence
+
+Built as a pure refactor (commits 08fa364, 60c8348, 32f76ff). The test for a
+refactor is that nothing generated changes, so the guard is the existing
+goldens and the integration examples, not a new test.
+
+- gen.Graph.PrimaryKey(m) returns the primary key columns of m's table (nil
+  without one). singleIntPK (gen/graphql/sdl.go), SinglePK
+  (gen/internal/gosrc/gosrc.go), writeModel (gen/grpc/proto.go) and
+  propertiesOf (gen/openapi/doc.go) call it.
+- Every g.Schema != nil / == nil guard around Graph.TableOf is gone, and so is
+  the private tableOf in gen/emit_meta.go (its caller uses g.TableOf).
+- usedIdents in gen/emit_descriptors.go builds the used-identifier set for both
+  DescriptorIdents and EmitDescriptors.
+- buildPlugins keeps its default branch: cli/plugins_test.go
+  TestPluginRegistration already calls it with the unknown name "soap" and
+  asserts the error (line 50). That test passes in the unit job below. It was
+  written before this story and was not made to fail here.
+
+CI, ci-agent run 42907768963, SHA 32f76ff203064e3991d87af737199e54366d3fe9: all
+nine jobs green. lint (job 130150332310) runs gen-check, then make
+gen-integration followed by a diff that must be empty and a clean status, so
+the regenerated integration examples are byte-identical; unit (130150332162)
+runs every generator golden. An earlier run, 42905678676 on 60c8348, was
+cancelled after its lint and unit jobs failed to compile (usedIdents took the
+wrong map type) and apidiff-docs asked for a docs escape; both were fixed in
+the following commits.

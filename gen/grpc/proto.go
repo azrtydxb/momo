@@ -318,25 +318,16 @@ func message(b *strings.Builder, lock *Lock, name, table string, live map[string
 func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoField, hidden []string, lock *Lock, live map[string]bool, ops apiquery.OpSet, diags *[]gen.Diagnostic) {
 	name := m.GoName
 	// The key of the row: the primary key columns of the schema table.
-	var pkCols []string
-	if g.Schema != nil {
-		if t, ok := g.TableOf(m); ok {
-			pkCols = t.PrimaryKey
-		}
-	}
+	pkCols := g.PrimaryKey(m)
 	message(b, lock, name, m.Table, live, annotate(m, fields, pkCols), hidden, diags)
 
 	var key []protoField
-	if g.Schema != nil {
-		if _, ok := g.TableOf(m); ok {
-			for _, pk := range pkCols {
-				for _, f := range fields {
-					if f.column == pk {
-						k := f
-						k.optional = false
-						key = append(key, k)
-					}
-				}
+	for _, pk := range pkCols {
+		for _, f := range fields {
+			if f.column == pk {
+				k := f
+				k.optional = false
+				key = append(key, k)
 			}
 		}
 	}
