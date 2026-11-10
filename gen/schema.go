@@ -189,11 +189,44 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 	if tg.Serial {
 		b.applySerial(f, &col)
 	}
+	if tg.DBDefault {
+		b.checkDBDefault(m, f)
+	}
 	if tg.Enum != "" {
 		col.Enum = tg.Enum
 		b.enumUses = append(b.enumUses, enumUse{name: tg.Enum, pos: f.Pos})
 	}
 	return col
+}
+
+// checkDBDefault reports a dbdefault field whose other tags already decide how
+// the column is written: the database generates identity and serial values,
+// read-only fields are never written, and the version, soft-delete, timestamp
+// and idgen columns are filled by Momo.
+func (b *schemaBuilder) checkDBDefault(m *Model, f *Field) {
+	tg := f.Tags
+	conflict := ""
+	switch {
+	case tg.Identity:
+		conflict = "identity"
+	case tg.Serial:
+		conflict = "serial"
+	case f.Access == ReadOnly:
+		conflict = "read_only"
+	case tg.Version:
+		conflict = "version"
+	case tg.SoftDelete != "":
+		conflict = "soft_delete"
+	case tg.CreatedAt:
+		conflict = "created_at"
+	case tg.UpdatedAt:
+		conflict = "updated_at"
+	case tg.IDGen != "" || (m.Config != nil && m.Config.IDGens[f.Column] != ""):
+		conflict = "idgen"
+	}
+	if conflict != "" {
+		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault conflicts with %s", f.GoName, conflict))
+	}
 }
 
 // serialTypes are the integer column types a serial column can have.

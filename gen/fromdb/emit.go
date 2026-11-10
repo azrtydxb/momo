@@ -493,6 +493,9 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 		m.stmts = append(m.stmts, "c."+strings.ToUpper(e.key[:1])+e.key[1:]+"(&m."+name+", "+strconv.Quote(e.val)+")")
 	}
 	opts = mergeTags(opts, rule.Tags)
+	if dbDefaultFits(col, opts) {
+		opts = append(opts, "dbdefault")
+	}
 	goType := gt.Expr
 	if col.Nullable && !gt.Nilable {
 		goType = "*" + goType
@@ -582,6 +585,38 @@ func mergeTags(generated, user []string) []string {
 		out = append(out, u)
 	}
 	return out
+}
+
+// dbDefaultFits reports whether the field of col gets the dbdefault tag: a
+// NOT NULL column whose database default is computed (a function call such as
+// gen_random_uuid() or now(), or CURRENT_TIMESTAMP), which a Go zero value
+// would otherwise overwrite. A constant default is left alone, as is a column
+// whose other tags already decide how it is written.
+func dbDefaultFits(col *schema.Column, opts []string) bool {
+	if col.Nullable || col.Identity != "" || !computedDefault(col.Default) {
+		return false
+	}
+	for _, o := range opts {
+		switch k, _, _ := strings.Cut(o, ":"); k {
+		case "identity", "serial", "read_only", "version", "soft_delete", "created_at", "updated_at", "idgen", "dbdefault":
+			return false
+		}
+	}
+	return true
+}
+
+// computedDefault reports whether a default expression is evaluated by the
+// database per row rather than a literal.
+func computedDefault(d string) bool {
+	d = strings.ToLower(strings.TrimSpace(d))
+	if d == "" || strings.HasPrefix(d, "'") || strings.HasPrefix(d, "-") || (d[0] >= '0' && d[0] <= '9') {
+		return false
+	}
+	switch d {
+	case "true", "false", "null":
+		return false
+	}
+	return strings.Contains(d, "(") || strings.HasPrefix(d, "current_") || strings.HasPrefix(d, "localtime")
 }
 
 func removeKey(opts []string, k string) []string {

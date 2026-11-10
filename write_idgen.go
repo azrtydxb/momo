@@ -287,6 +287,12 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 			}
 		}
 	}
+	dbCols := q.dbDefaultReadBack() // dbdefault columns come back with the ids
+	for _, ci := range dbCols {
+		if !slices.Contains(idCols, ci) {
+			refs = append(refs, NewColumn[string](q.meta.Table, q.meta.Columns[ci].Name, 0))
+		}
+	}
 	q2 := q
 	q2.i.returning = returningSet{cols: refs}
 	c, err := q2.SQL()
@@ -320,6 +326,17 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		}
 		if i >= len(q.back) || q.back[i] == nil {
 			continue
+		}
+		for _, ci := range dbCols {
+			if q.dbDefaultRow(&q.models[i], ci) {
+				dst, src, col := q.back[i], got, ci
+				apply := func() { copyField(q.meta, dst, &src, col) }
+				if q.pend != nil {
+					*q.pend = append(*q.pend, apply)
+				} else {
+					apply()
+				}
+			}
 		}
 		for _, ci := range idCols {
 			if id, ok := idString(q.meta.Value(&got, ci)); ok {

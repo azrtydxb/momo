@@ -208,7 +208,9 @@ func (q InsertQuery[T]) writeModelRows(b *Builder, p insertPlan[T]) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			if p.vals != nil {
+			if q.dbDefaultRow(&q.models[r], ci) {
+				b.WriteString("DEFAULT") // a dbdefault column of a row that sets others
+			} else if p.vals != nil {
 				b.argFor(q.meta.Columns[ci].Flags, p.vals[r][i])
 			} else {
 				b.argFor(q.meta.Columns[ci].Flags, q.modelValue(&q.models[r], ci, p.now, p.fp))
@@ -337,6 +339,9 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPla
 
 // modelCols returns the columns a model insert writes, in metadata order.
 func (q InsertQuery[T]) modelCols(fp fieldPlan[T]) ([]int, error) {
+	if q.i.fixedCols != nil {
+		return q.i.fixedCols, nil
+	}
 	omit := map[int]struct{}{}
 	for _, n := range q.i.omit {
 		ci := q.column(n)
@@ -353,7 +358,13 @@ func (q InsertQuery[T]) modelCols(fp fieldPlan[T]) ([]int, error) {
 		case skip && hasDefault && q.writable(i):
 			cols = append(cols, i) // omitted, so the Go-side default is written
 		case !skip && (q.writable(i) || q.insertsIdentity(i)):
-			cols = append(cols, i)
+			drop, err := q.dbDefaultDecision(i)
+			if err != nil {
+				return nil, err
+			}
+			if !drop {
+				cols = append(cols, i)
+			}
 		}
 	}
 	return cols, nil
@@ -385,6 +396,9 @@ func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) (
 func (q InsertQuery[T]) modelValue(m *T, ci int, now time.Time, fp fieldPlan[T]) any {
 	if f, ok := fp.def[ci]; ok && slices.Contains(q.i.omit, q.meta.Columns[ci].Name) {
 		return f(m)
+	}
+	if q.dbDefaultRow(m, ci) {
+		return nil // DEFAULT: validators see the same nil as for an omitted column
 	}
 	v := q.meta.Value(m, ci)
 	if (ci == q.meta.CreatedAt || ci == q.meta.UpdatedAt) && timestampUnset(v) {
