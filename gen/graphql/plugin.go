@@ -39,8 +39,9 @@ func (Plugin) Name() string { return "graphql" }
 func (Plugin) APIVersion() int { return gen.PluginAPIVersion }
 
 // Generate writes <Dir>/schema.graphqls and <Dir>/gqlgen.yml through w.Text,
-// <Dir>/model/momo_gen.go through w.File and <Dir>/resolver.go through
-// w.Scaffold, so a resolver file you edited is never overwritten. Run gqlgen
+// <Dir>/model/momo_gen.go through w.File and <Dir>/resolver.go and
+// <Dir>/schema.resolvers.go through w.Scaffold, so a resolver file you edited
+// is never overwritten. Run gqlgen
 // generate in Dir afterwards to write <Dir>/generated/exec.go.
 func (p Plugin) Generate(g *gen.Graph, w *gen.Writer) error {
 	sdl, diags := SDL(g)
@@ -63,7 +64,12 @@ func (p Plugin) Generate(g *gen.Graph, w *gen.Writer) error {
 			return err
 		}
 	}
-	scaffold, err := format.Source(resolverScaffold(ms, pkg, importPath))
+	rootSrc, querySrc := resolverScaffold(ms, pkg, importPath)
+	root, err := format.Source(rootSrc)
+	if err != nil {
+		return fmt.Errorf("graphql: generator bug: formatting the resolver scaffold: %w", err)
+	}
+	queries, err := format.Source(querySrc)
 	if err != nil {
 		return fmt.Errorf("graphql: generator bug: formatting the resolver scaffold: %w", err)
 	}
@@ -76,7 +82,10 @@ func (p Plugin) Generate(g *gen.Graph, w *gen.Writer) error {
 	if err := w.File(filepath.Join(p.Dir, "model", "momo_gen.go"), glue); err != nil {
 		return err
 	}
-	return w.Scaffold(filepath.Join(p.Dir, "resolver.go"), scaffold)
+	if err := w.Scaffold(filepath.Join(p.Dir, "resolver.go"), root); err != nil {
+		return err
+	}
+	return w.Scaffold(filepath.Join(p.Dir, "schema.resolvers.go"), queries)
 }
 
 // dirImportPath derives the import path of dir from the module of the first

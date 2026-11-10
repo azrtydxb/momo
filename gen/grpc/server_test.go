@@ -75,7 +75,7 @@ func TestServerSourceExample(t *testing.T) {
 		"ins = ins.Omit(documentdesc.Embedding)",
 		"codes.NotFound",
 		`"google.golang.org/grpc/status"`,
-		`pb "example.com/app/pb"`,
+		`"example.com/app/pb"`,
 	} {
 		if !strings.Contains(s, must) {
 			t.Errorf("server lacks %q", must)

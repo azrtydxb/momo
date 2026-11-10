@@ -237,8 +237,9 @@ func TestProtoGenerator(t *testing.T) {
 }
 
 // checkJSONNameRule has protoc rule on the JSON-name collision the emitter
-// guards against: fields whose JSON names differ only in case are an error,
-// while a message with distinct names compiles.
+// guards against: fields with the same JSON name (foo_bar and fooBar) are an
+// error, while names that differ only in case (foo_bar and foobar, Foo and
+// foo) are accepted, so the emitter compares names exactly.
 func checkJSONNameRule(t *testing.T, protoc string) {
 	t.Helper()
 	compile := func(fields string) ([]byte, error) {
@@ -250,16 +251,16 @@ func checkJSONNameRule(t *testing.T, protoc string) {
 		cmd := exec.Command(protoc, "--proto_path="+dir, "--descriptor_set_out="+filepath.Join(dir, "m.pb"), "m.proto") // #nosec G204 -- protoc is the tool under test
 		return cmd.CombinedOutput()
 	}
-	if out, err := compile("  string foo_bar = 1;\n  string baz = 2;\n"); err != nil {
-		t.Fatalf("a message with distinct JSON names is rejected: %v\n%s", err, out)
+	if out, err := compile("  string foo_bar = 1;\n  string fooBar = 2;\n"); err == nil {
+		t.Errorf("protoc accepts foo_bar and fooBar in one message, so the collision rule has no purpose:\n%s", out)
 	}
 	for name, fields := range map[string]string{
+		"distinct names":     "  string foo_bar = 1;\n  string baz = 2;\n",
 		"foo_bar and foobar": "  string foo_bar = 1;\n  string foobar = 2;\n",
-		"foo_bar and fooBar": "  string foo_bar = 1;\n  string fooBar = 2;\n",
 		"Foo and foo":        "  string Foo = 1;\n  string foo = 2;\n",
 	} {
-		if out, err := compile(fields); err == nil {
-			t.Errorf("protoc accepts %s in one message, so the emitter's case-insensitive rule is stricter than protoc needs:\n%s", name, out)
+		if out, err := compile(fields); err != nil {
+			t.Errorf("protoc rejects %s, so the emitter must treat them as a collision: %v\n%s", name, err, out)
 		}
 	}
 }

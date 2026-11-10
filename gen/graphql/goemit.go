@@ -815,7 +815,7 @@ func Get{{M}}(ctx context.Context, q momo.Querier, id int64) (*{{models}}.{{M}},
 // the directory of the file. importPath is the import path of that directory.
 func gqlgenConfig(ms []gmodel, importPath string) []byte {
 	models := map[string][]string{
-		"ID":             {"github.com/99designs/gqlgen/graphql.ID", importPath + "/model.ID64"},
+		"ID":             {importPath + "/model.ID64", "github.com/99designs/gqlgen/graphql.ID"},
 		"PageInfo":       {importPath + "/model.PageInfo"},
 		"OrderDirection": {"github.com/99designs/gqlgen/graphql.String"},
 	}
@@ -854,7 +854,7 @@ func gqlgenConfig(ms []gmodel, importPath string) []byte {
 	b.WriteString("schema:\n  - schema.graphqls\n\n")
 	b.WriteString("exec:\n  filename: generated/exec.go\n  package: generated\n\n")
 	b.WriteString("model:\n  filename: model/models_gen.go\n  package: model\n\n")
-	b.WriteString("resolver:\n  layout: single-file\n  filename: resolver.go\n  package: graph\n\n")
+	b.WriteString("resolver:\n  layout: follow-schema\n  dir: .\n  package: graph\n  filename: resolver.go\n  filename_template: \"{name}.resolvers.go\"\n\n")
 	b.WriteString("models:\n")
 	for _, n := range names {
 		b.WriteString("  " + n + ":\n    model:\n")
@@ -865,9 +865,22 @@ func gqlgenConfig(ms []gmodel, importPath string) []byte {
 	return []byte(b.String())
 }
 
-// resolverScaffold returns the starting point of resolver.go: the resolvers of
-// the generated queries, delegating to the list and get functions.
-func resolverScaffold(ms []gmodel, pkg, importPath string) []byte {
+// resolverScaffold returns the starting points of the resolver package: the
+// root resolver (resolver.go) and the resolvers of the generated queries
+// (schema.resolvers.go), which delegate to the list and get functions. gqlgen
+// follows the schema layout: it never touches resolver.go once it exists and
+// rewrites schema.resolvers.go keeping the bodies of the resolvers.
+func resolverScaffold(ms []gmodel, pkg, importPath string) (root, queries []byte) {
+	root = []byte("package " + pkg + `
+
+import "github.com/azrtydxb/momo"
+
+// Resolver is the root resolver. It is yours to edit: momo generate and gqlgen
+// never overwrite this file.
+type Resolver struct {
+	DB *momo.DB
+}
+`)
 	var b strings.Builder
 	for _, m := range ms {
 		n := m.m.GoName
@@ -885,12 +898,6 @@ func (r *queryResolver) {{Single}}(ctx context.Context, id int64) (*{{models}}.{
 `))
 	}
 	body := `
-// Resolver is the root resolver. It is yours to edit: momo generate never
-// overwrites this file.
-type Resolver struct {
-	DB *momo.DB
-}
-
 // Query returns the generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
@@ -898,7 +905,6 @@ type queryResolver struct{ *Resolver }
 ` + b.String()
 	imp := map[string]string{
 		"context":   "context",
-		"momo":      "github.com/azrtydxb/momo",
 		"generated": importPath + "/generated",
 		"model":     importPath + "/model",
 	}
@@ -906,5 +912,6 @@ type queryResolver struct{ *Resolver }
 		mp, _ := gosrc.ModelImport(m.m)
 		imp[m.modelAlias] = mp
 	}
-	return []byte("package " + pkg + "\n\n" + gosrc.Imports(body, imp) + strings.TrimPrefix(body, "\n"))
+	queries = []byte("package " + pkg + "\n\n" + gosrc.Imports(body, imp) + strings.TrimPrefix(body, "\n"))
+	return root, queries
 }

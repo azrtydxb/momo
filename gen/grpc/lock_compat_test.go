@@ -89,9 +89,9 @@ func TestProtoJSONNameCollision(t *testing.T) {
 		t.Error("the rejected column was numbered")
 	}
 
-	// protoc compares the JSON names without regard to case, so foo_bar and
-	// foobar (JSON name fooBar and foobar) and Foo and foo conflict too.
-	for _, pair := range [][2]string{{"foo_bar", "foobar"}, {"Foo", "foo"}, {"foobar", "foo_bar"}} {
+	// protoc compares JSON names exactly: foo_bar and foobar, or Foo and foo,
+	// are different names and both fields stay (see TestProtoGenerator).
+	for _, pair := range [][2]string{{"foo_bar", "foobar"}, {"Foo", "foo"}} {
 		m := &gen.Model{GoName: "Thing", Table: "things", Fields: []*gen.Field{
 			{GoName: "ID", Column: "id", BaseType: "int64"},
 			{GoName: "A", Column: pair[0], BaseType: "string"},
@@ -100,11 +100,8 @@ func TestProtoJSONNameCollision(t *testing.T) {
 		g := &gen.Graph{Models: []*gen.Model{m}, Schema: &schema.Schema{Tables: []schema.Table{{Name: "things", PrimaryKey: []string{"id"}}}}}
 		src, diags := Proto(g, &Lock{}, "acme.v1")
 		s := string(src)
-		if !strings.Contains(s, " "+pair[0]+" = ") || strings.Contains(s, " "+pair[1]+" = ") {
-			t.Errorf("%v: the first column should win:\n%s", pair, s)
-		}
-		if len(diags) != 1 || !strings.Contains(diags[0].Msg, "same proto3 JSON name") {
-			t.Errorf("%v: diags = %v", pair, diags)
+		if !strings.Contains(s, " "+pair[0]+" = ") || !strings.Contains(s, " "+pair[1]+" = ") || len(diags) != 0 {
+			t.Errorf("%v: both columns should stay (diags %v):\n%s", pair, diags, s)
 		}
 	}
 }

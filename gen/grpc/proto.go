@@ -144,8 +144,9 @@ func protoSource(g *gen.Graph, lock *Lock, pkg, goPackage string) ([]byte, []gen
 // that are not exposed (sensitive, unmapped or badly named), so the lock does
 // not retire their numbers.
 //
-// Two columns whose proto3 JSON names are equal when compared without regard
-// to case (foo_bar and foobar, Foo and foo) are a protoc error. The column
+// Two columns with the same proto3 JSON name (foo_bar and fooBar) are a protoc
+// error. protoc compares the names exactly: foo_bar and foobar, or Foo and foo,
+// are accepted (checked against protoc 36.2 in internal/integration). The column
 // the lock already numbers keeps its field and the other is left out, so adding
 // a column never drops an existing field from the wire; without a lock entry
 // the first column wins.
@@ -188,11 +189,11 @@ func fieldsOf(m *gen.Model, lock *Lock) (fields []protoField, hidden []string, t
 	if lock != nil && lock.Messages[m.GoName] != nil {
 		locked = lock.Messages[m.GoName].Fields
 	}
-	// winner maps a case-folded JSON name to the candidate that keeps it: the
+	// winner maps a JSON name to the candidate that keeps it: the
 	// column with the lowest recorded number, else the first one.
 	winner := map[string]int{}
 	for i, c := range cands {
-		key := strings.ToLower(c.jsonName)
+		key := c.jsonName
 		w, taken := winner[key]
 		if !taken {
 			winner[key] = i
@@ -205,7 +206,7 @@ func fieldsOf(m *gen.Model, lock *Lock) (fields []protoField, hidden []string, t
 		}
 	}
 	for i, c := range cands {
-		key := strings.ToLower(c.jsonName)
+		key := c.jsonName
 		if w := winner[key]; w != i {
 			hidden = append(hidden, c.f.Column)
 			diags = append(diags, gen.Diagnostic{Pos: c.f.Pos, Msg: fmt.Sprintf("column %q of %s has the same proto3 JSON name %q as column %q", c.f.Column, m.GoName, c.jsonName, cands[w].f.Column)})
