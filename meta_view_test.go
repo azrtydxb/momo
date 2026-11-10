@@ -171,6 +171,9 @@ func TestViewModelsNotWritableThroughOtherInsertPaths(t *testing.T) {
 	if _, err := momo.Upsert[viewItem](pg).Model(&m).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("Upsert.Exec: err = %v, want ErrValidation", err)
 	}
+	if _, err := momo.FindOrCreate[viewItem](ctx, pg, []momo.ColumnRef{id}, &m); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("FindOrCreate: err = %v, want ErrValidation", err)
+	}
 	if _, err := momo.SoftDelete[viewItem](pg).Where(id.Eq(1)).Exec(ctx); !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("SoftDelete.Exec: err = %v, want ErrValidation", err)
 	}
