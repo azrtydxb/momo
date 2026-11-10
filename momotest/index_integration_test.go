@@ -2,14 +2,13 @@
 
 //go:build integration
 
-package momotest_test
+package momotest
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/momotest"
 	"github.com/azrtydxb/momo/momotest/sqlitetest"
 )
 
@@ -18,7 +17,7 @@ import (
 // the assertion fails.
 func TestAssertUsesIndexPostgres(t *testing.T) {
 	ctx := t.Context()
-	db := momotest.New(t)
+	db := New(t)
 	for _, ddl := range []string{
 		`CREATE TABLE stock (id bigint PRIMARY KEY, sku text NOT NULL, qty int NOT NULL)`,
 		`INSERT INTO stock (id, sku, qty) SELECT n, 'sku-' || n, n % 7 FROM generate_series(1, 5000) AS n`,
@@ -32,7 +31,7 @@ func TestAssertUsesIndexPostgres(t *testing.T) {
 	lookup := momo.Compiled{SQL: `SELECT id FROM stock WHERE sku = $1`, Args: []any{"sku-42"}}
 
 	rt := &recTB{TB: t}
-	runAssert(func() { momotest.AssertUsesIndex(rt, db, lookup, "stock_sku_idx") })
+	runAssert(func() { AssertUsesIndex(rt, db, lookup, "stock_sku_idx") })
 	if len(rt.errs) != 0 {
 		t.Fatalf("indexed lookup failed: %v", rt.errs)
 	}
@@ -41,7 +40,7 @@ func TestAssertUsesIndexPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt = &recTB{TB: t}
-	runAssert(func() { momotest.AssertUsesIndex(rt, db, lookup, "stock_sku_idx") })
+	runAssert(func() { AssertUsesIndex(rt, db, lookup, "stock_sku_idx") })
 	if len(rt.errs) != 1 || !strings.Contains(rt.errs[0], "sequential scan") {
 		t.Fatalf("errors = %v, want one mentioning a sequential scan", rt.errs)
 	}
@@ -49,7 +48,7 @@ func TestAssertUsesIndexPostgres(t *testing.T) {
 	// The lookup was only planned: a statement that writes is not executed.
 	del := momo.Compiled{SQL: `DELETE FROM stock WHERE sku = $1`, Args: []any{"sku-42"}}
 	rt = &recTB{TB: t}
-	runAssert(func() { momotest.AssertUsesIndex(rt, db, del, "stock_pkey") })
+	runAssert(func() { AssertUsesIndex(rt, db, del, "stock_pkey") })
 	var n int64
 	rows, err := db.Driver().Query(ctx, `SELECT count(*) FROM stock WHERE sku = 'sku-42'`, nil)
 	if err != nil {
@@ -77,17 +76,17 @@ func TestAssertUsesIndexSQLite(t *testing.T) {
 	scan := momo.Compiled{SQL: `SELECT id FROM items WHERE qty = ?`, Args: []any{1}}
 
 	rt := &recTB{TB: t}
-	runAssert(func() { momotest.AssertUsesIndex(rt, db, indexed, "items_sku_idx") })
+	runAssert(func() { AssertUsesIndex(rt, db, indexed, "items_sku_idx") })
 	if len(rt.errs) != 0 {
 		t.Fatalf("indexed lookup failed: %v", rt.errs)
 	}
 	rt = &recTB{TB: t}
-	runAssert(func() { momotest.AssertUsesIndex(rt, db, scan, "items_sku_idx") })
+	runAssert(func() { AssertUsesIndex(rt, db, scan, "items_sku_idx") })
 	if len(rt.errs) != 1 || !strings.Contains(rt.errs[0], "sequential scan") {
 		t.Fatalf("errors = %v, want one mentioning a sequential scan", rt.errs)
 	}
 	rt = &recTB{TB: t}
-	runAssert(func() { momotest.AssertUsesIndex(rt, db, indexed, "items_other_idx") })
+	runAssert(func() { AssertUsesIndex(rt, db, indexed, "items_other_idx") })
 	if len(rt.errs) != 1 || !strings.Contains(rt.errs[0], `"items_other_idx"`) {
 		t.Fatalf("errors = %v, want one naming the missing index", rt.errs)
 	}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momotest_test
+package momotest
 
 import (
 	"strings"
@@ -9,7 +9,6 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
-	"github.com/azrtydxb/momo/momotest"
 )
 
 // TestAssertUsesIndex drives AssertUsesIndex with scripted plans: it passes for
@@ -22,7 +21,7 @@ func TestAssertUsesIndex(t *testing.T) {
 		drv := fakedriver.New(d)
 		drv.SetRows(rows)
 		rt := &recTB{TB: t}
-		runAssert(func() { momotest.AssertUsesIndex(rt, momo.New(drv), lookup, index) })
+		runAssert(func() { AssertUsesIndex(rt, momo.New(drv), lookup, index) })
 		return rt, drv
 	}
 

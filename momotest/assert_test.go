@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package momotest_test
+package momotest
 
 import (
 	"fmt"
@@ -12,7 +12,6 @@ import (
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/internal/relfixture/author"
 	"github.com/azrtydxb/momo/internal/relfixture/models"
-	"github.com/azrtydxb/momo/momotest"
 )
 
 // recTB records failures instead of failing the real test. Fatalf also panics
@@ -57,7 +56,7 @@ func TestMomotestSQLAssert(t *testing.T) {
 	}
 
 	good := &recTB{TB: t}
-	momotest.AssertSQL(good, c, strings.ReplaceAll(c.SQL, " FROM ", "\n\tFROM "))
+	AssertSQL(good, c, strings.ReplaceAll(c.SQL, " FROM ", "\n\tFROM "))
 	if len(good.errs) != 0 {
 		t.Fatalf("whitespace-only difference failed: %v", good.errs)
 	}
@@ -66,7 +65,7 @@ func TestMomotestSQLAssert(t *testing.T) {
 	}
 
 	bad := &recTB{TB: t}
-	momotest.AssertSQL(bad, c, c.SQL+" LIMIT 1")
+	AssertSQL(bad, c, c.SQL+" LIMIT 1")
 	if len(bad.errs) != 1 {
 		t.Fatalf("mismatch reported %d errors, want 1", len(bad.errs))
 	}
@@ -87,7 +86,7 @@ func TestMomotestSQLAssert(t *testing.T) {
 		t.Fatal(err)
 	}
 	sbad := &recTB{TB: t}
-	momotest.AssertSQL(sbad, sc, sc.SQL+" LIMIT 1")
+	AssertSQL(sbad, sc, sc.SQL+" LIMIT 1")
 	if len(sbad.errs) != 1 || !strings.Contains(sbad.errs[0], momo.RedactedArg) || strings.Contains(sbad.errs[0], "hunter2") {
 		t.Fatalf("sensitive dump must show %s and never the value: %v", momo.RedactedArg, sbad.errs)
 	}
@@ -102,12 +101,12 @@ func TestMomotestSQLAssertInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	ok := &recTB{TB: t}
-	momotest.AssertSQL(ok, ins, "  "+strings.Join(strings.Fields(ins.SQL), "  "))
+	AssertSQL(ok, ins, "  "+strings.Join(strings.Fields(ins.SQL), "  "))
 	if len(ok.errs) != 0 {
 		t.Fatalf("insert with reformatted whitespace failed: %v", ok.errs)
 	}
 	bad := &recTB{TB: t}
-	momotest.AssertSQL(bad, ins, "INSERT INTO other DEFAULT VALUES")
+	AssertSQL(bad, ins, "INSERT INTO other DEFAULT VALUES")
 	if len(bad.errs) != 1 || strings.Contains(bad.errs[0], "hunter2") {
 		t.Fatalf("insert mismatch: %v", bad.errs)
 	}
@@ -118,7 +117,7 @@ func TestMomotestSQLAssertInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad2 := &recTB{TB: t}
-	momotest.AssertSQL(bad2, c, "SELECT 1")
+	AssertSQL(bad2, c, "SELECT 1")
 	if len(bad2.errs) != 1 || strings.Contains(bad2.errs[0], "hunter2") {
 		t.Fatalf("raw subquery mismatch leaks or is silent: %v", bad2.errs)
 	}
