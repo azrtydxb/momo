@@ -800,6 +800,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../PRIVACY_RULES/" class="md-nav__link">
         
   
@@ -999,6 +1027,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ARCHITECTURE/" class="md-nav__link">
         
   
@@ -1165,12 +1249,9 @@ end to end in CI.</p>
 <h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Go 1.26 or newer.</li>
-<li>PostgreSQL with the pgvector extension installed on the server. The
-  <code>momo migrate</code> command and the full vector support are PostgreSQL only.
-  SQLite (cgo driver, with vectors through sqlite-vec; the pure-Go driver has no
-  vectors) and MySQL 8.4, MySQL 9.7 and MariaDB 11.8 run queries and writes, and
-  have library migration dialects (<code>migrate/sqlite</code>, <code>migrate/mysql</code>) but no CLI
-  support (see <a href="../capabilities/">capabilities</a>).</li>
+<li>PostgreSQL with the pgvector extension installed on the server. The other
+  databases, and the dialects the <code>momo migrate</code> command runs, are listed in
+  the generated status of <a href="../capabilities/">capabilities</a>.</li>
 <li>A role that may create extensions, or a superuser who runs
   <code>CREATE EXTENSION vector</code> once in the target database. The first generated
   migration creates the extension when a model has a vector column.</li>

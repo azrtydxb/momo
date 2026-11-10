@@ -5,8 +5,9 @@ expressions, HNSW and IVFFlat index declarations, scoped search settings,
 plan inspection and an opt-in binary wire codec. It also runs the float32 and
 bit vector builders on SQLite with sqlite-vec, and the distance builders on
 MariaDB. This page describes what is built. Every Go snippet below is an `Example` function in
-`example_vector_test.go` (package `momo`) or `vector/example_test.go`
-(package `vector`), so `go test` compiles it and checks its printed output.
+`col_example_vector_test.go` (package `momo_test`), `vector/example_test.go`
+(package `vector_test`) or `vecsearch/example_test.go` (package
+`vecsearch_test`), so `go test` compiles it and checks its printed output.
 
 ## Platforms and versions
 
@@ -20,16 +21,16 @@ MariaDB. This page describes what is built. Every Go snippet below is an `Exampl
   `momo.ErrUnsupported` from a migration, with the extension named in the
   message. A search settings call checks the installed version the same way.
 
-## Not yet available
+## Not available
 
-These parts of the vector plan are not built on this branch, so there is no
-API to document yet:
-
-- Hybrid search: PostgreSQL full-text plus vector search fused by reciprocal
-  rank (planned options `TextCandidates`, `VectorCandidates` and `RRFK`, with
-  k=60 as the default) does not exist yet.
-- MySQL and MariaDB: see "MariaDB and MySQL" below. The migration engine for
-  MySQL does not exist yet, so no tool creates VECTOR columns or indexes.
+- Hybrid search: Momo has no built-in fusion of PostgreSQL full-text and vector
+  results. Combine a distance and a text rank yourself; see the hybrid pattern
+  in [full-text search](fulltext.md).
+- MySQL: the server stores vectors but has no distance function, so a distance
+  query fails with `ErrUnsupported`; see "MariaDB and MySQL" below. The
+  `momo migrate` command does not run `migrate/mysql`, which renders its
+  statements as-is, so a MySQL or MariaDB `VECTOR` column is created by your
+  own DDL.
 
 ## Value types
 
@@ -95,22 +96,23 @@ the other two) and every distance builder accepts them, so a read-only
 embedding can be searched.
 
 The distance builders take a column and a query vector of the same type.
-Each returns a `DistanceExpr`, an `Expression[float64]` that works in the
+The builders live in package `github.com/azrtydxb/momo/vecop`. Each returns a
+`vecop.Expr`, an `Expression[float64]` that works in the
 select list, in comparisons and in `OrderBy`. `Asc()` orders nearest first
 and is the default; `Desc()` orders farthest first.
 
-| Builder                | pgvector operator | Column types            | SQLite function        |
-| ---------------------- | ----------------- | ----------------------- | ---------------------- |
-| `L2Distance`           | `<->`             | vector, halfvec, sparse | `vec_distance_l2`      |
-| `InnerProductDistance` | `<#>`             | vector, halfvec, sparse | none                   |
-| `CosineDistance`       | `<=>`             | vector, halfvec, sparse | `vec_distance_cosine`  |
-| `L1Distance`           | `<+>`             | vector, halfvec, sparse | `vec_distance_l1`      |
-| `HammingDistance`      | `<~>`             | bit                     | `vec_distance_hamming` |
-| `JaccardDistance`      | `<%>`             | bit                     | none                   |
+| Builder              | pgvector operator | Column types            | SQLite function        |
+| -------------------- | ----------------- | ----------------------- | ---------------------- |
+| `vecop.L2`           | `<->`             | vector, halfvec, sparse | `vec_distance_l2`      |
+| `vecop.InnerProduct` | `<#>`             | vector, halfvec, sparse | none                   |
+| `vecop.Cosine`       | `<=>`             | vector, halfvec, sparse | `vec_distance_cosine`  |
+| `vecop.L1`           | `<+>`             | vector, halfvec, sparse | `vec_distance_l1`      |
+| `vecop.Hamming`      | `<~>`             | bit                     | `vec_distance_hamming` |
+| `vecop.Jaccard`      | `<%>`             | bit                     | none                   |
 
-`InnerProductDistance` is pgvector's `<#>`, which returns the negative inner
+`vecop.InnerProduct` is pgvector's `<#>`, which returns the negative inner
 product so that ascending order means closest. Passing a dense vector to a
-bit builder, or the reverse, does not compile (`testdata/compilefail`).
+bit builder, or the reverse, does not compile (`vecop/testdata/compilefail`).
 
 The query vector is a bound argument. A dimension mismatch (except on a
 dimensionless column, see [Dimensionless columns](#dimensionless-columns)),
@@ -130,13 +132,13 @@ for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 // sqlite [l2 l1 cosine hamming] []
 ```
 
-A nearest-neighbour query (`ExampleCosineDistance`):
+A nearest-neighbour query (`Example_vectorNearest`):
 
 <!-- docscheck:fragment -->
 
 ```go
 c, err := momo.Select[example.Document](db).
-	OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
+	OrderBy(vecop.Cosine(document.Embedding, query).Asc()).
 	Limit(5).
 	SQL()
 // ... ORDER BY ("documents"."embedding" <=> $1) ASC LIMIT $2
@@ -197,7 +199,10 @@ returns the opclass for a column type and metric (`ExampleValidateVectorIndex`).
 - ivfflat requires an explicit `lists` parameter (1 to 32768). Momo does not
   rely on the server default of 100.
 - An index covers one plain column. Expression parts are rejected.
-- Vector indexes exist only on PostgreSQL. Another dialect gets an error.
+- The hnsw and ivfflat methods are pgvector's. `schema.ValidateVectorIndex`
+  rejects them for another dialect, with an error that wraps
+  `schema.ErrInvalidVectorIndex`. MariaDB has its own `VECTOR INDEX`; see
+  "MariaDB and MySQL" below.
 
 ### Dimensionless columns
 
@@ -223,7 +228,7 @@ type KbChunk struct {
   size, so NaN, Inf and an empty vector are still rejected. The column never
   catches a size mismatch itself.
 - pgvector fails a distance between two sizes, so filter on `dims` in the same
-  query: `Where(chunk.Dims.Eq(len(q)))` plus `OrderBy(momo.CosineDistance(chunk.Embedding, q).Asc())`.
+  query: `Where(chunk.Dims.Eq(len(q)))` plus `OrderBy(vecop.Cosine(chunk.Embedding, q).Asc())`.
 - The migration round-trips the bare type and the next diff is empty.
 - Limit: pgvector cannot build an hnsw or ivfflat index on a dimensionless
   column. Momo refuses one, with an error that wraps
@@ -249,45 +254,45 @@ vector, `vector_l2_ops`) is stored as empty, which matches inspection.
 
 ## Search settings
 
-`momo.SearchSettings` applies pgvector settings for one transaction. Zero
+`vecsearch.Settings` (package `github.com/azrtydxb/momo/vecsearch`) applies pgvector settings for one transaction. Zero
 values leave the server default alone. Settings use
 `set_config(name, value, true)`, so they revert at commit or rollback and
 never reach a pooled connection, which makes them safe behind PgBouncer in
 transaction mode.
 
-| Field                   | Setting                                            | Range                                                           |
-| ----------------------- | -------------------------------------------------- | --------------------------------------------------------------- |
-| `HNSWEfSearch`          | `hnsw.ef_search`                                   | 1 to 1000                                                       |
-| `HNSWIterativeScan`     | `hnsw.iterative_scan`                              | `IterativeOff`, `IterativeRelaxedOrder`, `IterativeStrictOrder` |
-| `HNSWMaxScanTuples`     | `hnsw.max_scan_tuples`                             | 1 to 2147483647 (server default 20000)                          |
-| `HNSWScanMemMultiplier` | `hnsw.scan_mem_multiplier`                         | 1 to 1000, float, a multiple of `work_mem`                      |
-| `IVFFlatProbes`         | `ivfflat.probes`                                   | 1 to 32768                                                      |
-| `IVFFlatIterativeScan`  | `ivfflat.iterative_scan`                           | `IterativeOff` or `IterativeRelaxedOrder`                       |
-| `IVFFlatMaxProbes`      | `ivfflat.max_probes`                               | 1 to 32768                                                      |
-| `ExactSearch`           | `enable_indexscan`, `enable_bitmapscan` set to off | bool                                                            |
+| Field                   | Setting                                            | Range                                                                                         |
+| ----------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `HNSWEfSearch`          | `hnsw.ef_search`                                   | 1 to 1000                                                                                     |
+| `HNSWIterativeScan`     | `hnsw.iterative_scan`                              | `vecsearch.IterativeOff`, `vecsearch.IterativeRelaxedOrder`, `vecsearch.IterativeStrictOrder` |
+| `HNSWMaxScanTuples`     | `hnsw.max_scan_tuples`                             | 1 to 2147483647 (server default 20000)                                                        |
+| `HNSWScanMemMultiplier` | `hnsw.scan_mem_multiplier`                         | 1 to 1000, float, a multiple of `work_mem`                                                    |
+| `IVFFlatProbes`         | `ivfflat.probes`                                   | 1 to 32768                                                                                    |
+| `IVFFlatIterativeScan`  | `ivfflat.iterative_scan`                           | `vecsearch.IterativeOff` or `vecsearch.IterativeRelaxedOrder`                                 |
+| `IVFFlatMaxProbes`      | `ivfflat.max_probes`                               | 1 to 32768                                                                                    |
+| `ExactSearch`           | `enable_indexscan`, `enable_bitmapscan` set to off | bool                                                                                          |
 
-`SearchSettings.Validate` reports a value outside its range as
+`Settings.Validate` reports a value outside its range as
 `ErrValidation`. The iterative fields, `HNSWMaxScanTuples`,
 `HNSWScanMemMultiplier` and `IVFFlatMaxProbes` need pgvector 0.8.0 or newer. When any of them is set,
-`SetSearch` reads `pg_extension` and returns `ErrUnsupported` on an older or
+`vecsearch.Apply` reads `pg_extension` and returns `ErrUnsupported` on an older or
 missing extension, instead of letting the server accept an unknown setting as
 a placeholder.
 
-Use `DB.WithSearch` for a block, or `Tx.SetSearch` inside a transaction you
-already have (`ExampleDB_WithSearch`, `ExampleTx_SetSearch`):
+Use `vecsearch.With` for a block, or `vecsearch.Apply` inside a transaction you
+already have (`ExampleWith`, `ExampleApply`):
 
 <!-- docscheck:fragment -->
 
 ```go
-settings := momo.SearchSettings{
+settings := vecsearch.Settings{
 	HNSWEfSearch:      100,
-	HNSWIterativeScan: momo.IterativeRelaxedOrder, // needs pgvector 0.8
+	HNSWIterativeScan: vecsearch.IterativeRelaxedOrder, // needs pgvector 0.8
 	HNSWMaxScanTuples: 20000,
 	HNSWScanMemMultiplier: 2, // pgvector 0.8: iterative scan memory, times work_mem
 }
-err := db.WithSearch(ctx, settings, func(tx *momo.Tx) error {
+err := vecsearch.With(ctx, db, settings, func(tx *momo.Tx) error {
 	_, err := momo.Select[example.Document](tx).
-		OrderBy(momo.CosineDistance(document.Embedding, query).Asc()).
+		OrderBy(vecop.Cosine(document.Embedding, query).Asc()).
 		Limit(10).
 		All(ctx)
 	return err
@@ -313,7 +318,7 @@ With a selective filter and `LIMIT k`, pgvector with iterative scan off scans
 the index once and applies the filter afterwards, so it can return
 fewer than k rows. `TestFilteredANNIterativeScan` reproduces this: a filter that matches 1%
 of 20000 rows returns fewer than 10 rows with iterative scan off, and 10 with
-`relaxed_order` and `HNSWMaxScanTuples` 20000.
+`relaxed_order` and `HNSWMaxScanTuples` 1,000,000.
 
 `relaxed_order` keeps scanning until enough rows pass the filter or
 `hnsw.max_scan_tuples` is reached. The result is therefore still approximate,
@@ -332,7 +337,7 @@ it inside the transaction whose settings you want to see
 
 ```go
 plan, err := momo.Select[example.Document](db).
-	OrderBy(momo.L2Distance(document.Embedding, query).Asc()).
+	OrderBy(vecop.L2(document.Embedding, query).Asc()).
 	Limit(10).
 	Explain(ctx)
 // look for "Index Scan using documents_embedding_hnsw"
@@ -341,7 +346,7 @@ plan, err := momo.Select[example.Document](db).
 `TestVectorIndexUsed` and `TestExactSearchBypassesVectorIndex` use this
 pattern to assert that the index is used, and that `ExactSearch` stops using
 it. Expect a sequential scan on a small table, because the planner prefers it
-below a few thousand rows. Explain returns `ErrUnsupported` on MySQL.
+below a few thousand rows. Explain returns `ErrUnsupported` on MySQL and MariaDB.
 
 ## PostgreSQL wire format
 
@@ -383,8 +388,10 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
   and Jaccard return `ErrUnsupported` at build time. SQLite bit
   vectors keep only the packed bytes, so the declared column length is
   authoritative for `Len`. See [SQLite and sqlite-vec](#sqlite-and-sqlite-vec).
-- `SetSearch` on SQLite: `ExactSearch` alone is a no-op, every search is
-  already exact, and any other field is `ErrUnsupported`.
+- `vecsearch.Apply` on SQLite: `ExactSearch` alone is a no-op, every search is
+  already exact, and any other field is `ErrUnsupported`. On MySQL and MariaDB
+  every non-zero setting, `ExactSearch` included, is `ErrUnsupported`, because
+  `Tx.SetLocal` has no transaction-scoped setting there.
 - MariaDB VECTOR INDEX is approximate; see "MariaDB and MySQL" below.
 
 ## SQLite and sqlite-vec
@@ -392,9 +399,9 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
 `driver/sqlitedriver` links sqlite-vec v0.1.6 (the version `vec_version()`
 reports; `sqlitedriver.SQLiteVecVersion` is the release it is tested with, and
 `Open` fails with `ErrUnsupported` on another minor or major version but accepts
-a later patch release such as v0.1.7). The same typed builders that serve pgvector
+a later patch release of the same minor). The same typed builders that serve pgvector
 render sqlite-vec's scalar functions, and the integration tests run them
-against a real SQLite database: `vector_sqlite_integration_test.go` in the root
+against a real SQLite database: `col_vector_sqlite_integration_test.go` in the root
 package and `TestSQLiteVectorParity` in `driver/sqlitedriver`. It needs cgo and
 does not build on Windows. The SQLite migration dialect (`migrate/sqlite`) is library only, and the
 generator refuses vector fields on SQLite, so you create the table with your
@@ -421,14 +428,14 @@ the authority for a length that is not a multiple of 8.
 
 **Metrics.** These are exactly the functions v0.1.6 registers:
 
-| Builder                | SQLite function                                            | Column type     |
-| ---------------------- | ---------------------------------------------------------- | --------------- |
-| `L2Distance`           | `vec_distance_l2`                                          | `vector.Vector` |
-| `L1Distance`           | `vec_distance_l1`                                          | `vector.Vector` |
-| `CosineDistance`       | `vec_distance_cosine`                                      | `vector.Vector` |
-| `HammingDistance`      | `vec_distance_hamming(vec_bit(column), vec_bit(argument))` | `vector.Bits`   |
-| `InnerProductDistance` | none: `ErrUnsupported` at build time                       |                 |
-| `JaccardDistance`      | none: `ErrUnsupported` at build time                       |                 |
+| Builder              | SQLite function                                            | Column type     |
+| -------------------- | ---------------------------------------------------------- | --------------- |
+| `vecop.L2`           | `vec_distance_l2`                                          | `vector.Vector` |
+| `vecop.L1`           | `vec_distance_l1`                                          | `vector.Vector` |
+| `vecop.Cosine`       | `vec_distance_cosine`                                      | `vector.Vector` |
+| `vecop.Hamming`      | `vec_distance_hamming(vec_bit(column), vec_bit(argument))` | `vector.Bits`   |
+| `vecop.InnerProduct` | none: `ErrUnsupported` at build time                       |                 |
+| `vecop.Jaccard`      | none: `ErrUnsupported` at build time                       |                 |
 
 The query vector is a bound argument. When the column is sensitive, it shows
 as `momo.RedactedArg` in hook events, on a query and on an insert, while the
@@ -446,7 +453,7 @@ the same vectors into pgvector and requires the same ids for cosine, L2 and L1.
 `schema.ErrInvalidVectorIndex`. An internal check turns a request for any index
 method on a dialect that lists none into `ErrUnsupported`; it becomes public
 when a SQLite migration dialect needs it. SQLite itself does not parse an index method, so
-nothing is accepted silently. `ExactSearch` in `SearchSettings` is a no-op (every
+nothing is accepted silently. `ExactSearch` in `vecsearch.Settings` is a no-op (every
 search is exact) and any other setting is `ErrUnsupported`. The sqlite-vec
 virtual tables (`vec0`, which have an index of their own) are not wrapped.
 
@@ -462,8 +469,8 @@ stores them but cannot compare them.
 | ------------------------------ | ------------------------------------------------------------- | ---------------- | ---------------------- |
 | Column type                    | `VECTOR(N)`                                                   | `VECTOR(N)`      | none: `ErrUnsupported` |
 | `vector.Vector` write and read | yes                                                           | yes              | no                     |
-| `L2Distance`                   | `VEC_DISTANCE_EUCLIDEAN(col, VEC_FromText(?))`                | `ErrUnsupported` | `ErrUnsupported`       |
-| `CosineDistance`               | `VEC_DISTANCE_COSINE(col, VEC_FromText(?))`                   | `ErrUnsupported` | `ErrUnsupported`       |
+| `vecop.L2`                     | `VEC_DISTANCE_EUCLIDEAN(col, VEC_FromText(?))`                | `ErrUnsupported` | `ErrUnsupported`       |
+| `vecop.Cosine`                 | `VEC_DISTANCE_COSINE(col, VEC_FromText(?))`                   | `ErrUnsupported` | `ErrUnsupported`       |
 | Other metrics, other types     | `ErrUnsupported` (inner product, L1, halfvec, sparsevec, bit) | `ErrUnsupported` | `ErrUnsupported`       |
 | ANN index                      | `VECTOR INDEX`, approximate                                   | none             | none                   |
 | `Capabilities().Vectors`       | true                                                          | false            | false                  |

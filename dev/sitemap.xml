@@ -2,86 +2,98 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/ARCHITECTURE/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/PERFORMANCE/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/PRIVACY_RULES/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/TYPE_MAPPING/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/agents/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/ai-guide/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/capabilities/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/contributing/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/fulltext/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/getting-started/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/importers/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/migrations/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/momovet/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/mysql/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
+    </url>
+    <url>
+         <loc>https://azrtydxb.github.io/momo/dev/observability/</loc>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/projections/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
+    </url>
+    <url>
+         <loc>https://azrtydxb.github.io/momo/dev/reference/</loc>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/relations/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/replicas/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/supported-versions/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/testing/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
+    </url>
+    <url>
+         <loc>https://azrtydxb.github.io/momo/dev/upgrading/</loc>
+         <lastmod>2026-11-10</lastmod>
     </url>
     <url>
          <loc>https://azrtydxb.github.io/momo/dev/vectors/</loc>
-         <lastmod>2026-11-08</lastmod>
+         <lastmod>2026-11-10</lastmod>
     </url>
 </urlset>

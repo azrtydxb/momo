@@ -696,6 +696,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../PRIVACY_RULES/" class="md-nav__link">
         
   
@@ -895,6 +923,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ARCHITECTURE/" class="md-nav__link">
         
   
@@ -1023,6 +1107,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#exported-api-changes-need-a-docs-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exported API changes need a docs change
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root-package-file-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root package file names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#commit-messages-and-pr-titles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1112,6 +1218,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#exported-api-changes-need-a-docs-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exported API changes need a docs change
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root-package-file-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root package file names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#commit-messages-and-pr-titles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1174,6 +1302,15 @@ included here so the site and the repository stay in sync.</p>
 <p>Dialect coverage is expressed as subtests from <code>testopen.Each</code>, one per dialect built into this version; integration tests have no name suffix. <code>make test-integration-&lt;dialect&gt;</code> sets that dialect's URL variables and runs the whole suite.</p>
 <h2 id="documentation-pages-and-go-code-blocks">Documentation pages and Go code blocks<a class="headerlink" href="#documentation-pages-and-go-code-blocks" title="Permanent link">&para;</a></h2>
 <p>A new page under <code>docs/</code> must be added to the <code>nav</code> in <code>mkdocs.yml</code> and linked from <code>docs/README.md</code>; <code>TestEveryDocPageInNav</code> and <code>TestDocsIndexLinksEveryPage</code> fail otherwise. Every Go block in <code>docs/</code> is checked by <code>TestDocsCodeBlocks</code>: write a complete <code>package main</code> program (it is compiled), or, for a snippet that cannot stand alone, put the comment <code>&lt;!-- docscheck:fragment --&gt;</code> on the line before the fence (it must still parse as Go). The number of fragments is capped by <code>maxFragmentBlocks</code> in <code>internal/docscheck/codeblocks_test.go</code>, so prefer a program. A block marked <code>&lt;!-- docscheck:run --&gt;</code> is also executed against PostgreSQL.</p>
+<h2 id="exported-api-changes-need-a-docs-change">Exported API changes need a docs change<a class="headerlink" href="#exported-api-changes-need-a-docs-change" title="Permanent link">&para;</a></h2>
+<p>The <code>apidiff-docs</code> CI job (<code>make apidiff-gate</code>, <code>scripts/apidiff-docs-gate.sh</code>) runs <code>golang.org/x/exp/cmd/apidiff</code>, pinned in the Makefile, between the base branch and your branch for the root package and every non-internal subpackage. Any exported change, compatible or incompatible, fails the job unless one of two things holds:</p>
+<ul>
+<li>the diff touches <code>README.md</code>, <code>llms.txt</code>, a Markdown page under <code>docs/</code> (<code>docs/**/*.md</code>) or an <code>examples/**/README.md</code> (other files under <code>docs/</code> and <code>examples/</code> do not count); or</li>
+<li>the pull request body, or a commit message in the range, has a line that starts in column 0 with <code>Docs: no reader-visible change:</code> followed by a real reason, for example <code>Docs: no reader-visible change: internal helper exposed for tests</code>. A blank reason, a <code>&lt;placeholder&gt;</code> such as <code>&lt;reason&gt;</code>, and an indented or quoted line are rejected.</li>
+</ul>
+<p>A change to a Go comment or an unexported identifier produces an empty report and needs neither. The job lives in its own workflow, <code>.github/workflows/apidiff-docs.yml</code>, so it also runs when the PR body is edited: add the escape line to the body and the check re-evaluates without a new commit. The job reads the live body, not the stale event payload. It keeps one comment (marked <code>&lt;!-- apidiff-docs --&gt;</code>) with the apidiff report, and posts none when the API did not change. Run it locally with <code>make apidiff-gate</code>.</p>
+<h2 id="root-package-file-names">Root package file names<a class="headerlink" href="#root-package-file-names" title="Permanent link">&para;</a></h2>
+<p>Every non-test <code>.go</code> file in the repository root is <code>doc.go</code> or is named with one of the prefixes <code>db</code>, <code>tx</code>, <code>driver</code>, <code>err</code>, <code>build</code>, <code>meta</code>, <code>expr</code>, <code>col</code>, <code>select</code>, <code>insert</code>, <code>update</code>, <code>delete</code>, <code>upsert</code>, <code>write</code>, <code>raw</code> or <code>rel</code>, either bare (<code>db.go</code>) or followed by an underscore and a topic (<code>expr_ops.go</code>). A test file is named after its subject file where it has one (<code>foo_test.go</code>, <code>foo_internal_test.go</code> or <code>foo_integration_test.go</code> for a subject <code>foo.go</code>; a longer topic such as <code>foo_bar_integration_test.go</code> is fine). The guard checks only the prefix: a test file's name without <code>_test</code> must itself start with one of the prefixes, and a test that spans several files takes the prefix of the area it tests. <code>TestRootFilePrefixes</code> in <code>internal/repocheck</code> fails on any other name and lists the prefixes in its message. There is no exception list: rename the file instead.</p>
 <h2 id="commit-messages-and-pr-titles">Commit messages and PR titles<a class="headerlink" href="#commit-messages-and-pr-titles" title="Permanent link">&para;</a></h2>
 <p>Commit messages and PR titles use Conventional Commits: <code>feat</code>, <code>fix</code>, <code>perf</code>,
 <code>refactor</code>, <code>docs</code>, <code>test</code>, <code>build</code>, <code>ci</code>, <code>chore</code>, <code>revert</code>. Mark breaking

@@ -835,6 +835,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../PRIVACY_RULES/" class="md-nav__link">
         
   
@@ -1014,6 +1042,62 @@
     
   
     Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
   
 
     
@@ -1227,7 +1311,8 @@
 <p>What works on MySQL and MariaDB today, and what does not. The driver is
 <code>driver/mysqldriver</code> (database/sql on <code>github.com/go-sql-driver/mysql</code>).
 The migration dialect <code>migrate/mysql</code> exists as a library; the <code>momo
-migrate</code> command is PostgreSQL-only (see <a href="#migrations">Migrations</a>).</p>
+migrate</code> command does not run it (see <a href="#migrations">Migrations</a> and the
+generated status in <a href="../capabilities/">capabilities</a>).</p>
 <h2 id="supported-servers">Supported servers<a class="headerlink" href="#supported-servers" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1391,8 +1476,8 @@ index name.</p>
 <p>MySQL 8.4 has no vector columns. MySQL 9.7 stores <code>VECTOR</code> and reads it back,
 but offers no distance function in the Community edition (<code>DISTANCE()</code> is
 HeatWave and MySQL AI only), so every distance builder is <code>ErrUnsupported</code> on
-MySQL. MariaDB 11.8 renders <code>L2Distance</code> as <code>VEC_DISTANCE_EUCLIDEAN</code> and
-<code>CosineDistance</code> as <code>VEC_DISTANCE_COSINE</code> on <code>vector.Vector</code> columns, and its
+MySQL. MariaDB 11.8 renders <code>vecop.L2</code> as <code>VEC_DISTANCE_EUCLIDEAN</code> and
+<code>vecop.Cosine</code> as <code>VEC_DISTANCE_COSINE</code> on <code>vector.Vector</code> columns, and its
 driver reports <code>Vectors</code>. Inner product, L1, Hamming, Jaccard and the half,
 sparse and bit types return <code>ErrUnsupported</code> on MariaDB. Details and the
 <code>VECTOR INDEX</code> rules are in <a href="../vectors/#mariadb-and-mysql">vectors.md</a>.</p>

@@ -16,7 +16,7 @@
         <link rel="prev" href="../replicas/">
       
       
-        <link rel="next" href="../PRIVACY_RULES/">
+        <link rel="next" href="../observability/">
       
       
         
@@ -868,6 +868,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../PRIVACY_RULES/" class="md-nav__link">
         
   
@@ -1047,6 +1075,62 @@
     
   
     Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
   
 
     
@@ -1309,6 +1393,8 @@ code under test; the constraints and the SQL are what you want to exercise.</p>
 <li>Embed the migrations in the package that owns the schema, so the binary and
    its tests share them:</li>
 </ol>
+<!-- docscheck:fragment -->
+
 <div class="highlight"><pre><span></span><code><span class="c1">//go:embed migrations</span>
 <span class="kd">var</span><span class="w"> </span><span class="nx">files</span><span class="w"> </span><span class="nx">embed</span><span class="p">.</span><span class="nx">FS</span>
 

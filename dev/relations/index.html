@@ -969,6 +969,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../PRIVACY_RULES/" class="md-nav__link">
         
   
@@ -1148,6 +1176,62 @@
     
   
     Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
   
 
     
@@ -2027,14 +2111,18 @@ one statement):</p>
   kept children are not rewritten and a set of any size works.</li>
 <li><strong><code>Replace</code> locks the parent row</strong> (<code>SELECT 1 ... FOR UPDATE</code>) on PostgreSQL
   and MySQL, so concurrent <code>Replace</code> calls on the same parent run one after the
-  other. SQLite serialises writers and skips the lock. The lock is a row lock:
+  other. SQLite serialises writers and skips the lock. <code>Replace</code> needs a
+  transaction, so on a <code>*DB</code> pinned with <code>OnConn</code> it fails with
+  <code>ErrUnsupported</code> (<code>Op</code> <code>"begin"</code>); run it on the pool or inside a <code>*Tx</code>.
+  <code>Link</code>, <code>Unlink</code> and <code>Count</code> accept a pinned handle. The lock is a row lock:
   a parent that does not exist locks nothing. On a <code>*Tx</code> the lock is held until
   the caller's transaction ends. <code>Link</code> and <code>Unlink</code> take no parent lock and
   can interleave with a concurrent <code>Replace</code>.</li>
 <li><strong>Belongs-to is not linkable.</strong> Every helper returns <code>ErrUnsupported</code>. Set the
   foreign key on the parent and update it.</li>
 <li><strong><code>Link</code>, <code>Unlink</code> and <code>Replace</code> return <code>ErrValidation</code></strong> when the parent key
-  is NULL, or, for many-to-many, when a child key is NULL. <code>Link</code> and <code>Unlink</code>
+  is NULL, or when a child key (the child primary key, or the join key for
+  many-to-many) is NULL. <code>Link</code> and <code>Unlink</code>
   with no children are no-ops that issue no statement. <code>Count</code> of a parent with
   a NULL key is zero.</li>
 <li><strong>Chunks and transactions.</strong> When <code>Link</code> or <code>Unlink</code> needs more than one chunk
@@ -2086,7 +2174,9 @@ one transaction. List relations with <code>Relation.Include()</code>:</p>
   transaction is opened.</li>
 <li>On a <code>*DB</code> the graph runs in a new transaction. On a <code>*Tx</code> it runs in a
   savepoint, so a failure undoes the whole graph and leaves your transaction
-  usable. A dialect without savepoints returns <code>ErrUnsupported</code> there.</li>
+  usable. A dialect without savepoints returns <code>ErrUnsupported</code> there. A <code>*DB</code>
+  pinned with <code>OnConn</code> also returns <code>ErrUnsupported</code> (<code>Op</code> <code>"begin"</code>), because
+  the graph needs a transaction; run it on the pool or inside a <code>*Tx</code>.</li>
 </ul>
 <h3 id="findorcreate">FindOrCreate<a class="headerlink" href="#findorcreate" title="Permanent link">&para;</a></h3>
 <!-- docscheck:fragment -->
@@ -2256,7 +2346,7 @@ The <code>Op</code> field names the operation.</p>
 <tr>
 <td></td>
 <td><code>ErrValidation</code></td>
-<td><code>Link</code>, <code>Unlink</code>, <code>Replace</code>: NULL parent key, or NULL child key on many-to-many. <code>Count</code> with a NULL parent key returns 0, no error</td>
+<td><code>Link</code>, <code>Unlink</code>, <code>Replace</code>: NULL parent key, or NULL child key. <code>Count</code> with a NULL parent key returns 0, no error</td>
 </tr>
 <tr>
 <td></td>

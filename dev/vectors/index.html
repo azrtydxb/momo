@@ -575,10 +575,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#not-yet-available" class="md-nav__link">
+  <a href="#not-available" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Not yet available
+        Not available
       
     </span>
   </a>
@@ -935,6 +935,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../PRIVACY_RULES/" class="md-nav__link">
         
   
@@ -1134,6 +1162,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ARCHITECTURE/" class="md-nav__link">
         
   
@@ -1227,10 +1311,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#not-yet-available" class="md-nav__link">
+  <a href="#not-available" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Not yet available
+        Not available
       
     </span>
   </a>
@@ -1429,8 +1513,9 @@ expressions, HNSW and IVFFlat index declarations, scoped search settings,
 plan inspection and an opt-in binary wire codec. It also runs the float32 and
 bit vector builders on SQLite with sqlite-vec, and the distance builders on
 MariaDB. This page describes what is built. Every Go snippet below is an <code>Example</code> function in
-<code>example_vector_test.go</code> (package <code>momo</code>) or <code>vector/example_test.go</code>
-(package <code>vector</code>), so <code>go test</code> compiles it and checks its printed output.</p>
+<code>col_example_vector_test.go</code> (package <code>momo_test</code>), <code>vector/example_test.go</code>
+(package <code>vector_test</code>) or <code>vecsearch/example_test.go</code> (package
+<code>vecsearch_test</code>), so <code>go test</code> compiles it and checks its printed output.</p>
 <h2 id="platforms-and-versions">Platforms and versions<a class="headerlink" href="#platforms-and-versions" title="Permanent link">&para;</a></h2>
 <ul>
 <li>SQLite with sqlite-vec v0.1.6, through <code>driver/sqlitedriver</code> (cgo, not
@@ -1443,15 +1528,16 @@ MariaDB. This page describes what is built. Every Go snippet below is an <code>E
   <code>momo.ErrUnsupported</code> from a migration, with the extension named in the
   message. A search settings call checks the installed version the same way.</li>
 </ul>
-<h2 id="not-yet-available">Not yet available<a class="headerlink" href="#not-yet-available" title="Permanent link">&para;</a></h2>
-<p>These parts of the vector plan are not built on this branch, so there is no
-API to document yet:</p>
+<h2 id="not-available">Not available<a class="headerlink" href="#not-available" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Hybrid search: PostgreSQL full-text plus vector search fused by reciprocal
-  rank (planned options <code>TextCandidates</code>, <code>VectorCandidates</code> and <code>RRFK</code>, with
-  k=60 as the default) does not exist yet.</li>
-<li>MySQL and MariaDB: see "MariaDB and MySQL" below. The migration engine for
-  MySQL does not exist yet, so no tool creates VECTOR columns or indexes.</li>
+<li>Hybrid search: Momo has no built-in fusion of PostgreSQL full-text and vector
+  results. Combine a distance and a text rank yourself; see the hybrid pattern
+  in <a href="../fulltext/">full-text search</a>.</li>
+<li>MySQL: the server stores vectors but has no distance function, so a distance
+  query fails with <code>ErrUnsupported</code>; see "MariaDB and MySQL" below. The
+  <code>momo migrate</code> command does not run <code>migrate/mysql</code>, which renders its
+  statements as-is, so a MySQL or MariaDB <code>VECTOR</code> column is created by your
+  own DDL.</li>
 </ul>
 <h2 id="value-types">Value types<a class="headerlink" href="#value-types" title="Permanent link">&para;</a></h2>
 <p>The <code>vector</code> package holds the four Go types. Each has a <code>Validate(dim)</code>
@@ -1532,7 +1618,8 @@ permission columns (no <code>Set</code> on a read-only column, an insert-only <c
 the other two) and every distance builder accepts them, so a read-only
 embedding can be searched.</p>
 <p>The distance builders take a column and a query vector of the same type.
-Each returns a <code>DistanceExpr</code>, an <code>Expression[float64]</code> that works in the
+The builders live in package <code>github.com/azrtydxb/momo/vecop</code>. Each returns a
+<code>vecop.Expr</code>, an <code>Expression[float64]</code> that works in the
 select list, in comparisons and in <code>OrderBy</code>. <code>Asc()</code> orders nearest first
 and is the default; <code>Desc()</code> orders farthest first.</p>
 <table>
@@ -1546,46 +1633,46 @@ and is the default; <code>Desc()</code> orders farthest first.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>L2Distance</code></td>
+<td><code>vecop.L2</code></td>
 <td><code>&lt;-&gt;</code></td>
 <td>vector, halfvec, sparse</td>
 <td><code>vec_distance_l2</code></td>
 </tr>
 <tr>
-<td><code>InnerProductDistance</code></td>
+<td><code>vecop.InnerProduct</code></td>
 <td><code>&lt;#&gt;</code></td>
 <td>vector, halfvec, sparse</td>
 <td>none</td>
 </tr>
 <tr>
-<td><code>CosineDistance</code></td>
+<td><code>vecop.Cosine</code></td>
 <td><code>&lt;=&gt;</code></td>
 <td>vector, halfvec, sparse</td>
 <td><code>vec_distance_cosine</code></td>
 </tr>
 <tr>
-<td><code>L1Distance</code></td>
+<td><code>vecop.L1</code></td>
 <td><code>&lt;+&gt;</code></td>
 <td>vector, halfvec, sparse</td>
 <td><code>vec_distance_l1</code></td>
 </tr>
 <tr>
-<td><code>HammingDistance</code></td>
+<td><code>vecop.Hamming</code></td>
 <td><code>&lt;~&gt;</code></td>
 <td>bit</td>
 <td><code>vec_distance_hamming</code></td>
 </tr>
 <tr>
-<td><code>JaccardDistance</code></td>
+<td><code>vecop.Jaccard</code></td>
 <td><code>&lt;%&gt;</code></td>
 <td>bit</td>
 <td>none</td>
 </tr>
 </tbody>
 </table>
-<p><code>InnerProductDistance</code> is pgvector's <code>&lt;#&gt;</code>, which returns the negative inner
+<p><code>vecop.InnerProduct</code> is pgvector's <code>&lt;#&gt;</code>, which returns the negative inner
 product so that ascending order means closest. Passing a dense vector to a
-bit builder, or the reverse, does not compile (<code>testdata/compilefail</code>).</p>
+bit builder, or the reverse, does not compile (<code>vecop/testdata/compilefail</code>).</p>
 <p>The query vector is a bound argument. A dimension mismatch (except on a
 dimensionless column, see <a href="#dimensionless-columns">Dimensionless columns</a>),
 NaN or an out-of-range value is a build error wrapping <code>ErrValidation</code>, reported by
@@ -1601,11 +1688,11 @@ from <code>dialect.Dialect.Vector</code>:</p>
 <span class="c1">// postgres [l2 ip cosine l1 hamming jaccard] [hnsw ivfflat]</span>
 <span class="c1">// sqlite [l2 l1 cosine hamming] []</span>
 </code></pre></div>
-<p>A nearest-neighbour query (<code>ExampleCosineDistance</code>):</p>
+<p>A nearest-neighbour query (<code>Example_vectorNearest</code>):</p>
 <!-- docscheck:fragment -->
 
 <div class="highlight"><pre><span></span><code><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">example</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
-<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">CosineDistance</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="nx">query</span><span class="p">).</span><span class="nx">Asc</span><span class="p">()).</span>
+<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">vecop</span><span class="p">.</span><span class="nx">Cosine</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="nx">query</span><span class="p">).</span><span class="nx">Asc</span><span class="p">()).</span>
 <span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">5</span><span class="p">).</span>
 <span class="w">    </span><span class="nx">SQL</span><span class="p">()</span>
 <span class="c1">// ... ORDER BY ("documents"."embedding" &lt;=&gt; $1) ASC LIMIT $2</span>
@@ -1675,7 +1762,10 @@ returns the opclass for a column type and metric (<code>ExampleValidateVectorInd
 <li>ivfflat requires an explicit <code>lists</code> parameter (1 to 32768). Momo does not
   rely on the server default of 100.</li>
 <li>An index covers one plain column. Expression parts are rejected.</li>
-<li>Vector indexes exist only on PostgreSQL. Another dialect gets an error.</li>
+<li>The hnsw and ivfflat methods are pgvector's. <code>schema.ValidateVectorIndex</code>
+  rejects them for another dialect, with an error that wraps
+  <code>schema.ErrInvalidVectorIndex</code>. MariaDB has its own <code>VECTOR INDEX</code>; see
+  "MariaDB and MySQL" below.</li>
 </ul>
 <h3 id="dimensionless-columns">Dimensionless columns<a class="headerlink" href="#dimensionless-columns" title="Permanent link">&para;</a></h3>
 <p>A <code>vector.Vector</code> or <code>vector.HalfVector</code> field without a <code>dim</code> tag maps to the
@@ -1698,7 +1788,7 @@ column, and every search filters on it.</p>
   size, so NaN, Inf and an empty vector are still rejected. The column never
   catches a size mismatch itself.</li>
 <li>pgvector fails a distance between two sizes, so filter on <code>dims</code> in the same
-  query: <code>Where(chunk.Dims.Eq(len(q)))</code> plus <code>OrderBy(momo.CosineDistance(chunk.Embedding, q).Asc())</code>.</li>
+  query: <code>Where(chunk.Dims.Eq(len(q)))</code> plus <code>OrderBy(vecop.Cosine(chunk.Embedding, q).Asc())</code>.</li>
 <li>The migration round-trips the bare type and the next diff is empty.</li>
 <li>Limit: pgvector cannot build an hnsw or ivfflat index on a dimensionless
   column. Momo refuses one, with an error that wraps
@@ -1718,7 +1808,7 @@ CREATE INDEX "documents_embedding_hnsw" ON "documents" USING "hnsw" ("embedding"
 unchanged vector index produces no diff. A default operator class (ivfflat on
 vector, <code>vector_l2_ops</code>) is stored as empty, which matches inspection.</p>
 <h2 id="search-settings">Search settings<a class="headerlink" href="#search-settings" title="Permanent link">&para;</a></h2>
-<p><code>momo.SearchSettings</code> applies pgvector settings for one transaction. Zero
+<p><code>vecsearch.Settings</code> (package <code>github.com/azrtydxb/momo/vecsearch</code>) applies pgvector settings for one transaction. Zero
 values leave the server default alone. Settings use
 <code>set_config(name, value, true)</code>, so they revert at commit or rollback and
 never reach a pooled connection, which makes them safe behind PgBouncer in
@@ -1740,7 +1830,7 @@ transaction mode.</p>
 <tr>
 <td><code>HNSWIterativeScan</code></td>
 <td><code>hnsw.iterative_scan</code></td>
-<td><code>IterativeOff</code>, <code>IterativeRelaxedOrder</code>, <code>IterativeStrictOrder</code></td>
+<td><code>vecsearch.IterativeOff</code>, <code>vecsearch.IterativeRelaxedOrder</code>, <code>vecsearch.IterativeStrictOrder</code></td>
 </tr>
 <tr>
 <td><code>HNSWMaxScanTuples</code></td>
@@ -1760,7 +1850,7 @@ transaction mode.</p>
 <tr>
 <td><code>IVFFlatIterativeScan</code></td>
 <td><code>ivfflat.iterative_scan</code></td>
-<td><code>IterativeOff</code> or <code>IterativeRelaxedOrder</code></td>
+<td><code>vecsearch.IterativeOff</code> or <code>vecsearch.IterativeRelaxedOrder</code></td>
 </tr>
 <tr>
 <td><code>IVFFlatMaxProbes</code></td>
@@ -1774,25 +1864,25 @@ transaction mode.</p>
 </tr>
 </tbody>
 </table>
-<p><code>SearchSettings.Validate</code> reports a value outside its range as
+<p><code>Settings.Validate</code> reports a value outside its range as
 <code>ErrValidation</code>. The iterative fields, <code>HNSWMaxScanTuples</code>,
 <code>HNSWScanMemMultiplier</code> and <code>IVFFlatMaxProbes</code> need pgvector 0.8.0 or newer. When any of them is set,
-<code>SetSearch</code> reads <code>pg_extension</code> and returns <code>ErrUnsupported</code> on an older or
+<code>vecsearch.Apply</code> reads <code>pg_extension</code> and returns <code>ErrUnsupported</code> on an older or
 missing extension, instead of letting the server accept an unknown setting as
 a placeholder.</p>
-<p>Use <code>DB.WithSearch</code> for a block, or <code>Tx.SetSearch</code> inside a transaction you
-already have (<code>ExampleDB_WithSearch</code>, <code>ExampleTx_SetSearch</code>):</p>
+<p>Use <code>vecsearch.With</code> for a block, or <code>vecsearch.Apply</code> inside a transaction you
+already have (<code>ExampleWith</code>, <code>ExampleApply</code>):</p>
 <!-- docscheck:fragment -->
 
-<div class="highlight"><pre><span></span><code><span class="nx">settings</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">SearchSettings</span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nx">settings</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">vecsearch</span><span class="p">.</span><span class="nx">Settings</span><span class="p">{</span>
 <span class="w">    </span><span class="nx">HNSWEfSearch</span><span class="p">:</span><span class="w">      </span><span class="mi">100</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">HNSWIterativeScan</span><span class="p">:</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">IterativeRelaxedOrder</span><span class="p">,</span><span class="w"> </span><span class="c1">// needs pgvector 0.8</span>
+<span class="w">    </span><span class="nx">HNSWIterativeScan</span><span class="p">:</span><span class="w"> </span><span class="nx">vecsearch</span><span class="p">.</span><span class="nx">IterativeRelaxedOrder</span><span class="p">,</span><span class="w"> </span><span class="c1">// needs pgvector 0.8</span>
 <span class="w">    </span><span class="nx">HNSWMaxScanTuples</span><span class="p">:</span><span class="w"> </span><span class="mi">20000</span><span class="p">,</span>
 <span class="w">    </span><span class="nx">HNSWScanMemMultiplier</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="c1">// pgvector 0.8: iterative scan memory, times work_mem</span>
 <span class="p">}</span>
-<span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">db</span><span class="p">.</span><span class="nx">WithSearch</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">tx</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Tx</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">vecsearch</span><span class="p">.</span><span class="nx">With</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">tx</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Tx</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">example</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">tx</span><span class="p">).</span>
-<span class="w">        </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">CosineDistance</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="nx">query</span><span class="p">).</span><span class="nx">Asc</span><span class="p">()).</span>
+<span class="w">        </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">vecop</span><span class="p">.</span><span class="nx">Cosine</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="nx">query</span><span class="p">).</span><span class="nx">Asc</span><span class="p">()).</span>
 <span class="w">        </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">10</span><span class="p">).</span>
 <span class="w">        </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
 <span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
@@ -1813,7 +1903,7 @@ exact query.</p>
 the index once and applies the filter afterwards, so it can return
 fewer than k rows. <code>TestFilteredANNIterativeScan</code> reproduces this: a filter that matches 1%
 of 20000 rows returns fewer than 10 rows with iterative scan off, and 10 with
-<code>relaxed_order</code> and <code>HNSWMaxScanTuples</code> 20000.</p>
+<code>relaxed_order</code> and <code>HNSWMaxScanTuples</code> 1,000,000.</p>
 <p><code>relaxed_order</code> keeps scanning until enough rows pass the filter or
 <code>hnsw.max_scan_tuples</code> is reached. The result is therefore still approximate,
 and it can be shorter than k when the filter matches fewer rows than that
@@ -1827,7 +1917,7 @@ it inside the transaction whose settings you want to see
 <!-- docscheck:fragment -->
 
 <div class="highlight"><pre><span></span><code><span class="nx">plan</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">example</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
-<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">L2Distance</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="nx">query</span><span class="p">).</span><span class="nx">Asc</span><span class="p">()).</span>
+<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">vecop</span><span class="p">.</span><span class="nx">L2</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="nx">query</span><span class="p">).</span><span class="nx">Asc</span><span class="p">()).</span>
 <span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">10</span><span class="p">).</span>
 <span class="w">    </span><span class="nx">Explain</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
 <span class="c1">// look for "Index Scan using documents_embedding_hnsw"</span>
@@ -1835,7 +1925,7 @@ it inside the transaction whose settings you want to see
 <p><code>TestVectorIndexUsed</code> and <code>TestExactSearchBypassesVectorIndex</code> use this
 pattern to assert that the index is used, and that <code>ExactSearch</code> stops using
 it. Expect a sequential scan on a small table, because the planner prefers it
-below a few thousand rows. Explain returns <code>ErrUnsupported</code> on MySQL.</p>
+below a few thousand rows. Explain returns <code>ErrUnsupported</code> on MySQL and MariaDB.</p>
 <h2 id="postgresql-wire-format">PostgreSQL wire format<a class="headerlink" href="#postgresql-wire-format" title="Permanent link">&para;</a></h2>
 <p>By default vector values travel as text. The binary codec is opt-in and lives
 in <code>driver/pgxdriver</code>:</p>
@@ -1872,17 +1962,19 @@ in <code>driver/pgxdriver</code>:</p>
   and Jaccard return <code>ErrUnsupported</code> at build time. SQLite bit
   vectors keep only the packed bytes, so the declared column length is
   authoritative for <code>Len</code>. See <a href="#sqlite-and-sqlite-vec">SQLite and sqlite-vec</a>.</li>
-<li><code>SetSearch</code> on SQLite: <code>ExactSearch</code> alone is a no-op, every search is
-  already exact, and any other field is <code>ErrUnsupported</code>.</li>
+<li><code>vecsearch.Apply</code> on SQLite: <code>ExactSearch</code> alone is a no-op, every search is
+  already exact, and any other field is <code>ErrUnsupported</code>. On MySQL and MariaDB
+  every non-zero setting, <code>ExactSearch</code> included, is <code>ErrUnsupported</code>, because
+  <code>Tx.SetLocal</code> has no transaction-scoped setting there.</li>
 <li>MariaDB VECTOR INDEX is approximate; see "MariaDB and MySQL" below.</li>
 </ul>
 <h2 id="sqlite-and-sqlite-vec">SQLite and sqlite-vec<a class="headerlink" href="#sqlite-and-sqlite-vec" title="Permanent link">&para;</a></h2>
 <p><code>driver/sqlitedriver</code> links sqlite-vec v0.1.6 (the version <code>vec_version()</code>
 reports; <code>sqlitedriver.SQLiteVecVersion</code> is the release it is tested with, and
 <code>Open</code> fails with <code>ErrUnsupported</code> on another minor or major version but accepts
-a later patch release such as v0.1.7). The same typed builders that serve pgvector
+a later patch release of the same minor). The same typed builders that serve pgvector
 render sqlite-vec's scalar functions, and the integration tests run them
-against a real SQLite database: <code>vector_sqlite_integration_test.go</code> in the root
+against a real SQLite database: <code>col_vector_sqlite_integration_test.go</code> in the root
 package and <code>TestSQLiteVectorParity</code> in <code>driver/sqlitedriver</code>. It needs cgo and
 does not build on Windows. The SQLite migration dialect (<code>migrate/sqlite</code>) is library only, and the
 generator refuses vector fields on SQLite, so you create the table with your
@@ -1915,32 +2007,32 @@ the authority for a length that is not a multiple of 8.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>L2Distance</code></td>
+<td><code>vecop.L2</code></td>
 <td><code>vec_distance_l2</code></td>
 <td><code>vector.Vector</code></td>
 </tr>
 <tr>
-<td><code>L1Distance</code></td>
+<td><code>vecop.L1</code></td>
 <td><code>vec_distance_l1</code></td>
 <td><code>vector.Vector</code></td>
 </tr>
 <tr>
-<td><code>CosineDistance</code></td>
+<td><code>vecop.Cosine</code></td>
 <td><code>vec_distance_cosine</code></td>
 <td><code>vector.Vector</code></td>
 </tr>
 <tr>
-<td><code>HammingDistance</code></td>
+<td><code>vecop.Hamming</code></td>
 <td><code>vec_distance_hamming(vec_bit(column), vec_bit(argument))</code></td>
 <td><code>vector.Bits</code></td>
 </tr>
 <tr>
-<td><code>InnerProductDistance</code></td>
+<td><code>vecop.InnerProduct</code></td>
 <td>none: <code>ErrUnsupported</code> at build time</td>
 <td></td>
 </tr>
 <tr>
-<td><code>JaccardDistance</code></td>
+<td><code>vecop.Jaccard</code></td>
 <td>none: <code>ErrUnsupported</code> at build time</td>
 <td></td>
 </tr>
@@ -1961,7 +2053,7 @@ the same vectors into pgvector and requires the same ids for cosine, L2 and L1.<
 <code>schema.ErrInvalidVectorIndex</code>. An internal check turns a request for any index
 method on a dialect that lists none into <code>ErrUnsupported</code>; it becomes public
 when a SQLite migration dialect needs it. SQLite itself does not parse an index method, so
-nothing is accepted silently. <code>ExactSearch</code> in <code>SearchSettings</code> is a no-op (every
+nothing is accepted silently. <code>ExactSearch</code> in <code>vecsearch.Settings</code> is a no-op (every
 search is exact) and any other setting is <code>ErrUnsupported</code>. The sqlite-vec
 virtual tables (<code>vec0</code>, which have an index of their own) are not wrapped.</p>
 <p>Bring up a throwaway database for your own tests with
@@ -1992,13 +2084,13 @@ stores them but cannot compare them.</p>
 <td>no</td>
 </tr>
 <tr>
-<td><code>L2Distance</code></td>
+<td><code>vecop.L2</code></td>
 <td><code>VEC_DISTANCE_EUCLIDEAN(col, VEC_FromText(?))</code></td>
 <td><code>ErrUnsupported</code></td>
 <td><code>ErrUnsupported</code></td>
 </tr>
 <tr>
-<td><code>CosineDistance</code></td>
+<td><code>vecop.Cosine</code></td>
 <td><code>VEC_DISTANCE_COSINE(col, VEC_FromText(?))</code></td>
 <td><code>ErrUnsupported</code></td>
 <td><code>ErrUnsupported</code></td>

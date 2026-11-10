@@ -780,6 +780,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../PRIVACY_RULES/" class="md-nav__link">
         
   
@@ -979,6 +1007,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ARCHITECTURE/" class="md-nav__link">
         
   
@@ -1154,7 +1238,7 @@ uses Momo. It is the short form of the rules in section 12 of the
 
 <div class="highlight"><pre><span></span><code><span class="gu">## Momo (Go ORM)</span>
 
-<span class="k">-</span><span class="w"> </span>PostgreSQL with pgvector is the only supported database for <span class="sb">`momo migrate`</span>; elsewhere it is the reference database. SQLite (cgo driver, not on Windows; vectors through sqlite-vec on that driver only) and MySQL 8.4, MySQL 9.7 and MariaDB 11.8 run queries and writes, and have library migration dialects (<span class="sb">`migrate/sqlite`</span>, <span class="sb">`migrate/mysql`</span>); check docs/capabilities.md before relying on a feature there.
+<span class="k">-</span><span class="w"> </span>PostgreSQL with pgvector is the reference database. The generated status in docs/capabilities.md lists the other databases and the dialects <span class="sb">`momo migrate`</span> runs; check it before relying on a feature there.
 <span class="k">-</span><span class="w"> </span>Run <span class="sb">`momo generate`</span> after every model change and commit the generated files. Never edit generated files.
 <span class="k">-</span><span class="w"> </span>A non-pointer model field is NOT NULL; a pointer field is nullable.
 <span class="k">-</span><span class="w"> </span>Pass user input only as arguments to <span class="sb">`momo.SQL`</span>, <span class="sb">`momo.TypedSQL`</span>, <span class="sb">`momo.Exec`</span> and <span class="sb">`momo.Scalars`</span>. Never build SQL by string concatenation.
