@@ -1,6 +1,6 @@
 # momo-13 Task 6: llms.txt, llms-full.txt and raw Markdown twins
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-13-docs-release
 Sprint: -
@@ -13,7 +13,7 @@ Implements plan momo-13-docs-release Task 6: llms.txt, llms-full.txt and raw Mar
 ## Acceptance criteria
 
 - [x] `TestLLMsTxt` exists (`internal/docscheck/llms_test.go:33`), fails when a raw twin is broken (mutation run below), and passes now
-- [ ] [S-23] `TestDocsCodeBlocks` extracts every Go code block from the docs and compiles it against the current module (runnable ones are executed against PostgreSQL, the database the blocks are written for; decision 2026-11-10); `TestLLMsTxt` builds the site and asserts `/llms.txt` lists every nav page, `/llms-full.txt` contains every page's Markdown, and each page has a raw `.md` twin; the docs workflow deploys `/dev/` on push to main and `/vX.Y/` plus `/latest/`…
+- [x] [S-23] `TestDocsCodeBlocks` extracts every Go code block from the docs and compiles it against the current module (runnable ones are executed against PostgreSQL, the database the blocks are written for; decision 2026-11-10); `TestLLMsTxt` builds the site and asserts `/llms.txt` lists every nav page, `/llms-full.txt` contains every page's Markdown, and each page has a raw `.md` twin; the docs workflow deploys `/dev/` on push to main and `/vX.Y/` plus `/latest/`…
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
@@ -25,3 +25,4 @@ Implements plan momo-13-docs-release Task 6: llms.txt, llms-full.txt and raw Mar
 - S-23 deploy part: /dev/ is published (docs run 42767105279 on main, deploy job success; https://azrtydxb.github.io/momo/dev/llms.txt returns 200). /vX.Y/ and /latest/ were never published: no docs run exists for tag v0.4.0, because the tag release-please creates with the workflow token does not trigger a tag push. Fixed in 3e1eed0: release-please.yml dispatches docs.yml with the tag, docs.yml deploys a dispatched release tag (pinned by `TestDocsPublishedOnRelease`, internal/repocheck/docs_workflow_test.go). The criterion stays unticked until the next release (or `gh workflow run docs.yml --ref main -f tag=v0.4.0` after this reaches main) shows /v0.4/ and /latest/ on gh-pages.
 - Decisions 2026-11-10 (`.procoder/ask/decisions.md`, "Sprint 7 docs decisions"): the runnable docs blocks are PostgreSQL only (S-23 and the criterion above are reworded, so gap 2 of the carry reason is closed), and a release deploy copies llms.txt and llms-full.txt to the gh-pages root. The root copy is implemented in 2a3addc (the "Copy llms.txt and llms-full.txt to the site root" step of docs.yml, pinned by `TestDocsRootCopyOnRelease`, shown failing before the step existed on branch worktree-agent-acf2b-red-rootcopy, sha a69fbf7). It runs on release tags only, so it is observable at the next release; the criterion stays unticked until https://azrtydxb.github.io/momo/llms.txt answers 200 after that deploy.
 - /vX.Y/ and /latest/ deploy observed: docs run 42819135238 (v0.5.0 dispatch) published /v0.5/ with the alias /latest/ (gh-pages versions.json lists v0.5 with alias latest).
+- Release deploy observed (v0.6.0, 2026-11-10): docs run 42900915565 published /v0.6/ with the alias /latest/ (gh-pages versions.json lists v0.6 with alias latest), and its root-copy step committed 0ff5723 to gh-pages. After Pages build run 42901318982 (success), https://azrtydxb.github.io/momo/llms.txt, /llms-full.txt, /v0.6/llms.txt and /latest/ all answer 200. Runnable blocks run on PostgreSQL per the 2026-11-10 decision. The S-23 criterion is met.
