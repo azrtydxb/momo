@@ -198,9 +198,16 @@ finding:
 - Hide objects you do not manage with `migrate.exclude` (globs over `name` or
   `schema.name`; they apply to tables, views, functions, enums, extensions,
   triggers and policies). Example: `exclude: ["pg_stat_statements", "audit_*"]`.
-  PostgreSQL inspection applies the globs to triggers before it reads them, so a
-  trigger or table you exclude can never fail `generate --from-db`, `baseline` or
-  `drift`.
+  PostgreSQL inspection applies the globs while it reads, before an object is
+  examined: a matching table is skipped before its columns, constraints, indexes
+  and partitions are read, a matching view or function before its definition is
+  read, and a trigger whose own name or table matches before its definition is
+  read. So an object the schema model cannot represent (for example a table with
+  a `VIRTUAL` generated column) no longer fails `generate --from-db`, `baseline`
+  or `drift` once you exclude it. Extensions, enums and policies are not skipped
+  early; they are filtered afterwards as before. `generate --from-db` also
+  passes every `introspect.skip` glob to inspection the same way, so a skipped
+  table is never read (the globs also match views and functions of that name).
 - A trigger limited to some columns (`AFTER UPDATE OF state`) is
   `schema.Trigger.UpdateOf`: PostgreSQL renders `UPDATE OF "state"`, inspection
   reads the list back and `generate --from-db` writes it into the model.
@@ -939,7 +946,9 @@ and, when the constraint name is not `<table>_<column>_fkey` (PostgreSQL picks
 `_fkey1` on a partitioned table), its `fk_name`. A composite primary key whose
 column order differs from the field order is declared with
 `c.PrimaryKey(&m.Name, &m.Scope, &m.At)` in `MomoConfig`; the DDL, inspection
-and baseline keep that order.
+and baseline keep that order. Changing the order of an existing key later is a
+drop and add of the primary key under an `ACCESS EXCLUSIVE` lock, and the drop
+is gated as destructive.
 `numeric` columns are Go strings (the `decimal-as-string` note); an
 `introspect.types` rule picks a decimal type instead.
 

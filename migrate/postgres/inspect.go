@@ -71,8 +71,9 @@ var partStrategies = map[string]string{"r": "range", "l": "list", "h": "hash"}
 // Inspect reads the objects in opts.Schemas (default: the connection's
 // current schema) into a schema. A table in the current schema has an empty
 // Table.Schema; Schema.Schemas lists only the other managed namespaces.
-// opts.Exclude is applied by the engine; the dialect only uses it to skip a
-// trigger it cannot represent before rejecting it.
+// opts.Exclude is applied again by the engine; the dialect also uses it to skip
+// a matching table, view, function or trigger before reading it, so one the
+// schema model cannot represent does not fail the whole inspection.
 func (d Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.InspectOptions) (*schema.Schema, error) {
 	s, _, err := d.InspectWithInvalid(ctx, c, opts)
 	return s, err
@@ -204,6 +205,12 @@ func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 		return fmt.Errorf("postgres inspect: tables: %w", err)
 	}
 	for _, tr := range rows {
+		// An excluded table is skipped before its columns and constraints are
+		// read, so one the model cannot represent (a virtual generated column)
+		// does not fail the inspection.
+		if in.excluded(tr.ns, tr.name) {
+			continue
+		}
 		t := schema.Table{Name: tr.name}
 		if tr.ns != in.current {
 			t.Schema = tr.ns

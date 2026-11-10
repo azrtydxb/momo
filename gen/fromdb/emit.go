@@ -21,6 +21,7 @@ import (
 	"go/format"
 	"go/token"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -662,6 +663,10 @@ func (g *generator) constraints(m *model) {
 	g.tableObjects(m)
 }
 
+// fkNameOK is what a constraint name may hold to be written as an fk_name tag
+// value: no comma, colon, quote or space.
+var fkNameOK = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_$]{0,62}$`)
+
 var fkActions = map[string]bool{"": true, "CASCADE": true, "RESTRICT": true, "SET NULL": true, "SET DEFAULT": true}
 
 // foreignKey declares fk as a belongs_to relation when the generator can
@@ -700,7 +705,7 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	}
 	opts := []string{"belongs_to", "fk:" + f.name}
 	if want := t.Name + "_" + fk.Columns[0] + "_fkey"; fk.Name != want {
-		if strings.ContainsAny(fk.Name, ",\"`\\") {
+		if !fkNameOK.MatchString(fk.Name) {
 			return drop("its name " + fk.Name + " cannot be written in a struct tag")
 		}
 		opts = append(opts, "fk_name:"+fk.Name)

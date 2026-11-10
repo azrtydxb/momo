@@ -22,10 +22,10 @@ The Kuvryn Owl port's `--from-db` and `baseline` rehearsal is blocked or noisy i
 
 ## Evidence
 
-CI: ci-agent run 42774470850 on headSha eed34e25a92ab40fa6dad97bf1c1f97cbec133ff, all 9 jobs success.
+Final CI run: see the report of the sprint-7 agent; the criteria below are covered by these tests (all run in ci-agent).
 
-- UpdateOf: `TestPostgresInspectTriggerUpdateOf`, `TestPostgresTriggerUpdateOfRoundTrip` (migrate/postgres), `TestRenderTriggerPolicyRLS` (UPDATE OF case). `--from-db` emits the field through the reflection-based Trigger emit.
-- Exclude before reject: `TestPostgresInspectExcludeSkipsTrigger`; the PostgreSQL inspector skips an excluded trigger or table before reading it (migrate/postgres/inspect_objects.go).
-- fk_name: `TestBelongsToForeignKeyName` (gen), `TestGenerateFromDBForeignKeyName` (gen/fromdb), `TestPostgresForeignKeyNameRoundTrip` (_fkey1 on a partitioned table), tag grammar test; diff compares foreign keys by name.
-- Primary key order: `Config.PrimaryKey` (no pk:<n> tag); `TestPrimaryKeyOrderFromConfig`, `TestPrimaryKeyOrderMustNameThePKFields` (gen), `TestGenerateFromDBPrimaryKeyOrder` (gen/fromdb), `TestPostgresPrimaryKeyOrderRoundTrip`.
+- UpdateOf: `TestPostgresInspectTriggerUpdateOf`, `TestPostgresTriggerUpdateOfRoundTrip`, `TestPostgresTriggerUpdateOfKeepsWrittenOrder` and `TestPostgresTriggerUpdateOfOrderRoundTrip` (UPDATE OF b, a keeps its written order, no drift), `TestRenderTriggerPolicyRLS` (UPDATE OF case), `TestGenerateFromDBTriggerUpdateOf` (`--from-db` emits it).
+- Exclude before reject: the PostgreSQL inspector applies `Exclude` while reading, skipping a matching table before its columns and constraints, a matching view or function before its definition, and a trigger whose name or table matches before its definition (migrate/postgres/inspect.go, inspect_objects.go). Extensions, enums and policies are still filtered afterwards. `generate --from-db` adds every `introspect.skip` glob to the inspection excludes (cmd/momo/generate_fromdb.go). Tests: `TestPostgresInspectExcludedTableIsNotRead` (a table with a VIRTUAL generated column, which inspection otherwise rejects; skipped when the server is older than PostgreSQL 18), `TestPostgresInspectExcludedViewAndFunction`, `TestPostgresInspectExcludeSkipsTrigger`.
+- fk_name: `TestBelongsToForeignKeyName`, `TestForeignKeyNameDiagnostics` (has_many, FKName without belongs_to, over 63 bytes, duplicate name), `TestGenerateFromDBForeignKeyName`, `TestGenerateFromDBForeignKeyNameNotWritable` (only `[A-Za-z_][A-Za-z0-9_$]*` names are written), `TestPostgresForeignKeyNameRoundTrip` (_fkey1 on a partitioned table); diff compares foreign keys by name (a change is a drop and add).
+- Primary key order: `Config.PrimaryKey` (no pk:<n> tag); `TestPrimaryKeyOrderFromConfig`, `TestPrimaryKeyOrderMustNameThePKFields`, `TestGenerateFromDBPrimaryKeyOrder`, `TestPostgresPrimaryKeyOrderRoundTrip`.
 - Docs: docs/migrations.md, docs/relations.md, docs/ai-guide.md, docs/reference.md.

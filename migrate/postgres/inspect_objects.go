@@ -44,7 +44,7 @@ ORDER BY 1,2,3`
 	// for a function that is not on the search_path), with identifiers quoted
 	// as quote_ident does. tgparentid <> 0 marks a trigger a partition child
 	// merely inherited; like inherited constraints it is hidden.
-	qTriggers = `SELECT n.nspname, c.relname, t.tgname, t.tgtype::int4, CASE WHEN t.tgqual IS NOT NULL THEN pg_get_triggerdef(t.oid, true) END, ARRAY(SELECT a.attname::text FROM pg_attribute a WHERE a.attrelid = t.tgrelid AND a.attnum = ANY(t.tgattr) ORDER BY a.attnum),
+	qTriggers = `SELECT n.nspname, c.relname, t.tgname, t.tgtype::int4, CASE WHEN t.tgqual IS NOT NULL THEN pg_get_triggerdef(t.oid, true) END, ARRAY(SELECT a.attname::text FROM unnest(t.tgattr) WITH ORDINALITY k(n, ord) JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attnum = k.n ORDER BY k.ord),
   pn.nspname, quote_ident(pn.nspname), quote_ident(p.proname), replace(oidvectortypes(p.proargtypes), ', ', ',')
 FROM pg_trigger t
 JOIN pg_class c ON c.oid = t.tgrelid
@@ -155,6 +155,9 @@ func (in *inspector) views(ctx context.Context, s *schema.Schema) error {
 		if err := r.Scan(&v.oid, &v.ns, &v.name, &v.kind, &v.query); err != nil {
 			return err
 		}
+		if in.excluded(v.ns, v.name) {
+			return nil
+		}
 		v.materialized = v.kind == "m"
 		raws = append(raws, v)
 		return nil
@@ -199,6 +202,9 @@ func (in *inspector) functions(ctx context.Context, s *schema.Schema) error {
 		var body *string
 		if err := r.Scan(&ns, &f.Name, &f.Args, &f.Returns, &f.Language, &vol, &body, &f.Strict, &f.SecurityDefiner); err != nil {
 			return err
+		}
+		if in.excluded(ns, f.Name) {
+			return nil
 		}
 		f.Schema = in.optSchema(ns)
 		f.Volatility = volatility[vol]
