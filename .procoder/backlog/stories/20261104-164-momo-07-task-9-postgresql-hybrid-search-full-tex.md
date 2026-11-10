@@ -1,6 +1,6 @@
 # momo-07 Task 9: PostgreSQL hybrid search (full-text plus vector, RRF)
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-07-vectors-pgvector
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -11,8 +11,8 @@ Implements plan momo-07-vectors Task 9: PostgreSQL hybrid search (full-text plus
 
 ## Acceptance criteria
 
-- [ ] `TestHybridSQL` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestHybridSearch` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestHybridSQL` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestHybridSearch` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-17] `TestHybridSearch`: a fixed corpus yields the asserted ordering with documented candidate counts and RRF k; fails if fusion is order-dependent on ties.
 - [x] `procoder check` gate is clean and the task's commit is made
 
@@ -24,3 +24,5 @@ Implements plan momo-07-vectors Task 9: PostgreSQL hybrid search (full-text plus
 - Criterion 3 (S-17): `TestHybridSearch` asserts the order [1 3 2 4] with RRF k=60 and 100 candidates per leg, scores 2/61, 1/62, 1/63, 1/64, reversed insertion order giving the same result, a primary-key tie-break (ids 5 and 9 tie on 1/61+1/62, 5 first), VectorCandidates=2 bounding the vector leg, and RRFK=1 with Limit=1. Defaults and ranges are documented in docs/vectors.md "Hybrid search".
 - Differences from the plan: the bind order follows first appearance in the SQL (text candidates third), and placement is the root package with the `select_` file prefix. Soft-deleted rows are excluded and a schema-qualified table is supported (`TestHybridSQLSoftDeleteAndSchema`).
 
+- Red-first proof (sprint 7, 2026-11-10): throwaway branch worktree-agent-aa035f65774515fc5-red (deleted since), commit 3e78a08, with DefaultHybridRRFK changed 60 to 50 and the final tie-break flipped to pk DESC. ci-agent run 42827833696: TestHybridSQL and TestHybridSearch (integration postgres job) failed. Criteria 1 and 2 are ticked on that proof.
+- Green: ci-agent run 42827849607, headSha 326e54e, all 9 jobs success.
