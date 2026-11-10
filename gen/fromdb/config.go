@@ -29,6 +29,10 @@ type Config struct {
 	// Types overrides the Go type of every column of one SQL type, keyed by
 	// the normalized type, for example "inet" or "numeric(10,2)".
 	Types map[string]TypeRule `yaml:"types"`
+	// UUID picks the Go type of uuid and uuid[] columns: "momo" (the default)
+	// writes types.UUID, "google" writes github.com/google/uuid's UUID. Both
+	// write no type tag. An introspect.types rule for uuid still wins.
+	UUID string `yaml:"uuid"`
 	// Columns are per-column rules, applied in order; a later rule wins.
 	Columns []ColumnRule `yaml:"columns"`
 	// Tables are per-table rules keyed by table name.
