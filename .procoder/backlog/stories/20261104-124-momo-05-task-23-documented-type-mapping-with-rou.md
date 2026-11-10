@@ -4,7 +4,6 @@ Status: open
 Created: 2026-11-04
 Epic: momo-05-writes-queries
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
-Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Red-first criterion unverifiable (mapping pre-existed) and S-31 requires every dialect; only PostgreSQL exists. Carried until SQLite and MySQL land.
 
 ## Description
 
@@ -13,7 +12,7 @@ Implements plan momo-05-writes-queries Task 23: Documented type mapping with rou
 ## Acceptance criteria
 
 - [ ] `TestTypeMapping` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-31] `TestTypeMapping` round-trips one value (including edge values: max int64, NaN where legal, pre-1970 time, non-UTC zone) per mapping in the documented table on both dialects; fails if a documented mapping is untested.
+- [x] [S-31] `TestTypeMapping` round-trips one value (including edge values: max int64, NaN where legal, pre-1970 time, non-UTC zone) per mapping in the documented table on both dialects; fails if a documented mapping is untested.
 - [x] `procoder check` gate is clean and the task's commit is made (gate: 0 blocking; make fmt-check vet staticcheck gosec tidy-check exit 0)
 
 ## Evidence
@@ -31,3 +30,8 @@ half cannot run: no SQLite driver or `testopen` opener exists in this build, and
 the plan's SQLite NaN `ErrValidation` float64 codec validator does not exist.
 `TestTypeMapping` skips the SQLite dialect explicitly once an opener registers it.
 
+### Sprint 7
+
+- Criterion 2 ticked: TestTypeMapping now also round-trips every documented SQLite column (rows marked unsupported/n/a skipped; NaN skipped on SQLite) on a live SQLite; TestTypeMappingNaNSQLite pins that NaN is stored as NULL and +Inf survives. MySQL: the document lists every Go type as unsupported (the generator emits no MySQL models), so there is no MySQL mapping to test. Run 42769037273 (ci-agent, headSha 4d04a3d, all jobs green).
+- Criterion 1 stays unticked. Carry reason: red-first is unprovable (the mapping pre-existed the tests).
+- Needs decision: SQLite NaN is stored as NULL and documented as such in docs/TYPE_MAPPING.md; the plan wanted ErrValidation from a float64 validator. Options: keep the documented NULL behaviour, or reject NaN with ErrValidation in the SQLite argument path.
