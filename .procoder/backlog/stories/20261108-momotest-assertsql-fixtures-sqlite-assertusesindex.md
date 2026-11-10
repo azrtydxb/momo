@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-08
 Epic: momo-09-observability-testing
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 

@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-09
 Epic: momo-14-structure-and-docs
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 

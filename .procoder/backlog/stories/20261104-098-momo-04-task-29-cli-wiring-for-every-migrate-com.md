@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — S-10 needs CLI commands rebase, lint, rollback and new, which are not built; [update 2026-11-08: `new --custom` is built since issue 37, so only rebase, lint and rollback are missing]; S-26 needs the SQLite+sqlite-vec packages on the Windows job. Carried until those land.
 
 ## Description

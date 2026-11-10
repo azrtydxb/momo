@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-06
 Epic: momo-05-writes-queries
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 Carried: 003-sprint-3-postgresql-hardening-migration-safety-bugs-query — SQLite integration criterion needs a SQLite driver and test opener, which arrive with the SQLite milestone; inline rendering, ErrValidation and docs are done and golden-tested
 
 ## Description

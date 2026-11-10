@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-05
 Epic: momo-02-generator
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 

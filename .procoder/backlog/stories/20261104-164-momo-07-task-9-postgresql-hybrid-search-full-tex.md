@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-07-vectors-pgvector
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 
 ## Description
 

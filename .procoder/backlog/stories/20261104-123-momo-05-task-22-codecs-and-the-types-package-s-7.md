@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-05-writes-queries
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — S-73 requires every dialect; only PostgreSQL exists so far. Carried until the SQLite and MySQL dialects land.
 
 ## Description

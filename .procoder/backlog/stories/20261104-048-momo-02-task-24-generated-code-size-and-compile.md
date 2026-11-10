@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-02-generator
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Not implemented: internal/tools/genstats, bench/generated-code/README.md and TestGenStatsOutput do not exist in the repo; both criteria unmet.
 
 ## Description

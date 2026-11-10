@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-07-vectors-pgvector
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Criterion 1 unmet as written: TestPgvectorVersionPinned exists and passes but never failed before the implementation, since compose.yaml was already pinned by momo-01; no honest red exists, only a mutation check.
 
 ## Description

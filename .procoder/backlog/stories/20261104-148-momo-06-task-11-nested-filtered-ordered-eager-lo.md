@@ -3,7 +3,7 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-06-relations
-Sprint: -
+Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Behaviour pre-existed in load.go, so the plan test could not fail before an implementation; mutation runs stand in for the red state (see Evidence). Decided 2026-11-06: carry rather than tick.
 
 ## Description
