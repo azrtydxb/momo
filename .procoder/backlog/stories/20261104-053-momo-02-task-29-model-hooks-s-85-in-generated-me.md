@@ -1,6 +1,6 @@
 # momo-02 Task 29: Model hooks (S-85) in generated metadata
 
-Status: open
+Status: done 2026-11-10
 Created: 2026-11-04
 Epic: momo-02-generator
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
@@ -11,10 +11,10 @@ Implements plan momo-02-generator Task 29: Model hooks (S-85) in generated metad
 
 ## Acceptance criteria
 
-- [ ] `TestModelHookEmission` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestZeroHookSet` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `TestModelHookSignature` exists as written in the plan, failed before the implementation, and passes now
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] `TestModelHookEmission` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestZeroHookSet` exists as written in the plan, failed before the implementation, and passes now
+- [x] `TestModelHookSignature` exists as written in the plan, failed before the implementation, and passes now
+- [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
 
@@ -24,3 +24,8 @@ Deviations from the plan text: the shipped `momo.HookSet` fields are `func(ctx, 
 
 Red evidence is not separate: tests and implementation were pushed together, and the first run (42769490088) failed only on the then-missing golden file. The "failed before the implementation" part of the three test criteria is therefore not shown, and they stay unticked.
 
+### Sprint 7 close-out (2026-11-10)
+
+Audit: the generator fills `Meta.Hooks` (gen/hooks.go, gen/emit_meta.go) and the runtime calls them: BeforeInsert/BeforeUpdate/BeforeDelete/AfterLoad (db_hooks.go, insert_copy.go), covered by TestModelHooks, TestModelHooksOnlyForOptedInBuilders, TestModelHooksBeforeAbortWithoutSQL, TestModelHooksAfterLoadOnEveryRead and TestModelHooksAfterLoadError. Nothing missing.
+
+Red, shown retroactively on a throwaway branch: ci-agent run 42828247513, headSha afb8fa2 (`DetectHooks` returns nothing, `hooksLiteral` emits an empty `Hooks:` for hook-less models): `TestModelHookEmission`, `TestZeroHookSet` and `TestModelHookSignature` all FAIL. Green: ci-agent run 42838538032, headSha 5e36833, all 9 jobs. Gate: `procoder check` over the changed files, 27 clean, 0 blocking.

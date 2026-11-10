@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-02-generator
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — The gate cannot pass as written: Steps 1, 3 and 4 use paths of the first plan (./momo never existed; CI runs the shipped equivalents) and Step 2 still names TestViewModelsNotWritable in the plan's gen package form. TestCompanionSchema* now exist (story 051) and TestViewModelsNotWritable exists in meta_view_test.go. Needs a user decision to reword the plan paths.
 
 ## Description
 

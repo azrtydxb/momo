@@ -112,16 +112,29 @@ func emitPackageMeta(models, projections []*Model, g *Graph) ([]byte, []Diagnost
 
 // tableOf finds the schema table of a model in the graph.
 func tableOf(g *Graph, m *Model) *schema.Table {
-	if g == nil || g.Schema == nil {
-		return nil
+	t, _ := g.TableOf(m)
+	return t
+}
+
+// TableOf returns the table that describes the columns of m: the schema table
+// of a table model, or the table built for a view model, which the schema
+// does not hold because a view is not created as a table. Plugins use it
+// instead of looking m.Table up in Schema, which misses view models. The
+// result is nil and false when the graph has no schema or no such model.
+func (g *Graph) TableOf(m *Model) (*schema.Table, bool) {
+	if g == nil || g.Schema == nil || m == nil {
+		return nil, false
+	}
+	if t, ok := g.viewTables[m]; ok {
+		return t, true
 	}
 	for i := range g.Schema.Tables {
 		t := &g.Schema.Tables[i]
 		if t.Name == m.Table && t.Schema == m.Schema {
-			return t
+			return t, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func lowerFirst(s string) string {

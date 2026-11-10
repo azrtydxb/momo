@@ -31,7 +31,16 @@ import (
 // The output is canonical: models are processed in sorted order, every named
 // collection is sorted by schema.Sort, and column order is declaration order.
 func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
+	s, _, diags := buildSchema(models, cfg)
+	return s, diags
+}
+
+// buildSchema is BuildSchema that also returns the table built for each view
+// model. The tables are not part of the schema (a view is not created as a
+// table) but the metadata emitter needs their columns.
+func buildSchema(models []*Model, cfg Config) (*schema.Schema, map[*Model]*schema.Table, []Diagnostic) {
 	b := &schemaBuilder{
+		viewTab: map[*Model]*schema.Table{},
 		namer:   cfg.Naming,
 		typeDef: cfg.TypeDefaults,
 		primary: dialect.Postgres,
@@ -69,11 +78,34 @@ func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 		return x.GoName < y.GoName
 	})
 	for _, m := range sorted {
+		if m.IsView {
+			continue
+		}
 		if prev, dup := b.tableBy[tableKey(m)]; dup {
 			b.diag(m.Pos, fmt.Sprintf("table %q is produced by models %s and %s", m.Table, prev.GoName, m.GoName))
 			continue
 		}
 		b.tableBy[tableKey(m)] = m
+		b.addModel(m)
+	}
+	// A view model reads a view its companion declares. It is not a table: it
+	// gets no CREATE TABLE and no table key, so no foreign key refers to it
+	// and its relations add no constraint. It still may not share its name
+	// with a table model or with another view model.
+	viewBy := map[string]*Model{}
+	for _, m := range sorted {
+		if !m.IsView {
+			continue
+		}
+		prev, dup := b.tableBy[tableKey(m)]
+		if !dup {
+			prev, dup = viewBy[tableKey(m)]
+		}
+		if dup {
+			b.diag(m.Pos, fmt.Sprintf("table %q is produced by models %s and %s", m.Table, prev.GoName, m.GoName))
+			continue
+		}
+		viewBy[tableKey(m)] = m
 		b.addModel(m)
 	}
 	for _, m := range sorted {
@@ -93,7 +125,7 @@ func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 		}
 		return x.Column < y.Column
 	})
-	return s, dedupeDiagnostics(b.diags)
+	return s, b.viewTab, dedupeDiagnostics(b.diags)
 }
 
 func tableKey(m *Model) string { return m.Schema + "\x00" + m.Table }
@@ -136,6 +168,9 @@ type schemaBuilder struct {
 	// seen holds managed objects and join tables already merged, so an
 	// identical repeat is kept once.
 	seen map[string]any
+	// viewTab holds the table built for each view model, kept out of the
+	// schema.
+	viewTab map[*Model]*schema.Table
 }
 
 func (b *schemaBuilder) diag(pos token.Position, msg string) {
@@ -161,6 +196,13 @@ func (b *schemaBuilder) addModel(m *Model) {
 	b.names = map[string]string{}
 	b.applyIndexTags(m, &t)
 	b.applyCompanion(m, &t)
+	if m.IsView {
+		// The companion's views, functions and policies are merged above; the
+		// table is not part of the schema, only the emitter reads it.
+		b.viewTab[m] = &t
+		b.dialectCheck()
+		return
+	}
 	b.index[m] = len(b.s.Tables)
 	b.s.Tables = append(b.s.Tables, t)
 	b.dialectCheck()
@@ -714,7 +756,11 @@ func action(v string) (string, bool) {
 func (b *schemaBuilder) addRelations(m *Model) {
 	for _, r := range m.Relations {
 		if r.Target == nil || b.tableBy[tableKey(r.Target)] != r.Target {
-			continue // an unresolved target is reported where relations are discovered
+			// An unresolved target is reported where relations are
+			// discovered. A view model is not in tableBy either, so a relation
+			// that targets one adds no foreign key and no join table: a
+			// constraint cannot reference a view.
+			continue
 		}
 		if r.FKName != "" && r.Kind != BelongsTo {
 			b.diag(r.Pos, fmt.Sprintf("relation %s: fk_name applies to belongs_to only; has_one and has_many create no constraint", r.GoName))

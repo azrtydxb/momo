@@ -312,7 +312,7 @@ func writeModel(b *strings.Builder, g *gen.Graph, m *gen.Model, fields []protoFi
 	// The key of the row: the primary key columns of the schema table.
 	var key []protoField
 	if g.Schema != nil {
-		if t, ok := g.Schema.Table(m.Table); ok {
+		if t, ok := g.TableOf(m); ok {
 			for _, pk := range t.PrimaryKey {
 				for _, f := range fields {
 					if f.column == pk {

@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-10-ecosystem-generators
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — Step 5 (record the gate results in the pull request description) is the integrator's: the ecosystem generators are not yet in a PR to main (PR #70 covers v0.5.0 only), and this agent may not open PRs. Steps 1 to 4 have CI evidence in the story.
 
 ## Description
 

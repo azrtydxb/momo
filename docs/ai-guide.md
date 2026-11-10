@@ -609,7 +609,13 @@ The generator sets `Meta.View`. Reads work as for any model; `Insert`,
 `Upsert`, `Update`, `SoftDelete`, `BulkUpdate`, `Delete` and `Merge` return
 `ErrValidation` naming the model, at run time (there is no compile-time
 check). Declare the view itself with `c.View(schema.View{...})` in
-`MomoConfig`.
+`MomoConfig`. The schema the generator builds holds that view and no table for
+the view model, so a migration never issues `CREATE TABLE` for it, and no
+foreign key refers to it. `Materialized: true` declares a materialized view;
+refresh it with `momo.RefreshMaterializedView(ctx, db, "name", false)` (a
+name with a schema prefix, two parts joined by a dot, is split and quoted; the last argument adds
+`CONCURRENTLY`, which needs a unique index in the view's `Indexes`). It is
+PostgreSQL only and returns `ErrUnsupported` elsewhere.
 
 ### Custom generator binary
 

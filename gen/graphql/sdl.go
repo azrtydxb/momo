@@ -306,7 +306,7 @@ func singleIntPK(g *gen.Graph, m *gen.Model, cols []column) string {
 	if g.Schema == nil {
 		return ""
 	}
-	t, ok := g.Schema.Table(m.Table)
+	t, ok := g.TableOf(m)
 	if !ok || len(t.PrimaryKey) != 1 {
 		return ""
 	}

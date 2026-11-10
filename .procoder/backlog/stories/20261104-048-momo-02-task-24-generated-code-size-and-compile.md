@@ -3,7 +3,8 @@
 Status: open
 Created: 2026-11-04
 Epic: momo-02-generator
-Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each
+Sprint: -
+Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — Superseded by bench/codesize (Measure, TestCodeSizeReport, bench/cmd/codesize); the plan's internal/tools/genstats, TestGenStatsOutput and bench/generated-code/README.md were not built and the plan's package layout is not buildable. Needs a user decision to retire or reword the criteria; not weakened here.
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — Not implemented: internal/tools/genstats, bench/generated-code/README.md and TestGenStatsOutput do not exist in the repo; both criteria unmet.
 
 ## Description
