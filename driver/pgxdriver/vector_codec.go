@@ -149,7 +149,6 @@ func oidFromInt64(v int64) (uint32, error) {
 // NULL). Values that fail validation are left as they
 // are so the error surfaces from the usual path.
 func convertVectorArgs(f VectorFormat, args []any) []any {
-	args = convertUUIDSliceArgs(args)
 	if f != VectorText {
 		return args
 	}
