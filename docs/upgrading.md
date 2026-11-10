@@ -32,6 +32,41 @@ zero value is a value), so it writes every writable column the message holds;
 a vector, a timestamp or a defaulted scalar left unset is not written. Neither
 reads the row first and writes it back.
 
+### OpenAPI input and output schemas
+
+The OpenAPI document now has two schemas per model. `<Model>` (for example
+`Document`) is the output: every column, with the not-null columns, the key
+included, listed in `required`. A client generator now types `id` as required
+on a response. `<Model>Input` (`DocumentInput`) is new and is what a create and
+a PUT take: only the writable properties, so it has no key and no read-only,
+identity or serial column, and its `required` list is what it was on `<Model>`
+in 0.5.0 (not null, no database default). Every response keeps referencing
+`<Model>`; the request bodies of create and PUT now reference `<Model>Input`.
+A client generated from the old document sends the same JSON and keeps working;
+regenerate it to get the new types. A model whose name plus `Input` is also a
+model name (`Doc` and `DocInput`) is a generator diagnostic.
+
+The gRPC messages are unchanged: a model message is still what a client sends
+and receives. The field comments in the `.proto` file say which fields a request
+ignores (the key on Create, read-only columns on Create and Update, and the
+version, soft-delete and timestamp columns on Update).
+
+### Error hook and cancellation codes
+
+The `openapi` and `grpc` plugins take the option `on_error`, the name of a Go
+function in the generated package with the signature
+`func(ctx context.Context, op string, err error)`. The generated code calls it
+once for every error it answers from a statement (a database error, a missing
+row, a cancelled context), with the operation (the `operationId` for OpenAPI,
+for example `getDocument`; `DocumentService.Get` for gRPC) and the original
+error, before it writes the fixed message. Log, count or trace the error there.
+Without the option nothing changes.
+
+A request whose context was cancelled is now answered 499 (OpenAPI), `Canceled`
+(gRPC) and `CANCELED` (GraphQL) with a fixed message, and one whose deadline
+passed 504, `DeadlineExceeded` and `CANCELED`. These were 500 and `Internal`
+before. A client or proxy that retries on 500 will no longer retry them.
+
 ## Upgrading to 0.5.0
 
 ### Regenerating with `--from-db` after the `dbdefault` tag

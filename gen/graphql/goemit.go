@@ -452,6 +452,10 @@ func presentError(ctx context.Context, err error) *gqlerror.Error {
 	}
 	code, msg := "INTERNAL", "internal error"
 	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		code, msg = "CANCELED", "request timed out"
+	case errors.Is(err, context.Canceled):
+		code, msg = "CANCELED", "request canceled"
 	case errors.Is(err, momo.ErrNotFound):
 		code, msg = "NOT_FOUND", "not found"
 	case errors.Is(err, momo.ErrUniqueViolation):

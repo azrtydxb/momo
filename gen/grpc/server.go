@@ -4,6 +4,7 @@ package grpc
 
 import (
 	"fmt"
+	"go/token"
 	"strings"
 
 	"github.com/azrtydxb/momo/gen"
@@ -167,15 +168,25 @@ type smodel struct {
 // builders only; List filters through the generated ColumnByName allowlist,
 // pages with keyset cursors on the primary key and clamps the limit. An
 // update reads the row first, so a column that is not in the message keeps its
-// value. The output is deterministic.
+// value. A failed call returns a status with a fixed message (Canceled and
+// DeadlineExceeded when its context ended). The output is deterministic.
 func ServerSource(g *gen.Graph, lock *Lock, pkg, pbImport string) ([]byte, []gen.Diagnostic) {
 	return serverSource(g, lock, pkg, pbImport, nil)
 }
 
 // serverSource is ServerSource with the operations ops enables per model.
 func serverSource(g *gen.Graph, lock *Lock, pkg, pbImport string, ops apiquery.Ops) ([]byte, []gen.Diagnostic) {
+	return serverSourceHook(g, lock, pkg, pbImport, ops, "")
+}
+
+// serverSourceHook is serverSource with the error hook onError, the name of a
+// function in the adapters' package that statusOf calls, or "" for none.
+func serverSourceHook(g *gen.Graph, lock *Lock, pkg, pbImport string, ops apiquery.Ops, onError string) ([]byte, []gen.Diagnostic) {
 	if err := ops.Validate(); err != nil {
 		return nil, []gen.Diagnostic{{Msg: "gRPC " + err.Error()}}
+	}
+	if onError != "" && !token.IsIdentifier(onError) {
+		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("gRPC on_error %q must be the name of a Go function in the adapters' package", onError)}}
 	}
 	if !gosrc.PkgName.MatchString(pkg) {
 		return nil, []gen.Diagnostic{{Msg: fmt.Sprintf("invalid Go package name %q for the gRPC server", pkg)}}
@@ -268,7 +279,7 @@ func serverSource(g *gen.Graph, lock *Lock, pkg, pbImport string, ops apiquery.O
 	}
 
 	var b strings.Builder
-	b.WriteString(serverPreamble)
+	b.WriteString(serverPreambleSource(onError))
 	for _, sm := range models {
 		writeServer(&b, sm)
 	}
@@ -282,11 +293,26 @@ func serverSource(g *gen.Graph, lock *Lock, pkg, pbImport string, ops apiquery.O
 	return []byte(out.String()), nil
 }
 
+// serverPreambleSource returns the shared helpers of the adapters; onError is
+// the name of the hook statusOf calls, or "".
+func serverPreambleSource(onError string) string {
+	hook := ""
+	if onError != "" {
+		hook = "\t" + onError + "(ctx, op, err)\n"
+	}
+	return strings.Replace(serverPreamble, "{{hook}}", hook, 1)
+}
+
 const serverPreamble = `// statusOf maps a failed statement to a gRPC status with a fixed message: the
 // error of the database, which names tables and constraints, never reaches the
-// client.
-func statusOf(err error) error {
-	switch {
+// client. op names the call, for example DocumentService.Get. A call whose
+// context ended is answered Canceled or DeadlineExceeded, not Internal.
+func statusOf(ctx context.Context, op string, err error) error {
+{{hook}}	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, "deadline exceeded")
+	case errors.Is(err, context.Canceled):
+		return status.Error(codes.Canceled, "request canceled")
 	case errors.Is(err, momo.ErrNotFound):
 		return status.Error(codes.NotFound, "not found")
 	case errors.Is(err, momo.ErrUniqueViolation):
@@ -299,6 +325,10 @@ func statusOf(err error) error {
 		return status.Error(codes.Unavailable, "temporarily unavailable; retry")
 	case errors.Is(err, momo.ErrValidation):
 		return status.Error(codes.InvalidArgument, "invalid request")
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, "deadline exceeded")
+	case ctx.Err() != nil:
+		return status.Error(codes.Canceled, "request canceled")
 	}
 	return status.Error(codes.Internal, "internal error")
 }
@@ -377,7 +407,7 @@ func {{lm}}FromPB(p *pb.{{M}}, m *{{models}}.{{M}}) {
 func (s *{{lm}}Server) Get(ctx context.Context, req *pb.{{M}}GetRequest) (*pb.{{M}}, error) {
 	m, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(req.Get{{PBPK}}())).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "{{M}}Service.Get", err)
 	}
 	return {{lm}}ToPB(&m), nil
 }
@@ -392,7 +422,7 @@ func (s *{{lm}}Server) List(ctx context.Context, req *pb.{{M}}ListRequest) (*pb.
 	if after := req.GetAfter(); after != "" {
 		c, err := apiquery.DecodeCursor(after)
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "{{M}}Service.List", err)
 		}
 		if len(c.Keys) != 1 {
 			return nil, status.Error(codes.InvalidArgument, "invalid page cursor")
@@ -406,13 +436,13 @@ func (s *{{lm}}Server) List(ctx context.Context, req *pb.{{M}}ListRequest) (*pb.
 	for _, f := range req.GetFilter() {
 		p, err := apiquery.ParseFilter({{desc}}.ColumnByName, apiquery.Filter{Column: f.GetColumn(), Op: f.GetOp(), Value: f.GetValue()})
 		if err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "{{M}}Service.List", err)
 		}
 		sel = sel.Where(p)
 	}
 	rows, err := sel.All(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "{{M}}Service.List", err)
 	}
 	resp := &pb.{{M}}ListResponse{}
 	if len(rows) > limit {
@@ -444,20 +474,20 @@ func (s *{{lm}}Server) Create(ctx context.Context, in *pb.{{M}}) (*pb.{{M}}, err
 		}
 		b.WriteString(r.Replace(`	rows, err := ins.Rows(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "{{M}}Service.Create", err)
 	}
 	for rows.Next() {
 		if err := rows.ScanModel(&m); err != nil {
 			_ = rows.Close()
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "{{M}}Service.Create", err)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "{{M}}Service.Create", err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "{{M}}Service.Create", err)
 	}
 	return {{lm}}ToPB(&m), nil
 }
@@ -505,12 +535,12 @@ func (s *{{lm}}Server) Update(ctx context.Context, in *pb.{{M}}) (*pb.{{M}}, err
 		}
 		b.WriteString(r.Replace(`	if len(sets) > 0 {
 		if _, err := momo.Update[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(id)).Set(sets...).Exec(ctx); err != nil {
-			return nil, statusOf(err)
+			return nil, statusOf(ctx, "{{M}}Service.Update", err)
 		}
 	}
 	out, err := momo.Select[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(id)).One(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "{{M}}Service.Update", err)
 	}
 	return {{lm}}ToPB(&out), nil
 }
@@ -522,10 +552,10 @@ func (s *{{lm}}Server) Update(ctx context.Context, in *pb.{{M}}) (*pb.{{M}}, err
 func (s *{{lm}}Server) Delete(ctx context.Context, req *pb.{{M}}DeleteRequest) (*pb.{{M}}DeleteResponse, error) {
 	res, err := momo.Delete[{{models}}.{{M}}](s.db).Where({{desc}}.{{PKI}}.Eq(req.Get{{PBPK}}())).Exec(ctx)
 	if err != nil {
-		return nil, statusOf(err)
+		return nil, statusOf(ctx, "{{M}}Service.Delete", err)
 	}
 	if res.RowsAffected == 0 {
-		return nil, statusOf(momo.ErrNotFound)
+		return nil, statusOf(ctx, "{{M}}Service.Delete", momo.ErrNotFound)
 	}
 	return &pb.{{M}}DeleteResponse{}, nil
 }
