@@ -35,8 +35,8 @@ import (
 // hooks and timestamps. Query buffers the whole result in memory and ignores
 // MaxRows, so bound the SQL with LIMIT or use QueryRows. An empty result is a
 // nil slice and a nil error.
-func Query[T any, PT Modeler[T]](ctx context.Context, q Querier, sql string, args ...any) ([]T, error) {
-	r, sc, err := openRaw[T, PT](ctx, q, sql, args)
+func Query[T any](ctx context.Context, q Querier, sql string, args ...any) ([]T, error) {
+	r, sc, err := openRaw[T](ctx, q, sql, args)
 	if err != nil {
 		return nil, err
 	}
@@ -77,10 +77,10 @@ func Query[T any, PT Modeler[T]](ctx context.Context, q Querier, sql string, arg
 //		}
 //		use(row.C1, row.C2)
 //	}
-func QueryRows[T any, PT Modeler[T]](ctx context.Context, q Querier, sql string, args ...any) iter.Seq2[T, error] {
+func QueryRows[T any](ctx context.Context, q Querier, sql string, args ...any) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var zero T
-		r, sc, err := openRaw[T, PT](ctx, q, sql, args)
+		r, sc, err := openRaw[T](ctx, q, sql, args)
 		if err != nil {
 			yield(zero, err)
 			return
@@ -115,8 +115,12 @@ func QueryRows[T any, PT Modeler[T]](ctx context.Context, q Querier, sql string,
 
 // openRaw runs sql and binds the result columns to T's fields. On an error
 // the rows are already closed.
-func openRaw[T any, PT Modeler[T]](ctx context.Context, q Querier, sql string, args []any) (Rows, *rawScan[T], error) {
+func openRaw[T any](ctx context.Context, q Querier, sql string, args []any) (Rows, *rawScan[T], error) {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
+	if err != nil {
+		return nil, nil, err
+	}
+	meta, err := metaFor[T]()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -124,7 +128,6 @@ func openRaw[T any, PT Modeler[T]](ctx context.Context, q Querier, sql string, a
 	if err != nil {
 		return nil, nil, err
 	}
-	meta := metaOf[T, PT]()
 	var names []string
 	if cn, ok := r.(ColumnNamer); ok {
 		if names, err = cn.Columns(); err != nil {
