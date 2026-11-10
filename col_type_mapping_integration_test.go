@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,13 @@ func roundTripAll[T any](eq func(got, want T) bool, wants ...T) liveCase {
 		ctx := context.Background()
 		tmTableSeq++
 		tbl := fmt.Sprintf("tm_%d", tmTableSeq)
+		if db.Dialect().Name == dialect.SQLite {
+			// SQLite stores NaN as NULL; TestTypeMappingNaN pins that edge.
+			wants = slices.DeleteFunc(slices.Clone(wants), func(w T) bool {
+				v := reflect.ValueOf(w)
+				return (v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64) && math.IsNaN(v.Float())
+			})
+		}
 		if _, err := momo.Exec(ctx, db, "CREATE TABLE "+tbl+" (id int PRIMARY KEY, v "+colType+")"); err != nil {
 			t.Fatalf("create %s: %v", colType, err)
 		}
@@ -143,21 +151,21 @@ func liveCases(t *testing.T) map[string]liveCase {
 }
 
 // TestTypeMapping round-trips edge values for every row of the documented
-// type-mapping table through a live PostgreSQL column of the documented type.
-// A row without a live case, or a case without a row, fails.
+// type-mapping table through a live column of the documented type, on
+// PostgreSQL and on SQLite (rows the document marks unsupported or n/a for
+// SQLite are skipped there). A row without a live case, or a case without a row, fails.
 func TestTypeMapping(t *testing.T) {
 	cases := liveCases(t)
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		if d != dialect.Postgres {
-			t.Skipf("no live round trip for %s: the SQLite driver is not part of this build", d)
-		}
 		ctx := context.Background()
-		// hstore is a database-wide extension that migrate's drift checks
-		// would report as unmanaged: keep it out of the shared database.
-		db = testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_typemap_"))
-		for _, ext := range []string{"vector", "hstore"} {
-			if _, err := momo.Exec(ctx, db, "CREATE EXTENSION IF NOT EXISTS "+ext+" SCHEMA public"); err != nil {
-				t.Fatalf("create extension %s: %v", ext, err)
+		if d == dialect.Postgres {
+			// hstore is a database-wide extension that migrate's drift checks
+			// would report as unmanaged: keep it out of the shared database.
+			db = testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_typemap_"))
+			for _, ext := range []string{"vector", "hstore"} {
+				if _, err := momo.Exec(ctx, db, "CREATE EXTENSION IF NOT EXISTS "+ext+" SCHEMA public"); err != nil {
+					t.Fatalf("create extension %s: %v", ext, err)
+				}
 			}
 		}
 		doc := parseDocRows(t)
@@ -173,7 +181,16 @@ func TestTypeMapping(t *testing.T) {
 				continue
 			}
 			// The column type comes from the document itself.
-			colType := strings.ReplaceAll(cells[0], "(N)", "(3)")
+			colType := cells[0]
+			if d == dialect.SQLite {
+				colType = cells[1]
+				if colType == "unsupported" || colType == "n/a" {
+					// The document says no SQLite column is generated for this
+					// row; TestTypeMappingDoc checks the generator agrees.
+					continue
+				}
+			}
+			colType = strings.ReplaceAll(colType, "(N)", "(3)")
 			t.Run(r.goType, func(t *testing.T) { c(t, db, colType) })
 		}
 		for k := range cases {
@@ -227,6 +244,29 @@ func TestTypeMappingNaN(t *testing.T) {
 	back, err := momo.Scalars[float64](ctx, db, "SELECT ?::float8", math.NaN())
 	if err != nil || len(back) != 1 || !math.IsNaN(back[0]) {
 		t.Fatalf("bound NaN = %v, %v", back, err)
+	}
+}
+
+// TestTypeMappingNaNSQLite pins the SQLite edge the document states: SQLite
+// has no NaN, so a bound NaN is stored as NULL (and +Inf is a legal REAL).
+func TestTypeMappingNaNSQLite(t *testing.T) {
+	db := testopen.SQLite(t)
+	ctx := context.Background()
+	if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_nan (id INTEGER PRIMARY KEY, v REAL)"); err != nil {
+		t.Fatal(err)
+	}
+	for i, v := range []float64{math.NaN(), math.Inf(1)} {
+		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_nan (id, v) VALUES (?, ?)", i, v); err != nil {
+			t.Fatalf("insert %v: %v", v, err)
+		}
+	}
+	isNull, err := momo.Scalars[int64](ctx, db, "SELECT v IS NULL FROM tm_nan ORDER BY id")
+	if err != nil || len(isNull) != 2 || isNull[0] != 1 || isNull[1] != 0 {
+		t.Fatalf("v IS NULL = %v, %v; want NaN stored as NULL and +Inf kept", isNull, err)
+	}
+	inf, err := momo.Scalars[float64](ctx, db, "SELECT v FROM tm_nan WHERE id = 1")
+	if err != nil || len(inf) != 1 || !math.IsInf(inf[0], 1) {
+		t.Fatalf("+Inf read back as %v, %v", inf, err)
 	}
 }
 
