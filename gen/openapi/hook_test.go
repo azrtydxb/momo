@@ -21,10 +21,10 @@ func TestOnErrorOption(t *testing.T) {
 	if without == nil {
 		t.Fatal(ds)
 	}
-	if n := strings.Count(string(with), "reportError(r.Context(), op, err)"); n != 1 {
+	if n := strings.Count(string(with), "reportError(ctx, op, err)"); n != 1 {
 		t.Errorf("the hook is called %d times in writeError, want once:\n%s", n, with)
 	}
-	if strings.Contains(string(without), "reportError") || strings.Contains(string(without), "r.Context(), op, err)") {
+	if strings.Contains(string(without), "reportError") || strings.Contains(string(without), "(ctx, op, err)") {
 		t.Errorf("handlers without on_error call a hook:\n%s", without)
 	}
 	for name, src := range map[string][]byte{"with": with, "without": without} {
