@@ -84,7 +84,17 @@ func TestFilteredANNIterativeScan(t *testing.T) {
 		// The HNSW index is then the only index path left.
 		"CREATE TABLE items (id bigint NOT NULL, grp text NOT NULL, emb vector(8) NOT NULL)",
 		"SELECT setseed(0.42)",
-		"INSERT INTO items SELECT g, CASE WHEN g % 100 = 0 THEN 'rare' ELSE 'common' END, ARRAY(SELECT random()::real FROM generate_series(1, 8))::vector FROM generate_series(1, 20000) AS g",
+		// 4% of the rows match the filter (800 of 20000). That is sized from two
+		// sides, because HNSW is approximate and the graph differs between builds
+		// (it flaked at 1%, 200 matches, returning 9 rows with the setting on):
+		// the plain scan examines ef_search = 40 candidates, so it finds about
+		// 1.6 matches and reaching 10 has a probability near 1e-6, so "off returns
+		// fewer than 10" holds on every build; the iterative scan keeps walking
+		// the graph until it has 10, and with 800 matches spread uniformly at
+		// random an unreachable or poorly connected region cannot hide all but 9
+		// of them. Both runs keep the default ef_search so the only difference
+		// between them is the iterative scan.
+		"INSERT INTO items SELECT g, CASE WHEN g % 25 = 0 THEN 'rare' ELSE 'common' END, ARRAY(SELECT random()::real FROM generate_series(1, 8))::vector FROM generate_series(1, 20000) AS g",
 		"CREATE INDEX items_emb ON items USING hnsw (emb vector_l2_ops)",
 		"ANALYZE items",
 	} {
