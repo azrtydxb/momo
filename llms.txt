@@ -1,0 +1,33 @@
+# momo
+
+> Go ORM with typed queries, explicit SQL and a self-contained migration engine.
+
+## Pages
+
+- [Home](latest/README.md)
+- [Getting started](latest/getting-started.md)
+- [Agent guide](latest/ai-guide.md)
+- [Agent usage and AGENTS.md snippet](latest/agents.md)
+- [Type mapping](latest/TYPE_MAPPING.md)
+- [Projections](latest/projections.md)
+- [Relations](latest/relations.md)
+- [Vector search](latest/vectors.md)
+- [Full-text search](latest/fulltext.md)
+- [MySQL and MariaDB](latest/mysql.md)
+- [Migrations](latest/migrations.md)
+- [Importing from other ORMs](latest/importers.md)
+- [Coming from GORM](latest/guides/gorm.md)
+- [Coming from Bun](latest/guides/bun.md)
+- [Coming from Ent](latest/guides/ent.md)
+- [Read replicas](latest/replicas.md)
+- [Testing applications](latest/testing.md)
+- [Observability hooks](latest/observability.md)
+- [Interceptors](latest/PRIVACY_RULES.md)
+- [momovet raw-SQL check](latest/momovet.md)
+- [Capabilities](latest/capabilities.md)
+- [Performance](latest/PERFORMANCE.md)
+- [Supported versions](latest/supported-versions.md)
+- [Upgrading](latest/upgrading.md)
+- [API reference](latest/reference.md)
+- [Architecture](latest/ARCHITECTURE.md)
+- [Contributing](latest/contributing.md)
