@@ -201,3 +201,89 @@ Decision (2026-11-07): replace the key. Scout's default provider now uses the cu
 - Leave the repository settings as they are
 
 Decision (2026-11-07): all three. Private vulnerability reporting and secret scanning with push protection are enabled; main requires lint, unit, race, the integration matrix, compile-fail, govulncheck, windows, macos and the PR title check, with no force push or deletion. fuzz-smoke and bench-smoke stay optional (fuzz-smoke has a known timeout flake). Admins are exempt so release-please PRs, which get no CI runs, can still merge.
+
+## apidiff-docs gate: required check on main?
+
+- Required on main once it has passed on a real PR (recommended)
+- Advisory only: runs and comments, not required
+- Decide later
+
+Decision (2026-11-09): required on main. The `apidiff-docs` job (sprint 6, story apidiff-docs-gate) is added to main's required status checks after it has passed on a real pull request (the sprint-6 → main PR). A PR changes the exported API only with a docs change or the line `Docs: no reader-visible change: <reason>`.
+
+## Commit gate cannot lint nested Go modules
+
+Question: the commit gate's golangci-lint runs from the root module and blocks
+any commit touching a file of a nested module (`bench/`, `examples/*`,
+`internal/integration`, the compat fixtures) with "main module does not contain
+package". How do we land such a change?
+
+Decision (2026-11-09): for the vecsearch merge, cherry-pick the story branch's
+own bench commits (already green on ci-agent, bench-module job included) onto
+sprint-6. CI lint and the bench-module job remain the check for nested modules.
+The gate gap is a procoder issue to raise; do not disable golangci-lint.
+
+Follow-up (2026-11-09): the vecop merge needs a two-line edit in
+`bench/vector/topk_integration_test.go` that no existing commit carries, so a
+cherry-pick is not available. Decision: fix the gate first. procoder's Go lint
+will run golangci-lint per module from each module's own go.mod; until that
+fix is released and installed, the vecop merge waits (parked locally on
+`integrate-vecop`, not pushed) and no other non-gated landing is used.
+
+## Land the procoder nested-module gate fix (PR azrtydxb/procoder#340)?
+
+The fix makes the gate lint and test each nested Go module from its own
+go.mod, which unblocks the parked vecop merge. It is green on procoder's Ubuntu
+test job; Windows and the gate job did not run. A fresh review is in progress.
+
+- Merge and release once the review is clean, then install the new procoder
+  here and land vecop.
+- Merge without a release; install from main for this session only.
+- Hold the PR until it runs on macOS and Windows too.
+
+Decision (2026-11-09): merge and release once the review is clean, then
+install the new procoder here and land vecop through the fixed gate. The first
+review found 3 Important issues (a package at a nested module's root still
+resolves to the root module in the test runner; stub tests lack Windows skips;
+a changelog entry against CONTRIBUTING), sent back for fixes before merge.
+
+## Install procoder 3.9.5 in this environment?
+
+procoder 3.9.5 is published (https://github.com/azrtydxb/procoder/releases/tag/v3.9.5,
+tag run green on Linux, macOS, Windows and the gate). It carries the
+nested-module gate fix (#340, #345). The installed plugin is 3.9.2. The parked
+vecop merge needs the fixed gate to commit `bench/vector/topk_integration_test.go`.
+
+- Update the plugin now with /procoder:update, then land vecop.
+- The user updates the plugin themselves; vecop waits until they say it is done.
+- Do not update yet; vecop stays parked.
+
+Decision (2026-11-09): update now. procoder was updated to 3.9.5 with
+/procoder:update, verified (version, doctor, hook probe, `check` clean on the
+staged bench edit) and reloaded; the vecop bench edit then committed through
+the gate (2867c19).
+
+## Release gate for momo
+
+Decision (2026-11-09): momo releases no longer wait on kuvryn-license or any
+other application. Once sprint 6 is merged to main and green, release-please
+PR #26 (0.4.0) is merged. Downstream apps handle their own upgrades using
+docs/upgrading.md; work stays on momo only. Replaces the earlier rule that
+releases wait for the kuvryn-license port.
+
+## Make apidiff-docs a required check on main?
+
+The apidiff-docs gate (story 20261108-apidiff-docs-gate) is proven on a pull
+request: draft PR #51 failed on an undocumented export (run 42668537688) and
+passed once the escape line was in the body (run 42668814473). Its last
+criterion is that `apidiff-docs` is a required status check on main. main's
+required checks today are lint, unit, race, integration, compile-fail,
+govulncheck, windows, macos and title; apidiff-docs is not among them.
+
+- I add `apidiff-docs` to main's required checks with `gh api` right after the
+  sprint-6 to main PR passes it.
+- The user changes branch protection themselves.
+- Leave it advisory (not required) for now; carry the criterion.
+
+Decision (2026-11-09): I add it. `apidiff-docs` is added to main's required
+status checks with `gh api` right after the sprint-6 to main PR passes it, and
+the story's last criterion is ticked with that evidence.

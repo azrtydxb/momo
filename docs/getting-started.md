@@ -10,12 +10,9 @@ end to end in CI.
 ## Requirements
 
 - Go 1.26 or newer.
-- PostgreSQL with the pgvector extension installed on the server. The
-  `momo migrate` command and the full vector support are PostgreSQL only.
-  SQLite (cgo driver, with vectors through sqlite-vec; the pure-Go driver has no
-  vectors) and MySQL 8.4, MySQL 9.7 and MariaDB 11.8 run queries and writes, and
-  have library migration dialects (`migrate/sqlite`, `migrate/mysql`) but no CLI
-  support (see [capabilities](capabilities.md)).
+- PostgreSQL with the pgvector extension installed on the server. The other
+  databases, and the dialects the `momo migrate` command runs, are listed in
+  the generated status of [capabilities](capabilities.md).
 - A role that may create extensions, or a superuser who runs
   `CREATE EXTENSION vector` once in the target database. The first generated
   migration creates the extension when a model has a vector column.

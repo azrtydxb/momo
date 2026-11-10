@@ -1,0 +1,64 @@
+# Every directory with Go files in the main module, with its architecture role.
+# TestKnownPackages fails on a directory missing here, so adding a package is a
+# deliberate decision: add a line with the role that fits it.
+#
+# Format: <role> <path>. A path ending in /... covers the directory and below.
+#
+# core              the root package; imports no module package outside the leaf set
+# leaf              a public package the core builds on; same import limits as the core
+# feature           a feature subpackage split out of the root (arrayop, fts, ...); may
+#                   import momo, the leaf set and internal/*, nothing else in the module
+# internal-leaf     under internal/, must never depend on momo (the arrow is one-way)
+# internal-fixture  under internal/, test and driver support that depends on momo by design
+# other             tools, drivers, generators, migrations, examples; unconstrained here
+#
+# Each feature move story adds its package as a "feature" line.
+
+core .
+leaf dialect
+leaf schema
+leaf types
+leaf vector
+feature agg
+feature arrayop
+feature timeop
+feature fts
+feature sqlfn
+feature jsonop
+feature obs
+feature advisory
+feature vecop
+feature vecsearch
+
+internal-leaf internal/chunk
+internal-leaf internal/golden
+internal-leaf internal/keyenc
+internal-leaf internal/redact
+internal-leaf internal/sqlscan
+internal-leaf internal/sqliteconf
+internal-leaf internal/sqlstub
+
+internal-fixture internal/compat/...
+internal-fixture internal/docscheck
+internal-fixture internal/exprtest
+internal-fixture internal/fakedriver
+internal-fixture internal/gendocs/...
+internal-fixture internal/obstest
+internal-fixture internal/relfixture/...
+internal-fixture internal/repocheck
+internal-fixture internal/sqlmask
+internal-fixture internal/sqlshared
+internal-fixture internal/suite
+internal-fixture internal/testdb/...
+internal-fixture internal/testmodels/...
+internal-fixture internal/vectorparity
+
+other cmd/...
+other driver/...
+other examples/...
+other gen/...
+other importer/...
+other migrate/...
+other momolog
+other momotest/...
+other momovet

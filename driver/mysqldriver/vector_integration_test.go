@@ -17,6 +17,7 @@ import (
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
+	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -99,7 +100,7 @@ func TestMariaDBVectorParity(t *testing.T) {
 
 	// Indexed path: the momo query, served from the VECTOR INDEX.
 	col := momo.NewVectorColumn[vector.Vector]("docs", "emb", vectorparity.Dim, 0)
-	sel := momo.Select[vecDoc](db).OrderBy(momo.CosineDistance(col, query).Asc()).Limit(vectorparity.TopK)
+	sel := momo.Select[vecDoc](db).OrderBy(vecop.Cosine(col, query).Asc()).Limit(vectorparity.TopK)
 	c, err := sel.SQL()
 	if err != nil {
 		t.Fatal(err)
@@ -121,13 +122,13 @@ func TestMariaDBVectorParity(t *testing.T) {
 	}
 
 	// Euclidean distance is available too; the query vector itself is nearest.
-	l2, err := momo.Select[vecDoc](db).OrderBy(momo.L2Distance(col, query).Asc()).Limit(1).All(ctx)
+	l2, err := momo.Select[vecDoc](db).OrderBy(vecop.L2(col, query).Asc()).Limit(1).All(ctx)
 	if err != nil || len(l2) != 1 || l2[0].ID != 1 {
 		t.Fatalf("L2 nearest = %v, %v, want id 1", l2, err)
 	}
 
 	// Inner product has no MariaDB function: refused, never emulated.
-	_, err = momo.Select[vecDoc](db).OrderBy(momo.InnerProductDistance(col, query).Asc()).Limit(1).All(ctx)
+	_, err = momo.Select[vecDoc](db).OrderBy(vecop.InnerProduct(col, query).Asc()).Limit(1).All(ctx)
 	if !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("inner product: err = %v, want ErrUnsupported", err)
 	}
@@ -232,7 +233,7 @@ func TestMySQLVectorCapability(t *testing.T) {
 			t.Fatalf("round trip: %v, %v", got, err)
 		}
 		col := momo.NewVectorColumn[vector.Vector]("docs", "emb", 3, 0)
-		_, err = momo.Select[vecDoc](db).OrderBy(momo.L2Distance(col, vector.Vector{1, 2, 3}).Asc()).Limit(1).All(ctx)
+		_, err = momo.Select[vecDoc](db).OrderBy(vecop.L2(col, vector.Vector{1, 2, 3}).Asc()).Limit(1).All(ctx)
 		if !errors.Is(err, momo.ErrUnsupported) {
 			t.Fatalf("distance query: err = %v, want momo.ErrUnsupported", err)
 		}

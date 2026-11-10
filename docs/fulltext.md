@@ -44,43 +44,47 @@ func (a *Article) MomoConfig(c *momo.Config) {
 
 ## Expressions
 
+The builders live in the package `github.com/azrtydxb/momo/fts`. They used to be
+functions of the root package; see [upgrading](upgrading.md) for
+the name table.
+
 The text search configuration (`english`, `simple`, ...) is a string. It is
 bound as a parameter and cast to regconfig, so it cannot carry SQL; an empty
 one fails the build with `ErrValidation`.
 
-| Builder                   | SQL                                            | Result type              |
-| ------------------------- | ---------------------------------------------- | ------------------------ |
-| `momo.TSMatch`            | `vec @@ query`                                 | `Predicate`              |
-| `momo.ToTSVector`         | `to_tsvector(config, text)`                    | `TSExpr[types.TSVector]` |
-| `momo.WebsearchToTSQuery` | `websearch_to_tsquery(config, text)`           | `TSExpr[types.TSQuery]`  |
-| `momo.PlainToTSQuery`     | `plainto_tsquery(config, text)`                | `TSExpr[types.TSQuery]`  |
-| `momo.PhraseToTSQuery`    | `phraseto_tsquery(config, text)`               | `TSExpr[types.TSQuery]`  |
-| `momo.ToTSQuery`          | `to_tsquery(config, text)`                     | `TSExpr[types.TSQuery]`  |
-| `momo.TSRank`             | `ts_rank(vec, query [, normalization])`        | `TSExpr[float64]`        |
-| `momo.TSRankCD`           | `ts_rank_cd(vec, query [, normalization])`     | `TSExpr[float64]`        |
-| `momo.TSHeadline`         | `ts_headline(config, text, query [, options])` | `TSExpr[string]`         |
+| Builder                | SQL                                            | Result type                |
+| ---------------------- | ---------------------------------------------- | -------------------------- |
+| `fts.Match`            | `vec @@ query`                                 | `Predicate`                |
+| `fts.ToVector`         | `to_tsvector(config, text)`                    | `fts.Expr[types.TSVector]` |
+| `fts.WebsearchToQuery` | `websearch_to_tsquery(config, text)`           | `fts.Expr[types.TSQuery]`  |
+| `fts.PlainToQuery`     | `plainto_tsquery(config, text)`                | `fts.Expr[types.TSQuery]`  |
+| `fts.PhraseToQuery`    | `phraseto_tsquery(config, text)`               | `fts.Expr[types.TSQuery]`  |
+| `fts.ToQuery`          | `to_tsquery(config, text)`                     | `fts.Expr[types.TSQuery]`  |
+| `fts.Rank`             | `ts_rank(vec, query [, normalization])`        | `fts.Expr[float64]`        |
+| `fts.RankCD`           | `ts_rank_cd(vec, query [, normalization])`     | `fts.Expr[float64]`        |
+| `fts.Headline`         | `ts_headline(config, text, query [, options])` | `fts.Expr[string]`         |
 
 The query text, the configuration and the headline options are always bound
 parameters. The normalization argument of the rank functions is the optional
-PostgreSQL flag mask (0 to 63) and renders as a literal. `WebsearchToTSQuery`
+PostgreSQL flag mask (0 to 63) and renders as a literal. `fts.WebsearchToQuery`
 accepts any user input without raising a syntax error, so it is the builder for
-a search box; `ToTSQuery` expects tsquery syntax and a malformed query is a
+a search box; `fts.ToQuery` expects tsquery syntax and a malformed query is a
 database error.
 
-A `TSExpr` has `As`, `Asc`, `Desc` and the comparison methods of any scalar
+An `fts.Expr` has `As`, `Asc`, `Desc` and the comparison methods of any scalar
 expression, so it works in Where, OrderBy and Columns:
 
 <!-- docscheck:fragment -->
 
 ```go
-q := momo.WebsearchToTSQuery("english", userInput)
-rank := momo.TSRankCD(articleSearch, q)
+q := fts.WebsearchToQuery("english", userInput)
+rank := fts.RankCD(articleSearch, q)
 
 hits, err := momo.Select[Hit](db).
 	From(momo.TableRef{Name: "kb_articles"}).
 	Columns(articleID, rank.As("rank"),
-		momo.TSHeadline("english", articleBody, q, "StartSel=<b>, StopSel=</b>, MaxFragments=2")).
-	Where(momo.TSMatch(articleSearch, q)).
+		fts.Headline("english", articleBody, q, "StartSel=<b>, StopSel=</b>, MaxFragments=2")).
+	Where(fts.Match(articleSearch, q)).
 	OrderBy(rank.Desc()).
 	Limit(20).
 	All(ctx)
@@ -88,7 +92,7 @@ hits, err := momo.Select[Hit](db).
 
 Here `articleSearch` is a `Column[types.TSVector]` and `articleBody` a
 `Column[string]`. Without a stored column, search a text column directly with
-`momo.ToTSVector` over `articleBody` as the first operand of `TSMatch` (an
+`fts.ToVector` over `articleBody` as the first operand of `fts.Match` (an
 expression index on the same expression keeps it fast).
 
 Every use of a call binds its own parameters (the configuration and the query
@@ -112,9 +116,9 @@ weighted rank from the distance and order ascending:
 <!-- docscheck:fragment -->
 
 ```go
-dist := momo.CosineDistance(articleEmb, queryEmbedding) // vector.Vector
-text := momo.TSRankCD(articleSearch, momo.WebsearchToTSQuery("english", userInput))
-score := momo.SubExpr[float64](dist, momo.Mul[float64](text, 0.5))
+dist := vecop.Cosine(articleEmb, queryEmbedding) // vector.Vector
+text := fts.RankCD(articleSearch, fts.WebsearchToQuery("english", userInput))
+score := sqlfn.SubExpr[float64](dist, sqlfn.Mul[float64](text, 0.5))
 
 hits, err := momo.Select[Hit](db).
 	From(momo.TableRef{Name: "kb_articles"}).
@@ -125,7 +129,7 @@ hits, err := momo.Select[Hit](db).
 ```
 
 This scores every row. To restrict the candidate set to text matches, add
-a Where on `TSMatch` over `articleSearch` and the same query, which lets the GIN
+a Where on `fts.Match` over `articleSearch` and the same query, which lets the GIN
 index prune the rows before the vector distance is computed. The
 `TestFullTextHybridRanking` integration test runs this pattern.
 
