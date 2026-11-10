@@ -188,7 +188,7 @@ func TestHybridSQLSoftDeleteAndSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(c.SQL, `t."deleted_at" IS NULL`); n != 2 {
+	if n := strings.Count(c.SQL, `"t"."deleted_at" IS NULL`); n != 2 {
 		t.Errorf("soft-delete filter appears %d times, want 2 (one per leg):\n%s", n, c.SQL)
 	}
 	if !strings.Contains(c.SQL, `FROM "kb"."soft_docs" t`) {
