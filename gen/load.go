@@ -3,9 +3,12 @@
 package gen
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"go/token"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,6 +62,13 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 	for _, p := range pkgs {
 		for _, e := range p.Errors {
 			d := errorDiagnostic(e)
+			// generate is about to rewrite files it generated, so a stale
+			// reference in one (a renamed or removed field) must not stop it.
+			// Other errors, such as a redeclaration against a hand-written
+			// name, are real and stay.
+			if staleReference(d.Msg) && isGeneratedFile(d.Pos.Filename, cfg.Dir) {
+				continue
+			}
 			key := d.String()
 			if seen[key] {
 				continue
@@ -115,6 +125,34 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 	g.Schema, sdiags = BuildSchema(g.Models, cfg)
 	diags = append(diags, sdiags...)
 	return g, diags, nil
+}
+
+// staleReference reports whether a type error says the code names something
+// that no longer exists.
+func staleReference(msg string) bool {
+	return strings.Contains(msg, "undefined") ||
+		strings.Contains(msg, "has no field or method") ||
+		strings.Contains(msg, "unknown field")
+}
+
+// isGeneratedFile reports whether the file starts with momo's generated
+// header. A relative name resolves against dir. Unreadable files are not
+// generated.
+func isGeneratedFile(name, dir string) bool {
+	if name == "" || name == "-" {
+		return false
+	}
+	if !filepath.IsAbs(name) && dir != "" {
+		name = filepath.Join(dir, name)
+	}
+	f, err := os.Open(name) // #nosec G304 -- the path comes from the compiler's own diagnostic for the user's package
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	line, _ := bufio.NewReader(f).ReadString('\n')
+	_, ok := ParseHeader(line)
+	return ok
 }
 
 func dirOf(file string) string {

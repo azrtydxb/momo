@@ -1,6 +1,6 @@
 # momo-12 Task 10: Generated-code size and compile cost
 
-Status: open
+Status: done
 Created: 2026-11-04
 Epic: momo-12-performance
 Sprint: 007-sprint-7-finish-every-open-backlog-story-auditing-each

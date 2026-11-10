@@ -59,6 +59,9 @@ func (d *Driver) ClassifyError(err error) error { return d.h.Classify("", err) }
 
 // Query runs a query on the pool.
 func (d *Driver) Query(ctx context.Context, q string, args []any) (momo.Rows, error) {
+	if err := checkArgs("select", args); err != nil {
+		return nil, err
+	}
 	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, d.h.Classify("select", err)
@@ -68,6 +71,9 @@ func (d *Driver) Query(ctx context.Context, q string, args []any) (momo.Rows, er
 
 // Exec runs a statement on the pool.
 func (d *Driver) Exec(ctx context.Context, q string, args []any) (int64, error) {
+	if err := checkArgs("exec", args); err != nil {
+		return 0, err
+	}
 	res, err := d.db.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, d.h.Classify("exec", err)
@@ -220,6 +226,9 @@ func (t *sqlTx) finished() {
 }
 
 func (t *sqlTx) Query(ctx context.Context, q string, args []any) (momo.Rows, error) {
+	if err := checkArgs("select", args); err != nil {
+		return nil, err
+	}
 	rows, err := t.tx.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, t.h.txErr("select", err)
@@ -228,6 +237,9 @@ func (t *sqlTx) Query(ctx context.Context, q string, args []any) (momo.Rows, err
 }
 
 func (t *sqlTx) Exec(ctx context.Context, q string, args []any) (int64, error) {
+	if err := checkArgs("exec", args); err != nil {
+		return 0, err
+	}
 	res, err := t.tx.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, t.h.txErr("exec", err)
