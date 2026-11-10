@@ -930,7 +930,14 @@ single-column indexes as tags, other indexes, unique constraints, checks and
 comments in the `MomoConfig` method, and every foreign key the generator can
 derive as a `belongs_to` field with its `on_delete` and `on_update` actions.
 `numeric` columns are Go strings (the `decimal-as-string` note); an
-`introspect.types` rule picks a decimal type instead.
+`introspect.types` rule picks a decimal type instead. `tsvector` columns become
+`types.TSVector` (`*types.TSVector` when nullable); an `introspect.types` rule
+still overrides that.
+
+`momo generate` leaves out type errors that come from files with momo's
+generated header, since it rewrites them. After you rename or remove a field,
+one `momo generate` run regenerates the stale file; an error in a hand-written
+file still stops it.
 
 A column type with no Go mapping is an error and nothing is written; add a rule
 to the `introspect` section of `momo.yaml`. Constraints the models cannot

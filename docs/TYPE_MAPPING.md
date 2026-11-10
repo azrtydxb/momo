@@ -4,8 +4,8 @@ This page lists which SQL column type Momo uses for each Go field type, what
 survives a round trip, and where the edges are. The tables are checked by
 tests: `TestTypeMappingDoc` fails when a row here disagrees with the generator's
 type map or a codec's `SQLType`, and `TestTypeMapping` creates a column of each
-documented PostgreSQL type on a live server and round-trips edge values through
-it.
+documented PostgreSQL type on a live server, and the generated SQLite type on a
+live SQLite database, and round-trips edge values through it.
 
 ## How a type is chosen
 
@@ -65,6 +65,7 @@ has no array columns, so the generator rejects them there.
 | `[]bool`                     | boolean[]                | unsupported | unsupported |
 | `[]float32`                  | real[]                   | unsupported | unsupported |
 | `[]float64`                  | double precision[]       | unsupported | unsupported |
+| `[]types.UUID`               | uuid[]                   | unsupported | unsupported |
 
 <!-- /generated:typemap -->
 
@@ -115,7 +116,9 @@ document because nothing generates one.
 
 ## Edge values and behavior
 
-Each statement below is asserted by a test against PostgreSQL.
+Each statement below is asserted by a test against PostgreSQL. The generated
+SQLite column of every row is also round-tripped on a live SQLite database,
+except `NaN`, which SQLite does not have (see Floats).
 
 - Integers: `math.MaxInt64` and `math.MinInt64` round-trip through `bigint`;
   `int` is 64-bit and maps to `bigint`. A value that does not fit the column
@@ -123,7 +126,10 @@ Each statement below is asserted by a test against PostgreSQL.
   silent truncation. `uint64` has no mapping and is rejected when bound if it
   exceeds `math.MaxInt64`.
 - Floats: `NaN`, `+Inf` and `-Inf` are legal `double precision` and `real`
-  values and round-trip. Compare with `math.IsNaN`, since `NaN != NaN`.
+  values and round-trip. Compare with `math.IsNaN`, since `NaN != NaN`. SQLite
+  has no `NaN`: binding a `float32` or `float64` `NaN` (or a pointer to one) is
+  `ErrValidation` and nothing is stored, rather than a silent `NULL`. `+Inf` and
+  `-Inf` are legal `REAL` values.
 - Strings: any valid UTF-8 round-trips, including quotes and backslashes (they
   are bound, never interpolated). PostgreSQL rejects U+0000 in `text`. A string
   longer than `size` is a database error on `character varying(N)`.
@@ -158,14 +164,18 @@ Each statement below is asserted by a test against PostgreSQL.
 - `[]string` on `text[]`: elements containing commas, quotes, the text `NULL`,
   or empty strings round-trip; an empty slice reads back empty.
 - Slices as arrays: only `[]string`, `[]int16`, `[]int32`, `[]int64`, `[]bool`,
-  `[]float32` and `[]float64` map. `[]int` is not mapped, because its width is
+  `[]float32`, `[]float64` and `[]types.UUID` (`uuid[]`) map. A `[]uuid.UUID` from
+  github.com/google/uuid does not: the scalar `uuid.UUID` has no mapping either,
+  so use `types.UUID` or a `type:` override. `[]int` is not mapped, because its width is
   platform dependent; use `[]int64`. `[]string` with a `size` tag becomes
   `character varying(N)[]`. A nil slice binds as NULL, so inserting it into a
   `NOT NULL` array column fails with a not-null violation; pass an empty
   non-nil slice (it stores `{}`), or give the column a `default '{}'` and omit
   it. The array predicates bind a nil value list as an empty array, never NULL.
 - Slices as arrays: only `[]string`, `[]int16`, `[]int32`, `[]int64`, `[]bool`,
-  `[]float32` and `[]float64` map. `[]int` is not mapped, because its width is
+  `[]float32`, `[]float64` and `[]types.UUID` (`uuid[]`) map. A `[]uuid.UUID` from
+  github.com/google/uuid does not: the scalar `uuid.UUID` has no mapping either,
+  so use `types.UUID` or a `type:` override. `[]int` is not mapped, because its width is
   platform dependent; use `[]int64`. `[]string` with a `size` tag becomes
   `character varying(N)[]`. A nil slice binds as NULL, so inserting it into a
   `NOT NULL` array column fails with a not-null violation; pass an empty
