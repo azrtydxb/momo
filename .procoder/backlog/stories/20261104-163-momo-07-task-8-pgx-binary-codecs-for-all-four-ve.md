@@ -14,7 +14,7 @@ Implements plan momo-07-vectors Task 8: pgx binary codecs for all four vector ty
 
 - [x] `TestVectorBinaryCodec` exists as written in the plan, failed before the implementation, and passes now
 - [x] `BenchmarkVectorEncoding` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-50] `TestVectorBinaryCodec` round-trips all four types in binary mode and matches text-mode results; `BenchmarkVectorEncoding` results recorded under bench/results; fails if binary and text decode differently.
+- [x] [S-50] `TestVectorBinaryCodec` round-trips all four types in binary mode and matches text-mode results; `BenchmarkVectorEncoding` results recorded under bench/results; fails if binary and text decode differently.
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
@@ -24,5 +24,6 @@ Implements plan momo-07-vectors Task 8: pgx binary codecs for all four vector ty
 - Mutation: writing sparsevec indices 1-based (`uint32(i)+1`) failed the wire test, the binary round trips, COPY, the SQL comparison and the fuzz seed; reverted.
 - Fuzz: `FuzzVectorBinaryDecode` 20s, 850k execs, no crash; added to Makefile FUZZ_TARGETS.
 - Benchmark (-benchtime=2s, ns/op text vs binary): vector-1536 626M/533M, halfvec-3072 924M/847M, sparsevec-1000 558M/404M, bit-1024 314M/392M (per 1000 inserts). The plan's benchmark uses the default QueryExecModeExec, which always sends text params (pgx Build with no statement description), so "binary" there measures codec-planned text, not binary wire. Real binary needs WithExecMode(DescribeExec/CacheStatement). Results are not written under bench/results: the plan assigns that to momo-12.
+- Sprint 7: bench/results now exists (momo-12). `bench/scripts/run.sh` (full and smoke, not baseline) runs `BenchmarkVectorEncoding` of driver/pgxdriver when BENCH_PG_URL is set and writes it to `<run>/vector-encoding.txt` in the results directory; `TestBenchResultsLayout` requires that file when BENCH_PG_URL is set, and docs/PERFORMANCE.md plus bench/results/README.txt describe it. As docs/PERFORMANCE.md says, run directories are produced by `make bench` on a dedicated machine and are not committed, so recording means the run writes them there. CI: ci-agent run 42784116091, headSha 2eda85d2041b0d0f6ec5200f96facc8aeddc8f96, conclusion success; the bench-module job runs `TestBenchResultsLayout`. Whether that job sets BENCH_PG_URL, and so produces vector-encoding.txt, was not inspected.
 - Gate: `procoder check` 0 blocking; `make staticcheck` clean; `go build ./...` and `go vet ./...` pass. Commit 3e58cbb.
 

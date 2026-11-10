@@ -54,7 +54,9 @@ type insertCore struct {
 	// sel and selCols are the row source and target columns of FromSelect.
 	sel     Subquery
 	selCols []string
-	err     error
+	// with holds the WITH clause.
+	with []cte
+	err  error
 }
 
 // InsertQuery builds and runs an INSERT into T's table.
@@ -92,6 +94,26 @@ type InsertQuery[T any] struct {
 // models, or Values to write explicit columns.
 func Insert[T any, PT Modeler[T]](q Querier) InsertQuery[T] {
 	return InsertQuery[T]{q: q, meta: metaOf[T, PT]()}
+}
+
+// With prefixes the INSERT with a common table expression that FromSelect's
+// select can read: WITH x AS (...) INSERT INTO t (cols) SELECT ... FROM x.
+// cols optionally names the CTE's columns. The body may be a SelectQuery, an
+// ExprSelect, a Union or (PostgreSQL only) another INSERT, UPDATE or DELETE
+// with RETURNING; a data-modifying body on another dialect fails with
+// ErrUnsupported. MySQL and MariaDB do not accept WITH before INSERT and fail
+// with ErrUnsupported; put the WITH inside the select there. A WITH clause
+// cannot be combined with a bulk insert that is split into chunks at the
+// parameter limit (ErrValidation), since it would run once per chunk.
+func (q InsertQuery[T]) With(name string, body Subquery, cols ...string) InsertQuery[T] {
+	q.i.with = addCTE(q.i.with, name, body, cols, false)
+	return q
+}
+
+// WithRecursive is With for a recursive CTE.
+func (q InsertQuery[T]) WithRecursive(name string, body Subquery, cols ...string) InsertQuery[T] {
+	q.i.with = addCTE(q.i.with, name, body, cols, true)
+	return q
 }
 
 func (q InsertQuery[T]) fail(err error) InsertQuery[T] {

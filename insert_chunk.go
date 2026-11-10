@@ -217,6 +217,10 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	if len(r.models) <= per {
 		return []InsertQuery[T]{r}, nil
 	}
+	if len(r.i.with) > 0 {
+		// A WITH clause would run once per chunk, repeating a data-modifying CTE.
+		return nil, r.verr("", "With: the insert needs %d statements at the %s parameter limit and a WITH clause would repeat in each; insert fewer rows", (len(r.models)+per-1)/per, d.Name)
+	}
 	var out []InsertQuery[T]
 	for lo := 0; lo < len(r.models); lo += per {
 		c := r
