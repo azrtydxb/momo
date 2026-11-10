@@ -75,14 +75,15 @@ func (p Plugin) Generate(g *gen.Graph, w *gen.Writer) error {
 // toYAML renders the JSON document as YAML under the generated-file header.
 // Map keys are written in sorted order, so the output is deterministic.
 func toYAML(doc []byte, notes []gen.Diagnostic) ([]byte, error) {
-	var v any
+	var v yaml.Node
 	if err := yaml.Unmarshal(doc, &v); err != nil {
 		return nil, fmt.Errorf("openapi: document is not valid: %w", err)
 	}
+	normalize(&v)
 	var enc bytes.Buffer
 	e := yaml.NewEncoder(&enc)
 	e.SetIndent(2)
-	if err := e.Encode(v); err != nil {
+	if err := e.Encode(&v); err != nil {
 		return nil, fmt.Errorf("openapi: encode YAML: %w", err)
 	}
 	if err := e.Close(); err != nil {
@@ -96,4 +97,25 @@ func toYAML(doc []byte, notes []gen.Diagnostic) ([]byte, error) {
 	}
 	b.Write(body)
 	return []byte(b.String()), nil
+}
+
+// normalize turns the node tree parsed from JSON into block-style YAML. The
+// style of every string is plain, or double-quoted when plain would need
+// quotes: the YAML writer would pick single quotes there, and the formatters of
+// the repository want double quotes.
+func normalize(n *yaml.Node) {
+	switch n.Kind {
+	case yaml.MappingNode, yaml.SequenceNode:
+		n.Style &^= yaml.FlowStyle
+	case yaml.ScalarNode:
+		n.Style = 0
+		if n.Tag == "!!str" {
+			if out, err := yaml.Marshal(n.Value); err == nil && bytes.HasPrefix(out, []byte("'")) {
+				n.Style = yaml.DoubleQuotedStyle
+			}
+		}
+	}
+	for _, c := range n.Content {
+		normalize(c)
+	}
 }
