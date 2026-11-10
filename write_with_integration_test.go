@@ -100,7 +100,7 @@ func TestDMLWithIntegration(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		createWithSrc(t, db)
 		ctx := context.Background()
-		body := momo.SelectExprs(momo.Value(int64(1)), momo.Value("from-cte"))
+		body := momo.SelectExprs(delSrcID, momo.Value("from-cte")).From(delSrc).Where(delSrcID.Eq(1))
 		res, err := momo.Update[delNote](db).
 			With("s", body, "id", "title").
 			Set(delNoteTitle.SetExpr(momo.ColumnOf[string]("s", "title"))).
@@ -113,7 +113,7 @@ func TestDMLWithIntegration(t *testing.T) {
 		if got := noteTitle(t, db, 1); got != "from-cte" {
 			t.Fatalf("note 1 title = %q, want from-cte", got)
 		}
-		ids := momo.SelectExprs(momo.Value(int64(2)))
+		ids := momo.SelectExprs(delSrcID).From(delSrc).Where(delSrcID.Eq(2))
 		res, err = momo.Delete[delNote](db).
 			With("gone", ids, "id").
 			Where(delNoteID.InQuery(momo.SelectExprs(momo.ColumnOf[int64]("gone", "id")).From(momo.CTE("gone")))).
@@ -146,12 +146,17 @@ func TestDMLAsCTEIntegration(t *testing.T) {
 			t.Fatalf("inserted row title = %q", title)
 		}
 
-		// An UPDATE CTE read by a DELETE ... USING that removes what it changed.
+		// An UPDATE CTE read by a DELETE ... USING that removes another row. (A
+		// row changed by the CTE itself would not be deleted: PostgreSQL gives
+		// the UPDATE precedence within one statement.)
 		upd := momo.Update[delNote](db).Set(delNoteTitle.Set("u1")).Where(delNoteID.Eq(1)).Returning(delNoteID)
 		res, err := momo.Delete[delNote](db).With("u", upd).Using(momo.CTE("u")).
-			Where(delNoteID.EqExpr(momo.ColumnOf[int64]("u", "id"))).Exec(ctx)
+			Where(delNoteID.Eq(2)).Exec(ctx)
 		if err != nil || res.RowsAffected != 1 {
 			t.Fatalf("delete over update cte: %+v %v", res, err)
+		}
+		if title := noteTitle(t, db, 1); title != "u1" {
+			t.Fatalf("note 1 title = %q, want u1 (the UPDATE CTE ran)", title)
 		}
 	})
 }

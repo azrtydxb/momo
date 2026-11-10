@@ -1120,7 +1120,7 @@ Joined and CTE-prefixed writes:
   a bulk insert that would split into chunks at the parameter limit is `ErrValidation`.
 - `InsertQuery`, `UpdateQuery` and `DeleteQuery` with `Returning` are `Subquery` values, usable as
   the body of `With` on any statement: a select with `.With("x", ins).From(momo.CTE("x"))` renders
-  `WITH x AS (INSERT ... RETURNING ...) SELECT ... FROM x`. Only PostgreSQL has data-modifying
+  `WITH x AS (INSERT ... RETURNING ...) SELECT ... FROM x`. PostgreSQL has data-modifying
   CTEs; SQLite and MySQL return `ErrUnsupported`. A DML body renders with the handle's interceptors
   (with a background context) but runs no model hooks and no `beforeWrite` check; the outer
   statement's `Exec` or `All` is what executes it.

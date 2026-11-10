@@ -136,7 +136,7 @@ func TestDMLAsCTEBody(t *testing.T) {
 	pg := withDB(dialect.Postgres)
 	c, err := momo.Delete[delNote](pg).With("x", ins(pg)).Using(momo.CTE("x")).
 		Where(delNoteID.EqExpr(momo.ColumnOf[int64]("x", "id")), delNoteTitle.Ne("z")).SQL()
-	want := `WITH "x" AS (INSERT INTO "del_notes" ("id", "title") VALUES ($1, $2) RETURNING "id") DELETE FROM "del_notes" USING "x" WHERE "del_notes"."id" = "x"."id" AND "del_notes"."title" <> $3`
+	want := `WITH "x" AS (INSERT INTO "del_notes" ("id", "title") VALUES ($1, $2) RETURNING "id") DELETE FROM "del_notes" USING "x" WHERE ("del_notes"."id" = "x"."id") AND ("del_notes"."title" <> $3)`
 	if err != nil || c.SQL != want || len(c.Args) != 3 {
 		t.Errorf("insert body: got %q %v %v, want %q", c.SQL, c.Args, err, want)
 	}
