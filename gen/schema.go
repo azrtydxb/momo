@@ -69,6 +69,13 @@ func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 		return x.GoName < y.GoName
 	})
 	for _, m := range sorted {
+		if m.IsView {
+			// A view model reads a view its companion declares. It is not a
+			// table: it gets no CREATE TABLE and no table key, so no foreign
+			// key refers to it and its relations add no constraint.
+			b.addModel(m)
+			continue
+		}
 		if prev, dup := b.tableBy[tableKey(m)]; dup {
 			b.diag(m.Pos, fmt.Sprintf("table %q is produced by models %s and %s", m.Table, prev.GoName, m.GoName))
 			continue
@@ -161,6 +168,12 @@ func (b *schemaBuilder) addModel(m *Model) {
 	b.names = map[string]string{}
 	b.applyIndexTags(m, &t)
 	b.applyCompanion(m, &t)
+	if m.IsView {
+		// The companion's views, functions and policies are merged above; the
+		// table built for diagnostics is not part of the schema.
+		b.dialectCheck()
+		return
+	}
 	b.index[m] = len(b.s.Tables)
 	b.s.Tables = append(b.s.Tables, t)
 	b.dialectCheck()

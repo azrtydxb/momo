@@ -80,7 +80,11 @@ only for models that have a hook method.
 ### View models
 
 A model that embeds `momo.View` (new) is marked as a view. Its writes fail with
-`ErrValidation`. Existing models are unaffected unless you add the marker.
+`ErrValidation`. Existing models are unaffected unless you add the marker. The
+generated schema (and so `momo migrate diff`) holds no table for a view model;
+a view model that used to be a table model with a view of the same name no
+longer produces a `CREATE TABLE`. `momo.RefreshMaterializedView` refreshes a
+materialized view (PostgreSQL only).
 
 ## Upgrading to 0.4.0
 
