@@ -9,6 +9,8 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // UpdateQuery builds an UPDATE of one model table. It is a value: every
@@ -40,6 +42,9 @@ type UpdateQuery[T any] struct {
 	// extra holds the predicates interceptors added; plan appends them after
 	// the unfiltered-mutation guard, so they never count as a caller filter.
 	extra []Predicate
+	// with holds the WITH clause; from the FROM source (UPDATE ... FROM).
+	with []cte
+	from TableSource
 }
 
 // Update starts an UPDATE of T's table.
@@ -57,6 +62,35 @@ func (u UpdateQuery[T]) Set(assigns ...Assignment) UpdateQuery[T] {
 	u.assigns = append(slices.Clip(u.assigns), assigns...)
 	return u
 }
+
+// With prefixes the statement with a common table expression. cols optionally
+// names its columns. The body may be a SelectQuery, an ExprSelect, a Union or
+// (on PostgreSQL only) an INSERT, UPDATE or DELETE with RETURNING; a
+// data-modifying body on another dialect fails with ErrUnsupported. Reference
+// the CTE with CTE and ColumnOf, for instance as the From source.
+func (u UpdateQuery[T]) With(name string, q Subquery, cols ...string) UpdateQuery[T] {
+	u.with = addCTE(u.with, name, q, cols, false)
+	return u
+}
+
+// WithRecursive is With for a recursive CTE.
+func (u UpdateQuery[T]) WithRecursive(name string, q Subquery, cols ...string) UpdateQuery[T] {
+	u.with = addCTE(u.with, name, q, cols, true)
+	return u
+}
+
+// From adds a second source to the statement, rendering UPDATE t SET ... FROM
+// src WHERE ...: the SET expressions and the WHERE may reference src's
+// columns (ColumnOf on a CTE or FromSubquery alias, or a model's columns).
+// src is a table, aliased table, CTE or FromSubquery, as in a join. Join src
+// to the target in Where. Calling From again replaces the source.
+//
+// PostgreSQL and SQLite (3.33 or later) render UPDATE ... FROM. MySQL and
+// MariaDB render the multi-table form UPDATE t, src SET t.col = ... WHERE ...,
+// qualifying the assigned columns. Soft-deleted rows of src are not filtered:
+// add that predicate to Where. Interceptors apply to the target table only,
+// not to src.
+func (u UpdateQuery[T]) From(src TableSource) UpdateQuery[T] { u.from = src; return u }
 
 // Where adds predicates combined with AND.
 func (u UpdateQuery[T]) Where(ps ...Predicate) UpdateQuery[T] {
@@ -241,47 +275,98 @@ func (u UpdateQuery[T]) compileSQL() (Compiled, error) {
 	if u.bulk != nil {
 		return u.bulkSQL()
 	}
+	return compile(u.q.Dialect(), u.render)
+}
+
+func (UpdateQuery[T]) isDML() {}
+
+// isSubquery lets an UPDATE be the body of a WITH clause (PostgreSQL only).
+func (UpdateQuery[T]) isSubquery() {}
+
+// AppendSQL renders the statement in parentheses as a WITH clause body. It
+// runs the handle's interceptors with a background context, as SQL does, but
+// not the beforeWrite checks of Exec. Only PostgreSQL accepts the result.
+func (u UpdateQuery[T]) AppendSQL(b *Builder) {
+	if u.q == nil {
+		b.SetErr(noQuerier("update", u.meta.Table))
+		return
+	}
+	if u.bulk != nil {
+		b.unsupported("BulkUpdate as a WITH clause body")
+		return
+	}
+	u, err := u.intercepted(context.Background())
+	if err != nil {
+		b.SetErr(err)
+		return
+	}
+	b.writeByte('(')
+	u.render(b)
+	b.writeByte(')')
+}
+
+// render writes the UPDATE statement; interceptors already ran.
+func (u UpdateQuery[T]) render(b *Builder) {
 	sets, where, err := u.plan()
 	if err != nil {
-		return Compiled{}, err
+		b.SetErr(err)
+		return
 	}
 	target := TableRef{Name: u.meta.Table, Schema: u.meta.Schema}
-	return compile(u.q.Dialect(), func(b *Builder) {
-		// The target table is the statement's scope, so a correlated
-		// subquery in SET or WHERE may reference it.
-		b.withScope([]string{target.Qualifier()}, func() {
-			b.WriteString("UPDATE ")
-			target.appendFrom(b)
-			b.WriteString(" SET ")
-			for i, a := range sets {
-				if i > 0 {
-					b.WriteString(", ")
-				}
-				u.appendAssignment(b, a)
+	names := append(cteNames(u.with), target.Qualifier())
+	if q, ok := u.from.(interface{ Qualifier() string }); ok {
+		names = append(names, q.Qualifier())
+	}
+	// MySQL has no UPDATE ... FROM: the multi-table form lists the source
+	// after the target and needs the assigned columns qualified.
+	multi := u.from != nil && b.d.Name == dialect.MySQL
+	qual := ""
+	if multi {
+		qual = target.Qualifier()
+	}
+	// The target table and FROM source are the statement's scope, so a
+	// correlated subquery in SET or WHERE may reference them.
+	b.withScope(names, func() {
+		writeWithClause(b, u.with)
+		b.WriteString("UPDATE ")
+		target.appendFrom(b)
+		if multi {
+			b.WriteString(", ")
+			u.from.appendFrom(b)
+		}
+		b.WriteString(" SET ")
+		for i, a := range sets {
+			if i > 0 {
+				b.WriteString(", ")
 			}
-			if u.versioned() {
-				vc := u.meta.Columns[u.meta.Version].Name
-				if len(sets) > 0 {
-					b.WriteString(", ")
-				}
-				b.Ident(vc)
-				b.WriteString(" = ")
-				b.QualifiedIdent(target.Qualifier(), vc)
-				b.WriteString(" + 1")
+			u.appendAssignment(b, a, qual)
+		}
+		if u.versioned() {
+			vc := u.meta.Columns[u.meta.Version].Name
+			if len(sets) > 0 {
+				b.WriteString(", ")
 			}
-			if len(where) > 0 {
-				b.WriteString(" WHERE ")
-				appendAnd(b, where)
-			}
-		})
-		renderReturning(b, u.meta, u.returning, func(col string) error {
-			return u.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, u.meta.Table))
-		})
+			b.QualifiedIdent(qual, vc)
+			b.WriteString(" = ")
+			b.QualifiedIdent(target.Qualifier(), vc)
+			b.WriteString(" + 1")
+		}
+		if u.from != nil && !multi {
+			b.WriteString(" FROM ")
+			u.from.appendFrom(b)
+		}
+		if len(where) > 0 {
+			b.WriteString(" WHERE ")
+			appendAnd(b, where)
+		}
+	})
+	renderReturning(b, u.meta, u.returning, func(col string) error {
+		return u.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, u.meta.Table))
 	})
 }
 
-func (u UpdateQuery[T]) appendAssignment(b *Builder, a Assignment) {
-	b.Ident(a.col)
+func (u UpdateQuery[T]) appendAssignment(b *Builder, a Assignment, qual string) {
+	b.QualifiedIdent(qual, a.col)
 	b.WriteString(" = ")
 	switch a.kind {
 	case setValue:

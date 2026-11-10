@@ -28,7 +28,33 @@ func (q InsertQuery[T]) render(b *Builder) {
 		b.SetErr(err)
 		return
 	}
-	b.withScope([]string{q.meta.Table}, func() { q.renderStatement(b) })
+	if len(q.i.with) > 0 && b.d.Name == dialect.MySQL {
+		// MySQL and MariaDB accept WITH only before SELECT, UPDATE and DELETE.
+		b.unsupported("WITH before INSERT (put the WITH inside FromSelect's select)")
+		return
+	}
+	b.withScope(append(cteNames(q.i.with), q.meta.Table), func() {
+		writeWithClause(b, q.i.with)
+		q.renderStatement(b)
+	})
+}
+
+func (InsertQuery[T]) isDML() {}
+
+// isSubquery lets an INSERT be the body of a WITH clause (PostgreSQL only).
+func (InsertQuery[T]) isSubquery() {}
+
+// AppendSQL renders the statement in parentheses as a WITH clause body, as
+// SQL would, without running interceptors or the BeforeInsert hook. Only
+// PostgreSQL accepts the result.
+func (q InsertQuery[T]) AppendSQL(b *Builder) {
+	if q.q == nil {
+		b.SetErr(noQuerier("insert", q.meta.Table))
+		return
+	}
+	b.writeByte('(')
+	q.render(b)
+	b.writeByte(')')
 }
 
 // insertMode is the row source of an INSERT, resolved once from the builder
