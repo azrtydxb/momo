@@ -167,7 +167,7 @@ type hybridSoftDoc struct {
 
 var hybridSoftMeta = momo.Meta[hybridSoftDoc]{
 	Table:      "soft_docs",
-	Schema:     "kb",
+	Schema:     "hybrid_kb",
 	Columns:    []momo.ColumnMeta{{Name: "id"}, {Name: "body"}, {Name: "emb"}, {Name: "deleted_at"}},
 	Identity:   -1,
 	Version:    -1,
@@ -203,7 +203,7 @@ func TestHybridSQLSoftDeleteAndSchema(t *testing.T) {
 	if !strings.Contains(c.SQL, `WHERE t."emb" IS NOT NULL AND "t"."deleted_at" IS NULL`) {
 		t.Errorf("vector leg lacks the NULL and soft-delete filters:\n%s", c.SQL)
 	}
-	if !strings.Contains(c.SQL, `FROM "kb"."soft_docs" t`) {
+	if !strings.Contains(c.SQL, `FROM "hybrid_kb"."soft_docs" t`) {
 		t.Errorf("table lost its schema:\n%s", c.SQL)
 	}
 }
