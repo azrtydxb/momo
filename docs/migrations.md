@@ -1073,7 +1073,11 @@ database:
   on its schema: `GRANT CREATE ON SCHEMA app TO app_role`.
 - With `CREATE` on the schema but not on the database, `baseline` works for a
   snapshot without table text (`TestBaselineAsAppRole`) and fails with
-  `ErrCanonicalizePrivilege` otherwise (section 7).
+  `ErrCanonicalizePrivilege` otherwise (section 7). `drift` fails with it when
+  the snapshot declares a view, a trigger `WHEN` or a policy expression, and
+  runs without it for table text only, listing the tables in
+  `CanonicalizeSkipped` (`TestDriftBodiesNeedCreateOnDatabase`,
+  `TestDriftTablesOnlyRunsAsApplicationRole`).
 
 ### Extensions managed outside momo
 
