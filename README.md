@@ -9,7 +9,7 @@ distance expressions, and search settings are part of the core API. Schema
 migrations are built in as well: `momo migrate diff` compares your structs with
 the last snapshot and writes the SQL.
 
-Status: v0.3.0, pre-v1, with no compatibility promise between releases. This <!-- x-release-please-version -->
+Status: v0.4.0, pre-v1, with no compatibility promise between releases. This <!-- x-release-please-version -->
 release is tested against PostgreSQL with pgvector. The databases below are
 generated from the driver packages; see [capabilities](docs/capabilities.md)
 for what each one supports.
@@ -35,8 +35,8 @@ Add the library to your module and install the CLI:
 <!-- x-release-please-start-version -->
 
 ```sh
-go get github.com/azrtydxb/momo@v0.3.0
-go install github.com/azrtydxb/momo/cmd/momo@v0.3.0
+go get github.com/azrtydxb/momo@v0.4.0
+go install github.com/azrtydxb/momo/cmd/momo@v0.4.0
 ```
 
 <!-- x-release-please-end -->
@@ -202,7 +202,7 @@ momo migrate apply
 another TLS mode against any database you do not reach over a trusted local
 connection.
 
-Momo v0.3.0 writes forward migrations only. There is no rollback command, so <!-- x-release-please-version -->
+Momo v0.4.0 writes forward migrations only. There is no rollback command, so <!-- x-release-please-version -->
 undo a change with a new migration.
 
 Run `momo migrate help` for the other commands: `plan`, `status`, `validate`,

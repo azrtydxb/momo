@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0](https://github.com/azrtydxb/momo/compare/v0.3.0...v0.4.0) (2026-11-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* feature APIs moved out of the root momo package into subpackages, and advisory locks are now free functions taking *momo.Tx. docs/upgrading.md lists every moved identifier with its replacement and a rewrite recipe.
+* **gen:** generated files must be regenerated once with momo generate after upgrading; generate --check reports the header change until then. The exported constant gen.Version is removed.
+
+### Features
+
+* sprint 6 split the root package into subpackages ([#52](https://github.com/azrtydxb/momo/issues/52)) ([707ea63](https://github.com/azrtydxb/momo/commit/707ea63a387d2346555c0ec9d1b52b9ffd753f08))
+
+
+### Bug Fixes
+
+* **gen:** drop the momo version from generated headers ([#24](https://github.com/azrtydxb/momo/issues/24)) ([654ddad](https://github.com/azrtydxb/momo/commit/654ddadd4612c10ac222d20f50272a3f40af7540)), closes [#23](https://github.com/azrtydxb/momo/issues/23)
+
 ## 0.3.0 (2026-11-07)
 
 _Momo now carries a real PostgreSQL application end to end: kuvryn-license runs fully on it, its queries all on the typed API. Supported backend: PostgreSQL with pgvector (pgx driver). [Changes since 0.2.0](https://github.com/azrtydxb/momo/compare/v0.2.0...v0.3.0)._
