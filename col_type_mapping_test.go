@@ -65,6 +65,7 @@ var mappingRows = []mappingRow{
 	{goType: "[]bool", pg: "boolean[]", sqlite: "unsupported", src: srcGenerator, mapType: "[]bool"},
 	{goType: "[]float32", pg: "real[]", sqlite: "unsupported", src: srcGenerator, mapType: "[]float32"},
 	{goType: "[]float64", pg: "double precision[]", sqlite: "unsupported", src: srcGenerator, mapType: "[]float64"},
+	{goType: "[]types.UUID", pg: "uuid[]", sqlite: "unsupported", src: srcGenerator, mapType: "[]types.UUID"},
 	{goType: "vector.Vector (no dim)", pg: "vector", sqlite: "unsupported", src: srcGenerator, mapType: "vector.Vector"},
 	{goType: "vector.HalfVector (no dim)", pg: "halfvec", sqlite: "unsupported", src: srcGenerator, mapType: "vector.HalfVector"},
 	{goType: "types.TimeOfDay", pg: "time", sqlite: "TEXT", src: srcCodec, codecType: types.TimeOfDay{}.SQLType},
