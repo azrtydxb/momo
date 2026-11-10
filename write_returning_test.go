@@ -64,3 +64,17 @@ func TestReturningValidation(t *testing.T) {
 		t.Fatalf("Rows on versioned Model update err = %v", err)
 	}
 }
+
+func TestWriteOneUnsupportedOnMySQL(t *testing.T) {
+	my := momo.New(fakedriver.New(dialect.MySQL))
+	ctx := context.Background()
+	if _, err := momo.Insert[suite.Document](my).Values(suite.DocTenantID.Set(1)).One(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("insert One err = %v, want ErrUnsupported", err)
+	}
+	if _, err := momo.Update[suite.Document](my).Set(suite.DocTitle.Set("x")).Where(suite.DocID.Eq(1)).One(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("update One err = %v, want ErrUnsupported", err)
+	}
+	if _, err := momo.Delete[suite.Document](my).Where(suite.DocID.Eq(1)).One(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("delete One err = %v, want ErrUnsupported", err)
+	}
+}
