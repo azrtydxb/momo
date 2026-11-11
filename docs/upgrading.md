@@ -367,6 +367,10 @@ literal outermost alias. A `Subquery` or CTE of your own inside a scope does not
 start a level, and your own table aliases must not use the names `momo_r`,
 `momo_r<N>`, `momo_j` or `momo_j<N>`.
 
+### `momovet` accepts a `//momovet:ok <reason>` directive
+
+A raw-SQL call whose text is built from constants and allowlisted identifiers can now be marked as vetted with a line directive: a trailing `//momovet:ok <reason>` comment on the call's line, or the same comment alone on the line directly above it. A trailing comment never covers the next line. The directive silences the report for that call only. A directive without a reason, or one that suppresses nothing, is reported itself, so add a reason to every directive. See [momovet](momovet.md).
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
