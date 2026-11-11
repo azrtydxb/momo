@@ -54,6 +54,25 @@ func concatenated(ctx context.Context, db *momo.DB, user string) {
 	momo.RawSubquery(user) // want "non-constant SQL string passed to momo.RawSubquery"
 }
 
+func marked(ctx context.Context, db *momo.DB, user string) {
+	momo.Exec(ctx, db, "UPDATE "+user+" SET x = 1") //momovet:ok user is an allowlisted identifier
+
+	//momovet:ok identifier checked against the schema
+	momo.Query[int](ctx, db, "SELECT id FROM "+user)
+
+	momo.RawSubquery(user) // want "non-constant SQL string passed to momo.RawSubquery"
+}
+
+func badDirectives(ctx context.Context, db *momo.DB, user string) {
+	// want +1 "needs a reason"
+	//momovet:ok
+	momo.Exec(ctx, db, "UPDATE "+user+" SET x = 1")
+
+	// want +1 "unused //momovet:ok directive"
+	//momovet:ok this call is constant
+	momo.Exec(ctx, db, "UPDATE t SET x = 1")
+}
+
 // Exec here is this package's own function, not momo.Exec; it is never checked.
 func Exec(ctx context.Context, db *momo.DB, sql string) {}
 
