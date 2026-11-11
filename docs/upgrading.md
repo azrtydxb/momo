@@ -13,7 +13,7 @@ A program that migrates in-process no longer has to copy `migrate.exclude`,
 `introspect.only`, `external_extensions` and the timeouts of `momo.yaml` into Go.
 Embed the file and hand it to the engine:
 
-```go
+```text
 //go:embed momo.yaml
 var cfgFS embed.FS
 
@@ -29,12 +29,13 @@ reads. The file needs `version: 1`. An explicit `lock_timeout: 0s` turns the
 timeout off, as on the command line. It does not set the dialect: the driver
 supplies that, or pass `migrate.WithDialect`.
 
-`VersionStatus.State` now has typed constants: `migrate.StatePending`,
-`StateApplied`, `StateDirty`, `StateMismatch` and `StateMissing`. They have the
+`migrate.VersionStatus.State` now has typed constants: `migrate.StatePending`,
+`migrate.StateApplied`, `migrate.StateDirty`, `migrate.StateMismatch` and
+`migrate.StateMissing`. They have the
 values `Status` already returned (`"pending"`, `"applied"`, ...), so existing
-string comparisons keep working. The `Status*` constants (`StatusApplied`, ...)
-are the statuses of history rows (`HistoryRow.Status`), a different thing, and
-stay as they are.
+string comparisons keep working. The `migrate.Status*` constants (`migrate.StatusApplied`, ...)
+are the statuses of history rows (`migrate.HistoryRow.Status`), a different thing,
+and stay as they are.
 
 ## Upgrading to 0.7.0
 
