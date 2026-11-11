@@ -994,6 +994,11 @@ mismatch. Otherwise group by position or alias in an outer query. Keyset paginat
 an alias is not valid in WHERE or inside a window ORDER BY; order by the
 expression itself there.
 
+A predicate orders through `momo.OrderByPredicate(p)`, which has `Asc()` and
+`Desc()` and renders `ORDER BY (p)`: `OrderBy(momo.OrderByPredicate(t.BuiltinKey.IsNull()).Asc(), t.Name.Asc())`
+lists rows with a `builtin_key` first. False sorts before true, so `(col IS NULL) ASC` puts NULLs
+last on every dialect. A predicate has no `Asc` method of its own, because `Predicate` is an interface.
+
 <!-- docscheck:fragment -->
 
 ```go

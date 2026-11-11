@@ -21,6 +21,19 @@ the database keeps those objects of a table left out by `introspect.skip`, add
 the table to `migrate.exclude` so drift does not report them as unmanaged. With
 `introspect.only` nothing is needed: `migrate.only` already hides them.
 
+### `OrderByPredicate` orders by a boolean condition
+
+A predicate can now be an `ORDER BY` term, so `ORDER BY (col IS NULL)` no longer
+needs `momo.SQL`. `momo.OrderByPredicate(p)` takes any `Predicate` and has
+`Asc()` and `Desc()`; the result is an `Order`, so `NullsFirst()` and
+`NullsLast()` chain as on a column. The predicate is written in parentheses on
+every dialect and its bound values keep their place among the other arguments.
+False sorts before true, so `(col IS NULL) ASC` puts NULLs last on PostgreSQL,
+SQLite and MySQL (a boolean is 0 or 1 in the last two). A predicate is an
+interface, so it has no `Asc` method of its own: write
+`momo.OrderByPredicate(template.BuiltinKey.IsNotNull()).Desc()`. Nothing
+existing changes.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
