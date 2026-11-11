@@ -7,6 +7,118 @@ later releases can break more.
 
 ## Upgrading to 0.7.0
 
+### `--from-db` writes only the functions the modeled tables use
+
+`momo generate --from-db` used to write every database function into the
+`MomoConfig` of the alphabetically first model. It now writes only the
+functions that a modeled table uses: the ones its triggers call, its column
+defaults, generated columns, checks, index expressions and predicates and its
+policies call, and the functions those functions call in turn (their bodies and
+argument defaults). A call is found by name, and so is a `'name'::regproc` or
+`'name(args)'::regprocedure` literal (also `pg_catalog`-qualified, schema
+qualified or with quoted names) and a `to_regproc('name')` call. Each one is written on the model of the
+table that uses it. A function that no modeled
+table uses is not written, and it is no longer in the init snapshot, so a
+database-wide function that nothing modeled needs does not appear in the
+models, and the model files no longer change when an unrelated function does.
+
+Triggers and policies moved the same way: they are written on the model of
+their own table instead of the first model. The functions a view calls stay on
+the first model, with the view. After you regenerate, a model file that held
+other tables' functions changes (a `.new` file next to a hand-edited one, see
+"Running it again" in [migrations](migrations.md)). A function that was written
+and is no longer used is not in the new init snapshot either; add it to
+`migrate.exclude` if the database keeps it and you do not want drift to report
+it as unmanaged.
+
+SQL that is built at run time cannot be followed. A function that another
+function reaches only through `EXECUTE` with a name put together from pieces
+(`EXECUTE 'SELECT ' || prefix || '_target()'`), or through any other dynamic
+SQL, is not written, and a fresh database built from the models then lacks it.
+If your functions do that, use `introspect.functions: all`, which keeps the old
+behaviour:
+
+```yaml
+introspect:
+  functions: all # every database function on the first model
+```
+
+### `introspect.only` limits `--from-db` to a list of tables
+
+`introspect.only` is a list of table name globs, the inverse of
+`introspect.skip`. When it is set, a table that matches none of the globs gets
+no model, no place in the init snapshot, and `momo migrate` leaves the live
+table alone (drift, baseline and diff treat it as excluded), so you do not need
+a `migrate.exclude` entry for every table you have not moved yet:
+
+```yaml
+introspect:
+  only: [accounts, projects, project_*]
+  skip: [project_notes] # skip applies within only
+```
+
+A glob matches the table name, or `schema.name` for a table outside the
+current schema (`only: ["app.*"]`), the same way `migrate.exclude` does. An
+empty entry in `only` is an error. `skip` globs match the same way now: a
+schema-qualified `skip` glob (`skip: ["app.legacy_*"]`) that did nothing before,
+because it was compared with the bare table name only, now takes effect. `skip` applies within `only`: a table must
+match `only` and not match `skip`. A skipped table still needs its
+`migrate.exclude` entry. An empty or absent `only` changes nothing.
+
+What `only` hides, and what it does not:
+
+- It hides tables and, with them, their triggers and policies. Inspection does
+  not read a table outside `only`, so a table the schema model cannot represent
+  no longer fails `--from-db`, `baseline` or `drift`. `migrate diff` ignores
+  such a table in the snapshot as well, so a snapshot that still holds one
+  never plans `DROP TABLE` for it.
+- A partition child is a table of its own, so `only: [orders]` leaves out
+  `orders_2024`. Name the children too: `only: [orders, "orders_*"]`.
+- A model for a table outside `only` (one you wrote by hand) is never migrated:
+  `migrate diff` plans neither a `CREATE TABLE` for it nor a `DROP TABLE` for a
+  snapshot table that is outside `only`.
+- Views, functions, enums and extensions of the modules you have not moved are
+  not hidden: drift still lists them as unmanaged, and `--from-db` still writes
+  the views and enums. Hide them with `migrate.exclude` (globs over the name),
+  for example `exclude: [legacy_*, audit_log_view]`.
+- A foreign key from a modeled table to a table outside `only` is left out of
+  the models and the snapshot, with a warning, and the baseline reports it as
+  a difference. Move the target table into `only`, or accept the report. The
+  column itself is still modeled, without the relation.
+
+Library users: `migrate.Config.OnlyTables` and `migrate.InspectOptions.Only`
+are new fields. `OnlyTables` is what `introspect.only` sets: when it is not
+empty, a table that matches none of its globs is hidden from drift, baseline
+and diff, with its triggers and policies, and the PostgreSQL inspector does not
+read it. The MySQL and SQLite inspectors ignore `migrate.InspectOptions.Only` and read
+every table, which is filtered afterwards, so a table they cannot represent can
+still fail inspection. `migrate.MatchObject` is the glob rule shared by
+`Exclude`, `OnlyTables` and the inspector. An empty or malformed entry is an
+error that names `migrate.Config.OnlyTables`.
+
+### `introspect.dbdefault: all` tags every column that has a default
+
+By default `--from-db` writes `dbdefault` only on NOT NULL columns whose
+default is computed (`now()`, `gen_random_uuid()`), so regenerating does not
+change what an existing model writes. A column such as
+`version bigint NOT NULL DEFAULT 1` is generated as `` `momo:"default:1"` ``,
+and `InsertQuery.Model` writes 0 for a model that left `Version` unset.
+`introspect.dbdefault: all` adds `dbdefault` to every NOT NULL PostgreSQL column
+that has a default, constant ones included, so an unset field takes the default
+and the stored value is read back:
+
+```yaml
+introspect:
+  dbdefault: all
+```
+
+A nullable column is never tagged, because a nil pointer would stop meaning
+NULL. The zero value now means "use the default" on those columns: a `bool` or
+number field can no longer write `false` or `0` through `Model` (use
+`InsertQuery.Values`). Hand-written models can use the `dbdefault` tag on any
+NOT NULL column that has a database default: see "Database defaults" in the
+[AI guide](ai-guide.md).
+
 ### --from-db singularizes -se plurals correctly
 
 `momo generate --from-db` turns a table name into a model name by trying

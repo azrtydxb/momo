@@ -251,7 +251,12 @@ func (g *generator) collectTables() {
 	var kept []schema.Table
 	dropped := map[string]bool{}
 	for _, t := range g.clean.Tables {
-		if g.o.Config.skipped(t.Name) {
+		if g.o.Config.outsideOnly(t.Schema, t.Name) {
+			dropped[tableKey(t.Schema, t.Name)] = true
+			g.add(SevNote, t.Name, "not matched by introspect.only: no model and not in the snapshot (momo generate --from-db never reports this: inspection already leaves such tables out, so only a direct fromdb.Generate caller sees it)")
+			continue
+		}
+		if g.o.Config.skipped(t.Schema, t.Name) {
 			dropped[tableKey(t.Schema, t.Name)] = true
 			g.add(SevNote, t.Name, "skipped by introspect.skip: no model and not in the snapshot; add it to migrate.exclude so the baseline ignores the live table")
 			continue
@@ -512,7 +517,7 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 		m.stmts = append(m.stmts, "c."+strings.ToUpper(e.key[:1])+e.key[1:]+"(&m."+name+", "+strconv.Quote(e.val)+")")
 	}
 	opts = mergeTags(opts, rule.Tags)
-	if dbDefaultFits(g.o.Dialect, col, opts) {
+	if dbDefaultFits(g.o.Dialect, col, opts) || (g.o.Config.DBDefault == "all" && dbDefaultAny(g.o.Dialect, col, opts)) {
 		opts = append(opts, "dbdefault")
 	}
 	goType := gt.Expr
@@ -616,7 +621,16 @@ func mergeTags(generated, user []string) []string {
 // qualifies: the tag needs INSERT ... RETURNING to read the value back, which
 // plain MySQL lacks, and MariaDB and SQLite have no inspector here yet.
 func dbDefaultFits(d dialect.Name, col *schema.Column, opts []string) bool {
-	if d != dialect.Postgres || col.Nullable || col.Identity != "" || !computedDefault(col.Default) {
+	return computedDefault(col.Default) && dbDefaultAny(d, col, opts)
+}
+
+// dbDefaultAny reports whether the field of col could carry dbdefault whatever
+// its default is: a NOT NULL PostgreSQL column with a default that no other
+// tag already owns. introspect.dbdefault: all tags every such column, constant
+// defaults (DEFAULT 1) included. A nullable column never qualifies, because a
+// nil pointer would stop meaning NULL.
+func dbDefaultAny(d dialect.Name, col *schema.Column, opts []string) bool {
+	if d != dialect.Postgres || col.Nullable || col.Identity != "" || strings.TrimSpace(col.Default) == "" {
 		return false
 	}
 	for _, o := range opts {
@@ -1082,8 +1096,9 @@ func structLiteral(v any) (string, error) {
 	return "schema." + rt.Name() + "{" + strings.Join(parts, ", ") + "}", nil
 }
 
-// globals declares the objects that belong to no table on the first model:
-// enums, views, functions, triggers and policies.
+// globals declares the objects that belong to no table on the first model
+// (enums and views) and the ones that belong to a table on that table's model
+// (triggers, policies, and the functions a table uses).
 func (g *generator) globals() {
 	if len(g.models) == 0 {
 		return
@@ -1104,15 +1119,21 @@ func (g *generator) globals() {
 		}
 		host.global("View", *v, g, v.Name)
 	}
-	for _, f := range g.clean.Functions {
-		host.global("Function", f, g, f.Name)
-	}
+	g.functions(host)
 	for _, x := range g.clean.Triggers {
-		host.global("Trigger", x, g, x.Name)
+		g.owner(x.Schema, x.Table, host).global("Trigger", x, g, x.Name)
 	}
 	for _, x := range g.clean.Policies {
-		host.global("Policy", x, g, x.Name)
+		g.owner(x.Schema, x.Table, host).global("Policy", x, g, x.Name)
 	}
+}
+
+// owner returns the model of a table, or fallback when the table has none.
+func (g *generator) owner(schemaName, table string, fallback *model) *model {
+	if m, ok := g.byKey[tableKey(schemaName, table)]; ok {
+		return m
+	}
+	return fallback
 }
 
 func (m *model) global(method string, v any, g *generator, name string) {

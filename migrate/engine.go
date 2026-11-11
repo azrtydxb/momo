@@ -739,14 +739,17 @@ func (e *Engine) Inspect(ctx context.Context) (*schema.Schema, error) {
 // dialect implements InvalidInspector, and applies Config.Exclude to the result
 // because the dialects do not.
 func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Schema, []string, error) {
-	if _, err := excludeMatcher(e.opts.config.Exclude); err != nil {
+	if _, err := excludeMatcher("Config.Exclude", e.opts.config.Exclude); err != nil {
+		return nil, nil, err
+	}
+	if err := checkOnlyTables(e.opts.config.OnlyTables); err != nil {
 		return nil, nil, err
 	}
 	schemas, err := e.resolveSchemas(ctx, c)
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := InspectOptions{Schemas: schemas, Exclude: e.opts.config.Exclude}
+	opts := InspectOptions{Schemas: schemas, Exclude: e.opts.config.Exclude, Only: e.opts.config.OnlyTables}
 	var s *schema.Schema
 	var invalid []string
 	if ii, ok := e.opts.dialect.(InvalidInspector); ok {
@@ -775,7 +778,7 @@ func dropExcludedInvalid(s *schema.Schema, invalid []string, globs []string) []s
 	if len(globs) == 0 || len(invalid) == 0 {
 		return invalid
 	}
-	match, err := excludeMatcher(globs)
+	match, err := excludeMatcher("Config.Exclude", globs)
 	if err != nil {
 		return invalid
 	}
@@ -824,6 +827,12 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
 	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
+	if err := checkOnlyTables(e.opts.config.OnlyTables); err != nil {
+		return nil, err
+	}
+	// Tables outside Config.OnlyTables are not managed: a snapshot that still
+	// holds one (its model was removed) must not plan to drop it.
+	to = *applyOnly(&to, e.opts.config.OnlyTables)
 	if v, ok := e.opts.dialect.(SchemaValidator); ok {
 		if err := v.ValidateSchema(&to); err != nil {
 			return nil, err
@@ -834,7 +843,8 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	snap, err := LatestSnapshot(e.dir)
 	switch {
 	case err == nil:
-		from, parent = dropExternalExtensions(snap.Schema, e.opts.config.ExternalExtensions), snap.Version
+		from = applyOnly(dropExternalExtensions(snap.Schema, e.opts.config.ExternalExtensions), e.opts.config.OnlyTables)
+		parent = snap.Version
 	case !errors.Is(err, ErrNoSnapshot):
 		return nil, err
 	}

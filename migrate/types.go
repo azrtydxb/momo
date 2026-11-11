@@ -262,6 +262,10 @@ type Config struct {
 	// to 0 explicitly.
 	StatementTimeout time.Duration
 	Exclude          []string // glob patterns for unmanaged objects (drift)
+	// OnlyTables limits the managed tables to those whose name (or
+	// schema.name) matches a glob: every other table, with its triggers and
+	// policies, is hidden like an Exclude match. Empty manages every table.
+	OnlyTables []string
 	// ExternalExtensions names extensions that are created outside momo, for
 	// example by a superuser. Diff and AutoMigrate never emit CREATE EXTENSION
 	// for them and leave them out of the snapshot; drift, baseline and Inspect

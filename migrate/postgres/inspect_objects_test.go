@@ -231,3 +231,89 @@ func TestPostgresInspectPolicyPublicMixedWithRole(t *testing.T) {
 		t.Fatalf("named role must be kept: %+v", got.Policies)
 	}
 }
+
+// Catches: Config.OnlyTables not limiting what inspection reads, so a table
+// outside the list (and its trigger and policy) is read, and one the model
+// cannot represent fails the run.
+func TestPostgresInspectOnlySkipsOtherTables(t *testing.T) {
+	db := testopen.Postgres(t)
+	d := db.Driver()
+	mustExec(t, d, `CREATE TABLE only_a (a int)`)
+	mustExec(t, d, `CREATE TABLE only_b (a int)`)
+	mustExec(t, d, `CREATE FUNCTION only_touch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$`)
+	mustExec(t, d, `CREATE TRIGGER only_a_upd BEFORE UPDATE ON only_a FOR EACH ROW EXECUTE FUNCTION only_touch()`)
+	mustExec(t, d, `CREATE TRIGGER only_b_upd BEFORE UPDATE ON only_b FOR EACH ROW EXECUTE FUNCTION only_touch()`)
+	mustExec(t, d, `ALTER TABLE only_b ENABLE ROW LEVEL SECURITY`)
+	mustExec(t, d, `CREATE POLICY only_b_pol ON only_b USING (true)`)
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{Only: []string{"only_a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tb := range got.Tables {
+		names = append(names, tb.Name)
+	}
+	if !slices.Equal(names, []string{"only_a"}) {
+		t.Fatalf("tables = %v, want only only_a", names)
+	}
+	if len(got.Triggers) != 1 || got.Triggers[0].Name != "only_a_upd" || len(got.Policies) != 0 {
+		t.Fatalf("triggers %+v policies %+v: want only the trigger of only_a", got.Triggers, got.Policies)
+	}
+}
+
+// Catches: Config.OnlyTables matching only the bare table name, so
+// only: ["app.*"] reads no table of a schema that is not the current one while
+// migrate.exclude would match schema.name.
+func TestPostgresInspectOnlyMatchesSchemaQualifiedNames(t *testing.T) {
+	db := testopen.Postgres(t)
+	d := db.Driver()
+	mustExec(t, d, `DROP SCHEMA IF EXISTS only_app CASCADE`)
+	mustExec(t, d, `CREATE SCHEMA only_app`)
+	t.Cleanup(func() { mustExec(t, d, `DROP SCHEMA IF EXISTS only_app CASCADE`) })
+	mustExec(t, d, `CREATE TABLE only_app.widgets (a int)`)
+	mustExec(t, d, `CREATE TABLE only_app.gadgets (a int)`)
+	for only, want := range map[string][]string{
+		"only_app.*":       {"gadgets", "widgets"},
+		"only_app.widgets": {"widgets"},
+		"widgets":          {"widgets"},
+		"other.*":          nil,
+	} {
+		got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{Schemas: []string{"only_app"}, Only: []string{only}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, tb := range got.Tables {
+			names = append(names, tb.Name)
+		}
+		if !slices.Equal(names, want) {
+			t.Errorf("only %q: tables = %v, want %v", only, names, want)
+		}
+	}
+}
+
+// Catches: a wrong claim about partitions. A partition child is a table of its
+// own, so only: [only_orders] leaves out only_orders_2024 and a glob that
+// matches both keeps it.
+func TestPostgresInspectOnlyAppliesToPartitionChildrenByName(t *testing.T) {
+	db := testopen.Postgres(t)
+	d := db.Driver()
+	mustExec(t, d, `CREATE TABLE only_orders (id int, at date) PARTITION BY RANGE (at)`)
+	mustExec(t, d, `CREATE TABLE only_orders_2024 PARTITION OF only_orders FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')`)
+	for only, want := range map[string][]string{
+		"only_orders":  {"only_orders"},
+		"only_orders*": {"only_orders", "only_orders_2024"},
+	} {
+		got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{Only: []string{only}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, tb := range got.Tables {
+			names = append(names, tb.Name)
+		}
+		if !slices.Equal(names, want) {
+			t.Errorf("only %q: tables = %v, want %v", only, names, want)
+		}
+	}
+}
