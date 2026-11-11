@@ -9,7 +9,7 @@ later releases can break more.
 
 ### `types.Date` infinity and the new `types.Numeric`
 
-`types.Date` gains two fields, `Infinity` and `NegInfinity`, and `IsFinite()`.
+`types.Date` gains two fields, Infinity and NegInfinity, and `IsFinite()`.
 PostgreSQL `infinity` and `-infinity` now scan into the flags and are written
 back from them; before, a read of one failed. Keyed literals such as
 `types.Date{Time: t}` and the finite behavior are unchanged; a positional
@@ -19,9 +19,9 @@ SQLite and MySQL have no special dates, so a `types.Date` with a flag set is
 
 `types.Numeric` is a new exact decimal: `numeric` on PostgreSQL, `TEXT` on
 SQLite and MySQL. It holds the digits as a string in `Decimal`, plus `NaN`,
-`Infinity` and `NegInfinity` flags, and has `IsFinite`, `IsNaN`, `IsInfinite`,
+Infinity and NegInfinity flags, and has `IsFinite`, `IsNaN`, `IsInfinite`,
 `Sign`, a text form and `types.ParseNumeric`. A `types.Numeric` that is `NaN`
-or infinite is `ErrValidation` on SQLite and MySQL. `Infinity` and `-Infinity`
+or infinite is `ErrValidation` on SQLite and MySQL. Infinity and `-Infinity`
 need PostgreSQL 14 or later. A `precision` tag generates `numeric(p,s)` on
 PostgreSQL and `TEXT` elsewhere.
 

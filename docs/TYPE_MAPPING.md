@@ -146,18 +146,18 @@ except `NaN`, which SQLite does not have (see Floats).
   its UTC wall clock.
 - `types.Date`: stores the year, month and day of `Time` in its own location;
   it reads back at midnight UTC. Compare the date, not the zone. PostgreSQL
-  `infinity` and `-infinity` round-trip through the `Infinity` and
-  `NegInfinity` fields (`Time` is ignored while one is set, and zero after a
+  `infinity` and `-infinity` round-trip through the Infinity and
+  NegInfinity fields (`Time` is ignored while one is set, and zero after a
   read); `IsFinite` tells an ordinary date from a special one. SQLite and
   MySQL have no special dates: a `types.Date` with a flag set is
   `ErrValidation` and nothing is stored, also inside a `sql.Null`. Setting both
   flags is an error.
 - `types.Numeric`: an exact decimal kept as text in `Decimal` (`"-12.50"`; empty
   is 0). PostgreSQL `numeric` returns what it stored, so a value beyond
-  `float64` precision and its scale survive. `NaN`, `Infinity` and
-  `NegInfinity` round-trip through their flags (set at most one, and leave
+  `float64` precision and its scale survive. `NaN`, Infinity and
+  NegInfinity round-trip through their flags (set at most one, and leave
   `Decimal` empty); `IsFinite`, `IsNaN`, `IsInfinite` and `Sign` classify a
-  value (`Sign` is 0 for `NaN`). `Infinity` and `-Infinity` need PostgreSQL 14
+  value (`Sign` is 0 for `NaN`). Infinity and `-Infinity` need PostgreSQL 14
   or later (`NaN` is older); CI covers PostgreSQL 16 and 17.
   `types.ParseNumeric` reads PostgreSQL text and rejects an exponent or
   anything that is not a number. Scanning also takes an `int64` and a `float64`
