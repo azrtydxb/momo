@@ -253,7 +253,9 @@ func (g *generator) collectTables() {
 	for _, t := range g.clean.Tables {
 		if g.o.Config.outsideOnly(t.Schema, t.Name) {
 			dropped[tableKey(t.Schema, t.Name)] = true
-			g.add(SevNote, t.Name, "not matched by introspect.only: no model and not in the snapshot (momo generate --from-db never reports this: inspection already leaves such tables out, so only a direct fromdb.Generate caller sees it)")
+			// momo generate --from-db never reports this: inspection already leaves
+			// such tables out, so only a direct fromdb.Generate caller sees it.
+			g.add(SevNote, t.Name, "not matched by introspect.only: no model and not in the snapshot")
 			continue
 		}
 		if g.o.Config.skipped(t.Schema, t.Name) {

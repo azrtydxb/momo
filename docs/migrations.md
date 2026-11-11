@@ -210,7 +210,9 @@ finding:
   table is never read (the globs also match views and functions of that name).
 - `migrate.Config.OnlyTables` (set from `introspect.only` by the CLI) is the
   inverse for tables: when it is not empty, a table whose name or `schema.name`
-  matches none of its globs is not managed. Inspection does not read it
+  matches none of its globs is not managed. A table in the current schema is
+  matched by its bare name only (its schema is empty), so write `users`, not
+  `public.users`, when `public` is the current schema. Inspection does not read it
   (`migrate.InspectOptions.Only`, honoured by the PostgreSQL inspector), and
   drift, baseline and diff hide it, with its triggers and policies, like an
   excluded table. `migrate.MatchObject(globs, schemaName, name)` is the matching

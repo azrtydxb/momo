@@ -204,8 +204,8 @@ func oneRow[T any](r *ModelRows[T], op, table string) (T, error) {
 // no row came back (ON CONFLICT DO NOTHING, or a DO UPDATE whose WHERE did
 // not hold) and ErrTooManyRows when more than one did. Without a Returning
 // list it returns every column, as ReturningAll does. On a dialect without
-// RETURNING (MySQL, and MariaDB for UPDATE and DELETE) it fails with
-// ErrUnsupported.
+// RETURNING (MySQL, and MariaDB for UPDATE and DELETE, where momo has no
+// RETURNING form) it fails with ErrUnsupported.
 //
 // A multi-row Models insert is refused with ErrValidation before anything runs:
 // a bulk insert can be split into chunks that commit together, which One
@@ -231,8 +231,8 @@ func (q InsertQuery[T]) One(ctx context.Context) (T, error) {
 // no row matched (a guarded update) and ErrTooManyRows when more than one
 // did. Without a Returning list it returns every column. It is not supported
 // with a version-checked Model update (ErrValidation; use Exec) or on a
-// dialect without RETURNING (ErrUnsupported: MySQL, and MariaDB, where UPDATE
-// ... RETURNING is not implemented).
+// dialect without RETURNING (ErrUnsupported: MySQL, and MariaDB, where momo
+// has no RETURNING form for UPDATE).
 //
 // Without WithImplicitTx or an explicit transaction the statement has already
 // changed every matched row when One returns ErrTooManyRows; run One inside
@@ -254,7 +254,7 @@ func (u UpdateQuery[T]) One(ctx context.Context) (T, error) {
 // One runs the DELETE and returns the single RETURNING row: ErrNotFound when
 // no row matched and ErrTooManyRows when more than one did. Without a
 // Returning list it returns every column. On a dialect without RETURNING
-// (MySQL, and MariaDB, where DELETE ... RETURNING is not implemented) it fails
+// (MySQL, and MariaDB, where momo has no RETURNING form for DELETE) it fails
 // with ErrUnsupported.
 //
 // Without WithImplicitTx or an explicit transaction the statement has already

@@ -13,29 +13,31 @@ import (
 // Query renders sql through the raw path (see Exec: '?' binds, "??" is a
 // literal '?', Expr arguments render inline, an argument-count mismatch is a
 // build error; on PostgreSQL native $n placeholders bind argument n, see SQL)
-// and scans every row into a T. T is a model, a projection struct, or one of
+// and scans every row into a T. T is a model, a projection struct, one of
 // the tuple rows Row1 to Row10, or a plain struct. It is the multi-column
-// counterpart of Scalars
-// for a hand-written SELECT or a statement with RETURNING:
+// counterpart of Scalars for a hand-written SELECT or a statement with RETURNING:
 //
 //	rows, err := momo.Query[momo.Row2[string, int64]](ctx, db,
 //		`SELECT title, count(*) FROM documents WHERE tenant_id = $1 GROUP BY title`, tenant)
 //
 // Columns are matched as for a typed select. A tuple row scans positionally,
-// and the result must have exactly as many columns as the row has fields. A
-// plain struct, one with no generated metadata, scans by column name too, with
+// and the result must have exactly as many columns as the row has fields.
+//
+// A plain struct, one with no generated metadata, scans by column name too, with
 // no generator run: its exported fields are the columns, named by a
 // `momo:"column:x"` tag or else the snake_case of the field name (UserID is
 // user_id); `momo:"-"` skips a field; the fields of an embedded struct count as
 // the outer struct's own, unless it is a time.Time, a sql.Scanner or carries a
-// column tag; an embedded pointer struct is allocated for every row that has
-// a column in it and stays non-nil even when all of its columns are NULL (an
-// embedding cycle is an ErrValidation); a pointer field receives NULL as nil (a non-pointer field that
-// meets NULL is the driver's scan error). The same rule as below applies: a
-// result column no field maps to, or a field no result column fills, is an
-// ErrValidation that names it. The reflection plan is built once per type and
-// cached, and the generated metadata of a model, projection or tuple row is
-// always preferred when the type has it. A model or projection scans by column name, whatever order the SQL lists
+// column tag; an embedded pointer struct is allocated for every row
+// and stays non-nil even when all of its columns are NULL (an embedding cycle
+// is an ErrValidation); a pointer field receives NULL as nil (a non-pointer
+// field that meets NULL is the driver's scan error). The same rule as below
+// applies: a result column no field maps to, or a field no result column
+// fills, is an ErrValidation that names it. The reflection plan is built once
+// per type and cached, and the generated metadata of a model, projection or
+// tuple row is always preferred when the type has it.
+//
+// A model or projection scans by column name, whatever order the SQL lists
 // them (names compare exactly, then case-insensitively, since PostgreSQL
 // folds unquoted names): a result column that no field maps to, a mapped
 // column the result lacks, or two result columns with the same name is an

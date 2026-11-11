@@ -1138,7 +1138,8 @@ return rows2.Err()
   `ErrValidation` (use `Rows`). `AfterLoad` runs before the write commits, so an
   `AfterLoad` error rolls the write back, unlike `SelectQuery.One`. MySQL returns
   `ErrUnsupported`; on MariaDB only insert has `RETURNING` in momo, so `UpdateQuery.One`
-  and `DeleteQuery.One` return `ErrUnsupported` (not implemented).
+  and `DeleteQuery.One` return `ErrUnsupported` (momo has no `RETURNING` form
+  for MariaDB `UPDATE` and `DELETE`).
 - A `ReadOnly` / `identity` column is never written by `InsertQuery.Model`.
 - `InsertQuery.Models([]T{})` (empty) is `ErrValidation`.
 

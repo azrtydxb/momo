@@ -2,7 +2,11 @@
 
 package momo
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/azrtydxb/momo/gen/naming"
+)
 
 type cachedPlan struct {
 	ID    int64
@@ -44,6 +48,12 @@ func TestSnakeCase(t *testing.T) {
 	} {
 		if got := snakeCase(in); got != want {
 			t.Errorf("snakeCase(%q) = %q, want %q", in, got, want)
+		}
+		// snakeCase is a copy of naming.ToSnake, which the root package does
+		// not import: the column a plain struct field gets must be the one
+		// the generator gives the same field.
+		if got := naming.ToSnake(in); got != want {
+			t.Errorf("naming.ToSnake(%q) = %q, want %q: the two copies drifted", in, got, want)
 		}
 	}
 }

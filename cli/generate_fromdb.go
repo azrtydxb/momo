@@ -92,6 +92,9 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if err != nil {
 		return l.errf(exitDatabase, "inspect: %v", err)
 	}
+	if err := checkOnlyMatched(l.file.Introspect.Only, live.Tables, l.say); err != nil {
+		return l.errf(exitUsage, "%v", err)
+	}
 	res, err := fromdb.Generate(live, fromdb.Options{Package: pkg, Namer: namer, Config: l.file.Introspect})
 	if err != nil {
 		return l.errf(exitUsage, "%v", err)
@@ -137,6 +140,32 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 		}
 	}
 	return exitOK
+}
+
+// checkOnlyMatched reports introspect.only globs that matched no inspected
+// table. Inspection already left out every table that matches none, so tables
+// holds only the matches: with no match at all it is an error (a typo would
+// otherwise read as an empty database), and a glob that matched none while
+// others did is named in a warning.
+func checkOnlyMatched(only []string, tables []schema.Table, say func(format string, args ...any)) error {
+	if len(only) == 0 {
+		return nil
+	}
+	var unmatched []string
+	for _, g := range only {
+		if !slices.ContainsFunc(tables, func(t schema.Table) bool {
+			return schema.MatchObject([]string{g}, t.Schema, t.Name)
+		}) {
+			unmatched = append(unmatched, g)
+		}
+	}
+	if len(tables) == 0 {
+		return fmt.Errorf("introspect.only matched no table (%s): a table in the current schema is matched by its bare name, not public.name; a table outside it by schema.name", strings.Join(only, ", "))
+	}
+	if len(unmatched) > 0 {
+		say("warning: introspect.only: %s matched no table", strings.Join(unmatched, ", "))
+	}
+	return nil
 }
 
 // modelDir resolves the output directory: the flag (against the working

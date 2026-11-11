@@ -19,8 +19,9 @@ import (
 // built at run time, such as EXECUTE with a name put together from pieces,
 // cannot be followed: a function that only such code reaches is not written, so
 // use introspect.functions: all for a database that does that. A view is a global object that
-// lives on the first model, so the functions a view calls go there too, as do
-// those of a trigger or policy whose table has no model. A function nothing
+// lives on the first model, so a function that only a view calls goes there
+// too, as do those of a trigger or policy whose table has no model; a function
+// that a modeled table also uses goes on that table's model instead. A function nothing
 // modeled uses is not written, so the models do not carry database-wide SQL
 // that has nothing to do with them and their text does not change when an
 // unrelated function does.
@@ -38,8 +39,9 @@ func (g *generator) functions(host *model) {
 		for len(queue) > 0 {
 			text := queue[0]
 			queue = queue[1:]
+			lower, procs := strings.ToLower(text), regprocNames(text)
 			for i := range fns {
-				if claimed[i] == nil && usesFunction(text, fns[i].Name) {
+				if claimed[i] == nil && usesFunction(lower, procs, fns[i].Name) {
 					claimed[i] = m
 					// A function's argument defaults can call functions too.
 					queue = append(queue, fns[i].Body, fns[i].Args)
@@ -67,16 +69,16 @@ func (g *generator) functions(host *model) {
 	}
 	claim(host, viewTexts)
 	var kept []schema.Function
+	byModel := map[*model][]int{}
 	for i, f := range fns {
-		if claimed[i] != nil {
+		if m := claimed[i]; m != nil {
 			kept = append(kept, f)
+			byModel[m] = append(byModel[m], i)
 		}
 	}
 	for _, m := range g.models {
-		for i, f := range fns {
-			if claimed[i] == m {
-				m.global("Function", f, g, f.Name)
-			}
+		for _, i := range byModel[m] {
+			m.global("Function", fns[i], g, fns[i].Name)
 		}
 	}
 	g.clean.Functions = kept
@@ -112,10 +114,11 @@ func (g *generator) tableTexts(m *model) []string {
 	return out
 }
 
-// usesFunction reports whether text refers to the function name: a call, or a
-// regproc or regprocedure literal that names it.
-func usesFunction(text, name string) bool {
-	return callsFunction(text, name) || regprocNames(text)[strings.ToLower(name)]
+// usesFunction reports whether a text refers to the function name: a call, or a
+// regproc or regprocedure literal that names it. lower is the lower-cased text
+// and procs is regprocNames of it, computed once per text by the caller.
+func usesFunction(lower string, procs map[string]bool, name string) bool {
+	return callsFunction(lower, name) || procs[strings.ToLower(name)]
 }
 
 // regprocLiteral matches a single-quoted literal cast to regproc or
@@ -172,12 +175,13 @@ func bareFunctionName(ref string) string {
 // callsFunction reports whether text calls the function name: the name, quoted
 // or not and optionally schema qualified, directly followed by an opening
 // parenthesis. It errs towards writing a function that is not needed (a call
-// in a comment or a string counts) rather than leaving one out.
+// in a comment or a string counts) rather than leaving one out. text must
+// already be lower-cased.
 func callsFunction(text, name string) bool {
 	if text == "" || name == "" {
 		return false
 	}
-	text, name = strings.ToLower(text), strings.ToLower(name)
+	name = strings.ToLower(name)
 	for from := 0; ; {
 		i := strings.Index(text[from:], name)
 		if i < 0 {

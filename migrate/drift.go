@@ -24,17 +24,7 @@ const invalidIndexDetail = "invalid index (failed CONCURRENTLY build)"
 // all match this way, so one glob selects the same objects everywhere. A
 // malformed glob never matches; excludeMatcher reports it.
 func MatchObject(globs []string, schemaName, name string) bool {
-	for _, g := range globs {
-		if ok, _ := path.Match(g, name); ok {
-			return true
-		}
-		if schemaName != "" {
-			if ok, _ := path.Match(g, schemaName+"."+name); ok {
-				return true
-			}
-		}
-	}
-	return false
+	return schema.MatchObject(globs, schemaName, name)
 }
 
 // excludeMatcher validates the glob patterns of the Config field named by
