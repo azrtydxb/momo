@@ -124,6 +124,7 @@ func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
 	var sdiags []Diagnostic
 	g.Schema, g.viewTables, sdiags = buildSchema(g.Models, cfg)
 	diags = append(diags, sdiags...)
+	g.Warnings = dbDefaultWarnings(g.Models)
 	return g, diags, nil
 }
 

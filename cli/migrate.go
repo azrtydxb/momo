@@ -24,6 +24,7 @@ import (
 	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/gen/config"
+	"github.com/azrtydxb/momo/internal/migratecfg"
 	"github.com/azrtydxb/momo/migrate"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
@@ -332,14 +333,17 @@ func (l *cli) engineOptions(d migrate.Dialect, extra ...migrate.Option) ([]migra
 	if err := l.file.Introspect.Validate(); err != nil {
 		return nil, err
 	}
-	m := l.file.Migrate
-	cfgOpts, err := migrate.Settings{
-		Schemas: m.Schemas, Exclude: m.Exclude, ExternalExtensions: m.ExternalExtensions, Only: l.file.Introspect.Only,
-		LockTimeout: m.LockTimeout, StatementTimeout: m.StatementTimeout,
-	}.Options()
+	r, err := migratecfg.Resolve(l.file.Migrate, l.file.Introspect.Only)
 	if err != nil {
 		return nil, err
 	}
+	// The same three constructors as migrate.ConfigFromFile; migrate.Config(c)
+	// compiles only while migratecfg.EngineConfig has exactly its fields.
+	cfgOpts := migratecfg.Build(r, migratecfg.Builders[migrate.Option]{
+		Config:           func(c migratecfg.EngineConfig) migrate.Option { return migrate.WithConfig(migrate.Config(c)) },
+		LockTimeout:      migrate.WithLockTimeout,
+		StatementTimeout: migrate.WithStatementTimeout,
+	})
 	opts := append([]migrate.Option{migrate.WithDialect(d), migrate.WithClock(migrateClock)}, cfgOpts...)
 	return append(opts, extra...), nil
 }

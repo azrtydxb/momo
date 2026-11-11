@@ -65,6 +65,9 @@ type Graph struct {
 	Plugins     []Plugin
 	// Namer is the naming preset the graph was loaded with.
 	Namer naming.Namer
+	// Warnings are findings that do not stop generation, such as a dbdefault
+	// field that cannot store an explicit false or 0. The command prints them.
+	Warnings []Diagnostic
 	// viewTables are the tables of the view models, which are not in Schema.
 	viewTables map[*Model]*schema.Table
 }

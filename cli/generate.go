@@ -60,10 +60,13 @@ Unsupported columns) go in the introspect section of momo.yaml: package and out
 the inverse of skip: a table matching none gets no model), functions ("all"
 writes every function on the first model), dbdefault ("all" tags every NOT NULL
 column with a default), uuid (momo or google), types (SQL type to Go type),
-columns (match "table.column" globs, go, import, name, tags) and tables (name,
-tags). A glob matches the table name, or schema.name for a table outside the
-current schema; a table in the current schema is matched by its bare name. The
-rules are applied again on every run.
+columns (match "table.column" globs, go, import, name, tags), tables (name,
+tags), inverse (true also writes the has_many or has_one inverse of every
+belongs_to) and relations (needs inverse: true; renames or skips one inverse,
+keyed "Model.Field" by the name derived before any collision suffix; a key that
+matches no inverse is reported as a warning). A glob matches the table name, or
+schema.name for a table outside the current schema; a table in the current
+schema is matched by its bare name. The rules are applied again on every run.
 
 A re-run rewrites the model files that nobody edited. A file with hand edits,
 or one that --from-db did not write, is kept: the regenerated version goes
@@ -74,8 +77,9 @@ exits 1 when a file would change. A file whose table is gone is listed as "orpha
 never deleted.
 
 Constraints the models cannot declare (renamed or single-column non-primary-key foreign keys,
-expression index keys with an order or operator class, generated columns) are left out of the models and
-the snapshot and listed as warnings; the baseline then reports them. A column
+expression index keys with an order or operator class) are left out of the models and
+the snapshot and listed as warnings; the baseline then reports them. A stored generated
+column becomes a read_only field with the generated tag. A column
 type with no Go mapping is an error and nothing is written.
 
 Plugins: the plugins: section of momo.yaml enables the plugins built into this
@@ -166,6 +170,7 @@ func runGenerate(args []string, stdout, stderr io.Writer, available ...gen.Plugi
 		printDiagnostics(stderr, diags, cwd)
 		return exitFindings
 	}
+	printWarnings(stderr, g.Warnings, cwd)
 	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: moduleRoot(g, base), Check: check})
 	if err := gen.Emit(g, w); err != nil {
 		// After an error the Writer holds partial output: never Commit it.
@@ -342,6 +347,15 @@ func printDiagnostics(w io.Writer, diags []gen.Diagnostic, cwd string) {
 	for _, d := range diags {
 		d.Pos = token.Position{Filename: filepath.ToSlash(relPath(d.Pos.Filename, cwd)), Line: d.Pos.Line, Column: d.Pos.Column}
 		_, _ = fmt.Fprintln(w, migrate.RedactURLs(d.String()))
+	}
+}
+
+// printWarnings writes findings that do not stop generation, one per line
+// after "warning:".
+func printWarnings(w io.Writer, warns []gen.Diagnostic, cwd string) {
+	for _, d := range warns {
+		d.Pos = token.Position{Filename: filepath.ToSlash(relPath(d.Pos.Filename, cwd)), Line: d.Pos.Line, Column: d.Pos.Column}
+		_, _ = fmt.Fprintln(w, "warning: "+migrate.RedactURLs(d.String()))
 	}
 }
 

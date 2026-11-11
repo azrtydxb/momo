@@ -55,6 +55,7 @@ nav:
       - Coming from Bun: guides/bun.md
       - Coming from Ent: guides/ent.md
       - Read replicas: replicas.md
+      - LISTEN and NOTIFY: listen-notify.md
       - Testing applications: testing.md
       - Observability hooks: observability.md
       - Interceptors: PRIVACY_RULES.md

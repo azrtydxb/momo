@@ -371,3 +371,18 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
 - **#108 (integrator, from the issue's expected behaviour):** objects of a
   table that is skipped or not modeled are not generated, and there is no
   opt-in.
+- **#93 (integrator, from PostgreSQL semantics):** a DML body in `With`
+  without `Returning` is accepted, since PostgreSQL allows a data-modifying
+  CTE that nothing reads. The docs are corrected to say `Returning` is needed
+  only when the outer query reads the CTE.
+- **#97 (integrator, from the issue's `COALESCE(col, 'none')` example):**
+  `momo.Lit` accepts strings, rendered with doubled quotes. A string with a
+  backslash or a NUL byte is refused with `ErrValidation` on every dialect.
+  A `time.Time` must be exactly midnight UTC and renders as `DATE '...'`;
+  any other time is refused rather than truncated.
+- **#107/#100 (integrator, from the review):** PID, OID, SSID and GUI join the
+  initialism list, so `PIDs` maps to `pids`, not `p_ids`. The singularizer
+  keeps an `-us` word unless it is a known plural of a `-u` word (menus, emus,
+  gnus, haikus, tutus, kudus), and keeps listed singular `-is`, `-as` and `-ns`
+  words (analysis, alias, news and others). There is no blanket `-as` or `-is`
+  rule, so `areas` still gives `Area`.

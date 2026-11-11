@@ -133,6 +133,27 @@ func TestMigrateRebaseRefusesHandWrittenMigration(t *testing.T) {
 	}
 }
 
+// An imported migration is history the user owns: Rebase must refuse it as
+// hand-written, never regenerate it.
+func TestMigrateRebaseRefusesImportedMigration(t *testing.T) {
+	ctx := context.Background()
+	day := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	root, _ := diffInto(t, fstest.MapFS{}, rebaseSchema(), "root", day)
+	branch := withFiles(root, nil)
+	branch["20260301120000_imp.up.sql"] = &fstest.MapFile{Data: []byte("-- momo:imported\nALTER TABLE t ADD COLUMN a text;\n")}
+
+	_, mig, err := offlineEngine(t, branch, day.Add(3*time.Hour)).Rebase(ctx, root, rebaseSchema(), "x")
+	if err == nil || mig != nil {
+		t.Fatalf("want a refusal, got %+v %v", mig, err)
+	}
+	if !strings.Contains(err.Error(), "20260301120000_imp.up.sql") {
+		t.Fatalf("the error must name the imported file: %v", err)
+	}
+	if !strings.Contains(err.Error(), "cannot be regenerated") {
+		t.Fatalf("the imported file must be refused as hand-written: %v", err)
+	}
+}
+
 func TestMigrateRebaseNothingToDo(t *testing.T) {
 	ctx := context.Background()
 	day := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
