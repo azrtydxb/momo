@@ -15,8 +15,11 @@ import (
 // alone when it is a member of a set operation.
 func (sq SelectQuery[T]) needsParens() bool {
 	s := &sq.s
-	return len(s.order) > 0 || s.limit >= 0 || s.offset > 0 || s.lock != ""
+	return len(s.order) > 0 || s.limit >= 0 || s.offset > 0 || s.lock != "" || len(s.with) > 0
 }
+
+// hasLock reports whether the query carries a row-lock clause.
+func (sq SelectQuery[T]) hasLock() bool { return sq.s.lock != "" }
 
 func (sq SelectQuery[T]) render(b *Builder) { sq.renderBare(b, false) }
 

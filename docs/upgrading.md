@@ -34,8 +34,12 @@ rows, err := momo.SelectUnion[Hit](db, true, teachersTop, studentsTop).
 	OrderBy(byName.Asc()).Limit(8).All(ctx)
 ```
 
-A row lock inside a member on SQLite returns `ErrUnsupported`, as on a plain
-select.
+A row lock inside a member returns `ErrUnsupported` on SQLite, as on a plain
+select, and on PostgreSQL, which rejects `FOR UPDATE` inside a set operation;
+MySQL accepts it in a parenthesised member. A member with its own `WITH`
+clause is grouped like one with `ORDER BY`. An outer `OrderBy` that names a
+qualified column or an expression fails at build time with `ErrValidation`.
+Hooks and interceptors see op `select` with an empty table name.
 
 ## Upgrading to 0.7.0
 

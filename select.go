@@ -832,7 +832,11 @@ func RawSubquery(sql string, args ...any) Subquery {
 //
 // SQLite rejects parentheses around a compound member, so there such a member
 // renders as SELECT * FROM (member). A member without those clauses renders
-// bare. To run a union directly, with an outer ORDER BY and LIMIT, use
+// bare. A member with its own WITH clause is grouped the same way.
+//
+// PostgreSQL rejects a row lock inside a set operation, so a member with
+// ForUpdate or another lock returns ErrUnsupported there; MySQL accepts it in
+// a parenthesised member, and SQLite has no row locks. To run a union directly, with an outer ORDER BY and LIMIT, use
 // SelectUnion.
 func Union(all bool, qs ...Subquery) Subquery { return setOp{all, slices.Clone(qs)} }
 
@@ -869,6 +873,10 @@ func (s setOp) renderMembers(b *Builder) {
 // parentheses, or on SQLite, which rejects them around a compound member, as a
 // derived table. Any other member is written bare.
 func writeSetMember(b *Builder, q Subquery) {
+	if l, ok := q.(interface{ hasLock() bool }); ok && l.hasLock() && b.d.Name == dialect.Postgres {
+		b.unsupported("a row lock inside a UNION member")
+		return
+	}
 	var body func(*Builder)
 	grouped := false
 	switch m := q.(type) {

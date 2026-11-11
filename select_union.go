@@ -36,7 +36,10 @@ type UnionQuery[T any] struct {
 //	).OrderBy(momo.Asc(momo.ColumnOf[string]("", "full_name"))).Limit(8).All(ctx)
 //
 // An outer ORDER BY on a union may name only result columns, not expressions
-// over them: build them with ColumnOf and an empty source.
+// over them: build them with ColumnOf and an empty source. A qualified column
+// or an expression is an ErrValidation at build time.
+//
+// Hooks and interceptors see op "select" with an empty table name.
 func SelectUnion[T any](q Querier, all bool, members ...Subquery) UnionQuery[T] {
 	u := UnionQuery[T]{q: q, all: all, members: slices.Clone(members), limit: -1}
 	if len(members) == 0 {
@@ -89,6 +92,10 @@ func (u UnionQuery[T]) render(b *Builder) {
 	if len(u.order) > 0 {
 		b.WriteString(" ORDER BY ")
 		for i, o := range u.order {
+			if !unqualifiedColumn(o.Expr) {
+				b.SetErr(newError(ErrValidation, "build", "", errors.New("an outer ORDER BY on a union may name result columns only, built with ColumnOf and an empty source")))
+				return
+			}
 			if i > 0 {
 				b.WriteString(", ")
 			}
@@ -96,6 +103,19 @@ func (u UnionQuery[T]) render(b *Builder) {
 		}
 	}
 	(&selectCore{limit: u.limit, offset: u.offset}).writeLimitOffset(b)
+}
+
+// unqualifiedColumn reports whether e is a column with no table qualifier, the
+// only thing a union's outer ORDER BY can name on every dialect.
+func unqualifiedColumn(e Expr) bool {
+	switch c := e.(type) {
+	case colRef:
+		return c.table == "" && c.name != ""
+	case interface{ ref() colRef }:
+		r := c.ref()
+		return r.table == "" && r.name != ""
+	}
+	return false
 }
 
 func (u UnionQuery[T]) compiled() (Compiled, error) {
