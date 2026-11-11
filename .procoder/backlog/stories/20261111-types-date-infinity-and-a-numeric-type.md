@@ -1,6 +1,6 @@
 # types: Date infinity and a Numeric type
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -34,16 +34,20 @@ know either type, and the MySQL driver had no argument check at all.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] `types.Date` scans and writes `infinity` and `-infinity` through `Infinity` and `NegInfinity`, has `IsFinite()`, and the finite behavior is unchanged
-- [ ] `types.Numeric` holds digits, NaN, Infinity and -Infinity with `Sign`, `IsFinite`, `IsNaN`, `IsInfinite`, `ParseNumeric`
-- [ ] both round-trip on PostgreSQL, including the special values, and the finite values round-trip on SQLite and MySQL
-- [ ] a special Date or Numeric on SQLite or MySQL is `ErrValidation` and nothing is stored
-- [ ] the generator type map and `--from-db` map `numeric` to `types.Numeric`, keeping precision and scale
-- [ ] fuzz and unit tests cover parsing
-- [ ] `docs/TYPE_MAPPING.md` and `docs/upgrading.md` describe the change
+- [x] a regression test pins the fix: red before the change, green after
+- [x] `types.Date` scans and writes `infinity` and `-infinity` through `Infinity` and `NegInfinity`, has `IsFinite()`, and the finite behavior is unchanged
+- [x] `types.Numeric` holds digits, NaN, Infinity and -Infinity with `Sign`, `IsFinite`, `IsNaN`, `IsInfinite`, `ParseNumeric`
+- [x] both round-trip on PostgreSQL, including the special values, and the finite values round-trip on SQLite and MySQL
+- [x] a special Date or Numeric on SQLite or MySQL is `ErrValidation` and nothing is stored
+- [x] the generator type map and `--from-db` map `numeric` to `types.Numeric`, keeping precision and scale
+- [x] fuzz and unit tests cover parsing
+- [x] `docs/TYPE_MAPPING.md` and `docs/upgrading.md` describe the change
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
+- Red: run 42978764702 (branch worktree-agent-red-105, test-only commit 3104fbd, since deleted) failed to build: `col_type_mapping_integration_test.go:129:20: undefined: types.Numeric`, `types/codec_fuzz_test.go:72:8: d.IsFinite undefined (type Date has no field or method IsFinite)`, `types/codec_fuzz_test.go:87:9: undefined: Numeric`, `types/codec_test.go:23:16: undefined: Numeric`.
+- Green: ci-agent run 42996856333 on sha 460405d9dfdc08d1beb61d43c9db3550459ce5e5, all 9 jobs success (unit, lint, integration postgres, integration-mysql mysql84/mysql97/mariadb, fuzz-smoke, apidiff-docs, bench-module).
+- Date infinity, Numeric type and parsing: types/numeric_test.go, FuzzDateInfinityScan and FuzzNumericScan (in the Makefile FUZZ_TARGETS), green in unit and fuzz-smoke.
+- PostgreSQL round trip of infinity, -infinity, NaN, Infinity, -Infinity and finite values, and ErrValidation on SQLite and MySQL (pool and transaction, nothing stored): types/codec_integration_test.go (DateInfinity, Numeric, NumericSpecial), internal/sqlshared/args_test.go, and the TestTypeMapping row for types.Numeric.
+- Generator and --from-db: gen/typemap, gen/fromdb/mapping.go and TestTypeMappingDoc cover the new row; numeric(p,s) keeps precision and scale tags.
+- Docs changed: docs/TYPE_MAPPING.md, docs/upgrading.md (Upgrading to 0.8.0), docs/migrations.md, docs/ai-guide.md, docs/reference.md (from the regenerated-docs artifact of run 42991131319).
