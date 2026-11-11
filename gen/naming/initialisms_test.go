@@ -34,7 +34,7 @@ func TestToSnakeInitialisms(t *testing.T) {
 		"UserAPIs":        "user_apis",
 		"APIKeys":         "api_keys",
 		"HTTPServer":      "http_server",
-		"HTTPIDs":         "http_ids",
+		"XMLIDs":          "xml_ids",
 		"ID":              "id",
 		"UserID":          "user_id",
 		"UserIDsList":     "user_ids_list",

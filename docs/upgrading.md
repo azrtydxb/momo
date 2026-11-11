@@ -16,7 +16,7 @@ gave `restrict_role_i_ds`. The rule now is exact: an upper-case run that ends in
 a word of the list, followed by a lone lower-case `s` that ends the name or is
 followed by anything other than a lower-case letter. The `s` stays with the
 initialism, and the name breaks before the initialism (and before the run's
-other letters), so `HTTPIDs` is `http_ids`. `IDsomething` is not a plural (the
+other letters), so `XMLIDs` is `xml_ids`. The longest word of the list that the run ends with wins, so `HTTPIDs` reads as HTT and `PIDs`: `htt_pids`. `IDsomething` is not a plural (the
 `s` starts a lower-case word) and is unchanged.
 
 The word list is ACL, API, ASCII, CPU, CSS, DNS, EOF, GUI, GUID, HTML, HTTP,
