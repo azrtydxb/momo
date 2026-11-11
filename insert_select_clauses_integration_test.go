@@ -7,6 +7,7 @@ package momo_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -47,9 +48,9 @@ func TestExprSelectJoinExecutes(t *testing.T) {
 			"CREATE TABLE owners (name text primary key)",
 			"INSERT INTO owners VALUES ('o1')")
 		ctx := context.Background()
-		src := momo.SelectExprs(momo.Value("x"), ownerName).From(leaseTable).
+		src := momo.SelectExprs(momo.Value("x"), ownerName, momo.TypedSQL[time.Time]("now()")).From(leaseTable).
 			Join(leaseOwners, leaseHolder.EqExpr(ownerName)).OrderBy(ownerName.Desc())
-		res, err := momo.Insert[Lease](db).FromSelect(src, leaseName, leaseHolder).
+		res, err := momo.Insert[Lease](db).FromSelect(src, leaseName, leaseHolder, leaseUntil).
 			OnConflict(leaseName).DoNothing().Exec(ctx)
 		if err != nil || res.RowsAffected != 1 {
 			t.Fatalf("join insert = %+v, %v; want 1 row", res, err)

@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	rowAt = momo.NewColumn[time.Time]("waiters", "created_at", 0)
-	rowID = momo.NewColumn[int64]("waiters", "id", 0)
+	rowAt = momo.NewColumn[time.Time]("docs", "created_at", 0)
+	rowID = momo.NewColumn[int64]("docs", "id", 0)
 )
 
 // Catches: a row comparison rendered with the wrong operator, unparenthesised,
@@ -49,7 +49,7 @@ func TestRowComparisonGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s %s: %v", d, c.name, err)
 			}
-			want := "SELECT COUNT(*) FROM " + q("docs") + " WHERE (" + q("waiters") + "." + q("created_at") + ", " + q("waiters") + "." + q("id") + ") " + c.op + " (" + ph1 + ", " + ph2 + ")"
+			want := "SELECT COUNT(*) FROM " + q("docs") + " WHERE (" + q("docs") + "." + q("created_at") + ", " + q("docs") + "." + q("id") + ") " + c.op + " (" + ph1 + ", " + ph2 + ")"
 			if got.SQL != want || len(got.Args) != 2 {
 				t.Errorf("%s %s:\n got %s %v\nwant %s", d, c.name, got.SQL, got.Args, want)
 			}

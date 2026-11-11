@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	marksCol = momo.NewColumn[float64]("results", "final_marks", 0)
-	maxCol   = momo.NewColumn[float64]("results", "max_marks", 0)
+	marksCol = momo.NewColumn[float64]("documents", "final_marks", 0)
+	maxCol   = momo.NewColumn[float64]("documents", "max_marks", 0)
 )
 
 // Catches: division or NULLIF rendered wrongly, the NULLIF value bound (the
@@ -27,7 +27,7 @@ func TestDivAndNullIfGolden(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", d, err)
 		}
-		want := quoteFor(d, `SELECT ("results"."final_marks" / nullif("results"."max_marks", 0.0)) FROM "documents"`)
+		want := quoteFor(d, `SELECT ("documents"."final_marks" / nullif("documents"."max_marks", 0.0)) FROM "documents"`)
 		if got.SQL != want || len(got.Args) != 0 {
 			t.Errorf("%s DivExpr:\n got %s %v\nwant %s", d, got.SQL, got.Args, want)
 		}
@@ -39,7 +39,7 @@ func TestDivAndNullIfGolden(t *testing.T) {
 		if d == dialect.Postgres {
 			ph = "$1"
 		}
-		want = quoteFor(d, `SELECT ("results"."final_marks" / `+ph+`) FROM "documents"`)
+		want = quoteFor(d, `SELECT ("documents"."final_marks" / `+ph+`) FROM "documents"`)
 		if got.SQL != want || len(got.Args) != 1 {
 			t.Errorf("%s Div:\n got %s %v\nwant %s", d, got.SQL, got.Args, want)
 		}
@@ -52,7 +52,7 @@ func TestNullIfExprGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `SELECT nullif("results"."final_marks", "results"."max_marks") FROM "documents"`
+	want := `SELECT nullif("documents"."final_marks", "documents"."max_marks") FROM "documents"`
 	if got.SQL != want {
 		t.Errorf("got %s\nwant %s", got.SQL, want)
 	}
@@ -84,12 +84,12 @@ func TestCurrentDateAndInfinityGolden(t *testing.T) {
 
 // Catches: the infinity and date values losing the comparison methods.
 func TestInfinityComparison(t *testing.T) {
-	at := momo.NewColumn[time.Time]("t", "at", 0)
+	at := momo.NewColumn[time.Time]("docs", "at", 0)
 	got, err := exprtest.Compile(dialect.Postgres, at.LtExpr(sqlfn.Infinity()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `SELECT COUNT(*) FROM "docs" WHERE "t"."at" < 'infinity'::timestamptz`
+	want := `SELECT COUNT(*) FROM "docs" WHERE "docs"."at" < 'infinity'::timestamptz`
 	if got.SQL != want {
 		t.Errorf("got %s\nwant %s", got.SQL, want)
 	}

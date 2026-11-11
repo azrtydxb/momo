@@ -16,7 +16,7 @@ columns. A join, `GroupBy` or `Having` without `From` fails with
 `ErrValidation`, and so does an `As(...)` alias in `GroupBy`. There is no
 `Limit` or `Offset` on it yet.
 
-### Row-value comparison, `sqlfn.Div`, `CurrentDate`, infinity and `momo.Lit`
+### Row-value comparison, `sqlfn.Div`, `sqlfn.CurrentDate`, infinity and `momo.Lit`
 
 These are additions; nothing changes for existing code.
 
@@ -25,7 +25,7 @@ These are additions; nothing changes for existing code.
   least two elements and the same count, or the build fails with
   `ErrValidation`.
 - `sqlfn.Div` and `sqlfn.DivExpr` divide, and `sqlfn.NullIf` and
-  `sqlfn.NullIfExpr` build `NULLIF`, so `DivExpr(final, NullIf(max, 0))` avoids
+  `sqlfn.NullIfExpr` build `NULLIF`, so `sqlfn.DivExpr(final, sqlfn.NullIf(max, 0))` avoids
   a division by zero. Integer operands divide as integers on PostgreSQL and
   SQLite.
 - `sqlfn.CurrentDate()` is `CURRENT_DATE`. `sqlfn.Infinity()` and
