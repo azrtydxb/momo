@@ -688,11 +688,32 @@ func (b *schemaBuilder) checkGenerated(m *Model, t *schema.Table) {
 			if f.Column != col.Name {
 				continue
 			}
+			conflict := ""
 			switch {
 			case f.Access != ReadOnly:
 				b.diag(f.Pos, fmt.Sprintf("field %s: a generated column must be read_only, because the database refuses a write to it", f.GoName))
-			case col.Default != "" || col.Identity != "" || f.Tags.DBDefault || f.Tags.Version || f.Tags.CreatedAt || f.Tags.UpdatedAt || f.Tags.SoftDelete != "" || f.Tags.IDGen != "":
-				b.diag(f.Pos, fmt.Sprintf("field %s: generated conflicts with default, identity, serial, dbdefault, version, soft_delete, created_at, updated_at and idgen", f.GoName))
+				continue
+			case col.Default != "":
+				conflict = "default"
+			case f.Tags.Identity || col.Identity != "":
+				conflict = "identity"
+			case f.Tags.Serial:
+				conflict = "serial"
+			case f.Tags.DBDefault:
+				conflict = "dbdefault"
+			case f.Tags.Version:
+				conflict = "version"
+			case f.Tags.SoftDelete != "":
+				conflict = "soft_delete"
+			case f.Tags.CreatedAt:
+				conflict = "created_at"
+			case f.Tags.UpdatedAt:
+				conflict = "updated_at"
+			case f.Tags.IDGen != "" || (m.Config != nil && m.Config.IDGens[f.Column] != ""):
+				conflict = "idgen"
+			}
+			if conflict != "" {
+				b.diag(f.Pos, fmt.Sprintf("field %s: generated conflicts with %s", f.GoName, conflict))
 			}
 		}
 	}

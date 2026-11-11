@@ -6,11 +6,14 @@ package momo_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/schema"
 )
 
 // genRow models a table with a stored generated column, the way `--from-db`
@@ -32,6 +35,10 @@ var genRowMeta = momo.Meta[genRow]{
 	Value:    func(m *genRow, i int) any { return [...]any{m.ID, m.Name, m.Normalized}[i] },
 	Identity: 0, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
 	PK: []int{0},
+	// Unnest takes the column types from here.
+	TableSchema: &schema.Table{Name: "gen_rows", Columns: []schema.Column{
+		{Name: "id", Type: "bigint"}, {Name: "name", Type: "text"}, {Name: "normalized", Type: "text"},
+	}},
 }
 
 func (*genRow) MomoMeta() *momo.Meta[genRow] { return &genRowMeta }
@@ -73,6 +80,11 @@ func TestStoredGeneratedColumnLive(t *testing.T) {
 		}
 
 		// A typed select filters by the generated column and reads it back.
+		// The insert does not read the read-only field back: the model keeps the
+		// value it had, and the stored row holds the computed one.
+		if a.Normalized != "ignored" || b.Normalized != "" {
+			t.Fatalf("an insert must leave the read-only field as it was: %q, %q", a.Normalized, b.Normalized)
+		}
 		got, err := momo.Select[genRow](db).Where(genRowNormalized.Eq("ada")).All(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -100,6 +112,92 @@ func TestStoredGeneratedColumnLive(t *testing.T) {
 		got, err = momo.Select[genRow](db).Where(genRowNormalized.Eq("bob")).All(ctx)
 		if err != nil || len(got) != 1 || got[0].Name != "BOB" {
 			t.Fatalf("select after Set = %+v, %v", got, err)
+		}
+
+		// stored reads the computed value of the row named n.
+		stored := func(n string) string {
+			t.Helper()
+			r, err := momo.Select[genRow](db).Where(genRowName.Eq(n)).One(ctx)
+			if err != nil {
+				t.Fatalf("select %q: %v", n, err)
+			}
+			return r.Normalized
+		}
+
+		// ReturningAll names the column explicitly, so it carries the computed
+		// value where the dialect has RETURNING.
+		if db.Driver().Dialect().Returning {
+			ret := genRow{Name: "Dee", Normalized: "ignored"}
+			rows, err := momo.Insert[genRow](db).Model(&ret).ReturningAll().Rows(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var back []genRow
+			for rows.Next() {
+				var r genRow
+				if err := rows.ScanModel(&r); err != nil {
+					t.Fatal(err)
+				}
+				back = append(back, r)
+			}
+			if err := rows.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if len(back) != 1 || back[0].Normalized != "dee" {
+				t.Fatalf("ReturningAll = %+v, want the computed value", back)
+			}
+		}
+
+		// Upsert, Model and Models, hitting an existing row by its key.
+		up := genRow{ID: row.ID, Name: "ADA L", Normalized: "ignored"}
+		_, err = momo.Upsert[genRow](db).Model(&up).Exec(ctx)
+		switch {
+		case errors.Is(err, momo.ErrUnsupported):
+			t.Logf("%s: Upsert is not supported: %v", name, err)
+		case err != nil:
+			t.Fatalf("Upsert.Model wrote the generated column: %v", err)
+		default:
+			if n := stored("ADA L"); n != "ada l" {
+				t.Fatalf("after Upsert.Model the stored value = %q, want ada l", n)
+			}
+			ups := []genRow{{ID: row.ID, Name: "ADA M", Normalized: "ignored"}, {ID: 900, Name: "New One", Normalized: "ignored"}}
+			if _, err := momo.Upsert[genRow](db).Models(ups).Exec(ctx); err != nil {
+				t.Fatalf("Upsert.Models wrote the generated column: %v", err)
+			}
+			if n, m := stored("ADA M"), stored("New One"); n != "ada m" || m != "new one" {
+				t.Fatalf("after Upsert.Models the stored values = %q, %q", n, m)
+			}
+		}
+
+		// A bulk insert big enough to need several chunks.
+		bulk := make([]genRow, 60)
+		for i := range bulk {
+			bulk[i] = genRow{Name: fmt.Sprintf("BULK%02d", i), Normalized: "ignored"}
+		}
+		limited := momo.New(db.Driver(), momo.WithMaxParams(20))
+		if _, err := momo.Insert[genRow](limited).Models(bulk).Exec(ctx); err != nil {
+			t.Fatalf("chunked Insert.Models wrote the generated column: %v", err)
+		}
+		if n := stored("BULK59"); n != "bulk59" {
+			t.Fatalf("after the chunked insert the stored value = %q", n)
+		}
+
+		// PostgreSQL only: the unnest and COPY insert paths.
+		if name == dialect.Postgres {
+			un := []genRow{{Name: "UN1", Normalized: "ignored"}, {Name: "UN2", Normalized: "ignored"}}
+			if _, err := momo.Insert[genRow](db).Unnest().Models(un).Exec(ctx); err != nil {
+				t.Fatalf("Unnest wrote the generated column: %v", err)
+			}
+			if n := stored("UN2"); n != "un2" {
+				t.Fatalf("after Unnest the stored value = %q", n)
+			}
+			cp := []genRow{{Name: "CP1", Normalized: "ignored"}, {Name: "CP2", Normalized: "ignored"}}
+			if _, err := momo.Insert[genRow](db).Copy(ctx, cp); err != nil {
+				t.Fatalf("Copy wrote the generated column: %v", err)
+			}
+			if n := stored("CP2"); n != "cp2" {
+				t.Fatalf("after Copy the stored value = %q", n)
+			}
 		}
 	})
 }

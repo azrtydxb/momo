@@ -34,10 +34,15 @@ identity, serial, `dbdefault`, `version`, `soft_delete`, `created_at`,
 `updated_at` or `idgen`.
 
 What to do: regenerate with `momo generate --from-db` to model the columns, or
-keep the `introspect.skip` or `introspect.only` rules that hid them. A
-`VIRTUAL` generated column is still not modeled: PostgreSQL inspection refuses
-it unless `migrate.exclude` hides the table, and MySQL and SQLite inspection
-read it as a stored column.
+keep the `introspect.skip` or `introspect.only` rules that hid them.
+`--from-db` reads PostgreSQL only, and PostgreSQL inspection still refuses a
+`VIRTUAL` generated column (hide its table with `migrate.exclude`); nothing
+changes for it. How the MySQL and SQLite inspectors treat a `VIRTUAL` column is
+tracked in issue 111.
+
+A read-only generated field is not read back after an insert: `Insert.Model`
+leaves the Go value as it was, so select the row again to see the computed
+value.
 
 ## Upgrading to 0.7.0
 

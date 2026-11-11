@@ -372,19 +372,19 @@ func (g *generator) columns(m *model) {
 	for _, c := range t.PrimaryKey {
 		pk[c] = true
 	}
-	var keep []schema.Column
-	for _, col := range t.Columns {
+	for i := range t.Columns {
+		// field may adjust the column (an enum column's type), and the snapshot
+		// keeps that, so it gets the column in place.
+		col := &t.Columns[i]
 		obj := t.Name + "." + col.Name
-		f, err := g.field(m, &col, pk[col.Name])
+		f, err := g.field(m, col, pk[col.Name])
 		if err != nil {
 			g.add(SevError, obj, "%v", err)
 		} else {
 			m.fields = append(m.fields, f)
 			m.byCol[col.Name] = f
 		}
-		keep = append(keep, col)
 	}
-	t.Columns = keep
 	if len(t.PrimaryKey) == 0 {
 		g.add(SevNote, t.Name, "the table has no primary key")
 	} else if !pkInColumnOrder(t) {
