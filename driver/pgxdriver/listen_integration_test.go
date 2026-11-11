@@ -253,16 +253,104 @@ func TestListenWaitDeadlineThenResume(t *testing.T) {
 		t.Fatalf("Wait = %v, want context.DeadlineExceeded", err)
 	}
 
-	// The next Wait reconnects (Wait drops a connection a failed read
-	// touched), reports it, and delivers again.
-	results := pump(ctx, l)
-	recv(t, reconnected, "OnReconnect after deadline")
+	// An already-cancelled context returns at once and must not disturb the
+	// connection either.
+	dead, kill := context.WithCancel(ctx)
+	kill()
+	if _, err := l.Wait(dead); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait with cancelled ctx = %v, want context.Canceled", err)
+	}
+
+	// A notification sent between the timed-out Wait and the next one stays
+	// on the same connection and is delivered by the next Wait.
 	db := momo.New(New(openPool(t)))
-	if err := Notify(ctx, db, ch, "resumed"); err != nil {
+	if err := Notify(ctx, db, ch, "between"); err != nil {
 		t.Fatal(err)
 	}
-	r := recv(t, results, "notification after deadline")
-	if r.err != nil || r.n.Payload != "resumed" {
-		t.Fatalf("got %+v, %v, want payload resumed", r.n, r.err)
+	r := recv(t, pump(ctx, l), "notification sent between Waits")
+	if r.err != nil || r.n.Payload != "between" {
+		t.Fatalf("got %+v, %v, want payload between", r.n, r.err)
+	}
+	// OnReconnect runs before Wait delivers anything from a new connection,
+	// so receiving the notification proves it has not run.
+	select {
+	case <-reconnected:
+		t.Fatal("OnReconnect ran although the connection was never lost")
+	default:
+	}
+}
+
+func TestListenWaitErrorNamesLastConnectError(t *testing.T) {
+	ch := uniqueChannel()
+	pool := openPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*listenWait)
+	defer cancel()
+	l, err := Listen(ctx, connCfg(t), []string{ch}, WithBackoff(10*time.Millisecond, 50*time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = l.Close(ctx) }()
+
+	// Make every reconnect fail permanently, then drop the live connection.
+	l.cfg.User = "momo_no_such_role"
+	var pid int32
+	if err := pool.QueryRow(ctx,
+		`SELECT pid FROM pg_stat_activity WHERE query = $1 AND pid <> pg_backend_pid()`,
+		listenStatement(ch)).Scan(&pid); err != nil {
+		t.Fatalf("find listener backend: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "SELECT pg_terminate_backend($1)", pid); err != nil {
+		t.Fatal(err)
+	}
+
+	short, stop := context.WithTimeout(ctx, 2*time.Second)
+	defer stop()
+	_, err = l.Wait(short)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Wait = %v, want context.DeadlineExceeded", err)
+	}
+	if !strings.Contains(err.Error(), "reconnect") || !strings.Contains(err.Error(), "momo_no_such_role") {
+		t.Fatalf("Wait error %q does not name the last connect error", err)
+	}
+}
+
+func TestListenCloseDuringOnReconnectClosesConnection(t *testing.T) {
+	ch := uniqueChannel()
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	l, results, ctx := newListener(t, []string{ch},
+		OnReconnect(func() {
+			entered <- struct{}{}
+			<-release
+		}),
+		WithBackoff(10*time.Millisecond, 50*time.Millisecond))
+	pool := openPool(t)
+	var pid int32
+	if err := pool.QueryRow(ctx,
+		`SELECT pid FROM pg_stat_activity WHERE query = $1 AND pid <> pg_backend_pid()`,
+		listenStatement(ch)).Scan(&pid); err != nil {
+		t.Fatalf("find listener backend: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "SELECT pg_terminate_backend($1)", pid); err != nil {
+		t.Fatal(err)
+	}
+	recv(t, entered, "OnReconnect to start")
+
+	// Close cannot take the listener while the callback runs, so it returns
+	// its own context's error.
+	short, stop := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer stop()
+	if err := l.Close(short); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Close = %v, want context.DeadlineExceeded", err)
+	}
+	close(release)
+
+	r := recv(t, results, "Wait result after Close")
+	if !errors.Is(r.err, ErrListenerClosed) {
+		t.Fatalf("Wait = %v, want ErrListenerClosed", r.err)
+	}
+	// Wait has returned, so reading the field is ordered by the channel.
+	if l.conn != nil {
+		t.Fatal("the connection opened during Close was left open")
 	}
 }
