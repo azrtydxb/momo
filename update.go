@@ -119,7 +119,9 @@ func (u UpdateQuery[T]) Where(ps ...Predicate) UpdateQuery[T] {
 // a stale m fails with ErrOptimisticLock and a missing row with ErrNotFound.
 // After a successful versioned update m's version field is advanced. The
 // identity, read-only, create-only, immutable, soft-delete, created-at and
-// updated-at columns are not written from m; use Set for explicit writes.
+// updated-at columns are not written from m; use Set for explicit writes. A
+// nil pointer in a dbdefault field means "not set": the column is left out of
+// SET and keeps its stored value.
 func (u UpdateQuery[T]) Model(m *T) UpdateQuery[T] { u.model, u.modelSet = m, true; return u }
 
 // AllRows confirms that an UPDATE without WHERE is intended.
@@ -204,7 +206,11 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 			if !updModelWritable(c.Flags) {
 				continue
 			}
-			sets = append(sets, Assignment{col: c.Name, kind: setValue, val: u.meta.Value(u.model, i), flags: c.Flags})
+			v := u.meta.Value(u.model, i)
+			if c.Flags&FlagDBDefault != 0 && nilPointer(v) {
+				continue // nil on a dbdefault pointer means "not set": the column keeps its value
+			}
+			sets = append(sets, Assignment{col: c.Name, kind: setValue, val: v, flags: c.Flags})
 		}
 		pks, err := u.pkPredicates(u.model)
 		if err != nil {

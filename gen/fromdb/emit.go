@@ -22,6 +22,7 @@ import (
 	"go/token"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ import (
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/gen/typemap"
+	"github.com/azrtydxb/momo/internal/dbdefault"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -166,10 +168,20 @@ type field struct {
 	tagSig            string  // sort, nulls and method written for the index tags
 }
 
-// relation is a belongs_to field.
+// relation is a relation field: a belongs_to read from a foreign key, or the
+// has_one or has_many inverse of one.
 type relation struct {
 	name, target string
 	opts         []string
+	// kind is belongs_to, has_one or has_many.
+	kind string
+	// child, parent and fkField describe the foreign key behind the relation:
+	// the referencing model, the referenced model and the Go field that holds it.
+	child, parent *model
+	fkField       string
+	// derived is the introspect.relations key of an inverse: the parent model
+	// and the name derived before any rule or collision suffix.
+	derived string
 }
 
 type generator struct {
@@ -197,6 +209,9 @@ func (g *generator) run() error {
 	}
 	for _, m := range g.models {
 		g.constraints(m)
+	}
+	if g.o.Config.Inverse {
+		g.inverses()
 	}
 	g.globals()
 	names := map[string]bool{}
@@ -249,24 +264,21 @@ func (g *generator) cleanGlobals() {
 
 func (g *generator) collectTables() {
 	var kept []schema.Table
-	dropped := map[string]bool{}
 	for _, t := range g.clean.Tables {
 		if g.o.Config.outsideOnly(t.Schema, t.Name) {
-			dropped[tableKey(t.Schema, t.Name)] = true
 			// momo generate --from-db never reports this: inspection already leaves
 			// such tables out, so only a direct fromdb.Generate caller sees it.
 			g.add(SevNote, t.Name, "not matched by introspect.only: no model and not in the snapshot")
 			continue
 		}
 		if g.o.Config.skipped(t.Schema, t.Name) {
-			dropped[tableKey(t.Schema, t.Name)] = true
 			g.add(SevNote, t.Name, "skipped by introspect.skip: no model and not in the snapshot; add it to migrate.exclude so the baseline ignores the live table")
 			continue
 		}
 		kept = append(kept, t)
 	}
 	g.clean.Tables = kept
-	g.dropObjectsOf(dropped)
+	g.dropUnmodeledObjects()
 	for i := range g.clean.Tables {
 		t := &g.clean.Tables[i]
 		m := &model{
@@ -279,24 +291,32 @@ func (g *generator) collectTables() {
 	}
 }
 
-// dropObjectsOf removes the triggers and policies of skipped tables.
-func (g *generator) dropObjectsOf(dropped map[string]bool) {
-	if len(dropped) == 0 {
-		return
+// dropUnmodeledObjects removes the triggers and policies whose table has no
+// model, and notes how many it left out. Inspection leaves a skipped or
+// only-excluded table out of the schema but keeps its triggers and policies,
+// so the table list alone does not find them; without this they would land on
+// the first model.
+func (g *generator) dropUnmodeledObjects() {
+	have := map[string]bool{}
+	for _, t := range g.clean.Tables {
+		have[tableKey(t.Schema, t.Name)] = true
 	}
 	var trg []schema.Trigger
 	for _, x := range g.clean.Triggers {
-		if !dropped[tableKey(x.Schema, x.Table)] {
+		if have[tableKey(x.Schema, x.Table)] {
 			trg = append(trg, x)
 		}
 	}
-	g.clean.Triggers = trg
 	var pol []schema.Policy
 	for _, x := range g.clean.Policies {
-		if !dropped[tableKey(x.Schema, x.Table)] {
+		if have[tableKey(x.Schema, x.Table)] {
 			pol = append(pol, x)
 		}
 	}
+	if nt, np := len(g.clean.Triggers)-len(trg), len(g.clean.Policies)-len(pol); nt+np > 0 {
+		g.add(SevNote, "", "%d triggers and %d policies of tables with no model left out", nt, np)
+	}
+	g.clean.Triggers = trg
 	g.clean.Policies = pol
 }
 
@@ -524,6 +544,12 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 	}
 	goType := gt.Expr
 	if col.Nullable && !gt.Nilable {
+		goType = "*" + goType
+	}
+	if !col.Nullable && slices.Contains(opts, "dbdefault") && dbdefault.NonZeroConst(gt.Expr, col.Default) {
+		// A bool or number whose constant default is true or non-zero: a plain
+		// field would replace an explicit false or 0 with the default, so the
+		// field is a pointer (nil takes the default, any value is written).
 		goType = "*" + goType
 	}
 	if gt.Note != "" {
@@ -795,7 +821,7 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		rel = target.name
 	}
 	rel = uniqueName(m.used, rel)
-	m.rels = append(m.rels, &relation{name: rel, target: target.name, opts: opts})
+	m.rels = append(m.rels, &relation{name: rel, target: target.name, opts: opts, kind: "belongs_to", child: m, parent: target, fkField: f.name})
 	return true
 }
 
@@ -1123,19 +1149,17 @@ func (g *generator) globals() {
 	}
 	g.functions(host)
 	for _, x := range g.clean.Triggers {
-		g.owner(x.Schema, x.Table, host).global("Trigger", x, g, x.Name)
+		g.owner(x.Schema, x.Table).global("Trigger", x, g, x.Name)
 	}
 	for _, x := range g.clean.Policies {
-		g.owner(x.Schema, x.Table, host).global("Policy", x, g, x.Name)
+		g.owner(x.Schema, x.Table).global("Policy", x, g, x.Name)
 	}
 }
 
-// owner returns the model of a table, or fallback when the table has none.
-func (g *generator) owner(schemaName, table string, fallback *model) *model {
-	if m, ok := g.byKey[tableKey(schemaName, table)]; ok {
-		return m
-	}
-	return fallback
+// owner returns the model of a table. Every trigger and policy has one:
+// dropUnmodeledObjects removed the others.
+func (g *generator) owner(schemaName, table string) *model {
+	return g.byKey[tableKey(schemaName, table)]
 }
 
 func (m *model) global(method string, v any, g *generator, name string) {
@@ -1172,7 +1196,11 @@ func (g *generator) render(m *model, names map[string]bool) (File, error) {
 		b.WriteString("\n")
 	}
 	for _, r := range m.rels {
-		b.WriteString("\t" + r.name + " *" + r.target + " `momo:\"" + strings.Join(r.opts, ",") + "\"`\n")
+		typ := "*" + r.target
+		if r.kind == "has_many" {
+			typ = "[]" + r.target
+		}
+		b.WriteString("\t" + r.name + " " + typ + " `momo:\"" + strings.Join(r.opts, ",") + "\"`\n")
 	}
 	b.WriteString("}\n")
 	if len(m.stmts) > 0 {

@@ -345,8 +345,12 @@ func IntervalOf(n int64, unit IntervalUnit) Interval {
 // microsecond is truncated toward zero to whole microseconds. It is the
 // time.Duration form of IntervalOf, for a TTL or lease length held as a
 // duration: 1500ms is 1500 milliseconds, not a rounded 2 seconds. SQLite
-// timestamps carry millisecond precision, so a microsecond part is dropped
-// there.
+// timestamps carry millisecond precision: it rounds a sub-millisecond part to
+// the nearest millisecond, half away from zero (1500us adds 2 ms, 1499us adds
+// 1 ms). Each distinct duration renders a distinct SQL literal, so a caller
+// with many different durations gets many distinct statement texts, which
+// matters for statement caching and pg_stat_statements; bind the count with
+// IntervalExpr to keep one text.
 func IntervalDuration(d time.Duration) Interval {
 	switch {
 	case d%time.Second == 0:
@@ -557,7 +561,9 @@ type EpochExpr struct {
 // difference times 86400 on SQLite, which is accurate to about a tenth of a
 // millisecond. Use it for a duration computed in SQL, for example
 // percentile_cont over EpochSeconds(Sub(finished, started)). A Span from Age
-// is PostgreSQL only, and there a month counts as 30 days in the epoch.
+// is PostgreSQL only, and there EXTRACT(EPOCH FROM interval) counts a month as
+// 30 days and a year as 365.25 days, so the epoch of an Age that spans months
+// or years is not the real elapsed time; use Sub for that.
 func EpochSeconds(s Span) EpochExpr {
 	x := EpochExpr{s: s}
 	x.Ops = momo.NewOps[float64](x)

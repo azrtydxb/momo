@@ -5,7 +5,7 @@ Created: 2026-11-11
 
 ## Goal
 
-Kuvryn Orbit can move all of its database code onto momo with no workarounds. Every GitHub issue open on 2026-11-11 (#86 to #108) is fixed, with a regression test, and shipped in a release:
+Kuvryn Orbit can move all of its database code onto momo with no workarounds. Every GitHub issue open on 2026-11-11 (#86 to #111) is fixed, with a regression test, and shipped in a release:
 
 - **Naming:** initialisms in snake_case, `-ss` singulars, and the naming preset used by plain-struct `Query`.
 - **`--from-db`:** generated columns, inverse relations, and no objects of unmodeled tables.

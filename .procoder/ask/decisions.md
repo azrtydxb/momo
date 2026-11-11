@@ -359,3 +359,24 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   Reword the criterion to say so, and close the story.
 - **163 and 243, benchmark results:** stay open until the user commits a
   `make bench` reference run from dedicated hardware.
+
+## Sprint 9 design decisions (2026-11-11, the user, via AskUserQuestion)
+
+- **#90, an explicit zero for a `dbdefault` column:** allow `dbdefault` on a
+  pointer field of a NOT NULL column. nil uses the database default; a
+  non-nil value is always written, including false and 0.
+- **#106, momovet's trusted-SQL marker:** a `//momovet:ok <reason>` line
+  directive on the call line. The reason is required, and a directive
+  without one is itself reported. No new API type.
+- **#108 (integrator, from the issue's expected behaviour):** objects of a
+  table that is skipped or not modeled are not generated, and there is no
+  opt-in.
+- **#93 (integrator, from PostgreSQL semantics):** a DML body in `With`
+  without `Returning` is accepted, since PostgreSQL allows a data-modifying
+  CTE that nothing reads. The docs are corrected to say `Returning` is needed
+  only when the outer query reads the CTE.
+- **#97 (integrator, from the issue's `COALESCE(col, 'none')` example):**
+  `momo.Lit` accepts strings, rendered with doubled quotes. A string with a
+  backslash or a NUL byte is refused with `ErrValidation` on every dialect.
+  A `time.Time` must be exactly midnight UTC and renders as `DATE '...'`;
+  any other time is refused rather than truncated.

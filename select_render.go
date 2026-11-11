@@ -99,6 +99,10 @@ func (s *selectCore) writeFrom(b *Builder, table string) bool {
 	if s.from == nil {
 		return true
 	}
+	if _, ok := s.from.(needsEarlierSource); ok {
+		b.SetErr(newError(ErrValidation, "build", table, errors.New("UnnestColumn reads a column of an earlier source and cannot be the first FROM item; use From for the table that holds the array and CrossJoin or LeftJoin the UnnestColumn")))
+		return false
+	}
 	b.WriteString(" FROM ")
 	s.from.appendFrom(b)
 	if s.indexedBy == "" {

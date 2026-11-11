@@ -172,6 +172,9 @@ func TestDBDefaultAllTagsConstantDefaults(t *testing.T) {
 			{Name: "state", Type: "text", Default: "'open'::text"},
 			{Name: "note", Type: "text", Nullable: true, Default: "'x'::text"},
 			{Name: "plain", Type: "text"},
+			{Name: "active", Type: "boolean", Default: "true"},
+			{Name: "off", Type: "boolean", Default: "false"},
+			{Name: "count", Type: "integer", Default: "0"},
 		},
 		PrimaryKey: []string{"id"},
 	}}}
@@ -182,6 +185,16 @@ func TestDBDefaultAllTagsConstantDefaults(t *testing.T) {
 	_, all := generate(t, s, Config{DBDefault: "all"})
 	src := all["overrides"]
 	mustContain(t, "overrides", src, "`momo:\"default:1,dbdefault\"`", "`momo:\"default:'open'::text,dbdefault\"`")
+	// A NOT NULL bool or number whose constant default is true or non-zero is
+	// a pointer, so an explicit false or 0 is not replaced by the default; a
+	// zero default and a text default keep the plain type (issue 90).
+	mustMatch(t, "overrides", src,
+		`Version\s+\*int64\s+`+"`momo:\"default:1,dbdefault\"`",
+		`Active\s+\*bool\s+`+"`momo:\"default:true,dbdefault\"`",
+		`Off\s+bool\s+`+"`momo:\"default:false,dbdefault\"`",
+		`Count\s+int32\s+`+"`momo:\"default:0,dbdefault\"`",
+		`State\s+string\s+`,
+	)
 	for _, line := range strings.Split(src, "\n") {
 		if (strings.Contains(line, "Note ") || strings.Contains(line, "Plain ")) && strings.Contains(line, "dbdefault") {
 			t.Errorf("a nullable or default-less column got dbdefault: %s", line)

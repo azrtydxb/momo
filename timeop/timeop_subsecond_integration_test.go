@@ -39,8 +39,24 @@ func TestSubSecondIntervalIntegration(t *testing.T) {
 		if got := timeOf(t, db, 1, timeop.SubDuration(suite.DocCreatedAt, 90*time.Second)); !got.Equal(at.Add(-90 * time.Second)) {
 			t.Errorf("SubDuration 90s = %v", got)
 		}
+		if d == dialect.SQLite {
+			// SQLite parses the fractional-seconds modifier to whole milliseconds and
+			// rounds half away from zero: 1500us adds 2 ms, 1499us adds 1 ms.
+			for _, c := range []struct {
+				d    time.Duration
+				want time.Duration
+			}{
+				{1500 * time.Microsecond, 2 * time.Millisecond},
+				{1499 * time.Microsecond, time.Millisecond},
+				{-1500 * time.Microsecond, -2 * time.Millisecond},
+				{-1499 * time.Microsecond, -time.Millisecond},
+			} {
+				if got := timeOf(t, db, 1, timeop.AddDuration(suite.DocCreatedAt, c.d)); !got.Equal(at.Add(c.want)) {
+					t.Errorf("SQLite AddDuration %v = %v, want %v", c.d, got, at.Add(c.want))
+				}
+			}
+		}
 		if d != dialect.SQLite {
-			// SQLite timestamps stop at the millisecond.
 			if got := timeOf(t, db, 1, timeop.AddInterval(suite.DocCreatedAt, timeop.IntervalOf(250, timeop.IntervalMicrosecond))); !got.Equal(at.Add(250 * time.Microsecond)) {
 				t.Errorf("+250 microseconds = %v", got)
 			}
