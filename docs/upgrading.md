@@ -26,7 +26,7 @@ the table to `migrate.exclude` so drift does not report them as unmanaged. With
 A nullable column is a `momo.NullColumn[T]`, while the model field is `*T`. You
 no longer branch on nil at each call site:
 
-```go
+```text
 // before
 if p.SourceID != nil {
 	sets = append(sets, document.SourceID.Set(*p.SourceID))
@@ -38,8 +38,8 @@ sets = append(sets, document.SourceID.SetPtr(p.SourceID))
 ```
 
 `SetPtr(nil)` writes `NULL` and `SetPtr(&v)` writes `v`; it is a plain
-`Assignment`, so it works in `Update.Set`, `Insert.Values` and an upsert
-`DoUpdate`. `EqPtr(nil)` renders `IS NULL` (never `= NULL`) and `EqPtr(&v)`
+`Assignment`, so it works in an update Set, an insert Values and an upsert
+DoUpdate. `EqPtr(nil)` renders `IS NULL` (never `= NULL`) and `EqPtr(&v)`
 renders `= $n`. This is an addition; nothing existing changes. There is no
 `NePtr`.
 

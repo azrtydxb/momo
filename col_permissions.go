@@ -57,6 +57,14 @@ func (c NullReadOnlyColumn[T]) As(alias string) NullReadOnlyColumn[T] {
 	return NullReadOnlyColumn[T]{colCore: c.withAlias(alias)}
 }
 
+// EqPtr compares the column with *v, or tests IS NULL when v is nil.
+func (c NullReadOnlyColumn[T]) EqPtr(v *T) Predicate {
+	if v == nil {
+		return c.IsNull()
+	}
+	return c.Eq(*v)
+}
+
 // CreateOnlyColumn is the descriptor of a column writable in INSERT only. Its
 // Set returns an InsertAssignment, which Update.Set does not accept.
 type CreateOnlyColumn[T any] struct {
