@@ -68,10 +68,10 @@ func (a arrayExpr[T]) AppendSQL(b *Builder) {
 
 // ArraySubquery is ARRAY(subquery): the rows of a one-column subquery
 // collected into an array, an Expression[[]T] where T is the Go type of that
-// column; a subquery of known width that selects more or fewer columns
-// fails the build with ErrValidation (a RawSubquery has no known width, so the
-// database checks it). The subquery may be a SelectQuery or a set operation such as a
-// UNION, so ARRAY(SELECT a FROM x UNION SELECT b FROM y) scans into []T. The
+// column. A subquery of known width that selects more or fewer columns fails
+// the build with ErrValidation (a RawSubquery has no known width, so the
+// database checks it). The subquery may be a SelectQuery or a set operation
+// such as a UNION, so ARRAY(SELECT a FROM x UNION SELECT b FROM y) scans into []T. The
 // subquery renders its own parentheses. An empty result is an empty array, not
 // NULL. Arrays are PostgreSQL only; other dialects fail with ErrUnsupported.
 func ArraySubquery[T any](sub Subquery) Expression[[]T] {
