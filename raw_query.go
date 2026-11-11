@@ -51,32 +51,11 @@ import (
 // MaxRows, so bound the SQL with LIMIT or use QueryRows. An empty result is a
 // nil slice and a nil error.
 func Query[T any](ctx context.Context, q Querier, sql string, args ...any) ([]T, error) {
-	r, sc, err := openRaw[T](ctx, q, sql, args)
+	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = r.Close() }()
-	var out []T
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil, newError(ErrCanceled, "raw", "", err)
-		}
-		if !r.Next() {
-			break
-		}
-		var v T
-		if err := sc.scan(r, &v); err != nil {
-			return nil, err
-		}
-		out = append(out, v)
-	}
-	if err := r.Err(); err != nil {
-		return nil, err
-	}
-	if err := r.Close(); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return scanCompiled[T](ctx, q, "raw", "", c)
 }
 
 // QueryRows is the streaming form of Query: it yields one T per row without
@@ -233,17 +212,17 @@ func openRaw[T any](ctx context.Context, q Querier, sql string, args []any) (Row
 	if err != nil {
 		return nil, nil, err
 	}
-	return openCompiled[T](ctx, q, "raw", c)
+	return openCompiled[T](ctx, q, "raw", "", c)
 }
 
-// openCompiled runs the compiled statement under hook operation op and binds
-// the result columns to T's fields. On an error the rows are already closed.
-func openCompiled[T any](ctx context.Context, q Querier, op string, c Compiled) (Rows, *rawScan[T], error) {
+// openCompiled runs a compiled statement and binds the result columns to T's
+// fields. On an error the rows are already closed.
+func openCompiled[T any](ctx context.Context, q Querier, op, table string, c Compiled) (Rows, *rawScan[T], error) {
 	meta, err := metaFor[T]()
 	if err != nil {
 		return nil, nil, err
 	}
-	r, err := q.conn().query(ctx, op, "", "", c)
+	r, err := q.conn().query(ctx, op, table, "", c)
 	if err != nil {
 		return nil, nil, err
 	}

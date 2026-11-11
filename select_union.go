@@ -151,7 +151,7 @@ func (u UnionQuery[T]) Rows(ctx context.Context) iter.Seq2[T, error] {
 			yield(zero, err)
 			return
 		}
-		r, sc, err := openCompiled[T](ctx, u.q, "select", c)
+		r, sc, err := openCompiled[T](ctx, u.q, "select", "", c)
 		if err != nil {
 			yield(zero, err)
 			return

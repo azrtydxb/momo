@@ -408,6 +408,29 @@ A read-only generated field is not read back after an insert: a model insert
 leaves the Go value as it was, so select the row again to see the computed
 value.
 
+### `From` and `Using` take several sources, and `Returning` reads their columns
+
+`UpdateQuery.From` and `DeleteQuery.Using` now take `...TableSource`: pass a
+CTE and a table (`From(momo.CTE("due"), subscription)`) and they render as a
+comma list. A call with one source is unchanged, but the method's type changed,
+so a method value assigned to a `func(TableSource) UpdateQuery[T]` variable no
+longer compiles.
+
+With two or more sources the unfiltered-mutation guard also requires `Where` to
+reference every source (the rules for `Or`, `Not` and `JoinSQL` are those for the
+target). A statement that left one source out of `Where`, a cross join, now fails
+with `ErrUnfilteredMutation`; join it, or confirm with `AllRows()`. A statement
+with one source is checked as before.
+
+`Returning` accepts columns of a `From` or `Using` source or CTE, and
+`momo.ScanUpdate` and `momo.ScanDelete` scan the list
+into a plain struct, projection or tuple row by column name. On PostgreSQL the
+RETURNING list of any statement with a source is now rendered qualified
+(`RETURNING "t"."id"`), which fixes the ambiguity when the source shares a column
+name with the target. `Rows` and `One` return `ErrValidation` for a list with a
+source column. SQLite returns `ErrUnsupported` for one, as its RETURNING reads the
+modified table only.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
