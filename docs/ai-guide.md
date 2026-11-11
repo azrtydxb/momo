@@ -275,6 +275,18 @@ Nullability and column rules:
   elements made of digits can be array indexes. SQLite renders `json_extract`
   and `json_type` (`jsonop.Contains` is `ErrUnsupported` there); MySQL renders
   its JSON functions.
+- JSON edits and scalars: `jsonop.Root(col)` reads a scalar stored at the root
+  of the value (`col #>> '{}'`; cast it with `sqlfn.Cast` for a number).
+  `jsonop.DeleteKey(expr, key)` is `expr - 'key'` (SQLite `json_remove`, MySQL
+  `JSON_REMOVE`), so a snapshot keeps every future column and still drops the
+  secret. `jsonop.Concat(a, b)` is the shallow `a || b` and
+  `jsonop.Set(target, path, value)` is `jsonb_set` with a path built in SQL
+  (`momo.ArrayOf(...)`); both are PostgreSQL only and `ErrUnsupported`
+  elsewhere, because `json_patch` and `JSON_MERGE_PATCH` merge recursively and
+  drop nulls. Their results are JSON expressions that `Text`, `Path`, `Root`
+  and `HasKey` accept again. `jsonb_build_object` and `to_jsonb` are variadic
+  `"any"`: cast their bound arguments (`sqlfn.Cast`), as PostgreSQL cannot type
+  a bare parameter there.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
@@ -911,6 +923,11 @@ in the package `github.com/azrtydxb/momo/arrayop`:
 count does not grow with the list. `arrayop.Overlaps` and `arrayop.AnyOf` with no values are
 false. On other dialects they fail the build with
 `ErrUnsupported`; use `In` there.
+Array expressions: `momo.ArrayOf[T]` renders `ARRAY[e1, e2]` from
+column, call or `momo.Value` elements (an empty list is `ErrValidation`), and
+`momo.ArraySubquery[T]` renders `ARRAY(subquery)` for a one-column
+`SelectQuery` or `momo.Union`. Both are `Expression[[]T]`, so they scan into
+a `[]T` field and feed `arrayop` predicates; PostgreSQL only.
 
 Searching with user input safely. `Like` and `ILike` always render
 `ESCAPE '!'` on every dialect, matching `EscapeLike`. Wildcards (`%`, `_`) in

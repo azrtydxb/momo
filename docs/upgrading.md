@@ -5,6 +5,30 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### JSON key delete, concat, set, root scalar and array expressions
+
+New, additive API; nothing existing changes.
+
+- `jsonop.Root(col)` reads a scalar stored at the root of a JSON value
+  (`col #>> '{}'`). `jsonop.Path` with no elements is still `ErrValidation`.
+- `jsonop.DeleteKey(expr, key)` is `expr - 'key'` on PostgreSQL, `json_remove`
+  on SQLite and `JSON_REMOVE` on MySQL. Replace a column list written to keep
+  a secret out of a snapshot with it, so a later column is not copied.
+- `jsonop.Concat(a, b)` (`a || b`) and `jsonop.Set(target, path, value)`
+  (`jsonb_set`) are PostgreSQL only; SQLite and MySQL return `ErrUnsupported`
+  instead of a lookalike with other merge rules.
+- `momo.ArrayOf[T]` (`ARRAY[...]`) and `momo.ArraySubquery[T]`
+  (`ARRAY(...)`) are `Expression[[]T]`, PostgreSQL only. Build the path of
+  `jsonop.Set` with `ArrayOf`:
+
+  ```go
+  path := momo.ArrayOf[string](sqlfn.Concat(
+      momo.Value("at_execution_"), sqlfn.Cast[string](momo.Value(kind), "text")))
+  next := jsonop.Set(skipped, path, count)
+  ```
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
