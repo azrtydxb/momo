@@ -12,12 +12,24 @@ later releases can break more.
 `naming.ToSnake`, and with it the column name of the default `momo` naming
 preset and the column of a plain struct that `momo.Query` and `momo.QueryRows`
 scan, used to split an initialism followed by a plural `s`: `RestrictRoleIDs`
-gave `restrict_role_i_ds`. The rule now is exact: an upper-case run that ends in
-a word of the list, followed by a lone lower-case `s` that ends the name or is
-followed by anything other than a lower-case letter. The `s` stays with the
-initialism, and the name breaks before the initialism (and before the run's
-other letters), so `XMLIDs` is `xml_ids`. The longest word of the list that the run ends with wins, so `HTTPIDs` reads as HTT and `PIDs`: `htt_pids`. `IDsomething` is not a plural (the
-`s` starts a lower-case word) and is unchanged.
+gave `restrict_role_i_ds`. The rule now is exact. It applies to an upper-case
+run followed by a lone lower-case `s` that ends the name or is followed by
+anything other than a lower-case letter, when the run ends in a word of the
+list. The `s` stays with the last word, and the name breaks between the words
+of the run:
+
+1. If the whole run is a sequence of list words, it is cut into them. When
+   there are several such cuts, the last word is the longest one that leaves a
+   prefix that can be cut as well, and the prefix follows the same rule. So
+   `HTTPIDs` is HTTP and ID (`http_ids`, not HTT and PID), `XMLHTTPIDs` is XML,
+   HTTP and ID (`xml_http_ids`), `APIIDs` is API and ID (`api_ids`), and `PIDs`,
+   `OIDs`, `SSIDs`, `GUIDs` and `GUIs` are one word each (`pids`, `oids`,
+   `ssids`, `guids`, `guis`).
+2. Otherwise the run is cut once, before the longest list word it ends with,
+   and the letters before it stay together: `ABCIDs` is `abc_ids`.
+
+A name where the run does not end in a list word (`ABs`), or where the `s`
+starts a lower-case word (`IDsomething`), is unchanged.
 
 The word list is ACL, API, ASCII, CPU, CSS, DNS, EOF, GUI, GUID, HTML, HTTP,
 HTTPS, ID, IP, JSON, LHS, OID, PID, QPS, RAM, RHS, RPC, SLA, SMTP, SQL, SSH,
