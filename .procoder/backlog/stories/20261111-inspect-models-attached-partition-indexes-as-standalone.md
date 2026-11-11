@@ -1,6 +1,6 @@
 # Inspect models attached partition indexes as standalone
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -30,10 +30,14 @@ constraint-backed indexes but not indexes that have a `pg_inherits` parent.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] inspecting a partitioned table with a parent index and two partitions models the index only on the parent
-- [ ] applying the inspected model to an empty schema creates no duplicate partition indexes and diffs clean
-- [ ] docs/migrations.md and docs/upgrading.md describe the change
+- [x] a regression test pins the fix: red before the change, green after
+- [x] inspecting a partitioned table with a parent index and two partitions models the index only on the parent
+- [x] applying the inspected model to an empty schema creates no duplicate partition indexes and diffs clean
+- [x] docs/migrations.md and docs/upgrading.md describe the change
 
 ## Evidence
 
+- Red: ci-agent run 42980092749 (test-only commit, branch worktree-agent-red-86, deleted): `--- FAIL: TestInspectSkipsIndexesAttachedToParentIndex` with `inspect_partition_index_test.go:55: ev_2026 must not carry the attached index` (index `ev_2026_org_id_created_at_idx` modeled on the partition).
+- Green: ci-agent run 42980096188 at headSha fc64f9d89767ebf61e156b57f5362a2947cb983b, all 9 jobs success (integration postgres, lint, apidiff-docs, unit, mysql, fuzz-smoke, bench-module).
+- The test also applies the inspected model to an empty schema: each partition has 2 indexes (pkey + attached) and the follow-up diff is empty.
+- Docs changed: docs/migrations.md, docs/upgrading.md (Upgrading to 0.8.0). No exported API change, so docs/reference.md is unchanged.
