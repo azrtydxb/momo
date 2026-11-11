@@ -3,6 +3,7 @@
 package fromdb
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -116,5 +117,120 @@ func TestInverseRelationRuleValidate(t *testing.T) {
 		if c.Validate() == nil {
 			t.Errorf("%+v validated", c.Relations)
 		}
+	}
+}
+
+func warnings(res *Result, sub string) []Finding {
+	var out []Finding
+	for _, f := range res.Findings {
+		if f.Severity == SevWarn && strings.Contains(f.Object+" "+f.Msg, sub) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// Catches: a typo in an introspect.relations key being silently ignored.
+func TestInverseUnmatchedRuleWarns(t *testing.T) {
+	res, _ := generate(t, inverseSchema(), Config{Inverse: true, Relations: map[string]RelationRule{
+		"User.Ordrs":  {Name: "Purchases"},
+		"User.Orders": {Name: "Buys"},
+	}})
+	typo := warnings(res, "User.Ordrs")
+	if len(typo) != 1 || !strings.Contains(typo[0].Msg, "matched no generated inverse") {
+		t.Errorf("want one warning for the typo key: %v", res.Findings)
+	}
+	if len(warnings(res, "User.Orders")) != 0 {
+		t.Errorf("a matched key must not warn: %v", res.Findings)
+	}
+}
+
+// Catches: a collision suffix (Orders2) written without telling the user which
+// field clashed and how to rename it.
+func TestInverseCollisionWarns(t *testing.T) {
+	s := inverseSchema()
+	s.Tables[1].Columns = append(s.Tables[1].Columns, schema.Column{Name: "orders", Type: "text", Nullable: true})
+	res, files := generate(t, s, Config{Inverse: true})
+	mustMatch(t, "users", files["users"], "Orders2\\s+\\[\\]Order")
+	w := warnings(res, "User.Orders")
+	if len(w) != 1 || !strings.Contains(w[0].Msg, "Orders2") || !strings.Contains(w[0].Msg, "introspect.relations") {
+		t.Errorf("collision warning: %v", res.Findings)
+	}
+}
+
+// Catches: the inverse kind being wrong for a unique, partial, expression or
+// composite key, and an inverse written for a composite foreign key.
+func TestInverseKindMatrix(t *testing.T) {
+	ix := func(unique bool, where string, parts ...schema.IndexPart) schema.Index {
+		return schema.Index{Name: "items_ix", Unique: unique, Where: where, Parts: parts}
+	}
+	col := func(c string) schema.IndexPart { return schema.IndexPart{Column: c} }
+	cases := []struct {
+		name  string
+		build func(tb *schema.Table)
+		want  string // has_one, has_many or none
+	}{
+		{"plain", func(tb *schema.Table) {}, "has_many"},
+		{"nullable", func(tb *schema.Table) { tb.Columns[1].Nullable = true }, "has_many"},
+		{"nullable unique", func(tb *schema.Table) {
+			tb.Columns[1].Nullable = true
+			tb.Indexes = []schema.Index{ix(true, "", col("user_id"))}
+		}, "has_one"},
+		{"whole pk", func(tb *schema.Table) {
+			tb.Columns = tb.Columns[1:]
+			tb.PrimaryKey = []string{"user_id"}
+		}, "has_one"},
+		{"unique constraint", func(tb *schema.Table) {
+			tb.Uniques = []schema.Unique{{Name: "items_user_key", Columns: []string{"user_id"}}}
+		}, "has_one"},
+		{"unique index", func(tb *schema.Table) { tb.Indexes = []schema.Index{ix(true, "", col("user_id"))} }, "has_one"},
+		{"unique index with storage params", func(tb *schema.Table) {
+			i := ix(true, "", col("user_id"))
+			i.With = []schema.KV{{Key: "fillfactor", Value: "70"}}
+			tb.Indexes = []schema.Index{i}
+		}, "has_one"},
+		{"non-unique index", func(tb *schema.Table) { tb.Indexes = []schema.Index{ix(false, "", col("user_id"))} }, "has_many"},
+		{"partial unique index", func(tb *schema.Table) { tb.Indexes = []schema.Index{ix(true, "user_id > 0", col("user_id"))} }, "has_many"},
+		{"expression unique index", func(tb *schema.Table) {
+			tb.Indexes = []schema.Index{ix(true, "", schema.IndexPart{Expr: "(user_id + 1)"})}
+		}, "has_many"},
+		{"composite unique index", func(tb *schema.Table) {
+			tb.Indexes = []schema.Index{ix(true, "", col("user_id"), col("note"))}
+		}, "has_many"},
+		{"composite unique constraint", func(tb *schema.Table) {
+			tb.Uniques = []schema.Unique{{Name: "items_two_key", Columns: []string{"user_id", "note"}}}
+		}, "has_many"},
+		{"composite foreign key", func(tb *schema.Table) {
+			tb.ForeignKeys = []schema.ForeignKey{{Name: "items_fk", Columns: []string{"user_id", "note"}, RefTable: "users", RefColumns: []string{"id", "email"}}}
+		}, "none"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := sampleSchema()
+			tb := schema.Table{
+				Name: "items",
+				Columns: []schema.Column{
+					{Name: "id", Type: "bigint", Identity: "serial"},
+					{Name: "user_id", Type: "bigint"},
+					{Name: "note", Type: "text"},
+				},
+				PrimaryKey:  []string{"id"},
+				ForeignKeys: []schema.ForeignKey{fkTo("items_user_id_fkey", "user_id")},
+			}
+			c.build(&tb)
+			s.Tables = append(s.Tables, tb)
+			_, files := generate(t, s, Config{Inverse: true})
+			users := files["users"]
+			got := "none"
+			switch {
+			case regexp.MustCompile("\\*Item\\s+`momo:\"has_one,fk:UserID\"`").MatchString(users):
+				got = "has_one"
+			case regexp.MustCompile("\\[\\]Item\\s+`momo:\"has_many,fk:UserID\"`").MatchString(users):
+				got = "has_many"
+			}
+			if got != c.want {
+				t.Errorf("inverse = %s, want %s:\n%s", got, c.want, users)
+			}
+		})
 	}
 }
