@@ -118,3 +118,34 @@ func TestKeysetRejectsPredicateKey(t *testing.T) {
 		}
 	}
 }
+
+// Catches: a predicate in a union's outer ORDER BY reaching the database, a
+// nil predicate panicking at build time, and NULLS FIRST/LAST on a predicate
+// rendered on MySQL, which has no such clause.
+func TestOrderByPredicateLimits(t *testing.T) {
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	docs := momo.TableRef{Name: "documents"}
+	m := momo.Select[momo.Row1[string]](pg).From(docs).Columns(DocTitle)
+	_, err := momo.SelectUnion[momo.Row1[string]](pg, true, m, m).OrderBy(momo.OrderByPredicate(DocTitle.IsNull()).Asc()).SQL()
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("predicate in a union outer ORDER BY = %v, want ErrValidation", err)
+	}
+
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
+		db := momo.New(fakedriver.New(d))
+		_, err := momo.Select[unitDocument](db).OrderBy(momo.OrderByPredicate(nil).Asc()).SQL()
+		if !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("%s: nil predicate = %v, want ErrValidation", d, err)
+		}
+	}
+
+	my := momo.New(fakedriver.New(dialect.MySQL))
+	for name, o := range map[string]momo.Order{
+		"nulls first": momo.OrderByPredicate(DocTitle.IsNull()).Asc().NullsFirst(),
+		"nulls last":  momo.OrderByPredicate(DocTitle.IsNull()).Desc().NullsLast(),
+	} {
+		if _, err := momo.Select[unitDocument](my).OrderBy(o).SQL(); !errors.Is(err, momo.ErrUnsupported) {
+			t.Errorf("mysql %s on a predicate = %v, want ErrUnsupported", name, err)
+		}
+	}
+}

@@ -161,7 +161,8 @@ func (sq SelectQuery[T]) Having(ps ...Predicate) SelectQuery[T] {
 }
 
 // OrderBy appends ORDER BY items. Pass Column.Asc()/Desc(), or a typed
-// expression (e.g. a vector distance), which orders ascending.
+// expression (e.g. a vector distance), which orders ascending. A boolean
+// condition orders through OrderByPredicate, a PredicateOrder.
 func (sq SelectQuery[T]) OrderBy(items ...Orderable) SelectQuery[T] {
 	o := slices.Clip(sq.s.order)
 	for _, it := range items {
@@ -171,7 +172,7 @@ func (sq SelectQuery[T]) OrderBy(items ...Orderable) SelectQuery[T] {
 	return sq
 }
 
-// Orderable is accepted by OrderBy: an Order or any Expression.
+// Orderable is accepted by OrderBy: an Order, a PredicateOrder or any Expression.
 type Orderable interface{ order() Order }
 
 func (o Order) order() Order           { return o }
@@ -187,7 +188,8 @@ func (sq SelectQuery[T]) order() Order { return Order{Expr: sq} }
 // an item, which makes the order total. Ascending keys compare with >,
 // descending keys with <. After needs OrderBy, a value count equal to the
 // number of effective keys (ErrValidation otherwise), and non-nullable keys
-// (ErrUnsupported otherwise).
+// (ErrUnsupported otherwise). A predicate key from OrderByPredicate is an
+// ErrValidation: its value can be NULL and a cursor over it skips or repeats rows.
 func (sq SelectQuery[T]) After(values ...any) SelectQuery[T] {
 	if len(values) == 0 {
 		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("After needs at least one value"))
@@ -251,6 +253,12 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 	for _, o := range s.order {
 		if isAliasOrder(o) {
 			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("keyset pagination cannot order by a select-list alias; order by the expression itself")))
+			return nil
+		}
+	}
+	for _, o := range s.order {
+		if _, ok := o.Expr.(parenExpr); ok {
+			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("keyset pagination cannot order by a predicate (OrderByPredicate); order by a column")))
 			return nil
 		}
 	}

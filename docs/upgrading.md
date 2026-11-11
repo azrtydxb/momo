@@ -34,6 +34,14 @@ interface, so it has no `Asc` method of its own: write
 `momo.OrderByPredicate(template.BuiltinKey.IsNotNull()).Desc()`. Nothing
 existing changes.
 
+Limits. `NullsFirst` and `NullsLast` on a predicate are `ErrUnsupported` on
+MySQL and MariaDB, as they are on a column, because momo does not emulate them.
+`After` over a predicate key is `ErrValidation`, because a cursor over a value
+that can be NULL skips or repeats rows. A predicate in the outer `OrderBy` of a
+`SelectUnion` is `ErrValidation`, because that clause allows unqualified result
+columns only. `OrderByPredicate(nil)` is `ErrValidation` at build time, and an
+`agg` call's `OrderBy` takes the `Order` from `Asc()` or `Desc()`.
+
 ### Indexes attached to a parent partitioned index are no longer inspected
 
 The PostgreSQL inspector used to report an index on a partition that is

@@ -285,9 +285,15 @@ type PredicateOrder struct{ p Predicate }
 
 // OrderByPredicate orders by the predicate p, rendered parenthesised as
 // ORDER BY (p). A false row sorts before a true row, so (col IS NULL) ASC puts
-// NULLs last on every dialect and (col IS NULL) DESC puts them first. Chain
-// NullsFirst or NullsLast on the result of Asc or Desc where the dialect has
-// them. The arguments p binds keep their place among the other arguments.
+// NULLs last on every dialect and (col IS NULL) DESC puts them first. The
+// arguments p binds keep their place among the other arguments. Limits:
+//   - NullsFirst and NullsLast on the result of Asc or Desc are ErrUnsupported
+//     on MySQL and MariaDB, which momo does not emulate.
+//   - After (keyset pagination) over a predicate key is ErrValidation, and so
+//     is a predicate in the outer OrderBy of a SelectUnion, which allows
+//     unqualified result columns only.
+//   - A nil p is ErrValidation at build time.
+//   - agg.Call.OrderBy takes the Order from Asc or Desc, not the bare value.
 func OrderByPredicate(p Predicate) PredicateOrder { return PredicateOrder{p: p} }
 
 // Asc orders by the predicate ascending: false before true.
@@ -302,6 +308,10 @@ func (o PredicateOrder) order() Order { return o.Asc() }
 type parenExpr struct{ e Expr }
 
 func (p parenExpr) AppendSQL(b *Builder) {
+	if p.e == nil {
+		b.SetErr(newError(ErrValidation, "build", "", errors.New("OrderByPredicate needs a predicate, got nil")))
+		return
+	}
 	b.WriteString("(")
 	p.e.AppendSQL(b)
 	b.WriteString(")")
