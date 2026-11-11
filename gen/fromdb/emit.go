@@ -22,6 +22,7 @@ import (
 	"go/token"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ import (
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/gen/typemap"
+	"github.com/azrtydxb/momo/internal/dbdefault"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -529,6 +531,12 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 	}
 	goType := gt.Expr
 	if col.Nullable && !gt.Nilable {
+		goType = "*" + goType
+	}
+	if !col.Nullable && slices.Contains(opts, "dbdefault") && dbdefault.NonZeroConst(gt.Expr, col.Default) {
+		// A bool or number whose constant default is true or non-zero: a plain
+		// field would replace an explicit false or 0 with the default, so the
+		// field is a pointer (nil takes the default, any value is written).
 		goType = "*" + goType
 	}
 	if gt.Note != "" {

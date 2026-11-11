@@ -166,6 +166,7 @@ func runGenerate(args []string, stdout, stderr io.Writer, available ...gen.Plugi
 		printDiagnostics(stderr, diags, cwd)
 		return exitFindings
 	}
+	printWarnings(stderr, g.Warnings, cwd)
 	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: moduleRoot(g, base), Check: check})
 	if err := gen.Emit(g, w); err != nil {
 		// After an error the Writer holds partial output: never Commit it.
@@ -342,6 +343,15 @@ func printDiagnostics(w io.Writer, diags []gen.Diagnostic, cwd string) {
 	for _, d := range diags {
 		d.Pos = token.Position{Filename: filepath.ToSlash(relPath(d.Pos.Filename, cwd)), Line: d.Pos.Line, Column: d.Pos.Column}
 		_, _ = fmt.Fprintln(w, migrate.RedactURLs(d.String()))
+	}
+}
+
+// printWarnings writes findings that do not stop generation, one per line
+// after "warning:".
+func printWarnings(w io.Writer, warns []gen.Diagnostic, cwd string) {
+	for _, d := range warns {
+		d.Pos = token.Position{Filename: filepath.ToSlash(relPath(d.Pos.Filename, cwd)), Line: d.Pos.Line, Column: d.Pos.Column}
+		_, _ = fmt.Fprintln(w, "warning: "+migrate.RedactURLs(d.String()))
 	}
 }
 

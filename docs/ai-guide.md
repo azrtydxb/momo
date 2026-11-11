@@ -257,7 +257,8 @@ Nullability and column rules:
   non-nullable one generates `momo.Column[T]` (`SetNull()` does not compile).
 - A primary key must not be nullable.
 - Scanning NULL into a non-pointer field is an error. Use pointers for nullable
-  columns.
+  columns. The one exception is a `dbdefault` pointer, which is NOT NULL (see
+  Database defaults).
 - Go type to column type: see [TYPE_MAPPING.md](TYPE_MAPPING.md) (`int` is
   `bigint`, `string` is `text`, `string` with `size:N` is `varchar(N)`,
   `time.Time` is `timestamptz`, `types.UUID` is `uuid`, `types.JSON[T]` is
@@ -295,7 +296,7 @@ Tag reference (all lower case):
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                         |
 | `idgen:<name>`                                                            | client-generated string id (`cuid`, `uuid`, `ulid` or a name registered with `WithIDGenerator`); filled on insert when the field is empty                                                                                                             |
-| `dbdefault`                                                               | leave the column to the database default while the field holds its zero value: a `Model`/`Models` insert omits it and reads the stored value back (see Database defaults)                                                                             |
+| `dbdefault`                                                               | leave the column to the database default while the field holds its zero value (nil for a pointer field, which then writes false and 0 when set): a `Model`/`Models` insert omits it and reads the stored value back (see Database defaults)           |
 | `version`                                                                 | optimistic-lock column (integer type)                                                                                                                                                                                                                 |
 | `created_at[:unix\|unixmilli\|unixnano]`, `updated_at`                    | automatic timestamps; field type `time.Time`, `*time.Time`, `int64` or `*int64`                                                                                                                                                                       |
 | `soft_delete:timestamp\|unix\|bool`                                       | soft-delete marker; Go type `*time.Time`, `*int64` or `bool`                                                                                                                                                                                          |
@@ -566,14 +567,31 @@ type Event struct {
   a `dbdefault` column that is zero in some row (`ErrValidation`). The
   default `DO UPDATE` set of `Upsert` leaves a dbdefault column out when a row
   leaves it to the database, so a conflict keeps the stored value.
-- The zero value means "use the default". On a `bool` or numeric column that
-  means `false` and `0` can never be written explicitly through `Model`: a
+- The zero value means "use the default". On a plain `bool` or numeric field
+  that means `false` and `0` can never be written explicitly through `Model`: a
   `dbdefault` field with `DEFAULT true` always stores true when it is `false`
-  in Go. Write such a value with `InsertQuery.Values`, or do not tag the column. The same
-  holds for an empty string and a zero time. A pointer or nullable field is
-  refused by the generator, because nil would stop meaning NULL; write NULL
-  with `InsertQuery.Values` and `SetNull`. `Omit` still wins: an omitted column is not
-  written, and a Go-side default hook still fills it.
+  in Go, and `momo generate` warns about such a field. The same holds for an
+  empty string and a zero time. To write `false` or `0`, make the field a
+  pointer on a NOT NULL column (`Active *bool` with
+  `` `momo:"default:true,dbdefault"` ``): a nil pointer takes the database
+  default and is set to the stored value after the insert, a non-nil pointer is
+  always written, `false` and `0` included. The column stays NOT NULL. A
+  `sql.Null*` type or the `nullable` tag is refused by the generator, because
+  nil would stop meaning NULL; write NULL with `InsertQuery.Values` and
+  `SetNull`. `Omit` still wins: an omitted column is not written, and a Go-side
+  default hook still fills it.
+- `Update(...).Model(&m)` treats a nil `dbdefault` pointer as "not set": it
+  leaves the column out of `SET`, so the column keeps its stored value (writing
+  NULL would fail on the NOT NULL column). A pointer to `false` or `0` is
+  written. If that leaves nothing to set, the update fails with the usual
+  `ErrValidation` ("no columns to update"). `Upsert` is unaffected: its default
+  `DO UPDATE` set takes `EXCLUDED` values and already leaves out a `dbdefault`
+  column that any row leaves to the database.
+- The pointer type that `--from-db` generates and the `momo generate` warning
+  cover only plain `bool` and number fields (`bool`, `int`..`int64`,
+  `uint`..`uint64`, `float32`, `float64`). A named type, a type override from
+  `introspect.types` or `introspect.columns`, a decimal or a string keeps the
+  field as it is and gets neither the pointer nor the warning.
 - `dbdefault` cannot be combined with `identity`, `serial`, `idgen`,
   `read_only`, `version`, `soft_delete`, `created_at` or `updated_at`; the
   generator reports it. It adds no database default (use `default:`), and
@@ -581,7 +599,9 @@ type Event struct {
   default is computed (a function call, `CURRENT_TIMESTAMP`, or a `nextval`
   sequence on a column that is not identity or serial); with
   `introspect.dbdefault: all` it writes it for every NOT NULL column that has a
-  default, a constant one such as `DEFAULT 1` included. A hand-written model can
+  default, a constant one such as `DEFAULT 1` included; a `bool` or number
+  column whose constant default is `true` or non-zero becomes a pointer field, so an
+  explicit `false` or `0` is written. A hand-written model can
   put `dbdefault` on any NOT NULL column that has a database default. It never
   writes it for other dialects: plain MySQL cannot read the value back.
 

@@ -140,11 +140,15 @@ func (fl *flattener) newField(v *types.Var, path []int, prefix string, ft tags.T
 	for _, d := range adiags {
 		fl.diag(v.Pos(), d.Msg)
 	}
+	goType := types.TypeString(t, qualifier)
+	if dbDefaultPointer(goType, ft) {
+		nullable = false // a dbdefault pointer is NOT NULL: nil means "use the default"
+	}
 	return &Field{
 		GoName:   v.Name(),
 		Path:     path,
 		Column:   prefix + col,
-		GoType:   types.TypeString(t, qualifier),
+		GoType:   goType,
 		BaseType: baseType(t),
 		Nullable: nullable,
 		Tags:     ft,
