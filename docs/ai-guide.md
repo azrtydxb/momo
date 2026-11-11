@@ -283,7 +283,7 @@ Nullability and column rules:
   `jsonop.Set(target, path, value)` is `jsonb_set` with a path built in SQL
   (`momo.ArrayOf(...)`). Both are PostgreSQL only and `ErrUnsupported`
   elsewhere, because `json_patch` and `JSON_MERGE_PATCH` merge recursively and
-  drop nulls. `DeleteKey`, `Concat` and `Set` need `jsonb` on PostgreSQL: the
+  drop nulls. `jsonop.DeleteKey`, `jsonop.Concat` and `jsonop.Set` need `jsonb` on PostgreSQL: the
   `-`, `||` and `jsonb_set` forms do not exist for `json`. Their results are
   JSON expressions that `jsonop.Text`, `jsonop.Path`, `jsonop.Root` and
   `jsonop.HasKey` accept again, typed as the first operand without a check, so
