@@ -35,14 +35,17 @@ Root cause: the builders stored one `TableSource` and `renderReturning` /
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] `From` and `Using` take several sources and render them as a comma list on PostgreSQL, SQLite (`From`) and MySQL (multi-table form)
-- [ ] `Returning` accepts source and CTE columns, rendered qualified on PostgreSQL, and `ScanUpdate` / `ScanDelete` scan them into a plain struct
-- [ ] with two or more sources the guard refuses a source that no `Where` predicate references (`ErrUnfilteredMutation`) and `AllRows` still confirms it
-- [ ] SQLite and MySQL refuse a source column in RETURNING with `ErrUnsupported`; `Rows` refuses it with `ErrValidation`
-- [ ] a DML CTE body without `Returning` fails the build with `ErrValidation`; with `Returning` or `ReturningAll` it builds
-- [ ] docs updated: `docs/ai-guide.md`, `docs/capabilities.md`, `docs/upgrading.md`
+- [x] a regression test pins the fix: red before the change, green after
+- [x] `From` and `Using` take several sources and render them as a comma list on PostgreSQL, SQLite (`From`) and MySQL (multi-table form)
+- [x] `Returning` accepts source and CTE columns, rendered qualified on PostgreSQL, and `ScanUpdate` / `ScanDelete` scan them into a plain struct
+- [x] with two or more sources the guard refuses a source that no `Where` predicate references (`ErrUnfilteredMutation`) and `AllRows` still confirms it
+- [x] SQLite and MySQL refuse a source column in RETURNING with `ErrUnsupported`; `Rows` refuses it with `ErrValidation`
+- [x] a DML CTE body without `Returning` fails the build with `ErrValidation`; with `Returning` or `ReturningAll` it builds
+- [x] docs updated: `docs/ai-guide.md`, `docs/capabilities.md`, `docs/upgrading.md`
 
 ## Evidence
 
-(filled when CI is green)
+- Red: ci-agent run 42979367881 (branch worktree-agent-red-93, tests only, sha 036b1cd). The unit job failed to build: "too many arguments in call to ... From" and "... Using" at write_from_multi_test.go lines 34, 44, 57, 113 and 131, plus undefined momo.ScanUpdate and momo.ScanDelete in write_from_multi_integration_test.go. The new TestDMLCTEBodyNeedsReturning is in the same red tree, hidden behind the build failure.
+- Green: ci-agent run 42988441475, success, headSha 001e3aded61a87de1e2106f3c78fa0776542d33b (all jobs, including integration postgres, integration-mysql, lint and apidiff-docs).
+- Tests: TestUpdateFromTwoSourcesSQL, TestReturningSourceColumnsSQL, TestReturningSourceColumnsRefused, TestFromUsingGuardSeveralSources, TestDMLCTEBodyNeedsReturning (unit); TestUpdateFromTwoSourcesReturningIntegration, TestReturningSharedNameQualifiedIntegration, TestDeleteUsingTwoSourcesReturningIntegration (PostgreSQL integration).
+- Docs changed: docs/ai-guide.md, docs/capabilities.md, docs/upgrading.md (Upgrading to 0.8.0), docs/reference.md (from the regenerated-docs artifact of run 42984977321).
