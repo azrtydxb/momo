@@ -11,6 +11,13 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 )
 
+// needsParens reports whether the query has a clause that must bind to it
+// alone when it is a member of a set operation.
+func (sq SelectQuery[T]) needsParens() bool {
+	s := &sq.s
+	return len(s.order) > 0 || s.limit >= 0 || s.offset > 0 || s.lock != ""
+}
+
 func (sq SelectQuery[T]) render(b *Builder) { sq.renderBare(b, false) }
 
 // renderBare is render; onConflictFollows ends a select that has a FROM and

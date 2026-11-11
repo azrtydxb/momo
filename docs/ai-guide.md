@@ -950,7 +950,10 @@ only: `FOR NO KEY UPDATE` does not block foreign-key inserts on the locked
 row, `FOR KEY SHARE` is the weakest lock; same options; MySQL and SQLite
 return `ErrUnsupported`), `LockOf` (names the tables a lock covers, for
 example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim; the names must be
-table or alias names, not CTEs), `SelectQuery.With`, `WithRecursive`, `Union`,
+table or alias names, not CTEs), `SelectQuery.With`, `WithRecursive`, `Union` (a member with its own
+`ORDER BY`, `LIMIT`, `OFFSET` or lock is parenthesised, a derived table on
+SQLite), `SelectUnion[T]` (runs a union at the top level with an outer
+`OrderBy`, `Limit` and `Offset`; `All`, `Rows`),
 `FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
 context; it returns `iter.Seq2[T, error]`). `Count` and `Exists` wrap the whole
 statement, so they keep a lock clause and lock the rows they count. Aggregates: `momo.CountAll`,

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"iter"
 	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // Subquery is a query usable as an expression: IN (...), EXISTS (...),
@@ -821,6 +823,17 @@ func RawSubquery(sql string, args ...any) Subquery {
 
 // Union combines queries with UNION (all=false) or UNION ALL (all=true).
 // The result is a Subquery, usable in WithRecursive, FromSubquery and IN.
+//
+// A member that has its own ORDER BY, LIMIT, OFFSET or row lock is rendered in
+// parentheses so the clause binds to the member, not to the whole union, as in
+// the top N of each kind:
+//
+//	(SELECT ... ORDER BY name LIMIT $1) UNION ALL (SELECT ... ORDER BY name LIMIT $1)
+//
+// SQLite rejects parentheses around a compound member, so there such a member
+// renders as SELECT * FROM (member). A member without those clauses renders
+// bare. To run a union directly, with an outer ORDER BY and LIMIT, use
+// SelectUnion.
 func Union(all bool, qs ...Subquery) Subquery { return setOp{all, slices.Clone(qs)} }
 
 type setOp struct {
@@ -829,8 +842,16 @@ type setOp struct {
 }
 
 func (setOp) isSubquery() {}
+
 func (s setOp) AppendSQL(b *Builder) {
 	b.writeByte('(')
+	s.renderMembers(b)
+	b.writeByte(')')
+}
+
+// renderMembers writes the members joined by UNION [ALL], without an outer
+// pair of parentheses.
+func (s setOp) renderMembers(b *Builder) {
 	for i, q := range s.qs {
 		if i > 0 {
 			if s.all {
@@ -839,13 +860,38 @@ func (s setOp) AppendSQL(b *Builder) {
 				b.WriteString(" UNION ")
 			}
 		}
-		// Compound members are rendered without their own parentheses:
-		// SQLite rejects parenthesized SELECTs in compound queries.
-		if r, ok := q.(interface{ render(*Builder) }); ok {
-			r.render(b)
-		} else {
-			q.AppendSQL(b)
-		}
+		writeSetMember(b, q)
 	}
+}
+
+// writeSetMember writes one compound member. A member with its own ORDER BY,
+// LIMIT, OFFSET or lock (or a nested set operation) is grouped: in
+// parentheses, or on SQLite, which rejects them around a compound member, as a
+// derived table. Any other member is written bare.
+func writeSetMember(b *Builder, q Subquery) {
+	var body func(*Builder)
+	grouped := false
+	switch m := q.(type) {
+	case setOp:
+		body, grouped = m.renderMembers, true
+	case interface{ render(*Builder) }:
+		body = m.render
+		if p, ok := q.(interface{ needsParens() bool }); ok {
+			grouped = p.needsParens()
+		}
+	default:
+		q.AppendSQL(b)
+		return
+	}
+	if !grouped {
+		body(b)
+		return
+	}
+	if b.d.Name == dialect.SQLite {
+		b.WriteString("SELECT * FROM (")
+	} else {
+		b.writeByte('(')
+	}
+	body(b)
 	b.writeByte(')')
 }
