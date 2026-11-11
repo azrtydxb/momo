@@ -21,12 +21,15 @@ spelling rule separates (`aliases`, `biases`, `canvases`, `gases`, `atlases`,
 
 The generated model name changes, on the next regenerate, for these tables:
 
-| Tables                                                                                                              | Old name                                                                                      | New name                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `releases`, `cases`, `courses`, `responses`, `licenses`, `bases`, `houses`, `purposes`, `causes`, `clauses`, `uses` | `Releas`, `Cas`, `Cours`, `Respons`, `Licens`, `Bas`, `Hous`, `Purpos`, `Caus`, `Claus`, `Us` | `Release`, `Case`, `Course`, `Response`, `License`, `Base`, `House`, `Purpose`, `Cause`, `Clause`, `Use` |
-| `sizes`, `prizes`, `mazes`, `caches`, `niches`                                                                      | `Siz`, `Priz`, `Maz`, `Cach`, `Nich`                                                          | `Size`, `Prize`, `Maze`, `Cache`, `Niche`                                                                |
-| `quizzes`                                                                                                           | `Quizze` (gorm, bun), `Quizz` (prisma)                                                        | `Quiz`                                                                                                   |
-| `waltzes`                                                                                                           | `Waltz`                                                                                       | `Waltze`: a `-zes` word is read as `-ze`, as in `sizes`                                                  |
+- Tables `releases`, `cases`, `courses`, `responses`, `licenses`, `bases`,
+  `houses`, `purposes`, `causes`, `clauses` and `uses`: Releas, Cas, Cours,
+  Respons, Licens, Bas, Hous, Purpos, Caus, Claus and Us become Release, Case,
+  Course, Response, License, Base, House, Purpose, Cause, Clause and Use.
+- Tables `sizes`, `prizes`, `mazes`, `caches` and `niches`: Siz, Priz, Maz,
+  Cach and Nich become Size, Prize, Maze, Cache and Niche.
+- Table `quizzes`: Quizze (gorm, bun) or Quizz (prisma) becomes Quiz.
+- Table `waltzes`: Waltz becomes Waltze, because a `-zes` word is read as `-ze`,
+  as in `sizes`.
 
 Not every preset can give every word the right name. The `gorm` and `bun`
 presets pluralize a word that ends in `s` to itself, and `ent` matches its
