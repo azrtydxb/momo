@@ -1002,6 +1002,18 @@ connections. The lock lasts until `advisory.Unlock` or until the connection clos
 unlock before `pc.Release()` (or `Discard` the connection if the unlock fails).
 `db.IsPinned()` reports whether a handle is pinned.
 
+Shared advisory locks (the reader half of a reader/writer pair on one key):
+`advisory.XactLockShared`, `advisory.TryXactLockShared`, `advisory.LockShared`,
+`advisory.TryLockShared`, `advisory.UnlockShared` and the `...String` forms take
+`pg_advisory_xact_lock_shared`, `pg_advisory_lock_shared` and friends, with the
+same arguments, `advisory.Hash64` option, transaction and pinned-connection rules
+as the exclusive helpers. Any number of sessions hold the shared lock of a key
+together; none runs while another holds the exclusive lock of that key
+(`advisory.XactLock`), and the exclusive lock waits for every shared holder.
+`advisory.XactLockSharedString(ctx, tx, k, advisory.Hash64(52))` takes the lock
+`pg_advisory_xact_lock_shared(hashtextextended(k, 52))` takes. `advisory.Unlock`
+does not release a shared lock; use `advisory.UnlockShared`.
+
 Typed expressions (no `momo.SQL` needed). Computed values (`momo.Func` and, in the
 package `github.com/azrtydxb/momo/sqlfn`, `sqlfn.Substr`, `sqlfn.Lower`,
 `sqlfn.Upper`, `sqlfn.Length`, `sqlfn.Case`, `sqlfn.Add`/`sqlfn.Sub`/`sqlfn.Mul`,
@@ -1091,6 +1103,11 @@ timeop.StatementTimestamp()                              // statement_timestamp(
 // Intervals are an operand of AddInterval/SubInterval, not an expression of their own.
 timeop.SubInterval(timeop.Now(), timeop.IntervalOf(7, timeop.IntervalDay))              // literal count
 timeop.AddInterval(doc.CreatedAt, timeop.IntervalExpr(momo.Value(int64(n)), timeop.IntervalHour)) // bound or column count
+timeop.AddInterval(doc.CreatedAt, timeop.IntervalOf(1500, timeop.IntervalMillisecond))           // also IntervalMicrosecond; SQLite rounds to the nearest millisecond (1500us adds 2 ms)
+timeop.AddDuration(doc.CreatedAt, 1500*time.Millisecond)                                         // a time.Duration as a literal interval, no rounding; also SubDuration
+// Difference of two timestamps, read as seconds: a Span has no value of its own on MySQL and SQLite.
+timeop.EpochSeconds(timeop.Sub(job.FinishedAt, job.StartedAt))                                   // float64 extract(epoch FROM a - b); TIMESTAMPDIFF on MySQL, julianday on SQLite
+timeop.EpochSeconds(timeop.Age(a, b))                                                            // age(a, b), PostgreSQL only; ErrUnsupported elsewhere; its epoch counts a month as 30 days and a year as 365.25 days, use Sub for elapsed time
 
 // JoinSQL composes raw fragments with their args (Prisma.join). The separator is a fixed
 // literal from an allowlist: "," or " " (parts as written), " AND ", " OR ", "||", "+"

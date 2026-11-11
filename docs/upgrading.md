@@ -7,6 +7,47 @@ later releases can break more.
 
 ## Upgrading to 0.8.0
 
+### Shared advisory locks
+
+The `advisory` package gains the shared form of every lock function, for a
+reader/writer pair on one key: `advisory.XactLockShared`,
+`advisory.TryXactLockShared`, `advisory.LockShared`, `advisory.TryLockShared`
+and `advisory.UnlockShared`, each with a `...String` variant that takes the same
+`advisory.Hash64` option. They run `pg_advisory_xact_lock_shared`,
+`pg_try_advisory_xact_lock_shared`, `pg_advisory_lock_shared`,
+`pg_try_advisory_lock_shared` and `pg_advisory_unlock_shared`. Writers that take
+the shared lock run together and never with a holder of the exclusive lock of
+the same key (`advisory.XactLock`). A string key hashes exactly as the exclusive
+helpers hash it, so `advisory.XactLockSharedString(ctx, tx, k, advisory.Hash64(52))`
+replaces `SELECT pg_advisory_xact_lock_shared(hashtextextended($1::text, 52))`
+with the same key. The transaction, pinned-connection and `ErrUnsupported` rules
+are those of the exclusive helpers. Nothing existing changes. `advisory.Unlock`
+does not release a shared lock: use `advisory.UnlockShared`.
+
+### `timeop`: sub-second intervals and timestamp difference
+
+`timeop.IntervalMillisecond` and `timeop.IntervalMicrosecond` are new interval
+units. `timeop.IntervalDuration(d)`, `timeop.AddDuration(ts, d)` and
+`timeop.SubDuration(ts, d)` take a `time.Duration` as a literal interval in the
+coarsest exact unit, so a 1500ms lease no longer needs rounding to seconds. MySQL
+counts the units as microseconds; SQLite counts fractional seconds and stores
+milliseconds, so it rounds a sub-millisecond part to the nearest millisecond,
+half away from zero (1500 microseconds add 2 ms, 1499 add 1 ms). Each distinct
+duration renders a distinct SQL literal, which matters for statement caching and
+`pg_stat_statements`; bind the count with `timeop.IntervalExpr` to keep one
+statement text.
+
+`timeop.Sub(a, b)` and `timeop.Age(a, b)` build a `timeop.Span`, and
+`timeop.EpochSeconds(span)` reads it as a `float64` number of seconds:
+`extract(epoch FROM a - b)` on PostgreSQL, `TIMESTAMPDIFF(MICROSECOND, b, a)` on
+MySQL and the `julianday` difference on SQLite (accurate to about a tenth of a
+millisecond). A `timeop.Span` is not selectable on its own outside PostgreSQL, and
+`timeop.Age` is PostgreSQL only; both fail with `ErrUnsupported` when the query is
+built. PostgreSQL's `EXTRACT(EPOCH FROM interval)` counts a month as 30 days and
+a year as 365.25 days, so the epoch of a `timeop.Age` that spans months or years
+is not the real elapsed time; use `timeop.Sub` for that. Nothing existing
+changes.
+
 ### `--from-db` no longer writes the objects of tables it does not model
 
 `momo generate --from-db` used to put the policies and triggers of a table left

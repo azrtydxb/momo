@@ -198,11 +198,13 @@ var features = []feature{
 		Name: "Date and time expressions",
 		API: []string{
 			"timeop.Extract", "timeop.AtTimeZone", "timeop.Trunc", "timeop.Now", "timeop.CurrentTimestamp",
-			"timeop.IntervalOf", "timeop.IntervalExpr", "timeop.AddInterval", "timeop.SubInterval",
+			"timeop.IntervalOf", "timeop.IntervalExpr", "timeop.IntervalDuration", "timeop.AddInterval", "timeop.SubInterval",
+			"timeop.AddDuration", "timeop.SubDuration", "timeop.Sub", "timeop.Age", "timeop.EpochSeconds",
 		},
 		PG: "yes",
 		SQLite: "every `timeop.ExtractField`, `timeop.TruncUnit`, interval and `timeop.Now` run on both SQLite drivers; month arithmetic overflows into the next month " +
-			"(Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); `timeop.Now` is millisecond text; `timeop.AtTimeZone` is PostgreSQL only",
+			"(Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); `timeop.Now` is millisecond text; `timeop.AtTimeZone` is PostgreSQL only; " +
+			"`timeop.IntervalMillisecond` and `timeop.IntervalMicrosecond` keep milliseconds; `timeop.EpochSeconds` of `timeop.Sub` runs through `julianday` (about 0.1 ms), `timeop.Age` is PostgreSQL only",
 		MySQL: "SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server; `timeop.AtTimeZone` is PostgreSQL only",
 	},
 }
