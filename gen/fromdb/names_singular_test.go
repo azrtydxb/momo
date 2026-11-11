@@ -59,6 +59,19 @@ func TestStructNameSingularWords(t *testing.T) {
 			"momo": {"Quizz", whyMomoQuiz},
 			"ent":  {"Quizze", whyEntCase},
 		}},
+		// A table whose name is already singular and ends in -ss (or is a
+		// known -us word) is kept, not stripped to Clas or Statu: no plural
+		// ends in a lone s after another s. The plural forms above still work.
+		{"class", "Class", nil},
+		{"address", "Address", nil},
+		{"status", "Status", nil},
+		{"glass", "Glass", nil},
+		{"boss", "Boss", nil},
+		{"process", "Process", nil},
+		{"access", "Access", nil},
+		{"assessment_class", "AssessmentClass", nil},
+		{"user_status", "UserStatus", nil},
+		{"menus", "Menu", nil},
 		// A -zes word that is not a doubled z loses only its s (Waltze, not
 		// Waltz): the rule cannot tell it from sizes.
 		{"waltzes", "Waltze", nil},

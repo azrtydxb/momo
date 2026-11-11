@@ -96,6 +96,16 @@ var irregularSingular = map[string]string{
 	"caches": "cache", "niches": "niche",
 }
 
+// singularUs lists the singular words in -us, whose stem keeps its s (status,
+// not Statu). A plural in -us, such as menus, is not listed and loses its s.
+var singularUs = map[string]bool{
+	"status": true, "bus": true, "campus": true, "virus": true, "bonus": true,
+	"corpus": true, "focus": true, "census": true, "genus": true,
+	"radius": true, "apparatus": true, "consensus": true, "surplus": true,
+	"prospectus": true, "syllabus": true, "chorus": true, "circus": true,
+	"cactus": true, "octopus": true, "nexus": true,
+}
+
 // needsEs reports whether a word ending in "es" takes that ending in full, so
 // the -es strip is right: -sses, -xes, -zzes, -ches, -shes, and -uses
 // (statuses, buses) except -ouses and -auses (houses, causes). Any other
@@ -120,6 +130,13 @@ func singulars(w string) []string {
 	var out []string
 	if s, ok := irregularSingular[w]; ok {
 		out = append(out, s)
+	}
+	if strings.HasSuffix(w, "ss") || singularUs[w] {
+		// A word in -ss (class, address, process) is already singular: no
+		// plural ends in a lone s after another s, so stripping it would
+		// give Clas. The -us words below are listed because menus and
+		// emus are plurals that the same shape cannot tell apart.
+		return append(out, w)
 	}
 	if strings.HasSuffix(w, "ies") && len(w) > 3 {
 		out = append(out, w[:len(w)-3]+"y")
