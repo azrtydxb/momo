@@ -5,6 +5,54 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `dbdefault` on a pointer field writes false and 0
+
+A `dbdefault` field on a NOT NULL column can now be a pointer. The column stays
+NOT NULL. A nil pointer means "use the database default": `Model` and `Models`
+leave the column out of the INSERT (or write `DEFAULT` in a multi-row VALUES
+list) and `Exec` reads the stored value back into the pointer with `RETURNING`.
+A non-nil pointer is always written, so `false` and `0` reach the database:
+
+```go
+type Account struct {
+	momo.Model `momo:"table:accounts"`
+	ID         int64  `momo:"pk,identity"`
+	Active     *bool  `momo:"default:true,dbdefault"`
+	Level      *int64 `momo:"default:3,dbdefault"`
+}
+
+a := Account{Active: ptr(false)} // stores false; Level is nil, so 3 is read back
+```
+
+`generate` used to refuse `dbdefault` on a pointer. It still refuses it on a
+nullable column (a `sql.Null*` type or the `nullable` tag), because nil would
+stop meaning NULL there. Non-pointer `dbdefault` fields behave as before. The
+read-back rules, the dialects without `RETURNING` (plain MySQL fails with
+`ErrUnsupported` for a nil pointer; an explicit value is still written) and the
+mixed-row limits of SQLite are the same as for any other `dbdefault` field; see
+"Database defaults" in the [AI guide](ai-guide.md).
+
+`momo generate` now warns (on standard error, exit code unchanged) about a
+non-pointer `dbdefault` field of a `bool` or number type whose default is a
+non-zero constant, because the zero value means "use the default" there and an
+explicit `false` or `0` is replaced by it. Make the field a pointer to write
+them.
+
+### `--from-db` generates a pointer for a non-zero constant default
+
+With `introspect.dbdefault: all`, `momo generate --from-db` gives a NOT NULL
+`bool` or number column whose constant default is `true` or non-zero
+(`DEFAULT true`, `DEFAULT 1` and above) a pointer type with `dbdefault`, for
+example `Active *bool` with `` `momo:"default:true,dbdefault"` ``. A plain field
+would silently replace an explicit `false` or `0` with the default. A column
+with a zero default (`DEFAULT false`, `DEFAULT 0`), a text default or a computed
+default keeps its plain type. After you regenerate with this option, fields of
+those columns change from `bool`/`int64` to `*bool`/`*int64`, and code that
+reads them dereferences the pointer. Without `introspect.dbdefault: all` nothing
+changes, because a constant default is not tagged.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use

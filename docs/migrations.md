@@ -1113,8 +1113,10 @@ as releases before 0.7.0 did, and is the workaround.
 `dbdefault: all` tags every NOT NULL PostgreSQL column that has a default with
 `dbdefault`, constant defaults such as `DEFAULT 1` included (by default only
 computed defaults are tagged), so `InsertQuery.Model` leaves an unset field to the
-database default. A nullable column is never tagged. See "Database defaults" in
-the [AI guide](ai-guide.md).
+database default. A nullable column is never tagged. A `bool` or number column
+whose constant default is `true` or non-zero gets a pointer type (`*bool`,
+`*int64`), so an explicit `false` or `0` is written and nil takes the default.
+See "Database defaults" in the [AI guide](ai-guide.md).
 
 ### Running it again
 
