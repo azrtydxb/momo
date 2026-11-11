@@ -1,6 +1,6 @@
 # fromdb: objects of unmodeled tables land on the first model
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -27,11 +27,13 @@ model.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] with `skip` and with `only`, no trigger, policy or function of an unmodeled table appears in any model or in the snapshot
-- [ ] `introspect.functions: all` still writes every function, but not the trigger
-- [ ] docs/upgrading.md has a 0.8.0 note
+- [x] a regression test pins the fix: red before the change, green after
+- [x] with `skip` and with `only`, no trigger, policy or function of an unmodeled table appears in any model or in the snapshot
+- [x] `introspect.functions: all` still writes every function, but not the trigger
+- [x] docs/upgrading.md has a 0.8.0 note
 
 ## Evidence
 
-Red run: pending. Green run: pending.
+Red: ci-agent run 42977250563 (sha 33ca4bc, branch worktree-agent-red-108, deleted): "--- FAIL: TestObjectsOfUnmodeledTablesAreNotEmitted", unmodeled_test.go:50 "skip: model of keep contains audit_log_touch, audit_log_read, audit_touch, audit_can_read, c.Trigger, c.Policy, c.Function".
+Green: ci-agent run 42977580146 (sha 78494a89f2154c3860fce0e87b8241ffc9f19140), success; docs run 42977580086 success.
+Docs changed: docs/upgrading.md (0.8.0 note).
