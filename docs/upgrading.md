@@ -296,6 +296,40 @@ These are additions; nothing changes for existing code.
   a value with a time of day fails with `ErrValidation` instead of losing the
   time. A NaN or infinite float fails the build with `ErrValidation`.
 
+### Union members keep their ORDER BY and LIMIT, and a union runs at the top level
+
+`Union` used to render every member bare, so a
+member's own `ORDER BY`, `LIMIT`, `OFFSET` or row lock could not be expressed.
+A member that has any of those clauses is now grouped, so the clause binds to
+that member and not to the whole union: in parentheses on PostgreSQL and MySQL,
+and as `SELECT * FROM (member)` on SQLite, which rejects parentheses around a
+compound member. A member without those clauses still renders bare, so existing
+queries keep their SQL. A nested `Union` as a member is grouped the same way.
+
+A union can now run directly. `momo.SelectUnion` (type parameter `T`, then the
+querier, `all` and the members) returns a `UnionQuery[T]` with `OrderBy`, `Limit`, `Offset`, `SQL`, `All` and
+`Rows`; `T` is a model, a projection, a tuple row or a plain struct, matched to
+the result columns as for `momo.Query`. The outer `OrderBy` orders the whole
+union and may name result columns only; build them with
+`momo.ColumnOf` and an empty source:
+
+```text
+teachersTop := momo.Select[Hit](db).From(teachers).Columns(kind, id, name).
+	OrderBy(name.Asc()).Limit(5)
+studentsTop := momo.Select[Hit](db).From(students).Columns(kind, id, name).
+	OrderBy(name.Asc()).Limit(5)
+byName := momo.ColumnOf[string]("", "full_name")
+rows, err := momo.SelectUnion[Hit](db, true, teachersTop, studentsTop).
+	OrderBy(byName.Asc()).Limit(8).All(ctx)
+```
+
+A row lock inside a member returns `ErrUnsupported` on SQLite, as on a plain
+select, and on PostgreSQL, which rejects `FOR UPDATE` inside a set operation;
+MySQL accepts it in a parenthesised member. A member with its own `WITH`
+clause is grouped like one with `ORDER BY`. An outer `OrderBy` that names a
+qualified column or an expression fails at build time with `ErrValidation`.
+Hooks and interceptors see op `select` with an empty table name.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
