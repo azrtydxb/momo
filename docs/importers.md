@@ -60,17 +60,20 @@ A source version that is not a 14-digit timestamp is mapped to
 `version-mapped` change; the original version stays in the history `name`
 column. `history.Baseline` replays the converted SQL on an empty scratch
 database to write one schema snapshot per migration. It runs each migration in
-one transaction (`BEGIN` ... `COMMIT`, rolled back on error), as the source
-tools and `momo migrate apply` do, so an `ON COMMIT DROP` temporary table,
-`SET LOCAL` and deferred constraints work inside a migration; a migration the
-source marked as non-transactional runs statement by statement in autocommit.
-`history.WriteImport`
-writes the directory: each up file starts with `-- momo:imported` (and
-`-- momo:no-transaction` for a non-transactional migration), so the output
-passes `momo migrate validate` instead of being read as a custom migration that
-must not change the schema. `momo migrate rebase` never regenerates an imported
-migration. `history.HistoryRows` gives the `momo_migrations` rows
-that mark every migration as applied. The Atlas reader verifies `atlas.sum`
+one transaction (`BEGIN` ... `COMMIT`), as the source tools and
+`momo migrate apply` do, so an `ON COMMIT DROP` temporary table, `SET LOCAL`
+and deferred constraints work inside a migration. A migration the source marked
+as non-transactional runs statement by statement in autocommit. A failing
+statement or a failing `COMMIT` rolls the migration back on PostgreSQL and
+SQLite; MySQL commits DDL implicitly, so a failed migration there can leave
+part of its DDL behind.
+
+`history.WriteImport` writes the directory. Each up file starts with
+`-- momo:imported` (and `-- momo:no-transaction` for a non-transactional
+migration), so the output passes `momo migrate validate` instead of being read
+as a custom migration that must not change the schema. `momo migrate rebase`
+never regenerates an imported migration. `history.HistoryRows` gives the
+`momo_migrations` rows that mark every migration as applied. The Atlas reader verifies `atlas.sum`
 with Atlas's directory hash and refuses a directory whose files were edited.
 golang-migrate records only its current version, so every migration up to it is
 read as applied.

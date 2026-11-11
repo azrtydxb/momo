@@ -279,8 +279,8 @@ Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
 `validate` checks: files parse and directives are known; `momo.sum` matches;
 versions unique and increasing; each snapshot's parent exists; no two snapshots
 share a parent (branch conflict); each up file has a snapshot; a hand-written
-migration (no `-- momo:generated` and no `-- momo:imported`) has a snapshot equal to its parent's. Use it
-in CI. `apply` runs the chain checks too (fork, missing parent, cycle, gap) and
+migration (no `-- momo:generated` and no `-- momo:imported`) has a snapshot
+equal to its parent's. Use it in CI. `apply` runs the chain checks too (fork, missing parent, cycle, gap) and
 refuses with the same message (a fork is `ErrBranchConflict`; a missing parent,
 cycle or gap is `ErrChainInvalid`; both exit 1, like `validate` findings), and it
 refuses with `ErrOutOfOrder` (exit 1) when a pending version is older than the

@@ -214,7 +214,19 @@ func runMigration(ctx context.Context, scratch *momo.DB, d migrate.Dialect, orig
 	if err != nil {
 		return fmt.Errorf("history: pin scratch connection: %w", err)
 	}
+	inTx := false
+	// rollback ends the open transaction and joins a failed ROLLBACK to err.
+	rollback := func(err error) error {
+		inTx = false
+		if _, rerr := pc.Exec(ctx, "ROLLBACK", nil); rerr != nil {
+			return errors.Join(err, fmt.Errorf("history: roll back %s on the scratch database: %w", origin, rerr))
+		}
+		return err
+	}
 	defer func() {
+		if inTx {
+			err = rollback(err)
+		}
 		if d.Dialect().Name == dialect.Postgres {
 			// DISCARD ALL drops temporary tables and restores every session setting.
 			if _, rerr := pc.Exec(ctx, "DISCARD ALL", nil); rerr != nil {
@@ -225,7 +237,6 @@ func runMigration(ctx context.Context, scratch *momo.DB, d migrate.Dialect, orig
 			err = errors.Join(err, rerr)
 		}
 	}()
-	inTx := false
 	if !noTx {
 		if _, err := pc.Exec(ctx, "BEGIN", nil); err != nil {
 			return fmt.Errorf("history: %s begin on the scratch database: %w", origin, err)
@@ -236,17 +247,18 @@ func runMigration(ctx context.Context, scratch *momo.DB, d migrate.Dialect, orig
 		if _, err := pc.Exec(ctx, s, nil); err != nil {
 			err = fmt.Errorf("history: %s statement %d on the scratch database: %w", origin, i+1, err)
 			if inTx {
-				if _, rerr := pc.Exec(ctx, "ROLLBACK", nil); rerr != nil {
-					err = errors.Join(err, fmt.Errorf("history: roll back %s on the scratch database: %w", origin, rerr))
-				}
+				err = rollback(err)
 			}
 			return err
 		}
 	}
 	if inTx {
 		if _, err := pc.Exec(ctx, "COMMIT", nil); err != nil {
-			return fmt.Errorf("history: %s commit on the scratch database: %w", origin, err)
+			// A failed COMMIT can leave the transaction open (SQLite, deferred
+			// foreign keys), so roll it back before the connection is released.
+			return rollback(fmt.Errorf("history: %s commit on the scratch database: %w", origin, err))
 		}
+		inTx = false
 	}
 	return nil
 }
@@ -259,9 +271,8 @@ var (
 // WriteImport writes the converted migrations into outDir: <version>_<name>.up.sql
 // (first line "-- momo:imported", so migrate validate does not take it for a
 // custom migration that must leave the schema alone and rebase never
-// regenerates it, then "-- momo:no-transaction"
-// when NoTx), the .down.sql file when the
-// source had a down, <version>_<name>.snapshot.json for each snapshot, and
+// regenerates it, then "-- momo:no-transaction" when NoTx), the .down.sql file
+// when the source had a down, <version>_<name>.snapshot.json for each snapshot, and
 // momo.sum for the directory. Everything is validated first and written to a
 // temporary directory beside outDir, which is then renamed into place, so a
 // failure leaves nothing behind and a retry works. outDir must not exist or

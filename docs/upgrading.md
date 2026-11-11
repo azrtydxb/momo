@@ -12,7 +12,8 @@ later releases can break more.
 `history.Baseline` used to replay every statement of a converted migration in
 autocommit. It now runs a migration that the source did not mark as
 non-transactional between `BEGIN` and `COMMIT` (rolled back when a statement
-fails), as goose, golang-migrate, Atlas, Bun and `momo migrate apply` run it.
+or the `COMMIT` fails; this holds on PostgreSQL and SQLite, while MySQL
+commits DDL implicitly), as goose, golang-migrate, Atlas, Bun and `momo migrate apply` run it.
 A migration that used `CREATE TEMP TABLE ... ON COMMIT DROP`, `SET LOCAL` or
 `set_config(..., true)` across statements now replays; one that relied on a
 statement being committed before the next now sees it in the same transaction.
