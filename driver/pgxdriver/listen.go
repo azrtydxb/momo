@@ -73,6 +73,15 @@ type Listener struct {
 	sem  chan struct{}
 	conn *pgx.Conn
 
+	// Reconnect pacing, also guarded by sem. backoff is the delay before the
+	// next dial. upSince and gotNotif describe the current connection and
+	// decide whether losing it counts as a failure. lastDialErr is the last
+	// failed dial since the last success.
+	backoff     time.Duration
+	upSince     time.Time
+	gotNotif    bool
+	lastDialErr error
+
 	closeCtx context.Context
 	closeFn  context.CancelFunc
 }
@@ -113,14 +122,26 @@ func Listen(ctx context.Context, connConfig *pgx.ConnConfig, channels []string, 
 		return nil, err
 	}
 	l.conn = conn
+	l.upSince = time.Now()
 	return l, nil
 }
 
 // Wait blocks until a notification arrives and returns it. When the
 // connection is lost, Wait reconnects with backoff, re-issues LISTEN, calls
 // the OnReconnect function, and keeps waiting. It returns the context's error
-// when ctx ends (the next Wait reconnects, because a cancelled read leaves the
-// connection unusable) and ErrListenerClosed after Close.
+// when ctx ends and ErrListenerClosed after Close.
+//
+// Ending ctx does not disturb a healthy connection: the next Wait reads from
+// the same connection, notifications that arrived in between are delivered,
+// and OnReconnect does not run, so a short poll timeout is fine. Only a lost
+// connection triggers a reconnect. When ctx ends while Wait is still trying
+// to reconnect, the returned error also wraps the last connect error, so a
+// permanent failure such as a bad password is visible.
+//
+// The delay before a redial grows from the WithBackoff minimum while
+// connections keep failing, including one that connects and is then lost
+// before delivering a notification or staying up for the maximum delay. It is
+// zero after a connection that did either.
 func (l *Listener) Wait(ctx context.Context) (Notification, error) {
 	select {
 	case l.sem <- struct{}{}:
@@ -130,6 +151,13 @@ func (l *Listener) Wait(ctx context.Context) (Notification, error) {
 		return Notification{}, ErrListenerClosed
 	}
 	defer func() { <-l.sem }()
+	// A Close that gave up waiting for us (its ctx expired) leaves the
+	// connection to Wait: close it before the semaphore is released.
+	defer func() {
+		if l.closeCtx.Err() != nil {
+			l.dropConn()
+		}
+	}()
 
 	// A context that ends when the caller's does or when Close runs.
 	wctx, cancel := context.WithCancel(ctx)
@@ -137,45 +165,80 @@ func (l *Listener) Wait(ctx context.Context) (Notification, error) {
 	stop := context.AfterFunc(l.closeCtx, cancel)
 	defer stop()
 
-	var delay time.Duration
 	for {
 		if l.closeCtx.Err() != nil {
 			return Notification{}, ErrListenerClosed
 		}
 		if l.conn == nil {
+			if l.backoff > 0 && !sleep(wctx, l.backoff) {
+				return Notification{}, l.stopErr(ctx)
+			}
 			conn, err := l.dial(wctx)
 			if err != nil {
-				if werr := l.waitErr(ctx); werr != nil {
-					return Notification{}, werr
+				if wctx.Err() != nil {
+					return Notification{}, l.stopErr(ctx)
 				}
-				delay = nextDelay(delay, l.opts)
-				if !sleep(wctx, delay) {
-					return Notification{}, l.waitErr(ctx)
-				}
+				l.lastDialErr = err
+				l.backoff = nextDelay(l.backoff, l.opts)
 				continue
 			}
-			l.conn = conn
-			delay = 0
+			l.conn, l.lastDialErr = conn, nil
+			l.upSince, l.gotNotif = time.Now(), false
 			if l.opts.onReconnect != nil {
 				l.opts.onReconnect()
 			}
+			continue // re-check Close before waiting on the new connection
 		}
 		n, err := l.conn.WaitForNotification(wctx)
 		if err == nil {
+			l.gotNotif = true
 			return Notification{Channel: n.Channel, Payload: n.Payload, PID: n.PID}, nil
 		}
-		// Any failure leaves the connection unusable: drop it so the next
-		// pass reconnects and treats it as a possible gap.
+		if !l.conn.IsClosed() {
+			// The read ended but the connection is fine: ctx ended or Close
+			// ran. Keep it, so nothing buffered or in flight is lost.
+			if werr := l.waitErr(ctx); werr != nil {
+				return Notification{}, werr
+			}
+		}
+		// The connection is lost (or failed in an unexpected way): drop it,
+		// so the next pass reconnects and treats the time away as a gap.
 		l.dropConn()
 		if werr := l.waitErr(ctx); werr != nil {
 			return Notification{}, werr
 		}
+		l.connLost()
 	}
+}
+
+// connLost grows the redial delay after a lost connection, unless that
+// connection delivered a notification or stayed up for the maximum delay. A
+// server that accepts the connection and then kills it would otherwise be
+// redialed in a tight loop.
+func (l *Listener) connLost() {
+	if l.gotNotif || time.Since(l.upSince) >= l.opts.maxBackoff {
+		l.backoff = 0
+		return
+	}
+	l.backoff = nextDelay(l.backoff, l.opts)
+}
+
+// stopErr is waitErr for a Wait that was still reconnecting: it also wraps
+// the last failed dial, so a permanent error is not hidden by the context's.
+func (l *Listener) stopErr(ctx context.Context) error {
+	err := l.waitErr(ctx)
+	if err != nil && l.lastDialErr != nil {
+		return errors.Join(err, fmt.Errorf("pgxdriver: reconnect: %w", l.lastDialErr))
+	}
+	return err
 }
 
 // Close stops the listener, interrupts a blocked Wait (which returns
 // ErrListenerClosed) and closes the connection. It is safe to call more than
-// once. ctx bounds the wait for the connection to close.
+// once. ctx bounds the wait for the connection to close. If Wait is busy in
+// the OnReconnect function when ctx expires, Close returns ctx's error; the
+// listener is still closed, and Wait closes the connection when the function
+// returns.
 func (l *Listener) Close(ctx context.Context) error {
 	l.closeFn()
 	select {

@@ -4,6 +4,7 @@ package pgxdriver
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +56,64 @@ func TestListenRejectsBadArguments(t *testing.T) {
 		if _, err := Listen(ctx, cfg, []string{"c"}, WithBackoff(b[0], b[1])); err == nil {
 			t.Errorf("WithBackoff(%v, %v): want error", b[0], b[1])
 		}
+	}
+}
+
+func TestConnLostPacing(t *testing.T) {
+	newL := func() *Listener {
+		return &Listener{opts: listenConfig{minBackoff: 10 * time.Millisecond, maxBackoff: time.Hour}}
+	}
+
+	// Connected and lost at once, with nothing delivered: the delay grows, so
+	// a server that accepts and then kills connections is not redialed in a
+	// tight loop.
+	l := newL()
+	l.upSince = time.Now()
+	l.connLost()
+	if l.backoff != 10*time.Millisecond {
+		t.Fatalf("after the first quick loss backoff = %v, want 10ms", l.backoff)
+	}
+	l.connLost()
+	if l.backoff != 20*time.Millisecond {
+		t.Fatalf("after the second quick loss backoff = %v, want 20ms", l.backoff)
+	}
+
+	// A connection that delivered a notification was healthy: redial at once.
+	l.gotNotif = true
+	l.connLost()
+	if l.backoff != 0 {
+		t.Fatalf("after a connection that delivered, backoff = %v, want 0", l.backoff)
+	}
+
+	// So was one that stayed up for the maximum delay.
+	l = newL()
+	l.backoff = time.Second
+	l.upSince = time.Now().Add(-2 * time.Hour)
+	l.connLost()
+	if l.backoff != 0 {
+		t.Fatalf("after a long-lived connection, backoff = %v, want 0", l.backoff)
+	}
+}
+
+func TestStopErrWrapsLastDialError(t *testing.T) {
+	l := &Listener{}
+	l.closeCtx, l.closeFn = context.WithCancel(context.Background())
+	defer l.closeFn()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := l.stopErr(ctx); !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "reconnect") {
+		t.Fatalf("without a dial error: %v", err)
+	}
+	dialErr := errors.New("password authentication failed")
+	l.lastDialErr = dialErr
+	err := l.stopErr(ctx)
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, dialErr) {
+		t.Fatalf("stopErr = %v, want both the context error and the dial error", err)
+	}
+	l.closeFn()
+	if err := l.stopErr(ctx); !errors.Is(err, ErrListenerClosed) {
+		t.Fatalf("after Close: %v, want ErrListenerClosed", err)
 	}
 }
 
