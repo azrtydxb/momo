@@ -119,6 +119,52 @@ number field can no longer write `false` or `0` through `Model` (use
 NOT NULL column that has a database default: see "Database defaults" in the
 [AI guide](ai-guide.md).
 
+### --from-db singularizes -se plurals correctly
+
+`momo generate --from-db` turns a table name into a model name by trying
+singular candidates and keeping the first one the naming preset pluralizes
+back to the table name. The order was wrong for words in `-se`: `releases`
+became `Releas`. The rule now is: a plural in `-sses`, `-xes`, `-zzes`,
+`-ches`, `-shes` or `-uses` (but not `-ouses` or `-auses`) loses `es`; any
+other plural in `-es` loses only the `s`; a short list of words that no
+spelling rule separates (`aliases`, `biases`, `canvases`, `gases`, `atlases`,
+`lenses`, `irises`, `tomatoes`, `buffaloes`, `potatoes`, `heroes`, `echoes`,
+`vetoes`, `caches`, `niches`, `quizzes`, `uses`) is listed by name.
+
+The generated model name changes, on the next regenerate, for these tables:
+
+- Tables `releases`, `cases`, `courses`, `responses`, `licenses`, `bases`,
+  `houses`, `purposes`, `causes`, `clauses` and `uses`: Releas, Cas, Cours,
+  Respons, Licens, Bas, Hous, Purpos, Caus, Claus and Us become Release, Case,
+  Course, Response, License, Base, House, Purpose, Cause, Clause and Use.
+- Tables `sizes`, `prizes`, `mazes`, `caches` and `niches`: Siz, Priz, Maz,
+  Cach and Nich become Size, Prize, Maze, Cache and Niche.
+- Table `quizzes`: Quizze (gorm, bun) or Quizz (prisma) becomes Quiz.
+- Table `waltzes`: Waltz becomes Waltze, because a `-zes` word is read as `-ze`,
+  as in `sizes`.
+
+Not every preset can give every word the right name. The `gorm` and `bun`
+presets pluralize a word that ends in `s` to itself, and `ent` matches its
+rules case-sensitively on the Go name, so some words keep a wrong name there:
+`ent` gives `Statuse`, `Buse`, `Quizze` and `Aliase`; `momo` gives `Quizz`
+(it pluralizes `quiz` to `quizes`); `gorm`, `bun` and `ent` give `Biase`,
+`Canvase`, `Gase`, `Atlase`, `Lense` and `Irise`; `-oes` words get `Tomatoe`
+style names under presets with no `-oes` rule (`momo`, `ent`, and `gorm` and
+`bun` for `potatoes`, `heroes`, `echoes` and `vetoes`). These were wrong before
+too.
+
+To keep an old name, or to fix a wrong one, pin it in `momo.yaml`; the pin wins
+over the guess:
+
+```yaml
+introspect:
+  tables:
+    <table>: { name: Releas }
+```
+
+for example `releases: { name: Releas }`. A regenerate renames the struct in
+the generated file, so update the code that uses it, or pin the old name first.
+
 ### github.com/google/uuid types need no type tag
 
 A model or projection field of `uuid.UUID`, `*uuid.UUID` or `[]uuid.UUID` from
