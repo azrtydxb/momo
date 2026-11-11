@@ -1,6 +1,6 @@
 # plain-struct Query ignores the naming preset
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -30,16 +30,16 @@ caches plans by (type, preset). Without the option the column is
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] under a camelCase preset an untagged plain struct scans camelCase
+- [x] a regression test pins the fix: red before the change, green after
+- [x] under a camelCase preset an untagged plain struct scans camelCase
       columns through both Query and QueryRows, a tag still wins, and without
       the option the snake_case default is unchanged
-- [ ] docs/upgrading.md (0.8.0), docs/ai-guide.md and docs/capabilities.md
+- [x] docs/upgrading.md (0.8.0), docs/ai-guide.md and docs/capabilities.md
       describe WithNaming
-- [ ] docs/reference.md lists the new API, taken from the CI artifact
+- [x] docs/reference.md lists the new API, taken from the CI artifact
 
 ## Evidence
 
-- Red:
-- Green:
-- Docs: docs/upgrading.md (0.8.0), docs/ai-guide.md, docs/capabilities.md, docs/reference.md
+- Red: test-only commit 2c52ec6 on throwaway branch worktree-agent-red-92, ci-agent run 42978359451 failed to build the root test package: undefined: momo.WithNaming (raw_struct_test.go:235 and :246). Branch deleted.
+- Green: run 42999792466 on c4a7d80 (branch worktree-agent-a565a4b39df5f7711), all ci-agent jobs green. Earlier runs on this branch failed for fixable reasons only: the core may not import gen/naming (moved to internal/snake), docs/reference.md rows, and the googleuuid golden.
+- Docs: docs/upgrading.md (0.8.0, WithNaming), docs/ai-guide.md, docs/capabilities.md, docs/reference.md (FieldNamer and WithNaming rows, taken from the gen-check diff of the run on this branch because the regenerated-docs artifact carried rows of other branches).

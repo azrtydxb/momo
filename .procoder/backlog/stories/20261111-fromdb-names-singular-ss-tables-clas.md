@@ -1,6 +1,6 @@
 # fromdb names singular -ss tables Clas
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -31,18 +31,19 @@ already in the word-list test and stay there.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] the word-list test keeps releases, cases, addresses, classes, statuses,
+- [x] a regression test pins the fix: red before the change, green after
+- [x] the word-list test keeps releases, cases, addresses, classes, statuses,
       buses, boxes, matches, quizzes, aliases, biases, caches and houses, and
       adds the singular class, address, status, glass, boss, process and
       access, each under every naming preset
-- [ ] the existing from-db goldens are unchanged, or each change is a
+- [x] the existing from-db goldens are unchanged, or each change is a
       corrected name named in the evidence
-- [ ] docs/upgrading.md (0.8.0) notes that generated model names for singular
+- [x] docs/upgrading.md (0.8.0) notes that generated model names for singular
       `-ss` tables change, and how to keep the old name
 
 ## Evidence
 
-- Red:
-- Green:
-- Docs: docs/upgrading.md (0.8.0)
+- Red: test-only commit on throwaway branch worktree-agent-red-100, ci-agent run 42978257945 failed TestStructNameSingularWords: class gave Clas, address Addres, status Statu, glass Glas, boss Bos, user_status UserStatu (momo, gorm, bun, prisma). Branch deleted.
+- Green: run 42999792466 on c4a7d80 (branch worktree-agent-a565a4b39df5f7711), all ci-agent jobs green. Earlier runs on this branch failed for fixable reasons only: the core may not import gen/naming (moved to internal/snake), docs/reference.md rows, and the googleuuid golden.
+- Goldens: no from-db golden changed for this fix; the 13 words that worked before were already in the word-list test and still pass.
+- Docs: docs/upgrading.md (0.8.0, singular -ss and -us table names).

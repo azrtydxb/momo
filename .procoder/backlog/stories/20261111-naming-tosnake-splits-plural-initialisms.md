@@ -1,6 +1,6 @@
 # naming ToSnake splits plural initialisms
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -32,16 +32,17 @@ list, so `role_ids` gives `RoleIDs` and back. The root package now calls
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] a word-list test covers RoleIDs, URLs, UUIDs, APIKeys, HTTPServer, ID,
+- [x] a regression test pins the fix: red before the change, green after
+- [x] a word-list test covers RoleIDs, URLs, UUIDs, APIKeys, HTTPServer, ID,
       UserID and round-trips them through the --from-db naming
-- [ ] every generator golden stays the same, or each change is named in the
+- [x] every generator golden stays the same, or each change is named in the
       evidence
-- [ ] docs/upgrading.md (0.8.0) lists the column names that change and says how
+- [x] docs/upgrading.md (0.8.0) lists the column names that change and says how
       to keep an old name with a `column:` tag
 
 ## Evidence
 
-- Red:
-- Green:
-- Docs: docs/upgrading.md (0.8.0), docs/ai-guide.md, docs/reference.md
+- Red: test-only commit 40e85f6 on throwaway branch worktree-agent-red-107, ci-agent run 42978193099 failed: TestToSnakeInitialisms (ToSnake("RoleIDs") = "role_i_ds", "APIs" = "ap_is", "HTTPIDs" = "httpi_ds", "RestrictRoleIDs" = "restrict_role_i_ds") and TestFieldNameRoundTripsThroughToSnake (pascal("role_ids") = "RoleIds", pascal("urls") = "Urls"). Branch deleted.
+- Green: run 42999792466 on c4a7d80 (branch worktree-agent-a565a4b39df5f7711), all ci-agent jobs green. Earlier runs on this branch failed for fixable reasons only: the core may not import gen/naming (moved to internal/snake), docs/reference.md rows, and the googleuuid golden.
+- Goldens: the only changed golden is gen/fromdb/googleuuid_test.go (TeamIds became TeamIDs in TestGenerateFromDBGoogleUUID and TestGenerateFromDBDefaultUUIDIsMomo, the --from-db field name for team_ids); every other generator golden is unchanged. The column-name change and the --from-db field-name change are separate sections in the upgrade notes.
+- Docs: docs/upgrading.md (0.8.0: the column names that change, the --from-db field renames, how to keep an old name with a column: tag or introspect.columns match/name), docs/ai-guide.md.
