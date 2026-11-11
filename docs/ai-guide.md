@@ -1320,6 +1320,18 @@ Joined and CTE-prefixed writes:
   branch references the target (one branch off the target can be true on its own, which touches
   every target row); an `And` counts when any term does. `momo.Not` swaps the rules (a negated `And` needs every term on the target, a negated `Or` any term), and `momo.JoinSQL` with `AND` or `OR` follows the same rules as `And` and `Or`. The guard checks that `Where` references the target, not that it restricts it: a constant-true predicate such as `t.id = t.id` passes. `From` cannot be combined with
   `BulkUpdate` (`ErrValidation`), and `RETURNING` with `From` works on PostgreSQL and SQLite only.
+- `From` and `Using` take more than one source (`From(momo.CTE("due"), otherTable)`), rendered as a
+  comma list. With two or more sources the guard applies the same rule to each source: a source
+  that no `Where` predicate references is cross-joined, and the statement is `ErrUnfilteredMutation`
+  unless `AllRows()` confirms it. One source is checked against the target only.
+- `Returning` accepts columns of a `From` or `Using` source or CTE (`momo.ColumnOf`, or a table's
+  descriptors under its alias). On PostgreSQL a statement with a source renders its whole
+  RETURNING list qualified, so a column the source shares with the target is not ambiguous. Read
+  such a list with `momo.ScanUpdate` or `momo.ScanDelete`, which scan into a
+  plain struct, projection or tuple row by result column name (`s.url` is `url`; two returned
+  columns with the same name are `ErrValidation`). `Rows` and `One` refuse a source column
+  (`ErrValidation`), since the model has no field for it. SQLite's RETURNING reads the modified
+  table only, so a source column there is `ErrUnsupported`.
 - `UpdateQuery.With` and `UpdateQuery.WithRecursive` exist on `UpdateQuery`, `DeleteQuery` and `InsertQuery`, with the
   `SelectQuery` signature. PostgreSQL and SQLite render the WITH before the statement; MySQL
   accepts it before UPDATE and DELETE only (`ErrUnsupported` before INSERT), and MariaDB refuses it

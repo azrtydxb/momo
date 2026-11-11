@@ -44,7 +44,7 @@ type UpdateQuery[T any] struct {
 	extra []Predicate
 	// with holds the WITH clause; from the FROM source (UPDATE ... FROM).
 	with []cte
-	from TableSource
+	from []TableSource
 }
 
 // Update starts an UPDATE of T's table.
@@ -85,7 +85,20 @@ func (u UpdateQuery[T]) WithRecursive(name string, q Subquery, cols ...string) U
 // src WHERE ...: the SET expressions and the WHERE may reference src's
 // columns (ColumnOf on a CTE or FromSubquery alias, or a model's columns).
 // src is a table, aliased table, CTE or FromSubquery, as in a join. Join src
-// to the target in Where. Calling From again replaces the source.
+// to the target in Where. Calling From again replaces the sources.
+//
+// From takes more than one source (UPDATE t SET ... FROM a, b WHERE ...), for
+// instance a CTE and a table: they render as a comma list, in order. With
+// more than one source the unfiltered-mutation guard also requires Where to
+// reference every source (see below).
+//
+// Returning may list columns of a source (ColumnOf on a CTE or FromSubquery
+// alias, or a table's descriptors under its alias). On PostgreSQL the RETURNING
+// list of a statement with a source is rendered qualified, so a column that
+// the source and the target share is not ambiguous; scan such a list into a
+// plain struct, projection or tuple row with ScanUpdate (Rows and One refuse
+// it with ErrValidation). SQLite cannot return a source's columns
+// (ErrUnsupported).
 //
 // PostgreSQL and SQLite (3.33 or later) render UPDATE ... FROM. MySQL and
 // MariaDB render the multi-table form UPDATE t, src SET t.col = ... WHERE ...,
@@ -103,9 +116,16 @@ func (u UpdateQuery[T]) WithRecursive(name string, q Subquery, cols ...string) U
 // target, a negated Or any term. JoinSQL with AND or OR follows the same rules
 // as And and Or; with another separator it does not count. The guard checks
 // that Where references the target, not that it restricts it: a constant-true
-// predicate such as t.id = t.id passes.
+// predicate such as t.id = t.id passes. With two or more sources the same rule
+// applies to each of them: a source that no Where predicate references is
+// cross-joined to the target, and the statement fails with ErrUnfilteredMutation
+// unless AllRows confirms it. A single source is not checked this way, so a
+// one-row source that only feeds SET stays valid.
 // From cannot be combined with BulkUpdate (ErrValidation).
-func (u UpdateQuery[T]) From(src TableSource) UpdateQuery[T] { u.from = src; return u }
+func (u UpdateQuery[T]) From(srcs ...TableSource) UpdateQuery[T] {
+	u.from = slices.Clone(srcs)
+	return u
+}
 
 // Where adds predicates combined with AND.
 func (u UpdateQuery[T]) Where(ps ...Predicate) UpdateQuery[T] {
@@ -254,10 +274,15 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 	if !hasEffectiveFilter(where) && !u.allRows {
 		return nil, nil, u.fail(ErrUnfilteredMutation, nil)
 	}
-	if u.from != nil && !u.allRows && !referencesTable(u.q.Dialect(), where, u.meta.Table) {
+	if len(u.from) > 0 && !u.allRows && !referencesTable(u.q.Dialect(), where, u.meta.Table) {
 		// Without a condition on the target, FROM is a cross join and every
 		// target row is updated.
 		return nil, nil, u.fail(ErrUnfilteredMutation, errors.New("with From, Where must reference the target table (or confirm with AllRows)"))
+	}
+	if !u.allRows {
+		if q := unconstrainedSource(u.q.Dialect(), where, u.from); q != "" {
+			return nil, nil, u.fail(ErrUnfilteredMutation, fmt.Errorf("with several From sources, Where must reference every source, and %q is not referenced (or confirm with AllRows)", q))
+		}
 	}
 	return sets, append(where, u.extra...), nil
 }
@@ -296,7 +321,7 @@ func (u UpdateQuery[T]) compileSQL() (Compiled, error) {
 		return Compiled{}, noQuerier("update", u.meta.Table)
 	}
 	if u.bulk != nil {
-		if u.from != nil || len(u.with) > 0 {
+		if len(u.from) > 0 || len(u.with) > 0 {
 			return Compiled{}, u.fail(ErrValidation, errors.New("BulkUpdate cannot be combined with With or From"))
 		}
 		return u.bulkSQL()
@@ -340,12 +365,10 @@ func (u UpdateQuery[T]) render(b *Builder) {
 	}
 	target := TableRef{Name: u.meta.Table, Schema: u.meta.Schema}
 	names := append(cteNames(u.with), target.Qualifier())
-	if q, ok := u.from.(interface{ Qualifier() string }); ok {
-		names = append(names, q.Qualifier())
-	}
+	names = append(names, sourceQualifiers(u.from)...)
 	// MySQL has no UPDATE ... FROM: the multi-table form lists the source
 	// after the target and needs the assigned columns qualified.
-	multi := u.from != nil && b.d.Name == dialect.MySQL
+	multi := len(u.from) > 0 && b.d.Name == dialect.MySQL
 	qual := ""
 	if multi {
 		qual = target.Qualifier()
@@ -363,7 +386,7 @@ func (u UpdateQuery[T]) render(b *Builder) {
 		target.appendFrom(b)
 		if multi {
 			b.WriteString(", ")
-			u.from.appendFrom(b)
+			appendSources(b, u.from)
 		}
 		b.WriteString(" SET ")
 		for i, a := range sets {
@@ -382,16 +405,16 @@ func (u UpdateQuery[T]) render(b *Builder) {
 			b.QualifiedIdent(target.Qualifier(), vc)
 			b.WriteString(" + 1")
 		}
-		if u.from != nil && !multi {
+		if len(u.from) > 0 && !multi {
 			b.WriteString(" FROM ")
-			u.from.appendFrom(b)
+			appendSources(b, u.from)
 		}
 		if len(where) > 0 {
 			b.WriteString(" WHERE ")
 			appendAnd(b, where)
 		}
 	})
-	renderReturning(b, u.meta, u.returning, func(col string) error {
+	renderWriteReturning(b, u.meta, u.returning, len(u.from) > 0, func(col string) error {
 		return u.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, u.meta.Table))
 	})
 }
@@ -468,24 +491,57 @@ func (u UpdateQuery[T]) Exec(ctx context.Context) (Result, error) {
 // Model update, whose stale-row classification needs the affected-row count
 // (use Exec for that).
 func (u UpdateQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
-	if !u.returning.active() {
-		return nil, u.fail(ErrValidation, errors.New("Rows needs a Returning list"))
+	if u.returning.hasSource(u.meta.Table) {
+		return nil, u.fail(ErrValidation, errors.New("Rows cannot scan Returning columns of a From source into the model; use ScanUpdate"))
 	}
-	if u.versioned() {
-		return nil, u.fail(ErrValidation, errors.New("Rows is not supported with a version-checked Model update; use Exec"))
-	}
-	u, err := u.intercepted(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := u.beforeWrite(ctx); err != nil {
-		return nil, err
-	}
-	c, err := u.compileSQL()
+	u, c, err := u.prepareReturning(ctx, "Rows")
 	if err != nil {
 		return nil, err
 	}
 	return runReturning(ctx, u.q, "update", u.meta, u.returning, c)
+}
+
+// prepareReturning runs the steps a RETURNING statement shares before it
+// reaches the database: the Returning and version checks, interceptors, the
+// BeforeWrite hooks and rendering. caller names the method in errors.
+func (u UpdateQuery[T]) prepareReturning(ctx context.Context, caller string) (UpdateQuery[T], Compiled, error) {
+	if !u.returning.active() {
+		return u, Compiled{}, u.fail(ErrValidation, errors.New(caller+" needs a Returning list"))
+	}
+	if u.versioned() {
+		return u, Compiled{}, u.fail(ErrValidation, errors.New(caller+" is not supported with a version-checked Model update; use Exec"))
+	}
+	u, err := u.intercepted(ctx)
+	if err != nil {
+		return u, Compiled{}, err
+	}
+	if err := u.beforeWrite(ctx); err != nil {
+		return u, Compiled{}, err
+	}
+	c, err := u.compileSQL()
+	return u, c, err
+}
+
+// ScanUpdate runs the UPDATE and scans every RETURNING row into an R, which
+// is what to use when Returning lists columns of a From source or CTE, that
+// the model cannot hold. R is a projection, a tuple row (Row1 to Row10) or a
+// plain struct, matched by result column name as in Query: a source column
+// "s"."url" is the result column url, so name or tag the field accordingly,
+// and two returned columns with the same name are an ErrValidation (leave one
+// out). A Returning list of the target's own columns scans too. The rows are
+// buffered, MaxRows does not apply, and the AfterLoad hook does not run. An
+// update that matched no row returns a nil slice. The other rules are those of
+// Rows.
+//
+//	claimed, err := momo.ScanUpdate[Claimed](ctx, momo.Update[Delivery](db).
+//		Set(...).From(momo.CTE("due"), sub).Where(...).
+//		Returning(DeliveryID, momo.ColumnOf[string]("s", "url")))
+func ScanUpdate[R, T any](ctx context.Context, u UpdateQuery[T]) ([]R, error) {
+	u, c, err := u.prepareReturning(ctx, "ScanUpdate")
+	if err != nil {
+		return nil, err
+	}
+	return scanCompiled[R](ctx, u.q, "update", u.meta.Table, c)
 }
 
 // zeroRows classifies a versioned update that affected no row.
