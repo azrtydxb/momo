@@ -1,0 +1,3772 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.7/migrations/">
+      
+      
+        <link rel="prev" href="../mysql/">
+      
+      
+        <link rel="next" href="../importers/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Migrations - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#migration-safety-and-recovery" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Migrations
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#format-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Format versions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checksums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checksums
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#history-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        History table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-apply-decides-what-to-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How apply decides what to run
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drift
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-apply-semantics-on-postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Apply semantics on PostgreSQL
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Apply semantics on PostgreSQL">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lock
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transactions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session-timeouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session timeouts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pgbouncer-and-other-poolers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PgBouncer and other poolers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3a-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3a. SQLite
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-failure-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Failure and recovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Failure and recovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#transactional-migration-fails-testpostgresapplyrecovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transactional migration fails (TestPostgresApplyRecovery)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#interrupted-ctrl-c-killed-lost-connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interrupted (Ctrl-C, killed, lost connection)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-transaction-migration-fails-partial-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No-transaction migration fails (partial state)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-down-migration-fails-enginerollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A down migration fails (Engine.Rollback)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invalid-index-after-a-failed-create-index-concurrently" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invalid index after a failed CREATE INDEX CONCURRENTLY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#editing-an-already-applied-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editing an already-applied migration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-production-safety-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Production safety checklist
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Production safety checklist">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#refused-unless-you-opt-in-diff-exit-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Refused unless you opt in (diff, exit 1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-null-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NOT NULL columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lint-momo-migrate-lint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lint (momo migrate lint)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-items" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other items
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-custom-sql-migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Custom SQL migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6a-go-migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6a. Go migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-adopting-an-existing-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Adopting an existing database
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Adopting an existing database">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-introspect-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The introspect section
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it-again" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running it again
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#roles-and-extensions-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles and extensions (verified)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extensions-managed-outside-momo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extensions managed outside momo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7a-cutover-from-prisma-db-push-to-momo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7a. Cutover from Prisma db push to momo
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-generated-file-header" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading: generated file header
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known issues
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#format-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Format versions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checksums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checksums
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#history-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        History table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-apply-decides-what-to-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How apply decides what to run
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drift
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-apply-semantics-on-postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Apply semantics on PostgreSQL
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Apply semantics on PostgreSQL">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lock
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transactions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session-timeouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session timeouts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pgbouncer-and-other-poolers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PgBouncer and other poolers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3a-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3a. SQLite
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-failure-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Failure and recovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Failure and recovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#transactional-migration-fails-testpostgresapplyrecovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transactional migration fails (TestPostgresApplyRecovery)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#interrupted-ctrl-c-killed-lost-connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interrupted (Ctrl-C, killed, lost connection)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-transaction-migration-fails-partial-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No-transaction migration fails (partial state)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-down-migration-fails-enginerollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A down migration fails (Engine.Rollback)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invalid-index-after-a-failed-create-index-concurrently" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invalid index after a failed CREATE INDEX CONCURRENTLY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#editing-an-already-applied-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editing an already-applied migration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-production-safety-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Production safety checklist
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Production safety checklist">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#refused-unless-you-opt-in-diff-exit-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Refused unless you opt in (diff, exit 1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-null-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NOT NULL columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lint-momo-migrate-lint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lint (momo migrate lint)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-items" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other items
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-custom-sql-migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Custom SQL migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6a-go-migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6a. Go migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-adopting-an-existing-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Adopting an existing database
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Adopting an existing database">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-introspect-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The introspect section
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it-again" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running it again
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#roles-and-extensions-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles and extensions (verified)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extensions-managed-outside-momo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extensions managed outside momo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7a-cutover-from-prisma-db-push-to-momo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7a. Cutover from Prisma db push to momo
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-generated-file-header" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading: generated file header
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known issues
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="migration-safety-and-recovery">Migration safety and recovery<a class="headerlink" href="#migration-safety-and-recovery" title="Permanent link">&para;</a></h1>
+<p>Momo v0.7.0, PostgreSQL (SQLite and MySQL as libraries, sections 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
+<code>migrate/</code>, <code>cli/</code>, <code>schema/</code> and <code>dialect/</code>; the tests that pin a
+behavior are named. For the first run see README, <a href="https://github.com/azrtydxb/momo/blob/main/README.md#3-create-and-apply-the-migration">Create and apply the
+migration</a>.</p>
+<p>With a dialect the <code>momo migrate</code> command does not link, it exits 2
+("migrations for dialect ... are not available yet"). The library migration
+dialects are described in section 3a (SQLite) and section 9 (MySQL and
+MariaDB):</p>
+<!-- generated:status -->
+
+<!-- Generated by go generate ./internal/gendocs from the code. Do not edit by hand. -->
+
+<p>A database is usable when a driver package for it exists under <code>driver/</code>:</p>
+<ul>
+<li>PostgreSQL: usable through <code>driver/pgxdriver</code> (vector builders: yes). Migrations: <code>migrate/postgres</code>, run by <code>momo migrate</code>.</li>
+<li>SQLite: usable through <code>driver/sqlitedriver</code> (needs cgo, not on Windows, vector builders: yes) and <code>driver/sqlitepure</code> (vector builders: no). Migrations: <code>migrate/sqlite</code>, library only (<code>momo migrate</code> does not select it).</li>
+<li>MySQL and MariaDB: usable through <code>driver/mysqldriver</code> (vector storage and builders depend on the server version). Migrations: <code>migrate/mysql</code>, library only (<code>momo migrate</code> does not select it).</li>
+</ul>
+<!-- /generated:status -->
+
+<h2 id="1-model">1. Model<a class="headerlink" href="#1-model" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>models (Go structs) --momo migrate diff--&gt; &lt;v&gt;_&lt;name&gt;.up.sql + &lt;v&gt;_&lt;name&gt;.snapshot.json + momo.sum
+                                              |
+database &lt;--------momo migrate apply---------+  (history table: momo_migrations)
+</code></pre></div>
+<h3 id="files">Files<a class="headerlink" href="#files" title="Permanent link">&para;</a></h3>
+<p>All files live in one directory per dialect (default <code>migrations/postgres</code>,
+set <code>migrate.dir.postgres</code> or <code>--dir</code>). <code>diff</code> writes exactly three files:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;version&gt;_&lt;name&gt;.up.sql</code></td>
+<td>Statements. Header <code>-- momo:generated</code>, plus <code>-- momo:destructive</code> and/or <code>-- momo:no-transaction</code> when needed. Statements are separated by a blank line and each ends in <code>;</code>.</td>
+</tr>
+<tr>
+<td><code>&lt;version&gt;_&lt;name&gt;.snapshot.json</code></td>
+<td>The whole schema after this migration, wrapped as <code>{format_version, version, parent, schema}</code>. <code>schema</code> carries its own <code>format_version</code>.</td>
+</tr>
+<tr>
+<td><code>momo.sum</code></td>
+<td>Checksum manifest of every file in the directory, rewritten by <code>diff</code>.</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>version</code> is a 14-digit UTC timestamp (<code>YYYYMMDDHHMMSS</code>). If the clock is not
+  past the latest existing version, <code>diff</code> uses the second after it, so
+  versions only grow.</li>
+<li><code>name</code> must match <code>^[a-z][a-z0-9_]*$</code>.</li>
+<li><code>.down.sql</code> files are optional and hand-written (<code>diff</code> never generates one).
+  They are hashed in <code>momo.sum</code>, and <code>apply</code> never runs them. Only
+  <code>Engine.Rollback</code> runs them (section 2).</li>
+<li>Files whose name starts with <code>.</code> are ignored everywhere (<code>.DS_Store</code>,
+  <code>.momo-*.tmp</code>). A symlink to a directory inside the migration directory is an
+  error. Moving an applied file into a subdirectory is fine: history is keyed by
+  version, not path (<code>TestMovingAppliedMigrationIntoArchiveKeepsHistory</code>).</li>
+<li><code>diff</code> never overwrites a file (exit 1 if one exists) and writes all-or-none:
+  temporaries first, then publish, <code>momo.sum</code> last.</li>
+</ul>
+<h3 id="format-versions">Format versions<a class="headerlink" href="#format-versions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Field</th>
+<th>v0.7.0 value</th>
+<th>Newer than this binary <!-- x-release-please-version --></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Snapshot wrapper</td>
+<td><code>format_version</code></td>
+<td>1</td>
+<td>read error, "upgrade momo"</td>
+</tr>
+<tr>
+<td>Embedded schema</td>
+<td><code>schema.format_version</code></td>
+<td>1</td>
+<td>read error, "upgrade momo"</td>
+</tr>
+<tr>
+<td><code>momo.sum</code></td>
+<td>header <code># momo.sum format=N</code></td>
+<td>1</td>
+<td>read error</td>
+</tr>
+<tr>
+<td>History table</td>
+<td><code>checksum</code> of the row <code>__momo_meta__</code></td>
+<td>1</td>
+<td>apply refuses, "upgrade momo"</td>
+</tr>
+</tbody>
+</table>
+<p>A snapshot without <code>format_version</code> is rejected.</p>
+<h3 id="diff">Diff<a class="headerlink" href="#diff" title="Permanent link">&para;</a></h3>
+<p><code>momo migrate diff &lt;name&gt;</code> runs offline (no database, no driver). It loads the
+models, compares them with the snapshot of the highest version in the
+directory (the empty schema when there is none), orders the changes by
+dependency and renders SQL. No difference: prints <code>no changes</code>, exit 0, writes
+nothing.</p>
+<ul>
+<li>Renames are never guessed. A drop plus an add prints a
+  <code>hint: possible rename ...</code>; pass <code>--rename-table old=new</code> or
+  <code>--rename-column table.old=new</code>.</li>
+<li>Dropped extensions and schemas are not dropped in the database; <code>diff</code> prints
+  a hint that they are no longer managed.</li>
+<li>Diff never reads the database. A table that is already populated is
+  indistinguishable from an empty one (see section 5).</li>
+</ul>
+<p><code>diff</code> does not depend on <code>momo generate</code>. <code>momo generate --check</code> verifies only
+the generated <code>*_gen.go</code> files (exit 1 and <code>stale: &lt;path&gt;</code> lines when stale).
+There is no <code>momo migrate diff --check</code>. To fail CI when the models have no
+migration, run <code>momo migrate diff ci_probe</code> on a clean checkout and fail unless
+it prints <code>no changes</code> (when there is a difference it writes files and exits 0,
+so also check <code>git status --porcelain</code> on the migration directory). This recipe
+is derived from the code, not covered by a test.</p>
+<h3 id="checksums">Checksums<a class="headerlink" href="#checksums" title="Permanent link">&para;</a></h3>
+<p>Two independent checks, both SHA-256 of the file bytes:</p>
+<ol>
+<li><code>momo.sum</code> must match the directory: every file present, none added,
+   removed or changed. <code>Engine.Apply</code>, <code>Status</code> and <code>Baseline</code> refuse otherwise
+   (<code>ErrChecksumMismatch</code>, naming the files). A missing <code>momo.sum</code> is an error
+   that names <code>momo migrate hash</code>. <code>momo.sum</code> itself carries a directory hash;
+   a hand-edited <code>momo.sum</code> is rejected.</li>
+<li>The history row of an applied migration stores the checksum of its up file.
+   <code>Engine.Apply</code> refuses when that file changed since (the error says
+   <code>... changed after version V was applied</code>).</li>
+</ol>
+<p><code>Plan</code> and <code>Drift</code> do not check either.</p>
+<h3 id="history-table">History table<a class="headerlink" href="#history-table" title="Permanent link">&para;</a></h3>
+<p><code>momo_migrations</code>. Every statement against it (read, insert, update, delete
+and the <code>CREATE TABLE</code>) names the table schema-qualified and quoted, for
+example <code>"app"."momo_migrations"</code>. The table is resolved before the lock is
+taken, and again right after, and the advisory-lock key is built from that
+resolved schema, so a migration that changes <code>search_path</code> cannot redirect the
+history writes. If the two lookups disagree (another process created the table
+in an earlier schema in between), the lock is released and the attempt is
+repeated once; a second disagreement fails with an error asking you to retry.</p>
+<ul>
+<li>An existing table is found the way earlier versions found it, through the
+  session <code>search_path</code>, and its schema is then used. Installs made with the
+  unqualified name keep working, and no second table is created.</li>
+<li>The resolved object must be a regular, permanent table, and the connecting
+  role must be its owner or hold the privileges of the owning role
+  (<code>pg_has_role</code> with <code>USAGE</code>, so a role with NOINHERIT does not qualify). A
+  superuser holds every role's privileges, so a superuser migrator
+  additionally requires the owner to be itself or another superuser; a table
+  owned by an ordinary role is refused, because its triggers and rules would
+  run with superuser rights. A view, foreign table, unlogged or temporary table, or a table
+  owned by an unrelated role, named <code>momo_migrations</code> earlier on the
+  <code>search_path</code>, is refused with a validation error naming the schema, the
+  table and the owner; it is never used. A table adopted on first install by
+  <code>CREATE TABLE IF NOT EXISTS</code> passes the same checks after the statement runs.</li>
+<li>What this does and does not defend: it stops a foreign-owned or non-table
+  object that sits ahead of the real table on the <code>search_path</code> from
+  capturing the history writes. It does not stop a role whose privileges you hold,
+  or another superuser, from owning such an object, and it cannot protect a schema
+  that other roles may write to and that is ahead of yours on the
+  <code>search_path</code> before any table exists. Keep schemas on the migrator's
+  <code>search_path</code> writable only by the migrator.</li>
+<li>With no table yet, it is created in the current schema.
+  <code>migrate.Config.Schemas[0]</code> (<code>migrate.schemas</code>) must equal the current schema
+  (current_schema) or the engine returns a configuration error naming both.
+  <code>plan</code>, <code>status</code> and <code>drift</code> on a connection with no current schema and no
+  table report an empty history; <code>apply</code> and the other writers fail.</li>
+<li>momo does not <code>SET search_path</code> for the migration session. Migrations are
+  written against the <code>search_path</code> of the connection you give momo and may
+  rely on it; qualify the history table, not the migrations. Set the
+  <code>search_path</code> in the connection URL, and pin it per role with
+  <code>ALTER ROLE</code> on the migrator role.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>version</code></td>
+<td>TEXT PRIMARY KEY</td>
+<td>Migration version</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>TEXT</td>
+<td>Migration name</td>
+</tr>
+<tr>
+<td><code>checksum</code></td>
+<td>TEXT</td>
+<td>SHA-256 of the up file</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>TEXT</td>
+<td><code>running</code>, <code>applied</code>, <code>failed</code>, <code>rolled_back</code> (and <code>meta</code>)</td>
+</tr>
+<tr>
+<td><code>statements_applied</code></td>
+<td>INTEGER</td>
+<td>Statements that completed</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>TEXT</td>
+<td>Failure text, empty on success</td>
+</tr>
+<tr>
+<td><code>applied_at</code></td>
+<td>TEXT</td>
+<td>RFC 3339 UTC</td>
+</tr>
+<tr>
+<td><code>execution_ms</code></td>
+<td>BIGINT</td>
+<td>Duration</td>
+</tr>
+<tr>
+<td><code>apply_id</code></td>
+<td>TEXT</td>
+<td>UTC timestamp plus 8 hex digits, shared by one <code>apply</code> run; <code>baseline</code> for baselined rows</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>TEXT</td>
+<td><code>sql</code> (default), or <code>go</code> for a Go migration (section 6a)</td>
+</tr>
+</tbody>
+</table>
+<p>One extra row, <code>version = '__momo_meta__'</code>, <code>status = 'meta'</code>, holds the
+history format version. <code>ReadHistory</code> and <code>Inspect</code> hide it and the table.
+<code>running</code> and <code>failed</code> are "dirty". <code>rolled_back</code> is not dirty.</p>
+<h3 id="how-apply-decides-what-to-run">How apply decides what to run<a class="headerlink" href="#how-apply-decides-what-to-run" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Take the migration lock, set session timeouts, create the history table if
+   missing.</li>
+<li>Refuse (<code>ErrDirty</code>, exit 3) if any row is <code>running</code> or <code>failed</code>.</li>
+<li>Refuse (<code>ErrChecksumMismatch</code>, exit 3) on a checksum problem (above).</li>
+<li>Pending = every <code>*.up.sql</code> and every registered Go migration (section 6a)
+   whose version has no row other than
+   <code>rolled_back</code>, run in ascending version order, optionally stopping after
+   <code>--to N</code> (a version without a file is refused, so a typo applies nothing).</li>
+</ol>
+<p>The test is "has no row", not "is newer than the latest applied". An older file
+that appears later (a merged branch) is still applied, after newer ones.
+<code>apply</code> does not check snapshot parents; <code>validate</code> does (section 2).</p>
+<h3 id="drift">Drift<a class="headerlink" href="#drift" title="Permanent link">&para;</a></h3>
+<p><code>momo migrate drift</code> inspects the live database and compares it with the
+snapshot of the <strong>latest applied</strong> migration (the empty schema if none, so
+every object is unmanaged). Exit 0 and <code>no drift</code>, or exit 1 and one line per
+finding:</p>
+<table>
+<thead>
+<tr>
+<th>Line</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>changed: &lt;kind&gt; &lt;name&gt;: &lt;detail&gt;</code></td>
+<td>In both, definition differs. A column, index or constraint present only live is <code>changed: ... not in snapshot</code> on that object. An invalid index is <code>changed: ... invalid index (failed CONCURRENTLY build)</code>.</td>
+</tr>
+<tr>
+<td><code>missing: &lt;kind&gt; &lt;name&gt;</code></td>
+<td>In the snapshot, not in the database.</td>
+</tr>
+<tr>
+<td><code>unmanaged: &lt;kind&gt; &lt;name&gt;</code></td>
+<td>In the database, not in the snapshot: tables, views, functions, enums, schemas, <strong>extensions</strong> (every extension except <code>plpgsql</code>, for example <code>pg_stat_statements</code>, <code>pgcrypto</code>), and triggers/policies on managed tables.</td>
+</tr>
+<tr>
+<td><code>unverified: &lt;kind&gt; &lt;name&gt;</code></td>
+<td>Not compared and does not affect the exit code (below).</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Extension versions are ignored when either side leaves the version empty.</li>
+<li>Hide objects you do not manage with <code>migrate.exclude</code> (globs over <code>name</code> or
+  <code>schema.name</code>; they apply to tables, views, functions, enums, extensions,
+  triggers and policies). Example: <code>exclude: ["pg_stat_statements", "audit_*"]</code>.
+  PostgreSQL inspection applies the globs while it reads, before an object is
+  examined: a matching table is skipped before its columns, constraints, indexes
+  and partitions are read, a matching view or function before its definition is
+  read, and a trigger whose own name or table matches before its definition is
+  read. So an object the schema model cannot represent (for example a table with
+  a <code>VIRTUAL</code> generated column) no longer fails <code>generate --from-db</code>, <code>baseline</code>
+  or <code>drift</code> once you exclude it. Extensions, enums and policies are not skipped
+  early; they are filtered afterwards as before. <code>generate --from-db</code> also
+  passes every <code>introspect.skip</code> glob to inspection the same way, so a skipped
+  table is never read (the globs also match views and functions of that name).</li>
+<li><code>migrate.Config.OnlyTables</code> (set from <code>introspect.only</code> by the CLI) is the
+  inverse for tables: when it is not empty, a table whose name or <code>schema.name</code>
+  matches none of its globs is not managed. A table in the current schema is
+  matched by its bare name only (its schema is empty), so write <code>users</code>, not
+  <code>public.users</code>, when <code>public</code> is the current schema. Inspection does not read it
+  (<code>migrate.InspectOptions.Only</code>, honoured by the PostgreSQL inspector), and
+  drift, baseline and diff hide it, with its triggers and policies, like an
+  excluded table. <code>migrate.MatchObject(globs, schemaName, name)</code> is the matching
+  rule <code>Exclude</code>, <code>OnlyTables</code> and the inspector share. An empty entry is an
+  error. <code>diff</code> filters both sides: a snapshot table outside <code>OnlyTables</code> never
+  plans <code>DROP TABLE</code>, and a model for one never plans <code>CREATE TABLE</code>: a model
+  for a table outside <code>only</code> is never migrated. Partition children are tables
+  of their own: <code>only: [orders]</code> leaves out <code>orders_2024</code>; use
+  <code>only: [orders, "orders_*"]</code>. The MySQL and SQLite inspectors ignore
+  <code>InspectOptions.Only</code> and read every table; the filter is applied afterwards,
+  so a table they cannot represent can still fail inspection.</li>
+<li>A trigger limited to some columns (<code>AFTER UPDATE OF state</code>) is
+  <code>schema.Trigger.UpdateOf</code>: PostgreSQL renders <code>UPDATE OF "state"</code>, inspection
+  reads the list back and <code>generate --from-db</code> writes it into the model.</li>
+<li><code>momo_migrations</code> is never reported.</li>
+<li>A view query, trigger <code>WHEN</code> and policy <code>USING</code>/<code>WITH CHECK</code> changed outside
+  migrations is reported as <code>changed:</code> (the detail names <code>query</code>, <code>when</code>,
+  <code>using</code> or <code>check</code>), and a body declared in another spelling than the server
+  reports (<code>id&gt;0</code> against <code>id &gt; 0</code>) is not drift. To compare them, drift
+  rewrites the snapshot's text through a scratch schema in a rolled-back
+  transaction (the same step as <code>baseline</code>), which needs <strong><code>CREATE</code> on the
+  database</strong> and a writable session. No DDL runs against the application
+  schema (<code>TestDriftBodiesRunsDDLOnlyInRolledBackTransaction</code>).</li>
+<li>A role that cannot do that (a read-only CI role, say) still gets a report:
+  the bodies are listed as <code>unverified: &lt;kind&gt; &lt;name&gt;</code> and do not affect the
+  exit code, so exit 0 does not prove they match. <code>momo migrate drift --strict</code>
+  (<code>Engine.DriftWith(ctx, DriftOptions{Strict: true})</code>) turns that case into an
+  error: exit 3 with a message wrapping <code>ErrCanonicalizePrivilege</code> that names
+  the privilege. Use <code>--strict</code> where a clean report must mean the policies
+  were checked, since a policy loosened to <code>USING (true)</code> hides in <code>unverified:</code>
+  otherwise (<code>TestDriftBodiesNeedCreateOnDatabase</code>, both modes, as <code>momo_app</code>).
+  Function bodies are compared in both modes.</li>
+<li>A snapshot without those bodies canonicalizes only its table text (defaults,
+  checks, index predicates) through the same scratch schema. There drift stays
+  tolerant: without <code>CREATE</code> it still runs and can show false <code>changed</code> entries
+  (never hides a real one), and lists the tables it compared as declared in
+  <code>CanonicalizeSkipped</code>.</li>
+</ul>
+<h2 id="2-cli">2. CLI<a class="headerlink" href="#2-cli" title="Permanent link">&para;</a></h2>
+<p><code>momo</code> has four commands: <code>generate</code>, <code>migrate</code>, <code>viz</code>, <code>help</code>. Global exit codes:
+0 success, 1 findings, 2 usage/config, 3 database/lock/execution (migrate).</p>
+<p>Shared flags on every <code>migrate</code> subcommand: <code>--config</code>/<code>-c momo.yaml</code>, <code>--dir</code>,
+<code>--dialect</code>, <code>--url</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Needs DB</th>
+<th>Does</th>
+<th>Exit 1 when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>diff &lt;name&gt; [--rename-table a=b]... [--rename-column t.a=b]... [--allow-destructive] [--stage] [--enforce-not-null]</code></td>
+<td>no</td>
+<td>Write a migration (section 1, 5).</td>
+<td>destructive or staged refusal; target file exists; model diagnostics</td>
+</tr>
+<tr>
+<td><code>plan</code></td>
+<td>yes</td>
+<td>List pending migrations with statement counts. Read-only, no lock, creates nothing.</td>
+<td>never</td>
+</tr>
+<tr>
+<td><code>apply [--to N] [--lock-wait 30s]</code></td>
+<td>yes</td>
+<td>Apply pending.</td>
+<td>a chain refusal (<code>ErrBranchConflict</code>, <code>ErrChainInvalid</code>, <code>ErrOutOfOrder</code>); other failures are 3</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>yes</td>
+<td>One line per version: <code>applied</code>, <code>pending</code>, <code>dirty</code>, <code>mismatch</code>, <code>missing</code>. Read-only.</td>
+<td>any version not <code>applied</code>/<code>pending</code></td>
+</tr>
+<tr>
+<td><code>validate [--db]</code></td>
+<td>no (<code>--db</code> yes)</td>
+<td>Directory checks (below); <code>--db</code> adds <code>status</code>.</td>
+<td>any problem or unhealthy status</td>
+</tr>
+<tr>
+<td><code>hash</code></td>
+<td>no</td>
+<td>Recompute <code>momo.sum</code>, list files it accepts as <code>changed:</code>/<code>added:</code>/<code>removed:</code>, write it.</td>
+<td>never</td>
+</tr>
+<tr>
+<td><code>new --custom &lt;name&gt;</code></td>
+<td>no</td>
+<td>Write an empty hand-written migration (section 6).</td>
+<td>a file would be overwritten</td>
+</tr>
+<tr>
+<td><code>baseline --version N [--force]</code></td>
+<td>yes</td>
+<td>Record migrations through N as applied without running them (section 7).</td>
+<td>database differs from snapshot</td>
+</tr>
+<tr>
+<td><code>drift [--strict]</code></td>
+<td>yes</td>
+<td>Section 1.</td>
+<td>any change, missing or unmanaged</td>
+</tr>
+<tr>
+<td><code>resolve --version N --applied</code> or <code>--rolled-back</code></td>
+<td>yes</td>
+<td>Settle a dirty migration (section 4).</td>
+<td>never</td>
+</tr>
+<tr>
+<td><code>rehash --version N [--accept]</code></td>
+<td>yes</td>
+<td>Show, and with <code>--accept</code> store, the new checksum of an edited applied migration (section 4).</td>
+<td>without <code>--accept</code>, when the file differs</td>
+</tr>
+<tr>
+<td><code>lint [--db]</code></td>
+<td>no (<code>--db</code> yes)</td>
+<td>Report risky operations with a safer alternative (section 5).</td>
+<td>a finding has severity <code>error</code> (warnings alone exit 0)</td>
+</tr>
+<tr>
+<td><code>rollback [--group] [--lock-wait 30s]</code></td>
+<td>yes</td>
+<td>Run the <code>.down.sql</code> of the last applied migration, or of its group.</td>
+<td>a version has no down file (<code>ErrNoDown</code>) or is a Go migration</td>
+</tr>
+<tr>
+<td><code>rebase --onto &lt;dir&gt; [name]</code></td>
+<td>no</td>
+<td>Regenerate this branch's generated migrations on top of <code>&lt;dir&gt;</code> (section 4).</td>
+<td>the result is not a valid chain, or a branch file is hand-written</td>
+</tr>
+</tbody>
+</table>
+<p><code>validate</code> checks: files parse and directives are known; <code>momo.sum</code> matches;
+versions unique and increasing; each snapshot's parent exists; no two snapshots
+share a parent (branch conflict); each up file has a snapshot; a hand-written
+migration (no <code>-- momo:generated</code>) has a snapshot equal to its parent's. Use it
+in CI. <code>apply</code> runs the chain checks too (fork, missing parent, cycle, gap) and
+refuses with the same message (a fork is <code>ErrBranchConflict</code>; a missing parent,
+cycle or gap is <code>ErrChainInvalid</code>; both exit 1, like <code>validate</code> findings), and it
+refuses with <code>ErrOutOfOrder</code> (exit 1) when a pending version is older than the
+latest applied one, so a late-merged older migration is never applied after newer
+ones (<code>TestApplyRefusesForkedChain</code>, <code>TestApplyRefusesPendingOlderThanApplied</code>,
+<code>TestApplyRefusesBrokenChain</code>, <code>TestMigrateChainRefusalsExitOne</code>).</p>
+<p>Recovering from <code>ErrBranchConflict</code> or <code>ErrOutOfOrder</code>. Both mean two teammates branched from the same snapshot and both
+merged: two snapshots share a parent, and one of the new migrations has a
+version older than the other. Fix it in the files of the branch that merged
+last, before it is applied anywhere. The late migration is still pending, so it
+needs no <code>rehash</code>:</p>
+<p>With a checkout of the target branch's migration directory (Momo has no git
+dependency, so make it with <code>git archive</code> or a second checkout),
+<code>momo migrate rebase --onto &lt;dir&gt; [name]</code> does steps 1 and 2 below in one
+command and validates the result. It refuses, naming the file, a branch
+migration without <code>-- momo:generated</code> or with a hand-written <code>.down.sql</code>, and a
+target directory that is not a valid chain. <code>--onto</code> takes a directory only. The
+branch directory must hold every migration of the target, as after a merge;
+the command prints <code>problem:</code> lines and exits 1 when it does not. By hand:</p>
+<ol>
+<li>Delete its <code>&lt;version&gt;_&lt;name&gt;.up.sql</code> and <code>&lt;version&gt;_&lt;name&gt;.snapshot.json</code>
+   (a generated migration; for a hand-written one rename the <code>.up.sql</code> to a
+   version later than the newest applied one and copy the newest snapshot to
+   the same new version, with <code>parent</code> set to the previous snapshot).</li>
+<li>Run <code>momo migrate diff &lt;name&gt;</code>. It compares the models with the latest
+   snapshot and writes the migration again with a new version and the right
+   parent.</li>
+<li>Run <code>momo migrate hash</code>, review the <code>changed:/added:/removed:</code> list, and run
+   <code>momo migrate validate</code>.</li>
+</ol>
+<p>If the older migration was already applied somewhere, do not rewrite it: leave
+the chain as it is and add a new migration for the difference.</p>
+<p><code>momo migrate new --custom &lt;name&gt;</code> writes an empty hand-written migration
+(section 6).</p>
+<ul>
+<li><code>momo migrate rollback [--group]</code> (<code>Engine.Rollback(ctx, RollbackOptions{Group: false})</code>) runs the <code>.down.sql</code> of
+  the last applied migration (the applied row with the greatest <code>applied_at</code>);
+  with <code>Group: true</code> it runs the downs of every row that shares the greatest
+  <code>apply_id</code>, in descending version order. It takes the same lock and session
+  timeouts as <code>Engine.Apply</code>, refuses a dirty database or a checksum mismatch, and
+  returns <code>ErrNoDown</code> before running anything when any selected version has no
+  down file. A transactional down runs in one transaction together with the
+  history update; the row becomes <code>rolled_back</code>, so the version is pending
+  again and the next <code>apply</code> runs it anew. A down with <code>-- momo:no-transaction</code>
+  runs statement by statement and, if one fails, leaves the row <code>failed</code>
+  (dirty, settle it with <code>resolve</code>). A rollback undoes schema, not data: write
+  the down so that it can run on a populated table (<code>TestRollbackGroup</code>,
+  <code>TestRollbackNoDown</code>).</li>
+<li><code>momo migrate rebase</code> (<code>Engine.Rebase(ctx, target, desired, name)</code>) takes the directory of the target
+  branch (from <code>git</code>, Momo has no git dependency). It lists every file of the
+  branch's migrations that the target lacks, refuses with the file name when one
+  has no <code>-- momo:generated</code> header, and regenerates one migration on top of
+  the target's latest snapshot. It first validates the target (momo.sum, chain,
+  snapshots) and refuses a broken one, and it refuses a branch migration that
+  has a hand-written <code>.down.sql</code>, naming the file. It writes nothing: the
+  caller deletes the returned files and writes the new ones, which the command
+  does (<code>TestMigrateRebase</code>).</li>
+</ul>
+<p>There is no <code>--force-unlock</code>: the PostgreSQL lock is a session advisory lock that
+the server frees when its holder's connection ends (section 3). <code>--lock-wait</code>
+exists on <code>apply</code> only.
+<code>--lock-wait 0s</code> fails immediately when locked. <code>resolve</code> and <code>baseline</code> wait
+the default 30 s.</p>
+<p>Database URL: <code>--url</code>, else the variable named in <code>migrate.url_env.postgres</code>,
+else <code>MOMO_DATABASE_URL</code>. Prefer the environment, or <code>--url -</code>, which reads the
+URL from standard input (<code>printf '%s' "$URL" | momo migrate apply --url -</code>): a
+<code>--url</code> value shows in the process list of a shared host, and momo prints a
+warning on stderr when it sees one.</p>
+<p><code>momo.yaml</code> <code>migrate:</code> keys: <code>dir</code>, <code>url_env</code> (maps keyed by dialect),
+<code>schemas</code>, <code>lock_timeout</code>, <code>statement_timeout</code> (Go durations), <code>exclude</code>,
+<code>external_extensions</code> (section 7).</p>
+<h2 id="3-apply-semantics-on-postgresql">3. Apply semantics on PostgreSQL<a class="headerlink" href="#3-apply-semantics-on-postgresql" title="Permanent link">&para;</a></h2>
+<p>One connection is pinned for the whole run. Order: lock, set timeouts, history
+table, migrations, reset timeouts, unlock (reset runs first so a small
+<code>statement_timeout</code> cannot cancel the unlock). Cleanup runs on a
+context detached from Ctrl-C and has two steps: the two RESETs share one 5 s
+bound, and the unlock has its own.</p>
+<h3 id="lock">Lock<a class="headerlink" href="#lock" title="Permanent link">&para;</a></h3>
+<p><code>pg_try_advisory_lock(id)</code> on the pinned session, polled every 200 ms until
+<code>--lock-wait</code> (default 30 s) passes. <code>id</code> = FNV-64a of
+<code>momo:&lt;schema&gt;.momo_migrations</code>, where <code>&lt;schema&gt;</code> is the schema of the resolved
+history table (the current schema when none exists yet), so schemas are
+independent. On timeout
+<code>apply</code> exits 3 with
+<code>migration lock is held by another process: held by pid=N application_name=X</code>
+(<code>TestApplyLockWaitTimesOutWithHolder</code>; waiting
+callers proceed once it is released, <code>TestApplyWaitsForLockRelease</code>).</p>
+<p>The lock is session-scoped: it is released when the holder's connection ends,
+so a crashed process frees it. There is no lock row to delete and no flag to force
+the lock (<code>--force-unlock</code> was removed: it never did anything). If a lock appears stuck, find the session
+(<code>pg_stat_activity</code> by the pid in the message) and terminate it with
+<code>pg_terminate_backend</code>.</p>
+<p><code>apply</code>, <code>resolve</code> and <code>baseline</code> take the lock. <code>plan</code>, <code>status</code>, <code>drift</code>,
+<code>validate</code> do not.</p>
+<h3 id="transactions">Transactions<a class="headerlink" href="#transactions" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Default: one transaction per migration file</strong>, not per batch. The
+  <code>running</code> history row, all statements and the update to <code>applied</code> commit
+  together. A second migration failing never undoes a first that committed.</li>
+<li><strong>Marked <code>-- momo:no-transaction</code>: the whole file runs with no
+  transaction</strong>, one autocommitted statement at a time, with <code>statements_applied</code>
+  updated after each. Every statement in that file loses atomicity, not only
+  the concurrent one. Only the directive selects this mode on apply; <code>apply</code>
+  does not inspect statements. <code>diff</code> writes the directive when it renders a
+  concurrent index. A hand-written file must carry the directive itself:
+  otherwise PostgreSQL rejects <code>CREATE INDEX CONCURRENTLY</code> inside a
+  transaction, the version is recorded <code>rolled_back</code>, and it can be retried
+  after you add the directive. <code>diff</code> never mixes the two modes in one file:
+  when a diff holds both transactional DDL and statements that must run outside
+  a transaction, it writes two migrations, the transactional one first and a
+  trailing <code>&lt;name&gt;_no_tx</code> one that carries the directive (one second later
+  version). A failure in the first file rolls it back whole. A diff with only
+  such statements writes the single no-transaction file.</li>
+<li>Statements run one by one with no bind parameters. The splitter respects
+  strings, comments and <code>$$</code> bodies; <code>-- momo:split</code> disables dollar-quote
+  awareness and splits at every semicolon.</li>
+</ul>
+<p><code>CREATE INDEX CONCURRENTLY</code> applies correctly when it is in a no-transaction
+file: the index is valid and the version is <code>applied</code>
+(<code>TestCreateIndexConcurrentlyApply</code>). <code>diff</code> produces it from <code>Concurrently()</code>
+on a model index, and for <code>ADD UNIQUE</code> and the <code>VALIDATE CONSTRAINT</code> of an
+<code>ADD CHECK</code> (section 5).</p>
+<h3 id="session-timeouts">Session timeouts<a class="headerlink" href="#session-timeouts" title="Permanent link">&para;</a></h3>
+<p>Applied with <code>SET</code> on the pinned session, <code>RESET</code> at the end:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>momo.yaml</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lock_timeout</code></td>
+<td><code>migrate.lock_timeout</code></td>
+<td>5 s</td>
+<td>A DDL statement that cannot get its table lock within the limit fails with SQLSTATE 55P03; the transaction rolls back and the version stays retryable. Key absent: 5 s. <code>0s</code> sets <code>lock_timeout = 0</code>, which disables the limit.</td>
+</tr>
+<tr>
+<td><code>statement_timeout</code></td>
+<td><code>migrate.statement_timeout</code></td>
+<td>not set</td>
+<td>Left as the role or server default. A role-level <code>statement_timeout</code> therefore applies to long migrations such as index builds. Use a migration role without it. Key absent: untouched. <code>0s</code> sends <code>SET statement_timeout = 0</code>, which disables the limit even when the role has one (for a long index build).</td>
+</tr>
+</tbody>
+</table>
+<p>If <code>RESET</code> fails, the connection is discarded rather than returned to the pool.</p>
+<h3 id="pgbouncer-and-other-poolers">PgBouncer and other poolers<a class="headerlink" href="#pgbouncer-and-other-poolers" title="Permanent link">&para;</a></h3>
+<p>Run migrations on a direct connection or a session-pooled one. Under
+transaction pooling the advisory lock, the <code>SET lock_timeout</code> and the
+<code>search_path</code> belong to a server connection that the next statement may not
+reuse, so the lock does not protect and the timeouts can leak or not apply.
+The driver's default query mode is PgBouncer-safe for application queries; the
+migration engine through PgBouncer is <strong>not tested</strong> in v0.7.0. A startup <!-- x-release-please-version -->
+<code>search_path</code> is also not reliable through a pooler, so set the schema on the
+role or on a direct connection.</p>
+<h2 id="3a-sqlite">3a. SQLite<a class="headerlink" href="#3a-sqlite" title="Permanent link">&para;</a></h2>
+<p><code>migrate/sqlite</code> is the SQLite migration dialect. It is a library API: pass it
+to the engine with <code>migrate.WithDialect(sqlite.New())</code> and a
+<code>driver/sqlitedriver</code> driver (cgo, not Windows). The <code>momo migrate</code> command does
+not select it yet, so there is no <code>--dialect sqlite</code>. The tests that pin the
+behavior below run on a real SQLite in the integration suite
+(<code>TestSQLiteInspectRoundTrip</code>, <code>TestSQLiteAlterDecision</code>,
+<code>TestSQLiteRebuild</code>, <code>TestSQLiteLockTable</code>, <code>TestSQLiteEngineLifecycle</code>,
+<code>TestSQLiteRenderApplyInspectDiffIsZero</code>).</p>
+<p><strong>Inspection.</strong> Tables, columns (type, NOT NULL, default, collation, generated
+expression), the primary key, UNIQUE constraints, indexes (including expression
+and partial indexes), foreign keys, CHECK constraints, views and triggers. The
+<code>momo_migrations</code> and <code>momo_migration_lock</code> tables, the <code>sqlite_</code> tables,
+virtual tables and the shadow tables of virtual tables are left out. An
+<code>INTEGER PRIMARY KEY</code> of a rowid table is reported with identity <code>by_default</code>,
+and the schema normalizer gives that column the same identity on the model side,
+so the two compare equal. A trigger is its <code>CREATE TRIGGER</code> text
+(<code>schema.Trigger.Definition</code>), compared after whitespace and case outside quotes are
+normalized. Extensions, native enums, functions, policies, partitions,
+row-level security and schemas do not exist on SQLite and are never reported.</p>
+<p><strong>Enums.</strong> SQLite has no enum type. A TEXT column that carries
+<code>CHECK ("col" IN ('a', 'b'))</code> is inspected as an enum column whose enum is named
+<code>&lt;table&gt;_&lt;column&gt;</code>, and <code>Engine.Diff</code> writes an enum column back as that CHECK.
+A model enum therefore round-trips without a diff only when it is named
+<code>&lt;table&gt;_&lt;column&gt;</code>. <code>create_enum</code> and <code>drop_enum</code> produce no statement;
+<code>alter_enum_add_value</code> rebuilds the tables that use the enum.</p>
+<p><strong>ALTER or rebuild.</strong> SQLite changes a table in place only for these:
+<code>ALTER TABLE ... RENAME TO</code>, <code>RENAME COLUMN</code>, <code>ADD COLUMN</code>, <code>DROP COLUMN</code>, and
+index, view and trigger statements. The renderer uses them when the
+<a href="https://www.sqlite.org/lang_altertable.html">restrictions in the SQLite documentation</a>
+allow it: an added column must not be PRIMARY KEY, UNIQUE, a stored generated
+column, an enum or identity column, or NOT NULL without a non-NULL default, and
+its default must not be <code>CURRENT_TIMESTAMP</code> (or <code>CURRENT_DATE</code>, <code>CURRENT_TIME</code>)
+or a parenthesised expression; a dropped column must not be in the primary key,
+a UNIQUE constraint, an index (key or <code>WHERE</code>), a CHECK, a foreign key (either
+side), a generated column's expression, a trigger or a view. Everything else
+(<code>alter_column</code>, any primary key, unique, check or foreign key change, and an
+add or drop of a column that breaks a restriction) rebuilds the table, and all
+changes to that table in the same diff become one rebuild.</p>
+<p><strong>The rebuild</strong> follows
+<a href="https://www.sqlite.org/lang_altertable.html#otheralter">the 12 steps in the SQLite documentation</a>.
+<code>diff</code> writes them as plain statements into the up file and puts
+<code>-- momo:sqlite-foreign-keys-off</code> at the top of the file. On <code>apply</code> the engine
+runs <code>PRAGMA foreign_keys = OFF</code> outside the transaction (the pragma does
+nothing inside one), runs the file in one transaction and turns enforcement back
+on afterwards, also when the migration failed. The statements are: drop every
+view and trigger that mentions the table (directly or through another view),
+<code>CREATE TABLE "new_&lt;table&gt;"</code>, <code>INSERT ... SELECT</code> of the columns the old and new
+table share, <code>DROP TABLE</code>, <code>RENAME</code>, <code>CREATE INDEX</code> for each index, recreate the
+dropped views and triggers that the desired schema keeps unchanged, and
+<code>PRAGMA foreign_key_check</code>. If that pragma returns a row the statement fails
+with <code>momo.ErrForeignKeyViolation</code> naming the table and row, and the transaction
+rolls back (<code>TestSQLiteRebuildOrphanRollsBack</code>). Row count and content, indexes,
+triggers and views survive (<code>TestSQLiteRebuild</code>, <code>TestSQLiteRebuildKeepsDataAndObjects</code>)
+and foreign keys are enforced again afterwards (<code>TestSQLiteRebuildFKStillEnforced</code>).</p>
+<p>Limits of the rebuild:</p>
+<ul>
+<li>After each recreated view the file runs <code>SELECT 1 FROM "view" LIMIT 0</code>,
+  because <code>CREATE VIEW</code> does not check the names in its query. A view that names
+  a dropped column therefore fails the migration. <code>sqlite.Rebuild</code> with
+  <code>migrate.RunStatements</code> reports that as <code>migrate.ErrRebuildBlocked</code> naming the
+  view; a migration read back from a file has lost the statement hints, so the
+  engine reports the failing statement number instead.</li>
+<li>A trigger body is resolved only when the trigger fires, so a trigger that names
+  a dropped column is recreated and fails later.</li>
+<li>A table can be rebuilt only if it has columns in common with the new
+  definition; <code>INSERT</code> is skipped otherwise.</li>
+<li><code>sqlite.Rebuild</code> and <code>sqlite.Capture</code> rebuild from a live connection
+  (captured views and triggers are recreated verbatim); the engine path rebuilds
+  from the snapshot instead.</li>
+<li>A model cannot declare <code>WITHOUT ROWID</code>, <code>STRICT</code> or <code>AUTOINCREMENT</code>, so a
+  table that has one in the database and not in the model is not a difference:
+  <code>diff</code> and <code>AutoMigrate</code> leave it alone and a rebuild writes it back
+  (<code>TestSQLiteAutoMigrateWithStrictTable</code>). Asking for one the table lacks is
+  refused by <code>diff</code> (write a custom migration). <code>schema.Table</code> carries <code>Strict</code>
+  and <code>Autoincrement</code>; inspection reads them. A rebuild of an <code>AUTOINCREMENT</code>
+  table copies its <code>sqlite_sequence</code> value to the new table, so ids of deleted
+  rows are not handed out again (<code>TestSQLiteStrictAutoincrementRoundTrip</code>).
+  An <code>INTEGER PRIMARY KEY DESC</code> is not a rowid alias and is not reported as an
+  identity.</li>
+<li>A down migration that rebuilds a table carries the same
+  <code>-- momo:sqlite-foreign-keys-off</code> line; <code>Rollback</code> honours it as <code>apply</code> does
+  (<code>TestSQLiteRollbackRebuildKeepsChildRows</code>).</li>
+</ul>
+<p><strong>Unsupported.</strong> These fail with an error that wraps <code>momo.ErrUnsupported</code>
+instead of being dropped: <code>create_schema</code>, <code>create_extension</code>, the policy and
+row-level-security changes, the function changes, materialized views, views with
+indexes, index storage parameters, an access method other than b-tree, operator
+classes, <code>NULLS FIRST/LAST</code> in an index, column comments, <code>serial</code> identity,
+identity on anything but an <code>INTEGER</code> primary key, partitioning.</p>
+<p><strong>Lock.</strong> A row in <code>momo_migration_lock</code> (<code>id = 1</code>, <code>holder</code>, <code>acquired_at</code>),
+created on first use. A second holder gets <code>ErrLocked</code> with
+<code>held by pid=N host=H at=T</code>; <code>apply</code> polls it like the PostgreSQL lock until
+<code>--lock-wait</code>. Unlock deletes the row only while it still carries this holder's
+text. A process that dies leaves the row behind: after checking that nothing is
+migrating, call <code>sqlite.ForceUnlock(ctx, conn)</code>, which returns the holder it
+removed (there is no CLI flag). The lock and statement timeouts of the session
+options do nothing on SQLite; busy handling is the driver's <code>busy_timeout</code>.</p>
+<p><strong>Other differences.</strong> DDL is transactional, so one migration is one
+transaction. <code>AutoMigrate</code> skips any change to an existing table that needs a rebuild (an enum column, say) with the reason "requires a table rebuild; use a migration", because a rebuild writes the whole desired table and would also apply the changes AutoMigrate leaves alone (<code>TestSQLiteAutoMigrateSkipsRebuilds</code>). Index parts carry
+no collation in the schema, so a collation on an index key is not compared.
+Collation on a column is.</p>
+<h2 id="4-failure-and-recovery">4. Failure and recovery<a class="headerlink" href="#4-failure-and-recovery" title="Permanent link">&para;</a></h2>
+<p>Check state with <code>momo migrate status</code> (exit 1 when anything is dirty,
+mismatched or missing). Read <code>error</code>, shown after the colon.</p>
+<h3 id="transactional-migration-fails-testpostgresapplyrecovery">Transactional migration fails (<code>TestPostgresApplyRecovery</code>)<a class="headerlink" href="#transactional-migration-fails-testpostgresapplyrecovery" title="Permanent link">&para;</a></h3>
+<p>DDL and the history row roll back; nothing the file did persists. A
+<code>rolled_back</code> row records the error. That is not dirty:
+<code>status</code> shows <code>pending &lt;v&gt; &lt;name&gt;: &lt;error&gt;</code>, and the next <code>apply</code> retries
+from statement 1. Fix the cause (or fix the file, section "editing", then
+<code>momo migrate hash</code>) and run <code>apply</code> again. Data-exception errors (SQLSTATE
+class 22) store only the code, not the message, because the message may quote
+data.</p>
+<h3 id="interrupted-ctrl-c-killed-lost-connection">Interrupted (Ctrl-C, killed, lost connection)<a class="headerlink" href="#interrupted-ctrl-c-killed-lost-connection" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Transactional: the server aborts the transaction; no <code>running</code> row survives.
+  Same as above. After a Ctrl-C, rollback and the failure row are still written
+  (5 s bound).</li>
+<li>No-transaction: the <code>running</code> row was committed, so the version stays
+  dirty (<code>running</code> or <code>failed</code>). The lock is released when the connection dies.</li>
+</ul>
+<h3 id="no-transaction-migration-fails-partial-state">No-transaction migration fails (partial state)<a class="headerlink" href="#no-transaction-migration-fails-partial-state" title="Permanent link">&para;</a></h3>
+<p>Statements before the failing one are committed. The row is <code>failed</code>, with
+<code>statements_applied = n</code> and the error. Every later <code>apply</code> stops with
+<code>ErrDirty</code> (<code>TestApplyRefusesDirtyAndReleasesLock</code>) until you resolve it.</p>
+<ol>
+<li><code>momo migrate status</code>, note the version and <code>statements_applied</code>.</li>
+<li>Inspect the database. Statement <code>n+1</code> is the one that failed.</li>
+<li>Make the database match one of two states by hand with <code>psql</code>:</li>
+<li>finish the file yourself, then <code>momo migrate resolve --version V --applied</code>
+     (the row becomes <code>applied</code>, error cleared, checksum of the file as it was
+     when the run started is kept); or</li>
+<li>undo the committed statements, then
+     <code>momo migrate resolve --version V --rolled-back</code> (the row is deleted; the
+     version is pending again and will run from statement 1). A file may be
+     edited before the next apply: the version has no applied row, so edit,
+     <code>momo migrate hash</code>, <code>apply</code>.</li>
+<li><code>resolve</code> takes the migration lock and errors when the version has no
+   <code>running</code> or <code>failed</code> row.</li>
+</ol>
+<h3 id="a-down-migration-fails-enginerollback">A down migration fails (<code>Engine.Rollback</code>)<a class="headerlink" href="#a-down-migration-fails-enginerollback" title="Permanent link">&para;</a></h3>
+<p>A transactional down that fails rolls back with its history update: the schema
+is unchanged and the row stays <code>applied</code>, so the database is not dirty
+(<code>TestRollbackTransactionalFailureLeavesRowApplied</code>). Fix the down and run
+<code>Rollback</code> again; if you edit the file, run <code>momo migrate hash</code> first.</p>
+<p>A down with <code>-- momo:no-transaction</code> commits statement by statement. When one
+fails the row becomes <code>failed</code> with <code>statements_applied = n</code> and an error that
+starts with <code>down:</code>, and every later <code>apply</code> or <code>Rollback</code> stops with
+<code>ErrDirty</code> (<code>TestRollbackNoTxFailureLeavesRowFailed</code>). Both resolve states are
+valid; choose by what the database looks like after you repair it:</p>
+<ul>
+<li><code>resolve applied</code> (<code>ResolveApplied</code>): the migration is still in effect. Use
+  it when the failed down changed nothing that matters or you undid its
+  partial work. The row becomes <code>applied</code>, the error is cleared, and the
+  version can be rolled back again (<code>TestResolveAppliedAfterFailedDown</code>).</li>
+<li><code>resolve rolled_back</code> (<code>ResolveRolledBack</code>): the migration is gone. Use it
+  when you finished the down by hand. The row is deleted, the version is
+  pending, and the next <code>apply</code> runs the up file again
+  (<code>TestResolveRolledBackAfterFailedDown</code>).</li>
+</ul>
+<p><code>Rollback</code> verifies momo.sum first, down files included: an edited or added
+<code>.down.sql</code> is refused with <code>ErrChecksumMismatch</code> naming the file even when the
+matching up file is no longer in the directory
+(<code>TestRollbackChecksumMismatch</code>). It takes the migration lock like <code>apply</code>
+(<code>TestRollbackTakesTheLock</code>).</p>
+<h3 id="invalid-index-after-a-failed-create-index-concurrently">Invalid index after a failed <code>CREATE INDEX CONCURRENTLY</code><a class="headerlink" href="#invalid-index-after-a-failed-create-index-concurrently" title="Permanent link">&para;</a></h3>
+<p>PostgreSQL leaves the index in place, marked invalid, when the build fails
+(for example a uniqueness violation or a cancelled build). Momo does not use
+<code>IF NOT EXISTS</code>, so re-running fails with "already exists" until you drop it.</p>
+<ol>
+<li><code>momo migrate drift</code> shows <code>changed: index &lt;table&gt;.&lt;name&gt;: invalid index (failed CONCURRENTLY build)</code>.</li>
+<li><code>DROP INDEX CONCURRENTLY IF EXISTS &lt;schema&gt;.&lt;name&gt;;</code> in <code>psql</code>.</li>
+<li>Fix the data or definition.</li>
+<li><code>momo migrate resolve --version V --rolled-back</code> (if the row is <code>failed</code>),
+   then <code>momo migrate apply</code>. If the failing file contained other statements,
+   handle them per the previous subsection first.</li>
+</ol>
+<p><code>baseline</code> also counts an invalid index as a mismatch.</p>
+<h3 id="editing-an-already-applied-migration">Editing an already-applied migration<a class="headerlink" href="#editing-an-already-applied-migration" title="Permanent link">&para;</a></h3>
+<p><code>apply</code> and <code>status</code> refuse (<code>checksum mismatch</code>, naming the file; status shows
+<code>mismatch</code>). <strong><code>momo migrate hash</code> does not fix this.</strong> It rewrites
+<code>momo.sum</code>, but the history row still holds the old checksum, so <code>apply</code> still
+refuses. Options:</p>
+<ul>
+<li>Revert the file (<code>git checkout -- &lt;file&gt;</code>), then write a new migration for the
+  change. This is the supported path.</li>
+<li>If the edit is cosmetic (whitespace or a comment) and you accept it: run
+  <code>momo migrate hash</code> (momo.sum), then <code>momo migrate rehash --version V</code> to see
+  the recorded and the new checksum, then <code>momo migrate rehash --version V --accept</code>
+  to store it. Without <code>--accept</code> nothing changes and the command exits 1 and says
+  so. With it, only the row of version V is updated, and the row's <code>error</code> column
+  records <code>checksum accepted by rehash at &lt;time&gt;: &lt;old&gt; -&gt; &lt;new&gt;</code>, which <code>status</code>
+  shows. The edit is accepted, not run: the database is not changed, so rehash
+  only edits that do not alter what the migration did
+  (<code>TestRehash</code>, <code>TestRehashOnPostgres</code>, <code>TestMigrateRehashAcceptsEditedMigration</code>).</li>
+</ul>
+<p>Editing a migration that is not applied yet (status <code>pending</code>) is fine: run
+<code>momo migrate hash</code> to accept it. <code>hash</code> records whatever is on disk, so review
+the printed <code>changed:/added:/removed:</code> list first.</p>
+<p>A history row whose file is gone shows <code>missing</code> and exit 1 on <code>status</code>.</p>
+<h3 id="idempotency">Idempotency<a class="headerlink" href="#idempotency" title="Permanent link">&para;</a></h3>
+<p><code>apply</code> with nothing pending prints <code>no pending migrations</code>, exits 0, and
+runs no migration. It takes the lock (an advisory lock, not a write) but writes
+nothing: it does not create the history table or its meta row, so it works with a
+read-mostly role. When something is pending, the history table is created first
+(<code>TestApplyNothingPendingWritesNothing</code>,
+<code>TestApplyNothingPendingCreatesNoHistoryTable</code>). Running it twice,
+or two processes at once, is safe: the second waits for the lock, then finds
+nothing to do (<code>TestConcurrentApply</code>, <code>TestConcurrentApplyWaits</code>).
+<code>plan</code>, <code>status</code>, <code>drift</code> are read-only.</p>
+<h2 id="5-production-safety-checklist">5. Production safety checklist<a class="headerlink" href="#5-production-safety-checklist" title="Permanent link">&para;</a></h2>
+<p>What Momo enforces, what it only hints at, what it does not see.
+A complete worked upgrade (add column, index, rename) is <code>examples/upgrade-database</code>.</p>
+<h3 id="refused-unless-you-opt-in-diff-exit-1">Refused unless you opt in (<code>diff</code>, exit 1)<a class="headerlink" href="#refused-unless-you-opt-in-diff-exit-1" title="Permanent link">&para;</a></h3>
+<p><code>--allow-destructive</code> is required for: <code>drop_table</code>, <code>drop_column</code>, <code>drop_enum</code>,
+and a column type change (<code>alter_column</code> with a different type). The file then
+carries <code>-- momo:destructive</code>. Review these. Type changes render as
+<code>ALTER COLUMN ... TYPE ... USING col::type</code>: a full table rewrite under an
+<code>ACCESS EXCLUSIVE</code> lock, which fails on rows that do not cast.</p>
+<p>Not destructive, but reported as <code>risky:</code> hints by <code>diff</code> on PostgreSQL (no flag needed):
+dropping an index, primary key, unique, check or foreign key; adding a unique
+or check constraint (both can fail on existing data).</p>
+<ul>
+<li><code>ADD CHECK</code> is written <code>NOT VALID</code>; its <code>VALIDATE CONSTRAINT</code> (a full scan
+  that does not block writes) goes in the trailing no-transaction migration.
+  If the validation fails, the trailing migration is <code>failed</code> and <code>apply</code> stops
+  with <code>ErrDirty</code>. The constraint stays <code>NOT VALID</code>: it still checks new rows.
+  Recovery: fix the offending rows, run
+  <code>ALTER TABLE t VALIDATE CONSTRAINT c;</code> in <code>psql</code>, then
+  <code>momo migrate resolve --version V --applied</code> (V is the <code>_no_tx</code> version).
+  <code>resolve --version V --rolled-back</code> runs the whole file again from its first
+  statement, so it is safe only when the file holds just the failed
+  <code>VALIDATE</code>. If earlier statements of the file (a
+  <code>CREATE UNIQUE INDEX CONCURRENTLY</code>, another <code>VALIDATE</code>) already committed,
+  they would fail with "already exists": use <code>--applied</code> after finishing by
+  hand, or undo those statements first (see "No-transaction migration
+  fails").</li>
+<li><code>ADD UNIQUE</code> on an existing table is <code>CREATE UNIQUE INDEX CONCURRENTLY</code>
+  followed by <code>ADD CONSTRAINT ... UNIQUE USING INDEX</code>, both in the trailing
+  no-transaction migration. On duplicate rows the build fails and leaves an
+  <code>INVALID</code> index (<code>drift</code> reports it): drop it with
+  <code>DROP INDEX CONCURRENTLY IF EXISTS</code>, fix the data, then <code>resolve --rolled-back</code>
+  and re-apply (the unique index is the first statement of its file; if other
+  statements of that file already committed, undo them first).</li>
+<li>On a partitioned table (including a sub-partitioned one) <code>ADD UNIQUE</code> is a
+  plain, transactional <code>ADD CONSTRAINT ... UNIQUE</code>, and an index declared with
+  <code>Concurrently()</code> is created and dropped without <code>CONCURRENTLY</code>, because
+  PostgreSQL rejects <code>CONCURRENTLY</code> there. <code>ADD CHECK</code> keeps the <code>NOT VALID</code>
+  form (<code>TestPartitionedTableConstraintsAndIndexes</code>).</li>
+<li><code>diff</code> leaves out the explicit drop of an index, unique, foreign key or
+  primary key that lists a column dropped in the same diff: <code>DROP COLUMN</code>
+  removes it, and an explicit drop after it would fail. A check or an index
+  expression or <code>WHERE</code> that merely mentions a dropped column's name anywhere
+  in its text cannot be classified reliably, so its drop is written
+  <code>DROP ... IF EXISTS</code>, which is correct whether or not the column took it.</li>
+<li>Limit: an inline foreign key in a new <code>CREATE TABLE</code> cannot reference a
+  unique constraint that the same diff adds to another table, because that
+  unique is created in the later no-transaction migration and the foreign key
+  would fail. Workaround: run <code>diff</code> twice, first the unique on the existing
+  table, then the new table with its foreign key.</li>
+<li>Not flagged at all: dropping a view, function, trigger or policy, and any
+  change you write by hand.</li>
+</ul>
+<p>The <code>-- momo:destructive</code> header is informational. <code>diff</code> writes it and
+<code>--allow-destructive</code> is the only guard, and that guard exists in <code>diff</code> only:
+<code>apply</code> does not read the header or scan statements, so a hand-written file
+with a <code>DROP</code> applies without confirmation. Review every <code>.up.sql</code> in code
+review.</p>
+<h3 id="not-null-columns">NOT NULL columns<a class="headerlink" href="#not-null-columns" title="Permanent link">&para;</a></h3>
+<p>An added <code>NOT NULL</code> column (or an existing column made <code>NOT NULL</code>) with no
+default, identity or generation expression is refused (<code>ErrStagedRequired</code>)
+for any table that already exists in the snapshot. <code>diff</code> never queries the
+database, so it cannot tell whether the table has rows: an empty existing
+table is refused too. A column that looks like a rename (same table and type
+as a dropped column) is refused the same way; the message names
+<code>--rename-column</code>. With <code>--stage</code>, then <code>--enforce-not-null</code>:</p>
+<ol>
+<li><code>diff --stage</code> adds the column as nullable and prints the hint
+   <code>staged: T.C was added as nullable; backfill it, then run migrate diff with --enforce-not-null to emit ALTER TABLE T ALTER COLUMN C SET NOT NULL</code>.
+   The new snapshot records the column as nullable, like the database will
+   have it, so <code>validate</code> and <code>status</code> agree after you apply.</li>
+<li>Apply, backfill in batches outside the migration.</li>
+<li>Check the backfill: <code>SELECT count(*) FROM T WHERE C IS NULL</code> must return 0.</li>
+<li><code>diff &lt;name&gt; --enforce-not-null</code> emits
+   <code>ALTER TABLE T ALTER COLUMN C SET NOT NULL</code> and records <code>NOT NULL</code> in the
+   snapshot. A plain <code>diff</code> (without the flag) is still refused, because only
+   you know the backfill is done. Apply it. The statement scans the table
+   under a lock; do it when the table is quiet or add a validated <code>CHECK</code>
+   first by hand.</li>
+</ol>
+<p>Several columns can be staged in separate migrations before any backfill:
+each stays recorded as nullable until enforced, and one <code>--enforce-not-null</code>
+emits <code>SET NOT NULL</code> for all of them. The flag enforces every column that is
+nullable in the snapshot and <code>NOT NULL</code> without a default in the model, not
+only staged ones, so backfill all of them first. New <code>NOT NULL</code> columns stay
+refused.</p>
+<p>If NULLs remain, <code>apply</code> of the <code>SET NOT NULL</code> migration fails (exit 3). The
+migration is transactional, so it rolls back: the version is <code>rolled_back</code>
+(not dirty), <code>status</code> shows it as pending with the error, and nothing
+changed. Finish the backfill and run <code>apply</code> again. Only a hand-edited
+<code>-- momo:no-transaction</code> file can leave a dirty row; settle that with
+<code>momo migrate resolve --version V --applied</code> or <code>--rolled-back</code> (section 4).</p>
+<p>The same applies to an existing column made <code>NOT NULL</code>: <code>diff --stage</code> writes
+nothing (the snapshot already has the column nullable; the hint is only
+printed when the same run writes other changes), and <code>diff &lt;name&gt; --enforce-not-null</code> emits
+the <code>SET NOT NULL</code> after the backfill. <code>--enforce-not-null</code> only affects
+existing columns: a new <code>NOT NULL</code> column without a default still needs
+<code>--stage</code>.</p>
+<p>A <code>NOT NULL</code> column with a default is not staged. A constant default is cheap
+on PostgreSQL 11 and later. A volatile default (<code>random()</code>,
+<code>clock_timestamp()</code>, <code>gen_random_uuid()</code>, <code>nextval(...)</code> and a few more
+well-known functions) rewrites the table under <code>ACCESS EXCLUSIVE</code>; <code>diff</code>
+prints a <code>risk:</code> hint (PostgreSQL only) for an <code>ADD COLUMN</code> with one on an existing table. It
+only knows the built-in names it lists; a function you wrote yourself is not
+checked.</p>
+<h3 id="lint-momo-migrate-lint">Lint (<code>momo migrate lint</code>)<a class="headerlink" href="#lint-momo-migrate-lint" title="Permanent link">&para;</a></h3>
+<p><code>momo migrate lint</code> reads the migration files and reports operations that lock
+a table for long, rewrite it, or lose data. Each finding has a severity, the
+rule, the version and 1-based statement number, and a safer alternative. It
+needs no database: it checks every migration in the directory, or with <code>--db</code>
+only the ones the database has not applied (<code>Engine.LintAll</code>, <code>Engine.Lint</code>,
+<code>LintSQL</code>). It exits 1 when any finding is an <code>error</code>; warnings alone exit 0. A
+table the migration creates itself is empty and never reported: a rule fires
+only on a table of the parent snapshot (<code>TestMigrateLint</code>,
+<code>TestMigrateLintQuietOnSafeSQL</code>, <code>TestMigrateLintExitCodes</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Severity</th>
+<th>Fires on</th>
+<th>Alternative</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>not-null-without-default</code></td>
+<td>error</td>
+<td><code>ADD COLUMN ... NOT NULL</code> without <code>DEFAULT</code> (serial and generated exempt)</td>
+<td>add nullable, backfill in a separate migration, then <code>SET NOT NULL</code></td>
+</tr>
+<tr>
+<td><code>not-null-without-default</code></td>
+<td>warning</td>
+<td><code>ALTER COLUMN ... SET NOT NULL</code> (the last step of the staged flow)</td>
+<td>backfill first; on a large table validate a <code>CHECK ... NOT VALID</code> first</td>
+</tr>
+<tr>
+<td><code>column-type-change</code></td>
+<td>error</td>
+<td><code>ALTER COLUMN ... TYPE</code></td>
+<td>add a new column, dual-write, backfill, switch reads, drop the old one</td>
+</tr>
+<tr>
+<td><code>blocking-index</code></td>
+<td>error</td>
+<td><code>CREATE INDEX</code> without <code>CONCURRENTLY</code></td>
+<td><code>CREATE INDEX CONCURRENTLY</code> in a <code>-- momo:no-transaction</code> migration</td>
+</tr>
+<tr>
+<td><code>foreign-key-without-not-valid</code></td>
+<td>error</td>
+<td><code>ADD ... FOREIGN KEY</code> or <code>CHECK</code> without <code>NOT VALID</code></td>
+<td>add <code>NOT VALID</code>, then <code>VALIDATE CONSTRAINT</code> in a separate migration</td>
+</tr>
+<tr>
+<td><code>enum-add-and-use</code></td>
+<td>error</td>
+<td><code>ALTER TYPE ... ADD VALUE 'x'</code> and a later statement that mentions <code>'x'</code></td>
+<td>use the value in a later migration</td>
+</tr>
+<tr>
+<td><code>destructive-without-directive</code></td>
+<td>error</td>
+<td><code>DROP TABLE</code>, <code>DROP COLUMN</code>, <code>DROP SCHEMA</code>, <code>DROP TYPE</code>, <code>TRUNCATE</code></td>
+<td>add <code>-- momo:destructive</code> after a review</td>
+</tr>
+<tr>
+<td><code>sqlite-rebuild</code></td>
+<td>warning</td>
+<td>a statement with the SQLite <code>rebuild</code> hint (<code>LintSQL</code> callers)</td>
+<td>batch the data copy or split the table</td>
+</tr>
+</tbody>
+</table>
+<p>The rules are text heuristics on the comment-free statement. The PostgreSQL
+rules (the first six) run for the <code>postgres</code> dialect only; the destructive rule
+runs for every dialect. A statement built inside a <code>DO</code> block or a function is
+not seen, and a keyword inside a string literal can cause a false report.
+<code>SET NOT NULL</code> is a warning, not an error, because the staged flow (below) ends
+with it. The plan also sketches a <code>--db</code> row count rule for SQLite rebuilds;
+<code>momo migrate</code> does not select SQLite, so it is not built.</p>
+<h3 id="other-items">Other items<a class="headerlink" href="#other-items" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Backfills</strong>: Momo has no data-migration step. Do them in a hand-written
+  migration (section 6) or a separate job. A long backfill inside a
+  transactional migration holds its locks until commit and can hit
+  <code>lock_timeout</code>/<code>statement_timeout</code>.</li>
+<li><strong>Large-table indexes</strong>: declare <code>Concurrently()</code> on the index in
+  <code>MomoConfig</code>. <code>diff</code> then writes <code>CREATE INDEX CONCURRENTLY</code> in its own
+  no-transaction migration, so the build does not block writes. Without
+  <code>Concurrently()</code> the index is a plain <code>CREATE INDEX</code> that blocks writes while
+  it builds. Set a role without <code>statement_timeout</code> for the run. A hand-written
+  alternative: <code>examples/custom-sql-migration</code>.</li>
+<li><strong>Lock timeout</strong>: the default 5 s lock wait fails fast instead of queuing
+  behind a long transaction. A retry is safe for transactional migrations.</li>
+<li><strong>Deploy order</strong>: migrate first, then roll out code, with every migration
+  backward compatible with the running code (add before use; drop only after no
+  code reads it; rename as add, copy, switch, drop).</li>
+<li><strong>Run once</strong>: one <code>apply</code> job per deploy. Concurrent applies are safe but
+  wait up to <code>--lock-wait</code>.</li>
+<li><strong>Backups</strong>: take a backup or snapshot before any destructive, type-change
+  or no-transaction migration. PostgreSQL DDL rolls back only inside a
+  transaction; no-transaction files cannot be rolled back.</li>
+<li><strong>CI</strong>: run <code>momo generate --check</code>, <code>momo migrate validate</code>, and the
+  model-vs-migrations probe from section 1 on every change.</li>
+<li><strong>After</strong>: <code>momo migrate status</code> (exit 0) and <code>momo migrate drift</code>.</li>
+<li><strong>Roles</strong>: <code>CREATE EXTENSION</code> (pgvector, and any extension the models
+  declare) needs a role allowed to create it. A missing package or privilege is
+  reported, with exit 3, as
+  <code>extension "x" is not installed (install its server package and run CREATE EXTENSION as a role that may)</code>.
+  If a superuser creates the extension by hand, list it in
+  <code>migrate.external_extensions</code> so no migration emits it (section 7).</li>
+</ul>
+<h2 id="6-custom-sql-migrations">6. Custom SQL migrations<a class="headerlink" href="#6-custom-sql-migrations" title="Permanent link">&para;</a></h2>
+<p>Worked example: <code>examples/custom-sql-migration</code>.</p>
+<p><code>momo migrate new --custom &lt;name&gt;</code> (offline) writes the three files for an
+empty hand-written migration: <code>&lt;version&gt;_&lt;name&gt;.up.sql</code> (comments only, no
+<code>-- momo:generated</code>), <code>&lt;version&gt;_&lt;name&gt;.snapshot.json</code> (a copy of the latest
+snapshot with the new version and that snapshot as its parent) and the extended
+<code>momo.sum</code>. The name follows the <code>diff</code> rule (lowercase letters, digits and
+underscores, starting with a letter). It needs an existing snapshot to copy:
+run <code>diff</code> first (exit 2 otherwise), and it never overwrites a file (exit 1).
+Write the SQL in the up file, then run <code>momo migrate hash</code> (the file changed
+after <code>momo.sum</code> was written) and <code>momo migrate validate</code>.</p>
+<p>You can also create the files yourself:</p>
+<ol>
+<li>Choose a version greater than the latest and a name:
+   <code>20260301120000_backfill_slug.up.sql</code>. Do not put <code>-- momo:generated</code> in it.</li>
+<li>Optional directives at the top, before the first statement:
+   <code>-- momo:no-transaction</code>, <code>-- momo:split</code>, <code>-- momo:destructive</code>
+   (informational, never enforced), <code>-- momo:generated</code> (do not use it here)
+   and <code>-- momo:sqlite-foreign-keys-off</code> (SQLite only; <code>apply</code> turns foreign keys off around the migration, section 3a). <code>-- momo:ddl</code> is not a
+   file directive: it goes before one MySQL ALTER TABLE statement (section 9). An unknown <code>-- momo:</code> directive is an error.</li>
+<li>Create <code>20260301120000_backfill_slug.snapshot.json</code> as a copy of the previous
+   snapshot with <code>version</code> set to the new version and <code>parent</code> set to the
+   previous version. The <code>schema</code> must stay equal to the parent's, or
+   <code>validate</code> reports "custom migration ... must not change the schema".</li>
+<li><code>momo migrate hash</code>, <code>momo migrate validate</code>, then <code>apply</code>.</li>
+</ol>
+<p>If the SQL changes the schema, change the models too and run <code>diff</code> afterward,
+which compares against the latest snapshot as written; otherwise the next <code>diff</code>
+will try to generate the same change again.</p>
+<h2 id="6a-go-migrations">6a. Go migrations<a class="headerlink" href="#6a-go-migrations" title="Permanent link">&para;</a></h2>
+<p>A data step that SQL cannot express (a backfill that calls library code, the
+templates an application ships in Go) is a <code>migrate.GoMigration</code>. It is
+registered on the engine with <code>migrate.WithGoMigrations</code> and is ordered with the
+SQL files by version, so it runs once, under the same lock, with a history row
+(<code>kind = 'go'</code>) like any other migration.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">g</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">migrate</span><span class="p">.</span><span class="nx">GoMigration</span><span class="p">{</span>
+<span class="w">    </span><span class="nx">Version</span><span class="p">:</span><span class="w">  </span><span class="s">"20260301120000"</span><span class="p">,</span><span class="w"> </span><span class="c1">// 14 digits, unique among the SQL files too</span>
+<span class="w">    </span><span class="nx">Name</span><span class="p">:</span><span class="w">     </span><span class="s">"backfill_templates"</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">Checksum</span><span class="p">:</span><span class="w"> </span><span class="s">"v1"</span><span class="p">,</span><span class="w"> </span><span class="c1">// optional, see below</span>
+<span class="w">    </span><span class="nx">Up</span><span class="p">:</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Tx</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Exec</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span><span class="w"> </span><span class="s">`UPDATE company SET templates_ready = true`</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">}</span>
+<span class="nx">engine</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">migrate</span><span class="p">.</span><span class="nx">NewEngine</span><span class="p">(</span><span class="nx">drv</span><span class="p">,</span><span class="w"> </span><span class="nx">dir</span><span class="p">,</span><span class="w"> </span><span class="nx">migrate</span><span class="p">.</span><span class="nx">WithDialect</span><span class="p">(</span><span class="nx">pg</span><span class="p">),</span><span class="w"> </span><span class="nx">migrate</span><span class="p">.</span><span class="nx">WithGoMigrations</span><span class="p">(</span><span class="nx">g</span><span class="p">))</span>
+</code></pre></div>
+<ul>
+<li><strong>Transaction.</strong> <code>Up</code> receives a <code>*momo.Tx</code>: the migration transaction that
+  also holds the history rows. An error or a panic rolls everything back and
+  records <code>rolled_back</code> (not dirty); the next apply runs it again. The
+  function cannot commit or roll back that transaction.</li>
+<li><strong>No transaction.</strong> Set <code>UpNoTx</code> instead of <code>Up</code> for work that cannot run in
+  a transaction (<code>CREATE INDEX CONCURRENTLY</code>, a long backfill committed in
+  batches). It receives a <code>*momo.DB</code> bound to the migration connection
+  (<code>DB.OnConn</code>; it cannot begin a transaction). An error leaves the row
+  <code>failed</code>, which is dirty: <code>apply</code> refuses with <code>ErrDirty</code> until you finish
+  the work by hand and run <code>resolve</code> (section 4). Make the function safe to run
+  again, because <code>resolve --rolled-back</code> runs it from the start.</li>
+<li><strong>Version.</strong> A Go migration and a SQL file cannot share a version; <code>plan</code>,
+  <code>apply</code> and <code>status</code> fail with an error naming the file, and <code>NewEngine</code>
+  rejects two Go migrations on one version or a bad version or name.</li>
+<li><strong>Checksum.</strong> Go code cannot be hashed. The recorded checksum is a hash of the
+  version, the name and the optional <code>Checksum</code> string. When it differs from
+  the applied row, <code>apply</code> refuses with <code>ErrChecksumMismatch</code> and <code>status</code>
+  shows <code>mismatch</code>. Bump <code>Checksum</code> when you change what a migration does and
+  want an already-migrated database flagged; leave it empty to bind only
+  version and name.</li>
+<li><strong>Snapshot.</strong> A Go migration has a snapshot file like a custom SQL migration
+  (<code>&lt;version&gt;_&lt;name&gt;.snapshot.json</code>, a copy of the previous snapshot with the
+  new version and <code>parent</code> set), and no up file. It must not change the schema.
+  <code>migrate.ValidateOffline</code> checks that when you pass it the registered migrations after the directory, and that every
+  registered Go migration has a snapshot; run it from a test of the application
+  with the same migrations. <code>momo migrate validate</code> does not know the
+  application's Go migrations, so it cannot check them. <code>diff</code> compares
+  against the latest snapshot, a Go migration's included, and refuses while a
+  registered Go migration has no snapshot file yet. Note for callers:
+  <code>ValidateOffline</code> gained a variadic parameter, so a call without Go
+  migrations compiles unchanged, but a function value of the old type no longer
+  matches.</li>
+<li><strong>Forward only.</strong> A Go migration has no down step. A rollback of the group
+  that contains one refuses it: <code>Engine.Rollback</code> calls
+  <code>migrate.RefuseGoRollback</code> with the history rows to roll back, before any down
+  runs, and that returns <code>ErrGoMigrationNotReversible</code> for the first row of
+  kind <code>go</code>; fix forward with a new migration.</li>
+<li><strong>Baseline.</strong> <code>Baseline</code> through a version records a <code>go</code> row (checksum =
+  the identity) for every registered Go migration up to it. An engine without
+  that registration, the CLI included, refuses to baseline past a snapshot-only
+  version with <code>ErrGoMigrationUnregistered</code>, because it cannot record the row.</li>
+<li><strong>Hooks and options.</strong> Without <code>migrate.WithGoMigrationDB</code>, <code>Up</code> and <code>UpNoTx</code>
+  get a bare <code>momo.New</code> of the engine's driver: none of the application's
+  hooks, field hooks, clock or other options. Pass the application's <code>*momo.DB</code>
+  (same driver) to <code>WithGoMigrationDB</code> to have its options apply.</li>
+<li><strong>The CLI cannot run them, and refuses to pass them.</strong> <code>momo migrate apply</code>,
+  <code>plan</code> and <code>status</code> read only the directory; a Go migration lives in the
+  application's binary. The snapshot file marks its place: when the directory
+  holds a snapshot with no up file, no registered Go migration and no history
+  row, and a pending SQL migration has a later version, <code>apply</code> refuses with
+  <code>ErrGoMigrationUnregistered</code> (exit 1) before it runs anything, telling you to
+  run the application's <code>Engine.Apply</code>. Without that, the CLI would apply the
+  later SQL and the application's engine would then fail with <code>ErrOutOfOrder</code>
+  for the Go migration for good. Once the Go migration is applied, the CLI is
+  unblocked; a database that has one in its history shows it as <code>missing</code> to
+  the CLI. The check keys on the snapshot file, so a Go migration whose
+  snapshot file is missing is invisible to the CLI: run <code>ValidateOffline</code> with
+  your Go migrations in a test of the application, which reports that.
+  The same refusal fires for an up file that was removed and left its snapshot,
+  so when you squash old migrations remove their snapshots too. The
+  application runs the engine itself, at start or in a small
+  <code>cmd/migrate</code> of its own:</li>
+</ul>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">eng</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">migrate</span><span class="p">.</span><span class="nx">NewEngine</span><span class="p">(</span><span class="nx">drv</span><span class="p">,</span><span class="w"> </span><span class="nx">dir</span><span class="p">,</span><span class="w"> </span><span class="nx">migrate</span><span class="p">.</span><span class="nx">WithDialect</span><span class="p">(</span><span class="nx">pg</span><span class="p">),</span><span class="w"> </span><span class="nx">migrate</span><span class="p">.</span><span class="nx">WithGoMigrations</span><span class="p">(</span><span class="nx">g</span><span class="p">))</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">eng</span><span class="p">.</span><span class="nx">Apply</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">migrate</span><span class="p">.</span><span class="nx">ApplyOptions</span><span class="p">{});</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Use that binary for <code>apply</code>, and keep the CLI for <code>diff</code>, <code>hash</code>, <code>validate</code>
+  and <code>drift</code>.</p>
+<h2 id="7-adopting-an-existing-database">7. Adopting an existing database<a class="headerlink" href="#7-adopting-an-existing-database" title="Permanent link">&para;</a></h2>
+<p>Worked example: <code>examples/adopt-existing-schema</code>.</p>
+<p><code>momo generate --from-db</code> reads a live PostgreSQL database and writes the
+models and the init snapshot, so nothing has to be written by hand first.</p>
+<ol>
+<li>Run <code>momo generate --from-db DATABASE_URL</code>. The value is a database URL, <code>-</code>
+   to read the URL from standard input, or the name of an environment variable
+   that holds it; prefer the last two, because a URL on the command line is
+   visible in the process list. It inspects the schemas named by
+   <code>migrate.schemas</code> (default: the current schema), writes one
+   <code>&lt;table&gt;_model.go</code> per table into the model package (<code>--out</code>, else
+   <code>introspect.out</code>, else the first local entry of <code>packages</code>, else <code>./models</code>)
+   and, when the migration directory has no snapshot, the init migration and
+   snapshot. Do not apply the init migration.</li>
+<li>Run <code>momo generate</code>, which writes the generated code for the new models.</li>
+<li><code>momo migrate baseline --version &lt;init version&gt;</code>. It checks the live
+   database against that snapshot, including view, policy and trigger text, and
+   exits 1 with <code>differing object kinds: ...</code> on a mismatch, then records every
+   migration up to that version as <code>applied</code> with <code>statements_applied = 0</code> and
+   <code>apply_id = baseline</code>, without running them. <code>--force</code> records anyway; use it
+   only after reviewing the mismatch. Schema objects outside the models, such as
+   extra extensions, count as a mismatch: add them to <code>migrate.exclude</code>. The
+   run prints a hint for the extensions and skipped tables it found.</li>
+<li>From then on use <code>diff</code> and <code>apply</code>.</li>
+</ol>
+<p>The models carry exact table and column names (a <code>table</code> or <code>column</code> tag is
+written wherever the naming preset would derive another name), Go types,
+nullability (a pointer, or the <code>nullable</code> tag for slices), defaults, <code>size</code>,
+<code>precision</code> and <code>scale</code>, enums, primary keys, identity (<code>identity</code> or
+<code>identity:always</code>) and serial columns,
+single-column indexes as tags, other indexes, unique constraints, checks and
+comments in the <code>MomoConfig</code> method, every foreign key the generator can
+derive as a <code>belongs_to</code> field with its <code>on_delete</code> and <code>on_update</code> actions
+(with <code>fk_name</code> when the constraint name is not <code>&lt;table&gt;_&lt;column&gt;_fkey</code>;
+PostgreSQL picks <code>_fkey1</code> on a partitioned table), and every composite
+(multi-column) foreign key to a modeled table as a <code>c.ForeignKey(...)</code>
+statement in <code>MomoConfig</code>. A composite primary key whose
+column order differs from the field order is declared with
+<code>c.PrimaryKey(&amp;m.Name, &amp;m.Scope, &amp;m.At)</code> in <code>MomoConfig</code>; the DDL, inspection
+and baseline keep that order. Changing the order of an existing key later is a
+drop and add of the primary key under an <code>ACCESS EXCLUSIVE</code> lock, and the drop
+is gated as destructive.
+<code>numeric</code> columns are Go strings (the <code>decimal-as-string</code> note); an
+<code>introspect.types</code> rule picks a decimal type instead. <code>tsvector</code> columns become
+<code>types.TSVector</code> (<code>*types.TSVector</code> when nullable); an <code>introspect.types</code> rule
+still overrides that.</p>
+<p><code>momo generate</code> leaves out type errors that come from files with momo's
+generated header, since it rewrites them. After you rename or remove a field,
+one <code>momo generate</code> run regenerates the stale file; an error in a hand-written
+file still stops it.</p>
+<p>A column type with no Go mapping is an error and nothing is written; add a rule
+to the <code>introspect</code> section of <code>momo.yaml</code>. Constraints the models cannot
+declare are left out of the models and the snapshot and printed as warnings, so
+the two agree and the baseline reports them: foreign keys to a table with no
+model, single-column foreign keys whose name is not table, column and <code>_fkey</code> or
+that do not reference a single-column primary key, expression keys with an order or operator class, generated
+columns, and PostgreSQL
+schemas other than the current one.</p>
+<h3 id="the-introspect-section">The introspect section<a class="headerlink" href="#the-introspect-section" title="Permanent link">&para;</a></h3>
+<p><code>momo.yaml</code> holds what the database cannot say, and it is applied again on every
+run:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">introspect</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">package</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">models</span><span class="w"> </span><span class="c1"># default: the directory name</span>
+<span class="w">  </span><span class="nt">out</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./models</span><span class="w"> </span><span class="c1"># default: the first local entry of packages</span>
+<span class="w">  </span><span class="nt">skip</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"_prisma_*"</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># table globs: no model, not in the snapshot</span>
+<span class="w">  </span><span class="nt">only</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w"> </span><span class="c1"># table globs: models only for these tables; skip applies within</span>
+<span class="w">  </span><span class="nt">functions</span><span class="p">:</span><span class="w"> </span><span class="s">""</span><span class="w"> </span><span class="c1"># "all": every database function on the first model</span>
+<span class="w">  </span><span class="nt">dbdefault</span><span class="p">:</span><span class="w"> </span><span class="s">""</span><span class="w"> </span><span class="c1"># "all": dbdefault on every NOT NULL column with a default</span>
+<span class="w">  </span><span class="nt">uuid</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">google</span><span class="w"> </span><span class="c1"># uuid columns as github.com/google/uuid types, no type tag (default: momo, types.UUID)</span>
+<span class="w">  </span><span class="nt">types</span><span class="p">:</span><span class="w"> </span><span class="c1"># SQL type to Go type, for every column of that type</span>
+<span class="w">    </span><span class="nt">inet</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> go</span><span class="p">:</span><span class="w"> </span><span class="nv">string</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">numeric(12,2)</span><span class="p p-Indicator">:</span>
+<span class="w">      </span><span class="p p-Indicator">{</span><span class="nt"> go</span><span class="p">:</span><span class="w"> </span><span class="nv">decimal.Decimal</span><span class="p p-Indicator">,</span><span class="nt"> import</span><span class="p">:</span><span class="w"> </span><span class="nv">github.com/shopspring/decimal</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">columns</span><span class="p">:</span><span class="w"> </span><span class="c1"># first to last; later rules win, tags add up</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">match</span><span class="p">:</span><span class="w"> </span><span class="s">"*.updated_at"</span><span class="w"> </span><span class="c1"># glob over table.column</span>
+<span class="w">      </span><span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">updated_at</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">match</span><span class="p">:</span><span class="w"> </span><span class="s">"users.settings"</span>
+<span class="w">      </span><span class="nt">go</span><span class="p">:</span><span class="w"> </span><span class="s">"types.JSON[Settings]"</span>
+<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Prefs</span><span class="w"> </span><span class="c1"># Go field name</span>
+<span class="w">  </span><span class="nt">tables</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">users</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">Account</span><span class="p p-Indicator">,</span><span class="nt"> tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"soft_delete:timestamp"</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p><code>uuid</code> is <code>momo</code> (the default, <code>types.UUID</code> and <code>[]types.UUID</code>) or <code>google</code>
+(<code>uuid.UUID</code>, <code>*uuid.UUID</code> and <code>[]uuid.UUID</code> from <code>github.com/google/uuid</code>).
+Neither writes a type tag. <code>introspect.uuid</code> has no effect on MySQL, which has no uuid mapping. <code>google</code> makes the generated models import
+<code>github.com/google/uuid</code>, so your module must require it.</p>
+<p>A rule's <code>tags</code> are momo tag options; one with the key of a generated option
+replaces it. A Go type needs no <code>import</code> for <code>types.</code>, <code>vector.</code>, <code>time.</code>,
+<code>json.</code> or <code>sql.</code>. Add skipped tables to <code>migrate.exclude</code> too, so the baseline
+ignores the live tables.</p>
+<p><code>only</code> is the inverse of <code>skip</code>, for a project that moves onto momo one module
+at a time: when it is set, a table that matches none of its globs gets no model
+and no place in the init snapshot, and migrate (drift, baseline, diff) treats it
+as excluded, so no <code>migrate.exclude</code> entry is needed for it. A glob matches the
+table name or <code>schema.name</code> (<code>only: ["app.*"]</code>), as <code>migrate.exclude</code> does, and
+an empty entry is an error. <code>skip</code> applies within <code>only</code>, and a skipped table
+still needs its <code>migrate.exclude</code> entry.</p>
+<p><code>only</code> hides tables, and with them their triggers and policies. Inspection does
+not read a table outside <code>only</code>, so one the schema model cannot represent does
+not fail the run, and <code>migrate diff</code> ignores such a table in the snapshot, so it
+never plans <code>DROP TABLE</code> for it. It does not hide views, functions, enums or
+extensions of the modules you have not moved: drift still lists them as
+unmanaged and <code>--from-db</code> still writes the views and enums. Hide them with
+<code>migrate.exclude</code>. A foreign key from a modeled table to a table outside <code>only</code>
+is left out of the models and the snapshot with a warning, and the baseline
+reports it; add the target to <code>only</code> or accept the report.</p>
+<p>By default the models carry only the functions that a modeled table's triggers,
+column defaults, generated columns, checks, index expressions and predicates or
+policies call (and the functions those call: their bodies and argument defaults,
+by a call or a <code>'name'::regproc</code> or <code>'name(args)'::regprocedure</code> literal), each on
+the model of the table that uses it, and a table's triggers and policies are on
+its own model. A function nothing modeled uses is not written. SQL built at run
+time (<code>EXECUTE</code> with a name put together from pieces) cannot be followed, so a
+function only that code reaches is not written and a fresh database built from
+the models lacks it. <code>functions: all</code> writes every function on the first model,
+as releases before 0.7.0 did, and is the workaround.</p>
+<p><code>dbdefault: all</code> tags every NOT NULL PostgreSQL column that has a default with
+<code>dbdefault</code>, constant defaults such as <code>DEFAULT 1</code> included (by default only
+computed defaults are tagged), so <code>InsertQuery.Model</code> leaves an unset field to the
+database default. A nullable column is never tagged. See "Database defaults" in
+the <a href="../ai-guide/">AI guide</a>.</p>
+<h3 id="running-it-again">Running it again<a class="headerlink" href="#running-it-again" title="Permanent link">&para;</a></h3>
+<p>The schema keeps changing during a port. A re-run rewrites the model files that
+nobody edited. Each file starts with a header that holds the hash of its body:
+when the body still matches, the file is regenerated freely. A file with hand
+edits, or one that <code>--from-db</code> did not write, is never replaced. A hand-edited
+file stays quiet while the database has not changed its model; it conflicts
+only when the regenerated model differs. The run writes
+the regenerated version next to it as <code>&lt;file&gt;.new</code>, prints
+<code>conflict: &lt;file&gt;</code>, and exits 1; merge the two by hand and delete the <code>.new</code>
+file, or run again with <code>--overwrite</code> to take the regenerated one.
+<code>--overwrite</code> only replaces a conflicting file: an edited file whose model the
+database did not change stays as it is. A file whose
+table is gone is printed as <code>orphan</code> and never deleted. <code>--check</code> writes
+nothing, prints <code>stale: &lt;file&gt;</code> for each difference and exits 1. The init
+snapshot is written once: when the migration directory already has a snapshot,
+use <code>diff</code> for later schema changes. Put code of your own in other files and
+rules in the <code>introspect</code> section, and a re-run stays quiet.</p>
+<p><code>baseline</code> needs <code>CREATE</code> on the database for the canonicalization step when
+the snapshot has views, functions, triggers or policies, <strong>or any table with
+text PostgreSQL rewrites</strong>: a column default or generation expression, a check
+constraint, an index predicate or an index expression. A snapshot of plain
+tables, columns, keys and plain indexes needs no such privilege
+(<code>TestBaselineAsAppRole</code>). <code>--force</code> does not waive it: the error is
+<code>ErrCanonicalizePrivilege</code>, naming the privilege, and nothing is recorded
+(<code>TestBaselineAsAppRoleNeedsCreateForTableText</code>). Run the baseline once as a
+role that has <code>CREATE</code> on the database (for example the owner role), or grant it
+for that run. It takes the lock and refuses on dirty or checksum problems like
+<code>apply</code>.</p>
+<h3 id="roles-and-extensions-verified">Roles and extensions (verified)<a class="headerlink" href="#roles-and-extensions-verified" title="Permanent link">&para;</a></h3>
+<p>Checked on CI with a role that is not a superuser and has no <code>CREATE</code> on the
+database:</p>
+<ul>
+<li><code>CREATE EXTENSION IF NOT EXISTS vector</code> <strong>succeeds</strong> when the extension
+  already exists (PostgreSQL only emits a notice; it checks existence before
+  privileges). So the statement that a generated migration emits is harmless for
+  that role once a superuser has installed pgvector
+  (<code>TestAppRoleExtensionIfNotExists</code>). When the extension is not installed the
+  statement needs a privileged role, as before.</li>
+<li><code>baseline</code> and <code>apply</code> run <code>CREATE TABLE IF NOT EXISTS</code> for the history table.
+  PostgreSQL checks <code>CREATE</code> on the schema before it looks for the table, so a
+  role with only <code>USAGE</code> on the schema is refused with the error
+  <code>permission denied for schema</code> even when it owns an existing
+  <code>momo_migrations</code> (<code>TestBaselineAsAppRoleNeedsCreateOnSchema</code>). The migrator role needs <code>CREATE</code>
+  on its schema: <code>GRANT CREATE ON SCHEMA app TO app_role</code>.</li>
+<li>With <code>CREATE</code> on the schema but not on the database, <code>baseline</code> works for a
+  snapshot without table text (<code>TestBaselineAsAppRole</code>) and fails with
+  <code>ErrCanonicalizePrivilege</code> otherwise (section 7). <code>drift</code> fails with it when
+  the snapshot declares a view, a trigger <code>WHEN</code> or a policy expression, and
+  runs without it for table text only, listing the tables in
+  <code>CanonicalizeSkipped</code> (<code>TestDriftBodiesNeedCreateOnDatabase</code>,
+  <code>TestDriftTablesOnlyRunsAsApplicationRole</code>).</li>
+</ul>
+<h3 id="extensions-managed-outside-momo">Extensions managed outside momo<a class="headerlink" href="#extensions-managed-outside-momo" title="Permanent link">&para;</a></h3>
+<p>Set <code>migrate.external_extensions</code> in <code>momo.yaml</code> for an extension that a
+superuser installs by hand:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">migrate</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">external_extensions</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">vector</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>Names are exact. For each listed extension momo</p>
+<ul>
+<li>never emits <code>CREATE EXTENSION</code> from <code>diff</code> (or <code>AutoMigrate</code>), even when a
+  model has a <code>vector</code> column, and keeps it out of the snapshot it writes;</li>
+<li>does not report it from <code>drift</code>, and does not count it as a mismatch in
+  <code>baseline</code>, even though the live database has it.</li>
+</ul>
+<p>The migrations then no longer create the extension, so a new environment must
+get it before the first <code>apply</code>. Use it only when that is the intent. It differs
+from <code>migrate.exclude</code>, which hides unmanaged objects of every kind from drift
+and baseline but does not stop <code>diff</code> from emitting <code>CREATE EXTENSION</code> for a
+model that needs it. If a snapshot already declares the extension, the setting
+hides it on both sides, so no drop or create is generated either.</p>
+<p>A database that uses <code>serial</code> or <code>bigserial</code> ids is adopted with the <code>serial</code>
+tag, as in <code>pk,serial</code> on an <code>int64</code> field. The tag renders <code>smallserial</code>,
+<code>serial</code> or <code>bigserial</code> by the Go integer width. Inspection reads a column
+whose default is <code>nextval</code> of a sequence owned by the column back as the same
+serial column, so the snapshot matches and <code>diff</code> stays empty. <code>serial</code> is
+PostgreSQL only; other dialects refuse it. Turning an existing column into or
+out of serial is refused by <code>diff</code>, with an error that asks for a
+hand-written migration.</p>
+<p>Upgrade note: inspection used to report a serial column as <code>identity</code>. If you
+adopted a serial database with <code>pk,identity</code> on the model, or kept a snapshot
+taken from one, <code>diff</code> now stops with <code>column "id" is a serial column in the
+database but the model declares identity</code>. Change the tag to <code>pk,serial</code> and
+regenerate the snapshot; or write a migration that converts the column to
+identity. Momo does not treat the two as equal, because a new environment
+would then be built with identity while production keeps its serial.</p>
+<p><code>AutoMigrate</code> is a Go API for development and tests. It applies additive
+changes only, writes no history and no files, and returns the rest as
+<code>Skipped</code>. Do not mix it with versioned migrations on one schema.</p>
+<h2 id="7a-cutover-from-prisma-db-push-to-momo">7a. Cutover from Prisma <code>db push</code> to momo<a class="headerlink" href="#7a-cutover-from-prisma-db-push-to-momo" title="Permanent link">&para;</a></h2>
+<p>Playbook for a database whose schema is changed by <code>prisma db push</code> and
+hand-written idempotent SQL files (<code>DO $$ ... IF NOT EXISTS</code> guards, <code>GRANT</code>
+lines, a hand-created extension), moving to momo owning the DDL. Rehearse every
+step on a copy of production.</p>
+<ol>
+<li><strong>Models first.</strong> Write the momo models so they match the live database
+   (section 7). Columns Prisma generates in the client, such as cuid ids, are
+   not in the database; model them as plain columns.</li>
+<li><strong>Declare what you do not own.</strong> Put the extension a superuser installs in
+   <code>migrate.external_extensions</code>. Put tables, views and functions that stay
+   outside the models (an analytics schema, an audit table, Prisma's
+   <code>_prisma_migrations</code>) in <code>migrate.exclude</code>. Roles, grants and sequences
+   outside a column are not part of the schema model; they stay in hand-written
+   SQL.</li>
+<li><strong>Write the initial migration.</strong> <code>momo migrate diff init</code> against an empty
+   directory. Do not apply it. Read the generated SQL: it is what a new
+   environment would run, and it must build the schema you have.</li>
+<li><strong>Rehearse the baseline</strong> on a copy, with
+   <code>momo migrate baseline --version &lt;init version&gt;</code>, as a role with <code>CREATE</code> on
+   the database (section 7). Exit 1
+   lists the differing object kinds. Fix the models or <code>exclude</code> until it is
+   clean. Do not use <code>--force</code> to skip a difference you have not read.</li>
+<li><strong>Dual-writer period: momo watches, it does not write.</strong> While Prisma still
+   pushes, the database moves under momo. Do not baseline production yet and do
+   not apply migrations. Run <code>momo migrate drift</code> against a baselined copy, or
+   the rehearsal in step 4 against production, on a schedule. A table Prisma
+   added shows as <code>unmanaged:</code>, a new column in a managed table as
+   <code>changed: ... not in snapshot</code>, and an altered column as <code>changed:</code>. Each is
+   a task: put it in the models, or in <code>exclude</code>. Drift cannot see changed view,
+   trigger or policy text (section 1).</li>
+<li><strong>Freeze <code>db push</code>.</strong> Stop <code>prisma db push</code> in every environment (remove it
+   from the deploy). Update the models to the final live state and, since
+   nothing was applied, delete the unapplied <code>init</code> files and run <code>diff init</code>
+   again, so the initial snapshot is the schema as it is at the freeze.</li>
+<li><strong>Baseline each environment.</strong> In each environment run
+   <code>momo migrate baseline --version &lt;init version&gt;</code> once, then
+   <code>momo migrate drift</code> (expect <code>no drift</code>). The role that runs <code>apply</code> needs
+   <code>CREATE</code> on the schema (section 7). From then on <code>apply</code> runs only newer
+   migrations. A database created from scratch runs the init migration; it needs
+   the external extension installed first.</li>
+<li><strong>Hand off.</strong> Schema changes go through <code>diff</code>; backfills and other data
+   changes through <code>momo migrate new --custom</code>, which replaces the hand-written
+   SQL files. Leave guards such as <code>IF NOT EXISTS</code> out of new files: the
+   history says what ran.</li>
+</ol>
+<p>Undo: baseline only writes history rows, so drop the <code>momo_migrations</code> table to
+return to the state before step 7; nothing else changed.</p>
+<h2 id="8-security">8. Security<a class="headerlink" href="#8-security" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>momo</code> redacts connection strings from everything it prints (stdout, stderr,
+  error text, and bad flag values that a pasted URL lands in): URL userinfo
+  becomes <code>***@</code>, a URL in text that has a query keeps the part before <code>?</code> and
+  shows <code>?***</code>, a <code>password=</code>/<code>passwd=</code>/<code>pwd=</code> value becomes <code>***</code>, and the
+  exact URL and password given are replaced by <code>***</code>.
+  History <code>error</code> text is the server message only, never <code>Detail</code>. Messages of
+  SQLSTATE class 22 (data exception) are withheld because they can contain
+  data values. Connection URLs and <code>password=</code> values in the text are replaced
+  by <code>***</code> before it is stored (<code>TestHistoryErrorIsRedacted</code>).</li>
+<li>A warning on stderr (not a failure) when a command that needs a database is
+  given a URL with <code>sslmode=disable</code> and any non-local host:
+  <code>TLS is not enforced (sslmode=disable) for remote host H: credentials and data can cross the network unencrypted; use sslmode=verify-full</code>.
+  It names the hosts only. It also fires when the URL or key=value string has
+  no <code>sslmode</code> (libpq then uses <code>prefer</code>, which falls back to plaintext), for
+  <code>allow</code> and <code>prefer</code>, for key=value connection strings, and when <code>sslmode</code>
+  comes from <code>PGSSLMODE</code>; a host missing from the string is read from
+  <code>PGHOST</code>. <code>localhost</code>, <code>127.0.0.1</code>, <code>::1</code>, unix socket paths and no host at
+  all do not warn, and neither do <code>require</code>, <code>verify-ca</code> and <code>verify-full</code>.
+  <code>require</code> encrypts but does not check the server's identity, so use
+  <code>sslmode=verify-full</code> against a real server.</li>
+<li>Do not pass the URL with <code>--url</code> on shared hosts (momo warns); use
+  <code>migrate.url_env</code>, <code>MOMO_DATABASE_URL</code> or <code>--url -</code> (stdin).</li>
+<li>Review <code>*.up.sql</code> in code review like any code: <code>apply</code> runs it as the
+  connected role, and <code>momo.sum</code> only detects change, not intent.</li>
+<li>Tamper detection is against accidental edits, not an attacker.
+  <code>momo migrate hash</code> rewrites <code>momo.sum</code> to match whatever is on disk, and
+  <code>momo migrate rehash --accept</code> stores the checksum of whatever file is on
+  disk in the history row. Both trust the files completely: anyone who can edit the
+  migration files and run those commands can make an edited migration pass
+  every check. Protect the migration directory with code review and write
+  access control, and the database with the migrator role's grants; <code>momo.sum</code>
+  does not.</li>
+<li><code>drift</code> and <code>baseline</code> execute model DDL on the target database. To compare
+  declared text with what the database reports, they create a scratch schema
+  and run the declared definitions (defaults, checks, index predicates, view
+  queries, function bodies, policy and trigger expressions) in a transaction
+  that is rolled back. That needs <code>CREATE</code> on the database, runs SQL taken
+  from your snapshots and models, and takes locks while it runs. Run them
+  against a scratch database restored from a backup, or a clone, rather than
+  production.</li>
+</ul>
+<h2 id="9-mysql-and-mariadb">9. MySQL and MariaDB<a class="headerlink" href="#9-mysql-and-mariadb" title="Permanent link">&para;</a></h2>
+<p>The <code>migrate/mysql</code> package is the migration dialect for MySQL 8.4, MySQL 9.7
+and MariaDB 11.8. It reads <code>information_schema</code>, renders DDL and locks with
+<code>GET_LOCK</code>. <code>momo migrate</code> does not select it yet; build the engine with
+<code>migrate.WithDialect(mmysql.New())</code> and the <code>mysqldriver</code> driver.</p>
+<p><strong>Every migration is non-transactional.</strong> DDL implies a commit on these
+servers, so a failure cannot be rolled back. The engine runs each statement on
+its own, records <code>statements_applied</code> after each one, and leaves a failed row
+that is dirty until you repair the database and run <code>resolve</code>. This holds with
+or without <code>-- momo:no-transaction</code>, for Go migrations, and for <code>rollback</code>: a
+down that fails half-way leaves its earlier statements applied and the row
+failed. Write each
+migration so that a half-applied run is easy to finish by hand.</p>
+<p><strong>Locking.</strong> <code>GET_LOCK</code> names are server-wide, so the lock name carries the
+database (<code>momo:&lt;database&gt;.momo_migrations</code>, cut to the 64 characters MySQL
+allows, with a hash suffix when the key is longer). The lock belongs to the
+pinned connection and is released with <code>RELEASE_LOCK</code>, or when the connection
+ends. A busy lock returns <code>migrate.ErrLocked</code> with the connection id of the
+holder.</p>
+<p><strong>Session timeouts.</strong> The lock timeout becomes <code>lock_wait_timeout</code>, the time a
+statement waits for a metadata lock, in whole seconds. A statement timeout
+becomes <code>max_statement_time</code> on MariaDB; on MySQL it is refused with
+<code>momo.ErrUnsupported</code>, because <code>max_execution_time</code> bounds SELECT only.</p>
+<p><strong>Online DDL.</strong> A line <code>-- momo:ddl ALGORITHM=INPLACE, LOCK=NONE</code> directly
+before an <code>ALTER TABLE</code> statement appends those options to it. MySQL rejects
+<code>LOCK=NONE</code> together with <code>ALGORITHM=INSTANT</code>; use <code>ALGORITHM=INSTANT</code> alone. The server
+rejects the statement when it cannot honour them, so a change that would copy
+the table fails instead of running slowly. Without the directive momo adds no
+<code>ALGORITHM</code> or <code>LOCK</code> clause. Only <code>ALGORITHM=</code> and <code>LOCK=</code> options are
+accepted.</p>
+<p><strong>What inspection reports.</strong> One database is inspected, the connection's
+default, and the history table is left out.</p>
+<ul>
+<li>A UNIQUE constraint and a unique index are the same object on these servers.
+  A unique key made of plain ascending columns is reported as a unique
+  constraint; declare such keys as constraints.</li>
+<li>The index MySQL creates for a foreign key, named after the constraint, is
+  not reported, and the diff refuses a declared index that has the name of a
+  foreign key of its table, because the two would collide and could not be
+  told apart. An index of a database you adopt that already has such a name
+  and the key's columns is treated as the server's own.</li>
+<li><code>NO ACTION</code> is reported as an empty action. MariaDB reports its default as
+  <code>RESTRICT</code>, so on MariaDB <code>RESTRICT</code> and an unwritten clause are one.</li>
+<li>MariaDB stores <code>json</code> as <code>longtext</code> with a <code>json_valid</code> check named after the
+  column; the pair is reported as type <code>json</code>.</li>
+<li>A column is reported with a collation only when it differs from its table's
+  default; declare <code>Collate</code> on the column to pin one.</li>
+<li>Defaults that the servers store alike are one default: <code>NOW</code>, <code>LOCALTIME</code>
+  and <code>CURRENT_TIMESTAMP</code>; <code>TRUE</code> and <code>FALSE</code> are <code>1</code> and <code>0</code>. <code>RESTRICT</code> and
+  <code>NO ACTION</code> are the same foreign key action.</li>
+<li>Stored CHECK text is compared without the identifier quotes, character set
+  introducers and the parentheses MySQL adds around each comparison. Other
+  rewrites by the server (for example <code>!=</code> stored as <code>&lt;&gt;</code>) show as a
+  difference of text; write the expression the way the server stores it.
+  Parentheses around a comparison are removed only between and, or and xor,
+  so <code>(a between 1 and 2) and c &gt; 0</code> keeps them and differs from the same
+  text without them; a backslash escape inside a string is kept as written.</li>
+<li>A foreign key into another database is reported as <code>database.table</code>.</li>
+<li>Integer display widths (<code>int(11)</code> on MariaDB) are no difference of type.
+  Identifier quotes, character set introducers and outer parentheses in stored
+  expressions are no difference of text.</li>
+<li>An index part with a prefix length is the column name followed by the length
+  in parentheses, such as <code>name(10)</code>. Index visibility, character sets and
+  <code>ON UPDATE CURRENT_TIMESTAMP</code> are not part of the schema model, and a
+  <code>MODIFY COLUMN</code> that a type change renders restates the column without them:
+  an <code>ALTER</code> of such a column is a migration to write by hand.</li>
+</ul>
+<p><strong>Rendering.</strong> Tables are <code>ENGINE=InnoDB DEFAULT CHARSET=utf8mb4</code>. An identity
+column is <code>AUTO_INCREMENT</code> (<code>by_default</code>; <code>always</code> and <code>serial</code> are refused). A
+default that is not a literal or <code>CURRENT_TIMESTAMP</code> is wrapped in parentheses,
+as MySQL requires. Partial indexes, storage parameters, operator classes,
+enums, views, functions, triggers and policies have no MySQL rendering yet and
+are refused. The <code>hash</code> index method is refused: InnoDB builds it as BTREE. Dropping a
+foreign key also drops the index MySQL built for it, when one exists, unless
+another foreign key of the table starts with the same column: that key may rely
+on the index, and dropping it would fail after the key was gone. The index then
+stays and shows as an index named like the dropped key; declare it, or drop it
+once nothing needs it. An
+AUTO_INCREMENT column must be a key in the statement that adds it, but the
+engine adds a primary key in a separate statement after the column: add such a
+column and its key in a migration you write yourself. Declare a generated
+column as nullable: MariaDB does not take
+<code>NOT NULL</code> on one. MySQL refuses a CHECK, or a stored generated column, on a
+column that a foreign key with a referential action uses.</p>
+<h2 id="upgrading-generated-file-header">Upgrading: generated file header<a class="headerlink" href="#upgrading-generated-file-header" title="Permanent link">&para;</a></h2>
+<p>Generated Go files start with <code>// Code generated by momo (format 1). DO NOT EDIT.</code>.
+The header carries the generated-file format number, which decides
+compatibility, and no momo release version, so a later momo upgrade does not
+rewrite generated files whose code is unchanged. Earlier releases wrote the
+same line with a release version between <code>momo</code> and <code>(format 1)</code>; momo still
+recognises that form, so orphan detection keeps working.</p>
+<p>After upgrading, run <code>momo generate</code> once. Until then <code>momo generate --check</code>
+reports the header change in every generated file.</p>
+<h2 id="known-issues">Known issues<a class="headerlink" href="#known-issues" title="Permanent link">&para;</a></h2>
+<p>None open. Fixed issues are listed in the changelog.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
