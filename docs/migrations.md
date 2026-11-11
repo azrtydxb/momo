@@ -1063,6 +1063,10 @@ introspect:
   only: [] # table globs: models only for these tables; skip applies within
   functions: "" # "all": every database function on the first model
   dbdefault: "" # "all": dbdefault on every NOT NULL column with a default
+  inverse: false # true: also write the has_many / has_one inverse of every belongs_to
+  relations: # with inverse: rename or skip one inverse, keyed Model.Field
+    "Subscription.SubscriptionItems": { name: Items }
+    "User.MessagesBySender": { skip: true }
   uuid: google # uuid columns as github.com/google/uuid types, no type tag (default: momo, types.UUID)
   types: # SQL type to Go type, for every column of that type
     inet: { go: string }
@@ -1087,6 +1091,25 @@ A rule's `tags` are momo tag options; one with the key of a generated option
 replaces it. A Go type needs no `import` for `types.`, `vector.`, `time.`,
 `json.` or `sql.`. Add skipped tables to `migrate.exclude` too, so the baseline
 ignores the live tables.
+
+`inverse: true` writes the other side of every `belongs_to` on the referenced
+model: a `has_one` when the foreign key column is unique (the primary key, a
+unique constraint or a plain unique index), a `has_many` otherwise. The field is
+named for the child (`SubscriptionItems` for a `has_many`, `AuthorProfile` for a
+`has_one`). A child with two foreign keys to the same parent, or a table that
+references itself, gets `By` and the foreign key field without `ID`
+(`MessagesBySender`, `MessagesByRecipient`). An `introspect.relations` rule keyed
+by model and derived name (User.MessagesBySender) renames one (`name`) or drops it (`skip: true`).
+The key uses the name derived before the rule and before any collision suffix. A
+rule key that matches no inverse is printed as a warning (a typo otherwise does
+nothing), and so is an inverse whose name collides with another field of the
+parent and gets a number suffix (Orders2): the warning names the
+`introspect.relations` key that renames it. `relations` has no effect unless
+`inverse` is `true`. A unique index with storage parameters (WITH) still counts
+as unique; a partial, expression or composite unique index does not.
+No inverse is written for a composite foreign key, a foreign key left out of the
+models, or a child outside `only` and `skip`. It is off by default because it
+adds fields to models you may have edited.
 
 `only` is the inverse of `skip`, for a project that moves onto momo one module
 at a time: when it is set, a table that matches none of its globs gets no model

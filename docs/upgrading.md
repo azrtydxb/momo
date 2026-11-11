@@ -222,6 +222,41 @@ PostgreSQL requires); each of these fails the build with `ErrValidation`. On `ag
 `agg.String(...).Distinct()` gives `ErrUnsupported` there; MySQL gives
 `ErrUnsupported` for `agg.JSONB(...).Distinct()`.
 
+### `--from-db` can write the inverse has_many and has_one
+
+`momo generate --from-db` wrote a `belongs_to` on the child and nothing on the
+parent, so `Has`, `HasNo`, `LoadCounts` and eager loading of children needed a
+hand-written relation on every parent. Set `introspect.inverse: true` and it
+also writes the inverse on the referenced model: `has_one` when the foreign key
+column is unique (the primary key, a unique constraint, or a plain unique
+index), `has_many` otherwise. It is off by default, so nothing changes until you
+opt in. A hand-edited model file is never replaced, so a project that already
+declared these relations by hand turns the option on and gets a `.new` file to
+merge, or keeps the hand-written relations and leaves it off.
+
+The name is the plural of the child model for `has_many` (`SubscriptionItems`)
+and the child model name for `has_one`. A child with two foreign keys to the same
+parent, and a table that references itself, get `By` and the foreign key field
+without `ID` instead (`MessagesBySender`, `MessagesByRecipient`). Rename or skip
+one with `introspect.relations`, keyed by model and derived name (User.MessagesBySender):
+
+```yaml
+introspect:
+  inverse: true
+  relations:
+    "Subscription.SubscriptionItems": { name: Items }
+    "User.MessagesBySender": { skip: true }
+```
+
+The key uses the name derived before the rule and before any collision suffix,
+and `relations` has no effect unless `inverse` is `true`. A rule key that matches
+no inverse is printed as a warning, and so is an inverse whose name collides with
+another field of the parent and gets a number suffix (Orders2); the warning
+names the key that renames it.
+
+No inverse is written for a composite foreign key, for a foreign key that is left
+out of the models, or from a table with no model (`only` and `skip`).
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
