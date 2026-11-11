@@ -348,6 +348,13 @@ func copyField[T any](meta *Meta[T], dst, src *T, ci int) {
 	d.Elem().Set(s.Elem())
 }
 
+// nilPointer reports whether a field value is a nil pointer. Update.Model uses
+// it to leave a nil dbdefault pointer out of SET.
+func nilPointer(v any) bool {
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Pointer && rv.IsNil()
+}
+
 // dbDefaultZero reports whether a field value counts as unset: the zero value
 // of its type, a nil pointer, or a value whose IsZero method says so
 // (time.Time). A pointer to a zero value is set.

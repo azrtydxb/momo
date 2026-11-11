@@ -22,6 +22,10 @@ type Tags struct {
 	Fk, FkName, Join, OnDelete, OnUpdate, SoftDelete, TimeUnit, IndexName, UniqueName string
 	Sort, Nulls, Method, View                                                         string
 
+	// Generated is the generated option: the expression of a stored generated
+	// column (GENERATED ALWAYS AS (expr) STORED). It needs read_only.
+	Generated string
+
 	// IDGen is the idgen option: the name of a Go-side id generator.
 	IDGen string
 
@@ -216,6 +220,8 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return str(&t.Prefix)
 	case "idgen":
 		return str(&t.IDGen)
+	case "generated":
+		return str(&t.Generated)
 	case "fk":
 		return str(&t.Fk)
 	case "fk_name":

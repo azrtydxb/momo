@@ -58,12 +58,14 @@ func TestDBDefaultTagRefusals(t *testing.T) {
 	}
 }
 
-// Catches: dbdefault accepted on a nullable field, where nil would silently
-// stop meaning NULL.
+// Catches: dbdefault accepted on a field that is really nullable (a sql.Null
+// type or the nullable tag), where nil would silently stop meaning NULL.
 func TestDBDefaultNullableDiagnostic(t *testing.T) {
 	for _, f := range []*Field{
-		fld("At", "*time.Time", "dbdefault"),
+		fld("At", "sql.NullTime", "dbdefault"),
+		fld("Ptr", "*sql.NullString", "dbdefault"),
 		fld("Note", "string", "nullable,dbdefault"),
+		fld("Opt", "*string", "nullable,dbdefault"),
 	} {
 		_, diags := build(t, pg(), mdl("Thing", "things", f))
 		found := false
@@ -73,5 +75,30 @@ func TestDBDefaultNullableDiagnostic(t *testing.T) {
 		if !found {
 			t.Errorf("%s: no nullable diagnostic in %v", f.GoName, diags)
 		}
+	}
+}
+
+// Catches: dbdefault on a pointer field still refused, or its column made
+// nullable: nil means "use the database default" (issue 90), so the column
+// stays NOT NULL and the descriptor flags carry no nullable bit.
+func TestDBDefaultPointerIsNotNull(t *testing.T) {
+	active := fld("Active", "*bool", "default:true,dbdefault")
+	active.Nullable = false // the loader clears it for a dbdefault pointer
+	m := mdl("Thing", "things", fld("ID", "int64", "pk"), active)
+	s, diags := build(t, pg(), m)
+	if len(diags) != 0 {
+		t.Fatalf("diagnostics: %v", diags)
+	}
+	if c := mustCol(t, s, "things", "active"); c.Nullable {
+		t.Fatalf("a dbdefault pointer column must be NOT NULL: %+v", c)
+	}
+	if got := flagExpr(active); got != "momo.FlagHasDefault|momo.FlagDBDefault" {
+		t.Fatalf("flags = %q", got)
+	}
+	// Without dbdefault a pointer is still a nullable column.
+	plain := fld("Plain", "*bool", "")
+	s, _ = build(t, pg(), mdl("Other", "others", fld("ID", "int64", "pk"), plain))
+	if c := mustCol(t, s, "others", "plain"); !c.Nullable {
+		t.Fatalf("a plain pointer column must stay nullable: %+v", c)
 	}
 }

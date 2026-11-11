@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // ReturningList is a RETURNING column list shared by the write builders.
@@ -272,4 +274,163 @@ func (d DeleteQuery[T]) One(ctx context.Context) (T, error) {
 		return zero, err
 	}
 	return oneRow(rows, "delete", d.meta.Table)
+}
+
+// isSourceColumn reports whether c belongs to a source other than the target
+// table: its qualifier is set and is not the table's name.
+func isSourceColumn(c ColumnRef, table string) bool {
+	rc, ok := c.(interface{ ref() colRef })
+	if !ok {
+		return false
+	}
+	q := rc.ref().table
+	return q != "" && q != table
+}
+
+// hasSource reports whether the list names a column of another source.
+func (r returningSet) hasSource(table string) bool {
+	return slices.ContainsFunc(r.cols, func(c ColumnRef) bool { return isSourceColumn(c, table) })
+}
+
+// renderWriteReturning is renderReturning for UPDATE and DELETE, which can
+// have FROM / USING sources (hasSources). The list may then name source
+// columns, rendered with their own qualifier, in the order given; under
+// ReturningAll the target's columns come first. On PostgreSQL a statement with
+// sources qualifies the target's columns too, since a name the source shares
+// would be ambiguous. Elsewhere a source column is ErrUnsupported: SQLite's
+// RETURNING reads the modified table only.
+func renderWriteReturning[T any](b *Builder, m *Meta[T], r returningSet, hasSources bool, invalid func(col string) error) {
+	if !r.active() {
+		return
+	}
+	if !b.Dialect().Returning {
+		b.unsupported("RETURNING")
+		return
+	}
+	pg := b.d.Name == dialect.Postgres
+	qual := ""
+	if hasSources && pg {
+		qual = m.Table
+	}
+	if r.hasSource(m.Table) {
+		if !hasSources {
+			for _, c := range r.cols {
+				if isSourceColumn(c, m.Table) {
+					b.SetErr(invalid(c.ColumnName()))
+					return
+				}
+			}
+		}
+		if !pg {
+			b.unsupported("RETURNING columns of a FROM or USING source")
+			return
+		}
+	}
+	prev := b.unqualified
+	b.unqualified = false
+	defer func() { b.unqualified = prev }()
+	b.WriteString(" RETURNING ")
+	n := 0
+	next := func() {
+		if n > 0 {
+			b.WriteString(", ")
+		}
+		n++
+	}
+	if r.all {
+		for _, c := range m.Columns {
+			next()
+			b.QualifiedIdent(qual, c.Name)
+		}
+	}
+	for _, c := range r.cols {
+		switch {
+		case isSourceColumn(c, m.Table):
+			next()
+			c.AppendSQL(b)
+		case r.all:
+		default:
+			name := c.ColumnName()
+			if !slices.ContainsFunc(m.Columns, func(mc ColumnMeta) bool { return mc.Name == name }) {
+				b.SetErr(invalid(name))
+				return
+			}
+			next()
+			b.QualifiedIdent(qual, name)
+		}
+	}
+}
+
+// scanCompiled runs a RETURNING statement and scans every row into an R by
+// column name, as Query does for raw SQL.
+func scanCompiled[R any](ctx context.Context, q Querier, op, table string, c Compiled) ([]R, error) {
+	r, sc, err := openCompiled[R](ctx, q, op, table, c)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = r.Close() }()
+	var out []R
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, newError(ErrCanceled, op, table, err)
+		}
+		if !r.Next() {
+			break
+		}
+		var v R
+		if err := sc.scan(r, &v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	if err := r.Err(); err != nil {
+		return nil, err
+	}
+	if err := r.Close(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// sourceQualifiers lists the names the FROM / USING sources expose, for the
+// statement's scope. A source without a Qualifier has none.
+func sourceQualifiers(srcs []TableSource) []string {
+	var out []string
+	for _, s := range srcs {
+		if q, ok := s.(interface{ Qualifier() string }); ok {
+			out = append(out, q.Qualifier())
+		}
+	}
+	return out
+}
+
+// appendSources writes the sources as a comma list.
+func appendSources(b *Builder, srcs []TableSource) {
+	for i, s := range srcs {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		s.appendFrom(b)
+	}
+}
+
+// unconstrainedSource returns the qualifier of the first of several FROM /
+// USING sources that no predicate references, or "". A single source is not
+// checked. Of several, a source with no Qualifier cannot be shown to be
+// referenced, so it counts as unconstrained, and is reported as "an unnamed
+// source".
+func unconstrainedSource(d *dialect.Dialect, ps []Predicate, srcs []TableSource) string {
+	if len(srcs) < 2 {
+		return ""
+	}
+	for _, s := range srcs {
+		q, ok := s.(interface{ Qualifier() string })
+		if !ok || q.Qualifier() == "" {
+			return "an unnamed source"
+		}
+		if !referencesTable(d, ps, q.Qualifier()) {
+			return q.Qualifier()
+		}
+	}
+	return ""
 }

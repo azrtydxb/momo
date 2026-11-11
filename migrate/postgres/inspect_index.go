@@ -15,7 +15,9 @@ import (
 
 const (
 	// Indexes that back a unique, primary-key or exclusion constraint are
-	// reported by the constraint, not here.
+	// reported by the constraint, not here. An index attached to a parent
+	// partitioned index (a pg_inherits row on the index) belongs to the parent:
+	// Postgres creates, names and drops it.
 	qIndexes = `SELECT ci.oid, ci.relname, am.amname, i.indisunique, i.indisvalid, i.indnkeyatts,
        pg_get_expr(i.indpred, i.indrelid), i.indoption::text, i.indclass::text, ci.reloptions
 FROM pg_index i
@@ -23,6 +25,7 @@ JOIN pg_class ci ON ci.oid = i.indexrelid
 JOIN pg_am am ON am.oid = ci.relam
 WHERE i.indrelid = $1 AND NOT i.indisprimary
   AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = i.indexrelid AND c.contype IN ('u','p','x'))
+  AND NOT EXISTS (SELECT 1 FROM pg_inherits h WHERE h.inhrelid = i.indexrelid)
 ORDER BY ci.relname`
 	// One row per key column. attnum 0 in indkey marks an expression key; the
 	// column name comes from pg_attribute so quoting is never parsed back.

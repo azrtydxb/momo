@@ -31,8 +31,10 @@ type CompanionResult struct {
 	Checks      []schema.Check
 	Enums       []schema.Enum
 	Defaults    map[string]string
-	Comments    map[string]string
-	Collates    map[string]string
+	// Generated maps a column to the expression set by a Generated call.
+	Generated map[string]string
+	Comments  map[string]string
+	Collates  map[string]string
 	// IDGens maps a column to the id generator named by an IDGen call.
 	IDGens map[string]string
 	// FKNames maps a foreign key column to the constraint name set by FKName.
@@ -68,11 +70,12 @@ func ReadCompanion(pkg *packages.Package, m *Model) (*CompanionResult, []Diagnos
 		pkg: pkg,
 		m:   m,
 		res: &CompanionResult{
-			Defaults: map[string]string{},
-			Comments: map[string]string{},
-			Collates: map[string]string{},
-			IDGens:   map[string]string{},
-			FKNames:  map[string]string{},
+			Defaults:  map[string]string{},
+			Generated: map[string]string{},
+			Comments:  map[string]string{},
+			Collates:  map[string]string{},
+			IDGens:    map[string]string{},
+			FKNames:   map[string]string{},
 		},
 		byPath:  map[string]*Field{},
 		indexAt: map[string]string{},
@@ -681,6 +684,8 @@ func (r *companionReader) config(c call) {
 		}
 	case "Default":
 		r.columnText(c, r.res.Defaults, "default")
+	case "Generated":
+		r.columnText(c, r.res.Generated, "generated expression")
 	case "Comment":
 		r.columnText(c, r.res.Comments, "comment")
 	case "Collate":

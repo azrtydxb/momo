@@ -82,7 +82,7 @@ func ValidateOffline(fsys fs.FS, goMigrations ...GoMigration) (*ValidateReport, 
 			continue
 		}
 		d, known := directives[f.Path]
-		if !known || d.Generated || e.snap.ParentVersion == "" {
+		if !known || d.Generated || d.Imported || e.snap.ParentVersion == "" {
 			continue
 		}
 		parent, ok := snapshots[e.snap.ParentVersion]
