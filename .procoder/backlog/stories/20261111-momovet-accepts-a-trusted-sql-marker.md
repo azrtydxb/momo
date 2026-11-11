@@ -29,5 +29,6 @@ Root cause: the analyzer had no suppression mechanism; every non-constant argume
 ## Evidence
 
 - Red: ci-agent run 42977704719 (sha ed548082), unit job, TestMomovet: raw/raw.go:58, 61 and 69 "unexpected diagnostic: non-constant SQL string passed to momo.Exec/Query"; raw.go:68 "no diagnostic was reported matching `needs a reason`"; raw.go:72 "no diagnostic was reported matching `unused //momovet:ok directive`".
-- Green: ci-agent run 42986311612, headSha f1fdd75d242a7d636865facf658d66abc69167a1, conclusion success. TestMomovet covers the marked (trailing and line above), unmarked, no-reason and unused cases.
+- Red (review round): ci-agent run 42992219033 (sha b4412f6d), unit job, TestMomovet: "raw/raw.go:70: no diagnostic was reported matching `non-constant SQL string passed to momo.Exec`" (a trailing directive silenced the next line).
+- Green: ci-agent run 42999763587, headSha 9bd2e023280c1e2bb03d2a19da73b4d06e880a86, conclusion success. TestMomovet covers the marked (trailing and line above), unmarked, no-reason and unused cases.
 - Docs changed: docs/momovet.md, docs/upgrading.md (Upgrading to 0.8.0).
