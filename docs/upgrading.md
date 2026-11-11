@@ -17,8 +17,9 @@ those objects use are dropped too, unless `introspect.functions: all` is set,
 which still writes every function. After you regenerate, the first model loses
 its `c.Policy`, `c.Trigger` and `c.Function` lines for those tables, and it no
 longer changes when a migration adds row level security to a skipped table. If
-the database keeps those objects, add them to `migrate.exclude` so drift does
-not report them as unmanaged.
+the database keeps those objects of a table left out by `introspect.skip`, add
+the table to `migrate.exclude` so drift does not report them as unmanaged. With
+`introspect.only` nothing is needed: `migrate.only` already hides them.
 
 ## Upgrading to 0.7.0
 

@@ -92,13 +92,13 @@ func (g *generator) tableTexts(m *model) []string {
 		}
 	}
 	for _, x := range g.clean.Triggers {
-		if g.owner(x.Schema, x.Table, nil) == m {
+		if g.owner(x.Schema, x.Table) == m {
 			out = append(out, x.Function, x.When, x.Definition)
 			out = append(out, x.Args...)
 		}
 	}
 	for _, x := range g.clean.Policies {
-		if g.owner(x.Schema, x.Table, nil) == m {
+		if g.owner(x.Schema, x.Table) == m {
 			out = append(out, x.Using, x.Check)
 		}
 	}

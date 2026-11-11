@@ -61,3 +61,61 @@ func TestObjectsOfUnmodeledTablesAreNotEmitted(t *testing.T) {
 		t.Errorf("functions: all must not bring back the trigger:\n%s", files["keep"])
 	}
 }
+
+// Catches: dropping objects of an unmodeled table going unreported, so a
+// reader cannot tell why a trigger or policy is missing from the models.
+func TestDroppedObjectsAreReported(t *testing.T) {
+	res, _ := generate(t, unmodeledObjectsSchema(), Config{Skip: []string{"audit_log"}})
+	found := false
+	for _, f := range res.Findings {
+		if f.Severity == SevNote && strings.Contains(f.Msg, "1 triggers and 1 policies of tables with no model left out") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no note about the dropped objects: %v", res.Findings)
+	}
+	res, _ = generate(t, sampleSchema(), Config{})
+	for _, f := range res.Findings {
+		if strings.Contains(f.Msg, "no model left out") {
+			t.Fatalf("a note without dropped objects: %v", f)
+		}
+	}
+}
+
+// Catches: a function used by a modeled table's trigger and by an unmodeled
+// table's trigger being dropped with the unmodeled one, or moved off the
+// modeled table's model.
+func TestSharedFunctionStaysOnModeledTable(t *testing.T) {
+	s := unmodeledObjectsSchema()
+	s.Triggers = append(s.Triggers, schema.Trigger{Table: "keep", Name: "keep_touch", Timing: "BEFORE", Events: []string{"UPDATE"}, ForEachRow: true, Function: "audit_touch()"})
+	res, files := generate(t, s, Config{Skip: []string{"audit_log"}})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	mustContain(t, "keep model", files["keep"], `"keep_touch"`, `"audit_touch"`)
+	for _, w := range []string{"audit_log_touch", "audit_log_read", "audit_can_read"} {
+		if strings.Contains(files["keep"], w) {
+			t.Errorf("keep model contains %q:\n%s", w, files["keep"])
+		}
+	}
+}
+
+// Catches: the unmodeled-object filter comparing table names loosely, so the
+// triggers and policies of a schema-qualified or mixed-case modeled table are
+// dropped with the unmodeled ones.
+func TestObjectsOfQualifiedAndMixedCaseTablesStay(t *testing.T) {
+	s := unmodeledObjectsSchema()
+	idCol := schema.Column{Name: "id", Type: "bigint", Identity: "by_default"}
+	s.Tables = []schema.Table{{Schema: "app", Name: "Keep", Columns: []schema.Column{idCol}, PrimaryKey: []string{"id"}}}
+	s.Triggers = append(s.Triggers, schema.Trigger{Schema: "app", Table: "Keep", Name: "keep_touch", Timing: "BEFORE", Events: []string{"UPDATE"}, ForEachRow: true, Function: "audit_touch()"})
+	s.Policies = append(s.Policies, schema.Policy{Schema: "app", Table: "Keep", Name: "keep_read", Command: "SELECT", Permissive: true, Using: "audit_can_read()"})
+	res, files := generate(t, s, Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	mustContain(t, "Keep model", files["Keep"], `"keep_touch"`, `"keep_read"`, `"audit_touch"`, `"audit_can_read"`)
+	if strings.Contains(files["Keep"], "audit_log_") {
+		t.Errorf("Keep model holds objects of the unmodeled table:\n%s", files["Keep"])
+	}
+}
