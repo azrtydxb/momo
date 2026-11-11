@@ -1,6 +1,6 @@
 # Nested Has and HasNo reuse the alias momo_r
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -29,14 +29,18 @@ problem with the join alias `momo_j`.
 
 ## Acceptance criteria
 
-- [ ] each nesting level renders its own child alias (`momo_r`, `momo_r2`, `momo_r3`) and each many-to-many level its own join alias (`momo_j`, `momo_j2`); a single-level predicate renders as before
-- [ ] a nested `Has`, `HasNo` or `CountOrder` whose parent is the enclosing child correlates on the enclosing alias; `HasFrom` keeps its explicit alias
-- [ ] `As("momo_r")` in a scope predicate names the child of the subquery the scope belongs to, at any depth
-- [ ] unit tests pin the SQL for two and three levels, HasNo outside and inside, and a nested many-to-many level
-- [ ] a PostgreSQL integration test runs a nested `Has` inside `HasNo` and returns the right rows
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] docs and `docs/upgrading.md` describe the aliases
+- [x] each nesting level renders its own child alias (`momo_r`, `momo_r2`, `momo_r3`) and each many-to-many level its own join alias (`momo_j`, `momo_j2`); a single-level predicate renders as before
+- [x] a nested `Has`, `HasNo` or `CountOrder` whose parent is the enclosing child correlates on the enclosing alias; `HasFrom` keeps its explicit alias
+- [x] `As("momo_r")` in a scope predicate names the child of the subquery the scope belongs to, at any depth
+- [x] unit tests pin the SQL for two and three levels, HasNo outside and inside, and a nested many-to-many level
+- [x] a PostgreSQL integration test runs a nested `Has` inside `HasNo` and returns the right rows
+- [x] a regression test pins the fix: red before the change, green after
+- [x] docs and `docs/upgrading.md` describe the aliases
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Red: ci-agent run 42978683611 (test-only commit b821f16, branch worktree-agent-red-89, deleted). unit and integration (postgres) failed: TestNestedRelationPredicateAliases subtests two_levels, three_levels, HasNo_outside, HasNo_inside and the nested many-to-many case with "column reference to table taggings, which is not in the query's FROM or JOIN sources"; TestNestedRelationPredicatesRun at rel_pred_nested_integration_test.go:50 with the same error.
+- Green: ci-agent run 42986469283, headSha 65b4964ef6d6066153a380ad8a82c7a37cc6947b, all 9 jobs success. An earlier run on 68af887 failed only on the docs fragment ceiling (TestDocsCodeBlocks); the nested tests passed there.
+- Goldens: none changed. No golden file contains momo_r and single-level SQL is unchanged.
+- Docs changed: docs/relations.md, docs/ai-guide.md, docs/upgrading.md (Upgrading to 0.8.0).
+
