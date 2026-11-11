@@ -386,6 +386,9 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   gnus, haikus, tutus, kudus), and keeps listed singular `-is`, `-as` and `-ns`
   words (analysis, alias, news and others). There is no blanket `-as` or `-is`
   rule, so `areas` still gives `Area`.
+  An upper-case run before a lone `s` is split so that every piece is a
+  list word when that is possible (`HTTPIDs` gives `http_ids`); otherwise the
+  longest list-word suffix wins.
 - **#111 (integrator, from the review):** a Go model declares a VIRTUAL
   generated column with a `virtual` tag option next to `generated:<expr>`, or
   with a `MomoConfig` hook, and `--from-db` writes it. A change between STORED
