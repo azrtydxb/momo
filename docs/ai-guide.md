@@ -1397,6 +1397,12 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   argument redaction are those of `Exec`; interceptors, soft-delete filters and
   `AfterLoad` do not apply to raw SQL. `QueryRows` closes the cursor on early
   break, on an error and on a canceled context (`ErrCanceled`).
+- `RawRows(ctx, q, sql, args...)` returns the open cursor (`momo.ColumnRows`:
+  `Next`, `Scan(dest...)`, `Columns`, `Err`, `Close`) for a result whose shape is
+  only known at run time. It has the hooks (op `raw`), `WithTxSetup`,
+  error classification and redaction of `Query`, on a `*DB`, `*Tx` or `AdoptTx`
+  handle. The caller closes it; a canceled context closes it and `Err` is
+  `ErrCanceled`. Prefer `Query[T]` when the shape is known.
 
 #### Porting pgx and sqlc SQL
 

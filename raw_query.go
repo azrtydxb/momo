@@ -128,6 +128,90 @@ func QueryRows[T any](ctx context.Context, q Querier, sql string, args ...any) i
 	}
 }
 
+// ColumnRows is the cursor RawRows returns: a Rows that also names its result
+// columns.
+type ColumnRows interface {
+	Rows
+	ColumnNamer
+}
+
+// RawRows runs sql through the raw path and returns the open cursor, for a
+// result whose shape is only known at run time: a statement whose column
+// count or types depend on its input, which Query and QueryRows cannot type
+// and MapRows would buffer into maps. Placeholders, hooks (op "raw"),
+// interceptors, WithTxSetup, WithImplicitTx, error classification and
+// argument redaction are those of Query, on a *DB, a *Tx or an AdoptTx handle.
+//
+//	rows, err := momo.RawRows(ctx, db, sql, args...)
+//	if err != nil {
+//		return err
+//	}
+//	defer rows.Close()
+//	for rows.Next() {
+//		if err := rows.Scan(dest...); err != nil {
+//			return err
+//		}
+//	}
+//	return rows.Err()
+//
+// The caller closes the cursor; Close is safe to call more than once, and on
+// a *DB with WithImplicitTx it ends the transaction behind the read. A
+// canceled context ends the iteration: Next returns false, the cursor is
+// closed and Err reports ErrCanceled. The rows bypass soft-delete filters,
+// AfterLoad hooks and timestamps, and MaxRows does not apply. Columns reports
+// the result column names, or ErrUnsupported when the driver cannot name them.
+func RawRows(ctx context.Context, q Querier, sql string, args ...any) (ColumnRows, error) {
+	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
+	if err != nil {
+		return nil, err
+	}
+	r, err := q.conn().query(ctx, "raw", "", "", c)
+	if err != nil {
+		return nil, err
+	}
+	return &rawCursor{r: r, ctx: ctx}, nil
+}
+
+// rawCursor adds column names and context cancellation to the rows of a raw
+// statement.
+type rawCursor struct {
+	r      Rows
+	ctx    context.Context
+	cancel error
+}
+
+func (c *rawCursor) Next() bool {
+	if c.cancel != nil {
+		return false
+	}
+	if err := c.ctx.Err(); err != nil {
+		c.cancel = newError(ErrCanceled, "raw", "", err)
+		abortRawRows(c.r, c.cancel)
+		return false
+	}
+	return c.r.Next()
+}
+
+func (c *rawCursor) Scan(dest ...any) error { return c.r.Scan(dest...) }
+
+func (c *rawCursor) Err() error {
+	if c.cancel != nil {
+		return c.cancel
+	}
+	return c.r.Err()
+}
+
+func (c *rawCursor) Close() error { return c.r.Close() }
+
+func (c *rawCursor) Columns() ([]string, error) {
+	if cn, ok := c.r.(ColumnNamer); ok {
+		if names, err := cn.Columns(); err != nil || len(names) > 0 {
+			return names, err
+		}
+	}
+	return nil, newError(ErrUnsupported, "raw", "", errors.New("the driver cannot report result column names"))
+}
+
 // openRaw runs sql and binds the result columns to T's fields. On an error
 // the rows are already closed.
 func openRaw[T any](ctx context.Context, q Querier, sql string, args []any) (Rows, *rawScan[T], error) {

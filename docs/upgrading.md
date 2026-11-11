@@ -5,6 +5,41 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### New: `RawRows` returns the hooked cursor of a raw statement
+
+`momo.RawRows(ctx, q, sql, args...)` runs a hand-written statement and returns
+an open cursor with `Next`, `Scan(dest ...any)`, `Columns`, `Err` and `Close`,
+for a result whose shape is known only at run time (a column count that depends
+on the input). `Query` and `QueryRows` need a type for the row and `MapRows`
+buffers every row into a map; before this, a `Scan(dest...)` cursor meant
+`db.Driver().Query`, which skips hooks, `WithTxSetup`, error classification and
+redaction. `RawRows` takes the raw path of `Query`: the same placeholders, hooks
+(op `raw`), interceptors, `WithTxSetup` and `WithImplicitTx`, error
+classification and argument redaction, on a `*DB`, a `*Tx` or an `AdoptTx`
+handle.
+
+```go
+rows, err := momo.RawRows(ctx, db, `SELECT id, title FROM tasks WHERE tenant_id = $1`, tenant)
+if err != nil {
+	return err
+}
+defer rows.Close()
+for rows.Next() {
+	if err := rows.Scan(&id, &title); err != nil {
+		return err
+	}
+}
+return rows.Err()
+```
+
+The return type is the new interface `momo.ColumnRows`, a `Rows` that also has
+`Columns`, because `Rows` itself has no column names. The caller closes the
+cursor. When the context is canceled, `Next` returns false, the cursor is closed
+and `Err` reports `ErrCanceled`. `Columns` returns `ErrUnsupported` when the
+driver cannot name its columns. This is additive; nothing to change.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
