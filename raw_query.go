@@ -154,22 +154,34 @@ type ColumnRows interface {
 //	}
 //	return rows.Err()
 //
-// The caller closes the cursor; Close is safe to call more than once, and on
-// a *DB with WithImplicitTx it ends the transaction behind the read. A
-// canceled context ends the iteration: Next returns false, the cursor is
-// closed and Err reports ErrCanceled. The rows bypass soft-delete filters,
-// AfterLoad hooks and timestamps, and MaxRows does not apply. Columns reports
-// the result column names, or ErrUnsupported when the driver cannot name them.
+// The caller closes the cursor, always: a cursor that is never closed holds
+// its connection, and on a *DB with WithImplicitTx the transaction behind it.
+// Close is safe to call more than once. Raw SQL may write, so under
+// WithImplicitTx momo treats the statement as a write: the transaction commits
+// when the rows are read to the end and Close returns nil, and it is rolled
+// back, with Close returning ErrValidation, when Close comes before the end of
+// the rows (including a Close with no Next), after a Scan or driver error, or
+// after a canceled context. Without WithImplicitTx an early Close is just a
+// Close. A canceled context ends the iteration: Next returns false, the cursor
+// is closed and Err reports ErrCanceled; a context canceled after the last row
+// was read can still report ErrCanceled, as in QueryRows. Scan errors go
+// through the DB's error classifier like any other statement error and are
+// recorded on the hook event. The rows bypass soft-delete filters, AfterLoad
+// hooks and timestamps, and MaxRows does not apply. Columns reports the result
+// column names as the driver gives them: an empty list means the statement
+// returns no columns (an UPDATE without RETURNING) or the driver cannot name
+// them, and ErrUnsupported means the cursor does not implement ColumnNamer.
 func RawRows(ctx context.Context, q Querier, sql string, args ...any) (ColumnRows, error) {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	if err != nil {
 		return nil, err
 	}
-	r, err := q.conn().query(ctx, "raw", "", "", c)
+	e := q.conn()
+	r, err := e.query(ctx, "raw", "", "", c)
 	if err != nil {
 		return nil, err
 	}
-	return &rawCursor{r: r, ctx: ctx}, nil
+	return &rawCursor{r: r, ctx: ctx, e: e}, nil
 }
 
 // rawCursor adds column names and context cancellation to the rows of a raw
@@ -177,6 +189,7 @@ func RawRows(ctx context.Context, q Querier, sql string, args ...any) (ColumnRow
 type rawCursor struct {
 	r      Rows
 	ctx    context.Context
+	e      *execer
 	cancel error
 }
 
@@ -192,7 +205,9 @@ func (c *rawCursor) Next() bool {
 	return c.r.Next()
 }
 
-func (c *rawCursor) Scan(dest ...any) error { return c.r.Scan(dest...) }
+func (c *rawCursor) Scan(dest ...any) error {
+	return c.e.wrapErr("raw", "", c.r.Scan(dest...))
+}
 
 func (c *rawCursor) Err() error {
 	if c.cancel != nil {
@@ -205,9 +220,8 @@ func (c *rawCursor) Close() error { return c.r.Close() }
 
 func (c *rawCursor) Columns() ([]string, error) {
 	if cn, ok := c.r.(ColumnNamer); ok {
-		if names, err := cn.Columns(); err != nil || len(names) > 0 {
-			return names, err
-		}
+		names, err := cn.Columns()
+		return names, c.e.wrapErr("raw", "", err)
 	}
 	return nil, newError(ErrUnsupported, "raw", "", errors.New("the driver cannot report result column names"))
 }
@@ -245,6 +259,15 @@ func openRaw[T any](ctx context.Context, q Querier, sql string, args []any) (Row
 // abortRawRows closes r after a failure that happened before any row was read.
 // Rows opened under a hook report err to AfterQuery; a plain cursor is closed.
 func abortRawRows(r Rows, err error) {
+	if t, ok := r.(*txRows); ok {
+		// WithImplicitTx: report to the hook pair inside, then end the
+		// transaction (txRows.Close rolls it back, the context is done).
+		if h, ok := t.Rows.(*hookedRows); ok {
+			h.abort(err)
+		}
+		_ = t.Close()
+		return
+	}
 	if h, ok := r.(*hookedRows); ok {
 		h.abort(err)
 		return

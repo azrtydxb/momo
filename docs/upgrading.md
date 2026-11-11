@@ -35,10 +35,23 @@ return rows.Err()
 ```
 
 The return type is the new interface `momo.ColumnRows`, a `Rows` that also has
-`Columns`, because `Rows` itself has no column names. The caller closes the
-cursor. When the context is canceled, `Next` returns false, the cursor is closed
-and `Err` reports `ErrCanceled`. `Columns` returns `ErrUnsupported` when the
-driver cannot name its columns. This is additive; nothing to change.
+`Columns`, because `Rows` itself has no column names. Close the cursor, always:
+one that is never closed holds its connection, and on a `*DB` with
+`WithImplicitTx` the transaction behind it. When the context is canceled,
+`Next` returns false, the cursor is closed and `Err` reports `ErrCanceled`; a
+context canceled after the last row was read can still report `ErrCanceled`,
+as in `QueryRows`. Scan errors go through the error classifier and are
+recorded on the hook event.
+
+Under `WithImplicitTx`, momo treats raw SQL as a write, because raw SQL may
+write. The transaction commits when the rows are read to the end. It rolls back,
+and `Close` returns `ErrValidation`, when `Close` comes before the end of the
+rows (including a `Close` with no `Next`), after a Scan or driver error, or
+after a canceled context. Without `WithImplicitTx` an early `Close` is just a
+`Close`. `Columns` returns the names as the driver reports them: an empty list
+means the statement returns no columns (an `UPDATE` without `RETURNING`) or the
+driver cannot name them, and `ErrUnsupported` means the cursor cannot report
+columns at all. This is additive; nothing to change.
 
 ## Upgrading to 0.7.0
 
