@@ -5,6 +5,41 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### Shared advisory locks
+
+`advisory` gains the shared form of every lock function, for a reader/writer
+pair on one key: `XactLockShared`, `TryXactLockShared`, `LockShared`,
+`TryLockShared` and `UnlockShared`, each with a `...String` variant that takes
+the same `Hash64` option. They run `pg_advisory_xact_lock_shared`,
+`pg_try_advisory_xact_lock_shared`, `pg_advisory_lock_shared`,
+`pg_try_advisory_lock_shared` and `pg_advisory_unlock_shared`. Writers that take
+the shared lock run together and never with a holder of the exclusive lock of
+the same key (`XactLock`). A string key hashes exactly as the exclusive helpers
+hash it, so `XactLockSharedString(ctx, tx, k, advisory.Hash64(52))` replaces
+`SELECT pg_advisory_xact_lock_shared(hashtextextended($1::text, 52))` with the
+same key. The transaction, pinned-connection and `ErrUnsupported` rules are
+those of the exclusive helpers. Nothing existing changes. `Unlock` does not
+release a shared lock: use `UnlockShared`.
+
+### `timeop`: sub-second intervals and timestamp difference
+
+`timeop.IntervalMillisecond` and `timeop.IntervalMicrosecond` are new interval
+units. `timeop.IntervalDuration(d)`, `timeop.AddDuration(ts, d)` and
+`timeop.SubDuration(ts, d)` take a `time.Duration` as a literal interval in the
+coarsest exact unit, so a 1500ms lease no longer needs rounding to seconds. MySQL
+counts the units as microseconds; SQLite counts fractional seconds and stores
+milliseconds, so a microsecond part is dropped there.
+
+`timeop.Sub(a, b)` and `timeop.Age(a, b)` build a `timeop.Span`, and
+`timeop.EpochSeconds(span)` reads it as a `float64` number of seconds:
+`extract(epoch FROM a - b)` on PostgreSQL, `TIMESTAMPDIFF(MICROSECOND, b, a)` on
+MySQL and the `julianday` difference on SQLite (accurate to about a tenth of a
+millisecond). A `Span` is not selectable on its own outside PostgreSQL, and
+`Age` is PostgreSQL only; both fail with `ErrUnsupported` when the query is
+built. Nothing existing changes.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package timeop holds the typed date and time expressions: Extract,
-// AtTimeZone, intervals with AddInterval and SubInterval, Now,
+// AtTimeZone, intervals with AddInterval, SubInterval, AddDuration and
+// SubDuration (down to the microsecond), timestamp differences with Sub, Age
+// and EpochSeconds, Now,
 // CurrentTimestamp, ClockTimestamp, StatementTimestamp and Trunc. Every
 // keyword that reaches the SQL text (an extract field, an interval unit, a truncation unit) is looked up in a fixed
 // allowlist at build time and the canonical spelling from the table is what
@@ -17,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
@@ -35,6 +38,14 @@ const sqliteTimeFmt = `'%Y-%m-%d %H:%M:%f'`
 // maxIntervalMagnitude bounds a literal interval count, so scaling it by a
 // unit factor can never overflow an int64.
 const maxIntervalMagnitude = 1_000_000_000_000
+
+// Sub-second interval counts scale by 1000 on MySQL, so their bounds are
+// higher (a time.Duration reaches about 9.2e15 microseconds) and still cannot
+// overflow an int64 when scaled.
+const (
+	maxMilliMagnitude = 1_000_000_000_000_000
+	maxMicroMagnitude = 10_000_000_000_000_000
+)
 
 // appendTime renders a timestamp operand. On PostgreSQL a bound Go time
 // (momo.Value(t)) is cast to timestamptz, because the server cannot always infer
@@ -276,30 +287,37 @@ type IntervalUnit string
 
 // The interval units every dialect supports.
 const (
-	IntervalSecond IntervalUnit = "second"
-	IntervalMinute IntervalUnit = "minute"
-	IntervalHour   IntervalUnit = "hour"
-	IntervalDay    IntervalUnit = "day"
-	IntervalWeek   IntervalUnit = "week"
-	IntervalMonth  IntervalUnit = "month"
-	IntervalYear   IntervalUnit = "year"
+	IntervalMicrosecond IntervalUnit = "microsecond"
+	IntervalMillisecond IntervalUnit = "millisecond"
+	IntervalSecond      IntervalUnit = "second"
+	IntervalMinute      IntervalUnit = "minute"
+	IntervalHour        IntervalUnit = "hour"
+	IntervalDay         IntervalUnit = "day"
+	IntervalWeek        IntervalUnit = "week"
+	IntervalMonth       IntervalUnit = "month"
+	IntervalYear        IntervalUnit = "year"
 )
 
 type unitSpec struct {
-	pg     string // PostgreSQL INTERVAL unit word
-	my     string // MySQL INTERVAL unit keyword
-	sqlite string // SQLite date modifier unit
-	factor int64  // multiplier into the SQLite unit
+	pg       string // PostgreSQL INTERVAL unit word
+	my       string // MySQL INTERVAL unit keyword
+	myFactor int64  // multiplier into the MySQL unit
+	sqlite   string // SQLite date modifier unit
+	factor   int64  // multiplier into the SQLite unit
+	frac     int    // SQLite: decimal digits of seconds per count (3 for milliseconds); 0 for whole units
+	maxMag   int64  // largest literal count in either direction
 }
 
 var intervalUnits = map[IntervalUnit]unitSpec{
-	IntervalSecond: {"second", "SECOND", "seconds", 1},
-	IntervalMinute: {"minute", "MINUTE", "minutes", 1},
-	IntervalHour:   {"hour", "HOUR", "hours", 1},
-	IntervalDay:    {"day", "DAY", "days", 1},
-	IntervalWeek:   {"week", "WEEK", "days", 7},
-	IntervalMonth:  {"month", "MONTH", "months", 1},
-	IntervalYear:   {"year", "YEAR", "years", 1},
+	IntervalMicrosecond: {"microsecond", "MICROSECOND", 1, "seconds", 1, 6, maxMicroMagnitude},
+	IntervalMillisecond: {"millisecond", "MICROSECOND", 1000, "seconds", 1, 3, maxMilliMagnitude},
+	IntervalSecond:      {"second", "SECOND", 1, "seconds", 1, 0, maxIntervalMagnitude},
+	IntervalMinute:      {"minute", "MINUTE", 1, "minutes", 1, 0, maxIntervalMagnitude},
+	IntervalHour:        {"hour", "HOUR", 1, "hours", 1, 0, maxIntervalMagnitude},
+	IntervalDay:         {"day", "DAY", 1, "days", 1, 0, maxIntervalMagnitude},
+	IntervalWeek:        {"week", "WEEK", 1, "days", 7, 0, maxIntervalMagnitude},
+	IntervalMonth:       {"month", "MONTH", 1, "months", 1, 0, maxIntervalMagnitude},
+	IntervalYear:        {"year", "YEAR", 1, "years", 1, 0, maxIntervalMagnitude},
 }
 
 // Interval is a length of time: a count and a unit. It is not an expression
@@ -322,9 +340,28 @@ func IntervalOf(n int64, unit IntervalUnit) Interval {
 	return Interval{lit: n, unit: unit, isBuilt: true}
 }
 
+// IntervalDuration is a literal interval of d, in the coarsest of second,
+// millisecond and microsecond units that holds d exactly; a d finer than a
+// microsecond is truncated toward zero to whole microseconds. It is the
+// time.Duration form of IntervalOf, for a TTL or lease length held as a
+// duration: 1500ms is 1500 milliseconds, not a rounded 2 seconds. SQLite
+// timestamps carry millisecond precision, so a microsecond part is dropped
+// there.
+func IntervalDuration(d time.Duration) Interval {
+	switch {
+	case d%time.Second == 0:
+		return IntervalOf(int64(d/time.Second), IntervalSecond)
+	case d%time.Millisecond == 0:
+		return IntervalOf(int64(d/time.Millisecond), IntervalMillisecond)
+	default:
+		return IntervalOf(d.Microseconds(), IntervalMicrosecond)
+	}
+}
+
 // IntervalExpr is an interval whose count comes from an integer expression:
 // a column, or momo.Value(n) to bind a parameter. On PostgreSQL the count is
-// multiplied into a one-unit INTERVAL.
+// multiplied into a one-unit INTERVAL. Bind a duration as
+// IntervalExpr(momo.Value(d.Milliseconds()), IntervalMillisecond).
 func IntervalExpr(count momo.Expression[int64], unit IntervalUnit) Interval {
 	return Interval{count: count, unit: unit, isBuilt: true, isExpr: true}
 }
@@ -341,6 +378,40 @@ func AddInterval(ts momo.Expression[time.Time], iv Interval) Expr { return inter
 // SubInterval is ts - iv: the timestamp moved back by the interval.
 func SubInterval(ts momo.Expression[time.Time], iv Interval) Expr { return intervalExpr(ts, iv, -1) }
 
+// AddDuration is ts + d for a time.Duration, written as a literal interval
+// (see IntervalDuration). It keeps sub-second precision where the dialect
+// does: PostgreSQL and MySQL to the microsecond, SQLite to the millisecond.
+func AddDuration(ts momo.Expression[time.Time], d time.Duration) Expr {
+	return intervalExpr(ts, IntervalDuration(d), 1)
+}
+
+// SubDuration is ts - d for a time.Duration; see AddDuration.
+func SubDuration(ts momo.Expression[time.Time], d time.Duration) Expr {
+	return intervalExpr(ts, IntervalDuration(d), -1)
+}
+
+// decimalCount renders v / 10^digits as a plain decimal with exactly digits
+// fraction digits, using integer arithmetic only.
+func decimalCount(v int64, digits int) string {
+	if digits == 0 {
+		return strconv.FormatInt(v, 10)
+	}
+	div := int64(1)
+	for i := 0; i < digits; i++ {
+		div *= 10
+	}
+	sign := ""
+	u := v
+	if v < 0 {
+		sign, u = "-", -v
+	}
+	frac := strconv.FormatInt(u%div, 10)
+	for len(frac) < digits {
+		frac = "0" + frac
+	}
+	return sign + strconv.FormatInt(u/div, 10) + "." + frac
+}
+
 func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
 	return newExpr(func(b *momo.Builder) {
 		spec, ok := intervalUnits[iv.unit]
@@ -354,7 +425,7 @@ func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
 		case !ok:
 			b.SetErr(timeErr("interval unit %q is not one of the Interval... constants", string(iv.unit)))
 			return
-		case !iv.isExpr && (iv.lit > maxIntervalMagnitude || iv.lit < -maxIntervalMagnitude):
+		case !iv.isExpr && (iv.lit > spec.maxMag || iv.lit < -spec.maxMag):
 			b.SetErr(timeErr("interval of %d %ss is outside the supported range", iv.lit, string(iv.unit)))
 			return
 		}
@@ -382,9 +453,14 @@ func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
 			b.WriteString(fn)
 			ts.AppendSQL(b)
 			b.WriteString(", INTERVAL ")
-			if !iv.isExpr {
-				b.WriteString(strconv.FormatInt(iv.lit, 10))
-			} else {
+			switch {
+			case !iv.isExpr:
+				b.WriteString(strconv.FormatInt(iv.lit*spec.myFactor, 10))
+			case spec.myFactor != 1:
+				b.WriteString("(")
+				iv.count.AppendSQL(b)
+				b.WriteString(") * " + strconv.FormatInt(spec.myFactor, 10))
+			default:
 				iv.count.AppendSQL(b)
 			}
 			b.WriteString(" " + spec.my + ")")
@@ -393,7 +469,14 @@ func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
 			ts.AppendSQL(b)
 			b.WriteString(", ")
 			if !iv.isExpr {
-				b.WriteString("'" + strconv.FormatInt(iv.lit*sign*spec.factor, 10) + " " + spec.sqlite + "')")
+				b.WriteString("'" + decimalCount(iv.lit*sign*spec.factor, spec.frac) + " " + spec.sqlite + "')")
+				return
+			}
+			if spec.frac > 0 {
+				// printf %f never writes an exponent, which a date modifier would reject.
+				b.WriteString("printf('%." + strconv.Itoa(spec.frac) + "f', (")
+				iv.count.AppendSQL(b)
+				b.WriteString(") * " + strconv.FormatInt(sign, 10) + ".0 / 1" + strings.Repeat("0", spec.frac) + ".0) || ' " + spec.sqlite + "')")
 				return
 			}
 			b.WriteString("CAST((")
@@ -403,6 +486,120 @@ func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
 			b.Unsupported("interval arithmetic")
 		}
 	})
+}
+
+// ---------------------------------------------------------- Difference
+
+// Span is the difference of two timestamps. It is not a selectable value of
+// its own, because MySQL and SQLite have no interval value; read it as
+// seconds with EpochSeconds. Build it with Sub or Age.
+type Span struct {
+	a, b momo.Expression[time.Time]
+	age  bool
+}
+
+// Sub is a - b: the time from b to a, negative when a is earlier. On
+// PostgreSQL it is the interval (a - b); on MySQL and SQLite it exists to
+// feed EpochSeconds.
+func Sub(a, b momo.Expression[time.Time]) Span { return Span{a: a, b: b} }
+
+// Age is age(a, b) on PostgreSQL: an interval of years, months and days that
+// counts calendar units, so the age of two dates a month apart is "1 mon"
+// whatever the month's length. For a length of time in seconds, use Sub.
+// MySQL and SQLite have no age and fail with momo.ErrUnsupported when the
+// query is built.
+func Age(a, b momo.Expression[time.Time]) Span { return Span{a: a, b: b, age: true} }
+
+// AppendSQL renders the interval (a - b) or age(a, b) on PostgreSQL. Other
+// dialects have no interval value and fail with momo.ErrUnsupported; use
+// EpochSeconds.
+func (s Span) AppendSQL(b *momo.Builder) {
+	if !s.valid(b) {
+		return
+	}
+	if b.Dialect().Name != dialect.Postgres {
+		b.Unsupported("an interval value")
+		return
+	}
+	if s.age {
+		b.WriteString("age(")
+		appendTime(b, s.a)
+		b.WriteString(", ")
+		appendTime(b, s.b)
+		b.WriteString(")")
+		return
+	}
+	b.WriteString("(")
+	appendTime(b, s.a)
+	b.WriteString(" - ")
+	appendTime(b, s.b)
+	b.WriteString(")")
+}
+
+func (s Span) valid(b *momo.Builder) bool {
+	if s.a == nil || s.b == nil {
+		b.SetErr(timeErr("Sub and Age need two timestamp expressions"))
+		return false
+	}
+	return true
+}
+
+// EpochExpr is the length of a Span in seconds as a float64. Build it with
+// EpochSeconds.
+type EpochExpr struct {
+	momo.Ops[float64]
+	s Span
+}
+
+// EpochSeconds is the length of s in seconds, with a fraction:
+// extract(epoch FROM a - b) on PostgreSQL (cast to double precision),
+// TIMESTAMPDIFF(MICROSECOND, b, a) / 1e6 on MySQL and the julianday
+// difference times 86400 on SQLite, which is accurate to about a tenth of a
+// millisecond. Use it for a duration computed in SQL, for example
+// percentile_cont over EpochSeconds(Sub(finished, started)). A Span from Age
+// is PostgreSQL only, and there a month counts as 30 days in the epoch.
+func EpochSeconds(s Span) EpochExpr {
+	x := EpochExpr{s: s}
+	x.Ops = momo.NewOps[float64](x)
+	return x
+}
+
+// As names the expression in a select list.
+func (x EpochExpr) As(alias string) momo.Aliased[float64] { return momo.As[float64](x, alias) }
+
+// AppendSQL renders the epoch seconds for the dialect of b.
+func (x EpochExpr) AppendSQL(b *momo.Builder) {
+	if !x.s.valid(b) {
+		return
+	}
+	switch b.Dialect().Name {
+	case dialect.Postgres:
+		b.WriteString("CAST(EXTRACT(EPOCH FROM ")
+		x.s.AppendSQL(b)
+		b.WriteString(") AS double precision)")
+	case dialect.MySQL:
+		if x.s.age {
+			b.Unsupported("Age")
+			return
+		}
+		b.WriteString("(TIMESTAMPDIFF(MICROSECOND, ")
+		x.s.b.AppendSQL(b)
+		b.WriteString(", ")
+		x.s.a.AppendSQL(b)
+		b.WriteString(") / 1000000.0 + 0e0)")
+	case dialect.SQLite:
+		if x.s.age {
+			b.Unsupported("Age")
+			return
+		}
+		b.WriteString("((julianday(")
+		x.s.a.AppendSQL(b)
+		b.WriteString(") - julianday(")
+		x.s.b.AppendSQL(b)
+		b.WriteString(")) * 86400.0)")
+	default:
+		b.Unsupported("EpochSeconds")
+	}
 }
 
 // ----------------------------------------------------------------- Now
