@@ -63,6 +63,41 @@ func marked(ctx context.Context, db *momo.DB, user string) {
 	momo.RawSubquery(user) // want "non-constant SQL string passed to momo.RawSubquery"
 }
 
+// A trailing directive covers its own line only: the call on the next line is
+// still reported.
+func trailingDoesNotLeak(ctx context.Context, db *momo.DB, user string) {
+	momo.Exec(ctx, db, "UPDATE "+user+" SET a = 1") //momovet:ok identifier is allowlisted
+	momo.Exec(ctx, db, "UPDATE "+user+" SET b = 1") // want "non-constant SQL string passed to momo.Exec"
+}
+
+// Only the exact //momovet:ok form is a directive.
+func lookalikes(ctx context.Context, db *momo.DB, user string) {
+	momo.Exec(ctx, db, "A"+user) //momovet:okay not a directive // want "non-constant SQL string passed to momo.Exec"
+
+	//momovet:ok_x not a directive
+	momo.Exec(ctx, db, "B"+user) // want "non-constant SQL string passed to momo.Exec"
+
+	// momovet:ok a space after the slashes is not accepted
+	momo.Exec(ctx, db, "C"+user) // want "non-constant SQL string passed to momo.Exec"
+
+	//momovet:OK upper case is not accepted
+	momo.Exec(ctx, db, "D"+user) // want "non-constant SQL string passed to momo.Exec"
+
+	/*momovet:ok a block comment is not accepted*/
+	momo.Exec(ctx, db, "E"+user) // want "non-constant SQL string passed to momo.Exec"
+}
+
+// A directive on the first line of a multi-line call, or alone on the line
+// above it, covers the call.
+func multiLine(ctx context.Context, db *momo.DB, user string) {
+	momo.Exec(ctx, db, //momovet:ok first line of the call
+		"UPDATE "+user+" SET x = 1")
+
+	//momovet:ok alone on the line above
+	momo.Exec(ctx, db,
+		"UPDATE "+user+" SET x = 1")
+}
+
 func badDirectives(ctx context.Context, db *momo.DB, user string) {
 	// want +1 "needs a reason"
 	//momovet:ok
