@@ -136,3 +136,32 @@ func TestToSnakeAgreesWithOldOutsideThePluralRule(t *testing.T) {
 		t.Fatalf("the sweep covered %d unchanged and %d changed names, want both", same, differ)
 	}
 }
+
+// Catches: a run in front of a plural s cut at the wrong place. The run is
+// segmented into list words, the s goes with the last one: HTTPIDs is HTTP and
+// IDs, not HTT and PIDs (the longest-suffix reading PID would give). Each case
+// names the rule that decides it.
+func TestToSnakePluralSegmentation(t *testing.T) {
+	for _, c := range []struct{ in, want, rule string }{
+		{"HTTPIDs", "http_ids", "full segmentation HTTP+ID beats the suffix PID"},
+		{"XMLHTTPIDs", "xml_http_ids", "full segmentation XML+HTTP+ID"},
+		{"PIDs", "pids", "the whole run is one word"},
+		{"OIDs", "oids", "the whole run is one word"},
+		{"SSIDs", "ssids", "the whole run is one word, not S+SID"},
+		{"GUIs", "guis", "the whole run is one word"},
+		{"GUIDs", "guids", "GUID, not GUI+D"},
+		{"UserPIDs", "user_pids", "embedded: the run is PID"},
+		{"ABCIDs", "abc_ids", "no full segmentation: the longest list-word suffix ID"},
+		{"XMLABCIDs", "xmlabc_ids", "no full segmentation: the suffix ID, the rest stays together"},
+		{"APIIDs", "api_ids", "full segmentation API+ID"},
+		{"UIIDs", "ui_ids", "full segmentation UI+ID"},
+		{"IPIDs", "ip_ids", "last word longest among full segmentations: IP+ID, I is no word"},
+		{"HTTPSIDs", "https_ids", "full segmentation HTTPS+ID"},
+		{"XMLIDs", "xml_ids", "full segmentation XML+ID"},
+		{"UserAPIIDsList", "user_api_ids_list", "embedded, followed by another word"},
+	} {
+		if got := ToSnake(c.in); got != c.want {
+			t.Errorf("ToSnake(%q) = %q, want %q (%s)", c.in, got, c.want, c.rule)
+		}
+	}
+}
