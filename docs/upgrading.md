@@ -9,19 +9,20 @@ later releases can break more.
 
 ### Shared advisory locks
 
-`advisory` gains the shared form of every lock function, for a reader/writer
-pair on one key: `XactLockShared`, `TryXactLockShared`, `LockShared`,
-`TryLockShared` and `UnlockShared`, each with a `...String` variant that takes
-the same `Hash64` option. They run `pg_advisory_xact_lock_shared`,
+The `advisory` package gains the shared form of every lock function, for a
+reader/writer pair on one key: `advisory.XactLockShared`,
+`advisory.TryXactLockShared`, `advisory.LockShared`, `advisory.TryLockShared`
+and `advisory.UnlockShared`, each with a `...String` variant that takes the same
+`advisory.Hash64` option. They run `pg_advisory_xact_lock_shared`,
 `pg_try_advisory_xact_lock_shared`, `pg_advisory_lock_shared`,
 `pg_try_advisory_lock_shared` and `pg_advisory_unlock_shared`. Writers that take
 the shared lock run together and never with a holder of the exclusive lock of
-the same key (`XactLock`). A string key hashes exactly as the exclusive helpers
-hash it, so `XactLockSharedString(ctx, tx, k, advisory.Hash64(52))` replaces
-`SELECT pg_advisory_xact_lock_shared(hashtextextended($1::text, 52))` with the
-same key. The transaction, pinned-connection and `ErrUnsupported` rules are
-those of the exclusive helpers. Nothing existing changes. `Unlock` does not
-release a shared lock: use `UnlockShared`.
+the same key (`advisory.XactLock`). A string key hashes exactly as the exclusive
+helpers hash it, so `advisory.XactLockSharedString(ctx, tx, k, advisory.Hash64(52))`
+replaces `SELECT pg_advisory_xact_lock_shared(hashtextextended($1::text, 52))`
+with the same key. The transaction, pinned-connection and `ErrUnsupported` rules
+are those of the exclusive helpers. Nothing existing changes. `advisory.Unlock`
+does not release a shared lock: use `advisory.UnlockShared`.
 
 ### `timeop`: sub-second intervals and timestamp difference
 
@@ -36,8 +37,8 @@ milliseconds, so a microsecond part is dropped there.
 `timeop.EpochSeconds(span)` reads it as a `float64` number of seconds:
 `extract(epoch FROM a - b)` on PostgreSQL, `TIMESTAMPDIFF(MICROSECOND, b, a)` on
 MySQL and the `julianday` difference on SQLite (accurate to about a tenth of a
-millisecond). A `Span` is not selectable on its own outside PostgreSQL, and
-`Age` is PostgreSQL only; both fail with `ErrUnsupported` when the query is
+millisecond). A `timeop.Span` is not selectable on its own outside PostgreSQL, and
+`timeop.Age` is PostgreSQL only; both fail with `ErrUnsupported` when the query is
 built. Nothing existing changes.
 
 ## Upgrading to 0.7.0
