@@ -69,7 +69,7 @@ func model(goName, table string, d dialect.Name, child bool) *gen.Model {
 		Fields: []*gen.Field{field("ID", "int64", idTag, 0)},
 		Pos:    token.Position{Filename: "m.go", Line: 3, Column: 6},
 		Config: &gen.CompanionResult{
-			Defaults: map[string]string{}, Comments: map[string]string{}, Collates: map[string]string{},
+			Defaults: map[string]string{}, Generated: map[string]string{}, Comments: map[string]string{}, Collates: map[string]string{},
 		},
 	}
 	if child {

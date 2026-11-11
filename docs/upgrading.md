@@ -24,26 +24,440 @@ the table to `migrate.exclude` so drift does not report them as unmanaged. With
 ### VIRTUAL generated columns round-trip on MySQL and SQLite
 
 `schema.Column` has a new field, `GeneratedVirtual` (JSON `generated_virtual`),
-that marks a VIRTUAL generated column. The MySQL inspector reads it from
-`EXTRA` (`VIRTUAL GENERATED`) and the SQLite inspector from `hidden` 2 in
-`pragma_table_xinfo`, and both migrate dialects render `VIRTUAL` for it. Before,
-every generated column was read as STORED and rendered `STORED`, so a schema
-baselined from a database with a VIRTUAL column created a STORED one on a fresh
-install while `migrate diff` and drift reported nothing. If you baselined such a
-database with an earlier version, the next `momo generate --from-db` or
-`baseline` writes the right kind; until then the committed snapshot says STORED
-and `migrate diff` now reports the column as changed. A snapshot written before
-the field existed still loads, and its generated columns stay STORED, so the
-snapshot `format_version` stays 1.
+that marks a VIRTUAL generated column, and a model declares it with the new
+`virtual` tag option next to `generated:<expr>` (or `c.GeneratedVirtual` in
+`MomoConfig`). `virtual` is valid only with `generated:`, and it is refused for
+a PostgreSQL target with `momo.ErrUnsupported`: PostgreSQL has VIRTUAL columns
+only from version 18, and momo supports 16 and 17. The MySQL inspector reads the
+kind from `EXTRA` (`VIRTUAL GENERATED`) and the SQLite inspector from `hidden` 2
+in `pragma_table_xinfo`, both migrate dialects render `VIRTUAL` for it, and
+`momo generate --from-db` writes the `virtual` tag.
 
-A change between VIRTUAL and STORED is a change in the diff. On SQLite it
-rebuilds the table, as any other generated-column change does; on MySQL it is
-`DROP COLUMN` then `ADD COLUMN`, because MySQL cannot switch the kind with
-`MODIFY COLUMN` (the column moves to the end of the table, and the drop fails
-while an index or constraint still uses it). On PostgreSQL, which has VIRTUAL
-columns only from version 18 (momo supports 16 and 17), rendering one returns an
-error that matches `momo.ErrUnsupported`, and the PostgreSQL inspector still
-refuses a VIRTUAL column it finds.
+Before, every generated column was read as STORED and rendered `STORED`, so a
+schema baselined from a database with a VIRTUAL column created a STORED one on a
+fresh install while `migrate diff` and drift reported nothing. What to do:
+
+- The database has only STORED generated columns: nothing to change. A snapshot
+  written before the field existed still loads, with its generated columns
+  STORED, so the snapshot `format_version` stays 1.
+- The database has VIRTUAL generated columns: tag the model fields `virtual`
+  (or regenerate the models with `--from-db`) and re-baseline the snapshot.
+  Until then `migrate diff` reports the column as changed.
+
+A change between VIRTUAL and STORED is a change in the diff. SQLite rebuilds the
+table, as it does for any generated-column change. MySQL and PostgreSQL refuse
+it, with the same "write a custom migration" error as any other generated
+change, because neither can switch the kind in place.
+
+### Indexes attached to a parent partitioned index are no longer inspected
+
+The PostgreSQL inspector used to report an index on a partition that is
+attached to a parent partitioned index as a standalone index of that partition.
+`momo generate --from-db` then emitted it as `c.Index(...)` on the partition's
+model, a fresh install created it twice, and `drift --strict` reported the
+PostgreSQL-created index as `not in snapshot`. Inspection now skips every index
+that has a `pg_inherits` parent; only the parent index is modeled. An index
+created directly on a partition, and a unique index created directly on one, is
+not attached and is still modeled on that partition.
+
+A snapshot written by 0.7.0 from such a database (the init snapshot of
+`generate --from-db`, or a snapshot taken by `baseline`) lists the attached
+indexes on the partitions. After the upgrade the live side no longer reports
+them, so `migrate drift` reports each one as `missing: index
+<partition>.<name>` (present in the snapshot, absent live) and exits non-zero,
+and `baseline` reports the database as differing from the snapshot. `migrate
+diff` between your models and the snapshot is still empty, because both carry
+the index.
+
+What to do, per project that has a partitioned table with a parent index:
+
+1. Re-run `momo generate --from-db` with 0.8.0 against a database whose
+   partitions were created by PostgreSQL, so the models and the snapshot both
+   lose the attached partition indexes, or edit both by hand: delete the
+   `c.Index(...)` lines the partitions carry for attached indexes and the same
+   entries from the snapshot. Do not change only the models. The diff would
+   then plan `DROP INDEX` on an attached partition index, which PostgreSQL
+   refuses.
+2. A database that was built from the 0.7.0 init migration has the duplicate
+   partition indexes (the one PostgreSQL attached and the one momo declared).
+   Drop the extra, unattached one by hand; `migrate` does not do it.
+3. A database that was only ever baselined needs nothing else; drift is clean
+   once the snapshot is regenerated.
+
+### `pgxdriver.Listen` and `pgxdriver.Notify` for LISTEN/NOTIFY
+
+New API, nothing to change in existing code. `pgxdriver.Listen` opens a
+dedicated connection, subscribes to channels and reconnects with backoff;
+`pgxdriver.Notify` sends with `pg_notify`. If you kept a raw pgx
+`WaitForNotification` loop beside momo, you can move it onto the `Listener`.
+See [LISTEN and NOTIFY](listen-notify.md).
+
+### `dbdefault` on a pointer field writes false and 0
+
+A `dbdefault` field on a NOT NULL column can now be a pointer. The column stays
+NOT NULL. A nil pointer means "use the database default": `Model` and `Models`
+leave the column out of the INSERT (or write `DEFAULT` in a multi-row VALUES
+list) and `Exec` reads the stored value back into the pointer with `RETURNING`.
+A non-nil pointer is always written, so `false` and `0` reach the database:
+
+```text
+type Account struct {
+	momo.Model `momo:"table:accounts"`
+	ID         int64  `momo:"pk,identity"`
+	Active     *bool  `momo:"default:true,dbdefault"`
+	Level      *int64 `momo:"default:3,dbdefault"`
+}
+
+a := Account{Active: ptr(false)} // stores false; Level is nil, so 3 is read back
+```
+
+`generate` used to refuse `dbdefault` on a pointer. It still refuses it on a
+nullable column (a `sql.Null*` type or the `nullable` tag), because nil would
+stop meaning NULL there. Non-pointer `dbdefault` fields behave as before. The
+read-back rules, the dialects without `RETURNING` (plain MySQL fails with
+`ErrUnsupported` for a nil pointer; an explicit value is still written) and the
+mixed-row limits of SQLite are the same as for any other `dbdefault` field; see
+"Database defaults" in the [AI guide](ai-guide.md).
+
+`Update(...).Model(&m)` treats a nil `dbdefault` pointer as "not set": the
+column is left out of `SET` and keeps its stored value, because writing NULL
+would fail on the NOT NULL column. A pointer to `false` or `0` is written. If
+no column is left to set, the update fails with the usual `ErrValidation` ("no
+columns to update"). Before this change a pointer `dbdefault` field could not be
+generated, so no generated model sees a different result. `Upsert` takes its
+`DO UPDATE` values from `EXCLUDED` and already leaves out a `dbdefault` column
+that any row leaves to the database, so it needs no change.
+
+`momo generate` now warns (on standard error, exit code unchanged) about a
+non-pointer `dbdefault` field of a `bool` or number type whose default is a
+non-zero constant, because the zero value means "use the default" there and an
+explicit `false` or `0` is replaced by it. Make the field a pointer to write
+them.
+
+### `--from-db` generates a pointer for a non-zero constant default
+
+With `introspect.dbdefault: all`, `momo generate --from-db` gives a NOT NULL
+`bool` or number column whose constant default is `true` or non-zero
+(`DEFAULT true`, `DEFAULT 1` and above) a pointer type with `dbdefault`, for
+example `Active *bool` with `` `momo:"default:true,dbdefault"` ``. A plain field
+would silently replace an explicit `false` or `0` with the default. A column
+with a zero default (`DEFAULT false`, `DEFAULT 0`), a text default or a computed
+default keeps its plain type. After you regenerate with this option, fields of
+those columns change from `bool`/`int64` to `*bool`/`*int64`, and code that
+reads them dereferences the pointer. Without `introspect.dbdefault: all` nothing
+changes, because a constant default is not tagged.
+
+The warning and the pointer type cover only plain `bool` and number types
+(`bool`, `int`..`int64`, `uint`..`uint64`, `float32`, `float64`). A named type,
+a type override from `introspect.types` or `introspect.columns`, a decimal or a
+string keeps its field as it is and gets neither.
+
+### New: `RawRows` returns the hooked cursor of a raw statement
+
+`momo.RawRows(ctx, q, sql, args...)` runs a hand-written statement and returns
+an open cursor with `Next`, `Scan(dest ...any)`, `Columns`, `Err` and `Close`,
+for a result whose shape is known only at run time (a column count that depends
+on the input). `Query` and `QueryRows` need a type for the row and `MapRows`
+buffers every row into a map; before this, a `Scan(dest...)` cursor meant
+`db.Driver().Query`, which skips hooks, `WithTxSetup`, error classification and
+redaction. `RawRows` takes the raw path of `Query`: the same placeholders, hooks
+(op `raw`), interceptors, `WithTxSetup` and `WithImplicitTx`, error
+classification and argument redaction, on a `*DB`, a `*Tx` or an `AdoptTx`
+handle.
+
+```text
+rows, err := momo.RawRows(ctx, db, `SELECT id, title FROM tasks WHERE tenant_id = $1`, tenant)
+if err != nil {
+	return err
+}
+defer rows.Close()
+for rows.Next() {
+	if err := rows.Scan(&id, &title); err != nil {
+		return err
+	}
+}
+return rows.Err()
+```
+
+The return type is the new interface `momo.ColumnRows`, a `Rows` that also has
+`Columns`, because `Rows` itself has no column names. Close the cursor, always:
+one that is never closed holds its connection, and on a `*DB` with
+`WithImplicitTx` the transaction behind it. When the context is canceled,
+`Next` returns false, the cursor is closed and `Err` reports `ErrCanceled`; a
+context canceled after the last row was read can still report `ErrCanceled`,
+as in `QueryRows`. Scan errors go through the error classifier and are
+recorded on the hook event.
+
+Under `WithImplicitTx`, momo treats raw SQL as a write, because raw SQL may
+write. The transaction commits when the rows are read to the end. It rolls back,
+and `Close` returns `ErrValidation`, when `Close` comes before the end of the
+rows (including a `Close` with no `Next`), after a Scan or driver error, or
+after a canceled context. Without `WithImplicitTx` an early `Close` is just a
+`Close`. `Columns` returns the names as the driver reports them: an empty list
+means the statement returns no columns (an `UPDATE` without `RETURNING`) or the
+driver cannot name them, and `ErrUnsupported` means the cursor cannot report
+columns at all. This is additive; nothing to change.
+
+### The history importer replays migrations in transactions and writes `-- momo:imported`
+
+`history.Baseline` used to replay every statement of a converted migration in
+autocommit. It now runs a migration that the source did not mark as
+non-transactional between `BEGIN` and `COMMIT` (rolled back when a statement
+or the `COMMIT` fails; this holds on PostgreSQL and SQLite, while MySQL
+commits DDL implicitly), as goose, golang-migrate, Atlas, Bun and `momo migrate apply` run it.
+A migration that used `CREATE TEMP TABLE ... ON COMMIT DROP`, `SET LOCAL` or
+`set_config(..., true)` across statements now replays; one that relied on a
+statement being committed before the next now sees it in the same transaction.
+A non-transactional migration (`NoTx`) runs as before.
+
+`history.WriteImport` now writes a new directive, `-- momo:imported`, as the
+first line of every imported up file (before `-- momo:no-transaction` when
+there is one), so `momo migrate validate` accepts the directory. Before,
+validate reported each imported migration as a custom migration whose snapshot
+differs from its parent's. `validate` skips that check for a file with the
+directive, and `momo migrate rebase` treats the file as hand-written and refuses
+to regenerate it. `migrate.Directives` has a new `Imported` field. A directory
+you imported with an earlier release still fails validate: add
+`-- momo:imported` as the first line of each imported up file and run
+`momo migrate hash`.
+
+### `UnnestColumn` and `Distinct` on aggregates
+
+These are additions; no existing query changes.
+
+`momo.UnnestColumn(col).As(alias, name)` expands an array column (or any
+array expression) of an earlier source into rows, as a `LATERAL` source of a
+join or FROM item. `CrossJoin(momo.UnnestColumn(q2Flags).As("fl", "flag"))`
+renders `CROSS JOIN LATERAL unnest("q2"."flags") AS "fl" ("flag")`, and
+`Column()` of the returned source reads the element. A NULL array yields no
+rows. It is PostgreSQL only and fails the build with `ErrUnsupported` on SQLite
+and MySQL. It reads a column of an earlier source, so it must come after the
+table that holds the array: as the first FROM item it fails the build with
+`ErrValidation`. `CrossJoin` drops the rows whose array is NULL or empty;
+`LeftJoin(src, momo.SQL("true"))` keeps them with a NULL element, rendering
+`LEFT JOIN LATERAL unnest(...) AS "fl" ("flag") ON true`. The element column
+works in `Where` like any column. `momo.UnnestValues` still binds Go slices; use `UnnestColumn` when
+the array comes from a column.
+
+`agg.Call.Distinct()` renders `DISTINCT` inside the call: `Distinct()` on an
+`agg.Array` of a column gives `array_agg(DISTINCT col)`, and it works on
+`agg.String`, `agg.JSONB` and `agg.Func` (a `count` function gives
+`count(DISTINCT col)`). It combines with `OrderBy` and
+`Filter`. It takes exactly one argument, cannot be used with `Over`, and on
+PostgreSQL every `OrderBy` expression must be the argument itself (as
+PostgreSQL requires); each of these fails the build with `ErrValidation`. On `agg.PercentileCont` and `agg.PercentileDisc` it fails with
+`ErrValidation`. SQLite supports it on single-argument aggregates, so
+`agg.String(...).Distinct()` gives `ErrUnsupported` there; MySQL gives
+`ErrUnsupported` for `agg.JSONB(...).Distinct()`.
+
+### `--from-db` can write the inverse has_many and has_one
+
+`momo generate --from-db` wrote a `belongs_to` on the child and nothing on the
+parent, so `Has`, `HasNo`, `LoadCounts` and eager loading of children needed a
+hand-written relation on every parent. Set `introspect.inverse: true` and it
+also writes the inverse on the referenced model: `has_one` when the foreign key
+column is unique (the primary key, a unique constraint, or a plain unique
+index), `has_many` otherwise. It is off by default, so nothing changes until you
+opt in. A hand-edited model file is never replaced, so a project that already
+declared these relations by hand turns the option on and gets a `.new` file to
+merge, or keeps the hand-written relations and leaves it off.
+
+The name is the plural of the child model for `has_many` (`SubscriptionItems`)
+and the child model name for `has_one`. A child with two foreign keys to the same
+parent, and a table that references itself, get `By` and the foreign key field
+without `ID` instead (`MessagesBySender`, `MessagesByRecipient`). Rename or skip
+one with `introspect.relations`, keyed by model and derived name (User.MessagesBySender):
+
+```yaml
+introspect:
+  inverse: true
+  relations:
+    "Subscription.SubscriptionItems": { name: Items }
+    "User.MessagesBySender": { skip: true }
+```
+
+The key uses the name derived before the rule and before any collision suffix,
+and `relations` has no effect unless `inverse` is `true`. A rule key that matches
+no inverse is printed as a warning, and so is an inverse whose name collides with
+another field of the parent and gets a number suffix (Orders2); the warning
+names the key that renames it.
+
+No inverse is written for a composite foreign key, for a foreign key that is left
+out of the models, or from a table with no model (`only` and `skip`).
+
+### `SelectExprs` takes joins, `GroupBy`, `Having` and `OrderBy`
+
+`momo.SelectExprs(...)` had only `From` and `Where`. It now also has `Join`,
+`LeftJoin`, `CrossJoin`, `GroupBy`, `Having` and `OrderBy`, rendered as in
+`Select[T]`, so a grouped `INSERT ... SELECT` source can have any number of
+columns. A join, `GroupBy` or `Having` without `From` fails with
+`ErrValidation`, and so does an `As(...)` alias in `GroupBy`. There is no
+`Limit` or `Offset` on it yet.
+
+### Row-value comparison, `sqlfn.Div`, `sqlfn.CurrentDate`, infinity and `momo.Lit`
+
+These are additions; nothing changes for existing code.
+
+- `momo.Row(a, b).Lt(momo.Row(x, y))` (also `Le`, `Gt`, `Ge`) renders
+  `(a, b) < (x, y)`, the position check of keyset pagination. Both rows need at
+  least two elements and the same count, or the build fails with
+  `ErrValidation`.
+- `sqlfn.Div` and `sqlfn.DivExpr` divide, and `sqlfn.NullIf` and
+  `sqlfn.NullIfExpr` build `NULLIF`, so `sqlfn.DivExpr(final, sqlfn.NullIf(max, 0))` avoids
+  a division by zero. Integer operands divide as integers on PostgreSQL and
+  SQLite, but `/` on integers returns a DECIMAL on MySQL. Division by zero is
+  an error on PostgreSQL and, in strict mode, on MySQL: guard the divisor with
+  `sqlfn.NullIf` on every dialect.
+- `sqlfn.CurrentDate()` is `CURRENT_DATE`. `sqlfn.Infinity()` and
+  `sqlfn.NegInfinity()` are `'infinity'::timestamptz` and
+  `'-infinity'::timestamptz`; they are PostgreSQL only and fail with
+  `ErrUnsupported` elsewhere.
+- `momo.Lit(v)` writes a value into the SQL text instead of binding it, so the
+  same expression is identical text in `SELECT` and `GROUP BY` (a bound value
+  gets a new `$n` each time and PostgreSQL rejects the grouping with 42803),
+  for example `COALESCE(col, 'none')`. It accepts integers, floats, `bool`,
+  strings and `time.Time`. A string renders as a standard SQL string literal
+  with each `'` doubled; a string containing a backslash or a NUL byte fails
+  the build with `ErrValidation` on every dialect (MySQL and PostgreSQL with
+  `standard_conforming_strings` off read a backslash as an escape). A
+  `time.Time` renders as `DATE 'YYYY-MM-DD'` and must be exactly 00:00:00 UTC;
+  a value with a time of day fails with `ErrValidation` instead of losing the
+  time. A NaN or infinite float fails the build with `ErrValidation`.
+
+### Union members keep their ORDER BY and LIMIT, and a union runs at the top level
+
+`Union` used to render every member bare, so a
+member's own `ORDER BY`, `LIMIT`, `OFFSET` or row lock could not be expressed.
+A member that has any of those clauses is now grouped, so the clause binds to
+that member and not to the whole union: in parentheses on PostgreSQL and MySQL,
+and as `SELECT * FROM (member)` on SQLite, which rejects parentheses around a
+compound member. A member without those clauses still renders bare, so existing
+queries keep their SQL. A nested `Union` as a member is grouped the same way.
+
+A union can now run directly. `momo.SelectUnion` (type parameter `T`, then the
+querier, `all` and the members) returns a `UnionQuery[T]` with `OrderBy`, `Limit`, `Offset`, `SQL`, `All` and
+`Rows`; `T` is a model, a projection, a tuple row or a plain struct, matched to
+the result columns as for `momo.Query`. The outer `OrderBy` orders the whole
+union and may name result columns only; build them with
+`momo.ColumnOf` and an empty source:
+
+```text
+teachersTop := momo.Select[Hit](db).From(teachers).Columns(kind, id, name).
+	OrderBy(name.Asc()).Limit(5)
+studentsTop := momo.Select[Hit](db).From(students).Columns(kind, id, name).
+	OrderBy(name.Asc()).Limit(5)
+byName := momo.ColumnOf[string]("", "full_name")
+rows, err := momo.SelectUnion[Hit](db, true, teachersTop, studentsTop).
+	OrderBy(byName.Asc()).Limit(8).All(ctx)
+```
+
+A row lock inside a member returns `ErrUnsupported` on SQLite, as on a plain
+select, and on PostgreSQL, which rejects `FOR UPDATE` inside a set operation;
+MySQL accepts it in a parenthesised member. A member with its own `WITH`
+clause is grouped like one with `ORDER BY`. An outer `OrderBy` that names a
+qualified column or an expression fails at build time with `ErrValidation`.
+Hooks and interceptors see op `select` with an empty table name.
+
+### Nested `Has` and `HasNo` get one alias per level
+
+A relation predicate nested inside the scope of another one used to render both
+subqueries with the child alias `momo_r`, so the inner correlation compared the
+inner table with itself and the statement failed (`column momo_r.planPriceId
+does not exist`). Each nesting level now has its own alias: `momo_r` for the
+outermost subquery, `momo_r2` for the one inside it, `momo_r3` inside that, and
+the same for the many-to-many join table (`momo_j`, `momo_j2`, ...). A plain
+`Has`, `HasNo` or `CountOrder` whose parent is the child of the enclosing
+subquery correlates on that enclosing alias on its own:
+
+```text
+momo.Select[models.Subscription](db).Where(
+	subscription.Items.Has(
+		subscriptionitem.PlanPrice.Has(planprice.PlanID.As("momo_r").Eq("p1"))))
+```
+
+Inside a scope predicate, `As("momo_r")` always names the child of the
+subquery that the scope belongs to, at any depth. Nothing changes for code that
+uses one level, and the SQL of a single `Has` is the same as before. A scope
+that needs the child of an enclosing level other than its own uses the new
+`momo.RelAlias(level)`: level 1 is the outermost subquery, level 2 the one
+inside it. `RelAlias(n)` is never rewritten, so it can name the outermost level
+from any depth:
+
+```text
+author.FirstDocument.Has(document.Taggings.Has(tagging.Tag.Has(
+	tag.Name.As("momo_r").Eq("db"),
+	document.ID.As(momo.RelAlias(1)).Eq(int64(1)))))
+```
+
+In a self-referencing relation a nested `Has` correlates on the enclosing
+child, and `HasFrom(alias)` keeps the alias you name. `HasFrom("momo_r")` is the
+literal outermost alias. A `Subquery` or CTE of your own inside a scope does not
+start a level, and your own table aliases must not use the names `momo_r`,
+`momo_r<N>`, `momo_j` or `momo_j<N>`.
+
+### `momovet` accepts a `//momovet:ok <reason>` directive
+
+A raw-SQL call whose text is built from constants and allowlisted identifiers can now be marked as vetted with a line directive: a trailing `//momovet:ok <reason>` comment on the call's line, or the same comment alone on the line directly above it. A trailing comment never covers the next line. The directive silences the report for that call only. A directive without a reason, or one that suppresses nothing, is reported itself, so add a reason to every directive. See [momovet](momovet.md).
+
+### `--from-db` models stored generated columns as read-only fields
+
+`momo generate --from-db` used to leave a `GENERATED ALWAYS AS (...) STORED`
+column out of the models and the snapshot with a warning, so typed builders
+could not select or filter by it and the baseline reported it. It now writes the
+column as a `read_only` field with the new `generated:<expr>` tag. `Insert` and
+`Update` never write the field, typed `Select` and `Where` can use it, and the
+snapshot carries the expression, so `migrate diff` stays empty and `migrate`
+renders `GENERATED ALWAYS AS (...) STORED` on PostgreSQL, MySQL and SQLite.
+
+```text
+type Account struct {
+	momo.Model `momo:"table:accounts"`
+	ID         int64  `momo:"pk,identity"`
+	Name       string
+	Normalized string `momo:"read_only,generated:lower(name)"`
+}
+```
+
+A tag value cannot hold a comma, so an expression with one is declared in
+`MomoConfig` with the new `Config.Generated` instead, which `--from-db` writes for
+you: `c.Generated(&m.Label, "coalesce(name, '') || email")`. The generator
+refuses a generated field that is not `read_only`, or that also has a default,
+identity, serial, `dbdefault`, `version`, `soft_delete`, `created_at`,
+`updated_at` or `idgen`.
+
+What to do: regenerate with `momo generate --from-db` to model the columns, or
+keep the `introspect.skip` or `introspect.only` rules that hid them.
+`--from-db` reads PostgreSQL only, and PostgreSQL inspection still refuses a
+`VIRTUAL` generated column (hide its table with `migrate.exclude`); nothing
+changes for it. How the MySQL and SQLite inspectors treat a `VIRTUAL` column is
+tracked in issue 111.
+
+A read-only generated field is not read back after an insert: a model insert
+leaves the Go value as it was, so select the row again to see the computed
+value.
+
+### `From` and `Using` take several sources, and `Returning` reads their columns
+
+`UpdateQuery.From` and `DeleteQuery.Using` now take `...TableSource`: pass a
+CTE and a table (`From(momo.CTE("due"), subscription)`) and they render as a
+comma list. A call with one source is unchanged, but the method's type changed,
+so a method value assigned to a `func(TableSource) UpdateQuery[T]` variable no
+longer compiles.
+
+With two or more sources the unfiltered-mutation guard also requires `Where` to
+reference every source (the rules for `Or`, `Not` and `JoinSQL` are those for the
+target). A statement that left one source out of `Where`, a cross join, now fails
+with `ErrUnfilteredMutation`; join it, or confirm with `AllRows()`. A statement
+with one source is checked as before.
+
+`Returning` accepts columns of a `From` or `Using` source or CTE, and
+`momo.ScanUpdate` and `momo.ScanDelete` scan the list
+into a plain struct, projection or tuple row by column name. On PostgreSQL the
+RETURNING list of any statement with a source is now rendered qualified
+(`RETURNING "t"."id"`), which fixes the ambiguity when the source shares a column
+name with the target. `Rows` and `One` return `ErrValidation` for a list with a
+source column. SQLite returns `ErrUnsupported` for one, as its RETURNING reads the
+modified table only.
 
 ## Upgrading to 0.7.0
 

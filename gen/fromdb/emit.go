@@ -22,6 +22,7 @@ import (
 	"go/token"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ import (
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/gen/typemap"
+	"github.com/azrtydxb/momo/internal/dbdefault"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -166,10 +168,20 @@ type field struct {
 	tagSig            string  // sort, nulls and method written for the index tags
 }
 
-// relation is a belongs_to field.
+// relation is a relation field: a belongs_to read from a foreign key, or the
+// has_one or has_many inverse of one.
 type relation struct {
 	name, target string
 	opts         []string
+	// kind is belongs_to, has_one or has_many.
+	kind string
+	// child, parent and fkField describe the foreign key behind the relation:
+	// the referencing model, the referenced model and the Go field that holds it.
+	child, parent *model
+	fkField       string
+	// derived is the introspect.relations key of an inverse: the parent model
+	// and the name derived before any rule or collision suffix.
+	derived string
 }
 
 type generator struct {
@@ -197,6 +209,9 @@ func (g *generator) run() error {
 	}
 	for _, m := range g.models {
 		g.constraints(m)
+	}
+	if g.o.Config.Inverse {
+		g.inverses()
 	}
 	g.globals()
 	names := map[string]bool{}
@@ -377,23 +392,19 @@ func (g *generator) columns(m *model) {
 	for _, c := range t.PrimaryKey {
 		pk[c] = true
 	}
-	var keep []schema.Column
-	for _, col := range t.Columns {
+	for i := range t.Columns {
+		// field may adjust the column (an enum column's type), and the snapshot
+		// keeps that, so it gets the column in place.
+		col := &t.Columns[i]
 		obj := t.Name + "." + col.Name
-		if col.Generated != "" {
-			g.add(SevWarn, obj, "generated column is not modeled: it is left out of the models and the snapshot, so the baseline will report it")
-			continue
-		}
-		f, err := g.field(m, &col, pk[col.Name])
+		f, err := g.field(m, col, pk[col.Name])
 		if err != nil {
 			g.add(SevError, obj, "%v", err)
 		} else {
 			m.fields = append(m.fields, f)
 			m.byCol[col.Name] = f
 		}
-		keep = append(keep, col)
 	}
-	t.Columns = keep
 	if len(t.PrimaryKey) == 0 {
 		g.add(SevNote, t.Name, "the table has no primary key")
 	} else if !pkInColumnOrder(t) {
@@ -513,7 +524,11 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 	if col.Nullable && gt.Nilable {
 		opts = append(opts, "nullable")
 	}
-	for _, e := range []struct{ key, val string }{{"collate", col.Collate}, {"default", col.Default}, {"comment", col.Comment}} {
+	if col.Generated != "" {
+		// A stored generated column is written by the database only.
+		opts = append(opts, "read_only")
+	}
+	for _, e := range []struct{ key, val string }{{"collate", col.Collate}, {"default", col.Default}, {"generated", col.Generated}, {"comment", col.Comment}} {
 		if e.val == "" {
 			continue
 		}
@@ -529,6 +544,12 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 	}
 	goType := gt.Expr
 	if col.Nullable && !gt.Nilable {
+		goType = "*" + goType
+	}
+	if !col.Nullable && slices.Contains(opts, "dbdefault") && dbdefault.NonZeroConst(gt.Expr, col.Default) {
+		// A bool or number whose constant default is true or non-zero: a plain
+		// field would replace an explicit false or 0 with the default, so the
+		// field is a pointer (nil takes the default, any value is written).
 		goType = "*" + goType
 	}
 	if gt.Note != "" {
@@ -800,7 +821,7 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		rel = target.name
 	}
 	rel = uniqueName(m.used, rel)
-	m.rels = append(m.rels, &relation{name: rel, target: target.name, opts: opts})
+	m.rels = append(m.rels, &relation{name: rel, target: target.name, opts: opts, kind: "belongs_to", child: m, parent: target, fkField: f.name})
 	return true
 }
 
@@ -1175,7 +1196,11 @@ func (g *generator) render(m *model, names map[string]bool) (File, error) {
 		b.WriteString("\n")
 	}
 	for _, r := range m.rels {
-		b.WriteString("\t" + r.name + " *" + r.target + " `momo:\"" + strings.Join(r.opts, ",") + "\"`\n")
+		typ := "*" + r.target
+		if r.kind == "has_many" {
+			typ = "[]" + r.target
+		}
+		b.WriteString("\t" + r.name + " " + typ + " `momo:\"" + strings.Join(r.opts, ",") + "\"`\n")
 	}
 	b.WriteString("}\n")
 	if len(m.stmts) > 0 {
