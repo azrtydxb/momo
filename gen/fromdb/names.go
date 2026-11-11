@@ -6,14 +6,9 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
-)
 
-// initialisms are written in capitals inside a Go name (UserID, not UserId).
-var initialisms = map[string]string{
-	"id": "ID", "url": "URL", "uri": "URI", "uuid": "UUID", "api": "API",
-	"http": "HTTP", "https": "HTTPS", "ip": "IP", "json": "JSON", "sql": "SQL",
-	"html": "HTML", "xml": "XML", "tls": "TLS", "ssh": "SSH", "cpu": "CPU",
-}
+	"github.com/azrtydxb/momo/gen/naming"
+)
 
 // splitWords splits a database identifier into words on separators and on
 // camel case boundaries, so user_id, user-id, userId and UserID give the
@@ -47,12 +42,13 @@ func splitWords(s string) []string {
 	return words
 }
 
-// titleWord capitalizes one word, keeping an initialism in capitals.
+// titleWord capitalizes one word, keeping an initialism in capitals and a
+// plural initialism as IDs, from the word list naming.ToSnake shares.
 func titleWord(w string) string {
-	lower := strings.ToLower(w)
-	if v, ok := initialisms[lower]; ok {
+	if v, ok := naming.GoInitialism(w); ok {
 		return v
 	}
+	lower := strings.ToLower(w)
 	r, n := utf8.DecodeRuneInString(lower)
 	return string(unicode.ToUpper(r)) + lower[n:]
 }

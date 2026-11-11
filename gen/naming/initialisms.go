@@ -84,3 +84,46 @@ func snakeInitialisms(name string) string {
 }
 
 func isUpperByte(c byte) bool { return c >= 'A' && c <= 'Z' }
+
+// goInitialisms is the word list of the Go-style snake_case and of the
+// --from-db field names: a word in it is written in capitals inside a Go name
+// (UserID, not UserId), and a plural s after it belongs to it (IDs, URLs).
+var goInitialisms = map[string]bool{
+	"ACL": true, "API": true, "ASCII": true, "CPU": true, "CSS": true,
+	"DNS": true, "EOF": true, "GUID": true, "HTML": true, "HTTP": true,
+	"HTTPS": true, "ID": true, "IP": true, "JSON": true, "LHS": true,
+	"QPS": true, "RAM": true, "RHS": true, "RPC": true, "SLA": true,
+	"SMTP": true, "SQL": true, "SSH": true, "TCP": true, "TLS": true,
+	"TTL": true, "UDP": true, "UI": true, "UID": true, "URI": true,
+	"URL": true, "UUID": true, "VM": true, "XML": true, "XMPP": true,
+	"XSRF": true, "XSS": true,
+}
+
+// maxInitialism is the length of the longest word in goInitialisms.
+const maxInitialism = 5
+
+// GoInitialism reports whether word, in any letter case, is an initialism
+// of the word list (id, URL) or its plural (ids, Urls), and returns its Go
+// spelling: ID, URL, IDs, URLs. It is the list ToSnake and the --from-db
+// field names share, so a name round-trips between a column and a Go field.
+func GoInitialism(word string) (string, bool) {
+	up := strings.ToUpper(word)
+	if goInitialisms[up] {
+		return up, true
+	}
+	if n := len(up); n > 1 && up[n-1] == 'S' && goInitialisms[up[:n-1]] {
+		return up[:n-1] + "s", true
+	}
+	return "", false
+}
+
+// initialismSuffix returns the length of the longest word of the list that
+// the upper-case run ends with, or 0.
+func initialismSuffix(run []rune) int {
+	for n := min(len(run), maxInitialism); n > 0; n-- {
+		if goInitialisms[string(run[len(run)-n:])] {
+			return n
+		}
+	}
+	return 0
+}
