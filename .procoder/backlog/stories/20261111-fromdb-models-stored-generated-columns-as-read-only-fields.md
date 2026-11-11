@@ -56,7 +56,12 @@ no VIRTUAL case left in `--from-db`; this is a decision for the integrator.
   `TestTagGrammar: "generated:lower(name)" rejected: unknown tag option "generated"`,
   `TestGenerateFromDBStoredGenerated: unexpected warning: users.normalized: generated column is not modeled`,
   `TestGeneratedTagReachesColumn: column = {... Generated: ...}, want the generated expression`.
-- Green: ci-agent run 42988137043, headSha bf70aea8ef97db46bc764228c1d17d32a6e023dc, all 9 jobs success
+- Red (review round, IDGen and Serial refusals): ci-agent run 42993215775 (sha 0ed2818); `TestGeneratedTagRefusals/serial`
+  and `/identity` failed on the old combined message that named neither conflict.
+- Green (final): ci-agent run 43001013480, headSha de1def7f9cedc2f4f15e90e67fc3a4f9ddfeef68, all 9 jobs success,
+  including integration-mysql 84, 97 and mariadb running `TestStoredGeneratedColumnLive` (Insert, Upsert, chunked
+  insert, Update; plus Unnest and Copy on PostgreSQL).
+- Earlier green: ci-agent run 42988137043, headSha bf70aea8ef97db46bc764228c1d17d32a6e023dc, all 9 jobs success
   (unit; integration postgres, which runs the `--from-db` round trip with an empty `migrate diff` after baseline and
   `TestStoredGeneratedColumnLive`; integration-mysql 84, 97 and mariadb, which run `TestStoredGeneratedColumnLive`;
   lint; apidiff-docs; fuzz-smoke; bench-module).
