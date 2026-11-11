@@ -359,3 +359,15 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   Reword the criterion to say so, and close the story.
 - **163 and 243, benchmark results:** stay open until the user commits a
   `make bench` reference run from dedicated hardware.
+
+## Sprint 9 design decisions (2026-11-11, the user, via AskUserQuestion)
+
+- **#90, an explicit zero for a `dbdefault` column:** allow `dbdefault` on a
+  pointer field of a NOT NULL column. nil uses the database default; a
+  non-nil value is always written, including false and 0.
+- **#106, momovet's trusted-SQL marker:** a `//momovet:ok <reason>` line
+  directive on the call line. The reason is required, and a directive
+  without one is itself reported. No new API type.
+- **#108 (integrator, from the issue's expected behaviour):** objects of a
+  table that is skipped or not modeled are not generated, and there is no
+  opt-in.
