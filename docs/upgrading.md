@@ -5,6 +5,31 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `UnnestColumn` and `Distinct` on aggregates
+
+These are additions; no existing query changes.
+
+`momo.UnnestColumn(col).As(alias, name)` expands an array column (or any
+array expression) of an earlier source into rows, as a `LATERAL` source of a
+join or FROM item. `CrossJoin(momo.UnnestColumn(q2Flags).As("fl", "flag"))`
+renders `CROSS JOIN LATERAL unnest("q2"."flags") AS "fl" ("flag")`, and
+`Column()` of the returned source reads the element. A NULL array yields no
+rows. It is PostgreSQL only and fails the build with `ErrUnsupported` on SQLite
+and MySQL. `momo.UnnestValues` still binds Go slices; use `UnnestColumn` when
+the array comes from a column.
+
+`agg.Call.Distinct()` renders `DISTINCT` inside the call: `Distinct()` on an
+`agg.Array` of a column gives `array_agg(DISTINCT col)`, and it works on
+`agg.String`, `agg.JSONB` and `agg.Func` (a `count` function gives
+`count(DISTINCT col)`). It combines with `OrderBy` and
+`Filter`; PostgreSQL requires each `OrderBy` expression to appear among the
+arguments. On `agg.PercentileCont` and `agg.PercentileDisc` it fails with
+`ErrValidation`. SQLite supports it on single-argument aggregates, so
+`agg.String(...).Distinct()` gives `ErrUnsupported` there; MySQL gives
+`ErrUnsupported` for `agg.JSONB(...).Distinct()`.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
