@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/gen/tags"
+	"github.com/azrtydxb/momo/schema"
 )
 
 // Config is the introspect: section of momo.yaml. It steers `momo generate
@@ -192,14 +193,10 @@ func (c *Config) outsideOnly(schemaName, table string) bool {
 	return true
 }
 
-// matchTable reports whether a skip or only glob matches a table: the bare
-// name, or schema.name for a table outside the current schema. migrate matches
-// the same way, so introspect.only and the migrate side agree on one table set.
+// matchTable reports whether a skip or only glob matches a table, by the rule
+// migrate shares: schema.MatchObject.
 func matchTable(glob, schemaName, name string) bool {
-	if matchGlob(glob, name) {
-		return true
-	}
-	return schemaName != "" && matchGlob(glob, schemaName+"."+name)
+	return schema.MatchObject([]string{glob}, schemaName, name)
 }
 
 // matchGlob reports whether name matches the glob. A malformed glob never
