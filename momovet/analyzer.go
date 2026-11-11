@@ -17,6 +17,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"sort"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -47,9 +48,10 @@ const directivePrefix = "//momovet:ok"
 
 // directive is one //momovet:ok comment.
 type directive struct {
-	pos    token.Pos
-	reason string
-	used   bool
+	pos        token.Pos
+	reason     string
+	standalone bool // alone on its line, so it may cover the call below it
+	used       bool
 }
 
 type lineKey struct {
@@ -57,34 +59,66 @@ type lineKey struct {
 	line int
 }
 
-// collectDirectives indexes every //momovet:ok comment by file and line.
-func collectDirectives(pass *analysis.Pass) map[lineKey]*directive {
-	out := map[lineKey]*directive{}
+// collectDirectives indexes every //momovet:ok comment by file and line, and
+// returns them in source order. Only the exact line-comment form counts:
+// "//momovet:ok" followed by the end of the comment or a space or tab.
+func collectDirectives(pass *analysis.Pass) (map[lineKey]*directive, []*directive) {
+	byLine := map[lineKey]*directive{}
+	var all []*directive
 	for _, f := range pass.Files {
+		var code map[int]bool // lines that hold code, built on first use
 		for _, cg := range f.Comments {
 			for _, c := range cg.List {
 				rest, ok := strings.CutPrefix(c.Text, directivePrefix)
 				if !ok || (rest != "" && rest[0] != ' ' && rest[0] != '\t') {
 					continue
 				}
+				if code == nil {
+					code = codeLines(pass.Fset, f)
+				}
 				p := pass.Fset.Position(c.Slash)
-				out[lineKey{p.Filename, p.Line}] = &directive{pos: c.Slash, reason: strings.TrimSpace(rest)}
+				d := &directive{pos: c.Slash, reason: strings.TrimSpace(rest), standalone: !code[p.Line]}
+				byLine[lineKey{p.Filename, p.Line}] = d
+				all = append(all, d)
 			}
 		}
 	}
-	return out
+	sort.Slice(all, func(i, j int) bool { return all[i].pos < all[j].pos })
+	return byLine, all
+}
+
+// codeLines returns the lines on which a syntax node of f starts or ends. A
+// comment that shares such a line trails code; any other comment line is
+// standalone.
+func codeLines(fset *token.FileSet, f *ast.File) map[int]bool {
+	lines := map[int]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch n.(type) {
+		case nil:
+			return false
+		case *ast.Comment, *ast.CommentGroup:
+			return false
+		}
+		lines[fset.Position(n.Pos()).Line] = true
+		lines[fset.Position(n.End()).Line] = true
+		return true
+	})
+	return lines
 }
 
 // find returns the directive that covers a call: a trailing comment on the
-// line of the call or of its SQL argument, or a comment on the line directly
-// above the call.
+// line of the call or of its SQL argument, or a standalone comment on the line
+// directly above the call. A trailing comment never covers the next line.
 func find(pass *analysis.Pass, dirs map[lineKey]*directive, call *ast.CallExpr, arg ast.Expr) *directive {
 	c := pass.Fset.Position(call.Pos())
 	a := pass.Fset.Position(arg.Pos())
-	for _, k := range []lineKey{{c.Filename, c.Line}, {a.Filename, a.Line}, {c.Filename, c.Line - 1}} {
+	for _, k := range []lineKey{{c.Filename, c.Line}, {a.Filename, a.Line}} {
 		if d, ok := dirs[k]; ok {
 			return d
 		}
+	}
+	if d, ok := dirs[lineKey{c.Filename, c.Line - 1}]; ok && d.standalone {
+		return d
 	}
 	return nil
 }
@@ -93,8 +127,8 @@ func find(pass *analysis.Pass, dirs map[lineKey]*directive, call *ast.CallExpr, 
 // points: momo.Exec, momo.Scalars, momo.MapRows, momo.Query and momo.QueryRows (argument index 2), momo.RawQuery (index 1), momo.SQL,
 // momo.TypedSQL and momo.RawSubquery (argument index 0). A string literal, a
 // constant, or an expression of constants is accepted. A //momovet:ok <reason>
-// comment on the call's line, or on the line above, suppresses the report for
-// that call; the directive is itself reported when it has no reason or
+// comment on the call's line, or alone on the line above, suppresses the
+// report for that call; the directive is itself reported when it has no reason or
 // suppresses nothing.
 var Analyzer = &analysis.Analyzer{
 	Name:     "momovet",
@@ -105,7 +139,7 @@ var Analyzer = &analysis.Analyzer{
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	dirs := collectDirectives(pass)
+	dirs, ordered := collectDirectives(pass)
 	in := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	in.Preorder([]ast.Node{(*ast.CallExpr)(nil)}, func(n ast.Node) {
 		call := n.(*ast.CallExpr)
@@ -123,7 +157,7 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 		pass.Reportf(arg.Pos(), "non-constant SQL string passed to momo.%s", name)
 	})
-	for _, d := range dirs {
+	for _, d := range ordered {
 		switch {
 		case d.reason == "":
 			pass.Reportf(d.pos, "%s needs a reason: //momovet:ok <reason>", directivePrefix)

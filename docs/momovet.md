@@ -31,7 +31,14 @@ momo.Exec(ctx, db, "UPDATE "+table+" SET x = 1") //momovet:ok table comes from t
 momo.Query[int](ctx, db, "SELECT "+column+" FROM t")
 ```
 
-The directive goes as a trailing comment on the line of the call (or of its SQL argument), or on the line directly above the call. It suppresses the report for that one call only. A call without a directive is still reported.
+The directive must start the comment and be spelled exactly `//momovet:ok`, followed by a space and the reason. These are not directives, and the call stays reported: `// momovet:ok` (with a space), `//momovet:OK`, `//momovet:okay`, `/*momovet:ok ...*/`, and `//nolint:x //momovet:ok` (the directive is not at the start of the comment).
+
+Where it goes:
+
+- As a trailing comment on the line of the call, or on the line of its SQL argument. For a call that spans several lines, put it on the first line of the call or on the line of the SQL argument.
+- Alone on the line directly above the call. A comment that trails other code on its line never covers the next line.
+
+It suppresses the report for that one call only. A call without a directive is still reported.
 
 The directive is itself reported when:
 

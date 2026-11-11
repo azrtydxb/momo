@@ -9,7 +9,7 @@ later releases can break more.
 
 ### `momovet` accepts a `//momovet:ok <reason>` directive
 
-A raw-SQL call whose text is built from constants and allowlisted identifiers can now be marked as vetted with a line directive, as a trailing comment on the call or on the line directly above it. The directive silences the report for that call only. A directive without a reason, or one that suppresses nothing, is reported itself, so an existing `//momovet:ok` comment you wrote for another tool would now be reported if it has no reason. See [momovet](momovet.md).
+A raw-SQL call whose text is built from constants and allowlisted identifiers can now be marked as vetted with a line directive: a trailing `//momovet:ok <reason>` comment on the call's line, or the same comment alone on the line directly above it. A trailing comment never covers the next line. The directive silences the report for that call only. A directive without a reason, or one that suppresses nothing, is reported itself, so add a reason to every directive. See [momovet](momovet.md).
 
 ## Upgrading to 0.7.0
 
