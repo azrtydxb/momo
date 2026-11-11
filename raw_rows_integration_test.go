@@ -9,6 +9,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -53,15 +54,57 @@ func (r *rrRecorder) setups() int {
 
 func rrOpen(t *testing.T, rec *rrRecorder, fn func(t *testing.T, db *momo.DB, d dialect.Name)) {
 	t.Helper()
-	testopen.Each(t, fn,
+	rrOpenMode(t, rec, true, fn)
+}
+
+// rrOpenMode opens PostgreSQL and SQLite with a hook and a tx setup, with or
+// without WithImplicitTx.
+func rrOpenMode(t *testing.T, rec *rrRecorder, implicit bool, fn func(t *testing.T, db *momo.DB, d dialect.Name)) {
+	t.Helper()
+	opts := []momo.Option{
 		momo.WithHook(rec),
-		momo.WithImplicitTx(),
 		momo.WithTxSetup(func(context.Context, *momo.Tx) error {
 			rec.mu.Lock()
 			rec.setup++
 			rec.mu.Unlock()
 			return nil
-		}))
+		}),
+	}
+	if implicit {
+		opts = append(opts, momo.WithImplicitTx())
+	}
+	testopen.Each(t, fn, opts...)
+}
+
+// rrBothModes runs fn with and without WithImplicitTx.
+func rrBothModes(t *testing.T, fn func(t *testing.T, rec *rrRecorder, db *momo.DB, implicit bool)) {
+	t.Helper()
+	for _, implicit := range []bool{true, false} {
+		name := "plain"
+		if implicit {
+			name = "implicit"
+		}
+		t.Run(name, func(t *testing.T) {
+			rec := &rrRecorder{}
+			rrOpenMode(t, rec, implicit, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+				rqSetup(t, db)
+				fn(t, rec, db, implicit)
+			})
+		})
+	}
+}
+
+// rrReleased proves the cursor let go of its connection and transaction: a
+// write to the table the cursor read succeeds within a deadline (a leaked
+// SQLite connection or an open PostgreSQL transaction on the pool would hang
+// it; testopen also reports a leaked PostgreSQL connection at cleanup).
+func rrReleased(t *testing.T, db *momo.DB) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := momo.Exec(ctx, db, "UPDATE rq_items SET name = name"); err != nil {
+		t.Fatalf("the connection was not released: %v", err)
+	}
 }
 
 // rrRead drains rows into [id, name] pairs through a dynamic Scan.
@@ -147,11 +190,9 @@ func TestRawRowsPaths(t *testing.T) {
 }
 
 // Catches: a canceled context leaving the cursor open or silent, and the
-// hook pair never ending.
+// hook pair ending without the error (with and without WithImplicitTx).
 func TestRawRowsClosesOnCancel(t *testing.T) {
-	rec := &rrRecorder{}
-	rrOpen(t, rec, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		rqSetup(t, db)
+	rrBothModes(t, func(t *testing.T, rec *rrRecorder, db *momo.DB, implicit bool) {
 		cctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		before := len(rec.raw())
@@ -169,38 +210,128 @@ func TestRawRowsClosesOnCancel(t *testing.T) {
 		if err := rows.Err(); !errors.Is(err, momo.ErrCanceled) {
 			t.Fatalf("Err = %v, want ErrCanceled", err)
 		}
-		if n := len(rec.raw()); n != before+1 {
-			t.Fatalf("cancel did not end the hook pair: %d events (before %d)", n, before)
+		evs := rec.raw()
+		if len(evs) != before+1 {
+			t.Fatalf("cancel did not end the hook pair: %d events (before %d)", len(evs), before)
+		}
+		if evs[len(evs)-1].Err == nil {
+			t.Fatal("the hook event of a canceled statement has a nil Err")
 		}
 		_ = rows.Close()
 		_ = rows.Close() // safe twice
 		if n := len(rec.raw()); n != before+1 {
 			t.Fatalf("Close after cancel fired another hook event: %d (before %d)", n, before)
 		}
+		rrReleased(t, db)
 	})
 }
 
-// Catches: a build error or a driver error from RawRows escaping the raw
-// path's checks.
-func TestRawRowsErrors(t *testing.T) {
-	rec := &rrRecorder{}
-	rrOpen(t, rec, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		rqSetup(t, db)
+// Catches: an early Close leaking the connection or committing a half-read
+// write, and the documented implicit-tx outcome (ErrValidation) changing.
+func TestRawRowsEarlyClose(t *testing.T) {
+	rrBothModes(t, func(t *testing.T, rec *rrRecorder, db *momo.DB, implicit bool) {
+		const stmt = "SELECT id, name FROM rq_items ORDER BY id"
 		ctx := context.Background()
-		if _, err := momo.RawRows(ctx, db, "SELECT id FROM rq_items WHERE id = ?"); err == nil {
-			t.Fatal("argument-count mismatch must be a build error")
+		check := func(t *testing.T, err error) {
+			t.Helper()
+			if implicit && !errors.Is(err, momo.ErrValidation) {
+				t.Fatalf("early Close under WithImplicitTx = %v, want ErrValidation", err)
+			}
+			if !implicit && err != nil {
+				t.Fatalf("early Close = %v, want nil", err)
+			}
+		}
+
+		// Close with no Next.
+		before := len(rec.raw())
+		rows, err := momo.RawRows(ctx, db, stmt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check(t, rows.Close())
+		if err := rows.Close(); err != nil && !implicit {
+			t.Fatalf("second Close = %v", err)
+		}
+		if n := len(rec.raw()); n != before+1 {
+			t.Fatalf("Close without Next: %d hook events (before %d), want one", n, before)
+		}
+		rrReleased(t, db)
+
+		// Close mid-iteration.
+		rows, err = momo.RawRows(ctx, db, stmt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !rows.Next() {
+			t.Fatalf("Next false: %v", rows.Err())
+		}
+		check(t, rows.Close())
+		rrReleased(t, db)
+
+		// Read to the end: a clean Close.
+		rows, err = momo.RawRows(ctx, db, stmt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := rrRead(t, rows); len(got) != 3 {
+			t.Fatalf("rows = %v", got)
+		}
+		rrReleased(t, db)
+	})
+}
+
+// Catches: a Scan error not reaching the hook event, or leaving the
+// transaction open.
+func TestRawRowsScanError(t *testing.T) {
+	rrBothModes(t, func(t *testing.T, rec *rrRecorder, db *momo.DB, implicit bool) {
+		before := len(rec.raw())
+		rows, err := momo.RawRows(context.Background(), db, "SELECT id, name FROM rq_items ORDER BY id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !rows.Next() {
+			t.Fatalf("Next false: %v", rows.Err())
+		}
+		var id int64
+		if err := rows.Scan(&id); err == nil { // two columns, one destination
+			t.Fatal("Scan with the wrong destination count must fail")
+		}
+		cerr := rows.Close()
+		if implicit && cerr == nil {
+			t.Fatal("Close after a Scan error must report it under WithImplicitTx (the transaction rolled back)")
+		}
+		evs := rec.raw()
+		if len(evs) != before+1 || evs[len(evs)-1].Err == nil {
+			t.Fatalf("the Scan error is not on the hook event: %d events (before %d)", len(evs), before)
+		}
+		rrReleased(t, db)
+	})
+}
+
+// Catches: a build or driver error from RawRows escaping classification.
+func TestRawRowsErrors(t *testing.T) {
+	rrBothModes(t, func(t *testing.T, rec *rrRecorder, db *momo.DB, implicit bool) {
+		ctx := context.Background()
+		_, err := momo.RawRows(ctx, db, "SELECT id FROM rq_items WHERE id = ?")
+		if !errors.Is(err, momo.ErrValidation) {
+			t.Fatalf("argument-count mismatch = %v, want ErrValidation", err)
 		}
 		// A driver may report a server error at open or on the first Next.
-		rows, err := momo.RawRows(ctx, db, "SELECT * FROM rq_missing_table")
+		rows, err := momo.RawRows(ctx, db, "INSERT INTO rq_items (id, name) VALUES (1, 'dup') RETURNING id")
 		if err == nil {
-			defer func() { _ = rows.Close() }()
 			if rows.Next() {
-				t.Fatal("missing table returned a row")
+				t.Fatal("a duplicate key returned a row")
 			}
 			err = rows.Err()
+			_ = rows.Close()
 		}
-		if err == nil {
-			t.Fatal("missing table must fail")
+		if !errors.Is(err, momo.ErrUniqueViolation) {
+			t.Fatalf("duplicate key = %v, want ErrUniqueViolation", err)
 		}
+		evs := rec.raw()
+		if len(evs) == 0 || evs[len(evs)-1].Err == nil {
+			t.Fatal("the failed statement's hook event has a nil Err")
+		}
+		rrReleased(t, db)
 	})
 }
