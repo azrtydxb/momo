@@ -65,7 +65,7 @@ var postgresTypes = map[string]GoType{
 	"json":             {Expr: "types.JSON[json.RawMessage]", Import: "encoding/json"},
 	"hstore":           {Expr: "types.Hstore", Import: importTypes, Nilable: true},
 	"tsvector":         {Expr: "types.TSVector", Import: importTypes},
-	"numeric":          {Expr: "string", Note: "decimal-as-string: numeric is carried as a string; set an introspect types rule for a decimal type"},
+	"numeric":          {Expr: "types.Numeric", Import: importTypes},
 
 	"timestamp without time zone": {Expr: "time.Time", Import: "time"},
 	"timestamp with time zone":    {Expr: "time.Time", Import: "time"},

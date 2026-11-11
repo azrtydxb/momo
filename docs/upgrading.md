@@ -5,6 +5,28 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `types.Date` infinity and the new `types.Numeric`
+
+`types.Date` gains two fields, `Infinity` and `NegInfinity`, and `IsFinite()`.
+PostgreSQL `infinity` and `-infinity` now scan into the flags and are written
+back from them; before, a read of one failed. A `Date{Time: t}` literal and the
+finite behavior are unchanged. SQLite and MySQL have no special dates, so a
+`Date` with a flag set is `ErrValidation` there.
+
+`types.Numeric` is a new exact decimal: `numeric` on PostgreSQL, `TEXT` on
+SQLite and MySQL. It holds the digits as a string in `Decimal`, plus `NaN`,
+`Infinity` and `NegInfinity` flags, and has `IsFinite`, `IsNaN`, `IsInfinite`,
+`Sign`, `String` and `ParseNumeric`. A `Numeric` that is `NaN` or infinite is
+`ErrValidation` on SQLite and MySQL.
+
+`momo generate --from-db` now writes a PostgreSQL `numeric` column as
+`types.Numeric` (with `precision` and `scale` tags for `numeric(p,s)`); it used
+to write `string`. A model you already generated keeps its `string` field until
+you regenerate; an `introspect.types` rule for `numeric` still wins. To keep
+`string` for a column, leave the field as it is or add that rule.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use

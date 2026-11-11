@@ -55,6 +55,53 @@ func FuzzDateScan(f *testing.F) {
 	})
 }
 
+func FuzzDateInfinityScan(f *testing.F) {
+	f.Add("infinity")
+	f.Add("-infinity")
+	f.Add("Infinity")
+	f.Add("2024-02-29")
+	f.Fuzz(func(t *testing.T, s string) {
+		var d Date
+		if err := d.Scan(s); err != nil {
+			return
+		}
+		v, err := d.Value()
+		if err != nil {
+			t.Fatalf("Value after Scan(%q): %v", s, err)
+		}
+		if d.IsFinite() != (v != "infinity" && v != "-infinity") {
+			t.Fatalf("Scan(%q): IsFinite %v disagrees with Value %v", s, d.IsFinite(), v)
+		}
+		var back Date
+		if err := back.Scan(v); err != nil || back.Infinity != d.Infinity || back.NegInfinity != d.NegInfinity || !back.Time.Equal(d.Time) {
+			t.Fatalf("Scan(%q) -> %v does not round trip: %+v, %v", s, v, back, err)
+		}
+	})
+}
+
+func FuzzNumericScan(f *testing.F) {
+	for _, s := range []string{"0", "-1.50", "NaN", "Infinity", "-Infinity", "inf", ".5", "7.", "1e5", "", "--1", "\x00"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		var n Numeric
+		if err := n.Scan(s); err != nil {
+			return
+		}
+		v, err := n.Value()
+		if err != nil {
+			t.Fatalf("Value after Scan(%q): %v", s, err)
+		}
+		var back Numeric
+		if err := back.Scan(v); err != nil || back != n {
+			t.Fatalf("Scan(%q) -> %v does not round trip: %+v vs %+v, %v", s, v, back, n, err)
+		}
+		if !n.IsFinite() && n.Sign() == 0 && !n.IsNaN() {
+			t.Fatalf("Scan(%q): a non-finite, non-NaN value has Sign 0", s)
+		}
+	})
+}
+
 func FuzzJSONScan(f *testing.F) {
 	f.Add(`{"a":1}`)
 	f.Add(`null`)

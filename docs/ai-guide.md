@@ -13,7 +13,7 @@ import (
 	"github.com/azrtydxb/momo"                    // core: DB, Tx, Select, Insert, Update, Delete, errors
 	"github.com/azrtydxb/momo/driver/pgxdriver"   // PostgreSQL driver (pgx v5)
 	"github.com/azrtydxb/momo/vector"             // vector.Vector, HalfVector, SparseVector, Bits
-	"github.com/azrtydxb/momo/types"              // types.UUID, Date, JSON[T], TimeOfDay, Hstore, TSVector, TSQuery
+	"github.com/azrtydxb/momo/types"              // types.UUID, Date, Numeric, JSON[T], TimeOfDay, Hstore, TSVector, TSQuery
 	"yourmodule/models"                           // your structs
 	"yourmodule/models/task"                      // GENERATED: one package per model (lowercase model name)
 )

@@ -356,7 +356,7 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 	isString := inner == "string"
 	// A string that carries a decimal (numeric) takes precision and scale like
 	// a float does.
-	isFloat := inner == "float32" || inner == "float64" || strings.HasSuffix(inner, "decimal.Decimal") ||
+	isFloat := inner == "float32" || inner == "float64" || inner == "types.Numeric" || strings.HasSuffix(inner, "decimal.Decimal") ||
 		(isString && tg.Size == 0 && tg.Precision > 0)
 
 	conflict := func(tag string) {

@@ -579,7 +579,7 @@ func (g *generator) typeTags(col *schema.Column, gt GoType) ([]string, error) {
 // decimalCarrier reports whether the generator accepts precision and scale on
 // the Go type.
 func decimalCarrier(goType string) bool {
-	return goType == "string" || goType == "float32" || goType == "float64" || strings.HasSuffix(goType, "decimal.Decimal")
+	return goType == "string" || goType == "types.Numeric" || goType == "float32" || goType == "float64" || strings.HasSuffix(goType, "decimal.Decimal")
 }
 
 // numericArgs parses numeric(p) and numeric(p,s).

@@ -262,6 +262,7 @@ var typeRows = []typeRow{
 	{"types.UUID", "types.UUID", tags.Tags{}},
 	{"uuid.UUID (github.com/google/uuid)", "uuid.UUID", tags.Tags{}},
 	{"types.Date", "types.Date", tags.Tags{}},
+	{"types.Numeric", "types.Numeric", tags.Tags{}},
 	{"types.JSON[T]", "types.JSON[T]", tags.Tags{}},
 	{"vector.Vector", "vector.Vector", tags.Tags{Dim: sentinel}},
 	{"vector.HalfVector", "vector.HalfVector", tags.Tags{Dim: sentinel}},

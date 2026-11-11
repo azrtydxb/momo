@@ -20,6 +20,7 @@ func TestCodecsRoundTrip(t *testing.T) {
 	}{
 		{"JSON", &JSON[map[string]int]{V: map[string]int{"a": 1}}, func() Codec { return &JSON[map[string]int]{} }, map[string]int{"a": 1}},
 		{"Date", &Date{Time: time.Date(1969, 12, 31, 0, 0, 0, 0, time.UTC)}, func() Codec { return &Date{} }, "1969-12-31"},
+		{"Numeric", &Numeric{Decimal: "-12.50"}, func() Codec { return &Numeric{} }, "-12.50"},
 		{"TimeOfDay", &TimeOfDay{Nanos: 3723000000000}, func() Codec { return &TimeOfDay{} }, int64(3723000000000)},
 		{"UUID", &UUID{1, 2, 3}, func() Codec { return &UUID{} }, UUID{1, 2, 3}},
 		{"Hstore", &Hstore{"k": ptr("v"), "n": nil}, func() Codec { return &Hstore{} }, nil},
@@ -59,6 +60,7 @@ func TestCodecsSourceTypesAndErrors(t *testing.T) {
 	fresh := map[string]func() Codec{
 		"JSON":      func() Codec { return &JSON[map[string]int]{} },
 		"Date":      func() Codec { return &Date{} },
+		"Numeric":   func() Codec { return &Numeric{} },
 		"TimeOfDay": func() Codec { return &TimeOfDay{} },
 		"UUID":      func() Codec { return &UUID{} },
 		"Hstore":    func() Codec { return &Hstore{} },
@@ -68,6 +70,7 @@ func TestCodecsSourceTypesAndErrors(t *testing.T) {
 	good := map[string]string{
 		"JSON":      `{"a":1}`,
 		"Date":      "2020-02-29",
+		"Numeric":   "123.450",
 		"TimeOfDay": "01:02:03.000000004",
 		"UUID":      "01020300-0000-0000-0000-000000000000",
 		"Hstore":    `"k"=>"v", "n"=>NULL`,
