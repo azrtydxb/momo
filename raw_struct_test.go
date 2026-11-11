@@ -3,8 +3,11 @@
 package momo_test
 
 import (
+	"context"
 	"errors"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -261,4 +264,200 @@ func TestQueryRowsPlainStructFollowsNamingPreset(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("rows = %d", n)
 	}
+}
+
+// namedTxDriver reports column names for the rows of a transaction too: the
+// fake driver's own transaction does not, and without names a plain struct is
+// scanned by position, which would hide a lost preset.
+type namedTxDriver struct {
+	namedDriver
+}
+
+func (d namedTxDriver) Begin(ctx context.Context, opts momo.TxOptions) (momo.DriverTx, error) {
+	tx, err := d.Driver.Begin(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return namedTx{DriverTx: tx, names: d.names}, nil
+}
+
+type namedTx struct {
+	momo.DriverTx
+	names []string
+}
+
+func (t namedTx) Query(ctx context.Context, sql string, args []any) (momo.Rows, error) {
+	r, err := t.DriverTx.Query(ctx, sql, args)
+	if err != nil {
+		return nil, err
+	}
+	return namedRows{Rows: r, names: t.names}, nil
+}
+
+// Catches: a transaction that loses the naming preset of the DB it began from
+// (the columns would then be matched as snake_case and fail), for a plain
+// Query and for QueryRows. The column order differs from the field order, so a
+// positional fallback would not pass either.
+func TestQueryPlainStructPresetInTx(t *testing.T) {
+	at := time.Date(2026, 11, 10, 1, 2, 3, 0, time.UTC)
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{"d", at, int64(7), nil}})
+	db := momo.New(namedTxDriver{namedDriver{drv, []string{"display_name", "nextAttemptAt", "endpointId", "note"}}},
+		momo.WithNaming(camelNamer{}))
+	err := db.Tx(t.Context(), momo.TxOptions{}, func(tx *momo.Tx) error {
+		got, err := momo.Query[camelPlain](t.Context(), tx, "SELECT 1")
+		if err != nil || len(got) != 1 || got[0].EndpointID != 7 || got[0].Display != "d" || !got[0].NextAttemptAt.Equal(at) {
+			t.Errorf("Query in a transaction = %+v, %v", got, err)
+		}
+		n := 0
+		for r, err := range momo.QueryRows[camelPlain](t.Context(), tx, "SELECT 1") {
+			if err != nil || r.EndpointID != 7 {
+				t.Errorf("QueryRows in a transaction = %+v, %v", r, err)
+			}
+			n++
+		}
+		if n != 1 {
+			t.Errorf("QueryRows in a transaction gave %d rows", n)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// recordingNamer counts the field names it is asked about.
+type recordingNamer struct {
+	mu    sync.Mutex
+	asked []string
+}
+
+func (n *recordingNamer) ColumnName(f string) string {
+	n.mu.Lock()
+	n.asked = append(n.asked, f)
+	n.mu.Unlock()
+	return camelNamer{}.ColumnName(f)
+}
+
+// Catches: a column: tag that loses to the namer, or a namer asked about a
+// field that has a tag (the tag is the column, whatever the namer says).
+func TestQueryPlainStructColumnTagWinsOverNamer(t *testing.T) {
+	n := &recordingNamer{}
+	db := camelDB(time.Now(), momo.WithNaming(n))
+	got, err := momo.Query[camelPlain](t.Context(), db, "SELECT 1")
+	if err != nil || len(got) != 1 || got[0].Display != "d" {
+		t.Fatalf("Query = %+v, %v", got, err)
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if slices.Contains(n.asked, "Display") {
+		t.Errorf("the namer was asked about the tagged field Display: %v", n.asked)
+	}
+	for _, f := range []string{"EndpointID", "NextAttemptAt", "Note"} {
+		if !slices.Contains(n.asked, f) {
+			t.Errorf("the namer was not asked about the untagged field %s: %v", f, n.asked)
+		}
+	}
+}
+
+type camelBase struct {
+	CreatedAt time.Time
+}
+
+type camelEmbedded struct {
+	camelBase
+	EndpointID int64
+}
+
+// Catches: the fields of an embedded struct named by snake_case instead of
+// the namer while the outer fields follow it.
+func TestQueryPlainStructEmbeddedUnderNamer(t *testing.T) {
+	at := time.Date(2026, 11, 10, 1, 2, 3, 0, time.UTC)
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(7), at}})
+	db := momo.New(namedDriver{drv, []string{"endpointId", "createdAt"}}, momo.WithNaming(camelNamer{}))
+	got, err := momo.Query[camelEmbedded](t.Context(), db, "SELECT 1")
+	if err != nil || len(got) != 1 || got[0].EndpointID != 7 || !got[0].CreatedAt.Equal(at) {
+		t.Fatalf("Query = %+v, %v", got, err)
+	}
+}
+
+// prefixNamer is a second preset: x_ and the lower-cased field name.
+type prefixNamer struct{}
+
+func (prefixNamer) ColumnName(f string) string { return "x_" + strings.ToLower(f) }
+
+// sliceNamer cannot be compared (it holds a slice), and holds an interface.
+type sliceNamer struct {
+	extra []string
+	inner momo.FieldNamer
+}
+
+func (n sliceNamer) ColumnName(f string) string { return n.inner.ColumnName(f) }
+
+// Catches: a preset used as a map key (a comparable struct holding an
+// uncomparable interface value panics, and a per-request value grows a cache
+// without bound), and a preset that is not comparable being refused.
+func TestWithNamingAcceptsAnyValue(t *testing.T) {
+	at := time.Now()
+	for name, n := range map[string]momo.FieldNamer{
+		"holds a slice":              sliceNamer{extra: []string{"a"}, inner: camelNamer{}},
+		"pointer":                    &recordingNamer{},
+		"nil":                        nil,
+		"interface in a struct":      struct{ momo.FieldNamer }{camelNamer{}},
+		"uncomparable inside struct": struct{ momo.FieldNamer }{sliceNamer{inner: camelNamer{}}},
+	} {
+		db := camelDB(at, momo.WithNaming(n))
+		got, err := momo.Query[camelPlain](t.Context(), db, "SELECT 1")
+		if n == nil {
+			if !errors.Is(err, momo.ErrValidation) {
+				t.Errorf("%s: err = %v, want the snake_case default to fail ErrValidation", name, err)
+			}
+			continue
+		}
+		if err != nil || len(got) != 1 || got[0].EndpointID != 7 {
+			t.Errorf("%s: Query = %+v, %v", name, got, err)
+		}
+	}
+}
+
+type rowA struct {
+	EndpointID int64
+	Title      string
+}
+
+// Catches: the plan of one preset served to a DB with another one (plans
+// keyed by type only, shared between DBs), a data race on the plan cache, and
+// the default snake_case plan being replaced by a preset's. Two presets and
+// the default scan the same type from many goroutines; it runs under -race.
+func TestQueryPlainStructConcurrentPresets(t *testing.T) {
+	mk := func(names []string, opts ...momo.Option) *momo.DB {
+		drv := fakedriver.New(dialect.Postgres)
+		drv.SetRows([][]any{{int64(7), "t"}})
+		return momo.New(namedDriver{drv, names}, opts...)
+	}
+	cases := []struct {
+		db   *momo.DB
+		want string
+	}{
+		{mk([]string{"endpointId", "title"}, momo.WithNaming(camelNamer{})), "camel"},
+		{mk([]string{"x_endpointid", "x_title"}, momo.WithNaming(prefixNamer{})), "prefix"},
+		{mk([]string{"endpoint_id", "title"}), "default"},
+	}
+	var wg sync.WaitGroup
+	for g := range 24 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range 40 {
+				c := cases[(g+i)%len(cases)]
+				got, err := momo.Query[rowA](t.Context(), c.db, "SELECT 1")
+				if err != nil || len(got) != 1 || got[0].EndpointID != 7 || got[0].Title != "t" {
+					t.Errorf("%s: Query = %+v, %v", c.want, got, err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }

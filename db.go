@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -121,6 +122,9 @@ type DB struct {
 	// naming names the columns of plain-struct fields (WithNaming); nil means
 	// snake_case.
 	naming FieldNamer
+	// namingPlans caches the plain-struct plans built under naming. It is a
+	// pointer so that handles derived from the DB share it.
+	namingPlans *sync.Map
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and

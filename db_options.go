@@ -5,6 +5,7 @@ package momo
 import (
 	"fmt"
 	"slices"
+	"sync"
 )
 
 // WithMaxParams lowers the dialect bind-parameter limit for this DB to n. It
@@ -55,10 +56,19 @@ type FieldNamer interface {
 // (naming.ToSnake). Models, projections and tuple rows carry the names the
 // generator derived, so they are not affected.
 //
-// The preset is part of the cached reflection plan of a type, so one process
-// can scan the same struct under different presets. A preset that is not
-// comparable (a func or slice inside the value) is accepted but its plans are
-// rebuilt on every call.
+// The preset may be any value, comparable or not, a preset or your own type,
+// and it is called once per field when a type is first scanned. It must be
+// stable: the plan of a type is built once and kept for the life of the DB (a
+// DB with a preset keeps its own plans, so a preset built per request, with a
+// DB per request, costs a plan per type and DB and is freed with the DB).
+// momo reads no preset from momo.yaml or from a generated registration: this
+// option is the only way to set one.
 func WithNaming(n FieldNamer) Option {
-	return func(db *DB) { db.naming = n }
+	return func(db *DB) {
+		db.naming = n
+		db.namingPlans = nil
+		if n != nil {
+			db.namingPlans = new(sync.Map)
+		}
+	}
 }

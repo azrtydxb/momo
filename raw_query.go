@@ -239,11 +239,7 @@ func openRaw[T any](ctx context.Context, q Querier, sql string, args []any) (Row
 // openCompiled runs the compiled statement under hook operation op and binds
 // the result columns to T's fields. On an error the rows are already closed.
 func openCompiled[T any](ctx context.Context, q Querier, op string, c Compiled) (Rows, *rawScan[T], error) {
-	var namer FieldNamer
-	if db := q.conn().db; db != nil {
-		namer = db.naming
-	}
-	meta, err := metaFor[T](namer)
+	meta, err := metaFor[T](q.conn().db)
 	if err != nil {
 		return nil, nil, err
 	}

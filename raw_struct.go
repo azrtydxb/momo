@@ -17,39 +17,35 @@ import (
 // metaFor returns the metadata Query and QueryRows scan through: the
 // generated metadata when T has it (a model, a projection or Row1..Row10), and
 // otherwise a description of the plain struct T built by reflection once per
-// type and cached.
-func metaFor[T any](namer FieldNamer) (*Meta[T], error) {
+// type and cached. A DB with a naming preset (WithNaming) keeps its own cache,
+// so the preset never has to be a map key: any value works, and the plans of a
+// short-lived preset go away with its DB.
+func metaFor[T any](db *DB) (*Meta[T], error) {
 	if m, ok := any((*T)(nil)).(interface{ MomoMeta() *Meta[T] }); ok {
 		return m.MomoMeta(), nil
 	}
-	return structMeta[T](namer)
+	if db != nil && db.naming != nil {
+		return structMeta[T](db.naming, db.namingPlans)
+	}
+	return structMeta[T](nil, nil)
 }
 
-// structMetaKey identifies one plan: the same struct scanned under another
-// naming preset names its columns differently.
-type structMetaKey struct {
-	rt    reflect.Type
-	namer any
-}
-
-var structMetas sync.Map // structMetaKey -> *structMetaEntry
+// structMetas caches the plans built with the default snake_case naming.
+var structMetas sync.Map // reflect.Type -> *structMetaEntry
 
 type structMetaEntry struct {
 	meta any // *Meta[T]
 	err  error
 }
 
-func structMeta[T any](namer FieldNamer) (*Meta[T], error) {
+// structMeta returns the plan of T under namer, cached in cache, or in the
+// process-wide cache when cache is nil.
+func structMeta[T any](namer FieldNamer, cache *sync.Map) (*Meta[T], error) {
+	if cache == nil {
+		cache = &structMetas
+	}
 	rt := reflect.TypeFor[T]()
-	if namer != nil && !reflect.TypeOf(namer).Comparable() {
-		// A namer that cannot key a map is not cached: the plan is rebuilt.
-		return buildStructMeta[T](rt, namer)
-	}
-	key := structMetaKey{rt: rt}
-	if namer != nil {
-		key.namer = namer
-	}
-	v, ok := structMetas.Load(key)
+	v, ok := cache.Load(rt)
 	if !ok {
 		e := &structMetaEntry{}
 		if m, err := buildStructMeta[T](rt, namer); err != nil {
@@ -57,7 +53,7 @@ func structMeta[T any](namer FieldNamer) (*Meta[T], error) {
 		} else {
 			e.meta = m
 		}
-		v, _ = structMetas.LoadOrStore(key, e)
+		v, _ = cache.LoadOrStore(rt, e)
 	}
 	e := v.(*structMetaEntry)
 	if e.err != nil {

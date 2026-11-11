@@ -92,14 +92,35 @@ var irregularSingular = map[string]string{
 	"caches": "cache", "niches": "niche",
 }
 
-// singularUs lists the singular words in -us, whose stem keeps its s (status,
-// not Statu). A plural in -us, such as menus, is not listed and loses its s.
-var singularUs = map[string]bool{
-	"status": true, "bus": true, "campus": true, "virus": true, "bonus": true,
-	"corpus": true, "focus": true, "census": true, "genus": true,
-	"radius": true, "apparatus": true, "consensus": true, "surplus": true,
-	"prospectus": true, "syllabus": true, "chorus": true, "circus": true,
-	"cactus": true, "octopus": true, "nexus": true,
+// pluralU lists the plurals of words in -u. Every other word in -us is kept
+// as it is (status, virus, campus, bonus, census, corpus, nucleus, stimulus),
+// since no rule tells menus from status.
+var pluralU = map[string]bool{
+	"menus": true, "emus": true, "gnus": true, "haikus": true, "tutus": true, "kudus": true,
+}
+
+// singularKeep lists singular words in -is, -as and -ns, which end in an s
+// that is part of the stem. They are listed rather than matched by suffix:
+// areas must still become Area, and ideas Idea.
+var singularKeep = map[string]bool{
+	"analysis": true, "axis": true, "crisis": true, "basis": true, "thesis": true,
+	"iris": true, "synopsis": true, "diagnosis": true,
+	"alias": true, "canvas": true, "atlas": true, "bias": true, "gas": true,
+	"news": true, "lens": true,
+}
+
+// keepSingular reports whether w is already singular, so that stripping its
+// s (Clas, Statu, Analysi) would be wrong: a word in -ss (no plural ends in a
+// lone s after another s), a word in -us unless it is a plural of a -u word,
+// and the listed -is, -as and -ns words.
+func keepSingular(w string) bool {
+	switch {
+	case strings.HasSuffix(w, "ss"):
+		return true
+	case strings.HasSuffix(w, "us"):
+		return !pluralU[w]
+	}
+	return singularKeep[w]
 }
 
 // needsEs reports whether a word ending in "es" takes that ending in full, so
@@ -127,11 +148,7 @@ func singulars(w string) []string {
 	if s, ok := irregularSingular[w]; ok {
 		out = append(out, s)
 	}
-	if strings.HasSuffix(w, "ss") || singularUs[w] {
-		// A word in -ss (class, address, process) is already singular: no
-		// plural ends in a lone s after another s, so stripping it would
-		// give Clas. The -us words below are listed because menus and
-		// emus are plurals that the same shape cannot tell apart.
+	if keepSingular(w) {
 		return append(out, w)
 	}
 	if strings.HasSuffix(w, "ies") && len(w) > 3 {

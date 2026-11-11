@@ -74,6 +74,7 @@ var goInitialisms = map[string]bool{
 	"TTL": true, "UDP": true, "UI": true, "UID": true, "URI": true,
 	"URL": true, "UUID": true, "VM": true, "XML": true, "XMPP": true,
 	"XSRF": true, "XSS": true,
+	"GUI": true, "OID": true, "PID": true, "SSID": true,
 }
 
 // maxInitialism is the length of the longest word in goInitialisms.

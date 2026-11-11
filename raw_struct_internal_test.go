@@ -16,16 +16,16 @@ type cachedPlan struct {
 // Catches: the reflection plan rebuilt on every call instead of once per type
 // (the per-row cost would then include tag parsing and field walking).
 func TestStructMetaIsBuiltOnceAndCached(t *testing.T) {
-	a, err := structMeta[cachedPlan](nil)
+	a, err := structMeta[cachedPlan](nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := structMeta[cachedPlan](nil)
+	b, err := structMeta[cachedPlan](nil, nil)
 	if err != nil || a != b {
 		t.Fatalf("second call returned a different plan (%p, %p), err %v", a, b, err)
 	}
-	e1, err1 := structMeta[int](nil)
-	e2, err2 := structMeta[int](nil)
+	e1, err1 := structMeta[int](nil, nil)
+	e2, err2 := structMeta[int](nil, nil)
 	if err1 == nil || err2 == nil || e1 != nil || e2 != nil {
 		t.Fatalf("a non-struct must fail every time: %v, %v", err1, err2)
 	}
