@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 

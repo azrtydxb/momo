@@ -15,7 +15,7 @@ leave the column out of the INSERT (or write `DEFAULT` in a multi-row VALUES
 list) and `Exec` reads the stored value back into the pointer with `RETURNING`.
 A non-nil pointer is always written, so `false` and `0` reach the database:
 
-```go
+```text
 type Account struct {
 	momo.Model `momo:"table:accounts"`
 	ID         int64  `momo:"pk,identity"`
