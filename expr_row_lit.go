@@ -73,11 +73,12 @@ func (r RowExpr) cmp(op string, other RowExpr) Predicate {
 }
 
 // Literal is the constraint of Lit: the types that render safely as an SQL
-// literal. There is no string type, so no caller text can reach the SQL.
+// literal. A string is accepted, and Lit refuses the characters that would let
+// it escape its quotes (see Lit).
 type Literal interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 |
 		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 |
-		~float32 | ~float64 | ~bool | time.Time
+		~float32 | ~float64 | ~bool | ~string | time.Time
 }
 
 // LitExpr is a value written into the SQL text instead of bound. Build it
@@ -92,11 +93,18 @@ type LitExpr[T Literal] struct {
 // COALESCE(col, 0) in the select list and in GROUP BY: bound parameters make
 // them differ and PostgreSQL rejects the grouping (42803).
 //
-// It accepts only integers, floats, bool and time.Time, so it is
-// injection-safe by type; a string is a compile error. A time.Time renders as
-// its UTC calendar date (YYYY-MM-DD); the time of day is dropped. A NaN or
-// infinite float fails the build with ErrValidation. Prefer a bound Value
-// everywhere the text need not match.
+// It accepts integers, floats, bool, string and time.Time, and the build fails
+// with ErrValidation, on every dialect, for a value it cannot render safely:
+//   - a string renders as a standard SQL string literal with each ' doubled;
+//     a string containing a backslash or a NUL byte is refused, because MySQL
+//     (and PostgreSQL with standard_conforming_strings off) read a backslash
+//     as an escape inside a literal;
+//   - a time.Time renders as DATE 'YYYY-MM-DD' (a quoted date elsewhere) and
+//     must be exactly 00:00:00 UTC; a value with a time of day is refused
+//     rather than silently truncated;
+//   - a NaN or infinite float is refused.
+//
+// Prefer a bound Value everywhere the text need not match.
 func Lit[T Literal](v T) LitExpr[T] {
 	l := LitExpr[T]{v: v}
 	l.Ops = NewOps[T](l)
@@ -119,7 +127,11 @@ func (l LitExpr[T]) AppendSQL(b *Builder) {
 
 func litText(d dialect.Name, v any) (string, error) {
 	if t, ok := v.(time.Time); ok {
-		s := t.UTC().Format("2006-01-02")
+		u := t.UTC()
+		if u.Hour() != 0 || u.Minute() != 0 || u.Second() != 0 || u.Nanosecond() != 0 {
+			return "", errors.New("literal time must be exactly 00:00:00 UTC, a date only; bind it with Value to keep the time of day")
+		}
+		s := u.Format("2006-01-02")
 		if d == dialect.Postgres {
 			return "DATE '" + s + "'", nil
 		}
@@ -138,6 +150,12 @@ func litText(d dialect.Name, v any) (string, error) {
 			return "TRUE", nil
 		}
 		return "FALSE", nil
+	case reflect.String:
+		str := rv.String()
+		if strings.ContainsRune(str, '\\') || strings.ContainsRune(str, 0) {
+			return "", errors.New("literal string must not contain a backslash or NUL; bind it with Value instead")
+		}
+		return "'" + strings.ReplaceAll(str, "'", "''") + "'", nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return paren(strconv.FormatInt(rv.Int(), 10)), nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:

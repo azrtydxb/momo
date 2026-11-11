@@ -27,17 +27,24 @@ These are additions; nothing changes for existing code.
 - `sqlfn.Div` and `sqlfn.DivExpr` divide, and `sqlfn.NullIf` and
   `sqlfn.NullIfExpr` build `NULLIF`, so `sqlfn.DivExpr(final, sqlfn.NullIf(max, 0))` avoids
   a division by zero. Integer operands divide as integers on PostgreSQL and
-  SQLite.
+  SQLite, but `/` on integers returns a DECIMAL on MySQL. Division by zero is
+  an error on PostgreSQL and, in strict mode, on MySQL: guard the divisor with
+  `sqlfn.NullIf` on every dialect.
 - `sqlfn.CurrentDate()` is `CURRENT_DATE`. `sqlfn.Infinity()` and
   `sqlfn.NegInfinity()` are `'infinity'::timestamptz` and
   `'-infinity'::timestamptz`; they are PostgreSQL only and fail with
   `ErrUnsupported` elsewhere.
 - `momo.Lit(v)` writes a value into the SQL text instead of binding it, so the
   same expression is identical text in `SELECT` and `GROUP BY` (a bound value
-  gets a new `$n` each time and PostgreSQL rejects the grouping with 42803). It
-  accepts only integers, floats, `bool` and `time.Time`, so no caller text can
-  reach the SQL; a string does not compile. A `time.Time` renders as its UTC
-  date, and a NaN or infinite float fails the build with `ErrValidation`.
+  gets a new `$n` each time and PostgreSQL rejects the grouping with 42803),
+  for example `COALESCE(col, 'none')`. It accepts integers, floats, `bool`,
+  strings and `time.Time`. A string renders as a standard SQL string literal
+  with each `'` doubled; a string containing a backslash or a NUL byte fails
+  the build with `ErrValidation` on every dialect (MySQL and PostgreSQL with
+  `standard_conforming_strings` off read a backslash as an escape). A
+  `time.Time` renders as `DATE 'YYYY-MM-DD'` and must be exactly 00:00:00 UTC;
+  a value with a time of day fails with `ErrValidation` instead of losing the
+  time. A NaN or infinite float fails the build with `ErrValidation`.
 
 ## Upgrading to 0.7.0
 

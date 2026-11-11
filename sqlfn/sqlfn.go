@@ -248,9 +248,11 @@ func MulExpr[T Numeric](e, other momo.Expression[T]) ArithExpr[T] {
 }
 
 // Div is e / v. Integer operands divide as integers on PostgreSQL and SQLite
-// (7 / 2 is 3); cast to a float type first for a fractional result. Division
-// by zero is an error on PostgreSQL and NULL on MySQL and SQLite: guard the
-// divisor with NullIf.
+// (7 / 2 is 3); on MySQL, / on integers returns a DECIMAL (3.5000), so cast or
+// round when the same result is needed on every dialect. Cast to a float type
+// first for a fractional result. Division by zero is an error on PostgreSQL
+// and, in strict mode, on MySQL, and is NULL on SQLite (and on MySQL outside
+// strict mode): guard the divisor with NullIf on every dialect.
 func Div[T Numeric](e momo.Expression[T], v T) ArithExpr[T] {
 	return arith[T](e, " / ", momo.Value(v))
 }
