@@ -200,3 +200,65 @@ func TestQueryPlainStructWithoutColumnNames(t *testing.T) {
 		t.Fatalf("Query = %+v, %v", got, err)
 	}
 }
+
+type camelPlain struct {
+	EndpointID    int64
+	NextAttemptAt time.Time
+	Note          *string
+	Display       string `momo:"column:display_name"`
+}
+
+// camelNamer stands in for naming.Prisma{}: it lowers the first letter and
+// spells a trailing ID as Id.
+type camelNamer struct{}
+
+func (camelNamer) ColumnName(f string) string {
+	if base, ok := strings.CutSuffix(f, "ID"); ok {
+		f = base + "Id"
+	}
+	return strings.ToLower(f[:1]) + f[1:]
+}
+
+var camelNames = []string{"endpointId", "nextAttemptAt", "note", "display_name"}
+
+func camelDB(at time.Time, opts ...momo.Option) *momo.DB {
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(7), at, nil, "d"}})
+	return momo.New(namedDriver{drv, camelNames}, opts...)
+}
+
+// Catches: a plain struct that ignores the DB's naming preset (camelCase
+// columns under naming: prisma fail with ErrValidation), a column tag that
+// loses to the preset, or the default changing without the option.
+func TestQueryPlainStructFollowsNamingPreset(t *testing.T) {
+	at := time.Date(2026, 11, 10, 1, 2, 3, 0, time.UTC)
+	got, err := momo.Query[camelPlain](t.Context(), camelDB(at, momo.WithNaming(camelNamer{})), "SELECT 1")
+	if err != nil || len(got) != 1 || got[0].EndpointID != 7 || !got[0].NextAttemptAt.Equal(at) || got[0].Display != "d" {
+		t.Fatalf("with the preset: %+v, %v", got, err)
+	}
+	// Without a preset the default snake_case applies, so the camelCase result
+	// columns are unmatched.
+	if _, err := momo.Query[camelPlain](t.Context(), camelDB(at), "SELECT 1"); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("without the preset: err = %v, want ErrValidation", err)
+	}
+	// The same type under the preset again: the cached plan of one preset
+	// does not leak into the other.
+	if got, err := momo.Query[camelPlain](t.Context(), camelDB(at, momo.WithNaming(camelNamer{})), "SELECT 1"); err != nil || len(got) != 1 {
+		t.Fatalf("second call with the preset: %+v, %v", got, err)
+	}
+}
+
+// Catches: the preset not reaching the streaming QueryRows.
+func TestQueryRowsPlainStructFollowsNamingPreset(t *testing.T) {
+	db := camelDB(time.Now(), momo.WithNaming(camelNamer{}))
+	n := 0
+	for r, err := range momo.QueryRows[camelPlain](t.Context(), db, "SELECT 1") {
+		if err != nil || r.EndpointID != 7 {
+			t.Fatalf("row = %+v, %v", r, err)
+		}
+		n++
+	}
+	if n != 1 {
+		t.Fatalf("rows = %d", n)
+	}
+}

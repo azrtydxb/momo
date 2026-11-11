@@ -98,7 +98,9 @@ migrate:
 
 `naming:` is optional: `momo` (default: snake_case columns, plural snake_case
 tables), `gorm`, `bun`, `ent`, `prisma`. Pick one and never change it: a change
-renames columns.
+renames columns. The `momo` preset keeps an initialism together, and a plural
+`s` after it belongs to it: `RoleIDs` is `role_ids`, `URLs` is `urls`,
+`HTTPServer` is `http_server`.
 
 `naming: prisma` matches a database that Prisma created: the table is the model
 name as written and quoted (`KbChunk`), the column is camelCase (`createdAt`,
@@ -1377,8 +1379,10 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   then case-insensitive; an unmapped, missing or duplicated result column is
   `ErrValidation`). `T` may also be a plain struct with no generated metadata
   (no generator run, any number of columns): its exported fields are the
-  columns, named by a `momo:"column:x"` tag or else the snake_case of the field
-  name (`UserID` is `user_id`, `HTTPServer` is `http_server`), `momo:"-"` skips
+  columns, named by a `momo:"column:x"` tag or else the column name the DB's
+  naming preset gives the field (`momo.New(drv, momo.WithNaming(naming.Prisma{}))`;
+  snake_case without the option: `UserID` is `user_id`, `RoleIDs` is `role_ids`,
+  `HTTPServer` is `http_server`), `momo:"-"` skips
   a field, the fields of an embedded struct count as the outer struct's own
   (unless it is a `time.Time`, a `sql.Scanner` or has a column tag; an outer
   field shadows an embedded one, two fields on one column and an embedding

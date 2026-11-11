@@ -38,3 +38,27 @@ func WithMaxParams(n int) Option {
 		db.ex.d = &d
 	}
 }
+
+// FieldNamer names the column of a Go struct field. Every preset of
+// gen/naming (naming.Momo{}, naming.Prisma{}, ...) is one.
+type FieldNamer interface {
+	// ColumnName returns the column name for a Go field name.
+	ColumnName(goField string) string
+}
+
+// WithNaming sets the naming preset that Query and QueryRows apply to the
+// fields of a plain struct, the ones with no generated metadata. A field with
+// no `momo:"column:x"` tag is then matched to the column the preset gives its
+// name, so under naming.Prisma{} the field NextAttemptAt reads the column
+// nextAttemptAt. Use the same preset as the naming: key of momo.yaml. Without
+// the option, or with a nil n, the column is the snake_case of the field name
+// (naming.ToSnake). Models, projections and tuple rows carry the names the
+// generator derived, so they are not affected.
+//
+// The preset is part of the cached reflection plan of a type, so one process
+// can scan the same struct under different presets. A preset that is not
+// comparable (a func or slice inside the value) is accepted but its plans are
+// rebuilt on every call.
+func WithNaming(n FieldNamer) Option {
+	return func(db *DB) { db.naming = n }
+}

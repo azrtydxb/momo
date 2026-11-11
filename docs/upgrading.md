@@ -5,6 +5,69 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `ToSnake` keeps a plural initialism together: `RoleIDs` is `role_ids`
+
+`naming.ToSnake`, and with it the column name of the default `momo` naming
+preset and the column of a plain struct that `momo.Query` and `momo.QueryRows`
+scan, used to split an initialism followed by a plural `s`: `RestrictRoleIDs`
+gave `restrict_role_i_ds`. A lone lower-case `s` after an initialism of the word
+list (`ACL`, `API`, `CPU`, `DNS`, `GUID`, `HTTP`, `HTTPS`, `ID`, `IP`, `JSON`,
+`RPC`, `SQL`, `TCP`, `TLS`, `TTL`, `UDP`, `UI`, `UID`, `URI`, `URL`, `UUID`,
+`XML` and the rest of that list) now belongs to it, and the name breaks only
+before the initialism:
+
+| Go field  | Column before | Column now |
+| --------- | ------------- | ---------- |
+| `RoleIDs` | `role_i_ds`   | `role_ids` |
+| `IDs`     | `i_ds`        | `ids`      |
+| `URLs`    | `ur_ls`       | `urls`     |
+| `UUIDs`   | `uui_ds`      | `uuids`    |
+| `APIs`    | `ap_is`       | `apis`     |
+
+Names without a plural initialism (`UserID`, `APIKeys`, `HTTPServer`) are
+unchanged. This is a breaking change for a database that already has a column
+with the old name: `momo generate` now derives the new name, so a migration diff
+renames the column. To keep the old name, pin it on the field:
+``RoleIDs []string `momo:"column:role_i_ds"` ``. A plain struct scanned by
+`Query` needs the same tag. Models under the `gorm`, `bun`, `ent` and `prisma`
+presets are not affected, they have their own rules.
+
+`--from-db` uses the same word list in the other direction: a column `role_ids`
+becomes the field `RoleIDs` (it was `RoleIds`), and `urls`, `uuids` and `apis`
+become `URLs`, `UUIDs` and `APIs`. The list is also longer than before, so a
+column word such as `ttl`, `acl` or `tcp` becomes `TTL`, `ACL` or `TCP` in a
+field name. The column still maps to the same name, so no column tag is
+needed; regenerating changes the Go field names in the models.
+
+### `--from-db` keeps singular table names that end in `-ss` or are known `-us` words
+
+`momo generate --from-db` named the table `class` the model `Clas` (and
+`assessment_class` `AssessmentClas`), the same family as the `-ses` words fixed
+in 0.7.0. A table name in `-ss` (`class`, `address`, `access`, `process`,
+`glass`, `boss`) is already singular, so it is now kept: `Class`, `Address`,
+`AssessmentClass`. The singular `-us` words `status`, `bus`, `campus`, `virus`
+and a few more are kept the same way (`Status`, not `Statu`). A plural such as
+`classes`, `statuses` or `menus` is singularized as before. After you
+regenerate, a model that had the wrong name changes name and its column package
+changes with it (`clas` to `class`); pin
+`introspect.tables.<table>.name` to keep the old name.
+
+### `momo.WithNaming`: a plain-struct `Query[T]` follows the naming preset
+
+`momo.Query` and `momo.QueryRows` into a plain struct named every untagged
+field's column as the snake_case of the field name, so under `naming: prisma`
+(camelCase columns such as `endpointId`) each field needed a `column:` tag.
+The new option `momo.WithNaming(naming.Prisma{})` sets the preset on the DB, and
+an untagged field then reads the column the preset gives its name (`EndpointID`
+is `endpointId`). A `column:` tag still wins. Without the option nothing
+changes: snake_case, as `naming.ToSnake` gives it. Any preset of `gen/naming`
+(or any value with a `ColumnName(goField string) string` method) fits, and the
+option applies to handles derived from the DB (transactions, `OnConn`,
+replicas). The preset is not read from `momo.yaml` at run time; pass the same
+one you set as `naming:` there.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use

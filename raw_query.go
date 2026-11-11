@@ -25,8 +25,8 @@ import (
 //
 // A plain struct, one with no generated metadata, scans by column name too, with
 // no generator run: its exported fields are the columns, named by a
-// `momo:"column:x"` tag or else the snake_case of the field name (UserID is
-// user_id); `momo:"-"` skips a field; the fields of an embedded struct count as
+// `momo:"column:x"` tag or else the column name the DB's naming preset gives
+// the field name (WithNaming; snake_case without one, so UserID is user_id); `momo:"-"` skips a field; the fields of an embedded struct count as
 // the outer struct's own, unless it is a time.Time, a sql.Scanner or carries a
 // column tag; an embedded pointer struct is allocated for every row
 // and stays non-nil even when all of its columns are NULL (an embedding cycle
@@ -135,7 +135,11 @@ func openRaw[T any](ctx context.Context, q Querier, sql string, args []any) (Row
 	if err != nil {
 		return nil, nil, err
 	}
-	meta, err := metaFor[T]()
+	var namer FieldNamer
+	if db := q.conn().db; db != nil {
+		namer = db.naming
+	}
+	meta, err := metaFor[T](namer)
 	if err != nil {
 		return nil, nil, err
 	}

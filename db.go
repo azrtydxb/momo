@@ -118,6 +118,9 @@ type DB struct {
 	// interceptors run before every typed statement of this handle and of the
 	// transactions begun from it (WithInterceptor).
 	interceptors []Interceptor
+	// naming names the columns of plain-struct fields (WithNaming); nil means
+	// snake_case.
+	naming FieldNamer
 }
 
 // New wraps a driver. The caller keeps ownership of the underlying pool and
