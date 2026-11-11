@@ -208,6 +208,20 @@ finding:
   early; they are filtered afterwards as before. `generate --from-db` also
   passes every `introspect.skip` glob to inspection the same way, so a skipped
   table is never read (the globs also match views and functions of that name).
+- `migrate.Config.OnlyTables` (set from `introspect.only` by the CLI) is the
+  inverse for tables: when it is not empty, a table whose name or `schema.name`
+  matches none of its globs is not managed. Inspection does not read it
+  (`migrate.InspectOptions.Only`, honoured by the PostgreSQL inspector), and
+  drift, baseline and diff hide it, with its triggers and policies, like an
+  excluded table. `migrate.MatchObject(globs, schemaName, name)` is the matching
+  rule `Exclude`, `OnlyTables` and the inspector share. An empty entry is an
+  error. `diff` filters both sides: a snapshot table outside `OnlyTables` never
+  plans `DROP TABLE`, and a model for one never plans `CREATE TABLE`: a model
+  for a table outside `only` is never migrated. Partition children are tables
+  of their own: `only: [orders]` leaves out `orders_2024`; use
+  `only: [orders, "orders_*"]`. The MySQL and SQLite inspectors ignore
+  `InspectOptions.Only` and read every table; the filter is applied afterwards,
+  so a table they cannot represent can still fail inspection.
 - A trigger limited to some columns (`AFTER UPDATE OF state`) is
   `schema.Trigger.UpdateOf`: PostgreSQL renders `UPDATE OF "state"`, inspection
   reads the list back and `generate --from-db` writes it into the model.

@@ -3,6 +3,7 @@
 package fromdb
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/azrtydxb/momo/schema"
@@ -117,34 +118,55 @@ func usesFunction(text, name string) bool {
 	return callsFunction(text, name) || regprocNames(text)[strings.ToLower(name)]
 }
 
+// regprocLiteral matches a single-quoted literal cast to regproc or
+// regprocedure, with or without the pg_catalog qualifier. toRegprocCall matches
+// to_regproc('name') and to_regprocedure('name(args)'). The literal may be
+// schema qualified and hold quoted identifiers. Not recognized: a name built at
+// run time, an escape-string or dollar-quoted literal.
+var (
+	regprocLiteral = regexp.MustCompile(`(?is)'((?:[^']|'')*)'\s*::\s*(?:pg_catalog\s*\.\s*)?regproc(?:edure)?\b`)
+	toRegprocCall  = regexp.MustCompile(`(?is)\bto_regproc(?:edure)?\s*\(\s*'((?:[^']|'')*)'`)
+)
+
 // regprocNames returns the lower-cased bare function names that text names in
-// 'name'::regproc and 'schema.name(args)'::regprocedure literals.
+// regproc and regprocedure literals.
 func regprocNames(text string) map[string]bool {
 	out := map[string]bool{}
-	lower := strings.ToLower(text)
-	for from := 0; ; {
-		i := strings.Index(lower[from:], "::regproc")
-		if i < 0 {
-			return out
+	for _, re := range []*regexp.Regexp{regprocLiteral, toRegprocCall} {
+		for _, m := range re.FindAllStringSubmatch(text, -1) {
+			out[bareFunctionName(strings.ReplaceAll(m[1], "''", "'"))] = true
 		}
-		end := from + i
-		from = end + 1
-		if end == 0 || lower[end-1] != '\'' {
-			continue
-		}
-		start := strings.LastIndexByte(lower[:end-1], '\'')
-		if start < 0 {
-			continue
-		}
-		lit := lower[start+1 : end-1]
-		if p := strings.IndexByte(lit, '('); p >= 0 {
-			lit = lit[:p]
-		}
-		if p := strings.LastIndexByte(lit, '.'); p >= 0 {
-			lit = lit[p+1:]
-		}
-		out[strings.Trim(strings.TrimSpace(lit), `"`)] = true
 	}
+	return out
+}
+
+// bareFunctionName is the lower-cased last identifier of a function reference
+// such as `public."My Fn"(integer)`: quotes are honoured (a dot inside quotes
+// belongs to the name) and the argument list is dropped.
+func bareFunctionName(ref string) string {
+	var cur strings.Builder
+	quoted := false
+	for i := 0; i < len(ref); i++ {
+		c := ref[i]
+		switch {
+		case quoted && c == '"' && i+1 < len(ref) && ref[i+1] == '"':
+			cur.WriteByte('"')
+			i++
+		case quoted && c == '"':
+			quoted = false
+		case quoted:
+			cur.WriteByte(c)
+		case c == '"':
+			quoted = true
+		case c == '.':
+			cur.Reset()
+		case c == '(':
+			return strings.ToLower(strings.TrimSpace(cur.String()))
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	return strings.ToLower(strings.TrimSpace(cur.String()))
 }
 
 // callsFunction reports whether text calls the function name: the name, quoted

@@ -15,7 +15,8 @@ functions that a modeled table uses: the ones its triggers call, its column
 defaults, generated columns, checks, index expressions and predicates and its
 policies call, and the functions those functions call in turn (their bodies and
 argument defaults). A call is found by name, and so is a `'name'::regproc` or
-`'name(args)'::regprocedure` literal. Each one is written on the model of the
+`'name(args)'::regprocedure` literal (also `pg_catalog`-qualified, schema
+qualified or with quoted names) and a `to_regproc('name')` call. Each one is written on the model of the
 table that uses it. A function that no modeled
 table uses is not written, and it is no longer in the init snapshot, so a
 database-wide function that nothing modeled needs does not appear in the
@@ -58,7 +59,9 @@ introspect:
 
 A glob matches the table name, or `schema.name` for a table outside the
 current schema (`only: ["app.*"]`), the same way `migrate.exclude` does. An
-empty entry in `only` is an error. `skip` applies within `only`: a table must
+empty entry in `only` is an error. `skip` globs match the same way now: a
+schema-qualified `skip` glob (`skip: ["app.legacy_*"]`) that did nothing before,
+because it was compared with the bare table name only, now takes effect. `skip` applies within `only`: a table must
 match `only` and not match `skip`. A skipped table still needs its
 `migrate.exclude` entry. An empty or absent `only` changes nothing.
 
@@ -69,6 +72,11 @@ What `only` hides, and what it does not:
   no longer fails `--from-db`, `baseline` or `drift`. `migrate diff` ignores
   such a table in the snapshot as well, so a snapshot that still holds one
   never plans `DROP TABLE` for it.
+- A partition child is a table of its own, so `only: [orders]` leaves out
+  `orders_2024`. Name the children too: `only: [orders, "orders_*"]`.
+- A model for a table outside `only` (one you wrote by hand) is never migrated:
+  `migrate diff` plans neither a `CREATE TABLE` for it nor a `DROP TABLE` for a
+  snapshot table that is outside `only`.
 - Views, functions, enums and extensions of the modules you have not moved are
   not hidden: drift still lists them as unmanaged, and `--from-db` still writes
   the views and enums. Hide them with `migrate.exclude` (globs over the name),
@@ -77,6 +85,16 @@ What `only` hides, and what it does not:
   the models and the snapshot, with a warning, and the baseline reports it as
   a difference. Move the target table into `only`, or accept the report. The
   column itself is still modeled, without the relation.
+
+Library users: `migrate.Config.OnlyTables` and `migrate.InspectOptions.Only`
+are new fields. `OnlyTables` is what `introspect.only` sets: when it is not
+empty, a table that matches none of its globs is hidden from drift, baseline
+and diff, with its triggers and policies, and the PostgreSQL inspector does not
+read it. The MySQL and SQLite inspectors ignore `InspectOptions.Only` and read
+every table, which is filtered afterwards, so a table they cannot represent can
+still fail inspection. `migrate.MatchObject` is the glob rule shared by
+`Exclude`, `OnlyTables` and the inspector. An empty or malformed entry is an
+error that names `Config.OnlyTables`.
 
 ### `introspect.dbdefault: all` tags every column that has a default
 

@@ -18,27 +18,47 @@ import (
 // invalidIndexDetail is the Detail of an index PostgreSQL marks invalid.
 const invalidIndexDetail = "invalid index (failed CONCURRENTLY build)"
 
-// excludeMatcher validates the glob patterns of Config.Exclude and returns a
-// function reporting whether any pattern matches name or schema.name.
-func excludeMatcher(globs []string) (func(schemaName, name string) bool, error) {
+// MatchObject reports whether any glob matches the object name, or
+// schema.name when schemaName is not empty (the current schema is spelled with
+// an empty one). Config.Exclude, Config.OnlyTables and the dialects' inspection
+// all match this way, so one glob selects the same objects everywhere. A
+// malformed glob never matches; excludeMatcher reports it.
+func MatchObject(globs []string, schemaName, name string) bool {
 	for _, g := range globs {
-		if _, err := path.Match(g, ""); err != nil {
-			return nil, fmt.Errorf("migrate: Config.Exclude pattern %q: %w", g, err)
+		if ok, _ := path.Match(g, name); ok {
+			return true
 		}
-	}
-	return func(ns, name string) bool {
-		for _, g := range globs {
-			if ok, _ := path.Match(g, name); ok {
+		if schemaName != "" {
+			if ok, _ := path.Match(g, schemaName+"."+name); ok {
 				return true
 			}
-			if ns != "" {
-				if ok, _ := path.Match(g, ns+"."+name); ok {
-					return true
-				}
-			}
 		}
-		return false
-	}, nil
+	}
+	return false
+}
+
+// excludeMatcher validates the glob patterns of the Config field named by
+// field (Config.Exclude, Config.OnlyTables) and returns a function reporting
+// whether any pattern matches name or schema.name.
+func excludeMatcher(field string, globs []string) (func(schemaName, name string) bool, error) {
+	for _, g := range globs {
+		if _, err := path.Match(g, ""); err != nil {
+			return nil, fmt.Errorf("migrate: %s pattern %q: %w", field, g, err)
+		}
+	}
+	return func(ns, name string) bool { return MatchObject(globs, ns, name) }, nil
+}
+
+// checkOnlyTables validates Config.OnlyTables: every glob well formed, and no
+// empty entry, which would match no table and so hide every one.
+func checkOnlyTables(globs []string) error {
+	for i, g := range globs {
+		if strings.TrimSpace(g) == "" {
+			return fmt.Errorf("migrate: Config.OnlyTables[%d] is empty: it would hide every table", i)
+		}
+	}
+	_, err := excludeMatcher("Config.OnlyTables", globs)
+	return err
 }
 
 // dropExternalExtensions returns s without the extensions named in names; s is
@@ -67,30 +87,43 @@ func applyExclude(s *schema.Schema, globs []string) *schema.Schema {
 	if len(globs) == 0 {
 		return s
 	}
-	match, err := excludeMatcher(globs)
+	match, err := excludeMatcher("Config.Exclude", globs)
 	if err != nil {
 		return s
 	}
+	c, gone := withoutTables(s, func(t schema.Table) bool { return match(t.Schema, t.Name) })
+	c.Views = slices.DeleteFunc(slices.Clone(s.Views), func(v schema.View) bool { return match(v.Schema, v.Name) })
+	c.Functions = slices.DeleteFunc(slices.Clone(s.Functions), func(f schema.Function) bool { return match(f.Schema, f.Name) })
+	c.Enums = slices.DeleteFunc(slices.Clone(s.Enums), func(e schema.Enum) bool { return match("", e.Name) })
+	c.Extensions = slices.DeleteFunc(slices.Clone(s.Extensions), func(e schema.Extension) bool { return match("", e.Name) })
+	withoutTableObjects(c, gone, func(t schema.Trigger) bool { return match(t.Schema, t.Name) }, func(p schema.Policy) bool { return match(p.Schema, p.Name) })
+	return c
+}
+
+// withoutTables returns a copy of s without the tables drop selects, and the
+// set of dropped table keys. s is not modified.
+func withoutTables(s *schema.Schema, drop func(schema.Table) bool) (*schema.Schema, map[string]bool) {
 	c := *s
 	gone := map[string]bool{}
 	c.Tables = slices.DeleteFunc(slices.Clone(s.Tables), func(t schema.Table) bool {
-		if match(t.Schema, t.Name) {
+		if drop(t) {
 			gone[t.Schema+"\x00"+t.Name] = true
 			return true
 		}
 		return false
 	})
-	c.Views = slices.DeleteFunc(slices.Clone(s.Views), func(v schema.View) bool { return match(v.Schema, v.Name) })
-	c.Functions = slices.DeleteFunc(slices.Clone(s.Functions), func(f schema.Function) bool { return match(f.Schema, f.Name) })
-	c.Enums = slices.DeleteFunc(slices.Clone(s.Enums), func(e schema.Enum) bool { return match("", e.Name) })
-	c.Extensions = slices.DeleteFunc(slices.Clone(s.Extensions), func(e schema.Extension) bool { return match("", e.Name) })
-	c.Triggers = slices.DeleteFunc(slices.Clone(s.Triggers), func(t schema.Trigger) bool {
-		return gone[t.Schema+"\x00"+t.Table] || match(t.Schema, t.Name)
+	return &c, gone
+}
+
+// withoutTableObjects removes from c (a copy) the triggers and policies of the
+// dropped tables, and those the extra functions select.
+func withoutTableObjects(c *schema.Schema, gone map[string]bool, trigger func(schema.Trigger) bool, policy func(schema.Policy) bool) {
+	c.Triggers = slices.DeleteFunc(slices.Clone(c.Triggers), func(t schema.Trigger) bool {
+		return gone[t.Schema+"\x00"+t.Table] || (trigger != nil && trigger(t))
 	})
-	c.Policies = slices.DeleteFunc(slices.Clone(s.Policies), func(p schema.Policy) bool {
-		return gone[p.Schema+"\x00"+p.Table] || match(p.Schema, p.Name)
+	c.Policies = slices.DeleteFunc(slices.Clone(c.Policies), func(p schema.Policy) bool {
+		return gone[p.Schema+"\x00"+p.Table] || (policy != nil && policy(p))
 	})
-	return &c
 }
 
 // applyOnly returns s without the tables that match none of globs, and without
@@ -99,26 +132,13 @@ func applyOnly(s *schema.Schema, globs []string) *schema.Schema {
 	if len(globs) == 0 {
 		return s
 	}
-	match, err := excludeMatcher(globs)
+	match, err := excludeMatcher("Config.OnlyTables", globs)
 	if err != nil {
 		return s
 	}
-	c := *s
-	gone := map[string]bool{}
-	c.Tables = slices.DeleteFunc(slices.Clone(s.Tables), func(t schema.Table) bool {
-		if match(t.Schema, t.Name) {
-			return false
-		}
-		gone[t.Schema+"\x00"+t.Name] = true
-		return true
-	})
-	c.Triggers = slices.DeleteFunc(slices.Clone(s.Triggers), func(t schema.Trigger) bool {
-		return gone[t.Schema+"\x00"+t.Table]
-	})
-	c.Policies = slices.DeleteFunc(slices.Clone(s.Policies), func(p schema.Policy) bool {
-		return gone[p.Schema+"\x00"+p.Table]
-	})
-	return &c
+	c, gone := withoutTables(s, func(t schema.Table) bool { return !match(t.Schema, t.Name) })
+	withoutTableObjects(c, gone, nil, nil)
+	return c
 }
 
 // object is one comparable database object: its identity, its normalized JSON

@@ -739,11 +739,11 @@ func (e *Engine) Inspect(ctx context.Context) (*schema.Schema, error) {
 // dialect implements InvalidInspector, and applies Config.Exclude to the result
 // because the dialects do not.
 func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Schema, []string, error) {
-	if _, err := excludeMatcher(e.opts.config.Exclude); err != nil {
+	if _, err := excludeMatcher("Config.Exclude", e.opts.config.Exclude); err != nil {
 		return nil, nil, err
 	}
-	if _, err := excludeMatcher(e.opts.config.OnlyTables); err != nil {
-		return nil, nil, fmt.Errorf("migrate: Config.OnlyTables: %w", err)
+	if err := checkOnlyTables(e.opts.config.OnlyTables); err != nil {
+		return nil, nil, err
 	}
 	schemas, err := e.resolveSchemas(ctx, c)
 	if err != nil {
@@ -778,7 +778,7 @@ func dropExcludedInvalid(s *schema.Schema, invalid []string, globs []string) []s
 	if len(globs) == 0 || len(invalid) == 0 {
 		return invalid
 	}
-	match, err := excludeMatcher(globs)
+	match, err := excludeMatcher("Config.Exclude", globs)
 	if err != nil {
 		return invalid
 	}
@@ -827,6 +827,9 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 		to.Dialect = e.opts.dialect.Dialect().Name
 	}
 	to = *dropExternalExtensions(&to, e.opts.config.ExternalExtensions)
+	if err := checkOnlyTables(e.opts.config.OnlyTables); err != nil {
+		return nil, err
+	}
 	// Tables outside Config.OnlyTables are not managed: a snapshot that still
 	// holds one (its model was removed) must not plan to drop it.
 	to = *applyOnly(&to, e.opts.config.OnlyTables)

@@ -5,11 +5,11 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"path"
 	"regexp"
 	"strings"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -111,19 +111,7 @@ func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.
 // An excluded object is skipped before it is read, so one the model cannot
 // represent does not fail the whole inspection.
 func (in *inspector) excluded(ns, name string) bool {
-	ns = in.optSchema(ns)
-	for _, g := range in.exclude {
-		if ok, _ := path.Match(g, name); ok {
-			return true
-		}
-		if ns == "" {
-			continue
-		}
-		if ok, _ := path.Match(g, ns+"."+name); ok {
-			return true
-		}
-	}
-	return false
+	return migrate.MatchObject(in.exclude, in.optSchema(ns), name)
 }
 
 // outsideOnly reports whether Config.OnlyTables is set and no glob of it
@@ -132,19 +120,7 @@ func (in *inspector) outsideOnly(ns, name string) bool {
 	if len(in.only) == 0 {
 		return false
 	}
-	ns = in.optSchema(ns)
-	for _, g := range in.only {
-		if ok, _ := path.Match(g, name); ok {
-			return false
-		}
-		if ns == "" {
-			continue
-		}
-		if ok, _ := path.Match(g, ns+"."+name); ok {
-			return false
-		}
-	}
-	return true
+	return !migrate.MatchObject(in.only, in.optSchema(ns), name)
 }
 
 // optSchema is the Schema field value for a namespace: empty for the current one.
