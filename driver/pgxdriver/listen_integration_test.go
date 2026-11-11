@@ -196,7 +196,7 @@ func TestListenReconnectsAfterBackendTermination(t *testing.T) {
 	var pid int32
 	if err := pool.QueryRow(ctx,
 		`SELECT pid FROM pg_stat_activity WHERE query = $1 AND pid <> pg_backend_pid()`,
-		"LISTEN "+quoteChannel(ch)).Scan(&pid); err != nil {
+		listenStatement(ch)).Scan(&pid); err != nil {
 		t.Fatalf("find listener backend: %v", err)
 	}
 	var terminated bool

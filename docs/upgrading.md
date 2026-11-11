@@ -5,6 +5,16 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `pgxdriver.Listen` and `pgxdriver.Notify` for LISTEN/NOTIFY
+
+New API, nothing to change in existing code. `pgxdriver.Listen` opens a
+dedicated connection, subscribes to channels and reconnects with backoff;
+`pgxdriver.Notify` sends with `pg_notify`. If you kept a raw pgx
+`WaitForNotification` loop beside momo, you can move it onto the `Listener`.
+See [LISTEN and NOTIFY](listen-notify.md).
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
