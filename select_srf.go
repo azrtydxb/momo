@@ -299,3 +299,68 @@ func (s Series[T]) appendFrom(b *Builder) {
 	b.writeByte(')')
 	appendSRFAlias(b, s.alias, []string{s.col})
 }
+
+// UnnestColumnSource is LATERAL unnest(col) AS alias (name): the elements of
+// an array-valued column or expression of an earlier source, one row each.
+// Build it with UnnestColumn and name it with As.
+type UnnestColumnSource[T any] struct {
+	arr        Expression[[]T]
+	alias, col string
+}
+
+// UnnestColumn expands an array column (or any array expression) of a source
+// earlier in the FROM list into rows:
+//
+//	momo.Select[row](db).From(q2).
+//		CrossJoin(momo.UnnestColumn(q2Flags).As("fl", "flag"))
+//
+// renders CROSS JOIN LATERAL unnest("q2"."flags") AS "fl" ("flag"). Read the
+// element through the Column of the source returned by As. Unlike Unnest it
+// takes a column and not bound values, so it can reference columns of the
+// sources before it. Without As the source has no alias and fails the build
+// with ErrValidation. It must come after the source that holds the array: as
+// the first FROM item it fails the build with ErrValidation. Use CrossJoin, or
+// LeftJoin with momo.SQL("true") as the ON condition to keep the rows whose
+// array is NULL or empty. A NULL array yields no rows. PostgreSQL only.
+func UnnestColumn[T any](col Expression[[]T]) UnnestColumnSource[T] {
+	return UnnestColumnSource[T]{arr: col}
+}
+
+// As names the source alias and the column the elements are read from.
+func (u UnnestColumnSource[T]) As(alias, col string) UnnestColumnSource[T] {
+	u.alias, u.col = alias, col
+	return u
+}
+
+// Column is the typed column of the elements.
+func (u UnnestColumnSource[T]) Column() Column[T] { return ColumnOf[T](u.alias, u.col) }
+
+// Qualifier is the alias the source's column is qualified with.
+func (u UnnestColumnSource[T]) Qualifier() string { return u.alias }
+
+// notLockable marks a source LockOf cannot name.
+func (UnnestColumnSource[T]) notLockable() {}
+
+// needsEarlierSource marks a source that reads a column of a source before
+// it, so a query cannot use it as its first FROM item.
+type needsEarlierSource interface{ needsEarlierSource() }
+
+func (UnnestColumnSource[T]) needsEarlierSource() {}
+
+func (u UnnestColumnSource[T]) appendFrom(b *Builder) {
+	if !srfPostgresOnly(b, "LATERAL unnest") {
+		return
+	}
+	if u.arr == nil {
+		b.SetErr(srfErr("UnnestColumn needs an array expression"))
+		return
+	}
+	if err := checkSRFNames(u.alias, []string{u.col}); err != nil {
+		b.SetErr(err)
+		return
+	}
+	b.WriteString("LATERAL unnest(")
+	u.arr.AppendSQL(b)
+	b.writeByte(')')
+	appendSRFAlias(b, u.alias, []string{u.col})
+}

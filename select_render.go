@@ -11,6 +11,16 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 )
 
+// needsParens reports whether the query has a clause that must bind to it
+// alone when it is a member of a set operation.
+func (sq SelectQuery[T]) needsParens() bool {
+	s := &sq.s
+	return len(s.order) > 0 || s.limit >= 0 || s.offset > 0 || s.lock != "" || len(s.with) > 0
+}
+
+// hasLock reports whether the query carries a row-lock clause.
+func (sq SelectQuery[T]) hasLock() bool { return sq.s.lock != "" }
+
 func (sq SelectQuery[T]) render(b *Builder) { sq.renderBare(b, false) }
 
 // renderBare is render; onConflictFollows ends a select that has a FROM and
@@ -98,6 +108,10 @@ func (sq SelectQuery[T]) writeSelectList(b *Builder) bool {
 func (s *selectCore) writeFrom(b *Builder, table string) bool {
 	if s.from == nil {
 		return true
+	}
+	if _, ok := s.from.(needsEarlierSource); ok {
+		b.SetErr(newError(ErrValidation, "build", table, errors.New("UnnestColumn reads a column of an earlier source and cannot be the first FROM item; use From for the table that holds the array and CrossJoin or LeftJoin the UnnestColumn")))
+		return false
 	}
 	b.WriteString(" FROM ")
 	s.from.appendFrom(b)

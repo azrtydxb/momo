@@ -60,6 +60,16 @@ func TestDirectives(t *testing.T) {
 	}
 }
 
+func TestDirectivesImported(t *testing.T) {
+	d, err := ParseDirectives([]byte("-- momo:imported\n-- momo:no-transaction\nCREATE TABLE x (id int);"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Imported || !d.NoTransaction || d.Generated {
+		t.Fatalf("bad directives: %+v", d)
+	}
+}
+
 func TestDirectivesHostile(t *testing.T) {
 	_, err := ParseDirectives([]byte("-- a note\n-- momo:destructiv\nDROP TABLE x;"))
 	if err == nil || !strings.Contains(err.Error(), "line 2") || !strings.Contains(err.Error(), "destructiv") {

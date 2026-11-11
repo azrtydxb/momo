@@ -29,6 +29,7 @@ type Directives struct {
 	Split                bool // -- momo:split
 	SQLiteForeignKeysOff bool // -- momo:sqlite-foreign-keys-off
 	Generated            bool // -- momo:generated (written by diff)
+	Imported             bool // -- momo:imported (written by the history importer)
 	// -- momo:ddl <ALGORITHM=..., LOCK=...> (MySQL) belongs to the statement
 	// after it, not to the file; it is not a field here.
 }
@@ -79,6 +80,8 @@ func parseDirectives(body []byte) (Directives, error) {
 			d.SQLiteForeignKeysOff = true
 		case "generated":
 			d.Generated = true
+		case "imported":
+			d.Imported = true
 		case "ddl":
 			// Statement scoped: applyDDLDirective reads it from the statement.
 		default:

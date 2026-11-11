@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package sqlfn holds the typed scalar SQL functions and operators: Substr,
-// Lower, Upper, Length, CurrentSchema, Case, the arithmetic helpers Add, Sub
-// and Mul, CoalesceExpr, Cast and Concat. Each is a value expression with the
-// comparison and ordering methods of a column (Eq, Lt, In, Asc, ...), and
-// each can be named in a select list with As.
+// Lower, Upper, Length, CurrentSchema, Case, the arithmetic helpers Add, Sub,
+// Mul and Div, NullIf, CurrentDate, Infinity, CoalesceExpr, Cast and Concat.
+// Each is a value expression with the comparison and ordering methods of a
+// column (Eq, Lt, In, Asc, ...), and each can be named in a select list with
+// As.
 //
 // The package builds on the exported extension API of the root package
 // (momo.Func, momo.Ops, momo.NewOps, Builder.Unsupported, momo.ValidTypeName)
@@ -17,6 +18,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -243,6 +245,82 @@ func Mul[T Numeric](e momo.Expression[T], v T) ArithExpr[T] {
 // MulExpr is e * other.
 func MulExpr[T Numeric](e, other momo.Expression[T]) ArithExpr[T] {
 	return arith[T](e, " * ", other)
+}
+
+// Div is e / v. Integer operands divide as integers on PostgreSQL and SQLite
+// (7 / 2 is 3); on MySQL, / on integers returns a DECIMAL (3.5000), so cast or
+// round when the same result is needed on every dialect. Cast to a float type
+// first for a fractional result. Division by zero is an error on PostgreSQL
+// and, in strict mode, on MySQL, and is NULL on SQLite (and on MySQL outside
+// strict mode): guard the divisor with NullIf on every dialect.
+func Div[T Numeric](e momo.Expression[T], v T) ArithExpr[T] {
+	return arith[T](e, " / ", momo.Value(v))
+}
+
+// DivExpr is e / other, for example DivExpr(final, NullIf(max, 0)).
+func DivExpr[T Numeric](e, other momo.Expression[T]) ArithExpr[T] {
+	return arith[T](e, " / ", other)
+}
+
+// NullIf is NULLIF(e, v): NULL when e equals v, else e. v renders as a
+// literal (momo.Lit), not a bound parameter.
+func NullIf[T Numeric](e momo.Expression[T], v T) momo.FuncExpr[T] {
+	return momo.Func[T]("nullif", e, momo.Lit(v))
+}
+
+// NullIfExpr is NULLIF(e, other).
+func NullIfExpr[T any](e, other momo.Expression[T]) momo.FuncExpr[T] {
+	return momo.Func[T]("nullif", e, other)
+}
+
+// DateExpr is a date or timestamp value without operands.
+type DateExpr struct {
+	momo.Ops[time.Time]
+	kind int
+}
+
+const (
+	kindCurrentDate = iota
+	kindInfinity
+	kindNegInfinity
+)
+
+func dateExpr(kind int) DateExpr {
+	d := DateExpr{kind: kind}
+	d.Ops = momo.NewOps[time.Time](d)
+	return d
+}
+
+// CurrentDate is CURRENT_DATE: the transaction date on PostgreSQL, the
+// session date on MySQL, the UTC date as text on SQLite.
+func CurrentDate() DateExpr { return dateExpr(kindCurrentDate) }
+
+// Infinity is 'infinity'::timestamptz, later than every timestamp. PostgreSQL
+// only; MySQL and SQLite fail with ErrUnsupported.
+func Infinity() DateExpr { return dateExpr(kindInfinity) }
+
+// NegInfinity is '-infinity'::timestamptz, earlier than every timestamp.
+// PostgreSQL only; MySQL and SQLite fail with ErrUnsupported.
+func NegInfinity() DateExpr { return dateExpr(kindNegInfinity) }
+
+// As names the expression in a select list.
+func (d DateExpr) As(alias string) momo.Aliased[time.Time] { return momo.As[time.Time](d, alias) }
+
+// AppendSQL writes the value to b.
+func (d DateExpr) AppendSQL(b *momo.Builder) {
+	if d.kind == kindCurrentDate {
+		b.WriteString("CURRENT_DATE")
+		return
+	}
+	if b.Dialect().Name != dialect.Postgres {
+		b.Unsupported("infinity timestamps")
+		return
+	}
+	if d.kind == kindInfinity {
+		b.WriteString("'infinity'::timestamptz")
+		return
+	}
+	b.WriteString("'-infinity'::timestamptz")
 }
 
 // ------------------------------------------- coalesce, cast, concatenation
