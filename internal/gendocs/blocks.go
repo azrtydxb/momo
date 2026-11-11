@@ -191,8 +191,7 @@ var features = []feature{
 		API:  []string{"jsonop.Text", "jsonop.Path", "jsonop.Root", "jsonop.Contains", "jsonop.HasKey", "jsonop.DeleteKey", "jsonop.Concat", "jsonop.Set"},
 		PG:   "yes",
 		SQLite: "`jsonop.Text`, `jsonop.Path`, `jsonop.Root`, `jsonop.DeleteKey` and `jsonop.HasKey` run on both SQLite drivers; a JSON boolean extracts as `1` or `0`; " +
-			"`jsonop.Contains`, `jsonop.Concat` and `jsonop.Set` are `ErrUnsupported`, since `json_each` cannot express the recursive `@>` rule " +
-			"and SQLite has no operator with the `||` rules or a path computed in SQL",
+			"`jsonop.Contains`, `jsonop.Concat` and `jsonop.Set` are `ErrUnsupported`",
 		MySQL: "SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server",
 	},
 	{
