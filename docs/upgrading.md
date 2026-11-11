@@ -17,7 +17,7 @@ column as a `read_only` field with the new `generated:<expr>` tag. `Insert` and
 snapshot carries the expression, so `migrate diff` stays empty and `migrate`
 renders `GENERATED ALWAYS AS (...) STORED` on PostgreSQL, MySQL and SQLite.
 
-```go
+```text
 type Account struct {
 	momo.Model `momo:"table:accounts"`
 	ID         int64  `momo:"pk,identity"`
