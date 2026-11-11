@@ -1,6 +1,6 @@
 # from-db writes the inverse has_many and has_one
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -27,15 +27,18 @@ child-side `relation`; nothing walks those relations to add the parent side.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] `introspect.inverse: true` writes `has_many` (plain foreign key) and `has_one` (unique foreign key column) on the referenced model
-- [ ] two foreign keys from one child to one parent give distinct, deterministic names (`MessagesBySender`, `MessagesByRecipient`)
-- [ ] no inverse for a referencing table that has no model (`only`, `skip`)
-- [ ] `introspect.relations` renames or skips one inverse
-- [ ] the default (option off) output is unchanged
-- [ ] a PostgreSQL integration test preloads the generated inverse relations
-- [ ] docs/migrations.md and an `Upgrading to 0.8.0` subsection in docs/upgrading.md describe it
+- [x] a regression test pins the fix: red before the change, green after
+- [x] `introspect.inverse: true` writes `has_many` (plain foreign key) and `has_one` (unique foreign key column) on the referenced model
+- [x] two foreign keys from one child to one parent give distinct, deterministic names (`MessagesBySender`, `MessagesByRecipient`)
+- [x] no inverse for a referencing table that has no model (`only`, `skip`)
+- [x] `introspect.relations` renames or skips one inverse
+- [x] the default (option off) output is unchanged
+- [x] a PostgreSQL integration test preloads the generated inverse relations
+- [x] docs/migrations.md and an `Upgrading to 0.8.0` subsection in docs/upgrading.md describe it
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Regression test, red: ci-agent run 42977879827 (sha 3abfe72, branch worktree-agent-red-91, deleted). gen/fromdb/inverse_test.go failed to build (`unknown field Inverse in struct literal of type Config`, `undefined: RelationRule`) and cli TestGenerateFromDBInverse failed on the unknown `inverse` yaml key.
+- Green: ci-agent run 42989097917, headSha e7892964220c706282d15e160821b94118950477, all jobs success.
+- Unit tests cover kinds (has_many, has_one), two-foreign-key names, self reference, rules, only/skip and the unchanged default (gen/fromdb/inverse_test.go). The PostgreSQL integration test cli/generate_fromdb_inverse_integration_test.go preloads Books, AuthorProfile, MessagesBySender and MessagesByRecipient from the generated models.
+- Docs changed: docs/migrations.md, docs/upgrading.md (Upgrading to 0.8.0), and the --from-db usage text in cli/generate.go.
