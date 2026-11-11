@@ -166,10 +166,17 @@ type field struct {
 	tagSig            string  // sort, nulls and method written for the index tags
 }
 
-// relation is a belongs_to field.
+// relation is a relation field: a belongs_to read from a foreign key, or the
+// has_one or has_many inverse of one.
 type relation struct {
 	name, target string
 	opts         []string
+	// kind is belongs_to, has_one or has_many.
+	kind string
+	// child, parent and fkField describe the foreign key behind the relation:
+	// the referencing model, the referenced model and the Go field that holds it.
+	child, parent *model
+	fkField       string
 }
 
 type generator struct {
@@ -197,6 +204,9 @@ func (g *generator) run() error {
 	}
 	for _, m := range g.models {
 		g.constraints(m)
+	}
+	if g.o.Config.Inverse {
+		g.inverses()
 	}
 	g.globals()
 	names := map[string]bool{}
@@ -795,7 +805,7 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		rel = target.name
 	}
 	rel = uniqueName(m.used, rel)
-	m.rels = append(m.rels, &relation{name: rel, target: target.name, opts: opts})
+	m.rels = append(m.rels, &relation{name: rel, target: target.name, opts: opts, kind: "belongs_to", child: m, parent: target, fkField: f.name})
 	return true
 }
 
@@ -1172,7 +1182,11 @@ func (g *generator) render(m *model, names map[string]bool) (File, error) {
 		b.WriteString("\n")
 	}
 	for _, r := range m.rels {
-		b.WriteString("\t" + r.name + " *" + r.target + " `momo:\"" + strings.Join(r.opts, ",") + "\"`\n")
+		typ := "*" + r.target
+		if r.kind == "has_many" {
+			typ = "[]" + r.target
+		}
+		b.WriteString("\t" + r.name + " " + typ + " `momo:\"" + strings.Join(r.opts, ",") + "\"`\n")
 	}
 	b.WriteString("}\n")
 	if len(m.stmts) > 0 {
