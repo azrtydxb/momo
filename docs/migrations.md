@@ -1040,6 +1040,7 @@ introspect:
   only: [] # table globs: models only for these tables; skip applies within
   functions: "" # "all": every database function on the first model
   dbdefault: "" # "all": dbdefault on every NOT NULL column with a default
+  uuid: google # uuid columns as github.com/google/uuid types, no type tag (default: momo, types.UUID)
   types: # SQL type to Go type, for every column of that type
     inet: { go: string }
     numeric(12,2):
@@ -1053,6 +1054,11 @@ introspect:
   tables:
     users: { name: Account, tags: ["soft_delete:timestamp"] }
 ```
+
+`uuid` is `momo` (the default, `types.UUID` and `[]types.UUID`) or `google`
+(`uuid.UUID`, `*uuid.UUID` and `[]uuid.UUID` from `github.com/google/uuid`).
+Neither writes a type tag. `introspect.uuid` has no effect on MySQL, which has no uuid mapping. `google` makes the generated models import
+`github.com/google/uuid`, so your module must require it.
 
 A rule's `tags` are momo tag options; one with the key of a generated option
 replaces it. A Go type needs no `import` for `types.`, `vector.`, `time.`,

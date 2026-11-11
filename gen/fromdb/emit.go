@@ -435,7 +435,22 @@ func (g *generator) goType(col *schema.Column, rule ColumnRule) (GoType, error) 
 	if err != nil {
 		return GoType{}, fmt.Errorf("%w: add an introspect.types rule for %q or an introspect.columns rule for the column", err, col.Type)
 	}
+	if g.o.Config.UUID == UUIDGoogle {
+		gt = googleUUID(gt)
+	}
 	return gt, nil
+}
+
+// googleUUID swaps types.UUID and []types.UUID for github.com/google/uuid's
+// UUID, which maps to uuid and uuid[] without a type tag.
+func googleUUID(gt GoType) GoType {
+	switch gt.Expr {
+	case "types.UUID":
+		return GoType{Expr: "uuid.UUID", Import: importGoogleUUID}
+	case "[]types.UUID":
+		return GoType{Expr: "[]uuid.UUID", Import: importGoogleUUID, Nilable: true}
+	}
+	return gt
 }
 
 // knownImports are the packages a Go type expression can name without a rule.
