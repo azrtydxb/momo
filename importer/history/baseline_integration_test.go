@@ -19,6 +19,7 @@ import (
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
+	msqlite "github.com/azrtydxb/momo/migrate/sqlite"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -182,5 +183,40 @@ func TestWriteImportValidates(t *testing.T) {
 	}
 	if len(rep.Problems) != 0 {
 		t.Fatalf("the imported directory must validate, got: %v", rep.Problems)
+	}
+}
+
+// A COMMIT that fails (a deferred foreign key violation on SQLite) leaves the
+// transaction open, so Baseline must roll it back before it gives the pooled
+// connection back: the failed migration leaves nothing behind and the next
+// Baseline on the same scratch database runs.
+func TestBaselineRollsBackAFailedCommitOnSQLite(t *testing.T) {
+	ctx := context.Background()
+	scratch := testopen.SQLite(t)
+	bad, _, err := Convert(Source{Tool: "goose", Migrations: []Raw{{
+		Version: "1", Name: "fk", Origin: "1_fk.sql",
+		Up: []byte("CREATE TABLE p (id integer PRIMARY KEY);\n" +
+			"CREATE TABLE c (pid integer REFERENCES p (id));\n" +
+			"PRAGMA defer_foreign_keys = ON;\n" +
+			"INSERT INTO c VALUES (1);"),
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Baseline(ctx, scratch, msqlite.New(), bad); err == nil {
+		t.Fatal("Baseline must report the failed commit")
+	}
+	good, _, err := Convert(Source{Tool: "goose", Migrations: []Raw{
+		{Version: "1", Name: "ok", Up: []byte("CREATE TABLE p (id integer PRIMARY KEY);"), Origin: "1_ok.sql"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snaps, err := Baseline(ctx, scratch, msqlite.New(), good)
+	if err != nil {
+		t.Fatalf("the next Baseline after a failed commit: %v", err)
+	}
+	if len(snaps) != 1 || len(snaps[0].Schema.Tables) != 1 {
+		t.Fatalf("want one snapshot with table p, got %+v", snaps)
 	}
 }
