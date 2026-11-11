@@ -179,7 +179,7 @@ func codecRoundTrips(t *testing.T, db *momo.DB, d dialect.Name) {
 			}
 			in := c.in
 			got, txt := roundTrip(t, db, d, "numspecial"+strconv.Itoa(i), &in)
-			if txt != c.text || got != in || got.IsFinite() {
+			if txt != c.text || *got != in || got.IsFinite() {
 				t.Fatalf("got %+v stored as %q, want %+v as %q", got, txt, in, c.text)
 			}
 		}
