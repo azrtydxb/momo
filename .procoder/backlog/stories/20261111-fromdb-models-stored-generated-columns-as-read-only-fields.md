@@ -1,6 +1,6 @@
 # fromdb models stored generated columns as read-only fields
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -36,20 +36,29 @@ no VIRTUAL case left in `--from-db`; this is a decision for the integrator.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] `--from-db` emits a stored generated column as a `read_only` field with
+- [x] a regression test pins the fix: red before the change, green after
+- [x] `--from-db` emits a stored generated column as a `read_only` field with
       `generated:<expr>`, or `c.Generated` when the expression has a comma, with no
       warning, and the snapshot carries the expression
-- [ ] a table with `normalized text GENERATED ALWAYS AS (lower(name)) STORED`
+- [x] a table with `normalized text GENERATED ALWAYS AS (lower(name)) STORED`
       round-trips through `--from-db` with an empty `migrate diff` (PostgreSQL
       integration test)
-- [ ] `Insert.Model` and `Update.Model` do not write the column, and a typed select
+- [x] `Insert.Model` and `Update.Model` do not write the column, and a typed select
       filters by it, on PostgreSQL, MySQL and SQLite (integration test)
-- [ ] the generator refuses a generated field that is not `read_only` or that has
+- [x] the generator refuses a generated field that is not `read_only` or that has
       a default
-- [ ] docs: `docs/ai-guide.md`, `docs/migrations.md`, `docs/upgrading.md` and
+- [x] docs: `docs/ai-guide.md`, `docs/migrations.md`, `docs/upgrading.md` and
       `docs/reference.md` describe the tag and `Config.Generated`
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Red: ci-agent run 42978208418 (sha 727ec1c, tests only). Failing lines:
+  `TestTagGrammar: "generated:lower(name)" rejected: unknown tag option "generated"`,
+  `TestGenerateFromDBStoredGenerated: unexpected warning: users.normalized: generated column is not modeled`,
+  `TestGeneratedTagReachesColumn: column = {... Generated: ...}, want the generated expression`.
+- Green: ci-agent run 42988137043, headSha bf70aea8ef97db46bc764228c1d17d32a6e023dc, all 9 jobs success
+  (unit; integration postgres, which runs the `--from-db` round trip with an empty `migrate diff` after baseline and
+  `TestStoredGeneratedColumnLive`; integration-mysql 84, 97 and mariadb, which run `TestStoredGeneratedColumnLive`;
+  lint; apidiff-docs; fuzz-smoke; bench-module).
+- Docs changed: docs/ai-guide.md, docs/migrations.md, docs/upgrading.md (Upgrading to 0.8.0), docs/reference.md
+  (from the regenerated-docs artifact of run 42985005399), cli/generate.go help text.
