@@ -52,6 +52,16 @@ type Builder struct {
 	// scopes tracks, per SELECT being rendered, which table qualifiers its
 	// FROM and JOIN sources expose and which qualifiers its columns used.
 	scopes []*qscope
+	// rels is the stack of correlated relation subqueries being rendered
+	// (Has, HasNo, CountOrder). Each nesting level gets its own child alias
+	// and the innermost one is what the sentinel alias "momo_r" resolves to.
+	rels []relFrame
+}
+
+// relFrame is one correlated relation subquery being rendered.
+type relFrame struct {
+	alias string // child alias of this level
+	table string // qualifier the relation's child table has outside the subquery
 }
 
 // qscope is one SELECT's source names and the qualifiers referenced inside it.
@@ -128,6 +138,15 @@ func (b *Builder) Ident(name string) { b.buf = b.d.AppendIdent(b.buf, name) }
 // QualifiedIdent appends qualifier.name, both quoted. An empty qualifier
 // (or an unqualified context) renders the bare quoted name.
 func (b *Builder) QualifiedIdent(qualifier, name string) {
+	if qualifier == relAlias && len(b.rels) > 0 {
+		qualifier = b.rels[len(b.rels)-1].alias
+	}
+	b.qualifiedExact(qualifier, name)
+}
+
+// qualifiedExact is QualifiedIdent without resolving the relation alias
+// sentinel: the qualifier is written as given.
+func (b *Builder) qualifiedExact(qualifier, name string) {
 	if qualifier != "" && !b.unqualified {
 		if n := len(b.scopes); n > 0 {
 			b.scopes[n-1].refs[qualifier] = struct{}{}

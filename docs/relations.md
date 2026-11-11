@@ -474,6 +474,22 @@ subquery owns that alias. Build them with `As` on the generated column:
 `comment.Approved.As("momo_r").Eq(true)`. A predicate that uses the column
 without the alias refers to the outer query's table.
 
+`Has`, `HasNo` and `CountOrder` can be nested in a scope. Each level gets its
+own child alias (`momo_r`, `momo_r2`, `momo_r3`, and for many-to-many the join
+alias `momo_j`, `momo_j2`, ...), and a nested relation whose parent is the child
+of the enclosing level correlates on that level's alias. `As("momo_r")` inside a
+scope always means the child of the subquery that scope belongs to. To reach an
+enclosing level from an inner scope, use its numbered alias, for example
+`As("momo_r2")`.
+
+<!-- docscheck:fragment -->
+
+```go
+// Documents with a tagging whose tag is named "db".
+tagged := momo.Select[models.Document](db).Where(
+	document.Taggings.Has(tagging.Tag.Has(tag.Name.As("momo_r").Eq("db"))))
+```
+
 `Relation.From(parents)` goes the other way: it returns a `SelectQuery[C]` of
 the children whose key is in the key set of the given parent query. The parent
 query is embedded as a subquery, so no parent row is fetched:

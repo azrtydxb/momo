@@ -2,6 +2,8 @@
 
 package momo
 
+import "strconv"
+
 // Direction orders by relation count. DirAsc and DirDesc avoid the names
 // Asc(e Expr) and Desc(e Expr) already used in expr.go.
 type Direction uint8
@@ -13,21 +15,36 @@ const (
 	DirDesc
 )
 
-// relAlias is the child alias used inside EXISTS and COUNT subqueries.
+// relAlias is the child alias used inside EXISTS and COUNT subqueries. Inside
+// a scope predicate it always means the child of the subquery the predicate
+// belongs to: a nested subquery renders under relLevelAlias(relAlias, depth),
+// and the builder resolves this name to the innermost level.
 const relAlias = "momo_r"
 
 // relJoinAlias is the join-table alias of many-to-many correlated subqueries.
 const relJoinAlias = "momo_j"
 
+// relLevelAlias returns base for the outermost subquery and base plus the
+// level number (momo_r2, momo_r3, ...) for each level nested inside it.
+func relLevelAlias(base string, depth int) string {
+	if depth == 0 {
+		return base
+	}
+	return base + strconv.Itoa(depth+1)
+}
+
 // relCorr is the non-generic part of a relation used by correlated predicates.
 type relCorr struct {
 	parentQual string
-	child      TableRef
-	parentCols []string
-	childCols  []string
-	through    *Through
-	disc       *Discriminator
-	soft       Predicate // child soft-delete filter, nil when the child has none
+	// explicitParent is set by HasFrom: the caller named the parent alias, so
+	// an enclosing subquery's alias never replaces it.
+	explicitParent bool
+	child          TableRef
+	parentCols     []string
+	childCols      []string
+	through        *Through
+	disc           *Discriminator
+	soft           Predicate // child soft-delete filter, nil when the child has none
 }
 
 // correlated renders EXISTS / NOT EXISTS / COUNT over the child table,
@@ -49,16 +66,27 @@ func (x correlated) AppendSQL(b *Builder) {
 		b.WriteString("EXISTS (SELECT 1 FROM ")
 	}
 	r := x.r
-	child := TableRef{Name: r.child.Name, Schema: r.child.Schema, Alias: relAlias}
-	names := []string{relAlias}
+	depth := len(b.rels)
+	alias := relLevelAlias(relAlias, depth)
+	joinAlias := relLevelAlias(relJoinAlias, depth)
+	// A relation whose parent is the child of the enclosing subquery
+	// correlates on that level's alias. An explicit alias (HasFrom) is kept.
+	parentQual := r.parentQual
+	if !r.explicitParent && depth > 0 && parentQual == b.rels[depth-1].table {
+		parentQual = b.rels[depth-1].alias
+	}
+	child := TableRef{Name: r.child.Name, Schema: r.child.Schema, Alias: alias}
+	names := []string{alias}
 	if r.through != nil {
-		names = append(names, relJoinAlias)
+		names = append(names, joinAlias)
 	}
 	b.withScope(names, func() {
+		b.rels = append(b.rels, relFrame{alias: alias, table: r.child.Qualifier()})
+		defer func() { b.rels = b.rels[:len(b.rels)-1] }()
 		if r.through != nil {
 			r.through.Table.appendFrom(b)
 			b.WriteString(" AS ")
-			b.Ident(relJoinAlias)
+			b.Ident(joinAlias)
 			b.WriteString(" INNER JOIN ")
 			child.appendFrom(b)
 			b.WriteString(" ON ")
@@ -66,18 +94,18 @@ func (x correlated) AppendSQL(b *Builder) {
 				if i > 0 {
 					b.WriteString(" AND ")
 				}
-				b.QualifiedIdent(relAlias, r.childCols[i])
+				b.qualifiedExact(alias, r.childCols[i])
 				b.WriteString(" = ")
-				b.QualifiedIdent(relJoinAlias, c)
+				b.qualifiedExact(joinAlias, c)
 			}
 			b.WriteString(" WHERE ")
 			for i, c := range r.through.ParentCols {
 				if i > 0 {
 					b.WriteString(" AND ")
 				}
-				b.QualifiedIdent(relJoinAlias, c)
+				b.qualifiedExact(joinAlias, c)
 				b.WriteString(" = ")
-				b.QualifiedIdent(r.parentQual, r.parentCols[i])
+				b.qualifiedExact(parentQual, r.parentCols[i])
 			}
 		} else {
 			child.appendFrom(b)
@@ -86,14 +114,14 @@ func (x correlated) AppendSQL(b *Builder) {
 				if i > 0 {
 					b.WriteString(" AND ")
 				}
-				b.QualifiedIdent(relAlias, c)
+				b.qualifiedExact(alias, c)
 				b.WriteString(" = ")
-				b.QualifiedIdent(r.parentQual, r.parentCols[i])
+				b.qualifiedExact(parentQual, r.parentCols[i])
 			}
 		}
 		if r.disc != nil {
 			b.WriteString(" AND ")
-			binOp{qcol{relAlias, r.disc.Column}, " = ", argExpr{v: r.disc.Value}}.AppendSQL(b)
+			binOp{qcol{alias, r.disc.Column}, " = ", argExpr{v: r.disc.Value}}.AppendSQL(b)
 		}
 		if r.soft != nil {
 			b.WriteString(" AND ")
@@ -115,7 +143,10 @@ func (correlated) resultType() bool { return false }
 //
 // Scope predicates must reference the child through the alias "momo_r": build
 // them with As on the generated column, for example
-// comment.Approved.As("momo_r").Eq(true). Soft-deleted children do not count.
+// comment.Approved.As("momo_r").Eq(true). Has, HasNo and CountOrder nest: a
+// nested subquery has its own alias (momo_r2, momo_r3, ...), "momo_r" in its
+// scope names its own child, and a relation whose parent is the enclosing
+// child correlates on the enclosing alias. Soft-deleted children do not count.
 // For many-to-many relations the join table gets no soft-delete filter: only
 // the child table's marker is applied.
 func (r Relation[P, C]) Has(scope ...Predicate) Predicate {
@@ -126,7 +157,9 @@ func (r Relation[P, C]) Has(scope ...Predicate) Predicate {
 // relations need it: the parent table is aliased in the outer query and the
 // alias is passed here.
 func (r Relation[P, C]) HasFrom(parentAlias string, scope ...Predicate) Predicate {
-	return correlated{r: r.corr(parentAlias), scope: scope}
+	c := r.corr(parentAlias)
+	c.explicitParent = true
+	return correlated{r: c, scope: scope}
 }
 
 // HasNo returns NOT EXISTS over the child table. Scope predicates follow the

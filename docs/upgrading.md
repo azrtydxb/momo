@@ -5,6 +5,33 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### Nested `Has` and `HasNo` get one alias per level
+
+A relation predicate nested inside the scope of another one used to render both
+subqueries with the child alias `momo_r`, so the inner correlation compared the
+inner table with itself and the statement failed (`column momo_r.planPriceId
+does not exist`). Each nesting level now has its own alias: `momo_r` for the
+outermost subquery, `momo_r2` for the one inside it, `momo_r3` inside that, and
+the same for the many-to-many join table (`momo_j`, `momo_j2`, ...). A plain
+`Has`, `HasNo` or `CountOrder` whose parent is the child of the enclosing
+subquery correlates on that enclosing alias on its own:
+
+<!-- docscheck:fragment -->
+
+```go
+momo.Select[models.Subscription](db).Where(
+	subscription.Items.Has(
+		subscriptionitem.PlanPrice.Has(planprice.PlanID.As("momo_r").Eq("p1"))))
+```
+
+Inside a scope predicate, `As("momo_r")` always names the child of the
+subquery that the scope belongs to, at any depth. Nothing changes for code that
+uses one level, and the SQL of a single `Has` is the same as before. A scope
+that needs the child of an enclosing level other than its own can use the
+numbered alias of that level (`As("momo_r2")`).
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use

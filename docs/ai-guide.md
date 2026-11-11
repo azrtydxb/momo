@@ -1695,7 +1695,10 @@ Rules and limits:
   filters before the limit.
 - `Has`/`HasNo` predicates must name the child column through the alias
   `momo_r`: `comment.Approved.As("momo_r").Eq(true)`; an unaliased column refers
-  to the OUTER table.
+  to the OUTER table. `Has`/`HasNo` nest: each level has its own child alias
+  (`momo_r`, `momo_r2`, `momo_r3`; join table `momo_j`, `momo_j2`), the inner one
+  correlates on the enclosing alias, and `As("momo_r")` in a scope always means
+  that scope's own level.
 - Has-one that matches several children for a parent: `ErrTooManyRows`.
 - `Link`, `Unlink`, `Replace`, `Count` write SQL directly: model hooks, field
   hooks and `UpdatedAt` are NOT run. Use the model's update path when those must
