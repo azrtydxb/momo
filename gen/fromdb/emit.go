@@ -267,6 +267,7 @@ func (g *generator) collectTables() {
 	}
 	g.clean.Tables = kept
 	g.dropObjectsOf(dropped)
+	g.dropUnmodeledObjects()
 	for i := range g.clean.Tables {
 		t := &g.clean.Tables[i]
 		m := &model{
@@ -294,6 +295,31 @@ func (g *generator) dropObjectsOf(dropped map[string]bool) {
 	var pol []schema.Policy
 	for _, x := range g.clean.Policies {
 		if !dropped[tableKey(x.Schema, x.Table)] {
+			pol = append(pol, x)
+		}
+	}
+	g.clean.Policies = pol
+}
+
+// dropUnmodeledObjects removes the triggers and policies whose table has no
+// model. Inspection leaves a skipped or only-excluded table out of the schema
+// but keeps its triggers and policies, so dropObjectsOf never sees the table;
+// without this they would land on the first model.
+func (g *generator) dropUnmodeledObjects() {
+	have := map[string]bool{}
+	for _, t := range g.clean.Tables {
+		have[tableKey(t.Schema, t.Name)] = true
+	}
+	var trg []schema.Trigger
+	for _, x := range g.clean.Triggers {
+		if have[tableKey(x.Schema, x.Table)] {
+			trg = append(trg, x)
+		}
+	}
+	g.clean.Triggers = trg
+	var pol []schema.Policy
+	for _, x := range g.clean.Policies {
+		if have[tableKey(x.Schema, x.Table)] {
 			pol = append(pol, x)
 		}
 	}
