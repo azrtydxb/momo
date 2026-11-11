@@ -1,6 +1,6 @@
 # Expression gaps: row-value comparison, Div, CURRENT_DATE, infinity, Lit
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -31,14 +31,16 @@ Root cause: the API never had these builders. Fix: `momo.Row(...).Lt/Le/Gt/Ge`,
 
 ## Acceptance criteria
 
-- [ ] row-value Lt, Le, Gt and Ge render `(a, b) op (x, y)` on every dialect, and mismatched or short rows fail with ErrValidation
-- [ ] sqlfn.Div, DivExpr, NullIf and NullIfExpr render per dialect, and a zero divisor guarded by NullIf runs on PostgreSQL
-- [ ] CurrentDate renders on every dialect; Infinity and NegInfinity render on PostgreSQL and fail with ErrUnsupported elsewhere
-- [ ] momo.Lit renders numbers, bool and dates inline, rejects non-finite floats, does not compile for a string, and the same Lit in SELECT and GROUP BY runs on PostgreSQL
-- [ ] ExprSelect supports joins, GROUP BY, HAVING and ORDER BY, validated and run as a grouped INSERT ... SELECT on PostgreSQL
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] row-value Lt, Le, Gt and Ge render `(a, b) op (x, y)` on every dialect, and mismatched or short rows fail with ErrValidation
+- [x] sqlfn.Div, DivExpr, NullIf and NullIfExpr render per dialect, and a zero divisor guarded by NullIf runs on PostgreSQL
+- [x] CurrentDate renders on every dialect; Infinity and NegInfinity render on PostgreSQL and fail with ErrUnsupported elsewhere
+- [x] momo.Lit renders numbers, bool and dates inline, rejects non-finite floats, does not compile for a string, and the same Lit in SELECT and GROUP BY runs on PostgreSQL
+- [x] ExprSelect supports joins, GROUP BY, HAVING and ORDER BY, validated and run as a grouped INSERT ... SELECT on PostgreSQL
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time: the commands run and what their output proved,
-     one line per criterion. Empty evidence keeps the story open. -->
+- Red: ci-agent run 42979501760 (branch worktree-agent-red-97, tests only, `cf11600`) failed to compile: `./expr_row_lit_test.go:27:23: undefined: momo.RowExpr`, `undefined: momo.Row`, `undefined: momo.Lit`, `sqlfn/sqlfn_expr97_test.go:25:14: undefined: sqlfn.DivExpr`, `undefined: sqlfn.NullIf`. The branch is deleted.
+- Green: ci-agent run 42986531687 and docs run 42986531735 succeeded on headSha 7b013c972dc334e3c8126dbdca311bb860b5285d (branch worktree-agent-a8396fdcdb29ac8fc). A first fix run, 42979652626 on 7db7819, failed on test-fixture table names, a missing NOT NULL column in the join test, bare doc names and a stale reference.md; all fixed in 7b013c9.
+- Criteria: TestRowComparisonGolden, TestRowComparisonValidation, TestRowComparisonExecutes (row values); TestDivAndNullIfGolden, TestNullIfExprGolden, TestDivNullIfExecutes (Div, NullIf); TestCurrentDateAndInfinityGolden, TestInfinityComparison, TestCurrentDateAndInfinityExecute (CURRENT_DATE, infinity); TestLitGolden, TestLitRejectsNonFinite, TestLitSelectAndGroupByIdentical, TestCompileFailLitString, TestLitGroupByExecutes (Lit); TestExprSelectGroupHavingOrderGolden, TestExprSelectJoinsGolden, TestExprSelectClauseValidation, TestExprSelectGroupedInsertExecutes, TestExprSelectJoinExecutes (ExprSelect). All passed in the green run.
+- Docs changed: docs/ai-guide.md, docs/capabilities.md, docs/upgrading.md (new "Upgrading to 0.8.0" section), docs/reference.md (from the regenerated-docs artifact).
