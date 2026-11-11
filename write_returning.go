@@ -425,7 +425,7 @@ func unconstrainedSource(d *dialect.Dialect, ps []Predicate, srcs []TableSource)
 	}
 	for _, s := range srcs {
 		q, ok := s.(interface{ Qualifier() string })
-		if !ok {
+		if !ok || q.Qualifier() == "" {
 			return "an unnamed source"
 		}
 		if !referencesTable(d, ps, q.Qualifier()) {
