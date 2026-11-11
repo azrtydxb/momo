@@ -1904,7 +1904,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 </tr>
 <tr>
 <td>Array columns and operators</td>
-<td>yes: <code>[]string</code> maps to <code>text[]</code>, also <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>, <code>[]float32</code>, <code>[]float64</code>, <code>[]types.UUID</code> (<code>uuid[]</code>); one bind per slice</td>
+<td>yes: <code>[]string</code> maps to <code>text[]</code>, also <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>, <code>[]float32</code>, <code>[]float64</code>, <code>[]types.UUID</code> and <code>[]uuid.UUID</code> (github.com/google/uuid) (<code>uuid[]</code>); one bind per slice</td>
 <td><code>ErrUnsupported</code> at build time</td>
 <td><code>arrayop.Contains</code> (<code>@&gt;</code>), <code>arrayop.ContainedBy</code> (<code>&lt;@</code>), <code>arrayop.Overlaps</code> (<code>&amp;&amp;</code>), <code>arrayop.AnyOf</code> (<code>= ANY</code>)</td>
 </tr>
@@ -1948,7 +1948,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Raw SQL</td>
 <td>yes</td>
 <td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
-<td><code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.Query</code>, <code>momo.QueryRows</code>, <code>momo.SQL</code>, <code>TypedSQL</code>, <code>RawSubquery</code>, <code>Named</code>, <code>In</code>, <code>Ident</code></td>
+<td><code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.Query</code> and <code>momo.QueryRows</code> (into a model, a projection, <code>Row1</code>..<code>Row10</code> or a plain struct scanned by column name with no generated metadata; an unmatched column or field is <code>ErrValidation</code> naming it), <code>momo.SQL</code>, <code>TypedSQL</code>, <code>RawSubquery</code>, <code>Named</code>, <code>In</code>, <code>Ident</code></td>
 </tr>
 <tr>
 <td><code>EXPLAIN</code></td>
@@ -1979,7 +1979,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td><code>RETURNING</code></td>
 <td>yes (<code>Returning: true</code>)</td>
 <td>MySQL: no; MariaDB: <code>INSERT ... RETURNING</code> only (<code>InsertReturning</code>)</td>
-<td><code>.Returning(cols...)</code>, <code>.ReturningAll()</code> on insert, update, delete; read with <code>.Rows(ctx)</code>. Identity read-back in <code>CreateGraph</code> needs it.</td>
+<td><code>.Returning(cols...)</code>, <code>.ReturningAll()</code> on insert, update, delete; read with <code>.Rows(ctx)</code>, or one row with <code>.One(ctx)</code> (<code>ErrNotFound</code> when none came back, <code>ErrTooManyRows</code> for several; every column without a list; <code>ErrUnsupported</code> where <code>RETURNING</code> is; a multi-row <code>Models</code> insert is <code>ErrValidation</code>; MariaDB has no update or delete form in momo). Identity read-back in <code>CreateGraph</code> needs it.</td>
 </tr>
 <tr>
 <td><code>INSERT ... SELECT</code></td>

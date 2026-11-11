@@ -2355,8 +2355,11 @@ value. Tag the field <code>dbdefault</code> to leave it to the database instead:
   generator reports it. It adds no database default (use <code>default:</code>), and
   <code>momo generate --from-db</code> writes it for NOT NULL PostgreSQL columns whose
   default is computed (a function call, <code>CURRENT_TIMESTAMP</code>, or a <code>nextval</code>
-  sequence on a column that is not identity or serial). It never writes it for
-  other dialects: plain MySQL cannot read the value back.</li>
+  sequence on a column that is not identity or serial); with
+  <code>introspect.dbdefault: all</code> it writes it for every NOT NULL column that has a
+  default, a constant one such as <code>DEFAULT 1</code> included. A hand-written model can
+  put <code>dbdefault</code> on any NOT NULL column that has a database default. It never
+  writes it for other dialects: plain MySQL cannot read the value back.</li>
 </ul>
 <h3 id="model-hooks">Model hooks<a class="headerlink" href="#model-hooks" title="Permanent link">&para;</a></h3>
 <p>Give a model a method named <code>BeforeInsert</code>, <code>BeforeUpdate</code>, <code>BeforeDelete</code> or
@@ -2841,6 +2844,20 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
 <li><code>Exec</code> does not fill the identity into your struct; use <code>Returning(...).Rows</code>.
   <code>ReturningAll()</code> returns every mapped column. <code>CreateGraph</code> reads identities
   back itself.</li>
+<li>A write that returns one row reads it with <code>One(ctx) (T, error)</code> on
+  <code>InsertQuery</code>, <code>UpdateQuery</code> and <code>DeleteQuery</code>, instead of the <code>Rows</code> loop.
+  Without a <code>Returning</code> list it returns every column. It returns <code>ErrNotFound</code>
+  when no row came back (an <code>OnConflict(...).DoNothing()</code> insert, or a guarded
+  update or delete that matched nothing) and <code>ErrTooManyRows</code> when more than
+  one did. Without <code>WithImplicitTx</code> or an explicit transaction the statement has
+  already changed every matched row: run <code>One</code> inside <code>db.Tx</code> and roll back on
+  <code>ErrTooManyRows</code>. With <code>WithImplicitTx</code> it is rolled back for you.
+  <code>InsertQuery.One</code> is for a single-row insert: a multi-row <code>Models</code> insert is
+  <code>ErrValidation</code> (use <code>Rows</code>). <code>AfterLoad</code> runs before the write commits, so an
+  <code>AfterLoad</code> error rolls the write back, unlike <code>SelectQuery.One</code>. MySQL returns
+  <code>ErrUnsupported</code>; on MariaDB only insert has <code>RETURNING</code> in momo, so <code>UpdateQuery.One</code>
+  and <code>DeleteQuery.One</code> return <code>ErrUnsupported</code> (momo has no <code>RETURNING</code> form
+  for MariaDB <code>UPDATE</code> and <code>DELETE</code>).</li>
 <li>A <code>ReadOnly</code> / <code>identity</code> column is never written by <code>InsertQuery.Model</code>.</li>
 <li><code>InsertQuery.Models([]T{})</code> (empty) is <code>ErrValidation</code>.</li>
 </ul>
@@ -3068,10 +3085,24 @@ as arguments):</p>
   <code>T</code> is <code>Row1</code>..<code>Row10</code> (positional: the result must have exactly that many
   columns) or a model or projection (matched by column name in any order, exact
   then case-insensitive; an unmapped, missing or duplicated result column is
-  <code>ErrValidation</code>). <code>T</code> must have momo metadata: a model, a generated
-  projection or <code>Row1</code>..<code>Row10</code>; an ad-hoc struct does not work. By-name
-  matching needs every result column to map to a field and every field to be
-  in the result, so <code>SELECT d.*, count(*)</code> needs a projection or a <code>RowN</code>.
+  <code>ErrValidation</code>). <code>T</code> may also be a plain struct with no generated metadata
+  (no generator run, any number of columns): its exported fields are the
+  columns, named by a <code>momo:"column:x"</code> tag or else the snake_case of the field
+  name (<code>UserID</code> is <code>user_id</code>, <code>HTTPServer</code> is <code>http_server</code>), <code>momo:"-"</code> skips
+  a field, the fields of an embedded struct count as the outer struct's own
+  (unless it is a <code>time.Time</code>, a <code>sql.Scanner</code> or has a column tag; an outer
+  field shadows an embedded one, two fields on one column and an embedding
+  cycle are <code>ErrValidation</code>; an embedded pointer struct is allocated for every
+  row and stays non-nil even when all of its columns are NULL),
+  and a pointer field receives NULL as nil (NULL into a non-pointer field is
+  the driver's scan error). Names compare exactly, then case-insensitively. The
+  reflection plan is built once per type and cached
+  (<code>BenchmarkQueryPlainStruct</code>). A type with generated metadata (a model, a
+  projection, <code>Row1</code>..<code>Row10</code>) always uses it, and a type that is neither is
+  <code>ErrValidation</code> before the statement runs. By-name matching needs every
+  result column to map to a field and every field to be in the result (the
+  error names the column or field), so <code>SELECT d.*, count(*)</code> needs a struct
+  with a field for each result column.
   Placeholders, hooks (op <code>raw</code>), error classification and
   argument redaction are those of <code>Exec</code>; interceptors, soft-delete filters and
   <code>AfterLoad</code> do not apply to raw SQL. <code>QueryRows</code> closes the cursor on early
@@ -3779,7 +3810,12 @@ invalid text representation) hide the message because it may quote the value; th
 builders with <code>momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)</code>
 (use <code>momo.RawQuery</code> for hand-written SQL), read them with
 <code>QueryRegistry.Compile(dialect)</code> and freeze them with <code>momotest.QueryGolden</code>
-(<code>MOMO_UPDATE_GOLDEN=1</code> rewrites the files; registering a name twice panics).</p>
+(<code>MOMO_UPDATE_GOLDEN=1</code> rewrites the files; registering a name twice panics).
+The SQL of <code>InsertQuery[T].Model</code> depends on the sample model's dbdefault fields (a
+zero one is left out of the column list), so register it with the fields set as
+a real call sets them, or register <code>InsertQuery[T].Values</code> with <code>Set</code> for each column or
+<code>InsertQuery[T].Omit</code> before <code>InsertQuery[T].Model</code>, whose column list does not depend on values (see
+<a href="../testing/#listing-the-sql-a-query-registry">testing.md</a>).</p>
 <p>Use the public kit <code>github.com/azrtydxb/momo/momotest</code> (see
 <a href="../testing/">testing.md</a>):</p>
 <!-- docscheck:fragment -->

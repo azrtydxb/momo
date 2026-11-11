@@ -208,6 +208,22 @@ finding:
   early; they are filtered afterwards as before. `generate --from-db` also
   passes every `introspect.skip` glob to inspection the same way, so a skipped
   table is never read (the globs also match views and functions of that name).
+- `migrate.Config.OnlyTables` (set from `introspect.only` by the CLI) is the
+  inverse for tables: when it is not empty, a table whose name or `schema.name`
+  matches none of its globs is not managed. A table in the current schema is
+  matched by its bare name only (its schema is empty), so write `users`, not
+  `public.users`, when `public` is the current schema. Inspection does not read it
+  (`migrate.InspectOptions.Only`, honoured by the PostgreSQL inspector), and
+  drift, baseline and diff hide it, with its triggers and policies, like an
+  excluded table. `migrate.MatchObject(globs, schemaName, name)` is the matching
+  rule `Exclude`, `OnlyTables` and the inspector share. An empty entry is an
+  error. `diff` filters both sides: a snapshot table outside `OnlyTables` never
+  plans `DROP TABLE`, and a model for one never plans `CREATE TABLE`: a model
+  for a table outside `only` is never migrated. Partition children are tables
+  of their own: `only: [orders]` leaves out `orders_2024`; use
+  `only: [orders, "orders_*"]`. The MySQL and SQLite inspectors ignore
+  `InspectOptions.Only` and read every table; the filter is applied afterwards,
+  so a table they cannot represent can still fail inspection.
 - A trigger limited to some columns (`AFTER UPDATE OF state`) is
   `schema.Trigger.UpdateOf`: PostgreSQL renders `UPDATE OF "state"`, inspection
   reads the list back and `generate --from-db` writes it into the model.
@@ -1037,6 +1053,10 @@ introspect:
   package: models # default: the directory name
   out: ./models # default: the first local entry of packages
   skip: ["_prisma_*"] # table globs: no model, not in the snapshot
+  only: [] # table globs: models only for these tables; skip applies within
+  functions: "" # "all": every database function on the first model
+  dbdefault: "" # "all": dbdefault on every NOT NULL column with a default
+  uuid: google # uuid columns as github.com/google/uuid types, no type tag (default: momo, types.UUID)
   types: # SQL type to Go type, for every column of that type
     inet: { go: string }
     numeric(12,2):
@@ -1051,10 +1071,50 @@ introspect:
     users: { name: Account, tags: ["soft_delete:timestamp"] }
 ```
 
+`uuid` is `momo` (the default, `types.UUID` and `[]types.UUID`) or `google`
+(`uuid.UUID`, `*uuid.UUID` and `[]uuid.UUID` from `github.com/google/uuid`).
+Neither writes a type tag. `introspect.uuid` has no effect on MySQL, which has no uuid mapping. `google` makes the generated models import
+`github.com/google/uuid`, so your module must require it.
+
 A rule's `tags` are momo tag options; one with the key of a generated option
 replaces it. A Go type needs no `import` for `types.`, `vector.`, `time.`,
 `json.` or `sql.`. Add skipped tables to `migrate.exclude` too, so the baseline
 ignores the live tables.
+
+`only` is the inverse of `skip`, for a project that moves onto momo one module
+at a time: when it is set, a table that matches none of its globs gets no model
+and no place in the init snapshot, and migrate (drift, baseline, diff) treats it
+as excluded, so no `migrate.exclude` entry is needed for it. A glob matches the
+table name or `schema.name` (`only: ["app.*"]`), as `migrate.exclude` does, and
+an empty entry is an error. `skip` applies within `only`, and a skipped table
+still needs its `migrate.exclude` entry.
+
+`only` hides tables, and with them their triggers and policies. Inspection does
+not read a table outside `only`, so one the schema model cannot represent does
+not fail the run, and `migrate diff` ignores such a table in the snapshot, so it
+never plans `DROP TABLE` for it. It does not hide views, functions, enums or
+extensions of the modules you have not moved: drift still lists them as
+unmanaged and `--from-db` still writes the views and enums. Hide them with
+`migrate.exclude`. A foreign key from a modeled table to a table outside `only`
+is left out of the models and the snapshot with a warning, and the baseline
+reports it; add the target to `only` or accept the report.
+
+By default the models carry only the functions that a modeled table's triggers,
+column defaults, generated columns, checks, index expressions and predicates or
+policies call (and the functions those call: their bodies and argument defaults,
+by a call or a `'name'::regproc` or `'name(args)'::regprocedure` literal), each on
+the model of the table that uses it, and a table's triggers and policies are on
+its own model. A function nothing modeled uses is not written. SQL built at run
+time (`EXECUTE` with a name put together from pieces) cannot be followed, so a
+function only that code reaches is not written and a fresh database built from
+the models lacks it. `functions: all` writes every function on the first model,
+as releases before 0.7.0 did, and is the workaround.
+
+`dbdefault: all` tags every NOT NULL PostgreSQL column that has a default with
+`dbdefault`, constant defaults such as `DEFAULT 1` included (by default only
+computed defaults are tagged), so `InsertQuery.Model` leaves an unset field to the
+database default. A nullable column is never tagged. See "Database defaults" in
+the [AI guide](ai-guide.md).
 
 ### Running it again
 

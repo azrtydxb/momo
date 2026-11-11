@@ -2224,6 +2224,11 @@
 <td>Model deletes the row identified by m's primary key.</td>
 </tr>
 <tr>
+<td><code>momo.DeleteQuery.One</code></td>
+<td>method</td>
+<td>One runs the DELETE and returns the single RETURNING row: ErrNotFound when no row matched and ErrTooManyRows when more than one did.</td>
+</tr>
+<tr>
 <td><code>momo.DeleteQuery.Returning</code></td>
 <td>method</td>
 <td>Returning appends a RETURNING list; read the rows with Rows.</td>
@@ -2917,6 +2922,11 @@
 <td><code>momo.InsertQuery.OnConflict</code></td>
 <td>method</td>
 <td>OnConflict starts an ON CONFLICT clause with the given conflict target.</td>
+</tr>
+<tr>
+<td><code>momo.InsertQuery.One</code></td>
+<td>method</td>
+<td>One runs a single-row INSERT and returns its RETURNING row: ErrNotFound when no row came back (ON CONFLICT DO NOTHING, or a DO UPDATE whose WHERE did not hold) and ErrTooManyRows when more than one did.</td>
 </tr>
 <tr>
 <td><code>momo.InsertQuery.Returning</code></td>
@@ -4424,6 +4434,11 @@
 <td>Model updates the row identified by m's primary key with m's writable column values.</td>
 </tr>
 <tr>
+<td><code>momo.UpdateQuery.One</code></td>
+<td>method</td>
+<td>One runs the UPDATE and returns the single RETURNING row: ErrNotFound when no row matched (a guarded update) and ErrTooManyRows when more than one did.</td>
+</tr>
+<tr>
 <td><code>momo.UpdateQuery.Returning</code></td>
 <td>method</td>
 <td>Returning appends a RETURNING list; read the rows with Rows.</td>
@@ -4883,6 +4898,11 @@
 <td><code>schema.MariaDBVectorIndexClause</code></td>
 <td>func</td>
 <td>MariaDBVectorIndexClause renders a validated index as the clause MariaDB accepts inside CREATE TABLE and ALTER TABLE ...</td>
+</tr>
+<tr>
+<td><code>schema.MatchObject</code></td>
+<td>func</td>
+<td>MatchObject reports whether any glob matches the object name, or schema.name when schemaName is not empty (the current schema is spelled with an empty one, so a glob such as public.users never matches a table in the current schema: use its bare name).</td>
 </tr>
 <tr>
 <td><code>schema.NormalizeExpr</code></td>
@@ -5797,6 +5817,11 @@
 <td><code>migrate.LintSQL</code></td>
 <td>func</td>
 <td>LintSQL checks the statements of one migration for operations that lock a table for long, rewrite it, or lose data, and reports each with a severity and a safer alternative.</td>
+</tr>
+<tr>
+<td><code>migrate.MatchObject</code></td>
+<td>func</td>
+<td>MatchObject reports whether any glob matches the object name, or schema.name when schemaName is not empty (the current schema is spelled with an empty one).</td>
 </tr>
 <tr>
 <td><code>migrate.MetaVersion</code></td>

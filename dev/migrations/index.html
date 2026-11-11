@@ -2460,6 +2460,22 @@ finding:</p>
   early; they are filtered afterwards as before. <code>generate --from-db</code> also
   passes every <code>introspect.skip</code> glob to inspection the same way, so a skipped
   table is never read (the globs also match views and functions of that name).</li>
+<li><code>migrate.Config.OnlyTables</code> (set from <code>introspect.only</code> by the CLI) is the
+  inverse for tables: when it is not empty, a table whose name or <code>schema.name</code>
+  matches none of its globs is not managed. A table in the current schema is
+  matched by its bare name only (its schema is empty), so write <code>users</code>, not
+  <code>public.users</code>, when <code>public</code> is the current schema. Inspection does not read it
+  (<code>migrate.InspectOptions.Only</code>, honoured by the PostgreSQL inspector), and
+  drift, baseline and diff hide it, with its triggers and policies, like an
+  excluded table. <code>migrate.MatchObject(globs, schemaName, name)</code> is the matching
+  rule <code>Exclude</code>, <code>OnlyTables</code> and the inspector share. An empty entry is an
+  error. <code>diff</code> filters both sides: a snapshot table outside <code>OnlyTables</code> never
+  plans <code>DROP TABLE</code>, and a model for one never plans <code>CREATE TABLE</code>: a model
+  for a table outside <code>only</code> is never migrated. Partition children are tables
+  of their own: <code>only: [orders]</code> leaves out <code>orders_2024</code>; use
+  <code>only: [orders, "orders_*"]</code>. The MySQL and SQLite inspectors ignore
+  <code>InspectOptions.Only</code> and read every table; the filter is applied afterwards,
+  so a table they cannot represent can still fail inspection.</li>
 <li>A trigger limited to some columns (<code>AFTER UPDATE OF state</code>) is
   <code>schema.Trigger.UpdateOf</code>: PostgreSQL renders <code>UPDATE OF "state"</code>, inspection
   reads the list back and <code>generate --from-db</code> writes it into the model.</li>
@@ -3360,6 +3376,10 @@ run:</p>
 <span class="w">  </span><span class="nt">package</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">models</span><span class="w"> </span><span class="c1"># default: the directory name</span>
 <span class="w">  </span><span class="nt">out</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./models</span><span class="w"> </span><span class="c1"># default: the first local entry of packages</span>
 <span class="w">  </span><span class="nt">skip</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"_prisma_*"</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># table globs: no model, not in the snapshot</span>
+<span class="w">  </span><span class="nt">only</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w"> </span><span class="c1"># table globs: models only for these tables; skip applies within</span>
+<span class="w">  </span><span class="nt">functions</span><span class="p">:</span><span class="w"> </span><span class="s">""</span><span class="w"> </span><span class="c1"># "all": every database function on the first model</span>
+<span class="w">  </span><span class="nt">dbdefault</span><span class="p">:</span><span class="w"> </span><span class="s">""</span><span class="w"> </span><span class="c1"># "all": dbdefault on every NOT NULL column with a default</span>
+<span class="w">  </span><span class="nt">uuid</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">google</span><span class="w"> </span><span class="c1"># uuid columns as github.com/google/uuid types, no type tag (default: momo, types.UUID)</span>
 <span class="w">  </span><span class="nt">types</span><span class="p">:</span><span class="w"> </span><span class="c1"># SQL type to Go type, for every column of that type</span>
 <span class="w">    </span><span class="nt">inet</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> go</span><span class="p">:</span><span class="w"> </span><span class="nv">string</span><span class="w"> </span><span class="p p-Indicator">}</span>
 <span class="w">    </span><span class="l l-Scalar l-Scalar-Plain">numeric(12,2)</span><span class="p p-Indicator">:</span>
@@ -3373,10 +3393,45 @@ run:</p>
 <span class="w">  </span><span class="nt">tables</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">users</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">Account</span><span class="p p-Indicator">,</span><span class="nt"> tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"soft_delete:timestamp"</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
 </code></pre></div>
+<p><code>uuid</code> is <code>momo</code> (the default, <code>types.UUID</code> and <code>[]types.UUID</code>) or <code>google</code>
+(<code>uuid.UUID</code>, <code>*uuid.UUID</code> and <code>[]uuid.UUID</code> from <code>github.com/google/uuid</code>).
+Neither writes a type tag. <code>introspect.uuid</code> has no effect on MySQL, which has no uuid mapping. <code>google</code> makes the generated models import
+<code>github.com/google/uuid</code>, so your module must require it.</p>
 <p>A rule's <code>tags</code> are momo tag options; one with the key of a generated option
 replaces it. A Go type needs no <code>import</code> for <code>types.</code>, <code>vector.</code>, <code>time.</code>,
 <code>json.</code> or <code>sql.</code>. Add skipped tables to <code>migrate.exclude</code> too, so the baseline
 ignores the live tables.</p>
+<p><code>only</code> is the inverse of <code>skip</code>, for a project that moves onto momo one module
+at a time: when it is set, a table that matches none of its globs gets no model
+and no place in the init snapshot, and migrate (drift, baseline, diff) treats it
+as excluded, so no <code>migrate.exclude</code> entry is needed for it. A glob matches the
+table name or <code>schema.name</code> (<code>only: ["app.*"]</code>), as <code>migrate.exclude</code> does, and
+an empty entry is an error. <code>skip</code> applies within <code>only</code>, and a skipped table
+still needs its <code>migrate.exclude</code> entry.</p>
+<p><code>only</code> hides tables, and with them their triggers and policies. Inspection does
+not read a table outside <code>only</code>, so one the schema model cannot represent does
+not fail the run, and <code>migrate diff</code> ignores such a table in the snapshot, so it
+never plans <code>DROP TABLE</code> for it. It does not hide views, functions, enums or
+extensions of the modules you have not moved: drift still lists them as
+unmanaged and <code>--from-db</code> still writes the views and enums. Hide them with
+<code>migrate.exclude</code>. A foreign key from a modeled table to a table outside <code>only</code>
+is left out of the models and the snapshot with a warning, and the baseline
+reports it; add the target to <code>only</code> or accept the report.</p>
+<p>By default the models carry only the functions that a modeled table's triggers,
+column defaults, generated columns, checks, index expressions and predicates or
+policies call (and the functions those call: their bodies and argument defaults,
+by a call or a <code>'name'::regproc</code> or <code>'name(args)'::regprocedure</code> literal), each on
+the model of the table that uses it, and a table's triggers and policies are on
+its own model. A function nothing modeled uses is not written. SQL built at run
+time (<code>EXECUTE</code> with a name put together from pieces) cannot be followed, so a
+function only that code reaches is not written and a fresh database built from
+the models lacks it. <code>functions: all</code> writes every function on the first model,
+as releases before 0.7.0 did, and is the workaround.</p>
+<p><code>dbdefault: all</code> tags every NOT NULL PostgreSQL column that has a default with
+<code>dbdefault</code>, constant defaults such as <code>DEFAULT 1</code> included (by default only
+computed defaults are tagged), so <code>InsertQuery.Model</code> leaves an unset field to the
+database default. A nullable column is never tagged. See "Database defaults" in
+the <a href="../ai-guide/">AI guide</a>.</p>
 <h3 id="running-it-again">Running it again<a class="headerlink" href="#running-it-again" title="Permanent link">&para;</a></h3>
 <p>The schema keeps changing during a port. A re-run rewrites the model files that
 nobody edited. Each file starts with a header that holds the hash of its body:

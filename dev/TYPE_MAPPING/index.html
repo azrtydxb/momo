@@ -1469,6 +1469,12 @@ has no array columns, so the generator rejects them there.</p>
 <td>unsupported</td>
 </tr>
 <tr>
+<td><code>uuid.UUID (github.com/google/uuid)</code></td>
+<td>uuid</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
 <td><code>types.Date</code></td>
 <td>date</td>
 <td>TEXT</td>
@@ -1560,6 +1566,12 @@ has no array columns, so the generator rejects them there.</p>
 </tr>
 <tr>
 <td><code>[]types.UUID</code></td>
+<td>uuid[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]uuid.UUID (github.com/google/uuid)</code></td>
 <td>uuid[]</td>
 <td>unsupported</td>
 <td>unsupported</td>
@@ -1694,23 +1706,22 @@ except <code>NaN</code>, which SQLite does not have (see Floats).</p>
 <li><code>[]string</code> on <code>text[]</code>: elements containing commas, quotes, the text <code>NULL</code>,
   or empty strings round-trip; an empty slice reads back empty.</li>
 <li>Slices as arrays: only <code>[]string</code>, <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>,
-  <code>[]float32</code>, <code>[]float64</code> and <code>[]types.UUID</code> (<code>uuid[]</code>) map. A <code>[]uuid.UUID</code> from
-  github.com/google/uuid does not: the scalar <code>uuid.UUID</code> has no mapping either,
-  so use <code>types.UUID</code> or a <code>type:</code> override. <code>[]int</code> is not mapped, because its width is
+  <code>[]float32</code>, <code>[]float64</code> and <code>[]types.UUID</code> (<code>uuid[]</code>) map, and so does a <code>[]uuid.UUID</code> from
+  github.com/google/uuid (see the next item). <code>[]int</code> is not mapped, because its width is
   platform dependent; use <code>[]int64</code>. <code>[]string</code> with a <code>size</code> tag becomes
   <code>character varying(N)[]</code>. A nil slice binds as NULL, so inserting it into a
   <code>NOT NULL</code> array column fails with a not-null violation; pass an empty
   non-nil slice (it stores <code>{}</code>), or give the column a <code>default '{}'</code> and omit
   it. The array predicates bind a nil value list as an empty array, never NULL.</li>
-<li>Slices as arrays: only <code>[]string</code>, <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>,
-  <code>[]float32</code>, <code>[]float64</code> and <code>[]types.UUID</code> (<code>uuid[]</code>) map. A <code>[]uuid.UUID</code> from
-  github.com/google/uuid does not: the scalar <code>uuid.UUID</code> has no mapping either,
-  so use <code>types.UUID</code> or a <code>type:</code> override. <code>[]int</code> is not mapped, because its width is
-  platform dependent; use <code>[]int64</code>. <code>[]string</code> with a <code>size</code> tag becomes
-  <code>character varying(N)[]</code>. A nil slice binds as NULL, so inserting it into a
-  <code>NOT NULL</code> array column fails with a not-null violation; pass an empty
-  non-nil slice (it stores <code>{}</code>), or give the column a <code>default '{}'</code> and omit
-  it. The array predicates bind a nil value list as an empty array, never NULL.</li>
+<li><code>uuid.UUID</code>, <code>*uuid.UUID</code> and <code>[]uuid.UUID</code> from github.com/google/uuid map to
+  <code>uuid</code> and <code>uuid[]</code> on PostgreSQL and <code>uuid.UUID</code> to <code>TEXT</code> on SQLite (canonical
+  text; <code>[]uuid.UUID</code> has no SQLite column), with no <code>type:</code> tag. MySQL has no
+  uuid mapping, as for <code>types.UUID</code>. The generator recognizes the type by its
+  import path and adds no dependency to momo; your module requires
+  github.com/google/uuid only when your models import it. <code>--from-db</code> writes
+  these types with <code>introspect.uuid: google</code>. A named type over <code>uuid.UUID</code>
+  (<code>type ID uuid.UUID</code>) is not mapped: give the field <code>type:uuid</code>. A UUID type
+  of another package is not mapped either.</li>
 <li>Decimal: carry <code>numeric</code> as a string to avoid binary floating point. Values
   beyond <code>float64</code> precision round-trip exactly, and <code>numeric</code> also accepts
   <code>NaN</code>.</li>
