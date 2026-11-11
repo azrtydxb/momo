@@ -147,6 +147,9 @@ func (b *Builder) QualifiedIdent(qualifier, name string) {
 // qualifiedExact is QualifiedIdent without resolving the relation alias
 // sentinel: the qualifier is written as given.
 func (b *Builder) qualifiedExact(qualifier, name string) {
+	if level, ok := parseRelLevel(qualifier); ok {
+		qualifier = relLevelAlias(relAlias, level-1)
+	}
 	if qualifier != "" && !b.unqualified {
 		if n := len(b.scopes); n > 0 {
 			b.scopes[n-1].refs[qualifier] = struct{}{}

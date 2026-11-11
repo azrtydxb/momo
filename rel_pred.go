@@ -2,7 +2,10 @@
 
 package momo
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // Direction orders by relation count. DirAsc and DirDesc avoid the names
 // Asc(e Expr) and Desc(e Expr) already used in expr.go.
@@ -231,5 +234,34 @@ func (x tupleInSubquery) AppendSQL(b *Builder) {
 
 func (tupleInSubquery) resultType() bool { return false }
 
-// RelAlias is not implemented yet.
-func RelAlias(level int) string { return relAlias }
+// relLevelPrefix starts the marker that RelAlias returns. It holds a NUL byte,
+// which no identifier contains, so a marker is never mistaken for a table
+// alias and never reaches the SQL text: the builder swaps it for the alias of
+// the level it names.
+const relLevelPrefix = "\x00momo_rel:"
+
+// parseRelLevel returns the level a RelAlias marker names.
+func parseRelLevel(q string) (int, bool) {
+	rest, ok := strings.CutPrefix(q, relLevelPrefix)
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(rest)
+	if err != nil || n < 1 {
+		return 1, true
+	}
+	return n, true
+}
+
+// RelAlias names one nesting level of Has, HasNo and CountOrder subqueries
+// explicitly, for use with As in a scope predicate. Level 1 is the outermost
+// subquery (alias momo_r), level 2 the one nested in it (momo_r2), and so on.
+// Unlike the bare alias "momo_r", which always means the subquery that the
+// scope belongs to, RelAlias(n) is never rewritten: it renders as the
+// generated alias of level n. A level that does not enclose the scope fails
+// the build with ErrValidation, as any column of a table that is not in the
+// query does. A level below 1 is read as 1.
+//
+//	tag.Name.As("momo_r").Eq("db")                // the scope's own level
+//	document.ID.As(momo.RelAlias(1)).Eq(int64(1)) // the outermost level
+func RelAlias(level int) string { return relLevelPrefix + strconv.Itoa(level) }

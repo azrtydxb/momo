@@ -478,15 +478,43 @@ without the alias refers to the outer query's table.
 own child alias (`momo_r`, `momo_r2`, `momo_r3`, and for many-to-many the join
 alias `momo_j`, `momo_j2`, ...), and a nested relation whose parent is the child
 of the enclosing level correlates on that level's alias. `As("momo_r")` inside a
-scope always means the child of the subquery that scope belongs to. To reach an
-enclosing level from an inner scope, use its numbered alias, for example
-`As("momo_r2")`.
+scope always means the child of the subquery that scope belongs to.
 
 ```text
 // Documents with a tagging whose tag is named "db".
 tagged := momo.Select[models.Document](db).Where(
 	document.Taggings.Has(tagging.Tag.Has(tag.Name.As("momo_r").Eq("db"))))
 ```
+
+To name an enclosing level from an inner scope, use `momo.RelAlias(level)`.
+Level 1 is the outermost subquery, level 2 the one nested in it, and so on.
+`RelAlias(n)` is never rewritten: it always renders as the generated alias of
+level n, so a scope can mix its own level (`As("momo_r")`) with an outer one. A
+level that does not enclose the scope fails the build with `ErrValidation`.
+
+```text
+// Authors whose first document has a tagging whose tag is named "db", and
+// whose first document (level 1) has id 1.
+momo.Select[models.Author](db).Where(
+	author.FirstDocument.Has(document.Taggings.Has(tagging.Tag.Has(
+		tag.Name.As("momo_r").Eq("db"),
+		document.ID.As(momo.RelAlias(1)).Eq(int64(1))))))
+```
+
+Rules that follow from the aliasing:
+
+- In a self-referencing relation, a nested `Has` correlates on the enclosing
+  child, not on the outer query: `employee.Reports.Has(employee.Reports.Has())`
+  asks for employees with a report that has a report. `HasFrom(alias)` is never
+  replaced: it correlates on the alias you name, so
+  `employee.Reports.Has(employee.Reports.HasFrom("employees"))` correlates the
+  inner subquery on the outer `employees` table.
+- `HasFrom("momo_r")` uses the literal alias of the outermost level. To name
+  another level, pass `momo.RelAlias(n)` or its numbered alias.
+- A `Subquery` or CTE of your own inside a scope predicate does not start a new
+  level: the level count continues through it, and a bare `momo_r` inside it
+  still means the enclosing relation subquery. Do not give your own table
+  aliases the names `momo_r`, `momo_r<N>`, `momo_j` or `momo_j<N>`.
 
 `Relation.From(parents)` goes the other way: it returns a `SelectQuery[C]` of
 the children whose key is in the key set of the given parent query. The parent

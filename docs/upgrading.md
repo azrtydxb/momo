@@ -27,8 +27,22 @@ momo.Select[models.Subscription](db).Where(
 Inside a scope predicate, `As("momo_r")` always names the child of the
 subquery that the scope belongs to, at any depth. Nothing changes for code that
 uses one level, and the SQL of a single `Has` is the same as before. A scope
-that needs the child of an enclosing level other than its own can use the
-numbered alias of that level (`As("momo_r2")`).
+that needs the child of an enclosing level other than its own uses the new
+`momo.RelAlias(level)`: level 1 is the outermost subquery, level 2 the one
+inside it. `RelAlias(n)` is never rewritten, so it can name the outermost level
+from any depth:
+
+```text
+author.FirstDocument.Has(document.Taggings.Has(tagging.Tag.Has(
+	tag.Name.As("momo_r").Eq("db"),
+	document.ID.As(momo.RelAlias(1)).Eq(int64(1)))))
+```
+
+In a self-referencing relation a nested `Has` correlates on the enclosing
+child, and `HasFrom(alias)` keeps the alias you name. `HasFrom("momo_r")` is the
+literal outermost alias. A `Subquery` or CTE of your own inside a scope does not
+start a level, and your own table aliases must not use the names `momo_r`,
+`momo_r<N>`, `momo_j` or `momo_j<N>`.
 
 ## Upgrading to 0.7.0
 
