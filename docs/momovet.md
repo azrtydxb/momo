@@ -24,7 +24,7 @@ A constant is a string literal, a `const`, or an expression made only of constan
 
 When the text is built only from constants and allowlisted identifiers, mark the call with a line directive and say why:
 
-```go
+```text
 momo.Exec(ctx, db, "UPDATE "+table+" SET x = 1") //momovet:ok table comes from the schema allowlist
 
 //momovet:ok column is checked against allowedColumns
