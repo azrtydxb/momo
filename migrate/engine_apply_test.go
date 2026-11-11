@@ -452,13 +452,23 @@ func TestApplyCancelledStillUnlocks(t *testing.T) {
 	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err == nil {
 		t.Fatal("a cancelled apply must fail")
 	}
-	// The detached cleanup released the lock.
+	// The cancelled session is discarded (the cleanup finds the connection
+	// broken), and PostgreSQL frees a session advisory lock only when that
+	// backend has exited, which is asynchronous with Apply returning. Poll for
+	// a bounded time instead of checking once.
 	c := pinned(t, db)
-	unlock, _, err := mpg.New().Lock(context.Background(), c, lockKey(t))
-	if err != nil {
-		t.Fatalf("lock still held after a cancelled apply: %v", err)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		unlock, _, err := mpg.New().Lock(context.Background(), c, lockKey(t))
+		if err == nil {
+			_ = unlock()
+			return
+		}
+		if !errors.Is(err, migrate.ErrLocked) || time.Now().After(deadline) {
+			t.Fatalf("lock still held 10s after a cancelled apply: %v", err)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	_ = unlock()
 }
 
 func TestApplySchemasMustMatchCurrentSchema(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/gen/tags"
+	"github.com/azrtydxb/momo/schema"
 )
 
 // Config is the introspect: section of momo.yaml. It steers `momo generate
@@ -26,9 +27,27 @@ type Config struct {
 	// left out of the init snapshot; add the same globs to migrate.exclude so
 	// the baseline ignores the live table.
 	Skip []string `yaml:"skip"`
+	// Only lists table name globs that get a model, the inverse of Skip: a
+	// table that matches none gets no model, no place in the init snapshot and
+	// no place in migrate (drift, baseline and diff treat it as excluded).
+	// Skip applies within Only. Empty means every table.
+	Only []string `yaml:"only"`
+	// Functions is "" (the default) to write only the functions that a modeled
+	// table's triggers, defaults, checks or policies use, each on the model of
+	// the table that uses it, or "all" to write every database function on the
+	// first model.
+	Functions string `yaml:"functions"`
+	// DBDefault is "" (the default) to tag only NOT NULL columns with a
+	// computed default dbdefault, or "all" to tag every NOT NULL column that
+	// has a default.
+	DBDefault string `yaml:"dbdefault"`
 	// Types overrides the Go type of every column of one SQL type, keyed by
 	// the normalized type, for example "inet" or "numeric(10,2)".
 	Types map[string]TypeRule `yaml:"types"`
+	// UUID picks the Go type of uuid and uuid[] columns: "momo" (the default)
+	// writes types.UUID, "google" writes github.com/google/uuid's UUID. Both
+	// write no type tag. An introspect.types rule for uuid still wins.
+	UUID string `yaml:"uuid"`
 	// Columns are per-column rules, applied in order; a later rule wins.
 	Columns []ColumnRule `yaml:"columns"`
 	// Tables are per-table rules keyed by table name.
@@ -63,10 +82,27 @@ func (c *Config) Validate() error {
 	if c.Package != "" && !token.IsIdentifier(c.Package) {
 		return fmt.Errorf("introspect.package: %q is not a Go identifier", c.Package)
 	}
+	if c.UUID != "" && c.UUID != UUIDMomo && c.UUID != UUIDGoogle {
+		return fmt.Errorf("introspect.uuid: %q must be momo or google", c.UUID)
+	}
 	for i, g := range c.Skip {
 		if _, err := path.Match(g, ""); err != nil {
 			return fmt.Errorf("introspect.skip[%d]: %q: %w", i, g, err)
 		}
+	}
+	for i, g := range c.Only {
+		if strings.TrimSpace(g) == "" {
+			return fmt.Errorf("introspect.only[%d]: empty glob: it would match no table, so no model would be written", i)
+		}
+		if _, err := path.Match(g, ""); err != nil {
+			return fmt.Errorf("introspect.only[%d]: %q: %w", i, g, err)
+		}
+	}
+	if c.Functions != "" && c.Functions != "all" {
+		return fmt.Errorf("introspect.functions: %q must be empty or \"all\"", c.Functions)
+	}
+	if c.DBDefault != "" && c.DBDefault != "all" {
+		return fmt.Errorf("introspect.dbdefault: %q must be empty or \"all\"", c.DBDefault)
 	}
 	for k, r := range c.Types {
 		if strings.TrimSpace(k) == "" {
@@ -134,13 +170,33 @@ func checkTags(where string, opts []string) error {
 }
 
 // skipped reports whether the table name matches a skip glob.
-func (c *Config) skipped(table string) bool {
+func (c *Config) skipped(schemaName, table string) bool {
 	for _, g := range c.Skip {
-		if ok, _ := path.Match(g, table); ok {
+		if matchTable(g, schemaName, table) {
 			return true
 		}
 	}
 	return false
+}
+
+// outsideOnly reports whether Only is set and the table matches none of its
+// globs.
+func (c *Config) outsideOnly(schemaName, table string) bool {
+	if len(c.Only) == 0 {
+		return false
+	}
+	for _, g := range c.Only {
+		if matchTable(g, schemaName, table) {
+			return false
+		}
+	}
+	return true
+}
+
+// matchTable reports whether a skip or only glob matches a table, by the rule
+// migrate shares: schema.MatchObject.
+func matchTable(glob, schemaName, name string) bool {
+	return schema.MatchObject([]string{glob}, schemaName, name)
 }
 
 // matchGlob reports whether name matches the glob. A malformed glob never

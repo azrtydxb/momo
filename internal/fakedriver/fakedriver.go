@@ -176,6 +176,13 @@ func (c *cursor) Scan(dest ...any) error {
 			continue
 		}
 		sv := reflect.ValueOf(v)
+		if elem.Kind() == reflect.Pointer && sv.Type().AssignableTo(elem.Type().Elem()) {
+			// a pointer field, as database/sql fills one: NULL is nil, a value allocates
+			p := reflect.New(elem.Type().Elem())
+			p.Elem().Set(sv)
+			elem.Set(p)
+			continue
+		}
 		if !sv.Type().AssignableTo(elem.Type()) {
 			return fmt.Errorf("fakedriver: cannot assign %s to %s in column %d", sv.Type(), elem.Type(), i)
 		}

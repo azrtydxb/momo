@@ -5,11 +5,11 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"path"
 	"regexp"
 	"strings"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -83,7 +83,7 @@ const (
 // given schemas. Table-level RLS flags and partition information are read
 // with the tables themselves (inspect.go); partition children are tables
 // carrying PartitionOf.
-func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.Schema, schemas, exclude []string) error {
+func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.Schema, schemas, exclude, only []string) error {
 	var cur *string
 	if err := queryOne(ctx, c, qCurrentSchema, nil, &cur); err != nil {
 		return fmt.Errorf("current schema: %w", err)
@@ -91,7 +91,7 @@ func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.
 	if cur == nil {
 		return fmt.Errorf("current_schema() is NULL: the search_path names no existing schema")
 	}
-	in := &inspector{c: c, current: *cur, managed: schemas, exclude: exclude}
+	in := &inspector{c: c, current: *cur, managed: schemas, exclude: exclude, only: only}
 	if err := in.views(ctx, s); err != nil {
 		return fmt.Errorf("views: %w", err)
 	}
@@ -111,19 +111,16 @@ func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.
 // An excluded object is skipped before it is read, so one the model cannot
 // represent does not fail the whole inspection.
 func (in *inspector) excluded(ns, name string) bool {
-	ns = in.optSchema(ns)
-	for _, g := range in.exclude {
-		if ok, _ := path.Match(g, name); ok {
-			return true
-		}
-		if ns == "" {
-			continue
-		}
-		if ok, _ := path.Match(g, ns+"."+name); ok {
-			return true
-		}
+	return migrate.MatchObject(in.exclude, in.optSchema(ns), name)
+}
+
+// outsideOnly reports whether Config.OnlyTables is set and no glob of it
+// matches the table name or schema.name.
+func (in *inspector) outsideOnly(ns, name string) bool {
+	if len(in.only) == 0 {
+		return false
 	}
-	return false
+	return !migrate.MatchObject(in.only, in.optSchema(ns), name)
 }
 
 // optSchema is the Schema field value for a namespace: empty for the current one.
@@ -226,7 +223,7 @@ func (in *inspector) triggers(ctx context.Context, s *schema.Schema) error {
 		if err := r.Scan(&ns, &table, &t.Name, &tgtype, &when, &attrs, &fnNS, &fnNSQ, &fnName, &fnArgs); err != nil {
 			return err
 		}
-		if in.excluded(ns, table) || in.excluded(ns, t.Name) {
+		if in.excluded(ns, table) || in.excluded(ns, t.Name) || in.outsideOnly(ns, table) {
 			return nil
 		}
 		if len(attrs) > 0 {
@@ -271,6 +268,9 @@ func (in *inspector) policies(ctx context.Context, s *schema.Schema) error {
 		var using, check *string
 		if err := r.Scan(&ns, &p.Table, &p.Name, &cmd, &p.Permissive, &p.Roles, &using, &check); err != nil {
 			return err
+		}
+		if in.outsideOnly(ns, p.Table) {
+			return nil
 		}
 		p.Schema = in.optSchema(ns)
 		p.Command = policyCmds[cmd]

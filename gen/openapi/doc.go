@@ -147,12 +147,8 @@ var pathSegmentRE = regexp.MustCompile(`^[A-Za-z0-9_~-][A-Za-z0-9._~-]*$`)
 
 func propertiesOf(g *gen.Graph, m *gen.Model) ([]property, []gen.Diagnostic) {
 	pks := map[string]bool{}
-	if g.Schema != nil {
-		if t, ok := g.TableOf(m); ok {
-			for _, c := range t.PrimaryKey {
-				pks[c] = true
-			}
-		}
+	for _, c := range g.PrimaryKey(m) {
+		pks[c] = true
 	}
 	var props []property
 	var diags []gen.Diagnostic

@@ -329,8 +329,11 @@ func (l *cli) dialectImpl() (migrate.Dialect, error) {
 
 // engineOptions maps the migrate: section of momo.yaml to engine options.
 func (l *cli) engineOptions(d migrate.Dialect, extra ...migrate.Option) ([]migrate.Option, error) {
+	if err := l.file.Introspect.Validate(); err != nil {
+		return nil, err
+	}
 	m := l.file.Migrate
-	cfg := migrate.Config{Schemas: m.Schemas, Exclude: m.Exclude, ExternalExtensions: m.ExternalExtensions}
+	cfg := migrate.Config{Schemas: m.Schemas, Exclude: m.Exclude, OnlyTables: l.file.Introspect.Only, ExternalExtensions: m.ExternalExtensions}
 	var timeouts []migrate.Option
 	var err error
 	if m.LockTimeout != "" {

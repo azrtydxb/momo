@@ -5,6 +5,244 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.7.0
+
+### `--from-db` writes only the functions the modeled tables use
+
+`momo generate --from-db` used to write every database function into the
+`MomoConfig` of the alphabetically first model. It now writes only the
+functions that a modeled table uses: the ones its triggers call, its column
+defaults, generated columns, checks, index expressions and predicates and its
+policies call, and the functions those functions call in turn (their bodies and
+argument defaults). A call is found by name, and so is a `'name'::regproc` or
+`'name(args)'::regprocedure` literal (also `pg_catalog`-qualified, schema
+qualified or with quoted names) and a `to_regproc('name')` call. Each one is written on the model of the
+table that uses it. A function that no modeled
+table uses is not written, and it is no longer in the init snapshot, so a
+database-wide function that nothing modeled needs does not appear in the
+models, and the model files no longer change when an unrelated function does.
+
+Triggers and policies moved the same way: they are written on the model of
+their own table instead of the first model. A function that a view calls stays
+on the first model, with the view, unless a modeled table also uses it: then it
+goes on that table's model. After you regenerate, a model file that held
+other tables' functions changes (a `.new` file next to a hand-edited one, see
+"Running it again" in [migrations](migrations.md)). A function that was written
+and is no longer used is not in the new init snapshot either; add it to
+`migrate.exclude` if the database keeps it and you do not want drift to report
+it as unmanaged.
+
+SQL that is built at run time cannot be followed. A function that another
+function reaches only through `EXECUTE` with a name put together from pieces
+(`EXECUTE 'SELECT ' || prefix || '_target()'`), or through any other dynamic
+SQL, is not written, and a fresh database built from the models then lacks it.
+If your functions do that, use `introspect.functions: all`, which keeps the old
+behaviour:
+
+```yaml
+introspect:
+  functions: all # every database function on the first model
+```
+
+### `introspect.only` limits `--from-db` to a list of tables
+
+`introspect.only` is a list of table name globs, the inverse of
+`introspect.skip`. When it is set, a table that matches none of the globs gets
+no model, no place in the init snapshot, and `momo migrate` leaves the live
+table alone (drift, baseline and diff treat it as excluded), so you do not need
+a `migrate.exclude` entry for every table you have not moved yet:
+
+```yaml
+introspect:
+  only: [accounts, projects, project_*]
+  skip: [project_notes] # skip applies within only
+```
+
+A glob matches the table name, or `schema.name` for a table outside the
+current schema (`only: ["app.*"]`), the same way `migrate.exclude` does. A table
+in the current schema (usually `public`) has an empty schema in the model, so
+only its bare name is tried: `only: [public.users]` matches nothing when
+`public` is the current schema; write `only: [users]`. An empty entry in `only`
+is an error. `skip` applies within `only`: a table must match `only` and not
+match `skip`. A skipped table still needs its `migrate.exclude` entry. An empty
+or absent `only` changes nothing.
+
+If `only` is set and no table matches, `--from-db` fails with an error that
+says `introspect.only` matched no table, instead of reporting an empty
+database. When some tables match, a glob that matched none is named in a
+warning, so a typo does not hide in the rest of the list.
+
+What `only` hides, and what it does not:
+
+- It hides tables and, with them, their triggers and policies. Inspection does
+  not read a table outside `only`, so a table the schema model cannot represent
+  no longer fails `--from-db`, `baseline` or `drift`. `migrate diff` ignores
+  such a table in the snapshot as well, so a snapshot that still holds one
+  never plans `DROP TABLE` for it.
+- A partition child is a table of its own, so `only: [orders]` leaves out
+  `orders_2024`. Name the children too: `only: [orders, "orders_*"]`.
+- A model for a table outside `only` (one you wrote by hand) is never migrated:
+  `migrate diff` plans neither a `CREATE TABLE` for it nor a `DROP TABLE` for a
+  snapshot table that is outside `only`.
+- Views, functions, enums and extensions of the modules you have not moved are
+  not hidden: drift still lists them as unmanaged, and `--from-db` still writes
+  the views and enums. Hide them with `migrate.exclude` (globs over the name),
+  for example `exclude: [legacy_*, audit_log_view]`.
+- A foreign key from a modeled table to a table outside `only` is left out of
+  the models and the snapshot, with a warning, and the baseline reports it as
+  a difference. Move the target table into `only`, or accept the report. The
+  column itself is still modeled, without the relation.
+
+Library users: `migrate.Config.OnlyTables` and `migrate.InspectOptions.Only`
+are new fields. `OnlyTables` is what `introspect.only` sets: when it is not
+empty, a table that matches none of its globs is hidden from drift, baseline
+and diff, with its triggers and policies, and the PostgreSQL inspector does not
+read it. The MySQL and SQLite inspectors ignore `migrate.InspectOptions.Only` and read
+every table, which is filtered afterwards, so a table they cannot represent can
+still fail inspection. `migrate.MatchObject` is the glob rule shared by
+`Exclude`, `OnlyTables` and the inspector. An empty or malformed entry is an
+error that names `migrate.Config.OnlyTables`.
+
+### `skip` globs match `schema.name`
+
+`introspect.skip` globs now match the same way `introspect.only` and
+`migrate.exclude` do: the bare table name, or `schema.name` for a table outside
+the current schema. A schema-qualified `skip` glob (`skip: ["app.legacy_*"]`)
+that did nothing before, because it was compared with the bare table name only,
+now takes effect and drops those tables from the models and the init snapshot.
+Check your `skip` list for such a glob before you regenerate.
+
+### `introspect.dbdefault: all` tags every column that has a default
+
+By default `--from-db` writes `dbdefault` only on NOT NULL columns whose
+default is computed (`now()`, `gen_random_uuid()`), so regenerating does not
+change what an existing model writes. A column such as
+`version bigint NOT NULL DEFAULT 1` is generated as `` `momo:"default:1"` ``,
+and `InsertQuery.Model` writes 0 for a model that left `Version` unset.
+`introspect.dbdefault: all` adds `dbdefault` to every NOT NULL PostgreSQL column
+that has a default, constant ones included, so an unset field takes the default
+and the stored value is read back:
+
+```yaml
+introspect:
+  dbdefault: all
+```
+
+A nullable column is never tagged, because a nil pointer would stop meaning
+NULL. The zero value now means "use the default" on those columns: a `bool` or
+number field can no longer write `false` or `0` through `Model` (use
+`InsertQuery.Values`). Hand-written models can use the `dbdefault` tag on any
+NOT NULL column that has a database default: see "Database defaults" in the
+[AI guide](ai-guide.md).
+
+### `--from-db` singularizes -se plurals correctly
+
+`momo generate --from-db` turns a table name into a model name by trying
+singular candidates and keeping the first one the naming preset pluralizes
+back to the table name. The order was wrong for words in `-se`: `releases`
+became `Releas`. The rule now is: a plural in `-sses`, `-xes`, `-zzes`,
+`-ches`, `-shes` or `-uses` (but not `-ouses` or `-auses`) loses `es`; any
+other plural in `-es` loses only the `s`; a short list of words that no
+spelling rule separates (`aliases`, `biases`, `canvases`, `gases`, `atlases`,
+`lenses`, `irises`, `tomatoes`, `buffaloes`, `potatoes`, `heroes`, `echoes`,
+`vetoes`, `caches`, `niches`, `quizzes`, `uses`) is listed by name.
+
+The generated model name changes, on the next regenerate, for these tables:
+
+- Tables `releases`, `cases`, `courses`, `responses`, `licenses`, `bases`,
+  `houses`, `purposes`, `causes`, `clauses` and `uses`: Releas, Cas, Cours,
+  Respons, Licens, Bas, Hous, Purpos, Caus, Claus and Us become Release, Case,
+  Course, Response, License, Base, House, Purpose, Cause, Clause and Use.
+- Tables `sizes`, `prizes`, `mazes`, `caches` and `niches`: Siz, Priz, Maz,
+  Cach and Nich become Size, Prize, Maze, Cache and Niche.
+- Table `quizzes`: Quizze (gorm, bun) or Quizz (prisma) becomes Quiz under the
+  `gorm`, `bun` and `prisma` presets; `momo` gives `Quizz` and `ent` gives
+  `Quizze` (see below).
+- Table `waltzes`: Waltz becomes Waltze, because a `-zes` word is read as `-ze`,
+  as in `sizes`.
+
+Not every preset can give every word the right name. The `gorm` and `bun`
+presets pluralize a word that ends in `s` to itself, and `ent` matches its
+rules case-sensitively on the Go name, so some words keep a wrong name there:
+`ent` gives `Statuse`, `Buse`, `Quizze` and `Aliase`; `momo` gives `Quizz`
+(it pluralizes `quiz` to `quizes`); `gorm`, `bun` and `ent` give `Biase`,
+`Canvase`, `Gase`, `Atlase`, `Lense` and `Irise`; `-oes` words get `Tomatoe`
+style names under presets with no `-oes` rule (`momo`, `ent`, and `gorm` and
+`bun` for `potatoes`, `heroes`, `echoes` and `vetoes`). These were wrong before
+too.
+
+To keep an old name, or to fix a wrong one, pin it in `momo.yaml`; the pin wins
+over the guess:
+
+```yaml
+introspect:
+  tables:
+    <table>: { name: Releas }
+```
+
+for example `releases: { name: Releas }`. A regenerate renames the struct in
+the generated file, so update the code that uses it, or pin the old name first.
+
+### `github.com/google/uuid` types need no type tag
+
+A model or projection field of `uuid.UUID`, `*uuid.UUID` or `[]uuid.UUID` from
+`github.com/google/uuid` now maps to `uuid` or `uuid[]` on PostgreSQL (`TEXT`
+on SQLite; `[]uuid.UUID` has no SQLite column) with no `momo:"type:uuid"` tag.
+A tag you already wrote is still honored and can stay or go. The generator
+recognizes the type by its import path, so it adds no dependency to momo. Your
+own module imports `github.com/google/uuid` only because your models already
+do. `arrayop` predicates on a `[]uuid.UUID` column bind with a `::uuid[]`
+cast, like `[]types.UUID`.
+
+`momo generate --from-db` keeps writing `types.UUID` unless you set
+`introspect.uuid: google` in `momo.yaml`; then every `uuid` column becomes
+`uuid.UUID` (`*uuid.UUID` when nullable) and every `uuid[]` column
+`[]uuid.UUID`, with no type tag and an import of `github.com/google/uuid`. An
+`introspect.types` rule for `uuid` still wins. A `--from-db` re-run after you
+set the switch regenerates the model files that nobody edited; edited files
+conflict as usual.
+
+The mapping is for PostgreSQL and SQLite. On MySQL these types are unsupported,
+as `types.UUID` is, and `introspect.uuid` has no effect there. A named type
+over `uuid.UUID` (`type ID uuid.UUID`) is not mapped; give it `type:uuid`.
+
+### `Query` and `QueryRows` read into a plain struct
+
+`momo.Query[T]` and `momo.QueryRows[T]` now accept any struct, with no
+generated metadata: fields scan by column name (`momo:"column:x"` tag, else the
+snake_case of the field name), and a result column with no field, or a field
+with no result column, is an `ErrValidation` that names it. A model, projection
+or `Row1`..`Row10` still scans through its generated metadata. The type
+parameters changed from `[T any, PT Modeler[T]]` to `[T any]`: a call that
+names only `T` compiles as before, and a call that named `PT` explicitly must
+drop it. A type that is not a struct and has no metadata is now an
+`ErrValidation` at run time instead of a compile error: `Query[*Task]` (a
+pointer type) now fails at run time, not at compile time.
+
+A struct without generated metadata, for example a model before `go generate`
+has run or after a stale generation, now compiles and takes the reflection path
+instead of failing to compile, so a stale or missing generation shows up only at
+run time. Run `go generate`, and keep a test that calls `Query` for each model.
+
+### New: `One` on writes with `RETURNING`
+
+`InsertQuery.One`, `UpdateQuery.One` and `DeleteQuery.One` run the statement
+and return the single returned row as `T`, so a sqlc `:one` style write no
+longer needs the `Rows` / `ScanModel` / `Close` loop. Without a `Returning`
+list it returns every column. It returns `ErrNotFound` when no row came back
+(an `ON CONFLICT DO NOTHING` insert, or a guarded update or delete that matched
+nothing) and `ErrTooManyRows` when more than one did.
+
+Without `WithImplicitTx` or an explicit transaction the statement has already
+changed every matched row; run `One` inside `db.Tx` and roll back on
+`ErrTooManyRows`. `InsertQuery.One` is for a single-row insert: a multi-row
+`Models` insert is `ErrValidation`, use `Rows`. `AfterLoad` runs before the
+write commits, so an `AfterLoad` error rolls the write back, unlike
+`SelectQuery.One`. MySQL has no `RETURNING` and returns `ErrUnsupported`;
+momo has no `RETURNING` form for MariaDB `UPDATE` and `DELETE` (MariaDB itself
+has `DELETE ... RETURNING`), so those return `ErrUnsupported`. This is
+additive; nothing to change.
+
 ## Upgrading to 0.6.0
 
 ### The Using and From guard is stricter

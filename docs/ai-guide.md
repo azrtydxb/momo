@@ -579,8 +579,11 @@ type Event struct {
   generator reports it. It adds no database default (use `default:`), and
   `momo generate --from-db` writes it for NOT NULL PostgreSQL columns whose
   default is computed (a function call, `CURRENT_TIMESTAMP`, or a `nextval`
-  sequence on a column that is not identity or serial). It never writes it for
-  other dialects: plain MySQL cannot read the value back.
+  sequence on a column that is not identity or serial); with
+  `introspect.dbdefault: all` it writes it for every NOT NULL column that has a
+  default, a constant one such as `DEFAULT 1` included. A hand-written model can
+  put `dbdefault` on any NOT NULL column that has a database default. It never
+  writes it for other dialects: plain MySQL cannot read the value back.
 
 ### Model hooks
 
@@ -1123,6 +1126,20 @@ return rows2.Err()
 - `Exec` does not fill the identity into your struct; use `Returning(...).Rows`.
   `ReturningAll()` returns every mapped column. `CreateGraph` reads identities
   back itself.
+- A write that returns one row reads it with `One(ctx) (T, error)` on
+  `InsertQuery`, `UpdateQuery` and `DeleteQuery`, instead of the `Rows` loop.
+  Without a `Returning` list it returns every column. It returns `ErrNotFound`
+  when no row came back (an `OnConflict(...).DoNothing()` insert, or a guarded
+  update or delete that matched nothing) and `ErrTooManyRows` when more than
+  one did. Without `WithImplicitTx` or an explicit transaction the statement has
+  already changed every matched row: run `One` inside `db.Tx` and roll back on
+  `ErrTooManyRows`. With `WithImplicitTx` it is rolled back for you.
+  `InsertQuery.One` is for a single-row insert: a multi-row `Models` insert is
+  `ErrValidation` (use `Rows`). `AfterLoad` runs before the write commits, so an
+  `AfterLoad` error rolls the write back, unlike `SelectQuery.One`. MySQL returns
+  `ErrUnsupported`; on MariaDB only insert has `RETURNING` in momo, so `UpdateQuery.One`
+  and `DeleteQuery.One` return `ErrUnsupported` (momo has no `RETURNING` form
+  for MariaDB `UPDATE` and `DELETE`).
 - A `ReadOnly` / `identity` column is never written by `InsertQuery.Model`.
 - `InsertQuery.Models([]T{})` (empty) is `ErrValidation`.
 
@@ -1358,10 +1375,24 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   `T` is `Row1`..`Row10` (positional: the result must have exactly that many
   columns) or a model or projection (matched by column name in any order, exact
   then case-insensitive; an unmapped, missing or duplicated result column is
-  `ErrValidation`). `T` must have momo metadata: a model, a generated
-  projection or `Row1`..`Row10`; an ad-hoc struct does not work. By-name
-  matching needs every result column to map to a field and every field to be
-  in the result, so `SELECT d.*, count(*)` needs a projection or a `RowN`.
+  `ErrValidation`). `T` may also be a plain struct with no generated metadata
+  (no generator run, any number of columns): its exported fields are the
+  columns, named by a `momo:"column:x"` tag or else the snake_case of the field
+  name (`UserID` is `user_id`, `HTTPServer` is `http_server`), `momo:"-"` skips
+  a field, the fields of an embedded struct count as the outer struct's own
+  (unless it is a `time.Time`, a `sql.Scanner` or has a column tag; an outer
+  field shadows an embedded one, two fields on one column and an embedding
+  cycle are `ErrValidation`; an embedded pointer struct is allocated for every
+  row and stays non-nil even when all of its columns are NULL),
+  and a pointer field receives NULL as nil (NULL into a non-pointer field is
+  the driver's scan error). Names compare exactly, then case-insensitively. The
+  reflection plan is built once per type and cached
+  (`BenchmarkQueryPlainStruct`). A type with generated metadata (a model, a
+  projection, `Row1`..`Row10`) always uses it, and a type that is neither is
+  `ErrValidation` before the statement runs. By-name matching needs every
+  result column to map to a field and every field to be in the result (the
+  error names the column or field), so `SELECT d.*, count(*)` needs a struct
+  with a field for each result column.
   Placeholders, hooks (op `raw`), error classification and
   argument redaction are those of `Exec`; interceptors, soft-delete filters and
   `AfterLoad` do not apply to raw SQL. `QueryRows` closes the cursor on early
@@ -1941,6 +1972,11 @@ builders with `momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)`
 (use `momo.RawQuery` for hand-written SQL), read them with
 `QueryRegistry.Compile(dialect)` and freeze them with `momotest.QueryGolden`
 (`MOMO_UPDATE_GOLDEN=1` rewrites the files; registering a name twice panics).
+The SQL of `InsertQuery[T].Model` depends on the sample model's dbdefault fields (a
+zero one is left out of the column list), so register it with the fields set as
+a real call sets them, or register `InsertQuery[T].Values` with `Set` for each column or
+`InsertQuery[T].Omit` before `InsertQuery[T].Model`, whose column list does not depend on values (see
+[testing.md](testing.md#listing-the-sql-a-query-registry)).
 
 Use the public kit `github.com/azrtydxb/momo/momotest` (see
 [testing.md](testing.md)):

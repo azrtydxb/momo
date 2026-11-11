@@ -55,10 +55,15 @@ input, or the name of an environment variable that holds it. Prefer the last
 two: a URL on the command line is visible in the process list.
 
 Settings that the database cannot tell (Prisma updatedAt, Json shapes,
-Unsupported columns) go in the introspect section of momo.yaml: skip (table
-globs), types (SQL type to Go type), columns (match "table.column" globs, go,
-import, name, tags) and tables (name, tags). The rules are applied again on
-every run.
+Unsupported columns) go in the introspect section of momo.yaml: package and out
+(the model package name and directory), skip (table globs), only (table globs,
+the inverse of skip: a table matching none gets no model), functions ("all"
+writes every function on the first model), dbdefault ("all" tags every NOT NULL
+column with a default), uuid (momo or google), types (SQL type to Go type),
+columns (match "table.column" globs, go, import, name, tags) and tables (name,
+tags). A glob matches the table name, or schema.name for a table outside the
+current schema; a table in the current schema is matched by its bare name. The
+rules are applied again on every run.
 
 A re-run rewrites the model files that nobody edited. A file with hand edits,
 or one that --from-db did not write, is kept: the regenerated version goes

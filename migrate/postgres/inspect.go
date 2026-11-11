@@ -99,7 +99,7 @@ func (Dialect) InspectWithInvalid(ctx context.Context, c momo.PinnedConn, opts m
 	if len(managed) == 0 {
 		managed = []string{current}
 	}
-	in := &inspector{c: c, current: current, managed: managed, exclude: opts.Exclude}
+	in := &inspector{c: c, current: current, managed: managed, exclude: opts.Exclude, only: opts.Only}
 	out := &schema.Schema{FormatVersion: schema.FormatVersion, Dialect: dialect.Postgres, Tables: []schema.Table{}}
 	if err := in.namespaces(ctx, out); err != nil {
 		return nil, nil, fmt.Errorf("postgres inspect: schemas: %w", err)
@@ -113,7 +113,7 @@ func (Dialect) InspectWithInvalid(ctx context.Context, c momo.PinnedConn, opts m
 	if err := in.tables(ctx, out); err != nil {
 		return nil, nil, err
 	}
-	if err := (Dialect{}).inspectObjects(ctx, c, out, managed, opts.Exclude); err != nil {
+	if err := (Dialect{}).inspectObjects(ctx, c, out, managed, opts.Exclude, opts.Only); err != nil {
 		return nil, nil, fmt.Errorf("postgres inspect: %w", err)
 	}
 	out.Sort()
@@ -126,6 +126,9 @@ type inspector struct {
 	managed []string
 	// exclude holds the Config.Exclude globs; objects they match are skipped.
 	exclude []string
+	// only holds the Config.OnlyTables globs; a table that matches none of
+	// them is skipped like an excluded one.
+	only []string
 	// invalid names the indexes left invalid by a failed CONCURRENTLY build.
 	// The schema model has no field for them; InspectWithInvalid returns them.
 	invalid []string
@@ -208,7 +211,7 @@ func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 		// An excluded table is skipped before its columns and constraints are
 		// read, so one the model cannot represent (a virtual generated column)
 		// does not fail the inspection.
-		if in.excluded(tr.ns, tr.name) {
+		if in.excluded(tr.ns, tr.name) || in.outsideOnly(tr.ns, tr.name) {
 			continue
 		}
 		t := schema.Table{Name: tr.name}

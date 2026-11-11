@@ -83,15 +83,12 @@ func DescImport(m *gen.Model) (string, error) {
 // SinglePK returns the primary key field of m when the table has exactly one
 // primary key column and a field of m maps it, else nil.
 func SinglePK(g *gen.Graph, m *gen.Model) *gen.Field {
-	if g.Schema == nil {
-		return nil
-	}
-	t, ok := g.TableOf(m)
-	if !ok || len(t.PrimaryKey) != 1 {
+	pk := g.PrimaryKey(m)
+	if len(pk) != 1 {
 		return nil
 	}
 	for _, f := range m.Fields {
-		if f.Column == t.PrimaryKey[0] {
+		if f.Column == pk[0] {
 			return f
 		}
 	}
