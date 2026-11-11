@@ -4,6 +4,7 @@ package momo_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -51,5 +52,47 @@ func TestSelectGolden(t *testing.T) {
 	}
 	if _, err := momo.Select[unitDocument](sq).ForUpdate().SQL(); !errors.Is(err, momo.ErrUnsupported) {
 		t.Errorf("FOR UPDATE on SQLite = %v, want ErrUnsupported", err)
+	}
+}
+
+// Catches: OrderByPredicate rendering the predicate unparenthesised, losing the
+// direction, or binding its arguments out of order with the other arguments.
+func TestOrderByPredicate(t *testing.T) {
+	cases := []struct {
+		name string
+		d    dialect.Name
+		want string
+	}{
+		{"postgres", dialect.Postgres, `SELECT "documents"."id", "documents"."tenant_id", "documents"."title", "documents"."published", "documents"."deleted_at" FROM "documents" WHERE ("documents"."tenant_id" = $1) AND ("documents"."deleted_at" IS NULL) ORDER BY ("documents"."title" IS NULL) ASC, ("documents"."title" = $2) DESC, "documents"."id" ASC`},
+		{"sqlite", dialect.SQLite, `SELECT "documents"."id", "documents"."tenant_id", "documents"."title", "documents"."published", "documents"."deleted_at" FROM "documents" WHERE ("documents"."tenant_id" = ?) AND ("documents"."deleted_at" IS NULL) ORDER BY ("documents"."title" IS NULL) ASC, ("documents"."title" = ?) DESC, "documents"."id" ASC`},
+		{"mysql", dialect.MySQL, "SELECT `documents`.`id`, `documents`.`tenant_id`, `documents`.`title`, `documents`.`published`, `documents`.`deleted_at` FROM `documents` WHERE (`documents`.`tenant_id` = ?) AND (`documents`.`deleted_at` IS NULL) ORDER BY (`documents`.`title` IS NULL) ASC, (`documents`.`title` = ?) DESC, `documents`.`id` ASC"},
+	}
+	for _, c := range cases {
+		db := momo.New(fakedriver.New(c.d))
+		got, err := momo.Select[unitDocument](db).
+			Where(DocTenantID.Eq(7)).
+			OrderBy(momo.OrderByPredicate(DocTitle.IsNull()).Asc(), momo.OrderByPredicate(DocTitle.Eq("x")).Desc(), DocID.Asc()).
+			SQL()
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if got.SQL != c.want {
+			t.Errorf("%s:\n got %s\nwant %s", c.name, got.SQL, c.want)
+		}
+		if len(got.Args) != 2 || got.Args[0] != int64(7) || got.Args[1] != "x" {
+			t.Errorf("%s: args = %v, want [7 x]", c.name, got.Args)
+		}
+	}
+
+	// Bare OrderByPredicate is Orderable and ascends; NULLS placement chains.
+	pg := momo.New(fakedriver.New(dialect.Postgres))
+	got, err := momo.Select[unitDocument](pg).OrderBy(momo.OrderByPredicate(DocTitle.IsNull())).SQL()
+	if err != nil || !strings.HasSuffix(got.SQL, `ORDER BY ("documents"."title" IS NULL) ASC`) {
+		t.Errorf("bare: %v, %v", got.SQL, err)
+	}
+	got, err = momo.Select[unitDocument](pg).OrderBy(momo.OrderByPredicate(DocTitle.IsNull()).Desc().NullsLast()).SQL()
+	if err != nil || !strings.HasSuffix(got.SQL, `ORDER BY ("documents"."title" IS NULL) DESC NULLS LAST`) {
+		t.Errorf("nulls: %v, %v", got.SQL, err)
 	}
 }
