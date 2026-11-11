@@ -47,11 +47,11 @@ func TestUnionMemberOrderLimitGrouping(t *testing.T) {
 		}, `SELECT "documents"."tenant_id", "documents"."title" FROM "documents" WHERE "documents"."tenant_id" = $1` +
 			` UNION ALL ` +
 			`(SELECT "documents"."tenant_id", "documents"."title" FROM "documents" WHERE "documents"."tenant_id" = $2 LIMIT $3)`},
-		{"postgres locked member", dialect.Postgres, func(db *momo.DB) []momo.Subquery {
+		{"mysql locked member", dialect.MySQL, func(db *momo.DB) []momo.Subquery {
 			return []momo.Subquery{byTenant(db, 1).ForUpdate(), byTenant(db, 2)}
-		}, `(SELECT "documents"."tenant_id", "documents"."title" FROM "documents" WHERE "documents"."tenant_id" = $1 FOR UPDATE)` +
-			` UNION ALL ` +
-			`SELECT "documents"."tenant_id", "documents"."title" FROM "documents" WHERE "documents"."tenant_id" = $2`},
+		}, "(SELECT `documents`.`tenant_id`, `documents`.`title` FROM `documents` WHERE `documents`.`tenant_id` = ? FOR UPDATE)" +
+			" UNION ALL " +
+			"SELECT `documents`.`tenant_id`, `documents`.`title` FROM `documents` WHERE `documents`.`tenant_id` = ?"},
 		{"mysql limited members", dialect.MySQL, func(db *momo.DB) []momo.Subquery {
 			return []momo.Subquery{
 				byTenant(db, 1).OrderBy(DocTitle.Asc()).Limit(2),
