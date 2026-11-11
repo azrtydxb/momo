@@ -24,8 +24,8 @@ func virtualSchema(virtualSlug bool) *schema.Schema {
 		Columns: []schema.Column{
 			{Name: "id", Type: "bigint"},
 			{Name: "title", Type: "varchar(100)"},
-			{Name: "slug", Type: "varchar(100)", Nullable: true, Generated: "lower(`title`)", GeneratedVirtual: virtualSlug},
-			{Name: "shout", Type: "varchar(100)", Nullable: true, Generated: "upper(`title`)"},
+			{Name: "slug", Type: "varchar(100)", Nullable: true, Generated: "lower(title)", GeneratedVirtual: virtualSlug},
+			{Name: "shout", Type: "varchar(100)", Nullable: true, Generated: "upper(title)"},
 		},
 		PrimaryKey: []string{"id"},
 	}}}
@@ -88,7 +88,12 @@ func TestMySQLVirtualGeneratedRoundTrips(t *testing.T) {
 				t.Error("a VIRTUAL to STORED change produced no diff")
 			}
 
-			fresh := tg.open(t)
+			// The helper returns the one database of the target, so clear it
+			// and create the table again from the declaration.
+			if _, err := momo.Exec(ctx, live, "DROP TABLE vg"); err != nil {
+				t.Fatal(err)
+			}
+			fresh := live
 			dir := t.TempDir()
 			feng := migratetest.NewEngine(t, mmysql.New(), fresh.Driver(), os.DirFS(dir))
 			applyExample(t, dir, feng, virtualSchema(true), "virtual")

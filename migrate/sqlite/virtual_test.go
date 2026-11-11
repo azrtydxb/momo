@@ -21,7 +21,7 @@ func virtualSchema(virtualSlug bool) *schema.Schema {
 	return &schema.Schema{Dialect: dialect.SQLite, Tables: []schema.Table{{
 		Name: "vg",
 		Columns: []schema.Column{
-			{Name: "id", Type: "INTEGER"},
+			{Name: "id", Type: "INTEGER", Identity: "by_default"},
 			{Name: "title", Type: "TEXT"},
 			{Name: "slug", Type: "TEXT", Nullable: true, Generated: "lower(title)", GeneratedVirtual: virtualSlug},
 			{Name: "shout", Type: "TEXT", Nullable: true, Generated: "upper(title)"},
