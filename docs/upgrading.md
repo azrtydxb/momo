@@ -34,6 +34,15 @@ read-back rules, the dialects without `RETURNING` (plain MySQL fails with
 mixed-row limits of SQLite are the same as for any other `dbdefault` field; see
 "Database defaults" in the [AI guide](ai-guide.md).
 
+`Update(...).Model(&m)` treats a nil `dbdefault` pointer as "not set": the
+column is left out of `SET` and keeps its stored value, because writing NULL
+would fail on the NOT NULL column. A pointer to `false` or `0` is written. If
+no column is left to set, the update fails with the usual `ErrValidation` ("no
+columns to update"). Before this change a pointer `dbdefault` field could not be
+generated, so no generated model sees a different result. `Upsert` takes its
+`DO UPDATE` values from `EXCLUDED` and already leaves out a `dbdefault` column
+that any row leaves to the database, so it needs no change.
+
 `momo generate` now warns (on standard error, exit code unchanged) about a
 non-pointer `dbdefault` field of a `bool` or number type whose default is a
 non-zero constant, because the zero value means "use the default" there and an
@@ -52,6 +61,11 @@ default keeps its plain type. After you regenerate with this option, fields of
 those columns change from `bool`/`int64` to `*bool`/`*int64`, and code that
 reads them dereferences the pointer. Without `introspect.dbdefault: all` nothing
 changes, because a constant default is not tagged.
+
+The warning and the pointer type cover only plain `bool` and number types
+(`bool`, `int`..`int64`, `uint`..`uint64`, `float32`, `float64`). A named type,
+a type override from `introspect.types` or `introspect.columns`, a decimal or a
+string keeps its field as it is and gets neither.
 
 ## Upgrading to 0.7.0
 

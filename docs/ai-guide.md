@@ -580,6 +580,18 @@ type Event struct {
   nil would stop meaning NULL; write NULL with `InsertQuery.Values` and
   `SetNull`. `Omit` still wins: an omitted column is not written, and a Go-side
   default hook still fills it.
+- `Update(...).Model(&m)` treats a nil `dbdefault` pointer as "not set": it
+  leaves the column out of `SET`, so the column keeps its stored value (writing
+  NULL would fail on the NOT NULL column). A pointer to `false` or `0` is
+  written. If that leaves nothing to set, the update fails with the usual
+  `ErrValidation` ("no columns to update"). `Upsert` is unaffected: its default
+  `DO UPDATE` set takes `EXCLUDED` values and already leaves out a `dbdefault`
+  column that any row leaves to the database.
+- The pointer type that `--from-db` generates and the `momo generate` warning
+  cover only plain `bool` and number fields (`bool`, `int`..`int64`,
+  `uint`..`uint64`, `float32`, `float64`). A named type, a type override from
+  `introspect.types` or `introspect.columns`, a decimal or a string keeps the
+  field as it is and gets neither the pointer nor the warning.
 - `dbdefault` cannot be combined with `identity`, `serial`, `idgen`,
   `read_only`, `version`, `soft_delete`, `created_at` or `updated_at`; the
   generator reports it. It adds no database default (use `default:`), and
