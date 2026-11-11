@@ -13,9 +13,7 @@ later releases can break more.
 preset and the column of a plain struct that `momo.Query` and `momo.QueryRows`
 scan, used to split an initialism followed by a plural `s`: `RestrictRoleIDs`
 gave `restrict_role_i_ds`. A lone lower-case `s` after an initialism of the word
-list (`ACL`, `API`, `CPU`, `DNS`, `GUID`, `HTTP`, `HTTPS`, `ID`, `IP`, `JSON`,
-`RPC`, `SQL`, `TCP`, `TLS`, `TTL`, `UDP`, `UI`, `UID`, `URI`, `URL`, `UUID`,
-`XML` and the rest of that list) now belongs to it, and the name breaks only
+list (ACL, API, CPU, DNS, GUID, HTTP, HTTPS, ID, IP, JSON, RPC, SQL, TCP, TLS, TTL, UDP, UI, UID, URI, URL, UUID, XML and the rest of that list) now belongs to it, and the name breaks only
 before the initialism:
 
 | Go field  | Column before | Column now |

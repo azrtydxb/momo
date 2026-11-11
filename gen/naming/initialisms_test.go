@@ -50,21 +50,3 @@ func TestToSnakeInitialisms(t *testing.T) {
 		}
 	}
 }
-
-// Catches: the shared word list answering differently for a word and its
-// plural, or for another letter case.
-func TestGoInitialism(t *testing.T) {
-	for in, want := range map[string]string{
-		"id": "ID", "ID": "ID", "ids": "IDs", "Urls": "URLs", "uuids": "UUIDs",
-		"api": "API", "http": "HTTP", "https": "HTTPS",
-	} {
-		if got, ok := GoInitialism(in); !ok || got != want {
-			t.Errorf("GoInitialism(%q) = %q, %v, want %q", in, got, ok, want)
-		}
-	}
-	for _, in := range []string{"", "s", "user", "users", "key", "keys", "uses", "ss"} {
-		if got, ok := GoInitialism(in); ok {
-			t.Errorf("GoInitialism(%q) = %q, want none", in, got)
-		}
-	}
-}

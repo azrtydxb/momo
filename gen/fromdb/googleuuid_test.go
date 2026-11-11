@@ -37,7 +37,7 @@ func TestGenerateFromDBGoogleUUID(t *testing.T) {
 	mustMatch(t, "members", src,
 		`ID\s+uuid\.UUID\s`,
 		`OwnerID\s+\*uuid\.UUID\s`,
-		`TeamIds\s+\[\]uuid\.UUID\s`,
+		`TeamIDs\s+\[\]uuid\.UUID\s`,
 		`"github.com/google/uuid"`,
 	)
 	for _, bad := range []string{"types.UUID", "type:uuid"} {
@@ -53,7 +53,7 @@ func TestGenerateFromDBDefaultUUIDIsMomo(t *testing.T) {
 	if res.Failed() {
 		t.Fatalf("findings: %v", res.Findings)
 	}
-	mustMatch(t, "members", files["members"], `ID\s+types\.UUID\s`, `TeamIds\s+\[\]types\.UUID\s`)
+	mustMatch(t, "members", files["members"], `ID\s+types\.UUID\s`, `TeamIDs\s+\[\]types\.UUID\s`)
 	if strings.Contains(files["members"], "google/uuid") {
 		t.Errorf("the default must not import google/uuid:\n%s", files["members"])
 	}

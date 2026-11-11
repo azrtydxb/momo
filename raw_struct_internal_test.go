@@ -5,7 +5,7 @@ package momo
 import (
 	"testing"
 
-	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/internal/snake"
 )
 
 type cachedPlan struct {
@@ -32,7 +32,7 @@ func TestStructMetaIsBuiltOnceAndCached(t *testing.T) {
 }
 
 // Catches: the default column name of a plain struct field drifting from the
-// generator's naming.ToSnake (acronyms, digits, single letters, plural initialisms).
+// generator's snake.ToSnake (acronyms, digits, single letters, plural initialisms).
 func TestSnakeCase(t *testing.T) {
 	for in, want := range map[string]string{
 		"ID":         "id",
@@ -47,7 +47,7 @@ func TestSnakeCase(t *testing.T) {
 		"OAuthLogin": "o_auth_login",
 		"RoleIDs":    "role_ids",
 	} {
-		if got := naming.ToSnake(in); got != want {
+		if got := snake.ToSnake(in); got != want {
 			t.Errorf("ToSnake(%q) = %q, want %q", in, got, want)
 		}
 	}

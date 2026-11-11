@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/internal/snake"
 )
 
 // splitWords splits a database identifier into words on separators and on
@@ -43,9 +43,9 @@ func splitWords(s string) []string {
 }
 
 // titleWord capitalizes one word, keeping an initialism in capitals and a
-// plural initialism as IDs, from the word list naming.ToSnake shares.
+// plural initialism as IDs, from the word list snake.ToSnake shares.
 func titleWord(w string) string {
-	if v, ok := naming.GoInitialism(w); ok {
+	if v, ok := snake.Initialism(w); ok {
 		return v
 	}
 	lower := strings.ToLower(w)

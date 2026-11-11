@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/internal/snake"
 )
 
 // metaFor returns the metadata Query and QueryRows scan through: the
@@ -173,7 +173,7 @@ func collectStructFields(rt reflect.Type, namer FieldNamer, prefix []int, depth 
 			if namer != nil {
 				col = namer.ColumnName(f.Name)
 			} else {
-				col = naming.ToSnake(f.Name)
+				col = snake.ToSnake(f.Name)
 			}
 		}
 		*out = append(*out, structField{name: col, path: path, depth: depth})
