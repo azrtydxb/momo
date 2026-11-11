@@ -1049,6 +1049,9 @@ momo.Func[string]("btrim", doc.Title)
 // Aggregates with their own ORDER BY (agg.Call[T], package momo/agg); chain OrderBy, inside the call.
 agg.String(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
 agg.Array[string](label).OrderBy(label.Asc())       // []string; ErrUnsupported on other dialects
+agg.Array[string](label).Distinct().OrderBy(label.Asc()) // array_agg(DISTINCT ...); Distinct works on String, JSONB and agg.Func too
+// Expand an array column of an earlier source (PostgreSQL): CROSS JOIN LATERAL unnest(q2.flags) AS fl (flag).
+fl := momo.UnnestColumn(q2Flags).As("fl", "flag") // q2Flags is a Column[[]string]; read it with fl.Column()
 // Ordered-set aggregates (PostgreSQL): WithinGroup is required.
 agg.PercentileCont(0.5).WithinGroup(run.DurationMs.Asc())      // float64
 agg.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
