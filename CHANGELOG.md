@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/azrtydxb/momo/compare/v0.6.0...v0.7.0) (2026-11-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* regenerating with --from-db adds dbdefault to NOT NULL columns with a computed default: a Go zero value is no longer written, the database default applies and is read back. See docs/upgrading.md.
+
+### Features
+
+* sprint 8 --from-db fixes, plain-struct Query, One on writes ([#83](https://github.com/azrtydxb/momo/issues/83)) ([92658ad](https://github.com/azrtydxb/momo/commit/92658adb0005576fc84f08cca55cba638146eb7e))
+
 ## [0.6.0](https://github.com/azrtydxb/momo/compare/v0.5.0...v0.6.0) (2026-11-10)
 
 _`momo generate` can now generate OpenAPI, gRPC and GraphQL servers over your models, and view models are read-only end to end. The guard on `UPDATE ... FROM` and `DELETE ... USING` is stricter. Upgrading may need code changes: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.6.0/docs/upgrading.md). [Changes since 0.5.0](https://github.com/azrtydxb/momo/compare/v0.5.0...v0.6.0)._
