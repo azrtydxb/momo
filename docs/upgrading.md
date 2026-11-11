@@ -20,7 +20,7 @@ redaction. `RawRows` takes the raw path of `Query`: the same placeholders, hooks
 classification and argument redaction, on a `*DB`, a `*Tx` or an `AdoptTx`
 handle.
 
-```go
+```text
 rows, err := momo.RawRows(ctx, db, `SELECT id, title FROM tasks WHERE tenant_id = $1`, tenant)
 if err != nil {
 	return err
