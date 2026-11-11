@@ -208,6 +208,10 @@ finding:
   early; they are filtered afterwards as before. `generate --from-db` also
   passes every `introspect.skip` glob to inspection the same way, so a skipped
   table is never read (the globs also match views and functions of that name).
+- An app that migrates in-process can load the same settings from an embedded
+  `momo.yaml` with `migrate.ConfigFromFile(fsys, "momo.yaml")`; it returns the
+  engine options the CLI builds from the `migrate:` section and `introspect.only`
+  (see [upgrading](upgrading.md)).
 - `migrate.Config.OnlyTables` (set from `introspect.only` by the CLI) is the
   inverse for tables: when it is not empty, a table whose name or `schema.name`
   matches none of its globs is not managed. A table in the current schema is

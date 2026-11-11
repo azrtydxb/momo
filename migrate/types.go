@@ -124,6 +124,15 @@ type Pending struct {
 // State is the status of one migration version: "pending", "applied", "dirty", "mismatch" or "missing".
 type State string
 
+// Version states, the values of VersionStatus.State.
+const (
+	StatePending  State = "pending"  // a file or Go migration not yet applied
+	StateApplied  State = "applied"  // applied, and the file still matches its recorded checksum
+	StateDirty    State = "dirty"    // a run started or failed; resolve it before applying more
+	StateMismatch State = "mismatch" // applied, but the file changed since
+	StateMissing  State = "missing"  // in the history, with no file
+)
+
 // VersionStatus reports the state of one migration version.
 type VersionStatus struct {
 	Version, Name string

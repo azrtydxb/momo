@@ -333,23 +333,14 @@ func (l *cli) engineOptions(d migrate.Dialect, extra ...migrate.Option) ([]migra
 		return nil, err
 	}
 	m := l.file.Migrate
-	cfg := migrate.Config{Schemas: m.Schemas, Exclude: m.Exclude, OnlyTables: l.file.Introspect.Only, ExternalExtensions: m.ExternalExtensions}
-	var timeouts []migrate.Option
-	var err error
-	if m.LockTimeout != "" {
-		if cfg.LockTimeout, err = time.ParseDuration(m.LockTimeout); err != nil {
-			return nil, err
-		}
-		// A key that is present wins, including 0s, which turns the timeout off.
-		timeouts = append(timeouts, migrate.WithLockTimeout(cfg.LockTimeout))
+	cfgOpts, err := migrate.Settings{
+		Schemas: m.Schemas, Exclude: m.Exclude, ExternalExtensions: m.ExternalExtensions, Only: l.file.Introspect.Only,
+		LockTimeout: m.LockTimeout, StatementTimeout: m.StatementTimeout,
+	}.Options()
+	if err != nil {
+		return nil, err
 	}
-	if m.StatementTimeout != "" {
-		if cfg.StatementTimeout, err = time.ParseDuration(m.StatementTimeout); err != nil {
-			return nil, err
-		}
-		timeouts = append(timeouts, migrate.WithStatementTimeout(cfg.StatementTimeout))
-	}
-	opts := append([]migrate.Option{migrate.WithDialect(d), migrate.WithConfig(cfg), migrate.WithClock(migrateClock)}, timeouts...)
+	opts := append([]migrate.Option{migrate.WithDialect(d), migrate.WithClock(migrateClock)}, cfgOpts...)
 	return append(opts, extra...), nil
 }
 

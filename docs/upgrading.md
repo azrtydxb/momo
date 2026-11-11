@@ -5,6 +5,37 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `migrate.ConfigFromFile` and typed `migrate.State*` constants
+
+A program that migrates in-process no longer has to copy `migrate.exclude`,
+`introspect.only`, `external_extensions` and the timeouts of `momo.yaml` into Go.
+Embed the file and hand it to the engine:
+
+```go
+//go:embed momo.yaml
+var cfgFS embed.FS
+
+opts, err := migrate.ConfigFromFile(cfgFS, "momo.yaml")
+if err != nil { /* ... */ }
+e, err := migrate.NewEngine(driver, migrationsFS, opts...)
+```
+
+It reads `migrate.schemas`, `exclude`, `external_extensions`, `lock_timeout`,
+`statement_timeout` and `introspect.only`, with the same mapping `momo migrate`
+uses (`migrate.Settings.Options`), and ignores the keys that only code generation
+reads. The file needs `version: 1`. An explicit `lock_timeout: 0s` turns the
+timeout off, as on the command line. It does not set the dialect: the driver
+supplies that, or pass `migrate.WithDialect`.
+
+`VersionStatus.State` now has typed constants: `migrate.StatePending`,
+`StateApplied`, `StateDirty`, `StateMismatch` and `StateMissing`. They have the
+values `Status` already returned (`"pending"`, `"applied"`, ...), so existing
+string comparisons keep working. The `Status*` constants (`StatusApplied`, ...)
+are the statuses of history rows (`HistoryRow.Status`), a different thing, and
+stay as they are.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
