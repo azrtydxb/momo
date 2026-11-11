@@ -32,7 +32,7 @@ modified table only.
 
 ### A data-modifying CTE body without `Returning` is `ErrValidation`
 
-An INSERT, UPDATE or DELETE passed to `With` or `WithRecursive` as a CTE body
+An INSERT, UPDATE or DELETE passed to `SelectQuery.With` or `SelectQuery.WithRecursive` as a CTE body
 now fails the build with `ErrValidation` when it has no `Returning` list. It was
 accepted before and rendered a CTE with no columns, which the statement could
 not read; `docs/capabilities.md` already said `Returning` was required. Add

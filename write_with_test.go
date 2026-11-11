@@ -54,7 +54,7 @@ func TestUpdateFromSubquery(t *testing.T) {
 		From(momo.FromSubquery(sub, "s")).
 		Where(DocID.EqExpr(momo.ColumnOf[int64]("s", "id"))).
 		Returning(DocID).SQL()
-	want := `UPDATE "documents" SET "title" = "s"."title" FROM (SELECT $1, $2) AS "s" WHERE "documents"."id" = "s"."id" RETURNING "id"`
+	want := `UPDATE "documents" SET "title" = "s"."title" FROM (SELECT $1, $2) AS "s" WHERE "documents"."id" = "s"."id" RETURNING "documents"."id"`
 	if err != nil || c.SQL != want || len(c.Args) != 2 {
 		t.Fatalf("got %q %v %v, want %q", c.SQL, c.Args, err, want)
 	}
