@@ -1,6 +1,6 @@
 # ORDER BY a predicate
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -27,11 +27,11 @@ returning an `Order` over a parenthesised expression.
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] `OrderByPredicate(p).Asc()` and `.Desc()` render `ORDER BY (p) ASC|DESC` on PostgreSQL, SQLite and MySQL
-- [ ] bound arguments inside the predicate keep their order relative to WHERE arguments
-- [ ] `(col IS NULL) ASC` sorts NULLs last, and DESC first, on PostgreSQL, MySQL and MariaDB
-- [ ] docs/ai-guide.md and docs/upgrading.md (0.8.0) describe it; docs/reference.md regenerated from CI
+- [x] a regression test pins the fix: red before the change, green after
+- [x] `OrderByPredicate(p).Asc()` and `.Desc()` render `ORDER BY (p) ASC|DESC` on PostgreSQL, SQLite and MySQL
+- [x] bound arguments inside the predicate keep their order relative to WHERE arguments
+- [x] `(col IS NULL) ASC` sorts NULLs last, and DESC first, on PostgreSQL, MySQL and MariaDB
+- [x] docs/ai-guide.md and docs/upgrading.md (0.8.0) describe it; docs/reference.md regenerated from CI
 
 ## Evidence
 
@@ -42,4 +42,4 @@ returning an `Order` over a parenthesised expression.
 - Run 42993325388 (b6fa5c0): the new tests pass; only `TestReferenceListsEveryIdentifier`
   and `gen-check` fail because docs/reference.md lacked 4 identifiers, now taken from
   that run's regenerated-docs artifact.
-- Green run: pending.
+- Green: ci-agent run 43000530558 on eb4aa68e3a6441e0d758649580fb1a62d13093a4, all 9 jobs success (unit, integration postgres, mysql84, mysql97, mariadb, lint, apidiff-docs, fuzz-smoke, bench-module). SQLite is covered by the unit SQL test only. Docs changed: docs/ai-guide.md, docs/upgrading.md (0.8.0), docs/reference.md (CI artifact of run 42993325388, same code).
