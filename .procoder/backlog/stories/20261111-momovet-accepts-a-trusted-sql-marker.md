@@ -1,6 +1,6 @@
 # momovet accepts a trusted-SQL marker
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -19,13 +19,15 @@ Root cause: the analyzer had no suppression mechanism; every non-constant argume
 
 ## Acceptance criteria
 
-- [ ] a marked call (trailing comment, or comment on the line above) is not reported
-- [ ] an unmarked non-constant call is still reported
-- [ ] a directive without a reason is reported
-- [ ] a directive that suppresses nothing is reported as unused
-- [ ] docs/momovet.md and docs/upgrading.md describe the directive
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] a marked call (trailing comment, or comment on the line above) is not reported
+- [x] an unmarked non-constant call is still reported
+- [x] a directive without a reason is reported
+- [x] a directive that suppresses nothing is reported as unused
+- [x] docs/momovet.md and docs/upgrading.md describe the directive
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Red: ci-agent run 42977704719 (sha ed548082), unit job, TestMomovet: raw/raw.go:58, 61 and 69 "unexpected diagnostic: non-constant SQL string passed to momo.Exec/Query"; raw.go:68 "no diagnostic was reported matching `needs a reason`"; raw.go:72 "no diagnostic was reported matching `unused //momovet:ok directive`".
+- Green: ci-agent run 42986311612, headSha f1fdd75d242a7d636865facf658d66abc69167a1, conclusion success. TestMomovet covers the marked (trailing and line above), unmarked, no-reason and unused cases.
+- Docs changed: docs/momovet.md, docs/upgrading.md (Upgrading to 0.8.0).
