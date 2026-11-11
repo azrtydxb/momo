@@ -380,3 +380,9 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   backslash or a NUL byte is refused with `ErrValidation` on every dialect.
   A `time.Time` must be exactly midnight UTC and renders as `DATE '...'`;
   any other time is refused rather than truncated.
+- **#107/#100 (integrator, from the review):** PID, OID, SSID and GUI join the
+  initialism list, so `PIDs` maps to `pids`, not `p_ids`. The singularizer
+  keeps an `-us` word unless it is a known plural of a `-u` word (menus, emus,
+  gnus, haikus, tutus, kudus), and keeps listed singular `-is`, `-as` and `-ns`
+  words (analysis, alias, news and others). There is no blanket `-as` or `-is`
+  rule, so `areas` still gives `Area`.
