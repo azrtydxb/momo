@@ -147,3 +147,33 @@ func TestFromUsingGuardSeveralSources(t *testing.T) {
 		}
 	}
 }
+
+// Catches: the per-source guard ignoring Not, JoinSQL or an Or whose other
+// branch is off the source: each source must be referenced by the rules the
+// target follows (an Or needs every branch, a negation swaps And and Or).
+func TestFromUsingGuardSeveralSourcesCombinators(t *testing.T) {
+	toSrc, toOther := delNoteID.EqExpr(withSrcID), delNoteID.EqExpr(withOtherID)
+	cases := []struct {
+		name string
+		ps   []momo.Predicate
+		ok   bool
+	}{
+		{"Not(Or) references both sources", []momo.Predicate{momo.Not(momo.Or(toSrc, toOther))}, true},
+		{"Not(And) needs every term on each source", []momo.Predicate{momo.Not(momo.And(toSrc, toOther))}, false},
+		{"JoinSQL AND references both", []momo.Predicate{momo.JoinSQL(" AND ", toSrc, toOther)}, true},
+		{"JoinSQL OR, one source per branch", []momo.Predicate{momo.JoinSQL(" OR ", toSrc, toOther)}, false},
+		{"Or(target, source2) is the only reference to source2", []momo.Predicate{toSrc, momo.Or(delNoteID.Eq(1), withOtherID.Eq(2))}, false},
+		{"Or of the same join twice, plus a join of source2", []momo.Predicate{momo.Or(toSrc, toSrc), toOther}, true},
+	}
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.MySQL} {
+		for _, tc := range cases {
+			_, err := momo.Delete[delNote](withDB(d)).Using(withSrc, withOther).Where(tc.ps...).SQL()
+			if tc.ok && err != nil {
+				t.Errorf("%s %s: %v, want it to build", d, tc.name, err)
+			}
+			if !tc.ok && !errors.Is(err, momo.ErrUnfilteredMutation) {
+				t.Errorf("%s %s: err = %v, want ErrUnfilteredMutation", d, tc.name, err)
+			}
+		}
+	}
+}
