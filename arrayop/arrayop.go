@@ -13,6 +13,7 @@
 package arrayop
 
 import (
+	"reflect"
 	"slices"
 
 	"github.com/azrtydxb/momo"
@@ -54,8 +55,17 @@ func castFor(vals any) string {
 	if _, ok := vals.([]types.UUID); ok {
 		return "::uuid[]"
 	}
+	// github.com/google/uuid.UUID is matched by its import path and name, so
+	// this package needs no import of it.
+	if t := reflect.TypeOf(vals); t != nil && t.Kind() == reflect.Slice {
+		if et := t.Elem(); et.PkgPath() == googleUUIDPath && et.Name() == "UUID" {
+			return "::uuid[]"
+		}
+	}
 	return ""
 }
+
+const googleUUIDPath = "github.com/google/uuid"
 
 // boundSlice clones vs and turns nil into an empty slice, which binds as an
 // empty array instead of NULL.
