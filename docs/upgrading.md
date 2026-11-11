@@ -330,6 +330,43 @@ clause is grouped like one with `ORDER BY`. An outer `OrderBy` that names a
 qualified column or an expression fails at build time with `ErrValidation`.
 Hooks and interceptors see op `select` with an empty table name.
 
+### Nested `Has` and `HasNo` get one alias per level
+
+A relation predicate nested inside the scope of another one used to render both
+subqueries with the child alias `momo_r`, so the inner correlation compared the
+inner table with itself and the statement failed (`column momo_r.planPriceId
+does not exist`). Each nesting level now has its own alias: `momo_r` for the
+outermost subquery, `momo_r2` for the one inside it, `momo_r3` inside that, and
+the same for the many-to-many join table (`momo_j`, `momo_j2`, ...). A plain
+`Has`, `HasNo` or `CountOrder` whose parent is the child of the enclosing
+subquery correlates on that enclosing alias on its own:
+
+```text
+momo.Select[models.Subscription](db).Where(
+	subscription.Items.Has(
+		subscriptionitem.PlanPrice.Has(planprice.PlanID.As("momo_r").Eq("p1"))))
+```
+
+Inside a scope predicate, `As("momo_r")` always names the child of the
+subquery that the scope belongs to, at any depth. Nothing changes for code that
+uses one level, and the SQL of a single `Has` is the same as before. A scope
+that needs the child of an enclosing level other than its own uses the new
+`momo.RelAlias(level)`: level 1 is the outermost subquery, level 2 the one
+inside it. `RelAlias(n)` is never rewritten, so it can name the outermost level
+from any depth:
+
+```text
+author.FirstDocument.Has(document.Taggings.Has(tagging.Tag.Has(
+	tag.Name.As("momo_r").Eq("db"),
+	document.ID.As(momo.RelAlias(1)).Eq(int64(1)))))
+```
+
+In a self-referencing relation a nested `Has` correlates on the enclosing
+child, and `HasFrom(alias)` keeps the alias you name. `HasFrom("momo_r")` is the
+literal outermost alias. A `Subquery` or CTE of your own inside a scope does not
+start a level, and your own table aliases must not use the names `momo_r`,
+`momo_r<N>`, `momo_j` or `momo_j<N>`.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
