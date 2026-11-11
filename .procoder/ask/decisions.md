@@ -345,3 +345,17 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
 - **#79, registry SQL of `Insert.Model`:** document the value dependence in the
   registry section, and add an explicit column list to the typed insert if it
   has none.
+
+## Carried plan stories (2026-11-11, the user, via AskUserQuestion)
+
+- **048, 049, 054, 090, 099, 101 (plan criteria that no longer match what
+  shipped):** reword each criterion to name the shipped test and design, cite
+  CI evidence, and close the story. The original plan text stays in the
+  story's history.
+- **236, Go-function migrations:** keep them forward-only. Reword the story to
+  the shipped design (`ErrGoMigrationNotReversible`, `TestRefuseGoRollback`)
+  and close it.
+- **098, Windows CI:** the pure-Go SQLite driver running on Windows is enough.
+  Reword the criterion to say so, and close the story.
+- **163 and 243, benchmark results:** stay open until the user commits a
+  `make bench` reference run from dedicated hardware.
