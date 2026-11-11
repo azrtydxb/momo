@@ -1061,6 +1061,19 @@ item := agg.BuildObject[Item](agg.Field("label", label), agg.Field("n", n))
 sqlfn.CoalesceExpr(agg.JSONB[Item](item).OrderBy(label.Asc()), agg.EmptyJSONArray[Item]())
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 sqlfn.CurrentSchema()
+// Division and NULLIF (integers divide as integers on PostgreSQL and SQLite, as DECIMAL on MySQL;
+// guard a divisor with NullIf on every dialect, a zero divisor is an error in PostgreSQL and MySQL strict mode):
+//   sqlfn.DivExpr[float64](final, sqlfn.NullIf[float64](max, 0)); sqlfn.Div[float64](final, 2)
+// Row-value comparison, the keyset position check; both rows need 2+ elements of the same count:
+//   Where(momo.Row(w.CreatedAt, w.ID).Lt(momo.Row(me.At, momo.Value(id)))); also Le, Gt, Ge
+// CURRENT_DATE, and 'infinity' / '-infinity' timestamptz (PostgreSQL only; ErrUnsupported elsewhere):
+//   sqlfn.CurrentDate(); sqlfn.Infinity(); sqlfn.NegInfinity()
+// Inline literal for text that must match in SELECT and GROUP BY (a bound value gets a new $n each
+// time, PostgreSQL 42803). Ints, floats, bool, string and time.Time. A string has ' doubled and is
+// refused (ErrValidation) with a backslash or NUL; a time.Time must be exactly 00:00:00 UTC and
+// renders as a date. Anything else, bind with Value:
+//   key := sqlfn.CoalesceExpr[string](tag, momo.Lit("none"))
+//   key := sqlfn.CoalesceExpr[int64](grp, momo.Lit(int64(0)))
 
 // Dates and times, package github.com/azrtydxb/momo/timeop (PostgreSQL; SQLite and MySQL render equivalents). Fields and
 // units are constants checked against an allowlist; anything else is ErrValidation.
@@ -1282,8 +1295,9 @@ res, err := momo.Insert[models.Meter](q).
 ```
 
 - `FromSelect` takes any `Subquery` (the first argument) plus the typed target columns:
-  `SelectExprs` (a FROM-less or single-source select of expressions, with `From` and
-  `Where`) or a `Select[T]` query. The select list must have as many columns as the
+  `SelectExprs` (a FROM-less or single-source select of expressions, with `From`,
+  `Where`, `Join`/`LeftJoin`/`CrossJoin`, `GroupBy`, `Having` and `OrderBy`; the clauses
+  work like those of `Select[T]`, and a join, `GroupBy` or `Having` needs a `From`) or a `Select[T]` query. The select list must have as many columns as the
   target columns (`ErrValidation` otherwise; a `RawSubquery` is checked by the
   database). `FromSelect` runs no model hooks.
 - The soft-delete filter on a `SelectExprs` source (including inside `NotExists`) is
