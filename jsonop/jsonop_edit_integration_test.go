@@ -112,7 +112,11 @@ func TestJSONEditOperatorsAgainstDatabase(t *testing.T) {
 			object := momo.Func[types.JSON[any]]("json_object", "via", "web")
 			unsupported("concat on SQLite", jsonop.HasKey(jsonop.Concat(doc, object), "via"))
 			unsupported("set on SQLite", jsonop.HasKey(jsonop.Set(doc, momo.ArrayOf[string](momo.Value("k")), momo.Func[types.JSON[int]]("json", 1)), "k"))
-			unsupported("array of on SQLite", arrayop.Contains(momo.ArrayOf[int64](id), 1))
+			_, err := momo.Select[exprtest.Tally](db).From(momo.TableRef{Name: "jsonedit"}).
+				Columns(momo.ArrayOf[int64](id)).All(ctx)
+			if !errors.Is(err, momo.ErrUnsupported) {
+				t.Errorf("ArrayOf on SQLite = %v, want ErrUnsupported", err)
+			}
 			return
 		}
 

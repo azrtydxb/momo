@@ -70,6 +70,8 @@ func TestArrayConstructorErrors(t *testing.T) {
 		kind error
 	}{
 		{"empty array", dialect.Postgres, arrayop.Contains(momo.ArrayOf[string](), "x"), momo.ErrValidation},
+		{"subquery of two columns", dialect.Postgres, arrayop.Contains(momo.ArraySubquery[int64](momo.Select[exprtest.Pair](exprtest.DB(dialect.Postgres)).
+			From(momo.TableRef{Name: "u"}).Columns(momo.ColumnOf[int64]("u", "id"), momo.ColumnOf[int64]("u", "n"))), 1), momo.ErrValidation},
 		{"nil subquery", dialect.Postgres, arrayop.Contains(momo.ArraySubquery[int64](nil), 1), momo.ErrValidation},
 		{"array on sqlite", dialect.SQLite, arrayop.Contains(momo.ArrayOf[string](momo.Value("x")), "x"), momo.ErrUnsupported},
 		{"array on mysql", dialect.MySQL, arrayop.Contains(momo.ArrayOf[string](momo.Value("x")), "x"), momo.ErrUnsupported},
@@ -80,5 +82,22 @@ func TestArrayConstructorErrors(t *testing.T) {
 		if _, err := arrayWhere(c.d, c.p); !errors.Is(err, c.kind) {
 			t.Errorf("%s: err = %v, want %v", c.name, err, c.kind)
 		}
+	}
+}
+
+// Catches: ArrayOf dropping the sensitive or nullable flag of its elements, so
+// a value bound beside a sensitive column is not redacted in hook events.
+func TestArrayOfFlags(t *testing.T) {
+	secret := momo.NewColumn[string]("t", "secret", momo.FlagSensitive)
+	maybe := momo.NewNullColumn[string]("t", "maybe", 0)
+	plain := momo.ColumnOf[string]("t", "a")
+	if f := momo.FlagsOf(momo.ArrayOf[string](plain, secret)); f&momo.FlagSensitive == 0 {
+		t.Errorf("flags = %b, want sensitive", f)
+	}
+	if f := momo.FlagsOf(momo.ArrayOf[string](plain, maybe)); f&momo.FlagNullable == 0 {
+		t.Errorf("flags = %b, want nullable", f)
+	}
+	if f := momo.FlagsOf(momo.ArrayOf[string](plain, momo.Value("x"))); f != 0 {
+		t.Errorf("flags = %b, want none", f)
 	}
 }

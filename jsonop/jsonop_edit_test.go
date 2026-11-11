@@ -104,11 +104,15 @@ func TestJSONEditColumnsAndFlags(t *testing.T) {
 		"concat":     jsonop.Concat(jsonAfter, buildObject()),
 		"concat rhs": jsonop.Concat(jsonDoc, jsonAfter),
 		"set":        jsonop.Set(jsonAfter, setPath(), setValue()),
+		"set path":   jsonop.Set(jsonDoc, momo.ArrayOf[string](momo.NewColumn[string]("events", "secret", momo.FlagSensitive)), setValue()),
 	}
 	for name, x := range sens {
 		if momo.FlagsOf(x)&momo.FlagSensitive == 0 {
 			t.Errorf("%s: lost the sensitive flag", name)
 		}
+	}
+	if momo.FlagsOf(jsonop.Set(jsonDoc, momo.ArrayOf[string](momo.NewNullColumn[string]("events", "k", 0)), setValue()))&momo.FlagNullable == 0 {
+		t.Error("Set lost the nullable flag of its path")
 	}
 	if momo.FlagsOf(jsonop.DeleteKey(jsonDoc, "k"))&momo.FlagSensitive != 0 {
 		t.Error("delete key on a non-sensitive column is marked sensitive")
