@@ -177,6 +177,9 @@ type relation struct {
 	// the referencing model, the referenced model and the Go field that holds it.
 	child, parent *model
 	fkField       string
+	// derived is the introspect.relations key of an inverse: the parent model
+	// and the name derived before any rule or collision suffix.
+	derived string
 }
 
 type generator struct {

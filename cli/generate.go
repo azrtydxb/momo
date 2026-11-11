@@ -62,9 +62,11 @@ writes every function on the first model), dbdefault ("all" tags every NOT NULL
 column with a default), uuid (momo or google), types (SQL type to Go type),
 columns (match "table.column" globs, go, import, name, tags), tables (name,
 tags), inverse (true also writes the has_many or has_one inverse of every
-belongs_to) and relations (rename or skip one inverse, keyed "Model.Field"). A glob matches the table name, or schema.name for a table outside the
-current schema; a table in the current schema is matched by its bare name. The
-rules are applied again on every run.
+belongs_to) and relations (needs inverse: true; renames or skips one inverse,
+keyed "Model.Field" by the name derived before any collision suffix; a key that
+matches no inverse is reported as a warning). A glob matches the table name, or
+schema.name for a table outside the current schema; a table in the current
+schema is matched by its bare name. The rules are applied again on every run.
 
 A re-run rewrites the model files that nobody edited. A file with hand edits,
 or one that --from-db did not write, is kept: the regenerated version goes

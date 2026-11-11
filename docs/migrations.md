@@ -1093,6 +1093,13 @@ named for the child (`SubscriptionItems` for a `has_many`, `AuthorProfile` for a
 references itself, gets `By` and the foreign key field without `ID`
 (`MessagesBySender`, `MessagesByRecipient`). An `introspect.relations` rule keyed
 by model and derived name (User.MessagesBySender) renames one (`name`) or drops it (`skip: true`).
+The key uses the name derived before the rule and before any collision suffix. A
+rule key that matches no inverse is printed as a warning (a typo otherwise does
+nothing), and so is an inverse whose name collides with another field of the
+parent and gets a number suffix (Orders2): the warning names the
+`introspect.relations` key that renames it. `relations` has no effect unless
+`inverse` is `true`. A unique index with storage parameters (WITH) still counts
+as unique; a partial, expression or composite unique index does not.
 No inverse is written for a composite foreign key, a foreign key left out of the
 models, or a child outside `only` and `skip`. It is off by default because it
 adds fields to models you may have edited.

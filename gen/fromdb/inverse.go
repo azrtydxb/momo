@@ -29,6 +29,7 @@ func (g *generator) inverses() {
 		}
 	}
 	var added []*relation
+	matched := map[string]bool{}
 	for _, m := range g.models {
 		for _, r := range m.rels {
 			inv := &relation{kind: "has_many", target: r.child.name, child: r.child, parent: r.parent, fkField: r.fkField}
@@ -45,7 +46,9 @@ func (g *generator) inverses() {
 				name += "By" + base
 			}
 			inv.opts = []string{inv.kind, "fk:" + r.fkField}
-			if rule, ok := g.o.Config.Relations[r.parent.name+"."+name]; ok {
+			inv.derived = r.parent.name + "." + name
+			if rule, ok := g.o.Config.Relations[inv.derived]; ok {
+				matched[inv.derived] = true
 				if rule.Skip {
 					continue
 				}
@@ -66,8 +69,23 @@ func (g *generator) inverses() {
 		return a.fkField < b.fkField
 	})
 	for _, inv := range added {
-		inv.name = uniqueName(inv.parent.used, inv.name)
+		want := inv.name
+		inv.name = uniqueName(inv.parent.used, want)
+		if inv.name != want {
+			g.add(SevWarn, inv.parent.t.Name, "the inverse %s of %s collides with another field of %s and is written as %s: rename it with introspect.relations key %q",
+				want, inv.child.name, inv.parent.name, inv.name, inv.derived)
+		}
 		inv.parent.rels = append(inv.parent.rels, inv)
+	}
+	var unmatched []string
+	for k := range g.o.Config.Relations {
+		if !matched[k] {
+			unmatched = append(unmatched, k)
+		}
+	}
+	sort.Strings(unmatched)
+	for _, k := range unmatched {
+		g.add(SevWarn, "introspect.relations", "introspect.relations %s matched no generated inverse: check the model and the derived field name", k)
 	}
 }
 
@@ -88,6 +106,10 @@ func (g *generator) fkUnique(m *model, fkField string) bool {
 	return singleColumnUnique(t, col)
 }
 
+// singleColumnUnique reports whether col alone is unique in t. A unique index
+// with storage parameters (WITH) still enforces uniqueness, so unlike tagIndex,
+// which cannot write the parameters in a tag, this check ignores them. A
+// partial or expression index does not make the whole column unique.
 func singleColumnUnique(t *schema.Table, col string) bool {
 	if len(t.PrimaryKey) == 1 && t.PrimaryKey[0] == col {
 		return true

@@ -33,6 +33,12 @@ introspect:
     "User.MessagesBySender": { skip: true }
 ```
 
+The key uses the name derived before the rule and before any collision suffix,
+and `relations` has no effect unless `inverse` is `true`. A rule key that matches
+no inverse is printed as a warning, and so is an inverse whose name collides with
+another field of the parent and gets a number suffix (Orders2); the warning
+names the key that renames it.
+
 No inverse is written for a composite foreign key, for a foreign key that is left
 out of the models, or from a table with no model (`only` and `skip`).
 
