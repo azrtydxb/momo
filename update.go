@@ -331,6 +331,8 @@ func (u UpdateQuery[T]) compileSQL() (Compiled, error) {
 
 func (UpdateQuery[T]) isDML() {}
 
+func (u UpdateQuery[T]) hasReturning() bool { return u.returning.active() }
+
 // isSubquery lets an UPDATE be the body of a WITH clause (PostgreSQL only).
 func (UpdateQuery[T]) isSubquery() {}
 

@@ -199,6 +199,8 @@ func (d DeleteQuery[T]) compileSQL() (Compiled, error) {
 
 func (DeleteQuery[T]) isDML() {}
 
+func (d DeleteQuery[T]) hasReturning() bool { return d.returning.active() }
+
 // isSubquery lets a DELETE be the body of a WITH clause (PostgreSQL only).
 func (DeleteQuery[T]) isSubquery() {}
 
