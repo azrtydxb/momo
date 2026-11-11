@@ -85,9 +85,11 @@ func (a Call[T]) OrderBy(o ...momo.Order) Call[T] {
 
 // Distinct makes the aggregate see each distinct value of its argument once:
 // array_agg(DISTINCT e), count(DISTINCT e), string_agg(DISTINCT e, sep),
-// jsonb_agg(DISTINCT e). It combines with OrderBy and Filter; PostgreSQL
-// requires every OrderBy expression to appear in the argument list, and
-// reports an error from the server otherwise. Support differs: PostgreSQL
+// jsonb_agg(DISTINCT e). It takes exactly one argument (none or several fail
+// the build with ErrValidation) and cannot be used with Over (ErrValidation).
+// It combines with OrderBy and Filter; on PostgreSQL every OrderBy expression
+// must be the argument itself, or the build fails with ErrValidation, as
+// PostgreSQL requires. Support differs: PostgreSQL
 // takes it on every aggregate except the ordered-set ones (PercentileCont,
 // PercentileDisc), where it fails the build with ErrValidation. SQLite takes
 // it on single-argument aggregates (not String, whose separator is a second
@@ -176,8 +178,7 @@ func (s spec) appendCall(b *momo.Builder) {
 		b.Unsupported("WITHIN GROUP")
 		return
 	}
-	if s.distinct && s.ordered {
-		fail(b, errors.New("Distinct does not apply to ordered-set aggregates (PercentileCont, PercentileDisc)"))
+	if s.distinct && !s.checkDistinct(b) {
 		return
 	}
 	switch s.kind {
@@ -228,6 +229,42 @@ func (s spec) appendCall(b *momo.Builder) {
 		appendOrders(b, s.within)
 		_ = b.WriteByte(')')
 	}
+}
+
+// checkDistinct validates a DISTINCT call: not on an ordered-set aggregate,
+// exactly one argument, and on PostgreSQL every ORDER BY expression among the
+// arguments. It records the build error and reports false when invalid.
+func (s spec) checkDistinct(b *momo.Builder) bool {
+	switch {
+	case s.ordered:
+		fail(b, errors.New("Distinct does not apply to ordered-set aggregates (PercentileCont, PercentileDisc)"))
+		return false
+	case len(s.args) != 1:
+		fail(b, fmt.Errorf("Distinct needs exactly one argument, got %d", len(s.args)))
+		return false
+	case b.Dialect().Name != dialect.Postgres || len(s.orderBy) == 0:
+		return true
+	}
+	arg := renderOne(b, s.args[0])
+	for _, o := range s.orderBy {
+		if renderOne(b, o.Expr) != arg {
+			fail(b, errors.New("with Distinct, PostgreSQL requires every OrderBy expression to appear in the argument list of the aggregate (for an aggregate over a column, order by that same column)"))
+			return false
+		}
+	}
+	return true
+}
+
+// renderOne renders v (an expression, or a value bound as a parameter) on its
+// own, to compare two expressions by their SQL.
+func renderOne(b *momo.Builder, v any) string {
+	t := momo.NewBuilder(b.Dialect())
+	if e, ok := v.(momo.Expr); ok {
+		e.AppendSQL(t)
+	} else {
+		t.Arg(v)
+	}
+	return t.String()
 }
 
 func (s spec) appendString(b *momo.Builder) {

@@ -17,15 +17,21 @@ join or FROM item. `CrossJoin(momo.UnnestColumn(q2Flags).As("fl", "flag"))`
 renders `CROSS JOIN LATERAL unnest("q2"."flags") AS "fl" ("flag")`, and
 `Column()` of the returned source reads the element. A NULL array yields no
 rows. It is PostgreSQL only and fails the build with `ErrUnsupported` on SQLite
-and MySQL. `momo.UnnestValues` still binds Go slices; use `UnnestColumn` when
+and MySQL. It reads a column of an earlier source, so it must come after the
+table that holds the array: as the first FROM item it fails the build with
+`ErrValidation`. `CrossJoin` drops the rows whose array is NULL or empty;
+`LeftJoin(src, momo.SQL("true"))` keeps them with a NULL element, rendering
+`LEFT JOIN LATERAL unnest(...) AS "fl" ("flag") ON true`. The element column
+works in `Where` like any column. `momo.UnnestValues` still binds Go slices; use `UnnestColumn` when
 the array comes from a column.
 
 `agg.Call.Distinct()` renders `DISTINCT` inside the call: `Distinct()` on an
 `agg.Array` of a column gives `array_agg(DISTINCT col)`, and it works on
 `agg.String`, `agg.JSONB` and `agg.Func` (a `count` function gives
 `count(DISTINCT col)`). It combines with `OrderBy` and
-`Filter`; PostgreSQL requires each `OrderBy` expression to appear among the
-arguments. On `agg.PercentileCont` and `agg.PercentileDisc` it fails with
+`Filter`. It takes exactly one argument, cannot be used with `Over`, and on
+PostgreSQL every `OrderBy` expression must be the argument itself (as
+PostgreSQL requires); each of these fails the build with `ErrValidation`. On `agg.PercentileCont` and `agg.PercentileDisc` it fails with
 `ErrValidation`. SQLite supports it on single-argument aggregates, so
 `agg.String(...).Distinct()` gives `ErrUnsupported` there; MySQL gives
 `ErrUnsupported` for `agg.JSONB(...).Distinct()`.

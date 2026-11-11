@@ -318,7 +318,10 @@ type UnnestColumnSource[T any] struct {
 // element through the Column of the source returned by As. Unlike Unnest it
 // takes a column and not bound values, so it can reference columns of the
 // sources before it. Without As the source has no alias and fails the build
-// with ErrValidation. A NULL array yields no rows. PostgreSQL only.
+// with ErrValidation. It must come after the source that holds the array: as
+// the first FROM item it fails the build with ErrValidation. Use CrossJoin, or
+// LeftJoin with momo.SQL("true") as the ON condition to keep the rows whose
+// array is NULL or empty. A NULL array yields no rows. PostgreSQL only.
 func UnnestColumn[T any](col Expression[[]T]) UnnestColumnSource[T] {
 	return UnnestColumnSource[T]{arr: col}
 }
@@ -337,6 +340,12 @@ func (u UnnestColumnSource[T]) Qualifier() string { return u.alias }
 
 // notLockable marks a source LockOf cannot name.
 func (UnnestColumnSource[T]) notLockable() {}
+
+// needsEarlierSource marks a source that reads a column of a source before
+// it, so a query cannot use it as its first FROM item.
+type needsEarlierSource interface{ needsEarlierSource() }
+
+func (UnnestColumnSource[T]) needsEarlierSource() {}
 
 func (u UnnestColumnSource[T]) appendFrom(b *Builder) {
 	if !srfPostgresOnly(b, "LATERAL unnest") {
