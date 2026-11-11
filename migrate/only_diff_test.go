@@ -57,3 +57,37 @@ func TestDiffOnlyTablesNeverDropsAnUnmanagedTable(t *testing.T) {
 		}
 	}
 }
+
+// Catches: the desired side of Engine.Diff not being filtered, so a model for
+// a table outside Config.OnlyTables (its migration would not be managed here)
+// plans a CREATE TABLE for it. A model for such a table is never migrated.
+func TestDiffOnlyTablesNeverCreatesAnUnmanagedTable(t *testing.T) {
+	ctx := context.Background()
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	first, err := offlineEngine(t, nil, at).Diff(ctx, onlySchema("a", "b"), "init", migrate.DiffOptions{})
+	if err != nil || first == nil {
+		t.Fatalf("init: %v %v", first, err)
+	}
+	later := at.Add(time.Hour)
+	e := migratetest.NewEngine(t, mpg.New(), nil, mapFS(first.Files), migrate.WithClock(func() time.Time { return later }),
+		migrate.WithConfig(migrate.Config{OnlyTables: []string{"a", "b"}}))
+	m, err := e.Diff(ctx, onlySchema("a", "b", "c"), "next", migrate.DiffOptions{})
+	if err != nil || m != nil {
+		t.Fatalf("a model for a table outside only must plan nothing, got %v, %v", m, err)
+	}
+}
+
+// Catches: a malformed or empty OnlyTables entry reaching Diff unchecked: a
+// bad glob named Config.Exclude in the error, and an empty entry silently
+// hiding every table.
+func TestDiffRejectsBadOnlyTables(t *testing.T) {
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	for name, globs := range map[string][]string{"bad glob": {"["}, "empty entry": {""}, "blank entry": {"a", "  "}} {
+		e := migratetest.NewEngine(t, mpg.New(), nil, mapFS(nil), migrate.WithClock(func() time.Time { return at }),
+			migrate.WithConfig(migrate.Config{OnlyTables: globs}))
+		_, err := e.Diff(context.Background(), onlySchema("a"), "init", migrate.DiffOptions{})
+		if err == nil || !strings.Contains(err.Error(), "Config.OnlyTables") || strings.Contains(err.Error(), "Config.Exclude") {
+			t.Errorf("%s: err = %v, want an error that names Config.OnlyTables", name, err)
+		}
+	}
+}

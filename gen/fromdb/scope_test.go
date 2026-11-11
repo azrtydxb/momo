@@ -296,3 +296,38 @@ func TestFunctionsCannotFollowDynamicSQL(t *testing.T) {
 	_, all := generate(t, dependencySchema(), Config{Functions: "all"})
 	mustContain(t, "t", all["t"], `schema.Function{Name: "dyn_target"`)
 }
+
+// Catches: regproc references the parser misses: a quoted name that holds a
+// dot, a pg_catalog-qualified cast and to_regproc('name'). A missed function
+// breaks apply on a fresh database.
+func TestFunctionsFollowQuotedAndQualifiedRegprocReferences(t *testing.T) {
+	fn := func(name string) schema.Function {
+		return schema.Function{Name: name, Returns: "integer", Language: "plpgsql", Volatility: "VOLATILE", Body: "BEGIN RETURN 1; END;"}
+	}
+	s := &schema.Schema{
+		FormatVersion: schema.FormatVersion,
+		Dialect:       dialect.Postgres,
+		Tables: []schema.Table{{
+			Name:       "t",
+			Columns:    []schema.Column{{Name: "id", Type: "bigint", Identity: "by_default"}, {Name: "ref", Type: "bigint"}},
+			PrimaryKey: []string{"id"},
+			Checks: []schema.Check{
+				{Name: "c1", Expr: `(ref = ('"odd.fn"'::regproc)::oid)`},
+				{Name: "c2", Expr: `(ref = ('cat_fn'::pg_catalog.regproc)::oid)`},
+				{Name: "c3", Expr: `(ref = (to_regproc('toreg_fn'))::oid)`},
+				{Name: "c4", Expr: `(ref = ('public."quoted_fn"(integer)'::regprocedure)::oid)`},
+			},
+		}},
+		Functions: []schema.Function{fn("odd.fn"), fn("cat_fn"), fn("toreg_fn"), fn("quoted_fn"), fn("never_used")},
+	}
+	res, files := generate(t, s, Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	for _, name := range []string{"odd.fn", "cat_fn", "toreg_fn", "quoted_fn"} {
+		mustContain(t, "t", files["t"], `schema.Function{Name: "`+name+`"`)
+	}
+	if strings.Contains(files["t"], `Name: "never_used"`) {
+		t.Error("a function nothing refers to was written")
+	}
+}
