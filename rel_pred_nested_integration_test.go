@@ -70,6 +70,20 @@ func TestNestedRelationPredicatesRun(t *testing.T) {
 		if got := authorIDsFor(author.FirstDocument.Has(document.Taggings.Has(tagging.Tag.Has(tag.Name.As("momo_r").Eq("db"))))); got != "[1]" {
 			t.Fatalf("three levels: %s", got)
 		}
+		// RelAlias names the outermost level from level 3: the first document of
+		// the author has id 1, so id 1 matches author 1 and id 2 matches nobody.
+		if got := authorIDsFor(author.FirstDocument.Has(document.Taggings.Has(tagging.Tag.Has(
+			tag.Name.As("momo_r").Eq("db"), document.ID.As(momo.RelAlias(1)).Eq(int64(1)))))); got != "[1]" {
+			t.Fatalf("RelAlias(1) at level 3: %s", got)
+		}
+		if got := authorIDsFor(author.FirstDocument.Has(document.Taggings.Has(tagging.Tag.Has(
+			tag.Name.As("momo_r").Eq("db"), document.ID.As(momo.RelAlias(1)).Eq(int64(2)))))); got != "[]" {
+			t.Fatalf("RelAlias(1) at level 3, no match: %s", got)
+		}
+		// A nested Has inside Or and Not.
+		if got := docIDsFor(momo.Or(document.Taggings.Has(tagging.Tag.Has(tag.Name.As("momo_r").Eq("go"))), momo.Not(document.Comments.Has()))); got != "[1 2 4]" {
+			t.Fatalf("Or/Not with nested Has: %s", got)
+		}
 		if got := authorIDsFor(author.FirstDocument.Has(document.Tags.Has(tag.Name.As("momo_r").Eq("go")))); got != "[1]" {
 			t.Fatalf("many-to-many in has-one: %s", got)
 		}

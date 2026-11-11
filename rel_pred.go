@@ -230,3 +230,6 @@ func (x tupleInSubquery) AppendSQL(b *Builder) {
 }
 
 func (tupleInSubquery) resultType() bool { return false }
+
+// RelAlias is not implemented yet.
+func RelAlias(level int) string { return relAlias }
