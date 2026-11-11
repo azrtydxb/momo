@@ -64,6 +64,38 @@ func TestExprSelectJoinsGolden(t *testing.T) {
 	}
 }
 
+// Catches: a clause of an ExprSelect numbering its bound arguments out of SQL
+// order, or dropping one: ON, WHERE, HAVING and ORDER BY each bind one value.
+func TestExprSelectBoundArgsInClauseOrder(t *testing.T) {
+	build := func(q momo.Querier) momo.InsertQuery[Lease] {
+		src := momo.SelectExprs(leaseName).
+			From(leaseTable).
+			Join(leaseOwners, ownerName.Eq("o")).
+			Where(leaseLive.Eq(true)).
+			GroupBy(leaseName).
+			Having(momo.CountAll().Gt(1)).
+			OrderBy(momo.Func[string]("coalesce", leaseHolder, momo.Value("z")).Asc())
+		return momo.Insert[Lease](q).FromSelect(src, leaseName)
+	}
+	got, err := compileFor(t, dialect.Postgres, build)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `INSERT INTO "jobs_lock" ("name") SELECT "jobs_lock"."name" FROM "jobs_lock" INNER JOIN "owners" ON "owners"."name" = $1 WHERE "jobs_lock"."live" = $2 GROUP BY "jobs_lock"."name" HAVING COUNT(*) > $3 ORDER BY coalesce("jobs_lock"."holder", $4) ASC`
+	if got.SQL != want {
+		t.Errorf("got %s\nwant %s", got.SQL, want)
+	}
+	wantArgs := []any{"o", true, int64(1), "z"}
+	if len(got.Args) != len(wantArgs) {
+		t.Fatalf("args = %v, want %v", got.Args, wantArgs)
+	}
+	for i := range wantArgs {
+		if got.Args[i] != wantArgs[i] {
+			t.Errorf("arg %d = %v (%T), want %v (%T)", i+1, got.Args[i], got.Args[i], wantArgs[i], wantArgs[i])
+		}
+	}
+}
+
 // Catches: GroupBy or a join on a FROM-less select reaching the database, and
 // an As(...) alias accepted in GROUP BY.
 func TestExprSelectClauseValidation(t *testing.T) {

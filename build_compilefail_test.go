@@ -45,19 +45,6 @@ func TestCompileFailPermissionConversions(t *testing.T) {
 	}
 }
 
-// TestCompileFailLitString checks that momo.Lit refuses a string, so no
-// caller text can be written into the SQL.
-func TestCompileFailLitString(t *testing.T) {
-	cmd := exec.Command("go", "build", "-o", os.DevNull, "./testdata/compilefail/litstring")
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatal("Lit(\"x\") compiled; want a compile error")
-	}
-	if !strings.Contains(string(out), "does not satisfy momo.Literal") {
-		t.Errorf("want %q in:\n%s", "does not satisfy momo.Literal", out)
-	}
-}
-
 func TestValidExamplesCompile(t *testing.T) {
 	cmd := exec.Command("go", "build", "-o", os.DevNull, "./testdata/valid/basic")
 	if out, err := cmd.CombinedOutput(); err != nil {

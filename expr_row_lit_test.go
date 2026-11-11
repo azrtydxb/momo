@@ -82,7 +82,8 @@ func TestLitGolden(t *testing.T) {
 		pg   string
 		sl   string
 	}
-	day := time.Date(2026, 3, 4, 23, 59, 0, 0, time.UTC)
+	day := time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)
+	zoned := time.Date(2026, 3, 4, 2, 0, 0, 0, time.FixedZone("x", 2*3600)) // midnight UTC
 	for _, c := range []tc{
 		{"int", momo.Lit(42), "42", "42"},
 		{"negative", momo.Lit(int64(-5)), "(-5)", "(-5)"},
@@ -93,6 +94,12 @@ func TestLitGolden(t *testing.T) {
 		{"bool true", momo.Lit(true), "TRUE", "1"},
 		{"bool false", momo.Lit(false), "FALSE", "0"},
 		{"date", momo.Lit(day), "DATE '2026-03-04'", "'2026-03-04'"},
+		{"date midnight UTC in another zone", momo.Lit(zoned), "DATE '2026-03-04'", "'2026-03-04'"},
+		{"string", momo.Lit("none"), "'none'", "'none'"},
+		{"string empty", momo.Lit(""), "''", "''"},
+		{"string quote doubled", momo.Lit("it's"), "'it''s'", "'it''s'"},
+		{"string only quotes", momo.Lit("''"), "''''''", "''''''"},
+		{"named string", momo.Lit(litName("x")), "'x'", "'x'"},
 	} {
 		for d, want := range map[dialect.Name]string{dialect.Postgres: c.pg, dialect.SQLite: c.sl} {
 			got, err := exprtest.CompileColumns(d, c.e)
