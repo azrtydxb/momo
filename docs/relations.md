@@ -482,9 +482,7 @@ scope always means the child of the subquery that scope belongs to. To reach an
 enclosing level from an inner scope, use its numbered alias, for example
 `As("momo_r2")`.
 
-<!-- docscheck:fragment -->
-
-```go
+```text
 // Documents with a tagging whose tag is named "db".
 tagged := momo.Select[models.Document](db).Where(
 	document.Taggings.Has(tagging.Tag.Has(tag.Name.As("momo_r").Eq("db"))))

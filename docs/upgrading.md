@@ -18,9 +18,7 @@ the same for the many-to-many join table (`momo_j`, `momo_j2`, ...). A plain
 `Has`, `HasNo` or `CountOrder` whose parent is the child of the enclosing
 subquery correlates on that enclosing alias on its own:
 
-<!-- docscheck:fragment -->
-
-```go
+```text
 momo.Select[models.Subscription](db).Where(
 	subscription.Items.Has(
 		subscriptionitem.PlanPrice.Has(planprice.PlanID.As("momo_r").Eq("p1"))))
