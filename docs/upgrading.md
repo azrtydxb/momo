@@ -40,7 +40,7 @@ keep the `introspect.skip` or `introspect.only` rules that hid them.
 changes for it. How the MySQL and SQLite inspectors treat a `VIRTUAL` column is
 tracked in issue 111.
 
-A read-only generated field is not read back after an insert: `Insert.Model`
+A read-only generated field is not read back after an insert: a model insert
 leaves the Go value as it was, so select the row again to see the computed
 value.
 
