@@ -13,6 +13,7 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/gen/typemap"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -217,6 +218,9 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 		nullType = true
 	}
 	nullable := ptr || f.Nullable || nullType || tg.Nullable
+	if dbDefaultPointer(f.GoType, tg) {
+		nullable = false // nil means "use the database default": the column is NOT NULL
+	}
 	if tg.NotNull {
 		if nullable {
 			b.diag(f.Pos, fmt.Sprintf("field %s: notnull conflicts with a nullable Go type or the nullable tag", f.GoName))
@@ -273,9 +277,18 @@ func (b *schemaBuilder) checkDBDefault(m *Model, f *Field) {
 	if conflict != "" {
 		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault conflicts with %s", f.GoName, conflict))
 	}
-	if strings.HasPrefix(f.GoType, "*") || strings.HasPrefix(f.GoType, "sql.Null") || f.Nullable || tg.Nullable {
-		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault on a nullable field: nil means use the database default, so Model can never write NULL (use Values with SetNull); use a non-nullable type", f.GoName))
+	if core, _ := strings.CutPrefix(f.GoType, "*"); strings.HasPrefix(core, "sql.Null") || tg.Nullable {
+		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault on a nullable field: nil means use the database default, so Model can never write NULL (use Values with SetNull); use a plain type, or a pointer to one on a NOT NULL column", f.GoName))
 	}
+}
+
+// dbDefaultPointer reports whether a dbdefault field is a pointer to a plain
+// type: its column is NOT NULL and the pointer says whether the caller set the
+// value (nil takes the database default; any other value, false and 0
+// included, is written).
+func dbDefaultPointer(goType string, tg tags.Tags) bool {
+	core, ptr := strings.CutPrefix(goType, "*")
+	return tg.DBDefault && ptr && !tg.Nullable && !strings.HasPrefix(core, "sql.Null")
 }
 
 // applyIdentityAlways refuses identity:always for a MySQL dialect, which has

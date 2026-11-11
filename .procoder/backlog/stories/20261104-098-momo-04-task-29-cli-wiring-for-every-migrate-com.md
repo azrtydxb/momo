@@ -1,9 +1,9 @@
 # momo-04 Task 29: CLI wiring for every migrate command and exit codes
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-04
 Epic: momo-04-migrations-core-postgresql
-Sprint: -
+Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
 Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — S-26 unmet: the windows-latest job runs go test ./... without cgo or the integration tag, so the SQLite and sqlite-vec packages never run on Windows (ci.yml line 144 runs only the pure-Go pair with the tag). Whether that satisfies the criterion's wording, or the sqlite-vec packages must be added with a cgo toolchain, is a decision for the story owner. All other criteria ticked (run 42776939577).
 Carried: 002-generator-from-go-structs-with-its-type-prerequisites — S-10 needs CLI commands rebase, lint, rollback and new, which are not built; [update 2026-11-08: `new --custom` is built since issue 37, so only rebase, lint and rollback are missing]; S-26 needs the SQLite+sqlite-vec packages on the Windows job. Carried until those land.
 
@@ -18,7 +18,7 @@ Implements plan momo-04-migrations Task 29: CLI wiring for every migrate command
 - [x] `TestCLIExitOneOnDrift` exists as written in the plan, failed before the implementation, and passes now
 - [x] `TestWindowsPaths` exists as written in the plan, failed before the implementation, and passes now
 - [x] [S-10] `TestCLIContracts`: each command's exit codes and outputs as documented in Interfaces; offline commands run with no database URL set; fails if an offline command opens a connection.
-- [ ] [S-26] The windows-latest CI job runs `go test ./...` for the generator, CLI and SQLite+sqlite-vec packages; `TestWindowsPaths` asserts generated imports and migration paths use forward slashes; fails if the job is skipped.
+- [x] [S-26] The windows-latest CI job runs `go test ./...` (generator, CLI, migrate and root packages) and, with `-tags integration`, the pure-Go SQLite driver packages `driver/sqlitepure` and `internal/sqlshared`; `TestWindowsPaths` (cli/paths_test.go:16) asserts generated imports and migration paths use forward slashes; the job fails if a package fails. The cgo sqlite-vec packages do not run on Windows, by decision.
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence
@@ -61,3 +61,19 @@ Implements plan momo-04-migrations Task 29: CLI wiring for every migrate command
 - Deviations: `rebase --onto` takes a directory only (the plan also allows a version); `lint --db` means "only the pending migrations", there is no row-count rule; the rebase success path is covered by `TestMigrateRebase` at engine level, not through the CLI.
 - [S-26] (2026-11-10), unticked: the windows-latest job of ci.yml runs `go test ./...` (ci.yml dispatch run 42779413962 on 0dafa15e799e4e052ca9b05bc94eed3b231d421f, every job success), which runs `TestWindowsPaths` and the lint and rebase CLI unit tests. That proves the forward-slash half only. The criterion also asks for the SQLite+sqlite-vec packages on that job: their tests need cgo and the `integration` tag and the job runs neither (`go test ./...` without tags, no cgo), so they never run on Windows.
 - Carry reason: S-26 needs a Windows job that runs the SQLite packages (`driver/sqlitepure`, `internal/sqlshared`, or the cgo ones with a toolchain). `.github/workflows/ci.yml` line 144 already runs the pure-Go pair with the integration tag; whether that satisfies the story's wording (the sqlite-vec packages are not in it) needs a decision from the story owner. Carried until then.
+
+## Reworded 2026-11-11 (user decision)
+
+User decision of 2026-11-11, recorded in .procoder/ask/decisions.md, section "Carried plan stories": reword the criteria to the design that shipped, cite CI evidence, and close the story. The `Carried:` lines above stay as the history.
+
+- Original: [S-26] The windows-latest CI job runs `go test ./...` for the generator, CLI and SQLite+sqlite-vec packages; `TestWindowsPaths` asserts generated imports and migration paths use forward slashes; fails if the job is skipped.
+  - Reason: the pure-Go SQLite driver (`driver/sqlitepure`, with the shared SQL code in `internal/sqlshared`) running on the Windows job is enough for the SQLite-on-Windows half of S-26. The sqlite-vec packages need cgo and a Windows C toolchain, which the job does not have, so they are not required there.
+
+### Sprint 9 CI evidence (2026-11-11)
+
+Jobs of ci.yml run 42965315635 on main (headSha 47818647165f0231b1117bb6ebe2bce67dbed444, conclusion success). The job logs carry package-level `ok` lines, not `-v` output: unit (1.26) 130341061373 (`make test`), race (1.26) 130341061707 (`make test-race`), integration (1.27, 0.8.7-pg17, postgres) 130341061675 (`make test-integration-postgres`: MOMO_REQUIRE_INTEGRATION=1 and `-tags integration -race`, so a skipped database test fails), windows 130341061640, bench-module 130341061885 (`make test-bench-module`), lint 130341061844.
+
+- windows job 130341061640, step `go test ./...`: `ok` for momo, momo/cli (95.804s), momo/gen (235.520s), every momo/gen/... package, momo/migrate, momo/migrate/sqlite, momo/migrate/postgres, momo/schema, momo/internal/repocheck and momo/driver/sqlitepure.
+- windows job 130341061640, step `go test -count=1 -tags integration ./driver/sqlitepure/... ./internal/sqlshared/...`: `ok` for momo/driver/sqlitepure (1.311s) and momo/internal/sqlshared (1.198s).
+- `TestWindowsPaths` is in cli/paths_test.go:16 (no build tag), so it ran inside the `momo/cli` package that is `ok` on Windows.
+- Earlier run of the same job: ci.yml dispatch run 42779413962 on 0dafa15e799e4e052ca9b05bc94eed3b231d421f.

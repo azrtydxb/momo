@@ -20,8 +20,10 @@ import (
 // cannot be followed: a function that only such code reaches is not written, so
 // use introspect.functions: all for a database that does that. A view is a global object that
 // lives on the first model, so a function that only a view calls goes there
-// too, as do those of a trigger or policy whose table has no model; a function
-// that a modeled table also uses goes on that table's model instead. A function nothing
+// too; a function that a modeled table also uses goes on that table's model
+// instead. The triggers and policies of a table with no model (skipped, or
+// outside introspect.only) are not written, so a function only they use is not
+// written either. A function nothing
 // modeled uses is not written, so the models do not carry database-wide SQL
 // that has nothing to do with them and their text does not change when an
 // unrelated function does.
@@ -55,17 +57,6 @@ func (g *generator) functions(host *model) {
 	var viewTexts []string
 	for _, v := range g.clean.Views {
 		viewTexts = append(viewTexts, v.Query)
-	}
-	// A trigger or policy whose table has no model sits on the first model too.
-	for _, x := range g.clean.Triggers {
-		if g.owner(x.Schema, x.Table, nil) == nil {
-			viewTexts = append(viewTexts, x.Function, x.When, x.Definition)
-		}
-	}
-	for _, x := range g.clean.Policies {
-		if g.owner(x.Schema, x.Table, nil) == nil {
-			viewTexts = append(viewTexts, x.Using, x.Check)
-		}
 	}
 	claim(host, viewTexts)
 	var kept []schema.Function
@@ -101,13 +92,13 @@ func (g *generator) tableTexts(m *model) []string {
 		}
 	}
 	for _, x := range g.clean.Triggers {
-		if g.owner(x.Schema, x.Table, nil) == m {
+		if g.owner(x.Schema, x.Table) == m {
 			out = append(out, x.Function, x.When, x.Definition)
 			out = append(out, x.Args...)
 		}
 	}
 	for _, x := range g.clean.Policies {
-		if g.owner(x.Schema, x.Table, nil) == m {
+		if g.owner(x.Schema, x.Table) == m {
 			out = append(out, x.Using, x.Check)
 		}
 	}

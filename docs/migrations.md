@@ -224,6 +224,12 @@ finding:
   `only: [orders, "orders_*"]`. The MySQL and SQLite inspectors ignore
   `InspectOptions.Only` and read every table; the filter is applied afterwards,
   so a table they cannot represent can still fail inspection.
+- The PostgreSQL inspector skips an index that is attached to a parent
+  partitioned index (a `pg_inherits` row on the index). Only the parent index
+  is modeled; PostgreSQL creates, names and drops the partition indexes, so a
+  fresh install has no duplicates and `drift` ignores partition index names
+  that diverged after a column rename. Constraint-backed partition indexes were
+  already skipped.
 - A trigger limited to some columns (`AFTER UPDATE OF state`) is
   `schema.Trigger.UpdateOf`: PostgreSQL renders `UPDATE OF "state"`, inspection
   reads the list back and `generate --from-db` writes it into the model.
@@ -279,8 +285,8 @@ Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
 `validate` checks: files parse and directives are known; `momo.sum` matches;
 versions unique and increasing; each snapshot's parent exists; no two snapshots
 share a parent (branch conflict); each up file has a snapshot; a hand-written
-migration (no `-- momo:generated`) has a snapshot equal to its parent's. Use it
-in CI. `apply` runs the chain checks too (fork, missing parent, cycle, gap) and
+migration (no `-- momo:generated` and no `-- momo:imported`) has a snapshot
+equal to its parent's. Use it in CI. `apply` runs the chain checks too (fork, missing parent, cycle, gap) and
 refuses with the same message (a fork is `ErrBranchConflict`; a missing parent,
 cycle or gap is `ErrChainInvalid`; both exit 1, like `validate` findings), and it
 refuses with `ErrOutOfOrder` (exit 1) when a pending version is older than the
@@ -870,7 +876,8 @@ You can also create the files yourself:
    `20260301120000_backfill_slug.up.sql`. Do not put `-- momo:generated` in it.
 2. Optional directives at the top, before the first statement:
    `-- momo:no-transaction`, `-- momo:split`, `-- momo:destructive`
-   (informational, never enforced), `-- momo:generated` (do not use it here)
+   (informational, never enforced), `-- momo:generated` (do not use it here),
+   `-- momo:imported` (written by the history importer, do not use it here: `validate` then skips the schema-neutral check and `rebase` treats the file as hand-written)
    and `-- momo:sqlite-foreign-keys-off` (SQLite only; `apply` turns foreign keys off around the migration, section 3a). `-- momo:ddl` is not a
    file directive: it goes before one MySQL ALTER TABLE statement (section 9). An unknown `-- momo:` directive is an error.
 3. Create `20260301120000_backfill_slug.snapshot.json` as a copy of the previous
@@ -1057,6 +1064,10 @@ introspect:
   only: [] # table globs: models only for these tables; skip applies within
   functions: "" # "all": every database function on the first model
   dbdefault: "" # "all": dbdefault on every NOT NULL column with a default
+  inverse: false # true: also write the has_many / has_one inverse of every belongs_to
+  relations: # with inverse: rename or skip one inverse, keyed Model.Field
+    "Subscription.SubscriptionItems": { name: Items }
+    "User.MessagesBySender": { skip: true }
   uuid: google # uuid columns as github.com/google/uuid types, no type tag (default: momo, types.UUID)
   types: # SQL type to Go type, for every column of that type
     inet: { go: string }
@@ -1081,6 +1092,25 @@ A rule's `tags` are momo tag options; one with the key of a generated option
 replaces it. A Go type needs no `import` for `types.`, `vector.`, `time.`,
 `json.` or `sql.`. Add skipped tables to `migrate.exclude` too, so the baseline
 ignores the live tables.
+
+`inverse: true` writes the other side of every `belongs_to` on the referenced
+model: a `has_one` when the foreign key column is unique (the primary key, a
+unique constraint or a plain unique index), a `has_many` otherwise. The field is
+named for the child (`SubscriptionItems` for a `has_many`, `AuthorProfile` for a
+`has_one`). A child with two foreign keys to the same parent, or a table that
+references itself, gets `By` and the foreign key field without `ID`
+(`MessagesBySender`, `MessagesByRecipient`). An `introspect.relations` rule keyed
+by model and derived name (User.MessagesBySender) renames one (`name`) or drops it (`skip: true`).
+The key uses the name derived before the rule and before any collision suffix. A
+rule key that matches no inverse is printed as a warning (a typo otherwise does
+nothing), and so is an inverse whose name collides with another field of the
+parent and gets a number suffix (Orders2): the warning names the
+`introspect.relations` key that renames it. `relations` has no effect unless
+`inverse` is `true`. A unique index with storage parameters (WITH) still counts
+as unique; a partial, expression or composite unique index does not.
+No inverse is written for a composite foreign key, a foreign key left out of the
+models, or a child outside `only` and `skip`. It is off by default because it
+adds fields to models you may have edited.
 
 `only` is the inverse of `skip`, for a project that moves onto momo one module
 at a time: when it is set, a table that matches none of its globs gets no model
@@ -1114,8 +1144,10 @@ as releases before 0.7.0 did, and is the workaround.
 `dbdefault: all` tags every NOT NULL PostgreSQL column that has a default with
 `dbdefault`, constant defaults such as `DEFAULT 1` included (by default only
 computed defaults are tagged), so `InsertQuery.Model` leaves an unset field to the
-database default. A nullable column is never tagged. See "Database defaults" in
-the [AI guide](ai-guide.md).
+database default. A nullable column is never tagged. A `bool` or number column
+whose constant default is `true` or non-zero gets a pointer type (`*bool`,
+`*int64`), so an explicit `false` or `0` is written and nil takes the default.
+See "Database defaults" in the [AI guide](ai-guide.md).
 
 ### Running it again
 
