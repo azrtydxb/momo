@@ -25,10 +25,10 @@ same rule (pinned to `ToSnake` by a test), and the `--from-db` field naming
 (gen/fromdb/names.go) had its own, shorter list.
 
 Fix: `ToSnake` finds an upper-case run that ends in a word of a shared list
-(`naming.GoInitialism`) followed by a lone `s`, keeps the `s` with it and
+(`internal/snake`) followed by a lone `s`, keeps the `s` with it and
 breaks before the initialism. `--from-db` takes its field words from the same
 list, so `role_ids` gives `RoleIDs` and back. The root package now calls
-`naming.ToSnake` instead of its copy.
+`internal/snake` instead of its copy (the core may not import gen/naming).
 
 ## Acceptance criteria
 

@@ -32,12 +32,48 @@ renames the column. To keep the old name, pin it on the field:
 `Query` needs the same tag. Models under the `gorm`, `bun`, `ent` and `prisma`
 presets are not affected, they have their own rules.
 
-`--from-db` uses the same word list in the other direction: a column `role_ids`
-becomes the field `RoleIDs` (it was `RoleIds`), and `urls`, `uuids` and `apis`
-become `URLs`, `UUIDs` and `APIs`. The list is also longer than before, so a
-column word such as `ttl`, `acl` or `tcp` becomes `TTL`, `ACL` or `TCP` in a
-field name. The column still maps to the same name, so no column tag is
-needed; regenerating changes the Go field names in the models.
+### `--from-db` writes initialisms in capitals in more Go field names
+
+This is a second, separate breaking change: it renames Go fields, not columns.
+`momo generate --from-db` writes a column word that is an initialism in
+capitals (`user_id` is `UserID`). It now reads the same word list as `ToSnake`
+above, which is longer than the list it had (it had `id`, `url`, `uri`, `uuid`,
+`api`, `http`, `https`, `ip`, `json`, `sql`, `html`, `xml`, `tls`, `ssh` and
+`cpu`), and a plural `s` after a word of the list stays with it. The words
+added are `acl`, `ascii`, `css`, `dns`, `eof`, `guid`, `lhs`, `qps`, `ram`,
+`rhs`, `rpc`, `sla`, `smtp`, `tcp`, `ttl`, `udp`, `ui`, `uid`, `vm`, `xmpp`,
+`xsrf` and `xss`. Examples of field names that change when you regenerate:
+
+| Column     | Field before | Field now |
+| ---------- | ------------ | --------- |
+| `team_ids` | `TeamIds`    | `TeamIDs` |
+| `role_ids` | `RoleIds`    | `RoleIDs` |
+| `urls`     | `Urls`       | `URLs`    |
+| `api_ids`  | `APIIds`     | `APIIDs`  |
+| `ttl`      | `Ttl`        | `TTL`     |
+| `dns_name` | `DnsName`    | `DNSName` |
+| `tcp_port` | `TcpPort`    | `TCPPort` |
+
+The column name does not change, and the generated `momo` tag still maps the
+field to it, so the database and the migrations are untouched. Code that uses
+the old Go field name stops compiling: `m.TeamIds` must become `m.TeamIDs`.
+In the `--from-db` goldens of this repository the only name that changed is
+`TeamIds` to `TeamIDs`, in `gen/fromdb/googleuuid_test.go`.
+
+To keep an old field name, pin it in the `introspect.columns` rules of
+`momo.yaml` (see "The introspect section" in [migrations](migrations.md)): a
+rule has a `match` glob over `table.column` and a `name` for the Go field, and
+a later rule wins.
+
+```yaml
+introspect:
+  columns:
+    - match: "members.team_ids"
+      name: TeamIds
+```
+
+There is no per-table `columns` map: the key is the list `introspect.columns`,
+with `match` and `name`.
 
 ### `--from-db` keeps singular table names that end in `-ss` or are known `-us` words
 
