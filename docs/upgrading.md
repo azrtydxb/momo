@@ -90,11 +90,11 @@ Library users: `migrate.Config.OnlyTables` and `migrate.InspectOptions.Only`
 are new fields. `OnlyTables` is what `introspect.only` sets: when it is not
 empty, a table that matches none of its globs is hidden from drift, baseline
 and diff, with its triggers and policies, and the PostgreSQL inspector does not
-read it. The MySQL and SQLite inspectors ignore `InspectOptions.Only` and read
+read it. The MySQL and SQLite inspectors ignore `migrate.InspectOptions.Only` and read
 every table, which is filtered afterwards, so a table they cannot represent can
 still fail inspection. `migrate.MatchObject` is the glob rule shared by
 `Exclude`, `OnlyTables` and the inspector. An empty or malformed entry is an
-error that names `Config.OnlyTables`.
+error that names `migrate.Config.OnlyTables`.
 
 ### `introspect.dbdefault: all` tags every column that has a default
 
