@@ -1,6 +1,6 @@
 # timeop sub-second intervals and timestamp difference are missing
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -32,13 +32,16 @@ package has no operator whose result is an interval.
 
 ## Acceptance criteria
 
-- [ ] `IntervalMillisecond` and `IntervalMicrosecond` render exactly on PostgreSQL (`INTERVAL '1500 millisecond'`), as microseconds on MySQL and as fractional seconds on SQLite, for literal and bound counts (unit SQL tests)
-- [ ] `IntervalDuration`, `AddDuration` and `SubDuration` take a `time.Duration` and keep its sub-second part; counts out of range fail with `ErrValidation`
-- [ ] `Sub(a, b)`, `Age(a, b)` and `EpochSeconds` render `extract(epoch FROM a - b)` on PostgreSQL, `TIMESTAMPDIFF` on MySQL and `julianday` on SQLite; `Age` and a bare `Span` are `ErrUnsupported` where the dialect has no interval; nil operands are `ErrValidation`
-- [ ] on PostgreSQL a lease of +1500ms and a difference of 1.5 seconds, its negation and a 3 hour difference read back correctly (integration tests, SQLite too where it runs)
-- [ ] `docs/ai-guide.md`, `docs/capabilities.md`, `llms.txt` and `docs/upgrading.md` (0.8.0) describe the additions
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] `IntervalMillisecond` and `IntervalMicrosecond` render exactly on PostgreSQL (`INTERVAL '1500 millisecond'`), as microseconds on MySQL and as fractional seconds on SQLite, for literal and bound counts (unit SQL tests)
+- [x] `IntervalDuration`, `AddDuration` and `SubDuration` take a `time.Duration` and keep its sub-second part; counts out of range fail with `ErrValidation`
+- [x] `Sub(a, b)`, `Age(a, b)` and `EpochSeconds` render `extract(epoch FROM a - b)` on PostgreSQL, `TIMESTAMPDIFF` on MySQL and `julianday` on SQLite; `Age` and a bare `Span` are `ErrUnsupported` where the dialect has no interval; nil operands are `ErrValidation`
+- [x] on PostgreSQL a lease of +1500ms and a difference of 1.5 seconds, its negation and a 3 hour difference read back correctly (integration tests, SQLite too where it runs)
+- [x] `docs/ai-guide.md`, `docs/capabilities.md`, `llms.txt` and `docs/upgrading.md` (0.8.0) describe the additions
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Red: ci-agent run 42978437547 on 6c459f1 (tests only) failed to compile: `timeop/timeop_subsecond_test.go:25:39: undefined: timeop.IntervalMillisecond`, and `undefined: timeop.AddDuration`, `timeop.SubDuration`, `timeop.IntervalMicrosecond` in `timeop/timeop_subsecond_integration_test.go`.
+- Green: ci-agent run 42993926849, headSha 1ba675a52764d69aa1fdf97885f997f397351e86, all jobs passed.
+- Unit goldens for units, durations, Sub, Age, EpochSeconds, ErrUnsupported and ErrValidation: `timeop/timeop_subsecond_test.go`. Database round trips: `timeop/timeop_subsecond_integration_test.go`.
+- Docs changed: `docs/ai-guide.md`, `docs/upgrading.md` (Upgrading to 0.8.0), `llms.txt`, `docs/capabilities.md` and `docs/reference.md` (generated: `internal/gendocs/blocks.go` plus CI artifacts).

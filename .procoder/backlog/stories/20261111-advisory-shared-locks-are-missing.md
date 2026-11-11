@@ -1,6 +1,6 @@
 # advisory shared locks are missing (pg_advisory_xact_lock_shared and friends)
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -30,13 +30,16 @@ variants were never added.
 
 ## Acceptance criteria
 
-- [ ] `advisory.XactLockShared`, `TryXactLockShared`, `LockShared`, `TryLockShared`, `UnlockShared` and their `...String` forms exist and render `pg_advisory_xact_lock_shared`, `pg_try_advisory_xact_lock_shared`, `pg_advisory_lock_shared`, `pg_try_advisory_lock_shared` and `pg_advisory_unlock_shared` (unit SQL tests)
-- [ ] a string key hashes like the exclusive helpers: `hashtext` by default, `hashtextextended(key, seed)` with `Hash64(seed)`
-- [ ] nil transaction and unpinned or nil DB fail with `ErrValidation`, other dialects with `ErrUnsupported`, and no statement runs
-- [ ] on PostgreSQL, two shared holders coexist, a shared lock excludes the exclusive lock and the reverse, `Hash64(52)` meets a raw `hashtextextended(key, 52)` lock, and `Unlock` does not release a shared lock (integration tests)
-- [ ] `docs/ai-guide.md`, `docs/capabilities.md` and `docs/upgrading.md` (0.8.0) describe the helpers
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] `advisory.XactLockShared`, `TryXactLockShared`, `LockShared`, `TryLockShared`, `UnlockShared` and their `...String` forms exist and render `pg_advisory_xact_lock_shared`, `pg_try_advisory_xact_lock_shared`, `pg_advisory_lock_shared`, `pg_try_advisory_lock_shared` and `pg_advisory_unlock_shared` (unit SQL tests)
+- [x] a string key hashes like the exclusive helpers: `hashtext` by default, `hashtextextended(key, seed)` with `Hash64(seed)`
+- [x] nil transaction and unpinned or nil DB fail with `ErrValidation`, other dialects with `ErrUnsupported`, and no statement runs
+- [x] on PostgreSQL, two shared holders coexist, a shared lock excludes the exclusive lock and the reverse, `Hash64(52)` meets a raw `hashtextextended(key, 52)` lock, and `Unlock` does not release a shared lock (integration tests)
+- [x] `docs/ai-guide.md`, `docs/capabilities.md` and `docs/upgrading.md` (0.8.0) describe the helpers
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Red: ci-agent run 42978437547 on 6c459f1 (tests only) failed to compile: `advisory/advisory_shared_test.go:25:22: undefined: advisory.XactLockShared`, and `undefined: advisory.TryXactLockShared`, `advisory.LockShared`, `advisory.UnlockShared`, `advisory.LockSharedString` in `advisory/advisory_shared_integration_test.go`.
+- Green: ci-agent run 42993926849, headSha 1ba675a52764d69aa1fdf97885f997f397351e86, all jobs passed (unit, integration postgres, integration-mysql x3, lint, fuzz-smoke, bench-module, apidiff-docs).
+- Unit SQL, hashing, refusal and ErrUnsupported criteria: `advisory/advisory_shared_test.go`. PostgreSQL behaviour criteria: `advisory/advisory_shared_integration_test.go`. An earlier run (42984986678) hung on a test that opened four transactions against a three-connection pool; fixed in 4c13e91.
+- Docs changed: `docs/ai-guide.md`, `docs/capabilities.md`, `docs/upgrading.md` (Upgrading to 0.8.0), `docs/reference.md` (from the CI artifact).
