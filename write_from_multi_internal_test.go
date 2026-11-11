@@ -19,7 +19,7 @@ func (unnamedSource) appendFrom(b *Builder) { b.WriteString("unnamed") }
 type emptyQualifierSource struct{}
 
 func (emptyQualifierSource) appendFrom(b *Builder) { b.WriteString("anon") }
-func (emptyQualifierSource) Qualifier() string    { return "" }
+func (emptyQualifierSource) Qualifier() string { return "" }
 
 // Catches: a source without a Qualifier being skipped by the several-source
 // guard, so a cross-joined custom source slips through. It must count as
