@@ -5,6 +5,22 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `--from-db` no longer writes the objects of tables it does not model
+
+`momo generate --from-db` used to put the policies and triggers of a table left
+out by `introspect.skip` or `introspect.only` on the alphabetically first model.
+An object that belongs to a table with no model now gets no output: it is not
+written to any model and it is not in the init snapshot. The functions that only
+those objects use are dropped too, unless `introspect.functions: all` is set,
+which still writes every function. After you regenerate, the first model loses
+its `c.Policy`, `c.Trigger` and `c.Function` lines for those tables, and it no
+longer changes when a migration adds row level security to a skipped table. If
+the database keeps those objects of a table left out by `introspect.skip`, add
+the table to `migrate.exclude` so drift does not report them as unmanaged. With
+`introspect.only` nothing is needed: `migrate.only` already hides them.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
