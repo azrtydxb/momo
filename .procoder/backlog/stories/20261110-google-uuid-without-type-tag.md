@@ -25,6 +25,7 @@ A field of `github.com/google/uuid.UUID` needs `momo:"type:uuid"` on every field
 - MySQL: no uuid mapping in typemap, same as types.UUID (documented). SQLite: uuid.UUID is TEXT; []uuid.UUID has no SQLite column.
 
 ### Review fix round
+
 - Negative and alias tests added: TestForeignUUIDPackageIsNotMapped (fixture package named uuid, V and Vs unmapped), TestGoogleUUIDThroughAliases (import alias gu, type ID = gu.UUID, []ID), TestArrayOperatorsForeignUUIDGetsNoCast.
 - Red by mutation: throwaway branch worktree-agent-a418febe208302c67-red76b (commit 1c4155c disables the baseType guard and the arrayop import-path check), ci-agent run 42924344056 failed TestForeignUUIDPackageIsNotMapped and TestArrayOperatorsForeignUUIDGetsNoCast. The branch is deleted.
 - TestGoogleUUIDThroughAliases found a real gap: run 42924654806 (487bb20) failed it because a slice of an alias ([]ID) was spelled []pkg.ID and stayed unmapped. Fixed in baseType (alias elements of a slice are unaliased).
