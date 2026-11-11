@@ -21,6 +21,41 @@ the database keeps those objects of a table left out by `introspect.skip`, add
 the table to `migrate.exclude` so drift does not report them as unmanaged. With
 `introspect.only` nothing is needed: `migrate.only` already hides them.
 
+### Indexes attached to a parent partitioned index are no longer inspected
+
+The PostgreSQL inspector used to report an index on a partition that is
+attached to a parent partitioned index as a standalone index of that partition.
+`momo generate --from-db` then emitted it as `c.Index(...)` on the partition's
+model, a fresh install created it twice, and `drift --strict` reported the
+PostgreSQL-created index as `not in snapshot`. Inspection now skips every index
+that has a `pg_inherits` parent; only the parent index is modeled. An index
+created directly on a partition, and a unique index created directly on one, is
+not attached and is still modeled on that partition.
+
+A snapshot written by 0.7.0 from such a database (the init snapshot of
+`generate --from-db`, or a snapshot taken by `baseline`) lists the attached
+indexes on the partitions. After the upgrade the live side no longer reports
+them, so `migrate drift` reports each one as `missing: index
+<partition>.<name>` (present in the snapshot, absent live) and exits non-zero,
+and `baseline` reports the database as differing from the snapshot. `migrate
+diff` between your models and the snapshot is still empty, because both carry
+the index.
+
+What to do, per project that has a partitioned table with a parent index:
+
+1. Re-run `momo generate --from-db` with 0.8.0 against a database whose
+   partitions were created by PostgreSQL, so the models and the snapshot both
+   lose the attached partition indexes, or edit both by hand: delete the
+   `c.Index(...)` lines the partitions carry for attached indexes and the same
+   entries from the snapshot. Do not change only the models. The diff would
+   then plan `DROP INDEX` on an attached partition index, which PostgreSQL
+   refuses.
+2. A database that was built from the 0.7.0 init migration has the duplicate
+   partition indexes (the one PostgreSQL attached and the one momo declared).
+   Drop the extra, unattached one by hand; `migrate` does not do it.
+3. A database that was only ever baselined needs nothing else; drift is clean
+   once the snapshot is regenerated.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
