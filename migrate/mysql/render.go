@@ -414,18 +414,11 @@ func renderAlterColumn(c migrate.Change) ([]migrate.Statement, error) {
 	}
 	t := tableRef(c.Schema, c.Table)
 	if before.Generated != "" && after.Generated != "" && before.GeneratedVirtual != after.GeneratedVirtual {
-		// MySQL cannot turn a VIRTUAL column into a STORED one (or back) with
-		// MODIFY COLUMN, so drop and add it: a generated column holds no data
-		// of its own. The column moves to the end of the table, and the drop
-		// fails while an index or constraint still uses it.
-		def, err := columnDef(after)
-		if err != nil {
-			return nil, err
-		}
-		return []migrate.Statement{
-			{SQL: "ALTER TABLE " + t + " DROP COLUMN " + ident(after.Name)},
-			{SQL: "ALTER TABLE " + t + " ADD COLUMN " + def},
-		}, nil
+		// MySQL cannot switch a generated column between VIRTUAL and STORED in
+		// place, and a drop and add would lose its position and fail while an
+		// index uses it, so the change is a custom migration, as it is on
+		// PostgreSQL.
+		return nil, fmt.Errorf("column %q: a generated column cannot change between VIRTUAL and STORED in place; write a custom migration", after.Name)
 	}
 	nt := func(x string) string { return schema.NormalizeType(dialect.MySQL, x) }
 	ne := func(x string) string { return schema.NormalizeExpr(dialect.MySQL, x) }

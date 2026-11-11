@@ -87,6 +87,10 @@ func TestMySQLVirtualGeneratedRoundTrips(t *testing.T) {
 			if len(changes) == 0 {
 				t.Error("a VIRTUAL to STORED change produced no diff")
 			}
+			// MySQL cannot switch the kind in place, so rendering it is refused.
+			if _, err := eng.Diff(ctx, virtualSchema(false), "kind", migrate.DiffOptions{}); err == nil || !strings.Contains(err.Error(), "write a custom migration") {
+				t.Errorf("VIRTUAL to STORED: err = %v, want the custom migration error", err)
+			}
 
 			// The helper returns the one database of the target, so clear it
 			// and create the table again from the declaration.

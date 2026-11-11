@@ -61,6 +61,14 @@ func (c *Config) Default(field any, expr string) {}
 // statically by the generator; never executed for its effect.
 func (c *Config) Generated(field any, expr string) {}
 
+// GeneratedVirtual declares a column as VIRTUAL generated: GENERATED ALWAYS AS
+// (expr) VIRTUAL, computed on read. It is Generated for a VIRTUAL column; the
+// field must be read_only. MySQL and SQLite support it; PostgreSQL has VIRTUAL
+// columns only from version 18, which momo does not support, so a PostgreSQL
+// target is refused. Read statically by the generator; never executed for its
+// effect.
+func (c *Config) GeneratedVirtual(field any, expr string) {}
+
 // Comment sets a column comment. Read statically by the generator; never
 // executed for its effect.
 func (c *Config) Comment(field any, text string) {}

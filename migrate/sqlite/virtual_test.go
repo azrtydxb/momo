@@ -82,3 +82,29 @@ func TestSQLiteVirtualGeneratedRoundTrips(t *testing.T) {
 	}
 	assertNoDiff(t, fresh, virtualSchema(true))
 }
+
+// TestSQLiteVirtualToStoredRebuildKeepsData applies a VIRTUAL to STORED change
+// for real: SQLite rebuilds the table, the other columns keep their rows, and
+// the column ends up STORED (hidden 3) with the values it computes.
+func TestSQLiteVirtualToStoredRebuildKeepsData(t *testing.T) {
+	c := pinned(t, testopen.SQLite(t))
+	apply(t, c, render(t, &schema.Schema{Dialect: dialect.SQLite}, virtualSchema(true)))
+	mustExec(t, c, `INSERT INTO vg (id, title) VALUES (1, 'Ab'), (2, 'Cd')`)
+
+	apply(t, c, render(t, virtualSchema(true), virtualSchema(false)))
+
+	if h := hiddenOf(t, c, "slug"); h != 3 {
+		t.Errorf("after the change: slug hidden = %d, want 3 (STORED)", h)
+	}
+	var n int
+	scanOne(t, c, `SELECT count(*) FROM vg`, &n)
+	if n != 2 {
+		t.Fatalf("rows after the rebuild = %d, want 2", n)
+	}
+	var title, slug string
+	scanOne(t, c, `SELECT title, slug FROM vg WHERE id = 2`, &title, &slug)
+	if title != "Cd" || slug != "cd" {
+		t.Errorf("row 2 = %q, %q, want Cd, cd", title, slug)
+	}
+	assertNoDiff(t, c, virtualSchema(false))
+}
