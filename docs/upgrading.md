@@ -21,13 +21,7 @@ New, additive API; nothing existing changes.
   instead of a lookalike with other merge rules.
 - `momo.ArrayOf[T]` (`ARRAY[...]`) and `momo.ArraySubquery[T]`
   (`ARRAY(...)`) are `Expression[[]T]`, PostgreSQL only. Build the path of
-  `jsonop.Set` with `ArrayOf`:
-
-  ```go
-  path := momo.ArrayOf[string](sqlfn.Concat(
-      momo.Value("at_execution_"), sqlfn.Cast[string](momo.Value(kind), "text")))
-  next := jsonop.Set(skipped, path, count)
-  ```
+  `jsonop.Set` with `ArrayOf`, casting bound elements with `sqlfn.Cast`.
 
 ## Upgrading to 0.7.0
 

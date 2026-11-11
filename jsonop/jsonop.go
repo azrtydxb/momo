@@ -204,8 +204,8 @@ func Path[T any](c momo.Expression[types.JSON[T]], keys ...string) TextExpr {
 // written into the SQL holds no caller data, so it is always an inlined
 // literal, and the extraction groups like a plain key does.
 func Root[T any](c momo.Expression[types.JSON[T]]) TextExpr {
-	e := newText(c, nil, true)
-	e.root = true
+	e := TextExpr{src: c, path: true, root: true}
+	e.Ops = momo.NewOps[string](e)
 	return e
 }
 

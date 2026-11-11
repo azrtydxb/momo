@@ -283,8 +283,8 @@ Nullability and column rules:
   `jsonop.Set(target, path, value)` is `jsonb_set` with a path built in SQL
   (`momo.ArrayOf(...)`); both are PostgreSQL only and `ErrUnsupported`
   elsewhere, because `json_patch` and `JSON_MERGE_PATCH` merge recursively and
-  drop nulls. Their results are JSON expressions that `Text`, `Path`, `Root`
-  and `HasKey` accept again. `jsonb_build_object` and `to_jsonb` are variadic
+  drop nulls. Their results are JSON expressions that `jsonop.Text`,
+  `jsonop.Path`, `jsonop.Root` and `jsonop.HasKey` accept again. `jsonb_build_object` and `to_jsonb` are variadic
   `"any"`: cast their bound arguments (`sqlfn.Cast`), as PostgreSQL cannot type
   a bare parameter there.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
