@@ -24,8 +24,8 @@ func virtualSchema(virtualSlug bool) *schema.Schema {
 		Columns: []schema.Column{
 			{Name: "id", Type: "bigint"},
 			{Name: "title", Type: "varchar(100)"},
-			{Name: "slug", Type: "varchar(100)", Nullable: true, Generated: "lower(title)", GeneratedVirtual: virtualSlug},
-			{Name: "shout", Type: "varchar(100)", Nullable: true, Generated: "upper(title)"},
+			{Name: "slug", Type: "bigint", Nullable: true, Generated: "id * 2", GeneratedVirtual: virtualSlug},
+			{Name: "shout", Type: "bigint", Nullable: true, Generated: "id * 3"},
 		},
 		PrimaryKey: []string{"id"},
 	}}}
@@ -58,7 +58,7 @@ func TestMySQLVirtualGeneratedRoundTrips(t *testing.T) {
 	for _, tg := range targets {
 		t.Run(tg.name, func(t *testing.T) {
 			live := tg.open(t)
-			if _, err := momo.Exec(ctx, live, "CREATE TABLE vg (id bigint NOT NULL, title varchar(100) NOT NULL, slug varchar(100) GENERATED ALWAYS AS (lower(title)) VIRTUAL, shout varchar(100) GENERATED ALWAYS AS (upper(title)) STORED, PRIMARY KEY (id))"); err != nil {
+			if _, err := momo.Exec(ctx, live, "CREATE TABLE vg (id bigint NOT NULL, title varchar(100) NOT NULL, slug bigint GENERATED ALWAYS AS (id * 2) VIRTUAL, shout bigint GENERATED ALWAYS AS (id * 3) STORED, PRIMARY KEY (id))"); err != nil {
 				t.Fatal(err)
 			}
 			eng := migratetest.NewEngine(t, mmysql.New(), live.Driver(), os.DirFS(t.TempDir()))

@@ -45,7 +45,7 @@ func TestSQLiteVirtualGeneratedRoundTrips(t *testing.T) {
 	ctx := context.Background()
 
 	live := pinned(t, testopen.SQLite(t))
-	mustExec(t, live, `CREATE TABLE vg (id INTEGER PRIMARY KEY, title TEXT NOT NULL, slug TEXT GENERATED ALWAYS AS (lower(title)) VIRTUAL, shout TEXT GENERATED ALWAYS AS (upper(title)) STORED)`)
+	mustExec(t, live, `CREATE TABLE vg (id INTEGER NOT NULL PRIMARY KEY, title TEXT NOT NULL, slug TEXT GENERATED ALWAYS AS (lower(title)) VIRTUAL, shout TEXT GENERATED ALWAYS AS (upper(title)) STORED)`)
 	got, err := msqlite.New().Inspect(ctx, live, migrate.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
