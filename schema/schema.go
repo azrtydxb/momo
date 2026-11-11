@@ -178,8 +178,15 @@ type Column struct {
 	// DEFAULT is nextval of a sequence it owns, which is rendered as
 	// smallserial, serial or bigserial and never appears in Default.
 	Identity string `json:"identity,omitempty"`
-	// Generated is a stored generated-column expression.
+	// Generated is a generated-column expression. The column is STORED
+	// unless GeneratedVirtual is set.
 	Generated string `json:"generated,omitempty"`
+	// GeneratedVirtual marks a VIRTUAL generated column (computed on read)
+	// where Generated is set. It is read and rendered on MySQL and SQLite;
+	// PostgreSQL 18 has VIRTUAL columns but momo's PostgreSQL support
+	// (16 and 17) does not. A snapshot written before this field existed
+	// loads as STORED, so the snapshot format version stays 1.
+	GeneratedVirtual bool `json:"generated_virtual,omitempty"`
 	// Enum names the enum type when Type refers to one (PostgreSQL) or the
 	// enum whose values constrain this TEXT column (SQLite).
 	Enum string `json:"enum,omitempty"`
