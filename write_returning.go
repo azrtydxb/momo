@@ -392,7 +392,8 @@ func scanCompiled[R any](ctx context.Context, q Querier, op, table string, c Com
 	return out, nil
 }
 
-// sourceQualifiers lists the names the FROM / USING sources expose.
+// sourceQualifiers lists the names the FROM / USING sources expose, for the
+// statement's scope. A source without a Qualifier has none.
 func sourceQualifiers(srcs []TableSource) []string {
 	var out []string
 	for _, s := range srcs {
@@ -415,14 +416,20 @@ func appendSources(b *Builder, srcs []TableSource) {
 
 // unconstrainedSource returns the qualifier of the first of several FROM /
 // USING sources that no predicate references, or "". A single source is not
-// checked, and neither is one with no qualifier to look for.
+// checked. Of several, a source with no Qualifier cannot be shown to be
+// referenced, so it counts as unconstrained, and is reported as "an unnamed
+// source".
 func unconstrainedSource(d *dialect.Dialect, ps []Predicate, srcs []TableSource) string {
 	if len(srcs) < 2 {
 		return ""
 	}
-	for _, q := range sourceQualifiers(srcs) {
-		if !referencesTable(d, ps, q) {
-			return q
+	for _, s := range srcs {
+		q, ok := s.(interface{ Qualifier() string })
+		if !ok {
+			return "an unnamed source"
+		}
+		if !referencesTable(d, ps, q.Qualifier()) {
+			return q.Qualifier()
 		}
 	}
 	return ""

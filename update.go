@@ -65,8 +65,10 @@ func (u UpdateQuery[T]) Set(assigns ...Assignment) UpdateQuery[T] {
 
 // With prefixes the statement with a common table expression. cols optionally
 // names its columns. The body may be a SelectQuery, an ExprSelect, a Union or
-// (on PostgreSQL only) an INSERT, UPDATE or DELETE with RETURNING; a
-// data-modifying body on another dialect fails with ErrUnsupported. Reference
+// (on PostgreSQL only) an INSERT, UPDATE or DELETE; a data-modifying body on
+// another dialect fails with ErrUnsupported. The body needs Returning only
+// when the outer statement reads the CTE: a body that nothing reads is valid
+// without it, and PostgreSQL reports the error otherwise. Reference
 // the CTE with CTE and ColumnOf, for instance as the From source. MariaDB does
 // not accept the clause here (ErrUnsupported), and BulkUpdate cannot be
 // combined with it (ErrValidation).
@@ -81,7 +83,7 @@ func (u UpdateQuery[T]) WithRecursive(name string, q Subquery, cols ...string) U
 	return u
 }
 
-// From adds a second source to the statement, rendering UPDATE t SET ... FROM
+// From adds sources to the statement, rendering UPDATE t SET ... FROM
 // src WHERE ...: the SET expressions and the WHERE may reference src's
 // columns (ColumnOf on a CTE or FromSubquery alias, or a model's columns).
 // src is a table, aliased table, CTE or FromSubquery, as in a join. Join src
@@ -330,8 +332,6 @@ func (u UpdateQuery[T]) compileSQL() (Compiled, error) {
 }
 
 func (UpdateQuery[T]) isDML() {}
-
-func (u UpdateQuery[T]) hasReturning() bool { return u.returning.active() }
 
 // isSubquery lets an UPDATE be the body of a WITH clause (PostgreSQL only).
 func (UpdateQuery[T]) isSubquery() {}

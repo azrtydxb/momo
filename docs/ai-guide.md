@@ -1341,8 +1341,9 @@ Joined and CTE-prefixed writes:
 - `InsertQuery`, `UpdateQuery` and `DeleteQuery` with `Returning` are `Subquery` values, usable as
   the body of `SelectQuery.With` on any statement: a select with `.With("x", ins).From(momo.CTE("x"))` renders
   `WITH x AS (INSERT ... RETURNING ...) SELECT ... FROM x`. PostgreSQL has data-modifying
-  CTEs; SQLite and MySQL return `ErrUnsupported`. A DML body without `Returning` fails the build with
-  `ErrValidation`, since a CTE without columns cannot be read. A DML body renders with the handle's interceptors
+  CTEs; SQLite and MySQL return `ErrUnsupported`. A DML body needs `Returning` only when the outer
+  statement reads the CTE; a body that nothing reads (`WITH d AS (DELETE ...) INSERT ...`) builds
+  without it, and PostgreSQL reports the error if it is read. A DML body renders with the handle's interceptors
   (with a background context) but runs no model hooks and no `beforeWrite` check; the outer
   statement's `Exec` or `All` is what executes it. An INSERT body is never chunked: one that
   binds more parameters than the dialect allows fails with `ErrLimitExceeded`.

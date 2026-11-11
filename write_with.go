@@ -12,12 +12,7 @@ import (
 
 // dmlSubquery marks an INSERT, UPDATE or DELETE builder used as the body of a
 // common table expression. Only PostgreSQL accepts such a body.
-type dmlSubquery interface {
-	isDML()
-	// hasReturning reports whether the statement has a RETURNING list, without
-	// which a CTE body exposes no columns.
-	hasReturning() bool
-}
+type dmlSubquery interface{ isDML() }
 
 // addCTE returns ctes with one more entry, copy-on-write.
 func addCTE(ctes []cte, name string, q Subquery, cols []string, recursive bool) []cte {
@@ -68,13 +63,8 @@ func writeWithClause(b *Builder, ctes []cte) {
 			b.SetErr(newError(ErrValidation, "build", "", errors.New("WITH "+c.name+": nil query")))
 			continue
 		}
-		if dml, ok := c.q.(dmlSubquery); ok {
-			if b.d.Name != dialect.Postgres {
-				b.unsupported("a data-modifying statement (INSERT, UPDATE, DELETE) in a WITH clause")
-			} else if !dml.hasReturning() {
-				b.SetErr(newError(ErrValidation, "build", "", errors.New("WITH "+c.name+": a data-modifying body needs Returning")))
-				continue
-			}
+		if _, ok := c.q.(dmlSubquery); ok && b.d.Name != dialect.Postgres {
+			b.unsupported("a data-modifying statement (INSERT, UPDATE, DELETE) in a WITH clause")
 		}
 		c.q.AppendSQL(b)
 	}

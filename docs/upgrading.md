@@ -30,14 +30,6 @@ name with the target. `Rows` and `One` return `ErrValidation` for a list with a
 source column. SQLite returns `ErrUnsupported` for one, as its RETURNING reads the
 modified table only.
 
-### A data-modifying CTE body without `Returning` is `ErrValidation`
-
-An INSERT, UPDATE or DELETE passed to `SelectQuery.With` or `SelectQuery.WithRecursive` as a CTE body
-now fails the build with `ErrValidation` when it has no `Returning` list. It was
-accepted before and rendered a CTE with no columns, which the statement could
-not read; `docs/capabilities.md` already said `Returning` was required. Add
-`Returning` or `ReturningAll` to the body.
-
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use

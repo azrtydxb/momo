@@ -58,7 +58,7 @@ func (d DeleteQuery[T]) WithRecursive(name string, q Subquery, cols ...string) D
 	return d
 }
 
-// Using adds a second source, rendering DELETE FROM t USING src WHERE ...: the
+// Using adds sources, rendering DELETE FROM t USING src WHERE ...: the
 // WHERE may reference src's columns. src is a table, aliased table, CTE or
 // FromSubquery, as in a join; join it to the target in Where. Calling Using
 // again replaces the sources.
@@ -198,8 +198,6 @@ func (d DeleteQuery[T]) compileSQL() (Compiled, error) {
 }
 
 func (DeleteQuery[T]) isDML() {}
-
-func (d DeleteQuery[T]) hasReturning() bool { return d.returning.active() }
 
 // isSubquery lets a DELETE be the body of a WITH clause (PostgreSQL only).
 func (DeleteQuery[T]) isSubquery() {}

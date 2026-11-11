@@ -46,8 +46,6 @@ func (q InsertQuery[T]) render(b *Builder) {
 
 func (InsertQuery[T]) isDML() {}
 
-func (q InsertQuery[T]) hasReturning() bool { return q.i.returning.active() }
-
 // isSubquery lets an INSERT be the body of a WITH clause (PostgreSQL only).
 func (InsertQuery[T]) isSubquery() {}
 
