@@ -224,6 +224,12 @@ finding:
   `only: [orders, "orders_*"]`. The MySQL and SQLite inspectors ignore
   `InspectOptions.Only` and read every table; the filter is applied afterwards,
   so a table they cannot represent can still fail inspection.
+- The PostgreSQL inspector skips an index that is attached to a parent
+  partitioned index (a `pg_inherits` row on the index). Only the parent index
+  is modeled; PostgreSQL creates, names and drops the partition indexes, so a
+  fresh install has no duplicates and `drift` ignores partition index names
+  that diverged after a column rename. Constraint-backed partition indexes were
+  already skipped.
 - A trigger limited to some columns (`AFTER UPDATE OF state`) is
   `schema.Trigger.UpdateOf`: PostgreSQL renders `UPDATE OF "state"`, inspection
   reads the list back and `generate --from-db` writes it into the model.

@@ -5,6 +5,19 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### Indexes attached to a parent partitioned index are no longer inspected
+
+The PostgreSQL inspector used to report an index on a partition that is
+attached to a parent partitioned index as a standalone index of that partition.
+`momo generate --from-db` then emitted it as `c.Index(...)` on the partition's
+model, a fresh install created it twice, and `drift --strict` reported the
+PostgreSQL-created index as `not in snapshot`. Inspection now skips every index
+that has a `pg_inherits` parent; only the parent index is modeled. Regenerate a
+model set made with `--from-db` from a partitioned database and delete the
+`c.Index(...)` lines that the partitions carried.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
