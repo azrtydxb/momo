@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
