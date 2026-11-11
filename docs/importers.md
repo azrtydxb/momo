@@ -59,8 +59,16 @@ A source version that is not a 14-digit timestamp is mapped to
 `19700101000000` plus its position in the list, and the mapping is reported as a
 `version-mapped` change; the original version stays in the history `name`
 column. `history.Baseline` replays the converted SQL on an empty scratch
-database to write one schema snapshot per migration, `history.WriteImport`
-writes the directory and `history.HistoryRows` gives the `momo_migrations` rows
+database to write one schema snapshot per migration. It runs each migration in
+one transaction (`BEGIN` ... `COMMIT`, rolled back on error), as the source
+tools and `momo migrate apply` do, so an `ON COMMIT DROP` temporary table,
+`SET LOCAL` and deferred constraints work inside a migration; a migration the
+source marked as non-transactional runs statement by statement in autocommit.
+`history.WriteImport`
+writes the directory: each up file starts with `-- momo:generated` (and
+`-- momo:no-transaction` for a non-transactional migration), so the output
+passes `momo migrate validate` instead of being read as a custom migration that
+must not change the schema. `history.HistoryRows` gives the `momo_migrations` rows
 that mark every migration as applied. The Atlas reader verifies `atlas.sum`
 with Atlas's directory hash and refuses a directory whose files were edited.
 golang-migrate records only its current version, so every migration up to it is

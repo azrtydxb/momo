@@ -155,7 +155,8 @@ func fileName(name string) string {
 }
 
 // Baseline applies each converted migration to the scratch database in order
-// (statements split by migrate.SplitStatements, each autocommitted) and
+// (statements split by migrate.SplitStatements; a migration that is not NoTx
+// runs in one transaction, a NoTx one statement by statement in autocommit) and
 // inspects the database with d after each one. It returns one SnapshotFile per
 // migration: Version is the migration's version, ParentVersion the previous
 // version ("" for the first). It runs nothing on any other database; scratch
@@ -179,7 +180,7 @@ func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []C
 		if err != nil {
 			return nil, fmt.Errorf("history: %s: %w", c.Origin, err)
 		}
-		if err := runMigration(ctx, scratch, d, c.Origin, stmts); err != nil {
+		if err := runMigration(ctx, scratch, d, c.Origin, stmts, c.NoTx); err != nil {
 			return nil, err
 		}
 		s, err := eng.Inspect(ctx)
@@ -198,7 +199,13 @@ func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []C
 // search_path, SET ROLE, temporary tables) therefore lasts within a migration
 // and never carries over to the next one or to the Inspect that follows, which
 // takes the connection back from the pool; a one-connection pool works.
-func runMigration(ctx context.Context, scratch *momo.DB, d migrate.Dialect, origin string, stmts []string) (err error) {
+//
+// Unless noTx is set the statements run between BEGIN and COMMIT, the way the
+// source tools and momo migrate apply run them, so ON COMMIT DROP temporary
+// tables, SET LOCAL and deferred constraints behave as they did when the
+// migration was applied. A failing statement rolls the transaction back. A
+// noTx migration runs each statement in autocommit.
+func runMigration(ctx context.Context, scratch *momo.DB, d migrate.Dialect, origin string, stmts []string, noTx bool) (err error) {
 	pinner, ok := scratch.Driver().(momo.Pinner)
 	if !ok {
 		return errors.New("history: the scratch database driver cannot pin a connection")
@@ -218,9 +225,27 @@ func runMigration(ctx context.Context, scratch *momo.DB, d migrate.Dialect, orig
 			err = errors.Join(err, rerr)
 		}
 	}()
+	inTx := false
+	if !noTx {
+		if _, err := pc.Exec(ctx, "BEGIN", nil); err != nil {
+			return fmt.Errorf("history: %s begin on the scratch database: %w", origin, err)
+		}
+		inTx = true
+	}
 	for i, s := range stmts {
 		if _, err := pc.Exec(ctx, s, nil); err != nil {
-			return fmt.Errorf("history: %s statement %d on the scratch database: %w", origin, i+1, err)
+			err = fmt.Errorf("history: %s statement %d on the scratch database: %w", origin, i+1, err)
+			if inTx {
+				if _, rerr := pc.Exec(ctx, "ROLLBACK", nil); rerr != nil {
+					err = errors.Join(err, fmt.Errorf("history: roll back %s on the scratch database: %w", origin, rerr))
+				}
+			}
+			return err
+		}
+	}
+	if inTx {
+		if _, err := pc.Exec(ctx, "COMMIT", nil); err != nil {
+			return fmt.Errorf("history: %s commit on the scratch database: %w", origin, err)
 		}
 	}
 	return nil
@@ -232,7 +257,9 @@ var (
 )
 
 // WriteImport writes the converted migrations into outDir: <version>_<name>.up.sql
-// (first line "-- momo:no-transaction" when NoTx), the .down.sql file when the
+// (first line "-- momo:generated", so migrate validate does not take it for a
+// custom migration that must leave the schema alone, then "-- momo:no-transaction"
+// when NoTx), the .down.sql file when the
 // source had a down, <version>_<name>.snapshot.json for each snapshot, and
 // momo.sum for the directory. Everything is validated first and written to a
 // temporary directory beside outDir, which is then renamed into place, so a
@@ -293,10 +320,11 @@ func WriteImport(outDir string, conv []Converted, snaps []migrate.SnapshotFile) 
 	}
 	for _, c := range conv {
 		base := c.Version + "_" + c.Name
-		up := c.Up
+		header := "-- momo:generated\n"
 		if c.NoTx {
-			up = append([]byte("-- momo:no-transaction\n"), up...)
+			header += "-- momo:no-transaction\n"
 		}
+		up := append([]byte(header), c.Up...)
 		if err := create(base+".up.sql", up); err != nil {
 			return err
 		}
