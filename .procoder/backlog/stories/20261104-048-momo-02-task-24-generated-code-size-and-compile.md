@@ -31,4 +31,4 @@ User decision of 2026-11-11, recorded in .procoder/ask/decisions.md, section "Ca
 
 Jobs of ci.yml run 42965315635 on main (headSha 47818647165f0231b1117bb6ebe2bce67dbed444, conclusion success). The job logs carry package-level `ok` lines, not `-v` output: unit (1.26) 130341061373 (`make test`), race (1.26) 130341061707 (`make test-race`), integration (1.27, 0.8.7-pg17, postgres) 130341061675 (`make test-integration-postgres`: MOMO_REQUIRE_INTEGRATION=1 and `-tags integration -race`, so a skipped database test fails), windows 130341061640, bench-module 130341061885 (`make test-bench-module`), lint 130341061844.
 
-- `TestCodeSizeReport` exists at bench/codesize/codesize_test.go:13 (grep). Its package ran in the bench-module job 130341061885: `ok github.com/azrtydxb/momo/bench/codesize` (bench/cmd/codesize shows `[no test files]`).
+- `TestCodeSizeReport` exists at bench/codesize/codesize_test.go:13 (grep). Its package ran in the bench-module job 130341061885: `ok github.com/azrtydxb/momo/bench/codesize`.
