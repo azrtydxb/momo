@@ -41,3 +41,4 @@ constraint-backed indexes but not indexes that have a `pg_inherits` parent.
 - Green: ci-agent run 42980096188 at headSha fc64f9d89767ebf61e156b57f5362a2947cb983b, all 9 jobs success (integration postgres, lint, apidiff-docs, unit, mysql, fuzz-smoke, bench-module).
 - The test also applies the inspected model to an empty schema: each partition has 2 indexes (pkey + attached) and the follow-up diff is empty.
 - Docs changed: docs/migrations.md, docs/upgrading.md (Upgrading to 0.8.0). No exported API change, so docs/reference.md is unchanged.
+- Review follow-up: the test now also pins a partition's own and own unique indexes (`ev_own`), and docs/upgrading.md states what a 0.7.0 snapshot reports after upgrading (`missing: index <partition>.<name>` in drift) and the steps to take. Green: ci-agent run 42987833788 at headSha 9271ea072febe3383f1c7f229d73ec0842d79123, conclusion success.
