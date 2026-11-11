@@ -41,3 +41,15 @@ Root cause: no transaction around the statements of a migration.
 - Green: ci-agent run 42978042350 on 76e9afd, all 9 jobs green (fix commit 483fdd8 is in that history).
 - NoTx still autocommit: TestBaselineRollsBackAndHonoursNoTx runs CREATE INDEX CONCURRENTLY in a NoTx migration, green.
 - Docs: docs/importers.md, docs/migrations.md, docs/upgrading.md (0.8.0). No docs/reference.md change: the regenerated-docs job produced no artifact, so there was no diff.
+
+## Evidence, review round (failed COMMIT, SQLite)
+
+- Red: test-only commit 00d230d on a throwaway branch (deleted), ci-agent run
+  42985357358: TestBaselineRollsBackAFailedCommitOnSQLite failed with
+  `the next Baseline after a failed commit: history: the scratch database is not empty`
+  (the failed COMMIT left the transaction open on the pooled connection).
+- Fix: runMigration has one rollback helper shared by the statement-failure
+  path, the failed-COMMIT path and the deferred cleanup (before DISCARD ALL).
+- Docs: docs/importers.md and docs/upgrading.md (0.8.0) say rollback holds on
+  PostgreSQL and SQLite, and MySQL commits DDL implicitly.
+- Green: (pending)
