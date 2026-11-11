@@ -40,6 +40,6 @@ variants were never added.
 ## Evidence
 
 - Red: ci-agent run 42978437547 on 6c459f1 (tests only) failed to compile: `advisory/advisory_shared_test.go:25:22: undefined: advisory.XactLockShared`, and `undefined: advisory.TryXactLockShared`, `advisory.LockShared`, `advisory.UnlockShared`, `advisory.LockSharedString` in `advisory/advisory_shared_integration_test.go`.
-- Green: ci-agent run 42993926849, headSha 1ba675a52764d69aa1fdf97885f997f397351e86, all jobs passed (unit, integration postgres, integration-mysql x3, lint, fuzz-smoke, bench-module, apidiff-docs).
+- Green: ci-agent run 43006451426, headSha 34744ea0c4f9c460e5df530799a019229de80e64 (after merging sprint-9; earlier green 42993926849 on 1ba675a), all jobs passed (unit, integration postgres, integration-mysql x3, lint, fuzz-smoke, bench-module, apidiff-docs).
 - Unit SQL, hashing, refusal and ErrUnsupported criteria: `advisory/advisory_shared_test.go`. PostgreSQL behaviour criteria: `advisory/advisory_shared_integration_test.go`. An earlier run (42984986678) hung on a test that opened four transactions against a three-connection pool; fixed in 4c13e91.
 - Docs changed: `docs/ai-guide.md`, `docs/capabilities.md`, `docs/upgrading.md` (Upgrading to 0.8.0), `docs/reference.md` (from the CI artifact).

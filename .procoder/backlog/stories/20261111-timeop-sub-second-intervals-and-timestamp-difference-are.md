@@ -42,6 +42,6 @@ package has no operator whose result is an interval.
 ## Evidence
 
 - Red: ci-agent run 42978437547 on 6c459f1 (tests only) failed to compile: `timeop/timeop_subsecond_test.go:25:39: undefined: timeop.IntervalMillisecond`, and `undefined: timeop.AddDuration`, `timeop.SubDuration`, `timeop.IntervalMicrosecond` in `timeop/timeop_subsecond_integration_test.go`.
-- Green: ci-agent run 42993926849, headSha 1ba675a52764d69aa1fdf97885f997f397351e86, all jobs passed.
+- Green: ci-agent run 43006451426, headSha 34744ea0c4f9c460e5df530799a019229de80e64 (after merging sprint-9; SQLite rounding of 1500us and 1499us pinned in TestSubSecondIntervalIntegration; earlier green 42993926849 on 1ba675a), all jobs passed.
 - Unit goldens for units, durations, Sub, Age, EpochSeconds, ErrUnsupported and ErrValidation: `timeop/timeop_subsecond_test.go`. Database round trips: `timeop/timeop_subsecond_integration_test.go`.
 - Docs changed: `docs/ai-guide.md`, `docs/upgrading.md` (Upgrading to 0.8.0), `llms.txt`, `docs/capabilities.md` and `docs/reference.md` (generated: `internal/gendocs/blocks.go` plus CI artifacts).
