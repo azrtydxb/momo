@@ -140,3 +140,63 @@ func TestDBDefaultPointerLive(t *testing.T) {
 		}
 	})
 }
+
+// TestDBDefaultPointerUpdateModelLive: Update.Model leaves a nil dbdefault
+// pointer out of SET (writing NULL would fail on the NOT NULL column), so the
+// column keeps its stored value; a pointer to false or 0 is written.
+func TestDBDefaultPointerUpdateModelLive(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, name dialect.Name) {
+		ctx := context.Background()
+		for _, stmt := range []string{"DROP TABLE IF EXISTS dbd_ptr_live", dbdPtrLiveDDL[name]} {
+			if _, err := db.Driver().Exec(ctx, stmt, nil); err != nil {
+				t.Fatalf("%s: %v", stmt, err)
+			}
+		}
+		stored := func(id int64) (active, level int64) {
+			rows, err := db.Driver().Query(ctx, "SELECT CASE WHEN active THEN 1 ELSE 0 END, level FROM dbd_ptr_live WHERE id = "+placeholder(db), []any{id})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = rows.Close() }()
+			if !rows.Next() {
+				t.Fatalf("row %d not stored", id)
+			}
+			if err := rows.Scan(&active, &level); err != nil {
+				t.Fatal(err)
+			}
+			return active, level
+		}
+		m := dbdPtrLive{Name: "u", Active: ptrTo(false), Level: ptrTo(int64(9))}
+		if _, err := momo.Insert[dbdPtrLive](db).Model(&m).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if m.ID == 0 { // no RETURNING (MySQL): read the id back
+			rows, err := db.Driver().Query(ctx, "SELECT id FROM dbd_ptr_live WHERE name = "+placeholder(db), []any{"u"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !rows.Next() || rows.Scan(&m.ID) != nil {
+				t.Fatal("cannot read the inserted id")
+			}
+			_ = rows.Close()
+		}
+
+		// nil Active: not in SET, the stored false stays; the explicit 0 is written.
+		up := dbdPtrLive{ID: m.ID, Name: "u2", Level: ptrTo(int64(0))}
+		if _, err := momo.Update[dbdPtrLive](db).Model(&up).Exec(ctx); err != nil {
+			t.Fatalf("a nil dbdefault pointer must not fail the update: %v", err)
+		}
+		if a, l := stored(m.ID); a != 0 || l != 0 {
+			t.Fatalf("stored %d/%d, want active unchanged (0) and level 0", a, l)
+		}
+
+		// An explicit true is written, and a nil Level now keeps the 0.
+		up = dbdPtrLive{ID: m.ID, Name: "u3", Active: ptrTo(true)}
+		if _, err := momo.Update[dbdPtrLive](db).Model(&up).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if a, l := stored(m.ID); a != 1 || l != 0 {
+			t.Fatalf("stored %d/%d, want 1/0", a, l)
+		}
+	})
+}
