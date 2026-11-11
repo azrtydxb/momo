@@ -1,6 +1,6 @@
 # jsonop: root scalar, key delete, concat, set with computed path, array constructors
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -34,14 +34,16 @@ blocked by the non-empty-path check, which is correct for Path.
 
 ## Acceptance criteria
 
-- [ ] `jsonop.Root(col)` renders `#>> '{}'` (PostgreSQL), `json_extract(col, '$')` (SQLite) and `JSON_UNQUOTE(JSON_EXTRACT(col, '$'))` (MySQL); `Path` with no keys stays ErrValidation
-- [ ] `jsonop.DeleteKey` renders `-` / `json_remove` / `JSON_REMOVE` with the key bound, and keeps every other member when run against PostgreSQL and SQLite
-- [ ] `jsonop.Concat` and `jsonop.Set` run on PostgreSQL and return ErrUnsupported on SQLite and MySQL
-- [ ] `momo.ArrayOf` and `momo.ArraySubquery` run on PostgreSQL (including a UNION subquery), refuse an empty `ArrayOf`, and return ErrUnsupported elsewhere
-- [ ] values bound through the new operators from a sensitive JSON column are masked in hook events
-- [ ] reader docs (ai-guide, capabilities, TYPE_MAPPING, upgrading 0.8.0) and docs/reference.md describe the new API
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] `jsonop.Root(col)` renders `#>> '{}'` (PostgreSQL), `json_extract(col, '$')` (SQLite) and `JSON_UNQUOTE(JSON_EXTRACT(col, '$'))` (MySQL); `Path` with no keys stays ErrValidation
+- [x] `jsonop.DeleteKey` renders `-` / `json_remove` / `JSON_REMOVE` with the key bound, and keeps every other member when run against PostgreSQL and SQLite
+- [x] `jsonop.Concat` and `jsonop.Set` run on PostgreSQL and return ErrUnsupported on SQLite and MySQL
+- [x] `momo.ArrayOf` and `momo.ArraySubquery` run on PostgreSQL (including a UNION subquery), refuse an empty `ArrayOf`, and return ErrUnsupported elsewhere
+- [x] values bound through the new operators from a sensitive JSON column are masked in hook events
+- [x] reader docs (ai-guide, capabilities, TYPE_MAPPING, upgrading 0.8.0) and docs/reference.md describe the new API
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Red: ci-agent run 42978470024 on worktree-agent-red-96 (af3e1ab, tests only) failed to compile: `expr_array_test.go:38:55: undefined: momo.ArrayOf`, `expr_array_test.go:42:44: undefined: momo.ArraySubquery`, `jsonop/jsonop_edit_test.go:24:56: undefined: momo.ArrayOf` (lint vet and fuzz-smoke jobs). The red branch is deleted.
+- Green: ci-agent run 42994909120, conclusion success, headSha c633ced0532c3b29cb8e343e5b2dba083abcc264 on worktree-agent-a02be359058185aae. All criteria are covered by TestJSONEditOperatorsGolden, TestJSONEditOperatorErrors, TestJSONEditOperatorsMaskSensitiveColumn, TestArrayConstructorsSQL, TestArrayConstructorErrors and the integration test TestJSONEditOperatorsAgainstDatabase.
+- Docs changed: docs/ai-guide.md, docs/capabilities.md, docs/TYPE_MAPPING.md, docs/upgrading.md (Upgrading to 0.8.0), docs/reference.md (from the regenerated-docs artifact of run 42991319570).
