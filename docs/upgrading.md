@@ -24,7 +24,7 @@ the result columns as for `momo.Query`. The outer `OrderBy` orders the whole
 union and may name result columns only; build them with
 `momo.ColumnOf` and an empty source:
 
-```go
+```text
 teachersTop := momo.Select[Hit](db).From(teachers).Columns(kind, id, name).
 	OrderBy(name.Asc()).Limit(5)
 studentsTop := momo.Select[Hit](db).From(students).Columns(kind, id, name).
