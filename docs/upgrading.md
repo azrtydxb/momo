@@ -101,6 +101,33 @@ number field can no longer write `false` or `0` through `Model` (use
 NOT NULL column that has a database default: see "Database defaults" in the
 [AI guide](ai-guide.md).
 
+### Query and QueryRows read into a plain struct
+
+`momo.Query[T]` and `momo.QueryRows[T]` now accept any struct, with no
+generated metadata: fields scan by column name (`momo:"column:x"` tag, else the
+snake_case of the field name), and a result column with no field, or a field
+with no result column, is an `ErrValidation` that names it. A model, projection
+or `Row1`..`Row10` still scans through its generated metadata. The type
+parameters changed from `[T any, PT Modeler[T]]` to `[T any]`: a call that
+names only `T` compiles as before, and a call that named `PT` explicitly must
+drop it. A type that is not a struct and has no metadata is now an
+`ErrValidation` at run time instead of a compile error: `Query[*Task]` (a
+pointer type) now fails at run time, not at compile time.
+
+A struct without generated metadata, for example a model before `go generate`
+has run or after a stale generation, now compiles and takes the reflection path
+instead of failing to compile, so a stale or missing generation shows up only at
+run time. Run `go generate`, and keep a test that calls `Query` for each model.
+
+### Registering Insert.Model needs a real-looking sample
+
+The SQL listed for `InsertQuery[T].Model` through `momo.RegisterQuery` depends on the
+sample model: a zero dbdefault field is left out of the column list. This is
+unchanged behavior, now documented in
+[testing.md](testing.md#listing-the-sql-a-query-registry), together with the
+ways to register a stable shape (`InsertQuery[T].Values`, `InsertQuery[T].Omit`, or a sample set as a real call
+sets it).
+
 ### New: `One` on writes with RETURNING
 
 `InsertQuery.One`, `UpdateQuery.One` and `DeleteQuery.One` run the statement

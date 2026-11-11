@@ -1374,10 +1374,24 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   `T` is `Row1`..`Row10` (positional: the result must have exactly that many
   columns) or a model or projection (matched by column name in any order, exact
   then case-insensitive; an unmapped, missing or duplicated result column is
-  `ErrValidation`). `T` must have momo metadata: a model, a generated
-  projection or `Row1`..`Row10`; an ad-hoc struct does not work. By-name
-  matching needs every result column to map to a field and every field to be
-  in the result, so `SELECT d.*, count(*)` needs a projection or a `RowN`.
+  `ErrValidation`). `T` may also be a plain struct with no generated metadata
+  (no generator run, any number of columns): its exported fields are the
+  columns, named by a `momo:"column:x"` tag or else the snake_case of the field
+  name (`UserID` is `user_id`, `HTTPServer` is `http_server`), `momo:"-"` skips
+  a field, the fields of an embedded struct count as the outer struct's own
+  (unless it is a `time.Time`, a `sql.Scanner` or has a column tag; an outer
+  field shadows an embedded one, two fields on one column and an embedding
+  cycle are `ErrValidation`; an embedded pointer struct is allocated for every
+  row and stays non-nil even when all of its columns are NULL),
+  and a pointer field receives NULL as nil (NULL into a non-pointer field is
+  the driver's scan error). Names compare exactly, then case-insensitively. The
+  reflection plan is built once per type and cached
+  (`BenchmarkQueryPlainStruct`). A type with generated metadata (a model, a
+  projection, `Row1`..`Row10`) always uses it, and a type that is neither is
+  `ErrValidation` before the statement runs. By-name matching needs every
+  result column to map to a field and every field to be in the result (the
+  error names the column or field), so `SELECT d.*, count(*)` needs a struct
+  with a field for each result column.
   Placeholders, hooks (op `raw`), error classification and
   argument redaction are those of `Exec`; interceptors, soft-delete filters and
   `AfterLoad` do not apply to raw SQL. `QueryRows` closes the cursor on early
@@ -1957,6 +1971,11 @@ builders with `momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)`
 (use `momo.RawQuery` for hand-written SQL), read them with
 `QueryRegistry.Compile(dialect)` and freeze them with `momotest.QueryGolden`
 (`MOMO_UPDATE_GOLDEN=1` rewrites the files; registering a name twice panics).
+The SQL of `InsertQuery[T].Model` depends on the sample model's dbdefault fields (a
+zero one is left out of the column list), so register it with the fields set as
+a real call sets them, or register `InsertQuery[T].Values` with `Set` for each column or
+`InsertQuery[T].Omit` before `InsertQuery[T].Model`, whose column list does not depend on values (see
+[testing.md](testing.md#listing-the-sql-a-query-registry)).
 
 Use the public kit `github.com/azrtydxb/momo/momotest` (see
 [testing.md](testing.md)):
