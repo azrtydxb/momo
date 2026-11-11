@@ -13,12 +13,12 @@ later releases can break more.
 PostgreSQL `infinity` and `-infinity` now scan into the flags and are written
 back from them; before, a read of one failed. A `Date{Time: t}` literal and the
 finite behavior are unchanged. SQLite and MySQL have no special dates, so a
-`Date` with a flag set is `ErrValidation` there.
+`types.Date` with a flag set is `ErrValidation` there.
 
 `types.Numeric` is a new exact decimal: `numeric` on PostgreSQL, `TEXT` on
 SQLite and MySQL. It holds the digits as a string in `Decimal`, plus `NaN`,
 `Infinity` and `NegInfinity` flags, and has `IsFinite`, `IsNaN`, `IsInfinite`,
-`Sign`, `String` and `ParseNumeric`. A `Numeric` that is `NaN` or infinite is
+`Sign`, a text form and `types.ParseNumeric`. A `types.Numeric` that is `NaN` or infinite is
 `ErrValidation` on SQLite and MySQL.
 
 `momo generate --from-db` now writes a PostgreSQL `numeric` column as

@@ -149,18 +149,18 @@ except `NaN`, which SQLite does not have (see Floats).
   `infinity` and `-infinity` round-trip through the `Infinity` and
   `NegInfinity` fields (`Time` is ignored while one is set, and zero after a
   read); `IsFinite` tells an ordinary date from a special one. SQLite and
-  MySQL have no special dates: a `Date` with a flag set is `ErrValidation` and
+  MySQL have no special dates: a `types.Date` with a flag set is `ErrValidation` and
   nothing is stored. Setting both flags is an error.
 - `types.Numeric`: an exact decimal kept as text in `Decimal` (`"-12.50"`; empty
   is 0). PostgreSQL `numeric` returns what it stored, so a value beyond
   `float64` precision and its scale survive. `NaN`, `Infinity` and
   `NegInfinity` round-trip through their flags (set at most one, and leave
   `Decimal` empty); `IsFinite`, `IsNaN`, `IsInfinite` and `Sign` classify a
-  value (`Sign` is 0 for `NaN`). `ParseNumeric` reads PostgreSQL text and
+  value (`Sign` is 0 for `NaN`). `types.ParseNumeric` reads PostgreSQL text and
   rejects an exponent or anything that is not a number. SQLite and MySQL have
   no `NaN` or infinity: binding one is `ErrValidation`, as for a float `NaN` on
   SQLite, and the column is `TEXT` there, so the database does not order or add
-  it as a number. Momo does no arithmetic on a `Numeric`; a `numeric(p,s)`
+  it as a number. Momo does no arithmetic on a `types.Numeric`; a `numeric(p,s)`
   column takes `precision` and `scale` tags like a decimal string.
 - `types.UUID`: round-trips all 16 bytes, including the all-zero UUID.
 - `types.JSON[T]`: encodes with `encoding/json`. An empty slice and a nil

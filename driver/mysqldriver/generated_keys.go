@@ -7,6 +7,7 @@ import (
 	"database/sql"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 )
 
 // execInsertID reports the rows affected and the auto-increment key the
