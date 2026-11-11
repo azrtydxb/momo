@@ -83,11 +83,29 @@ func exported(name string) string {
 
 var irregularSingular = map[string]string{
 	"people": "person", "children": "child", "men": "man", "women": "woman", "mice": "mouse",
+	"quizzes": "quiz",
+}
+
+// needsEs reports whether a word ending in "es" takes that ending in full, so
+// the -es strip is right: -sses, -xes, -zes, -ches, -shes, and -uses (statuses,
+// buses) except -ouses and -auses (houses, causes) and "uses" itself. Any other
+// "-es" word, such as releases, cases or courses, loses only its "s".
+func needsEs(w string) bool {
+	stem := strings.TrimSuffix(w, "es")
+	for _, suf := range []string{"ss", "x", "z", "ch", "sh"} {
+		if strings.HasSuffix(stem, suf) {
+			return true
+		}
+	}
+	return strings.HasSuffix(w, "uses") && w != "uses" &&
+		!strings.HasSuffix(w, "ouses") && !strings.HasSuffix(w, "auses")
 }
 
 // singulars returns the candidate singular forms of a lower-case word, the
 // most likely first. The caller picks the one whose plural the naming preset
-// gives back, so a wrong guess costs nothing.
+// gives back, so a wrong guess costs nothing as long as it comes later: a
+// preset that pluralizes both "releas" and "release" to "releases" keeps the
+// first, so the order has to be right on its own.
 func singulars(w string) []string {
 	var out []string
 	if s, ok := irregularSingular[w]; ok {
@@ -96,11 +114,15 @@ func singulars(w string) []string {
 	if strings.HasSuffix(w, "ies") && len(w) > 3 {
 		out = append(out, w[:len(w)-3]+"y")
 	}
-	if strings.HasSuffix(w, "es") && len(w) > 2 {
+	hasEs := strings.HasSuffix(w, "es") && len(w) > 2
+	if hasEs && needsEs(w) {
 		out = append(out, w[:len(w)-2])
 	}
 	if strings.HasSuffix(w, "s") && len(w) > 1 {
 		out = append(out, w[:len(w)-1])
+	}
+	if hasEs && !needsEs(w) {
+		out = append(out, w[:len(w)-2])
 	}
 	return append(out, w)
 }

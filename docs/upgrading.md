@@ -7,6 +7,26 @@ later releases can break more.
 
 ## Upgrading to 0.7.0
 
+### --from-db names models for tables ending in -ses correctly
+
+`momo generate --from-db` named the model for the table `releases` `Releas`.
+It now strips only the `s` from a plural that ends in `-ses` but does not
+need the full `-es` ending: `releases` gives `Release`, and `cases`, `courses`,
+`responses`, `licenses`, `bases`, `houses`, `purposes` and `uses` follow the
+same way. Words that really take `-es` (`addresses`, `classes`, `statuses`,
+`buses`, `boxes`, `matches`, `wishes`) and `quizzes` keep or get the right name
+(`Quiz`, under presets that pluralize it back). If you generated `Releas` and
+want to keep it, pin the old name in `momo.yaml`:
+
+```yaml
+introspect:
+  tables:
+    releases: { name: Releas }
+```
+
+A regenerate renames the struct in the generated file, so update the code that
+uses it, or pin the old name first.
+
 ### Query and QueryRows read into a plain struct
 
 `momo.Query[T]` and `momo.QueryRows[T]` now accept any struct, with no
