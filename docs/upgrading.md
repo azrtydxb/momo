@@ -56,6 +56,14 @@ What to do, per project that has a partitioned table with a parent index:
 3. A database that was only ever baselined needs nothing else; drift is clean
    once the snapshot is regenerated.
 
+### `pgxdriver.Listen` and `pgxdriver.Notify` for LISTEN/NOTIFY
+
+New API, nothing to change in existing code. `pgxdriver.Listen` opens a
+dedicated connection, subscribes to channels and reconnects with backoff;
+`pgxdriver.Notify` sends with `pg_notify`. If you kept a raw pgx
+`WaitForNotification` loop beside momo, you can move it onto the `Listener`.
+See [LISTEN and NOTIFY](listen-notify.md).
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
