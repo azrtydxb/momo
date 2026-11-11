@@ -39,6 +39,8 @@ child-side `relation`; nothing walks those relations to add the parent side.
 ## Evidence
 
 - Regression test, red: ci-agent run 42977879827 (sha 3abfe72, branch worktree-agent-red-91, deleted). gen/fromdb/inverse_test.go failed to build (`unknown field Inverse in struct literal of type Config`, `undefined: RelationRule`) and cli TestGenerateFromDBInverse failed on the unknown `inverse` yaml key.
-- Green: ci-agent run 42989097917, headSha e7892964220c706282d15e160821b94118950477, all jobs success.
+- Green (first pass): ci-agent run 42989097917, headSha e7892964220c706282d15e160821b94118950477, all jobs success.
+- Review round, red: ci-agent run 42993453779 (sha 931d310, branch worktree-agent-red-91, deleted). TestInverseUnmatchedRuleWarns and TestInverseCollisionWarns failed in every integration job; the TestInverseKindMatrix cases (has_one for the whole primary key, unique constraint and unique index, has_many for partial, expression and composite unique keys, none for a composite foreign key) passed.
+- Review round, green: ci-agent run 42993589803, headSha 215c5acd44e72e22863da267ba50c869ddc0c21a, success. A rule key that matches no inverse and a collision suffix each print a warning; the usage text and docs say relations needs inverse: true and is keyed by the name before any suffix.
 - Unit tests cover kinds (has_many, has_one), two-foreign-key names, self reference, rules, only/skip and the unchanged default (gen/fromdb/inverse_test.go). The PostgreSQL integration test cli/generate_fromdb_inverse_integration_test.go preloads Books, AuthorProfile, MessagesBySender and MessagesByRecipient from the generated models.
 - Docs changed: docs/migrations.md, docs/upgrading.md (Upgrading to 0.8.0), and the --from-db usage text in cli/generate.go.
