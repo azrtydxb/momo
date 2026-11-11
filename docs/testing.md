@@ -263,6 +263,26 @@ values you bind in `build` are placeholders and never appear in the listing.
 `Registry.Compile(dialect.Postgres)` returns every query sorted by name with
 the dialect's placeholders (`$1` on PostgreSQL, `?` on MySQL and SQLite).
 
+The SQL of `InsertQuery[T].Model` depends on the model's values. A field tagged
+`dbdefault` that holds its zero value is left out of the column list so the
+database default applies, and a registered builder has no real call to set it,
+so a sample `Model` call lists a different statement than the application
+executes unless you set the sample as a real call sets it. To register a
+stable shape, choose one of:
+
+- `InsertQuery[T].Values` with `Col.Set(v)` for each column: the column list is exactly the
+  columns you name, whatever the values.
+- `Omit(DBDefaultCol)` before `Model`: the dbdefault columns are always
+  out of the list, whatever `m` holds. This lists the statement of a call that
+  leaves them to the database, not of one that sets them.
+- A sample model whose dbdefault fields are set to non-zero values, to list the
+  statement of a call that writes them.
+
+Registering the call you actually make, with the fields set the way it sets
+them, lists the SQL it executes. `InsertQuery[T].Models` follows the same rule per
+column: it leaves a dbdefault column out only when every row holds its zero
+value.
+
 `momotest.QueryGolden` writes that list to one golden file per dialect and
 fails when a query's SQL changed, a query was added or one was removed. Run the
 tests with `MOMO_UPDATE_GOLDEN=1` to accept an intended change, and review the
