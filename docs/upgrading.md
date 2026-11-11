@@ -21,12 +21,12 @@ spelling rule separates (`aliases`, `biases`, `canvases`, `gases`, `atlases`,
 
 The generated model name changes, on the next regenerate, for these tables:
 
-| Tables | Old name | New name |
-| --- | --- | --- |
+| Tables                                                                                                              | Old name                                                                                      | New name                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `releases`, `cases`, `courses`, `responses`, `licenses`, `bases`, `houses`, `purposes`, `causes`, `clauses`, `uses` | `Releas`, `Cas`, `Cours`, `Respons`, `Licens`, `Bas`, `Hous`, `Purpos`, `Caus`, `Claus`, `Us` | `Release`, `Case`, `Course`, `Response`, `License`, `Base`, `House`, `Purpose`, `Cause`, `Clause`, `Use` |
-| `sizes`, `prizes`, `mazes`, `caches`, `niches` | `Siz`, `Priz`, `Maz`, `Cach`, `Nich` | `Size`, `Prize`, `Maze`, `Cache`, `Niche` |
-| `quizzes` | `Quizze` (gorm, bun), `Quizz` (prisma) | `Quiz` |
-| `waltzes` | `Waltz` | `Waltze`: a `-zes` word is read as `-ze`, as in `sizes` |
+| `sizes`, `prizes`, `mazes`, `caches`, `niches`                                                                      | `Siz`, `Priz`, `Maz`, `Cach`, `Nich`                                                          | `Size`, `Prize`, `Maze`, `Cache`, `Niche`                                                                |
+| `quizzes`                                                                                                           | `Quizze` (gorm, bun), `Quizz` (prisma)                                                        | `Quiz`                                                                                                   |
+| `waltzes`                                                                                                           | `Waltz`                                                                                       | `Waltze`: a `-zes` word is read as `-ze`, as in `sizes`                                                  |
 
 Not every preset can give every word the right name. The `gorm` and `bun`
 presets pluralize a word that ends in `s` to itself, and `ent` matches its
@@ -49,6 +49,29 @@ introspect:
 
 for example `releases: { name: Releas }`. A regenerate renames the struct in
 the generated file, so update the code that uses it, or pin the old name first.
+
+### github.com/google/uuid types need no type tag
+
+A model or projection field of `uuid.UUID`, `*uuid.UUID` or `[]uuid.UUID` from
+`github.com/google/uuid` now maps to `uuid` or `uuid[]` on PostgreSQL (`TEXT`
+on SQLite; `[]uuid.UUID` has no SQLite column) with no `momo:"type:uuid"` tag.
+A tag you already wrote is still honored and can stay or go. The generator
+recognizes the type by its import path, so it adds no dependency to momo. Your
+own module imports `github.com/google/uuid` only because your models already
+do. `arrayop` predicates on a `[]uuid.UUID` column bind with a `::uuid[]`
+cast, like `[]types.UUID`.
+
+`momo generate --from-db` keeps writing `types.UUID` unless you set
+`introspect.uuid: google` in `momo.yaml`; then every `uuid` column becomes
+`uuid.UUID` (`*uuid.UUID` when nullable) and every `uuid[]` column
+`[]uuid.UUID`, with no type tag and an import of `github.com/google/uuid`. An
+`introspect.types` rule for `uuid` still wins. A `--from-db` re-run after you
+set the switch regenerates the model files that nobody edited; edited files
+conflict as usual.
+
+The mapping is for PostgreSQL and SQLite. On MySQL these types are unsupported,
+as `types.UUID` is, and `introspect.uuid` has no effect there. A named type
+over `uuid.UUID` (`type ID uuid.UUID`) is not mapped; give it `type:uuid`.
 
 ### Query and QueryRows read into a plain struct
 

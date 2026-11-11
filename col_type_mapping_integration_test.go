@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/testdb"
@@ -118,6 +120,8 @@ func liveCases(t *testing.T) map[string]liveCase {
 		"time.Time":          roundTripAll(timeEq, pre1970, ist, time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)),
 		"types.UUID": roundTripAll[types.UUID](nil,
 			tmUUID(t, "00000000-0000-0000-0000-000000000000"), tmUUID(t, "ffffffff-ffff-4fff-bfff-ffffffffffff")),
+		"uuid.UUID (github.com/google/uuid)": roundTripAll[uuid.UUID](nil,
+			uuid.Nil, uuid.MustParse("ffffffff-ffff-4fff-bfff-ffffffffffff")),
 		"types.Date": roundTripAll(func(a, b types.Date) bool { return a.Time.Equal(b.Time) },
 			types.Date{Time: time.Date(1969, 12, 31, 0, 0, 0, 0, time.UTC)},
 			types.Date{Time: time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)}),
@@ -148,6 +152,8 @@ func liveCases(t *testing.T) map[string]liveCase {
 		"[]float32": roundTripAll[[]float32](nil, []float32{math.MaxFloat32, -1.5}, []float32{}),
 		"[]types.UUID": roundTripAll[[]types.UUID](nil,
 			[]types.UUID{{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0xff}, {}}, []types.UUID{}, []types.UUID(nil)),
+		"[]uuid.UUID (github.com/google/uuid)": roundTripAll[[]uuid.UUID](nil,
+			[]uuid.UUID{uuid.MustParse("01020304-0506-0708-090a-0b0c0d0e0fff"), uuid.Nil}, []uuid.UUID{}, []uuid.UUID(nil)),
 		"[]float64": roundTripAll[[]float64](nil, []float64{math.MaxFloat64, -1.5}, []float64{}),
 		"string (decimal)": roundTripAll[string](nil,
 			"12345678901234567890.123456789", "-0.000000000000000001", "NaN"),
