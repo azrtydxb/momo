@@ -7,25 +7,48 @@ later releases can break more.
 
 ## Upgrading to 0.7.0
 
-### --from-db names models for tables ending in -ses correctly
+### --from-db singularizes -se plurals correctly
 
-`momo generate --from-db` named the model for the table `releases` `Releas`.
-It now strips only the `s` from a plural that ends in `-ses` but does not
-need the full `-es` ending: `releases` gives `Release`, and `cases`, `courses`,
-`responses`, `licenses`, `bases`, `houses`, `purposes` and `uses` follow the
-same way. Words that really take `-es` (`addresses`, `classes`, `statuses`,
-`buses`, `boxes`, `matches`, `wishes`) and `quizzes` keep or get the right name
-(`Quiz`, under presets that pluralize it back). If you generated `Releas` and
-want to keep it, pin the old name in `momo.yaml`:
+`momo generate --from-db` turns a table name into a model name by trying
+singular candidates and keeping the first one the naming preset pluralizes
+back to the table name. The order was wrong for words in `-se`: `releases`
+became `Releas`. The rule now is: a plural in `-sses`, `-xes`, `-zzes`,
+`-ches`, `-shes` or `-uses` (but not `-ouses` or `-auses`) loses `es`; any
+other plural in `-es` loses only the `s`; a short list of words that no
+spelling rule separates (`aliases`, `biases`, `canvases`, `gases`, `atlases`,
+`lenses`, `irises`, `tomatoes`, `buffaloes`, `potatoes`, `heroes`, `echoes`,
+`vetoes`, `caches`, `niches`, `quizzes`, `uses`) is listed by name.
+
+The generated model name changes, on the next regenerate, for these tables:
+
+| Tables | Old name | New name |
+| --- | --- | --- |
+| `releases`, `cases`, `courses`, `responses`, `licenses`, `bases`, `houses`, `purposes`, `causes`, `clauses`, `uses` | `Releas`, `Cas`, `Cours`, `Respons`, `Licens`, `Bas`, `Hous`, `Purpos`, `Caus`, `Claus`, `Us` | `Release`, `Case`, `Course`, `Response`, `License`, `Base`, `House`, `Purpose`, `Cause`, `Clause`, `Use` |
+| `sizes`, `prizes`, `mazes`, `caches`, `niches` | `Siz`, `Priz`, `Maz`, `Cach`, `Nich` | `Size`, `Prize`, `Maze`, `Cache`, `Niche` |
+| `quizzes` | `Quizze` (gorm, bun), `Quizz` (prisma) | `Quiz` |
+| `waltzes` | `Waltz` | `Waltze`: a `-zes` word is read as `-ze`, as in `sizes` |
+
+Not every preset can give every word the right name. The `gorm` and `bun`
+presets pluralize a word that ends in `s` to itself, and `ent` matches its
+rules case-sensitively on the Go name, so some words keep a wrong name there:
+`ent` gives `Statuse`, `Buse`, `Quizze` and `Aliase`; `momo` gives `Quizz`
+(it pluralizes `quiz` to `quizes`); `gorm`, `bun` and `ent` give `Biase`,
+`Canvase`, `Gase`, `Atlase`, `Lense` and `Irise`; `-oes` words get `Tomatoe`
+style names under presets with no `-oes` rule (`momo`, `ent`, and `gorm` and
+`bun` for `potatoes`, `heroes`, `echoes` and `vetoes`). These were wrong before
+too.
+
+To keep an old name, or to fix a wrong one, pin it in `momo.yaml`; the pin wins
+over the guess:
 
 ```yaml
 introspect:
   tables:
-    releases: { name: Releas }
+    <table>: { name: Releas }
 ```
 
-A regenerate renames the struct in the generated file, so update the code that
-uses it, or pin the old name first.
+for example `releases: { name: Releas }`. A regenerate renames the struct in
+the generated file, so update the code that uses it, or pin the old name first.
 
 ### Query and QueryRows read into a plain struct
 

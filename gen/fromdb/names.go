@@ -81,31 +81,41 @@ func exported(name string) string {
 	return name
 }
 
+// irregularSingular lists plurals no spelling rule gets right: the irregular
+// ones, and the -ses, -oes and -ches words that look like another group
+// (alias and release both end in -ases/-eases, tomatoes and shoes in -oes).
+// A listed word is tried first; the caller still keeps it only if the naming
+// preset pluralizes it back.
 var irregularSingular = map[string]string{
 	"people": "person", "children": "child", "men": "man", "women": "woman", "mice": "mouse",
-	"quizzes": "quiz",
+	"quizzes": "quiz", "uses": "use",
+	"aliases": "alias", "biases": "bias", "canvases": "canvas", "gases": "gas",
+	"atlases": "atlas", "lenses": "lens", "irises": "iris",
+	"tomatoes": "tomato", "buffaloes": "buffalo", "potatoes": "potato",
+	"heroes": "hero", "echoes": "echo", "vetoes": "veto",
+	"caches": "cache", "niches": "niche",
 }
 
 // needsEs reports whether a word ending in "es" takes that ending in full, so
-// the -es strip is right: -sses, -xes, -zes, -ches, -shes, and -uses (statuses,
-// buses) except -ouses and -auses (houses, causes) and "uses" itself. Any other
-// "-es" word, such as releases, cases or courses, loses only its "s".
+// the -es strip is right: -sses, -xes, -zzes, -ches, -shes, and -uses
+// (statuses, buses) except -ouses and -auses (houses, causes). Any other
+// "-es" word, such as releases, cases, sizes or courses, loses only its "s".
+// A -zes word that is not a doubled z, such as waltzes, becomes Waltze.
 func needsEs(w string) bool {
 	stem := strings.TrimSuffix(w, "es")
-	for _, suf := range []string{"ss", "x", "z", "ch", "sh"} {
+	for _, suf := range []string{"ss", "x", "zz", "ch", "sh"} {
 		if strings.HasSuffix(stem, suf) {
 			return true
 		}
 	}
-	return strings.HasSuffix(w, "uses") && w != "uses" &&
+	return strings.HasSuffix(w, "uses") &&
 		!strings.HasSuffix(w, "ouses") && !strings.HasSuffix(w, "auses")
 }
 
 // singulars returns the candidate singular forms of a lower-case word, the
 // most likely first. The caller picks the one whose plural the naming preset
-// gives back, so a wrong guess costs nothing as long as it comes later: a
-// preset that pluralizes both "releas" and "release" to "releases" keeps the
-// first, so the order has to be right on its own.
+// gives back, so the order has to be right on its own: a preset that
+// pluralizes both "releas" and "release" to "releases" keeps the first.
 func singulars(w string) []string {
 	var out []string
 	if s, ok := irregularSingular[w]; ok {
@@ -114,15 +124,16 @@ func singulars(w string) []string {
 	if strings.HasSuffix(w, "ies") && len(w) > 3 {
 		out = append(out, w[:len(w)-3]+"y")
 	}
-	hasEs := strings.HasSuffix(w, "es") && len(w) > 2
-	if hasEs && needsEs(w) {
-		out = append(out, w[:len(w)-2])
+	if !strings.HasSuffix(w, "s") || len(w) < 2 {
+		return append(out, w)
 	}
-	if strings.HasSuffix(w, "s") && len(w) > 1 {
-		out = append(out, w[:len(w)-1])
+	strip := w[:len(w)-1]
+	if !strings.HasSuffix(w, "es") || len(w) < 3 {
+		return append(out, strip, w)
 	}
-	if hasEs && !needsEs(w) {
-		out = append(out, w[:len(w)-2])
+	es := w[:len(w)-2]
+	if needsEs(w) {
+		return append(out, es, strip, w)
 	}
-	return append(out, w)
+	return append(out, strip, es, w)
 }
