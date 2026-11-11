@@ -1,6 +1,6 @@
 # LATERAL unnest of a column and DISTINCT aggregates
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -28,12 +28,23 @@ bound values, and the aggregate spec had no distinct flag.
 
 ## Acceptance criteria
 
-- [ ] `momo.UnnestColumn(col).As(alias, name)` renders `LATERAL unnest(col) AS "alias" ("name")` as a join or FROM source, reads back through `Column()`, and gives `ErrUnsupported` on SQLite and MySQL and `ErrValidation` for a missing or unsafe alias or a nil array
-- [ ] `agg.Call.Distinct()` renders `DISTINCT` inside array_agg, string_agg, count (via `agg.Func`) and jsonb_agg, before ORDER BY and before FILTER, and gives `ErrUnsupported` where a dialect lacks it and `ErrValidation` on ordered-set aggregates
-- [ ] a PostgreSQL integration test expands a `text[]` column (NULL array yields no rows) and runs the DISTINCT aggregates against real data
-- [ ] docs updated: `docs/upgrading.md` (0.8.0), `docs/capabilities.md`, `docs/ai-guide.md`, and `docs/reference.md` from the CI artifact
-- [ ] a regression test pins the fix: red before the change, green after
+- [x] `momo.UnnestColumn(col).As(alias, name)` renders `LATERAL unnest(col) AS "alias" ("name")` as a join or FROM source, reads back through `Column()`, and gives `ErrUnsupported` on SQLite and MySQL and `ErrValidation` for a missing or unsafe alias or a nil array
+- [x] `agg.Call.Distinct()` renders `DISTINCT` inside array_agg, string_agg, count (via `agg.Func`) and jsonb_agg, before ORDER BY and before FILTER, and gives `ErrUnsupported` where a dialect lacks it and `ErrValidation` on ordered-set aggregates
+- [x] a PostgreSQL integration test expands a `text[]` column (NULL array yields no rows) and runs the DISTINCT aggregates against real data
+- [x] docs updated: `docs/upgrading.md` (0.8.0), `docs/capabilities.md`, `docs/ai-guide.md`, and `docs/reference.md` from the CI artifact
+- [x] a regression test pins the fix: red before the change, green after
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Red: ci-agent run 42978155008 on 39cd305 (tests only), job unit failed to
+  compile: `agg/agg_distinct_test.go:21:73: Call has no field or method Distinct` and `select_unnest_column_test.go:23:64: undefined:
+momo.UnnestColumn`.
+- Green: ci-agent run 42985040917 on 5417f35, all jobs success. It includes
+  the unit goldens (agg/agg_distinct_test.go, select_unnest_column_test.go) and
+  the PostgreSQL integration tests TestDistinctAggregatesExecute and
+  TestUnnestColumnExpandsArrayColumn. The earlier run 42978483632 on e43618d
+  failed only on the stale docs/reference.md (gen-check and
+  TestReferenceListsEveryIdentifier); reference.md now comes from its
+  regenerated-docs artifact.
+- Docs changed: docs/upgrading.md (0.8.0), docs/capabilities.md,
+  docs/ai-guide.md, docs/reference.md.
