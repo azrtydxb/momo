@@ -1,6 +1,6 @@
 # momo.yaml as library options and typed migrate State constants (#101)
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -17,12 +17,15 @@ Root cause: the mapping was written inside the CLI. Library code cannot import `
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] `migrate.ConfigFromFile(fsys, path)` returns the engine options of a momo.yaml; the CLI and the library produce equal session and inspect options from the same file
-- [ ] a missing version, an empty file, a bad duration and an empty `introspect.only` glob are errors
-- [ ] `migrate.StatePending/Applied/Dirty/Mismatch/Missing` are typed `State` constants equal to the strings `Status` returns, and `Status` uses them
-- [ ] docs/upgrading.md (0.8.0 section) and docs/migrations.md describe both; docs/reference.md regenerated from CI
+- [x] a regression test pins the fix: red before the change, green after
+- [x] `migrate.ConfigFromFile(fsys, path)` returns the engine options of a momo.yaml; the CLI and the library produce equal session and inspect options from the same file
+- [x] a missing version, an empty file, a bad duration and an empty `introspect.only` glob are errors
+- [x] `migrate.StatePending/Applied/Dirty/Mismatch/Missing` are typed `State` constants equal to the strings `Status` returns, and `Status` uses them
+- [x] docs/upgrading.md (0.8.0 section) and docs/migrations.md describe both; docs/reference.md regenerated from CI
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Red: ci-agent run 42978182800 on worktree-agent-red-101 (test-only commit ba8a74b); unit job failed to compile: `cli/migrate_yamlconfig_test.go:66:26: undefined: migrate.ConfigFromFile`, `:111:11: undefined: migrate.StatePending` (and the other State constants). Branch deleted.
+- Green: ci-agent run 43004067209, success, headSha dc85ac0a696164639e203f873759c05414689d81 (TestConfigFromFileEqualsCLIOptions, TestConfigFromFileRejectsBadFiles, TestStateConstants pass in unit and integration jobs).
+- Earlier failures on the way: nested go.sum for go.yaml.in/yaml/v3 in the gorm, bun and ent fixtures (taken from the CI `go mod tidy -diff` output), and docs checks (qualified names, regenerated docs/reference.md from the regenerated-docs artifact of run 42997739150, whose sha b37e523 had the same Go code).
+- Docs changed: docs/upgrading.md (Upgrading to 0.8.0), docs/migrations.md, docs/reference.md.
