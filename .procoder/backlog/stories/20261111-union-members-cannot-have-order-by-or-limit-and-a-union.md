@@ -1,6 +1,6 @@
 # Union members cannot have ORDER BY or LIMIT and a union cannot run at the top level
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-11
 Epic: -
 Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
@@ -34,12 +34,14 @@ operation renders in parentheses on PostgreSQL and MySQL and as
 
 ## Acceptance criteria
 
-- [ ] a regression test pins the fix: red before the change, green after
-- [ ] a member with ORDER BY, LIMIT, OFFSET or a lock renders in parentheses on PostgreSQL and MySQL, as a derived table on SQLite, and a plain member stays bare (unit SQL tests per dialect)
-- [ ] a union runs at the top level with an outer ORDER BY, LIMIT and OFFSET into a tuple row and a plain struct, and per-member limits hold, on PostgreSQL, MySQL and SQLite (integration tests)
-- [ ] a row lock in a member on SQLite returns ErrUnsupported
-- [ ] docs/upgrading.md, docs/ai-guide.md and docs/projections.md describe the change; docscheck and apidiff-docs pass
+- [x] a regression test pins the fix: red before the change, green after
+- [x] a member with ORDER BY, LIMIT, OFFSET or a lock renders in parentheses on PostgreSQL and MySQL, as a derived table on SQLite, and a plain member stays bare (unit SQL tests per dialect)
+- [x] a union runs at the top level with an outer ORDER BY, LIMIT and OFFSET into a tuple row and a plain struct, and per-member limits hold, on PostgreSQL, MySQL and SQLite (integration tests)
+- [x] a row lock in a member on SQLite returns ErrUnsupported
+- [x] docs/upgrading.md, docs/ai-guide.md and docs/projections.md describe the change; docscheck and apidiff-docs pass
 
 ## Evidence
 
-<!-- Filled at close time. -->
+- Red: ci-agent run 42978133150 on worktree-agent-red-99 (test-only commit cfac359): build failed, `select_union_test.go:84:20: undefined: momo.SelectUnion`, `select_union_integration_test.go:57:21: undefined: momo.SelectUnion` (bench-module, integration jobs).
+- Green: ci-agent run 42990525158, all jobs success, headSha 719a813477bccd033e4b9d7202c955318154c0b9. It covers the unit SQL tests per dialect (TestUnionMemberOrderLimitGrouping, TestSelectUnionOuterClauses, TestSelectUnionErrors) and TestSelectUnionMemberLimitsAndOuterClauses on PostgreSQL, MySQL, MariaDB and SQLite.
+- Docs changed: docs/upgrading.md (Upgrading to 0.8.0), docs/ai-guide.md, docs/projections.md, docs/reference.md (from the regenerated-docs artifact of run 42985147732).
