@@ -3,6 +3,7 @@
 package sqlshared
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
 
@@ -19,7 +20,8 @@ func CheckArgs(op string, args []any) error { return checkArgs(op, args) }
 // would silently change the data; +Inf and -Inf are legal REAL values. It
 // also rejects a types.Date or types.Numeric that is not finite (infinity,
 // -infinity or NaN): neither SQLite nor MySQL has such a date or number, and
-// the TEXT column would keep the word. The error names the argument
+// the TEXT column would keep the word. A sql.Null of either type is
+// checked when it is Valid. The error names the argument
 // position, never its value.
 func checkArgs(op string, args []any) error {
 	for i, a := range args {
@@ -41,6 +43,14 @@ func checkArgs(op string, args []any) error {
 			special = !v.IsFinite()
 		case *types.Numeric:
 			special = v != nil && !v.IsFinite()
+		case sql.Null[types.Date]:
+			special = v.Valid && !v.V.IsFinite()
+		case *sql.Null[types.Date]:
+			special = v != nil && v.Valid && !v.V.IsFinite()
+		case sql.Null[types.Numeric]:
+			special = v.Valid && !v.V.IsFinite()
+		case *sql.Null[types.Numeric]:
+			special = v != nil && v.Valid && !v.V.IsFinite()
 		}
 		if special {
 			return &momo.Error{Kind: momo.ErrValidation, Op: op,

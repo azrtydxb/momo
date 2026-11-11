@@ -156,7 +156,7 @@ func codecRoundTrips(t *testing.T, db *momo.DB, d dialect.Name) {
 		}
 	})
 	t.Run("Numeric", func(t *testing.T) {
-		for i, dec := range []string{"12345678901234567890.123456789", "-0.000000000000000001", "0", "-12.50"} {
+		for i, dec := range []string{"12345678901234567890.123456789", "-0.000000000000000001", "0", "-12.50", "12.50", "12345678901234567890.123"} {
 			in := &types.Numeric{Decimal: dec}
 			got, txt := roundTrip(t, db, d, "numeric"+strconv.Itoa(i), in)
 			if got.Decimal != dec || !got.IsFinite() || txt != dec {

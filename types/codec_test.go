@@ -81,8 +81,10 @@ func TestCodecsSourceTypesAndErrors(t *testing.T) {
 		if err := f().Scan(nil); err == nil {
 			t.Errorf("%s Scan(nil) must error", name)
 		}
-		if err := f().Scan(12.5); err == nil {
-			t.Errorf("%s Scan(float64) must error", name)
+		if _, ok := f().(*Numeric); !ok { // Numeric reads a float64 from SQLite
+			if err := f().Scan(12.5); err == nil {
+				t.Errorf("%s Scan(float64) must error", name)
+			}
 		}
 		if err := f().Scan(struct{}{}); err == nil {
 			t.Errorf("%s Scan(struct) must error", name)

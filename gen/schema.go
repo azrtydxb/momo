@@ -417,6 +417,10 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		return typ
 	case isString && tg.Size > 0:
 		return fmt.Sprintf("varchar(%d)", tg.Size)
+	case inner == "types.Numeric" && tg.Precision > 0 && b.primary != dialect.Postgres:
+		// numeric(p,s) gives a SQLite or MySQL column NUMERIC affinity or a
+		// fixed scale, which would round the decimal text; keep it TEXT.
+		return "TEXT"
 	case isFloat && tg.Precision > 0:
 		if tg.Scale > 0 {
 			return fmt.Sprintf("numeric(%d,%d)", tg.Precision, tg.Scale)

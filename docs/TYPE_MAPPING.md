@@ -149,19 +149,27 @@ except `NaN`, which SQLite does not have (see Floats).
   `infinity` and `-infinity` round-trip through the `Infinity` and
   `NegInfinity` fields (`Time` is ignored while one is set, and zero after a
   read); `IsFinite` tells an ordinary date from a special one. SQLite and
-  MySQL have no special dates: a `types.Date` with a flag set is `ErrValidation` and
-  nothing is stored. Setting both flags is an error.
+  MySQL have no special dates: a `types.Date` with a flag set is
+  `ErrValidation` and nothing is stored, also inside a `sql.Null`. Setting both
+  flags is an error.
 - `types.Numeric`: an exact decimal kept as text in `Decimal` (`"-12.50"`; empty
   is 0). PostgreSQL `numeric` returns what it stored, so a value beyond
   `float64` precision and its scale survive. `NaN`, `Infinity` and
   `NegInfinity` round-trip through their flags (set at most one, and leave
   `Decimal` empty); `IsFinite`, `IsNaN`, `IsInfinite` and `Sign` classify a
-  value (`Sign` is 0 for `NaN`). `types.ParseNumeric` reads PostgreSQL text and
-  rejects an exponent or anything that is not a number. SQLite and MySQL have
-  no `NaN` or infinity: binding one is `ErrValidation`, as for a float `NaN` on
-  SQLite, and the column is `TEXT` there, so the database does not order or add
-  it as a number. Momo does no arithmetic on a `types.Numeric`; a `numeric(p,s)`
-  column takes `precision` and `scale` tags like a decimal string.
+  value (`Sign` is 0 for `NaN`). `Infinity` and `-Infinity` need PostgreSQL 14
+  or later (`NaN` is older); CI covers PostgreSQL 16 and 17.
+  `types.ParseNumeric` reads PostgreSQL text and rejects an exponent or
+  anything that is not a number. Scanning also takes an `int64` and a `float64`
+  (what SQLite returns for an expression); it does not take a
+  `pgtype.Numeric`.
+- SQLite and MySQL have no `NaN` or infinity: binding one in a `types.Numeric`
+  (also inside a `sql.Null`) is `ErrValidation`, as for a float `NaN` on SQLite.
+  The column is `TEXT` there, so the database does not order or add it as a
+  number, and a `precision` or `scale` tag still generates `TEXT`, not
+  `numeric(p,s)`: SQLite would give that NUMERIC affinity and turn `12.50` into
+  `12.5`. On PostgreSQL the tags generate `numeric(p,s)`. Momo does no
+  arithmetic on a `types.Numeric`.
 - `types.UUID`: round-trips all 16 bytes, including the all-zero UUID.
 - `types.JSON[T]`: encodes with `encoding/json`. An empty slice and a nil
   slice are different JSON (`[]` and `null`) and read back as such.

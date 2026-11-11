@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -23,8 +24,13 @@ import (
 // rejects a Numeric with a flag set there with ErrValidation. IsFinite
 // reports whether the value is an ordinary number.
 //
+// NaN has been a numeric value for a long time, but Infinity and -Infinity
+// need PostgreSQL 14 or later; Momo's CI covers PostgreSQL 16 and 17. An older
+// server rejects them with a database error.
+//
 // Numeric does no arithmetic. Use a decimal library for that, or let the
-// database do it.
+// database do it. Scan does not accept a pgtype.Numeric; read the column as
+// Numeric, or convert with its String form.
 type Numeric struct {
 	Decimal     string
 	NaN         bool
@@ -148,12 +154,27 @@ func (n Numeric) Value() (driver.Value, error) {
 	return n.String(), nil
 }
 
-// Scan accepts the text form as string or []byte, or an int64 (an integer
-// aggregate on SQLite). Scan(nil) returns an error: use a *Numeric for a
-// nullable column.
+// Scan accepts the text form as string or []byte, an int64, or a float64 (what
+// SQLite returns for an aggregate or an expression). A float64 is written in
+// plain decimal form without exponent, with the shortest digits that read back
+// the same; NaN and the infinities set their flags. Scan(nil) returns an
+// error: use a *Numeric for a nullable column.
 func (n *Numeric) Scan(src any) error {
-	if i, ok := src.(int64); ok {
-		*n = Numeric{Decimal: strconv.FormatInt(i, 10)}
+	switch v := src.(type) {
+	case int64:
+		*n = Numeric{Decimal: strconv.FormatInt(v, 10)}
+		return nil
+	case float64:
+		switch {
+		case math.IsNaN(v):
+			*n = Numeric{NaN: true}
+		case math.IsInf(v, 1):
+			*n = Numeric{Infinity: true}
+		case math.IsInf(v, -1):
+			*n = Numeric{NegInfinity: true}
+		default:
+			*n = Numeric{Decimal: strconv.FormatFloat(v, 'f', -1, 64)}
+		}
 		return nil
 	}
 	s, err := text("Numeric", src)

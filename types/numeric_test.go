@@ -3,6 +3,7 @@
 package types
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -137,6 +138,26 @@ func TestNumericValueAndScan(t *testing.T) {
 	}
 	if err := n.Scan("1.5"); err != nil || n.NaN || n.Decimal != "1.5" {
 		t.Errorf("Scan must reset the flags: %+v, %v", n, err)
+	}
+	for _, c := range []struct {
+		in   float64
+		want Numeric
+	}{
+		{12.5, Numeric{Decimal: "12.5"}},
+		{-0.000001, Numeric{Decimal: "-0.000001"}},
+		{1e21, Numeric{Decimal: "1000000000000000000000"}},
+		{0, Numeric{Decimal: "0"}},
+		{math.NaN(), Numeric{NaN: true}},
+		{math.Inf(1), Numeric{Infinity: true}},
+		{math.Inf(-1), Numeric{NegInfinity: true}},
+	} {
+		n = Numeric{Decimal: "stale", NaN: true}
+		if err := n.Scan(c.in); err != nil || n != c.want {
+			t.Errorf("Scan(%v) = %+v, %v; want %+v", c.in, n, err, c.want)
+		}
+	}
+	if err := n.Scan(float32(1)); err == nil {
+		t.Error("Scan(float32) must error")
 	}
 	if err := n.Scan("abc"); err == nil {
 		t.Error("Scan(abc) must error")
