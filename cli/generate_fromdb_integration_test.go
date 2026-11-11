@@ -355,7 +355,7 @@ introspect:
 	if code, out, errOut := fromDB(t, "--no-snapshot"); code != 0 {
 		t.Fatalf("generate --from-db: exit %d\n%s%s", code, out, errOut)
 	}
-	for _, name := range []string{"widgets_model.go", "gadgets_model.go"} {
+	for _, name := range []string{"app_widgets_model.go", "app_gadgets_model.go"} {
 		if _, err := os.Stat(filepath.Join(root, "models", name)); err != nil {
 			t.Fatalf("missing %s: %v", name, err)
 		}
