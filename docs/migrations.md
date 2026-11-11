@@ -66,6 +66,10 @@ set `migrate.dir.postgres` or `--dir`). `diff` writes exactly three files:
 
 A snapshot without `format_version` is rejected.
 
+Adding the optional column field `generated_virtual` (a VIRTUAL generated
+column on MySQL and SQLite) did not bump `format_version`: a snapshot without
+it loads and its generated columns are STORED.
+
 ### Diff
 
 `momo migrate diff <name>` runs offline (no database, no driver). It loads the
@@ -208,6 +212,14 @@ finding:
   early; they are filtered afterwards as before. `generate --from-db` also
   passes every `introspect.skip` glob to inspection the same way, so a skipped
   table is never read (the globs also match views and functions of that name).
+- A generated column is STORED unless `schema.Column.GeneratedVirtual` is set.
+  MySQL inspection reads the kind from `EXTRA` and SQLite from `hidden` in
+  `pragma_table_xinfo`, and both render `VIRTUAL` when it is set. A kind change
+  is a diff change: SQLite rebuilds the table, MySQL drops and re-adds the
+  column (it cannot `MODIFY` between the kinds). PostgreSQL has VIRTUAL columns
+  only from version 18, which momo does not support yet: rendering one returns
+  an error matching `momo.ErrUnsupported`, and PostgreSQL inspection still
+  refuses a VIRTUAL column.
 - `migrate.Config.OnlyTables` (set from `introspect.only` by the CLI) is the
   inverse for tables: when it is not empty, a table whose name or `schema.name`
   matches none of its globs is not managed. A table in the current schema is

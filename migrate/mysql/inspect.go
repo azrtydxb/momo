@@ -158,6 +158,10 @@ func (in *inspector) columns(ctx context.Context, out *schema.Schema) error {
 		}
 		if g := strings.TrimSpace(gen.String); g != "" {
 			col.Generated = stripQuotes(g)
+			// EXTRA says "VIRTUAL GENERATED" or "STORED GENERATED". MariaDB
+			// says "VIRTUAL GENERATED" or "STORED GENERATED" too, and
+			// "PERSISTENT" in older releases; only VIRTUAL is recorded.
+			col.GeneratedVirtual = strings.Contains(strings.ToUpper(extra.String), "VIRTUAL")
 		} else {
 			col.Default = in.columnDefault(def, extra.String, nullable.String, ctype.String)
 		}

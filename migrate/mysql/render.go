@@ -260,7 +260,11 @@ func columnDef(col schema.Column) (string, error) {
 		if col.Default != "" || col.Identity != "" {
 			return "", fmt.Errorf("column %q: a generated column cannot have a default or an identity", col.Name)
 		}
-		b.WriteString(" GENERATED ALWAYS AS (" + col.Generated + ") STORED")
+		kind := "STORED"
+		if col.GeneratedVirtual {
+			kind = "VIRTUAL"
+		}
+		b.WriteString(" GENERATED ALWAYS AS (" + col.Generated + ") " + kind)
 	}
 	switch {
 	case !col.Nullable:
@@ -409,6 +413,20 @@ func renderAlterColumn(c migrate.Change) ([]migrate.Statement, error) {
 		return nil, err
 	}
 	t := tableRef(c.Schema, c.Table)
+	if before.Generated != "" && after.Generated != "" && before.GeneratedVirtual != after.GeneratedVirtual {
+		// MySQL cannot turn a VIRTUAL column into a STORED one (or back) with
+		// MODIFY COLUMN, so drop and add it: a generated column holds no data
+		// of its own. The column moves to the end of the table, and the drop
+		// fails while an index or constraint still uses it.
+		def, err := columnDef(after)
+		if err != nil {
+			return nil, err
+		}
+		return []migrate.Statement{
+			{SQL: "ALTER TABLE " + t + " DROP COLUMN " + ident(after.Name)},
+			{SQL: "ALTER TABLE " + t + " ADD COLUMN " + def},
+		}, nil
+	}
 	nt := func(x string) string { return schema.NormalizeType(dialect.MySQL, x) }
 	ne := func(x string) string { return schema.NormalizeExpr(dialect.MySQL, x) }
 	onlyDefault := nt(before.Type) == nt(after.Type) && before.Nullable == after.Nullable && before.Identity == after.Identity &&

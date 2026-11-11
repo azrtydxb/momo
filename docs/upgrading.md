@@ -21,6 +21,30 @@ the database keeps those objects of a table left out by `introspect.skip`, add
 the table to `migrate.exclude` so drift does not report them as unmanaged. With
 `introspect.only` nothing is needed: `migrate.only` already hides them.
 
+### VIRTUAL generated columns round-trip on MySQL and SQLite
+
+`schema.Column` has a new field, `GeneratedVirtual` (JSON `generated_virtual`),
+that marks a VIRTUAL generated column. The MySQL inspector reads it from
+`EXTRA` (`VIRTUAL GENERATED`) and the SQLite inspector from `hidden` 2 in
+`pragma_table_xinfo`, and both migrate dialects render `VIRTUAL` for it. Before,
+every generated column was read as STORED and rendered `STORED`, so a schema
+baselined from a database with a VIRTUAL column created a STORED one on a fresh
+install while `migrate diff` and drift reported nothing. If you baselined such a
+database with an earlier version, the next `momo generate --from-db` or
+`baseline` writes the right kind; until then the committed snapshot says STORED
+and `migrate diff` now reports the column as changed. A snapshot written before
+the field existed still loads, and its generated columns stay STORED, so the
+snapshot `format_version` stays 1.
+
+A change between VIRTUAL and STORED is a change in the diff. On SQLite it
+rebuilds the table, as any other generated-column change does; on MySQL it is
+`DROP COLUMN` then `ADD COLUMN`, because MySQL cannot switch the kind with
+`MODIFY COLUMN` (the column moves to the end of the table, and the drop fails
+while an index or constraint still uses it). On PostgreSQL, which has VIRTUAL
+columns only from version 18 (momo supports 16 and 17), rendering one returns an
+error that matches `momo.ErrUnsupported`, and the PostgreSQL inspector still
+refuses a VIRTUAL column it finds.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
