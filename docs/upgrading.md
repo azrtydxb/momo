@@ -5,6 +5,40 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `SelectExprs` takes joins, `GroupBy`, `Having` and `OrderBy`
+
+`momo.SelectExprs(...)` had only `From` and `Where`. It now also has `Join`,
+`LeftJoin`, `CrossJoin`, `GroupBy`, `Having` and `OrderBy`, rendered as in
+`Select[T]`, so a grouped `INSERT ... SELECT` source can have any number of
+columns. A join, `GroupBy` or `Having` without `From` fails with
+`ErrValidation`, and so does an `As(...)` alias in `GroupBy`. There is no
+`Limit` or `Offset` on it yet.
+
+### Row-value comparison, `sqlfn.Div`, `CurrentDate`, infinity and `momo.Lit`
+
+These are additions; nothing changes for existing code.
+
+- `momo.Row(a, b).Lt(momo.Row(x, y))` (also `Le`, `Gt`, `Ge`) renders
+  `(a, b) < (x, y)`, the position check of keyset pagination. Both rows need at
+  least two elements and the same count, or the build fails with
+  `ErrValidation`.
+- `sqlfn.Div` and `sqlfn.DivExpr` divide, and `sqlfn.NullIf` and
+  `sqlfn.NullIfExpr` build `NULLIF`, so `DivExpr(final, NullIf(max, 0))` avoids
+  a division by zero. Integer operands divide as integers on PostgreSQL and
+  SQLite.
+- `sqlfn.CurrentDate()` is `CURRENT_DATE`. `sqlfn.Infinity()` and
+  `sqlfn.NegInfinity()` are `'infinity'::timestamptz` and
+  `'-infinity'::timestamptz`; they are PostgreSQL only and fail with
+  `ErrUnsupported` elsewhere.
+- `momo.Lit(v)` writes a value into the SQL text instead of binding it, so the
+  same expression is identical text in `SELECT` and `GROUP BY` (a bound value
+  gets a new `$n` each time and PostgreSQL rejects the grouping with 42803). It
+  accepts only integers, floats, `bool` and `time.Time`, so no caller text can
+  reach the SQL; a string does not compile. A `time.Time` renders as its UTC
+  date, and a NaN or infinite float fails the build with `ErrValidation`.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
