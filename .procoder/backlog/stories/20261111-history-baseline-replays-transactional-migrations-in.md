@@ -52,4 +52,4 @@ Root cause: no transaction around the statements of a migration.
   path, the failed-COMMIT path and the deferred cleanup (before DISCARD ALL).
 - Docs: docs/importers.md and docs/upgrading.md (0.8.0) say rollback holds on
   PostgreSQL and SQLite, and MySQL commits DDL implicitly.
-- Green: (pending)
+- Green, review round: ci-agent run 42990812767 on c78d40c, all 9 jobs green (fix commit c4f2021; the commits after c78d40c change story files only).

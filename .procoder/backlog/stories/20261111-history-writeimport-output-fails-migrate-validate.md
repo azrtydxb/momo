@@ -39,3 +39,7 @@ refused by rebase like any hand-written file.
   TestWriteImportNeverOverwrites failed on the new directive prefix; the migrate package tests did not build (`d.Imported undefined`) for TestDirectivesImported and TestMigrateRebaseRefusesImportedMigration.
 - Green: ci-agent run 42978042350 on 76e9afd, all 9 jobs green.
 - Docs: docs/importers.md, docs/migrations.md, docs/upgrading.md (0.8.0). No docs/reference.md change: the regenerated-docs job produced no artifact, so there was no diff.
+
+## Evidence, review round
+
+- Green, review round: ci-agent run 42990812767 on c78d40c, all 9 jobs green (fix commit c4f2021; the commits after c78d40c change story files only).
