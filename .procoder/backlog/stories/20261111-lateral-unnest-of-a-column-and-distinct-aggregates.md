@@ -46,5 +46,13 @@ momo.UnnestColumn`.
   failed only on the stale docs/reference.md (gen-check and
   TestReferenceListsEveryIdentifier); reference.md now comes from its
   regenerated-docs artifact.
+- Review fixes (placement, Distinct validation): red ci-agent run 42989658307
+  on 029e86f (tests only) failed in unit with TestAggregateDistinctValidation
+  (`err = <nil>; want ErrValidation` for order by another column, over, count
+  without or with two arguments and four more cases). Green: ci-agent run
+  42994161739 on 32cad98, all jobs success, covering
+  TestUnnestColumnAsFirstFromIsRejected,
+  TestUnnestColumnWhereAndLeftJoinGolden, TestAggregateDistinctValidation and
+  TestAggregateDistinctOrderRuleScope.
 - Docs changed: docs/upgrading.md (0.8.0), docs/capabilities.md,
   docs/ai-guide.md, docs/reference.md.
