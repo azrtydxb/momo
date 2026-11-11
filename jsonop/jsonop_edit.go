@@ -48,7 +48,10 @@ func opFlags(es ...momo.Expr) uint16 {
 // carries a column added later, and still drops the secret. key is always a
 // bound parameter (CAST($n AS text) on PostgreSQL, so the operator resolves)
 // and always an object key, never an array index. On PostgreSQL, a JSON array
-// operand removes a string element equal to key instead.
+// operand removes a string element equal to key instead. On PostgreSQL the
+// operand must be jsonb: the - operator does not exist for the json type. The
+// result is typed as T, so a column type that does not match what the
+// statement returns is only caught when the row is scanned.
 func DeleteKey[T any](c momo.Expression[types.JSON[T]], key string) Expr[T] {
 	return newExpr[T](opFlags(c), func(b *momo.Builder) {
 		name := b.Dialect().Name
@@ -88,7 +91,10 @@ func DeleteKey[T any](c momo.Expression[types.JSON[T]], key string) Expr[T] {
 // and MySQL have no operator with these rules (json_patch and
 // JSON_MERGE_PATCH merge recursively and drop null members, JSON_MERGE_PRESERVE
 // builds arrays from equal keys), so Concat fails with ErrUnsupported there
-// instead of rendering a different result.
+// instead of rendering a different result. The operands must be jsonb, since
+// the || operator on json does not exist. The result is typed as T without
+// checking: a mismatch with the column or struct it is scanned into is only
+// caught at scan time.
 func Concat[T, U any](a momo.Expression[types.JSON[T]], b momo.Expression[types.JSON[U]]) Expr[T] {
 	return newExpr[T](opFlags(a, b), func(bl *momo.Builder) {
 		if bl.Dialect().Name != dialect.Postgres {
@@ -110,9 +116,13 @@ func Concat[T, U any](a momo.Expression[types.JSON[T]], b momo.Expression[types.
 // missing last element of the path is created; a missing earlier element
 // leaves target unchanged, as in PostgreSQL. A SQL NULL value, path or target
 // yields NULL. SQLite and MySQL take a constant path string and cannot
-// express a path computed in SQL, so Set fails with ErrUnsupported there.
+// express a path computed in SQL, so Set fails with ErrUnsupported there. The
+// target must be jsonb, since jsonb_set does not take json. A SQL NULL value
+// makes the whole result NULL, not a member set to null: wrap an optional
+// value in COALESCE (or pass to_jsonb of a default). The result is typed as T
+// without checking, so a mismatch is only caught at scan time.
 func Set[T, U any](target momo.Expression[types.JSON[T]], path momo.Expression[[]string], value momo.Expression[types.JSON[U]]) Expr[T] {
-	return newExpr[T](opFlags(target, value), func(b *momo.Builder) {
+	return newExpr[T](opFlags(target, path, value), func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.Postgres {
 			b.Unsupported("JSON set with a computed path (Set)")
 			return

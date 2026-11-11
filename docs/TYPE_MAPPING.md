@@ -151,7 +151,8 @@ except `NaN`, which SQLite does not have (see Floats).
   Query it with `jsonop.Text`, `jsonop.Path`, `jsonop.Root` (a scalar at the
   root), `jsonop.Contains` and `jsonop.HasKey`, and compute with
   `jsonop.DeleteKey`, `jsonop.Concat` and `jsonop.Set` (package
-  `github.com/azrtydxb/momo/jsonop`). A
+  `github.com/azrtydxb/momo/jsonop`; `jsonop.Concat` and `jsonop.Set` are
+  PostgreSQL only and need `jsonb`). A
   nullable column holds either SQL NULL or the JSON literal null; an extraction
   is NULL for both and for a missing key, so test the column itself with
   `IsNull`. Grouping by an extraction works only for plain keys (letters,

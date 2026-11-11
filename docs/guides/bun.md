@@ -23,7 +23,7 @@ The programs on this page are compiled against the models of the
 | `bun:"rel:belongs-to,join:author_id=id"`     | `momo:"belongs_to,fk:AuthorID"`                               |
 | `NewSelect().Model(&rows).Where(...)`        | `momo.Select[T]` with `Where` and `All`                       |
 | `NewInsert().Model(&row).Exec(ctx)`          | `momo.Insert[T]` with `Model` and `Exec`                      |
-| `NewUpdate().Model(&row).WherePK()`          | `momo.Update[T]` with `Set`, `Where` and `Exec`               |
+| `NewUpdate().Model(&row).WherePK()`          | `momo.Update[T]` with `UpdateQuery.Set`, `Where` and `Exec`   |
 | `NewDelete().Model(&row).WherePK()`          | `momo.Delete[T]` with `Where` and `Exec`                      |
 | `.Relation("Posts")`                         | `.Preload(author.Posts)` on the select, or `momo.Load`        |
 | `db.RunInTx(ctx, nil, func(ctx, tx bun.Tx))` | `db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {...})` |

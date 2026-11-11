@@ -275,18 +275,23 @@ Nullability and column rules:
   elements made of digits can be array indexes. SQLite renders `json_extract`
   and `json_type` (`jsonop.Contains` is `ErrUnsupported` there); MySQL renders
   its JSON functions.
-- JSON edits and scalars: `jsonop.Root(col)` reads a scalar stored at the root
-  of the value (`col #>> '{}'`; cast it with `sqlfn.Cast` for a number).
+- JSON edits and scalars: `jsonop.Root(col)` reads a scalar stored at the
+  root of the value (`col #>> '{}'`; cast it with `sqlfn.Cast` for a number).
   `jsonop.DeleteKey(expr, key)` is `expr - 'key'` (SQLite `json_remove`, MySQL
   `JSON_REMOVE`), so a snapshot keeps every future column and still drops the
   secret. `jsonop.Concat(a, b)` is the shallow `a || b` and
   `jsonop.Set(target, path, value)` is `jsonb_set` with a path built in SQL
-  (`momo.ArrayOf(...)`); both are PostgreSQL only and `ErrUnsupported`
+  (`momo.ArrayOf(...)`). Both are PostgreSQL only and `ErrUnsupported`
   elsewhere, because `json_patch` and `JSON_MERGE_PATCH` merge recursively and
-  drop nulls. Their results are JSON expressions that `jsonop.Text`,
-  `jsonop.Path`, `jsonop.Root` and `jsonop.HasKey` accept again. `jsonb_build_object` and `to_jsonb` are variadic
-  `"any"`: cast their bound arguments (`sqlfn.Cast`), as PostgreSQL cannot type
-  a bare parameter there.
+  drop nulls. `DeleteKey`, `Concat` and `Set` need `jsonb` on PostgreSQL: the
+  `-`, `||` and `jsonb_set` forms do not exist for `json`. Their results are
+  JSON expressions that `jsonop.Text`, `jsonop.Path`, `jsonop.Root` and
+  `jsonop.HasKey` accept again, typed as the first operand without a check, so
+  a mismatch shows only when the row is scanned. A SQL NULL value in
+  `jsonop.Set` makes the whole result NULL: wrap an optional value in
+  `COALESCE`. `jsonb_build_object` and `to_jsonb` are variadic `"any"`: cast
+  their bound arguments (`sqlfn.Cast`), as PostgreSQL cannot type a bare
+  parameter there.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
@@ -428,7 +433,7 @@ What the generator emits per model `Task` (package `task`):
 - Vector fields become `momo.VectorColumn[vector.Vector]` (nullable:
   `NullVectorColumn`).
 - `read_only` / `create_only` / `immutable` fields become permission-typed
-  columns that have no `Set` (or insert-only `Set`).
+  columns that have no `Column.Set` (or insert-only `Column.Set`).
 - Package name = lowercase model name. It can collide with your local variable
   names (`task := ...` shadows the package). Name variables differently or
   alias the import.
@@ -1191,8 +1196,8 @@ _, err = momo.Update[models.Task](q).Model(&cur).Exec(ctx)
   fails with `ErrOptimisticLock`, a missing row with `ErrNotFound`, and after
   success your struct's version field is advanced. Reload the row and retry on
   `ErrOptimisticLock`.
-- Only `UpdateQuery.Model` checks and advances the version. A `Set`-based update,
-  `Upsert` and relation helpers do NOT. DON'T `Set` the version, pk, soft-delete,
+- Only `UpdateQuery.Model` checks and advances the version. A `UpdateQuery.Set`-based update,
+  `Upsert` and relation helpers do NOT. DON'T `Column.Set` the version, pk, soft-delete,
   created_at or updated_at column directly (`ErrValidation`); writing a
   `read_only`, `immutable` (on update) or identity column is `ErrValidation`.
   `Rows` is not supported on a versioned `Model` update; use `Exec`.
@@ -1991,7 +1996,7 @@ builders with `momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)`
 (`MOMO_UPDATE_GOLDEN=1` rewrites the files; registering a name twice panics).
 The SQL of `InsertQuery[T].Model` depends on the sample model's dbdefault fields (a
 zero one is left out of the column list), so register it with the fields set as
-a real call sets them, or register `InsertQuery[T].Values` with `Set` for each column or
+a real call sets them, or register `InsertQuery[T].Values` with `Column.Set` for each column or
 `InsertQuery[T].Omit` before `InsertQuery[T].Model`, whose column list does not depend on values (see
 [testing.md](testing.md#listing-the-sql-a-query-registry)).
 
@@ -2131,7 +2136,7 @@ report)`, a development hook that reports once per statement shape per scope
    to fall back to database defaults. Use `Returning(...).Rows` to read identities.
 7. Use `UpdateQuery.Set(col.Set(v))` for partial updates, `UpdateQuery.Model` for whole-row
    updates with a `version` column; handle `ErrOptimisticLock` by reload and
-   retry. `Set` updates do not touch the version.
+   retry. `UpdateQuery.Set` updates do not touch the version.
 8. Never call `AllRows()` to get past `ErrUnfilteredMutation`; add a `Where`.
 9. Soft-delete models: `SoftDelete`/`ForceDelete`, not `Delete`. Raw SQL and
    projections whose `From` is a subquery or a hand-built `TableRef` do not get

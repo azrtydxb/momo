@@ -1,8 +1,3 @@
 # Pages whose bare backticked names are not root (momo) names.
 # Format: path package reason (see TestBareNamesAreRootNames).
 docs/migrations.md migrate the page documents the migrate package; its sections name it and write Engine.Apply, Engine.Rollback
-docs/agents.md jsonop the page names the column Set method or assignment, not jsonop.Set
-docs/ai-guide.md jsonop the page names the column Set method or assignment, not jsonop.Set
-docs/capabilities.md jsonop the page names the column Set method or assignment, not jsonop.Set
-docs/guides/bun.md jsonop the page names the column Set method or assignment, not jsonop.Set
-docs/vectors.md jsonop the page names the column Set method or assignment, not jsonop.Set

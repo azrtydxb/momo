@@ -18,7 +18,10 @@ New, additive API; nothing existing changes.
   a secret out of a snapshot with it, so a later column is not copied.
 - `jsonop.Concat(a, b)` (`a || b`) and `jsonop.Set(target, path, value)`
   (`jsonb_set`) are PostgreSQL only; SQLite and MySQL return `ErrUnsupported`
-  instead of a lookalike with other merge rules.
+  instead of a lookalike with other merge rules. `jsonop.DeleteKey`,
+  `jsonop.Concat` and `jsonop.Set` need `jsonb`, not `json`. A SQL NULL value
+  in `jsonop.Set` makes the whole result NULL; wrap an optional value in
+  `COALESCE`.
 - `momo.ArrayOf[T]` (`ARRAY[...]`) and `momo.ArraySubquery[T]`
   (`ARRAY(...)`) are `Expression[[]T]`, PostgreSQL only. Build the path of
   `jsonop.Set` with `ArrayOf`, casting bound elements with `sqlfn.Cast`.
