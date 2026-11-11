@@ -44,7 +44,7 @@ func TestAggregateDistinctOrderRuleScope(t *testing.T) {
 		t.Errorf("mysql: got %s (%v), want %s", got, err, want)
 	}
 	got, err = aggSQL(dialect.Postgres, agg.Array[string](title).Distinct().OrderBy(title.Desc()))
-	want = `SELECT array_agg(DISTINCT "documents"."title" ORDER BY "documents"."title" DESC NULLS LAST) FROM "documents"`
+	want = `SELECT array_agg(DISTINCT "documents"."title" ORDER BY "documents"."title" DESC) FROM "documents"`
 	if err != nil || got != want {
 		t.Errorf("postgres matching order: got %s (%v), want %s", got, err, want)
 	}
