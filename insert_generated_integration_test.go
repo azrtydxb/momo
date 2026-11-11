@@ -6,7 +6,6 @@ package momo_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -148,25 +147,22 @@ func TestStoredGeneratedColumnLive(t *testing.T) {
 			}
 		}
 
-		// Upsert, Model and Models, hitting an existing row by its key.
+		// Upsert, Model and Models, hitting an existing row by its key. The
+		// table's only unique key is the primary key, so MySQL and MariaDB run
+		// it as ON DUPLICATE KEY UPDATE too.
 		up := genRow{ID: row.ID, Name: "ADA L", Normalized: "ignored"}
-		_, err = momo.Upsert[genRow](db).Model(&up).Exec(ctx)
-		switch {
-		case errors.Is(err, momo.ErrUnsupported):
-			t.Logf("%s: Upsert is not supported: %v", name, err)
-		case err != nil:
+		if _, err := momo.Upsert[genRow](db).Model(&up).Exec(ctx); err != nil {
 			t.Fatalf("Upsert.Model wrote the generated column: %v", err)
-		default:
-			if n := stored("ADA L"); n != "ada l" {
-				t.Fatalf("after Upsert.Model the stored value = %q, want ada l", n)
-			}
-			ups := []genRow{{ID: row.ID, Name: "ADA M", Normalized: "ignored"}, {ID: 900, Name: "New One", Normalized: "ignored"}}
-			if _, err := momo.Upsert[genRow](db).Models(ups).Exec(ctx); err != nil {
-				t.Fatalf("Upsert.Models wrote the generated column: %v", err)
-			}
-			if n, m := stored("ADA M"), stored("New One"); n != "ada m" || m != "new one" {
-				t.Fatalf("after Upsert.Models the stored values = %q, %q", n, m)
-			}
+		}
+		if n := stored("ADA L"); n != "ada l" {
+			t.Fatalf("after Upsert.Model the stored value = %q, want ada l", n)
+		}
+		ups := []genRow{{ID: row.ID, Name: "ADA M", Normalized: "ignored"}, {ID: 900, Name: "New One", Normalized: "ignored"}}
+		if _, err := momo.Upsert[genRow](db).Models(ups).Exec(ctx); err != nil {
+			t.Fatalf("Upsert.Models wrote the generated column: %v", err)
+		}
+		if n, m := stored("ADA M"), stored("New One"); n != "ada m" || m != "new one" {
+			t.Fatalf("after Upsert.Models the stored values = %q, %q", n, m)
 		}
 
 		// A bulk insert big enough to need several chunks.
