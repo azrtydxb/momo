@@ -386,3 +386,8 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   gnus, haikus, tutus, kudus), and keeps listed singular `-is`, `-as` and `-ns`
   words (analysis, alias, news and others). There is no blanket `-as` or `-is`
   rule, so `areas` still gives `Area`.
+- **#111 (integrator, from the review):** a Go model declares a VIRTUAL
+  generated column with a `virtual` tag option next to `generated:<expr>`, or
+  with a `MomoConfig` hook, and `--from-db` writes it. A change between STORED
+  and VIRTUAL is refused with "write a custom migration" on MySQL, as on
+  PostgreSQL, and is no longer a DROP and ADD. SQLite rebuilds the table.
