@@ -1417,6 +1417,20 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   argument redaction are those of `Exec`; interceptors, soft-delete filters and
   `AfterLoad` do not apply to raw SQL. `QueryRows` closes the cursor on early
   break, on an error and on a canceled context (`ErrCanceled`).
+- `RawRows(ctx, q, sql, args...)` returns the open cursor (`momo.ColumnRows`:
+  `Next`, `Scan(dest...)`, `Columns`, `Err`, `Close`) for a result whose shape is
+  only known at run time. It has the hooks (op `raw`), `WithTxSetup`,
+  error classification and redaction of `Query`, on a `*DB`, `*Tx` or `AdoptTx`
+  handle. Always close it: an unclosed cursor holds its connection (and, under
+  `WithImplicitTx`, its transaction). A canceled context closes it and `Err` is
+  `ErrCanceled` (also when the cancel came after the last row, as in
+  `QueryRows`). Under `WithImplicitTx` raw SQL counts as a write: reading to the
+  end commits, and a `Close` before the end (even with no `Next`), after a Scan
+  or driver error, or after a cancel rolls back and returns `ErrValidation`;
+  without it an early `Close` is plain. Scan errors are classified and recorded
+  on the hook event. `Columns` is the driver's list: empty means no columns (an
+  `UPDATE` without `RETURNING`) or an unnamed driver. Prefer `Query[T]` when the
+  shape is known.
 
 #### Porting pgx and sqlc SQL
 

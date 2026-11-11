@@ -124,6 +124,52 @@ The warning and the pointer type cover only plain `bool` and number types
 a type override from `introspect.types` or `introspect.columns`, a decimal or a
 string keeps its field as it is and gets neither.
 
+### New: `RawRows` returns the hooked cursor of a raw statement
+
+`momo.RawRows(ctx, q, sql, args...)` runs a hand-written statement and returns
+an open cursor with `Next`, `Scan(dest ...any)`, `Columns`, `Err` and `Close`,
+for a result whose shape is known only at run time (a column count that depends
+on the input). `Query` and `QueryRows` need a type for the row and `MapRows`
+buffers every row into a map; before this, a `Scan(dest...)` cursor meant
+`db.Driver().Query`, which skips hooks, `WithTxSetup`, error classification and
+redaction. `RawRows` takes the raw path of `Query`: the same placeholders, hooks
+(op `raw`), interceptors, `WithTxSetup` and `WithImplicitTx`, error
+classification and argument redaction, on a `*DB`, a `*Tx` or an `AdoptTx`
+handle.
+
+```text
+rows, err := momo.RawRows(ctx, db, `SELECT id, title FROM tasks WHERE tenant_id = $1`, tenant)
+if err != nil {
+	return err
+}
+defer rows.Close()
+for rows.Next() {
+	if err := rows.Scan(&id, &title); err != nil {
+		return err
+	}
+}
+return rows.Err()
+```
+
+The return type is the new interface `momo.ColumnRows`, a `Rows` that also has
+`Columns`, because `Rows` itself has no column names. Close the cursor, always:
+one that is never closed holds its connection, and on a `*DB` with
+`WithImplicitTx` the transaction behind it. When the context is canceled,
+`Next` returns false, the cursor is closed and `Err` reports `ErrCanceled`; a
+context canceled after the last row was read can still report `ErrCanceled`,
+as in `QueryRows`. Scan errors go through the error classifier and are
+recorded on the hook event.
+
+Under `WithImplicitTx`, momo treats raw SQL as a write, because raw SQL may
+write. The transaction commits when the rows are read to the end. It rolls back,
+and `Close` returns `ErrValidation`, when `Close` comes before the end of the
+rows (including a `Close` with no `Next`), after a Scan or driver error, or
+after a canceled context. Without `WithImplicitTx` an early `Close` is just a
+`Close`. `Columns` returns the names as the driver reports them: an empty list
+means the statement returns no columns (an `UPDATE` without `RETURNING`) or the
+driver cannot name them, and `ErrUnsupported` means the cursor cannot report
+columns at all. This is additive; nothing to change.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
