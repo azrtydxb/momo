@@ -36,4 +36,5 @@ model.
 
 Red: ci-agent run 42977250563 (sha 33ca4bc, branch worktree-agent-red-108, deleted): "--- FAIL: TestObjectsOfUnmodeledTablesAreNotEmitted", unmodeled_test.go:50 "skip: model of keep contains audit_log_touch, audit_log_read, audit_touch, audit_can_read, c.Trigger, c.Policy, c.Function".
 Green: ci-agent run 42977580146 (sha 78494a89f2154c3860fce0e87b8241ffc9f19140), success; docs run 42977580086 success.
+Green after review fixes (merged drop, note, edge-case tests, upgrading.md wording): ci-agent run 42985488817 and docs run 42985488630, both success, sha a98eceffeaa693b011be7392b2ecce6ba4fa4626.
 Docs changed: docs/upgrading.md (0.8.0 note).
