@@ -255,6 +255,9 @@ Nullability and column rules:
   for non-pointers and a diagnostic on pointers.
 - A nullable field generates `momo.NullColumn[T]` (has `SetNull()`); a
   non-nullable one generates `momo.Column[T]` (`SetNull()` does not compile).
+  For a `*T` value that may be nil, `col.SetPtr(p)` writes NULL when `p` is nil
+  and `*p` otherwise, and `col.EqPtr(p)` renders `IS NULL` when `p` is nil and
+  `= $n` otherwise. Do not branch on nil by hand.
 - A primary key must not be nullable.
 - Scanning NULL into a non-pointer field is an error. Use pointers for nullable
   columns.
@@ -1156,7 +1159,8 @@ res, err := momo.Update[models.Task](q).
 // Atomic arithmetic (no read-modify-write race):
 //   .Set(account.Balance.SetExpr(sqlfn.Add(account.Balance, delta)))
 // (Sub, Mul, AddExpr with col.Excluded() in an upsert, Case, Substr: see section 6 "Typed expressions".)
-// Other assignments: col.SetDefault(), col.SetExcluded() (upsert), nullCol.SetNull().
+// Other assignments: col.SetDefault(), col.SetExcluded() (upsert), nullCol.SetNull(),
+// nullCol.SetPtr(p *T) (NULL when p is nil).
 
 // Whole row from a struct (writes every writable column, zero values included):
 cur, _ := momo.Select[models.Task](q).Where(task.ID.Eq(id)).One(ctx)
