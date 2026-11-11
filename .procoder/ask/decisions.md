@@ -371,3 +371,7 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
 - **#108 (integrator, from the issue's expected behaviour):** objects of a
   table that is skipped or not modeled are not generated, and there is no
   opt-in.
+- **#93 (integrator, from PostgreSQL semantics):** a DML body in `With`
+  without `Returning` is accepted, since PostgreSQL allows a data-modifying
+  CTE that nothing reads. The docs are corrected to say `Returning` is needed
+  only when the outer query reads the CTE.
