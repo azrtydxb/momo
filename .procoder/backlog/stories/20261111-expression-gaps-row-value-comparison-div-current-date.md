@@ -26,7 +26,7 @@ GROUP BY). Expected: typed builders with the documented SQL.
 
 Root cause: the API never had these builders. Fix: `momo.Row(...).Lt/Le/Gt/Ge`,
 `sqlfn.Div/DivExpr/NullIf/NullIfExpr`, `sqlfn.CurrentDate/Infinity/NegInfinity`,
-`momo.Lit` (numbers, bool and time.Time only, so it is injection-safe by type), and
+`momo.Lit` (numbers, bool, string and midnight-UTC time.Time; strings with a backslash or NUL and dates with a time of day are refused), and
 `Join/LeftJoin/CrossJoin/GroupBy/Having/OrderBy` on `ExprSelect`.
 
 ## Acceptance criteria
@@ -34,7 +34,7 @@ Root cause: the API never had these builders. Fix: `momo.Row(...).Lt/Le/Gt/Ge`,
 - [x] row-value Lt, Le, Gt and Ge render `(a, b) op (x, y)` on every dialect, and mismatched or short rows fail with ErrValidation
 - [x] sqlfn.Div, DivExpr, NullIf and NullIfExpr render per dialect, and a zero divisor guarded by NullIf runs on PostgreSQL
 - [x] CurrentDate renders on every dialect; Infinity and NegInfinity render on PostgreSQL and fail with ErrUnsupported elsewhere
-- [x] momo.Lit renders numbers, bool and dates inline, rejects non-finite floats, does not compile for a string, and the same Lit in SELECT and GROUP BY runs on PostgreSQL
+- [x] momo.Lit renders numbers, bool, strings (quote doubled) and midnight-UTC dates inline; it refuses non-finite floats, a string with a backslash or NUL, and a date with a time of day; the same Lit in SELECT and GROUP BY runs on PostgreSQL (TestLitGolden, TestLitRefusesUnsafeValues, TestLitStringGroupByExecutes)
 - [x] ExprSelect supports joins, GROUP BY, HAVING and ORDER BY, validated and run as a grouped INSERT ... SELECT on PostgreSQL
 - [x] a regression test pins the fix: red before the change, green after
 
@@ -44,3 +44,4 @@ Root cause: the API never had these builders. Fix: `momo.Row(...).Lt/Le/Gt/Ge`,
 - Green: ci-agent run 42986531687 and docs run 42986531735 succeeded on headSha 7b013c972dc334e3c8126dbdca311bb860b5285d (branch worktree-agent-a8396fdcdb29ac8fc). A first fix run, 42979652626 on 7db7819, failed on test-fixture table names, a missing NOT NULL column in the join test, bare doc names and a stale reference.md; all fixed in 7b013c9.
 - Criteria: TestRowComparisonGolden, TestRowComparisonValidation, TestRowComparisonExecutes (row values); TestDivAndNullIfGolden, TestNullIfExprGolden, TestDivNullIfExecutes (Div, NullIf); TestCurrentDateAndInfinityGolden, TestInfinityComparison, TestCurrentDateAndInfinityExecute (CURRENT_DATE, infinity); TestLitGolden, TestLitRejectsNonFinite, TestLitSelectAndGroupByIdentical, TestCompileFailLitString, TestLitGroupByExecutes (Lit); TestExprSelectGroupHavingOrderGolden, TestExprSelectJoinsGolden, TestExprSelectClauseValidation, TestExprSelectGroupedInsertExecutes, TestExprSelectJoinExecutes (ExprSelect). All passed in the green run.
 - Docs changed: docs/ai-guide.md, docs/capabilities.md, docs/upgrading.md (new "Upgrading to 0.8.0" section), docs/reference.md (from the regenerated-docs artifact).
+- Review round: red ci-agent run 42994326154 (branch worktree-agent-red-97b, tests only, `282216a3`, deleted) failed to compile: `./expr_lit_strings_test.go:23:33: string does not satisfy momo.Literal`. Green: ci-agent run 42994601430 succeeded on headSha b76ff08c (gen-check passed with the committed docs/reference.md; no regenerated-docs artifact was produced). New tests: TestLitRefusesUnsafeValues, TestLitStringSelectAndGroupByIdentical, TestLitStringGroupByExecutes, TestLitFloatBoolDateExecutes, TestExprSelectBoundArgsInClauseOrder, TestRowComparisonExecutes and TestCurrentDateExecutes (every dialect).
