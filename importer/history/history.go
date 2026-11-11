@@ -257,8 +257,9 @@ var (
 )
 
 // WriteImport writes the converted migrations into outDir: <version>_<name>.up.sql
-// (first line "-- momo:generated", so migrate validate does not take it for a
-// custom migration that must leave the schema alone, then "-- momo:no-transaction"
+// (first line "-- momo:imported", so migrate validate does not take it for a
+// custom migration that must leave the schema alone and rebase never
+// regenerates it, then "-- momo:no-transaction"
 // when NoTx), the .down.sql file when the
 // source had a down, <version>_<name>.snapshot.json for each snapshot, and
 // momo.sum for the directory. Everything is validated first and written to a
@@ -320,7 +321,7 @@ func WriteImport(outDir string, conv []Converted, snaps []migrate.SnapshotFile) 
 	}
 	for _, c := range conv {
 		base := c.Version + "_" + c.Name
-		header := "-- momo:generated\n"
+		header := "-- momo:imported\n"
 		if c.NoTx {
 			header += "-- momo:no-transaction\n"
 		}

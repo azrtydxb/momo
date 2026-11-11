@@ -128,7 +128,7 @@ func TestWriteImportNeverOverwrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(string(up), "-- momo:generated\n-- momo:no-transaction\n") {
+	if !strings.HasPrefix(string(up), "-- momo:imported\n-- momo:no-transaction\n") {
 		t.Fatalf("a NoTx source must carry the directive: %q", up)
 	}
 	for _, f := range []string{"20260101000000_init.down.sql", migrate.SumFileName} {

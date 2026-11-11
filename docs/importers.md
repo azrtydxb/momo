@@ -65,10 +65,11 @@ tools and `momo migrate apply` do, so an `ON COMMIT DROP` temporary table,
 `SET LOCAL` and deferred constraints work inside a migration; a migration the
 source marked as non-transactional runs statement by statement in autocommit.
 `history.WriteImport`
-writes the directory: each up file starts with `-- momo:generated` (and
+writes the directory: each up file starts with `-- momo:imported` (and
 `-- momo:no-transaction` for a non-transactional migration), so the output
 passes `momo migrate validate` instead of being read as a custom migration that
-must not change the schema. `history.HistoryRows` gives the `momo_migrations` rows
+must not change the schema. `momo migrate rebase` never regenerates an imported
+migration. `history.HistoryRows` gives the `momo_migrations` rows
 that mark every migration as applied. The Atlas reader verifies `atlas.sum`
 with Atlas's directory hash and refuses a directory whose files were edited.
 golang-migrate records only its current version, so every migration up to it is
