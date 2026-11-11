@@ -20,6 +20,24 @@ A call to one of these functions of `github.com/azrtydxb/momo` whose SQL argumen
 
 A constant is a string literal, a `const`, or an expression made only of constants (`"UPDATE t SET " + "x = 1"`). Anything else is reported as `non-constant SQL string passed to momo.<Name>`. Pass values as arguments after the SQL text instead of concatenating them.
 
+## Marking a vetted call
+
+When the text is built only from constants and allowlisted identifiers, mark the call with a line directive and say why:
+
+```go
+momo.Exec(ctx, db, "UPDATE "+table+" SET x = 1") //momovet:ok table comes from the schema allowlist
+
+//momovet:ok column is checked against allowedColumns
+momo.Query[int](ctx, db, "SELECT "+column+" FROM t")
+```
+
+The directive goes as a trailing comment on the line of the call (or of its SQL argument), or on the line directly above the call. It suppresses the report for that one call only. A call without a directive is still reported.
+
+The directive is itself reported when:
+
+- it has no reason (`//momovet:ok` alone): `//momovet:ok needs a reason`;
+- it suppresses nothing, for example because the SQL is already constant or no momo raw-SQL call is next to it: `unused //momovet:ok directive`.
+
 ## Running it
 
 ```sh

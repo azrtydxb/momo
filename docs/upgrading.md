@@ -5,6 +5,12 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `momovet` accepts a `//momovet:ok <reason>` directive
+
+A raw-SQL call whose text is built from constants and allowlisted identifiers can now be marked as vetted with a line directive, as a trailing comment on the call or on the line directly above it. The directive silences the report for that call only. A directive without a reason, or one that suppresses nothing, is reported itself, so an existing `//momovet:ok` comment you wrote for another tool would now be reported if it has no reason. See [momovet](momovet.md).
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
