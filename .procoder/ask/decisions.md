@@ -375,3 +375,8 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   without `Returning` is accepted, since PostgreSQL allows a data-modifying
   CTE that nothing reads. The docs are corrected to say `Returning` is needed
   only when the outer query reads the CTE.
+- **#97 (integrator, from the issue's `COALESCE(col, 'none')` example):**
+  `momo.Lit` accepts strings, rendered with doubled quotes. A string with a
+  backslash or a NUL byte is refused with `ErrValidation` on every dialect.
+  A `time.Time` must be exactly midnight UTC and renders as `DATE '...'`;
+  any other time is refused rather than truncated.
