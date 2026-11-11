@@ -96,3 +96,25 @@ func TestOrderByPredicate(t *testing.T) {
 		t.Errorf("nulls: %v, %v", got.SQL, err)
 	}
 }
+
+// Catches: After over a predicate ORDER BY key building the cursor
+// "(pred) > $n". A NULL-able predicate then skips or repeats rows, so the
+// build must refuse it with ErrValidation, whatever the predicate is.
+func TestKeysetRejectsPredicateKey(t *testing.T) {
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
+		db := momo.New(fakedriver.New(d))
+		for name, o := range map[string]momo.Order{
+			"asc":  momo.OrderByPredicate(DocTitle.IsNull()).Asc(),
+			"desc": momo.OrderByPredicate(DocTitle.Eq("x")).Desc(),
+		} {
+			_, err := momo.Select[unitDocument](db).OrderBy(o).After(true, int64(1)).SQL()
+			if !errors.Is(err, momo.ErrValidation) {
+				t.Errorf("%s %s: After over a predicate key = %v, want ErrValidation", d, name, err)
+			}
+		}
+		// A column key still builds.
+		if _, err := momo.Select[unitDocument](db).OrderBy(DocTitle.Asc()).After("x", int64(1)).SQL(); err != nil {
+			t.Errorf("%s: After over a column key: %v", d, err)
+		}
+	}
+}
