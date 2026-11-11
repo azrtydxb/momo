@@ -67,3 +67,13 @@ dbdefault on a nullable field`) and `--- FAIL: TestDBDefaultAllTagsConstantDefau
 - Docs: docs/ai-guide.md, docs/migrations.md, docs/upgrading.md (Upgrading to 0.8.0).
   The regenerated-docs and regenerated-integration artifacts were not produced for
   this run (nothing to regenerate); apidiff-docs and docscheck passed.
+- Review fix, Update.Model with a nil dbdefault pointer (it wrote SET col = NULL).
+  Red: ci-agent run 42991501783 (branch worktree-agent-red-90, tests e6e3f0e, branch
+  since deleted): `TestUpdateModelSkipsNilDBDefaultPointer`
+  (`update_dbdefault_ptr_test.go:51`), `TestUpdateModelAllNilDBDefaultPointersIsEmptySet`
+  (`:75`) and `TestDBDefaultPointerUpdateModelLive` (postgres and sqlite: not-null
+  constraint violation). Green: ci-agent run 42991668137 at headSha
+  6cef9d37e30f1fb415bf07a1c116c689c719e181, all jobs success. Update.Model now leaves a
+  nil dbdefault pointer out of SET; Upsert needs no change (EXCLUDED values, dbdefault
+  columns already left out). docs/agents.md line 50, docs/ai-guide.md and
+  docs/upgrading.md 0.8.0 updated; the plain bool and number limit is documented.
