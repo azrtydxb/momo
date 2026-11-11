@@ -23,7 +23,7 @@ The name is the plural of the child model for `has_many` (`SubscriptionItems`)
 and the child model name for `has_one`. A child with two foreign keys to the same
 parent, and a table that references itself, get `By` and the foreign key field
 without `ID` instead (`MessagesBySender`, `MessagesByRecipient`). Rename or skip
-one with `introspect.relations`, keyed `Model.Field` by the derived name:
+one with `introspect.relations`, keyed by model and derived name (User.MessagesBySender):
 
 ```yaml
 introspect:

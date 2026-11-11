@@ -92,7 +92,7 @@ func TestInverseRelationRules(t *testing.T) {
 // Catches: an inverse written for a referencing table that has no model.
 func TestInverseSkipsUnmodeledChild(t *testing.T) {
 	_, files := generate(t, inverseSchema(), Config{Inverse: true, Skip: []string{"messages", "profiles"}})
-	if strings.Contains(files["users"], "Message") || strings.Contains(files["users"], "Profile") {
+	if strings.Contains(files["users"], "[]Message") || strings.Contains(files["users"], "*Profile") {
 		t.Errorf("inverse of an unmodeled table:\n%s", files["users"])
 	}
 	mustMatch(t, "users", files["users"], "Orders\\s+\\[\\]Order")

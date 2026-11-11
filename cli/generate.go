@@ -60,8 +60,9 @@ Unsupported columns) go in the introspect section of momo.yaml: package and out
 the inverse of skip: a table matching none gets no model), functions ("all"
 writes every function on the first model), dbdefault ("all" tags every NOT NULL
 column with a default), uuid (momo or google), types (SQL type to Go type),
-columns (match "table.column" globs, go, import, name, tags) and tables (name,
-tags). A glob matches the table name, or schema.name for a table outside the
+columns (match "table.column" globs, go, import, name, tags), tables (name,
+tags), inverse (true also writes the has_many or has_one inverse of every
+belongs_to) and relations (rename or skip one inverse, keyed "Model.Field"). A glob matches the table name, or schema.name for a table outside the
 current schema; a table in the current schema is matched by its bare name. The
 rules are applied again on every run.
 

@@ -101,7 +101,7 @@ introspect:
 	if c := Run([]string{"generate"}, &o, &e); c != 0 {
 		t.Fatalf("generate: exit %d\n%s%s", c, o.String(), e.String())
 	}
-	cmd := exec.Command("go", "run", ".") //nolint:gosec // fixed arguments
+	cmd := exec.Command("go", "run", "-mod=mod", ".") //nolint:gosec // fixed arguments
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {

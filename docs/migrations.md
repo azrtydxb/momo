@@ -1092,7 +1092,7 @@ named for the child (`SubscriptionItems` for a `has_many`, `AuthorProfile` for a
 `has_one`). A child with two foreign keys to the same parent, or a table that
 references itself, gets `By` and the foreign key field without `ID`
 (`MessagesBySender`, `MessagesByRecipient`). An `introspect.relations` rule keyed
-`Model.Field` (the derived name) renames one (`name`) or drops it (`skip: true`).
+by model and derived name (User.MessagesBySender) renames one (`name`) or drops it (`skip: true`).
 No inverse is written for a composite foreign key, a foreign key left out of the
 models, or a child outside `only` and `skip`. It is off by default because it
 adds fields to models you may have edited.
