@@ -2,14 +2,29 @@
 
 ## [0.7.0](https://github.com/azrtydxb/momo/compare/v0.6.0...v0.7.0) (2026-11-11)
 
+_`momo generate --from-db` can be limited to a list of tables, writes only the functions those tables use, and names `-ses` tables correctly. `Query` and `QueryRows` read into a plain struct, and writes with `RETURNING` get `One`. Upgrading may need code changes: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.7.0/docs/upgrading.md). [Changes since 0.6.0](https://github.com/azrtydxb/momo/compare/v0.6.0...v0.7.0)._
 
 ### ⚠ BREAKING CHANGES
 
-* regenerating with --from-db adds dbdefault to NOT NULL columns with a computed default: a Go zero value is no longer written, the database default applies and is read back. See docs/upgrading.md.
+- **query:** `Query` and `QueryRows` lose their `PT` type parameter, so explicit `Query[T, *T]` calls must drop it. A struct without generated metadata now compiles and is scanned by reflection ([#75](https://github.com/azrtydxb/momo/issues/75), [#83](https://github.com/azrtydxb/momo/pull/83))
+- **fromdb:** `--from-db` writes only the functions the modeled tables use through their triggers, defaults, checks or policies. Set `introspect.functions: all` for the old output ([#74](https://github.com/azrtydxb/momo/issues/74), [#83](https://github.com/azrtydxb/momo/pull/83))
+- **fromdb:** model names for tables ending in `-ses` change, for example `releases` gives `Release` instead of `Releas`. Pin the old name with `introspect.tables.<name>.name` ([#82](https://github.com/azrtydxb/momo/issues/82), [#83](https://github.com/azrtydxb/momo/pull/83))
+- **fromdb:** an `introspect.skip` glob written as `schema.name` now takes effect ([#73](https://github.com/azrtydxb/momo/issues/73), [#83](https://github.com/azrtydxb/momo/pull/83))
 
 ### Features
 
-* sprint 8 --from-db fixes, plain-struct Query, One on writes ([#83](https://github.com/azrtydxb/momo/issues/83)) ([92658ad](https://github.com/azrtydxb/momo/commit/92658adb0005576fc84f08cca55cba638146eb7e))
+- **fromdb:** `introspect.only` limits generation to a list of table globs. A glob that matches nothing is warned about, and an `only` list that matches no table fails the run ([#73](https://github.com/azrtydxb/momo/issues/73), [#83](https://github.com/azrtydxb/momo/pull/83))
+- **fromdb:** `introspect.dbdefault: all` tags every NOT NULL column that has a default, not only computed ones ([#77](https://github.com/azrtydxb/momo/issues/77), [#83](https://github.com/azrtydxb/momo/pull/83))
+- **fromdb:** `introspect.uuid: google` generates `github.com/google/uuid` types ([#76](https://github.com/azrtydxb/momo/issues/76), [#83](https://github.com/azrtydxb/momo/pull/83))
+- **types:** `uuid.UUID`, `*uuid.UUID` and `[]uuid.UUID` from `github.com/google/uuid` map to `uuid` and `uuid[]` without a type tag, and array operators cast them ([#76](https://github.com/azrtydxb/momo/issues/76), [#83](https://github.com/azrtydxb/momo/pull/83))
+- **query:** `InsertQuery`, `UpdateQuery` and `DeleteQuery` get `One`, which returns the single `RETURNING` row ([#78](https://github.com/azrtydxb/momo/issues/78), [#83](https://github.com/azrtydxb/momo/pull/83))
+- **migrate:** `Config.OnlyTables` and `InspectOptions.Only` limit inspection and diff to a list of tables, and `schema.MatchObject` is the shared glob rule that `migrate.MatchObject` calls ([#83](https://github.com/azrtydxb/momo/pull/83))
+
+### Bug Fixes
+
+- **cli:** `momo generate -h` lists every `introspect` key ([#83](https://github.com/azrtydxb/momo/pull/83))
+- **docs:** the registry docs say the SQL of a registered `Insert.Model` depends on the model's values, and how to pin it ([#79](https://github.com/azrtydxb/momo/issues/79), [#83](https://github.com/azrtydxb/momo/pull/83))
+- **migrate:** the `Lock` doc comment says a discarded session's lock is released asynchronously, and the test that flaked on it now waits ([#83](https://github.com/azrtydxb/momo/pull/83))
 
 ## [0.6.0](https://github.com/azrtydxb/momo/compare/v0.5.0...v0.6.0) (2026-11-10)
 
