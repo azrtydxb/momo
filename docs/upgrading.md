@@ -170,6 +170,29 @@ means the statement returns no columns (an `UPDATE` without `RETURNING`) or the
 driver cannot name them, and `ErrUnsupported` means the cursor cannot report
 columns at all. This is additive; nothing to change.
 
+### The history importer replays migrations in transactions and writes `-- momo:imported`
+
+`history.Baseline` used to replay every statement of a converted migration in
+autocommit. It now runs a migration that the source did not mark as
+non-transactional between `BEGIN` and `COMMIT` (rolled back when a statement
+or the `COMMIT` fails; this holds on PostgreSQL and SQLite, while MySQL
+commits DDL implicitly), as goose, golang-migrate, Atlas, Bun and `momo migrate apply` run it.
+A migration that used `CREATE TEMP TABLE ... ON COMMIT DROP`, `SET LOCAL` or
+`set_config(..., true)` across statements now replays; one that relied on a
+statement being committed before the next now sees it in the same transaction.
+A non-transactional migration (`NoTx`) runs as before.
+
+`history.WriteImport` now writes a new directive, `-- momo:imported`, as the
+first line of every imported up file (before `-- momo:no-transaction` when
+there is one), so `momo migrate validate` accepts the directory. Before,
+validate reported each imported migration as a custom migration whose snapshot
+differs from its parent's. `validate` skips that check for a file with the
+directive, and `momo migrate rebase` treats the file as hand-written and refuses
+to regenerate it. `migrate.Directives` has a new `Imported` field. A directory
+you imported with an earlier release still fails validate: add
+`-- momo:imported` as the first line of each imported up file and run
+`momo migrate hash`.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
