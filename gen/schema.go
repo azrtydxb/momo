@@ -223,7 +223,7 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 		}
 		nullable = false
 	}
-	col := schema.Column{Name: f.Column, Nullable: nullable, Default: tg.Default, Collate: tg.Collate, Comment: tg.Comment}
+	col := schema.Column{Name: f.Column, Nullable: nullable, Default: tg.Default, Generated: tg.Generated, Collate: tg.Collate, Comment: tg.Comment}
 	if tg.Identity {
 		col.Identity = "by_default"
 		if tg.IdentityAlways {
@@ -644,6 +644,8 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 		t.Checks = append(t.Checks, ck)
 	}
 	b.columnText(m, t, "default", c.Defaults, func(c *schema.Column) *string { return &c.Default })
+	b.columnText(m, t, "generated", c.Generated, func(c *schema.Column) *string { return &c.Generated })
+	b.checkGenerated(m, t)
 	b.columnText(m, t, "comment", c.Comments, func(c *schema.Column) *string { return &c.Comment })
 	b.columnText(m, t, "collate", c.Collates, func(c *schema.Column) *string { return &c.Collate })
 	for _, e := range c.Enums {
@@ -672,6 +674,28 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 	mergeObjects(b, &b.s.Functions, "function", c.Functions, func(f schema.Function) string { return f.Schema + "." + f.Name + "(" + f.Args + ")" }, m.Pos)
 	mergeObjects(b, &b.s.Triggers, "trigger", c.Triggers, func(g schema.Trigger) string { return g.Schema + "." + g.Table + "." + g.Name }, m.Pos)
 	mergeObjects(b, &b.s.Policies, "policy", c.Policies, func(p schema.Policy) string { return p.Schema + "." + p.Table + "." + p.Name }, m.Pos)
+}
+
+// checkGenerated reports a stored generated column that is not read_only, so a
+// write would fail in the database, and one that also has a default, identity
+// or serial, which the database refuses.
+func (b *schemaBuilder) checkGenerated(m *Model, t *schema.Table) {
+	for _, col := range t.Columns {
+		if col.Generated == "" {
+			continue
+		}
+		for _, f := range m.Fields {
+			if f.Column != col.Name {
+				continue
+			}
+			switch {
+			case f.Access != ReadOnly:
+				b.diag(f.Pos, fmt.Sprintf("field %s: a generated column must be read_only, because the database refuses a write to it", f.GoName))
+			case col.Default != "" || col.Identity != "" || f.Tags.DBDefault || f.Tags.Version || f.Tags.CreatedAt || f.Tags.UpdatedAt || f.Tags.SoftDelete != "" || f.Tags.IDGen != "":
+				b.diag(f.Pos, fmt.Sprintf("field %s: generated conflicts with default, identity, serial, dbdefault, version, soft_delete, created_at, updated_at and idgen", f.GoName))
+			}
+		}
+	}
 }
 
 // columnText merges one of the companion's per-column texts into the columns

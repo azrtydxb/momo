@@ -5,6 +5,40 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.8.0
+
+### `--from-db` models stored generated columns as read-only fields
+
+`momo generate --from-db` used to leave a `GENERATED ALWAYS AS (...) STORED`
+column out of the models and the snapshot with a warning, so typed builders
+could not select or filter by it and the baseline reported it. It now writes the
+column as a `read_only` field with the new `generated:<expr>` tag. `Insert` and
+`Update` never write the field, typed `Select` and `Where` can use it, and the
+snapshot carries the expression, so `migrate diff` stays empty and `migrate`
+renders `GENERATED ALWAYS AS (...) STORED` on PostgreSQL, MySQL and SQLite.
+
+```go
+type Account struct {
+	momo.Model `momo:"table:accounts"`
+	ID         int64  `momo:"pk,identity"`
+	Name       string
+	Normalized string `momo:"read_only,generated:lower(name)"`
+}
+```
+
+A tag value cannot hold a comma, so an expression with one is declared in
+`MomoConfig` with the new `Config.Generated` instead, which `--from-db` writes for
+you: `c.Generated(&m.Label, "coalesce(name, '') || email")`. The generator
+refuses a generated field that is not `read_only`, or that also has a default,
+identity, serial, `dbdefault`, `version`, `soft_delete`, `created_at`,
+`updated_at` or `idgen`.
+
+What to do: regenerate with `momo generate --from-db` to model the columns, or
+keep the `introspect.skip` or `introspect.only` rules that hid them. A
+`VIRTUAL` generated column is still not modeled: PostgreSQL inspection refuses
+it unless `migrate.exclude` hides the table, and MySQL and SQLite inspection
+read it as a stored column.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use

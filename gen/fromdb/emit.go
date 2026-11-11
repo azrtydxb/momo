@@ -375,10 +375,6 @@ func (g *generator) columns(m *model) {
 	var keep []schema.Column
 	for _, col := range t.Columns {
 		obj := t.Name + "." + col.Name
-		if col.Generated != "" {
-			g.add(SevWarn, obj, "generated column is not modeled: it is left out of the models and the snapshot, so the baseline will report it")
-			continue
-		}
 		f, err := g.field(m, &col, pk[col.Name])
 		if err != nil {
 			g.add(SevError, obj, "%v", err)
@@ -508,7 +504,11 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 	if col.Nullable && gt.Nilable {
 		opts = append(opts, "nullable")
 	}
-	for _, e := range []struct{ key, val string }{{"collate", col.Collate}, {"default", col.Default}, {"comment", col.Comment}} {
+	if col.Generated != "" {
+		// A stored generated column is written by the database only.
+		opts = append(opts, "read_only")
+	}
+	for _, e := range []struct{ key, val string }{{"collate", col.Collate}, {"default", col.Default}, {"generated", col.Generated}, {"comment", col.Comment}} {
 		if e.val == "" {
 			continue
 		}

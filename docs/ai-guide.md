@@ -296,6 +296,7 @@ Tag reference (all lower case):
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                         |
 | `idgen:<name>`                                                            | client-generated string id (`cuid`, `uuid`, `ulid` or a name registered with `WithIDGenerator`); filled on insert when the field is empty                                                                                                             |
 | `dbdefault`                                                               | leave the column to the database default while the field holds its zero value: a `Model`/`Models` insert omits it and reads the stored value back (see Database defaults)                                                                             |
+| `generated:<expr>`                                                        | stored generated column (`GENERATED ALWAYS AS (<expr>) STORED`); needs `read_only`, so Insert and Update never write it while Select and Where can use it. An expression with a comma goes through `Config.Generated`. `--from-db` writes both        |
 | `version`                                                                 | optimistic-lock column (integer type)                                                                                                                                                                                                                 |
 | `created_at[:unix\|unixmilli\|unixnano]`, `updated_at`                    | automatic timestamps; field type `time.Time`, `*time.Time`, `int64` or `*int64`                                                                                                                                                                       |
 | `soft_delete:timestamp\|unix\|bool`                                       | soft-delete marker; Go type `*time.Time`, `*int64` or `bool`                                                                                                                                                                                          |
@@ -328,7 +329,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 `<table>_<col>_idx` produced by an `index` tag (the `Plan` field above already
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
-Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.Enum`, `Config.Default`,
+Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.Enum`, `Config.Default`, `Config.Generated`,
 `Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
 `Config.PartitionOf`. Index chain: `IndexOpts.Unique()` (on `Config.Index` or `Config.IndexExpr`), `Where(pred)`, `Method(m)`, `IndexOpts.With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
