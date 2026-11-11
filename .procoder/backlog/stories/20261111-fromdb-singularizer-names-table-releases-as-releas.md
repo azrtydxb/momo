@@ -74,3 +74,6 @@ explicit `name: Release` for the table in momo.yaml.
   Quizz; gorm, bun and ent keep Biase, Canvase and similar; -oes words).
 - docs/upgrading.md 0.7.0 states the rule, tabulates the changed names and
   names the preset exceptions.
+- Green: ci-agent run 42935636124, all 9 jobs, on ce62e95 (origin/sprint-8 at
+  9ed73b9 merged in). The first green attempt failed docscheck on a bare `Case`
+  in a docs table; the names are now in bullets. Goldens unchanged.
