@@ -1,9 +1,9 @@
 # momo-02 Task 25: Plan gate for the generator
 
-Status: open
+Status: done 2026-11-11
 Created: 2026-11-04
 Epic: momo-02-generator
-Sprint: -
+Sprint: 009-fix-every-open-github-issue-86-to-108-the-kuvryn-orbit-port
 Carried: 007-sprint-7-finish-every-open-backlog-story-auditing-each — The gate cannot pass as written: Steps 1, 3 and 4 use paths of the first plan (./momo never existed; CI runs the shipped equivalents) and Step 2 still names TestViewModelsNotWritable in the plan's gen package form. TestCompanionSchema* now exist (story 051) and TestViewModelsNotWritable exists in meta_view_test.go. Needs a user decision to reword the plan paths.
 
 ## Description
@@ -12,13 +12,29 @@ Implements plan momo-02-generator Task 25: Plan gate for the generator (`.procod
 
 ## Acceptance criteria
 
-- [ ] Step 1: Run `go test -race -count=1 ./gen/... ./internal/golden ./internal/testmodels/... ./cmd/momo ./momo`; expect every package `ok`.
-- [ ] Step 2: Run `go test -count=1 -v ./gen/... ./cmd/momo ./momo ./internal/testmodels/example -run 'TestEmitDescriptorsGolden|TestGenerateDiagnostics|TestGenerateDeterministic|TestGenerateCheck|TestGenerateCrossPackage|TestGenerateRefusesHandwritten|TestGenerateNameCollisions|TestEmbeddedAndMixins|Tes…
-- [ ] Step 3: Run `go list -deps ./momo ./dialect ./schema ./vector ./types | grep -E 'golang.org/x/tools|yaml'`; expect no output (dependency rule 1).
-- [ ] Step 4: Run `go vet ./...` and `gofmt -l .`; expect no output.
-- [ ] `procoder check` gate is clean and the task's commit is made
+- [x] Step 1 (as shipped): the generator, golden, testmodels, CLI and root packages pass under `-race` in CI, `make test-race` (race (1.26) job 130341061707 shows `ok` for momo, momo/cli, momo/gen, every momo/gen/... package, momo/internal/golden and momo/internal/testmodels/example). `./cmd/momo` is now `./cli` and the root package is `.`, not `./momo`.
+- [x] Step 2 (as shipped): every test named in the plan's Step 2 exists at its shipped path (listed in the evidence), and the packages that hold them are `ok` in the unit, race and PostgreSQL integration jobs; `TestViewModelsNotWritable` (meta_view_test.go:44), `TestCompanionSchemaMethods` and `TestCompanionSchemaDiagnostics` (gen/companion_schema_test.go) now exist.
+- [x] Step 3 (as shipped, dependency rule 1): `TestImportGraph` (internal/repocheck/importgraph_test.go:30) runs `go list -deps` for momo, dialect, schema and vector and fails on any dependency outside the core allowlist (so neither golang.org/x/tools nor a YAML library gets in), and `TestRuntimeAvoidsEcosystemDeps` (same file, :54) fails if the root package or gen/apiquery reaches gqlgen, grpc, jsonschema or golang.org/x/tools; `internal/repocheck` is `ok` in the unit job. `./types` is not in `TestImportGraph`'s package list and is not claimed.
+- [x] Step 4 (as shipped): the lint job runs `make fmt-check` (gofmt -l over every tracked .go file, fails on output) and `make vet` (`go vet ./...` with and without the integration tag, plus the bench and internal/integration modules); job 130341061844 is success.
+- [x] `procoder check` gate is clean and the task's commit is made (the task's code is on main at 4781864; the lint job 130341061844 of ci.yml run 42965315635 is success; the commit gate ran on the sprint 9 bookkeeping commit)
 
 ## Evidence
 
 Carry reason: the gate cannot pass as written. Step 2 names `TestViewModelsNotWritable`, `TestCompanionSchemaMethods` and `TestCompanionSchemaDiagnostics`, which do not exist (stories 050 and 051: Needs decision / carried). Steps 1, 3 and 4 use paths of the first plan (`./momo`, the root package was never moved there); the shipped equivalents run on every CI run: unit tests with `-race` (`make test-race`), the import-graph rules in `internal/repocheck` (dependency rule 1), and `go vet`/gofmt in the lint job (.github/workflows/ci.yml). Every other test named in Step 2 exists (checked with grep): `TestEmitDescriptorsGolden`, `TestGenerateDiagnostics`, `TestGenerateDeterministic`, `TestGenerateCheck`, `TestGenerateCrossPackage`, `TestGenerateRefusesHandwritten`, `TestGenerateNameCollisions`, `TestEmbeddedAndMixins`, `TestNamingPresets`, `TestColumnByName`, `TestFieldPermissions`, `TestGeneratorPlugin`, `TestTagVocabulary`, `TestParseTags`, `TestConfigLoad`, `TestNamingOverridesFromConfig`, `TestGoGenerateIntegration`, `TestCompanionDSLCompiles`, `TestRelationDescriptorShape`, `TestModelHookEmission`, `TestZeroHookSet`, `TestFieldPermissionsRuntime` (these last three added in this sprint, story 053 and 054), `TestGeneratedHeaderRegexp`, `TestCLIExitCodes`, `TestPluginsUseWriter`. Close this story after 050 and 051 are decided and the CI run of the sprint branch is green. Criteria left unticked.
 
+## Reworded 2026-11-11 (user decision)
+
+User decision of 2026-11-11, recorded in .procoder/ask/decisions.md, section "Carried plan stories": reword the criteria to the design that shipped, cite CI evidence, and close the story. The `Carried:` lines above stay as the history.
+
+- Original Step 1: `go test -race -count=1 ./gen/... ./internal/golden ./internal/testmodels/... ./cmd/momo ./momo`; expect every package `ok`. Reason: `./momo` never existed and `./cmd/momo` became `./cli`; the shipped equivalent is `make test-race` over the same packages.
+- Original Step 2: `go test -count=1 -v ./gen/... ./cmd/momo ./momo ./internal/testmodels/example -run '...'` (the plan's test list). Reason: the same path changes; CI runs each package whole, without `-run`, so every named test runs inside its package. The three tests missing at the first audit (`TestViewModelsNotWritable`, `TestCompanionSchemaMethods`, `TestCompanionSchemaDiagnostics`) now exist (stories 050 and 051).
+- Original Step 3: `go list -deps ./momo ./dialect ./schema ./vector ./types | grep -E 'golang.org/x/tools|yaml'`; expect no output. Reason: there is no `./momo` package, and the rule is a test in internal/repocheck that runs on every CI run instead of a manual command.
+- Original Step 4: `go vet ./...` and `gofmt -l .`; expect no output. Reason: shipped as `make vet` and `make fmt-check` in the lint job.
+
+### Sprint 9 CI evidence (2026-11-11)
+
+Jobs of ci.yml run 42965315635 on main (headSha 47818647165f0231b1117bb6ebe2bce67dbed444, conclusion success). The job logs carry package-level `ok` lines, not `-v` output: unit (1.26) 130341061373 (`make test`), race (1.26) 130341061707 (`make test-race`), integration (1.27, 0.8.7-pg17, postgres) 130341061675 (`make test-integration-postgres`: MOMO_REQUIRE_INTEGRATION=1 and `-tags integration -race`, so a skipped database test fails), windows 130341061640, bench-module 130341061885 (`make test-bench-module`), lint 130341061844.
+
+Step 2 test locations (grep of `^func <Name>(`; every one found): TestEmitDescriptorsGolden gen/emit_descriptors_test.go; TestGenerateDiagnostics cli/generate_test.go and gen/companion_test.go; TestGenerateDeterministic gen/emit_test.go; TestGenerateCheck cli/generate_test.go; TestGenerateCrossPackage gen/crosspkg_test.go; TestGenerateRefusesHandwritten gen/writer_test.go; TestGenerateNameCollisions gen/ident_test.go; TestEmbeddedAndMixins gen/embed_test.go; TestNamingPresets gen/naming/presets_test.go; TestColumnByName expr_allowlist_test.go and gen/emit_lookup_test.go; TestFieldPermissions gen/permissions_test.go; TestGeneratorPlugin and TestPluginsUseWriter gen/plugin_test.go; TestTagVocabulary gen/schema_test.go; TestParseTags gen/tags/tags_test.go; TestConfigLoad and TestNamingOverridesFromConfig gen/config/config_test.go; TestGoGenerateIntegration cli/generate_test.go; TestCompanionDSLCompiles meta_companion_test.go; TestViewModelsNotWritable meta_view_test.go; TestCompanionSchemaMethods and TestCompanionSchemaDiagnostics gen/companion_schema_test.go; TestRelationDescriptorShape gen/relation_shape_test.go; TestModelHookEmission and TestZeroHookSet gen/hooks_test.go; TestFieldPermissionsRuntime col_permissions_runtime_test.go; TestGeneratedHeaderRegexp gen/header_test.go; TestCLIExitCodes cli/cli_contract_test.go.
+
+Package results: unit job `ok` for momo (39.157s), momo/cli (76.220s), momo/gen (151.082s), momo/internal/repocheck (15.757s) and the gen subpackages; race job `ok` for momo (135.480s), momo/cli (267.846s), momo/gen (532.005s), momo/gen/config, momo/gen/naming, momo/gen/tags, momo/internal/golden (1.032s), momo/internal/testmodels/example (18.008s) and momo/internal/repocheck (28.339s); windows job `ok` for momo, momo/cli, momo/gen and the same subpackages.
