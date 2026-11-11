@@ -1046,9 +1046,13 @@ to the `introspect` section of `momo.yaml`. Constraints the models cannot
 declare are left out of the models and the snapshot and printed as warnings, so
 the two agree and the baseline reports them: foreign keys to a table with no
 model, single-column foreign keys whose name is not table, column and `_fkey` or
-that do not reference a single-column primary key, expression keys with an order or operator class, generated
-columns, and PostgreSQL
-schemas other than the current one.
+that do not reference a single-column primary key, expression keys with an order or operator class, and PostgreSQL
+schemas other than the current one. A stored generated column
+(`GENERATED ALWAYS AS (...) STORED`) is not left out: it becomes a `read_only`
+field with `generated:<expr>` (or a `c.Generated(&m.Field, "<expr>")` call in
+`MomoConfig` when the expression has a comma), so Insert and Update never write
+it, typed Select and Where can use it, and the snapshot and `migrate diff` carry
+the expression.
 
 ### The introspect section
 

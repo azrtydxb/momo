@@ -55,6 +55,12 @@ func (c *Config) Enum(name string, values ...string) {}
 // never executed for its effect.
 func (c *Config) Default(field any, expr string) {}
 
+// Generated declares a column as stored generated: GENERATED ALWAYS AS (expr)
+// STORED. The field must be read_only, so Insert and Update never write it.
+// Use it instead of the generated tag when the expression has a comma. Read
+// statically by the generator; never executed for its effect.
+func (c *Config) Generated(field any, expr string) {}
+
 // Comment sets a column comment. Read statically by the generator; never
 // executed for its effect.
 func (c *Config) Comment(field any, text string) {}

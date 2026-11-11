@@ -77,8 +77,9 @@ exits 1 when a file would change. A file whose table is gone is listed as "orpha
 never deleted.
 
 Constraints the models cannot declare (renamed or single-column non-primary-key foreign keys,
-expression index keys with an order or operator class, generated columns) are left out of the models and
-the snapshot and listed as warnings; the baseline then reports them. A column
+expression index keys with an order or operator class) are left out of the models and
+the snapshot and listed as warnings; the baseline then reports them. A stored generated
+column becomes a read_only field with the generated tag. A column
 type with no Go mapping is an error and nothing is written.
 
 Plugins: the plugins: section of momo.yaml enables the plugins built into this

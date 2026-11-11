@@ -392,23 +392,19 @@ func (g *generator) columns(m *model) {
 	for _, c := range t.PrimaryKey {
 		pk[c] = true
 	}
-	var keep []schema.Column
-	for _, col := range t.Columns {
+	for i := range t.Columns {
+		// field may adjust the column (an enum column's type), and the snapshot
+		// keeps that, so it gets the column in place.
+		col := &t.Columns[i]
 		obj := t.Name + "." + col.Name
-		if col.Generated != "" {
-			g.add(SevWarn, obj, "generated column is not modeled: it is left out of the models and the snapshot, so the baseline will report it")
-			continue
-		}
-		f, err := g.field(m, &col, pk[col.Name])
+		f, err := g.field(m, col, pk[col.Name])
 		if err != nil {
 			g.add(SevError, obj, "%v", err)
 		} else {
 			m.fields = append(m.fields, f)
 			m.byCol[col.Name] = f
 		}
-		keep = append(keep, col)
 	}
-	t.Columns = keep
 	if len(t.PrimaryKey) == 0 {
 		g.add(SevNote, t.Name, "the table has no primary key")
 	} else if !pkInColumnOrder(t) {
@@ -528,7 +524,11 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 	if col.Nullable && gt.Nilable {
 		opts = append(opts, "nullable")
 	}
-	for _, e := range []struct{ key, val string }{{"collate", col.Collate}, {"default", col.Default}, {"comment", col.Comment}} {
+	if col.Generated != "" {
+		// A stored generated column is written by the database only.
+		opts = append(opts, "read_only")
+	}
+	for _, e := range []struct{ key, val string }{{"collate", col.Collate}, {"default", col.Default}, {"generated", col.Generated}, {"comment", col.Comment}} {
 		if e.val == "" {
 			continue
 		}

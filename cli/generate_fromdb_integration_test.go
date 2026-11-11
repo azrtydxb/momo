@@ -30,7 +30,9 @@ var legacyDDL = []string{
 		name text,
 		created_at timestamptz NOT NULL DEFAULT now(),
 		settings jsonb,
-		balance numeric(12,2) NOT NULL DEFAULT 0)`,
+		balance numeric(12,2) NOT NULL DEFAULT 0,
+		normalized text GENERATED ALWAYS AS (lower(name)) STORED,
+		label text GENERATED ALWAYS AS (coalesce(name, '') || ':' || email) STORED)`,
 	`CREATE UNIQUE INDEX accounts_email_key ON accounts (email)`,
 	// A unique expression index (issue 55).
 	`CREATE UNIQUE INDEX accounts_email_lower_key ON accounts (lower(email))`,
@@ -130,9 +132,18 @@ introspect:
 	if err != nil || !strings.Contains(string(accts), `c.IndexExpr("accounts_email_lower_key"`) || !strings.Contains(string(accts), ".Unique()") {
 		t.Fatalf("the unique expression index is not declared: %v\n%s", err, accts)
 	}
+	if !strings.Contains(string(accts), "generated:lower(name)") || !strings.Contains(string(accts), `c.Generated(&m.Label, `) || !strings.Contains(string(accts), "read_only") {
+		t.Fatalf("the stored generated columns are not modeled as read-only fields: %s", accts)
+	}
+	if strings.Contains(out, "generated column is not modeled") {
+		t.Fatalf("a stored generated column must not warn:\n%s", out)
+	}
 	files, _ := filepath.Glob(filepath.Join(root, "migrations", "postgres", "*_init.up.sql"))
 	if len(files) != 1 {
 		t.Fatalf("init migration: %v\n%s", files, out)
+	}
+	if initSQL, err := os.ReadFile(files[0]); err != nil || !strings.Contains(string(initSQL), "GENERATED ALWAYS AS (lower(") { //nolint:gosec // test path
+		t.Fatalf("the init migration does not render the generated column: %v\n%s", err, initSQL)
 	}
 	version := strings.SplitN(filepath.Base(files[0]), "_", 2)[0]
 
