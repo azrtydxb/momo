@@ -11,25 +11,43 @@ mode: connect to the server directly, or to PgBouncer in session mode.
 ## Listen
 
 ```go
-cfg, err := pgx.ParseConfig(url)
-if err != nil {
-	return err
-}
-l, err := pgxdriver.Listen(ctx, cfg, []string{"orders", "invoices"},
-	pgxdriver.OnReconnect(func() { resync() }),
-	pgxdriver.WithBackoff(200*time.Millisecond, 15*time.Second),
-)
-if err != nil {
-	return err
-}
-defer l.Close(context.Background())
+package main
 
-for {
-	n, err := l.Wait(ctx)
+import (
+	"context"
+	"errors"
+	"log"
+	"time"
+
+	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/jackc/pgx/v5"
+)
+
+func main() {
+	ctx := context.Background()
+	cfg, err := pgx.ParseConfig("postgres://localhost/app")
 	if err != nil {
-		return err // ctx ended, or errors.Is(err, pgxdriver.ErrListenerClosed)
+		log.Fatal(err)
 	}
-	handle(n.Channel, n.Payload, n.PID)
+	l, err := pgxdriver.Listen(ctx, cfg, []string{"orders", "invoices"},
+		pgxdriver.OnReconnect(func() { log.Println("reconnected: resync") }),
+		pgxdriver.WithBackoff(200*time.Millisecond, 15*time.Second),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = l.Close(ctx) }()
+
+	for {
+		n, err := l.Wait(ctx)
+		if errors.Is(err, pgxdriver.ErrListenerClosed) {
+			return
+		}
+		if err != nil {
+			log.Fatal(err) // ctx ended
+		}
+		log.Println(n.Channel, n.Payload, n.PID)
+	}
 }
 ```
 
@@ -56,14 +74,39 @@ signal. `OnReconnect` runs on the goroutine that called `Wait`, before `Wait`
 returns anything from the new connection, so keep it short.
 
 When the `ctx` given to `Wait` ends, `Wait` returns its error and drops the
-connection, because a read that was interrupted leaves it unusable. The next
+connection, because a read that was interrupted leaves it broken. The next
 `Wait` reconnects and calls `OnReconnect`. Pass a context that lives as long
 as the loop, not a short per-call timeout.
 
 ## Notify
 
 ```go
-err := pgxdriver.Notify(ctx, tx, "orders", `{"id":42}`)
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/driver/pgxdriver"
+)
+
+func main() {
+	ctx := context.Background()
+	pool, err := pgxdriver.NewPool(ctx, "postgres://localhost/app")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pool.Close()
+	db := momo.New(pgxdriver.New(pool))
+
+	err = db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		return pgxdriver.Notify(ctx, tx, "orders", `{"id":42}`)
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 ```
 
 `Notify` runs `SELECT pg_notify($1, $2)` on any `momo.Querier`. Inside a
