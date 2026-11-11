@@ -23,8 +23,9 @@ database-wide function that nothing modeled needs does not appear in the
 models, and the model files no longer change when an unrelated function does.
 
 Triggers and policies moved the same way: they are written on the model of
-their own table instead of the first model. The functions a view calls stay on
-the first model, with the view. After you regenerate, a model file that held
+their own table instead of the first model. A function that a view calls stays
+on the first model, with the view, unless a modeled table also uses it: then it
+goes on that table's model. After you regenerate, a model file that held
 other tables' functions changes (a `.new` file next to a hand-edited one, see
 "Running it again" in [migrations](migrations.md)). A function that was written
 and is no longer used is not in the new init snapshot either; add it to
@@ -58,12 +59,18 @@ introspect:
 ```
 
 A glob matches the table name, or `schema.name` for a table outside the
-current schema (`only: ["app.*"]`), the same way `migrate.exclude` does. An
-empty entry in `only` is an error. `skip` globs match the same way now: a
-schema-qualified `skip` glob (`skip: ["app.legacy_*"]`) that did nothing before,
-because it was compared with the bare table name only, now takes effect. `skip` applies within `only`: a table must
-match `only` and not match `skip`. A skipped table still needs its
-`migrate.exclude` entry. An empty or absent `only` changes nothing.
+current schema (`only: ["app.*"]`), the same way `migrate.exclude` does. A table
+in the current schema (usually `public`) has an empty schema in the model, so
+only its bare name is tried: `only: [public.users]` matches nothing when
+`public` is the current schema; write `only: [users]`. An empty entry in `only`
+is an error. `skip` applies within `only`: a table must match `only` and not
+match `skip`. A skipped table still needs its `migrate.exclude` entry. An empty
+or absent `only` changes nothing.
+
+If `only` is set and no table matches, `--from-db` fails with an error that
+says `introspect.only` matched no table, instead of reporting an empty
+database. When some tables match, a glob that matched none is named in a
+warning, so a typo does not hide in the rest of the list.
 
 What `only` hides, and what it does not:
 
@@ -96,6 +103,15 @@ still fail inspection. `migrate.MatchObject` is the glob rule shared by
 `Exclude`, `OnlyTables` and the inspector. An empty or malformed entry is an
 error that names `migrate.Config.OnlyTables`.
 
+### `skip` globs match `schema.name`
+
+`introspect.skip` globs now match the same way `introspect.only` and
+`migrate.exclude` do: the bare table name, or `schema.name` for a table outside
+the current schema. A schema-qualified `skip` glob (`skip: ["app.legacy_*"]`)
+that did nothing before, because it was compared with the bare table name only,
+now takes effect and drops those tables from the models and the init snapshot.
+Check your `skip` list for such a glob before you regenerate.
+
 ### `introspect.dbdefault: all` tags every column that has a default
 
 By default `--from-db` writes `dbdefault` only on NOT NULL columns whose
@@ -119,7 +135,7 @@ number field can no longer write `false` or `0` through `Model` (use
 NOT NULL column that has a database default: see "Database defaults" in the
 [AI guide](ai-guide.md).
 
-### --from-db singularizes -se plurals correctly
+### `--from-db` singularizes -se plurals correctly
 
 `momo generate --from-db` turns a table name into a model name by trying
 singular candidates and keeping the first one the naming preset pluralizes
@@ -139,7 +155,9 @@ The generated model name changes, on the next regenerate, for these tables:
   Course, Response, License, Base, House, Purpose, Cause, Clause and Use.
 - Tables `sizes`, `prizes`, `mazes`, `caches` and `niches`: Siz, Priz, Maz,
   Cach and Nich become Size, Prize, Maze, Cache and Niche.
-- Table `quizzes`: Quizze (gorm, bun) or Quizz (prisma) becomes Quiz.
+- Table `quizzes`: Quizze (gorm, bun) or Quizz (prisma) becomes Quiz under the
+  `gorm`, `bun` and `prisma` presets; `momo` gives `Quizz` and `ent` gives
+  `Quizze` (see below).
 - Table `waltzes`: Waltz becomes Waltze, because a `-zes` word is read as `-ze`,
   as in `sizes`.
 
@@ -165,7 +183,7 @@ introspect:
 for example `releases: { name: Releas }`. A regenerate renames the struct in
 the generated file, so update the code that uses it, or pin the old name first.
 
-### github.com/google/uuid types need no type tag
+### `github.com/google/uuid` types need no type tag
 
 A model or projection field of `uuid.UUID`, `*uuid.UUID` or `[]uuid.UUID` from
 `github.com/google/uuid` now maps to `uuid` or `uuid[]` on PostgreSQL (`TEXT`
@@ -188,7 +206,7 @@ The mapping is for PostgreSQL and SQLite. On MySQL these types are unsupported,
 as `types.UUID` is, and `introspect.uuid` has no effect there. A named type
 over `uuid.UUID` (`type ID uuid.UUID`) is not mapped; give it `type:uuid`.
 
-### Query and QueryRows read into a plain struct
+### `Query` and `QueryRows` read into a plain struct
 
 `momo.Query[T]` and `momo.QueryRows[T]` now accept any struct, with no
 generated metadata: fields scan by column name (`momo:"column:x"` tag, else the
@@ -206,16 +224,7 @@ has run or after a stale generation, now compiles and takes the reflection path
 instead of failing to compile, so a stale or missing generation shows up only at
 run time. Run `go generate`, and keep a test that calls `Query` for each model.
 
-### Registering Insert.Model needs a real-looking sample
-
-The SQL listed for `InsertQuery[T].Model` through `momo.RegisterQuery` depends on the
-sample model: a zero dbdefault field is left out of the column list. This is
-unchanged behavior, now documented in
-[testing.md](testing.md#listing-the-sql-a-query-registry), together with the
-ways to register a stable shape (`InsertQuery[T].Values`, `InsertQuery[T].Omit`, or a sample set as a real call
-sets it).
-
-### New: `One` on writes with RETURNING
+### New: `One` on writes with `RETURNING`
 
 `InsertQuery.One`, `UpdateQuery.One` and `DeleteQuery.One` run the statement
 and return the single returned row as `T`, so a sqlc `:one` style write no
@@ -230,7 +239,8 @@ changed every matched row; run `One` inside `db.Tx` and roll back on
 `Models` insert is `ErrValidation`, use `Rows`. `AfterLoad` runs before the
 write commits, so an `AfterLoad` error rolls the write back, unlike
 `SelectQuery.One`. MySQL has no `RETURNING` and returns `ErrUnsupported`;
-`UPDATE` and `DELETE` with `RETURNING` are not implemented for MariaDB. This is
+momo has no `RETURNING` form for MariaDB `UPDATE` and `DELETE` (MariaDB itself
+has `DELETE ... RETURNING`), so those return `ErrUnsupported`. This is
 additive; nothing to change.
 
 ## Upgrading to 0.6.0
