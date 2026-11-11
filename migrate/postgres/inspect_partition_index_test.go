@@ -40,7 +40,12 @@ func TestInspectSkipsIndexesAttachedToParentIndex(t *testing.T) {
 	mustExec(t, db.Driver(), `CREATE TABLE ev (id bigint, org_id bigint, created_at timestamptz NOT NULL, PRIMARY KEY (id, created_at)) PARTITION BY RANGE (created_at)`)
 	mustExec(t, db.Driver(), `CREATE TABLE ev_2026 PARTITION OF ev FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')`)
 	mustExec(t, db.Driver(), `CREATE TABLE ev_default PARTITION OF ev DEFAULT`)
+	mustExec(t, db.Driver(), `CREATE TABLE ev_own PARTITION OF ev FOR VALUES FROM ('2027-01-01') TO ('2028-01-01')`)
 	mustExec(t, db.Driver(), `CREATE INDEX ev_org_time ON ev (org_id, created_at DESC)`)
+	// Indexes created directly on a partition are not attached to the parent
+	// index: they stay modeled on the partition.
+	mustExec(t, db.Driver(), `CREATE INDEX ev_own_org ON ev_own (org_id)`)
+	mustExec(t, db.Driver(), `CREATE UNIQUE INDEX ev_own_uniq ON ev_own (org_id, id)`)
 	// The attached partition indexes keep their old names after a rename.
 	mustExec(t, db.Driver(), `ALTER TABLE ev RENAME COLUMN org_id TO company_id`)
 
@@ -56,6 +61,11 @@ func TestInspectSkipsIndexesAttachedToParentIndex(t *testing.T) {
 		}
 	}
 
+	own, _ := got.Table("ev_own")
+	if own == nil || len(own.Indexes) != 2 || own.Indexes[0].Name != "ev_own_org" || own.Indexes[1].Name != "ev_own_uniq" || !own.Indexes[1].Unique {
+		t.Fatalf("ev_own must keep its own indexes and drop the attached one: %+v", own)
+	}
+
 	// Rebuild from the inspected model: no duplicates, and nothing to diff.
 	mustExec(t, db.Driver(), `DROP TABLE ev CASCADE`)
 	applyStatements(t, db, planStatements(t, &schema.Schema{Dialect: "postgres"}, got, migrate.DiffOptions{}))
@@ -63,6 +73,9 @@ func TestInspectSkipsIndexesAttachedToParentIndex(t *testing.T) {
 		if n := countRelIndexes(t, db, p); n != 2 {
 			t.Fatalf("%s has %d indexes after a fresh apply, want 2 (pkey + attached)", p, n)
 		}
+	}
+	if n := countRelIndexes(t, db, "ev_own"); n != 4 {
+		t.Fatalf("ev_own has %d indexes after a fresh apply, want 4 (pkey, attached, own, own unique)", n)
 	}
 	after := inspectNow(t, db)
 	if changes, _, err := migrate.Diff(after, got, migrate.DiffOptions{}); err != nil || len(changes) != 0 {
