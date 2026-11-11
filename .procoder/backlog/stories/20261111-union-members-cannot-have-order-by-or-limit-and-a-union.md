@@ -43,5 +43,7 @@ operation renders in parentheses on PostgreSQL and MySQL and as
 ## Evidence
 
 - Red: ci-agent run 42978133150 on worktree-agent-red-99 (test-only commit cfac359): build failed, `select_union_test.go:84:20: undefined: momo.SelectUnion`, `select_union_integration_test.go:57:21: undefined: momo.SelectUnion` (bench-module, integration jobs).
+- Review round red: ci-agent run 42995440473 on worktree-agent-red-99b (tests only, 86aa6252): unit failed, `select_union_nested_test.go:24: locked member on PostgreSQL = <nil>, want ErrUnsupported`, `:39: outer ORDER BY on qualified column = <nil>, want ErrValidation naming ColumnOf` (also aliased column and expression), and TestUnionMemberWithClauseGrouping failed on all three dialects.
+- Review round green: ci-agent run 42995469572, all jobs success, headSha c557bee8936def2b27c894629c77d54670db4eed. It adds TestSelectUnionRejectsWhatTheDatabaseRejects, TestUnionMemberWithClauseGrouping, TestSelectUnionNestedMember and TestSelectUnionNestedAndWithMembers.
 - Green: ci-agent run 42990525158, all jobs success, headSha 719a813477bccd033e4b9d7202c955318154c0b9. It covers the unit SQL tests per dialect (TestUnionMemberOrderLimitGrouping, TestSelectUnionOuterClauses, TestSelectUnionErrors) and TestSelectUnionMemberLimitsAndOuterClauses on PostgreSQL, MySQL, MariaDB and SQLite.
 - Docs changed: docs/upgrading.md (Upgrading to 0.8.0), docs/ai-guide.md, docs/projections.md, docs/reference.md (from the regenerated-docs artifact of run 42985147732).
