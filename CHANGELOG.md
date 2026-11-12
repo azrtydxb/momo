@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/azrtydxb/momo/compare/v0.7.0...v0.8.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* `ToSnake` keeps a plural initialism together, so an untagged field or model name such as `RoleIDs` maps to `role_ids` instead of `role_i_ds`; pin the old name with a `column:` tag. `--from-db` output changes: more initialisms in capitals in field names, corrected `-ss` and `-us` singulars, `types.Numeric` for `numeric`, a `dbdefault` pointer for a non-zero constant default, and no objects for unmodeled tables. Inspection skips attached partition indexes and reads VIRTUAL generated columns, so a 0.7.0 snapshot can report drift until it is regenerated. `UpdateQuery.From` and `DeleteQuery.Using` are variadic. A positional `types.Date{t}` literal no longer compiles. See docs/upgrading.md, "Upgrading to 0.8.0".
+
+### Features
+
+* sprint 9 fixes for issues [#86](https://github.com/azrtydxb/momo/issues/86) to [#111](https://github.com/azrtydxb/momo/issues/111) ([#112](https://github.com/azrtydxb/momo/issues/112)) ([05f2ae4](https://github.com/azrtydxb/momo/commit/05f2ae46d1ffde64082ab412de83730984090459))
+
 ## [0.7.0](https://github.com/azrtydxb/momo/compare/v0.6.0...v0.7.0) (2026-11-11)
 
 _`momo generate --from-db` can be limited to a list of tables, writes only the functions those tables use, and names `-ses` tables correctly. `Query` and `QueryRows` read into a plain struct, and writes with `RETURNING` get `One`. Upgrading may need code changes: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.7.0/docs/upgrading.md). [Changes since 0.6.0](https://github.com/azrtydxb/momo/compare/v0.6.0...v0.7.0)._

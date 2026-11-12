@@ -1,6 +1,6 @@
 # Momo
 
-> Momo is a Go ORM (github.com/azrtydxb/momo) that generates typed column and relation descriptors from plain Go structs. v0.7.0 is tested against PostgreSQL 16/17 with pgvector through pgx; the other databases are listed below and in docs/capabilities.md. Includes versioned SQL migrations, relations, transactions and vector search. Read the AI guide first. <!-- x-release-please-version -->
+> Momo is a Go ORM (github.com/azrtydxb/momo) that generates typed column and relation descriptors from plain Go structs. v0.8.0 is tested against PostgreSQL 16/17 with pgvector through pgx; the other databases are listed below and in docs/capabilities.md. Includes versioned SQL migrations, relations, transactions and vector search. Read the AI guide first. <!-- x-release-please-version -->
 
 Database status:
 
@@ -18,7 +18,7 @@ A database is usable when a driver package for it exists under `driver/`:
 
 ## Start here
 
-- [Guide for AI coding agents](https://github.com/azrtydxb/momo/blob/main/docs/ai-guide.md): setup, modeling, migrations, queries, relations, vectors, errors, testing, and DO/DON'T rules with every known v0.7.0 pitfall. <!-- x-release-please-version -->
+- [Guide for AI coding agents](https://github.com/azrtydxb/momo/blob/main/docs/ai-guide.md): setup, modeling, migrations, queries, relations, vectors, errors, testing, and DO/DON'T rules with every known v0.8.0 pitfall. <!-- x-release-please-version -->
 - [README](https://github.com/azrtydxb/momo/blob/main/README.md): install, worked example, command line overview.
 
 ## Reference
