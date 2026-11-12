@@ -30,6 +30,7 @@ only nil-safe route was a hand-written branch (or `Insert.Model`).
 
 ## Evidence
 
-- Red: ci-agent run 42993189784 on 1b85f6ba (test-only commit) failed: `nullcolumn_ptr_test.go:21:65: suite.DocBody.EqPtr undefined` and `nullcolumn_ptr_integration_test.go:25:79: suite.DocBody.SetPtr undefined`.
-- Green: ci-agent run 43007735238 and docs run 43007735132, both success on SHA 61ecb6c52bdb7042d3f9c9a675987db6ee1196fa (TestNullColumnPtrSQL for postgres, sqlite and mysql; TestNullColumnPtrRoundTrip in the postgres integration job).
+- Red: ci-agent run 42993189784 on 1b85f6ba (test-only commit, files then named nullcolumn_ptr_*_test.go, renamed to expr_nullptr_test.go and expr_nullptr_integration_test.go) failed: `expr_nullptr_test.go:21:65: suite.DocBody.EqPtr undefined` and `expr_nullptr_integration_test.go:25:79: suite.DocBody.SetPtr undefined`.
+- Red (read-only wrappers): ci-agent run 43161012312 on a92e70e1 (throwaway branch, SetPtr added to NullReadOnlyColumn) failed: `col_permissions_test.go:64: momo.NullReadOnlyColumn[int64] has write method SetPtr` (TestReadOnlyWrappersHaveNoSetMethod).
+- Green: ci-agent run 43176470801 and docs run 43176470784, both success on SHA e840271861e474dd560a57307526d7b4675a99bf, the final code commit (TestNullColumnPtrSQL, TestNullColumnPtrUpsertAndValuesSQL, TestNullColumnPtrSensitiveIsRedacted, TestReadOnlyWrappersHaveNoSetMethod; TestNullColumnPtrRoundTrip in the postgres integration job).
 - Docs changed: docs/ai-guide.md, docs/upgrading.md (0.8.0), docs/reference.md (regenerated from the regenerated-docs artifact of run 43004147929, whose tree matched).
