@@ -22,6 +22,15 @@ type Tags struct {
 	Fk, FkName, Join, OnDelete, OnUpdate, SoftDelete, TimeUnit, IndexName, UniqueName string
 	Sort, Nulls, Method, View                                                         string
 
+	// Generated is the generated option: the expression of a stored generated
+	// column (GENERATED ALWAYS AS (expr) STORED). It needs read_only.
+	Generated string
+
+	// GeneratedVirtual is the virtual option: the generated column is VIRTUAL
+	// (computed on read) instead of STORED. It is valid only together with
+	// generated (or the MomoConfig Generated hooks), which BuildSchema checks.
+	GeneratedVirtual bool
+
 	// IDGen is the idgen option: the name of a Go-side id generator.
 	IDGen string
 
@@ -216,6 +225,10 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return str(&t.Prefix)
 	case "idgen":
 		return str(&t.IDGen)
+	case "generated":
+		return str(&t.Generated)
+	case "virtual":
+		return bare(&t.GeneratedVirtual)
 	case "fk":
 		return str(&t.Fk)
 	case "fk_name":

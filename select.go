@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"iter"
 	"slices"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // Subquery is a query usable as an expression: IN (...), EXISTS (...),
@@ -159,7 +161,8 @@ func (sq SelectQuery[T]) Having(ps ...Predicate) SelectQuery[T] {
 }
 
 // OrderBy appends ORDER BY items. Pass Column.Asc()/Desc(), or a typed
-// expression (e.g. a vector distance), which orders ascending.
+// expression (e.g. a vector distance), which orders ascending. A boolean
+// condition orders through OrderByPredicate, a PredicateOrder.
 func (sq SelectQuery[T]) OrderBy(items ...Orderable) SelectQuery[T] {
 	o := slices.Clip(sq.s.order)
 	for _, it := range items {
@@ -169,7 +172,7 @@ func (sq SelectQuery[T]) OrderBy(items ...Orderable) SelectQuery[T] {
 	return sq
 }
 
-// Orderable is accepted by OrderBy: an Order or any Expression.
+// Orderable is accepted by OrderBy: an Order, a PredicateOrder or any Expression.
 type Orderable interface{ order() Order }
 
 func (o Order) order() Order           { return o }
@@ -185,7 +188,8 @@ func (sq SelectQuery[T]) order() Order { return Order{Expr: sq} }
 // an item, which makes the order total. Ascending keys compare with >,
 // descending keys with <. After needs OrderBy, a value count equal to the
 // number of effective keys (ErrValidation otherwise), and non-nullable keys
-// (ErrUnsupported otherwise).
+// (ErrUnsupported otherwise). A predicate key from OrderByPredicate is an
+// ErrValidation: its value can be NULL and a cursor over it skips or repeats rows.
 func (sq SelectQuery[T]) After(values ...any) SelectQuery[T] {
 	if len(values) == 0 {
 		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("After needs at least one value"))
@@ -249,6 +253,12 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 	for _, o := range s.order {
 		if isAliasOrder(o) {
 			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("keyset pagination cannot order by a select-list alias; order by the expression itself")))
+			return nil
+		}
+	}
+	for _, o := range s.order {
+		if _, ok := o.Expr.(parenExpr); ok {
+			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("keyset pagination cannot order by a predicate (OrderByPredicate); order by a column")))
 			return nil
 		}
 	}
@@ -821,6 +831,21 @@ func RawSubquery(sql string, args ...any) Subquery {
 
 // Union combines queries with UNION (all=false) or UNION ALL (all=true).
 // The result is a Subquery, usable in WithRecursive, FromSubquery and IN.
+//
+// A member that has its own ORDER BY, LIMIT, OFFSET or row lock is rendered in
+// parentheses so the clause binds to the member, not to the whole union, as in
+// the top N of each kind:
+//
+//	(SELECT ... ORDER BY name LIMIT $1) UNION ALL (SELECT ... ORDER BY name LIMIT $1)
+//
+// SQLite rejects parentheses around a compound member, so there such a member
+// renders as SELECT * FROM (member). A member without those clauses renders
+// bare. A member with its own WITH clause is grouped the same way.
+//
+// PostgreSQL rejects a row lock inside a set operation, so a member with
+// ForUpdate or another lock returns ErrUnsupported there; MySQL accepts it in
+// a parenthesised member, and SQLite has no row locks. To run a union directly, with an outer ORDER BY and LIMIT, use
+// SelectUnion.
 func Union(all bool, qs ...Subquery) Subquery { return setOp{all, slices.Clone(qs)} }
 
 type setOp struct {
@@ -829,8 +854,16 @@ type setOp struct {
 }
 
 func (setOp) isSubquery() {}
+
 func (s setOp) AppendSQL(b *Builder) {
 	b.writeByte('(')
+	s.renderMembers(b)
+	b.writeByte(')')
+}
+
+// renderMembers writes the members joined by UNION [ALL], without an outer
+// pair of parentheses.
+func (s setOp) renderMembers(b *Builder) {
 	for i, q := range s.qs {
 		if i > 0 {
 			if s.all {
@@ -839,13 +872,42 @@ func (s setOp) AppendSQL(b *Builder) {
 				b.WriteString(" UNION ")
 			}
 		}
-		// Compound members are rendered without their own parentheses:
-		// SQLite rejects parenthesized SELECTs in compound queries.
-		if r, ok := q.(interface{ render(*Builder) }); ok {
-			r.render(b)
-		} else {
-			q.AppendSQL(b)
-		}
+		writeSetMember(b, q)
 	}
+}
+
+// writeSetMember writes one compound member. A member with its own ORDER BY,
+// LIMIT, OFFSET or lock (or a nested set operation) is grouped: in
+// parentheses, or on SQLite, which rejects them around a compound member, as a
+// derived table. Any other member is written bare.
+func writeSetMember(b *Builder, q Subquery) {
+	if l, ok := q.(interface{ hasLock() bool }); ok && l.hasLock() && b.d.Name == dialect.Postgres {
+		b.unsupported("a row lock inside a UNION member")
+		return
+	}
+	var body func(*Builder)
+	grouped := false
+	switch m := q.(type) {
+	case setOp:
+		body, grouped = m.renderMembers, true
+	case interface{ render(*Builder) }:
+		body = m.render
+		if p, ok := q.(interface{ needsParens() bool }); ok {
+			grouped = p.needsParens()
+		}
+	default:
+		q.AppendSQL(b)
+		return
+	}
+	if !grouped {
+		body(b)
+		return
+	}
+	if b.d.Name == dialect.SQLite {
+		b.WriteString("SELECT * FROM (")
+	} else {
+		b.writeByte('(')
+	}
+	body(b)
 	b.writeByte(')')
 }

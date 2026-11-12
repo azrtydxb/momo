@@ -85,10 +85,25 @@ func TestTagGrammar(t *testing.T) {
 		"collate:C", "default:now()", "check:x > 0", "comment:hello", "enum:e", "table:t",
 		"schema:s", "view:v,materialized", "prefix:p_", "fk:AuthorID", "fk_name:t_a_fkey1", "join:document_tags", "rel:has_many", "polytype:owner_type", "polyvalue:document",
 		"on_delete:cascade", "on_update:cascade", "soft_delete:timestamp", "method:gin",
-		"size:1", "precision:10", "scale:2", "dim:3", "index", "unique", "sort:asc", "nulls:last", "idgen:cuid", "dbdefault",
+		"size:1", "precision:10", "scale:2", "dim:3", "index", "unique", "sort:asc", "nulls:last", "idgen:cuid", "dbdefault", "generated:lower(name)", "generated:lower(name),virtual",
 	} {
 		if _, probs := Parse(raw); len(probs) != 0 {
 			t.Fatalf("%q rejected: %+v", raw, probs)
 		}
+	}
+}
+
+// Catches: virtual parsed as a valued option or ignored, so a model cannot
+// declare a VIRTUAL generated column.
+func TestVirtualTag(t *testing.T) {
+	g, probs := Parse("read_only,generated:lower(name),virtual")
+	if len(probs) != 0 || !g.GeneratedVirtual || g.Generated != "lower(name)" {
+		t.Fatalf("got %+v, problems %+v", g, probs)
+	}
+	if _, probs := Parse("virtual:yes"); len(probs) != 1 || probs[0].Msg != "virtual does not take a value" {
+		t.Fatalf("virtual with a value: problems %+v", probs)
+	}
+	if _, probs := Parse("virtual,virtual"); len(probs) != 1 {
+		t.Fatalf("duplicate virtual: problems %+v", probs)
 	}
 }

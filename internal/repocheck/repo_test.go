@@ -3,6 +3,7 @@
 package repocheck
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -123,6 +124,9 @@ func TestDependabotCoversFixtureModules(t *testing.T) {
 	var mods []string
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // a scratch directory another package's test removed mid-walk
+			}
 			return err
 		}
 		if d.IsDir() {
@@ -183,6 +187,9 @@ func TestRepoFiles(t *testing.T) {
 	}
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // a scratch directory another package's test removed mid-walk
+			}
 			return err
 		}
 		if d.IsDir() {
@@ -199,6 +206,9 @@ func TestRepoFiles(t *testing.T) {
 		}
 		b, err := os.ReadFile(path)
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // removed by another package's test after the listing
+			}
 			return err
 		}
 		if strings.HasPrefix(string(b), gen.HeaderPrefix) {

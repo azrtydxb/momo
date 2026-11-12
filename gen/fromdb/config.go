@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/gen/tags"
+	"github.com/azrtydxb/momo/internal/migratecfg"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -48,6 +49,14 @@ type Config struct {
 	// writes types.UUID, "google" writes github.com/google/uuid's UUID. Both
 	// write no type tag. An introspect.types rule for uuid still wins.
 	UUID string `yaml:"uuid"`
+	// Inverse is false (the default) or true: when true, every belongs_to the
+	// generator derives also gets its inverse on the referenced model, has_one
+	// when the foreign key column is unique and has_many otherwise. It is off by
+	// default because it adds fields to models that may be hand-edited.
+	Inverse bool `yaml:"inverse"`
+	// Relations are per-inverse-relation rules keyed "Model.Field", where Field
+	// is the name the generator derives. They apply only when Inverse is true.
+	Relations map[string]RelationRule `yaml:"relations"`
 	// Columns are per-column rules, applied in order; a later rule wins.
 	Columns []ColumnRule `yaml:"columns"`
 	// Tables are per-table rules keyed by table name.
@@ -67,6 +76,12 @@ type ColumnRule struct {
 	Import string   `yaml:"import"` // import path the expression needs
 	Name   string   `yaml:"name"`   // Go field name
 	Tags   []string `yaml:"tags"`   // momo tag options added to the field, for example updated_at
+}
+
+// RelationRule renames or drops one generated inverse relation.
+type RelationRule struct {
+	Name string `yaml:"name"` // Go field name
+	Skip bool   `yaml:"skip"` // write no inverse relation
 }
 
 // TableRule renames the Go struct of one table and adds tag options to its
@@ -90,13 +105,8 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("introspect.skip[%d]: %q: %w", i, g, err)
 		}
 	}
-	for i, g := range c.Only {
-		if strings.TrimSpace(g) == "" {
-			return fmt.Errorf("introspect.only[%d]: empty glob: it would match no table, so no model would be written", i)
-		}
-		if _, err := path.Match(g, ""); err != nil {
-			return fmt.Errorf("introspect.only[%d]: %q: %w", i, g, err)
-		}
+	if err := migratecfg.ValidateOnly(c.Only); err != nil {
+		return err
 	}
 	if c.Functions != "" && c.Functions != "all" {
 		return fmt.Errorf("introspect.functions: %q must be empty or \"all\"", c.Functions)
@@ -128,6 +138,18 @@ func (c *Config) Validate() error {
 		}
 		if err := checkTags(where+".tags", r.Tags); err != nil {
 			return err
+		}
+	}
+	for k, r := range c.Relations {
+		where := "introspect.relations." + k
+		if m, f, ok := strings.Cut(k, "."); !ok || m == "" || f == "" || strings.Contains(f, ".") {
+			return fmt.Errorf("%s: the key must be Model.Field", where)
+		}
+		if r.Name != "" && !token.IsExported(r.Name) {
+			return fmt.Errorf("%s.name: %q must be an exported Go identifier", where, r.Name)
+		}
+		if r.Name != "" && r.Skip {
+			return fmt.Errorf("%s: name and skip are set together", where)
 		}
 	}
 	for k, r := range c.Tables {

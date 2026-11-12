@@ -282,6 +282,43 @@ func TestGenerateFromDBIdentityAlways(t *testing.T) {
 	}
 }
 
+// TestGenerateFromDBStoredGenerated covers issue 103: a stored generated column
+// is a read_only field that carries its expression, with no warning, and stays
+// in the snapshot. An expression with a comma goes through the companion.
+func TestGenerateFromDBStoredGenerated(t *testing.T) {
+	s := sampleSchema()
+	s.Tables[1].Columns = append(s.Tables[1].Columns,
+		schema.Column{Name: "normalized", Type: "text", Generated: "lower(email)"},
+		schema.Column{Name: "search_vector", Type: "text", Nullable: true, Generated: "concat(email, ' ', full_name)"})
+	res, files := generate(t, s, Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	for _, f := range res.Findings {
+		if f.Severity == SevWarn && strings.Contains(f.Msg, "generated") {
+			t.Errorf("unexpected warning: %v", f)
+		}
+	}
+	mustContain(t, "users", files["users"],
+		`momo:"read_only,generated:lower(email)"`,
+		`c.Generated(&m.SearchVector, "concat(email, ' ', full_name)")`)
+	mustMatch(t, "users", files["users"], `SearchVector\s+\*string\s+`+"`"+`momo:"read_only"`+"`")
+	for _, tb := range res.Snapshot.Tables {
+		if tb.Name != "users" {
+			continue
+		}
+		var got []string
+		for _, c := range tb.Columns {
+			if c.Generated != "" {
+				got = append(got, c.Name+"="+c.Generated)
+			}
+		}
+		if len(got) != 2 {
+			t.Errorf("snapshot generated columns = %v, want normalized and search_vector", got)
+		}
+	}
+}
+
 func TestGenerateFromDBUnmappedColumn(t *testing.T) {
 	s := sampleSchema()
 	s.Tables[1].Columns = append(s.Tables[1].Columns, schema.Column{Name: "ip", Type: "inet"})
@@ -580,5 +617,28 @@ func TestDBDefaultFitsOnlyOnPostgres(t *testing.T) {
 	}
 	if !dbDefaultFits(dialect.Postgres, &col, nil) {
 		t.Error("postgres: dbdefault expected")
+	}
+}
+
+// TestGenerateFromDBVirtualGenerated: a VIRTUAL generated column is written
+// with the virtual tag (or the GeneratedVirtual hook for an expression with a
+// comma), so the regenerated model declares the kind the database has and a
+// later migrate diff is empty.
+func TestGenerateFromDBVirtualGenerated(t *testing.T) {
+	s := sampleSchema()
+	s.Tables[1].Columns = append(s.Tables[1].Columns,
+		schema.Column{Name: "normalized", Type: "text", Generated: "lower(email)", GeneratedVirtual: true},
+		schema.Column{Name: "search_vector", Type: "text", Nullable: true, Generated: "concat(email, ' ', full_name)", GeneratedVirtual: true},
+		schema.Column{Name: "shout", Type: "text", Generated: "upper(email)"})
+	res, files := generate(t, s, Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	mustContain(t, "users", files["users"],
+		`momo:"read_only,generated:lower(email),virtual"`,
+		`c.GeneratedVirtual(&m.SearchVector, "concat(email, ' ', full_name)")`,
+		`momo:"read_only,generated:upper(email)"`)
+	if strings.Contains(files["users"], `c.Generated(&m.SearchVector`) {
+		t.Error("a VIRTUAL expression with a comma must use the GeneratedVirtual hook")
 	}
 }

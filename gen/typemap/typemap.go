@@ -84,6 +84,8 @@ func postgres(t string, tg tags.Tags) string {
 		return "uuid"
 	case "types.Date":
 		return "date"
+	case "types.Numeric":
+		return "numeric"
 	case "vector.Vector":
 		return withDim("vector", tg, true)
 	case "vector.HalfVector":
@@ -117,7 +119,7 @@ func postgresElem(elem string, tg tags.Tags) string {
 }
 
 // sqlite maps to SQLite storage classes. time.Time is stored as RFC3339 text
-// in UTC; JSON, UUID and Date are stored as text. Vector types have no SQLite
+// in UTC; JSON, UUID, Date and Numeric are stored as text. Vector types have no SQLite
 // column type.
 func sqlite(t string, _ tags.Tags) string {
 	switch t {
@@ -125,7 +127,7 @@ func sqlite(t string, _ tags.Tags) string {
 		return "INTEGER"
 	case "float32", "float64":
 		return "REAL"
-	case "string", "time.Time", "types.UUID", googleUUID, "types.Date":
+	case "string", "time.Time", "types.UUID", googleUUID, "types.Date", "types.Numeric":
 		return "TEXT"
 	case "[]byte":
 		return "BLOB"

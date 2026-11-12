@@ -175,6 +175,7 @@ func (in *inspector) table(m masterRow) (*schema.Table, []schema.Enum, error) {
 			col.Collate = d.collate
 			if x.hidden == 2 || x.hidden == 3 {
 				col.Generated = d.generated
+				col.GeneratedVirtual = x.hidden == 2 // 2 is VIRTUAL, 3 is STORED
 			}
 		}
 		t.Columns = append(t.Columns, col)

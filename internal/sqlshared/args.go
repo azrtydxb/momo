@@ -3,19 +3,29 @@
 package sqlshared
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/types"
 )
+
+// CheckArgs is checkArgs for the MySQL adapter, which shares the Date and
+// Numeric rule.
+func CheckArgs(op string, args []any) error { return checkArgs(op, args) }
 
 // checkArgs rejects a float NaN argument (float32, float64 or a non-nil
 // pointer to one). SQLite has no NaN and stores a bound NaN as NULL, which
-// would silently change the data; +Inf and -Inf are legal REAL values. The
-// error names the argument position, never its value.
+// would silently change the data; +Inf and -Inf are legal REAL values. It
+// also rejects a types.Date or types.Numeric that is not finite (infinity,
+// -infinity or NaN): neither SQLite nor MySQL has such a date or number, and
+// the TEXT column would keep the word. A sql.Null of either type is
+// checked when it is Valid. The error names the argument
+// position, never its value.
 func checkArgs(op string, args []any) error {
 	for i, a := range args {
-		var nan bool
+		var nan, special bool
 		switch v := a.(type) {
 		case float64:
 			nan = math.IsNaN(v)
@@ -25,6 +35,26 @@ func checkArgs(op string, args []any) error {
 			nan = v != nil && math.IsNaN(*v)
 		case *float32:
 			nan = v != nil && math.IsNaN(float64(*v))
+		case types.Date:
+			special = !v.IsFinite()
+		case *types.Date:
+			special = v != nil && !v.IsFinite()
+		case types.Numeric:
+			special = !v.IsFinite()
+		case *types.Numeric:
+			special = v != nil && !v.IsFinite()
+		case sql.Null[types.Date]:
+			special = v.Valid && !v.V.IsFinite()
+		case *sql.Null[types.Date]:
+			special = v != nil && v.Valid && !v.V.IsFinite()
+		case sql.Null[types.Numeric]:
+			special = v.Valid && !v.V.IsFinite()
+		case *sql.Null[types.Numeric]:
+			special = v != nil && v.Valid && !v.V.IsFinite()
+		}
+		if special {
+			return &momo.Error{Kind: momo.ErrValidation, Op: op,
+				Err: fmt.Errorf("argument %d is infinity or NaN, which this database cannot store in a Date or Numeric column (PostgreSQL only)", i+1)}
 		}
 		if nan {
 			return &momo.Error{Kind: momo.ErrValidation, Op: op,

@@ -16,6 +16,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/sqlmask"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -143,6 +144,9 @@ func (d *driver) Query(ctx context.Context, q string, args []any) (momo.Rows, er
 	if d.err != nil {
 		return nil, d.err
 	}
+	if err := sqlshared.CheckArgs("select", args); err != nil {
+		return nil, err
+	}
 	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, classify(err, q)
@@ -153,6 +157,9 @@ func (d *driver) Query(ctx context.Context, q string, args []any) (momo.Rows, er
 func (d *driver) Exec(ctx context.Context, q string, args []any) (int64, error) {
 	if d.err != nil {
 		return 0, d.err
+	}
+	if err := sqlshared.CheckArgs("exec", args); err != nil {
+		return 0, err
 	}
 	res, err := d.db.ExecContext(ctx, q, args...)
 	if err != nil {
@@ -316,6 +323,9 @@ func (t *sqlTx) finished() {
 }
 
 func (t *sqlTx) Query(ctx context.Context, q string, args []any) (momo.Rows, error) {
+	if err := sqlshared.CheckArgs("select", args); err != nil {
+		return nil, err
+	}
 	rows, err := t.tx.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, txErr("select", err, q)
@@ -324,6 +334,9 @@ func (t *sqlTx) Query(ctx context.Context, q string, args []any) (momo.Rows, err
 }
 
 func (t *sqlTx) Exec(ctx context.Context, q string, args []any) (int64, error) {
+	if err := sqlshared.CheckArgs("exec", args); err != nil {
+		return 0, err
+	}
 	res, err := t.tx.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, txErr("exec", err, q)
@@ -386,6 +399,9 @@ func (p *pinned) done() {
 }
 
 func (p *pinned) Query(ctx context.Context, q string, args []any) (momo.Rows, error) {
+	if err := sqlshared.CheckArgs("select", args); err != nil {
+		return nil, err
+	}
 	c, err := p.live()
 	if err != nil {
 		return nil, err
@@ -406,6 +422,9 @@ func (p *pinned) Query(ctx context.Context, q string, args []any) (momo.Rows, er
 }
 
 func (p *pinned) Exec(ctx context.Context, q string, args []any) (int64, error) {
+	if err := sqlshared.CheckArgs("exec", args); err != nil {
+		return 0, err
+	}
 	c, err := p.live()
 	if err != nil {
 		return 0, err

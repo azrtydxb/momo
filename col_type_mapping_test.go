@@ -54,6 +54,7 @@ var mappingRows = []mappingRow{
 	{goType: "types.UUID", pg: "uuid", sqlite: "TEXT", src: srcGenerator, mapType: "types.UUID"},
 	{goType: "uuid.UUID (github.com/google/uuid)", pg: "uuid", sqlite: "TEXT", src: srcGenerator, mapType: "uuid.UUID"},
 	{goType: "types.Date", pg: "date", sqlite: "TEXT", src: srcGenerator, mapType: "types.Date"},
+	{goType: "types.Numeric", pg: "numeric", sqlite: "TEXT", src: srcGenerator, mapType: "types.Numeric"},
 	{goType: "types.JSON[T]", pg: "jsonb", sqlite: "TEXT", src: srcGenerator, mapType: "types.JSON[T]"},
 	{goType: "vector.Vector", pg: "vector(N)", sqlite: "unsupported", src: srcGenerator, mapType: "vector.Vector", tags: tags.Tags{Dim: 3}},
 	{goType: "vector.HalfVector", pg: "halfvec(N)", sqlite: "unsupported", src: srcGenerator, mapType: "vector.HalfVector", tags: tags.Tags{Dim: 3}},

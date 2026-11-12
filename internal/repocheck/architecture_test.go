@@ -3,6 +3,7 @@
 package repocheck
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -226,6 +227,9 @@ func TestKnownPackages(t *testing.T) {
 	var dirs []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // a scratch directory another package's test removed mid-walk
+			}
 			return err
 		}
 		name := d.Name()

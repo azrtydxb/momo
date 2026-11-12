@@ -614,35 +614,35 @@ func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
 		}
 		seen[f.Version] = true
 		fileSum := sum.Files[f.Path]
-		st := VersionStatus{Version: f.Version, Name: f.Name, State: "pending", Checksum: fileSum}
+		st := VersionStatus{Version: f.Version, Name: f.Name, State: StatePending, Checksum: fileSum}
 		if r, ok := rows[f.Version]; ok {
 			st.Checksum, st.Error = r.Checksum, r.Error
 			switch {
 			case r.dirty():
-				st.State = "dirty"
+				st.State = StateDirty
 			case r.Status == StatusApplied && r.Checksum == fileSum && !bad[f.Path]:
-				st.State = "applied"
+				st.State = StateApplied
 			case r.Status == StatusApplied:
-				st.State = "mismatch"
+				st.State = StateMismatch
 			}
 		}
-		if st.State == "pending" && bad[f.Path] {
-			st.State = "mismatch"
+		if st.State == StatePending && bad[f.Path] {
+			st.State = StateMismatch
 		}
 		out = append(out, st)
 	}
 	for _, g := range e.opts.goMigrations {
 		seen[g.Version] = true
-		st := VersionStatus{Version: g.Version, Name: g.Name, State: "pending", Checksum: g.identity()}
+		st := VersionStatus{Version: g.Version, Name: g.Name, State: StatePending, Checksum: g.identity()}
 		if r, ok := rows[g.Version]; ok {
 			st.Checksum, st.Error = r.Checksum, r.Error
 			switch {
 			case r.dirty():
-				st.State = "dirty"
+				st.State = StateDirty
 			case r.Status == StatusApplied && r.Checksum == g.identity():
-				st.State = "applied"
+				st.State = StateApplied
 			case r.Status == StatusApplied:
-				st.State = "mismatch"
+				st.State = StateMismatch
 			}
 		}
 		out = append(out, st)
@@ -651,9 +651,9 @@ func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
 		if seen[r.Version] || r.Status == StatusRolledBack {
 			continue
 		}
-		st := VersionStatus{Version: r.Version, Name: r.Name, State: "missing", Checksum: r.Checksum, Error: r.Error}
+		st := VersionStatus{Version: r.Version, Name: r.Name, State: StateMissing, Checksum: r.Checksum, Error: r.Error}
 		if r.dirty() {
-			st.State = "dirty"
+			st.State = StateDirty
 		}
 		out = append(out, st)
 	}

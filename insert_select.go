@@ -21,6 +21,12 @@ type ExprSelect struct {
 	cols  []Expr
 	from  TableSource
 	where []Predicate
+
+	joins   []join
+	groupBy []Expr
+	having  []Predicate
+	order   []Order
+	err     error
 }
 
 // SelectExprs starts a SELECT of the given expressions with no FROM clause.
@@ -46,6 +52,52 @@ func (s ExprSelect) Where(ps ...Predicate) ExprSelect {
 	return s
 }
 
+// Join adds an INNER JOIN, like SelectQuery.Join.
+func (s ExprSelect) Join(src TableSource, on ...Predicate) ExprSelect {
+	return s.addJoin("INNER JOIN", src, on)
+}
+
+// LeftJoin adds a LEFT JOIN, like SelectQuery.LeftJoin.
+func (s ExprSelect) LeftJoin(src TableSource, on ...Predicate) ExprSelect {
+	return s.addJoin("LEFT JOIN", src, on)
+}
+
+// CrossJoin adds a CROSS JOIN, like SelectQuery.CrossJoin.
+func (s ExprSelect) CrossJoin(src TableSource) ExprSelect { return s.addJoin("CROSS JOIN", src, nil) }
+
+func (s ExprSelect) addJoin(kind string, src TableSource, on []Predicate) ExprSelect {
+	s.joins = append(slices.Clip(s.joins), join{kind, src, slices.Clone(on)})
+	return s
+}
+
+// GroupBy adds GROUP BY expressions. An As(...) alias is rejected with
+// ErrValidation, as in SelectQuery.GroupBy. This is what lets a grouped
+// INSERT ... SELECT source have more columns than a typed Select can map.
+func (s ExprSelect) GroupBy(es ...Expr) ExprSelect {
+	for _, e := range es {
+		rejectAliased(&s.err, "GROUP BY", e)
+	}
+	s.groupBy = append(slices.Clip(s.groupBy), es...)
+	return s
+}
+
+// Having adds HAVING predicates combined with AND.
+func (s ExprSelect) Having(ps ...Predicate) ExprSelect {
+	s.having = append(slices.Clip(s.having), ps...)
+	return s
+}
+
+// OrderBy appends ORDER BY items: an Order such as Column.Asc() or any
+// Expression, which orders ascending.
+func (s ExprSelect) OrderBy(items ...Orderable) ExprSelect {
+	o := slices.Clip(s.order)
+	for _, it := range items {
+		o = append(o, it.order())
+	}
+	s.order = o
+	return s
+}
+
 func (ExprSelect) isSubquery() {}
 
 // selectArity reports the number of columns the select yields.
@@ -64,20 +116,30 @@ func (s ExprSelect) render(b *Builder) { s.renderBare(b, false) }
 // renderBare is render; onConflictFollows makes a select with a FROM source
 // and no WHERE end in WHERE true so SQLite does not read ON CONFLICT as a join.
 func (s ExprSelect) renderBare(b *Builder, onConflictFollows bool) {
+	if s.err != nil {
+		b.SetErr(s.err)
+		return
+	}
 	var names []string
-	if q, ok := s.from.(interface{ Qualifier() string }); ok {
-		names = append(names, q.Qualifier())
+	for _, src := range append([]TableSource{s.from}, joinSources(s.joins)...) {
+		if q, ok := src.(interface{ Qualifier() string }); ok {
+			names = append(names, q.Qualifier())
+		}
 	}
 	b.withScope(names, func() {
 		if len(s.cols) == 0 {
 			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("SelectExprs: no expressions")})
 			return
 		}
+		if s.from == nil && (len(s.joins) > 0 || len(s.groupBy) > 0 || len(s.having) > 0) {
+			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("SelectExprs: Join, GroupBy and Having need a From source")})
+			return
+		}
 		b.WriteString("SELECT ")
 		appendList(b, s.cols)
 		// FROM, the soft-delete marker and WHERE are rendered by the same
 		// selectCore methods as a SelectQuery, so they exist once.
-		core := selectCore{from: s.from, where: s.where}
+		core := selectCore{from: s.from, joins: s.joins, where: s.where, groupBy: s.groupBy, having: s.having}
 		where := core.where
 		if core.from != nil {
 			core.writeFrom(b, "")
@@ -87,7 +149,17 @@ func (s ExprSelect) renderBare(b *Builder, onConflictFollows bool) {
 		} else if len(where) > 0 && b.d.Name == dialect.MySQL {
 			b.WriteString(" FROM DUAL")
 		}
+		core.writeJoins(b)
 		core.writeWhere(b, where, onConflictFollows)
+		core.writeGroupHaving(b)
+		for i, o := range s.order {
+			if i == 0 {
+				b.WriteString(" ORDER BY ")
+			} else {
+				b.WriteString(", ")
+			}
+			o.appendSQL(b)
+		}
 	})
 }
 

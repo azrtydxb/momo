@@ -188,21 +188,23 @@ type feature struct {
 var features = []feature{
 	{
 		Name: "JSON operators on `types.JSON[T]`",
-		API:  []string{"jsonop.Text", "jsonop.Path", "jsonop.Contains", "jsonop.HasKey"},
+		API:  []string{"jsonop.Text", "jsonop.Path", "jsonop.Root", "jsonop.Contains", "jsonop.HasKey", "jsonop.DeleteKey", "jsonop.Concat", "jsonop.Set"},
 		PG:   "yes",
-		SQLite: "`jsonop.Text`, `jsonop.Path` and `jsonop.HasKey` run on both SQLite drivers; a JSON boolean extracts as `1` or `0`; " +
-			"`jsonop.Contains` is `ErrUnsupported`, since `json_each` cannot express the recursive `@>` rule",
+		SQLite: "`jsonop.Text`, `jsonop.Path`, `jsonop.Root`, `jsonop.DeleteKey` and `jsonop.HasKey` run on both SQLite drivers; a JSON boolean extracts as `1` or `0`; " +
+			"`jsonop.Contains`, `jsonop.Concat` and `jsonop.Set` are `ErrUnsupported`",
 		MySQL: "SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server",
 	},
 	{
 		Name: "Date and time expressions",
 		API: []string{
 			"timeop.Extract", "timeop.AtTimeZone", "timeop.Trunc", "timeop.Now", "timeop.CurrentTimestamp",
-			"timeop.IntervalOf", "timeop.IntervalExpr", "timeop.AddInterval", "timeop.SubInterval",
+			"timeop.IntervalOf", "timeop.IntervalExpr", "timeop.IntervalDuration", "timeop.AddInterval", "timeop.SubInterval",
+			"timeop.AddDuration", "timeop.SubDuration", "timeop.Sub", "timeop.Age", "timeop.EpochSeconds",
 		},
 		PG: "yes",
 		SQLite: "every `timeop.ExtractField`, `timeop.TruncUnit`, interval and `timeop.Now` run on both SQLite drivers; month arithmetic overflows into the next month " +
-			"(Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); `timeop.Now` is millisecond text; `timeop.AtTimeZone` is PostgreSQL only",
+			"(Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); `timeop.Now` is millisecond text; `timeop.AtTimeZone` is PostgreSQL only; " +
+			"`timeop.IntervalMillisecond` and `timeop.IntervalMicrosecond` keep milliseconds; `timeop.EpochSeconds` of `timeop.Sub` runs through `julianday` (about 0.1 ms), `timeop.Age` is PostgreSQL only",
 		MySQL: "SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server; `timeop.AtTimeZone` is PostgreSQL only",
 	},
 }
@@ -262,6 +264,7 @@ var typeRows = []typeRow{
 	{"types.UUID", "types.UUID", tags.Tags{}},
 	{"uuid.UUID (github.com/google/uuid)", "uuid.UUID", tags.Tags{}},
 	{"types.Date", "types.Date", tags.Tags{}},
+	{"types.Numeric", "types.Numeric", tags.Tags{}},
 	{"types.JSON[T]", "types.JSON[T]", tags.Tags{}},
 	{"vector.Vector", "vector.Vector", tags.Tags{Dim: sentinel}},
 	{"vector.HalfVector", "vector.HalfVector", tags.Tags{Dim: sentinel}},

@@ -13,6 +13,7 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/gen/typemap"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -217,13 +218,16 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 		nullType = true
 	}
 	nullable := ptr || f.Nullable || nullType || tg.Nullable
+	if dbDefaultPointer(f.GoType, tg) {
+		nullable = false // nil means "use the database default": the column is NOT NULL
+	}
 	if tg.NotNull {
 		if nullable {
 			b.diag(f.Pos, fmt.Sprintf("field %s: notnull conflicts with a nullable Go type or the nullable tag", f.GoName))
 		}
 		nullable = false
 	}
-	col := schema.Column{Name: f.Column, Nullable: nullable, Default: tg.Default, Collate: tg.Collate, Comment: tg.Comment}
+	col := schema.Column{Name: f.Column, Nullable: nullable, Default: tg.Default, Generated: tg.Generated, GeneratedVirtual: tg.GeneratedVirtual, Collate: tg.Collate, Comment: tg.Comment}
 	if tg.Identity {
 		col.Identity = "by_default"
 		if tg.IdentityAlways {
@@ -273,9 +277,18 @@ func (b *schemaBuilder) checkDBDefault(m *Model, f *Field) {
 	if conflict != "" {
 		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault conflicts with %s", f.GoName, conflict))
 	}
-	if strings.HasPrefix(f.GoType, "*") || strings.HasPrefix(f.GoType, "sql.Null") || f.Nullable || tg.Nullable {
-		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault on a nullable field: nil means use the database default, so Model can never write NULL (use Values with SetNull); use a non-nullable type", f.GoName))
+	if core, _ := strings.CutPrefix(f.GoType, "*"); strings.HasPrefix(core, "sql.Null") || tg.Nullable {
+		b.diag(f.Pos, fmt.Sprintf("field %s: dbdefault on a nullable field: nil means use the database default, so Model can never write NULL (use Values with SetNull); use a plain type, or a pointer to one on a NOT NULL column", f.GoName))
 	}
+}
+
+// dbDefaultPointer reports whether a dbdefault field is a pointer to a plain
+// type: its column is NOT NULL and the pointer says whether the caller set the
+// value (nil takes the database default; any other value, false and 0
+// included, is written).
+func dbDefaultPointer(goType string, tg tags.Tags) bool {
+	core, ptr := strings.CutPrefix(goType, "*")
+	return tg.DBDefault && ptr && !tg.Nullable && !strings.HasPrefix(core, "sql.Null")
 }
 
 // applyIdentityAlways refuses identity:always for a MySQL dialect, which has
@@ -356,7 +369,7 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 	isString := inner == "string"
 	// A string that carries a decimal (numeric) takes precision and scale like
 	// a float does.
-	isFloat := inner == "float32" || inner == "float64" || strings.HasSuffix(inner, "decimal.Decimal") ||
+	isFloat := inner == "float32" || inner == "float64" || inner == "types.Numeric" || strings.HasSuffix(inner, "decimal.Decimal") ||
 		(isString && tg.Size == 0 && tg.Precision > 0)
 
 	conflict := func(tag string) {
@@ -404,6 +417,10 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		return typ
 	case isString && tg.Size > 0:
 		return fmt.Sprintf("varchar(%d)", tg.Size)
+	case inner == "types.Numeric" && tg.Precision > 0 && b.primary != dialect.Postgres:
+		// numeric(p,s) gives a SQLite or MySQL column NUMERIC affinity or a
+		// fixed scale, which would round the decimal text; keep it TEXT.
+		return "TEXT"
 	case isFloat && tg.Precision > 0:
 		if tg.Scale > 0 {
 			return fmt.Sprintf("numeric(%d,%d)", tg.Precision, tg.Scale)
@@ -644,6 +661,9 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 		t.Checks = append(t.Checks, ck)
 	}
 	b.columnText(m, t, "default", c.Defaults, func(c *schema.Column) *string { return &c.Default })
+	b.columnText(m, t, "generated", c.Generated, func(c *schema.Column) *string { return &c.Generated })
+	b.checkVirtual(m, t, c.GeneratedVirtual)
+	b.checkGenerated(m, t)
 	b.columnText(m, t, "comment", c.Comments, func(c *schema.Column) *string { return &c.Comment })
 	b.columnText(m, t, "collate", c.Collates, func(c *schema.Column) *string { return &c.Collate })
 	for _, e := range c.Enums {
@@ -672,6 +692,80 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 	mergeObjects(b, &b.s.Functions, "function", c.Functions, func(f schema.Function) string { return f.Schema + "." + f.Name + "(" + f.Args + ")" }, m.Pos)
 	mergeObjects(b, &b.s.Triggers, "trigger", c.Triggers, func(g schema.Trigger) string { return g.Schema + "." + g.Table + "." + g.Name }, m.Pos)
 	mergeObjects(b, &b.s.Policies, "policy", c.Policies, func(p schema.Policy) string { return p.Schema + "." + p.Table + "." + p.Name }, m.Pos)
+}
+
+// checkVirtual finishes the virtual generated columns of t: the ones the
+// MomoConfig hook marks join the ones the tag marked, a virtual column with no
+// generated expression is an error, and so is one for a PostgreSQL target,
+// because PostgreSQL has VIRTUAL columns only from version 18 and momo
+// supports 16 and 17.
+func (b *schemaBuilder) checkVirtual(m *Model, t *schema.Table, hook map[string]bool) {
+	for i := range t.Columns {
+		col := &t.Columns[i]
+		if hook[col.Name] {
+			col.GeneratedVirtual = true
+		}
+		if !col.GeneratedVirtual {
+			continue
+		}
+		pos := m.Pos
+		for _, f := range m.Fields {
+			if f.Column == col.Name {
+				pos = f.Pos
+			}
+		}
+		if col.Generated == "" {
+			b.diag(pos, fmt.Sprintf("column %q: virtual is valid only together with generated", col.Name))
+			col.GeneratedVirtual = false
+			continue
+		}
+		if slices.Contains(b.dialects, dialect.Postgres) {
+			b.diag(pos, fmt.Sprintf("column %q: virtual is not supported on %s (VIRTUAL generated columns need PostgreSQL 18; momo supports 16 and 17); drop virtual to make it STORED", col.Name, dialect.Postgres))
+		}
+	}
+}
+
+// checkGenerated reports a stored generated column that is not read_only, so a
+// write would fail in the database, and one that also has a default, identity
+// or serial, which the database refuses.
+func (b *schemaBuilder) checkGenerated(m *Model, t *schema.Table) {
+	for _, col := range t.Columns {
+		if col.Generated == "" {
+			continue
+		}
+		for _, f := range m.Fields {
+			if f.Column != col.Name {
+				continue
+			}
+			conflict := ""
+			switch {
+			case f.Access != ReadOnly:
+				b.diag(f.Pos, fmt.Sprintf("field %s: a generated column must be read_only, because the database refuses a write to it", f.GoName))
+				continue
+			case col.Default != "":
+				conflict = "default"
+			case f.Tags.Identity || col.Identity != "":
+				conflict = "identity"
+			case f.Tags.Serial:
+				conflict = "serial"
+			case f.Tags.DBDefault:
+				conflict = "dbdefault"
+			case f.Tags.Version:
+				conflict = "version"
+			case f.Tags.SoftDelete != "":
+				conflict = "soft_delete"
+			case f.Tags.CreatedAt:
+				conflict = "created_at"
+			case f.Tags.UpdatedAt:
+				conflict = "updated_at"
+			case f.Tags.IDGen != "" || (m.Config != nil && m.Config.IDGens[f.Column] != ""):
+				conflict = "idgen"
+			}
+			if conflict != "" {
+				b.diag(f.Pos, fmt.Sprintf("field %s: generated conflicts with %s", f.GoName, conflict))
+			}
+		}
+	}
 }
 
 // columnText merges one of the companion's per-column texts into the columns

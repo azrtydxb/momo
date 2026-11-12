@@ -4,7 +4,9 @@ package repocheck
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -181,6 +183,9 @@ func scannedDocs(t *testing.T, root string) []string {
 	}
 	err = filepath.WalkDir(filepath.Join(root, "examples"), func(p string, d os.DirEntry, err error) error {
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // a scratch directory another package's test removed mid-walk
+			}
 			return err
 		}
 		if !d.IsDir() && d.Name() == "README.md" {

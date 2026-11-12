@@ -345,3 +345,52 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
 - **#79, registry SQL of `Insert.Model`:** document the value dependence in the
   registry section, and add an explicit column list to the typed insert if it
   has none.
+
+## Carried plan stories (2026-11-11, the user, via AskUserQuestion)
+
+- **048, 049, 054, 090, 099, 101 (plan criteria that no longer match what
+  shipped):** reword each criterion to name the shipped test and design, cite
+  CI evidence, and close the story. The original plan text stays in the
+  story's history.
+- **236, Go-function migrations:** keep them forward-only. Reword the story to
+  the shipped design (`ErrGoMigrationNotReversible`, `TestRefuseGoRollback`)
+  and close it.
+- **098, Windows CI:** the pure-Go SQLite driver running on Windows is enough.
+  Reword the criterion to say so, and close the story.
+- **163 and 243, benchmark results:** stay open until the user commits a
+  `make bench` reference run from dedicated hardware.
+
+## Sprint 9 design decisions (2026-11-11, the user, via AskUserQuestion)
+
+- **#90, an explicit zero for a `dbdefault` column:** allow `dbdefault` on a
+  pointer field of a NOT NULL column. nil uses the database default; a
+  non-nil value is always written, including false and 0.
+- **#106, momovet's trusted-SQL marker:** a `//momovet:ok <reason>` line
+  directive on the call line. The reason is required, and a directive
+  without one is itself reported. No new API type.
+- **#108 (integrator, from the issue's expected behaviour):** objects of a
+  table that is skipped or not modeled are not generated, and there is no
+  opt-in.
+- **#93 (integrator, from PostgreSQL semantics):** a DML body in `With`
+  without `Returning` is accepted, since PostgreSQL allows a data-modifying
+  CTE that nothing reads. The docs are corrected to say `Returning` is needed
+  only when the outer query reads the CTE.
+- **#97 (integrator, from the issue's `COALESCE(col, 'none')` example):**
+  `momo.Lit` accepts strings, rendered with doubled quotes. A string with a
+  backslash or a NUL byte is refused with `ErrValidation` on every dialect.
+  A `time.Time` must be exactly midnight UTC and renders as `DATE '...'`;
+  any other time is refused rather than truncated.
+- **#107/#100 (integrator, from the review):** PID, OID, SSID and GUI join the
+  initialism list, so `PIDs` maps to `pids`, not `p_ids`. The singularizer
+  keeps an `-us` word unless it is a known plural of a `-u` word (menus, emus,
+  gnus, haikus, tutus, kudus), and keeps listed singular `-is`, `-as` and `-ns`
+  words (analysis, alias, news and others). There is no blanket `-as` or `-is`
+  rule, so `areas` still gives `Area`.
+  An upper-case run before a lone `s` is split so that every piece is a
+  list word when that is possible (`HTTPIDs` gives `http_ids`); otherwise the
+  longest list-word suffix wins.
+- **#111 (integrator, from the review):** a Go model declares a VIRTUAL
+  generated column with a `virtual` tag option next to `generated:<expr>`, or
+  with a `MomoConfig` hook, and `--from-db` writes it. A change between STORED
+  and VIRTUAL is refused with "write a custom migration" on MySQL, as on
+  PostgreSQL, and is no longer a DROP and ADD. SQLite rebuilds the table.

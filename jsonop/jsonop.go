@@ -170,6 +170,7 @@ type TextExpr struct {
 	src  momo.Expr
 	keys []string
 	path bool
+	root bool
 }
 
 func newText(src momo.Expr, keys []string, path bool) TextExpr {
@@ -194,6 +195,20 @@ func Path[T any](c momo.Expression[types.JSON[T]], keys ...string) TextExpr {
 	return newText(c, append([]string(nil), keys...), true)
 }
 
+// Root is the text of the JSON value stored at the root of c, for a column
+// that holds a scalar (a number, string or boolean) instead of an object:
+// col #>> '{}' on PostgreSQL, json_extract(col, '$') on SQLite and
+// JSON_UNQUOTE(JSON_EXTRACT(col, '$')) on MySQL. Cast it for a numeric read,
+// for example sqlfn.Cast[int](Root(setting), "int"). It is NULL for SQL NULL and for JSON
+// null. An object or array at the root reads as its JSON text. The path
+// written into the SQL holds no caller data, so it is always an inlined
+// literal, and the extraction groups like a plain key does.
+func Root[T any](c momo.Expression[types.JSON[T]]) TextExpr {
+	e := TextExpr{src: c, path: true, root: true}
+	e.Ops = momo.NewOps[string](e)
+	return e
+}
+
 // Flags returns the sensitive flag of the column operand plus FlagNullable.
 func (e TextExpr) Flags() uint16 { return flags(e.src) }
 
@@ -201,6 +216,10 @@ func (e TextExpr) Flags() uint16 { return flags(e.src) }
 // MySQL fail the build with ErrUnsupported.
 func (e TextExpr) AppendSQL(b *momo.Builder) {
 	name := b.Dialect().Name
+	if e.root {
+		e.appendRoot(b)
+		return
+	}
 	if !keysValid(b, e.keys, name != dialect.Postgres) {
 		return
 	}
@@ -232,6 +251,26 @@ func (e TextExpr) AppendSQL(b *momo.Builder) {
 		b.WriteString("))")
 	default:
 		b.Unsupported("JSON text extraction")
+	}
+}
+
+// appendRoot renders the root extraction of Root.
+func (e TextExpr) appendRoot(b *momo.Builder) {
+	switch b.Dialect().Name {
+	case dialect.Postgres:
+		b.WriteString("(")
+		b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+		b.WriteString(" #>> '{}')")
+	case dialect.SQLite:
+		b.WriteString("CAST(json_extract(")
+		b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+		b.WriteString(", '$') AS TEXT)")
+	case dialect.MySQL:
+		b.WriteString("JSON_UNQUOTE(JSON_EXTRACT(")
+		b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+		b.WriteString(", '$'))")
+	default:
+		b.Unsupported("JSON root extraction")
 	}
 }
 

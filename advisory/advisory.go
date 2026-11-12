@@ -18,6 +18,11 @@
 // connection to the pool. A *momo.DB over a pool, where two statements can
 // reach two connections, fails with momo.ErrValidation, as does a nil one.
 //
+// Shared locks (XactLockShared, LockShared and their Try, Unlock and String
+// forms) are the reader half of a reader/writer pair on one key: any number of
+// sessions hold the shared lock together, and none runs while another session
+// holds the exclusive lock of the same key.
+//
 // The String forms hash the key on the server. By default they use the 32-bit
 // hashtext; pass Hash64 to use the 64-bit hashtextextended(key, seed), the form
 // applications that already call it need to keep their keys.
@@ -212,4 +217,109 @@ func UnlockString(ctx context.Context, db *momo.DB, key string, opts ...Option) 
 		return false, err
 	}
 	return try(ctx, db, "pg_advisory_unlock", key, opts)
+}
+
+// XactLockShared takes the transaction-scoped shared advisory lock for key
+// (pg_advisory_xact_lock_shared) and waits until it is granted. Any number of
+// sessions can hold the shared lock on one key at once; it conflicts only with
+// the exclusive lock of the same key (XactLock), which waits for every shared
+// holder and which every shared taker waits for. Use it for a reader/writer
+// pair on one key: writers take the shared lock and run concurrently, a
+// reconciler takes the exclusive one and runs alone. The lock is released at
+// commit or rollback.
+//
+// A nil tx fails with momo.ErrValidation. Other dialects than PostgreSQL fail
+// with momo.ErrUnsupported.
+func XactLockShared(ctx context.Context, tx *momo.Tx, key int64) error {
+	if err := check(tx); err != nil {
+		return err
+	}
+	return lock(ctx, tx, "pg_advisory_xact_lock_shared", key, nil)
+}
+
+// XactLockSharedString is XactLockShared with a text key, hashed on the server
+// exactly as XactLockString hashes it, so the shared and the exclusive lock of
+// the same string and the same Hash64 option meet on one key.
+func XactLockSharedString(ctx context.Context, tx *momo.Tx, key string, opts ...Option) error {
+	if err := check(tx); err != nil {
+		return err
+	}
+	return lock(ctx, tx, "pg_advisory_xact_lock_shared", key, opts)
+}
+
+// TryXactLockShared is the non-blocking form of XactLockShared: it reports
+// whether the lock was granted instead of waiting for it
+// (pg_try_advisory_xact_lock_shared).
+func TryXactLockShared(ctx context.Context, tx *momo.Tx, key int64) (bool, error) {
+	if err := check(tx); err != nil {
+		return false, err
+	}
+	return try(ctx, tx, "pg_try_advisory_xact_lock_shared", key, nil)
+}
+
+// TryXactLockSharedString is TryXactLockShared with a hashed text key. See
+// XactLockString for the key space.
+func TryXactLockSharedString(ctx context.Context, tx *momo.Tx, key string, opts ...Option) (bool, error) {
+	if err := check(tx); err != nil {
+		return false, err
+	}
+	return try(ctx, tx, "pg_try_advisory_xact_lock_shared", key, opts)
+}
+
+// LockShared takes the session-scoped shared advisory lock for key
+// (pg_advisory_lock_shared) on the pinned connection behind db and waits until
+// it is granted. It is held until UnlockShared or until the connection
+// closes. db must come from DB.OnConn. See XactLockShared for how it meets the
+// exclusive lock.
+func LockShared(ctx context.Context, db *momo.DB, key int64) error {
+	if err := checkSession(db); err != nil {
+		return err
+	}
+	return lock(ctx, db, "pg_advisory_lock_shared", key, nil)
+}
+
+// LockSharedString is LockShared with a text key, hashed on the server; see
+// XactLockString for the hash and Hash64 for the 64-bit form.
+func LockSharedString(ctx context.Context, db *momo.DB, key string, opts ...Option) error {
+	if err := checkSession(db); err != nil {
+		return err
+	}
+	return lock(ctx, db, "pg_advisory_lock_shared", key, opts)
+}
+
+// TryLockShared is the non-blocking form of LockShared
+// (pg_try_advisory_lock_shared): it reports whether the lock was granted.
+func TryLockShared(ctx context.Context, db *momo.DB, key int64) (bool, error) {
+	if err := checkSession(db); err != nil {
+		return false, err
+	}
+	return try(ctx, db, "pg_try_advisory_lock_shared", key, nil)
+}
+
+// TryLockSharedString is TryLockShared with a hashed text key.
+func TryLockSharedString(ctx context.Context, db *momo.DB, key string, opts ...Option) (bool, error) {
+	if err := checkSession(db); err != nil {
+		return false, err
+	}
+	return try(ctx, db, "pg_try_advisory_lock_shared", key, opts)
+}
+
+// UnlockShared releases one hold of the session-scoped shared lock for key
+// (pg_advisory_unlock_shared) and reports whether the session held it. Unlock
+// does not release a shared lock, and UnlockShared does not release an
+// exclusive one: they are counted apart.
+func UnlockShared(ctx context.Context, db *momo.DB, key int64) (bool, error) {
+	if err := checkSession(db); err != nil {
+		return false, err
+	}
+	return try(ctx, db, "pg_advisory_unlock_shared", key, nil)
+}
+
+// UnlockSharedString is UnlockShared for a text key. Pass the same Hash64
+// option the lock used.
+func UnlockSharedString(ctx context.Context, db *momo.DB, key string, opts ...Option) (bool, error) {
+	if err := checkSession(db); err != nil {
+		return false, err
+	}
+	return try(ctx, db, "pg_advisory_unlock_shared", key, opts)
 }

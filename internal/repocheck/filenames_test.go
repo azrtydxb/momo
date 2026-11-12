@@ -3,6 +3,7 @@
 package repocheck
 
 import (
+	"errors"
 	"io/fs"
 	"path/filepath"
 	"sort"
@@ -77,6 +78,9 @@ func TestRepoFileNamesAreWindowsSafe(t *testing.T) {
 	var paths []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // a scratch directory another package's test removed mid-walk
+			}
 			return err
 		}
 		if d.IsDir() {

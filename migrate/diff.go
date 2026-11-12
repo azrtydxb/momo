@@ -447,9 +447,13 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 // the unique index may need a rebuild.
 func columnAttrsDiffer(a, b *schema.Column) bool {
 	return a.Type != b.Type || a.Nullable != b.Nullable || a.Default != b.Default ||
-		a.Identity != b.Identity || a.Generated != b.Generated || a.Enum != b.Enum ||
+		a.Identity != b.Identity || a.Generated != b.Generated || virtualGenerated(a) != virtualGenerated(b) || a.Enum != b.Enum ||
 		a.Collate != b.Collate || a.Comment != b.Comment
 }
+
+// virtualGenerated reports whether c is a VIRTUAL generated column. The flag
+// means nothing without an expression, so it is ignored then.
+func virtualGenerated(c *schema.Column) bool { return c.Generated != "" && c.GeneratedVirtual }
 
 func colByName(t *schema.Table) map[string]*schema.Column {
 	m := make(map[string]*schema.Column, len(t.Columns))
