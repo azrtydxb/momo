@@ -20,6 +20,7 @@
 - [Coming from Bun](latest/guides/bun.md)
 - [Coming from Ent](latest/guides/ent.md)
 - [Read replicas](latest/replicas.md)
+- [LISTEN and NOTIFY](latest/listen-notify.md)
 - [Testing applications](latest/testing.md)
 - [Observability hooks](latest/observability.md)
 - [Interceptors](latest/PRIVACY_RULES.md)
