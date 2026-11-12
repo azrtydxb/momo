@@ -258,6 +258,34 @@ that can be NULL skips or repeats rows. A predicate in the outer `OrderBy` of a
 columns only. `OrderByPredicate(nil)` is `ErrValidation` at build time, and an
 `agg` call's `OrderBy` takes the `Order` from `Asc()` or `Desc()`.
 
+### VIRTUAL generated columns round-trip on MySQL and SQLite
+
+`schema.Column` has a new field, `GeneratedVirtual` (JSON `generated_virtual`),
+that marks a VIRTUAL generated column, and a model declares it with the new
+`virtual` tag option next to `generated:<expr>` (or `c.GeneratedVirtual` in
+`MomoConfig`). `virtual` is valid only with `generated:`, and it is refused for
+a PostgreSQL target with `momo.ErrUnsupported`: PostgreSQL has VIRTUAL columns
+only from version 18, and momo supports 16 and 17. The MySQL inspector reads the
+kind from `EXTRA` (`VIRTUAL GENERATED`) and the SQLite inspector from `hidden` 2
+in `pragma_table_xinfo`, both migrate dialects render `VIRTUAL` for it, and
+`momo generate --from-db` writes the `virtual` tag.
+
+Before, every generated column was read as STORED and rendered `STORED`, so a
+schema baselined from a database with a VIRTUAL column created a STORED one on a
+fresh install while `migrate diff` and drift reported nothing. What to do:
+
+- The database has only STORED generated columns: nothing to change. A snapshot
+  written before the field existed still loads, with its generated columns
+  STORED, so the snapshot `format_version` stays 1.
+- The database has VIRTUAL generated columns: tag the model fields `virtual`
+  (or regenerate the models with `--from-db`) and re-baseline the snapshot.
+  Until then `migrate diff` reports the column as changed.
+
+A change between VIRTUAL and STORED is a change in the diff. SQLite rebuilds the
+table, as it does for any generated-column change. MySQL and PostgreSQL refuse
+it, with the same "write a custom migration" error as any other generated
+change, because neither can switch the kind in place.
+
 ### Indexes attached to a parent partitioned index are no longer inspected
 
 The PostgreSQL inspector used to report an index on a partition that is

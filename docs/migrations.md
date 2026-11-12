@@ -66,6 +66,10 @@ set `migrate.dir.postgres` or `--dir`). `diff` writes exactly three files:
 
 A snapshot without `format_version` is rejected.
 
+Adding the optional column field `generated_virtual` (a VIRTUAL generated
+column on MySQL and SQLite) did not bump `format_version`: a snapshot without
+it loads and its generated columns are STORED.
+
 ### Diff
 
 `momo migrate diff <name>` runs offline (no database, no driver). It loads the
@@ -208,6 +212,17 @@ finding:
   early; they are filtered afterwards as before. `generate --from-db` also
   passes every `introspect.skip` glob to inspection the same way, so a skipped
   table is never read (the globs also match views and functions of that name).
+- A generated column is STORED unless `schema.Column.GeneratedVirtual` is set.
+  MySQL inspection reads the kind from `EXTRA` and SQLite from `hidden` in
+  `pragma_table_xinfo`, and both render `VIRTUAL` when it is set. A kind change
+  is a diff change: SQLite rebuilds the table, and MySQL and PostgreSQL refuse
+  it with "write a custom migration" because neither can switch the kind in
+  place. A model declares the kind with the `virtual` tag option next to
+  `generated:<expr>` (or `Config.GeneratedVirtual`). PostgreSQL has VIRTUAL
+  columns only from version 18, which momo does not support yet: a `virtual`
+  tag for a PostgreSQL target is a generate error, rendering one returns an
+  error matching `momo.ErrUnsupported`, and PostgreSQL inspection still
+  refuses a VIRTUAL column.
 - `migrate.Config.OnlyTables` (set from `introspect.only` by the CLI) is the
   inverse for tables: when it is not empty, a table whose name or `schema.name`
   matches none of its globs is not managed. A table in the current schema is
@@ -1054,6 +1069,9 @@ field with `generated:<expr>` (or a `c.Generated(&m.Field, "<expr>")` call in
 `MomoConfig` when the expression has a comma), so Insert and Update never write
 it, typed Select and Where can use it, and the snapshot and `migrate diff` carry
 the expression.
+A VIRTUAL one also gets the `virtual` tag option (or `c.GeneratedVirtual(&m.Field,
+"<expr>")` when the expression has a comma), so the model declares the kind the
+database has.
 
 ### The introspect section
 

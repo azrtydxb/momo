@@ -227,7 +227,7 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 		}
 		nullable = false
 	}
-	col := schema.Column{Name: f.Column, Nullable: nullable, Default: tg.Default, Generated: tg.Generated, Collate: tg.Collate, Comment: tg.Comment}
+	col := schema.Column{Name: f.Column, Nullable: nullable, Default: tg.Default, Generated: tg.Generated, GeneratedVirtual: tg.GeneratedVirtual, Collate: tg.Collate, Comment: tg.Comment}
 	if tg.Identity {
 		col.Identity = "by_default"
 		if tg.IdentityAlways {
@@ -662,6 +662,7 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 	}
 	b.columnText(m, t, "default", c.Defaults, func(c *schema.Column) *string { return &c.Default })
 	b.columnText(m, t, "generated", c.Generated, func(c *schema.Column) *string { return &c.Generated })
+	b.checkVirtual(m, t, c.GeneratedVirtual)
 	b.checkGenerated(m, t)
 	b.columnText(m, t, "comment", c.Comments, func(c *schema.Column) *string { return &c.Comment })
 	b.columnText(m, t, "collate", c.Collates, func(c *schema.Column) *string { return &c.Collate })
@@ -691,6 +692,37 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 	mergeObjects(b, &b.s.Functions, "function", c.Functions, func(f schema.Function) string { return f.Schema + "." + f.Name + "(" + f.Args + ")" }, m.Pos)
 	mergeObjects(b, &b.s.Triggers, "trigger", c.Triggers, func(g schema.Trigger) string { return g.Schema + "." + g.Table + "." + g.Name }, m.Pos)
 	mergeObjects(b, &b.s.Policies, "policy", c.Policies, func(p schema.Policy) string { return p.Schema + "." + p.Table + "." + p.Name }, m.Pos)
+}
+
+// checkVirtual finishes the virtual generated columns of t: the ones the
+// MomoConfig hook marks join the ones the tag marked, a virtual column with no
+// generated expression is an error, and so is one for a PostgreSQL target,
+// because PostgreSQL has VIRTUAL columns only from version 18 and momo
+// supports 16 and 17.
+func (b *schemaBuilder) checkVirtual(m *Model, t *schema.Table, hook map[string]bool) {
+	for i := range t.Columns {
+		col := &t.Columns[i]
+		if hook[col.Name] {
+			col.GeneratedVirtual = true
+		}
+		if !col.GeneratedVirtual {
+			continue
+		}
+		pos := m.Pos
+		for _, f := range m.Fields {
+			if f.Column == col.Name {
+				pos = f.Pos
+			}
+		}
+		if col.Generated == "" {
+			b.diag(pos, fmt.Sprintf("column %q: virtual is valid only together with generated", col.Name))
+			col.GeneratedVirtual = false
+			continue
+		}
+		if slices.Contains(b.dialects, dialect.Postgres) {
+			b.diag(pos, fmt.Sprintf("column %q: virtual is not supported on %s (VIRTUAL generated columns need PostgreSQL 18; momo supports 16 and 17); drop virtual to make it STORED", col.Name, dialect.Postgres))
+		}
+	}
 }
 
 // checkGenerated reports a stored generated column that is not read_only, so a

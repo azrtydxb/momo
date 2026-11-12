@@ -260,7 +260,11 @@ func columnDef(col schema.Column) (string, error) {
 		if col.Default != "" || col.Identity != "" {
 			return "", fmt.Errorf("column %q: a generated column cannot have a default or an identity", col.Name)
 		}
-		b.WriteString(" GENERATED ALWAYS AS (" + col.Generated + ") STORED")
+		kind := "STORED"
+		if col.GeneratedVirtual {
+			kind = "VIRTUAL"
+		}
+		b.WriteString(" GENERATED ALWAYS AS (" + col.Generated + ") " + kind)
 	}
 	switch {
 	case !col.Nullable:
@@ -409,6 +413,13 @@ func renderAlterColumn(c migrate.Change) ([]migrate.Statement, error) {
 		return nil, err
 	}
 	t := tableRef(c.Schema, c.Table)
+	if before.Generated != "" && after.Generated != "" && before.GeneratedVirtual != after.GeneratedVirtual {
+		// MySQL cannot switch a generated column between VIRTUAL and STORED in
+		// place, and a drop and add would lose its position and fail while an
+		// index uses it, so the change is a custom migration, as it is on
+		// PostgreSQL.
+		return nil, fmt.Errorf("column %q: a generated column cannot change between VIRTUAL and STORED in place; write a custom migration", after.Name)
+	}
 	nt := func(x string) string { return schema.NormalizeType(dialect.MySQL, x) }
 	ne := func(x string) string { return schema.NormalizeExpr(dialect.MySQL, x) }
 	onlyDefault := nt(before.Type) == nt(after.Type) && before.Nullable == after.Nullable && before.Identity == after.Identity &&

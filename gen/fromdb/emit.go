@@ -525,18 +525,26 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 		opts = append(opts, "nullable")
 	}
 	if col.Generated != "" {
-		// A stored generated column is written by the database only.
+		// A generated column is written by the database only.
 		opts = append(opts, "read_only")
 	}
 	for _, e := range []struct{ key, val string }{{"collate", col.Collate}, {"default", col.Default}, {"generated", col.Generated}, {"comment", col.Comment}} {
 		if e.val == "" {
 			continue
 		}
+		virtual := e.key == "generated" && col.GeneratedVirtual
 		if tagSafe(e.val) {
 			opts = append(opts, e.key+":"+e.val)
+			if virtual {
+				opts = append(opts, "virtual")
+			}
 			continue
 		}
-		m.stmts = append(m.stmts, "c."+strings.ToUpper(e.key[:1])+e.key[1:]+"(&m."+name+", "+strconv.Quote(e.val)+")")
+		hook := strings.ToUpper(e.key[:1]) + e.key[1:]
+		if virtual {
+			hook = "GeneratedVirtual" // the hook marks the column VIRTUAL as well
+		}
+		m.stmts = append(m.stmts, "c."+hook+"(&m."+name+", "+strconv.Quote(e.val)+")")
 	}
 	opts = mergeTags(opts, rule.Tags)
 	if dbDefaultFits(g.o.Dialect, col, opts) || (g.o.Config.DBDefault == "all" && dbDefaultAny(g.o.Dialect, col, opts)) {

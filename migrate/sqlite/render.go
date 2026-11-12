@@ -602,7 +602,11 @@ func columnSQL(t *schema.Table, col schema.Column) (string, error) {
 		b.WriteString(" COLLATE " + ident(col.Collate))
 	}
 	if col.Generated != "" {
-		b.WriteString(" GENERATED ALWAYS AS (" + col.Generated + ") STORED")
+		kind := "STORED"
+		if col.GeneratedVirtual {
+			kind = "VIRTUAL"
+		}
+		b.WriteString(" GENERATED ALWAYS AS (" + col.Generated + ") " + kind)
 	} else if col.Default != "" {
 		d, _ := defaultSQL(col.Default)
 		b.WriteString(" DEFAULT " + d)
