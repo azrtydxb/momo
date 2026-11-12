@@ -50,6 +50,23 @@ func TestPermissionWrappersAreNotConvertible(t *testing.T) {
 	}
 }
 
+// TestReadOnlyWrappersHaveNoSetMethod guards the write permission itself: the
+// mirror test above skips every Set* method, so nothing else would catch a
+// write method (SetPtr, SetNull, Set) being added to a read-only wrapper.
+func TestReadOnlyWrappersHaveNoSetMethod(t *testing.T) {
+	for _, typ := range []reflect.Type{
+		reflect.TypeOf(ReadOnlyColumn[int64]{}),
+		reflect.TypeOf(NullReadOnlyColumn[int64]{}),
+	} {
+		pt := reflect.PointerTo(typ)
+		for i := 0; i < pt.NumMethod(); i++ {
+			if name := pt.Method(i).Name; strings.HasPrefix(name, "Set") {
+				t.Errorf("%s has write method %s", typ, name)
+			}
+		}
+	}
+}
+
 // predicateMethods lists the exported methods of the pointer method set that are not write methods.
 func predicateMethods(t reflect.Type) []string {
 	pt := reflect.PointerTo(t)
