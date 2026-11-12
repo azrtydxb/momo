@@ -68,4 +68,9 @@ func KeysetRejectsNullableKey(t *testing.T, db *momo.DB, caps Caps) {
 	if _, err := momo.Select[Document](db).OrderBy(DocTitle.Asc()).After("x", int64(1)).SQL(); err != nil {
 		t.Fatalf("After over a non-nullable key: %v", err)
 	}
+	// A predicate key (its value can be NULL) is refused with ErrValidation.
+	_, err = momo.Select[Document](db).OrderBy(momo.OrderByPredicate(DocBody.Eq("x")).Asc()).After(true, int64(1)).SQL()
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("After over a predicate key: err = %v, want ErrValidation", err)
+	}
 }
