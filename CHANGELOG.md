@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.8.0](https://github.com/azrtydxb/momo/compare/v0.7.0...v0.8.0) (2026-11-12)
+
+_This release fixes 26 issues found while porting Kuvryn Orbit and Owl to 0.7: query builder gaps, `--from-db` output, migration inspection, and new PostgreSQL helpers. Upgrading may need code changes, mostly where generated names change; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.8.0/docs/upgrading.md). [Changes since 0.7.0](https://github.com/azrtydxb/momo/compare/v0.7.0...v0.8.0)._
+
+### ⚠ BREAKING CHANGES
+
+- **naming:** `ToSnake` keeps a plural initialism together, so `RoleIDs` maps to `role_ids` instead of `role_i_ds`. An untagged field or model name with a plural initialism gets a new column or table name. A migration diff drops the old column and adds the new one; pin the old name with a `column:` tag or use `--rename-column` ([#107](https://github.com/azrtydxb/momo/issues/107))
+- **fromdb:** Go field names keep more initialisms in capitals, for example `TeamIds` becomes `TeamIDs` ([#107](https://github.com/azrtydxb/momo/issues/107))
+- **fromdb:** singular table names ending in `-ss`, `-us` and some `-is`, `-as` and `-ns` words keep their last letter, for example `class` gives `Class` instead of `Clas` ([#100](https://github.com/azrtydxb/momo/issues/100))
+- **fromdb:** a PostgreSQL `numeric` column is generated as `types.Numeric` instead of `string` ([#105](https://github.com/azrtydxb/momo/issues/105))
+- **fromdb:** a NOT NULL column with a non-zero constant default is generated as a `dbdefault` pointer field ([#90](https://github.com/azrtydxb/momo/issues/90))
+- **fromdb:** the policies and triggers of a skipped or unmodeled table are no longer written onto the first model ([#108](https://github.com/azrtydxb/momo/issues/108))
+- **migrate:** an index attached to a parent partitioned index is no longer inspected as a partition index, so a 0.7.0 snapshot reports it missing until the models and snapshot are regenerated ([#86](https://github.com/azrtydxb/momo/issues/86))
+- **migrate:** VIRTUAL generated columns are inspected as VIRTUAL on MySQL and SQLite, and a change between STORED and VIRTUAL needs a custom migration on MySQL and PostgreSQL ([#111](https://github.com/azrtydxb/momo/issues/111))
+- **query:** `UpdateQuery.From` and `DeleteQuery.Using` are variadic, which breaks method values and method expressions of them ([#93](https://github.com/azrtydxb/momo/issues/93))
+- **types:** `types.Date` has new fields, so a positional `types.Date{t}` literal no longer compiles ([#105](https://github.com/azrtydxb/momo/issues/105))
+
+### Features
+
+- **query:** `UpdateQuery.From` and `DeleteQuery.Using` take several sources, and `Returning` reads their columns, qualified ([#93](https://github.com/azrtydxb/momo/issues/93))
+- **query:** `momo.SelectUnion` runs a union at the top level, and union members keep their own `ORDER BY` and `LIMIT` ([#99](https://github.com/azrtydxb/momo/issues/99))
+- **query:** `momo.UnnestColumn` unnests an array column with LATERAL, and `agg` aggregates get `Distinct` ([#98](https://github.com/azrtydxb/momo/issues/98))
+- **query:** `momo.OrderByPredicate` orders by a boolean condition ([#110](https://github.com/azrtydxb/momo/issues/110))
+- **query:** `NullColumn.SetPtr` and `EqPtr` take a nil-able value ([#109](https://github.com/azrtydxb/momo/issues/109))
+- **query:** nested `Has` and `HasNo` get one alias per level, and `momo.RelAlias` names an outer level ([#89](https://github.com/azrtydxb/momo/issues/89))
+- **expressions:** row-value comparison with `momo.Row`, `sqlfn.Div` and `sqlfn.NullIf`, `sqlfn.CurrentDate`, infinity literals, the inline literal `momo.Lit`, and joins, `GroupBy`, `Having` and `OrderBy` on `SelectExprs` ([#97](https://github.com/azrtydxb/momo/issues/97))
+- **jsonop:** `Root`, `DeleteKey`, `Concat` and `Set`, plus the `momo.ArrayOf` and `momo.ArraySubquery` array constructors ([#96](https://github.com/azrtydxb/momo/issues/96))
+- **raw:** `momo.RawRows` returns the hooked cursor of a raw statement ([#104](https://github.com/azrtydxb/momo/issues/104))
+- **raw:** `momo.WithNaming` makes a plain-struct `Query[T]` follow the naming preset ([#92](https://github.com/azrtydxb/momo/issues/92))
+- **pgxdriver:** `pgxdriver.Listen` and `pgxdriver.Notify` for LISTEN/NOTIFY on a dedicated connection ([#102](https://github.com/azrtydxb/momo/issues/102))
+- **advisory:** shared advisory locks ([#94](https://github.com/azrtydxb/momo/issues/94))
+- **timeop:** sub-second intervals, `time.Duration` intervals and timestamp difference ([#95](https://github.com/azrtydxb/momo/issues/95))
+- **types:** `types.Date` infinity and the new `types.Numeric` ([#105](https://github.com/azrtydxb/momo/issues/105))
+- **dbdefault:** `dbdefault` on a pointer field of a NOT NULL column writes `false` and `0` ([#90](https://github.com/azrtydxb/momo/issues/90))
+- **fromdb:** `introspect.inverse: true` writes the inverse `has_many` and `has_one` ([#91](https://github.com/azrtydxb/momo/issues/91))
+- **fromdb:** stored generated columns become read-only `generated:` fields, and a `virtual` tag declares a VIRTUAL one ([#103](https://github.com/azrtydxb/momo/issues/103), [#111](https://github.com/azrtydxb/momo/issues/111))
+- **migrate:** `migrate.ConfigFromFile` reads the `migrate` section of `momo.yaml` as library options, and the `State` constants are typed ([#101](https://github.com/azrtydxb/momo/issues/101))
+- **momovet:** a `//momovet:ok <reason>` directive marks a raw-SQL call as vetted ([#106](https://github.com/azrtydxb/momo/issues/106))
+
+### Bug Fixes
+
+- **importer/history:** `Baseline` replays transactional migrations in a transaction and rolls back a failed commit ([#87](https://github.com/azrtydxb/momo/issues/87))
+- **importer/history:** `WriteImport` marks its output with `-- momo:imported`, so `migrate validate` accepts it ([#88](https://github.com/azrtydxb/momo/issues/88))
+
 ## [0.7.0](https://github.com/azrtydxb/momo/compare/v0.6.0...v0.7.0) (2026-11-11)
 
 _`momo generate --from-db` can be limited to a list of tables, writes only the functions those tables use, and names `-ses` tables correctly. `Query` and `QueryRows` read into a plain struct, and writes with `RETURNING` get `One`. Upgrading may need code changes: follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.7.0/docs/upgrading.md). [Changes since 0.6.0](https://github.com/azrtydxb/momo/compare/v0.6.0...v0.7.0)._
