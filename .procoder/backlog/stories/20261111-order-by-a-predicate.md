@@ -43,3 +43,9 @@ returning an `Order` over a parenthesised expression.
   and `gen-check` fail because docs/reference.md lacked 4 identifiers, now taken from
   that run's regenerated-docs artifact.
 - Green: ci-agent run 43000530558 on eb4aa68e3a6441e0d758649580fb1a62d13093a4, all 9 jobs success (unit, integration postgres, mysql84, mysql97, mariadb, lint, apidiff-docs, fuzz-smoke, bench-module). SQLite is covered too: testopen.Each runs the integration test on SQLite inside the postgres CI cell. Docs changed: docs/ai-guide.md, docs/upgrading.md (0.8.0), docs/reference.md (CI artifact of run 42993325388, same code).
+- Fix round (review items): red ci-agent run 43007714910 on worktree-agent-red-110b (73038de):
+  `--- FAIL: TestKeysetRejectsPredicateKey` on unit, postgres, mysql84, mysql97 and mariadb.
+  Fix in fa3a3c4 refuses a predicate key in After with ErrValidation, and adds tests for a predicate in a
+  union outer ORDER BY, NULLS FIRST/LAST on MySQL and a nil predicate. Its only failure was
+  TestReferenceListsEveryIdentifier; docs/reference.md was regenerated from that run's artifact.
+- Final green: ci-agent run 43145179165 on 7e7b6ba42e6c9a9cf366dc8297aa9a7305a2b739, success.
