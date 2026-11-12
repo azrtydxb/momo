@@ -82,7 +82,7 @@ passes straight to a distance builder. Build one by hand with
 
 A vector column offers the predicates, ordering and write methods of a plain
 column (`Eq`, `In`, `IsNull`, `IsNotNull`, `IsDistinctFrom`, `Asc`, `Desc`,
-`Set`, `SetExpr`, `SetDefault`, `SetExcluded`), except the range comparisons
+`Column.Set`, `SetExpr`, `SetDefault`, `SetExcluded`), except the range comparisons
 `Lt`, `Le`, `Gt`, `Ge` and `Between`: vectors have no meaningful total order,
 so use a distance builder to order them. A nullable field (`*vector.Vector`)
 gets `momo.NullVectorColumn`, which adds `SetNull`.
@@ -90,7 +90,7 @@ gets `momo.NullVectorColumn`, which adds `SetNull`.
 A vector field tagged `read_only`, `create_only` or `immutable` gets the
 matching `ReadOnlyVectorColumn`, `CreateOnlyVectorColumn` or
 `ImmutableVectorColumn`. They keep the write restriction of the plain
-permission columns (no `Set` on a read-only column, an insert-only `Set` on
+permission columns (no `Column.Set` on a read-only column, an insert-only `Column.Set` on
 the other two) and every distance builder accepts them, so a read-only
 embedding can be searched.
 

@@ -718,6 +718,25 @@ DoUpdate. `EqPtr(nil)` renders `IS NULL` (never `= NULL`) and `EqPtr(&v)`
 renders `= $n`. This is an addition; nothing existing changes. There is no
 `NePtr`.
 
+### JSON key delete, concat, set, root scalar and array expressions
+
+New, additive API; nothing existing changes.
+
+- `jsonop.Root(col)` reads a scalar stored at the root of a JSON value
+  (`col #>> '{}'`). `jsonop.Path` with no elements is still `ErrValidation`.
+- `jsonop.DeleteKey(expr, key)` is `expr - 'key'` on PostgreSQL, `json_remove`
+  on SQLite and `JSON_REMOVE` on MySQL. Replace a column list written to keep
+  a secret out of a snapshot with it, so a later column is not copied.
+- `jsonop.Concat(a, b)` (`a || b`) and `jsonop.Set(target, path, value)`
+  (`jsonb_set`) are PostgreSQL only; SQLite and MySQL return `ErrUnsupported`
+  instead of a lookalike with other merge rules. `jsonop.DeleteKey`,
+  `jsonop.Concat` and `jsonop.Set` need `jsonb`, not `json`. A SQL NULL value
+  in `jsonop.Set` makes the whole result NULL; wrap an optional value in
+  `COALESCE`.
+- `momo.ArrayOf[T]` (`ARRAY[...]`) and `momo.ArraySubquery[T]`
+  (`ARRAY(...)`) are `Expression[[]T]`, PostgreSQL only. Build the path of
+  `jsonop.Set` with `ArrayOf`, casting bound elements with `sqlfn.Cast`.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use

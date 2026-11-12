@@ -25,7 +25,7 @@ against PostgreSQL in CI.
   [getting started](getting-started.md) and the
   [quickstart example](../examples/quickstart/).
 - Insert with `Insert[T]` and `Model`, read with `Select[T]` and `Where`, change
-  rows with `Update[T]` and `Set`, remove them with `Delete[T]` or `SoftDelete`.
+  rows with `Update[T]` and `UpdateQuery.Set`, remove them with `Delete[T]` or `SoftDelete`.
   See [crud-zero-null](../examples/crud-zero-null/).
 - Run related statements in `db.Tx` and use the `tx` it passes in. See
   [transactions](../examples/transactions/).
