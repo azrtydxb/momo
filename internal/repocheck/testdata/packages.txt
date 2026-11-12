@@ -33,6 +33,7 @@ feature vecsearch
 internal-leaf internal/chunk
 internal-leaf internal/golden
 internal-leaf internal/keyenc
+internal-leaf internal/migratecfg
 internal-leaf internal/dbdefault
 internal-leaf internal/redact
 internal-leaf internal/snake

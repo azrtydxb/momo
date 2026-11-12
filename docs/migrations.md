@@ -223,6 +223,11 @@ finding:
   tag for a PostgreSQL target is a generate error, rendering one returns an
   error matching `momo.ErrUnsupported`, and PostgreSQL inspection still
   refuses a VIRTUAL column.
+
+- An app that migrates in-process can load the same settings from an embedded
+  `momo.yaml` with `migrate.ConfigFromFile(fsys, "momo.yaml")`; it returns the
+  engine options the CLI builds from the `migrate:` section and `introspect.only`
+  (see [upgrading](upgrading.md)).
 - `migrate.Config.OnlyTables` (set from `introspect.only` by the CLI) is the
   inverse for tables: when it is not empty, a table whose name or `schema.name`
   matches none of its globs is not managed. A table in the current schema is

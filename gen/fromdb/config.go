@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/gen/tags"
+	"github.com/azrtydxb/momo/internal/migratecfg"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -104,13 +105,8 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("introspect.skip[%d]: %q: %w", i, g, err)
 		}
 	}
-	for i, g := range c.Only {
-		if strings.TrimSpace(g) == "" {
-			return fmt.Errorf("introspect.only[%d]: empty glob: it would match no table, so no model would be written", i)
-		}
-		if _, err := path.Match(g, ""); err != nil {
-			return fmt.Errorf("introspect.only[%d]: %q: %w", i, g, err)
-		}
+	if err := migratecfg.ValidateOnly(c.Only); err != nil {
+		return err
 	}
 	if c.Functions != "" && c.Functions != "all" {
 		return fmt.Errorf("introspect.functions: %q must be empty or \"all\"", c.Functions)

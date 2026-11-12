@@ -223,6 +223,41 @@ from the field names, so the preset must give the same answer every time. Known
 limit: the preset is not read from `momo.yaml` or from a generated registration
 at run time; pass the same one you set as `naming:` there.
 
+### `migrate.ConfigFromFile` and typed `migrate.State*` constants
+
+A program that migrates in-process no longer has to copy `migrate.exclude`,
+`introspect.only`, `external_extensions` and the timeouts of `momo.yaml` into Go.
+Embed the file and hand it to the engine:
+
+```text
+//go:embed momo.yaml
+var cfgFS embed.FS
+
+opts, err := migrate.ConfigFromFile(cfgFS, "momo.yaml")
+if err != nil { /* ... */ }
+e, err := migrate.NewEngine(driver, migrationsFS, opts...)
+```
+
+It reads `migrate.schemas`, `exclude`, `external_extensions`, `lock_timeout`,
+`statement_timeout` and `introspect.only`, and it reads and checks the file the
+way `momo migrate` does: both use the same decoder and validator. The file
+needs `version: 1`. An empty file, several YAML documents, a key it does not
+know in `migrate`, in `introspect` or at the top level (a typo such as `exclud:`
+or `lock_timout:`), a bad duration, a bad `external_extensions` name and a bad
+`introspect.only` glob are errors. It ignores only the top-level keys that code
+generation alone reads (`packages`, `naming`, `dialects`, `tags`, `types` and
+`plugins`) and the other `introspect` keys. An explicit `lock_timeout: 0s` turns
+the timeout off, as on the command line. It does not set the dialect: the driver
+supplies that, or pass `migrate.WithDialect`.
+
+`migrate.VersionStatus.State` now has typed constants: `migrate.StatePending`,
+`migrate.StateApplied`, `migrate.StateDirty`, `migrate.StateMismatch` and
+`migrate.StateMissing`. They have the
+values `Status` already returned (`"pending"`, `"applied"`, ...), so existing
+string comparisons keep working. The `migrate.Status*` constants (`migrate.StatusApplied`, ...)
+are the statuses of history rows (`migrate.HistoryRow.Status`), a different thing,
+and stay as they are.
+
 ### `--from-db` no longer writes the objects of tables it does not model
 
 `momo generate --from-db` used to put the policies and triggers of a table left

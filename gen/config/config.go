@@ -8,9 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
-	"sort"
-	"time"
 
 	"go.yaml.in/yaml/v3"
 
@@ -18,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/gen/fromdb"
 	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/internal/migratecfg"
 )
 
 // File is the decoded momo.yaml.
@@ -34,17 +32,10 @@ type File struct {
 	Introspect fromdb.Config `yaml:"introspect"`
 }
 
-// MigrateConfig is the single schema of the migrate: section. Its semantics
-// are owned by the migrations plan; this package validates the shape only.
-type MigrateConfig struct {
-	Dir                map[string]string `yaml:"dir"`                 // dialect -> directory
-	URLEnv             map[string]string `yaml:"url_env"`             // dialect -> environment variable name
-	Schemas            []string          `yaml:"schemas"`             // default: the connection's current_schema()
-	LockTimeout        string            `yaml:"lock_timeout"`        // Go duration string, default "5s"
-	StatementTimeout   string            `yaml:"statement_timeout"`   // Go duration string, default unset
-	Exclude            []string          `yaml:"exclude"`             // glob patterns for unmanaged objects
-	ExternalExtensions []string          `yaml:"external_extensions"` // extensions created outside momo: never emitted, never reported
-}
+// MigrateConfig is the single schema of the migrate: section. It lives in
+// internal/migratecfg, which migrate.ConfigFromFile reads too, so the command
+// and the library accept and reject the same files.
+type MigrateConfig = migratecfg.Migrate
 
 // Load reads and validates the momo.yaml at path.
 func Load(path string) (*File, error) {
@@ -85,7 +76,7 @@ func Load(path string) (*File, error) {
 			return nil, fmt.Errorf("%s: dialects: unknown dialect %q", path, d)
 		}
 	}
-	if err := f.Migrate.validate(); err != nil {
+	if err := f.Migrate.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := f.Introspect.Validate(); err != nil {
@@ -104,50 +95,6 @@ func validateTypes(types map[string]string) error {
 		}
 		if !gen.ValidTimeType(v) {
 			return fmt.Errorf("types: %s: %q is not a timestamp type; use timestamp, timestamptz, time or timetz with an optional precision 0-6 and an optional with/without time zone", k, v)
-		}
-	}
-	return nil
-}
-
-// extensionName is the form of an entry in migrate.external_extensions: the
-// name as pg_extension spells it, lower case, with no schema qualifier.
-var extensionName = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
-
-func (m *MigrateConfig) validate() error {
-	seen := map[string]bool{}
-	for _, x := range m.ExternalExtensions {
-		if !extensionName.MatchString(x) {
-			return fmt.Errorf("migrate.external_extensions: %q is not an extension name: use the lower-case name without spaces, quotes or a schema qualifier", x)
-		}
-		if seen[x] {
-			return fmt.Errorf("migrate.external_extensions: %q is listed twice", x)
-		}
-		seen[x] = true
-	}
-	for _, k := range []struct{ key, val string }{
-		{"migrate.lock_timeout", m.LockTimeout},
-		{"migrate.statement_timeout", m.StatementTimeout},
-	} {
-		if k.val == "" {
-			continue
-		}
-		if _, err := time.ParseDuration(k.val); err != nil {
-			return fmt.Errorf("%s: %w", k.key, err)
-		}
-	}
-	for _, s := range []struct {
-		key string
-		m   map[string]string
-	}{{"migrate.dir", m.Dir}, {"migrate.url_env", m.URLEnv}} {
-		keys := make([]string, 0, len(s.m))
-		for k := range s.m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			if dialect.For(dialect.Name(k)) == nil {
-				return fmt.Errorf("%s: unknown dialect %q", s.key, k)
-			}
 		}
 	}
 	return nil
