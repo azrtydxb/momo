@@ -1,0 +1,2370 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.8/vectors/">
+      
+      
+        <link rel="prev" href="../relations/">
+      
+      
+        <link rel="next" href="../fulltext/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Vector search - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#vector-search" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Vector search
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#platforms-and-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platforms and versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not available
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#value-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Value types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#columns-and-distances" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Columns and distances
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#declaring-vector-columns-and-indexes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declaring vector columns and indexes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Declaring vector columns and indexes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#index-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Index limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dimensionless-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dimensionless columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Search settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#exact-versus-approximate-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exact versus approximate search
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filters-iterative-scans-and-result-counts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filters, iterative scans and result counts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hybrid-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verifying-index-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verifying index use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgresql-wire-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL wire format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#differences-between-approaches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Differences between approaches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sqlite-and-sqlite-vec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite and sqlite-vec
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mariadb-and-mysql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MariaDB and MySQL
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#platforms-and-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platforms and versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not available
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#value-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Value types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#columns-and-distances" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Columns and distances
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#declaring-vector-columns-and-indexes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declaring vector columns and indexes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Declaring vector columns and indexes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#index-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Index limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dimensionless-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dimensionless columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Search settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#exact-versus-approximate-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exact versus approximate search
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filters-iterative-scans-and-result-counts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filters, iterative scans and result counts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hybrid-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verifying-index-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verifying index use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgresql-wire-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL wire format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#differences-between-approaches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Differences between approaches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sqlite-and-sqlite-vec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite and sqlite-vec
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mariadb-and-mysql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MariaDB and MySQL
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="vector-search">Vector search<a class="headerlink" href="#vector-search" title="Permanent link">&para;</a></h1>
+<p>Momo supports pgvector on PostgreSQL: value types, typed distance
+expressions, HNSW and IVFFlat index declarations, scoped search settings,
+plan inspection and an opt-in binary wire codec. It also runs the float32 and
+bit vector builders on SQLite with sqlite-vec, and the distance builders on
+MariaDB. This page describes what is built. Every Go snippet below is an <code>Example</code> function in
+<code>col_example_vector_test.go</code> (package <code>momo_test</code>), <code>vector/example_test.go</code>
+(package <code>vector_test</code>) or <code>vecsearch/example_test.go</code> (package
+<code>vecsearch_test</code>), so <code>go test</code> compiles it and checks its printed output.</p>
+<h2 id="platforms-and-versions">Platforms and versions<a class="headerlink" href="#platforms-and-versions" title="Permanent link">&para;</a></h2>
+<ul>
+<li>SQLite with sqlite-vec v0.1.6, through <code>driver/sqlitedriver</code> (cgo, not
+  Windows); see <a href="#sqlite-and-sqlite-vec">SQLite and sqlite-vec</a> below.</li>
+<li>PostgreSQL with the pgvector extension. Integration tests run against
+  pgvector 0.8.7 (<code>pgvector/pgvector:0.8.7-pg17</code> primary, <code>0.8.7-pg16</code> for an
+  older major). The iterative scan settings need pgvector 0.8.0 or newer.</li>
+<li>The <code>vector</code> extension must be installed by a role that may create it.
+  Momo never installs it at connect time. A missing extension surfaces as
+  <code>momo.ErrUnsupported</code> from a migration, with the extension named in the
+  message. A search settings call checks the installed version the same way.</li>
+</ul>
+<h2 id="not-available">Not available<a class="headerlink" href="#not-available" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Hybrid search on SQLite and MySQL: <code>momo.HybridSearch</code> needs PostgreSQL and
+  returns <code>ErrUnsupported</code> elsewhere; see <a href="#hybrid-search">Hybrid search</a>.</li>
+<li>MySQL: the server stores vectors but has no distance function, so a distance
+  query fails with <code>ErrUnsupported</code>; see "MariaDB and MySQL" below. The
+  <code>momo migrate</code> command does not run <code>migrate/mysql</code>, which renders its
+  statements as-is, so a MySQL or MariaDB <code>VECTOR</code> column is created by your
+  own DDL.</li>
+</ul>
+<h2 id="value-types">Value types<a class="headerlink" href="#value-types" title="Permanent link">&para;</a></h2>
+<p>The <code>vector</code> package holds the four Go types. Each has a <code>Validate(dim)</code>
+method, a <code>Value</code> method that produces the pgvector text form and a <code>Scan</code>
+method that reads it back. Validation errors wrap <code>vector.ErrInvalidVector</code>,
+which the root package re-exports as <code>momo.ErrInvalidVector</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Go type</th>
+<th>PostgreSQL type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vector.Vector</code></td>
+<td><code>vector(n)</code></td>
+<td>float32, dimension 1 to 16000 (<code>vector.MaxDim</code>)</td>
+</tr>
+<tr>
+<td><code>vector.HalfVector</code></td>
+<td><code>halfvec(n)</code></td>
+<td>float32 in Go, float16 in storage, each value within 65504</td>
+</tr>
+<tr>
+<td><code>vector.SparseVector</code></td>
+<td><code>sparsevec(n)</code></td>
+<td><code>Dim</code>, zero-based strictly increasing <code>Indices</code>, <code>vector.SparseVector.Values</code></td>
+</tr>
+<tr>
+<td><code>vector.Bits</code></td>
+<td><code>bit(n)</code></td>
+<td><code>Len</code> bits packed most significant bit first, trailing bits 0</td>
+</tr>
+</tbody>
+</table>
+<p>Value rules, enforced before a value reaches the server:</p>
+<ul>
+<li>The length must equal the column dimension declared on the
+  <code>VectorColumn</code>, unless the column is dimensionless (see
+  <a href="#dimensionless-columns">Dimensionless columns</a>).</li>
+<li>NaN and Inf are rejected.</li>
+<li>A halfvec component must satisfy |x| &lt;= 65504.</li>
+<li>A dimension above 16000 is rejected for vector and halfvec.</li>
+<li>A sparsevec has at most 16000 stored elements (<code>vector.MaxSparseNNZ</code>) and a
+  dimension up to 1,000,000,000 (<code>vector.MaxSparseDim</code>). Its text form uses
+  one-based indices, as pgvector does, while <code>Indices</code> is zero-based.</li>
+<li>A bit string has at most <code>vector.MaxBits</code> bits, the PostgreSQL limit.</li>
+</ul>
+<p>The <code>Example</code> functions <code>ExampleVector</code>, <code>ExampleHalfVector</code>,
+<code>ExampleSparseVector</code> and <code>ExampleBits</code> in <code>vector/example_test.go</code> show the
+validation and the text forms:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">v</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">vector</span><span class="p">.</span><span class="nx">Vector</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mf">2.5</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">3</span><span class="p">}</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">v</span><span class="p">.</span><span class="nx">Validate</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span><span class="w">      </span><span class="c1">// &lt;nil&gt;</span>
+<span class="nx">text</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nx">Value</span><span class="p">()</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">text</span><span class="p">)</span><span class="w">               </span><span class="c1">// [1,2.5,-3]</span>
+<span class="nx">errors</span><span class="p">.</span><span class="nx">Is</span><span class="p">(</span><span class="nx">v</span><span class="p">.</span><span class="nx">Validate</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span><span class="w"> </span><span class="nx">vector</span><span class="p">.</span><span class="nx">ErrInvalidVector</span><span class="p">)</span><span class="w"> </span><span class="c1">// true</span>
+</code></pre></div>
+<h2 id="columns-and-distances">Columns and distances<a class="headerlink" href="#columns-and-distances" title="Permanent link">&para;</a></h2>
+<p>A <code>momo.VectorColumn[V]</code> is a typed column descriptor that carries the
+declared dimension. Generated code emits one for every field of a <code>vector</code>
+package type, with the dimension from the <code>dim</code> tag, so <code>document.Embedding</code>
+passes straight to a distance builder. Build one by hand with
+<code>momo.NewVectorColumn</code> only for a table the generator does not cover.</p>
+<p>A vector column offers the predicates, ordering and write methods of a plain
+column (<code>Eq</code>, <code>In</code>, <code>IsNull</code>, <code>IsNotNull</code>, <code>IsDistinctFrom</code>, <code>Asc</code>, <code>Desc</code>,
+<code>Column.Set</code>, <code>SetExpr</code>, <code>SetDefault</code>, <code>SetExcluded</code>), except the range comparisons
+<code>Lt</code>, <code>Le</code>, <code>Gt</code>, <code>Ge</code> and <code>Between</code>: vectors have no meaningful total order,
+so use a distance builder to order them. A nullable field (<code>*vector.Vector</code>)
+gets <code>momo.NullVectorColumn</code>, which adds <code>SetNull</code>.</p>
+<p>A vector field tagged <code>read_only</code>, <code>create_only</code> or <code>immutable</code> gets the
+matching <code>ReadOnlyVectorColumn</code>, <code>CreateOnlyVectorColumn</code> or
+<code>ImmutableVectorColumn</code>. They keep the write restriction of the plain
+permission columns (no <code>Column.Set</code> on a read-only column, an insert-only <code>Column.Set</code> on
+the other two) and every distance builder accepts them, so a read-only
+embedding can be searched.</p>
+<p>The distance builders take a column and a query vector of the same type.
+The builders live in package <code>github.com/azrtydxb/momo/vecop</code>. Each returns a
+<code>vecop.Expr</code>, an <code>Expression[float64]</code> that works in the
+select list, in comparisons and in <code>OrderBy</code>. <code>Asc()</code> orders nearest first
+and is the default; <code>Desc()</code> orders farthest first.</p>
+<table>
+<thead>
+<tr>
+<th>Builder</th>
+<th>pgvector operator</th>
+<th>Column types</th>
+<th>SQLite function</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vecop.L2</code></td>
+<td><code>&lt;-&gt;</code></td>
+<td>vector, halfvec, sparse</td>
+<td><code>vec_distance_l2</code></td>
+</tr>
+<tr>
+<td><code>vecop.InnerProduct</code></td>
+<td><code>&lt;#&gt;</code></td>
+<td>vector, halfvec, sparse</td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>vecop.Cosine</code></td>
+<td><code>&lt;=&gt;</code></td>
+<td>vector, halfvec, sparse</td>
+<td><code>vec_distance_cosine</code></td>
+</tr>
+<tr>
+<td><code>vecop.L1</code></td>
+<td><code>&lt;+&gt;</code></td>
+<td>vector, halfvec, sparse</td>
+<td><code>vec_distance_l1</code></td>
+</tr>
+<tr>
+<td><code>vecop.Hamming</code></td>
+<td><code>&lt;~&gt;</code></td>
+<td>bit</td>
+<td><code>vec_distance_hamming</code></td>
+</tr>
+<tr>
+<td><code>vecop.Jaccard</code></td>
+<td><code>&lt;%&gt;</code></td>
+<td>bit</td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p><code>vecop.InnerProduct</code> is pgvector's <code>&lt;#&gt;</code>, which returns the negative inner
+product so that ascending order means closest. Passing a dense vector to a
+bit builder, or the reverse, does not compile (<code>vecop/testdata/compilefail</code>).</p>
+<p>The query vector is a bound argument. A dimension mismatch (except on a
+dimensionless column, see <a href="#dimensionless-columns">Dimensionless columns</a>),
+NaN or an out-of-range value is a build error wrapping <code>ErrValidation</code>, reported by
+<code>SQL()</code> or by the first execution, never a server error. A metric the dialect
+lacks is a build error wrapping <code>ErrUnsupported</code>. The metrics per dialect come
+from <code>dialect.Dialect.Vector</code>:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="p">[]</span><span class="nx">dialect</span><span class="p">.</span><span class="nx">Name</span><span class="p">{</span><span class="nx">dialect</span><span class="p">.</span><span class="nx">Postgres</span><span class="p">,</span><span class="w"> </span><span class="nx">dialect</span><span class="p">.</span><span class="nx">SQLite</span><span class="p">}</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">caps</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">dialect</span><span class="p">.</span><span class="nx">For</span><span class="p">(</span><span class="nx">name</span><span class="p">).</span><span class="nx">Vector</span>
+<span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">name</span><span class="p">,</span><span class="w"> </span><span class="nx">caps</span><span class="p">.</span><span class="nx">Metrics</span><span class="p">,</span><span class="w"> </span><span class="nx">caps</span><span class="p">.</span><span class="nx">Indexes</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="c1">// postgres [l2 ip cosine l1 hamming jaccard] [hnsw ivfflat]</span>
+<span class="c1">// sqlite [l2 l1 cosine hamming] []</span>
+</code></pre></div>
+<p>A nearest-neighbour query (<code>Example_vectorNearest</code>):</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">example</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">vecop</span><span class="p">.</span><span class="nx">Cosine</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="nx">query</span><span class="p">).</span><span class="nx">Asc</span><span class="p">()).</span>
+<span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">5</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">SQL</span><span class="p">()</span>
+<span class="c1">// ... ORDER BY ("documents"."embedding" &lt;=&gt; $1) ASC LIMIT $2</span>
+</code></pre></div>
+<p>Reading the distance next to a column subset needs a projection struct
+(<code>momo.Projection</code>, <code>From</code> and <code>Columns</code>; see <a href="../projections/">projections</a>).
+A projection read <code>From</code> a table with a soft-delete column gets the same
+automatic filter as a model, so soft-deleted rows stay out of the results.
+Add the predicate yourself only when <code>From</code> is a subquery or a hand-built
+<code>TableRef</code>.</p>
+<h2 id="declaring-vector-columns-and-indexes">Declaring vector columns and indexes<a class="headerlink" href="#declaring-vector-columns-and-indexes" title="Permanent link">&para;</a></h2>
+<p>The generator maps <code>vector.Vector</code>, <code>vector.HalfVector</code>,
+<code>vector.SparseVector</code> and <code>vector.Bits</code> fields to <code>vector</code>, <code>halfvec</code>,
+<code>sparsevec</code> and <code>bit</code> columns. The <code>dim</code> tag sets the dimension, and
+sparsevec and bit require it:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">Embedding</span><span class="w"> </span><span class="nx">vector</span><span class="p">.</span><span class="nx">Vector</span><span class="w"> </span><span class="s">`momo:"dim:1536"`</span>
+</code></pre></div>
+<p>Generation adds <code>CREATE EXTENSION vector</code> to the schema when a vector column
+or index is present. An ANN index needs an operator class, and pgvector's
+hnsw has no default one, so declare vector indexes in <code>MomoConfig</code> (the
+reference model is <code>internal/testmodels/example/models.go</code>):</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">d</span><span class="w"> </span><span class="o">*</span><span class="nx">Document</span><span class="p">)</span><span class="w"> </span><span class="nx">MomoConfig</span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Config</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">Index</span><span class="p">(</span><span class="s">"documents_embedding_hnsw"</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">d</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">).</span>
+<span class="w">        </span><span class="nx">Method</span><span class="p">(</span><span class="s">"hnsw"</span><span class="p">).</span>
+<span class="w">        </span><span class="nx">Opclass</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">d</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="s">"vector_cosine_ops"</span><span class="p">).</span>
+<span class="w">        </span><span class="nx">With</span><span class="p">(</span><span class="s">"m"</span><span class="p">,</span><span class="w"> </span><span class="s">"16"</span><span class="p">).</span>
+<span class="w">        </span><span class="nx">With</span><span class="p">(</span><span class="s">"ef_construction"</span><span class="p">,</span><span class="w"> </span><span class="s">"64"</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The generator and <code>schema.ValidateVectorIndex</code> reject an index that
+pgvector would refuse, before any SQL runs. The error wraps
+<code>schema.ErrInvalidVectorIndex</code>. <code>schema.VectorIndexOpClass(type, metric)</code>
+returns the opclass for a column type and metric (<code>ExampleValidateVectorIndex</code>).</p>
+<h3 id="index-limits">Index limits<a class="headerlink" href="#index-limits" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Types</th>
+<th>Dimension limit</th>
+<th>Opclasses (suffix after <code>&lt;type&gt;_</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>hnsw</td>
+<td>vector, halfvec, sparsevec, bit</td>
+<td>vector 2000, halfvec 4000, bit 64000</td>
+<td>l2, ip, cosine, l1; bit: hamming, jaccard</td>
+</tr>
+<tr>
+<td>ivfflat</td>
+<td>vector, halfvec, bit</td>
+<td>vector 2000, halfvec 4000, bit 64000</td>
+<td>l2, ip, cosine; bit: hamming</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>ivfflat does not support sparsevec.</li>
+<li>hnsw accepts the storage parameters <code>m</code> (2 to 100, default 16) and
+  <code>ef_construction</code> (4 to 1000, default 64, at least 2*m).</li>
+<li>ivfflat requires an explicit <code>lists</code> parameter (1 to 32768). Momo does not
+  rely on the server default of 100.</li>
+<li>An index covers one plain column. Expression parts are rejected.</li>
+<li>The hnsw and ivfflat methods are pgvector's. <code>schema.ValidateVectorIndex</code>
+  rejects them for another dialect, with an error that wraps
+  <code>schema.ErrInvalidVectorIndex</code>. MariaDB has its own <code>VECTOR INDEX</code>; see
+  "MariaDB and MySQL" below.</li>
+</ul>
+<h3 id="dimensionless-columns">Dimensionless columns<a class="headerlink" href="#dimensionless-columns" title="Permanent link">&para;</a></h3>
+<p>A <code>vector.Vector</code> or <code>vector.HalfVector</code> field without a <code>dim</code> tag maps to the
+bare <code>vector</code> or <code>halfvec</code> type. Use it for a store whose embedding size
+depends on the configured model: each row carries its size in a <code>dims</code>
+column, and every search filters on it.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="kd">type</span><span class="w"> </span><span class="nx">KbChunk</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:kb_chunks"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">int64</span><span class="w">         </span><span class="s">`momo:"pk,identity"`</span>
+<span class="w">    </span><span class="nx">Dims</span><span class="w">       </span><span class="kt">int</span>
+<span class="w">    </span><span class="nx">Embedding</span><span class="w">  </span><span class="nx">vector</span><span class="p">.</span><span class="nx">Vector</span><span class="w"> </span><span class="c1">// no dim: any size</span>
+<span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>Generation emits a plain <code>vector</code> column and a <code>momo.VectorColumn</code> whose
+  <code>Dim()</code> is zero. <code>sparsevec</code> and <code>bit</code> still require <code>dim</code>.</li>
+<li>A distance argument of any size is accepted; it is checked against its own
+  size, so NaN, Inf and an empty vector are still rejected. The column never
+  catches a size mismatch itself.</li>
+<li>pgvector fails a distance between two sizes, so filter on <code>dims</code> in the same
+  query: <code>Where(chunk.Dims.Eq(len(q)))</code> plus <code>OrderBy(vecop.Cosine(chunk.Embedding, q).Asc())</code>.</li>
+<li>The migration round-trips the bare type and the next diff is empty.</li>
+<li>Limit: pgvector cannot build an hnsw or ivfflat index on a dimensionless
+  column. Momo refuses one, with an error that wraps
+  <code>schema.ErrInvalidVectorIndex</code> and names the column. Searches run as a
+  sequential scan over the filtered rows. An expression or partial index such
+  as <code>((embedding::vector(1536))) WHERE dims = 1536</code> is not supported yet:
+  expression parts are rejected.</li>
+</ul>
+<h2 id="migrations">Migrations<a class="headerlink" href="#migrations" title="Permanent link">&para;</a></h2>
+<p><code>migrate.Diff</code> emits the extension, the table and the index, and
+<code>migrate/postgres</code> renders them (<code>Example_vectorMigration</code>):</p>
+<div class="highlight"><pre><span></span><code>CREATE EXTENSION IF NOT EXISTS "vector"
+CREATE TABLE "documents" ("id" bigint NOT NULL, "embedding" vector(3) NOT NULL, ...)
+CREATE INDEX "documents_embedding_hnsw" ON "documents" USING "hnsw" ("embedding" "vector_cosine_ops") WITH ("m" = 16, "ef_construction" = 64)
+</code></pre></div>
+<p>Inspection reads method, operator class and storage parameters back, so an
+unchanged vector index produces no diff. A default operator class (ivfflat on
+vector, <code>vector_l2_ops</code>) is stored as empty, which matches inspection.</p>
+<h2 id="search-settings">Search settings<a class="headerlink" href="#search-settings" title="Permanent link">&para;</a></h2>
+<p><code>vecsearch.Settings</code> (package <code>github.com/azrtydxb/momo/vecsearch</code>) applies pgvector settings for one transaction. Zero
+values leave the server default alone. Settings use
+<code>set_config(name, value, true)</code>, so they revert at commit or rollback and
+never reach a pooled connection, which makes them safe behind PgBouncer in
+transaction mode.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Setting</th>
+<th>Range</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HNSWEfSearch</code></td>
+<td><code>hnsw.ef_search</code></td>
+<td>1 to 1000</td>
+</tr>
+<tr>
+<td><code>HNSWIterativeScan</code></td>
+<td><code>hnsw.iterative_scan</code></td>
+<td><code>vecsearch.IterativeOff</code>, <code>vecsearch.IterativeRelaxedOrder</code>, <code>vecsearch.IterativeStrictOrder</code></td>
+</tr>
+<tr>
+<td><code>HNSWMaxScanTuples</code></td>
+<td><code>hnsw.max_scan_tuples</code></td>
+<td>1 to 2147483647 (server default 20000)</td>
+</tr>
+<tr>
+<td><code>HNSWScanMemMultiplier</code></td>
+<td><code>hnsw.scan_mem_multiplier</code></td>
+<td>1 to 1000, float, a multiple of <code>work_mem</code></td>
+</tr>
+<tr>
+<td><code>IVFFlatProbes</code></td>
+<td><code>ivfflat.probes</code></td>
+<td>1 to 32768</td>
+</tr>
+<tr>
+<td><code>IVFFlatIterativeScan</code></td>
+<td><code>ivfflat.iterative_scan</code></td>
+<td><code>vecsearch.IterativeOff</code> or <code>vecsearch.IterativeRelaxedOrder</code></td>
+</tr>
+<tr>
+<td><code>IVFFlatMaxProbes</code></td>
+<td><code>ivfflat.max_probes</code></td>
+<td>1 to 32768</td>
+</tr>
+<tr>
+<td><code>ExactSearch</code></td>
+<td><code>enable_indexscan</code>, <code>enable_bitmapscan</code> set to off</td>
+<td>bool</td>
+</tr>
+</tbody>
+</table>
+<p><code>vecsearch.Settings.Validate</code> reports a value outside its range as
+<code>ErrValidation</code>. The iterative fields, <code>HNSWMaxScanTuples</code>,
+<code>HNSWScanMemMultiplier</code> and <code>IVFFlatMaxProbes</code> need pgvector 0.8.0 or newer. When any of them is set,
+<code>vecsearch.Apply</code> reads <code>pg_extension</code> and returns <code>ErrUnsupported</code> on an older or
+missing extension, instead of letting the server accept an unknown setting as
+a placeholder.</p>
+<p>Use <code>vecsearch.With</code> for a block, or <code>vecsearch.Apply</code> inside a transaction you
+already have (<code>ExampleWith</code>, <code>ExampleApply</code>):</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">settings</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">vecsearch</span><span class="p">.</span><span class="nx">Settings</span><span class="p">{</span>
+<span class="w">    </span><span class="nx">HNSWEfSearch</span><span class="p">:</span><span class="w">      </span><span class="mi">100</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">HNSWIterativeScan</span><span class="p">:</span><span class="w"> </span><span class="nx">vecsearch</span><span class="p">.</span><span class="nx">IterativeRelaxedOrder</span><span class="p">,</span><span class="w"> </span><span class="c1">// needs pgvector 0.8</span>
+<span class="w">    </span><span class="nx">HNSWMaxScanTuples</span><span class="p">:</span><span class="w"> </span><span class="mi">20000</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">HNSWScanMemMultiplier</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="c1">// pgvector 0.8: iterative scan memory, times work_mem</span>
+<span class="p">}</span>
+<span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">vecsearch</span><span class="p">.</span><span class="nx">With</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">tx</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Tx</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">example</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">tx</span><span class="p">).</span>
+<span class="w">        </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">vecop</span><span class="p">.</span><span class="nx">Cosine</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="nx">query</span><span class="p">).</span><span class="nx">Asc</span><span class="p">()).</span>
+<span class="w">        </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">10</span><span class="p">).</span>
+<span class="w">        </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="p">})</span>
+</code></pre></div>
+<p><code>Tx.SetLocal(ctx, name, value)</code> sets any run-time parameter the same way.
+Never pass an untrusted name: the name is bound, but <code>set_config</code> can change
+<code>role</code> or <code>search_path</code>.</p>
+<h3 id="exact-versus-approximate-search">Exact versus approximate search<a class="headerlink" href="#exact-versus-approximate-search" title="Permanent link">&para;</a></h3>
+<p>An index scan is approximate. <code>ExactSearch</code> turns off index and bitmap scans
+for the rest of the transaction, so a vector <code>ORDER BY</code> scans the table and
+returns the exact nearest neighbours. The switches are not specific to
+vector indexes: every other index lookup in that transaction also falls back
+to a sequential scan, so keep the transaction short and dedicated to the
+exact query.</p>
+<h3 id="filters-iterative-scans-and-result-counts">Filters, iterative scans and result counts<a class="headerlink" href="#filters-iterative-scans-and-result-counts" title="Permanent link">&para;</a></h3>
+<p>With a selective filter and <code>LIMIT k</code>, pgvector with iterative scan off scans
+the index once and applies the filter afterwards, so it can return
+fewer than k rows. <code>TestFilteredANNIterativeScan</code> reproduces this: a filter that matches 1%
+of 20000 rows returns fewer than 10 rows with iterative scan off, and 10 with
+<code>relaxed_order</code> and <code>HNSWMaxScanTuples</code> 1,000,000.</p>
+<p><code>relaxed_order</code> keeps scanning until enough rows pass the filter or
+<code>hnsw.max_scan_tuples</code> is reached. The result is therefore still approximate,
+and it can be shorter than k when the filter matches fewer rows than that
+bound allows. <code>strict_order</code> (hnsw only) keeps exact distance order while it
+scans.</p>
+<h2 id="hybrid-search">Hybrid search<a class="headerlink" href="#hybrid-search" title="Permanent link">&para;</a></h2>
+<p><code>momo.HybridSearch</code> fuses a PostgreSQL full-text leg and a cosine-distance
+vector leg with reciprocal rank fusion (RRF) in one statement. Each leg picks
+its own best <code>TextCandidates</code> and <code>VectorCandidates</code> rows (default 100, at most
+1000), ranks them, and a row scores the sum of <code>1/(RRFK+rank)</code> over the legs it
+appears in (<code>RRFK</code> defaults to 60 and must be at least 1). The text leg ranks
+with <code>ts_rank_cd</code> over <code>websearch_to_tsquery</code>; the vector leg uses <code>&lt;=&gt;</code>.
+Ties break on the primary key ascending, in each leg's ranking and in the final
+order, so the result does not depend on insertion order. The vector leg orders
+by distance alone so an hnsw or ivfflat index can serve it; when rows tie on
+distance exactly at the candidate cut-off, which of them become candidates is
+not defined.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">hits</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">HybridSearch</span><span class="p">[</span><span class="nx">Article</span><span class="p">](</span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">HybridSpec</span><span class="p">{</span>
+<span class="w">    </span><span class="nx">Text</span><span class="p">:</span><span class="w">        </span><span class="nx">articleBody</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">TextConfig</span><span class="p">:</span><span class="w">  </span><span class="s">"english"</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">Query</span><span class="p">:</span><span class="w">       </span><span class="nx">userInput</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">Vector</span><span class="p">:</span><span class="w">      </span><span class="nx">articleEmb</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">QueryVector</span><span class="p">:</span><span class="w"> </span><span class="nx">queryEmbedding</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">Limit</span><span class="p">:</span><span class="w">       </span><span class="mi">10</span><span class="p">,</span>
+<span class="p">}).</span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+<span class="c1">// each hit has .Row (the model) and .Score</span>
+</code></pre></div>
+<p>The model needs a single-column primary key, <code>Query</code> must not be empty (use a
+plain vector query for that), and <code>HybridSpec.Text</code> and <code>HybridSpec.Vector</code> must be columns of the
+model's table; otherwise the call returns <code>ErrValidation</code>. Soft-deleted rows are
+left out. The vector leg takes the dense <code>vector</code> type only (not <code>halfvec</code>,
+<code>sparsevec</code> or <code>bit</code>) and skips rows with a NULL embedding and rows whose
+cosine distance is NaN (zero vectors).
+<code>HybridQuery.SQL</code> returns the statement and its arguments without running it.
+The vector leg can use an hnsw or ivfflat index on the vector column with
+<code>vector_cosine_ops</code>. The text leg binds the configuration as a parameter, and a
+GIN expression index on <code>to_tsvector('english', body)</code> needs a constant
+configuration in its definition, so PostgreSQL may not match it to a bound
+<code>regconfig</code>; check the plan with EXPLAIN. Without an
+index a leg scans the table, so the candidate counts bound the work after the
+scan, not the scan itself. For
+a different mix of signals, write your own score as shown in
+<a href="../fulltext/#hybrid-ranking-vector-plus-text">full-text search</a>.</p>
+<h2 id="verifying-index-use">Verifying index use<a class="headerlink" href="#verifying-index-use" title="Permanent link">&para;</a></h2>
+<p><code>SelectQuery.Explain(ctx)</code> runs <code>EXPLAIN</code> (never <code>EXPLAIN ANALYZE</code>), binds
+the parameters and returns the plan text. It does not execute the query. Run
+it inside the transaction whose settings you want to see
+(<code>ExampleSelectQuery_Explain</code>):</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">plan</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">example</span><span class="p">.</span><span class="nx">Document</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">vecop</span><span class="p">.</span><span class="nx">L2</span><span class="p">(</span><span class="nx">document</span><span class="p">.</span><span class="nx">Embedding</span><span class="p">,</span><span class="w"> </span><span class="nx">query</span><span class="p">).</span><span class="nx">Asc</span><span class="p">()).</span>
+<span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">10</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">Explain</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+<span class="c1">// look for "Index Scan using documents_embedding_hnsw"</span>
+</code></pre></div>
+<p><code>TestVectorIndexUsed</code> and <code>TestExactSearchBypassesVectorIndex</code> use this
+pattern to assert that the index is used, and that <code>ExactSearch</code> stops using
+it. Expect a sequential scan on a small table, because the planner prefers it
+below a few thousand rows. Explain returns <code>ErrUnsupported</code> on MySQL and MariaDB.</p>
+<h2 id="postgresql-wire-format">PostgreSQL wire format<a class="headerlink" href="#postgresql-wire-format" title="Permanent link">&para;</a></h2>
+<p>By default vector values travel as text. The binary codec is opt-in and lives
+in <code>driver/pgxdriver</code>:</p>
+<ul>
+<li><code>pgxdriver.ConfigureVectors(cfg)</code> installs an <code>AfterConnect</code> hook that
+  looks up the OIDs of <code>vector</code>, <code>halfvec</code> and <code>sparsevec</code> and registers
+  codecs for them and for <code>bit</code>. Call it before <code>pgxpool.NewWithConfig</code>. The
+  lookup runs once per connection: a connection opened before
+  <code>CREATE EXTENSION vector</code> stays on text until the pool recycles it.</li>
+<li><code>pgxdriver.WithVectorFormat(pgxdriver.VectorBinary)</code> asks for binary
+  parameters. It needs a describe-based exec mode (<code>WithExecMode</code> with
+  <code>pgx.QueryExecModeDescribeExec</code>, <code>CacheStatement</code> or <code>CacheDescribe</code>);
+  pgx's default <code>QueryExecModeExec</code> always sends text, with identical
+  results.</li>
+<li><code>COPY</code> always uses binary and so needs <code>ConfigureVectors</code>.</li>
+<li>Decoders bound every length they read before they allocate.</li>
+</ul>
+<p><code>ExampleConfigureVectors</code> shows the setup:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">cfg</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxpool</span><span class="p">.</span><span class="nx">ParseConfig</span><span class="p">(</span><span class="s">"postgres://localhost/app"</span><span class="p">)</span>
+<span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">ConfigureVectors</span><span class="p">(</span><span class="nx">cfg</span><span class="p">)</span>
+<span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxpool</span><span class="p">.</span><span class="nx">NewWithConfig</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">cfg</span><span class="p">)</span>
+<span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">WithVectorFormat</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">VectorBinary</span><span class="p">)))</span>
+</code></pre></div>
+<h2 id="differences-between-approaches">Differences between approaches<a class="headerlink" href="#differences-between-approaches" title="Permanent link">&para;</a></h2>
+<ul>
+<li>pgvector exact search (<code>ExactSearch</code>) reads every row and returns the true
+  nearest neighbours. Index search (hnsw, ivfflat) is approximate and tuned
+  with <code>hnsw.ef_search</code>, <code>ivfflat.probes</code> and the iterative settings.</li>
+<li>sqlite-vec is brute-force KNN with no ANN index. A request for an ANN index
+  on SQLite is <code>ErrUnsupported</code>. SQLite supports float32 vectors (l2, l1, cosine) and
+  bit vectors (hamming) only; halfvec and sparsevec arguments, inner product
+  and Jaccard return <code>ErrUnsupported</code> at build time. SQLite bit
+  vectors keep only the packed bytes, so the declared column length is
+  authoritative for <code>Len</code>. See <a href="#sqlite-and-sqlite-vec">SQLite and sqlite-vec</a>.</li>
+<li><code>vecsearch.Apply</code> on SQLite: <code>ExactSearch</code> alone is a no-op, every search is
+  already exact, and any other field is <code>ErrUnsupported</code>. On MySQL and MariaDB
+  every non-zero setting, <code>ExactSearch</code> included, is <code>ErrUnsupported</code>, because
+  <code>Tx.SetLocal</code> has no transaction-scoped setting there.</li>
+<li>MariaDB VECTOR INDEX is approximate; see "MariaDB and MySQL" below.</li>
+</ul>
+<h2 id="sqlite-and-sqlite-vec">SQLite and sqlite-vec<a class="headerlink" href="#sqlite-and-sqlite-vec" title="Permanent link">&para;</a></h2>
+<p><code>driver/sqlitedriver</code> links sqlite-vec v0.1.6 (the version <code>vec_version()</code>
+reports; <code>sqlitedriver.SQLiteVecVersion</code> is the release it is tested with, and
+<code>Open</code> fails with <code>ErrUnsupported</code> on another minor or major version but accepts
+a later patch release of the same minor). The same typed builders that serve pgvector
+render sqlite-vec's scalar functions, and the integration tests run them
+against a real SQLite database: <code>col_vector_sqlite_integration_test.go</code> in the root
+package and <code>TestSQLiteVectorParity</code> in <code>driver/sqlitedriver</code>. It needs cgo and
+does not build on Windows. The SQLite migration dialect (<code>migrate/sqlite</code>) is library only, and the
+generator refuses vector fields on SQLite, so you create the table with your
+own DDL.</p>
+<p><strong>Columns.</strong> A vector is a plain <code>BLOB</code> column; sqlite-vec has no declared
+dimension, so the length is guarded by a <code>CHECK</code>. <code>momo.SQLiteVectorType</code> and
+<code>momo.SQLiteBitsType</code> return the definition to put after the column name:
+<code>BLOB CHECK (length("emb") = 12)</code> for three float32 elements and
+<code>BLOB CHECK (length("bits") = 1)</code> for eight bits. A vector of the wrong size
+is then refused by the database as <code>ErrCheckViolation</code>. A dimensionless column
+is <code>ErrUnsupported</code>, because there is no length to check.</p>
+<p><strong>Values.</strong> <code>vector.Vector</code> is stored as a little-endian float32 blob and read
+back from one, and <code>vector.Bits</code> as its packed bytes (most significant bit first, as in
+pgvector: bit 0 is the top bit of byte 0). Both are validated before
+they are bound (NaN, Inf, an empty vector, a bad bit length are
+<code>ErrInvalidVector</code>), because a blob has no text form that would reject them
+later. A <code>*vector.Vector</code> or <code>*vector.Bits</code> field is nullable: nil binds <code>NULL</code>.
+<code>vector.HalfVector</code> and <code>vector.SparseVector</code> have no sqlite-vec type, so binding one, or
+searching with one, is <code>ErrUnsupported</code> when the query is built. A bit vector
+read from SQLite has a <code>Len</code> of 8 times its byte count, so the column length is
+the authority for a length that is not a multiple of 8.</p>
+<p><strong>Metrics.</strong> These are exactly the functions v0.1.6 registers:</p>
+<table>
+<thead>
+<tr>
+<th>Builder</th>
+<th>SQLite function</th>
+<th>Column type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vecop.L2</code></td>
+<td><code>vec_distance_l2</code></td>
+<td><code>vector.Vector</code></td>
+</tr>
+<tr>
+<td><code>vecop.L1</code></td>
+<td><code>vec_distance_l1</code></td>
+<td><code>vector.Vector</code></td>
+</tr>
+<tr>
+<td><code>vecop.Cosine</code></td>
+<td><code>vec_distance_cosine</code></td>
+<td><code>vector.Vector</code></td>
+</tr>
+<tr>
+<td><code>vecop.Hamming</code></td>
+<td><code>vec_distance_hamming(vec_bit(column), vec_bit(argument))</code></td>
+<td><code>vector.Bits</code></td>
+</tr>
+<tr>
+<td><code>vecop.InnerProduct</code></td>
+<td>none: <code>ErrUnsupported</code> at build time</td>
+<td></td>
+</tr>
+<tr>
+<td><code>vecop.Jaccard</code></td>
+<td>none: <code>ErrUnsupported</code> at build time</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The query vector is a bound argument. When the column is sensitive, it shows
+as <code>momo.RedactedArg</code> in hook events, on a query and on an insert, while the
+database gets the real blob. Distances work in the select list, in a
+comparison and in <code>OrderBy</code> (<code>Asc</code> nearest first, <code>Desc</code> farthest first).
+Results are held to the plain-Go reference in <code>internal/vectorparity</code>: the
+top-10 ids of cosine, L2 and L1 search over 300 vectors equal the reference
+exactly. The reference is the one pgvector exact search and MariaDB are held to
+for cosine, and when a PostgreSQL URL is set <code>TestSQLiteVectorParity</code> also loads
+the same vectors into pgvector and requires the same ids for cosine, L2 and L1.</p>
+<p><strong>Indexes.</strong> sqlite-vec compares every row, so it has no approximate index and
+<code>dialect.For(dialect.SQLite).Vector.Indexes</code> is empty, and
+<code>schema.ValidateVectorIndex</code> rejects an index for SQLite with
+<code>schema.ErrInvalidVectorIndex</code>. An internal check turns a request for any index
+method on a dialect that lists none into <code>ErrUnsupported</code>; it becomes public
+when a SQLite migration dialect needs it. SQLite itself does not parse an index method, so
+nothing is accepted silently. <code>ExactSearch</code> in <code>vecsearch.Settings</code> is a no-op (every
+search is exact) and any other setting is <code>ErrUnsupported</code>. The sqlite-vec
+virtual tables (<code>vec0</code>, which have an index of their own) are not wrapped.</p>
+<p>Bring up a throwaway database for your own tests with
+<a href="../testing/#sqlite-without-a-server-sqlitetest"><code>momotest/sqlitetest</code></a>.</p>
+<h2 id="mariadb-and-mysql">MariaDB and MySQL<a class="headerlink" href="#mariadb-and-mysql" title="Permanent link">&para;</a></h2>
+<p>MariaDB 11.8 supports float32 vectors through <code>mysqldriver</code>. MySQL 9.x
+stores them but cannot compare them.</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>MariaDB 11.8</th>
+<th>MySQL 9.7</th>
+<th>MySQL 8.4</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Column type</td>
+<td><code>VECTOR(N)</code></td>
+<td><code>VECTOR(N)</code></td>
+<td>none: <code>ErrUnsupported</code></td>
+</tr>
+<tr>
+<td><code>vector.Vector</code> write and read</td>
+<td>yes</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>vecop.L2</code></td>
+<td><code>VEC_DISTANCE_EUCLIDEAN(col, VEC_FromText(?))</code></td>
+<td><code>ErrUnsupported</code></td>
+<td><code>ErrUnsupported</code></td>
+</tr>
+<tr>
+<td><code>vecop.Cosine</code></td>
+<td><code>VEC_DISTANCE_COSINE(col, VEC_FromText(?))</code></td>
+<td><code>ErrUnsupported</code></td>
+<td><code>ErrUnsupported</code></td>
+</tr>
+<tr>
+<td>Other metrics, other types</td>
+<td><code>ErrUnsupported</code> (inner product, L1, halfvec, sparsevec, bit)</td>
+<td><code>ErrUnsupported</code></td>
+<td><code>ErrUnsupported</code></td>
+</tr>
+<tr>
+<td>ANN index</td>
+<td><code>VECTOR INDEX</code>, approximate</td>
+<td>none</td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>Capabilities().Vectors</code></td>
+<td>true</td>
+<td>false</td>
+<td>false</td>
+</tr>
+</tbody>
+</table>
+<p>MySQL Community has no distance function (the distance functions belong to
+HeatWave), so a distance query on MySQL fails at build time with
+<code>ErrUnsupported</code>. Momo never falls back to a scan or to a Go-side sort.</p>
+<p>A <code>vector.Vector</code> bound on MySQL or MariaDB travels as its text form wrapped
+in <code>VEC_FromText</code> (MariaDB) or <code>STRING_TO_VECTOR</code> (MySQL), on every typed bind
+path: insert, update, equality and distance. Stored vectors scan back from the
+server's binary float32 form. A column marked sensitive masks the vector in
+hook events exactly as on PostgreSQL.</p>
+<p>A MariaDB <code>VECTOR INDEX</code> needs a <code>NOT NULL</code> <code>vector(N)</code> column and accepts
+<code>M</code> from 3 to 200 and <code>DISTANCE</code> of <code>euclidean</code> or <code>cosine</code>. It serves only
+the metric it was built with, and an <code>ORDER BY</code> distance with <code>LIMIT</code> uses
+it. To get the exact nearest neighbours from the same table, add <code>+ 0</code> to the
+distance in a raw query, which keeps the server from using the index.
+<code>schema.ValidateMariaDBVectorIndex</code> checks a declaration and
+<code>schema.MariaDBVectorIndexClause</code> renders it. <code>momo.MySQLVectorType</code> gives the
+column type for a server version and refuses MySQL 8.4 and MariaDB before
+11.7 with a diagnostic that names the version.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
