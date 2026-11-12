@@ -88,7 +88,11 @@ func TestMySQLVirtualGeneratedRoundTrips(t *testing.T) {
 				t.Error("a VIRTUAL to STORED change produced no diff")
 			}
 			// MySQL cannot switch the kind in place, so rendering it is refused.
-			if _, err := eng.Diff(ctx, virtualSchema(false), "kind", migrate.DiffOptions{}); err == nil || !strings.Contains(err.Error(), "write a custom migration") {
+			kind, _, err := migrate.Diff(got, virtualSchema(false), migrate.DiffOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := mmysql.New().Render(kind); err == nil || !strings.Contains(err.Error(), "write a custom migration") {
 				t.Errorf("VIRTUAL to STORED: err = %v, want the custom migration error", err)
 			}
 

@@ -18,8 +18,8 @@ func sqlCfg() Config { return Config{Dialects: []dialect.Name{dialect.SQLite}} }
 // model declares STORED and migrate renders STORED.
 func TestVirtualTagReachesColumn(t *testing.T) {
 	for _, cfg := range []Config{myCfg(), sqlCfg()} {
-		s, diags := build(t, cfg, mdl("Thing", "things", fld("Name", "string", ""),
-			readOnlyField("Normalized", "string", "read_only,generated:lower(name),virtual")))
+		s, diags := build(t, cfg, mdl("Thing", "things", fld("Name", "string", "type:varchar(255)"),
+			readOnlyField("Normalized", "string", "read_only,type:varchar(255),generated:lower(name),virtual")))
 		if len(diags) != 0 {
 			t.Fatalf("%v: diagnostics: %v", cfg.Dialects, diags)
 		}
@@ -28,8 +28,8 @@ func TestVirtualTagReachesColumn(t *testing.T) {
 			t.Fatalf("%v: column = %+v, want a VIRTUAL generated column", cfg.Dialects, col)
 		}
 	}
-	s, _ := build(t, myCfg(), mdl("Thing", "things", fld("Name", "string", ""),
-		readOnlyField("Normalized", "string", "read_only,generated:lower(name)")))
+	s, _ := build(t, myCfg(), mdl("Thing", "things", fld("Name", "string", "type:varchar(255)"),
+		readOnlyField("Normalized", "string", "read_only,type:varchar(255),generated:lower(name)")))
 	if col, _ := s.Tables[0].Column("normalized"); col.GeneratedVirtual {
 		t.Fatal("a generated column without virtual must stay STORED")
 	}
@@ -38,7 +38,7 @@ func TestVirtualTagReachesColumn(t *testing.T) {
 // Catches: the MomoConfig hook ignored, so an expression with a comma cannot
 // be VIRTUAL.
 func TestVirtualCompanionReachesColumn(t *testing.T) {
-	m := mdl("Thing", "things", fld("Name", "string", ""), readOnlyField("Label", "string", "read_only"))
+	m := mdl("Thing", "things", fld("Name", "string", "type:varchar(255)"), readOnlyField("Label", "string", "read_only,type:varchar(255)"))
 	m.Config.Generated = map[string]string{"label": "coalesce(name, '')"}
 	m.Config.GeneratedVirtual = map[string]bool{"label": true}
 	s, diags := build(t, myCfg(), m)
@@ -53,7 +53,7 @@ func TestVirtualCompanionReachesColumn(t *testing.T) {
 // Catches: virtual accepted on a column with no expression, which would write
 // a flag that means nothing.
 func TestVirtualNeedsGenerated(t *testing.T) {
-	_, diags := build(t, myCfg(), mdl("Thing", "things", fld("Name", "string", "virtual")))
+	_, diags := build(t, myCfg(), mdl("Thing", "things", fld("Name", "string", "type:varchar(255),virtual")))
 	if !strings.Contains(diagMsgs(diags), "virtual is valid only together with generated") {
 		t.Fatalf("diagnostics = %q", diagMsgs(diags))
 	}
@@ -62,8 +62,8 @@ func TestVirtualNeedsGenerated(t *testing.T) {
 // Catches: a VIRTUAL column generated for PostgreSQL, which has them only from
 // version 18 and cannot apply the migration on 16 or 17.
 func TestVirtualRefusedOnPostgres(t *testing.T) {
-	_, diags := build(t, pg(), mdl("Thing", "things", fld("Name", "string", ""),
-		readOnlyField("Normalized", "string", "read_only,generated:lower(name),virtual")))
+	_, diags := build(t, pg(), mdl("Thing", "things", fld("Name", "string", "type:varchar(255)"),
+		readOnlyField("Normalized", "string", "read_only,type:varchar(255),generated:lower(name),virtual")))
 	if !strings.Contains(diagMsgs(diags), "virtual is not supported on postgres") {
 		t.Fatalf("diagnostics = %q", diagMsgs(diags))
 	}
@@ -72,8 +72,8 @@ func TestVirtualRefusedOnPostgres(t *testing.T) {
 // Catches: the declared VIRTUAL column differing from the inspected one, so a
 // database baselined with a VIRTUAL column gets a spurious migrate diff.
 func TestVirtualModelDiffsCleanAgainstInspected(t *testing.T) {
-	declared, diags := build(t, myCfg(), mdl("Thing", "things", fld("Name", "string", ""),
-		readOnlyField("Normalized", "string", "read_only,generated:lower(name),virtual")))
+	declared, diags := build(t, myCfg(), mdl("Thing", "things", fld("Name", "string", "type:varchar(255)"),
+		readOnlyField("Normalized", "string", "read_only,type:varchar(255),generated:lower(name),virtual")))
 	if len(diags) != 0 {
 		t.Fatalf("diagnostics: %v", diags)
 	}
