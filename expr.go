@@ -192,6 +192,25 @@ func (c NullColumn[T]) As(alias string) NullColumn[T] { return NullColumn[T]{c.C
 // SetNull assigns SQL NULL.
 func (c NullColumn[T]) SetNull() Assignment { return Assignment{col: c.ColumnName(), kind: setNull} }
 
+// SetPtr assigns NULL when v is nil and *v otherwise, so a model field of type
+// *T can be written without branching at the call site. It is an ordinary
+// Assignment: use it in Update.Set, Insert.Values and an upsert DoUpdate.
+func (c NullColumn[T]) SetPtr(v *T) Assignment {
+	if v == nil {
+		return c.SetNull()
+	}
+	return c.Set(*v)
+}
+
+// EqPtr compares the column with *v, or tests IS NULL when v is nil. It never
+// renders "= NULL", which matches no row.
+func (c NullColumn[T]) EqPtr(v *T) Predicate {
+	if v == nil {
+		return c.IsNull()
+	}
+	return c.Eq(*v)
+}
+
 // ---------------------------------------------------------- assignments
 
 type setKind uint8

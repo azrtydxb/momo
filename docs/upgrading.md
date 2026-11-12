@@ -696,6 +696,28 @@ name with the target. `Rows` and `One` return `ErrValidation` for a list with a
 source column. SQLite returns `ErrUnsupported` for one, as its RETURNING reads the
 modified table only.
 
+### `NullColumn.SetPtr` and `EqPtr` take a nil-able value
+
+A nullable column is a `momo.NullColumn[T]`, while the model field is `*T`. You
+no longer branch on nil at each call site:
+
+```text
+// before
+if p.SourceID != nil {
+	sets = append(sets, document.SourceID.Set(*p.SourceID))
+} else {
+	sets = append(sets, document.SourceID.SetNull())
+}
+// after
+sets = append(sets, document.SourceID.SetPtr(p.SourceID))
+```
+
+`SetPtr(nil)` writes `NULL` and `SetPtr(&v)` writes `v`; it is a plain
+`Assignment`, so it works in an update Set, an insert Values and an upsert
+DoUpdate. `EqPtr(nil)` renders `IS NULL` (never `= NULL`) and `EqPtr(&v)`
+renders `= $n`. This is an addition; nothing existing changes. There is no
+`NePtr`.
+
 ## Upgrading to 0.7.0
 
 ### `--from-db` writes only the functions the modeled tables use
