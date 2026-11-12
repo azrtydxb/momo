@@ -42,7 +42,7 @@ var GenKeys = []string{"dialects", "naming", "packages", "plugins", "tags", "typ
 // IntrospectKeys are the keys of the introspect: section. Only `only` is read
 // here; the others belong to `momo generate --from-db`. gen/config checks the
 // list against fromdb.Config.
-var IntrospectKeys = []string{"columns", "dbdefault", "functions", "only", "out", "package", "skip", "tables", "types", "uuid"}
+var IntrospectKeys = []string{"columns", "dbdefault", "functions", "inverse", "only", "out", "package", "relations", "skip", "tables", "types", "uuid"}
 
 // extensionName is the form of an entry in migrate.external_extensions: the
 // name as pg_extension spells it, lower case, with no schema qualifier.

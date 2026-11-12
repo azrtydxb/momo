@@ -156,7 +156,7 @@ func TestConfigFromFileRejectsBadFiles(t *testing.T) {
 // Catches: ConfigFromFile rejecting the keys of a real momo.yaml that only
 // code generation reads, which would stop an app from embedding the one file.
 func TestConfigFromFileIgnoresGenerationKeys(t *testing.T) {
-	body := "packages: [./models]\nnaming: snake\ndialects: [postgres]\ntags: [x]\ntypes:\n  time.Time: timestamptz\nplugins:\n  openapi:\n    out: api.json\n" +
+	body := "packages: [./models]\nnaming: gorm\ndialects: [postgres]\ntags: [x]\ntypes:\n  time.Time: timestamptz\nplugins:\n  openapi:\n    out: api.json\n" +
 		"introspect:\n  package: models\n  skip: [tmp_*]\n  uuid: google\n  only: [accounts]\nmigrate:\n  dir:\n    postgres: migrations/pg\n  url_env:\n    postgres: DB_URL\n  lock_timeout: 2s\n"
 	if _, err := migrate.ConfigFromFile(libFS(body), "momo.yaml"); err != nil {
 		t.Fatal(err)
