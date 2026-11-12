@@ -10,20 +10,27 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
+
+	"github.com/azrtydxb/momo/internal/snake"
 )
 
 // metaFor returns the metadata Query and QueryRows scan through: the
 // generated metadata when T has it (a model, a projection or Row1..Row10), and
 // otherwise a description of the plain struct T built by reflection once per
-// type and cached.
-func metaFor[T any]() (*Meta[T], error) {
+// type and cached. A DB with a naming preset (WithNaming) keeps its own cache,
+// so the preset never has to be a map key: any value works, and the plans of a
+// short-lived preset go away with its DB.
+func metaFor[T any](db *DB) (*Meta[T], error) {
 	if m, ok := any((*T)(nil)).(interface{ MomoMeta() *Meta[T] }); ok {
 		return m.MomoMeta(), nil
 	}
-	return structMeta[T]()
+	if db != nil && db.naming != nil {
+		return structMeta[T](db.naming, db.namingPlans)
+	}
+	return structMeta[T](nil, nil)
 }
 
+// structMetas caches the plans built with the default snake_case naming.
 var structMetas sync.Map // reflect.Type -> *structMetaEntry
 
 type structMetaEntry struct {
@@ -31,17 +38,22 @@ type structMetaEntry struct {
 	err  error
 }
 
-func structMeta[T any]() (*Meta[T], error) {
+// structMeta returns the plan of T under namer, cached in cache, or in the
+// process-wide cache when cache is nil.
+func structMeta[T any](namer FieldNamer, cache *sync.Map) (*Meta[T], error) {
+	if cache == nil {
+		cache = &structMetas
+	}
 	rt := reflect.TypeFor[T]()
-	v, ok := structMetas.Load(rt)
+	v, ok := cache.Load(rt)
 	if !ok {
 		e := &structMetaEntry{}
-		if m, err := buildStructMeta[T](rt); err != nil {
+		if m, err := buildStructMeta[T](rt, namer); err != nil {
 			e.err = err
 		} else {
 			e.meta = m
 		}
-		v, _ = structMetas.LoadOrStore(rt, e)
+		v, _ = cache.LoadOrStore(rt, e)
 	}
 	e := v.(*structMetaEntry)
 	if e.err != nil {
@@ -56,12 +68,12 @@ type structField struct {
 	depth int
 }
 
-func buildStructMeta[T any](rt reflect.Type) (*Meta[T], error) {
+func buildStructMeta[T any](rt reflect.Type, namer FieldNamer) (*Meta[T], error) {
 	if rt.Kind() != reflect.Struct {
 		return nil, &Error{Kind: ErrValidation, Op: "raw", Err: fmt.Errorf("%s is not a struct and has no momo metadata; Query and QueryRows read into a model, a projection, Row1..Row10 or a plain struct", rt)}
 	}
 	var fields []structField
-	if err := collectStructFields(rt, nil, 0, nil, &fields); err != nil {
+	if err := collectStructFields(rt, namer, nil, 0, nil, &fields); err != nil {
 		return nil, err
 	}
 	byName := map[string]int{}
@@ -116,7 +128,7 @@ var (
 // collectStructFields lists the scannable fields of rt: exported, not tagged
 // momo:"-", with an embedded struct flattened unless it is itself a column
 // (a time.Time, a sql.Scanner, or one with a column tag).
-func collectStructFields(rt reflect.Type, prefix []int, depth int, stack []reflect.Type, out *[]structField) error {
+func collectStructFields(rt reflect.Type, namer FieldNamer, prefix []int, depth int, stack []reflect.Type, out *[]structField) error {
 	stack = append(stack, rt)
 	for i := range rt.NumField() {
 		f := rt.Field(i)
@@ -144,7 +156,7 @@ func collectStructFields(rt reflect.Type, prefix []int, depth int, stack []refle
 				if slices.Contains(stack, ft) {
 					return &Error{Kind: ErrValidation, Op: "raw", Err: fmt.Errorf("%s: embedded cycle through %s; tag the embedded field momo:\"-\"", stack[0], ft)}
 				}
-				if err := collectStructFields(ft, path, depth+1, stack, out); err != nil {
+				if err := collectStructFields(ft, namer, path, depth+1, stack, out); err != nil {
 					return err
 				}
 				continue
@@ -154,7 +166,11 @@ func collectStructFields(rt reflect.Type, prefix []int, depth int, stack []refle
 			continue
 		}
 		if col == "" {
-			col = snakeCase(f.Name)
+			if namer != nil {
+				col = namer.ColumnName(f.Name)
+			} else {
+				col = snake.ToSnake(f.Name)
+			}
 		}
 		*out = append(*out, structField{name: col, path: path, depth: depth})
 	}
@@ -163,22 +179,4 @@ func collectStructFields(rt reflect.Type, prefix []int, depth int, stack []refle
 
 func isLeafStruct(t reflect.Type) bool {
 	return t == timeType || reflect.PointerTo(t).Implements(scannerType)
-}
-
-// snakeCase turns a Go field name into a column name: UserID is user_id,
-// HTTPServer is http_server, Title2 is title2.
-func snakeCase(s string) string {
-	r := []rune(s)
-	var b strings.Builder
-	for i, c := range r {
-		if unicode.IsUpper(c) {
-			if i > 0 && (unicode.IsLower(r[i-1]) || unicode.IsDigit(r[i-1]) ||
-				(unicode.IsUpper(r[i-1]) && i+1 < len(r) && unicode.IsLower(r[i+1]))) {
-				b.WriteByte('_')
-			}
-			c = unicode.ToLower(c)
-		}
-		b.WriteRune(c)
-	}
-	return b.String()
 }

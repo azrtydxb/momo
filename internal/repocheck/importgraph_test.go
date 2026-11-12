@@ -25,6 +25,7 @@ var coreAllowed = map[string]bool{
 	modPath + "/internal/redact":  true,
 	modPath + "/internal/keyenc":  true,
 	modPath + "/internal/chunk":   true,
+	modPath + "/internal/snake":   true,
 }
 
 func TestImportGraph(t *testing.T) {

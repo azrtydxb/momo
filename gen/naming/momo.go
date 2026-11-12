@@ -4,7 +4,8 @@ package naming
 
 import (
 	"strings"
-	"unicode"
+
+	"github.com/azrtydxb/momo/internal/snake"
 )
 
 // Momo is the default preset: snake_case columns and plural snake_case tables.
@@ -22,21 +23,9 @@ func (m Momo) JoinTableName(owner, target string) string {
 }
 
 // ToSnake converts a Go identifier to snake_case, keeping acronyms together.
-func ToSnake(s string) string {
-	rs := []rune(s)
-	var b strings.Builder
-	for i, r := range rs {
-		if unicode.IsUpper(r) && i > 0 {
-			prev := rs[i-1]
-			if unicode.IsLower(prev) || unicode.IsDigit(prev) ||
-				(unicode.IsUpper(prev) && i+1 < len(rs) && unicode.IsLower(rs[i+1])) {
-				b.WriteByte('_')
-			}
-		}
-		b.WriteRune(unicode.ToLower(r))
-	}
-	return b.String()
-}
+// A plural s after an initialism of the word list belongs to it: RoleIDs is
+// role_ids and URLs is urls, not role_i_ds and ur_ls.
+func ToSnake(s string) string { return snake.ToSnake(s) }
 
 var irregular = map[string]string{
 	"person": "people",

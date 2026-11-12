@@ -72,6 +72,157 @@ to write `string`. A model you already generated keeps its `string` field until
 you regenerate; an `introspect.types` rule for `numeric` still wins. To keep
 `string` for a column, leave the field as it is or add that rule.
 
+### `ToSnake` keeps a plural initialism together: `RoleIDs` is `role_ids`
+
+`naming.ToSnake`, and with it the column name of the default `momo` naming
+preset and the column of a plain struct that `momo.Query` and `momo.QueryRows`
+scan, used to split an initialism followed by a plural `s`: `RestrictRoleIDs`
+gave `restrict_role_i_ds`. The rule now is exact. It applies to an upper-case
+run followed by a lone lower-case `s` that ends the name or is followed by
+anything other than a lower-case letter, when the run ends in a word of the
+list. The `s` stays with the last word, and the name breaks between the words
+of the run:
+
+1. If the whole run is a sequence of list words, it is cut into them. When
+   there are several such cuts, the last word is the longest one that leaves a
+   prefix that can be cut as well, and the prefix follows the same rule. So
+   `HTTPIDs` is HTTP and ID (`http_ids`, not HTT and PID), `XMLHTTPIDs` is XML,
+   HTTP and ID (`xml_http_ids`), `APIIDs` is API and ID (`api_ids`), and `PIDs`,
+   `OIDs`, `SSIDs`, `GUIDs` and `GUIs` are one word each (`pids`, `oids`,
+   `ssids`, `guids`, `guis`).
+2. Otherwise the run is cut once, before the longest list word it ends with,
+   and the letters before it stay together: `ABCIDs` is `abc_ids`.
+
+A name where the run does not end in a list word (`ABs`), or where the `s`
+starts a lower-case word (`IDsomething`), is unchanged.
+
+The word list is ACL, API, ASCII, CPU, CSS, DNS, EOF, GUI, GUID, HTML, HTTP,
+HTTPS, ID, IP, JSON, LHS, OID, PID, QPS, RAM, RHS, RPC, SLA, SMTP, SQL, SSH,
+SSID, TCP, TLS, TTL, UDP, UI, UID, URI, URL, UUID, VM, XML, XMPP, XSRF and XSS.
+Examples of columns that change (any Go field name that matches the rule does):
+
+| Go field  | Column before | Column now |
+| --------- | ------------- | ---------- |
+| `RoleIDs` | `role_i_ds`   | `role_ids` |
+| `IDs`     | `i_ds`        | `ids`      |
+| `URLs`    | `ur_ls`       | `urls`     |
+| `UUIDs`   | `uui_ds`      | `uuids`    |
+| `APIs`    | `ap_is`       | `apis`     |
+| `UserIPs` | `user_i_ps`   | `user_ips` |
+| `PIDs`    | `pi_ds`       | `pids`     |
+| `OIDs`    | `oi_ds`       | `oids`     |
+| `SSIDs`   | `ssi_ds`      | `ssids`    |
+| `GUIs`    | `gu_is`       | `guis`     |
+
+Names without a plural initialism (`UserID`, `APIKeys`, `HTTPServer`) are
+unchanged, and so is every other name: a test compares the old and the new
+algorithm on every name built from a set of parts and requires them to agree
+wherever the rule does not apply.
+
+This is a breaking change, and the migration is not a rename. `momo migrate
+diff` never guesses a rename (see [migrations](migrations.md)): for a field
+whose column name changes it sees the old column go and a new one appear, so it
+writes a `DROP COLUMN` and an `ADD COLUMN`, and it prints a `hint: possible
+rename` line. Applied with `--allow-destructive`, that drops the data of the old
+column. Do one of these before you run `diff`:
+
+- Pin the old name on the field and nothing changes in the database:
+  ``RoleIDs []string `momo:"column:role_i_ds"` ``. A plain struct scanned by
+  `Query` needs the same tag.
+- Or accept the new name and ask for a rename:
+  `momo migrate diff <name> --rename-column table.role_i_ds=role_ids` (the flag
+  repeats, one per column).
+
+The same rule decides every other name that momo derives from a Go name, so
+check them too: a table name derived from a model name (`Plural(ToSnake(model))`,
+for a model such as `APIs` or `UserIDs`) changes the same way (use
+`--rename-table old=new`, or the `table:` tag), and so do the names of indexes,
+unique constraints and foreign keys that are built from the column
+(`<table>_<column>_idx`, `_key`, `_fkey`). Models under the `gorm`, `bun`, `ent`
+and `prisma` presets are not affected, they have their own rules.
+
+### `--from-db` writes initialisms in capitals in more Go field names
+
+This is a second, separate breaking change: it renames Go fields, not columns.
+`momo generate --from-db` writes a column word that is an initialism in
+capitals (`user_id` is `UserID`). It now reads the same word list as `ToSnake`
+above, which is longer than the list it had (it had `id`, `url`, `uri`, `uuid`,
+`api`, `http`, `https`, `ip`, `json`, `sql`, `html`, `xml`, `tls`, `ssh` and
+`cpu`), and a plural `s` after a word of the list stays with it. The words
+added are `acl`, `ascii`, `css`, `dns`, `eof`, `guid`, `lhs`, `qps`, `ram`,
+`rhs`, `rpc`, `sla`, `smtp`, `tcp`, `ttl`, `udp`, `ui`, `uid`, `vm`, `xmpp`,
+`xsrf`, `xss`, `gui`, `oid`, `pid` and `ssid`. Examples of field names that change when you regenerate:
+
+| Column     | Field before | Field now |
+| ---------- | ------------ | --------- |
+| `team_ids` | `TeamIds`    | `TeamIDs` |
+| `role_ids` | `RoleIds`    | `RoleIDs` |
+| `urls`     | `Urls`       | `URLs`    |
+| `api_ids`  | `APIIds`     | `APIIDs`  |
+| `ttl`      | `Ttl`        | `TTL`     |
+| `dns_name` | `DnsName`    | `DNSName` |
+| `tcp_port` | `TcpPort`    | `TCPPort` |
+
+The column name does not change, and the generated `momo` tag still maps the
+field to it, so the database and the migrations are untouched. Code that uses
+the old Go field name stops compiling: `m.TeamIds` must become `m.TeamIDs`.
+In the `--from-db` goldens of this repository the only name that changed is
+`TeamIds` to `TeamIDs`, in `gen/fromdb/googleuuid_test.go`.
+
+To keep an old field name, pin it in the `introspect.columns` rules of
+`momo.yaml` (see "The introspect section" in [migrations](migrations.md)): a
+rule has a `match` glob over `table.column` and a `name` for the Go field, and
+a later rule wins.
+
+```yaml
+introspect:
+  columns:
+    - match: "members.team_ids"
+      name: TeamIds
+```
+
+There is no per-table `columns` map: the key is the list `introspect.columns`,
+with `match` and `name`.
+
+### `--from-db` keeps singular table names that end in `-ss`, `-us` and a few `-is`, `-as` and `-ns` words
+
+`momo generate --from-db` named the table `class` the model `Clas` (and
+`assessment_class` `AssessmentClas`), the same family as the `-ses` words fixed
+in 0.7.0. The rules for a table name that is already singular are now:
+
+- A word in `-ss` is kept: `class`, `address`, `access`, `process`, `glass`,
+  `boss` give `Class`, `Address`, `Access`, `Process`, `Glass`, `Boss`.
+- A word in `-us` is kept, except the plurals of words in `-u`: `status`,
+  `virus`, `bonus`, `census`, `corpus`, `nucleus`, `stimulus`, `campus` and
+  `bus` give `Status`, `Virus` and so on (not `Statu`), while `menus`, `emus`,
+  `gnus`, `haikus`, `tutus` and `kudus` give `Menu`, `Emu`, `Gnu`, `Haiku`,
+  `Tutu` and `Kudu`.
+- These singular words keep their `s`: `analysis`, `axis`, `crisis`, `basis`,
+  `thesis`, `iris`, `synopsis` and `diagnosis`; `alias`, `canvas`, `atlas`,
+  `bias` and `gas`; `news` and `lens`. They are listed, not matched by suffix,
+  so `areas` still gives `Area` and `ideas` gives `Idea`.
+
+A plural such as `classes`, `statuses` or `aliases` is singularized as before.
+After you regenerate, a model that had the wrong name changes name and its
+column package changes with it (`clas` to `class`); pin
+`introspect.tables.<table>.name` to keep the old name.
+
+### `momo.WithNaming`: a plain-struct `Query[T]` follows the naming preset
+
+`momo.Query` and `momo.QueryRows` into a plain struct named every untagged
+field's column as the snake_case of the field name, so under `naming: prisma`
+(camelCase columns such as `endpointId`) each field needed a `column:` tag.
+The new option `momo.WithNaming(naming.Prisma{})` sets the preset on the DB, and
+an untagged field then reads the column the preset gives its name (`EndpointID`
+is `endpointId`). A `column:` tag still wins. Without the option nothing
+changes: snake_case, as `naming.ToSnake` gives it. Any preset of `gen/naming`
+(or any value with a `ColumnName(goField string) string` method, comparable or
+not) fits, and the option applies to handles derived from the DB (transactions,
+`OnConn`, replicas). A DB with a preset keeps its own plans, built once per type
+from the field names, so the preset must give the same answer every time. Known
+limit: the preset is not read from `momo.yaml` or from a generated registration
+at run time; pass the same one you set as `naming:` there.
+
 ### `--from-db` no longer writes the objects of tables it does not model
 
 `momo generate --from-db` used to put the policies and triggers of a table left

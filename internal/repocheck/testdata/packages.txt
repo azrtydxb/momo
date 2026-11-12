@@ -35,6 +35,7 @@ internal-leaf internal/golden
 internal-leaf internal/keyenc
 internal-leaf internal/dbdefault
 internal-leaf internal/redact
+internal-leaf internal/snake
 internal-leaf internal/sqlscan
 internal-leaf internal/sqliteconf
 internal-leaf internal/sqlstub
