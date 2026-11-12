@@ -83,7 +83,7 @@ func cutRun(run []rune) []int {
 	}
 	word := func(from, to int) bool { return goInitialisms[string(run[from:to])] }
 	// ok[i] reports whether run[:i] is a sequence of list words.
-	ok := make([]bool, m+1)
+	var ok [maxRun + 1]bool
 	ok[0] = true
 	for i := 1; i <= m; i++ {
 		for n := 1; n <= min(i, maxInitialism); n++ {
@@ -132,8 +132,8 @@ var goInitialisms = map[string]bool{
 // maxInitialism is the length of the longest word in goInitialisms.
 const maxInitialism = 5
 
-// maxRun is the longest upper-case run cutRun cuts. It bounds the work and the
-// allocation for a pathological name; no real identifier comes close.
+// maxRun is the longest upper-case run cutRun cuts. It sizes cutRun's table
+// and bounds the work for a pathological name; no real identifier comes close.
 const maxRun = 64
 
 // Initialism reports whether word, in any letter case, is an initialism
