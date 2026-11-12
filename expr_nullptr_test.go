@@ -61,7 +61,7 @@ func TestNullColumnPtrUpsertAndValuesSQL(t *testing.T) {
 
 		c, err := momo.Upsert[suite.Document](db).
 			Values(suite.DocTenantID.Set(1), suite.DocTitle.Set("t")).
-			OnConflict(suite.DocTitle).DoUpdate(suite.DocBody.SetPtr(nil)).SQL()
+			OnConflict(suite.DocID).DoUpdate(suite.DocBody.SetPtr(nil)).SQL()
 		if err != nil || !strings.Contains(c.SQL, "= NULL") {
 			t.Errorf("%s DoUpdate SetPtr(nil): %q %v", d, c.SQL, err)
 		}
