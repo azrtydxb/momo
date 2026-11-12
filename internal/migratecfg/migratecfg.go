@@ -14,6 +14,7 @@ import (
 	"io"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -225,8 +226,7 @@ func unknown(m map[string]yaml.Node, known []string) string {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		i := sort.SearchStrings(known, k)
-		if i == len(known) || known[i] != k {
+		if !slices.Contains(known, k) {
 			return k
 		}
 	}
