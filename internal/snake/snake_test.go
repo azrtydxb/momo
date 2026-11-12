@@ -165,3 +165,16 @@ func TestToSnakePluralSegmentation(t *testing.T) {
 		}
 	}
 }
+
+// Catches: cutRun cutting a run longer than maxRun, or the bound moving off
+// by one.
+func TestToSnakeLongRunIsNotCut(t *testing.T) {
+	atBound := strings.Repeat("A", maxRun-2) + "IDs"
+	if got, want := ToSnake(atBound), strings.Repeat("a", maxRun-2)+"_ids"; got != want {
+		t.Errorf("ToSnake(run of %d) = %q, want %q", maxRun, got, want)
+	}
+	over := strings.Repeat("A", maxRun-1) + "IDs"
+	if got, want := ToSnake(over), strings.Repeat("a", maxRun-1)+"i_ds"; got != want {
+		t.Errorf("ToSnake(run of %d) = %q, want %q", maxRun+1, got, want)
+	}
+}

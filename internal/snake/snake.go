@@ -74,8 +74,13 @@ func pluralInitialisms(rs []rune) (noSplit, forceSplit []bool) {
 //     (HTTPIDs is HTTP and ID, XMLHTTPIDs is XML, HTTP and ID, PIDs is PID).
 //  2. Otherwise the run is cut once, before the longest list word it ends with
 //     (ABCIDs is ABC and ID); letters before that word stay together.
+//
+// A run longer than maxRun is not cut, so it splits the usual way.
 func cutRun(run []rune) []int {
 	m := len(run)
+	if m > maxRun {
+		return nil
+	}
 	word := func(from, to int) bool { return goInitialisms[string(run[from:to])] }
 	// ok[i] reports whether run[:i] is a sequence of list words.
 	ok := make([]bool, m+1)
@@ -126,6 +131,10 @@ var goInitialisms = map[string]bool{
 
 // maxInitialism is the length of the longest word in goInitialisms.
 const maxInitialism = 5
+
+// maxRun is the longest upper-case run cutRun cuts. It bounds the work and the
+// allocation for a pathological name; no real identifier comes close.
+const maxRun = 64
 
 // Initialism reports whether word, in any letter case, is an initialism
 // of the word list (id, URL) or its plural (ids, Urls), and returns its Go
