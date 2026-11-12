@@ -47,3 +47,7 @@ already in the word-list test and stay there.
 - Green: run 42999792466 on c4a7d80 (branch worktree-agent-a565a4b39df5f7711), all ci-agent jobs green. Earlier runs on this branch failed for fixable reasons only: the core may not import gen/naming (moved to internal/snake), docs/reference.md rows, and the googleuuid golden.
 - Goldens: no from-db golden changed for this fix; the 13 words that worked before were already in the word-list test and still pass.
 - Docs: docs/upgrading.md (0.8.0, singular -ss and -us table names).
+
+- Fix round (review): the -us rule is inverted (kept unless a plural of a -u word: menus, emus, gnus, haikus, tutus, kudus) and explicit keep-lists cover -is, -as and -ns words; areas and ideas still lose their s.
+- Fix round red: test-only commit 1fca50cb on throwaway branch worktree-agent-red-naming2, ci-agent run 43005590287 failed TestStructNameSingularWords (nucleus = "Nucleu", stimulus = "Stimulu", analysis = "Analysi", axis = "Axi", alias = "Alia", gas = "Ga", news = "New", lens = "Len"). Branch deleted.
+- Fix round green: ci-agent run 43012005078 on b5196ce (merge of origin/sprint-9 at 009f86a7, all jobs green, gen-check clean so docs/reference.md needed no foreign rows).
