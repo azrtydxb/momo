@@ -52,6 +52,7 @@ has no array columns, so the generator rejects them there.
 | `types.UUID`                           | uuid                     | TEXT        | unsupported |
 | `uuid.UUID (github.com/google/uuid)`   | uuid                     | TEXT        | unsupported |
 | `types.Date`                           | date                     | TEXT        | unsupported |
+| `types.Numeric`                        | numeric                  | TEXT        | unsupported |
 | `types.JSON[T]`                        | jsonb                    | TEXT        | unsupported |
 | `vector.Vector`                        | vector(N)                | unsupported | unsupported |
 | `vector.HalfVector`                    | halfvec(N)               | unsupported | unsupported |
@@ -84,7 +85,7 @@ ignores the setting. `timestamp(3)` stores a wall clock without a zone, so
 follow the `timestamp` notes below and pass UTC times.
 
 On SQLite, `bool` is stored as 0 or 1, and `time.Time`, `types.UUID`,
-`types.Date` and `types.JSON[T]` are stored as text. The SQLite column is what
+`types.Date`, `types.Numeric` and `types.JSON[T]` are stored as text. The SQLite column is what
 the generator emits. The SQLite driver (`driver/sqlitedriver`, cgo, not on
 Windows) reads text columns back into `time.Time`, `*time.Time`,
 `sql.NullTime`, `sql.Null[time.Time]` and `types.Date`, whatever the column was
@@ -144,7 +145,31 @@ except `NaN`, which SQLite does not have (see Floats).
   `t.UTC()` and treat the column as UTC; a value in another zone is stored as
   its UTC wall clock.
 - `types.Date`: stores the year, month and day of `Time` in its own location;
-  it reads back at midnight UTC. Compare the date, not the zone.
+  it reads back at midnight UTC. Compare the date, not the zone. PostgreSQL
+  `infinity` and `-infinity` round-trip through the Infinity and
+  NegInfinity fields (`Time` is ignored while one is set, and zero after a
+  read); `IsFinite` tells an ordinary date from a special one. SQLite and
+  MySQL have no special dates: a `types.Date` with a flag set is
+  `ErrValidation` and nothing is stored, also inside a `sql.Null`. Setting both
+  flags is an error.
+- `types.Numeric`: an exact decimal kept as text in `Decimal` (`"-12.50"`; empty
+  is 0). PostgreSQL `numeric` returns what it stored, so a value beyond
+  `float64` precision and its scale survive. `NaN`, Infinity and
+  NegInfinity round-trip through their flags (set at most one, and leave
+  `Decimal` empty); `IsFinite`, `IsNaN`, `IsInfinite` and `Sign` classify a
+  value (`Sign` is 0 for `NaN`). Infinity and `-Infinity` need PostgreSQL 14
+  or later (`NaN` is older); CI covers PostgreSQL 16 and 17.
+  `types.ParseNumeric` reads PostgreSQL text and rejects an exponent or
+  anything that is not a number. Scanning also takes an `int64` and a `float64`
+  (what SQLite returns for an expression); it does not take a
+  `pgtype.Numeric`.
+- SQLite and MySQL have no `NaN` or infinity: binding one in a `types.Numeric`
+  (also inside a `sql.Null`) is `ErrValidation`, as for a float `NaN` on SQLite.
+  The column is `TEXT` there, so the database does not order or add it as a
+  number, and a `precision` or `scale` tag still generates `TEXT`, not
+  `numeric(p,s)`: SQLite would give that NUMERIC affinity and turn `12.50` into
+  `12.5`. On PostgreSQL the tags generate `numeric(p,s)`. Momo does no
+  arithmetic on a `types.Numeric`.
 - `types.UUID`: round-trips all 16 bytes, including the all-zero UUID.
 - `types.JSON[T]`: encodes with `encoding/json`. An empty slice and a nil
   slice are different JSON (`[]` and `null`) and read back as such.
@@ -182,9 +207,9 @@ except `NaN`, which SQLite does not have (see Floats).
   these types with `introspect.uuid: google`. A named type over `uuid.UUID`
   (`type ID uuid.UUID`) is not mapped: give the field `type:uuid`. A UUID type
   of another package is not mapped either.
-- Decimal: carry `numeric` as a string to avoid binary floating point. Values
-  beyond `float64` precision round-trip exactly, and `numeric` also accepts
-  `NaN`.
+- Decimal: carry `numeric` as `types.Numeric` (exact, with `NaN` and the
+  infinities), or as a string to avoid binary floating point. Values beyond
+  `float64` precision round-trip exactly, and `numeric` also accepts `NaN`.
 
 ## Null handling
 

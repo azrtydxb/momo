@@ -125,6 +125,15 @@ func liveCases(t *testing.T) map[string]liveCase {
 		"types.Date": roundTripAll(func(a, b types.Date) bool { return a.Time.Equal(b.Time) },
 			types.Date{Time: time.Date(1969, 12, 31, 0, 0, 0, 0, time.UTC)},
 			types.Date{Time: time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)}),
+		"types.Numeric": func(t *testing.T, db *momo.DB, colType string) {
+			vals := []types.Numeric{{Decimal: "12345678901234567890.123456789"}, {Decimal: "-0.000000000000000001"}, {Decimal: "0"}}
+			if db.Dialect().Name == dialect.Postgres {
+				// Only PostgreSQL has NaN and the infinities; elsewhere they are
+				// ErrValidation (the types package integration tests pin that).
+				vals = append(vals, types.Numeric{NaN: true}, types.Numeric{Infinity: true}, types.Numeric{NegInfinity: true})
+			}
+			roundTripAll[types.Numeric](nil, vals...)(t, db, colType)
+		},
 		"types.JSON[T]": roundTripAll[types.JSON[tmDoc]](nil,
 			types.JSON[tmDoc]{V: tmDoc{Name: `q"uote\`, Tags: []string{"a", "b"}}},
 			types.JSON[tmDoc]{V: tmDoc{Name: "", Tags: []string{}}}),

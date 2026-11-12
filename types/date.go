@@ -15,8 +15,22 @@ import (
 const dateLayout = "2006-01-02"
 
 // Date is a calendar date (no time zone): date on PostgreSQL, TEXT
-// 'YYYY-MM-DD' on SQLite.
-type Date struct{ Time time.Time }
+// 'YYYY-MM-DD' on SQLite and MySQL.
+//
+// PostgreSQL also has the special dates 'infinity' and '-infinity'. Set
+// Infinity or NegInfinity to write one; Scan sets the flag and leaves Time
+// zero when it reads one. Time is ignored while a flag is set. SQLite and
+// MySQL have no special dates: Momo rejects a Date with a flag set there with
+// ErrValidation. IsFinite reports whether the value is an ordinary date.
+type Date struct {
+	Time        time.Time
+	Infinity    bool
+	NegInfinity bool
+}
+
+// IsFinite reports whether d is an ordinary calendar date, not infinity or
+// -infinity.
+func (d Date) IsFinite() bool { return !d.Infinity && !d.NegInfinity }
 
 // SQLType returns the column type for d.
 func (Date) SQLType(d dialect.Name) string {
@@ -27,28 +41,46 @@ func (Date) SQLType(d dialect.Name) string {
 }
 
 // Value encodes the date as 'YYYY-MM-DD' using the year, month and day of
-// Time in its own location.
+// Time in its own location, or as 'infinity' or '-infinity'. Setting both
+// Infinity and NegInfinity is an error.
 func (d Date) Value() (driver.Value, error) {
+	switch {
+	case d.Infinity && d.NegInfinity:
+		return nil, errors.New("types: Date has both Infinity and NegInfinity set")
+	case d.Infinity:
+		return "infinity", nil
+	case d.NegInfinity:
+		return "-infinity", nil
+	}
 	return d.Time.Format(dateLayout), nil
 }
 
-// Scan accepts 'YYYY-MM-DD' as string or []byte, or a time.Time (as pgx
-// returns for date columns), whose calendar day in its own location is kept.
+// Scan accepts 'YYYY-MM-DD', 'infinity' or '-infinity' as string or []byte, or
+// a time.Time (as pgx returns for date columns), whose calendar day in its own
+// location is kept.
 func (d *Date) Scan(src any) error {
 	if t, ok := src.(time.Time); ok {
 		y, m, day := t.Date()
-		d.Time = time.Date(y, m, day, 0, 0, 0, 0, time.UTC)
+		*d = Date{Time: time.Date(y, m, day, 0, 0, 0, 0, time.UTC)}
 		return nil
 	}
 	s, err := text("Date", src)
 	if err != nil {
 		return err
 	}
+	switch s {
+	case "infinity":
+		*d = Date{Infinity: true}
+		return nil
+	case "-infinity":
+		*d = Date{NegInfinity: true}
+		return nil
+	}
 	t, err := time.Parse(dateLayout, s)
 	if err != nil {
 		return fmt.Errorf("types: invalid Date %q: %w", s, err)
 	}
-	d.Time = t
+	*d = Date{Time: t}
 	return nil
 }
 

@@ -48,6 +48,30 @@ a year as 365.25 days, so the epoch of a `timeop.Age` that spans months or years
 is not the real elapsed time; use `timeop.Sub` for that. Nothing existing
 changes.
 
+### `types.Date` infinity and the new `types.Numeric`
+
+`types.Date` gains two fields, Infinity and NegInfinity, and `IsFinite()`.
+PostgreSQL `infinity` and `-infinity` now scan into the flags and are written
+back from them; before, a read of one failed. Keyed literals such as
+`types.Date{Time: t}` and the finite behavior are unchanged; a positional
+`types.Date{t}` no longer compiles, because the struct has three fields now.
+SQLite and MySQL have no special dates, so a `types.Date` with a flag set is
+`ErrValidation` there.
+
+`types.Numeric` is a new exact decimal: `numeric` on PostgreSQL, `TEXT` on
+SQLite and MySQL. It holds the digits as a string in `Decimal`, plus `NaN`,
+Infinity and NegInfinity flags, and has `IsFinite`, `IsNaN`, `IsInfinite`,
+`Sign`, a text form and `types.ParseNumeric`. A `types.Numeric` that is `NaN`
+or infinite is `ErrValidation` on SQLite and MySQL. Infinity and `-Infinity`
+need PostgreSQL 14 or later. A `precision` tag generates `numeric(p,s)` on
+PostgreSQL and `TEXT` elsewhere.
+
+`momo generate --from-db` now writes a PostgreSQL `numeric` column as
+`types.Numeric` (with `precision` and `scale` tags for `numeric(p,s)`); it used
+to write `string`. A model you already generated keeps its `string` field until
+you regenerate; an `introspect.types` rule for `numeric` still wins. To keep
+`string` for a column, leave the field as it is or add that rule.
+
 ### `--from-db` no longer writes the objects of tables it does not model
 
 `momo generate --from-db` used to put the policies and triggers of a table left

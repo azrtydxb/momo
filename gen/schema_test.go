@@ -346,6 +346,36 @@ func TestPrecisionOnDecimalString(t *testing.T) {
 	}
 }
 
+// Catches: types.Numeric with a precision tag emitting numeric(p,s) on SQLite,
+// whose NUMERIC affinity turns the TEXT digits into INTEGER or REAL and loses
+// the exact decimal text. PostgreSQL keeps numeric(p,s).
+func TestNumericPrecisionIsTextOffPostgres(t *testing.T) {
+	m := mdl("Price", "prices",
+		fld("ID", "int64", "pk"),
+		fld("Amount", "types.Numeric", "precision:12,scale:2"),
+		fld("Whole", "types.Numeric", "precision:5"),
+	)
+	s, diags := build(t, pg(), m)
+	if len(diags) != 0 {
+		t.Fatalf("postgres diags: %v", diags)
+	}
+	if got := mustCol(t, s, "prices", "amount"); got.Type != "numeric(12,2)" {
+		t.Errorf("postgres amount: %q", got.Type)
+	}
+	if got := mustCol(t, s, "prices", "whole"); got.Type != "numeric(5)" {
+		t.Errorf("postgres whole: %q", got.Type)
+	}
+	s, diags = build(t, Config{Dialects: []dialect.Name{dialect.SQLite}}, m)
+	if len(diags) != 0 {
+		t.Fatalf("sqlite diags: %v", diags)
+	}
+	for _, c := range []string{"amount", "whole"} {
+		if got := mustCol(t, s, "prices", c); got.Type != "TEXT" {
+			t.Errorf("sqlite %s: %q, want TEXT", c, got.Type)
+		}
+	}
+}
+
 func TestTagMisuseIsDiagnosed(t *testing.T) {
 	cases := []struct{ name, goType, tag, want string }{
 		{"size on int", "int64", "size:5", "size is only valid on string"},

@@ -1031,8 +1031,9 @@ column order differs from the field order is declared with
 and baseline keep that order. Changing the order of an existing key later is a
 drop and add of the primary key under an `ACCESS EXCLUSIVE` lock, and the drop
 is gated as destructive.
-`numeric` columns are Go strings (the `decimal-as-string` note); an
-`introspect.types` rule picks a decimal type instead. `tsvector` columns become
+`numeric` columns become `types.Numeric`, an exact decimal that also holds
+`NaN` and the infinities; an `introspect.types` rule picks another decimal
+type instead. `tsvector` columns become
 `types.TSVector` (`*types.TSVector` when nullable); an `introspect.types` rule
 still overrides that.
 

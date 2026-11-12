@@ -6,7 +6,9 @@ package types_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -49,6 +51,31 @@ func roundTrip[C types.Codec](t *testing.T, db *momo.DB, d dialect.Name, name st
 		t.Fatalf("%s: select text: %v", name, err)
 	}
 	return got[0], txt[0]
+}
+
+// rejectSpecial binds in (a special Date or Numeric) on a dialect that has no
+// such value, on the pool and inside a transaction, and requires ErrValidation
+// with nothing stored.
+func rejectSpecial(t *testing.T, db *momo.DB, d dialect.Name, name, sqlType string, in any) {
+	t.Helper()
+	ctx := context.Background()
+	tbl := "codec_" + name
+	if _, err := momo.Exec(ctx, db, "CREATE TABLE "+tbl+" (id int PRIMARY KEY, v "+sqlType+")"); err != nil {
+		t.Fatalf("%s: create table: %v", name, err)
+	}
+	if _, err := momo.Exec(ctx, db, "INSERT INTO "+tbl+" (id, v) VALUES (1, ?)", in); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("%s on %s: insert %+v: err = %v, want ErrValidation", name, d, in, err)
+	}
+	if err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		_, err := momo.Exec(ctx, tx, "INSERT INTO "+tbl+" (id, v) VALUES (2, ?)", in)
+		return err
+	}); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("%s on %s: insert %+v in a transaction: err = %v, want ErrValidation", name, d, in, err)
+	}
+	n, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM "+tbl)
+	if err != nil || len(n) != 1 || n[0] != 0 {
+		t.Fatalf("%s on %s: rows after the rejected inserts = %v, %v; want 0", name, d, n, err)
+	}
 }
 
 // TestCodecsRoundTripLive stores and reads every codec through a column
@@ -107,6 +134,54 @@ func codecRoundTrips(t *testing.T, db *momo.DB, d dialect.Name) {
 		got, txt := roundTrip(t, db, d, "date", in)
 		if txt != "1969-12-31" || !got.Time.Equal(in.Time) {
 			t.Fatalf("got %v stored as %q", got.Time, txt)
+		}
+	})
+	t.Run("DateInfinity", func(t *testing.T) {
+		for i, c := range []struct {
+			in   types.Date
+			text string
+		}{
+			{types.Date{Infinity: true}, "infinity"},
+			{types.Date{NegInfinity: true}, "-infinity"},
+		} {
+			if d != dialect.Postgres {
+				rejectSpecial(t, db, d, "dateinf"+strconv.Itoa(i), c.in.SQLType(d), c.in)
+				continue
+			}
+			in := c.in
+			got, txt := roundTrip(t, db, d, "dateinf"+strconv.Itoa(i), &in)
+			if txt != c.text || got.Infinity != in.Infinity || got.NegInfinity != in.NegInfinity || got.IsFinite() {
+				t.Fatalf("got %+v stored as %q, want %+v as %q", got, txt, in, c.text)
+			}
+		}
+	})
+	t.Run("Numeric", func(t *testing.T) {
+		for i, dec := range []string{"12345678901234567890.123456789", "-0.000000000000000001", "0", "-12.50", "12.50", "12345678901234567890.123"} {
+			in := &types.Numeric{Decimal: dec}
+			got, txt := roundTrip(t, db, d, "numeric"+strconv.Itoa(i), in)
+			if got.Decimal != dec || !got.IsFinite() || txt != dec {
+				t.Fatalf("%s: got %+v stored as %q", dec, got, txt)
+			}
+		}
+	})
+	t.Run("NumericSpecial", func(t *testing.T) {
+		for i, c := range []struct {
+			in   types.Numeric
+			text string
+		}{
+			{types.Numeric{NaN: true}, "NaN"},
+			{types.Numeric{Infinity: true}, "Infinity"},
+			{types.Numeric{NegInfinity: true}, "-Infinity"},
+		} {
+			if d != dialect.Postgres {
+				rejectSpecial(t, db, d, "numspecial"+strconv.Itoa(i), c.in.SQLType(d), c.in)
+				continue
+			}
+			in := c.in
+			got, txt := roundTrip(t, db, d, "numspecial"+strconv.Itoa(i), &in)
+			if txt != c.text || *got != in || got.IsFinite() {
+				t.Fatalf("got %+v stored as %q, want %+v as %q", got, txt, in, c.text)
+			}
 		}
 	})
 	t.Run("TimeOfDay", func(t *testing.T) {

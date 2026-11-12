@@ -7,6 +7,7 @@ import (
 	"database/sql"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 )
 
 // execInsertID reports the rows affected and the auto-increment key the
@@ -34,12 +35,18 @@ func (d *driver) ExecInsertID(ctx context.Context, q string, args []any) (int64,
 	if d.err != nil {
 		return 0, 0, d.err
 	}
+	if err := sqlshared.CheckArgs("exec", args); err != nil {
+		return 0, 0, err
+	}
 	res, err := d.db.ExecContext(ctx, q, args...)
 	return execInsertID(res, err, q)
 }
 
 // ExecInsertID implements momo.InsertIDExecer.
 func (t *sqlTx) ExecInsertID(ctx context.Context, q string, args []any) (int64, int64, error) {
+	if err := sqlshared.CheckArgs("exec", args); err != nil {
+		return 0, 0, err
+	}
 	res, err := t.tx.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, 0, txErr("exec", err, q)
@@ -49,6 +56,9 @@ func (t *sqlTx) ExecInsertID(ctx context.Context, q string, args []any) (int64, 
 
 // ExecInsertID implements momo.InsertIDExecer.
 func (p *pinned) ExecInsertID(ctx context.Context, q string, args []any) (int64, int64, error) {
+	if err := sqlshared.CheckArgs("exec", args); err != nil {
+		return 0, 0, err
+	}
 	c, err := p.live()
 	if err != nil {
 		return 0, 0, err

@@ -64,7 +64,7 @@ func TestGenerateFromDBMapping(t *testing.T) {
 		{dialect.Postgres, "timestamp(3) without time zone", "time.Time", 0, 0},
 		{dialect.Postgres, "character varying(200)", "string", 200, 0},
 		{dialect.Postgres, "character varying", "string", 0, 0},
-		{dialect.Postgres, "numeric(10,2)", "string", 0, 0},
+		{dialect.Postgres, "numeric(10,2)", "types.Numeric", 0, 0},
 		{dialect.Postgres, "jsonb", "types.JSON[json.RawMessage]", 0, 0},
 		{dialect.Postgres, "uuid", "types.UUID", 0, 0},
 		{dialect.Postgres, "time without time zone", "types.TimeOfDay", 0, 0},
@@ -88,8 +88,8 @@ func TestGenerateFromDBMapping(t *testing.T) {
 			t.Errorf("MapType(%s, %q) = %+v; want %s size %d dim %d", c.d, c.in, got, c.want, c.size, c.dim)
 		}
 	}
-	if g, _ := MapType(dialect.Postgres, "numeric(10,2)"); g.Note == "" {
-		t.Error("numeric must carry the decimal-as-string note")
+	if g, _ := MapType(dialect.Postgres, "numeric(10,2)"); g.Import != importTypes {
+		t.Errorf("numeric import = %q, want the types package", g.Import)
 	}
 }
 
