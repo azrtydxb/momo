@@ -13,7 +13,7 @@ import (
 	"github.com/azrtydxb/momo"                    // core: DB, Tx, Select, Insert, Update, Delete, errors
 	"github.com/azrtydxb/momo/driver/pgxdriver"   // PostgreSQL driver (pgx v5)
 	"github.com/azrtydxb/momo/vector"             // vector.Vector, HalfVector, SparseVector, Bits
-	"github.com/azrtydxb/momo/types"              // types.UUID, Date, JSON[T], TimeOfDay, Hstore, TSVector, TSQuery
+	"github.com/azrtydxb/momo/types"              // types.UUID, Date, Numeric, JSON[T], TimeOfDay, Hstore, TSVector, TSQuery
 	"yourmodule/models"                           // your structs
 	"yourmodule/models/task"                      // GENERATED: one package per model (lowercase model name)
 )
@@ -98,7 +98,9 @@ migrate:
 
 `naming:` is optional: `momo` (default: snake_case columns, plural snake_case
 tables), `gorm`, `bun`, `ent`, `prisma`. Pick one and never change it: a change
-renames columns.
+renames columns. The `momo` preset keeps an initialism together, and a plural
+`s` after it belongs to it: `RoleIDs` is `role_ids`, `URLs` is `urls`,
+`HTTPServer` is `http_server`.
 
 `naming: prisma` matches a database that Prisma created: the table is the model
 name as written and quoted (`KbChunk`), the column is camelCase (`createdAt`,
@@ -255,9 +257,13 @@ Nullability and column rules:
   for non-pointers and a diagnostic on pointers.
 - A nullable field generates `momo.NullColumn[T]` (has `SetNull()`); a
   non-nullable one generates `momo.Column[T]` (`SetNull()` does not compile).
+  For a `*T` value that may be nil, `col.SetPtr(p)` writes NULL when `p` is nil
+  and `*p` otherwise, and `col.EqPtr(p)` renders `IS NULL` when `p` is nil and
+  `= $n` otherwise. Do not branch on nil by hand.
 - A primary key must not be nullable.
 - Scanning NULL into a non-pointer field is an error. Use pointers for nullable
-  columns.
+  columns. The one exception is a `dbdefault` pointer, which is NOT NULL (see
+  Database defaults).
 - Go type to column type: see [TYPE_MAPPING.md](TYPE_MAPPING.md) (`int` is
   `bigint`, `string` is `text`, `string` with `size:N` is `varchar(N)`,
   `time.Time` is `timestamptz`, `types.UUID` is `uuid`, `types.JSON[T]` is
@@ -275,35 +281,54 @@ Nullability and column rules:
   elements made of digits can be array indexes. SQLite renders `json_extract`
   and `json_type` (`jsonop.Contains` is `ErrUnsupported` there); MySQL renders
   its JSON functions.
+- JSON edits and scalars: `jsonop.Root(col)` reads a scalar stored at the
+  root of the value (`col #>> '{}'`; cast it with `sqlfn.Cast` for a number).
+  `jsonop.DeleteKey(expr, key)` is `expr - 'key'` (SQLite `json_remove`, MySQL
+  `JSON_REMOVE`), so a snapshot keeps every future column and still drops the
+  secret. `jsonop.Concat(a, b)` is the shallow `a || b` and
+  `jsonop.Set(target, path, value)` is `jsonb_set` with a path built in SQL
+  (`momo.ArrayOf(...)`). Both are PostgreSQL only and `ErrUnsupported`
+  elsewhere, because `json_patch` and `JSON_MERGE_PATCH` merge recursively and
+  drop nulls. `jsonop.DeleteKey`, `jsonop.Concat` and `jsonop.Set` need `jsonb` on PostgreSQL: the
+  `-`, `||` and `jsonb_set` forms do not exist for `json`. Their results are
+  JSON expressions that `jsonop.Text`, `jsonop.Path`, `jsonop.Root` and
+  `jsonop.HasKey` accept again, typed as the first operand without a check, so
+  a mismatch shows only when the row is scanned. A SQL NULL value in
+  `jsonop.Set` makes the whole result NULL: wrap an optional value in
+  `COALESCE`. `jsonb_build_object` and `to_jsonb` are variadic `"any"`: cast
+  their bound arguments (`sqlfn.Cast`), as PostgreSQL cannot type a bare
+  parameter there.
 - Column names default to the naming preset (`CreatedAt` becomes `created_at`).
   Fields are exported only; a tag on an unexported field is a diagnostic. Skip a
   field with `momo:"-"`.
 
 Tag reference (all lower case):
 
-| Tag                                                                       | Meaning                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `table:<name>` (on `momo.Model`)                                          | table name; always set it. Also `schema:<name>`.                                                                                                                                                                                                      |
-| `pk`                                                                      | primary key; several `pk` fields make a composite key, declared in field order unless `Config.PrimaryKey` lists the fields in another order (a tag `belongs_to` target needs a single-column key)                                                     |
-| `identity`, `identity:always`                                             | database-generated identity (`GENERATED BY DEFAULT AS IDENTITY`; `identity:always` is `GENERATED ALWAYS AS IDENTITY`, so a client-supplied value is refused by the database; not on MySQL)                                                            |
-| `serial`                                                                  | PostgreSQL `smallserial`/`serial`/`bigserial` id by Go int width (sequence owned by the column, `DEFAULT nextval`); omitted from inserts and read back with `RETURNING` like `identity`; excludes `identity` and `default`; refused on other dialects |
-| `column:<name>`                                                           | column name                                                                                                                                                                                                                                           |
-| `size:<n>`                                                                | `varchar(n)`; strings only                                                                                                                                                                                                                            |
-| `precision:<p>`, `scale:<s>`                                              | numeric precision (float, decimal, or a string without `size` that carries a numeric); `scale` needs `precision`                                                                                                                                      |
-| `dim:<n>`                                                                 | vector dimension; optional on vector and halfvec (none: dimensionless column), required on sparsevec and bit, invalid elsewhere                                                                                                                       |
-| `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                              |
-| `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                          |
-| `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                         |
-| `idgen:<name>`                                                            | client-generated string id (`cuid`, `uuid`, `ulid` or a name registered with `WithIDGenerator`); filled on insert when the field is empty                                                                                                             |
-| `dbdefault`                                                               | leave the column to the database default while the field holds its zero value: a `Model`/`Models` insert omits it and reads the stored value back (see Database defaults)                                                                             |
-| `version`                                                                 | optimistic-lock column (integer type)                                                                                                                                                                                                                 |
-| `created_at[:unix\|unixmilli\|unixnano]`, `updated_at`                    | automatic timestamps; field type `time.Time`, `*time.Time`, `int64` or `*int64`                                                                                                                                                                       |
-| `soft_delete:timestamp\|unix\|bool`                                       | soft-delete marker; Go type `*time.Time`, `*int64` or `bool`                                                                                                                                                                                          |
-| `read_only`, `create_only`, `immutable`                                   | write permissions: never written; written on insert only; never updated                                                                                                                                                                               |
-| `sensitive`                                                               | excluded from the generated `ColumnByName` allowlist (use for secrets)                                                                                                                                                                                |
-| `type:<sql>`, `collate:<c>`, `check:<expr>`, `comment:<t>`, `enum:<name>` | raw column type, collation, check, comment, enum type                                                                                                                                                                                                 |
-| `embedded`, `prefix:<p>`                                                  | flatten a named struct-typed field into this table (anonymous embedded structs flatten by themselves); `prefix` prepends to its column names                                                                                                          |
-| `nullable`, `notnull`                                                     | explicit nullability (rarely needed)                                                                                                                                                                                                                  |
+| Tag                                                                       | Meaning                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `table:<name>` (on `momo.Model`)                                          | table name; always set it. Also `schema:<name>`.                                                                                                                                                                                                                                                                                                              |
+| `pk`                                                                      | primary key; several `pk` fields make a composite key, declared in field order unless `Config.PrimaryKey` lists the fields in another order (a tag `belongs_to` target needs a single-column key)                                                                                                                                                             |
+| `identity`, `identity:always`                                             | database-generated identity (`GENERATED BY DEFAULT AS IDENTITY`; `identity:always` is `GENERATED ALWAYS AS IDENTITY`, so a client-supplied value is refused by the database; not on MySQL)                                                                                                                                                                    |
+| `serial`                                                                  | PostgreSQL `smallserial`/`serial`/`bigserial` id by Go int width (sequence owned by the column, `DEFAULT nextval`); omitted from inserts and read back with `RETURNING` like `identity`; excludes `identity` and `default`; refused on other dialects                                                                                                         |
+| `column:<name>`                                                           | column name                                                                                                                                                                                                                                                                                                                                                   |
+| `size:<n>`                                                                | `varchar(n)`; strings only                                                                                                                                                                                                                                                                                                                                    |
+| `precision:<p>`, `scale:<s>`                                              | numeric precision (float, decimal, or a string without `size` that carries a numeric); `scale` needs `precision`                                                                                                                                                                                                                                              |
+| `dim:<n>`                                                                 | vector dimension; optional on vector and halfvec (none: dimensionless column), required on sparsevec and bit, invalid elsewhere                                                                                                                                                                                                                               |
+| `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                                                                                                                                      |
+| `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                                                                                                                                  |
+| `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                                                                                                                                 |
+| `idgen:<name>`                                                            | client-generated string id (`cuid`, `uuid`, `ulid` or a name registered with `WithIDGenerator`); filled on insert when the field is empty                                                                                                                                                                                                                     |
+| `dbdefault`                                                               | leave the column to the database default while the field holds its zero value (nil for a pointer field, which then writes false and 0 when set): a `Model`/`Models` insert omits it and reads the stored value back (see Database defaults)                                                                                                                   |
+| `generated:<expr>`                                                        | stored generated column (`GENERATED ALWAYS AS (<expr>) STORED`); needs `read_only`, so Insert and Update never write it while Select and Where can use it; an insert does not read it back (select the row again, or use `ReturningAll` where the dialect has RETURNING). An expression with a comma goes through `Config.Generated`. `--from-db` writes both |
+| `virtual`                                                                 | with `generated:<expr>` (or `Config.GeneratedVirtual`): the column is `VIRTUAL` (computed on read) instead of STORED. MySQL and SQLite only: a PostgreSQL target is refused (VIRTUAL needs PostgreSQL 18, momo supports 16 and 17). An error without `generated`. `--from-db` writes it for a VIRTUAL column                                                  |
+| `version`                                                                 | optimistic-lock column (integer type)                                                                                                                                                                                                                                                                                                                         |
+| `created_at[:unix\|unixmilli\|unixnano]`, `updated_at`                    | automatic timestamps; field type `time.Time`, `*time.Time`, `int64` or `*int64`                                                                                                                                                                                                                                                                               |
+| `soft_delete:timestamp\|unix\|bool`                                       | soft-delete marker; Go type `*time.Time`, `*int64` or `bool`                                                                                                                                                                                                                                                                                                  |
+| `read_only`, `create_only`, `immutable`                                   | write permissions: never written; written on insert only; never updated                                                                                                                                                                                                                                                                                       |
+| `sensitive`                                                               | excluded from the generated `ColumnByName` allowlist (use for secrets)                                                                                                                                                                                                                                                                                        |
+| `type:<sql>`, `collate:<c>`, `check:<expr>`, `comment:<t>`, `enum:<name>` | raw column type, collation, check, comment, enum type                                                                                                                                                                                                                                                                                                         |
+| `embedded`, `prefix:<p>`                                                  | flatten a named struct-typed field into this table (anonymous embedded structs flatten by themselves); `prefix` prepends to its column names                                                                                                                                                                                                                  |
+| `nullable`, `notnull`                                                     | explicit nullability (rarely needed)                                                                                                                                                                                                                                                                                                                          |
 
 `MomoConfig` for what tags cannot express: composite or partial indexes, vector
 indexes, checks, enums, views, triggers, policies. The generator reads this
@@ -328,7 +353,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 `<table>_<col>_idx` produced by an `index` tag (the `Plan` field above already
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
-Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.Enum`, `Config.Default`,
+Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.Enum`, `Config.Default`, `Config.Generated`,
 `Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
 `Config.PartitionOf`. Index chain: `IndexOpts.Unique()` (on `Config.Index` or `Config.IndexExpr`), `Where(pred)`, `Method(m)`, `IndexOpts.With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
@@ -416,7 +441,7 @@ What the generator emits per model `Task` (package `task`):
 - Vector fields become `momo.VectorColumn[vector.Vector]` (nullable:
   `NullVectorColumn`).
 - `read_only` / `create_only` / `immutable` fields become permission-typed
-  columns that have no `Set` (or insert-only `Set`).
+  columns that have no `Column.Set` (or insert-only `Column.Set`).
 - Package name = lowercase model name. It can collide with your local variable
   names (`task := ...` shadows the package). Name variables differently or
   alias the import.
@@ -566,14 +591,31 @@ type Event struct {
   a `dbdefault` column that is zero in some row (`ErrValidation`). The
   default `DO UPDATE` set of `Upsert` leaves a dbdefault column out when a row
   leaves it to the database, so a conflict keeps the stored value.
-- The zero value means "use the default". On a `bool` or numeric column that
-  means `false` and `0` can never be written explicitly through `Model`: a
+- The zero value means "use the default". On a plain `bool` or numeric field
+  that means `false` and `0` can never be written explicitly through `Model`: a
   `dbdefault` field with `DEFAULT true` always stores true when it is `false`
-  in Go. Write such a value with `InsertQuery.Values`, or do not tag the column. The same
-  holds for an empty string and a zero time. A pointer or nullable field is
-  refused by the generator, because nil would stop meaning NULL; write NULL
-  with `InsertQuery.Values` and `SetNull`. `Omit` still wins: an omitted column is not
-  written, and a Go-side default hook still fills it.
+  in Go, and `momo generate` warns about such a field. The same holds for an
+  empty string and a zero time. To write `false` or `0`, make the field a
+  pointer on a NOT NULL column (`Active *bool` with
+  `` `momo:"default:true,dbdefault"` ``): a nil pointer takes the database
+  default and is set to the stored value after the insert, a non-nil pointer is
+  always written, `false` and `0` included. The column stays NOT NULL. A
+  `sql.Null*` type or the `nullable` tag is refused by the generator, because
+  nil would stop meaning NULL; write NULL with `InsertQuery.Values` and
+  `SetNull`. `Omit` still wins: an omitted column is not written, and a Go-side
+  default hook still fills it.
+- `Update(...).Model(&m)` treats a nil `dbdefault` pointer as "not set": it
+  leaves the column out of `SET`, so the column keeps its stored value (writing
+  NULL would fail on the NOT NULL column). A pointer to `false` or `0` is
+  written. If that leaves nothing to set, the update fails with the usual
+  `ErrValidation` ("no columns to update"). `Upsert` is unaffected: its default
+  `DO UPDATE` set takes `EXCLUDED` values and already leaves out a `dbdefault`
+  column that any row leaves to the database.
+- The pointer type that `--from-db` generates and the `momo generate` warning
+  cover only plain `bool` and number fields (`bool`, `int`..`int64`,
+  `uint`..`uint64`, `float32`, `float64`). A named type, a type override from
+  `introspect.types` or `introspect.columns`, a decimal or a string keeps the
+  field as it is and gets neither the pointer nor the warning.
 - `dbdefault` cannot be combined with `identity`, `serial`, `idgen`,
   `read_only`, `version`, `soft_delete`, `created_at` or `updated_at`; the
   generator reports it. It adds no database default (use `default:`), and
@@ -581,7 +623,9 @@ type Event struct {
   default is computed (a function call, `CURRENT_TIMESTAMP`, or a `nextval`
   sequence on a column that is not identity or serial); with
   `introspect.dbdefault: all` it writes it for every NOT NULL column that has a
-  default, a constant one such as `DEFAULT 1` included. A hand-written model can
+  default, a constant one such as `DEFAULT 1` included; a `bool` or number
+  column whose constant default is `true` or non-zero becomes a pointer field, so an
+  explicit `false` or `0` is written. A hand-written model can
   put `dbdefault` on any NOT NULL column that has a database default. It never
   writes it for other dialects: plain MySQL cannot read the value back.
 
@@ -911,6 +955,11 @@ in the package `github.com/azrtydxb/momo/arrayop`:
 count does not grow with the list. `arrayop.Overlaps` and `arrayop.AnyOf` with no values are
 false. On other dialects they fail the build with
 `ErrUnsupported`; use `In` there.
+Array expressions: `momo.ArrayOf[T]` renders `ARRAY[e1, e2]` from
+column, call or `momo.Value` elements (an empty list is `ErrValidation`), and
+`momo.ArraySubquery[T]` renders `ARRAY(subquery)` for a one-column
+`SelectQuery` or `momo.Union`. Both are `Expression[[]T]`, so they scan into
+a `[]T` field and feed `arrayop` predicates; PostgreSQL only.
 
 Searching with user input safely. `Like` and `ILike` always render
 `ESCAPE '!'` on every dialect, matching `EscapeLike`. Wildcards (`%`, `_`) in
@@ -950,7 +999,10 @@ only: `FOR NO KEY UPDATE` does not block foreign-key inserts on the locked
 row, `FOR KEY SHARE` is the weakest lock; same options; MySQL and SQLite
 return `ErrUnsupported`), `LockOf` (names the tables a lock covers, for
 example `ForUpdate("SKIP LOCKED").LockOf("d")` on a joined job claim; the names must be
-table or alias names, not CTEs), `SelectQuery.With`, `WithRecursive`, `Union`,
+table or alias names, not CTEs), `SelectQuery.With`, `WithRecursive`, `Union` (a member with its own
+`ORDER BY`, `LIMIT`, `OFFSET` or lock is parenthesised, a derived table on
+SQLite), `SelectUnion[T]` (runs a union at the top level with an outer
+`OrderBy`, `Limit` and `Offset`; `All`, `Rows`),
 `FromSubquery`, `Each` (a context and a callback per row) and `Iter` (a
 context; it returns `iter.Seq2[T, error]`). `Count` and `Exists` wrap the whole
 statement, so they keep a lock clause and lock the rows they count. Aggregates: `momo.CountAll`,
@@ -978,6 +1030,18 @@ connections. The lock lasts until `advisory.Unlock` or until the connection clos
 unlock before `pc.Release()` (or `Discard` the connection if the unlock fails).
 `db.IsPinned()` reports whether a handle is pinned.
 
+Shared advisory locks (the reader half of a reader/writer pair on one key):
+`advisory.XactLockShared`, `advisory.TryXactLockShared`, `advisory.LockShared`,
+`advisory.TryLockShared`, `advisory.UnlockShared` and the `...String` forms take
+`pg_advisory_xact_lock_shared`, `pg_advisory_lock_shared` and friends, with the
+same arguments, `advisory.Hash64` option, transaction and pinned-connection rules
+as the exclusive helpers. Any number of sessions hold the shared lock of a key
+together; none runs while another holds the exclusive lock of that key
+(`advisory.XactLock`), and the exclusive lock waits for every shared holder.
+`advisory.XactLockSharedString(ctx, tx, k, advisory.Hash64(52))` takes the lock
+`pg_advisory_xact_lock_shared(hashtextextended(k, 52))` takes. `advisory.Unlock`
+does not release a shared lock; use `advisory.UnlockShared`.
+
 Typed expressions (no `momo.SQL` needed). Computed values (`momo.Func` and, in the
 package `github.com/azrtydxb/momo/sqlfn`, `sqlfn.Substr`, `sqlfn.Lower`,
 `sqlfn.Upper`, `sqlfn.Length`, `sqlfn.Case`, `sqlfn.Add`/`sqlfn.Sub`/`sqlfn.Mul`,
@@ -993,6 +1057,15 @@ mismatch. Otherwise group by position or alias in an outer query. Keyset paginat
 `LoadPerParentLimit` also reject an alias order key with `ErrValidation`, because
 an alias is not valid in WHERE or inside a window ORDER BY; order by the
 expression itself there.
+
+A predicate orders through `momo.OrderByPredicate(p)`, which has `Asc()` and
+`Desc()` and renders `ORDER BY (p)`: `OrderBy(momo.OrderByPredicate(t.BuiltinKey.IsNull()).Asc(), t.Name.Asc())`
+lists rows with a `builtin_key` first. False sorts before true, so `(col IS NULL) ASC` puts NULLs
+last on every dialect. A predicate has no `Asc` method of its own, because `Predicate` is an interface.
+`NullsFirst` and `NullsLast` on it are `ErrUnsupported` on MySQL and MariaDB. `After` over a
+predicate key is `ErrValidation`, and so is a predicate in the outer `OrderBy` of a `SelectUnion`
+(unqualified result columns only). `OrderByPredicate(nil)` is `ErrValidation`; an `agg` call's
+`OrderBy` needs `.Asc()` or `.Desc()`.
 
 <!-- docscheck:fragment -->
 
@@ -1029,6 +1102,9 @@ momo.Func[string]("btrim", doc.Title)
 // Aggregates with their own ORDER BY (agg.Call[T], package momo/agg); chain OrderBy, inside the call.
 agg.String(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
 agg.Array[string](label).OrderBy(label.Asc())       // []string; ErrUnsupported on other dialects
+agg.Array[string](label).Distinct().OrderBy(label.Asc()) // array_agg(DISTINCT ...); Distinct works on String, JSONB and agg.Func too
+// Expand an array column of an earlier source (PostgreSQL): CROSS JOIN LATERAL unnest(q2.flags) AS fl (flag).
+fl := momo.UnnestColumn(q2Flags).As("fl", "flag") // q2Flags is a Column[[]string]; read it with fl.Column()
 // Ordered-set aggregates (PostgreSQL): WithinGroup is required.
 agg.PercentileCont(0.5).WithinGroup(run.DurationMs.Asc())      // float64
 agg.PercentileDisc[int64](0.9).WithinGroup(run.DurationMs.Asc())
@@ -1038,6 +1114,19 @@ item := agg.BuildObject[Item](agg.Field("label", label), agg.Field("n", n))
 sqlfn.CoalesceExpr(agg.JSONB[Item](item).OrderBy(label.Asc()), agg.EmptyJSONArray[Item]())
 // current_schema(): PostgreSQL; MySQL maps to DATABASE(); SQLite is ErrUnsupported.
 sqlfn.CurrentSchema()
+// Division and NULLIF (integers divide as integers on PostgreSQL and SQLite, as DECIMAL on MySQL;
+// guard a divisor with NullIf on every dialect, a zero divisor is an error in PostgreSQL and MySQL strict mode):
+//   sqlfn.DivExpr[float64](final, sqlfn.NullIf[float64](max, 0)); sqlfn.Div[float64](final, 2)
+// Row-value comparison, the keyset position check; both rows need 2+ elements of the same count:
+//   Where(momo.Row(w.CreatedAt, w.ID).Lt(momo.Row(me.At, momo.Value(id)))); also Le, Gt, Ge
+// CURRENT_DATE, and 'infinity' / '-infinity' timestamptz (PostgreSQL only; ErrUnsupported elsewhere):
+//   sqlfn.CurrentDate(); sqlfn.Infinity(); sqlfn.NegInfinity()
+// Inline literal for text that must match in SELECT and GROUP BY (a bound value gets a new $n each
+// time, PostgreSQL 42803). Ints, floats, bool, string and time.Time. A string has ' doubled and is
+// refused (ErrValidation) with a backslash or NUL; a time.Time must be exactly 00:00:00 UTC and
+// renders as a date. Anything else, bind with Value:
+//   key := sqlfn.CoalesceExpr[string](tag, momo.Lit("none"))
+//   key := sqlfn.CoalesceExpr[int64](grp, momo.Lit(int64(0)))
 
 // Dates and times, package github.com/azrtydxb/momo/timeop (PostgreSQL; SQLite and MySQL render equivalents). Fields and
 // units are constants checked against an allowlist; anything else is ErrValidation.
@@ -1051,6 +1140,11 @@ timeop.StatementTimestamp()                              // statement_timestamp(
 // Intervals are an operand of AddInterval/SubInterval, not an expression of their own.
 timeop.SubInterval(timeop.Now(), timeop.IntervalOf(7, timeop.IntervalDay))              // literal count
 timeop.AddInterval(doc.CreatedAt, timeop.IntervalExpr(momo.Value(int64(n)), timeop.IntervalHour)) // bound or column count
+timeop.AddInterval(doc.CreatedAt, timeop.IntervalOf(1500, timeop.IntervalMillisecond))           // also IntervalMicrosecond; SQLite rounds to the nearest millisecond (1500us adds 2 ms)
+timeop.AddDuration(doc.CreatedAt, 1500*time.Millisecond)                                         // a time.Duration as a literal interval, no rounding; also SubDuration
+// Difference of two timestamps, read as seconds: a Span has no value of its own on MySQL and SQLite.
+timeop.EpochSeconds(timeop.Sub(job.FinishedAt, job.StartedAt))                                   // float64 extract(epoch FROM a - b); TIMESTAMPDIFF on MySQL, julianday on SQLite
+timeop.EpochSeconds(timeop.Age(a, b))                                                            // age(a, b), PostgreSQL only; ErrUnsupported elsewhere; its epoch counts a month as 30 days and a year as 365.25 days, use Sub for elapsed time
 
 // JoinSQL composes raw fragments with their args (Prisma.join). The separator is a fixed
 // literal from an allowlist: "," or " " (parts as written), " AND ", " OR ", "||", "+"
@@ -1156,7 +1250,8 @@ res, err := momo.Update[models.Task](q).
 // Atomic arithmetic (no read-modify-write race):
 //   .Set(account.Balance.SetExpr(sqlfn.Add(account.Balance, delta)))
 // (Sub, Mul, AddExpr with col.Excluded() in an upsert, Case, Substr: see section 6 "Typed expressions".)
-// Other assignments: col.SetDefault(), col.SetExcluded() (upsert), nullCol.SetNull().
+// Other assignments: col.SetDefault(), col.SetExcluded() (upsert), nullCol.SetNull(),
+// nullCol.SetPtr(p *T) (NULL when p is nil).
 
 // Whole row from a struct (writes every writable column, zero values included):
 cur, _ := momo.Select[models.Task](q).Where(task.ID.Eq(id)).One(ctx)
@@ -1174,8 +1269,8 @@ _, err = momo.Update[models.Task](q).Model(&cur).Exec(ctx)
   fails with `ErrOptimisticLock`, a missing row with `ErrNotFound`, and after
   success your struct's version field is advanced. Reload the row and retry on
   `ErrOptimisticLock`.
-- Only `UpdateQuery.Model` checks and advances the version. A `Set`-based update,
-  `Upsert` and relation helpers do NOT. DON'T `Set` the version, pk, soft-delete,
+- Only `UpdateQuery.Model` checks and advances the version. A `UpdateQuery.Set`-based update,
+  `Upsert` and relation helpers do NOT. DON'T `Column.Set` the version, pk, soft-delete,
   created_at or updated_at column directly (`ErrValidation`); writing a
   `read_only`, `immutable` (on update) or identity column is `ErrValidation`.
   `Rows` is not supported on a versioned `Model` update; use `Exec`.
@@ -1259,8 +1354,9 @@ res, err := momo.Insert[models.Meter](q).
 ```
 
 - `FromSelect` takes any `Subquery` (the first argument) plus the typed target columns:
-  `SelectExprs` (a FROM-less or single-source select of expressions, with `From` and
-  `Where`) or a `Select[T]` query. The select list must have as many columns as the
+  `SelectExprs` (a FROM-less or single-source select of expressions, with `From`,
+  `Where`, `Join`/`LeftJoin`/`CrossJoin`, `GroupBy`, `Having` and `OrderBy`; the clauses
+  work like those of `Select[T]`, and a join, `GroupBy` or `Having` needs a `From`) or a `Select[T]` query. The select list must have as many columns as the
   target columns (`ErrValidation` otherwise; a `RawSubquery` is checked by the
   database). `FromSelect` runs no model hooks.
 - The soft-delete filter on a `SelectExprs` source (including inside `NotExists`) is
@@ -1320,6 +1416,18 @@ Joined and CTE-prefixed writes:
   branch references the target (one branch off the target can be true on its own, which touches
   every target row); an `And` counts when any term does. `momo.Not` swaps the rules (a negated `And` needs every term on the target, a negated `Or` any term), and `momo.JoinSQL` with `AND` or `OR` follows the same rules as `And` and `Or`. The guard checks that `Where` references the target, not that it restricts it: a constant-true predicate such as `t.id = t.id` passes. `From` cannot be combined with
   `BulkUpdate` (`ErrValidation`), and `RETURNING` with `From` works on PostgreSQL and SQLite only.
+- `From` and `Using` take more than one source (`From(momo.CTE("due"), otherTable)`), rendered as a
+  comma list. With two or more sources the guard applies the same rule to each source: a source
+  that no `Where` predicate references is cross-joined, and the statement is `ErrUnfilteredMutation`
+  unless `AllRows()` confirms it. One source is checked against the target only.
+- `Returning` accepts columns of a `From` or `Using` source or CTE (`momo.ColumnOf`, or a table's
+  descriptors under its alias). On PostgreSQL a statement with a source renders its whole
+  RETURNING list qualified, so a column the source shares with the target is not ambiguous. Read
+  such a list with `momo.ScanUpdate` or `momo.ScanDelete`, which scan into a
+  plain struct, projection or tuple row by result column name (`s.url` is `url`; two returned
+  columns with the same name are `ErrValidation`). `Rows` and `One` refuse a source column
+  (`ErrValidation`), since the model has no field for it. SQLite's RETURNING reads the modified
+  table only, so a source column there is `ErrUnsupported`.
 - `UpdateQuery.With` and `UpdateQuery.WithRecursive` exist on `UpdateQuery`, `DeleteQuery` and `InsertQuery`, with the
   `SelectQuery` signature. PostgreSQL and SQLite render the WITH before the statement; MySQL
   accepts it before UPDATE and DELETE only (`ErrUnsupported` before INSERT), and MariaDB refuses it
@@ -1329,7 +1437,9 @@ Joined and CTE-prefixed writes:
 - `InsertQuery`, `UpdateQuery` and `DeleteQuery` with `Returning` are `Subquery` values, usable as
   the body of `SelectQuery.With` on any statement: a select with `.With("x", ins).From(momo.CTE("x"))` renders
   `WITH x AS (INSERT ... RETURNING ...) SELECT ... FROM x`. PostgreSQL has data-modifying
-  CTEs; SQLite and MySQL return `ErrUnsupported`. A DML body renders with the handle's interceptors
+  CTEs; SQLite and MySQL return `ErrUnsupported`. A DML body needs `Returning` only when the outer
+  statement reads the CTE; a body that nothing reads (`WITH d AS (DELETE ...) INSERT ...`) builds
+  without it, and PostgreSQL reports the error if it is read. A DML body renders with the handle's interceptors
   (with a background context) but runs no model hooks and no `beforeWrite` check; the outer
   statement's `Exec` or `All` is what executes it. An INSERT body is never chunked: one that
   binds more parameters than the dialect allows fails with `ErrLimitExceeded`.
@@ -1377,8 +1487,10 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   then case-insensitive; an unmapped, missing or duplicated result column is
   `ErrValidation`). `T` may also be a plain struct with no generated metadata
   (no generator run, any number of columns): its exported fields are the
-  columns, named by a `momo:"column:x"` tag or else the snake_case of the field
-  name (`UserID` is `user_id`, `HTTPServer` is `http_server`), `momo:"-"` skips
+  columns, named by a `momo:"column:x"` tag or else the column name the DB's
+  naming preset gives the field (`momo.New(drv, momo.WithNaming(naming.Prisma{}))`;
+  snake_case without the option: `UserID` is `user_id`, `RoleIDs` is `role_ids`,
+  `HTTPServer` is `http_server`), `momo:"-"` skips
   a field, the fields of an embedded struct count as the outer struct's own
   (unless it is a `time.Time`, a `sql.Scanner` or has a column tag; an outer
   field shadows an embedded one, two fields on one column and an embedding
@@ -1397,6 +1509,20 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   argument redaction are those of `Exec`; interceptors, soft-delete filters and
   `AfterLoad` do not apply to raw SQL. `QueryRows` closes the cursor on early
   break, on an error and on a canceled context (`ErrCanceled`).
+- `RawRows(ctx, q, sql, args...)` returns the open cursor (`momo.ColumnRows`:
+  `Next`, `Scan(dest...)`, `Columns`, `Err`, `Close`) for a result whose shape is
+  only known at run time. It has the hooks (op `raw`), `WithTxSetup`,
+  error classification and redaction of `Query`, on a `*DB`, `*Tx` or `AdoptTx`
+  handle. Always close it: an unclosed cursor holds its connection (and, under
+  `WithImplicitTx`, its transaction). A canceled context closes it and `Err` is
+  `ErrCanceled` (also when the cancel came after the last row, as in
+  `QueryRows`). Under `WithImplicitTx` raw SQL counts as a write: reading to the
+  end commits, and a `Close` before the end (even with no `Next`), after a Scan
+  or driver error, or after a cancel rolls back and returns `ErrValidation`;
+  without it an early `Close` is plain. Scan errors are classified and recorded
+  on the hook event. `Columns` is the driver's list: empty means no columns (an
+  `UPDATE` without `RETURNING`) or an unnamed driver. Prefer `Query[T]` when the
+  shape is known.
 
 #### Porting pgx and sqlc SQL
 
@@ -1695,7 +1821,13 @@ Rules and limits:
   filters before the limit.
 - `Has`/`HasNo` predicates must name the child column through the alias
   `momo_r`: `comment.Approved.As("momo_r").Eq(true)`; an unaliased column refers
-  to the OUTER table.
+  to the OUTER table. `Has`/`HasNo` nest: each level has its own child alias
+  (`momo_r`, `momo_r2`, `momo_r3`; join table `momo_j`, `momo_j2`), the inner one
+  correlates on the enclosing alias, and `As("momo_r")` in a scope always means
+  that scope's own level. `As(momo.RelAlias(n))` names level n explicitly (1 is
+  the outermost) and is never rewritten. A nested `Has` in a self-reference
+  correlates on the enclosing child; `HasFrom(alias)` keeps the alias given. Do
+  not name your own aliases `momo_r<N>` or `momo_j<N>`.
 - Has-one that matches several children for a parent: `ErrTooManyRows`.
 - `Link`, `Unlink`, `Replace`, `Count` write SQL directly: model hooks, field
   hooks and `UpdatedAt` are NOT run. Use the model's update path when those must
@@ -1974,7 +2106,7 @@ builders with `momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)`
 (`MOMO_UPDATE_GOLDEN=1` rewrites the files; registering a name twice panics).
 The SQL of `InsertQuery[T].Model` depends on the sample model's dbdefault fields (a
 zero one is left out of the column list), so register it with the fields set as
-a real call sets them, or register `InsertQuery[T].Values` with `Set` for each column or
+a real call sets them, or register `InsertQuery[T].Values` with `Column.Set` for each column or
 `InsertQuery[T].Omit` before `InsertQuery[T].Model`, whose column list does not depend on values (see
 [testing.md](testing.md#listing-the-sql-a-query-registry)).
 
@@ -2114,7 +2246,7 @@ report)`, a development hook that reports once per statement shape per scope
    to fall back to database defaults. Use `Returning(...).Rows` to read identities.
 7. Use `UpdateQuery.Set(col.Set(v))` for partial updates, `UpdateQuery.Model` for whole-row
    updates with a `version` column; handle `ErrOptimisticLock` by reload and
-   retry. `Set` updates do not touch the version.
+   retry. `UpdateQuery.Set` updates do not touch the version.
 8. Never call `AllRows()` to get past `ErrUnfilteredMutation`; add a `Where`.
 9. Soft-delete models: `SoftDelete`/`ForceDelete`, not `Delete`. Raw SQL and
    projections whose `From` is a subquery or a hand-built `TableRef` do not get

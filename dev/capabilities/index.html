@@ -754,6 +754,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1821,16 +1849,16 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tbody>
 <tr>
 <td>JSON operators on <code>types.JSON[T]</code></td>
-<td><code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Contains</code>, <code>jsonop.HasKey</code></td>
+<td><code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code>, <code>jsonop.Contains</code>, <code>jsonop.HasKey</code>, <code>jsonop.DeleteKey</code>, <code>jsonop.Concat</code>, <code>jsonop.Set</code></td>
 <td>yes</td>
-<td><code>jsonop.Text</code>, <code>jsonop.Path</code> and <code>jsonop.HasKey</code> run on both SQLite drivers; a JSON boolean extracts as <code>1</code> or <code>0</code>; <code>jsonop.Contains</code> is <code>ErrUnsupported</code>, since <code>json_each</code> cannot express the recursive <code>@&gt;</code> rule</td>
+<td><code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code>, <code>jsonop.DeleteKey</code> and <code>jsonop.HasKey</code> run on both SQLite drivers; a JSON boolean extracts as <code>1</code> or <code>0</code>; <code>jsonop.Contains</code>, <code>jsonop.Concat</code> and <code>jsonop.Set</code> are <code>ErrUnsupported</code></td>
 <td>SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server</td>
 </tr>
 <tr>
 <td>Date and time expressions</td>
-<td><code>timeop.Extract</code>, <code>timeop.AtTimeZone</code>, <code>timeop.Trunc</code>, <code>timeop.Now</code>, <code>timeop.CurrentTimestamp</code>, <code>timeop.IntervalOf</code>, <code>timeop.IntervalExpr</code>, <code>timeop.AddInterval</code>, <code>timeop.SubInterval</code></td>
+<td><code>timeop.Extract</code>, <code>timeop.AtTimeZone</code>, <code>timeop.Trunc</code>, <code>timeop.Now</code>, <code>timeop.CurrentTimestamp</code>, <code>timeop.IntervalOf</code>, <code>timeop.IntervalExpr</code>, <code>timeop.IntervalDuration</code>, <code>timeop.AddInterval</code>, <code>timeop.SubInterval</code>, <code>timeop.AddDuration</code>, <code>timeop.SubDuration</code>, <code>timeop.Sub</code>, <code>timeop.Age</code>, <code>timeop.EpochSeconds</code></td>
 <td>yes</td>
-<td>every <code>timeop.ExtractField</code>, <code>timeop.TruncUnit</code>, interval and <code>timeop.Now</code> run on both SQLite drivers; month arithmetic overflows into the next month (Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); <code>timeop.Now</code> is millisecond text; <code>timeop.AtTimeZone</code> is PostgreSQL only</td>
+<td>every <code>timeop.ExtractField</code>, <code>timeop.TruncUnit</code>, interval and <code>timeop.Now</code> run on both SQLite drivers; month arithmetic overflows into the next month (Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); <code>timeop.Now</code> is millisecond text; <code>timeop.AtTimeZone</code> is PostgreSQL only; <code>timeop.IntervalMillisecond</code> and <code>timeop.IntervalMicrosecond</code> keep milliseconds; <code>timeop.EpochSeconds</code> of <code>timeop.Sub</code> runs through <code>julianday</code> (about 0.1 ms), <code>timeop.Age</code> is PostgreSQL only</td>
 <td>SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server; <code>timeop.AtTimeZone</code> is PostgreSQL only</td>
 </tr>
 </tbody>
@@ -1880,9 +1908,9 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 </tr>
 <tr>
 <td>UPDATE ... FROM, DELETE ... USING, WITH on DML, DML as a CTE body</td>
-<td>yes: <code>UpdateQuery.From</code>, <code>DeleteQuery.Using</code>, <code>InsertQuery.With</code> / <code>InsertQuery.WithRecursive</code> on <code>InsertQuery</code>, <code>UpdateQuery</code> and <code>DeleteQuery</code>, and an INSERT, UPDATE or DELETE with <code>Returning</code> as a <code>SelectQuery.With</code> body</td>
+<td>yes: <code>UpdateQuery.From</code>, <code>DeleteQuery.Using</code>, <code>InsertQuery.With</code> / <code>InsertQuery.WithRecursive</code> on <code>InsertQuery</code>, <code>UpdateQuery</code> and <code>DeleteQuery</code>, and an INSERT, UPDATE or DELETE as a <code>SelectQuery.With</code> body (it needs <code>Returning</code> only when the outer statement reads the CTE; PostgreSQL reports the error otherwise)</td>
 <td>SQLite: <code>UPDATE ... FROM</code> and WITH before any DML yes, <code>DELETE ... USING</code> and a data-modifying CTE body <code>ErrUnsupported</code>. MySQL and MariaDB: multi-table <code>UPDATE t, src SET ...</code> and <code>DELETE t FROM t, src</code>; WITH before UPDATE and DELETE on MySQL only (MariaDB <code>ErrUnsupported</code>, not verified); WITH before INSERT and a data-modifying CTE body <code>ErrUnsupported</code></td>
-<td><code>From</code> / <code>Using</code> take a table, <code>momo.CTE</code> or <code>momo.FromSubquery</code>; the soft-delete filter and interceptors do not apply to that source. With <code>From</code> or <code>Using</code>, <code>Where</code> must reference the target table or the statement is <code>ErrUnfilteredMutation</code> unless <code>AllRows</code>. A WITH on a chunked bulk insert or on <code>BulkUpdate</code> is <code>ErrValidation</code>; an INSERT CTE body over the parameter limit is <code>ErrLimitExceeded</code></td>
+<td><code>From</code> / <code>Using</code> take a table, <code>momo.CTE</code> or <code>momo.FromSubquery</code>; the soft-delete filter and interceptors do not apply to that source. With <code>From</code> or <code>Using</code>, <code>Where</code> must reference the target table or the statement is <code>ErrUnfilteredMutation</code> unless <code>AllRows</code>. <code>From</code> and <code>Using</code> take several sources (comma list); with two or more, <code>Where</code> must reference every source too. <code>Returning</code> may list source or CTE columns (PostgreSQL only, rendered qualified), read with <code>ScanUpdate</code> / <code>ScanDelete</code>; <code>Rows</code> and <code>One</code> refuse them. A WITH on a chunked bulk insert or on <code>BulkUpdate</code> is <code>ErrValidation</code>; an INSERT CTE body over the parameter limit is <code>ErrLimitExceeded</code></td>
 </tr>
 <tr>
 <td>Soft delete</td>
@@ -1906,7 +1934,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Array columns and operators</td>
 <td>yes: <code>[]string</code> maps to <code>text[]</code>, also <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>, <code>[]float32</code>, <code>[]float64</code>, <code>[]types.UUID</code> and <code>[]uuid.UUID</code> (github.com/google/uuid) (<code>uuid[]</code>); one bind per slice</td>
 <td><code>ErrUnsupported</code> at build time</td>
-<td><code>arrayop.Contains</code> (<code>@&gt;</code>), <code>arrayop.ContainedBy</code> (<code>&lt;@</code>), <code>arrayop.Overlaps</code> (<code>&amp;&amp;</code>), <code>arrayop.AnyOf</code> (<code>= ANY</code>)</td>
+<td><code>arrayop.Contains</code> (<code>@&gt;</code>), <code>arrayop.ContainedBy</code> (<code>&lt;@</code>), <code>arrayop.Overlaps</code> (<code>&amp;&amp;</code>), <code>arrayop.AnyOf</code> (<code>= ANY</code>), <code>momo.ArrayOf</code> (<code>ARRAY[...]</code>), <code>momo.ArraySubquery</code> (<code>ARRAY(...)</code>)</td>
 </tr>
 <tr>
 <td>Joins</td>
@@ -1948,7 +1976,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Raw SQL</td>
 <td>yes</td>
 <td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
-<td><code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.Query</code> and <code>momo.QueryRows</code> (into a model, a projection, <code>Row1</code>..<code>Row10</code> or a plain struct scanned by column name with no generated metadata; an unmatched column or field is <code>ErrValidation</code> naming it), <code>momo.SQL</code>, <code>TypedSQL</code>, <code>RawSubquery</code>, <code>Named</code>, <code>In</code>, <code>Ident</code></td>
+<td><code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.RawRows</code> (a <code>Scan(dest...)</code> cursor for a run-time shape), <code>momo.Query</code> and <code>momo.QueryRows</code> (into a model, a projection, <code>Row1</code>..<code>Row10</code> or a plain struct scanned by column name with no generated metadata, named by the <code>momo:"column:x"</code> tag or else by the <code>momo.WithNaming</code> preset (snake_case by default); an unmatched column or field is <code>ErrValidation</code> naming it), <code>momo.SQL</code>, <code>TypedSQL</code>, <code>RawSubquery</code>, <code>Named</code>, <code>In</code>, <code>Ident</code></td>
 </tr>
 <tr>
 <td><code>EXPLAIN</code></td>
@@ -1983,7 +2011,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 </tr>
 <tr>
 <td><code>INSERT ... SELECT</code></td>
-<td>yes: <code>InsertQuery[T].FromSelect</code> with <code>SelectExprs</code> (FROM-less or one source, with <code>Where</code>) or <code>Select[T]</code> as the source; composes with <code>OnConflict</code>, <code>Returning</code>, <code>Upsert[T]</code></td>
+<td>yes: <code>InsertQuery[T].FromSelect</code> with <code>SelectExprs</code> (FROM-less or one source, with <code>Where</code>, joins, <code>GroupBy</code>, <code>Having</code>, <code>OrderBy</code>) or <code>Select[T]</code> as the source; composes with <code>OnConflict</code>, <code>Returning</code>, <code>Upsert[T]</code></td>
 <td>SQLite yes (<code>WHERE true</code> is added to a <code>SelectExprs</code> or <code>Select[T]</code> source with FROM and no WHERE before <code>ON CONFLICT</code>); MySQL plain insert only (no <code>ON CONFLICT</code>; FROM-less with WHERE renders <code>FROM DUAL</code>)</td>
 <td>Target columns are explicit typed columns of T; a select-list count mismatch is <code>ErrValidation</code>. No model hooks, automatic timestamps, Go-side defaults or validators are applied: list those columns yourself. The soft-delete filter on a <code>SelectExprs</code> source needs a <code>TableRef</code> that carries the soft-delete marker.</td>
 </tr>
@@ -2088,13 +2116,13 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Advisory transaction locks</td>
 <td>yes: <code>pg_advisory_xact_lock</code>, <code>pg_try_advisory_xact_lock</code>, text keys through <code>hashtext</code></td>
 <td><code>ErrUnsupported</code></td>
-<td><code>advisory.XactLock</code>, <code>advisory.XactLockString</code>, <code>advisory.TryXactLock</code>, <code>advisory.TryXactLockString</code> (package <code>github.com/azrtydxb/momo/advisory</code>, taking the <code>*Tx</code>); a <code>DB</code> does not compile, because a transaction lock outside a transaction is meaningless. String and int64 keys share one bigint key space, and <code>hashtext</code> is not stable across PostgreSQL major versions, so never store a hashed key</td>
+<td><code>advisory.XactLock</code>, <code>advisory.XactLockString</code>, <code>advisory.TryXactLock</code>, <code>advisory.TryXactLockString</code>, and the shared locks <code>advisory.XactLockShared</code>, <code>advisory.XactLockSharedString</code>, <code>advisory.TryXactLockShared</code>, <code>advisory.TryXactLockSharedString</code> (<code>pg_advisory_xact_lock_shared</code>, PostgreSQL only; package <code>github.com/azrtydxb/momo/advisory</code>, taking the <code>*Tx</code>); a <code>DB</code> does not compile, because a transaction lock outside a transaction is meaningless. String and int64 keys share one bigint key space, and <code>hashtext</code> is not stable across PostgreSQL major versions, so never store a hashed key</td>
 </tr>
 <tr>
 <td>Advisory session locks</td>
 <td>yes: <code>pg_advisory_lock</code>, <code>pg_try_advisory_lock</code>, <code>pg_advisory_unlock</code> on a pinned connection (<code>db.OnConn</code>); 64-bit text keys through <code>advisory.Hash64</code></td>
 <td><code>ErrUnsupported</code>; a pooled <code>*DB</code> is <code>ErrValidation</code></td>
-<td><code>advisory.Lock</code>, <code>advisory.TryLock</code>, <code>advisory.Unlock</code> and the string forms</td>
+<td><code>advisory.Lock</code>, <code>advisory.TryLock</code>, <code>advisory.Unlock</code> and the string forms; the shared locks <code>advisory.LockShared</code>, <code>advisory.TryLockShared</code>, <code>advisory.UnlockShared</code> and their string forms (<code>pg_advisory_lock_shared</code>, PostgreSQL only)</td>
 </tr>
 <tr>
 <td>CTE</td>
@@ -2124,19 +2152,37 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Typed <code>substr</code>, <code>CASE</code>, arithmetic</td>
 <td>yes</td>
 <td>SQLite yes; MySQL runs in the shared suite (<code>suite.RunAll</code>) only where that suite covers it</td>
-<td><code>momo.Func[T]</code>; in <code>sqlfn</code>: <code>sqlfn.Substr</code>, <code>sqlfn.Lower</code>, <code>sqlfn.Upper</code>, <code>sqlfn.Length</code> (MySQL: <code>char_length</code>), <code>sqlfn.Case[T]()</code>, <code>sqlfn.Add</code>/<code>sqlfn.Sub</code>/<code>sqlfn.Mul</code> and <code>...Expr</code>, <code>sqlfn.CoalesceExpr</code>, <code>sqlfn.Cast[T]</code>, <code>sqlfn.Concat</code></td>
+<td><code>momo.Func[T]</code>; in <code>sqlfn</code>: <code>sqlfn.Substr</code>, <code>sqlfn.Lower</code>, <code>sqlfn.Upper</code>, <code>sqlfn.Length</code> (MySQL: <code>char_length</code>), <code>sqlfn.Case[T]()</code>, <code>sqlfn.Add</code>/<code>sqlfn.Sub</code>/<code>sqlfn.Mul</code>/<code>sqlfn.Div</code> and <code>...Expr</code> (<code>/</code> on integers returns DECIMAL on MySQL; guard a divisor with <code>sqlfn.NullIf</code> on every dialect), <code>sqlfn.CoalesceExpr</code>, <code>sqlfn.Cast[T]</code>, <code>sqlfn.Concat</code></td>
 </tr>
 <tr>
 <td>Aggregate ORDER BY, <code>WITHIN GROUP</code>, <code>string_agg</code>, <code>array_agg</code>, <code>jsonb_agg</code></td>
 <td>yes</td>
 <td><code>agg.String</code> yes (SQLite 3.44+ for ORDER BY; MySQL <code>GROUP_CONCAT ... SEPARATOR</code>); <code>agg.JSONB</code>/<code>agg.BuildObject</code> map to <code>json_group_array</code>/<code>json_object</code> and <code>JSON_ARRAYAGG</code>/<code>JSON_OBJECT</code> (no ORDER BY on MySQL); <code>agg.Array</code>, <code>WithinGroup</code>, <code>agg.PercentileCont</code>/<code>agg.PercentileDisc</code>: <code>ErrUnsupported</code></td>
-<td><code>agg.Func[T]</code>, <code>.OrderBy</code>, <code>.WithinGroup</code>, <code>.Filter</code>, <code>agg.String</code>, <code>agg.Array[T]</code>, <code>agg.JSONB[T]</code>, <code>agg.BuildObject[T]</code>, <code>agg.Field</code>, <code>agg.ToJSONB[T]</code>, <code>agg.EmptyJSONArray[T]</code>, <code>agg.PercentileCont</code>, <code>agg.PercentileDisc[T]</code></td>
+<td><code>agg.Func[T]</code>, <code>.OrderBy</code>, <code>.WithinGroup</code>, <code>.Filter</code>, <code>.Distinct</code>, <code>agg.String</code>, <code>agg.Array[T]</code>, <code>agg.JSONB[T]</code>, <code>agg.BuildObject[T]</code>, <code>agg.Field</code>, <code>agg.ToJSONB[T]</code>, <code>agg.EmptyJSONArray[T]</code>, <code>agg.PercentileCont</code>, <code>agg.PercentileDisc[T]</code></td>
 </tr>
 <tr>
 <td><code>current_schema()</code></td>
 <td>yes</td>
 <td>MySQL maps to <code>DATABASE()</code>; SQLite <code>ErrUnsupported</code></td>
 <td><code>sqlfn.CurrentSchema()</code></td>
+</tr>
+<tr>
+<td>Row-value ordered comparison</td>
+<td>yes: <code>momo.Row(a, b).Lt/Le/Gt/Ge(momo.Row(x, y))</code></td>
+<td>SQLite and MySQL render the same <code>(a, b) &lt; (x, y)</code>; both rows need 2+ elements of equal count, else <code>ErrValidation</code></td>
+<td><code>momo.Row</code>, <code>momo.RowExpr</code></td>
+</tr>
+<tr>
+<td>Inline literal</td>
+<td>yes: <code>momo.Lit(v)</code> for ints, floats, bool, string and <code>time.Time</code>, so the same expression is identical text in <code>SELECT</code> and <code>GROUP BY</code></td>
+<td>same; bool renders <code>1</code>/<code>0</code> on SQLite; a string with a backslash or NUL, a <code>time.Time</code> that is not exactly 00:00:00 UTC, and a NaN or infinite float fail with <code>ErrValidation</code> on every dialect</td>
+<td><code>momo.Lit</code></td>
+</tr>
+<tr>
+<td><code>CURRENT_DATE</code>, <code>'infinity'</code> and <code>'-infinity'</code></td>
+<td>yes</td>
+<td><code>CURRENT_DATE</code> runs on SQLite (as text) and MySQL; infinity is PostgreSQL only, <code>ErrUnsupported</code> elsewhere</td>
+<td><code>sqlfn.CurrentDate()</code>, <code>sqlfn.Infinity()</code>, <code>sqlfn.NegInfinity()</code></td>
 </tr>
 <tr>
 <td>Raw fragment composition</td>
@@ -2166,7 +2212,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Set-returning FROM sources</td>
 <td>yes</td>
 <td><code>ErrUnsupported</code></td>
-<td><code>Unnest</code> over bound arrays built with <code>UnnestValues</code> or <code>UnnestValuesAs</code> (one column each, optional <code>WithOrdinality</code>); <code>GenerateSeries</code> over integers and <code>GenerateTimeSeries</code> over timestamps. They work as FROM, as Join and inside a CTE body</td>
+<td><code>Unnest</code> over bound arrays built with <code>UnnestValues</code> or <code>UnnestValuesAs</code> (one column each, optional <code>WithOrdinality</code>); <code>UnnestColumn(col).As(alias, name)</code> expands an array column of an earlier source as <code>LATERAL unnest(col)</code>; <code>GenerateSeries</code> over integers and <code>GenerateTimeSeries</code> over timestamps. They work as FROM, as Join and inside a CTE body</td>
 </tr>
 <tr>
 <td><code>LATERAL</code> joins</td>
@@ -2613,7 +2659,7 @@ session advisory lock.</p>
 </table>
 <h3 id="secrets-in-errors-hooks-and-connections">Secrets in errors, hooks and connections<a class="headerlink" href="#secrets-in-errors-hooks-and-connections" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Argument masking: with <code>WithArgLogging</code>, a value bound from a column tagged <code>sensitive</code> reaches hooks as <code>momo.RedactedArg</code>, not the value. This covers insert values, <code>Set</code> and <code>SetExpr</code> assignments on insert, update and upsert (every argument inside an expression assigned to a sensitive column), the primary-key and version predicates of a model update or delete, keyset <code>After</code> values, and WHERE predicates in which a sensitive column is one operand: the comparison methods, <code>EqExpr</code> and the other expression comparisons, <code>In</code>, <code>NotIn</code>, <code>Between</code>, <code>Like</code>, <code>ILike</code>, <code>ContainsLiteral</code>, <code>arrayop.Contains</code>, <code>arrayop.ContainedBy</code>, <code>arrayop.Overlaps</code>, <code>arrayop.AnyOf</code>, and the same methods on an expression that reads a sensitive column such as <code>sqlfn.Lower</code> of it. Relation loading, <code>Link</code>, <code>Unlink</code>, <code>Replace</code> and <code>Count</code> mask key values bound to sensitive key columns, including join-table columns that map to them. The database still receives the real value. <code>QueryEvent.Args</code> is always a copy, so a hook cannot replace or reorder the bound arguments. The copy is deep for <code>[]byte</code> and <code>json.RawMessage</code> values only, so changing those in place does not reach the driver; other mutable argument types are shared. Known gaps: arguments passed to raw <code>momo.SQL</code> or <code>momo.TypedSQL</code> fragments are not masked, because Momo cannot tell which column they belong to; SQLite renders values in an ON CONFLICT target predicate as SQL literals, so such a value appears in <code>QueryEvent.SQL</code>. Do not enable argument logging where raw fragments or conflict-target predicates carry secrets. <code>Error.Detail()</code> is also unmasked: it returns the raw driver detail, which for a PostgreSQL constraint violation quotes the offending key values, including sensitive ones. Do not log it or return it to clients; <code>Error()</code> is the safe text.</li>
+<li>Argument masking: with <code>WithArgLogging</code>, a value bound from a column tagged <code>sensitive</code> reaches hooks as <code>momo.RedactedArg</code>, not the value. This covers insert values, <code>Column.Set</code> and <code>SetExpr</code> assignments on insert, update and upsert (every argument inside an expression assigned to a sensitive column), the primary-key and version predicates of a model update or delete, keyset <code>After</code> values, and WHERE predicates in which a sensitive column is one operand: the comparison methods, <code>EqExpr</code> and the other expression comparisons, <code>In</code>, <code>NotIn</code>, <code>Between</code>, <code>Like</code>, <code>ILike</code>, <code>ContainsLiteral</code>, <code>arrayop.Contains</code>, <code>arrayop.ContainedBy</code>, <code>arrayop.Overlaps</code>, <code>arrayop.AnyOf</code>, and the same methods on an expression that reads a sensitive column such as <code>sqlfn.Lower</code> of it. Relation loading, <code>Link</code>, <code>Unlink</code>, <code>Replace</code> and <code>Count</code> mask key values bound to sensitive key columns, including join-table columns that map to them. The database still receives the real value. <code>QueryEvent.Args</code> is always a copy, so a hook cannot replace or reorder the bound arguments. The copy is deep for <code>[]byte</code> and <code>json.RawMessage</code> values only, so changing those in place does not reach the driver; other mutable argument types are shared. Known gaps: arguments passed to raw <code>momo.SQL</code> or <code>momo.TypedSQL</code> fragments are not masked, because Momo cannot tell which column they belong to; SQLite renders values in an ON CONFLICT target predicate as SQL literals, so such a value appears in <code>QueryEvent.SQL</code>. Do not enable argument logging where raw fragments or conflict-target predicates carry secrets. <code>Error.Detail()</code> is also unmasked: it returns the raw driver detail, which for a PostgreSQL constraint violation quotes the offending key values, including sensitive ones. Do not log it or return it to clients; <code>Error()</code> is the safe text.</li>
 <li>Encode errors: the pgx driver withholds the text of pgx client-side encode failures, which quote the bound value, on every path (pool, transactions, pinned and adopted connections, the database/sql adapter, rows). The message keeps the argument position, such as <code>args[2]</code>; the original error stays reachable with <code>errors.Is</code>, <code>errors.As</code> and <code>Unwrap</code>. That unwrapped cause still contains the bound value, so code that logs every link of an error chain must not print the causes.</li>
 <li>Simple protocol: <code>pgxdriver.WithExecMode</code>, <code>FromConnConfig</code> and <code>FromSQLDB</code> refuse simple protocol, which interpolates values client-side, with <code>ErrUnsupported</code>. <code>FromConnConfig</code> checks the config it is given. <code>FromSQLDB</code> cannot read the pgx config of an opaque <code>*sql.DB</code>, so it checks the first connection it uses, on the first statement, not at construction. Only that first connection is checked: a custom connector that varies the exec mode per connection is not checked.</li>
 </ul>

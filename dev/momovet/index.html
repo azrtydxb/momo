@@ -756,6 +756,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -904,6 +932,17 @@
     <span class="md-ellipsis">
       
         What it reports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#marking-a-vetted-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Marking a vetted call
       
     </span>
   </a>
@@ -1240,6 +1279,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#marking-a-vetted-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Marking a vetted call
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#running-it" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1314,6 +1364,10 @@
 <td>third (after the context and the querier)</td>
 </tr>
 <tr>
+<td><code>momo.RawRows</code></td>
+<td>third (after the context and the querier)</td>
+</tr>
+<tr>
 <td><code>momo.RawQuery</code></td>
 <td>second (after the querier)</td>
 </tr>
@@ -1332,6 +1386,25 @@
 </tbody>
 </table>
 <p>A constant is a string literal, a <code>const</code>, or an expression made only of constants (<code>"UPDATE t SET " + "x = 1"</code>). Anything else is reported as <code>non-constant SQL string passed to momo.&lt;Name&gt;</code>. Pass values as arguments after the SQL text instead of concatenating them.</p>
+<h2 id="marking-a-vetted-call">Marking a vetted call<a class="headerlink" href="#marking-a-vetted-call" title="Permanent link">&para;</a></h2>
+<p>When the text is built only from constants and allowlisted identifiers, mark the call with a line directive and say why:</p>
+<div class="highlight"><pre><span></span><code>momo.Exec(ctx, db, "UPDATE "+table+" SET x = 1") //momovet:ok table comes from the schema allowlist
+
+//momovet:ok column is checked against allowedColumns
+momo.Query[int](ctx, db, "SELECT "+column+" FROM t")
+</code></pre></div>
+<p>The directive must start the comment and be spelled exactly <code>//momovet:ok</code>, followed by a space and the reason. These are not directives, and the call stays reported: <code>// momovet:ok</code> (with a space), <code>//momovet:OK</code>, <code>//momovet:okay</code>, <code>/*momovet:ok ...*/</code>, and <code>//nolint:x //momovet:ok</code> (the directive is not at the start of the comment).</p>
+<p>Where it goes:</p>
+<ul>
+<li>As a trailing comment on the line of the call, or on the line of its SQL argument. For a call that spans several lines, put it on the first line of the call or on the line of the SQL argument.</li>
+<li>Alone on the line directly above the call. A comment that trails other code on its line never covers the next line.</li>
+</ul>
+<p>It suppresses the report for that one call only. A call without a directive is still reported.</p>
+<p>The directive is itself reported when:</p>
+<ul>
+<li>it has no reason (<code>//momovet:ok</code> alone): <code>//momovet:ok needs a reason</code>;</li>
+<li>it suppresses nothing, for example because the SQL is already constant or no momo raw-SQL call is next to it: <code>unused //momovet:ok directive</code>.</li>
+</ul>
 <h2 id="running-it">Running it<a class="headerlink" href="#running-it" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>go<span class="w"> </span>install<span class="w"> </span>github.com/azrtydxb/momo/cmd/momovet@latest
 go<span class="w"> </span>vet<span class="w"> </span>-vettool<span class="o">=</span><span class="s2">"</span><span class="k">$(</span>which<span class="w"> </span>momovet<span class="k">)</span><span class="s2">"</span><span class="w"> </span>./...

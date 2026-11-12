@@ -869,6 +869,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1481,6 +1509,12 @@ has no array columns, so the generator rejects them there.</p>
 <td>unsupported</td>
 </tr>
 <tr>
+<td><code>types.Numeric</code></td>
+<td>numeric</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
 <td><code>types.JSON[T]</code></td>
 <td>jsonb</td>
 <td>TEXT</td>
@@ -1591,7 +1625,7 @@ for a database created by Prisma (see <code>naming: prisma</code> in ai-guide.md
 ignores the setting. <code>timestamp(3)</code> stores a wall clock without a zone, so
 follow the <code>timestamp</code> notes below and pass UTC times.</p>
 <p>On SQLite, <code>bool</code> is stored as 0 or 1, and <code>time.Time</code>, <code>types.UUID</code>,
-<code>types.Date</code> and <code>types.JSON[T]</code> are stored as text. The SQLite column is what
+<code>types.Date</code>, <code>types.Numeric</code> and <code>types.JSON[T]</code> are stored as text. The SQLite column is what
 the generator emits. The SQLite driver (<code>driver/sqlitedriver</code>, cgo, not on
 Windows) reads text columns back into <code>time.Time</code>, <code>*time.Time</code>,
 <code>sql.NullTime</code>, <code>sql.Null[time.Time]</code> and <code>types.Date</code>, whatever the column was
@@ -1684,12 +1718,39 @@ except <code>NaN</code>, which SQLite does not have (see Floats).</p>
   <code>t.UTC()</code> and treat the column as UTC; a value in another zone is stored as
   its UTC wall clock.</li>
 <li><code>types.Date</code>: stores the year, month and day of <code>Time</code> in its own location;
-  it reads back at midnight UTC. Compare the date, not the zone.</li>
+  it reads back at midnight UTC. Compare the date, not the zone. PostgreSQL
+  <code>infinity</code> and <code>-infinity</code> round-trip through the Infinity and
+  NegInfinity fields (<code>Time</code> is ignored while one is set, and zero after a
+  read); <code>IsFinite</code> tells an ordinary date from a special one. SQLite and
+  MySQL have no special dates: a <code>types.Date</code> with a flag set is
+  <code>ErrValidation</code> and nothing is stored, also inside a <code>sql.Null</code>. Setting both
+  flags is an error.</li>
+<li><code>types.Numeric</code>: an exact decimal kept as text in <code>Decimal</code> (<code>"-12.50"</code>; empty
+  is 0). PostgreSQL <code>numeric</code> returns what it stored, so a value beyond
+  <code>float64</code> precision and its scale survive. <code>NaN</code>, Infinity and
+  NegInfinity round-trip through their flags (set at most one, and leave
+  <code>Decimal</code> empty); <code>IsFinite</code>, <code>IsNaN</code>, <code>IsInfinite</code> and <code>Sign</code> classify a
+  value (<code>Sign</code> is 0 for <code>NaN</code>). Infinity and <code>-Infinity</code> need PostgreSQL 14
+  or later (<code>NaN</code> is older); CI covers PostgreSQL 16 and 17.
+  <code>types.ParseNumeric</code> reads PostgreSQL text and rejects an exponent or
+  anything that is not a number. Scanning also takes an <code>int64</code> and a <code>float64</code>
+  (what SQLite returns for an expression); it does not take a
+  <code>pgtype.Numeric</code>.</li>
+<li>SQLite and MySQL have no <code>NaN</code> or infinity: binding one in a <code>types.Numeric</code>
+  (also inside a <code>sql.Null</code>) is <code>ErrValidation</code>, as for a float <code>NaN</code> on SQLite.
+  The column is <code>TEXT</code> there, so the database does not order or add it as a
+  number, and a <code>precision</code> or <code>scale</code> tag still generates <code>TEXT</code>, not
+  <code>numeric(p,s)</code>: SQLite would give that NUMERIC affinity and turn <code>12.50</code> into
+  <code>12.5</code>. On PostgreSQL the tags generate <code>numeric(p,s)</code>. Momo does no
+  arithmetic on a <code>types.Numeric</code>.</li>
 <li><code>types.UUID</code>: round-trips all 16 bytes, including the all-zero UUID.</li>
 <li><code>types.JSON[T]</code>: encodes with <code>encoding/json</code>. An empty slice and a nil
   slice are different JSON (<code>[]</code> and <code>null</code>) and read back as such.
-  Query it with <code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Contains</code> and
-  <code>jsonop.HasKey</code> (package <code>github.com/azrtydxb/momo/jsonop</code>). A
+  Query it with <code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code> (a scalar at the
+  root), <code>jsonop.Contains</code> and <code>jsonop.HasKey</code>, and compute with
+  <code>jsonop.DeleteKey</code>, <code>jsonop.Concat</code> and <code>jsonop.Set</code> (package
+  <code>github.com/azrtydxb/momo/jsonop</code>; <code>jsonop.Concat</code> and <code>jsonop.Set</code> are
+  PostgreSQL only and need <code>jsonb</code>). A
   nullable column holds either SQL NULL or the JSON literal null; an extraction
   is NULL for both and for a missing key, so test the column itself with
   <code>IsNull</code>. Grouping by an extraction works only for plain keys (letters,
@@ -1722,9 +1783,9 @@ except <code>NaN</code>, which SQLite does not have (see Floats).</p>
   these types with <code>introspect.uuid: google</code>. A named type over <code>uuid.UUID</code>
   (<code>type ID uuid.UUID</code>) is not mapped: give the field <code>type:uuid</code>. A UUID type
   of another package is not mapped either.</li>
-<li>Decimal: carry <code>numeric</code> as a string to avoid binary floating point. Values
-  beyond <code>float64</code> precision round-trip exactly, and <code>numeric</code> also accepts
-  <code>NaN</code>.</li>
+<li>Decimal: carry <code>numeric</code> as <code>types.Numeric</code> (exact, with <code>NaN</code> and the
+  infinities), or as a string to avoid binary floating point. Values beyond
+  <code>float64</code> precision round-trip exactly, and <code>numeric</code> also accepts <code>NaN</code>.</li>
 </ul>
 <h2 id="null-handling">Null handling<a class="headerlink" href="#null-handling" title="Permanent link">&para;</a></h2>
 <p>A column that can be NULL needs a Go type that can hold NULL: a pointer

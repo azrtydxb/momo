@@ -754,6 +754,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1714,6 +1742,16 @@
 <td>And joins predicates with AND; an empty And is true.</td>
 </tr>
 <tr>
+<td><code>momo.ArrayOf</code></td>
+<td>func</td>
+<td>ArrayOf is the array constructor ARRAY[e1, e2, ...] of the element expressions, an Expression[[]T].</td>
+</tr>
+<tr>
+<td><code>momo.ArraySubquery</code></td>
+<td>func</td>
+<td>ArraySubquery is ARRAY(subquery): the rows of a one-column subquery collected into an array, an Expression[[]T] where T is the Go type of that column.</td>
+</tr>
+<tr>
 <td><code>momo.As</code></td>
 <td>func</td>
 <td>As aliases an expression in a select list: expr AS alias.</td>
@@ -1924,6 +1962,11 @@
 <td>ColumnRef is an untyped reference to a column of a table source.</td>
 </tr>
 <tr>
+<td><code>momo.ColumnRows</code></td>
+<td>type</td>
+<td>ColumnRows is the cursor RawRows returns: a Rows that also names its result columns.</td>
+</tr>
+<tr>
 <td><code>momo.Compilable</code></td>
 <td>type</td>
 <td>Compilable is a statement that renders to SQL without running it.</td>
@@ -1982,6 +2025,16 @@
 <td><code>momo.Config.Function</code></td>
 <td>method</td>
 <td>Function declares a function.</td>
+</tr>
+<tr>
+<td><code>momo.Config.Generated</code></td>
+<td>method</td>
+<td>Generated declares a column as stored generated: GENERATED ALWAYS AS (expr) STORED.</td>
+</tr>
+<tr>
+<td><code>momo.Config.GeneratedVirtual</code></td>
+<td>method</td>
+<td>GeneratedVirtual declares a column as VIRTUAL generated: GENERATED ALWAYS AS (expr) VIRTUAL, computed on read.</td>
 </tr>
 <tr>
 <td><code>momo.Config.IDGen</code></td>
@@ -2251,7 +2304,7 @@
 <tr>
 <td><code>momo.DeleteQuery.Using</code></td>
 <td>method</td>
-<td>Using adds a second source, rendering DELETE FROM t USING src WHERE ...: the WHERE may reference src's columns.</td>
+<td>Using adds sources, rendering DELETE FROM t USING src WHERE ...: the WHERE may reference src's columns.</td>
 </tr>
 <tr>
 <td><code>momo.DeleteQuery.Where</code></td>
@@ -2489,9 +2542,39 @@
 <td>AppendSQL renders the select in parentheses, for use as a subquery.</td>
 </tr>
 <tr>
+<td><code>momo.ExprSelect.CrossJoin</code></td>
+<td>method</td>
+<td>CrossJoin adds a CROSS JOIN, like SelectQuery.CrossJoin.</td>
+</tr>
+<tr>
 <td><code>momo.ExprSelect.From</code></td>
 <td>method</td>
 <td>From sets the FROM source.</td>
+</tr>
+<tr>
+<td><code>momo.ExprSelect.GroupBy</code></td>
+<td>method</td>
+<td>GroupBy adds GROUP BY expressions.</td>
+</tr>
+<tr>
+<td><code>momo.ExprSelect.Having</code></td>
+<td>method</td>
+<td>Having adds HAVING predicates combined with AND.</td>
+</tr>
+<tr>
+<td><code>momo.ExprSelect.Join</code></td>
+<td>method</td>
+<td>Join adds an INNER JOIN, like SelectQuery.Join.</td>
+</tr>
+<tr>
+<td><code>momo.ExprSelect.LeftJoin</code></td>
+<td>method</td>
+<td>LeftJoin adds a LEFT JOIN, like SelectQuery.LeftJoin.</td>
+</tr>
+<tr>
+<td><code>momo.ExprSelect.OrderBy</code></td>
+<td>method</td>
+<td>OrderBy appends ORDER BY items: an Order such as Column.Asc() or any Expression, which orders ascending.</td>
 </tr>
 <tr>
 <td><code>momo.ExprSelect.Where</code></td>
@@ -2507,6 +2590,11 @@
 <td><code>momo.FieldHook</code></td>
 <td>type</td>
 <td>FieldHook attaches Go-side behavior to one column of Meta[T].</td>
+</tr>
+<tr>
+<td><code>momo.FieldNamer</code></td>
+<td>type</td>
+<td>FieldNamer names the column of a Go struct field.</td>
 </tr>
 <tr>
 <td><code>momo.Filter</code></td>
@@ -3039,6 +3127,31 @@
 <td>Like matches a string expression against a LIKE pattern.</td>
 </tr>
 <tr>
+<td><code>momo.Lit</code></td>
+<td>func</td>
+<td>Lit renders v inline, not as a bound parameter.</td>
+</tr>
+<tr>
+<td><code>momo.LitExpr</code></td>
+<td>type</td>
+<td>LitExpr is a value written into the SQL text instead of bound.</td>
+</tr>
+<tr>
+<td><code>momo.LitExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL writes the literal to b.</td>
+</tr>
+<tr>
+<td><code>momo.LitExpr.As</code></td>
+<td>method</td>
+<td>As names the expression in a select list.</td>
+</tr>
+<tr>
+<td><code>momo.Literal</code></td>
+<td>type</td>
+<td>Literal is the constraint of Lit: the types that render safely as an SQL literal.</td>
+</tr>
+<tr>
 <td><code>momo.Load</code></td>
 <td>func</td>
 <td>Load loads rel for parents and assigns the result onto each parent.</td>
@@ -3329,9 +3442,19 @@
 <td>As returns the same column qualified by a table alias.</td>
 </tr>
 <tr>
+<td><code>momo.NullColumn.EqPtr</code></td>
+<td>method</td>
+<td>EqPtr compares the column with *v, or tests IS NULL when v is nil.</td>
+</tr>
+<tr>
 <td><code>momo.NullColumn.SetNull</code></td>
 <td>method</td>
 <td>SetNull assigns SQL NULL.</td>
+</tr>
+<tr>
+<td><code>momo.NullColumn.SetPtr</code></td>
+<td>method</td>
+<td>SetPtr assigns NULL when v is nil and *v otherwise, so a model field of type *T can be written without branching at the call site.</td>
 </tr>
 <tr>
 <td><code>momo.NullReadOnlyColumn</code></td>
@@ -3342,6 +3465,11 @@
 <td><code>momo.NullReadOnlyColumn.As</code></td>
 <td>method</td>
 <td>As returns the same column qualified by a table alias.</td>
+</tr>
+<tr>
+<td><code>momo.NullReadOnlyColumn.EqPtr</code></td>
+<td>method</td>
+<td>EqPtr compares the column with *v, or tests IS NULL when v is nil.</td>
 </tr>
 <tr>
 <td><code>momo.NullReadOnlyColumn.Excluded</code></td>
@@ -3544,9 +3672,14 @@
 <td>NullsLast returns o with explicit NULLS LAST.</td>
 </tr>
 <tr>
+<td><code>momo.OrderByPredicate</code></td>
+<td>func</td>
+<td>OrderByPredicate orders by the predicate p, rendered parenthesised as ORDER BY (p).</td>
+</tr>
+<tr>
 <td><code>momo.Orderable</code></td>
 <td>type</td>
-<td>Orderable is accepted by OrderBy: an Order or any Expression.</td>
+<td>Orderable is accepted by OrderBy: an Order, a PredicateOrder or any Expression.</td>
 </tr>
 <tr>
 <td><code>momo.Over</code></td>
@@ -3597,6 +3730,21 @@
 <td><code>momo.PredicateFunc.AppendSQL</code></td>
 <td>method</td>
 <td>AppendSQL calls f.</td>
+</tr>
+<tr>
+<td><code>momo.PredicateOrder</code></td>
+<td>type</td>
+<td>PredicateOrder orders by a boolean predicate; see OrderByPredicate.</td>
+</tr>
+<tr>
+<td><code>momo.PredicateOrder.Asc</code></td>
+<td>method</td>
+<td>Asc orders by the predicate ascending: false before true.</td>
+</tr>
+<tr>
+<td><code>momo.PredicateOrder.Desc</code></td>
+<td>method</td>
+<td>Desc orders by the predicate descending: true before false.</td>
 </tr>
 <tr>
 <td><code>momo.Projection</code></td>
@@ -3654,6 +3802,11 @@
 <td>RawQuery wraps a hand-written statement as a Compilable, with the placeholder rules of Exec ('?' binds, "??" is a literal '?', on PostgreSQL native $n placeholders).</td>
 </tr>
 <tr>
+<td><code>momo.RawRows</code></td>
+<td>func</td>
+<td>RawRows runs sql through the raw path and returns the open cursor, for a result whose shape is only known at run time: a statement whose column count or types depend on its input, which Query and QueryRows cannot type and MapRows would buffer into maps.</td>
+</tr>
+<tr>
 <td><code>momo.RawSubquery</code></td>
 <td>func</td>
 <td>RawSubquery is an explicit escape hatch: a raw SELECT usable as a Subquery (IN, EXISTS, CTE body, set operation member, FromSubquery source).</td>
@@ -3707,6 +3860,11 @@
 <td><code>momo.RegisteredQuery</code></td>
 <td>type</td>
 <td>RegisteredQuery is the compiled SQL of one named query for one dialect.</td>
+</tr>
+<tr>
+<td><code>momo.RelAlias</code></td>
+<td>func</td>
+<td>RelAlias names one nesting level of Has, HasNo and CountOrder subqueries explicitly, for use with As in a scope predicate.</td>
 </tr>
 <tr>
 <td><code>momo.Relation</code></td>
@@ -3829,6 +3987,11 @@
 <td>ReturningList is a RETURNING column list shared by the write builders.</td>
 </tr>
 <tr>
+<td><code>momo.Row</code></td>
+<td>func</td>
+<td>Row is the row value (e1, e2, ...), for example a FIFO position check:</td>
+</tr>
+<tr>
 <td><code>momo.Row1</code></td>
 <td>type</td>
 <td>Row1 is a result row of 1 column, scanned positionally into C1.</td>
@@ -3929,6 +4092,36 @@
 <td>MomoMeta returns the shared metadata of this instantiation.</td>
 </tr>
 <tr>
+<td><code>momo.RowExpr</code></td>
+<td>type</td>
+<td>RowExpr is a row value, (a, b, ...), compared as a whole with another row value of the same length.</td>
+</tr>
+<tr>
+<td><code>momo.RowExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL writes "(e1, e2, ...)" to b.</td>
+</tr>
+<tr>
+<td><code>momo.RowExpr.Ge</code></td>
+<td>method</td>
+<td>Ge is true when the row is lexicographically greater than or equal to other.</td>
+</tr>
+<tr>
+<td><code>momo.RowExpr.Gt</code></td>
+<td>method</td>
+<td>Gt is true when the row is lexicographically greater than other.</td>
+</tr>
+<tr>
+<td><code>momo.RowExpr.Le</code></td>
+<td>method</td>
+<td>Le is true when the row is lexicographically less than or equal to other.</td>
+</tr>
+<tr>
+<td><code>momo.RowExpr.Lt</code></td>
+<td>method</td>
+<td>Lt is true when the row is lexicographically less than other.</td>
+</tr>
+<tr>
 <td><code>momo.RowNumber</code></td>
 <td>func</td>
 <td>RowNumber is row_number(): the row's 1-based position in its partition.</td>
@@ -3957,6 +4150,16 @@
 <td><code>momo.Scalars</code></td>
 <td>func</td>
 <td>Scalars renders sql through the raw path (see Exec: '?' binds, "??" is a literal '?', Expr arguments render inline, an argument-count mismatch is a build error; on PostgreSQL native $n placeholders bind argument n, see SQL) and returns the first column of every row as V.</td>
+</tr>
+<tr>
+<td><code>momo.ScanDelete</code></td>
+<td>func</td>
+<td>ScanDelete runs the DELETE and scans every RETURNING row into an R, as ScanUpdate does for an UPDATE: use it when Returning lists columns of a Using source or CTE.</td>
+</tr>
+<tr>
+<td><code>momo.ScanUpdate</code></td>
+<td>func</td>
+<td>ScanUpdate runs the UPDATE and scans every RETURNING row into an R, which is what to use when Returning lists columns of a From source or CTE, that the model cannot hold.</td>
 </tr>
 <tr>
 <td><code>momo.Scope</code></td>
@@ -4169,6 +4372,11 @@
 <td>WithTableName replaces the FROM table name at runtime, for example to run one query shape over several identically shaped tables.</td>
 </tr>
 <tr>
+<td><code>momo.SelectUnion</code></td>
+<td>func</td>
+<td>SelectUnion starts a top-level UNION (all=false) or UNION ALL (all=true) of members, whose rows scan into T.</td>
+</tr>
+<tr>
 <td><code>momo.Series</code></td>
 <td>type</td>
 <td>Series is a generate_series(...) source producing one column of type T.</td>
@@ -4354,6 +4562,41 @@
 <td>Union combines queries with UNION (all=false) or UNION ALL (all=true).</td>
 </tr>
 <tr>
+<td><code>momo.UnionQuery</code></td>
+<td>type</td>
+<td>UnionQuery runs a UNION or UNION ALL directly, with an outer ORDER BY, LIMIT and OFFSET, and scans its rows into T.</td>
+</tr>
+<tr>
+<td><code>momo.UnionQuery.All</code></td>
+<td>method</td>
+<td>All runs the union and returns every row.</td>
+</tr>
+<tr>
+<td><code>momo.UnionQuery.Limit</code></td>
+<td>method</td>
+<td>Limit caps the rows of the whole union.</td>
+</tr>
+<tr>
+<td><code>momo.UnionQuery.Offset</code></td>
+<td>method</td>
+<td>Offset skips rows of the whole union.</td>
+</tr>
+<tr>
+<td><code>momo.UnionQuery.OrderBy</code></td>
+<td>method</td>
+<td>OrderBy adds outer ORDER BY items, which order the whole union.</td>
+</tr>
+<tr>
+<td><code>momo.UnionQuery.Rows</code></td>
+<td>method</td>
+<td>Rows runs the union and yields one T per row without buffering the result.</td>
+</tr>
+<tr>
+<td><code>momo.UnionQuery.SQL</code></td>
+<td>method</td>
+<td>SQL compiles the union without executing it.</td>
+</tr>
+<tr>
 <td><code>momo.Unnest</code></td>
 <td>func</td>
 <td>Unnest expands one or more bound arrays into rows, one column per array:</td>
@@ -4372,6 +4615,31 @@
 <td><code>momo.UnnestCol.Ref</code></td>
 <td>method</td>
 <td>Ref is the typed column through which the query reads this column from the Unnest source called source (its alias).</td>
+</tr>
+<tr>
+<td><code>momo.UnnestColumn</code></td>
+<td>func</td>
+<td>UnnestColumn expands an array column (or any array expression) of a source earlier in the FROM list into rows:</td>
+</tr>
+<tr>
+<td><code>momo.UnnestColumnSource</code></td>
+<td>type</td>
+<td>UnnestColumnSource is LATERAL unnest(col) AS alias (name): the elements of an array-valued column or expression of an earlier source, one row each.</td>
+</tr>
+<tr>
+<td><code>momo.UnnestColumnSource.As</code></td>
+<td>method</td>
+<td>As names the source alias and the column the elements are read from.</td>
+</tr>
+<tr>
+<td><code>momo.UnnestColumnSource.Column</code></td>
+<td>method</td>
+<td>Column is the typed column of the elements.</td>
+</tr>
+<tr>
+<td><code>momo.UnnestColumnSource.Qualifier</code></td>
+<td>method</td>
+<td>Qualifier is the alias the source's column is qualified with.</td>
 </tr>
 <tr>
 <td><code>momo.UnnestSource</code></td>
@@ -4426,7 +4694,7 @@
 <tr>
 <td><code>momo.UpdateQuery.From</code></td>
 <td>method</td>
-<td>From adds a second source to the statement, rendering UPDATE t SET ...</td>
+<td>From adds sources to the statement, rendering UPDATE t SET ...</td>
 </tr>
 <tr>
 <td><code>momo.UpdateQuery.Model</code></td>
@@ -4667,6 +4935,11 @@
 <td><code>momo.WithMaxParams</code></td>
 <td>func</td>
 <td>WithMaxParams lowers the dialect bind-parameter limit for this DB to n.</td>
+</tr>
+<tr>
+<td><code>momo.WithNaming</code></td>
+<td>func</td>
+<td>WithNaming sets the naming preset that Query and QueryRows apply to the fields of a plain struct, the ones with no generated metadata.</td>
 </tr>
 <tr>
 <td><code>momo.WithQueryScope</code></td>
@@ -5030,7 +5303,12 @@
 <tr>
 <td><code>types.Date</code></td>
 <td>type</td>
-<td>Date is a calendar date (no time zone): date on PostgreSQL, TEXT 'YYYY-MM-DD' on SQLite.</td>
+<td>Date is a calendar date (no time zone): date on PostgreSQL, TEXT 'YYYY-MM-DD' on SQLite and MySQL.</td>
+</tr>
+<tr>
+<td><code>types.Date.IsFinite</code></td>
+<td>method</td>
+<td>IsFinite reports whether d is an ordinary calendar date, not infinity or -infinity.</td>
 </tr>
 <tr>
 <td><code>types.Date.SQLType</code></td>
@@ -5040,12 +5318,12 @@
 <tr>
 <td><code>types.Date.Scan</code></td>
 <td>method</td>
-<td>Scan accepts 'YYYY-MM-DD' as string or []byte, or a time.Time (as pgx returns for date columns), whose calendar day in its own location is kept.</td>
+<td>Scan accepts 'YYYY-MM-DD', 'infinity' or '-infinity' as string or []byte, or a time.Time (as pgx returns for date columns), whose calendar day in its own location is kept.</td>
 </tr>
 <tr>
 <td><code>types.Date.Value</code></td>
 <td>method</td>
-<td>Value encodes the date as 'YYYY-MM-DD' using the year, month and day of Time in its own location.</td>
+<td>Value encodes the date as 'YYYY-MM-DD' using the year, month and day of Time in its own location, or as 'infinity' or '-infinity'.</td>
 </tr>
 <tr>
 <td><code>types.Hstore</code></td>
@@ -5086,6 +5364,56 @@
 <td><code>types.JSON.Value</code></td>
 <td>method</td>
 <td>Value encodes V as JSON text.</td>
+</tr>
+<tr>
+<td><code>types.Numeric</code></td>
+<td>type</td>
+<td>Numeric is an exact decimal number: numeric on PostgreSQL, TEXT on SQLite and MySQL.</td>
+</tr>
+<tr>
+<td><code>types.Numeric.IsFinite</code></td>
+<td>method</td>
+<td>IsFinite reports whether n is an ordinary number: not NaN and not infinite.</td>
+</tr>
+<tr>
+<td><code>types.Numeric.IsInfinite</code></td>
+<td>method</td>
+<td>IsInfinite reports whether n is Infinity or -Infinity.</td>
+</tr>
+<tr>
+<td><code>types.Numeric.IsNaN</code></td>
+<td>method</td>
+<td>IsNaN reports whether n is NaN.</td>
+</tr>
+<tr>
+<td><code>types.Numeric.SQLType</code></td>
+<td>method</td>
+<td>SQLType returns the column type for d.</td>
+</tr>
+<tr>
+<td><code>types.Numeric.Scan</code></td>
+<td>method</td>
+<td>Scan accepts the text form as string or []byte, an int64, or a float64 (what SQLite returns for an aggregate or an expression).</td>
+</tr>
+<tr>
+<td><code>types.Numeric.Sign</code></td>
+<td>method</td>
+<td>Sign returns -1, 0 or +1 for a negative, zero or positive n.</td>
+</tr>
+<tr>
+<td><code>types.Numeric.String</code></td>
+<td>method</td>
+<td>String returns the PostgreSQL text form: the digits, or NaN, Infinity or -Infinity.</td>
+</tr>
+<tr>
+<td><code>types.Numeric.Value</code></td>
+<td>method</td>
+<td>Value encodes n as its text form.</td>
+</tr>
+<tr>
+<td><code>types.ParseNumeric</code></td>
+<td>func</td>
+<td>ParseNumeric parses PostgreSQL numeric text: an optionally signed decimal ("12", "-1.5", ".5", "7."), or NaN, Infinity or -Infinity (also written inf, any case).</td>
 </tr>
 <tr>
 <td><code>types.ParseUUID</code></td>
@@ -5422,6 +5750,11 @@
 <td><code>migrate.Config</code></td>
 <td>type</td>
 <td>Config is the engine configuration.</td>
+</tr>
+<tr>
+<td><code>migrate.ConfigFromFile</code></td>
+<td>func</td>
+<td>ConfigFromFile reads the momo.yaml at path in fsys, for example an embedded one, and returns the engine options its migrate: section and introspect.only describe: schemas, exclude, external_extensions, lock_timeout, statement_timeout and only.</td>
 </tr>
 <tr>
 <td><code>migrate.CreateEnum</code></td>
@@ -6069,6 +6402,31 @@
 <td>State is the status of one migration version: "pending", "applied", "dirty", "mismatch" or "missing".</td>
 </tr>
 <tr>
+<td><code>migrate.StateApplied</code></td>
+<td>const</td>
+<td>Version states, the values of VersionStatus.State.</td>
+</tr>
+<tr>
+<td><code>migrate.StateDirty</code></td>
+<td>const</td>
+<td>Version states, the values of VersionStatus.State.</td>
+</tr>
+<tr>
+<td><code>migrate.StateMismatch</code></td>
+<td>const</td>
+<td>Version states, the values of VersionStatus.State.</td>
+</tr>
+<tr>
+<td><code>migrate.StateMissing</code></td>
+<td>const</td>
+<td>Version states, the values of VersionStatus.State.</td>
+</tr>
+<tr>
+<td><code>migrate.StatePending</code></td>
+<td>const</td>
+<td>Version states, the values of VersionStatus.State.</td>
+</tr>
+<tr>
 <td><code>migrate.Statement</code></td>
 <td>type</td>
 <td>Statement is one SQL statement of a migration.</td>
@@ -6378,6 +6736,16 @@
 <td>Lock takes the session-scoped advisory lock for key (pg_advisory_lock) on the pinned connection behind db and waits until it is granted.</td>
 </tr>
 <tr>
+<td><code>advisory.LockShared</code></td>
+<td>func</td>
+<td>LockShared takes the session-scoped shared advisory lock for key (pg_advisory_lock_shared) on the pinned connection behind db and waits until it is granted.</td>
+</tr>
+<tr>
+<td><code>advisory.LockSharedString</code></td>
+<td>func</td>
+<td>LockSharedString is LockShared with a text key, hashed on the server; see XactLockString for the hash and Hash64 for the 64-bit form.</td>
+</tr>
+<tr>
 <td><code>advisory.LockString</code></td>
 <td>func</td>
 <td>LockString is Lock with a text key, hashed on the server; see XactLockString for the hash and Hash64 for the 64-bit form.</td>
@@ -6393,6 +6761,16 @@
 <td>TryLock is the non-blocking form of Lock (pg_try_advisory_lock): it reports whether the lock was granted.</td>
 </tr>
 <tr>
+<td><code>advisory.TryLockShared</code></td>
+<td>func</td>
+<td>TryLockShared is the non-blocking form of LockShared (pg_try_advisory_lock_shared): it reports whether the lock was granted.</td>
+</tr>
+<tr>
+<td><code>advisory.TryLockSharedString</code></td>
+<td>func</td>
+<td>TryLockSharedString is TryLockShared with a hashed text key.</td>
+</tr>
+<tr>
 <td><code>advisory.TryLockString</code></td>
 <td>func</td>
 <td>TryLockString is TryLock with a text key, hashed on the server.</td>
@@ -6401,6 +6779,16 @@
 <td><code>advisory.TryXactLock</code></td>
 <td>func</td>
 <td>TryXactLock is the non-blocking form of XactLock: it reports whether the lock was granted instead of waiting for it (pg_try_advisory_xact_lock).</td>
+</tr>
+<tr>
+<td><code>advisory.TryXactLockShared</code></td>
+<td>func</td>
+<td>TryXactLockShared is the non-blocking form of XactLockShared: it reports whether the lock was granted instead of waiting for it (pg_try_advisory_xact_lock_shared).</td>
+</tr>
+<tr>
+<td><code>advisory.TryXactLockSharedString</code></td>
+<td>func</td>
+<td>TryXactLockSharedString is TryXactLockShared with a hashed text key.</td>
 </tr>
 <tr>
 <td><code>advisory.TryXactLockString</code></td>
@@ -6413,6 +6801,16 @@
 <td>Unlock releases one hold of the session-scoped lock for key (pg_advisory_unlock) and reports whether the session held it.</td>
 </tr>
 <tr>
+<td><code>advisory.UnlockShared</code></td>
+<td>func</td>
+<td>UnlockShared releases one hold of the session-scoped shared lock for key (pg_advisory_unlock_shared) and reports whether the session held it.</td>
+</tr>
+<tr>
+<td><code>advisory.UnlockSharedString</code></td>
+<td>func</td>
+<td>UnlockSharedString is UnlockShared for a text key.</td>
+</tr>
+<tr>
 <td><code>advisory.UnlockString</code></td>
 <td>func</td>
 <td>UnlockString is Unlock for a text key.</td>
@@ -6421,6 +6819,16 @@
 <td><code>advisory.XactLock</code></td>
 <td>func</td>
 <td>XactLock takes the transaction-scoped advisory lock for key (pg_advisory_xact_lock) and waits until it is granted.</td>
+</tr>
+<tr>
+<td><code>advisory.XactLockShared</code></td>
+<td>func</td>
+<td>XactLockShared takes the transaction-scoped shared advisory lock for key (pg_advisory_xact_lock_shared) and waits until it is granted.</td>
+</tr>
+<tr>
+<td><code>advisory.XactLockSharedString</code></td>
+<td>func</td>
+<td>XactLockSharedString is XactLockShared with a text key, hashed on the server exactly as XactLockString hashes it, so the shared and the exclusive lock of the same string and the same Hash64 option meet on one key.</td>
 </tr>
 <tr>
 <td><code>advisory.XactLockString</code></td>
@@ -6464,6 +6872,11 @@
 <td><code>agg.Call.As</code></td>
 <td>method</td>
 <td>As names the call in a select list.</td>
+</tr>
+<tr>
+<td><code>agg.Call.Distinct</code></td>
+<td>method</td>
+<td>Distinct makes the aggregate see each distinct value of its argument once: array_agg(DISTINCT e), count(DISTINCT e), string_agg(DISTINCT e, sep), jsonb_agg(DISTINCT e).</td>
 </tr>
 <tr>
 <td><code>agg.Call.Filter</code></td>
@@ -6703,9 +7116,34 @@
 </thead>
 <tbody>
 <tr>
+<td><code>jsonop.Concat</code></td>
+<td>func</td>
+<td>Concat is the shallow merge of two JSON values: a || b on PostgreSQL.</td>
+</tr>
+<tr>
 <td><code>jsonop.Contains</code></td>
 <td>func</td>
 <td>Contains is true when the JSON value in c contains v: col @&gt; v on PostgreSQL.</td>
+</tr>
+<tr>
+<td><code>jsonop.DeleteKey</code></td>
+<td>func</td>
+<td>DeleteKey is c with the top-level member key removed: col - 'key' on PostgreSQL, json_remove on SQLite and JSON_REMOVE on MySQL.</td>
+</tr>
+<tr>
+<td><code>jsonop.Expr</code></td>
+<td>type</td>
+<td>Expr is a JSON value computed from other JSON expressions: the result of DeleteKey, Concat or Set.</td>
+</tr>
+<tr>
+<td><code>jsonop.Expr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL renders the expression.</td>
+</tr>
+<tr>
+<td><code>jsonop.Expr.Flags</code></td>
+<td>method</td>
+<td>Flags returns the sensitive and nullable flags of the operands.</td>
 </tr>
 <tr>
 <td><code>jsonop.HasKey</code></td>
@@ -6716,6 +7154,16 @@
 <td><code>jsonop.Path</code></td>
 <td>func</td>
 <td>Path is the text at the nested path keys of the JSON value in c: col #&gt;&gt; '{a,b}' on PostgreSQL.</td>
+</tr>
+<tr>
+<td><code>jsonop.Root</code></td>
+<td>func</td>
+<td>Root is the text of the JSON value stored at the root of c, for a column that holds a scalar (a number, string or boolean) instead of an object: col #&gt;&gt; '{}' on PostgreSQL, json_extract(col, '$') on SQLite and JSON_UNQUOTE(JSON_EXTRACT(col, '$')) on MySQL.</td>
+</tr>
+<tr>
+<td><code>jsonop.Set</code></td>
+<td>func</td>
+<td>Set is target with the value at path replaced: jsonb_set(target, path, value) on PostgreSQL.</td>
 </tr>
 <tr>
 <td><code>jsonop.Text</code></td>
@@ -6984,6 +7432,11 @@
 <td>As names the expression in a select list.</td>
 </tr>
 <tr>
+<td><code>sqlfn.CurrentDate</code></td>
+<td>func</td>
+<td>CurrentDate is CURRENT_DATE: the transaction date on PostgreSQL, the session date on MySQL, the UTC date as text on SQLite.</td>
+</tr>
+<tr>
 <td><code>sqlfn.CurrentSchema</code></td>
 <td>func</td>
 <td>CurrentSchema is current_schema() on PostgreSQL and DATABASE() on MySQL (where a schema is a database).</td>
@@ -7002,6 +7455,36 @@
 <td><code>sqlfn.CurrentSchemaExpr.As</code></td>
 <td>method</td>
 <td>As names the expression in a select list.</td>
+</tr>
+<tr>
+<td><code>sqlfn.DateExpr</code></td>
+<td>type</td>
+<td>DateExpr is a date or timestamp value without operands.</td>
+</tr>
+<tr>
+<td><code>sqlfn.DateExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL writes the value to b.</td>
+</tr>
+<tr>
+<td><code>sqlfn.DateExpr.As</code></td>
+<td>method</td>
+<td>As names the expression in a select list.</td>
+</tr>
+<tr>
+<td><code>sqlfn.Div</code></td>
+<td>func</td>
+<td>Div is e / v.</td>
+</tr>
+<tr>
+<td><code>sqlfn.DivExpr</code></td>
+<td>func</td>
+<td>DivExpr is e / other, for example DivExpr(final, NullIf(max, 0)).</td>
+</tr>
+<tr>
+<td><code>sqlfn.Infinity</code></td>
+<td>func</td>
+<td>Infinity is 'infinity'::timestamptz, later than every timestamp.</td>
 </tr>
 <tr>
 <td><code>sqlfn.Length</code></td>
@@ -7037,6 +7520,21 @@
 <td><code>sqlfn.MulExpr</code></td>
 <td>func</td>
 <td>MulExpr is e * other.</td>
+</tr>
+<tr>
+<td><code>sqlfn.NegInfinity</code></td>
+<td>func</td>
+<td>NegInfinity is '-infinity'::timestamptz, earlier than every timestamp.</td>
+</tr>
+<tr>
+<td><code>sqlfn.NullIf</code></td>
+<td>func</td>
+<td>NullIf is NULLIF(e, v): NULL when e equals v, else e.</td>
+</tr>
+<tr>
+<td><code>sqlfn.NullIfExpr</code></td>
+<td>func</td>
+<td>NullIfExpr is NULLIF(e, other).</td>
 </tr>
 <tr>
 <td><code>sqlfn.Numeric</code></td>
@@ -7082,9 +7580,19 @@
 </thead>
 <tbody>
 <tr>
+<td><code>timeop.AddDuration</code></td>
+<td>func</td>
+<td>AddDuration is ts + d for a time.Duration, written as a literal interval (see IntervalDuration).</td>
+</tr>
+<tr>
 <td><code>timeop.AddInterval</code></td>
 <td>func</td>
 <td>AddInterval is ts + iv: the timestamp moved forward by the interval.</td>
+</tr>
+<tr>
+<td><code>timeop.Age</code></td>
+<td>func</td>
+<td>Age is age(a, b) on PostgreSQL: an interval of years, months and days that counts calendar units, so the age of two dates a month apart is "1 mon" whatever the month's length.</td>
 </tr>
 <tr>
 <td><code>timeop.AtTimeZone</code></td>
@@ -7105,6 +7613,26 @@
 <td><code>timeop.CurrentTimestamp</code></td>
 <td>func</td>
 <td>CurrentTimestamp is CURRENT_TIMESTAMP, with microsecond precision on MySQL, and the same millisecond text as Now on SQLite.</td>
+</tr>
+<tr>
+<td><code>timeop.EpochExpr</code></td>
+<td>type</td>
+<td>EpochExpr is the length of a Span in seconds as a float64.</td>
+</tr>
+<tr>
+<td><code>timeop.EpochExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL renders the epoch seconds for the dialect of b.</td>
+</tr>
+<tr>
+<td><code>timeop.EpochExpr.As</code></td>
+<td>method</td>
+<td>As names the expression in a select list.</td>
+</tr>
+<tr>
+<td><code>timeop.EpochSeconds</code></td>
+<td>func</td>
+<td>EpochSeconds is the length of s in seconds, with a fraction: extract(epoch FROM a - b) on PostgreSQL (cast to double precision), TIMESTAMPDIFF(MICROSECOND, b, a) / 1e6 on MySQL and the julianday difference times 86400 on SQLite, which is accurate to about a tenth of a millisecond.</td>
 </tr>
 <tr>
 <td><code>timeop.Expr</code></td>
@@ -7212,12 +7740,27 @@
 <td>The interval units every dialect supports.</td>
 </tr>
 <tr>
+<td><code>timeop.IntervalDuration</code></td>
+<td>func</td>
+<td>IntervalDuration is a literal interval of d, in the coarsest of second, millisecond and microsecond units that holds d exactly; a d finer than a microsecond is truncated toward zero to whole microseconds.</td>
+</tr>
+<tr>
 <td><code>timeop.IntervalExpr</code></td>
 <td>func</td>
 <td>IntervalExpr is an interval whose count comes from an integer expression: a column, or momo.Value(n) to bind a parameter.</td>
 </tr>
 <tr>
 <td><code>timeop.IntervalHour</code></td>
+<td>const</td>
+<td>The interval units every dialect supports.</td>
+</tr>
+<tr>
+<td><code>timeop.IntervalMicrosecond</code></td>
+<td>const</td>
+<td>The interval units every dialect supports.</td>
+</tr>
+<tr>
+<td><code>timeop.IntervalMillisecond</code></td>
 <td>const</td>
 <td>The interval units every dialect supports.</td>
 </tr>
@@ -7262,9 +7805,29 @@
 <td>Now is the database clock: now() on PostgreSQL (the start of the transaction), NOW(6) on MySQL, and strftime of 'now' in momo's timestamp format on SQLite.</td>
 </tr>
 <tr>
+<td><code>timeop.Span</code></td>
+<td>type</td>
+<td>Span is the difference of two timestamps.</td>
+</tr>
+<tr>
+<td><code>timeop.Span.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL renders the interval (a - b) or age(a, b) on PostgreSQL.</td>
+</tr>
+<tr>
 <td><code>timeop.StatementTimestamp</code></td>
 <td>func</td>
 <td>StatementTimestamp is the time the current statement started: statement_timestamp() on PostgreSQL, which differs from Now inside a transaction that runs several statements.</td>
+</tr>
+<tr>
+<td><code>timeop.Sub</code></td>
+<td>func</td>
+<td>Sub is a - b: the time from b to a, negative when a is earlier.</td>
+</tr>
+<tr>
+<td><code>timeop.SubDuration</code></td>
+<td>func</td>
+<td>SubDuration is ts - d for a time.Duration; see AddDuration.</td>
 </tr>
 <tr>
 <td><code>timeop.SubInterval</code></td>

@@ -1025,6 +1025,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -2122,6 +2150,42 @@ If the driver rejects the batch before sending anything (<code>ErrUnsupported</c
 subquery owns that alias. Build them with <code>As</code> on the generated column:
 <code>comment.Approved.As("momo_r").Eq(true)</code>. A predicate that uses the column
 without the alias refers to the outer query's table.</p>
+<p><code>Has</code>, <code>HasNo</code> and <code>CountOrder</code> can be nested in a scope. Each level gets its
+own child alias (<code>momo_r</code>, <code>momo_r2</code>, <code>momo_r3</code>, and for many-to-many the join
+alias <code>momo_j</code>, <code>momo_j2</code>, ...), and a nested relation whose parent is the child
+of the enclosing level correlates on that level's alias. <code>As("momo_r")</code> inside a
+scope always means the child of the subquery that scope belongs to.</p>
+<div class="highlight"><pre><span></span><code>// Documents with a tagging whose tag is named "db".
+tagged := momo.Select[models.Document](db).Where(
+    document.Taggings.Has(tagging.Tag.Has(tag.Name.As("momo_r").Eq("db"))))
+</code></pre></div>
+<p>To name an enclosing level from an inner scope, use <code>momo.RelAlias(level)</code>.
+Level 1 is the outermost subquery, level 2 the one nested in it, and so on.
+<code>RelAlias(n)</code> is never rewritten: it always renders as the generated alias of
+level n, so a scope can mix its own level (<code>As("momo_r")</code>) with an outer one. A
+level that does not enclose the scope fails the build with <code>ErrValidation</code>.</p>
+<div class="highlight"><pre><span></span><code>// Authors whose first document has a tagging whose tag is named "db", and
+// whose first document (level 1) has id 1.
+momo.Select[models.Author](db).Where(
+    author.FirstDocument.Has(document.Taggings.Has(tagging.Tag.Has(
+        tag.Name.As("momo_r").Eq("db"),
+        document.ID.As(momo.RelAlias(1)).Eq(int64(1))))))
+</code></pre></div>
+<p>Rules that follow from the aliasing:</p>
+<ul>
+<li>In a self-referencing relation, a nested <code>Has</code> correlates on the enclosing
+  child, not on the outer query: <code>employee.Reports.Has(employee.Reports.Has())</code>
+  asks for employees with a report that has a report. <code>HasFrom(alias)</code> is never
+  replaced: it correlates on the alias you name, so
+  <code>employee.Reports.Has(employee.Reports.HasFrom("employees"))</code> correlates the
+  inner subquery on the outer <code>employees</code> table.</li>
+<li><code>HasFrom("momo_r")</code> uses the literal alias of the outermost level. To name
+  another level, pass <code>momo.RelAlias(n)</code> or its numbered alias.</li>
+<li>A <code>Subquery</code> or CTE of your own inside a scope predicate does not start a new
+  level: the level count continues through it, and a bare <code>momo_r</code> inside it
+  still means the enclosing relation subquery. Do not give your own table
+  aliases the names <code>momo_r</code>, <code>momo_r&lt;N&gt;</code>, <code>momo_j</code> or <code>momo_j&lt;N&gt;</code>.</li>
+</ul>
 <p><code>Relation.From(parents)</code> goes the other way: it returns a <code>SelectQuery[C]</code> of
 the children whose key is in the key set of the given parent query. The parent
 query is embedded as a subquery, so no parent row is fetched:</p>

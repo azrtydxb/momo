@@ -1002,6 +1002,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1712,14 +1740,14 @@ passes straight to a distance builder. Build one by hand with
 <code>momo.NewVectorColumn</code> only for a table the generator does not cover.</p>
 <p>A vector column offers the predicates, ordering and write methods of a plain
 column (<code>Eq</code>, <code>In</code>, <code>IsNull</code>, <code>IsNotNull</code>, <code>IsDistinctFrom</code>, <code>Asc</code>, <code>Desc</code>,
-<code>Set</code>, <code>SetExpr</code>, <code>SetDefault</code>, <code>SetExcluded</code>), except the range comparisons
+<code>Column.Set</code>, <code>SetExpr</code>, <code>SetDefault</code>, <code>SetExcluded</code>), except the range comparisons
 <code>Lt</code>, <code>Le</code>, <code>Gt</code>, <code>Ge</code> and <code>Between</code>: vectors have no meaningful total order,
 so use a distance builder to order them. A nullable field (<code>*vector.Vector</code>)
 gets <code>momo.NullVectorColumn</code>, which adds <code>SetNull</code>.</p>
 <p>A vector field tagged <code>read_only</code>, <code>create_only</code> or <code>immutable</code> gets the
 matching <code>ReadOnlyVectorColumn</code>, <code>CreateOnlyVectorColumn</code> or
 <code>ImmutableVectorColumn</code>. They keep the write restriction of the plain
-permission columns (no <code>Set</code> on a read-only column, an insert-only <code>Set</code> on
+permission columns (no <code>Column.Set</code> on a read-only column, an insert-only <code>Column.Set</code> on
 the other two) and every distance builder accepts them, so a read-only
 embedding can be searched.</p>
 <p>The distance builders take a column and a query vector of the same type.

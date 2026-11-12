@@ -880,6 +880,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1421,7 +1449,7 @@
 </code></pre></div>
 <ul>
 <li>A column that can be NULL takes a pointer type: a <code>LeftJoin</code> side or an aggregate over no rows. With a <code>Row3</code> of <code>string, *int64, *string</code>, the columns <code>a.Title, b.ID, b.Title</code> fill <code>C1</code> to <code>C3</code>, and <code>C2</code> and <code>C3</code> stay nil when the join finds no row.</li>
-<li>Subquery columns, <code>Union</code>, <code>FromSubquery</code>, <code>SelectQuery.With</code> and <code>WithRecursive</code> work as for any projection. The Go types of the columns are yours to match; they are not checked against the SQL.</li>
+<li>Subquery columns, <code>Union</code>, <code>SelectUnion</code>, <code>FromSubquery</code>, <code>SelectQuery.With</code> and <code>WithRecursive</code> work as for any projection. The Go types of the columns are yours to match; they are not checked against the SQL.</li>
 <li>A mismatch between the number of <code>Columns</code> and the arity of the row is <code>ErrValidation</code>, reported before any statement runs. So is omitting <code>Columns</code>.</li>
 <li>A tuple row is a projection with no table: <code>Insert</code>, <code>Update</code>, <code>Delete</code>, <code>Upsert</code>, <code>SoftDelete</code> and <code>ForceDelete</code> refuse it with <code>ErrValidation</code>. It has no soft-delete column of its own, and the filter on the <code>From</code> table applies as described below, so a <code>Row1[int64]</code> with <code>CountAll</code> over <code>article.Table</code> counts live rows, and <code>WithDeleted</code> counts all.</li>
 <li><code>After</code> works when <code>OrderBy</code> lists a unique key, since a tuple has no primary key to break ties.</li>

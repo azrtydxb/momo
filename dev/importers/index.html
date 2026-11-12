@@ -836,6 +836,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1366,9 +1394,20 @@ A source version that is not a 14-digit timestamp is mapped to
 <code>19700101000000</code> plus its position in the list, and the mapping is reported as a
 <code>version-mapped</code> change; the original version stays in the history <code>name</code>
 column. <code>history.Baseline</code> replays the converted SQL on an empty scratch
-database to write one schema snapshot per migration, <code>history.WriteImport</code>
-writes the directory and <code>history.HistoryRows</code> gives the <code>momo_migrations</code> rows
-that mark every migration as applied. The Atlas reader verifies <code>atlas.sum</code>
+database to write one schema snapshot per migration. It runs each migration in
+one transaction (<code>BEGIN</code> ... <code>COMMIT</code>), as the source tools and
+<code>momo migrate apply</code> do, so an <code>ON COMMIT DROP</code> temporary table, <code>SET LOCAL</code>
+and deferred constraints work inside a migration. A migration the source marked
+as non-transactional runs statement by statement in autocommit. A failing
+statement or a failing <code>COMMIT</code> rolls the migration back on PostgreSQL and
+SQLite; MySQL commits DDL implicitly, so a failed migration there can leave
+part of its DDL behind.</p>
+<p><code>history.WriteImport</code> writes the directory. Each up file starts with
+<code>-- momo:imported</code> (and <code>-- momo:no-transaction</code> for a non-transactional
+migration), so the output passes <code>momo migrate validate</code> instead of being read
+as a custom migration that must not change the schema. <code>momo migrate rebase</code>
+never regenerates an imported migration. <code>history.HistoryRows</code> gives the
+<code>momo_migrations</code> rows that mark every migration as applied. The Atlas reader verifies <code>atlas.sum</code>
 with Atlas's directory hash and refuses a directory whose files were edited.
 golang-migrate records only its current version, so every migration up to it is
 read as applied.</p>

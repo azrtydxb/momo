@@ -1273,6 +1273,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -2259,6 +2287,9 @@ set <code>migrate.dir.postgres</code> or <code>--dir</code>). <code>diff</code> 
 </tbody>
 </table>
 <p>A snapshot without <code>format_version</code> is rejected.</p>
+<p>Adding the optional column field <code>generated_virtual</code> (a VIRTUAL generated
+column on MySQL and SQLite) did not bump <code>format_version</code>: a snapshot without
+it loads and its generated columns are STORED.</p>
 <h3 id="diff">Diff<a class="headerlink" href="#diff" title="Permanent link">&para;</a></h3>
 <p><code>momo migrate diff &lt;name&gt;</code> runs offline (no database, no driver). It loads the
 models, compares them with the snapshot of the highest version in the
@@ -2460,6 +2491,25 @@ finding:</p>
   early; they are filtered afterwards as before. <code>generate --from-db</code> also
   passes every <code>introspect.skip</code> glob to inspection the same way, so a skipped
   table is never read (the globs also match views and functions of that name).</li>
+<li>
+<p>A generated column is STORED unless <code>schema.Column.GeneratedVirtual</code> is set.
+  MySQL inspection reads the kind from <code>EXTRA</code> and SQLite from <code>hidden</code> in
+  <code>pragma_table_xinfo</code>, and both render <code>VIRTUAL</code> when it is set. A kind change
+  is a diff change: SQLite rebuilds the table, and MySQL and PostgreSQL refuse
+  it with "write a custom migration" because neither can switch the kind in
+  place. A model declares the kind with the <code>virtual</code> tag option next to
+  <code>generated:&lt;expr&gt;</code> (or <code>Config.GeneratedVirtual</code>). PostgreSQL has VIRTUAL
+  columns only from version 18, which momo does not support yet: a <code>virtual</code>
+  tag for a PostgreSQL target is a generate error, rendering one returns an
+  error matching <code>momo.ErrUnsupported</code>, and PostgreSQL inspection still
+  refuses a VIRTUAL column.</p>
+</li>
+<li>
+<p>An app that migrates in-process can load the same settings from an embedded
+  <code>momo.yaml</code> with <code>migrate.ConfigFromFile(fsys, "momo.yaml")</code>; it returns the
+  engine options the CLI builds from the <code>migrate:</code> section and <code>introspect.only</code>
+  (see <a href="../upgrading/">upgrading</a>).</p>
+</li>
 <li><code>migrate.Config.OnlyTables</code> (set from <code>introspect.only</code> by the CLI) is the
   inverse for tables: when it is not empty, a table whose name or <code>schema.name</code>
   matches none of its globs is not managed. A table in the current schema is
@@ -2476,6 +2526,12 @@ finding:</p>
   <code>only: [orders, "orders_*"]</code>. The MySQL and SQLite inspectors ignore
   <code>InspectOptions.Only</code> and read every table; the filter is applied afterwards,
   so a table they cannot represent can still fail inspection.</li>
+<li>The PostgreSQL inspector skips an index that is attached to a parent
+  partitioned index (a <code>pg_inherits</code> row on the index). Only the parent index
+  is modeled; PostgreSQL creates, names and drops the partition indexes, so a
+  fresh install has no duplicates and <code>drift</code> ignores partition index names
+  that diverged after a column rename. Constraint-backed partition indexes were
+  already skipped.</li>
 <li>A trigger limited to some columns (<code>AFTER UPDATE OF state</code>) is
   <code>schema.Trigger.UpdateOf</code>: PostgreSQL renders <code>UPDATE OF "state"</code>, inspection
   reads the list back and <code>generate --from-db</code> writes it into the model.</li>
@@ -2607,8 +2663,8 @@ finding:</p>
 <p><code>validate</code> checks: files parse and directives are known; <code>momo.sum</code> matches;
 versions unique and increasing; each snapshot's parent exists; no two snapshots
 share a parent (branch conflict); each up file has a snapshot; a hand-written
-migration (no <code>-- momo:generated</code>) has a snapshot equal to its parent's. Use it
-in CI. <code>apply</code> runs the chain checks too (fork, missing parent, cycle, gap) and
+migration (no <code>-- momo:generated</code> and no <code>-- momo:imported</code>) has a snapshot
+equal to its parent's. Use it in CI. <code>apply</code> runs the chain checks too (fork, missing parent, cycle, gap) and
 refuses with the same message (a fork is <code>ErrBranchConflict</code>; a missing parent,
 cycle or gap is <code>ErrChainInvalid</code>; both exit 1, like <code>validate</code> findings), and it
 refuses with <code>ErrOutOfOrder</code> (exit 1) when a pending version is older than the
@@ -3208,7 +3264,8 @@ after <code>momo.sum</code> was written) and <code>momo migrate validate</code>.
    <code>20260301120000_backfill_slug.up.sql</code>. Do not put <code>-- momo:generated</code> in it.</li>
 <li>Optional directives at the top, before the first statement:
    <code>-- momo:no-transaction</code>, <code>-- momo:split</code>, <code>-- momo:destructive</code>
-   (informational, never enforced), <code>-- momo:generated</code> (do not use it here)
+   (informational, never enforced), <code>-- momo:generated</code> (do not use it here),
+   <code>-- momo:imported</code> (written by the history importer, do not use it here: <code>validate</code> then skips the schema-neutral check and <code>rebase</code> treats the file as hand-written)
    and <code>-- momo:sqlite-foreign-keys-off</code> (SQLite only; <code>apply</code> turns foreign keys off around the migration, section 3a). <code>-- momo:ddl</code> is not a
    file directive: it goes before one MySQL ALTER TABLE statement (section 9). An unknown <code>-- momo:</code> directive is an error.</li>
 <li>Create <code>20260301120000_backfill_slug.snapshot.json</code> as a copy of the previous
@@ -3353,8 +3410,9 @@ column order differs from the field order is declared with
 and baseline keep that order. Changing the order of an existing key later is a
 drop and add of the primary key under an <code>ACCESS EXCLUSIVE</code> lock, and the drop
 is gated as destructive.
-<code>numeric</code> columns are Go strings (the <code>decimal-as-string</code> note); an
-<code>introspect.types</code> rule picks a decimal type instead. <code>tsvector</code> columns become
+<code>numeric</code> columns become <code>types.Numeric</code>, an exact decimal that also holds
+<code>NaN</code> and the infinities; an <code>introspect.types</code> rule picks another decimal
+type instead. <code>tsvector</code> columns become
 <code>types.TSVector</code> (<code>*types.TSVector</code> when nullable); an <code>introspect.types</code> rule
 still overrides that.</p>
 <p><code>momo generate</code> leaves out type errors that come from files with momo's
@@ -3366,9 +3424,16 @@ to the <code>introspect</code> section of <code>momo.yaml</code>. Constraints th
 declare are left out of the models and the snapshot and printed as warnings, so
 the two agree and the baseline reports them: foreign keys to a table with no
 model, single-column foreign keys whose name is not table, column and <code>_fkey</code> or
-that do not reference a single-column primary key, expression keys with an order or operator class, generated
-columns, and PostgreSQL
-schemas other than the current one.</p>
+that do not reference a single-column primary key, expression keys with an order or operator class, and PostgreSQL
+schemas other than the current one. A stored generated column
+(<code>GENERATED ALWAYS AS (...) STORED</code>) is not left out: it becomes a <code>read_only</code>
+field with <code>generated:&lt;expr&gt;</code> (or a <code>c.Generated(&amp;m.Field, "&lt;expr&gt;")</code> call in
+<code>MomoConfig</code> when the expression has a comma), so Insert and Update never write
+it, typed Select and Where can use it, and the snapshot and <code>migrate diff</code> carry
+the expression.
+A VIRTUAL one also gets the <code>virtual</code> tag option (or <code>c.GeneratedVirtual(&amp;m.Field,
+"&lt;expr&gt;")</code> when the expression has a comma), so the model declares the kind the
+database has.</p>
 <h3 id="the-introspect-section">The introspect section<a class="headerlink" href="#the-introspect-section" title="Permanent link">&para;</a></h3>
 <p><code>momo.yaml</code> holds what the database cannot say, and it is applied again on every
 run:</p>
@@ -3379,6 +3444,10 @@ run:</p>
 <span class="w">  </span><span class="nt">only</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w"> </span><span class="c1"># table globs: models only for these tables; skip applies within</span>
 <span class="w">  </span><span class="nt">functions</span><span class="p">:</span><span class="w"> </span><span class="s">""</span><span class="w"> </span><span class="c1"># "all": every database function on the first model</span>
 <span class="w">  </span><span class="nt">dbdefault</span><span class="p">:</span><span class="w"> </span><span class="s">""</span><span class="w"> </span><span class="c1"># "all": dbdefault on every NOT NULL column with a default</span>
+<span class="w">  </span><span class="nt">inverse</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w"> </span><span class="c1"># true: also write the has_many / has_one inverse of every belongs_to</span>
+<span class="w">  </span><span class="nt">relations</span><span class="p">:</span><span class="w"> </span><span class="c1"># with inverse: rename or skip one inverse, keyed Model.Field</span>
+<span class="w">    </span><span class="s">"Subscription.SubscriptionItems"</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">Items</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="s">"User.MessagesBySender"</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> skip</span><span class="p">:</span><span class="w"> </span><span class="nv">true</span><span class="w"> </span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">uuid</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">google</span><span class="w"> </span><span class="c1"># uuid columns as github.com/google/uuid types, no type tag (default: momo, types.UUID)</span>
 <span class="w">  </span><span class="nt">types</span><span class="p">:</span><span class="w"> </span><span class="c1"># SQL type to Go type, for every column of that type</span>
 <span class="w">    </span><span class="nt">inet</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> go</span><span class="p">:</span><span class="w"> </span><span class="nv">string</span><span class="w"> </span><span class="p p-Indicator">}</span>
@@ -3401,6 +3470,24 @@ Neither writes a type tag. <code>introspect.uuid</code> has no effect on MySQL, 
 replaces it. A Go type needs no <code>import</code> for <code>types.</code>, <code>vector.</code>, <code>time.</code>,
 <code>json.</code> or <code>sql.</code>. Add skipped tables to <code>migrate.exclude</code> too, so the baseline
 ignores the live tables.</p>
+<p><code>inverse: true</code> writes the other side of every <code>belongs_to</code> on the referenced
+model: a <code>has_one</code> when the foreign key column is unique (the primary key, a
+unique constraint or a plain unique index), a <code>has_many</code> otherwise. The field is
+named for the child (<code>SubscriptionItems</code> for a <code>has_many</code>, <code>AuthorProfile</code> for a
+<code>has_one</code>). A child with two foreign keys to the same parent, or a table that
+references itself, gets <code>By</code> and the foreign key field without <code>ID</code>
+(<code>MessagesBySender</code>, <code>MessagesByRecipient</code>). An <code>introspect.relations</code> rule keyed
+by model and derived name (User.MessagesBySender) renames one (<code>name</code>) or drops it (<code>skip: true</code>).
+The key uses the name derived before the rule and before any collision suffix. A
+rule key that matches no inverse is printed as a warning (a typo otherwise does
+nothing), and so is an inverse whose name collides with another field of the
+parent and gets a number suffix (Orders2): the warning names the
+<code>introspect.relations</code> key that renames it. <code>relations</code> has no effect unless
+<code>inverse</code> is <code>true</code>. A unique index with storage parameters (WITH) still counts
+as unique; a partial, expression or composite unique index does not.
+No inverse is written for a composite foreign key, a foreign key left out of the
+models, or a child outside <code>only</code> and <code>skip</code>. It is off by default because it
+adds fields to models you may have edited.</p>
 <p><code>only</code> is the inverse of <code>skip</code>, for a project that moves onto momo one module
 at a time: when it is set, a table that matches none of its globs gets no model
 and no place in the init snapshot, and migrate (drift, baseline, diff) treats it
@@ -3430,8 +3517,10 @@ as releases before 0.7.0 did, and is the workaround.</p>
 <p><code>dbdefault: all</code> tags every NOT NULL PostgreSQL column that has a default with
 <code>dbdefault</code>, constant defaults such as <code>DEFAULT 1</code> included (by default only
 computed defaults are tagged), so <code>InsertQuery.Model</code> leaves an unset field to the
-database default. A nullable column is never tagged. See "Database defaults" in
-the <a href="../ai-guide/">AI guide</a>.</p>
+database default. A nullable column is never tagged. A <code>bool</code> or number column
+whose constant default is <code>true</code> or non-zero gets a pointer type (<code>*bool</code>,
+<code>*int64</code>), so an explicit <code>false</code> or <code>0</code> is written and nil takes the default.
+See "Database defaults" in the <a href="../ai-guide/">AI guide</a>.</p>
 <h3 id="running-it-again">Running it again<a class="headerlink" href="#running-it-again" title="Permanent link">&para;</a></h3>
 <p>The schema keeps changing during a port. A re-run rewrites the model files that
 nobody edited. Each file starts with a header that holds the hash of its body:

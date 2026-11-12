@@ -836,6 +836,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1305,7 +1333,7 @@ against PostgreSQL in CI.</p>
   <a href="../getting-started/">getting started</a> and the
   <a href="https://github.com/azrtydxb/momo/tree/main/examples/quickstart/">quickstart example</a>.</li>
 <li>Insert with <code>Insert[T]</code> and <code>Model</code>, read with <code>Select[T]</code> and <code>Where</code>, change
-  rows with <code>Update[T]</code> and <code>Set</code>, remove them with <code>Delete[T]</code> or <code>SoftDelete</code>.
+  rows with <code>Update[T]</code> and <code>UpdateQuery.Set</code>, remove them with <code>Delete[T]</code> or <code>SoftDelete</code>.
   See <a href="https://github.com/azrtydxb/momo/tree/main/examples/crud-zero-null/">crud-zero-null</a>.</li>
 <li>Run related statements in <code>db.Tx</code> and use the <code>tx</code> it passes in. See
   <a href="https://github.com/azrtydxb/momo/tree/main/examples/transactions/">transactions</a>.</li>
@@ -1324,7 +1352,7 @@ uses Momo. It is the short form of the rules in section 12 of the
 
 <span class="k">-</span><span class="w"> </span>PostgreSQL with pgvector is the reference database. The generated status in docs/capabilities.md lists the other databases and the dialects <span class="sb">`momo migrate`</span> runs; check it before relying on a feature there.
 <span class="k">-</span><span class="w"> </span>Run <span class="sb">`momo generate`</span> after every model change and commit the generated files. Never edit generated files.
-<span class="k">-</span><span class="w"> </span>A non-pointer model field is NOT NULL; a pointer field is nullable.
+<span class="k">-</span><span class="w"> </span>A non-pointer model field is NOT NULL; a pointer field is nullable, except a <span class="sb">`dbdefault`</span> pointer, which is NOT NULL (nil means the database default).
 <span class="k">-</span><span class="w"> </span>Pass user input only as arguments to <span class="sb">`momo.SQL`</span>, <span class="sb">`momo.TypedSQL`</span>, <span class="sb">`momo.Exec`</span>, <span class="sb">`momo.Scalars`</span>, <span class="sb">`momo.Query`</span> and <span class="sb">`momo.QueryRows`</span>. Never build SQL by string concatenation.
 <span class="k">-</span><span class="w"> </span>Never bypass <span class="sb">`ErrUnfilteredMutation`</span> with <span class="sb">`AllRows`</span>; add a <span class="sb">`Where`</span>.
 <span class="k">-</span><span class="w"> </span>Check errors with <span class="sb">`errors.Is`</span> against the <span class="sb">`momo.Err*`</span> sentinels. Never match error text.
