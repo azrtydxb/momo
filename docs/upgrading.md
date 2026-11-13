@@ -12,7 +12,7 @@ snapshot.
 
 `momotest.New` and `momotest.NewTx` keep the `momo_migrations` history table in
 the test schema. Before, a `public` schema that already held `momo_migrations`
-(a CI job ran `momo migrate apply` on the same database) made `WithMigrations`
+(a CI job ran `momo migrate apply` on the same database) made `momotest.WithMigrations`
 create nothing in the test schema, and the tests ran on `public`'s tables. You
 can drop a separate `<db>_momotest` database that you set up as a workaround. A
 set of migrations that creates tables but leaves the test schema without one now
