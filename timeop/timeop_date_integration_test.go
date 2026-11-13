@@ -45,6 +45,29 @@ var tdIntMeta = momo.Meta[tdInt]{
 
 func (*tdInt) MomoMeta() *momo.Meta[tdInt] { return &tdIntMeta }
 
+// eachDateDB runs fn on PostgreSQL, SQLite, MySQL 8.4, MySQL 9.7 and MariaDB
+// 11.8, one subtest each. testopen.Each covers only the first two, so the MySQL
+// servers are opened by name; a server whose URL is unset is skipped, and
+// failed under MOMO_REQUIRE_INTEGRATION=1 for the dialects the job requires.
+func eachDateDB(t *testing.T, fn func(t *testing.T, db *momo.DB, d dialect.Name)) {
+	t.Helper()
+	for _, s := range []struct {
+		name string
+		d    dialect.Name
+		open func(*testing.T, ...momo.Option) *momo.DB
+	}{
+		{"postgres", dialect.Postgres, testopen.Postgres},
+		{"sqlite", dialect.SQLite, testopen.SQLite},
+		{"mysql84", dialect.MySQL, testopen.MySQL84},
+		{"mysql97", dialect.MySQL, testopen.MySQL97},
+		{"mariadb118", dialect.MySQL, testopen.MariaDB},
+	} {
+		t.Run(s.name, func(t *testing.T) {
+			fn(t, s.open(t), s.d)
+		})
+	}
+}
+
 // seedDays creates timeop_days: row 1 is 2028-02-28 (a leap year), row 2 is
 // 2028-01-31 (a month end) and row 3 is 2028-12-31.
 func seedDays(t *testing.T, db *momo.DB, d dialect.Name) {
@@ -100,7 +123,7 @@ func wantDate(t *testing.T, label string, got types.Date, err error, want types.
 // parameter as an interval, MySQL or SQLite choking on the text date), a wrong
 // sign for a negative count, and a month end or leap day that rolls wrongly.
 func TestAddDaysIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	eachDateDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedDays(t, db, d)
 		for _, c := range []struct {
 			id   int64
@@ -129,7 +152,7 @@ func TestAddDaysIntegration(t *testing.T) {
 // Catches: AddDaysExpr with a bound int32 that PostgreSQL cannot type, a
 // SQLite modifier built from a negative expression, and a column count.
 func TestAddDaysExprIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	eachDateDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedDays(t, db, d)
 		for _, c := range []struct {
 			n    int32
@@ -150,7 +173,7 @@ func TestAddDaysExprIntegration(t *testing.T) {
 // MySQL result that is not a whole number of days, and a bound date PostgreSQL
 // cannot type.
 func TestDaysBetweenIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	eachDateDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedDays(t, db, d)
 		for _, c := range []struct {
 			label string
@@ -176,7 +199,7 @@ func TestDaysBetweenIntegration(t *testing.T) {
 // Catches: a date comparison against date arithmetic that needs momo.Typed or
 // compares text with a date wrongly.
 func TestAddDaysWhereIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	eachDateDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedDays(t, db, d)
 		today := momo.Value(tmDate(2028, 2, 26))
 		// d <= today + 3 (2028-02-29): rows 1 and 2.
@@ -198,7 +221,7 @@ func TestAddDaysWhereIntegration(t *testing.T) {
 // infinity + n as infinity and refuses infinity - date; SQLite and MySQL
 // cannot store infinity and refuse a bound one at build time.
 func TestDateArithmeticInfinityIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	eachDateDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedDays(t, db, d)
 		inf := momo.Value(types.Date{Infinity: true})
 		if d != dialect.Postgres {
