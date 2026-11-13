@@ -21,7 +21,9 @@ func upsertSQL(t *testing.T, name dialect.Name, build func(q momo.Querier) momo.
 func TestUpsertGoldenSQL(t *testing.T) {
 	doc := suite.Document{ID: 77, TenantID: 1, Title: "t"}
 	zero := suite.Document{TenantID: 1, Title: "t"}
-	const set = `DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title", "body" = EXCLUDED."body", "secret" = EXCLUDED."secret", "updated_at" = EXCLUDED."updated_at"`
+	setN := func(ph string) string {
+		return `DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title", "body" = EXCLUDED."body", "secret" = EXCLUDED."secret", "updated_at" = ` + ph
+	}
 	cases := []struct {
 		name  dialect.Name
 		build func(q momo.Querier) momo.InsertQuery[suite.Document]
@@ -29,22 +31,22 @@ func TestUpsertGoldenSQL(t *testing.T) {
 	}{
 		{dialect.Postgres, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 			return momo.Upsert[suite.Document](q).Model(&doc)
-		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("id") ` + set},
+		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("id") ` + setN("$10")},
 		{dialect.SQLite, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 			return momo.Upsert[suite.Document](q).Model(&doc)
-		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT ("id") ` + set},
+		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT ("id") ` + setN("?")},
 		{dialect.Postgres, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 			return momo.Upsert[suite.Document](q).Model(&zero)
-		}, `INSERT INTO "documents" ("tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("id") ` + set},
+		}, `INSERT INTO "documents" ("tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("id") ` + setN("$9")},
 		{dialect.Postgres, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 			return momo.Upsert[suite.Document](q).Model(&doc).Omit(suite.DocBody, suite.DocSecret)
-		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "version", "deleted_at", "created_at", "updated_at") OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT ("id") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title", "updated_at" = EXCLUDED."updated_at"`},
+		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "version", "deleted_at", "created_at", "updated_at") OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT ("id") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title", "updated_at" = $8`},
 		{dialect.Postgres, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 			return momo.Upsert[suite.Document](q).Model(&doc).OnConflict(suite.DocTitle).DoUpdate(suite.DocTenantID.SetExcluded())
-		}, `INSERT INTO "documents" ("tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("title") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "updated_at" = EXCLUDED."updated_at"`},
+		}, `INSERT INTO "documents" ("tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("title") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "updated_at" = $9`},
 		{dialect.Postgres, func(q momo.Querier) momo.InsertQuery[suite.Document] {
 			return momo.Upsert[suite.Document](q).Model(&doc).Returning(suite.DocID)
-		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("id") ` + set + ` RETURNING "id"`},
+		}, `INSERT INTO "documents" ("id", "tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("id") ` + setN("$10") + ` RETURNING "id"`},
 	}
 	for i, c := range cases {
 		got, err := upsertSQL(t, c.name, c.build)
@@ -164,7 +166,7 @@ func TestUpsertNonPKTargetNeverInsertsIdentity(t *testing.T) {
 	if strings.Contains(got.SQL, "OVERRIDING") || strings.Contains(got.SQL, `("id"`) {
 		t.Fatalf("identity column must not be inserted for a non-PK target: %s", got.SQL)
 	}
-	want := `INSERT INTO "documents" ("tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("title") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title", "body" = EXCLUDED."body", "secret" = EXCLUDED."secret", "updated_at" = EXCLUDED."updated_at"`
+	want := `INSERT INTO "documents" ("tenant_id", "title", "body", "version", "deleted_at", "created_at", "updated_at", "secret") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("title") DO UPDATE SET "tenant_id" = EXCLUDED."tenant_id", "title" = EXCLUDED."title", "body" = EXCLUDED."body", "secret" = EXCLUDED."secret", "updated_at" = $9`
 	if got.SQL != want {
 		t.Fatalf("got  %s\nwant %s", got.SQL, want)
 	}
@@ -178,7 +180,7 @@ func TestUpsertExplicitDoUpdateStillRefreshesUpdatedAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(got.SQL, `DO UPDATE SET "title" = EXCLUDED."title", "updated_at" = EXCLUDED."updated_at"`) {
+	if !strings.HasSuffix(got.SQL, `DO UPDATE SET "title" = EXCLUDED."title", "updated_at" = $10`) {
 		t.Fatalf("updated_at not appended: %s", got.SQL)
 	}
 	if strings.Contains(got.SQL, `"created_at" = `) {

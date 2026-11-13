@@ -26,7 +26,8 @@ import (
 //
 // OnUpdate is not a trigger: it adds a value to an update that already sets
 // something. An update with only OnUpdate hooks and no Set still fails with
-// "no columns to update".
+// "no columns to update", unless the model has an updated_at column, in which
+// case it is a touch (see UpdateQuery).
 //
 // A Default or OnUpdate function runs once per row and statement: a chunked
 // bulk insert computes and validates every value before the first chunk and

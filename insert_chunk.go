@@ -181,8 +181,10 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	if err != nil || len(cols) == 0 {
 		return one, nil
 	}
-	r.i.fixedCols = cols // every chunk writes the columns of the whole set
-	r.clock = q.q.conn().now()
+	r.i.fixedCols = cols  // every chunk writes the columns of the whole set
+	if r.clock.IsZero() { // an updated_at bump in resolveUpsert already read it
+		r.clock = q.q.conn().now()
+	}
 	// Compute and validate every row before the first chunk runs, so a bad
 	// row late in a bulk insert executes nothing. The computed values are
 	// kept and bound by the chunks, so a non-deterministic default cannot
