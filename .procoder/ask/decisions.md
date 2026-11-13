@@ -441,7 +441,7 @@ Decision (2026-11-13, integrator): as above.
   No SET LOCAL.
 - **Release:** exported API (`postgres.WithHistorySchema`, `New(opts ...Option)`),
   so a feat, 0.10.0.
-=======
+
 ## Issue #120: updated_at on touch and upsert (2026-11-13, integrator)
 
 - **Touch:** an `Update` with no `Set` on a model with an `updated_at` column
@@ -457,6 +457,5 @@ Decision (2026-11-13, integrator): as above.
   `DoUpdate` is refused with `ErrValidation` and the `Update` wording
   ("cannot be set directly"). This is a breaking change, documented in
   `docs/upgrading.md`.
->>>>>>> a5d5d9a2 (feat!: touch updated_at on an empty Update and bump it in DoUpdate)
 
 Decision (2026-11-13, integrator): as above.

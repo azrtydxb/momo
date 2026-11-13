@@ -5,6 +5,44 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.11.0
+
+One change can need an edit in your code: an explicit `updated_at` in `DoUpdate`
+is refused (below). The rest adds behaviour.
+
+### `DoUpdate` refuses an explicit `updated_at` and bumps it itself
+
+`Update.Set` has always refused the `updated_at` column ("cannot be set
+directly"), because Momo maintains it. `Upsert` already refused it and refreshed it
+from `EXCLUDED`, but a plain `Insert` with `OnConflict(...).DoUpdate(...)` let you
+assign it and did not refresh it. Now both paths behave like `Update`:
+
+- A `DoUpdate` on the conflict branch sets `updated_at` for you, on PostgreSQL,
+  SQLite and MySQL, for `Upsert` and for `Insert` with `OnConflict`. `DoNothing`
+  does not change the row. The insert branch is unchanged.
+- An explicit `Set` or `SetExcluded` of `updated_at` inside `DoUpdate` now fails
+  with `ErrValidation` ("cannot be set directly"), for `Upsert` and for `Insert`
+  alike. The `Upsert` message used to read "cannot be set by an upsert".
+
+This breaks code that assigned `updated_at` in a `DoUpdate`. Remove that
+assignment:
+
+```text
+// before (refused now)
+momo.Insert[Doc](db).Model(&d).OnConflict(DocID).DoUpdate(DocTitle.SetExcluded(), DocUpdatedAt.Set(t))
+// after
+momo.Insert[Doc](db).Model(&d).OnConflict(DocID).DoUpdate(DocTitle.SetExcluded())
+```
+
+### An `Update` with nothing to set touches `updated_at`
+
+On a model with an `updated_at` column, an `Update` with a `Where` and no `Set`
+is valid and sets only `updated_at`, like Prisma's `update({ data: {} })`.
+It keeps every guard of an update: without `Where` or `AllRows` it still fails
+with `ErrUnfilteredMutation`. On a model without `updated_at` it still fails with
+`ErrValidation` ("no columns to update"). Code that relied on that error for a
+model with `updated_at` now writes the timestamp instead.
+
 ## Upgrading to 0.10.0
 
 No change is needed in your code, your generated models or your migration
