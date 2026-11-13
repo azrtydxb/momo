@@ -430,9 +430,16 @@ Decision (2026-11-13, integrator): as above.
   test schema holds no table besides `momo_migrations`, momotest fails naming
   the schema. A migration set with no `CREATE TABLE` (functions, data) is not
   checked, to avoid false failures.
-- **IF NOT EXISTS:** unqualified CREATE TABLE, INDEX, TYPE and FUNCTION create in
-  and check only the first schema of the path, so they are unaffected. DROP or
-  ALTER ... IF EXISTS on an object the migrations did not create in the test
-  schema still resolves to `public`; documented, not rewritten.
+- **IF NOT EXISTS:** unqualified CREATE TABLE/INDEX/SEQUENCE IF NOT EXISTS and
+  CREATE [OR REPLACE] FUNCTION/VIEW create in and check only the first schema of
+  the path, so they are unaffected.
+- **DROP/ALTER IF EXISTS (review follow-up):** the pool that applies the
+  migrations (applyTo and the template build) gets `search_path=<schema>` alone
+  when `WithExtensions` lists no extension, and `<schema>,public` otherwise;
+  the test's runtime pool keeps `<schema>,public`. The hole (an unqualified DROP
+  or ALTER ... IF EXISTS reaching `public`) remains only with extensions listed.
+  No SET LOCAL.
+- **Release:** exported API (`postgres.WithHistorySchema`, `New(opts ...Option)`),
+  so a feat, 0.10.0.
 
 Decision (2026-11-13, integrator): as above.

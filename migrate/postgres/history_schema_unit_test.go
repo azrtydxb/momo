@@ -71,6 +71,20 @@ func TestHistoryTableWithHistorySchemaIsQualified(t *testing.T) {
 	}
 }
 
+// TestHistoryDDLFollowsHistorySchema catches a HistoryDDL that keeps the bare
+// table name although a history schema is pinned, which would create the table
+// wherever the search_path points.
+func TestHistoryDDLFollowsHistorySchema(t *testing.T) {
+	pinned := mpg.New(mpg.WithHistorySchema("s1")).HistoryDDL()
+	if len(pinned) != 1 || !strings.HasPrefix(pinned[0], `CREATE TABLE IF NOT EXISTS "s1"."momo_migrations" (`) {
+		t.Fatalf("pinned DDL = %q", pinned)
+	}
+	bare := mpg.New().HistoryDDL()
+	if len(bare) != 1 || !strings.HasPrefix(bare[0], "CREATE TABLE IF NOT EXISTS momo_migrations (") {
+		t.Fatalf("default DDL = %q", bare)
+	}
+}
+
 // TestHistoryTableDefaultUnchanged catches an option that changes the default:
 // without WithHistorySchema the lookup goes through the search_path with the
 // bare name and a new table goes to current_schema().

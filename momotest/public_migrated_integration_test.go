@@ -6,6 +6,8 @@ package momotest_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
@@ -25,6 +27,9 @@ import (
 	"github.com/azrtydxb/momo/momotest"
 )
 
+// ownURLEnv names the variable that points momotest at a test's own database.
+const ownURLEnv = "MOMO_TEST_ISSUE115_URL"
+
 // issue115Migrations creates its objects with IF NOT EXISTS on purpose: with
 // public also holding them, they must still be created in the test schema.
 func issue115Migrations() fstest.MapFS {
@@ -35,43 +40,86 @@ CREATE INDEX IF NOT EXISTS issue115_items_name ON issue115_items (name);`)},
 	}
 }
 
-// publicAdmin opens an administrator connection to the momotest server, and
-// skips the test when the URL is unset.
-func publicAdmin(t *testing.T) (*pgx.Conn, string) {
+// requirePostgres returns the administrator URL of the momotest server. When it
+// is unset the test is skipped, unless MOMO_REQUIRE_INTEGRATION=1 and
+// PostgreSQL is among the selected dialects, where it fails.
+func requirePostgres(t *testing.T) string {
 	t.Helper()
 	raw := os.Getenv(momotest.DefaultEnv)
-	if raw == "" {
-		t.Skip(momotest.DefaultEnv + " is not set")
+	if raw != "" {
+		return raw
 	}
+	dialects := strings.ToLower(os.Getenv("MOMO_INTEGRATION_DIALECTS"))
+	if os.Getenv(momotest.RequireEnv) == "1" && (dialects == "" || strings.Contains(dialects, "postgres")) {
+		t.Fatalf("%s is not set and %s=1", momotest.DefaultEnv, momotest.RequireEnv)
+	}
+	t.Skip(momotest.DefaultEnv + " is not set")
+	return ""
+}
+
+// ownDatabase creates a database used by this test alone, points momotest at it
+// through ownURLEnv, and drops it when the test ends. It returns the URL of that
+// database, with no search_path. Nothing of the shared database is touched, so
+// packages running in parallel on the same server never see what a test puts
+// in this database's public schema.
+func ownDatabase(t *testing.T) string {
+	t.Helper()
+	raw := requirePostgres(t)
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		t.Fatal(err)
+	}
+	name := "momotest_115_" + hex.EncodeToString(b[:])
+	quoted := pgx.Identifier{name}.Sanitize()
+
+	ctx := context.WithoutCancel(t.Context())
+	admin, err := pgx.Connect(ctx, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close(ctx)
+	// Registered before the CREATE so that a half-made database is dropped too.
+	t.Cleanup(func() {
+		c, err := pgx.Connect(ctx, raw)
+		if err != nil {
+			t.Errorf("drop database %s: %v", name, err)
+			return
+		}
+		defer c.Close(ctx)
+		if _, err := c.Exec(ctx, "DROP DATABASE IF EXISTS "+quoted+" WITH (FORCE)"); err != nil {
+			t.Errorf("drop database %s: %v", name, err)
+		}
+	})
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+quoted); err != nil {
+		t.Fatalf("create database %s: %v", name, err)
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Path = "/" + name
+	u.RawPath = ""
+	q := u.Query()
+	q.Del("search_path")
+	u.RawQuery = q.Encode()
+	t.Setenv(ownURLEnv, u.String())
+	return u.String()
+}
+
+// connectTo opens a connection to raw that closes with the test.
+func connectTo(t *testing.T, raw string) *pgx.Conn {
+	t.Helper()
 	conn, err := pgx.Connect(t.Context(), raw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close(context.WithoutCancel(t.Context())) })
-	return conn, raw
+	return conn
 }
 
-// dropPublic removes what these tests put in public, even when a test fails.
-func dropPublic(t *testing.T, raw string) {
-	t.Helper()
-	t.Cleanup(func() {
-		ctx := context.WithoutCancel(t.Context())
-		conn, err := pgx.Connect(ctx, raw)
-		if err != nil {
-			t.Errorf("cleanup public: %v", err)
-			return
-		}
-		defer conn.Close(ctx)
-		for _, tbl := range []string{"public.issue115_items", "public.issue115_guard", "public.momo_migrations"} {
-			if _, err := conn.Exec(ctx, "DROP TABLE IF EXISTS "+tbl); err != nil {
-				t.Errorf("cleanup %s: %v", tbl, err)
-			}
-		}
-	})
-}
-
-// migratePublic applies fsys to the public schema, as a CI job running
-// momo migrate apply on the same database does.
+// migratePublic applies fsys to the public schema of the database at raw, as a
+// CI job running momo migrate apply on the same database does.
 func migratePublic(t *testing.T, raw string, fsys fstest.MapFS) {
 	t.Helper()
 	u, err := url.Parse(raw)
@@ -102,16 +150,9 @@ func migratePublic(t *testing.T, raw string, fsys fstest.MapFS) {
 // CREATE TABLE and CREATE INDEX IF NOT EXISTS create their objects in the test
 // schema although public holds objects of the same names.
 func TestWithMigrationsWhenPublicIsMigrated(t *testing.T) {
-	admin, raw := publicAdmin(t)
-	var exists bool
-	if err := admin.QueryRow(t.Context(), "SELECT to_regclass('public.momo_migrations') IS NOT NULL").Scan(&exists); err != nil {
-		t.Fatal(err)
-	}
-	if exists {
-		t.Skip("public already holds momo_migrations; not touching it")
-	}
-	dropPublic(t, raw)
+	raw := ownDatabase(t)
 	migratePublic(t, raw, issue115Migrations())
+	admin := connectTo(t, raw)
 
 	insert := func(t *testing.T, q momo.Querier) {
 		t.Helper()
@@ -121,7 +162,7 @@ func TestWithMigrationsWhenPublicIsMigrated(t *testing.T) {
 	}
 	for _, name := range []string{"first", "second"} {
 		t.Run("New/"+name, func(t *testing.T) {
-			db := momotest.New(t, momotest.WithMigrations(issue115Migrations()))
+			db := momotest.New(t, momotest.WithEnv(ownURLEnv), momotest.WithMigrations(issue115Migrations()))
 			schema := scalar[string](t, db.Driver(), "SELECT current_schema()")
 			insert(t, db)
 			for _, rel := range []string{"issue115_items", "issue115_items_name", "momo_migrations"} {
@@ -132,7 +173,7 @@ func TestWithMigrationsWhenPublicIsMigrated(t *testing.T) {
 		})
 	}
 	t.Run("NewTx", func(t *testing.T) {
-		tx := momotest.NewTx(t, momotest.WithMigrations(issue115Migrations()))
+		tx := momotest.NewTx(t, momotest.WithEnv(ownURLEnv), momotest.WithMigrations(issue115Migrations()))
 		insert(t, tx)
 	})
 	var n int
@@ -166,8 +207,7 @@ func (g *guardTB) Fatalf(format string, args ...any) {
 // its table with public makes the migrations resolve outside the schema
 // deterministically.
 func TestWithMigrationsFailsWhenNothingLandsInTestSchema(t *testing.T) {
-	_, raw := publicAdmin(t)
-	dropPublic(t, raw)
+	ownDatabase(t)
 	fsys := fstest.MapFS{
 		"20260101000000_guard.up.sql": {Data: []byte(`CREATE TABLE public.issue115_guard (id bigint PRIMARY KEY);`)},
 	}
@@ -175,7 +215,7 @@ func TestWithMigrationsFailsWhenNothingLandsInTestSchema(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		momotest.New(g, momotest.WithMigrations(fsys))
+		momotest.New(g, momotest.WithEnv(ownURLEnv), momotest.WithMigrations(fsys))
 	}()
 	<-done
 	if len(g.errs) != 1 {
@@ -187,4 +227,32 @@ func TestWithMigrationsFailsWhenNothingLandsInTestSchema(t *testing.T) {
 			t.Errorf("message %q lacks %q", msg, want)
 		}
 	}
+}
+
+// TestMigrationDropIfExistsDoesNotReachPublic catches a migration pool whose
+// search_path still holds public: DROP TABLE IF EXISTS legacy, where the
+// migrations never created legacy in the test schema, would resolve to
+// public.legacy and drop a real table. Without extensions the migrations see
+// the test schema alone.
+func TestMigrationDropIfExistsDoesNotReachPublic(t *testing.T) {
+	raw := ownDatabase(t)
+	admin := connectTo(t, raw)
+	if _, err := admin.Exec(t.Context(), "CREATE TABLE public.legacy (id bigint PRIMARY KEY); INSERT INTO public.legacy VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	fsys := fstest.MapFS{
+		"20260101000000_drop.up.sql": {Data: []byte(`DROP TABLE IF EXISTS legacy;
+CREATE TABLE keep (id bigint PRIMARY KEY);`)},
+	}
+	legacyRows := func(t *testing.T, when string) {
+		t.Helper()
+		var n int
+		if err := admin.QueryRow(t.Context(), "SELECT count(*) FROM public.legacy").Scan(&n); err != nil || n != 1 {
+			t.Fatalf("after %s: public.legacy has %d rows, err %v; a migration dropped a table of public", when, n, err)
+		}
+	}
+	momotest.New(t, momotest.WithEnv(ownURLEnv), momotest.WithMigrations(fsys))
+	legacyRows(t, "New")
+	momotest.NewTx(t, momotest.WithEnv(ownURLEnv), momotest.WithMigrations(fsys))
+	legacyRows(t, "NewTx")
 }

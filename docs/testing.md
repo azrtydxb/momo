@@ -113,14 +113,27 @@ none after they ran (a migration that qualifies its tables with `public`, for
 instance), `momotest.New` and `momotest.NewTx` fail naming the schema, instead
 of running the test on tables outside it.
 
-Unqualified `CREATE TABLE`, `CREATE INDEX`, `CREATE TYPE` and `CREATE FUNCTION`,
-with or without `IF NOT EXISTS`, create their object in the test schema and look
-for an existing one only there, so a same-named object in `public` does not make
-them skip. A statement on an object the migrations did not create in the test
-schema resolves through the search path, so it reaches `public`: `DROP TABLE IF
-EXISTS legacy` or `ALTER TABLE IF EXISTS legacy` on a database where `public`
-holds `legacy` acts on that table. Keep such statements out of migrations that
-run under `momotest`.
+The migrations run on a connection whose `search_path` is the test schema alone,
+unless you list extensions in `momotest.WithExtensions`: extensions live in
+`public`, so then `public` stays on the path. With the schema alone, an
+unqualified statement can only see the test schema: `DROP TABLE IF EXISTS
+legacy` or `ALTER TABLE IF EXISTS legacy` do nothing when the migrations did not
+create `legacy` there, and never touch a `legacy` in `public`. The test's own
+connections keep `public` on the path, so the extension types resolve in
+queries. A migration that uses something already installed in `public` that you
+did not list in `momotest.WithExtensions` no longer finds it.
+
+When `momotest.WithExtensions` lists extensions the hole remains: `public` is on
+the migration path, so a statement on an object the migrations did not create in
+the test schema, such as `DROP TABLE IF EXISTS legacy`, resolves to `public` and
+acts on that table. Keep such statements out of migrations that run under
+`momotest` with extensions. `CREATE TABLE`, `INDEX` and `SEQUENCE IF NOT EXISTS`,
+and `CREATE [OR REPLACE] FUNCTION` and `VIEW`, are safe either way: they create
+in the first schema of the path and check for an existing name only there.
+
+The check for an empty test schema is a heuristic. A later migration that drops
+every table, or a literal `CREATE TABLE` inside a dollar-quoted body that never
+runs, makes it fail a test that is in fact fine.
 
 The check reads the SQL with comments and string literals removed, so a comment
 that mentions `create schema` is fine and `CREATE /* x */ EXTENSION foo` is still

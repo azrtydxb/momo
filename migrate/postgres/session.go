@@ -14,9 +14,25 @@ import (
 )
 
 // HistoryDDL returns the momo_migrations DDL for the bare table name, which
-// lives in the first schema of the session's search_path. The engine uses
+// lives in the first schema of the session's search_path, or, with
+// WithHistorySchema, for the table qualified with that schema. The engine uses
 // HistoryDDLFor with the qualified reference from HistoryTable instead.
-func (d Dialect) HistoryDDL() []string { return d.HistoryDDLFor("momo_migrations") }
+func (d Dialect) HistoryDDL() []string {
+	if d.historySchema != "" {
+		return d.HistoryDDLFor(quoteIdent(d.historySchema) + "." + quoteIdent("momo_migrations"))
+	}
+	return d.HistoryDDLFor("momo_migrations")
+}
+
+// searchPathAdvice is the closing advice of an error about a history table that
+// cannot be trusted. With the history schema pinned the search_path plays no
+// part, so the advice is about the table itself.
+func (d Dialect) searchPathAdvice(unpinned string) string {
+	if d.historySchema != "" {
+		return fmt.Sprintf("the history schema is pinned to %s with WithHistorySchema, so drop that table or fix it", quoteIdent(d.historySchema))
+	}
+	return unpinned
+}
 
 // HistoryDDLFor returns the history table DDL for table, a SQL-ready
 // reference such as the one HistoryTable returns.
@@ -81,13 +97,13 @@ WHERE c.oid = pg_catalog.to_regclass($1)`, []any{lookup}, func(r momo.Rows) erro
 	}
 	if found {
 		if (kind != "r" && kind != "p") || persistence != "p" {
-			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Err: fmt.Errorf("momo_migrations resolves to %s, which is not a regular permanent table; remove it from the search_path or drop it", describeRelation(schemaName, kind, persistence))}
+			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Err: fmt.Errorf("momo_migrations resolves to %s, which is not a regular permanent table; %s", describeRelation(schemaName, kind, persistence), d.searchPathAdvice("remove it from the search_path or drop it"))}
 		}
 		if !usable {
-			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Table: "momo_migrations", Err: fmt.Errorf("the table %s.momo_migrations is owned by role %s, and the connecting role does not hold the privileges of that role; refusing to write migration history through it. Fix the ownership, or remove that schema from the search_path", quoteIdent(schemaName), quoteIdent(owner))}
+			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Table: "momo_migrations", Err: fmt.Errorf("the table %s.momo_migrations is owned by role %s, and the connecting role does not hold the privileges of that role; refusing to write migration history through it. Fix the ownership; %s", quoteIdent(schemaName), quoteIdent(owner), d.searchPathAdvice("or remove that schema from the search_path"))}
 		}
 		if !superTrust {
-			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Table: "momo_migrations", Err: fmt.Errorf("the table %s.momo_migrations is owned by role %s, which is not a superuser, and the connecting role is a superuser; a superuser only trusts a history table that it or another superuser owns, because the table's triggers and rules would run with superuser rights. Fix the ownership, or remove that schema from the search_path", quoteIdent(schemaName), quoteIdent(owner))}
+			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Table: "momo_migrations", Err: fmt.Errorf("the table %s.momo_migrations is owned by role %s, which is not a superuser, and the connecting role is a superuser; a superuser only trusts a history table that it or another superuser owns, because the table's triggers and rules would run with superuser rights. Fix the ownership; %s", quoteIdent(schemaName), quoteIdent(owner), d.searchPathAdvice("or remove that schema from the search_path"))}
 		}
 		return quoteIdent(schemaName) + "." + quoteIdent("momo_migrations"), nil
 	}

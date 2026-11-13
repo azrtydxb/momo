@@ -189,12 +189,27 @@ func randomName(prefix string) string {
 // postgres:// or postgresql:// URL; a keyword/value DSN cannot carry the
 // parameter and would silently lose isolation.
 func withSearchPath(raw, name string) (string, error) {
+	return searchPathURL(raw, name+",public")
+}
+
+// applySearchPath is the search_path of the pool that runs the migrations:
+// the test schema alone, so an unqualified statement such as DROP TABLE IF
+// EXISTS legacy cannot reach a table of public. When extensions are listed
+// public stays on the path, because their types and functions live there.
+func (c *config) applySearchPath(raw, name string) (string, error) {
+	if len(c.extensions) == 0 {
+		return searchPathURL(raw, name)
+	}
+	return withSearchPath(raw, name)
+}
+
+func searchPathURL(raw, path string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
 		return "", errors.New("momotest: a postgres:// URL is required to set search_path")
 	}
 	q := u.Query()
-	q.Set("search_path", name+",public")
+	q.Set("search_path", path)
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
@@ -346,6 +361,14 @@ var createTable = regexp.MustCompile(`(?is)\bcreate\s+(?:unlogged\s+)?table\b`)
 // expectsTables reports whether some up migration creates a table, so a test
 // schema without tables after Apply means the migrations ran elsewhere. A set
 // of migrations that creates none (functions, data) cannot be checked this way.
+//
+// The check is a heuristic with two known false positives. A later migration
+// that drops every table leaves the schema empty and fails the test. A literal
+// CREATE TABLE inside a dollar-quoted body that never runs (a function body, a
+// DO block that does not execute it) counts as a table to expect, because
+// dollar-quoted bodies are scanned as code. Neither is worth a real SQL parser;
+// a set of migrations that hits one can drop WithMigrations for that test or
+// keep one table.
 func (c *config) expectsTables() bool {
 	found := false
 	_ = fs.WalkDir(c.migrations, ".", func(p string, d fs.DirEntry, err error) error {
@@ -371,13 +394,15 @@ func (c *config) expectsTables() bool {
 // After Apply, a set of migrations that creates tables must have left at least
 // one table besides momo_migrations in schema, or applyTo fails.
 //
-// Unqualified CREATE TABLE, CREATE INDEX, CREATE TYPE and CREATE FUNCTION, with
-// or without IF NOT EXISTS, are safe with public on the path: PostgreSQL
-// creates in the first schema of the path and checks for an existing name only
-// there, and ALTER TABLE and CREATE INDEX ... ON resolve a table the migration
-// created in schema first. A statement that names an object the migrations did
-// not create in schema, DROP TABLE IF EXISTS legacy or ALTER TABLE IF EXISTS
-// legacy for example, still resolves through the path to public.
+// The caller gives drv a search_path of schema alone (see applySearchPath)
+// unless WithExtensions lists extensions, which live in public. Alone, an
+// unqualified statement can only see schema: DROP TABLE IF EXISTS legacy and
+// ALTER TABLE IF EXISTS legacy do nothing when the migrations did not create
+// legacy there. With extensions listed, public is on the path, and such a
+// statement on an object the migrations did not create in schema still resolves
+// to public. CREATE TABLE/INDEX/SEQUENCE IF NOT EXISTS and CREATE [OR REPLACE]
+// FUNCTION/VIEW are safe either way: PostgreSQL creates in the first schema of
+// the path and checks for an existing name only there.
 func (c *config) applyTo(ctx context.Context, drv momo.Driver, schema string) error {
 	if c.migrations == nil {
 		return nil
@@ -444,7 +469,7 @@ func New(t testing.TB, opts ...Option) *momo.DB {
 	db := momo.New(pgxdriver.New(pool), c.momoOpts...)
 	actx, acancel := context.WithTimeout(context.Background(), applyTimeout)
 	defer acancel()
-	if err := c.applyTo(actx, db.Driver(), name); err != nil {
+	if err := c.applyMigrations(actx, raw, name); err != nil {
 		t.Fatalf("momotest: apply migrations: %v", err)
 	}
 	return db
@@ -606,7 +631,16 @@ func (c *config) buildOnce(t testing.TB, raw, name string) {
 }
 
 func (c *config) buildTemplate(ctx context.Context, raw, name string) error {
-	u, err := withSearchPath(raw, name)
+	return c.applyMigrations(ctx, raw, name)
+}
+
+// applyMigrations runs the migrations into schema on a pool of its own, whose
+// search_path is applySearchPath, and closes it afterwards.
+func (c *config) applyMigrations(ctx context.Context, raw, schema string) error {
+	if c.migrations == nil {
+		return nil
+	}
+	u, err := c.applySearchPath(raw, schema)
 	if err != nil {
 		return err
 	}
@@ -620,7 +654,7 @@ func (c *config) buildTemplate(ctx context.Context, raw, name string) error {
 		return err
 	}
 	defer pool.Close()
-	return c.applyTo(ctx, pgxdriver.New(pool), name)
+	return c.applyTo(ctx, pgxdriver.New(pool), schema)
 }
 
 // NewTx returns a *momo.Tx that sees the migrated schema and is rolled back

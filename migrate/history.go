@@ -181,8 +181,9 @@ func IsNoSuchTable(err error, name string) bool {
 
 // ReadHistory returns the migration rows of the history table ordered by
 // version. The metadata row is not included. It names the table unqualified,
-// so the connection's search_path decides which table it reads; the Engine
-// does not use it and reads through a qualified reference instead.
+// so the connection's search_path decides which table it reads, even when the
+// dialect pins a history schema (postgres.WithHistorySchema); the Engine does
+// not use it and reads through a qualified reference instead.
 func ReadHistory(ctx context.Context, c momo.PinnedConn) ([]HistoryRow, error) {
 	return readHistoryRows(ctx, c, historyTable)
 }
