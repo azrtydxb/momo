@@ -1,7 +1,7 @@
 # Momo guide for AI coding agents
 
-Target: `github.com/azrtydxb/momo` v0.10.0. Read this file instead of the Momo <!-- x-release-please-version -->
-source. Every identifier below was checked against v0.10.0. Where the guide says <!-- x-release-please-version -->
+Target: `github.com/azrtydxb/momo` v0.11.0. Read this file instead of the Momo <!-- x-release-please-version -->
+source. Every identifier below was checked against v0.11.0. Where the guide says <!-- x-release-please-version -->
 DON'T, the call either fails, silently does the wrong thing, or is a known bug.
 
 Imports used throughout:
@@ -26,7 +26,7 @@ Deeper docs: [README](../README.md), [relations](relations.md),
 
 ## 1. Scope
 
-- v0.10.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5; the other databases are in the status block below. <!-- x-release-please-version -->
+- v0.11.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5; the other databases are in the status block below. <!-- x-release-please-version -->
 
 Database status:
 
@@ -60,8 +60,8 @@ Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/q
 <!-- x-release-please-start-version -->
 
 ```sh
-go get github.com/azrtydxb/momo@v0.10.0                # adds the library to go.mod and writes go.sum
-go install github.com/azrtydxb/momo/cmd/momo@v0.10.0   # the CLI: generate, migrate, import, viz, help
+go get github.com/azrtydxb/momo@v0.11.0                # adds the library to go.mod and writes go.sum
+go install github.com/azrtydxb/momo/cmd/momo@v0.11.0   # the CLI: generate, migrate, import, viz, help
 ```
 
 <!-- x-release-please-end -->
@@ -821,7 +821,7 @@ CI (every change):
 <!-- x-release-please-start-version -->
 
 ```sh
-go install github.com/azrtydxb/momo/cmd/momo@v0.10.0
+go install github.com/azrtydxb/momo/cmd/momo@v0.11.0
 momo generate --check                                   # generated code is current
 momo migrate validate                                   # files vs momo.sum, version chain, forks, snapshots
 momo migrate diff ci_probe | grep -qx 'no changes'      # models have a migration
@@ -2253,9 +2253,9 @@ report)`, a development hook that reports once per statement shape per scope
 
 ## 12. Rules for AI agents
 
-1. v0.10.0 is PostgreSQL + pgvector via pgx first; the other databases, their drivers and the dialects `momo migrate` runs are in the generated status near the top of this guide and in docs/capabilities.md. <!-- x-release-please-version -->
+1. v0.11.0 is PostgreSQL + pgvector via pgx first; the other databases, their drivers and the dialects `momo migrate` runs are in the generated status near the top of this guide and in docs/capabilities.md. <!-- x-release-please-version -->
 2. Install the CLI at the same version as the library
-   (`go install github.com/azrtydxb/momo/cmd/momo@v0.10.0`). <!-- x-release-please-version -->
+   (`go install github.com/azrtydxb/momo/cmd/momo@v0.11.0`). <!-- x-release-please-version -->
 3. Models embed `momo.Model` by value with `momo:"table:<name>"`; run
    `momo generate` after every model change and commit the generated files.
 4. Never edit `*_gen.go`. Never hand-write `MomoMeta` for a table model or a
