@@ -17,7 +17,8 @@ import (
 // updated-at column, DO UPDATE SET always ends with updated_at =
 // EXCLUDED.updated_at, also after an explicit DoUpdate list, so a conflict
 // refreshes the timestamp just as Update does; created_at is never
-// overwritten.
+// overwritten. The same holds for a plain Insert with OnConflict and
+// DoUpdate. A DoNothing conflict does not touch the row, so it bumps nothing.
 //
 // The version column is neither advanced nor checked on conflict: an upsert
 // overwrites the existing row without optimistic-lock detection. Explicit
@@ -48,6 +49,16 @@ func upsertUpdatable(f uint16) bool { return updModelWritable(f) }
 // validates an explicit DO UPDATE list against the update guard rules.
 func (q InsertQuery[T]) resolveUpsert() (InsertQuery[T], error) {
 	if !q.i.upsert {
+		if q.i.conflict != conflictUpdate || q.i.bumped {
+			return q.resolveMySQLIdentity(), nil
+		}
+		// A plain Insert ... OnConflict ... DoUpdate gets the same
+		// updated_at rules as Upsert: refuse an explicit set, bump on conflict.
+		if err := q.refuseUpdatedAtSet(); err != nil {
+			return q, err
+		}
+		q.i.set = q.withUpdatedAt(q.i.set)
+		q.i.bumped = true
 		return q.resolveMySQLIdentity(), nil
 	}
 	if q.i.conflict == conflictNone {
@@ -72,7 +83,7 @@ func (q InsertQuery[T]) resolveUpsert() (InsertQuery[T], error) {
 		}
 		f := q.meta.Columns[ci].Flags
 		if role := q.reservedRoleOf(ci); role != "" {
-			return q, q.verr(a.col, "DoUpdate: column %q is the %s column and cannot be set by an upsert", a.col, role)
+			return q, q.verr(a.col, "DoUpdate: column %q is the %s column and cannot be set directly", a.col, role)
 		}
 		if !columnAssignable(writeUpdate, f) {
 			return q, q.verr(a.col, "DoUpdate: column %q cannot be written by UPDATE", a.col)
@@ -82,7 +93,23 @@ func (q InsertQuery[T]) resolveUpsert() (InsertQuery[T], error) {
 		q.i.set = q.defaultUpsertSet()
 	}
 	q.i.set = q.withUpdatedAt(q.i.set)
+	q.i.bumped = true
 	return q, nil
+}
+
+// refuseUpdatedAtSet refuses an explicit DO UPDATE assignment to the
+// updated-at column, with the error Update gives for the same Set.
+func (q InsertQuery[T]) refuseUpdatedAtSet() error {
+	ci := q.meta.UpdatedAt
+	if ci < 0 || ci >= len(q.meta.Columns) {
+		return nil
+	}
+	for _, a := range q.i.set {
+		if a.col == q.meta.Columns[ci].Name {
+			return q.verr(a.col, "DoUpdate: column %q is the updated-at column and cannot be set directly", a.col)
+		}
+	}
+	return nil
 }
 
 // withUpdatedAt appends updated_at = EXCLUDED.updated_at to a DO UPDATE list

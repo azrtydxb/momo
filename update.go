@@ -20,6 +20,11 @@ import (
 // model's MomoMeta, are always quoted, and every value is bound. A statement
 // without a WHERE clause is refused with ErrUnfilteredMutation unless
 // AllRows confirms it.
+//
+// An update with nothing to set is a touch when the model has an updated_at
+// column: it renders UPDATE ... SET updated_at = <now> WHERE ..., with every
+// guard of a normal update. A model without updated_at refuses it with
+// ErrValidation ("no columns to update").
 type UpdateQuery[T any] struct {
 	q       Querier
 	meta    *Meta[T]
@@ -262,7 +267,7 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 			sets = append(sets, a)
 		}
 	}
-	if len(sets) == 0 && !u.versioned() {
+	if len(sets) == 0 && !u.versioned() && !u.touches() {
 		return nil, nil, u.fail(ErrValidation, errors.New("no columns to update"))
 	}
 	sets, err := u.applyFieldHooks(sets)
@@ -293,6 +298,14 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 		}
 	}
 	return sets, append(where, u.extra...), nil
+}
+
+// touches reports whether an update with nothing to set is still valid: the
+// model has an updated_at column that the statement maintains, so the update
+// is a touch that sets only that column.
+func (u UpdateQuery[T]) touches() bool {
+	ci := u.meta.UpdatedAt
+	return ci >= 0 && ci < len(u.meta.Columns) && columnAssignable(writeUpdate, u.meta.Columns[ci].Flags)
 }
 
 // SQL renders the statement without executing it. Guardrail violations are

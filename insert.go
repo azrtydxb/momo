@@ -41,6 +41,10 @@ type insertCore struct {
 	// query, withIdentity puts the identity column in a model INSERT list.
 	upsert       bool
 	withIdentity bool
+	// bumped records that resolveUpsert has already checked the DO UPDATE
+	// list and appended updated_at, so a resolved copy is not checked again
+	// (the appended assignment would look like an explicit one).
+	bumped bool
 	// unnest renders a Models insert as one statement with an array parameter
 	// per column (Unnest, PostgreSQL only).
 	unnest bool

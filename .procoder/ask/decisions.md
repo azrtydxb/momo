@@ -441,5 +441,22 @@ Decision (2026-11-13, integrator): as above.
   No SET LOCAL.
 - **Release:** exported API (`postgres.WithHistorySchema`, `New(opts ...Option)`),
   so a feat, 0.10.0.
+=======
+## Issue #120: updated_at on touch and upsert (2026-11-13, integrator)
+
+- **Touch:** an `Update` with no `Set` on a model with an `updated_at` column
+  is valid and renders `UPDATE ... SET updated_at = <now> WHERE ...`, the same
+  bound clock value `Update` uses. It passes every guard of a normal update
+  (`ErrUnfilteredMutation`, version, interceptors). On a model without
+  `updated_at` it keeps `ErrValidation` ("no columns to update").
+- **DoUpdate bump:** `DoUpdate` bumps `updated_at` on the conflict branch of
+  `Upsert` and of a plain `Insert` with `OnConflict`, on PostgreSQL, SQLite
+  and MySQL, through `EXCLUDED` (which carries the statement clock for an
+  unset field). `DoNothing` does not bump. The insert branch is unchanged.
+- **Explicit set:** an explicit `Set` or `SetExcluded` of `updated_at` in
+  `DoUpdate` is refused with `ErrValidation` and the `Update` wording
+  ("cannot be set directly"). This is a breaking change, documented in
+  `docs/upgrading.md`.
+>>>>>>> a5d5d9a2 (feat!: touch updated_at on an empty Update and bump it in DoUpdate)
 
 Decision (2026-11-13, integrator): as above.

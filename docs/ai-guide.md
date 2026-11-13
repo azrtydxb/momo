@@ -608,7 +608,8 @@ type Event struct {
   leaves the column out of `SET`, so the column keeps its stored value (writing
   NULL would fail on the NOT NULL column). A pointer to `false` or `0` is
   written. If that leaves nothing to set, the update fails with the usual
-  `ErrValidation` ("no columns to update"). `Upsert` is unaffected: its default
+  `ErrValidation` ("no columns to update"), unless the model has an
+  `updated_at` column: then it is a touch that sets only that column. `Upsert` is unaffected: its default
   `DO UPDATE` set takes `EXCLUDED` values and already leaves out a `dbdefault`
   column that any row leaves to the database.
 - The pointer type that `--from-db` generates and the `momo generate` warning
@@ -1276,7 +1277,13 @@ _, err = momo.Update[models.Task](q).Model(&cur).Exec(ctx)
   `read_only`, `immutable` (on update) or identity column is `ErrValidation`.
   `Rows` is not supported on a versioned `Model` update; use `Exec`.
 - `updated_at` is set automatically on `Update` (Set or Model), not on raw SQL
-  and not on relation helpers.
+  and not on relation helpers. An `Update` with no `Set` is a touch when the model
+  has an `updated_at` column: it sets only that column and keeps every guard
+  (`ErrUnfilteredMutation` without `Where` or `AllRows`). Without an `updated_at` column it still fails with `ErrValidation`
+  ("no columns to update"). A `DoUpdate` bumps `updated_at` on the conflict branch
+  (`Upsert` and a plain `Insert` with `OnConflict`); `DoNothing` does not.
+  DON'T `Set` or `SetExcluded` `updated_at` inside `DoUpdate`: it is refused with
+  the same `ErrValidation` ("cannot be set directly") as on `Update`.
 
 Delete and soft delete:
 
