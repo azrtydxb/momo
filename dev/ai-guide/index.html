@@ -2917,7 +2917,8 @@ predicate key is <code>ErrValidation</code>, and so is a predicate in the outer 
 <span class="w">    </span><span class="nx">ElseExpr</span><span class="p">(</span><span class="nx">node</span><span class="p">.</span><span class="nx">Hostname</span><span class="p">)</span>
 
 <span class="c1">// Arithmetic on numeric columns (sqlfn): Add, Sub, Mul (bound value) and AddExpr, SubExpr,</span>
-<span class="c1">// MulExpr (expression). Numeric only; a string column does not compile.</span>
+<span class="c1">// MulExpr (expression). Numeric only; a string column does not compile. A types.Numeric</span>
+<span class="c1">// column works too, on PostgreSQL only (ErrUnsupported on SQLite and MySQL, where it is TEXT).</span>
 <span class="nx">node</span><span class="p">.</span><span class="nx">Hits</span><span class="p">.</span><span class="nx">SetExpr</span><span class="p">(</span><span class="nx">sqlfn</span><span class="p">.</span><span class="nx">Add</span><span class="p">(</span><span class="nx">node</span><span class="p">.</span><span class="nx">Hits</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="p">))</span><span class="w">                         </span><span class="c1">// hits = (hits + $1)</span>
 <span class="nx">node</span><span class="p">.</span><span class="nx">Hits</span><span class="p">.</span><span class="nx">SetExpr</span><span class="p">(</span><span class="nx">sqlfn</span><span class="p">.</span><span class="nx">AddExpr</span><span class="p">(</span><span class="nx">node</span><span class="p">.</span><span class="nx">Hits</span><span class="p">,</span><span class="w"> </span><span class="nx">node</span><span class="p">.</span><span class="nx">Hits</span><span class="p">.</span><span class="nx">Excluded</span><span class="p">()))</span><span class="w">  </span><span class="c1">// upsert accumulate</span>
 </code></pre></div>

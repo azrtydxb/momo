@@ -770,6 +770,8 @@ Import path: `github.com/azrtydxb/momo/types`
 | `types.Numeric.Sign`       | method | Sign returns -1, 0 or +1 for a negative, zero or positive n.                                                                                                                                  |
 | `types.Numeric.String`     | method | String returns the PostgreSQL text form: the digits, or NaN, Infinity or -Infinity.                                                                                                           |
 | `types.Numeric.Value`      | method | Value encodes n as its text form.                                                                                                                                                             |
+| `types.NumericFromFloat64` | func   | NumericFromFloat64 returns the Numeric holding f written as the shortest decimal that reads back as the same float64 (strconv.FormatFloat with 'f' and precision -1), without an exponent.    |
+| `types.NumericFromInt64`   | func   | NumericFromInt64 returns the Numeric holding n exactly.                                                                                                                                       |
 | `types.ParseNumeric`       | func   | ParseNumeric parses PostgreSQL numeric text: an optionally signed decimal ("12", "-1.5", ".5", "7."), or NaN, Infinity or -Infinity (also written inf, any case).                             |
 | `types.ParseUUID`          | func   | ParseUUID parses the canonical 36-character form (dashes at 8, 13, 18, 23) or 32 bare hex digits.                                                                                             |
 | `types.TSQuery`            | type   | TSQuery is a PostgreSQL full-text query: tsquery on PostgreSQL, TEXT on SQLite.                                                                                                               |
@@ -1203,57 +1205,57 @@ Import path: `github.com/azrtydxb/momo/obs`
 
 Import path: `github.com/azrtydxb/momo/sqlfn`
 
-| Identifier                          | Kind   | Synopsis                                                                                                                               |
-| ----------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `sqlfn.Add`                         | func   | Add is e + v, for example in a SET: quota.SetExpr(sqlfn.Add(quota, 5)).                                                                |
-| `sqlfn.AddExpr`                     | func   | AddExpr is e + other, for example answers + EXCLUDED.answers: answers.SetExpr(sqlfn.AddExpr(answers, answers.Excluded())).             |
-| `sqlfn.ArithExpr`                   | type   | ArithExpr is a parenthesised binary arithmetic expression over T.                                                                      |
-| `sqlfn.ArithExpr.AppendSQL`         | method | AppendSQL writes the arithmetic expression to b.                                                                                       |
-| `sqlfn.ArithExpr.As`                | method | As names the expression in a select list.                                                                                              |
-| `sqlfn.Case`                        | func   | Case starts a CASE expression whose branches produce T, for example Case\[string\]().When(host.Excluded().Ne(""), "x").ElseExpr(host). |
-| `sqlfn.CaseExpr`                    | type   | CaseExpr is CASE WHEN ...                                                                                                              |
-| `sqlfn.CaseExpr.AppendSQL`          | method | AppendSQL writes the CASE expression to b.                                                                                             |
-| `sqlfn.CaseExpr.As`                 | method | As names the expression in a select list.                                                                                              |
-| `sqlfn.CaseExpr.Else`               | method | Else sets the bound value used when no branch matches.                                                                                 |
-| `sqlfn.CaseExpr.ElseExpr`           | method | ElseExpr sets the expression used when no branch matches.                                                                              |
-| `sqlfn.CaseExpr.When`               | method | When adds a branch yielding the bound value v.                                                                                         |
-| `sqlfn.CaseExpr.WhenExpr`           | method | WhenExpr adds a branch yielding an expression.                                                                                         |
-| `sqlfn.Cast`                        | func   | Cast is CAST(e AS sqlType).                                                                                                            |
-| `sqlfn.CastExpr`                    | type   | CastExpr is CAST(expr AS type) with a caller-chosen result type T.                                                                     |
-| `sqlfn.CastExpr.AppendSQL`          | method | AppendSQL writes the CAST expression to b.                                                                                             |
-| `sqlfn.CastExpr.As`                 | method | As names the expression in a select list.                                                                                              |
-| `sqlfn.CoalesceExpr`                | func   | CoalesceExpr is COALESCE(a, b, more...): the first non-NULL expression.                                                                |
-| `sqlfn.Concat`                      | func   | Concat joins two or more string expressions: (a \|\| b) on PostgreSQL and SQLite, CONCAT(a, b) on MySQL.                               |
-| `sqlfn.ConcatExpr`                  | type   | ConcatExpr is string concatenation.                                                                                                    |
-| `sqlfn.ConcatExpr.AppendSQL`        | method | AppendSQL writes the concatenation to b.                                                                                               |
-| `sqlfn.ConcatExpr.As`               | method | As names the expression in a select list.                                                                                              |
-| `sqlfn.CurrentDate`                 | func   | CurrentDate is CURRENT_DATE: the transaction date on PostgreSQL, the session date on MySQL, the UTC date as text on SQLite.            |
-| `sqlfn.CurrentSchema`               | func   | CurrentSchema is current_schema() on PostgreSQL and DATABASE() on MySQL (where a schema is a database).                                |
-| `sqlfn.CurrentSchemaExpr`           | type   | CurrentSchemaExpr is the current schema name.                                                                                          |
-| `sqlfn.CurrentSchemaExpr.AppendSQL` | method | AppendSQL writes the current_schema call to b.                                                                                         |
-| `sqlfn.CurrentSchemaExpr.As`        | method | As names the expression in a select list.                                                                                              |
-| `sqlfn.DateExpr`                    | type   | DateExpr is a date or timestamp value without operands.                                                                                |
-| `sqlfn.DateExpr.AppendSQL`          | method | AppendSQL writes the value to b.                                                                                                       |
-| `sqlfn.DateExpr.As`                 | method | As names the expression in a select list.                                                                                              |
-| `sqlfn.Div`                         | func   | Div is e / v.                                                                                                                          |
-| `sqlfn.DivExpr`                     | func   | DivExpr is e / other, for example DivExpr(final, NullIf(max, 0)).                                                                      |
-| `sqlfn.Infinity`                    | func   | Infinity is 'infinity'::timestamptz, later than every timestamp.                                                                       |
-| `sqlfn.Length`                      | func   | Length is the length of e in characters (CHAR_LENGTH on MySQL, whose LENGTH counts bytes).                                             |
-| `sqlfn.LengthExpr`                  | type   | LengthExpr is the character length of a string expression.                                                                             |
-| `sqlfn.LengthExpr.AppendSQL`        | method | AppendSQL writes the length call to b.                                                                                                 |
-| `sqlfn.LengthExpr.As`               | method | As names the expression in a select list.                                                                                              |
-| `sqlfn.Lower`                       | func   | Lower is lower(e).                                                                                                                     |
-| `sqlfn.Mul`                         | func   | Mul is e * v.                                                                                                                          |
-| `sqlfn.MulExpr`                     | func   | MulExpr is e * other.                                                                                                                  |
-| `sqlfn.NegInfinity`                 | func   | NegInfinity is '-infinity'::timestamptz, earlier than every timestamp.                                                                 |
-| `sqlfn.NullIf`                      | func   | NullIf is NULLIF(e, v): NULL when e equals v, else e.                                                                                  |
-| `sqlfn.NullIfExpr`                  | func   | NullIfExpr is NULLIF(e, other).                                                                                                        |
-| `sqlfn.Numeric`                     | type   | Numeric is the constraint of the arithmetic helpers.                                                                                   |
-| `sqlfn.Sub`                         | func   | Sub is e - v.                                                                                                                          |
-| `sqlfn.SubExpr`                     | func   | SubExpr is e - other.                                                                                                                  |
-| `sqlfn.Substr`                      | func   | Substr is substr(e, from, length): length characters of e starting at the 1-based position from.                                       |
-| `sqlfn.SubstrFrom`                  | func   | SubstrFrom is substr(e, from): everything from the 1-based position from.                                                              |
-| `sqlfn.Upper`                       | func   | Upper is upper(e).                                                                                                                     |
+| Identifier                          | Kind   | Synopsis                                                                                                                                                             |
+| ----------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sqlfn.Add`                         | func   | Add is e + v, for example in a SET: quota.SetExpr(sqlfn.Add(quota, 5)).                                                                                              |
+| `sqlfn.AddExpr`                     | func   | AddExpr is e + other, for example answers + EXCLUDED.answers: answers.SetExpr(sqlfn.AddExpr(answers, answers.Excluded())).                                           |
+| `sqlfn.ArithExpr`                   | type   | ArithExpr is a parenthesised binary arithmetic expression over T.                                                                                                    |
+| `sqlfn.ArithExpr.AppendSQL`         | method | AppendSQL writes the arithmetic expression to b.                                                                                                                     |
+| `sqlfn.ArithExpr.As`                | method | As names the expression in a select list.                                                                                                                            |
+| `sqlfn.Case`                        | func   | Case starts a CASE expression whose branches produce T, for example Case\[string\]().When(host.Excluded().Ne(""), "x").ElseExpr(host).                               |
+| `sqlfn.CaseExpr`                    | type   | CaseExpr is CASE WHEN ...                                                                                                                                            |
+| `sqlfn.CaseExpr.AppendSQL`          | method | AppendSQL writes the CASE expression to b.                                                                                                                           |
+| `sqlfn.CaseExpr.As`                 | method | As names the expression in a select list.                                                                                                                            |
+| `sqlfn.CaseExpr.Else`               | method | Else sets the bound value used when no branch matches.                                                                                                               |
+| `sqlfn.CaseExpr.ElseExpr`           | method | ElseExpr sets the expression used when no branch matches.                                                                                                            |
+| `sqlfn.CaseExpr.When`               | method | When adds a branch yielding the bound value v.                                                                                                                       |
+| `sqlfn.CaseExpr.WhenExpr`           | method | WhenExpr adds a branch yielding an expression.                                                                                                                       |
+| `sqlfn.Cast`                        | func   | Cast is CAST(e AS sqlType).                                                                                                                                          |
+| `sqlfn.CastExpr`                    | type   | CastExpr is CAST(expr AS type) with a caller-chosen result type T.                                                                                                   |
+| `sqlfn.CastExpr.AppendSQL`          | method | AppendSQL writes the CAST expression to b.                                                                                                                           |
+| `sqlfn.CastExpr.As`                 | method | As names the expression in a select list.                                                                                                                            |
+| `sqlfn.CoalesceExpr`                | func   | CoalesceExpr is COALESCE(a, b, more...): the first non-NULL expression.                                                                                              |
+| `sqlfn.Concat`                      | func   | Concat joins two or more string expressions: (a \|\| b) on PostgreSQL and SQLite, CONCAT(a, b) on MySQL.                                                             |
+| `sqlfn.ConcatExpr`                  | type   | ConcatExpr is string concatenation.                                                                                                                                  |
+| `sqlfn.ConcatExpr.AppendSQL`        | method | AppendSQL writes the concatenation to b.                                                                                                                             |
+| `sqlfn.ConcatExpr.As`               | method | As names the expression in a select list.                                                                                                                            |
+| `sqlfn.CurrentDate`                 | func   | CurrentDate is CURRENT_DATE: the transaction date on PostgreSQL, the session date on MySQL, the UTC date as text on SQLite.                                          |
+| `sqlfn.CurrentSchema`               | func   | CurrentSchema is current_schema() on PostgreSQL and DATABASE() on MySQL (where a schema is a database).                                                              |
+| `sqlfn.CurrentSchemaExpr`           | type   | CurrentSchemaExpr is the current schema name.                                                                                                                        |
+| `sqlfn.CurrentSchemaExpr.AppendSQL` | method | AppendSQL writes the current_schema call to b.                                                                                                                       |
+| `sqlfn.CurrentSchemaExpr.As`        | method | As names the expression in a select list.                                                                                                                            |
+| `sqlfn.DateExpr`                    | type   | DateExpr is a date or timestamp value without operands.                                                                                                              |
+| `sqlfn.DateExpr.AppendSQL`          | method | AppendSQL writes the value to b.                                                                                                                                     |
+| `sqlfn.DateExpr.As`                 | method | As names the expression in a select list.                                                                                                                            |
+| `sqlfn.Div`                         | func   | Div is e / v.                                                                                                                                                        |
+| `sqlfn.DivExpr`                     | func   | DivExpr is e / other, for example DivExpr(final, NullIf(max, 0)).                                                                                                    |
+| `sqlfn.Infinity`                    | func   | Infinity is 'infinity'::timestamptz, later than every timestamp.                                                                                                     |
+| `sqlfn.Length`                      | func   | Length is the length of e in characters (CHAR_LENGTH on MySQL, whose LENGTH counts bytes).                                                                           |
+| `sqlfn.LengthExpr`                  | type   | LengthExpr is the character length of a string expression.                                                                                                           |
+| `sqlfn.LengthExpr.AppendSQL`        | method | AppendSQL writes the length call to b.                                                                                                                               |
+| `sqlfn.LengthExpr.As`               | method | As names the expression in a select list.                                                                                                                            |
+| `sqlfn.Lower`                       | func   | Lower is lower(e).                                                                                                                                                   |
+| `sqlfn.Mul`                         | func   | Mul is e * v.                                                                                                                                                        |
+| `sqlfn.MulExpr`                     | func   | MulExpr is e * other.                                                                                                                                                |
+| `sqlfn.NegInfinity`                 | func   | NegInfinity is '-infinity'::timestamptz, earlier than every timestamp.                                                                                               |
+| `sqlfn.NullIf`                      | func   | NullIf is NULLIF(e, v): NULL when e equals v, else e.                                                                                                                |
+| `sqlfn.NullIfExpr`                  | func   | NullIfExpr is NULLIF(e, other).                                                                                                                                      |
+| `sqlfn.Numeric`                     | type   | Numeric is the constraint of the arithmetic helpers: the Go integer and float kinds, and types.Numeric (the exact decimal that a PostgreSQL numeric column maps to). |
+| `sqlfn.Sub`                         | func   | Sub is e - v.                                                                                                                                                        |
+| `sqlfn.SubExpr`                     | func   | SubExpr is e - other.                                                                                                                                                |
+| `sqlfn.Substr`                      | func   | Substr is substr(e, from, length): length characters of e starting at the 1-based position from.                                                                     |
+| `sqlfn.SubstrFrom`                  | func   | SubstrFrom is substr(e, from): everything from the 1-based position from.                                                                                            |
+| `sqlfn.Upper`                       | func   | Upper is upper(e).                                                                                                                                                   |
 
 ## timeop
 

@@ -168,8 +168,24 @@ except `NaN`, which SQLite does not have (see Floats).
   The column is `TEXT` there, so the database does not order or add it as a
   number, and a `precision` or `scale` tag still generates `TEXT`, not
   `numeric(p,s)`: SQLite would give that NUMERIC affinity and turn `12.50` into
-  `12.5`. On PostgreSQL the tags generate `numeric(p,s)`. Momo does no
-  arithmetic on a `types.Numeric`.
+  `12.5`. On PostgreSQL the tags generate `numeric(p,s)`.
+  On PostgreSQL the `sqlfn` arithmetic helpers (`sqlfn.Add`, `sqlfn.Sub`, `sqlfn.Mul`, `sqlfn.Div`
+  and their `Expr` forms) and `sqlfn.NullIf` accept a `types.Numeric`, and the
+  database does the exact arithmetic; on SQLite and MySQL they fail with
+  `ErrUnsupported`, because the column is `TEXT` there and `+` would go through
+  floating point. `types.NumericFromInt64` and `types.NumericFromFloat64` build
+  a value from a Go number (a `float64` is already binary: `0.1` gives `"0.1"`,
+  its shortest decimal, and NaN or an infinity is an error). Momo does no
+  other arithmetic on a `types.Numeric`.
+
+  ```text
+  // agent_conversation.cost numeric(12,6), momo.Column[types.Numeric]
+  cost, err := types.NumericFromFloat64(0.000412)
+  if err != nil { return err }
+  agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
+  // roughly: SET cost = (agent_conversation.cost + $1), exact in numeric
+  ```
+
 - `types.UUID`: round-trips all 16 bytes, including the all-zero UUID.
 - `types.JSON[T]`: encodes with `encoding/json`. An empty slice and a nil
   slice are different JSON (`[]` and `null`) and read back as such.

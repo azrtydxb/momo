@@ -5,6 +5,27 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.9.0
+
+No change is needed in your code, your generated models or your migration
+snapshot. 0.9.0 adds API:
+
+- `sqlfn.Numeric`, the constraint of `sqlfn.Add`, `sqlfn.Sub`, `sqlfn.Mul`,
+  `sqlfn.Div` (and their `Expr` forms) and `sqlfn.NullIf`, also admits `types.Numeric`. A
+  `momo.Column[types.Numeric]` can now be incremented in the database:
+
+  ```text
+  agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
+  ```
+
+  This is PostgreSQL only. On SQLite and MySQL a `types.Numeric` is `TEXT`, and
+  building the expression fails with `momo.ErrUnsupported` instead of adding it
+  through floating point.
+
+- `types.NumericFromInt64` and `types.NumericFromFloat64` build a `types.Numeric`
+  from a Go number. The float version writes the shortest decimal of the
+  `float64` (`0.1` gives `"0.1"`) and returns an error for NaN and infinity.
+
 ## Upgrading to 0.8.0
 
 The first ten subsections below can need a change in your code, your

@@ -5411,6 +5411,16 @@
 <td>Value encodes n as its text form.</td>
 </tr>
 <tr>
+<td><code>types.NumericFromFloat64</code></td>
+<td>func</td>
+<td>NumericFromFloat64 returns the Numeric holding f written as the shortest decimal that reads back as the same float64 (strconv.FormatFloat with 'f' and precision -1), without an exponent.</td>
+</tr>
+<tr>
+<td><code>types.NumericFromInt64</code></td>
+<td>func</td>
+<td>NumericFromInt64 returns the Numeric holding n exactly.</td>
+</tr>
+<tr>
 <td><code>types.ParseNumeric</code></td>
 <td>func</td>
 <td>ParseNumeric parses PostgreSQL numeric text: an optionally signed decimal ("12", "-1.5", ".5", "7."), or NaN, Infinity or -Infinity (also written inf, any case).</td>
@@ -7539,7 +7549,7 @@
 <tr>
 <td><code>sqlfn.Numeric</code></td>
 <td>type</td>
-<td>Numeric is the constraint of the arithmetic helpers.</td>
+<td>Numeric is the constraint of the arithmetic helpers: the Go integer and float kinds, and types.Numeric (the exact decimal that a PostgreSQL numeric column maps to).</td>
 </tr>
 <tr>
 <td><code>sqlfn.Sub</code></td>

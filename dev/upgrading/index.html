@@ -1099,6 +1099,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-090" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.9.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-080" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1848,6 +1859,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-090" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.9.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-080" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2496,6 +2518,24 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-090">Upgrading to 0.9.0<a class="headerlink" href="#upgrading-to-090" title="Permanent link">&para;</a></h2>
+<p>No change is needed in your code, your generated models or your migration
+snapshot. 0.9.0 adds API:</p>
+<ul>
+<li><code>sqlfn.Numeric</code>, the constraint of <code>sqlfn.Add</code>, <code>sqlfn.Sub</code>, <code>sqlfn.Mul</code>,
+  <code>sqlfn.Div</code> (and their <code>Expr</code> forms) and <code>sqlfn.NullIf</code>, also admits <code>types.Numeric</code>. A
+  <code>momo.Column[types.Numeric]</code> can now be incremented in the database:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
+</code></pre></div>
+<p>This is PostgreSQL only. On SQLite and MySQL a <code>types.Numeric</code> is <code>TEXT</code>, and
+  building the expression fails with <code>momo.ErrUnsupported</code> instead of adding it
+  through floating point.</p>
+<ul>
+<li><code>types.NumericFromInt64</code> and <code>types.NumericFromFloat64</code> build a <code>types.Numeric</code>
+  from a Go number. The float version writes the shortest decimal of the
+  <code>float64</code> (<code>0.1</code> gives <code>"0.1"</code>) and returns an error for NaN and infinity.</li>
+</ul>
 <h2 id="upgrading-to-080">Upgrading to 0.8.0<a class="headerlink" href="#upgrading-to-080" title="Permanent link">&para;</a></h2>
 <p>The first ten subsections below can need a change in your code, your
 generated models or your migration snapshot. The rest add API and need no

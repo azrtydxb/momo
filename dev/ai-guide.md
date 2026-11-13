@@ -1160,7 +1160,8 @@ sqlfn.Case[string]().
 	ElseExpr(node.Hostname)
 
 // Arithmetic on numeric columns (sqlfn): Add, Sub, Mul (bound value) and AddExpr, SubExpr,
-// MulExpr (expression). Numeric only; a string column does not compile.
+// MulExpr (expression). Numeric only; a string column does not compile. A types.Numeric
+// column works too, on PostgreSQL only (ErrUnsupported on SQLite and MySQL, where it is TEXT).
 node.Hits.SetExpr(sqlfn.Add(node.Hits, 5))                         // hits = (hits + $1)
 node.Hits.SetExpr(sqlfn.AddExpr(node.Hits, node.Hits.Excluded()))  // upsert accumulate
 ```

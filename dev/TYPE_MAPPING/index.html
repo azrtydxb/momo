@@ -1741,8 +1741,23 @@ except <code>NaN</code>, which SQLite does not have (see Floats).</p>
   The column is <code>TEXT</code> there, so the database does not order or add it as a
   number, and a <code>precision</code> or <code>scale</code> tag still generates <code>TEXT</code>, not
   <code>numeric(p,s)</code>: SQLite would give that NUMERIC affinity and turn <code>12.50</code> into
-  <code>12.5</code>. On PostgreSQL the tags generate <code>numeric(p,s)</code>. Momo does no
-  arithmetic on a <code>types.Numeric</code>.</li>
+  <code>12.5</code>. On PostgreSQL the tags generate <code>numeric(p,s)</code>.
+  On PostgreSQL the <code>sqlfn</code> arithmetic helpers (<code>sqlfn.Add</code>, <code>sqlfn.Sub</code>, <code>sqlfn.Mul</code>, <code>sqlfn.Div</code>
+  and their <code>Expr</code> forms) and <code>sqlfn.NullIf</code> accept a <code>types.Numeric</code>, and the
+  database does the exact arithmetic; on SQLite and MySQL they fail with
+  <code>ErrUnsupported</code>, because the column is <code>TEXT</code> there and <code>+</code> would go through
+  floating point. <code>types.NumericFromInt64</code> and <code>types.NumericFromFloat64</code> build
+  a value from a Go number (a <code>float64</code> is already binary: <code>0.1</code> gives <code>"0.1"</code>,
+  its shortest decimal, and NaN or an infinity is an error). Momo does no
+  other arithmetic on a <code>types.Numeric</code>.</li>
+</ul>
+<div class="highlight"><pre><span></span><code>// agent_conversation.cost numeric(12,6), momo.Column[types.Numeric]
+cost, err := types.NumericFromFloat64(0.000412)
+if err != nil { return err }
+agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
+// roughly: SET cost = (agent_conversation.cost + $1), exact in numeric
+</code></pre></div>
+<ul>
 <li><code>types.UUID</code>: round-trips all 16 bytes, including the all-zero UUID.</li>
 <li><code>types.JSON[T]</code>: encodes with <code>encoding/json</code>. An empty slice and a nil
   slice are different JSON (<code>[]</code> and <code>null</code>) and read back as such.
