@@ -20,6 +20,7 @@ import (
 var (
 	tdID = momo.NewColumn[int64]("timeop_days", "id", 0)
 	tdD  = momo.NewColumn[types.Date]("timeop_days", "d", 0)
+	tdN  = momo.NewColumn[int32]("timeop_days", "n", 0)
 )
 
 type tdDate struct{ D types.Date }
@@ -54,10 +55,10 @@ func seedDays(t *testing.T, db *momo.DB, d dialect.Name) {
 	}
 	for _, s := range []string{
 		"DROP TABLE IF EXISTS timeop_days",
-		"CREATE TABLE timeop_days (id bigint primary key, d " + typ + " not null)",
-		"INSERT INTO timeop_days VALUES (1, '2028-02-28')",
-		"INSERT INTO timeop_days VALUES (2, '2028-01-31')",
-		"INSERT INTO timeop_days VALUES (3, '2028-12-31')",
+		"CREATE TABLE timeop_days (id bigint primary key, d " + typ + " not null, n integer not null)",
+		"INSERT INTO timeop_days VALUES (1, '2028-02-28', 1)",
+		"INSERT INTO timeop_days VALUES (2, '2028-01-31', 2)",
+		"INSERT INTO timeop_days VALUES (3, '2028-12-31', 3)",
 	} {
 		if _, err := db.Driver().Exec(context.Background(), s, nil); err != nil {
 			t.Fatalf("%s: %v", s, err)
@@ -140,7 +141,7 @@ func TestAddDaysExprIntegration(t *testing.T) {
 			wantDate(t, "AddDaysExpr", got, err, c.want)
 		}
 		// A count read from a column: row 1's id is 1 day.
-		got, err := dateAt(db, 1, timeop.AddDaysExpr(tdD, momo.Typed[int32](tdID)))
+		got, err := dateAt(db, 1, timeop.AddDaysExpr(tdD, tdN))
 		wantDate(t, "AddDaysExpr over a column", got, err, tmDate(2028, 2, 29))
 	})
 }
