@@ -414,3 +414,32 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   warns that a float64 is already binary.
 
 Decision (2026-11-13, integrator): as above.
+
+## Issue #115: momotest history table in the test schema (2026-11-13, integrator)
+
+- **Cause:** momotest connects with `search_path=<test schema>,public`; the
+  migrator found `public.momo_migrations` through the path, saw everything
+  applied and created nothing in the test schema.
+- **Fix:** a new PostgreSQL dialect option, `postgres.WithHistorySchema(schema)`,
+  pins the history table: the lookup is `to_regclass('"schema".momo_migrations')`
+  and a new table is created in that schema. Every other history statement
+  already uses the reference `HistoryTable` returns, and the advisory-lock key is
+  derived from it. Unset, nothing changes. momotest passes the test schema (and
+  the template schema for `NewTx`).
+- **Guard:** after Apply, when an up migration contains `CREATE TABLE` and the
+  test schema holds no table besides `momo_migrations`, momotest fails naming
+  the schema. A migration set with no `CREATE TABLE` (functions, data) is not
+  checked, to avoid false failures.
+- **IF NOT EXISTS:** unqualified CREATE TABLE/INDEX/SEQUENCE IF NOT EXISTS and
+  CREATE [OR REPLACE] FUNCTION/VIEW create in and check only the first schema of
+  the path, so they are unaffected.
+- **DROP/ALTER IF EXISTS (review follow-up):** the pool that applies the
+  migrations (applyTo and the template build) gets `search_path=<schema>` alone
+  when `WithExtensions` lists no extension, and `<schema>,public` otherwise;
+  the test's runtime pool keeps `<schema>,public`. The hole (an unqualified DROP
+  or ALTER ... IF EXISTS reaching `public`) remains only with extensions listed.
+  No SET LOCAL.
+- **Release:** exported API (`postgres.WithHistorySchema`, `New(opts ...Option)`),
+  so a feat, 0.10.0.
+
+Decision (2026-11-13, integrator): as above.

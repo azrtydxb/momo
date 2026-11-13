@@ -91,6 +91,12 @@ func WithEnv(name string) Option { return func(c *config) { c.env = name } }
 // narrowed with fs.Sub to the migrations directory, to the database before
 // the test sees it. The directory needs no momo.sum. Without this option the
 // database starts empty.
+//
+// The migration history table lives in the test schema, so a public schema that
+// already holds momo_migrations and the application's tables (a CI job ran
+// momo migrate apply on the same database) does not make the migrations look
+// applied. If the migrations create tables and the test schema holds none
+// afterwards, New and NewTx fail naming the schema.
 func WithMigrations(fsys fs.FS) Option { return func(c *config) { c.migrations = fsys } }
 
 // WithMomoOptions passes opts to momo.New, for example momo.WithHook.
@@ -183,12 +189,27 @@ func randomName(prefix string) string {
 // postgres:// or postgresql:// URL; a keyword/value DSN cannot carry the
 // parameter and would silently lose isolation.
 func withSearchPath(raw, name string) (string, error) {
+	return searchPathURL(raw, name+",public")
+}
+
+// applySearchPath is the search_path of the pool that runs the migrations:
+// the test schema alone, so an unqualified statement such as DROP TABLE IF
+// EXISTS legacy cannot reach a table of public. When extensions are listed
+// public stays on the path, because their types and functions live there.
+func (c *config) applySearchPath(raw, name string) (string, error) {
+	if len(c.extensions) == 0 {
+		return searchPathURL(raw, name)
+	}
+	return withSearchPath(raw, name)
+}
+
+func searchPathURL(raw, path string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
 		return "", errors.New("momotest: a postgres:// URL is required to set search_path")
 	}
 	q := u.Query()
-	q.Set("search_path", name+",public")
+	q.Set("search_path", path)
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
@@ -335,17 +356,87 @@ func (c *config) checkMigrations() error {
 	})
 }
 
-// applyTo runs the configured migrations through drv.
-func (c *config) applyTo(ctx context.Context, drv momo.Driver) error {
+var createTable = regexp.MustCompile(`(?is)\bcreate\s+(?:unlogged\s+)?table\b`)
+
+// expectsTables reports whether some up migration creates a table, so a test
+// schema without tables after Apply means the migrations ran elsewhere. A set
+// of migrations that creates none (functions, data) cannot be checked this way.
+//
+// The check is a heuristic with two known false positives. A later migration
+// that drops every table leaves the schema empty and fails the test. A literal
+// CREATE TABLE inside a dollar-quoted body that never runs (a function body, a
+// DO block that does not execute it) counts as a table to expect, because
+// dollar-quoted bodies are scanned as code. Neither is worth a real SQL parser;
+// a set of migrations that hits one can drop WithMigrations for that test or
+// keep one table.
+func (c *config) expectsTables() bool {
+	found := false
+	_ = fs.WalkDir(c.migrations, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".sql") || strings.Contains(p, ".down.") {
+			return err
+		}
+		if b, err := fs.ReadFile(c.migrations, p); err == nil && createTable.Match(stripSQL(b)) {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
+}
+
+// applyTo runs the configured migrations through drv into schema, which is the
+// first schema of the connection's search_path.
+//
+// The history table is pinned to schema (mpg.WithHistorySchema). Without that
+// it would be found through the rest of the path, and a public schema that
+// already holds momo_migrations (a CI job ran momo migrate apply on the same
+// database) would make every migration look applied and leave schema empty.
+// After Apply, a set of migrations that creates tables must have left at least
+// one table besides momo_migrations in schema, or applyTo fails.
+//
+// The caller gives drv a search_path of schema alone (see applySearchPath)
+// unless WithExtensions lists extensions, which live in public. Alone, an
+// unqualified statement can only see schema: DROP TABLE IF EXISTS legacy and
+// ALTER TABLE IF EXISTS legacy do nothing when the migrations did not create
+// legacy there. With extensions listed, public is on the path, and such a
+// statement on an object the migrations did not create in schema still resolves
+// to public. CREATE TABLE/INDEX/SEQUENCE IF NOT EXISTS and CREATE [OR REPLACE]
+// FUNCTION/VIEW are safe either way: PostgreSQL creates in the first schema of
+// the path and checks for an existing name only there.
+func (c *config) applyTo(ctx context.Context, drv momo.Driver, schema string) error {
 	if c.migrations == nil {
 		return nil
 	}
-	e, err := migrate.NewEngine(drv, c.migrations, migrate.WithDialect(mpg.New()), migrate.WithoutSum())
+	e, err := migrate.NewEngine(drv, c.migrations, migrate.WithDialect(mpg.New(mpg.WithHistorySchema(schema))), migrate.WithoutSum())
 	if err != nil {
 		return err
 	}
-	_, err = e.Apply(ctx, migrate.ApplyOptions{})
-	return err
+	if _, err = e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		return err
+	}
+	if !c.expectsTables() {
+		return nil
+	}
+	rows, err := drv.Query(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = $1 AND c.relkind IN ('r', 'p') AND c.relname <> 'momo_migrations'`, []any{schema})
+	if err != nil {
+		return fmt.Errorf("count the tables of schema %s: %w", schema, err)
+	}
+	defer func() { _ = rows.Close() }()
+	var n int64
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("count the tables of schema %s: %w", schema, err)
+		}
+		return fmt.Errorf("count the tables of schema %s: no row", schema)
+	}
+	if err := rows.Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("the migrations created no tables in schema %s, so they resolved outside it (a table or the history in public or another schema on the search_path, or a migration that qualifies its tables); the test would run on tables outside its own schema", schema)
+	}
+	return nil
 }
 
 // New returns a *momo.DB on a schema private to t, with the migrations
@@ -378,7 +469,7 @@ func New(t testing.TB, opts ...Option) *momo.DB {
 	db := momo.New(pgxdriver.New(pool), c.momoOpts...)
 	actx, acancel := context.WithTimeout(context.Background(), applyTimeout)
 	defer acancel()
-	if err := c.applyTo(actx, db.Driver()); err != nil {
+	if err := c.applyMigrations(actx, raw, name); err != nil {
 		t.Fatalf("momotest: apply migrations: %v", err)
 	}
 	return db
@@ -540,7 +631,16 @@ func (c *config) buildOnce(t testing.TB, raw, name string) {
 }
 
 func (c *config) buildTemplate(ctx context.Context, raw, name string) error {
-	u, err := withSearchPath(raw, name)
+	return c.applyMigrations(ctx, raw, name)
+}
+
+// applyMigrations runs the migrations into schema on a pool of its own, whose
+// search_path is applySearchPath, and closes it afterwards.
+func (c *config) applyMigrations(ctx context.Context, raw, schema string) error {
+	if c.migrations == nil {
+		return nil
+	}
+	u, err := c.applySearchPath(raw, schema)
 	if err != nil {
 		return err
 	}
@@ -554,7 +654,7 @@ func (c *config) buildTemplate(ctx context.Context, raw, name string) error {
 		return err
 	}
 	defer pool.Close()
-	return c.applyTo(ctx, pgxdriver.New(pool))
+	return c.applyTo(ctx, pgxdriver.New(pool), schema)
 }
 
 // NewTx returns a *momo.Tx that sees the migrated schema and is rolled back
