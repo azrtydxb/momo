@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.0](https://github.com/azrtydxb/momo/compare/v0.10.0...v0.11.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **types:** on PostgreSQL, a stored JSON `null` in a nullable column reads as a non-nil `*types.JSON[T]` with `IsNull()` true, instead of a nil pointer; code that tested for nil must also test `IsNull()`. `types.JSON[T]` has a private field, so unkeyed literals such as `types.JSON[T]{v}` no longer compile (use `types.JSON[T]{V: v}`), and `==` between a scanned null and `types.JSON[T]{}` is false. See docs/upgrading.md, "Upgrading to 0.11.0".
+* setting `updated_at` inside `DoUpdate` (a value, an expression or `SetExcluded`) is refused with `ErrValidation`. The conflict branch of every `DoUpdate` sets `updated_at` to the statement clock instead of copying `EXCLUDED.updated_at`. An `Update` with no assignments on a model with `updated_at`, including `Update.Model` with only nil `dbdefault` pointers, touches `updated_at` instead of failing. See docs/upgrading.md, "Upgrading to 0.11.0".
+
+### Features
+
+* **timeop:** typed date arithmetic on types.Date ([#126](https://github.com/azrtydxb/momo/issues/126)) ([90f4168](https://github.com/azrtydxb/momo/commit/90f4168899c438c46ff8ec419728e64eeeb0117e))
+* touch updated_at on empty Update and bump it in every DoUpdate ([#123](https://github.com/azrtydxb/momo/issues/123)) ([63ce537](https://github.com/azrtydxb/momo/commit/63ce537a15220a35f147d62c3661e2f9a1072653))
+* **types:** tell JSON null apart from SQL NULL ([#124](https://github.com/azrtydxb/momo/issues/124)) ([37a2f7b](https://github.com/azrtydxb/momo/commit/37a2f7b7e649ac9047906572373ab5c5e1ab3396))
+
 ## [0.10.0](https://github.com/azrtydxb/momo/compare/v0.9.0...v0.10.0) (2026-11-13)
 
 _`momotest` now always migrates into the per-test schema, even when `public` of the same database is already migrated, so tests no longer run on (or drop) the real tables. Upgrading needs a change only where `postgres.New` is used as a function value; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.10.0/docs/upgrading.md). [Changes since 0.9.0](https://github.com/azrtydxb/momo/compare/v0.9.0...v0.10.0)._

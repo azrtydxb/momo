@@ -1,6 +1,6 @@
 # Migration safety and recovery
 
-Momo v0.10.0, PostgreSQL (SQLite and MySQL as libraries, sections 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
+Momo v0.11.0, PostgreSQL (SQLite and MySQL as libraries, sections 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
 `migrate/`, `cli/`, `schema/` and `dialect/`; the tests that pin a
 behavior are named. For the first run see README, [Create and apply the
 migration](../README.md#3-create-and-apply-the-migration).
@@ -57,7 +57,7 @@ set `migrate.dir.postgres` or `--dir`). `diff` writes exactly three files:
 
 ### Format versions
 
-| Artifact         | Field                                 | v0.10.0 value | Newer than this binary <!-- x-release-please-version --> |
+| Artifact         | Field                                 | v0.11.0 value | Newer than this binary <!-- x-release-please-version --> |
 | ---------------- | ------------------------------------- | ------------ | -------------------------------------------------------- |
 | Snapshot wrapper | `format_version`                      | 1            | read error, "upgrade momo"                               |
 | Embedded schema  | `schema.format_version`               | 1            | read error, "upgrade momo"                               |
@@ -464,7 +464,7 @@ transaction pooling the advisory lock, the `SET lock_timeout` and the
 `search_path` belong to a server connection that the next statement may not
 reuse, so the lock does not protect and the timeouts can leak or not apply.
 The driver's default query mode is PgBouncer-safe for application queries; the
-migration engine through PgBouncer is **not tested** in v0.10.0. A startup <!-- x-release-please-version -->
+migration engine through PgBouncer is **not tested** in v0.11.0. A startup <!-- x-release-please-version -->
 `search_path` is also not reliable through a pooler, so set the schema on the
 role or on a direct connection.
 
