@@ -442,4 +442,26 @@ Decision (2026-11-13, integrator): as above.
 - **Release:** exported API (`postgres.WithHistorySchema`, `New(opts ...Option)`),
   so a feat, 0.10.0.
 
+## Issue #120: updated_at on touch and upsert (2026-11-13, integrator)
+
+- **Touch:** an `Update` with no `Set` on a model with an `updated_at` column
+  is valid and renders `UPDATE ... SET updated_at = <now> WHERE ...`, the same
+  bound clock value `Update` uses. It passes every guard of a normal update
+  (`ErrUnfilteredMutation`, version, interceptors). On a model without
+  `updated_at` it keeps `ErrValidation` ("no columns to update").
+- **DoUpdate bump:** the conflict branch of `Upsert` and of a plain `Insert`
+  with `OnConflict` and `DoUpdate` always sets `updated_at` to the statement
+  clock, as a bound value like `Update` (review fix: `EXCLUDED.updated_at` is
+  the struct's own value and left a loaded row with an old `UpdatedAt`
+  unbumped, also in shipped `Upsert`). It does not depend on the INSERT:
+  `Omit` and a `FromSelect` without the column change only the insert branch,
+  and an `Upsert` with an empty default set renders a touch-only `SET`. A plain
+  `Insert` with `DoUpdate()` and no assignment stays an error. `DoNothing` does
+  not bump. The insert branch is unchanged. The clock is read once into
+  `InsertQuery.clock`, so chunks of a bulk insert share it.
+- **Explicit set:** an explicit `Set` or `SetExcluded` of `updated_at` in
+  `DoUpdate` is refused with `ErrValidation` and the `Update` wording
+  ("cannot be set directly"). This is a breaking change, documented in
+  `docs/upgrading.md`.
+
 Decision (2026-11-13, integrator): as above.
