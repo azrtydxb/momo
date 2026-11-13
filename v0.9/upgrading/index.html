@@ -1,0 +1,4352 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.9/upgrading/">
+      
+      
+        <link rel="prev" href="../supported-versions/">
+      
+      
+        <link rel="next" href="../reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Upgrading - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#upgrading" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Upgrading
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-090" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.9.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-080" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.8.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.8.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tosnake-keeps-a-plural-initialism-together-roleids-is-role_ids" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ToSnake keeps a plural initialism together: RoleIDs is role_ids
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-writes-initialisms-in-capitals-in-more-go-field-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db writes initialisms in capitals in more Go field names
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-keeps-singular-table-names-that-end-in-ss-us-and-a-few-is-as-and-ns-words" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db keeps singular table names that end in -ss, -us and a few -is, -as and -ns words
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-generates-a-pointer-for-a-non-zero-constant-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db generates a pointer for a non-zero constant default
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-no-longer-writes-the-objects-of-tables-it-does-not-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db no longer writes the objects of tables it does not model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#indexes-attached-to-a-parent-partitioned-index-are-no-longer-inspected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Indexes attached to a parent partitioned index are no longer inspected
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#virtual-generated-columns-round-trip-on-mysql-and-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VIRTUAL generated columns round-trip on MySQL and SQLite
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-and-using-take-several-sources-and-returning-reads-their-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From and Using take several sources, and Returning reads their columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#typesdate-infinity-and-the-new-typesnumeric" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        types.Date infinity and the new types.Numeric
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-history-importer-replays-migrations-in-transactions-and-writes-momoimported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The history importer replays migrations in transactions and writes -- momo:imported
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dbdefault-on-a-pointer-field-writes-false-and-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dbdefault on a pointer field writes false and 0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-models-stored-generated-columns-as-read-only-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db models stored generated columns as read-only fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-can-write-the-inverse-has_many-and-has_one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db can write the inverse has_many and has_one
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#union-members-keep-their-order-by-and-limit-and-a-union-runs-at-the-top-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Union members keep their ORDER BY and LIMIT, and a union runs at the top level
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unnestcolumn-and-distinct-on-aggregates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UnnestColumn and Distinct on aggregates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#selectexprs-takes-joins-groupby-having-and-orderby" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SelectExprs takes joins, GroupBy, Having and OrderBy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#row-value-comparison-sqlfndiv-sqlfncurrentdate-infinity-and-momolit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Row-value comparison, sqlfn.Div, sqlfn.CurrentDate, infinity and momo.Lit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#orderbypredicate-orders-by-a-boolean-condition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OrderByPredicate orders by a boolean condition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-has-and-hasno-get-one-alias-per-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Has and HasNo get one alias per level
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nullcolumnsetptr-and-eqptr-take-a-nil-able-value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NullColumn.SetPtr and EqPtr take a nil-able value
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#json-key-delete-concat-set-root-scalar-and-array-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON key delete, concat, set, root scalar and array expressions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pgxdriverlisten-and-pgxdrivernotify-for-listennotify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pgxdriver.Listen and pgxdriver.Notify for LISTEN/NOTIFY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#new-rawrows-returns-the-hooked-cursor-of-a-raw-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New: RawRows returns the hooked cursor of a raw statement
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#momowithnaming-a-plain-struct-queryt-follows-the-naming-preset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momo.WithNaming: a plain-struct Query[T] follows the naming preset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migrateconfigfromfile-and-typed-migratestate-constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        migrate.ConfigFromFile and typed migrate.State* constants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-advisory-locks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared advisory locks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timeop-sub-second-intervals-and-timestamp-difference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        timeop: sub-second intervals and timestamp difference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#momovet-accepts-a-momovetok-reason-directive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momovet accepts a //momovet:ok &lt;reason&gt; directive
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-070" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.7.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.7.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-writes-only-the-functions-the-modeled-tables-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db writes only the functions the modeled tables use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#introspectonly-limits-from-db-to-a-list-of-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        introspect.only limits --from-db to a list of tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skip-globs-match-schemaname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        skip globs match schema.name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#introspectdbdefault-all-tags-every-column-that-has-a-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        introspect.dbdefault: all tags every column that has a default
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-singularizes-se-plurals-correctly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db singularizes -se plurals correctly
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#githubcomgoogleuuid-types-need-no-type-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        github.com/google/uuid types need no type tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query-and-queryrows-read-into-a-plain-struct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query and QueryRows read into a plain struct
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#new-one-on-writes-with-returning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New: One on writes with RETURNING
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-060" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.6.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.6.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-using-and-from-guard-is-stricter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Using and From guard is stricter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-error-bodies-use-the-key-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI error bodies use the key error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generated-handlers-and-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated handlers and servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models-no-longer-produce-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models no longer produce a table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-input-and-output-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI input and output schemas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-hook-and-cancellation-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error hook and cancellation codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-050" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.5.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.5.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#regenerating-with-from-db-after-the-dbdefault-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regenerating with --from-db after the dbdefault tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advisory-string-helpers-take-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory string helpers take options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-hook-methods-are-now-wired-by-momo-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model hook methods are now wired by momo generate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-040" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.4.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.4.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#identifier-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Identifier table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rewrite recipe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-did-not-move" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What did not move
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-090" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.9.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-080" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.8.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.8.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tosnake-keeps-a-plural-initialism-together-roleids-is-role_ids" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ToSnake keeps a plural initialism together: RoleIDs is role_ids
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-writes-initialisms-in-capitals-in-more-go-field-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db writes initialisms in capitals in more Go field names
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-keeps-singular-table-names-that-end-in-ss-us-and-a-few-is-as-and-ns-words" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db keeps singular table names that end in -ss, -us and a few -is, -as and -ns words
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-generates-a-pointer-for-a-non-zero-constant-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db generates a pointer for a non-zero constant default
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-no-longer-writes-the-objects-of-tables-it-does-not-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db no longer writes the objects of tables it does not model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#indexes-attached-to-a-parent-partitioned-index-are-no-longer-inspected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Indexes attached to a parent partitioned index are no longer inspected
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#virtual-generated-columns-round-trip-on-mysql-and-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VIRTUAL generated columns round-trip on MySQL and SQLite
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-and-using-take-several-sources-and-returning-reads-their-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From and Using take several sources, and Returning reads their columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#typesdate-infinity-and-the-new-typesnumeric" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        types.Date infinity and the new types.Numeric
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-history-importer-replays-migrations-in-transactions-and-writes-momoimported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The history importer replays migrations in transactions and writes -- momo:imported
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dbdefault-on-a-pointer-field-writes-false-and-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dbdefault on a pointer field writes false and 0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-models-stored-generated-columns-as-read-only-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db models stored generated columns as read-only fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-can-write-the-inverse-has_many-and-has_one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db can write the inverse has_many and has_one
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#union-members-keep-their-order-by-and-limit-and-a-union-runs-at-the-top-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Union members keep their ORDER BY and LIMIT, and a union runs at the top level
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unnestcolumn-and-distinct-on-aggregates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UnnestColumn and Distinct on aggregates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#selectexprs-takes-joins-groupby-having-and-orderby" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SelectExprs takes joins, GroupBy, Having and OrderBy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#row-value-comparison-sqlfndiv-sqlfncurrentdate-infinity-and-momolit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Row-value comparison, sqlfn.Div, sqlfn.CurrentDate, infinity and momo.Lit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#orderbypredicate-orders-by-a-boolean-condition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OrderByPredicate orders by a boolean condition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-has-and-hasno-get-one-alias-per-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Has and HasNo get one alias per level
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nullcolumnsetptr-and-eqptr-take-a-nil-able-value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NullColumn.SetPtr and EqPtr take a nil-able value
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#json-key-delete-concat-set-root-scalar-and-array-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON key delete, concat, set, root scalar and array expressions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pgxdriverlisten-and-pgxdrivernotify-for-listennotify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pgxdriver.Listen and pgxdriver.Notify for LISTEN/NOTIFY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#new-rawrows-returns-the-hooked-cursor-of-a-raw-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New: RawRows returns the hooked cursor of a raw statement
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#momowithnaming-a-plain-struct-queryt-follows-the-naming-preset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momo.WithNaming: a plain-struct Query[T] follows the naming preset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migrateconfigfromfile-and-typed-migratestate-constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        migrate.ConfigFromFile and typed migrate.State* constants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-advisory-locks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared advisory locks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timeop-sub-second-intervals-and-timestamp-difference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        timeop: sub-second intervals and timestamp difference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#momovet-accepts-a-momovetok-reason-directive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momovet accepts a //momovet:ok &lt;reason&gt; directive
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-070" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.7.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.7.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-writes-only-the-functions-the-modeled-tables-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db writes only the functions the modeled tables use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#introspectonly-limits-from-db-to-a-list-of-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        introspect.only limits --from-db to a list of tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skip-globs-match-schemaname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        skip globs match schema.name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#introspectdbdefault-all-tags-every-column-that-has-a-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        introspect.dbdefault: all tags every column that has a default
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-from-db-singularizes-se-plurals-correctly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --from-db singularizes -se plurals correctly
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#githubcomgoogleuuid-types-need-no-type-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        github.com/google/uuid types need no type tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query-and-queryrows-read-into-a-plain-struct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query and QueryRows read into a plain struct
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#new-one-on-writes-with-returning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New: One on writes with RETURNING
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-060" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.6.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.6.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-using-and-from-guard-is-stricter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Using and From guard is stricter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-error-bodies-use-the-key-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI error bodies use the key error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generated-handlers-and-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated handlers and servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models-no-longer-produce-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models no longer produce a table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-input-and-output-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI input and output schemas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-hook-and-cancellation-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error hook and cancellation codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-050" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.5.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.5.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#regenerating-with-from-db-after-the-dbdefault-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regenerating with --from-db after the dbdefault tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advisory-string-helpers-take-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory string helpers take options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-hook-methods-are-now-wired-by-momo-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model hook methods are now wired by momo generate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View models
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrading-to-040" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.4.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.4.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#identifier-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Identifier table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rewrite recipe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-did-not-move" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What did not move
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="upgrading">Upgrading<a class="headerlink" href="#upgrading" title="Permanent link">&para;</a></h1>
+<p>Momo is pre-v1 and makes no compatibility promise between releases; see the
+<a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
+the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
+later releases can break more.</p>
+<h2 id="upgrading-to-090">Upgrading to 0.9.0<a class="headerlink" href="#upgrading-to-090" title="Permanent link">&para;</a></h2>
+<p>No change is needed in your code, your generated models or your migration
+snapshot. 0.9.0 adds API:</p>
+<ul>
+<li><code>sqlfn.Numeric</code>, the constraint of <code>sqlfn.Add</code>, <code>sqlfn.Sub</code>, <code>sqlfn.Mul</code>,
+  <code>sqlfn.Div</code> (and their <code>Expr</code> forms) and <code>sqlfn.NullIf</code>, also admits <code>types.Numeric</code>. A
+  <code>momo.Column[types.Numeric]</code> can now be incremented in the database:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
+</code></pre></div>
+<p>This is PostgreSQL only. On SQLite and MySQL a <code>types.Numeric</code> is <code>TEXT</code>, and
+  building the expression fails with <code>momo.ErrUnsupported</code> instead of adding it
+  through floating point.</p>
+<ul>
+<li><code>types.NumericFromInt64</code> and <code>types.NumericFromFloat64</code> build a <code>types.Numeric</code>
+  from a Go number. The float version writes the shortest decimal of the
+  <code>float64</code> (<code>0.1</code> gives <code>"0.1"</code>) and returns an error for NaN and infinity.</li>
+</ul>
+<h2 id="upgrading-to-080">Upgrading to 0.8.0<a class="headerlink" href="#upgrading-to-080" title="Permanent link">&para;</a></h2>
+<p>The first ten subsections below can need a change in your code, your
+generated models or your migration snapshot. The rest add API and need no
+change.</p>
+<h3 id="tosnake-keeps-a-plural-initialism-together-roleids-is-role_ids"><code>ToSnake</code> keeps a plural initialism together: <code>RoleIDs</code> is <code>role_ids</code><a class="headerlink" href="#tosnake-keeps-a-plural-initialism-together-roleids-is-role_ids" title="Permanent link">&para;</a></h3>
+<p><code>naming.ToSnake</code>, and with it the column name of the default <code>momo</code> naming
+preset and the column of a plain struct that <code>momo.Query</code> and <code>momo.QueryRows</code>
+scan, used to split an initialism followed by a plural <code>s</code>: <code>RestrictRoleIDs</code>
+gave <code>restrict_role_i_ds</code>. The rule now is exact. It applies to an upper-case
+run followed by a lone lower-case <code>s</code> that ends the name or is followed by
+anything other than a lower-case letter, when the run ends in a word of the
+list. The <code>s</code> stays with the last word, and the name breaks between the words
+of the run:</p>
+<ol>
+<li>If the whole run is a sequence of list words, it is cut into them. When
+   there are several such cuts, the last word is the longest one that leaves a
+   prefix that can be cut as well, and the prefix follows the same rule. So
+   <code>HTTPIDs</code> is HTTP and ID (<code>http_ids</code>, not HTT and PID), <code>XMLHTTPIDs</code> is XML,
+   HTTP and ID (<code>xml_http_ids</code>), <code>APIIDs</code> is API and ID (<code>api_ids</code>), and <code>PIDs</code>,
+   <code>OIDs</code>, <code>SSIDs</code>, <code>GUIDs</code> and <code>GUIs</code> are one word each (<code>pids</code>, <code>oids</code>,
+   <code>ssids</code>, <code>guids</code>, <code>guis</code>).</li>
+<li>Otherwise the run is cut once, before the longest list word it ends with,
+   and the letters before it stay together: <code>ABCIDs</code> is <code>abc_ids</code>.</li>
+</ol>
+<p>A name where the run does not end in a list word (<code>ABs</code>), or where the <code>s</code>
+starts a lower-case word (<code>IDsomething</code>), is unchanged.</p>
+<p>The word list is ACL, API, ASCII, CPU, CSS, DNS, EOF, GUI, GUID, HTML, HTTP,
+HTTPS, ID, IP, JSON, LHS, OID, PID, QPS, RAM, RHS, RPC, SLA, SMTP, SQL, SSH,
+SSID, TCP, TLS, TTL, UDP, UI, UID, URI, URL, UUID, VM, XML, XMPP, XSRF and XSS.
+Examples of columns that change (any Go field name that matches the rule does):</p>
+<table>
+<thead>
+<tr>
+<th>Go field</th>
+<th>Column before</th>
+<th>Column now</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RoleIDs</code></td>
+<td><code>role_i_ds</code></td>
+<td><code>role_ids</code></td>
+</tr>
+<tr>
+<td><code>IDs</code></td>
+<td><code>i_ds</code></td>
+<td><code>ids</code></td>
+</tr>
+<tr>
+<td><code>URLs</code></td>
+<td><code>ur_ls</code></td>
+<td><code>urls</code></td>
+</tr>
+<tr>
+<td><code>UUIDs</code></td>
+<td><code>uui_ds</code></td>
+<td><code>uuids</code></td>
+</tr>
+<tr>
+<td><code>APIs</code></td>
+<td><code>ap_is</code></td>
+<td><code>apis</code></td>
+</tr>
+<tr>
+<td><code>UserIPs</code></td>
+<td><code>user_i_ps</code></td>
+<td><code>user_ips</code></td>
+</tr>
+<tr>
+<td><code>PIDs</code></td>
+<td><code>pi_ds</code></td>
+<td><code>pids</code></td>
+</tr>
+<tr>
+<td><code>OIDs</code></td>
+<td><code>oi_ds</code></td>
+<td><code>oids</code></td>
+</tr>
+<tr>
+<td><code>SSIDs</code></td>
+<td><code>ssi_ds</code></td>
+<td><code>ssids</code></td>
+</tr>
+<tr>
+<td><code>GUIs</code></td>
+<td><code>gu_is</code></td>
+<td><code>guis</code></td>
+</tr>
+</tbody>
+</table>
+<p>Names without a plural initialism (<code>UserID</code>, <code>APIKeys</code>, <code>HTTPServer</code>) are
+unchanged, and so is every other name: a test compares the old and the new
+algorithm on every name built from a set of parts and requires them to agree
+wherever the rule does not apply.</p>
+<p>This is a breaking change, and the migration is not a rename. <code>momo migrate
+diff</code> never guesses a rename (see <a href="../migrations/">migrations</a>): for a field
+whose column name changes it sees the old column go and a new one appear, so it
+writes a <code>DROP COLUMN</code> and an <code>ADD COLUMN</code>, and it prints a <code>hint: possible
+rename</code> line. Applied with <code>--allow-destructive</code>, that drops the data of the old
+column. Do one of these before you run <code>diff</code>:</p>
+<ul>
+<li>Pin the old name on the field and nothing changes in the database:
+  <code>RoleIDs []string `momo:"column:role_i_ds"`</code>. A plain struct scanned by
+  <code>Query</code> needs the same tag.</li>
+<li>Or accept the new name and ask for a rename:
+  <code>momo migrate diff &lt;name&gt; --rename-column table.role_i_ds=role_ids</code> (the flag
+  repeats, one per column).</li>
+</ul>
+<p>The same rule decides every other name that momo derives from a Go name, so
+check them too: a table name derived from a model name (<code>Plural(ToSnake(model))</code>,
+for a model such as <code>APIs</code> or <code>UserIDs</code>) changes the same way (use
+<code>--rename-table old=new</code>, or the <code>table:</code> tag), and so do the names of indexes,
+unique constraints and foreign keys that are built from the column
+(<code>&lt;table&gt;_&lt;column&gt;_idx</code>, <code>_key</code>, <code>_fkey</code>). Models under the <code>gorm</code>, <code>bun</code>, <code>ent</code>
+and <code>prisma</code> presets are not affected, they have their own rules.</p>
+<h3 id="-from-db-writes-initialisms-in-capitals-in-more-go-field-names"><code>--from-db</code> writes initialisms in capitals in more Go field names<a class="headerlink" href="#-from-db-writes-initialisms-in-capitals-in-more-go-field-names" title="Permanent link">&para;</a></h3>
+<p>This is a second, separate breaking change: it renames Go fields, not columns.
+<code>momo generate --from-db</code> writes a column word that is an initialism in
+capitals (<code>user_id</code> is <code>UserID</code>). It now reads the same word list as <code>ToSnake</code>
+above, which is longer than the list it had (it had <code>id</code>, <code>url</code>, <code>uri</code>, <code>uuid</code>,
+<code>api</code>, <code>http</code>, <code>https</code>, <code>ip</code>, <code>json</code>, <code>sql</code>, <code>html</code>, <code>xml</code>, <code>tls</code>, <code>ssh</code> and
+<code>cpu</code>), and a plural <code>s</code> after a word of the list stays with it. The words
+added are <code>acl</code>, <code>ascii</code>, <code>css</code>, <code>dns</code>, <code>eof</code>, <code>guid</code>, <code>lhs</code>, <code>qps</code>, <code>ram</code>,
+<code>rhs</code>, <code>rpc</code>, <code>sla</code>, <code>smtp</code>, <code>tcp</code>, <code>ttl</code>, <code>udp</code>, <code>ui</code>, <code>uid</code>, <code>vm</code>, <code>xmpp</code>,
+<code>xsrf</code>, <code>xss</code>, <code>gui</code>, <code>oid</code>, <code>pid</code> and <code>ssid</code>. Examples of field names that change when you regenerate:</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Field before</th>
+<th>Field now</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>team_ids</code></td>
+<td><code>TeamIds</code></td>
+<td><code>TeamIDs</code></td>
+</tr>
+<tr>
+<td><code>role_ids</code></td>
+<td><code>RoleIds</code></td>
+<td><code>RoleIDs</code></td>
+</tr>
+<tr>
+<td><code>urls</code></td>
+<td><code>Urls</code></td>
+<td><code>URLs</code></td>
+</tr>
+<tr>
+<td><code>api_ids</code></td>
+<td><code>APIIds</code></td>
+<td><code>APIIDs</code></td>
+</tr>
+<tr>
+<td><code>ttl</code></td>
+<td><code>Ttl</code></td>
+<td><code>TTL</code></td>
+</tr>
+<tr>
+<td><code>dns_name</code></td>
+<td><code>DnsName</code></td>
+<td><code>DNSName</code></td>
+</tr>
+<tr>
+<td><code>tcp_port</code></td>
+<td><code>TcpPort</code></td>
+<td><code>TCPPort</code></td>
+</tr>
+</tbody>
+</table>
+<p>The column name does not change, and the generated <code>momo</code> tag still maps the
+field to it, so the database and the migrations are untouched. Code that uses
+the old Go field name stops compiling: <code>m.TeamIds</code> must become <code>m.TeamIDs</code>.
+In the <code>--from-db</code> goldens of this repository the only name that changed is
+<code>TeamIds</code> to <code>TeamIDs</code>, in <code>gen/fromdb/googleuuid_test.go</code>.</p>
+<p>To keep an old field name, pin it in the <code>introspect.columns</code> rules of
+<code>momo.yaml</code> (see "The introspect section" in <a href="../migrations/">migrations</a>): a
+rule has a <code>match</code> glob over <code>table.column</code> and a <code>name</code> for the Go field, and
+a later rule wins.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">introspect</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">columns</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">match</span><span class="p">:</span><span class="w"> </span><span class="s">"members.team_ids"</span>
+<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">TeamIds</span>
+</code></pre></div>
+<p>There is no per-table <code>columns</code> map: the key is the list <code>introspect.columns</code>,
+with <code>match</code> and <code>name</code>.</p>
+<h3 id="-from-db-keeps-singular-table-names-that-end-in-ss-us-and-a-few-is-as-and-ns-words"><code>--from-db</code> keeps singular table names that end in <code>-ss</code>, <code>-us</code> and a few <code>-is</code>, <code>-as</code> and <code>-ns</code> words<a class="headerlink" href="#-from-db-keeps-singular-table-names-that-end-in-ss-us-and-a-few-is-as-and-ns-words" title="Permanent link">&para;</a></h3>
+<p><code>momo generate --from-db</code> named the table <code>class</code> the model <code>Clas</code> (and
+<code>assessment_class</code> <code>AssessmentClas</code>), the same family as the <code>-ses</code> words fixed
+in 0.7.0. The rules for a table name that is already singular are now:</p>
+<ul>
+<li>A word in <code>-ss</code> is kept: <code>class</code>, <code>address</code>, <code>access</code>, <code>process</code>, <code>glass</code>,
+  <code>boss</code> give <code>Class</code>, <code>Address</code>, <code>Access</code>, <code>Process</code>, <code>Glass</code>, <code>Boss</code>.</li>
+<li>A word in <code>-us</code> is kept, except the plurals of words in <code>-u</code>: <code>status</code>,
+  <code>virus</code>, <code>bonus</code>, <code>census</code>, <code>corpus</code>, <code>nucleus</code>, <code>stimulus</code>, <code>campus</code> and
+  <code>bus</code> give <code>Status</code>, <code>Virus</code> and so on (not <code>Statu</code>), while <code>menus</code>, <code>emus</code>,
+  <code>gnus</code>, <code>haikus</code>, <code>tutus</code> and <code>kudus</code> give <code>Menu</code>, <code>Emu</code>, <code>Gnu</code>, <code>Haiku</code>,
+  <code>Tutu</code> and <code>Kudu</code>.</li>
+<li>These singular words keep their <code>s</code>: <code>analysis</code>, <code>axis</code>, <code>crisis</code>, <code>basis</code>,
+  <code>thesis</code>, <code>iris</code>, <code>synopsis</code> and <code>diagnosis</code>; <code>alias</code>, <code>canvas</code>, <code>atlas</code>,
+  <code>bias</code> and <code>gas</code>; <code>news</code> and <code>lens</code>. They are listed, not matched by suffix,
+  so <code>areas</code> still gives <code>Area</code> and <code>ideas</code> gives <code>Idea</code>.</li>
+</ul>
+<p>A plural such as <code>classes</code>, <code>statuses</code> or <code>aliases</code> is singularized as before.
+After you regenerate, a model that had the wrong name changes name and its
+column package changes with it (<code>clas</code> to <code>class</code>); pin
+<code>introspect.tables.&lt;table&gt;.name</code> to keep the old name.</p>
+<h3 id="-from-db-generates-a-pointer-for-a-non-zero-constant-default"><code>--from-db</code> generates a pointer for a non-zero constant default<a class="headerlink" href="#-from-db-generates-a-pointer-for-a-non-zero-constant-default" title="Permanent link">&para;</a></h3>
+<p>With <code>introspect.dbdefault: all</code>, <code>momo generate --from-db</code> gives a NOT NULL
+<code>bool</code> or number column whose constant default is <code>true</code> or non-zero
+(<code>DEFAULT true</code>, <code>DEFAULT 1</code> and above) a pointer type with <code>dbdefault</code>, for
+example <code>Active *bool</code> with <code>`momo:"default:true,dbdefault"`</code>. A plain field
+would silently replace an explicit <code>false</code> or <code>0</code> with the default. A column
+with a zero default (<code>DEFAULT false</code>, <code>DEFAULT 0</code>), a text default or a computed
+default keeps its plain type. After you regenerate with this option, fields of
+those columns change from <code>bool</code>/<code>int64</code> to <code>*bool</code>/<code>*int64</code>, and code that
+reads them dereferences the pointer. Without <code>introspect.dbdefault: all</code> nothing
+changes, because a constant default is not tagged.</p>
+<p>The warning and the pointer type cover only plain <code>bool</code> and number types
+(<code>bool</code>, <code>int</code>..<code>int64</code>, <code>uint</code>..<code>uint64</code>, <code>float32</code>, <code>float64</code>). A named type,
+a type override from <code>introspect.types</code> or <code>introspect.columns</code>, a decimal or a
+string keeps its field as it is and gets neither.</p>
+<h3 id="-from-db-no-longer-writes-the-objects-of-tables-it-does-not-model"><code>--from-db</code> no longer writes the objects of tables it does not model<a class="headerlink" href="#-from-db-no-longer-writes-the-objects-of-tables-it-does-not-model" title="Permanent link">&para;</a></h3>
+<p><code>momo generate --from-db</code> used to put the policies and triggers of a table left
+out by <code>introspect.skip</code> or <code>introspect.only</code> on the alphabetically first model.
+An object that belongs to a table with no model now gets no output: it is not
+written to any model and it is not in the init snapshot. The functions that only
+those objects use are dropped too, unless <code>introspect.functions: all</code> is set,
+which still writes every function. After you regenerate, the first model loses
+its <code>c.Policy</code>, <code>c.Trigger</code> and <code>c.Function</code> lines for those tables, and it no
+longer changes when a migration adds row level security to a skipped table. If
+the database keeps those objects of a table left out by <code>introspect.skip</code>, add
+the table to <code>migrate.exclude</code> so drift does not report them as unmanaged. With
+<code>introspect.only</code> nothing is needed: <code>migrate.only</code> already hides them.</p>
+<h3 id="indexes-attached-to-a-parent-partitioned-index-are-no-longer-inspected">Indexes attached to a parent partitioned index are no longer inspected<a class="headerlink" href="#indexes-attached-to-a-parent-partitioned-index-are-no-longer-inspected" title="Permanent link">&para;</a></h3>
+<p>The PostgreSQL inspector used to report an index on a partition that is
+attached to a parent partitioned index as a standalone index of that partition.
+<code>momo generate --from-db</code> then emitted it as <code>c.Index(...)</code> on the partition's
+model, a fresh install created it twice, and <code>drift --strict</code> reported the
+PostgreSQL-created index as <code>not in snapshot</code>. Inspection now skips every index
+that has a <code>pg_inherits</code> parent; only the parent index is modeled. An index
+created directly on a partition, and a unique index created directly on one, is
+not attached and is still modeled on that partition.</p>
+<p>A snapshot written by 0.7.0 from such a database (the init snapshot of
+<code>generate --from-db</code>, or a snapshot taken by <code>baseline</code>) lists the attached
+indexes on the partitions. After the upgrade the live side no longer reports
+them, so <code>migrate drift</code> reports each one as <code>missing: index
+&lt;partition&gt;.&lt;name&gt;</code> (present in the snapshot, absent live) and exits non-zero,
+and <code>baseline</code> reports the database as differing from the snapshot. <code>migrate
+diff</code> between your models and the snapshot is still empty, because both carry
+the index.</p>
+<p>What to do, per project that has a partitioned table with a parent index:</p>
+<ol>
+<li>Re-run <code>momo generate --from-db</code> with 0.8.0 against a database whose
+   partitions were created by PostgreSQL, so the models and the snapshot both
+   lose the attached partition indexes, or edit both by hand: delete the
+   <code>c.Index(...)</code> lines the partitions carry for attached indexes and the same
+   entries from the snapshot. Do not change only the models. The diff would
+   then plan <code>DROP INDEX</code> on an attached partition index, which PostgreSQL
+   refuses.</li>
+<li>A database that was built from the 0.7.0 init migration has the duplicate
+   partition indexes (the one PostgreSQL attached and the one momo declared).
+   Drop the extra, unattached one by hand; <code>migrate</code> does not do it.</li>
+<li>A database that was only ever baselined needs nothing else; drift is clean
+   once the snapshot is regenerated.</li>
+</ol>
+<h3 id="virtual-generated-columns-round-trip-on-mysql-and-sqlite">VIRTUAL generated columns round-trip on MySQL and SQLite<a class="headerlink" href="#virtual-generated-columns-round-trip-on-mysql-and-sqlite" title="Permanent link">&para;</a></h3>
+<p><code>schema.Column</code> has a new field, <code>GeneratedVirtual</code> (JSON <code>generated_virtual</code>),
+that marks a VIRTUAL generated column, and a model declares it with the new
+<code>virtual</code> tag option next to <code>generated:&lt;expr&gt;</code> (or <code>c.GeneratedVirtual</code> in
+<code>MomoConfig</code>). <code>virtual</code> is valid only with <code>generated:</code>, and it is refused for
+a PostgreSQL target with <code>momo.ErrUnsupported</code>: PostgreSQL has VIRTUAL columns
+only from version 18, and momo supports 16 and 17. The MySQL inspector reads the
+kind from <code>EXTRA</code> (<code>VIRTUAL GENERATED</code>) and the SQLite inspector from <code>hidden</code> 2
+in <code>pragma_table_xinfo</code>, both migrate dialects render <code>VIRTUAL</code> for it, and
+<code>momo generate --from-db</code> writes the <code>virtual</code> tag.</p>
+<p>Before, every generated column was read as STORED and rendered <code>STORED</code>, so a
+schema baselined from a database with a VIRTUAL column created a STORED one on a
+fresh install while <code>migrate diff</code> and drift reported nothing. What to do:</p>
+<ul>
+<li>The database has only STORED generated columns: nothing to change. A snapshot
+  written before the field existed still loads, with its generated columns
+  STORED, so the snapshot <code>format_version</code> stays 1.</li>
+<li>The database has VIRTUAL generated columns: tag the model fields <code>virtual</code>
+  (or regenerate the models with <code>--from-db</code>) and re-baseline the snapshot.
+  Until then <code>migrate diff</code> reports the column as changed.</li>
+</ul>
+<p>A change between VIRTUAL and STORED is a change in the diff. SQLite rebuilds the
+table, as it does for any generated-column change. MySQL and PostgreSQL refuse
+it, with the same "write a custom migration" error as any other generated
+change, because neither can switch the kind in place.</p>
+<h3 id="from-and-using-take-several-sources-and-returning-reads-their-columns"><code>From</code> and <code>Using</code> take several sources, and <code>Returning</code> reads their columns<a class="headerlink" href="#from-and-using-take-several-sources-and-returning-reads-their-columns" title="Permanent link">&para;</a></h3>
+<p><code>UpdateQuery.From</code> and <code>DeleteQuery.Using</code> now take <code>...TableSource</code>: pass a
+CTE and a table (<code>From(momo.CTE("due"), subscription)</code>) and they render as a
+comma list. A call with one source is unchanged, but the method's type changed,
+so a method value assigned to a <code>func(TableSource) UpdateQuery[T]</code> variable no
+longer compiles.</p>
+<p>With two or more sources the unfiltered-mutation guard also requires <code>Where</code> to
+reference every source (the rules for <code>Or</code>, <code>Not</code> and <code>JoinSQL</code> are those for the
+target). A statement that left one source out of <code>Where</code>, a cross join, now fails
+with <code>ErrUnfilteredMutation</code>; join it, or confirm with <code>AllRows()</code>. A statement
+with one source is checked as before.</p>
+<p><code>Returning</code> accepts columns of a <code>From</code> or <code>Using</code> source or CTE, and
+<code>momo.ScanUpdate</code> and <code>momo.ScanDelete</code> scan the list
+into a plain struct, projection or tuple row by column name. On PostgreSQL the
+RETURNING list of any statement with a source is now rendered qualified
+(<code>RETURNING "t"."id"</code>), which fixes the ambiguity when the source shares a column
+name with the target. <code>Rows</code> and <code>One</code> return <code>ErrValidation</code> for a list with a
+source column. SQLite returns <code>ErrUnsupported</code> for one, as its RETURNING reads the
+modified table only.</p>
+<h3 id="typesdate-infinity-and-the-new-typesnumeric"><code>types.Date</code> infinity and the new <code>types.Numeric</code><a class="headerlink" href="#typesdate-infinity-and-the-new-typesnumeric" title="Permanent link">&para;</a></h3>
+<p><code>types.Date</code> gains two fields, Infinity and NegInfinity, and <code>IsFinite()</code>.
+PostgreSQL <code>infinity</code> and <code>-infinity</code> now scan into the flags and are written
+back from them; before, a read of one failed. Keyed literals such as
+<code>types.Date{Time: t}</code> and the finite behavior are unchanged; a positional
+<code>types.Date{t}</code> no longer compiles, because the struct has three fields now.
+SQLite and MySQL have no special dates, so a <code>types.Date</code> with a flag set is
+<code>ErrValidation</code> there.</p>
+<p><code>types.Numeric</code> is a new exact decimal: <code>numeric</code> on PostgreSQL, <code>TEXT</code> on
+SQLite and MySQL. It holds the digits as a string in <code>Decimal</code>, plus <code>NaN</code>,
+Infinity and NegInfinity flags, and has <code>IsFinite</code>, <code>IsNaN</code>, <code>IsInfinite</code>,
+<code>Sign</code>, a text form and <code>types.ParseNumeric</code>. A <code>types.Numeric</code> that is <code>NaN</code>
+or infinite is <code>ErrValidation</code> on SQLite and MySQL. Infinity and <code>-Infinity</code>
+need PostgreSQL 14 or later. A <code>precision</code> tag generates <code>numeric(p,s)</code> on
+PostgreSQL and <code>TEXT</code> elsewhere.</p>
+<p><code>momo generate --from-db</code> now writes a PostgreSQL <code>numeric</code> column as
+<code>types.Numeric</code> (with <code>precision</code> and <code>scale</code> tags for <code>numeric(p,s)</code>); it used
+to write <code>string</code>. A model you already generated keeps its <code>string</code> field until
+you regenerate; an <code>introspect.types</code> rule for <code>numeric</code> still wins. To keep
+<code>string</code> for a column, leave the field as it is or add that rule.</p>
+<h3 id="the-history-importer-replays-migrations-in-transactions-and-writes-momoimported">The history importer replays migrations in transactions and writes <code>-- momo:imported</code><a class="headerlink" href="#the-history-importer-replays-migrations-in-transactions-and-writes-momoimported" title="Permanent link">&para;</a></h3>
+<p><code>history.Baseline</code> used to replay every statement of a converted migration in
+autocommit. It now runs a migration that the source did not mark as
+non-transactional between <code>BEGIN</code> and <code>COMMIT</code> (rolled back when a statement
+or the <code>COMMIT</code> fails; this holds on PostgreSQL and SQLite, while MySQL
+commits DDL implicitly), as goose, golang-migrate, Atlas, Bun and <code>momo migrate apply</code> run it.
+A migration that used <code>CREATE TEMP TABLE ... ON COMMIT DROP</code>, <code>SET LOCAL</code> or
+<code>set_config(..., true)</code> across statements now replays; one that relied on a
+statement being committed before the next now sees it in the same transaction.
+A non-transactional migration (<code>NoTx</code>) runs as before.</p>
+<p><code>history.WriteImport</code> now writes a new directive, <code>-- momo:imported</code>, as the
+first line of every imported up file (before <code>-- momo:no-transaction</code> when
+there is one), so <code>momo migrate validate</code> accepts the directory. Before,
+validate reported each imported migration as a custom migration whose snapshot
+differs from its parent's. <code>validate</code> skips that check for a file with the
+directive, and <code>momo migrate rebase</code> treats the file as hand-written and refuses
+to regenerate it. <code>migrate.Directives</code> has a new <code>Imported</code> field. A directory
+you imported with an earlier release still fails validate: add
+<code>-- momo:imported</code> as the first line of each imported up file and run
+<code>momo migrate hash</code>.</p>
+<h3 id="dbdefault-on-a-pointer-field-writes-false-and-0"><code>dbdefault</code> on a pointer field writes false and 0<a class="headerlink" href="#dbdefault-on-a-pointer-field-writes-false-and-0" title="Permanent link">&para;</a></h3>
+<p>A <code>dbdefault</code> field on a NOT NULL column can now be a pointer. The column stays
+NOT NULL. A nil pointer means "use the database default": <code>Model</code> and <code>Models</code>
+leave the column out of the INSERT (or write <code>DEFAULT</code> in a multi-row VALUES
+list) and <code>Exec</code> reads the stored value back into the pointer with <code>RETURNING</code>.
+A non-nil pointer is always written, so <code>false</code> and <code>0</code> reach the database:</p>
+<div class="highlight"><pre><span></span><code>type Account struct {
+    momo.Model `momo:"table:accounts"`
+    ID         int64  `momo:"pk,identity"`
+    Active     *bool  `momo:"default:true,dbdefault"`
+    Level      *int64 `momo:"default:3,dbdefault"`
+}
+
+a := Account{Active: ptr(false)} // stores false; Level is nil, so 3 is read back
+</code></pre></div>
+<p><code>generate</code> used to refuse <code>dbdefault</code> on a pointer. It still refuses it on a
+nullable column (a <code>sql.Null*</code> type or the <code>nullable</code> tag), because nil would
+stop meaning NULL there. Non-pointer <code>dbdefault</code> fields behave as before. The
+read-back rules, the dialects without <code>RETURNING</code> (plain MySQL fails with
+<code>ErrUnsupported</code> for a nil pointer; an explicit value is still written) and the
+mixed-row limits of SQLite are the same as for any other <code>dbdefault</code> field; see
+"Database defaults" in the <a href="../ai-guide/">AI guide</a>.</p>
+<p><code>Update(...).Model(&amp;m)</code> treats a nil <code>dbdefault</code> pointer as "not set": the
+column is left out of <code>SET</code> and keeps its stored value, because writing NULL
+would fail on the NOT NULL column. A pointer to <code>false</code> or <code>0</code> is written. If
+no column is left to set, the update fails with the usual <code>ErrValidation</code> ("no
+columns to update"). Before this change a pointer <code>dbdefault</code> field could not be
+generated, so no generated model sees a different result. <code>Upsert</code> takes its
+<code>DO UPDATE</code> values from <code>EXCLUDED</code> and already leaves out a <code>dbdefault</code> column
+that any row leaves to the database, so it needs no change.</p>
+<p><code>momo generate</code> now warns (on standard error, exit code unchanged) about a
+non-pointer <code>dbdefault</code> field of a <code>bool</code> or number type whose default is a
+non-zero constant, because the zero value means "use the default" there and an
+explicit <code>false</code> or <code>0</code> is replaced by it. Make the field a pointer to write
+them.</p>
+<h3 id="-from-db-models-stored-generated-columns-as-read-only-fields"><code>--from-db</code> models stored generated columns as read-only fields<a class="headerlink" href="#-from-db-models-stored-generated-columns-as-read-only-fields" title="Permanent link">&para;</a></h3>
+<p><code>momo generate --from-db</code> used to leave a <code>GENERATED ALWAYS AS (...) STORED</code>
+column out of the models and the snapshot with a warning, so typed builders
+could not select or filter by it and the baseline reported it. It now writes the
+column as a <code>read_only</code> field with the new <code>generated:&lt;expr&gt;</code> tag. <code>Insert</code> and
+<code>Update</code> never write the field, typed <code>Select</code> and <code>Where</code> can use it, and the
+snapshot carries the expression, so <code>migrate diff</code> stays empty and <code>migrate</code>
+renders <code>GENERATED ALWAYS AS (...) STORED</code> on PostgreSQL, MySQL and SQLite.</p>
+<div class="highlight"><pre><span></span><code>type Account struct {
+    momo.Model `momo:"table:accounts"`
+    ID         int64  `momo:"pk,identity"`
+    Name       string
+    Normalized string `momo:"read_only,generated:lower(name)"`
+}
+</code></pre></div>
+<p>A tag value cannot hold a comma, so an expression with one is declared in
+<code>MomoConfig</code> with the new <code>Config.Generated</code> instead, which <code>--from-db</code> writes for
+you: <code>c.Generated(&amp;m.Label, "coalesce(name, '') || email")</code>. The generator
+refuses a generated field that is not <code>read_only</code>, or that also has a default,
+identity, serial, <code>dbdefault</code>, <code>version</code>, <code>soft_delete</code>, <code>created_at</code>,
+<code>updated_at</code> or <code>idgen</code>.</p>
+<p>What to do: regenerate with <code>momo generate --from-db</code> to model the columns, or
+keep the <code>introspect.skip</code> or <code>introspect.only</code> rules that hid them.
+<code>--from-db</code> reads PostgreSQL only, and PostgreSQL inspection still refuses a
+<code>VIRTUAL</code> generated column (hide its table with <code>migrate.exclude</code>); nothing
+changes for it. How the MySQL and SQLite inspectors treat a <code>VIRTUAL</code> column is
+tracked in issue 111.</p>
+<p>A read-only generated field is not read back after an insert: a model insert
+leaves the Go value as it was, so select the row again to see the computed
+value.</p>
+<h3 id="-from-db-can-write-the-inverse-has_many-and-has_one"><code>--from-db</code> can write the inverse has_many and has_one<a class="headerlink" href="#-from-db-can-write-the-inverse-has_many-and-has_one" title="Permanent link">&para;</a></h3>
+<p><code>momo generate --from-db</code> wrote a <code>belongs_to</code> on the child and nothing on the
+parent, so <code>Has</code>, <code>HasNo</code>, <code>LoadCounts</code> and eager loading of children needed a
+hand-written relation on every parent. Set <code>introspect.inverse: true</code> and it
+also writes the inverse on the referenced model: <code>has_one</code> when the foreign key
+column is unique (the primary key, a unique constraint, or a plain unique
+index), <code>has_many</code> otherwise. It is off by default, so nothing changes until you
+opt in. A hand-edited model file is never replaced, so a project that already
+declared these relations by hand turns the option on and gets a <code>.new</code> file to
+merge, or keeps the hand-written relations and leaves it off.</p>
+<p>The name is the plural of the child model for <code>has_many</code> (<code>SubscriptionItems</code>)
+and the child model name for <code>has_one</code>. A child with two foreign keys to the same
+parent, and a table that references itself, get <code>By</code> and the foreign key field
+without <code>ID</code> instead (<code>MessagesBySender</code>, <code>MessagesByRecipient</code>). Rename or skip
+one with <code>introspect.relations</code>, keyed by model and derived name (User.MessagesBySender):</p>
+<div class="highlight"><pre><span></span><code><span class="nt">introspect</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">inverse</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">relations</span><span class="p">:</span>
+<span class="w">    </span><span class="s">"Subscription.SubscriptionItems"</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">Items</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="s">"User.MessagesBySender"</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> skip</span><span class="p">:</span><span class="w"> </span><span class="nv">true</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p>The key uses the name derived before the rule and before any collision suffix,
+and <code>relations</code> has no effect unless <code>inverse</code> is <code>true</code>. A rule key that matches
+no inverse is printed as a warning, and so is an inverse whose name collides with
+another field of the parent and gets a number suffix (Orders2); the warning
+names the key that renames it.</p>
+<p>No inverse is written for a composite foreign key, for a foreign key that is left
+out of the models, or from a table with no model (<code>only</code> and <code>skip</code>).</p>
+<h3 id="union-members-keep-their-order-by-and-limit-and-a-union-runs-at-the-top-level">Union members keep their ORDER BY and LIMIT, and a union runs at the top level<a class="headerlink" href="#union-members-keep-their-order-by-and-limit-and-a-union-runs-at-the-top-level" title="Permanent link">&para;</a></h3>
+<p><code>Union</code> used to render every member bare, so a
+member's own <code>ORDER BY</code>, <code>LIMIT</code>, <code>OFFSET</code> or row lock could not be expressed.
+A member that has any of those clauses is now grouped, so the clause binds to
+that member and not to the whole union: in parentheses on PostgreSQL and MySQL,
+and as <code>SELECT * FROM (member)</code> on SQLite, which rejects parentheses around a
+compound member. A member without those clauses still renders bare, so existing
+queries keep their SQL. A nested <code>Union</code> as a member is grouped the same way.</p>
+<p>A union can now run directly. <code>momo.SelectUnion</code> (type parameter <code>T</code>, then the
+querier, <code>all</code> and the members) returns a <code>UnionQuery[T]</code> with <code>OrderBy</code>, <code>Limit</code>, <code>Offset</code>, <code>SQL</code>, <code>All</code> and
+<code>Rows</code>; <code>T</code> is a model, a projection, a tuple row or a plain struct, matched to
+the result columns as for <code>momo.Query</code>. The outer <code>OrderBy</code> orders the whole
+union and may name result columns only; build them with
+<code>momo.ColumnOf</code> and an empty source:</p>
+<div class="highlight"><pre><span></span><code>teachersTop := momo.Select[Hit](db).From(teachers).Columns(kind, id, name).
+    OrderBy(name.Asc()).Limit(5)
+studentsTop := momo.Select[Hit](db).From(students).Columns(kind, id, name).
+    OrderBy(name.Asc()).Limit(5)
+byName := momo.ColumnOf[string]("", "full_name")
+rows, err := momo.SelectUnion[Hit](db, true, teachersTop, studentsTop).
+    OrderBy(byName.Asc()).Limit(8).All(ctx)
+</code></pre></div>
+<p>A row lock inside a member returns <code>ErrUnsupported</code> on SQLite, as on a plain
+select, and on PostgreSQL, which rejects <code>FOR UPDATE</code> inside a set operation;
+MySQL accepts it in a parenthesised member. A member with its own <code>WITH</code>
+clause is grouped like one with <code>ORDER BY</code>. An outer <code>OrderBy</code> that names a
+qualified column or an expression fails at build time with <code>ErrValidation</code>.
+Hooks and interceptors see op <code>select</code> with an empty table name.</p>
+<h3 id="unnestcolumn-and-distinct-on-aggregates"><code>UnnestColumn</code> and <code>Distinct</code> on aggregates<a class="headerlink" href="#unnestcolumn-and-distinct-on-aggregates" title="Permanent link">&para;</a></h3>
+<p>These are additions; no existing query changes.</p>
+<p><code>momo.UnnestColumn(col).As(alias, name)</code> expands an array column (or any
+array expression) of an earlier source into rows, as a <code>LATERAL</code> source of a
+join or FROM item. <code>CrossJoin(momo.UnnestColumn(q2Flags).As("fl", "flag"))</code>
+renders <code>CROSS JOIN LATERAL unnest("q2"."flags") AS "fl" ("flag")</code>, and
+<code>Column()</code> of the returned source reads the element. A NULL array yields no
+rows. It is PostgreSQL only and fails the build with <code>ErrUnsupported</code> on SQLite
+and MySQL. It reads a column of an earlier source, so it must come after the
+table that holds the array: as the first FROM item it fails the build with
+<code>ErrValidation</code>. <code>CrossJoin</code> drops the rows whose array is NULL or empty;
+<code>LeftJoin(src, momo.SQL("true"))</code> keeps them with a NULL element, rendering
+<code>LEFT JOIN LATERAL unnest(...) AS "fl" ("flag") ON true</code>. The element column
+works in <code>Where</code> like any column. <code>momo.UnnestValues</code> still binds Go slices; use <code>UnnestColumn</code> when
+the array comes from a column.</p>
+<p><code>agg.Call.Distinct()</code> renders <code>DISTINCT</code> inside the call: <code>Distinct()</code> on an
+<code>agg.Array</code> of a column gives <code>array_agg(DISTINCT col)</code>, and it works on
+<code>agg.String</code>, <code>agg.JSONB</code> and <code>agg.Func</code> (a <code>count</code> function gives
+<code>count(DISTINCT col)</code>). It combines with <code>OrderBy</code> and
+<code>Filter</code>. It takes exactly one argument, cannot be used with <code>Over</code>, and on
+PostgreSQL every <code>OrderBy</code> expression must be the argument itself (as
+PostgreSQL requires); each of these fails the build with <code>ErrValidation</code>. On <code>agg.PercentileCont</code> and <code>agg.PercentileDisc</code> it fails with
+<code>ErrValidation</code>. SQLite supports it on single-argument aggregates, so
+<code>agg.String(...).Distinct()</code> gives <code>ErrUnsupported</code> there; MySQL gives
+<code>ErrUnsupported</code> for <code>agg.JSONB(...).Distinct()</code>.</p>
+<h3 id="selectexprs-takes-joins-groupby-having-and-orderby"><code>SelectExprs</code> takes joins, <code>GroupBy</code>, <code>Having</code> and <code>OrderBy</code><a class="headerlink" href="#selectexprs-takes-joins-groupby-having-and-orderby" title="Permanent link">&para;</a></h3>
+<p><code>momo.SelectExprs(...)</code> had only <code>From</code> and <code>Where</code>. It now also has <code>Join</code>,
+<code>LeftJoin</code>, <code>CrossJoin</code>, <code>GroupBy</code>, <code>Having</code> and <code>OrderBy</code>, rendered as in
+<code>Select[T]</code>, so a grouped <code>INSERT ... SELECT</code> source can have any number of
+columns. A join, <code>GroupBy</code> or <code>Having</code> without <code>From</code> fails with
+<code>ErrValidation</code>, and so does an <code>As(...)</code> alias in <code>GroupBy</code>. There is no
+<code>Limit</code> or <code>Offset</code> on it yet.</p>
+<h3 id="row-value-comparison-sqlfndiv-sqlfncurrentdate-infinity-and-momolit">Row-value comparison, <code>sqlfn.Div</code>, <code>sqlfn.CurrentDate</code>, infinity and <code>momo.Lit</code><a class="headerlink" href="#row-value-comparison-sqlfndiv-sqlfncurrentdate-infinity-and-momolit" title="Permanent link">&para;</a></h3>
+<p>These are additions; nothing changes for existing code.</p>
+<ul>
+<li><code>momo.Row(a, b).Lt(momo.Row(x, y))</code> (also <code>Le</code>, <code>Gt</code>, <code>Ge</code>) renders
+  <code>(a, b) &lt; (x, y)</code>, the position check of keyset pagination. Both rows need at
+  least two elements and the same count, or the build fails with
+  <code>ErrValidation</code>.</li>
+<li><code>sqlfn.Div</code> and <code>sqlfn.DivExpr</code> divide, and <code>sqlfn.NullIf</code> and
+  <code>sqlfn.NullIfExpr</code> build <code>NULLIF</code>, so <code>sqlfn.DivExpr(final, sqlfn.NullIf(max, 0))</code> avoids
+  a division by zero. Integer operands divide as integers on PostgreSQL and
+  SQLite, but <code>/</code> on integers returns a DECIMAL on MySQL. Division by zero is
+  an error on PostgreSQL and, in strict mode, on MySQL: guard the divisor with
+  <code>sqlfn.NullIf</code> on every dialect.</li>
+<li><code>sqlfn.CurrentDate()</code> is <code>CURRENT_DATE</code>. <code>sqlfn.Infinity()</code> and
+  <code>sqlfn.NegInfinity()</code> are <code>'infinity'::timestamptz</code> and
+  <code>'-infinity'::timestamptz</code>; they are PostgreSQL only and fail with
+  <code>ErrUnsupported</code> elsewhere.</li>
+<li><code>momo.Lit(v)</code> writes a value into the SQL text instead of binding it, so the
+  same expression is identical text in <code>SELECT</code> and <code>GROUP BY</code> (a bound value
+  gets a new <code>$n</code> each time and PostgreSQL rejects the grouping with 42803),
+  for example <code>COALESCE(col, 'none')</code>. It accepts integers, floats, <code>bool</code>,
+  strings and <code>time.Time</code>. A string renders as a standard SQL string literal
+  with each <code>'</code> doubled; a string containing a backslash or a NUL byte fails
+  the build with <code>ErrValidation</code> on every dialect (MySQL and PostgreSQL with
+  <code>standard_conforming_strings</code> off read a backslash as an escape). A
+  <code>time.Time</code> renders as <code>DATE 'YYYY-MM-DD'</code> and must be exactly 00:00:00 UTC;
+  a value with a time of day fails with <code>ErrValidation</code> instead of losing the
+  time. A NaN or infinite float fails the build with <code>ErrValidation</code>.</li>
+</ul>
+<h3 id="orderbypredicate-orders-by-a-boolean-condition"><code>OrderByPredicate</code> orders by a boolean condition<a class="headerlink" href="#orderbypredicate-orders-by-a-boolean-condition" title="Permanent link">&para;</a></h3>
+<p>A predicate can now be an <code>ORDER BY</code> term, so <code>ORDER BY (col IS NULL)</code> no longer
+needs <code>momo.SQL</code>. <code>momo.OrderByPredicate(p)</code> takes any <code>Predicate</code> and has
+<code>Asc()</code> and <code>Desc()</code>; the result is an <code>Order</code>, so <code>NullsFirst()</code> and
+<code>NullsLast()</code> chain as on a column. The predicate is written in parentheses on
+every dialect and its bound values keep their place among the other arguments.
+False sorts before true, so <code>(col IS NULL) ASC</code> puts NULLs last on PostgreSQL,
+SQLite and MySQL (a boolean is 0 or 1 in the last two). A predicate is an
+interface, so it has no <code>Asc</code> method of its own: write
+<code>momo.OrderByPredicate(template.BuiltinKey.IsNotNull()).Desc()</code>. Nothing
+existing changes.</p>
+<p>Limits. <code>NullsFirst</code> and <code>NullsLast</code> on a predicate are <code>ErrUnsupported</code> on
+MySQL and MariaDB, as they are on a column, because momo does not emulate them.
+<code>After</code> over a predicate key is <code>ErrValidation</code>, because a cursor over a value
+that can be NULL skips or repeats rows. A predicate in the outer <code>OrderBy</code> of a
+<code>SelectUnion</code> is <code>ErrValidation</code>, because that clause allows unqualified result
+columns only. <code>OrderByPredicate(nil)</code> is <code>ErrValidation</code> at build time, and an
+<code>agg</code> call's <code>OrderBy</code> takes the <code>Order</code> from <code>Asc()</code> or <code>Desc()</code>.</p>
+<h3 id="nested-has-and-hasno-get-one-alias-per-level">Nested <code>Has</code> and <code>HasNo</code> get one alias per level<a class="headerlink" href="#nested-has-and-hasno-get-one-alias-per-level" title="Permanent link">&para;</a></h3>
+<p>A relation predicate nested inside the scope of another one used to render both
+subqueries with the child alias <code>momo_r</code>, so the inner correlation compared the
+inner table with itself and the statement failed (<code>column momo_r.planPriceId
+does not exist</code>). Each nesting level now has its own alias: <code>momo_r</code> for the
+outermost subquery, <code>momo_r2</code> for the one inside it, <code>momo_r3</code> inside that, and
+the same for the many-to-many join table (<code>momo_j</code>, <code>momo_j2</code>, ...). A plain
+<code>Has</code>, <code>HasNo</code> or <code>CountOrder</code> whose parent is the child of the enclosing
+subquery correlates on that enclosing alias on its own:</p>
+<div class="highlight"><pre><span></span><code>momo.Select[models.Subscription](db).Where(
+    subscription.Items.Has(
+        subscriptionitem.PlanPrice.Has(planprice.PlanID.As("momo_r").Eq("p1"))))
+</code></pre></div>
+<p>Inside a scope predicate, <code>As("momo_r")</code> always names the child of the
+subquery that the scope belongs to, at any depth. Nothing changes for code that
+uses one level, and the SQL of a single <code>Has</code> is the same as before. A scope
+that needs the child of an enclosing level other than its own uses the new
+<code>momo.RelAlias(level)</code>: level 1 is the outermost subquery, level 2 the one
+inside it. <code>RelAlias(n)</code> is never rewritten, so it can name the outermost level
+from any depth:</p>
+<div class="highlight"><pre><span></span><code>author.FirstDocument.Has(document.Taggings.Has(tagging.Tag.Has(
+    tag.Name.As("momo_r").Eq("db"),
+    document.ID.As(momo.RelAlias(1)).Eq(int64(1)))))
+</code></pre></div>
+<p>In a self-referencing relation a nested <code>Has</code> correlates on the enclosing
+child, and <code>HasFrom(alias)</code> keeps the alias you name. <code>HasFrom("momo_r")</code> is the
+literal outermost alias. A <code>Subquery</code> or CTE of your own inside a scope does not
+start a level, and your own table aliases must not use the names <code>momo_r</code>,
+<code>momo_r&lt;N&gt;</code>, <code>momo_j</code> or <code>momo_j&lt;N&gt;</code>.</p>
+<h3 id="nullcolumnsetptr-and-eqptr-take-a-nil-able-value"><code>NullColumn.SetPtr</code> and <code>EqPtr</code> take a nil-able value<a class="headerlink" href="#nullcolumnsetptr-and-eqptr-take-a-nil-able-value" title="Permanent link">&para;</a></h3>
+<p>A nullable column is a <code>momo.NullColumn[T]</code>, while the model field is <code>*T</code>. You
+no longer branch on nil at each call site:</p>
+<div class="highlight"><pre><span></span><code>// before
+if p.SourceID != nil {
+    sets = append(sets, document.SourceID.Set(*p.SourceID))
+} else {
+    sets = append(sets, document.SourceID.SetNull())
+}
+// after
+sets = append(sets, document.SourceID.SetPtr(p.SourceID))
+</code></pre></div>
+<p><code>SetPtr(nil)</code> writes <code>NULL</code> and <code>SetPtr(&amp;v)</code> writes <code>v</code>; it is a plain
+<code>Assignment</code>, so it works in an update Set, an insert Values and an upsert
+DoUpdate. <code>EqPtr(nil)</code> renders <code>IS NULL</code> (never <code>= NULL</code>) and <code>EqPtr(&amp;v)</code>
+renders <code>= $n</code>. This is an addition; nothing existing changes. There is no
+<code>NePtr</code>.</p>
+<h3 id="json-key-delete-concat-set-root-scalar-and-array-expressions">JSON key delete, concat, set, root scalar and array expressions<a class="headerlink" href="#json-key-delete-concat-set-root-scalar-and-array-expressions" title="Permanent link">&para;</a></h3>
+<p>New, additive API; nothing existing changes.</p>
+<ul>
+<li><code>jsonop.Root(col)</code> reads a scalar stored at the root of a JSON value
+  (<code>col #&gt;&gt; '{}'</code>). <code>jsonop.Path</code> with no elements is still <code>ErrValidation</code>.</li>
+<li><code>jsonop.DeleteKey(expr, key)</code> is <code>expr - 'key'</code> on PostgreSQL, <code>json_remove</code>
+  on SQLite and <code>JSON_REMOVE</code> on MySQL. Replace a column list written to keep
+  a secret out of a snapshot with it, so a later column is not copied.</li>
+<li><code>jsonop.Concat(a, b)</code> (<code>a || b</code>) and <code>jsonop.Set(target, path, value)</code>
+  (<code>jsonb_set</code>) are PostgreSQL only; SQLite and MySQL return <code>ErrUnsupported</code>
+  instead of a lookalike with other merge rules. <code>jsonop.DeleteKey</code>,
+  <code>jsonop.Concat</code> and <code>jsonop.Set</code> need <code>jsonb</code>, not <code>json</code>. A SQL NULL value
+  in <code>jsonop.Set</code> makes the whole result NULL; wrap an optional value in
+  <code>COALESCE</code>.</li>
+<li><code>momo.ArrayOf[T]</code> (<code>ARRAY[...]</code>) and <code>momo.ArraySubquery[T]</code>
+  (<code>ARRAY(...)</code>) are <code>Expression[[]T]</code>, PostgreSQL only. Build the path of
+  <code>jsonop.Set</code> with <code>ArrayOf</code>, casting bound elements with <code>sqlfn.Cast</code>.</li>
+</ul>
+<h3 id="pgxdriverlisten-and-pgxdrivernotify-for-listennotify"><code>pgxdriver.Listen</code> and <code>pgxdriver.Notify</code> for LISTEN/NOTIFY<a class="headerlink" href="#pgxdriverlisten-and-pgxdrivernotify-for-listennotify" title="Permanent link">&para;</a></h3>
+<p>New API, nothing to change in existing code. <code>pgxdriver.Listen</code> opens a
+dedicated connection, subscribes to channels and reconnects with backoff;
+<code>pgxdriver.Notify</code> sends with <code>pg_notify</code>. If you kept a raw pgx
+<code>WaitForNotification</code> loop beside momo, you can move it onto the <code>Listener</code>.
+See <a href="../listen-notify/">LISTEN and NOTIFY</a>.</p>
+<h3 id="new-rawrows-returns-the-hooked-cursor-of-a-raw-statement">New: <code>RawRows</code> returns the hooked cursor of a raw statement<a class="headerlink" href="#new-rawrows-returns-the-hooked-cursor-of-a-raw-statement" title="Permanent link">&para;</a></h3>
+<p><code>momo.RawRows(ctx, q, sql, args...)</code> runs a hand-written statement and returns
+an open cursor with <code>Next</code>, <code>Scan(dest ...any)</code>, <code>Columns</code>, <code>Err</code> and <code>Close</code>,
+for a result whose shape is known only at run time (a column count that depends
+on the input). <code>Query</code> and <code>QueryRows</code> need a type for the row and <code>MapRows</code>
+buffers every row into a map; before this, a <code>Scan(dest...)</code> cursor meant
+<code>db.Driver().Query</code>, which skips hooks, <code>WithTxSetup</code>, error classification and
+redaction. <code>RawRows</code> takes the raw path of <code>Query</code>: the same placeholders, hooks
+(op <code>raw</code>), interceptors, <code>WithTxSetup</code> and <code>WithImplicitTx</code>, error
+classification and argument redaction, on a <code>*DB</code>, a <code>*Tx</code> or an <code>AdoptTx</code>
+handle.</p>
+<div class="highlight"><pre><span></span><code>rows, err := momo.RawRows(ctx, db, `SELECT id, title FROM tasks WHERE tenant_id = $1`, tenant)
+if err != nil {
+    return err
+}
+defer rows.Close()
+for rows.Next() {
+    if err := rows.Scan(&amp;id, &amp;title); err != nil {
+        return err
+    }
+}
+return rows.Err()
+</code></pre></div>
+<p>The return type is the new interface <code>momo.ColumnRows</code>, a <code>Rows</code> that also has
+<code>Columns</code>, because <code>Rows</code> itself has no column names. Close the cursor, always:
+one that is never closed holds its connection, and on a <code>*DB</code> with
+<code>WithImplicitTx</code> the transaction behind it. When the context is canceled,
+<code>Next</code> returns false, the cursor is closed and <code>Err</code> reports <code>ErrCanceled</code>; a
+context canceled after the last row was read can still report <code>ErrCanceled</code>,
+as in <code>QueryRows</code>. Scan errors go through the error classifier and are
+recorded on the hook event.</p>
+<p>Under <code>WithImplicitTx</code>, momo treats raw SQL as a write, because raw SQL may
+write. The transaction commits when the rows are read to the end. It rolls back,
+and <code>Close</code> returns <code>ErrValidation</code>, when <code>Close</code> comes before the end of the
+rows (including a <code>Close</code> with no <code>Next</code>), after a Scan or driver error, or
+after a canceled context. Without <code>WithImplicitTx</code> an early <code>Close</code> is just a
+<code>Close</code>. <code>Columns</code> returns the names as the driver reports them: an empty list
+means the statement returns no columns (an <code>UPDATE</code> without <code>RETURNING</code>) or the
+driver cannot name them, and <code>ErrUnsupported</code> means the cursor cannot report
+columns at all. This is additive; nothing to change.</p>
+<h3 id="momowithnaming-a-plain-struct-queryt-follows-the-naming-preset"><code>momo.WithNaming</code>: a plain-struct <code>Query[T]</code> follows the naming preset<a class="headerlink" href="#momowithnaming-a-plain-struct-queryt-follows-the-naming-preset" title="Permanent link">&para;</a></h3>
+<p><code>momo.Query</code> and <code>momo.QueryRows</code> into a plain struct named every untagged
+field's column as the snake_case of the field name, so under <code>naming: prisma</code>
+(camelCase columns such as <code>endpointId</code>) each field needed a <code>column:</code> tag.
+The new option <code>momo.WithNaming(naming.Prisma{})</code> sets the preset on the DB, and
+an untagged field then reads the column the preset gives its name (<code>EndpointID</code>
+is <code>endpointId</code>). A <code>column:</code> tag still wins. Without the option nothing
+changes: snake_case, as <code>naming.ToSnake</code> gives it. Any preset of <code>gen/naming</code>
+(or any value with a <code>ColumnName(goField string) string</code> method, comparable or
+not) fits, and the option applies to handles derived from the DB (transactions,
+<code>OnConn</code>, replicas). A DB with a preset keeps its own plans, built once per type
+from the field names, so the preset must give the same answer every time. Known
+limit: the preset is not read from <code>momo.yaml</code> or from a generated registration
+at run time; pass the same one you set as <code>naming:</code> there.</p>
+<h3 id="migrateconfigfromfile-and-typed-migratestate-constants"><code>migrate.ConfigFromFile</code> and typed <code>migrate.State*</code> constants<a class="headerlink" href="#migrateconfigfromfile-and-typed-migratestate-constants" title="Permanent link">&para;</a></h3>
+<p>A program that migrates in-process no longer has to copy <code>migrate.exclude</code>,
+<code>introspect.only</code>, <code>external_extensions</code> and the timeouts of <code>momo.yaml</code> into Go.
+Embed the file and hand it to the engine:</p>
+<div class="highlight"><pre><span></span><code>//go:embed momo.yaml
+var cfgFS embed.FS
+
+opts, err := migrate.ConfigFromFile(cfgFS, "momo.yaml")
+if err != nil { /* ... */ }
+e, err := migrate.NewEngine(driver, migrationsFS, opts...)
+</code></pre></div>
+<p>It reads <code>migrate.schemas</code>, <code>exclude</code>, <code>external_extensions</code>, <code>lock_timeout</code>,
+<code>statement_timeout</code> and <code>introspect.only</code>, and it reads and checks the file the
+way <code>momo migrate</code> does: both use the same decoder and validator. The file
+needs <code>version: 1</code>. An empty file, several YAML documents, a key it does not
+know in <code>migrate</code>, in <code>introspect</code> or at the top level (a typo such as <code>exclud:</code>
+or <code>lock_timout:</code>), a bad duration, a bad <code>external_extensions</code> name and a bad
+<code>introspect.only</code> glob are errors. It ignores only the top-level keys that code
+generation alone reads (<code>packages</code>, <code>naming</code>, <code>dialects</code>, <code>tags</code>, <code>types</code> and
+<code>plugins</code>) and the other <code>introspect</code> keys. An explicit <code>lock_timeout: 0s</code> turns
+the timeout off, as on the command line. It does not set the dialect: the driver
+supplies that, or pass <code>migrate.WithDialect</code>.</p>
+<p><code>migrate.VersionStatus.State</code> now has typed constants: <code>migrate.StatePending</code>,
+<code>migrate.StateApplied</code>, <code>migrate.StateDirty</code>, <code>migrate.StateMismatch</code> and
+<code>migrate.StateMissing</code>. They have the
+values <code>Status</code> already returned (<code>"pending"</code>, <code>"applied"</code>, ...), so existing
+string comparisons keep working. The <code>migrate.Status*</code> constants (<code>migrate.StatusApplied</code>, ...)
+are the statuses of history rows (<code>migrate.HistoryRow.Status</code>), a different thing,
+and stay as they are.</p>
+<h3 id="shared-advisory-locks">Shared advisory locks<a class="headerlink" href="#shared-advisory-locks" title="Permanent link">&para;</a></h3>
+<p>The <code>advisory</code> package gains the shared form of every lock function, for a
+reader/writer pair on one key: <code>advisory.XactLockShared</code>,
+<code>advisory.TryXactLockShared</code>, <code>advisory.LockShared</code>, <code>advisory.TryLockShared</code>
+and <code>advisory.UnlockShared</code>, each with a <code>...String</code> variant that takes the same
+<code>advisory.Hash64</code> option. They run <code>pg_advisory_xact_lock_shared</code>,
+<code>pg_try_advisory_xact_lock_shared</code>, <code>pg_advisory_lock_shared</code>,
+<code>pg_try_advisory_lock_shared</code> and <code>pg_advisory_unlock_shared</code>. Writers that take
+the shared lock run together and never with a holder of the exclusive lock of
+the same key (<code>advisory.XactLock</code>). A string key hashes exactly as the exclusive
+helpers hash it, so <code>advisory.XactLockSharedString(ctx, tx, k, advisory.Hash64(52))</code>
+replaces <code>SELECT pg_advisory_xact_lock_shared(hashtextextended($1::text, 52))</code>
+with the same key. The transaction, pinned-connection and <code>ErrUnsupported</code> rules
+are those of the exclusive helpers. Nothing existing changes. <code>advisory.Unlock</code>
+does not release a shared lock: use <code>advisory.UnlockShared</code>.</p>
+<h3 id="timeop-sub-second-intervals-and-timestamp-difference"><code>timeop</code>: sub-second intervals and timestamp difference<a class="headerlink" href="#timeop-sub-second-intervals-and-timestamp-difference" title="Permanent link">&para;</a></h3>
+<p><code>timeop.IntervalMillisecond</code> and <code>timeop.IntervalMicrosecond</code> are new interval
+units. <code>timeop.IntervalDuration(d)</code>, <code>timeop.AddDuration(ts, d)</code> and
+<code>timeop.SubDuration(ts, d)</code> take a <code>time.Duration</code> as a literal interval in the
+coarsest exact unit, so a 1500ms lease no longer needs rounding to seconds. MySQL
+counts the units as microseconds; SQLite counts fractional seconds and stores
+milliseconds, so it rounds a sub-millisecond part to the nearest millisecond,
+half away from zero (1500 microseconds add 2 ms, 1499 add 1 ms). Each distinct
+duration renders a distinct SQL literal, which matters for statement caching and
+<code>pg_stat_statements</code>; bind the count with <code>timeop.IntervalExpr</code> to keep one
+statement text.</p>
+<p><code>timeop.Sub(a, b)</code> and <code>timeop.Age(a, b)</code> build a <code>timeop.Span</code>, and
+<code>timeop.EpochSeconds(span)</code> reads it as a <code>float64</code> number of seconds:
+<code>extract(epoch FROM a - b)</code> on PostgreSQL, <code>TIMESTAMPDIFF(MICROSECOND, b, a)</code> on
+MySQL and the <code>julianday</code> difference on SQLite (accurate to about a tenth of a
+millisecond). A <code>timeop.Span</code> is not selectable on its own outside PostgreSQL, and
+<code>timeop.Age</code> is PostgreSQL only; both fail with <code>ErrUnsupported</code> when the query is
+built. PostgreSQL's <code>EXTRACT(EPOCH FROM interval)</code> counts a month as 30 days and
+a year as 365.25 days, so the epoch of a <code>timeop.Age</code> that spans months or years
+is not the real elapsed time; use <code>timeop.Sub</code> for that. Nothing existing
+changes.</p>
+<h3 id="momovet-accepts-a-momovetok-reason-directive"><code>momovet</code> accepts a <code>//momovet:ok &lt;reason&gt;</code> directive<a class="headerlink" href="#momovet-accepts-a-momovetok-reason-directive" title="Permanent link">&para;</a></h3>
+<p>A raw-SQL call whose text is built from constants and allowlisted identifiers can now be marked as vetted with a line directive: a trailing <code>//momovet:ok &lt;reason&gt;</code> comment on the call's line, or the same comment alone on the line directly above it. A trailing comment never covers the next line. The directive silences the report for that call only. A directive without a reason, or one that suppresses nothing, is reported itself, so add a reason to every directive. See <a href="../momovet/">momovet</a>.</p>
+<h2 id="upgrading-to-070">Upgrading to 0.7.0<a class="headerlink" href="#upgrading-to-070" title="Permanent link">&para;</a></h2>
+<h3 id="-from-db-writes-only-the-functions-the-modeled-tables-use"><code>--from-db</code> writes only the functions the modeled tables use<a class="headerlink" href="#-from-db-writes-only-the-functions-the-modeled-tables-use" title="Permanent link">&para;</a></h3>
+<p><code>momo generate --from-db</code> used to write every database function into the
+<code>MomoConfig</code> of the alphabetically first model. It now writes only the
+functions that a modeled table uses: the ones its triggers call, its column
+defaults, generated columns, checks, index expressions and predicates and its
+policies call, and the functions those functions call in turn (their bodies and
+argument defaults). A call is found by name, and so is a <code>'name'::regproc</code> or
+<code>'name(args)'::regprocedure</code> literal (also <code>pg_catalog</code>-qualified, schema
+qualified or with quoted names) and a <code>to_regproc('name')</code> call. Each one is written on the model of the
+table that uses it. A function that no modeled
+table uses is not written, and it is no longer in the init snapshot, so a
+database-wide function that nothing modeled needs does not appear in the
+models, and the model files no longer change when an unrelated function does.</p>
+<p>Triggers and policies moved the same way: they are written on the model of
+their own table instead of the first model. A function that a view calls stays
+on the first model, with the view, unless a modeled table also uses it: then it
+goes on that table's model. After you regenerate, a model file that held
+other tables' functions changes (a <code>.new</code> file next to a hand-edited one, see
+"Running it again" in <a href="../migrations/">migrations</a>). A function that was written
+and is no longer used is not in the new init snapshot either; add it to
+<code>migrate.exclude</code> if the database keeps it and you do not want drift to report
+it as unmanaged.</p>
+<p>SQL that is built at run time cannot be followed. A function that another
+function reaches only through <code>EXECUTE</code> with a name put together from pieces
+(<code>EXECUTE 'SELECT ' || prefix || '_target()'</code>), or through any other dynamic
+SQL, is not written, and a fresh database built from the models then lacks it.
+If your functions do that, use <code>introspect.functions: all</code>, which keeps the old
+behaviour:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">introspect</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">functions</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">all</span><span class="w"> </span><span class="c1"># every database function on the first model</span>
+</code></pre></div>
+<h3 id="introspectonly-limits-from-db-to-a-list-of-tables"><code>introspect.only</code> limits <code>--from-db</code> to a list of tables<a class="headerlink" href="#introspectonly-limits-from-db-to-a-list-of-tables" title="Permanent link">&para;</a></h3>
+<p><code>introspect.only</code> is a list of table name globs, the inverse of
+<code>introspect.skip</code>. When it is set, a table that matches none of the globs gets
+no model, no place in the init snapshot, and <code>momo migrate</code> leaves the live
+table alone (drift, baseline and diff treat it as excluded), so you do not need
+a <code>migrate.exclude</code> entry for every table you have not moved yet:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">introspect</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">only</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">accounts</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">projects</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">project_*</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">skip</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">project_notes</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># skip applies within only</span>
+</code></pre></div>
+<p>A glob matches the table name, or <code>schema.name</code> for a table outside the
+current schema (<code>only: ["app.*"]</code>), the same way <code>migrate.exclude</code> does. A table
+in the current schema (usually <code>public</code>) has an empty schema in the model, so
+only its bare name is tried: <code>only: [public.users]</code> matches nothing when
+<code>public</code> is the current schema; write <code>only: [users]</code>. An empty entry in <code>only</code>
+is an error. <code>skip</code> applies within <code>only</code>: a table must match <code>only</code> and not
+match <code>skip</code>. A skipped table still needs its <code>migrate.exclude</code> entry. An empty
+or absent <code>only</code> changes nothing.</p>
+<p>If <code>only</code> is set and no table matches, <code>--from-db</code> fails with an error that
+says <code>introspect.only</code> matched no table, instead of reporting an empty
+database. When some tables match, a glob that matched none is named in a
+warning, so a typo does not hide in the rest of the list.</p>
+<p>What <code>only</code> hides, and what it does not:</p>
+<ul>
+<li>It hides tables and, with them, their triggers and policies. Inspection does
+  not read a table outside <code>only</code>, so a table the schema model cannot represent
+  no longer fails <code>--from-db</code>, <code>baseline</code> or <code>drift</code>. <code>migrate diff</code> ignores
+  such a table in the snapshot as well, so a snapshot that still holds one
+  never plans <code>DROP TABLE</code> for it.</li>
+<li>A partition child is a table of its own, so <code>only: [orders]</code> leaves out
+  <code>orders_2024</code>. Name the children too: <code>only: [orders, "orders_*"]</code>.</li>
+<li>A model for a table outside <code>only</code> (one you wrote by hand) is never migrated:
+  <code>migrate diff</code> plans neither a <code>CREATE TABLE</code> for it nor a <code>DROP TABLE</code> for a
+  snapshot table that is outside <code>only</code>.</li>
+<li>Views, functions, enums and extensions of the modules you have not moved are
+  not hidden: drift still lists them as unmanaged, and <code>--from-db</code> still writes
+  the views and enums. Hide them with <code>migrate.exclude</code> (globs over the name),
+  for example <code>exclude: [legacy_*, audit_log_view]</code>.</li>
+<li>A foreign key from a modeled table to a table outside <code>only</code> is left out of
+  the models and the snapshot, with a warning, and the baseline reports it as
+  a difference. Move the target table into <code>only</code>, or accept the report. The
+  column itself is still modeled, without the relation.</li>
+</ul>
+<p>Library users: <code>migrate.Config.OnlyTables</code> and <code>migrate.InspectOptions.Only</code>
+are new fields. <code>OnlyTables</code> is what <code>introspect.only</code> sets: when it is not
+empty, a table that matches none of its globs is hidden from drift, baseline
+and diff, with its triggers and policies, and the PostgreSQL inspector does not
+read it. The MySQL and SQLite inspectors ignore <code>migrate.InspectOptions.Only</code> and read
+every table, which is filtered afterwards, so a table they cannot represent can
+still fail inspection. <code>migrate.MatchObject</code> is the glob rule shared by
+<code>Exclude</code>, <code>OnlyTables</code> and the inspector. An empty or malformed entry is an
+error that names <code>migrate.Config.OnlyTables</code>.</p>
+<h3 id="skip-globs-match-schemaname"><code>skip</code> globs match <code>schema.name</code><a class="headerlink" href="#skip-globs-match-schemaname" title="Permanent link">&para;</a></h3>
+<p><code>introspect.skip</code> globs now match the same way <code>introspect.only</code> and
+<code>migrate.exclude</code> do: the bare table name, or <code>schema.name</code> for a table outside
+the current schema. A schema-qualified <code>skip</code> glob (<code>skip: ["app.legacy_*"]</code>)
+that did nothing before, because it was compared with the bare table name only,
+now takes effect and drops those tables from the models and the init snapshot.
+Check your <code>skip</code> list for such a glob before you regenerate.</p>
+<h3 id="introspectdbdefault-all-tags-every-column-that-has-a-default"><code>introspect.dbdefault: all</code> tags every column that has a default<a class="headerlink" href="#introspectdbdefault-all-tags-every-column-that-has-a-default" title="Permanent link">&para;</a></h3>
+<p>By default <code>--from-db</code> writes <code>dbdefault</code> only on NOT NULL columns whose
+default is computed (<code>now()</code>, <code>gen_random_uuid()</code>), so regenerating does not
+change what an existing model writes. A column such as
+<code>version bigint NOT NULL DEFAULT 1</code> is generated as <code>`momo:"default:1"`</code>,
+and <code>InsertQuery.Model</code> writes 0 for a model that left <code>Version</code> unset.
+<code>introspect.dbdefault: all</code> adds <code>dbdefault</code> to every NOT NULL PostgreSQL column
+that has a default, constant ones included, so an unset field takes the default
+and the stored value is read back:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">introspect</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">dbdefault</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">all</span>
+</code></pre></div>
+<p>A nullable column is never tagged, because a nil pointer would stop meaning
+NULL. The zero value now means "use the default" on those columns: a <code>bool</code> or
+number field can no longer write <code>false</code> or <code>0</code> through <code>Model</code> (use
+<code>InsertQuery.Values</code>). Hand-written models can use the <code>dbdefault</code> tag on any
+NOT NULL column that has a database default: see "Database defaults" in the
+<a href="../ai-guide/">AI guide</a>.</p>
+<h3 id="-from-db-singularizes-se-plurals-correctly"><code>--from-db</code> singularizes -se plurals correctly<a class="headerlink" href="#-from-db-singularizes-se-plurals-correctly" title="Permanent link">&para;</a></h3>
+<p><code>momo generate --from-db</code> turns a table name into a model name by trying
+singular candidates and keeping the first one the naming preset pluralizes
+back to the table name. The order was wrong for words in <code>-se</code>: <code>releases</code>
+became <code>Releas</code>. The rule now is: a plural in <code>-sses</code>, <code>-xes</code>, <code>-zzes</code>,
+<code>-ches</code>, <code>-shes</code> or <code>-uses</code> (but not <code>-ouses</code> or <code>-auses</code>) loses <code>es</code>; any
+other plural in <code>-es</code> loses only the <code>s</code>; a short list of words that no
+spelling rule separates (<code>aliases</code>, <code>biases</code>, <code>canvases</code>, <code>gases</code>, <code>atlases</code>,
+<code>lenses</code>, <code>irises</code>, <code>tomatoes</code>, <code>buffaloes</code>, <code>potatoes</code>, <code>heroes</code>, <code>echoes</code>,
+<code>vetoes</code>, <code>caches</code>, <code>niches</code>, <code>quizzes</code>, <code>uses</code>) is listed by name.</p>
+<p>The generated model name changes, on the next regenerate, for these tables:</p>
+<ul>
+<li>Tables <code>releases</code>, <code>cases</code>, <code>courses</code>, <code>responses</code>, <code>licenses</code>, <code>bases</code>,
+  <code>houses</code>, <code>purposes</code>, <code>causes</code>, <code>clauses</code> and <code>uses</code>: Releas, Cas, Cours,
+  Respons, Licens, Bas, Hous, Purpos, Caus, Claus and Us become Release, Case,
+  Course, Response, License, Base, House, Purpose, Cause, Clause and Use.</li>
+<li>Tables <code>sizes</code>, <code>prizes</code>, <code>mazes</code>, <code>caches</code> and <code>niches</code>: Siz, Priz, Maz,
+  Cach and Nich become Size, Prize, Maze, Cache and Niche.</li>
+<li>Table <code>quizzes</code>: Quizze (gorm, bun) or Quizz (prisma) becomes Quiz under the
+  <code>gorm</code>, <code>bun</code> and <code>prisma</code> presets; <code>momo</code> gives <code>Quizz</code> and <code>ent</code> gives
+  <code>Quizze</code> (see below).</li>
+<li>Table <code>waltzes</code>: Waltz becomes Waltze, because a <code>-zes</code> word is read as <code>-ze</code>,
+  as in <code>sizes</code>.</li>
+</ul>
+<p>Not every preset can give every word the right name. The <code>gorm</code> and <code>bun</code>
+presets pluralize a word that ends in <code>s</code> to itself, and <code>ent</code> matches its
+rules case-sensitively on the Go name, so some words keep a wrong name there:
+<code>ent</code> gives <code>Statuse</code>, <code>Buse</code>, <code>Quizze</code> and <code>Aliase</code>; <code>momo</code> gives <code>Quizz</code>
+(it pluralizes <code>quiz</code> to <code>quizes</code>); <code>gorm</code>, <code>bun</code> and <code>ent</code> give <code>Biase</code>,
+<code>Canvase</code>, <code>Gase</code>, <code>Atlase</code>, <code>Lense</code> and <code>Irise</code>; <code>-oes</code> words get <code>Tomatoe</code>
+style names under presets with no <code>-oes</code> rule (<code>momo</code>, <code>ent</code>, and <code>gorm</code> and
+<code>bun</code> for <code>potatoes</code>, <code>heroes</code>, <code>echoes</code> and <code>vetoes</code>). These were wrong before
+too.</p>
+<p>To keep an old name, or to fix a wrong one, pin it in <code>momo.yaml</code>; the pin wins
+over the guess:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">introspect</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">tables</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">&lt;table&gt;</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">Releas</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p>for example <code>releases: { name: Releas }</code>. A regenerate renames the struct in
+the generated file, so update the code that uses it, or pin the old name first.</p>
+<h3 id="githubcomgoogleuuid-types-need-no-type-tag"><code>github.com/google/uuid</code> types need no type tag<a class="headerlink" href="#githubcomgoogleuuid-types-need-no-type-tag" title="Permanent link">&para;</a></h3>
+<p>A model or projection field of <code>uuid.UUID</code>, <code>*uuid.UUID</code> or <code>[]uuid.UUID</code> from
+<code>github.com/google/uuid</code> now maps to <code>uuid</code> or <code>uuid[]</code> on PostgreSQL (<code>TEXT</code>
+on SQLite; <code>[]uuid.UUID</code> has no SQLite column) with no <code>momo:"type:uuid"</code> tag.
+A tag you already wrote is still honored and can stay or go. The generator
+recognizes the type by its import path, so it adds no dependency to momo. Your
+own module imports <code>github.com/google/uuid</code> only because your models already
+do. <code>arrayop</code> predicates on a <code>[]uuid.UUID</code> column bind with a <code>::uuid[]</code>
+cast, like <code>[]types.UUID</code>.</p>
+<p><code>momo generate --from-db</code> keeps writing <code>types.UUID</code> unless you set
+<code>introspect.uuid: google</code> in <code>momo.yaml</code>; then every <code>uuid</code> column becomes
+<code>uuid.UUID</code> (<code>*uuid.UUID</code> when nullable) and every <code>uuid[]</code> column
+<code>[]uuid.UUID</code>, with no type tag and an import of <code>github.com/google/uuid</code>. An
+<code>introspect.types</code> rule for <code>uuid</code> still wins. A <code>--from-db</code> re-run after you
+set the switch regenerates the model files that nobody edited; edited files
+conflict as usual.</p>
+<p>The mapping is for PostgreSQL and SQLite. On MySQL these types are unsupported,
+as <code>types.UUID</code> is, and <code>introspect.uuid</code> has no effect there. A named type
+over <code>uuid.UUID</code> (<code>type ID uuid.UUID</code>) is not mapped; give it <code>type:uuid</code>.</p>
+<h3 id="query-and-queryrows-read-into-a-plain-struct"><code>Query</code> and <code>QueryRows</code> read into a plain struct<a class="headerlink" href="#query-and-queryrows-read-into-a-plain-struct" title="Permanent link">&para;</a></h3>
+<p><code>momo.Query[T]</code> and <code>momo.QueryRows[T]</code> now accept any struct, with no
+generated metadata: fields scan by column name (<code>momo:"column:x"</code> tag, else the
+snake_case of the field name), and a result column with no field, or a field
+with no result column, is an <code>ErrValidation</code> that names it. A model, projection
+or <code>Row1</code>..<code>Row10</code> still scans through its generated metadata. The type
+parameters changed from <code>[T any, PT Modeler[T]]</code> to <code>[T any]</code>: a call that
+names only <code>T</code> compiles as before, and a call that named <code>PT</code> explicitly must
+drop it. A type that is not a struct and has no metadata is now an
+<code>ErrValidation</code> at run time instead of a compile error: <code>Query[*Task]</code> (a
+pointer type) now fails at run time, not at compile time.</p>
+<p>A struct without generated metadata, for example a model before <code>go generate</code>
+has run or after a stale generation, now compiles and takes the reflection path
+instead of failing to compile, so a stale or missing generation shows up only at
+run time. Run <code>go generate</code>, and keep a test that calls <code>Query</code> for each model.</p>
+<h3 id="new-one-on-writes-with-returning">New: <code>One</code> on writes with <code>RETURNING</code><a class="headerlink" href="#new-one-on-writes-with-returning" title="Permanent link">&para;</a></h3>
+<p><code>InsertQuery.One</code>, <code>UpdateQuery.One</code> and <code>DeleteQuery.One</code> run the statement
+and return the single returned row as <code>T</code>, so a sqlc <code>:one</code> style write no
+longer needs the <code>Rows</code> / <code>ScanModel</code> / <code>Close</code> loop. Without a <code>Returning</code>
+list it returns every column. It returns <code>ErrNotFound</code> when no row came back
+(an <code>ON CONFLICT DO NOTHING</code> insert, or a guarded update or delete that matched
+nothing) and <code>ErrTooManyRows</code> when more than one did.</p>
+<p>Without <code>WithImplicitTx</code> or an explicit transaction the statement has already
+changed every matched row; run <code>One</code> inside <code>db.Tx</code> and roll back on
+<code>ErrTooManyRows</code>. <code>InsertQuery.One</code> is for a single-row insert: a multi-row
+<code>Models</code> insert is <code>ErrValidation</code>, use <code>Rows</code>. <code>AfterLoad</code> runs before the
+write commits, so an <code>AfterLoad</code> error rolls the write back, unlike
+<code>SelectQuery.One</code>. MySQL has no <code>RETURNING</code> and returns <code>ErrUnsupported</code>;
+momo has no <code>RETURNING</code> form for MariaDB <code>UPDATE</code> and <code>DELETE</code> (MariaDB itself
+has <code>DELETE ... RETURNING</code>), so those return <code>ErrUnsupported</code>. This is
+additive; nothing to change.</p>
+<h2 id="upgrading-to-060">Upgrading to 0.6.0<a class="headerlink" href="#upgrading-to-060" title="Permanent link">&para;</a></h2>
+<h3 id="the-using-and-from-guard-is-stricter">The Using and From guard is stricter<a class="headerlink" href="#the-using-and-from-guard-is-stricter" title="Permanent link">&para;</a></h3>
+<p><code>UpdateQuery.From</code> and <code>DeleteQuery.Using</code> refuse a statement whose <code>Where</code>
+does not reference the target table, with <code>ErrUnfilteredMutation</code>. The guard
+now follows <code>Or</code>, <code>Not</code> and <code>JoinSQL</code>: an <code>Or</code> counts only when every branch
+references the target, an <code>And</code> when any term does, and <code>Not</code> swaps the two
+rules. <code>JoinSQL</code> with <code>AND</code> or <code>OR</code> follows the same rules, and <code>JoinSQL</code> with
+any other separator never counts. Statements that passed in 0.5.0 and are now
+refused: <code>Where(momo.Or(PostCols.ID.Eq(1), SrcCols.Title.Eq("x")))</code>, where one
+<code>Or</code> branch is off the target, and
+<code>Where(momo.Not(momo.And(PostCols.ID.Eq(1), SrcCols.Title.Eq("x"))))</code>, which is
+an <code>Or</code> of negations.</p>
+<p>Add a condition on the target to every branch, or call <code>AllRows()</code> when the
+statement is meant to touch every row. The guard checks that the condition
+references the target, not that it restricts it: <code>t.id = t.id</code> still passes.</p>
+<h3 id="openapi-error-bodies-use-the-key-error">OpenAPI error bodies use the key <code>error</code><a class="headerlink" href="#openapi-error-bodies-use-the-key-error" title="Permanent link">&para;</a></h3>
+<p>The OpenAPI document and the generated handlers now describe and send errors
+as <code>{"error": "&lt;message&gt;"}</code>. The <code>Error</code> schema property was <code>message</code> in 0.4.0.
+A client that reads <code>message</code> from an error response must read <code>error</code>. Error
+messages are fixed strings: a constraint violation no longer shows the table or
+constraint name.</p>
+<h3 id="generated-handlers-and-servers">Generated handlers and servers<a class="headerlink" href="#generated-handlers-and-servers" title="Permanent link">&para;</a></h3>
+<p>The ecosystem generators (<code>graphql</code>, <code>grpc</code>, <code>openapi</code>, enabled in the
+<code>plugins:</code> section of <code>momo.yaml</code>) generate servers that do no authentication
+and no authorization. Wrap the <code>http.ServeMux</code>, the <code>grpc.Server</code> or the
+GraphQL handler. Turn off operations of the <code>openapi</code> and <code>grpc</code> servers with
+<code>ops</code> or <code>read_only: true</code> (the <code>graphql</code> plugin has neither option); see the
+<a href="../capabilities/">capabilities</a> page for the options, the error mapping, the
+update semantics and the GraphQL limits.</p>
+<p>PUT and gRPC Update differ on purpose. An OpenAPI PUT must carry every required
+property and writes only the properties it carries, so a property it leaves out
+keeps whatever value the database has, including one a concurrent request just
+wrote. A gRPC Update has no way to leave a scalar out (a proto3 scalar at its
+zero value is a value), so it writes every writable column the message holds;
+a vector, a timestamp or a defaulted scalar left unset is not written. Neither
+reads the row first and writes it back.</p>
+<h3 id="view-models-no-longer-produce-a-table">View models no longer produce a table<a class="headerlink" href="#view-models-no-longer-produce-a-table" title="Permanent link">&para;</a></h3>
+<p>A model that embeds <code>momo.View</code> maps a view, so the generated schema, and with
+it <code>momo migrate diff</code>, holds no table for it. A view model gets no
+<code>CREATE TABLE</code>, and a foreign key never points at it. Declare the view itself
+with <code>c.View</code> in <code>MomoConfig</code>.</p>
+<p>The generated servers expose only list and get for a view model: there is no
+create, update or delete route, RPC or mutation, and naming a write operation
+for a view model in <code>ops</code> is a generator error.</p>
+<p>If you add <code>momo.View</code> to a model whose table really exists in the database,
+<code>momo migrate diff</code> now plans a <code>DROP TABLE</code> for that table (AutoMigrate skips
+it). Review the diff before you apply it.</p>
+<p><code>momo.RefreshMaterializedView</code> refreshes a materialized view (PostgreSQL only).</p>
+<h3 id="openapi-input-and-output-schemas">OpenAPI input and output schemas<a class="headerlink" href="#openapi-input-and-output-schemas" title="Permanent link">&para;</a></h3>
+<p>The OpenAPI document now has two schemas per model. <code>&lt;Model&gt;</code> (for example
+<code>Document</code>) is the output: every column, with the not-null columns, the key
+included, listed in <code>required</code>. A client generator now types <code>id</code> as required
+on a response. <code>&lt;Model&gt;Input</code> (<code>DocumentInput</code>) is new and is what a create and
+a PUT take: only the writable properties, so it has no key and no read-only,
+identity or serial column, and its <code>required</code> list is what it was on <code>&lt;Model&gt;</code>
+in 0.5.0 (not null, no database default). Every response keeps referencing
+<code>&lt;Model&gt;</code>; the request bodies of create and PUT now reference <code>&lt;Model&gt;Input</code>.
+A client generated from the old document sends the same JSON and keeps working;
+regenerate it to get the new types. A model whose name plus <code>Input</code> is also a
+model name (<code>Doc</code> and <code>DocInput</code>) is a generator diagnostic.</p>
+<p>The gRPC messages are unchanged: a model message is still what a client sends
+and receives. The field comments in the <code>.proto</code> file say which fields a request
+ignores (the key on Create, read-only columns on Create and Update, and the
+version, soft-delete and timestamp columns on Update).</p>
+<h3 id="error-hook-and-cancellation-codes">Error hook and cancellation codes<a class="headerlink" href="#error-hook-and-cancellation-codes" title="Permanent link">&para;</a></h3>
+<p>The <code>openapi</code> and <code>grpc</code> plugins take the option <code>on_error</code>, the name of a Go
+function in the generated package with the signature
+<code>func(ctx context.Context, op string, err error)</code>. The generated code calls it
+once for every error it answers from a statement (a database error, a missing
+row, a cancelled context), with the operation (the <code>operationId</code> for OpenAPI,
+for example <code>getDocument</code>; <code>DocumentService.Get</code> for gRPC) and the original
+error, before it writes the fixed message. Log, count or trace the error there.
+A panic in the hook is recovered, so it cannot stop the request from being
+answered. The <code>openapi</code> option needs <code>handlers: true</code>, because only the
+generated handlers call the hook. Without the option nothing changes.</p>
+<p>A request whose context was cancelled is now answered 499 (OpenAPI), <code>Canceled</code>
+(gRPC) and <code>CANCELED</code> (GraphQL) with a fixed message, and one whose deadline
+passed 504, <code>DeadlineExceeded</code> and <code>CANCELED</code>. These were 500 and <code>Internal</code>
+before. A client or proxy that retries on 500 will no longer retry them.</p>
+<h2 id="upgrading-to-050">Upgrading to 0.5.0<a class="headerlink" href="#upgrading-to-050" title="Permanent link">&para;</a></h2>
+<h3 id="regenerating-with-from-db-after-the-dbdefault-tag">Regenerating with <code>--from-db</code> after the <code>dbdefault</code> tag<a class="headerlink" href="#regenerating-with-from-db-after-the-dbdefault-tag" title="Permanent link">&para;</a></h3>
+<p><code>momo generate --from-db</code> now adds the <code>dbdefault</code> tag to every NOT NULL
+PostgreSQL column whose default is computed (<code>gen_random_uuid()</code>, <code>now()</code>,
+<code>CURRENT_TIMESTAMP</code>, <code>nextval(...)</code> and other function calls). A Go zero value
+is no longer written for such a column: <code>InsertQuery.Model</code> and <code>InsertQuery.Models</code> leave it out,
+the database default applies, and the value is read back with <code>RETURNING</code>.
+Review the regenerated models: a <code>bool</code>, number, empty string or zero time in
+such a field can no longer be written explicitly through <code>Model</code> (use <code>InsertQuery.Values</code>
+or remove the tag), and a plain MySQL database refuses a zero value with
+<code>ErrUnsupported</code> because it cannot read the default back. Hand-written models
+are unaffected until they add the tag. See "Database defaults" in the
+<a href="../ai-guide/">AI guide</a>.</p>
+<h3 id="advisory-string-helpers-take-options">Advisory string helpers take options<a class="headerlink" href="#advisory-string-helpers-take-options" title="Permanent link">&para;</a></h3>
+<p><code>advisory.XactLockString</code> and <code>advisory.TryXactLockString</code> take a trailing
+<code>...advisory.Option</code> (for <code>advisory.Hash64</code>). A call site is unchanged, but
+the function types changed: code that assigns one of these functions to a
+variable or field of the old func type no longer compiles. Wrap the call in a
+closure instead.</p>
+<h3 id="model-hook-methods-are-now-wired-by-momo-generate">Model hook methods are now wired by <code>momo generate</code><a class="headerlink" href="#model-hook-methods-are-now-wired-by-momo-generate" title="Permanent link">&para;</a></h3>
+<p><code>momo generate</code> detects methods named <code>BeforeInsert</code>, <code>BeforeUpdate</code>,
+<code>BeforeDelete</code> and <code>AfterLoad</code> on a model and fills <code>Meta.Hooks</code> with them.
+Two behaviors change for an existing model after you regenerate:</p>
+<ul>
+<li>A method with one of these names and the exact signature
+  <code>func(context.Context) error</code> now runs: before inserts, updates and deletes,
+  and after loads. Before, such a method was never called. If you had a method
+  with a hook name that was meant as plain code, rename it before you
+  regenerate.</li>
+<li>A method with one of these names and any other signature makes
+  <code>momo generate</code> fail with a positioned diagnostic
+  (<code>hook BeforeInsert on Doc must have signature func(context.Context) error</code>),
+  and a hook-named method on a projection is a diagnostic as well (a projection
+  runs no hooks). Fix the signature or rename the method.</li>
+</ul>
+<p>If you set <code>Meta.Hooks</code> by hand in a hand-written <code>Meta</code>, nothing changes.
+Generated files are rewritten by <code>momo generate</code>; the <code>Hooks:</code> field appears
+only for models that have a hook method.</p>
+<h3 id="view-models">View models<a class="headerlink" href="#view-models" title="Permanent link">&para;</a></h3>
+<p>A model that embeds <code>momo.View</code> (new) is marked as a view. Its writes fail with
+<code>ErrValidation</code>. Existing models are unaffected unless you add the marker.</p>
+<h2 id="upgrading-to-040">Upgrading to 0.4.0<a class="headerlink" href="#upgrading-to-040" title="Permanent link">&para;</a></h2>
+<p>Release 0.4.0 moves feature-specific helpers out of the root package <code>momo</code>
+into subpackages. Every move is a source break: the old identifier is gone and
+the new one lives under a new import path. The release notes are the 0.4.0
+entry of the <a href="https://github.com/azrtydxb/momo/blob/main/CHANGELOG.md">changelog</a>.</p>
+<p>Why there is no alias: a Go method lives in the package of its receiver type,
+and the subpackages import <code>momo</code>, so <code>momo</code> cannot import them back to keep
+the old names. A move therefore deletes the old identifier outright.</p>
+<h3 id="identifier-table">Identifier table<a class="headerlink" href="#identifier-table" title="Permanent link">&para;</a></h3>
+<p>One row per moved identifier. When a method became a function, the old name is
+the method and the new name is the function, which takes the former receiver
+as an argument.</p>
+<table>
+<thead>
+<tr>
+<th>Old identifier</th>
+<th>New import path</th>
+<th>New identifier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momo.ArrayContains</code></td>
+<td><code>github.com/azrtydxb/momo/arrayop</code></td>
+<td><code>arrayop.Contains</code></td>
+</tr>
+<tr>
+<td><code>momo.ArrayContainedBy</code></td>
+<td><code>github.com/azrtydxb/momo/arrayop</code></td>
+<td><code>arrayop.ContainedBy</code></td>
+</tr>
+<tr>
+<td><code>momo.ArrayOverlaps</code></td>
+<td><code>github.com/azrtydxb/momo/arrayop</code></td>
+<td><code>arrayop.Overlaps</code></td>
+</tr>
+<tr>
+<td><code>momo.AnyOf</code></td>
+<td><code>github.com/azrtydxb/momo/arrayop</code></td>
+<td><code>arrayop.AnyOf</code></td>
+</tr>
+<tr>
+<td><code>momo.TSExpr</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.Expr</code></td>
+</tr>
+<tr>
+<td><code>momo.ToTSVector</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.ToVector</code></td>
+</tr>
+<tr>
+<td><code>momo.WebsearchToTSQuery</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.WebsearchToQuery</code></td>
+</tr>
+<tr>
+<td><code>momo.PlainToTSQuery</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.PlainToQuery</code></td>
+</tr>
+<tr>
+<td><code>momo.PhraseToTSQuery</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.PhraseToQuery</code></td>
+</tr>
+<tr>
+<td><code>momo.ToTSQuery</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.ToQuery</code></td>
+</tr>
+<tr>
+<td><code>momo.TSMatch</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.Match</code></td>
+</tr>
+<tr>
+<td><code>momo.TSRank</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.Rank</code></td>
+</tr>
+<tr>
+<td><code>momo.TSRankCD</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.RankCD</code></td>
+</tr>
+<tr>
+<td><code>momo.TSHeadline</code></td>
+<td><code>github.com/azrtydxb/momo/fts</code></td>
+<td><code>fts.Headline</code></td>
+</tr>
+<tr>
+<td><code>momo.Substr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Substr</code></td>
+</tr>
+<tr>
+<td><code>momo.SubstrFrom</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.SubstrFrom</code></td>
+</tr>
+<tr>
+<td><code>momo.Lower</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Lower</code></td>
+</tr>
+<tr>
+<td><code>momo.Upper</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Upper</code></td>
+</tr>
+<tr>
+<td><code>momo.Length</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Length</code></td>
+</tr>
+<tr>
+<td><code>momo.LengthExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.LengthExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.CurrentSchema</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CurrentSchema</code></td>
+</tr>
+<tr>
+<td><code>momo.CurrentSchemaExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CurrentSchemaExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Case</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Case</code></td>
+</tr>
+<tr>
+<td><code>momo.CaseExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CaseExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Numeric</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Numeric</code></td>
+</tr>
+<tr>
+<td><code>momo.ArithExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.ArithExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Add</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Add</code></td>
+</tr>
+<tr>
+<td><code>momo.AddExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.AddExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Sub</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Sub</code></td>
+</tr>
+<tr>
+<td><code>momo.SubExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.SubExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Mul</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Mul</code></td>
+</tr>
+<tr>
+<td><code>momo.MulExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.MulExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.CoalesceExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CoalesceExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Cast</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Cast</code></td>
+</tr>
+<tr>
+<td><code>momo.CastExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.CastExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Concat</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.Concat</code></td>
+</tr>
+<tr>
+<td><code>momo.ConcatExpr</code></td>
+<td><code>github.com/azrtydxb/momo/sqlfn</code></td>
+<td><code>sqlfn.ConcatExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONText</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.Text</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONPath</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.Path</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONContains</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.Contains</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONHasKey</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.HasKey</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONTextExpr</code></td>
+<td><code>github.com/azrtydxb/momo/jsonop</code></td>
+<td><code>jsonop.TextExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.AggExpr</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Call</code></td>
+</tr>
+<tr>
+<td><code>momo.Aggregate</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Func</code></td>
+</tr>
+<tr>
+<td><code>momo.StringAgg</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.String</code></td>
+</tr>
+<tr>
+<td><code>momo.ArrayAgg</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Array</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONBAgg</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.JSONB</code></td>
+</tr>
+<tr>
+<td><code>momo.PercentileCont</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.PercentileCont</code></td>
+</tr>
+<tr>
+<td><code>momo.PercentileDisc</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.PercentileDisc</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONPair</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Pair</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONField</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.Field</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONObjectExpr</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.ObjectExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.JSONBBuildObject</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.BuildObject</code></td>
+</tr>
+<tr>
+<td><code>momo.ToJSONExpr</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.JSONExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.ToJSONB</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.ToJSONB</code></td>
+</tr>
+<tr>
+<td><code>momo.EmptyJSONArray</code></td>
+<td><code>github.com/azrtydxb/momo/agg</code></td>
+<td><code>agg.EmptyJSONArray</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractField</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractField</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractExpr</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.Extract</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Extract</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractYear</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractYear</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractMonth</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractMonth</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractDay</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractDay</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractHour</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractHour</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractMinute</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractMinute</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractSecond</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractSecond</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractQuarter</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractQuarter</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractDow</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractDow</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractISODow</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractISODow</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractDoy</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractDoy</code></td>
+</tr>
+<tr>
+<td><code>momo.ExtractEpoch</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.ExtractEpoch</code></td>
+</tr>
+<tr>
+<td><code>momo.TimeExpr</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Expr</code></td>
+</tr>
+<tr>
+<td><code>momo.AtTimeZone</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.AtTimeZone</code></td>
+</tr>
+<tr>
+<td><code>momo.AtTimeZoneExpr</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.AtTimeZoneExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalUnit</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalUnit</code></td>
+</tr>
+<tr>
+<td><code>momo.Interval</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Interval</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalOf</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalOf</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalExpr</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalExpr</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalSecond</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalSecond</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalMinute</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalMinute</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalHour</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalHour</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalDay</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalDay</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalWeek</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalWeek</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalMonth</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalMonth</code></td>
+</tr>
+<tr>
+<td><code>momo.IntervalYear</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.IntervalYear</code></td>
+</tr>
+<tr>
+<td><code>momo.AddInterval</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.AddInterval</code></td>
+</tr>
+<tr>
+<td><code>momo.SubInterval</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.SubInterval</code></td>
+</tr>
+<tr>
+<td><code>momo.Now</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Now</code></td>
+</tr>
+<tr>
+<td><code>momo.CurrentTimestamp</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.CurrentTimestamp</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncUnit</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncUnit</code></td>
+</tr>
+<tr>
+<td><code>momo.DateTrunc</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.Trunc</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncSecond</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncSecond</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncMinute</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncMinute</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncHour</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncHour</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncDay</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncDay</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncWeek</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncWeek</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncMonth</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncMonth</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncQuarter</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncQuarter</code></td>
+</tr>
+<tr>
+<td><code>momo.TruncYear</code></td>
+<td><code>github.com/azrtydxb/momo/timeop</code></td>
+<td><code>timeop.TruncYear</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.AdvisoryXactLock</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.XactLock</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.AdvisoryXactLockString</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.XactLockString</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.TryAdvisoryXactLock</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.TryXactLock</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.TryAdvisoryXactLockString</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.TryXactLockString</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.AdvisoryXactLock</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.XactLock</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.AdvisoryXactLockString</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.XactLockString</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.TryAdvisoryXactLock</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.TryXactLock</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.TryAdvisoryXactLockString</code></td>
+<td><code>github.com/azrtydxb/momo/advisory</code></td>
+<td><code>advisory.TryXactLockString</code></td>
+</tr>
+<tr>
+<td><code>momo.SearchSettings</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.Settings</code></td>
+</tr>
+<tr>
+<td><code>momo.SearchSettings.Validate</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.Settings.Validate</code></td>
+</tr>
+<tr>
+<td><code>momo.IterativeScan</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.IterativeScan</code></td>
+</tr>
+<tr>
+<td><code>momo.IterativeOff</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.IterativeOff</code></td>
+</tr>
+<tr>
+<td><code>momo.IterativeRelaxedOrder</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.IterativeRelaxedOrder</code></td>
+</tr>
+<tr>
+<td><code>momo.IterativeStrictOrder</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.IterativeStrictOrder</code></td>
+</tr>
+<tr>
+<td><code>momo.Tx.SetSearch</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.Apply</code></td>
+</tr>
+<tr>
+<td><code>momo.DB.WithSearch</code></td>
+<td><code>github.com/azrtydxb/momo/vecsearch</code></td>
+<td><code>vecsearch.With</code></td>
+</tr>
+<tr>
+<td><code>momo.DistanceExpr</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.Expr</code></td>
+</tr>
+<tr>
+<td><code>momo.L2Distance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.L2</code></td>
+</tr>
+<tr>
+<td><code>momo.InnerProductDistance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.InnerProduct</code></td>
+</tr>
+<tr>
+<td><code>momo.CosineDistance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.Cosine</code></td>
+</tr>
+<tr>
+<td><code>momo.L1Distance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.L1</code></td>
+</tr>
+<tr>
+<td><code>momo.HammingDistance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.Hamming</code></td>
+</tr>
+<tr>
+<td><code>momo.JaccardDistance</code></td>
+<td><code>github.com/azrtydxb/momo/vecop</code></td>
+<td><code>vecop.Jaccard</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="rewrite-recipe">Rewrite recipe<a class="headerlink" href="#rewrite-recipe" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Commit your work first, because the next steps edit files in place, then
+   fetch the release: <code>go get github.com/azrtydxb/momo@v0.4.0</code>.</li>
+<li>Save the raw markdown of this page (not the rendered HTML) as <code>upgrading.md</code>
+   in your module root and run the block below from there. It turns the table
+   into <code>gofmt -r</code> rules and applies them to the Go files that import
+   <code>github.com/azrtydxb/momo</code> by that exact path, skipping <code>vendor/</code>. It
+   rewrites the rows of plain identifiers (functions, types and constants),
+   stops with an error when it finds no file or generates no rule, and does not
+   touch a file that imports momo under an alias or with a dot import; the
+   compiler lists what is left there.</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="nv">files</span><span class="o">=</span><span class="k">$(</span>grep<span class="w"> </span>-rl<span class="w"> </span>--include<span class="o">=</span><span class="s1">'*.go'</span><span class="w"> </span><span class="s1">'github.com/azrtydxb/momo"'</span><span class="w"> </span>.<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span>/vendor/<span class="k">)</span>
+<span class="nv">rules</span><span class="o">=</span><span class="k">$(</span>awk<span class="w"> </span>-F<span class="s1">'`'</span><span class="w"> </span><span class="s1">'NF == 7 &amp;&amp; $1 ~ /^\| *$/ &amp;&amp; $2 ~ /^momo\.[A-Za-z0-9]+$/ { printf "gofmt -r \"%s -&gt; %s\" -w \"$@\"\n", $2, $6 }'</span><span class="w"> </span>upgrading.md<span class="k">)</span>
+<span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$files</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"no Go file imports momo"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$rules</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"no rules: upgrading.md must be the raw markdown of this page"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$rules</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span><span class="nv">$files</span>
+</code></pre></div>
+<ol>
+<li>Rewrite the <code>momo.Tx.*</code> and <code>momo.DB.*</code> rows by hand, because the receiver
+   moves into the argument list: <code>recv.Old(ctx, args)</code> becomes
+   <code>pkg.New(ctx, recv, args)</code>. A <code>DB</code> advisory call must pass a transaction
+   (see the paragraph on the advisory locks below). The <code>Validate</code> method of the old
+   <code>SearchSettings</code> type is a plain rename: step 2 rewrites the type, and
+   <code>Validate</code> stays a method of <code>vecsearch.Settings</code>.</li>
+<li>In every file, import each new package that now appears in it (<code>arrayop.</code>,
+   <code>fts.</code>, ...) by the full path in the second column of the table, then build.
+   The compiler lists whatever is left.</li>
+</ol>
+<p>A row never changes the SQL a query produces; only the Go name and import path
+change.</p>
+<p>One type gained methods: <code>sqlfn.CurrentSchemaExpr</code> now has the comparison and
+ordering methods (<code>Eq</code>, <code>In</code>, <code>Asc</code>, ...) the other function results have, so
+<code>sqlfn.CurrentSchema().Eq("app")</code> compiles, where the old root function's
+result had no such method.</p>
+<p>The advisory lock methods became functions: <code>tx.AdvisoryXactLock(ctx, 42)</code>
+is now <code>advisory.XactLock(ctx, tx, 42)</code>, and the same for <code>advisory.XactLockString</code> and the
+<code>Try</code> forms. The transaction is the second argument and its type is
+<code>*momo.Tx</code>. The <code>DB</code> methods always returned <code>momo.ErrValidation</code>, because a
+transaction-scoped lock outside a transaction is released at once; the
+functions turn that into a compile error, so a caller that used the <code>DB</code> form
+must open a transaction with <code>db.Tx</code> or <code>db.Begin</code>. A dialect other than
+PostgreSQL still fails with <code>momo.ErrUnsupported</code>.</p>
+<h3 id="what-did-not-move">What did not move<a class="headerlink" href="#what-did-not-move" title="Permanent link">&para;</a></h3>
+<p>These stay in <code>momo</code>, with the reason:</p>
+<ul>
+<li><code>Func</code> and <code>FuncExpr</code>: the generic SQL function escape hatch, which the new
+  packages build on.</li>
+<li><code>Coalesce</code>, <code>Value</code>, <code>SQL</code> and <code>TypedSQL</code>: bound-value and raw-fragment
+  building blocks of the expression core. <code>sqlfn.CoalesceExpr</code> takes expression
+  arguments instead.</li>
+<li>The vector column types (<code>VectorColumn</code> and its variants): generated code
+  references them.</li>
+<li>The hook interfaces (<code>Hook</code>, <code>QueryEvent</code>, <code>RelationHook</code>, <code>RelationEvent</code>):
+  <code>DB</code> stores the hooks and calls them.</li>
+<li>The basic aggregates (<code>Agg[T]</code>, <code>CountAll</code>, <code>Sum</code>, <code>Avg</code>, <code>Min</code>, <code>Max</code>):
+  <code>Having</code> and select lists are typed on <code>Agg</code>.</li>
+<li><code>Tx.SetLocal</code>: a method of <code>Tx</code>, and other helpers call it.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
