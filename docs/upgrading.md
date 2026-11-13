@@ -5,6 +5,20 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.9.1
+
+No change is needed in your code, your generated models or your migration
+snapshot.
+
+`momotest.New` and `momotest.NewTx` keep the `momo_migrations` history table in
+the test schema. Before, a `public` schema that already held `momo_migrations`
+(a CI job ran `momo migrate apply` on the same database) made `WithMigrations`
+create nothing in the test schema, and the tests ran on `public`'s tables. You
+can drop a separate `<db>_momotest` database that you set up as a workaround. A
+set of migrations that creates tables but leaves the test schema without one now
+fails the test with a message naming the schema. `postgres.WithHistorySchema` is
+the new dialect option behind it.
+
 ## Upgrading to 0.9.0
 
 No change is needed in your code, your generated models or your migration

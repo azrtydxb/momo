@@ -104,6 +104,24 @@ database, so it would land in one test's schema and vanish under the others when
 that schema is dropped. List extensions in `momotest.WithExtensions` (names are matched
 in lower case); they are installed once in `public`.
 
+`public` may already hold your tables and a `momo_migrations` history table, for
+example when a CI job ran `momo migrate apply` on the same database first. The
+test schema still gets its own history table and its own tables: `momotest` pins
+the history table to the test schema, so the migrations never look at
+`public`'s history. If the migrations create tables and the test schema holds
+none after they ran (a migration that qualifies its tables with `public`, for
+instance), `momotest.New` and `momotest.NewTx` fail naming the schema, instead
+of running the test on tables outside it.
+
+Unqualified `CREATE TABLE`, `CREATE INDEX`, `CREATE TYPE` and `CREATE FUNCTION`,
+with or without `IF NOT EXISTS`, create their object in the test schema and look
+for an existing one only there, so a same-named object in `public` does not make
+them skip. A statement on an object the migrations did not create in the test
+schema resolves through the search path, so it reaches `public`: `DROP TABLE IF
+EXISTS legacy` or `ALTER TABLE IF EXISTS legacy` on a database where `public`
+holds `legacy` acts on that table. Keep such statements out of migrations that
+run under `momotest`.
+
 The check reads the SQL with comments and string literals removed, so a comment
 that mentions `create schema` is fine and `CREATE /* x */ EXTENSION foo` is still
 caught. Quoted identifiers are kept. Dollar-quoted bodies are checked as code,

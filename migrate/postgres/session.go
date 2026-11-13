@@ -50,8 +50,13 @@ kind TEXT NOT NULL DEFAULT 'sql'
 // CREATE TABLE uses; when there is no current schema either, the error wraps
 // migrate.ErrNoHistoryTable. Every later statement uses the returned
 // reference, so a migration that changes search_path cannot redirect the
-// history writes.
-func (Dialect) HistoryTable(ctx context.Context, c momo.PinnedConn) (string, error) {
+// history writes. With WithHistorySchema the lookup and the creation schema are
+// that schema and the search_path plays no part.
+func (d Dialect) HistoryTable(ctx context.Context, c momo.PinnedConn) (string, error) {
+	lookup := "momo_migrations"
+	if d.historySchema != "" {
+		lookup = quoteIdent(d.historySchema) + ".momo_migrations"
+	}
 	var schemaName, kind, persistence, owner string
 	var usable, superTrust bool
 	found := false
@@ -67,7 +72,7 @@ func (Dialect) HistoryTable(ctx context.Context, c momo.PinnedConn) (string, err
   OR c.relowner = (SELECT me.oid FROM pg_catalog.pg_roles me WHERE me.rolname = current_user)
   OR COALESCE((SELECT o.rolsuper FROM pg_catalog.pg_roles o WHERE o.oid = c.relowner), false)
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-WHERE c.oid = pg_catalog.to_regclass('momo_migrations')`, nil, func(r momo.Rows) error {
+WHERE c.oid = pg_catalog.to_regclass($1)`, []any{lookup}, func(r momo.Rows) error {
 		found = true
 		return r.Scan(&schemaName, &kind, &persistence, &owner, &usable, &superTrust)
 	})
@@ -85,6 +90,9 @@ WHERE c.oid = pg_catalog.to_regclass('momo_migrations')`, nil, func(r momo.Rows)
 			return "", &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Table: "momo_migrations", Err: fmt.Errorf("the table %s.momo_migrations is owned by role %s, which is not a superuser, and the connecting role is a superuser; a superuser only trusts a history table that it or another superuser owns, because the table's triggers and rules would run with superuser rights. Fix the ownership, or remove that schema from the search_path", quoteIdent(schemaName), quoteIdent(owner))}
 		}
 		return quoteIdent(schemaName) + "." + quoteIdent("momo_migrations"), nil
+	}
+	if d.historySchema != "" {
+		return quoteIdent(d.historySchema) + "." + quoteIdent("momo_migrations"), nil
 	}
 	var cur string
 	if err := queryOne(ctx, c, `SELECT COALESCE(current_schema(), '')`, nil, &cur); err != nil {
