@@ -7,9 +7,10 @@ later releases can break more.
 
 ## Upgrading to 0.11.0
 
-One change can need an edit in your code: an explicit `updated_at` in
-`DoUpdate` is refused (below). The rest fixes or adds behaviour, and two of
-those fixes change what your code writes.
+Two changes can need an edit in your code: an explicit `updated_at` in
+`DoUpdate` is refused, and on PostgreSQL a JSON null no longer reads as a nil
+pointer (both below). The rest fixes or adds behaviour, and two of those
+fixes change what your code writes.
 
 ### `DoUpdate` sets `updated_at` from the clock and refuses an explicit one
 
@@ -50,6 +51,51 @@ momo.Insert[Doc](db).Model(&d).OnConflict(DocID).DoUpdate(DocTitle.SetExcluded()
 // after
 momo.Insert[Doc](db).Model(&d).OnConflict(DocID).DoUpdate(DocTitle.SetExcluded())
 ```
+
+### A JSON null reads as a non-nil `*types.JSON[T]`, not as nil
+
+On PostgreSQL, a nullable `jsonb` column read into a `*types.JSON[T]` used to
+give a nil pointer for both SQL NULL and the JSON literal `null`, because pgx
+sets a pointer to a pointer to nil for both. The two are now apart:
+
+- SQL NULL gives a nil pointer, as before;
+- the JSON literal `null` gives a non-nil pointer whose `IsNull` method returns
+  true and whose `V` is the zero `T` (or what `T`'s own decoder makes of
+  `null`, such as `json.RawMessage("null")`).
+
+Code on PostgreSQL that relied on a JSON null reading as nil breaks silently: a
+`meta == nil` test is now false for a row holding `null`. Test both cases:
+
+```text
+if meta == nil || meta.IsNull() {
+	// SQL NULL or JSON null
+}
+```
+
+Writing a value read as JSON null stores `null` again, not SQL NULL. A nil
+pointer still writes SQL NULL. `types.JSONNull[T]()` builds a JSON null to
+write.
+
+On SQLite and MySQL, where the column is `TEXT`, database/sql already gave a
+non-nil pointer for a stored `null`, so nothing changes in what a read returns.
+What is new there is `IsNull` and the write-back: a value read from `null` is
+stored as `null`, where before a struct `T` was stored as the encoding of its
+zero value. A plain, non-pointer `types.JSON[T]` field is unchanged: SQL NULL
+is still a scan error and the JSON null reads as the zero `T` (with `IsNull`
+true).
+
+After reading a JSON null, give the value new contents with `types.JSON.Set` or a fresh
+`types.JSON[T]{V: v}`. Assigning `V` directly to its zero value (`false`, `0`,
+`""`) keeps the JSON null, because the zero value cannot be told from an
+untouched `V`.
+
+`types.JSON[T]` now has a private field, so an unkeyed literal
+`types.JSON[T]{v}` no longer compiles; write `types.JSON[T]{V: v}`. Two values
+compare equal with `==` only when the null state matches, so a scanned null
+differs from `types.JSON[T]{}`, and go-cmp needs a comparison option that ignores the null state.
+`types.JSON[T]` has no `MarshalJSON`: `encoding/json` renders
+`types.JSONNull[T]()` as `{"V":null}`, and the null state does not survive an
+API round trip.
 
 ### An `Update` with nothing to set touches `updated_at`
 

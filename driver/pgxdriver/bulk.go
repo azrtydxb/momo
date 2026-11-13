@@ -259,7 +259,7 @@ func (r *bufferedRows) Scan(dest ...any) error {
 	if len(dest) != len(row) {
 		return fmt.Errorf("pgxdriver: Scan got %d destinations for %d columns", len(dest), len(row))
 	}
-	for i, d := range dest {
+	for i, d := range wrapJSONNull(dest) {
 		f := r.fields[i]
 		if err := r.tm.Scan(f.DataTypeOID, f.Format, row[i], d); err != nil {
 			return fmt.Errorf("pgxdriver: column %d cannot be scanned into the destination", i)

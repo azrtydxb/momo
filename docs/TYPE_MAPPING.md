@@ -196,8 +196,36 @@ except `NaN`, which SQLite does not have (see Floats).
   PostgreSQL only and need `jsonb`). A
   nullable column holds either SQL NULL or the JSON literal null; an extraction
   is NULL for both and for a missing key, so test the column itself with
-  `IsNull`. Grouping by an extraction works only for plain keys (letters,
-  digits, underscore) and not on a sensitive column; see the AI guide pitfalls.
+  `IsNull`.
+
+  Reading keeps the two apart when you scan into a `*types.JSON[T]` field (a
+  nullable column): SQL NULL gives a nil pointer, and the JSON literal null
+  gives a non-nil pointer whose `IsNull` method returns true. Writing it back
+  stores the JSON literal null, not SQL NULL; a nil pointer stores SQL NULL.
+  `types.JSONNull` builds a JSON null value to write. This holds on PostgreSQL
+  (`jsonb`, native and `FromSQLDB` drivers), SQLite and MySQL, where the column
+  is `TEXT` and any stored text that is `null` (white space around it ignored)
+  counts as the JSON null. A plain, non-pointer `types.JSON[T]` field still
+  errors on SQL NULL and reads the JSON null as the zero `T` with `IsNull`
+  true.
+
+  `IsNull` stays true after a read while `V` is the zero value of `T` or still
+  encodes as `null` (a `json.RawMessage` holding `null`, the generated default
+  type, or a `T` with its own `UnmarshalJSON`). To give a value read as null
+  new contents, assign through `types.JSON.Set` or a fresh `types.JSON[T]{V: v}`.
+  Assigning `V` directly to its zero value (`false`, `0`, `""`) keeps the JSON
+  null, because the zero value cannot be told from an untouched `V`.
+
+  `types.JSON[T]` has a private field and no `MarshalJSON`. Two values compare
+  equal with `==` only when the null state matches, so a scanned null differs
+  from `types.JSON[T]{}`; go-cmp needs a comparison option that ignores the null state.
+  `encoding/json` renders any `types.JSON[T]` as `{"V":...}`, and
+  `types.JSONNull[T]()` as `{"V":null}`: the null state does not survive an API
+  round trip through `encoding/json`.
+
+  Grouping by an extraction works only for plain keys (letters, digits,
+  underscore) and not on a sensitive column; see the AI guide pitfalls.
+
 - `types.TimeOfDay`: nanoseconds since midnight, truncated to microseconds
   (PostgreSQL `time` precision); `86399999999000` is the last representable
   value, and a value outside one day is an error.
