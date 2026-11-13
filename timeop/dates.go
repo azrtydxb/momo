@@ -101,8 +101,8 @@ func checkFinite(b *momo.Builder, e momo.Expression[types.Date]) {
 // on SQLite. A count outside the int32 range fails the build with
 // momo.ErrValidation.
 //
-// It renders (d + n) on PostgreSQL, DATE_ADD(d, INTERVAL n DAY) on MySQL and
-// date(d, '+n days') on SQLite, which stores a types.Date as 'YYYY-MM-DD'
+// It renders (d + n) on PostgreSQL, DATE(DATE_ADD(d, INTERVAL n DAY)) on MySQL
+// and MariaDB and date(d, '+n days') on SQLite, which stores a types.Date as 'YYYY-MM-DD'
 // text. A month end or a leap day follows the calendar on every dialect:
 // 2028-02-28 plus 1 is 2028-02-29.
 //
@@ -122,7 +122,10 @@ func AddDays(d momo.Expression[types.Date], n int) DateExpr {
 
 // AddDaysExpr is d + n for a count that is an expression: a bound
 // momo.Value(int32(3)), or a column read with momo.Typed[int32](col). See
-// AddDays for the rendering and for infinity. A NULL count gives NULL.
+// AddDays for the rendering and for infinity. A NULL count gives NULL. On
+// PostgreSQL a count read from a column must be an int4 (integer) column:
+// momo.Typed[int32] over a bigint column fails at run time with "operator does
+// not exist: date + bigint".
 func AddDaysExpr(d momo.Expression[types.Date], n momo.Expression[int32]) DateExpr {
 	return addDays(d, n, nil)
 }
@@ -150,11 +153,13 @@ func addDays(d momo.Expression[types.Date], n momo.Expression[int32], lit *int32
 			n.AppendSQL(b)
 			b.WriteString(")")
 		case dialect.MySQL:
-			b.WriteString("DATE_ADD(")
+			// DATE() keeps the result a plain 'YYYY-MM-DD': DATE_ADD on a text
+			// operand can return a DATETIME string, which types.Date rejects.
+			b.WriteString("DATE(DATE_ADD(")
 			d.AppendSQL(b)
 			b.WriteString(", INTERVAL ")
 			n.AppendSQL(b)
-			b.WriteString(" DAY)")
+			b.WriteString(" DAY))")
 		case dialect.SQLite:
 			b.WriteString("date(")
 			d.AppendSQL(b)

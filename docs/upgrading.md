@@ -21,7 +21,7 @@ snapshot. 0.11.0 adds API:
 
   `timeop.AddDays` gives a `types.Date` and `timeop.DaysBetween` an `int32`
   count of whole days, `a - b`. PostgreSQL renders `(d + n)` and `(a - b)`,
-  MySQL `DATE_ADD` and `DATEDIFF`, SQLite `date(d, '+n days')` and a
+  MySQL `DATE(DATE_ADD(...))` and `DATEDIFF`, SQLite `date(d, '+n days')` and a
   `julianday` difference. `infinity + n` stays infinity on PostgreSQL and
   `infinity - date` is a database error there. SQLite and MySQL fail the build
   with `momo.ErrValidation` for a bound infinite date.

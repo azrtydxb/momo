@@ -100,6 +100,6 @@ func ExampleAddDays() {
 	// ("appeals"."respond_by" - CAST($1 AS date))
 	// date(?, '+3 days')
 	// CAST(julianday("appeals"."respond_by") - julianday(?) AS INTEGER)
-	// DATE_ADD(?, INTERVAL ? DAY)
+	// DATE(DATE_ADD(?, INTERVAL ? DAY))
 	// DATEDIFF(`appeals`.`respond_by`, ?)
 }

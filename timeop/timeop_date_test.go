@@ -4,6 +4,7 @@ package timeop_test
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -38,8 +39,8 @@ func TestAddDaysGolden(t *testing.T) {
 		{dialect.Postgres, timeop.AddDays(day, -3), `(CAST($1 AS date) + CAST($2 AS integer))`, []any{tmDate(2028, 2, 28), int32(-3)}},
 		{dialect.Postgres, timeop.AddDaysExpr(tmDue, bound), `(` + tmD + ` + CAST($1 AS integer))`, []any{int32(5)}},
 		{dialect.Postgres, timeop.AddDaysExpr(tmDue, momo.Typed[int32](tmDueB)), `(` + tmD + ` + ` + tmDB + `)`, nil},
-		{dialect.MySQL, timeop.AddDays(tmDue, 3), `DATE_ADD(` + tmD + `, INTERVAL ? DAY)`, []any{int32(3)}},
-		{dialect.MySQL, timeop.AddDaysExpr(tmDue, bound), `DATE_ADD(` + tmD + `, INTERVAL ? DAY)`, []any{int32(5)}},
+		{dialect.MySQL, timeop.AddDays(tmDue, 3), `DATE(DATE_ADD(` + tmD + `, INTERVAL ? DAY))`, []any{int32(3)}},
+		{dialect.MySQL, timeop.AddDaysExpr(tmDue, bound), `DATE(DATE_ADD(` + tmD + `, INTERVAL ? DAY))`, []any{int32(5)}},
 		{dialect.SQLite, timeop.AddDays(tmDue, 3), `date(` + tmD + `, '+3 days')`, nil},
 		{dialect.SQLite, timeop.AddDays(tmDue, -3), `date(` + tmD + `, '-3 days')`, nil},
 		{dialect.SQLite, timeop.AddDays(tmDue, 0), `date(` + tmD + `, '+0 days')`, nil},
@@ -100,9 +101,14 @@ func TestDateArithmeticRejections(t *testing.T) {
 	if _, err := selectOne(dialect.Postgres, timeop.AddDays(inf, 1)); err != nil {
 		t.Errorf("postgres: AddDays over infinity = %v, want it to build", err)
 	}
-	for _, d := range typedDialects {
-		if _, err := selectOne(d, timeop.AddDays(tmDue, 1<<40)); !errors.Is(err, momo.ErrValidation) {
-			t.Errorf("%s: AddDays(1<<40) = %v, want ErrValidation", d, err)
+	if strconv.IntSize == 64 {
+		// A variable, not a constant: 1<<40 does not compile as a 32-bit int.
+		big := 1
+		big <<= 40
+		for _, d := range typedDialects {
+			if _, err := selectOne(d, timeop.AddDays(tmDue, big)); !errors.Is(err, momo.ErrValidation) {
+				t.Errorf("%s: AddDays(1<<40) = %v, want ErrValidation", d, err)
+			}
 		}
 	}
 }

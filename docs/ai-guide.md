@@ -1146,7 +1146,7 @@ timeop.AddDuration(doc.CreatedAt, 1500*time.Millisecond)                        
 timeop.EpochSeconds(timeop.Sub(job.FinishedAt, job.StartedAt))                                   // float64 extract(epoch FROM a - b); TIMESTAMPDIFF on MySQL, julianday on SQLite
 timeop.EpochSeconds(timeop.Age(a, b))                                                            // age(a, b), PostgreSQL only; ErrUnsupported elsewhere; its epoch counts a month as 30 days and a year as 365.25 days, use Sub for elapsed time
 // Date arithmetic on a types.Date column; the results are typed, so no momo.Typed retyping is needed.
-timeop.AddDays(appeal.RespondBy, 3)                                                              // types.Date: (d + n) on PostgreSQL, DATE_ADD on MySQL, date(d, '+3 days') on SQLite; also AddDaysExpr(d, momo.Value(int32(n)))
+timeop.AddDays(appeal.RespondBy, 3)                                                              // types.Date: (d + n) on PostgreSQL, DATE(DATE_ADD) on MySQL, date(d, '+3 days') on SQLite; also AddDaysExpr(d, momo.Value(int32(n))); a column count must be int4 on PostgreSQL, momo.Typed[int32] over a bigint fails at run time
 timeop.DaysBetween(appeal.RespondBy, momo.Value(today))                                          // int32 whole days, a - b: (a - b), DATEDIFF, julianday difference; negative when a is earlier
 // appeal.RespondBy.LeExpr(timeop.AddDays(momo.Value(today), 3)) is respond_by <= today + 3. Infinity: PostgreSQL keeps infinity + n and refuses infinity - date; SQLite and MySQL fail the build with ErrValidation for a bound infinite date.
 
