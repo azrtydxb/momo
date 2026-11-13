@@ -5,6 +5,27 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.11.0
+
+No change is needed in your code, your generated models or your migration
+snapshot. 0.11.0 adds API:
+
+- `timeop.AddDays`, `timeop.AddDaysExpr` and `timeop.DaysBetween` do date
+  arithmetic on a `types.Date` with typed results. The date is no longer
+  retyped as an `int32` to use `sqlfn.AddExpr` or `sqlfn.SubExpr`:
+
+  ```text
+  due := appeal.RespondBy.LeExpr(timeop.AddDays(momo.Value(today), 3))
+  left := timeop.DaysBetween(appeal.RespondBy, momo.Value(today))
+  ```
+
+  `timeop.AddDays` gives a `types.Date` and `timeop.DaysBetween` an `int32`
+  count of whole days, `a - b`. PostgreSQL renders `(d + n)` and `(a - b)`,
+  MySQL `DATE_ADD` and `DATEDIFF`, SQLite `date(d, '+n days')` and a
+  `julianday` difference. `infinity + n` stays infinity on PostgreSQL and
+  `infinity - date` is a database error there. SQLite and MySQL fail the build
+  with `momo.ErrValidation` for a bound infinite date.
+
 ## Upgrading to 0.10.0
 
 No change is needed in your code, your generated models or your migration
