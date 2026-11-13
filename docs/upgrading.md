@@ -39,7 +39,7 @@ zero value. A plain, non-pointer `types.JSON[T]` field is unchanged: SQL NULL
 is still a scan error and the JSON null reads as the zero `T` (with `IsNull`
 true).
 
-After reading a JSON null, give the value new contents with `Set` or a fresh
+After reading a JSON null, give the value new contents with `types.JSON.Set` or a fresh
 `types.JSON[T]{V: v}`. Assigning `V` directly to its zero value (`false`, `0`,
 `""`) keeps the JSON null, because the zero value cannot be told from an
 untouched `V`.
@@ -47,7 +47,7 @@ untouched `V`.
 `types.JSON[T]` now has a private field, so an unkeyed literal
 `types.JSON[T]{v}` no longer compiles; write `types.JSON[T]{V: v}`. Two values
 compare equal with `==` only when the null state matches, so a scanned null
-differs from `types.JSON[T]{}`, and go-cmp needs an option or an `Equal` method.
+differs from `types.JSON[T]{}`, and go-cmp needs a comparison option that ignores the null state.
 `types.JSON[T]` has no `MarshalJSON`: `encoding/json` renders
 `types.JSONNull[T]()` as `{"V":null}`, and the null state does not survive an
 API round trip.

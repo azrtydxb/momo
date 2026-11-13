@@ -212,13 +212,13 @@ except `NaN`, which SQLite does not have (see Floats).
   `IsNull` stays true after a read while `V` is the zero value of `T` or still
   encodes as `null` (a `json.RawMessage` holding `null`, the generated default
   type, or a `T` with its own `UnmarshalJSON`). To give a value read as null
-  new contents, assign through `Set` or a fresh `types.JSON[T]{V: v}`.
+  new contents, assign through `types.JSON.Set` or a fresh `types.JSON[T]{V: v}`.
   Assigning `V` directly to its zero value (`false`, `0`, `""`) keeps the JSON
   null, because the zero value cannot be told from an untouched `V`.
 
   `types.JSON[T]` has a private field and no `MarshalJSON`. Two values compare
   equal with `==` only when the null state matches, so a scanned null differs
-  from `types.JSON[T]{}`; go-cmp needs an option or an `Equal` method for it.
+  from `types.JSON[T]{}`; go-cmp needs a comparison option that ignores the null state.
   `encoding/json` renders any `types.JSON[T]` as `{"V":...}`, and
   `types.JSONNull[T]()` as `{"V":null}`: the null state does not survive an API
   round trip through `encoding/json`.
