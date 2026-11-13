@@ -89,7 +89,10 @@ no `RETURNING` at all.
   the statement may update an existing row and `LAST_INSERT_ID` then does not
   name the row's key; read the row back with a query.
 - Upserts render as `INSERT ... VALUES ... AS momo_new ON DUPLICATE KEY UPDATE`
-  on MySQL and with `VALUES(col)` on MariaDB. `DoNothing` renders a no-op
+  on MySQL and with `VALUES(col)` on MariaDB. A `FromSelect` upsert has no row
+  alias on either: MySQL and MariaDB both render `VALUES(col)` there. The
+  `updated_at` bump of a `DoUpdate` is a bound clock value, so it needs neither
+  form. `DoNothing` renders a no-op
   assignment of a key column. A `Where` on a conflict clause is
   `ErrUnsupported`.
 - `ON DUPLICATE KEY UPDATE` fires for a conflict on any unique key and cannot

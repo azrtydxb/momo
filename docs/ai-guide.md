@@ -608,9 +608,10 @@ type Event struct {
   leaves the column out of `SET`, so the column keeps its stored value (writing
   NULL would fail on the NOT NULL column). A pointer to `false` or `0` is
   written. If that leaves nothing to set, the update fails with the usual
-  `ErrValidation` ("no columns to update"). `Upsert` is unaffected: its default
-  `DO UPDATE` set takes `EXCLUDED` values and already leaves out a `dbdefault`
-  column that any row leaves to the database.
+  `ErrValidation` ("no columns to update"), unless the model has an
+  `updated_at` column: then it is a touch that sets only that column. `Upsert`
+  is unaffected: its default `DO UPDATE` set takes `EXCLUDED` values and
+  already leaves out a `dbdefault` column that any row leaves to the database.
 - The pointer type that `--from-db` generates and the `momo generate` warning
   cover only plain `bool` and number fields (`bool`, `int`..`int64`,
   `uint`..`uint64`, `float32`, `float64`). A named type, a type override from
@@ -1281,6 +1282,20 @@ _, err = momo.Update[models.Task](q).Model(&cur).Exec(ctx)
   `Rows` is not supported on a versioned `Model` update; use `Exec`.
 - `updated_at` is set automatically on `Update` (Set or Model), not on raw SQL
   and not on relation helpers.
+- An `Update` with no assignment is a touch when the model has an `updated_at`
+  column: it sets only that column and keeps every guard (`ErrUnfilteredMutation`
+  without `Where` or `AllRows`). Without a writable `updated_at` column it still
+  fails with `ErrValidation` ("no columns to update").
+- The conflict branch of a `DoUpdate` always sets `updated_at` to the statement
+  clock, as a bound value (not `EXCLUDED`), for `Upsert` and for a plain `Insert`
+  with `OnConflict`; `DoNothing` does not. It is independent of the INSERT:
+  `Omit` of `updated_at` and a `FromSelect` without that column affect only the
+  insert branch, and an `Upsert` with an empty default set renders a touch-only
+  `SET updated_at = <clock>`. A plain `Insert` with `DoUpdate()` and no
+  assignment stays an error.
+- DON'T assign `updated_at` inside `DoUpdate` (a value or `SetExcluded`): it is
+  refused with the same `ErrValidation` ("cannot be set directly") as on
+  `Update`.
 
 Delete and soft delete:
 

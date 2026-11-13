@@ -424,7 +424,8 @@ func TestBulkFixedParamsShrinkChunks(t *testing.T) {
 	doUpdate := func(db *momo.DB, n int) momo.InsertQuery[suite.Document] {
 		return bulkQuery(db, n).OnConflict(suite.DocID).DoUpdate(suite.DocTenantID.Set(5))
 	}
-	// 5 row columns + 1 bound DoUpdate value: (50-1)/5 = 9 rows, not 10.
+	// 5 row columns + 2 bound values (the DoUpdate value and the updated_at
+	// bump): (50-2)/5 = 9 rows, not 10.
 	drv := newSmallLimit(50)
 	if _, err := doUpdate(momo.New(drv), 25).Exec(t.Context()); err != nil {
 		t.Fatal(err)
@@ -438,16 +439,16 @@ func TestBulkFixedParamsShrinkChunks(t *testing.T) {
 			t.Errorf("statement %d binds %d, over the limit", i, len(c.Args))
 		}
 	}
-	// exactly one row fits next to the fixed value
-	drv = newSmallLimit(6)
+	// exactly one row fits next to the fixed values
+	drv = newSmallLimit(7)
 	if _, err := doUpdate(momo.New(drv), 2).Exec(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if got := rowsPerStatement(t, drv); len(got) != 2 || got[0] != 1 || got[1] != 1 {
 		t.Fatalf("rows per statement = %v, want [1 1]", got)
 	}
-	// the fixed value leaves no room for a row
-	_, err := doUpdate(momo.New(newSmallLimit(5)), 2).Exec(t.Context())
+	// the fixed values leave no room for a row
+	_, err := doUpdate(momo.New(newSmallLimit(6)), 2).Exec(t.Context())
 	if !errors.Is(err, momo.ErrLimitExceeded) {
 		t.Fatalf("err = %v, want ErrLimitExceeded", err)
 	}

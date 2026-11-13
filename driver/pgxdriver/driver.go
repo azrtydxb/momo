@@ -147,7 +147,7 @@ func txOptions(o momo.TxOptions) (pgx.TxOptions, error) {
 // pgxRows adapts pgx.Rows, whose Close has no result, to momo.Rows.
 type pgxRows struct{ pgx.Rows }
 
-func (r pgxRows) Scan(dest ...any) error { return ClassifyError(r.Rows.Scan(dest...)) }
+func (r pgxRows) Scan(dest ...any) error { return ClassifyError(r.Rows.Scan(wrapJSONNull(dest)...)) }
 func (r pgxRows) Err() error             { return ClassifyError(r.Rows.Err()) }
 
 // Close releases the rows. pgx's Close returns nothing and leaves a failure

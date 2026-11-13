@@ -208,9 +208,10 @@ func TestFieldOnUpdate(t *testing.T) {
 	if err != nil || !strings.Contains(c.SQL, `"body" = NULL`) {
 		t.Fatalf("explicit Set lost to OnUpdate: %q %v", c.SQL, err)
 	}
-	// An update with no assignments still fails: OnUpdate does not make it valid.
-	if _, err := momo.Update[suite.Document](db).Where(suite.DocID.Eq(1)).SQL(); !errors.Is(err, momo.ErrValidation) {
-		t.Fatalf("empty update err = %v", err)
+	// An update with no assignments is a touch of updated_at, which this
+	// model has; OnUpdate does not change that.
+	if c, err := momo.Update[suite.Document](db).Where(suite.DocID.Eq(1)).SQL(); err != nil || !strings.Contains(c.SQL, `"updated_at" = $`) {
+		t.Fatalf("empty update = %q, %v; want a touch of updated_at", c.SQL, err)
 	}
 	// OnUpdate on a reserved column is refused.
 	bad, _ := fieldDB(momo.FieldHook[suite.Document]{Column: 4, OnUpdate: func(*suite.Document) any { return int64(1) }})

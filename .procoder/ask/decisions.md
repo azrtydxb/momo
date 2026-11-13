@@ -442,6 +442,59 @@ Decision (2026-11-13, integrator): as above.
 - **Release:** exported API (`postgres.WithHistorySchema`, `New(opts ...Option)`),
   so a feat, 0.10.0.
 
+## Issue #120: updated_at on touch and upsert (2026-11-13, integrator)
+
+- **Touch:** an `Update` with no `Set` on a model with an `updated_at` column
+  is valid and renders `UPDATE ... SET updated_at = <now> WHERE ...`, the same
+  bound clock value `Update` uses. It passes every guard of a normal update
+  (`ErrUnfilteredMutation`, version, interceptors). On a model without
+  `updated_at` it keeps `ErrValidation` ("no columns to update").
+- **DoUpdate bump:** the conflict branch of `Upsert` and of a plain `Insert`
+  with `OnConflict` and `DoUpdate` always sets `updated_at` to the statement
+  clock, as a bound value like `Update` (review fix: `EXCLUDED.updated_at` is
+  the struct's own value and left a loaded row with an old `UpdatedAt`
+  unbumped, also in shipped `Upsert`). It does not depend on the INSERT:
+  `Omit` and a `FromSelect` without the column change only the insert branch,
+  and an `Upsert` with an empty default set renders a touch-only `SET`. A plain
+  `Insert` with `DoUpdate()` and no assignment stays an error. `DoNothing` does
+  not bump. The insert branch is unchanged. The clock is read once into
+  `InsertQuery.clock`, so chunks of a bulk insert share it.
+- **Explicit set:** an explicit `Set` or `SetExcluded` of `updated_at` in
+  `DoUpdate` is refused with `ErrValidation` and the `Update` wording
+  ("cannot be set directly"). This is a breaking change, documented in
+  `docs/upgrading.md`.
+
+Decision (2026-11-13, integrator): as above.
+
+## Issue #118: JSON null vs SQL NULL (2026-11-13, integrator)
+
+- **Constraint:** a nullable JSON column read into `*types.JSON[T]` keeps SQL
+  NULL and the JSON literal null apart. SQL NULL gives a nil pointer; the JSON
+  null gives a non-nil `*types.JSON[T]` whose `IsNull` is true. This is the
+  issue's option 2; no `NullJSON` type is added.
+- **State:** `types.JSON[T]` gains a private marker set by `Scan` on a stored
+  `null` (surrounding white space ignored) and by `types.JSONNull`. `Value`
+  writes `null` while the marker is set and `V` is the zero `T` or still
+  encodes as `null` (`json.RawMessage("null")`), so a read JSON null written
+  back stays JSON null. A nil `*JSON[T]` still writes SQL NULL. A direct
+  `V = <zero>` keeps the null; `Set` (or a fresh `JSON[T]{V: v}`) ends it. The
+  pgx driver recognises the family through `types.JSONNuller`, an interface
+  only `JSON[T]` satisfies.
+- **Layer:** the cause was pgx, whose scan plan for a pointer to a pointer on
+  json and jsonb sets the pointer to nil for the JSON null. The pgx driver's
+  `Rows.Scan` (and the buffered rows of bulk mode) now scans a `**T` destination
+  through `sql.Scanner` when `*T` has `IsNull`. SQLite, MySQL and the
+  `FromSQLDB` path go through database/sql, which already scans a non-NULL value
+  into a new pointer, so they needed no change. Those columns are `TEXT`, and
+  any stored text that is `null` is the JSON null.
+- **Non-pointer fields:** unchanged. SQL NULL into a plain `types.JSON[T]` is
+  an error; the JSON null reads as the zero `T` with `IsNull` true.
+- **Breaking:** code that relied on a JSON null reading as a nil pointer must
+  test `IsNull`. Unkeyed `types.JSON[T]{v}` literals no longer compile (the
+  struct has a private field); use `types.JSON[T]{V: v}`.
+
+Decision (2026-11-13, integrator): as above.
+
 ## Issue #119: typed date arithmetic in timeop (2026-11-13, integrator)
 
 - **API:** `timeop.AddDays(d, n int)` and `timeop.AddDaysExpr(d, n)` return a
@@ -452,7 +505,7 @@ Decision (2026-11-13, integrator): as above.
 - **Rendering:** PostgreSQL `(d + n)` and `(a - b)`, with a bound date cast to
   `date` and a bound count cast to `integer` (an untyped parameter next to a
   date is ambiguous between integer and interval). MySQL `DATE_ADD(d, INTERVAL
-  n DAY)` and `DATEDIFF(a, b)`. SQLite, which stores a date as `YYYY-MM-DD`
+n DAY)` and `DATEDIFF(a, b)`. SQLite, which stores a date as `YYYY-MM-DD`
   text, `date(d, '+n days')` and `CAST(julianday(a) - julianday(b) AS INTEGER)`.
 - **Infinity:** PostgreSQL keeps `infinity + n` and refuses `infinity - date`
   with a database error. SQLite and MySQL have no special dates, so a bound
