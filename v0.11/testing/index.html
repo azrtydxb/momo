@@ -1,0 +1,1988 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.11/testing/">
+      
+      
+        <link rel="prev" href="../listen-notify/">
+      
+      
+        <link rel="next" href="../observability/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Testing applications - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#testing-applications-with-momotest" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Testing applications
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-database-per-test-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One database per test: New
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-rollback-per-test-newtx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A rollback per test: NewTx
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrations-must-stay-in-their-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrations must stay in their schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#leftover-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leftover schemas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fixtures-seed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixtures: Seed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fixtures-from-a-file-loadfixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixtures from a file: LoadFixtures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sqlite-without-a-server-sqlitetest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite without a server: sqlitetest
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asserting-the-sql-assertsql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asserting the SQL: AssertSQL
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asserting-index-use-assertusesindex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asserting index use: AssertUsesIndex
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-the-sql-a-query-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listing the SQL: a query registry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#concurrency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrency
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-database-per-test-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One database per test: New
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-rollback-per-test-newtx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A rollback per test: NewTx
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrations-must-stay-in-their-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrations must stay in their schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#leftover-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leftover schemas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fixtures-seed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixtures: Seed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fixtures-from-a-file-loadfixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixtures from a file: LoadFixtures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sqlite-without-a-server-sqlitetest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite without a server: sqlitetest
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asserting-the-sql-assertsql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asserting the SQL: AssertSQL
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asserting-index-use-assertusesindex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asserting index use: AssertUsesIndex
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-the-sql-a-query-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listing the SQL: a query registry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#concurrency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrency
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="testing-applications-with-momotest">Testing applications with momotest<a class="headerlink" href="#testing-applications-with-momotest" title="Permanent link">&para;</a></h1>
+<p><code>github.com/azrtydxb/momo/momotest</code> gives your tests a real PostgreSQL
+database, isolated per test, with your project's migrations already applied. It
+replaces the hand-written scratch-database helper that every application would
+otherwise copy.</p>
+<p>Do not mock <code>momo.DB</code>, <code>momo.Tx</code> or <code>momo.Querier</code>. The query builders are the
+code under test; the constraints and the SQL are what you want to exercise.</p>
+<h2 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Point the tests at a server you may create schemas on:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">MOMO_TEST_POSTGRES_URL</span><span class="o">=</span>postgres://user:pass@localhost:5432/scratch
+</code></pre></div>
+<p>The value must be a <code>postgres://</code> or <code>postgresql://</code> URL. Use a database you
+   do not mind filling with temporary schemas; a disposable container is
+   ideal.</p>
+<ol>
+<li>Embed the migrations in the package that owns the schema, so the binary and
+   its tests share them:</li>
+</ol>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="c1">//go:embed migrations</span>
+<span class="kd">var</span><span class="w"> </span><span class="nx">files</span><span class="w"> </span><span class="nx">embed</span><span class="p">.</span><span class="nx">FS</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">Migrations</span><span class="p">()</span><span class="w"> </span><span class="nx">fs</span><span class="p">.</span><span class="nx">FS</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">sub</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fs</span><span class="p">.</span><span class="nx">Sub</span><span class="p">(</span><span class="nx">files</span><span class="p">,</span><span class="w"> </span><span class="s">"migrations"</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">sub</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<ol>
+<li>Keep tests that use the kit behind the <code>integration</code> build tag (or one of
+   your own), and run them with <code>-tags integration</code>. A plain <code>go test</code> then
+   never touches a database.</li>
+</ol>
+<p>When the variable is unset, the test is skipped. Set <code>MOMO_REQUIRE_INTEGRATION=1</code>
+in CI and the test fails instead, so a misconfigured job cannot pass by skipping
+everything. <code>momotest.WithEnv</code> reads a different variable.</p>
+<h2 id="one-database-per-test-new">One database per test: New<a class="headerlink" href="#one-database-per-test-new" title="Permanent link">&para;</a></h2>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="nx">TestSignup</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">t</span><span class="p">.</span><span class="nx">Parallel</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">WithMigrations</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">Migrations</span><span class="p">()))</span>
+<span class="w">    </span><span class="c1">// db is a *momo.DB on a schema no other test can see.</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>New</code> creates a schema, applies the migrations to it and returns a <code>*momo.DB</code>.
+When the test ends the pool is closed and the schema is dropped. Code under test
+may open and commit its own transactions. Use this mode when it does.</p>
+<h2 id="a-rollback-per-test-newtx">A rollback per test: NewTx<a class="headerlink" href="#a-rollback-per-test-newtx" title="Permanent link">&para;</a></h2>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="nx">TestOverdraft</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">t</span><span class="p">.</span><span class="nx">Parallel</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">tx</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">NewTx</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">WithMigrations</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">Migrations</span><span class="p">()))</span>
+<span class="w">    </span><span class="c1">// tx is a *momo.Tx; everything written through it is gone after the test.</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The migrations are applied once to a template schema, named after a hash of the
+migration files, the extension list and the momo version, and kept on the
+server between runs. The first <code>momotest.NewTx</code> in a test binary builds it (or finds it
+ready) under an advisory lock, over a short-lived administrator connection;
+after that success the binary remembers it, and each later test only opens its
+own small pool and begins a transaction, which is much cheaper than <code>New</code>. A
+changed migration gets a new template; old <code>momotest_tpl_*</code> schemas can be
+dropped at any time between runs.</p>
+<p>The <code>Tx</code> is adopted: <code>Commit</code> and <code>Rollback</code> on it return an error matching
+<code>momo.ErrAdoptedTx</code>, so a test cannot make its writes permanent. <code>tx.Tx</code> opens
+savepoints, so you can test a failing step and keep going. Two limits follow
+from using one transaction per test:</p>
+<ul>
+<li>Code that must commit, or that needs two connections to see each other's work,
+  belongs in a test that uses <code>New</code>.</li>
+<li>Parallel tests do not see each other's rows, but two that insert the same
+  unique key wait for each other until one finishes. Give parallel tests
+  distinct keys.</li>
+<li>DDL, <code>TRUNCATE</code> and <code>LOCK TABLE</code> inside a <code>momotest.NewTx</code> test take locks that block
+  every other parallel test using the same template until this one ends. Run
+  such tests with <code>New</code>.</li>
+<li>Identity and sequence values are consumed by a rolled-back transaction, so
+  never assert a literal generated id; compare with the id that <code>Insert</code> read
+  back.</li>
+</ul>
+<h2 id="migrations-must-stay-in-their-schema">Migrations must stay in their schema<a class="headerlink" href="#migrations-must-stay-in-their-schema" title="Permanent link">&para;</a></h2>
+<p>Migrations run in a schema of the test's own, with <code>public</code> after it on the
+search path. Write them unqualified. <code>momotest</code> refuses early, with the file
+name, a migration that contains <code>CREATE SCHEMA</code>, or <code>CREATE EXTENSION</code> for an
+extension not listed in <code>momotest.WithExtensions</code>: an extension exists once per
+database, so it would land in one test's schema and vanish under the others when
+that schema is dropped. List extensions in <code>momotest.WithExtensions</code> (names are matched
+in lower case); they are installed once in <code>public</code>.</p>
+<p><code>public</code> may already hold your tables and a <code>momo_migrations</code> history table, for
+example when a CI job ran <code>momo migrate apply</code> on the same database first. The
+test schema still gets its own history table and its own tables: <code>momotest</code> pins
+the history table to the test schema, so the migrations never look at
+<code>public</code>'s history. If the migrations create tables and the test schema holds
+none after they ran (a migration that qualifies its tables with <code>public</code>, for
+instance), <code>momotest.New</code> and <code>momotest.NewTx</code> fail naming the schema, instead
+of running the test on tables outside it.</p>
+<p>The migrations run on a connection whose <code>search_path</code> is the test schema alone,
+unless you list extensions in <code>momotest.WithExtensions</code>: extensions live in
+<code>public</code>, so then <code>public</code> stays on the path. With the schema alone, an
+unqualified statement can only see the test schema: <code>DROP TABLE IF EXISTS
+legacy</code> or <code>ALTER TABLE IF EXISTS legacy</code> do nothing when the migrations did not
+create <code>legacy</code> there, and never touch a <code>legacy</code> in <code>public</code>. The test's own
+connections keep <code>public</code> on the path, so the extension types resolve in
+queries. A migration that uses something already installed in <code>public</code> that you
+did not list in <code>momotest.WithExtensions</code> no longer finds it.</p>
+<p>When <code>momotest.WithExtensions</code> lists extensions the hole remains: <code>public</code> is on
+the migration path, so a statement on an object the migrations did not create in
+the test schema, such as <code>DROP TABLE IF EXISTS legacy</code>, resolves to <code>public</code> and
+acts on that table. Keep such statements out of migrations that run under
+<code>momotest</code> with extensions. <code>CREATE TABLE</code>, <code>INDEX</code> and <code>SEQUENCE IF NOT EXISTS</code>,
+and <code>CREATE [OR REPLACE] FUNCTION</code> and <code>VIEW</code>, are safe either way: they create
+in the first schema of the path and check for an existing name only there.</p>
+<p>The check for an empty test schema is a heuristic. A later migration that drops
+every table, or a literal <code>CREATE TABLE</code> inside a dollar-quoted body that never
+runs, makes it fail a test that is in fact fine.</p>
+<p>The check reads the SQL with comments and string literals removed, so a comment
+that mentions <code>create schema</code> is fine and <code>CREATE /* x */ EXTENSION foo</code> is still
+caught. Quoted identifiers are kept. Dollar-quoted bodies are checked as code,
+because a <code>DO</code> block can run <code>CREATE EXTENSION</code>: the cost is that text inside a
+dollar-quoted string that looks like that statement is also refused, with a
+message naming the file. Move such text into a normal string, or list the
+extension.</p>
+<p><code>momotest.NewTx</code> remembers the result of the check and the template name per migration
+<code>fs.FS</code> value and extension list. Build the FS once, in a package variable or an
+<code>embed.FS</code>, so that the files are walked once; an FS rebuilt on every call (such
+as <code>fs.Sub</code> inside a function) is re-read each time, which still works. Only
+successes are remembered, so a failed read fails one test and the next one tries
+again. Changing the files behind a remembered FS while the test binary runs, for
+example rewriting the directory an <code>os.DirFS</code> points at, is not supported.</p>
+<h2 id="leftover-schemas">Leftover schemas<a class="headerlink" href="#leftover-schemas" title="Permanent link">&para;</a></h2>
+<p>Cleanup runs in <code>t.Cleanup</code>, so a killed test run (<code>kill -9</code>, a CI timeout)
+can leave <code>momotest_&lt;hex&gt;</code> schemas behind. They are harmless but accumulate. Drop
+them on a disposable server by recreating it, or with
+<code>DROP SCHEMA momotest_&lt;hex&gt; CASCADE</code> for each name in <code>pg_namespace</code> that matches
+<code>momotest\_%</code> and is not <code>momotest_tpl_%</code>. Template schemas <code>momotest_tpl_*</code> are
+meant to stay. <code>momotest</code> has no sweep helper: it never drops a schema it did
+not create in the current test.</p>
+<h2 id="fixtures-seed">Fixtures: Seed<a class="headerlink" href="#fixtures-seed" title="Permanent link">&para;</a></h2>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">org</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">models</span><span class="p">.</span><span class="nx">Org</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"acme"</span><span class="p">}</span>
+<span class="nx">momotest</span><span class="p">.</span><span class="nx">Seed</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Insert</span><span class="p">(</span><span class="nx">org</span><span class="p">),</span>
+<span class="w">    </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Insert</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">models</span><span class="p">.</span><span class="nx">User</span><span class="p">{</span><span class="nx">OrgID</span><span class="p">:</span><span class="w"> </span><span class="nx">org</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span><span class="w"> </span><span class="nx">Email</span><span class="p">:</span><span class="w"> </span><span class="s">"ada@acme.test"</span><span class="p">}),</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>momotest.Seed</code> runs its steps in the order given, so list a table before the tables that
+reference it. All steps run in one transaction (a savepoint when the querier is
+a <code>*momo.Tx</code>); if one fails, nothing is kept and the test fails. <code>Insert</code> reads
+generated columns, such as identity keys, back into the rows you pass, so later
+steps can use them. <code>momotest.Graph</code> inserts a root with the related rows it includes, as
+<code>momo.CreateGraph</code> does. A step is any <code>func(ctx, momo.Querier) error</code>, so
+custom fixtures fit too.</p>
+<h2 id="fixtures-from-a-file-loadfixtures">Fixtures from a file: LoadFixtures<a class="headerlink" href="#fixtures-from-a-file-loadfixtures" title="Permanent link">&para;</a></h2>
+<p><code>momotest.LoadFixtures(t, q, path)</code> inserts the rows of a YAML file into <code>q</code>, a
+<code>*momo.DB</code> or a <code>*momo.Tx</code>, for data that is easier to read as a file than as Go
+structs. The file maps a table name to a list of rows, and each row maps a column
+name to a value:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">authors</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Ada</span>
+<span class="nt">documents</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">    </span><span class="nt">author_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">    </span><span class="nt">title</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">First</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="w">    </span><span class="nt">author_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span>
+<span class="w">    </span><span class="nt">title</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Orphan</span>
+</code></pre></div>
+<p>Tables are inserted in file order and the rows of a table in list order, so
+list a table before the tables that reference it. Columns are written sorted by
+name and a YAML <code>null</code> becomes SQL <code>NULL</code>. Table and column names are quoted
+with <code>momo.Ident</code> and every value is a bound argument, so a value is never
+spliced into the SQL. A table name is one identifier, with no schema prefix.
+A value is a string, integer, float, bool, null, timestamp or <code>!!binary</code> (read as
+bytes); a nested map or list is refused. <code>momotest.LoadFixtures</code> writes plain <code>INSERT</code>
+statements and is tested on PostgreSQL and SQLite; it has not been run against
+MySQL or MariaDB. A file that is not a mapping of
+tables to lists of rows, a missing file, and a row the database refuses (a
+foreign key to a row that is not there, say) fail the test with a message that
+names the file, the table and the row. Each row is its own statement, so rows
+before a failing one stay unless you pass a transaction.</p>
+<h2 id="sqlite-without-a-server-sqlitetest">SQLite without a server: sqlitetest<a class="headerlink" href="#sqlite-without-a-server-sqlitetest" title="Permanent link">&para;</a></h2>
+<p><code>github.com/azrtydxb/momo/momotest/sqlitetest</code> gives a test a SQLite database
+with sqlite-vec loaded, without a server and without an environment variable:
+<code>sqlitetest.New(t, opts...)</code> returns a <code>*momo.DB</code> on a new file in the test's
+own temporary directory. Every call opens a file of its own, so two databases in
+one test never see each other's tables and parallel tests do not collide. The
+database is closed and the file removed when the test ends. The options go to
+<code>momo.New</code>, for example <code>momo.WithHook</code>, and <code>momotest.LoadFixtures</code> fills it like any
+other database. The database starts empty: create the tables with your own DDL,
+for example <code>momo.SQLiteVectorType</code> for a vector column (see
+<a href="../vectors/">Vector search</a>); <code>momotest.WithMigrations</code> and <code>momotest.NewTx</code> are
+PostgreSQL features and do not apply.</p>
+<p>SQLite lives in its own package, and not in <code>momotest</code>, because the SQLite
+driver is compiled from C sources: a test binary that imports only <code>momotest</code>
+for PostgreSQL does not build them, and a repository test
+(<code>TestMomotestAvoidsSQLite</code>) keeps it that way. Only a test that imports
+<code>sqlitetest</code> pays for them. The driver needs cgo and a non-Windows target; on
+any other build <code>sqlitetest.New</code> skips the test, the way <code>momotest.New</code> skips
+when the server URL is unset.</p>
+<h2 id="asserting-the-sql-assertsql">Asserting the SQL: AssertSQL<a class="headerlink" href="#asserting-the-sql-assertsql" title="Permanent link">&para;</a></h2>
+<p><code>momotest.AssertSQL(t, compiled, want)</code> compares the SQL text of a compiled
+statement with <code>want</code>, ignoring differences in whitespace. Get <code>compiled</code> from
+the <code>SQL</code> method of any query (<code>Select</code>, <code>Insert</code>, <code>Update</code>, <code>Delete</code>, a raw
+subquery source); the statement is only compiled, never sent, so the assertion
+needs no database and the recording hook sees no statement. Because only the
+text is compared, put the values in the query and the text in <code>want</code>:</p>
+<div class="highlight"><pre><span></span><code>c, err := momo.Select[User](db).Where(user.Email.Eq("a@example.test")).SQL()
+momotest.AssertSQL(t, c, `SELECT ... FROM "users" WHERE "users"."email" = $1`)
+</code></pre></div>
+<p>On a mismatch the failure holds both texts and <code>Compiled.String()</code>, which lists
+the bound arguments by placeholder (<code>$1, $2 bound</code>). It never holds an argument
+value, so a value bound from a <code>sensitive</code> column cannot reach the test log.</p>
+<h2 id="asserting-index-use-assertusesindex">Asserting index use: AssertUsesIndex<a class="headerlink" href="#asserting-index-use-assertusesindex" title="Permanent link">&para;</a></h2>
+<p><code>momotest.AssertUsesIndex(t, q, compiled, "index_name")</code> runs a plain <code>EXPLAIN</code>
+of the statement through <code>momo.Explain</code> (never <code>EXPLAIN ANALYZE</code>, so the
+statement is not executed) and fails unless the plan reads that index. It works
+on PostgreSQL and SQLite and fails the test on any other dialect.</p>
+<ul>
+<li>PostgreSQL: the index name must be a whole token in an <code>Index Scan</code>,
+  <code>Index Only Scan</code> or <code>Bitmap Index Scan</code> node. A name that only starts with
+  the asserted one (<code>orders_idx2</code> or <code>orders_idx-old</code> for <code>orders_idx</code>) does
+  not match. A mixed-case name that PostgreSQL prints quoted (<code>"MyIdx"</code>)
+  matches when you pass <code>MyIdx</code>.</li>
+<li>SQLite: a plan line must say <code>USING INDEX name</code> or
+  <code>USING COVERING INDEX name</code>.</li>
+</ul>
+<p>A failure prints the plan, and says so when the plan contains a sequential scan.
+Small tables get sequential scans on PostgreSQL whatever indexes exist: load
+enough rows and run <code>ANALYZE</code> first, or use <code>tx.SetLocal(ctx, "enable_seqscan",
+"off")</code>. The database may echo literal values into a plan, so run the assertion
+on test data that is not sensitive.</p>
+<h2 id="listing-the-sql-a-query-registry">Listing the SQL: a query registry<a class="headerlink" href="#listing-the-sql-a-query-registry" title="Permanent link">&para;</a></h2>
+<p>An application that leaves a code generator such as sqlc loses its <code>.sql</code>
+files, which it may lint statically or freeze for compatibility tests against
+the previous release. Momo lists the SQL without a database: register each
+named query as a builder, then ask the registry for the compiled text per
+dialect.</p>
+<p><code>momo.RegisterQuery(name, build)</code> adds a query to the process-wide registry
+(<code>momo.DefaultQueries</code>); <code>momo.NewQueryRegistry</code> makes an isolated one for a
+test. <code>build</code> receives a <code>momo.Querier</code> that compiles but never executes (see
+<code>momo.NewOffline</code>) and returns anything with an <code>SQL()</code> method: a <code>Select</code>,
+<code>Insert</code>, <code>Update</code>, <code>Delete</code> or <code>Merge</code> query, or <code>momo.RawQuery</code> for a
+hand-written statement. Registering a name twice panics, naming the query. The
+values you bind in <code>build</code> are placeholders and never appear in the listing.
+<code>Registry.Compile(dialect.Postgres)</code> returns every query sorted by name with
+the dialect's placeholders (<code>$1</code> on PostgreSQL, <code>?</code> on MySQL and SQLite).</p>
+<p>The SQL of <code>InsertQuery[T].Model</code> depends on the model's values. A field tagged
+<code>dbdefault</code> that holds its zero value is left out of the column list so the
+database default applies, and a registered builder has no real call to set it,
+so a sample <code>Model</code> call lists a different statement than the application
+executes unless you set the sample as a real call sets it. To register a
+stable shape, choose one of:</p>
+<ul>
+<li><code>InsertQuery[T].Values</code> with <code>Col.Set(v)</code> for each column: the column list is exactly the
+  columns you name, whatever the values.</li>
+<li><code>Omit(DBDefaultCol)</code> before <code>Model</code>: the dbdefault columns are always
+  out of the list, whatever <code>m</code> holds. This lists the statement of a call that
+  leaves them to the database, not of one that sets them.</li>
+<li>A sample model whose dbdefault fields are set to non-zero values, to list the
+  statement of a call that writes them.</li>
+</ul>
+<p>Registering the call you actually make, with the fields set the way it sets
+them, lists the SQL it executes. <code>InsertQuery[T].Models</code> follows the same rule per
+column: it leaves a dbdefault column out only when every row holds its zero
+value.</p>
+<p><code>momotest.QueryGolden</code> writes that list to one golden file per dialect and
+fails when a query's SQL changed, a query was added or one was removed. Run the
+tests with <code>MOMO_UPDATE_GOLDEN=1</code> to accept an intended change, and review the
+diff in code review. It needs no database, so it runs in a plain <code>go test</code>.</p>
+<p>To freeze a release for an N-1 compatibility test, copy its golden file to
+<code>testdata/queries/&lt;release&gt;/postgres.sql</code>. The program below is the body of
+that test: it reads the previous release's file with <code>momotest.LoadQueryGolden</code>
+and prepares every statement against the current schema, so a dropped column or
+table fails the test. <code>PREPARE</code> plans a statement without running it, and the
+transaction rolls back at the end.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">"context"</span>
+<span class="w">    </span><span class="s">"fmt"</span>
+<span class="w">    </span><span class="s">"log"</span>
+<span class="w">    </span><span class="s">"os"</span>
+
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/driver/pgxdriver"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/momotest"</span>
+<span class="p">)</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">init</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">RegisterQuery</span><span class="p">(</span><span class="s">"open_tasks"</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">q</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Querier</span><span class="p">)</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Compilable</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">RawQuery</span><span class="p">(</span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">"SELECT id, title FROM tasks WHERE owner = $1 AND NOT done"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">run</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">());</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">run</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">previous</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">LoadQueryGolden</span><span class="p">(</span><span class="s">"testdata/queries/v1.4/postgres.sql"</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">NewPool</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">Getenv</span><span class="p">(</span><span class="s">"MOMO_EXAMPLE_DSN"</span><span class="p">))</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">))</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">db</span><span class="p">.</span><span class="nx">Tx</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">TxOptions</span><span class="p">{},</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">tx</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Tx</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">previous</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">stmt</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Sprintf</span><span class="p">(</span><span class="s">"PREPARE compat_%d AS %s"</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">.</span><span class="nx">SQL</span><span class="p">)</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">tx</span><span class="p">.</span><span class="nx">DriverTx</span><span class="p">().</span><span class="nx">Exec</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">stmt</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">return</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">"the previous release's query %s fails on the new schema: %w"</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momotest.WithMigrations(fs.FS)</code></td>
+<td>Apply these migrations. The directory needs no <code>momo.sum</code>. Without it the database is empty.</td>
+</tr>
+<tr>
+<td><code>momotest.WithEnv(name)</code></td>
+<td>Read the server URL from another variable.</td>
+</tr>
+<tr>
+<td><code>momotest.WithExtensions(names)</code></td>
+<td><code>CREATE EXTENSION IF NOT EXISTS</code> in <code>public</code> first; with <code>vector</code> the pool registers the codec.</td>
+</tr>
+<tr>
+<td><code>momotest.WithMomoOptions(opts)</code></td>
+<td>Passed to <code>momo.New</code>, for example a hook.</td>
+</tr>
+<tr>
+<td><code>momotest.WithMaxConns(n)</code></td>
+<td>Pool size per test: 4 for <code>New</code>, 2 for <code>momotest.NewTx</code> by default.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="concurrency">Concurrency<a class="headerlink" href="#concurrency" title="Permanent link">&para;</a></h2>
+<p>Every call opens its own connection pool and, in <code>New</code>, its own schema, so
+<code>t.Parallel</code> and <code>-race</code> are safe. The one shared step, creating extensions and
+building a template, runs under a PostgreSQL advisory lock (keyed by
+<code>hashtext</code> of the names <code>momotest:extensions</code> and <code>momotest:template</code>), so tests
+in one binary and several test binaries running at once (<code>go test ./...</code>)
+cooperate. <code>New</code> also opens a short administrator connection to create and, at
+cleanup, drop its schema. A <code>momotest.NewTx</code> test holds one connection for its
+transaction, plus the pool's spare. Each parallel test holds a few connections; keep the server's
+<code>max_connections</code> above the number of parallel tests times the pool size, or
+lower the pool with <code>momotest.WithMaxConns</code> or the parallelism with <code>-parallel</code>.</p>
+<h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
+<p><a href="https://github.com/azrtydxb/momo/tree/main/examples/testing/">examples/testing</a> runs a small bank-account service
+through both modes, in parallel, with seeded fixtures. Its test is the
+reference for how to write yours.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
