@@ -1,0 +1,1872 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.10/TYPE_MAPPING/">
+      
+      
+        <link rel="prev" href="../agents/">
+      
+      
+        <link rel="next" href="../projections/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Type mapping - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#go-to-sql-type-mapping" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Type mapping
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-type-is-chosen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a type is chosen
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generated-mappings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated mappings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#codec-provided-mappings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Codec-provided mappings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mappings-you-declare-yourself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mappings you declare yourself
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-values-and-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge values and behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#null-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Null handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-type-is-chosen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a type is chosen
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generated-mappings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated mappings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#codec-provided-mappings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Codec-provided mappings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mappings-you-declare-yourself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mappings you declare yourself
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-values-and-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge values and behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#null-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Null handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="go-to-sql-type-mapping">Go to SQL type mapping<a class="headerlink" href="#go-to-sql-type-mapping" title="Permanent link">&para;</a></h1>
+<p>This page lists which SQL column type Momo uses for each Go field type, what
+survives a round trip, and where the edges are. The tables are checked by
+tests: <code>TestTypeMappingDoc</code> fails when a row here disagrees with the generator's
+type map or a codec's <code>SQLType</code>, and <code>TestTypeMapping</code> creates a column of each
+documented PostgreSQL type on a live server, and the generated SQLite type on a
+live SQLite database, and round-trips edge values through it.</p>
+<h2 id="how-a-type-is-chosen">How a type is chosen<a class="headerlink" href="#how-a-type-is-chosen" title="Permanent link">&para;</a></h2>
+<ol>
+<li>A field whose type implements the codec contract (<code>types.Codec</code>: <code>Scan</code>,
+   <code>Value</code> and <code>SQLType</code>) uses its own <code>SQLType</code>. This is how <code>types.TimeOfDay</code>
+   and <code>types.Hstore</code> get their columns.</li>
+<li>Otherwise the generator maps the Go type with its built-in table
+   (package <code>gen/typemap</code>). A pointer and the <code>sql.Null*</code> wrappers map like the
+   type they wrap: nullability is a column property, not a type property.</li>
+<li>A Go type with no mapping (for example <code>uint64</code> or <code>map</code>) makes
+   <code>typemap.Map</code> return an error wrapping <code>momo.ErrUnsupported</code>, which the
+   generator reports at the field. Give the type a codec or declare the column
+   yourself.</li>
+</ol>
+<h2 id="generated-mappings">Generated mappings<a class="headerlink" href="#generated-mappings" title="Permanent link">&para;</a></h2>
+<p><code>N</code> is the <code>size</code> tag for <code>string</code> and the <code>dim</code> tag for vector types. A
+<code>vector.Vector</code> or <code>vector.HalfVector</code> field without <code>dim</code> is supported: it maps
+to the bare <code>vector</code> or <code>halfvec</code> type, a dimensionless column that holds
+embeddings of any size (see <a href="../vectors/#dimensionless-columns">vectors.md</a>).
+<code>vector.SparseVector</code> and <code>vector.Bits</code> require <code>dim</code>. SQLite has no vector
+types.
+A slice of a scalar maps to the PostgreSQL array of its element type; SQLite
+has no array columns, so the generator rejects them there.</p>
+<!-- generated:typemap -->
+
+<!-- Generated by go generate ./internal/gendocs from the code. Do not edit by hand. -->
+
+<table>
+<thead>
+<tr>
+<th>Go type</th>
+<th>PostgreSQL</th>
+<th>SQLite</th>
+<th>MySQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>int</code></td>
+<td>bigint</td>
+<td>INTEGER</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>int8</code></td>
+<td>smallint</td>
+<td>INTEGER</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>int16</code></td>
+<td>smallint</td>
+<td>INTEGER</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>int32</code></td>
+<td>integer</td>
+<td>INTEGER</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>int64</code></td>
+<td>bigint</td>
+<td>INTEGER</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>float32</code></td>
+<td>real</td>
+<td>REAL</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>float64</code></td>
+<td>double precision</td>
+<td>REAL</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>bool</code></td>
+<td>boolean</td>
+<td>INTEGER</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>string</code></td>
+<td>text</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>string with size:N</code></td>
+<td>character varying(N)</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]byte</code></td>
+<td>bytea</td>
+<td>BLOB</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>time.Time</code></td>
+<td>timestamp with time zone</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>types.UUID</code></td>
+<td>uuid</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>uuid.UUID (github.com/google/uuid)</code></td>
+<td>uuid</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>types.Date</code></td>
+<td>date</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>types.Numeric</code></td>
+<td>numeric</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>types.JSON[T]</code></td>
+<td>jsonb</td>
+<td>TEXT</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>vector.Vector</code></td>
+<td>vector(N)</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>vector.HalfVector</code></td>
+<td>halfvec(N)</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>vector.SparseVector</code></td>
+<td>sparsevec(N)</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>vector.Bits</code></td>
+<td>bit(N)</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>vector.Vector (no dim)</code></td>
+<td>vector</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>vector.HalfVector (no dim)</code></td>
+<td>halfvec</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]string</code></td>
+<td>text[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]int16</code></td>
+<td>smallint[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]int32</code></td>
+<td>integer[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]int64</code></td>
+<td>bigint[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]bool</code></td>
+<td>boolean[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]float32</code></td>
+<td>real[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]float64</code></td>
+<td>double precision[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]types.UUID</code></td>
+<td>uuid[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>[]uuid.UUID (github.com/google/uuid)</code></td>
+<td>uuid[]</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+</tbody>
+</table>
+<!-- /generated:typemap -->
+
+<p>The MySQL column is what <code>typemap.Map</code> returns for MySQL: the generator emits no
+MySQL models, so every Go type shows <code>unsupported</code> there until it does. Only an
+error that wraps <code>momo.ErrUnsupported</code> shows as <code>unsupported</code>; any other error
+from <code>typemap.Map</code> fails the generation of this table.</p>
+<p>The PostgreSQL type of <code>time.Time</code> can be changed for the whole project with the
+<code>types:</code> section of <code>momo.yaml</code>, for example <code>types: {time.Time: timestamp(3)}</code>
+for a database created by Prisma (see <code>naming: prisma</code> in ai-guide.md). Only
+<code>time.Time</code> can be overridden; a <code>type:</code> tag on a field still wins, and SQLite
+ignores the setting. <code>timestamp(3)</code> stores a wall clock without a zone, so
+follow the <code>timestamp</code> notes below and pass UTC times.</p>
+<p>On SQLite, <code>bool</code> is stored as 0 or 1, and <code>time.Time</code>, <code>types.UUID</code>,
+<code>types.Date</code>, <code>types.Numeric</code> and <code>types.JSON[T]</code> are stored as text. The SQLite column is what
+the generator emits. The SQLite driver (<code>driver/sqlitedriver</code>, cgo, not on
+Windows) reads text columns back into <code>time.Time</code>, <code>*time.Time</code>,
+<code>sql.NullTime</code>, <code>sql.Null[time.Time]</code> and <code>types.Date</code>, whatever the column was
+declared as.</p>
+<h2 id="codec-provided-mappings">Codec-provided mappings<a class="headerlink" href="#codec-provided-mappings" title="Permanent link">&para;</a></h2>
+<p>These types are not in the generator's table. Their own <code>SQLType</code> method names
+the column; the generator's table is the fallback for everything else.</p>
+<table>
+<thead>
+<tr>
+<th>Go type</th>
+<th>PostgreSQL</th>
+<th>SQLite</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>types.TimeOfDay</code></td>
+<td><code>time</code></td>
+<td><code>TEXT</code></td>
+</tr>
+<tr>
+<td><code>types.Hstore</code></td>
+<td><code>hstore</code></td>
+<td><code>TEXT</code></td>
+</tr>
+<tr>
+<td><code>types.TSVector</code></td>
+<td><code>tsvector</code></td>
+<td><code>TEXT</code></td>
+</tr>
+<tr>
+<td><code>types.TSQuery</code></td>
+<td><code>tsquery</code></td>
+<td><code>TEXT</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>types.Hstore</code> needs the <code>hstore</code> extension; the vector types need <code>vector</code>
+(pgvector). Momo never runs <code>CREATE EXTENSION</code> for you.</p>
+<h2 id="mappings-you-declare-yourself">Mappings you declare yourself<a class="headerlink" href="#mappings-you-declare-yourself" title="Permanent link">&para;</a></h2>
+<p>The generator never emits these columns, but the Go types work against them
+when you write the DDL (or a migration) by hand. There is no SQLite column to
+document because nothing generates one.</p>
+<table>
+<thead>
+<tr>
+<th>Go type</th>
+<th>PostgreSQL</th>
+<th>SQLite</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>time.Time (timestamp)</code></td>
+<td><code>timestamp</code></td>
+<td><code>n/a</code></td>
+</tr>
+<tr>
+<td><code>string (decimal)</code></td>
+<td><code>numeric</code></td>
+<td><code>n/a</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="edge-values-and-behavior">Edge values and behavior<a class="headerlink" href="#edge-values-and-behavior" title="Permanent link">&para;</a></h2>
+<p>Each statement below is asserted by a test against PostgreSQL. The generated
+SQLite column of every row is also round-tripped on a live SQLite database,
+except <code>NaN</code>, which SQLite does not have (see Floats).</p>
+<ul>
+<li>Integers: <code>math.MaxInt64</code> and <code>math.MinInt64</code> round-trip through <code>bigint</code>;
+  <code>int</code> is 64-bit and maps to <code>bigint</code>. A value that does not fit the column
+  (an <code>int64</code> above <code>math.MaxInt16</code> into <code>smallint</code>) is a database error, not a
+  silent truncation. <code>uint64</code> has no mapping and is rejected when bound if it
+  exceeds <code>math.MaxInt64</code>.</li>
+<li>Floats: <code>NaN</code>, <code>+Inf</code> and <code>-Inf</code> are legal <code>double precision</code> and <code>real</code>
+  values and round-trip. Compare with <code>math.IsNaN</code>, since <code>NaN != NaN</code>. SQLite
+  has no <code>NaN</code>: binding a <code>float32</code> or <code>float64</code> <code>NaN</code> (or a pointer to one) is
+  <code>ErrValidation</code> and nothing is stored, rather than a silent <code>NULL</code>. <code>+Inf</code> and
+  <code>-Inf</code> are legal <code>REAL</code> values.</li>
+<li>Strings: any valid UTF-8 round-trips, including quotes and backslashes (they
+  are bound, never interpolated). PostgreSQL rejects U+0000 in <code>text</code>. A string
+  longer than <code>size</code> is a database error on <code>character varying(N)</code>.</li>
+<li><code>[]byte</code>: <code>nil</code> stores NULL; an empty non-nil slice stores an empty <code>bytea</code>.</li>
+<li><code>time.Time</code> on <code>timestamptz</code>: the instant is preserved, the zone is not. A
+  value written at <code>+05:30</code> reads back as the same instant in the server
+  session's location, so compare with <code>Time.Equal</code>, not <code>==</code>. Precision is
+  microseconds; finer digits are cut. Times before 1970 and year 9999 work.</li>
+<li><code>time.Time</code> on <code>timestamp</code> (no zone): you store a wall clock. Pass
+  <code>t.UTC()</code> and treat the column as UTC; a value in another zone is stored as
+  its UTC wall clock.</li>
+<li><code>types.Date</code>: stores the year, month and day of <code>Time</code> in its own location;
+  it reads back at midnight UTC. Compare the date, not the zone. PostgreSQL
+  <code>infinity</code> and <code>-infinity</code> round-trip through the Infinity and
+  NegInfinity fields (<code>Time</code> is ignored while one is set, and zero after a
+  read); <code>IsFinite</code> tells an ordinary date from a special one. SQLite and
+  MySQL have no special dates: a <code>types.Date</code> with a flag set is
+  <code>ErrValidation</code> and nothing is stored, also inside a <code>sql.Null</code>. Setting both
+  flags is an error.</li>
+<li><code>types.Numeric</code>: an exact decimal kept as text in <code>Decimal</code> (<code>"-12.50"</code>; empty
+  is 0). PostgreSQL <code>numeric</code> returns what it stored, so a value beyond
+  <code>float64</code> precision and its scale survive. <code>NaN</code>, Infinity and
+  NegInfinity round-trip through their flags (set at most one, and leave
+  <code>Decimal</code> empty); <code>IsFinite</code>, <code>IsNaN</code>, <code>IsInfinite</code> and <code>Sign</code> classify a
+  value (<code>Sign</code> is 0 for <code>NaN</code>). Infinity and <code>-Infinity</code> need PostgreSQL 14
+  or later (<code>NaN</code> is older); CI covers PostgreSQL 16 and 17.
+  <code>types.ParseNumeric</code> reads PostgreSQL text and rejects an exponent or
+  anything that is not a number. Scanning also takes an <code>int64</code> and a <code>float64</code>
+  (what SQLite returns for an expression); it does not take a
+  <code>pgtype.Numeric</code>.</li>
+<li>SQLite and MySQL have no <code>NaN</code> or infinity: binding one in a <code>types.Numeric</code>
+  (also inside a <code>sql.Null</code>) is <code>ErrValidation</code>, as for a float <code>NaN</code> on SQLite.
+  The column is <code>TEXT</code> there, so the database does not order or add it as a
+  number, and a <code>precision</code> or <code>scale</code> tag still generates <code>TEXT</code>, not
+  <code>numeric(p,s)</code>: SQLite would give that NUMERIC affinity and turn <code>12.50</code> into
+  <code>12.5</code>. On PostgreSQL the tags generate <code>numeric(p,s)</code>.
+  On PostgreSQL the <code>sqlfn</code> arithmetic helpers (<code>sqlfn.Add</code>, <code>sqlfn.Sub</code>, <code>sqlfn.Mul</code>, <code>sqlfn.Div</code>
+  and their <code>Expr</code> forms) and <code>sqlfn.NullIf</code> accept a <code>types.Numeric</code>, and the
+  database does the exact arithmetic; on SQLite and MySQL they fail with
+  <code>ErrUnsupported</code>, because the column is <code>TEXT</code> there and <code>+</code> would go through
+  floating point. <code>types.NumericFromInt64</code> and <code>types.NumericFromFloat64</code> build
+  a value from a Go number (a <code>float64</code> is already binary: <code>0.1</code> gives <code>"0.1"</code>,
+  its shortest decimal, and NaN or an infinity is an error). Momo does no
+  other arithmetic on a <code>types.Numeric</code>.</li>
+</ul>
+<div class="highlight"><pre><span></span><code>// agent_conversation.cost numeric(12,6), momo.Column[types.Numeric]
+cost, err := types.NumericFromFloat64(0.000412)
+if err != nil { return err }
+agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
+// roughly: SET cost = (agent_conversation.cost + $1), exact in numeric
+</code></pre></div>
+<ul>
+<li><code>types.UUID</code>: round-trips all 16 bytes, including the all-zero UUID.</li>
+<li><code>types.JSON[T]</code>: encodes with <code>encoding/json</code>. An empty slice and a nil
+  slice are different JSON (<code>[]</code> and <code>null</code>) and read back as such.
+  Query it with <code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code> (a scalar at the
+  root), <code>jsonop.Contains</code> and <code>jsonop.HasKey</code>, and compute with
+  <code>jsonop.DeleteKey</code>, <code>jsonop.Concat</code> and <code>jsonop.Set</code> (package
+  <code>github.com/azrtydxb/momo/jsonop</code>; <code>jsonop.Concat</code> and <code>jsonop.Set</code> are
+  PostgreSQL only and need <code>jsonb</code>). A
+  nullable column holds either SQL NULL or the JSON literal null; an extraction
+  is NULL for both and for a missing key, so test the column itself with
+  <code>IsNull</code>. Grouping by an extraction works only for plain keys (letters,
+  digits, underscore) and not on a sensitive column; see the AI guide pitfalls.</li>
+<li><code>types.TimeOfDay</code>: nanoseconds since midnight, truncated to microseconds
+  (PostgreSQL <code>time</code> precision); <code>86399999999000</code> is the last representable
+  value, and a value outside one day is an error.</li>
+<li><code>types.Hstore</code>: a nil <code>*string</code> value is an hstore NULL; keys and values
+  with quotes and backslashes are escaped.</li>
+<li><code>types.TSVector</code> and <code>types.TSQuery</code>: the server's text form, with the
+  lexemes sorted and normalized, so write values in that canonical form to
+  compare them with <code>==</code>. An empty tsvector reads back empty. Full-text
+  expressions are PostgreSQL only (see docs/fulltext.md).</li>
+<li><code>[]string</code> on <code>text[]</code>: elements containing commas, quotes, the text <code>NULL</code>,
+  or empty strings round-trip; an empty slice reads back empty.</li>
+<li>Slices as arrays: only <code>[]string</code>, <code>[]int16</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]bool</code>,
+  <code>[]float32</code>, <code>[]float64</code> and <code>[]types.UUID</code> (<code>uuid[]</code>) map, and so does a <code>[]uuid.UUID</code> from
+  github.com/google/uuid (see the next item). <code>[]int</code> is not mapped, because its width is
+  platform dependent; use <code>[]int64</code>. <code>[]string</code> with a <code>size</code> tag becomes
+  <code>character varying(N)[]</code>. A nil slice binds as NULL, so inserting it into a
+  <code>NOT NULL</code> array column fails with a not-null violation; pass an empty
+  non-nil slice (it stores <code>{}</code>), or give the column a <code>default '{}'</code> and omit
+  it. The array predicates bind a nil value list as an empty array, never NULL.</li>
+<li><code>uuid.UUID</code>, <code>*uuid.UUID</code> and <code>[]uuid.UUID</code> from github.com/google/uuid map to
+  <code>uuid</code> and <code>uuid[]</code> on PostgreSQL and <code>uuid.UUID</code> to <code>TEXT</code> on SQLite (canonical
+  text; <code>[]uuid.UUID</code> has no SQLite column), with no <code>type:</code> tag. MySQL has no
+  uuid mapping, as for <code>types.UUID</code>. The generator recognizes the type by its
+  import path and adds no dependency to momo; your module requires
+  github.com/google/uuid only when your models import it. <code>--from-db</code> writes
+  these types with <code>introspect.uuid: google</code>. A named type over <code>uuid.UUID</code>
+  (<code>type ID uuid.UUID</code>) is not mapped: give the field <code>type:uuid</code>. A UUID type
+  of another package is not mapped either.</li>
+<li>Decimal: carry <code>numeric</code> as <code>types.Numeric</code> (exact, with <code>NaN</code> and the
+  infinities), or as a string to avoid binary floating point. Values beyond
+  <code>float64</code> precision round-trip exactly, and <code>numeric</code> also accepts <code>NaN</code>.</li>
+</ul>
+<h2 id="null-handling">Null handling<a class="headerlink" href="#null-handling" title="Permanent link">&para;</a></h2>
+<p>A column that can be NULL needs a Go type that can hold NULL: a pointer
+(<code>*int64</code>), a <code>sql.Null*</code> wrapper, or a type whose <code>Scan</code> accepts nil.
+Scanning NULL into a plain <code>int64</code> or into a codec from the <code>types</code> package is
+an error, never a silent zero value.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

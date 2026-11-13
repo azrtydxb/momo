@@ -1,0 +1,1874 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.10/supported-versions/">
+      
+      
+        <link rel="prev" href="../PERFORMANCE/">
+      
+      
+        <link rel="next" href="../upgrading/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Supported versions - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#supported-versions" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Supported versions
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#databases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Go
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dependencies-gomod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies (go.mod)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operating-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operating systems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pgvector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pgvector
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pgbouncer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PgBouncer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-version-floors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature version floors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stability-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stability policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#databases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Go
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dependencies-gomod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies (go.mod)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operating-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operating systems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pgvector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pgvector
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pgbouncer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PgBouncer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-version-floors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature version floors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stability-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stability policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="supported-versions">Supported versions<a class="headerlink" href="#supported-versions" title="Permanent link">&para;</a></h1>
+<p>What Momo v0.10.0 is built and tested against. "Tested" means a job in <!-- x-release-please-version -->
+<code>.github/workflows/ci.yml</code> runs it. Anything not listed there is untested, not
+necessarily broken.</p>
+<h2 id="module">Module<a class="headerlink" href="#module" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Module path</td>
+<td><code>github.com/azrtydxb/momo</code></td>
+</tr>
+<tr>
+<td>Version</td>
+<td>v0.10.0 (tags use a <code>v</code> prefix) <!-- x-release-please-version --></td>
+</tr>
+<tr>
+<td>Install</td>
+<td><code>go get github.com/azrtydxb/momo@v0.10.0</code> <!-- x-release-please-version --></td>
+</tr>
+<tr>
+<td>CLI</td>
+<td><code>go run github.com/azrtydxb/momo/cmd/momo</code> (or <code>go install</code> the same path)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="databases">Databases<a class="headerlink" href="#databases" title="Permanent link">&para;</a></h2>
+<!-- generated:status -->
+
+<!-- Generated by go generate ./internal/gendocs from the code. Do not edit by hand. -->
+
+<p>A database is usable when a driver package for it exists under <code>driver/</code>:</p>
+<ul>
+<li>PostgreSQL: usable through <code>driver/pgxdriver</code> (vector builders: yes). Migrations: <code>migrate/postgres</code>, run by <code>momo migrate</code>.</li>
+<li>SQLite: usable through <code>driver/sqlitedriver</code> (needs cgo, not on Windows, vector builders: yes) and <code>driver/sqlitepure</code> (vector builders: no). Migrations: <code>migrate/sqlite</code>, library only (<code>momo migrate</code> does not select it).</li>
+<li>MySQL and MariaDB: usable through <code>driver/mysqldriver</code> (vector storage and builders depend on the server version). Migrations: <code>migrate/mysql</code>, library only (<code>momo migrate</code> does not select it).</li>
+</ul>
+<!-- /generated:status -->
+
+<p>Servers the integration jobs run against: PostgreSQL 16 and 17 with pgvector (see below), and MySQL 8.4, MySQL 9.7 and MariaDB 11.8 for the MySQL driver. Vector support on the MySQL family depends on the server version: MySQL 8.4 has no <code>VECTOR</code> type, MySQL 9.x stores vectors but has no distance function, and MariaDB 11.8 has L2 and cosine distance functions (see <a href="../mysql/">MySQL and MariaDB</a>).</p>
+<h2 id="go">Go<a class="headerlink" href="#go" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Minimum (<code>go.mod</code> <code>go</code> line)</td>
+<td>1.26.10</td>
+</tr>
+<tr>
+<td>CI matrix</td>
+<td>1.26 and 1.27 for unit, compile-fail, race, fuzz smoke and integration jobs</td>
+</tr>
+<tr>
+<td>Single-version CI jobs</td>
+<td>lint and bench-module (1.26); bench smoke, govulncheck, Windows and macOS (1.27)</td>
+</tr>
+<tr>
+<td>Older than 1.26.10</td>
+<td>not supported</td>
+</tr>
+<tr>
+<td>cgo</td>
+<td><code>driver/sqlitedriver</code> (mattn go-sqlite3 and sqlite-vec) needs cgo and a C toolchain and does not build on Windows; a build without cgo gets a stub whose <code>Open</code> returns <code>ErrUnsupported</code>; <code>driver/sqlitepure</code> needs no cgo and is tested with <code>CGO_ENABLED=0</code> (<code>make test-sqlitepure</code>). The macOS job sets <code>CGO_ENABLED=1</code>; the Linux jobs use the default, which is on</td>
+</tr>
+</tbody>
+</table>
+<h2 id="dependencies-gomod">Dependencies (<code>go.mod</code>)<a class="headerlink" href="#dependencies-gomod" title="Permanent link">&para;</a></h2>
+<!-- generated:dependencies -->
+
+<!-- Generated by go generate ./internal/gendocs from the code. Do not edit by hand. -->
+
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Version</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>github.com/asg017/sqlite-vec-go-bindings</code></td>
+<td>v0.1.6</td>
+<td>sqlite-vec for <code>driver/sqlitedriver</code> (cgo).</td>
+</tr>
+<tr>
+<td><code>github.com/go-sql-driver/mysql</code></td>
+<td>v1.10.1</td>
+<td>used by <code>driver/mysqldriver</code> and by test harness code (<code>internal/testdb</code>).</td>
+</tr>
+<tr>
+<td><code>github.com/google/uuid</code></td>
+<td>v1.6.0</td>
+<td>tests only (root, <code>arrayop</code>); the generator and <code>arrayop</code> match its UUID type by import path, so momo's own code imports nothing from it.</td>
+</tr>
+<tr>
+<td><code>github.com/jackc/pgx/v5</code></td>
+<td>v5.12.0</td>
+<td>PostgreSQL driver for <code>driver/pgxdriver</code>.</td>
+</tr>
+<tr>
+<td><code>github.com/mattn/go-sqlite3</code></td>
+<td>v1.14.53</td>
+<td>used by <code>driver/sqlitedriver</code> (cgo).</td>
+</tr>
+<tr>
+<td><code>go.yaml.in/yaml/v3</code></td>
+<td>v3.0.6</td>
+<td><code>momo.yaml</code>.</td>
+</tr>
+<tr>
+<td><code>golang.org/x/tools</code></td>
+<td>v0.52.0</td>
+<td>generator.</td>
+</tr>
+<tr>
+<td><code>modernc.org/sqlite</code></td>
+<td>v1.61.1</td>
+<td>pure-Go SQLite for <code>driver/sqlitepure</code> (no cgo, no vectors).</td>
+</tr>
+</tbody>
+</table>
+<!-- /generated:dependencies -->
+
+<h2 id="operating-systems">Operating systems<a class="headerlink" href="#operating-systems" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>OS</th>
+<th>CI job</th>
+<th>What runs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linux</td>
+<td><code>ubuntu-latest</code></td>
+<td>every job, including PostgreSQL integration tests</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>macos-latest</code></td>
+<td><code>CGO_ENABLED=1 go test ./...</code> (unit tests, no database)</td>
+</tr>
+<tr>
+<td>Windows</td>
+<td><code>windows-latest</code></td>
+<td><code>go test ./...</code> and <code>go test -tags integration ./driver/sqlitepure/... ./internal/sqlshared/...</code> (pure-Go SQLite, no server)</td>
+</tr>
+</tbody>
+</table>
+<p>Integration tests (real PostgreSQL, pgvector, PgBouncer) run on Linux only.</p>
+<p>The <code>integration-mysql</code> job runs the integration suite against MySQL 8.4.13,
+MySQL 9.7.4 and MariaDB 11.8.9 (one service container per matrix entry, on Go
+1.26 and 1.27). The <code>bench-module</code> job vets, tests and tidy-checks the separate
+<code>bench</code> module against PostgreSQL 17 with pgvector, runs its integration tests,
+the hook-overhead benchmark (<code>make bench-hooks</code>), the benchmark suite smoke run
+and the allocation gate (<code>make bench-gate</code>).</p>
+<h2 id="postgresql">PostgreSQL<a class="headerlink" href="#postgresql" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tested major versions</td>
+<td>16 and 17 (images <code>pgvector/pgvector:0.8.7-pg16</code> and <code>0.8.7-pg17</code>)</td>
+</tr>
+<tr>
+<td>Other majors</td>
+<td>untested; no minimum is enforced in code and none is documented</td>
+</tr>
+<tr>
+<td><code>MERGE</code></td>
+<td>the <code>momo.Merge</code> builder; it reads <code>server_version_num</code> (<code>ServerVersioner</code>) and returns <code>ErrUnsupported</code> below PostgreSQL 15, and for <code>.Returning</code> below PostgreSQL 17</td>
+</tr>
+<tr>
+<td>Authentication in tests</td>
+<td>password (<code>postgres</code> and <code>momo_app</code> roles); TLS is off in CI (<code>sslmode=disable</code>)</td>
+</tr>
+<tr>
+<td>Driver</td>
+<td>pgx v5 pool through <code>pgxdriver.NewPool</code> or <code>pgxdriver.New</code>; <code>database/sql</code> through <code>pgxdriver.FromSQLDB</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="pgvector">pgvector<a class="headerlink" href="#pgvector" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tested version</td>
+<td>0.8.7 (pinned; <code>TestPgvectorVersionPinned</code> fails on any other version in CI)</td>
+</tr>
+<tr>
+<td>Iterative scan, <code>hnsw.max_scan_tuples</code>, <code>hnsw.scan_mem_multiplier</code>, <code>ivfflat.max_probes</code></td>
+<td>0.8.0 or newer; enforced: <code>vecsearch.Apply</code> returns <code>ErrUnsupported</code> on an older or missing extension</td>
+</tr>
+<tr>
+<td><code>vector</code>, <code>halfvec</code>, <code>sparsevec</code>, <code>bit</code> types and the l1, hamming, jaccard operators</td>
+<td>no version check in Momo. Upstream pgvector added halfvec, sparsevec, l1 and jaccard in 0.7.0; that is not asserted by this repository, so treat 0.7.0 as an unverified lower bound and use 0.8.x</td>
+</tr>
+<tr>
+<td>Installation</td>
+<td>server-side package or image; Momo never runs <code>CREATE EXTENSION</code> at connect time; a migration creates it and a missing extension surfaces as <code>ErrUnsupported</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="pgbouncer">PgBouncer<a class="headerlink" href="#pgbouncer" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tested version</td>
+<td>1.26.1 (image <code>edoburu/pgbouncer:v1.26.1-p0</code>)</td>
+</tr>
+<tr>
+<td>Pool mode</td>
+<td>transaction</td>
+</tr>
+<tr>
+<td>Client authentication</td>
+<td><code>scram-sha-256</code> (<code>AUTH_TYPE</code>)</td>
+</tr>
+<tr>
+<td>Prepared statements</td>
+<td>CI sets <code>MAX_PREPARED_STATEMENTS=0</code>; Momo's default exec mode creates no named prepared statements (checked on the wire by <code>TestPgBouncerNoNamedPreparedStatements</code>)</td>
+</tr>
+<tr>
+<td>Exec modes</td>
+<td>default <code>pgx.QueryExecModeExec</code> is the tested one; <code>WithExecMode</code> allows <code>CacheStatement</code>, <code>CacheDescribe</code>, <code>DescribeExec</code>, which create or cache statements and are not tested through PgBouncer here; simple protocol is rejected</td>
+</tr>
+<tr>
+<td>Session state</td>
+<td>the test image cannot track <code>search_path</code> set at startup; set it per transaction. <code>vecsearch.Settings</code> and <code>Tx.SetLocal</code> are transaction-local and safe</td>
+</tr>
+<tr>
+<td>Migrations</td>
+<td>do not run <code>momo migrate</code> through a transaction pooler: the lock is a session advisory lock; use a direct connection</td>
+</tr>
+<tr>
+<td>Other poolers</td>
+<td>untested (pgcat, Odyssey, RDS Proxy, Supavisor)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="feature-version-floors">Feature version floors<a class="headerlink" href="#feature-version-floors" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Floor</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Iterative vector scan settings</td>
+<td>pgvector 0.8.0</td>
+<td><code>vecsearch/vecsearch.go</code> (<code>vecsearch.Apply</code>)</td>
+</tr>
+<tr>
+<td><code>MERGE</code> (<code>momo.Merge</code>)</td>
+<td>PostgreSQL 15; <code>.Returning</code> needs PostgreSQL 17</td>
+<td><code>write_merge.go</code></td>
+</tr>
+<tr>
+<td>Window functions (<code>LoadPerParentLimit</code>)</td>
+<td>none enforced; tested on PostgreSQL 16 and 17</td>
+<td><code>rel_load.go</code>, CI</td>
+</tr>
+<tr>
+<td><code>RETURNING</code>, <code>ON CONFLICT</code>, row locking, savepoints</td>
+<td>none enforced; tested on PostgreSQL 16 and 17</td>
+<td><code>dialect/dialect.go</code>, CI</td>
+</tr>
+<tr>
+<td>Generated identity columns, <code>OVERRIDING SYSTEM VALUE</code></td>
+<td>none enforced; tested on PostgreSQL 16 and 17</td>
+<td>CI</td>
+</tr>
+<tr>
+<td><code>momo.yaml</code>, migration files, <code>momo.sum</code>, snapshots</td>
+<td>format versions <code>1</code> (<code>schema.FormatVersion</code>, <code>migrate.SnapshotFormat</code>, <code>migrate.SumFormat</code>); a newer snapshot format is refused with <code>schema.ErrNewerFormat</code></td>
+<td><code>migrate/</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="stability-policy">Stability policy<a class="headerlink" href="#stability-policy" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Statement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pre-1.0</td>
+<td>the README states: "v0.10.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version --></td>
+</tr>
+<tr>
+<td>Versioning</td>
+<td>release-please with <code>bump-minor-pre-major: true</code> and Conventional Commits; breaking changes are marked <code>feat!:</code> or a <code>BREAKING CHANGE:</code> footer (CONTRIBUTING)</td>
+</tr>
+<tr>
+<td>Deprecation process</td>
+<td>none documented</td>
+</tr>
+<tr>
+<td>Security fixes</td>
+<td>latest minor only (<code>SECURITY.md</code>)</td>
+</tr>
+<tr>
+<td>Pin your dependency</td>
+<td>use an exact version in <code>go.mod</code> and read <code>CHANGELOG.md</code> before each upgrade</td>
+</tr>
+<tr>
+<td>Generated code</td>
+<td>regenerate with <code>momo generate</code> after every upgrade; generated files carry only a format number in their header, so an upgrade rewrites them only when the generated code changes; <code>momo generate --check</code> reports stale ones</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
