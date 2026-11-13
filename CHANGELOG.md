@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/azrtydxb/momo/compare/v0.8.0...v0.9.0) (2026-11-13)
+
+
+### Features
+
+* **sqlfn:** arithmetic on types.Numeric columns ([#116](https://github.com/azrtydxb/momo/issues/116)) ([963c06a](https://github.com/azrtydxb/momo/commit/963c06a1ed4e4877fe61f6273687127c1bb7754e))
+
 ## [0.8.0](https://github.com/azrtydxb/momo/compare/v0.7.0...v0.8.0) (2026-11-12)
 
 _This release fixes 26 issues found while porting Kuvryn Orbit and Owl to 0.7: query builder gaps, `--from-db` output, migration inspection, and new PostgreSQL helpers. Upgrading may need code changes, mostly where generated names change; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.8.0/docs/upgrading.md). [Changes since 0.7.0](https://github.com/azrtydxb/momo/compare/v0.7.0...v0.8.0)._
