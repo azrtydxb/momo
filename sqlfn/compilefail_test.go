@@ -11,7 +11,8 @@ import (
 
 // TestCompileFailSQLFunctions checks that the scalar SQL functions left the
 // root package for sqlfn, that CASE branches share one type, and that
-// arithmetic accepts numeric columns only. The programs live in
+// arithmetic accepts numeric columns only (a string or a types.Date column is
+// refused; types.Numeric is accepted). The programs live in
 // testdata/compilefail and are built, not run.
 func TestCompileFailSQLFunctions(t *testing.T) {
 	for name, wants := range map[string][]string{
@@ -42,6 +43,7 @@ func TestCompileFailSQLFunctions(t *testing.T) {
 		},
 		"casemismatch": {"cannot use 42 (untyped int constant) as string value"},
 		"arithstring":  {"does not satisfy sqlfn.Numeric"},
+		"arithdate":    {"does not satisfy sqlfn.Numeric"},
 	} {
 		cmd := exec.Command("go", "build", "-gcflags=-e", "-o", os.DevNull, "./testdata/compilefail/"+name)
 		out, err := cmd.CombinedOutput()
