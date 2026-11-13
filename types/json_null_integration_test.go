@@ -117,3 +117,72 @@ func TestJSONNullVersusSQLNullLiveMySQL(t *testing.T) {
 		})
 	}
 }
+
+// jsonStructRoundTrip uses a struct T, whose zero value encodes as an object,
+// so a rewrite that lost the null marker would store {"name":"","tags":null}
+// and not null. It also reads through momo.Query into a plain struct, with one
+// pointer and one non-pointer JSON field.
+func jsonStructRoundTrip(t *testing.T, db *momo.DB, d dialect.Name) {
+	ctx := context.Background()
+	tbl := "json_null_struct"
+	typ := types.JSON[doc]{}.SQLType(d)
+	if _, err := momo.Exec(ctx, db, "CREATE TABLE "+tbl+" (id int PRIMARY KEY, ptr "+typ+", val "+typ+" NOT NULL)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := momo.Exec(ctx, db, "INSERT INTO "+tbl+" (id, ptr, val) VALUES (1, ?, ?)", (*types.JSON[doc])(nil), types.JSONNull[doc]()); err != nil {
+		t.Fatalf("insert row 1: %v", err)
+	}
+	if _, err := momo.Exec(ctx, db, "INSERT INTO "+tbl+" (id, ptr, val) VALUES (2, ?, ?)", types.JSONNull[doc](), types.JSON[doc]{V: doc{Name: "x"}}); err != nil {
+		t.Fatalf("insert row 2: %v", err)
+	}
+
+	type row struct {
+		ID  int
+		Ptr *types.JSON[doc]
+		Val types.JSON[doc]
+	}
+	rows, err := momo.Query[row](ctx, db, "SELECT id, ptr, val FROM "+tbl+" ORDER BY id")
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("Query: %v (%d rows)", err, len(rows))
+	}
+	if rows[0].Ptr != nil || !jsonIsNull(rows[0].Val) {
+		t.Fatalf("row 1: ptr %+v, val %+v; want a nil pointer and a JSON null", rows[0].Ptr, rows[0].Val)
+	}
+	if rows[1].Ptr == nil || !jsonIsNull(rows[1].Ptr) || jsonIsNull(rows[1].Val) || rows[1].Val.V.Name != "x" {
+		t.Fatalf("row 2: ptr %+v, val %+v", rows[1].Ptr, rows[1].Val)
+	}
+
+	// Store the values just read under a new id; a lost marker would store an object.
+	if _, err := momo.Exec(ctx, db, "INSERT INTO "+tbl+" (id, ptr, val) VALUES (3, ?, ?)", rows[1].Ptr, rows[0].Val); err != nil {
+		t.Fatalf("second insert: %v", err)
+	}
+	for _, col := range []string{"ptr", "val"} {
+		q := "SELECT CASE WHEN " + col + " IS NULL THEN NULL WHEN " + col + " = 'null' THEN 'null' ELSE 'other' END FROM " + tbl + " WHERE id = 3"
+		if d == dialect.Postgres {
+			q = "SELECT jsonb_typeof(" + col + ") FROM " + tbl + " WHERE id = 3"
+		}
+		got, err := momo.Scalars[string](ctx, db, q)
+		if err != nil || len(got) != 1 || got[0] != "null" {
+			t.Fatalf("stored %s: %v, %v; want the JSON null", col, got, err)
+		}
+	}
+}
+
+// Catches: a struct T whose JSON null is stored as the encoding of its zero
+// value (an object) when the null marker is dropped, and Query[T] into a plain
+// struct reading the JSON null of a pointer or non-pointer field wrongly.
+func TestJSONNullStructLive(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		jsonStructRoundTrip(t, db, d)
+	})
+}
+
+// Catches: the same on MySQL 8.4, 9.7 and MariaDB.
+func TestJSONNullStructLiveMySQL(t *testing.T) {
+	for _, s := range mysqlServers {
+		t.Run(s.name, func(t *testing.T) {
+			db := s.open(t)
+			jsonStructRoundTrip(t, db, db.Dialect().Name)
+		})
+	}
+}

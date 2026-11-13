@@ -73,3 +73,30 @@ func TestJSONScanSQLNullIsError(t *testing.T) {
 		t.Fatal("Scan(nil) succeeded")
 	}
 }
+
+// Catches: Set not clearing the null marker, or a direct V = zero value
+// silently ending the JSON null (the zero value cannot be told from an
+// untouched V, so only Set and a fresh JSON[T]{V: v} end it).
+func TestJSONSetClearsNullButZeroAssignmentDoesNot(t *testing.T) {
+	var p JSON[bool]
+	if err := p.Scan("null"); err != nil || !p.IsNull() {
+		t.Fatalf("scan null: %v, IsNull %v", err, p.IsNull())
+	}
+	p.V = false
+	if !p.IsNull() {
+		t.Fatal("assigning the zero value to V ended the JSON null; it must not")
+	}
+	if v, _ := p.Value(); v != "null" {
+		t.Fatalf("Value after V = false: %v, want null", v)
+	}
+	p.Set(false)
+	if p.IsNull() {
+		t.Fatal("Set(false) left IsNull true")
+	}
+	if v, _ := p.Value(); v != "false" {
+		t.Fatalf("Value after Set(false): %v, want false", v)
+	}
+	if v, _ := (JSON[bool]{V: false}).Value(); v != "false" {
+		t.Fatalf("fresh JSON{V: false}: %v, want false", v)
+	}
+}

@@ -452,8 +452,12 @@ Decision (2026-11-13, integrator): as above.
   issue's option 2; no `NullJSON` type is added.
 - **State:** `types.JSON[T]` gains a private marker set by `Scan` on a stored
   `null` (surrounding white space ignored) and by `types.JSONNull`. `Value`
-  writes `null` while the marker is set and `V` is still the zero `T`, so a read
-  JSON null written back stays JSON null. A nil `*JSON[T]` still writes SQL NULL.
+  writes `null` while the marker is set and `V` is the zero `T` or still
+  encodes as `null` (`json.RawMessage("null")`), so a read JSON null written
+  back stays JSON null. A nil `*JSON[T]` still writes SQL NULL. A direct
+  `V = <zero>` keeps the null; `Set` (or a fresh `JSON[T]{V: v}`) ends it. The
+  pgx driver recognises the family through `types.JSONNuller`, an interface
+  only `JSON[T]` satisfies.
 - **Layer:** the cause was pgx, whose scan plan for a pointer to a pointer on
   json and jsonb sets the pointer to nil for the JSON null. The pgx driver's
   `Rows.Scan` (and the buffered rows of bulk mode) now scans a `**T` destination
