@@ -10,8 +10,8 @@ later releases can break more.
 No change is needed in your code, your generated models or your migration
 snapshot. 0.9.0 adds API:
 
-- `sqlfn.Numeric`, the constraint of `sqlfn.Add`, `Sub`, `Mul`, `Div` (and
-  their `Expr` forms) and `NullIf`, also admits `types.Numeric`. A
+- `sqlfn.Numeric`, the constraint of `sqlfn.Add`, `sqlfn.Sub`, `sqlfn.Mul`,
+  `sqlfn.Div` (and their `Expr` forms) and `sqlfn.NullIf`, also admits `types.Numeric`. A
   `momo.Column[types.Numeric]` can now be incremented in the database:
 
   ```text

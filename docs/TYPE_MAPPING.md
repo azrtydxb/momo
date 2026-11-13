@@ -169,8 +169,8 @@ except `NaN`, which SQLite does not have (see Floats).
   number, and a `precision` or `scale` tag still generates `TEXT`, not
   `numeric(p,s)`: SQLite would give that NUMERIC affinity and turn `12.50` into
   `12.5`. On PostgreSQL the tags generate `numeric(p,s)`.
-  On PostgreSQL the `sqlfn` arithmetic helpers (`Add`, `Sub`, `Mul`, `Div` and
-  their `Expr` forms) and `sqlfn.NullIf` accept a `types.Numeric`, and the
+  On PostgreSQL the `sqlfn` arithmetic helpers (`sqlfn.Add`, `sqlfn.Sub`, `sqlfn.Mul`, `sqlfn.Div`
+  and their `Expr` forms) and `sqlfn.NullIf` accept a `types.Numeric`, and the
   database does the exact arithmetic; on SQLite and MySQL they fail with
   `ErrUnsupported`, because the column is `TEXT` there and `+` would go through
   floating point. `types.NumericFromInt64` and `types.NumericFromFloat64` build
