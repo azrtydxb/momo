@@ -38,6 +38,26 @@ type Numeric struct {
 	NegInfinity bool
 }
 
+// NumericFromInt64 returns the Numeric holding n exactly.
+func NumericFromInt64(n int64) Numeric {
+	return Numeric{Decimal: strconv.FormatInt(n, 10)}
+}
+
+// NumericFromFloat64 returns the Numeric holding f written as the shortest
+// decimal that reads back as the same float64 (strconv.FormatFloat with 'f'
+// and precision -1), without an exponent. A float64 is already binary, so this
+// is the float's shortest representation, not an exact conversion of its bits:
+// 0.1 gives "0.1", not the long expansion of the nearest binary fraction. Use
+// it to bring a float you already have into a numeric column; it cannot repair
+// precision a float already lost. NaN and the infinities return an error; set
+// the NaN, Infinity or NegInfinity flag by hand to store one.
+func NumericFromFloat64(f float64) (Numeric, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return Numeric{}, fmt.Errorf("types: cannot convert %v to a finite Numeric", f)
+	}
+	return Numeric{Decimal: strconv.FormatFloat(f, 'f', -1, 64)}, nil
+}
+
 // ParseNumeric parses PostgreSQL numeric text: an optionally signed decimal
 // ("12", "-1.5", ".5", "7."), or NaN, Infinity or -Infinity (also written
 // inf, any case). Surrounding spaces are ignored; an exponent is not accepted.

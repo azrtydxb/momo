@@ -16,12 +16,15 @@ package sqlfn
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/types"
 )
 
 // intLit renders an int as a SQL literal. Substr positions are literals, not
@@ -181,11 +184,24 @@ func (c CaseExpr[T]) AppendSQL(b *momo.Builder) {
 
 // ------------------------------------------------------------ arithmetic
 
-// Numeric is the constraint of the arithmetic helpers.
+// Numeric is the constraint of the arithmetic helpers: the Go integer and
+// float kinds, and types.Numeric (the exact decimal that a PostgreSQL numeric
+// column maps to). types.Numeric is accepted by exact type, not by ~.
+//
+// types.Numeric arithmetic is PostgreSQL only. On SQLite and MySQL a
+// types.Numeric is stored as TEXT, so + - * / would run through floating point
+// and silently lose the exactness the type exists for; building such an
+// expression there fails with momo.ErrUnsupported.
 type Numeric interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 |
 		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 |
-		~float32 | ~float64
+		~float32 | ~float64 | types.Numeric
+}
+
+// isDecimal reports whether T is types.Numeric.
+func isDecimal[T Numeric]() bool {
+	_, ok := any(*new(T)).(types.Numeric)
+	return ok
 }
 
 // ArithExpr is a parenthesised binary arithmetic expression over T.
@@ -207,6 +223,13 @@ func (a ArithExpr[T]) As(alias string) momo.Aliased[T] { return momo.As[T](a, al
 
 // AppendSQL writes the arithmetic expression to b.
 func (a ArithExpr[T]) AppendSQL(b *momo.Builder) {
+	if isDecimal[T]() && b.Dialect().Name != dialect.Postgres {
+		b.SetErr(&momo.Error{Kind: momo.ErrUnsupported, Op: "build", Err: fmt.Errorf(
+			"the %q operator on types.Numeric is PostgreSQL only: %s stores types.Numeric as TEXT, so the arithmetic would be floating point and inexact",
+			strings.TrimSpace(a.op), b.Dialect().Name)})
+		b.WriteString("NULL")
+		return
+	}
 	b.WriteString("(")
 	a.l.AppendSQL(b)
 	b.WriteString(a.op)
@@ -263,9 +286,48 @@ func DivExpr[T Numeric](e, other momo.Expression[T]) ArithExpr[T] {
 }
 
 // NullIf is NULLIF(e, v): NULL when e equals v, else e. v renders as a
-// literal (momo.Lit), not a bound parameter.
+// literal (as momo.Lit does), not a bound parameter. For a types.Numeric, v
+// renders as a numeric literal such as '0'::numeric on PostgreSQL, and the
+// build fails with momo.ErrUnsupported on SQLite and MySQL; an invalid
+// types.Numeric fails with momo.ErrValidation.
 func NullIf[T Numeric](e momo.Expression[T], v T) momo.FuncExpr[T] {
-	return momo.Func[T]("nullif", e, momo.Lit(v))
+	return momo.Func[T]("nullif", e, nullIfLit[T]{v})
+}
+
+// nullIfLit is the literal operand of NullIf. It renders the Go kinds exactly
+// as momo.Lit does and adds types.Numeric, which Lit does not accept.
+type nullIfLit[T Numeric] struct{ v T }
+
+func (l nullIfLit[T]) AppendSQL(b *momo.Builder) {
+	if n, ok := any(l.v).(types.Numeric); ok {
+		if b.Dialect().Name != dialect.Postgres {
+			b.SetErr(&momo.Error{Kind: momo.ErrUnsupported, Op: "build", Err: fmt.Errorf(
+				"a types.Numeric literal in NullIf is PostgreSQL only: %s stores types.Numeric as TEXT", b.Dialect().Name)})
+			b.WriteString("NULL")
+			return
+		}
+		w, err := n.Value() // rejects an invalid decimal and conflicting flags
+		if err != nil {
+			b.SetErr(&momo.Error{Kind: momo.ErrValidation, Op: "build", Err: err})
+			b.WriteString("NULL")
+			return
+		}
+		// The text is a sign, digits and a dot, or NaN/Infinity: no quote or
+		// backslash can occur.
+		b.WriteString("'" + w.(string) + "'::numeric")
+		return
+	}
+	rv := reflect.ValueOf(any(l.v))
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		momo.Lit(rv.Int()).AppendSQL(b)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		momo.Lit(rv.Uint()).AppendSQL(b)
+	case reflect.Float32:
+		momo.Lit(float32(rv.Float())).AppendSQL(b)
+	default:
+		momo.Lit(rv.Float()).AppendSQL(b)
+	}
 }
 
 // NullIfExpr is NULLIF(e, other).
