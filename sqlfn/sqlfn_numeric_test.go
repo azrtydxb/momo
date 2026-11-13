@@ -93,3 +93,56 @@ func TestNullIfNumeric(t *testing.T) {
 		t.Errorf("NullIf with a bad decimal = %v, want ErrValidation", err)
 	}
 }
+
+var (
+	smallCol = momo.NewColumn[uint8]("documents", "small", 0)
+	ratioCol = momo.NewColumn[float32]("documents", "ratio", 0)
+)
+
+// Catches: NullIf's own literal rendering drifting from what momo.Lit wrote
+// for the plain kinds before types.Numeric joined the constraint (a negative
+// not parenthesised, a float32 widened to float64 digits, a missing ".0").
+func TestNullIfPlainKindsMatchLit(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		e    momo.Expr
+		want string
+	}{
+		{"int64", sqlfn.NullIf(docTenantID, int64(-1)), `SELECT nullif("documents"."tenant_id", (-1)) FROM "documents"`},
+		{"uint8", sqlfn.NullIf(smallCol, uint8(7)), `SELECT nullif("documents"."small", 7) FROM "documents"`},
+		{"float32", sqlfn.NullIf(ratioCol, float32(1.5)), `SELECT nullif("documents"."ratio", 1.5) FROM "documents"`},
+	} {
+		got, err := exprtest.CompileColumns(dialect.Postgres, c.e)
+		if err != nil || got.SQL != c.want || len(got.Args) != 0 {
+			t.Errorf("%s: got %s %v (%v)\nwant %s", c.name, got.SQL, got.Args, err, c.want)
+		}
+	}
+}
+
+// Catches: a NaN Numeric literal in NullIf rendered wrongly or refused.
+func TestNullIfNumericNaN(t *testing.T) {
+	got, err := exprtest.CompileColumns(dialect.Postgres, sqlfn.NullIf(costCol, types.Numeric{NaN: true}))
+	want := `SELECT nullif("documents"."cost", 'NaN'::numeric) FROM "documents"`
+	if err != nil || got.SQL != want {
+		t.Errorf("got %s (%v), want %s", got.SQL, err, want)
+	}
+}
+
+// Catches: a Numeric with conflicting flags reaching the SQL text instead of
+// failing with ErrValidation.
+func TestNullIfNumericConflictingFlags(t *testing.T) {
+	_, err := exprtest.CompileColumns(dialect.Postgres, sqlfn.NullIf(costCol, types.Numeric{NaN: true, Infinity: true}))
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("conflicting flags = %v, want ErrValidation", err)
+	}
+}
+
+// Catches: a nested types.Numeric arithmetic expression escaping the dialect
+// check on SQLite.
+func TestNestedNumericArithmeticRefusedOnSQLite(t *testing.T) {
+	n := types.Numeric{Decimal: "1"}
+	_, err := exprtest.CompileColumns(dialect.SQLite, sqlfn.Add(sqlfn.Add(costCol, n), n))
+	if !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("nested Add on SQLite = %v, want ErrUnsupported", err)
+	}
+}

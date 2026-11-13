@@ -4,6 +4,7 @@ package types
 
 import (
 	"math"
+	"strconv"
 	"testing"
 )
 
@@ -44,6 +45,28 @@ func TestNumericFromFloat64(t *testing.T) {
 	for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
 		if got, err := NumericFromFloat64(f); err == nil {
 			t.Errorf("NumericFromFloat64(%v) = %+v, want an error", f, got)
+		}
+	}
+}
+
+// Catches: negative zero written as "-0", and the float extremes producing an
+// invalid Numeric or one that does not read back as the same float.
+func TestNumericFromFloat64ZeroAndExtremes(t *testing.T) {
+	got, err := NumericFromFloat64(math.Copysign(0, -1))
+	if err != nil || got != (Numeric{Decimal: "0"}) {
+		t.Errorf("NumericFromFloat64(-0) = %+v, %v; want \"0\"", got, err)
+	}
+	for _, f := range []float64{math.MaxFloat64, math.SmallestNonzeroFloat64} {
+		n, err := NumericFromFloat64(f)
+		if err != nil {
+			t.Fatalf("NumericFromFloat64(%v): %v", f, err)
+		}
+		if _, err := ParseNumeric(n.Decimal); err != nil {
+			t.Errorf("NumericFromFloat64(%v) = %q does not parse: %v", f, n.Decimal, err)
+		}
+		back, err := strconv.ParseFloat(n.Decimal, 64)
+		if err != nil || back != f {
+			t.Errorf("NumericFromFloat64(%v) = %q reads back as %v, %v", f, n.Decimal, back, err)
 		}
 	}
 }

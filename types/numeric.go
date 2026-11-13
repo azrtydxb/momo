@@ -55,6 +55,9 @@ func NumericFromFloat64(f float64) (Numeric, error) {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return Numeric{}, fmt.Errorf("types: cannot convert %v to a finite Numeric", f)
 	}
+	if f == 0 {
+		return Numeric{Decimal: "0"}, nil // also negative zero, which would format as "-0"
+	}
 	return Numeric{Decimal: strconv.FormatFloat(f, 'f', -1, 64)}, nil
 }
 

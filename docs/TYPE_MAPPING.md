@@ -183,7 +183,7 @@ except `NaN`, which SQLite does not have (see Floats).
   cost, err := types.NumericFromFloat64(0.000412)
   if err != nil { return err }
   agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
-  // SET cost = (cost + $1), exact in numeric
+  // roughly: SET cost = (agent_conversation.cost + $1), exact in numeric
   ```
 
 - `types.UUID`: round-trips all 16 bytes, including the all-zero UUID.
