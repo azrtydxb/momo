@@ -200,12 +200,15 @@ var features = []feature{
 			"timeop.Extract", "timeop.AtTimeZone", "timeop.Trunc", "timeop.Now", "timeop.CurrentTimestamp",
 			"timeop.IntervalOf", "timeop.IntervalExpr", "timeop.IntervalDuration", "timeop.AddInterval", "timeop.SubInterval",
 			"timeop.AddDuration", "timeop.SubDuration", "timeop.Sub", "timeop.Age", "timeop.EpochSeconds",
+			"timeop.AddDays", "timeop.AddDaysExpr", "timeop.DaysBetween",
 		},
 		PG: "yes",
 		SQLite: "every `timeop.ExtractField`, `timeop.TruncUnit`, interval and `timeop.Now` run on both SQLite drivers; month arithmetic overflows into the next month " +
 			"(Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); `timeop.Now` is millisecond text; `timeop.AtTimeZone` is PostgreSQL only; " +
-			"`timeop.IntervalMillisecond` and `timeop.IntervalMicrosecond` keep milliseconds; `timeop.EpochSeconds` of `timeop.Sub` runs through `julianday` (about 0.1 ms), `timeop.Age` is PostgreSQL only",
-		MySQL: "SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server; `timeop.AtTimeZone` is PostgreSQL only",
+			"`timeop.IntervalMillisecond` and `timeop.IntervalMicrosecond` keep milliseconds; `timeop.EpochSeconds` of `timeop.Sub` runs through `julianday` (about 0.1 ms), `timeop.Age` is PostgreSQL only; " +
+			"`timeop.AddDays`, `timeop.AddDaysExpr` and `timeop.DaysBetween` read a `types.Date` stored as `YYYY-MM-DD` text (`date()` and `julianday`), and a bound infinite date fails the build with `ErrValidation`",
+		MySQL: "SQL is golden-tested only, except `timeop.AddDays`, `timeop.AddDaysExpr` and `timeop.DaysBetween`, which have integration tests on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; " +
+			"`timeop.AtTimeZone` is PostgreSQL only; a bound infinite `types.Date` fails the build with `ErrValidation`",
 	},
 }
 
