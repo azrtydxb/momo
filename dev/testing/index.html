@@ -1640,6 +1640,33 @@ extension not listed in <code>momotest.WithExtensions</code>: an extension exist
 database, so it would land in one test's schema and vanish under the others when
 that schema is dropped. List extensions in <code>momotest.WithExtensions</code> (names are matched
 in lower case); they are installed once in <code>public</code>.</p>
+<p><code>public</code> may already hold your tables and a <code>momo_migrations</code> history table, for
+example when a CI job ran <code>momo migrate apply</code> on the same database first. The
+test schema still gets its own history table and its own tables: <code>momotest</code> pins
+the history table to the test schema, so the migrations never look at
+<code>public</code>'s history. If the migrations create tables and the test schema holds
+none after they ran (a migration that qualifies its tables with <code>public</code>, for
+instance), <code>momotest.New</code> and <code>momotest.NewTx</code> fail naming the schema, instead
+of running the test on tables outside it.</p>
+<p>The migrations run on a connection whose <code>search_path</code> is the test schema alone,
+unless you list extensions in <code>momotest.WithExtensions</code>: extensions live in
+<code>public</code>, so then <code>public</code> stays on the path. With the schema alone, an
+unqualified statement can only see the test schema: <code>DROP TABLE IF EXISTS
+legacy</code> or <code>ALTER TABLE IF EXISTS legacy</code> do nothing when the migrations did not
+create <code>legacy</code> there, and never touch a <code>legacy</code> in <code>public</code>. The test's own
+connections keep <code>public</code> on the path, so the extension types resolve in
+queries. A migration that uses something already installed in <code>public</code> that you
+did not list in <code>momotest.WithExtensions</code> no longer finds it.</p>
+<p>When <code>momotest.WithExtensions</code> lists extensions the hole remains: <code>public</code> is on
+the migration path, so a statement on an object the migrations did not create in
+the test schema, such as <code>DROP TABLE IF EXISTS legacy</code>, resolves to <code>public</code> and
+acts on that table. Keep such statements out of migrations that run under
+<code>momotest</code> with extensions. <code>CREATE TABLE</code>, <code>INDEX</code> and <code>SEQUENCE IF NOT EXISTS</code>,
+and <code>CREATE [OR REPLACE] FUNCTION</code> and <code>VIEW</code>, are safe either way: they create
+in the first schema of the path and check for an existing name only there.</p>
+<p>The check for an empty test schema is a heuristic. A later migration that drops
+every table, or a literal <code>CREATE TABLE</code> inside a dollar-quoted body that never
+runs, makes it fail a test that is in fact fine.</p>
 <p>The check reads the SQL with comments and string literals removed, so a comment
 that mentions <code>create schema</code> is fine and <code>CREATE /* x */ EXTENSION foo</code> is still
 caught. Quoted identifiers are kept. Dollar-quoted bodies are checked as code,

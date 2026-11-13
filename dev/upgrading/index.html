@@ -1099,6 +1099,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0100" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.10.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-090" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1859,6 +1870,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0100" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.10.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-090" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2518,6 +2540,24 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0100">Upgrading to 0.10.0<a class="headerlink" href="#upgrading-to-0100" title="Permanent link">&para;</a></h2>
+<p>No change is needed in your code, your generated models or your migration
+snapshot. One compile-time change: <code>postgres.New</code> now takes options
+(<code>postgres.New(opts ...postgres.Option)</code>), so a function value of type <code>func() postgres.Dialect</code>
+made from <code>postgres.New</code> no longer compiles; call <code>postgres.New()</code> instead.</p>
+<p><code>momotest.New</code> and <code>momotest.NewTx</code> keep the <code>momo_migrations</code> history table in
+the test schema. Before, a <code>public</code> schema that already held <code>momo_migrations</code>
+(a CI job ran <code>momo migrate apply</code> on the same database) made <code>momotest.WithMigrations</code>
+create nothing in the test schema, and the tests ran on <code>public</code>'s tables. You
+can drop a separate <code>&lt;db&gt;_momotest</code> database that you set up as a workaround. A
+set of migrations that creates tables but leaves the test schema without one now
+fails the test with a message naming the schema. <code>postgres.WithHistorySchema</code> is
+the new dialect option behind it.</p>
+<p>The migrations of a <code>momotest</code> test also run on a connection whose <code>search_path</code>
+is the test schema alone (when <code>momotest.WithExtensions</code> lists no extension), so
+an unqualified <code>DROP TABLE IF EXISTS</code> cannot reach a table of <code>public</code>. A
+migration that relied on something installed in <code>public</code> and not listed in
+<code>momotest.WithExtensions</code> must list it.</p>
 <h2 id="upgrading-to-090">Upgrading to 0.9.0<a class="headerlink" href="#upgrading-to-090" title="Permanent link">&para;</a></h2>
 <p>No change is needed in your code, your generated models or your migration
 snapshot. 0.9.0 adds API:</p>

@@ -2338,6 +2338,10 @@ repeated once; a second disagreement fails with an error asking you to retry.</p
 <li>An existing table is found the way earlier versions found it, through the
   session <code>search_path</code>, and its schema is then used. Installs made with the
   unqualified name keep working, and no second table is created.</li>
+<li><code>postgres.New(postgres.WithHistorySchema("app"))</code> skips that search: the table
+  is looked up as <code>"app".momo_migrations</code> and a new one is created in <code>app</code>,
+  whatever else is on the <code>search_path</code>. <code>momotest</code> uses it so a test schema
+  gets its own history even when <code>public</code> holds a <code>momo_migrations</code>.</li>
 <li>The resolved object must be a regular, permanent table, and the connecting
   role must be its owner or hold the privileges of the owning role
   (<code>pg_has_role</code> with <code>USAGE</code>, so a role with NOINHERIT does not qualify). A

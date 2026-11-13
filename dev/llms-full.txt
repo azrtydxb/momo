@@ -4711,6 +4711,10 @@ repeated once; a second disagreement fails with an error asking you to retry.
 - An existing table is found the way earlier versions found it, through the
   session `search_path`, and its schema is then used. Installs made with the
   unqualified name keep working, and no second table is created.
+- `postgres.New(postgres.WithHistorySchema("app"))` skips that search: the table
+  is looked up as `"app".momo_migrations` and a new one is created in `app`,
+  whatever else is on the `search_path`. `momotest` uses it so a test schema
+  gets its own history even when `public` holds a `momo_migrations`.
 - The resolved object must be a regular, permanent table, and the connecting
   role must be its owner or hold the privileges of the owning role
   (`pg_has_role` with `USAGE`, so a role with NOINHERIT does not qualify). A
@@ -7322,6 +7326,37 @@ database, so it would land in one test's schema and vanish under the others when
 that schema is dropped. List extensions in `momotest.WithExtensions` (names are matched
 in lower case); they are installed once in `public`.
 
+`public` may already hold your tables and a `momo_migrations` history table, for
+example when a CI job ran `momo migrate apply` on the same database first. The
+test schema still gets its own history table and its own tables: `momotest` pins
+the history table to the test schema, so the migrations never look at
+`public`'s history. If the migrations create tables and the test schema holds
+none after they ran (a migration that qualifies its tables with `public`, for
+instance), `momotest.New` and `momotest.NewTx` fail naming the schema, instead
+of running the test on tables outside it.
+
+The migrations run on a connection whose `search_path` is the test schema alone,
+unless you list extensions in `momotest.WithExtensions`: extensions live in
+`public`, so then `public` stays on the path. With the schema alone, an
+unqualified statement can only see the test schema: `DROP TABLE IF EXISTS
+legacy` or `ALTER TABLE IF EXISTS legacy` do nothing when the migrations did not
+create `legacy` there, and never touch a `legacy` in `public`. The test's own
+connections keep `public` on the path, so the extension types resolve in
+queries. A migration that uses something already installed in `public` that you
+did not list in `momotest.WithExtensions` no longer finds it.
+
+When `momotest.WithExtensions` lists extensions the hole remains: `public` is on
+the migration path, so a statement on an object the migrations did not create in
+the test schema, such as `DROP TABLE IF EXISTS legacy`, resolves to `public` and
+acts on that table. Keep such statements out of migrations that run under
+`momotest` with extensions. `CREATE TABLE`, `INDEX` and `SEQUENCE IF NOT EXISTS`,
+and `CREATE [OR REPLACE] FUNCTION` and `VIEW`, are safe either way: they create
+in the first schema of the path and check for an existing name only there.
+
+The check for an empty test schema is a heuristic. A later migration that drops
+every table, or a literal `CREATE TABLE` inside a dollar-quoted body that never
+runs, makes it fail a test that is in fact fine.
+
 The check reads the SQL with comments and string literals removed, so a comment
 that mentions `create schema` is fine and `CREATE /* x */ EXTENSION foo` is still
 caught. Quoted identifiers are kept. Dollar-quoted bodies are checked as code,
@@ -8630,6 +8665,28 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 [stability policy](supported-versions.md#stability-policy). Read this page and
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
+
+## Upgrading to 0.10.0
+
+No change is needed in your code, your generated models or your migration
+snapshot. One compile-time change: `postgres.New` now takes options
+(`postgres.New(opts ...postgres.Option)`), so a function value of type `func() postgres.Dialect`
+made from `postgres.New` no longer compiles; call `postgres.New()` instead.
+
+`momotest.New` and `momotest.NewTx` keep the `momo_migrations` history table in
+the test schema. Before, a `public` schema that already held `momo_migrations`
+(a CI job ran `momo migrate apply` on the same database) made `momotest.WithMigrations`
+create nothing in the test schema, and the tests ran on `public`'s tables. You
+can drop a separate `<db>_momotest` database that you set up as a workaround. A
+set of migrations that creates tables but leaves the test schema without one now
+fails the test with a message naming the schema. `postgres.WithHistorySchema` is
+the new dialect option behind it.
+
+The migrations of a `momotest` test also run on a connection whose `search_path`
+is the test schema alone (when `momotest.WithExtensions` lists no extension), so
+an unqualified `DROP TABLE IF EXISTS` cannot reach a table of `public`. A
+migration that relied on something installed in `public` and not listed in
+`momotest.WithExtensions` must list it.
 
 ## Upgrading to 0.9.0
 
