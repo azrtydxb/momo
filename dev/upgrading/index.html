@@ -1143,6 +1143,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#typed-date-arithmetic-in-timeop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Typed date arithmetic in timeop
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1964,6 +1975,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#typed-date-arithmetic-in-timeop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Typed date arithmetic in timeop
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2730,6 +2752,20 @@ now says so).</p>
 used to fail and now writes the timestamp, and <code>UpdateQuery.Model</code> on a model with
 <code>updated_at</code> where every candidate column is a nil <code>dbdefault</code> pointer (so
 nothing else is set) now touches <code>updated_at</code> instead of failing.</p>
+<h3 id="typed-date-arithmetic-in-timeop">Typed date arithmetic in <code>timeop</code><a class="headerlink" href="#typed-date-arithmetic-in-timeop" title="Permanent link">&para;</a></h3>
+<p>No change is needed. <code>timeop.AddDays</code>, <code>timeop.AddDaysExpr</code> and
+<code>timeop.DaysBetween</code> do date arithmetic on a <code>types.Date</code> with typed results.
+The date is no longer retyped as an <code>int32</code> to use <code>sqlfn.AddExpr</code> or
+<code>sqlfn.SubExpr</code>:</p>
+<div class="highlight"><pre><span></span><code>due := appeal.RespondBy.LeExpr(timeop.AddDays(momo.Value(today), 3))
+left := timeop.DaysBetween(appeal.RespondBy, momo.Value(today))
+</code></pre></div>
+<p><code>timeop.AddDays</code> gives a <code>types.Date</code> and <code>timeop.DaysBetween</code> an <code>int32</code>
+count of whole days, <code>a - b</code>. PostgreSQL renders <code>(d + n)</code> and <code>(a - b)</code>,
+MySQL <code>DATE(DATE_ADD(...))</code> and <code>DATEDIFF</code>, SQLite <code>date(d, '+n days')</code> and a
+<code>julianday</code> difference. <code>infinity + n</code> stays infinity on PostgreSQL and
+<code>infinity - date</code> is a database error there. SQLite and MySQL fail the build
+with <code>momo.ErrValidation</code> for a bound infinite date.</p>
 <h2 id="upgrading-to-0100">Upgrading to 0.10.0<a class="headerlink" href="#upgrading-to-0100" title="Permanent link">&para;</a></h2>
 <p>No change is needed in your code, your generated models or your migration
 snapshot. One compile-time change: <code>postgres.New</code> now takes options

@@ -7610,6 +7610,16 @@
 </thead>
 <tbody>
 <tr>
+<td><code>timeop.AddDays</code></td>
+<td>func</td>
+<td>AddDays is d + n: the date n days later, or earlier for a negative n.</td>
+</tr>
+<tr>
+<td><code>timeop.AddDaysExpr</code></td>
+<td>func</td>
+<td>AddDaysExpr is d + n for a count that is an expression: a bound momo.Value(int32(3)), or a column read with momo.Typed[int32](col).</td>
+</tr>
+<tr>
 <td><code>timeop.AddDuration</code></td>
 <td>func</td>
 <td>AddDuration is ts + d for a time.Duration, written as a literal interval (see IntervalDuration).</td>
@@ -7643,6 +7653,41 @@
 <td><code>timeop.CurrentTimestamp</code></td>
 <td>func</td>
 <td>CurrentTimestamp is CURRENT_TIMESTAMP, with microsecond precision on MySQL, and the same millisecond text as Now on SQLite.</td>
+</tr>
+<tr>
+<td><code>timeop.DateExpr</code></td>
+<td>type</td>
+<td>DateExpr is a types.Date-valued expression built by AddDays or AddDaysExpr.</td>
+</tr>
+<tr>
+<td><code>timeop.DateExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL renders the expression for the dialect of b.</td>
+</tr>
+<tr>
+<td><code>timeop.DateExpr.As</code></td>
+<td>method</td>
+<td>As names the expression in a select list.</td>
+</tr>
+<tr>
+<td><code>timeop.DaysBetween</code></td>
+<td>func</td>
+<td>DaysBetween is a - b in whole days: positive when a is later than b, negative when it is earlier.</td>
+</tr>
+<tr>
+<td><code>timeop.DaysExpr</code></td>
+<td>type</td>
+<td>DaysExpr is a whole number of days as an int32 expression, built by DaysBetween.</td>
+</tr>
+<tr>
+<td><code>timeop.DaysExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL renders the expression for the dialect of b.</td>
+</tr>
+<tr>
+<td><code>timeop.DaysExpr.As</code></td>
+<td>method</td>
+<td>As names the expression in a select list.</td>
 </tr>
 <tr>
 <td><code>timeop.EpochExpr</code></td>
