@@ -394,3 +394,23 @@ stories still in flight continue on a follow-up branch and ship in v0.6.0.
   with a `MomoConfig` hook, and `--from-db` writes it. A change between STORED
   and VIRTUAL is refused with "write a custom migration" on MySQL, as on
   PostgreSQL, and is no longer a DROP and ADD. SQLite rebuilds the table.
+
+## Issue #114: arithmetic on types.Numeric (2026-11-13, integrator)
+
+- **Constraint:** `sqlfn.Numeric` also admits `types.Numeric`, by exact type,
+  so `sqlfn.Add`, `Sub`, `Mul`, `Div` and their `Expr` forms compile on a
+  `momo.Column[types.Numeric]`. sqlfn imports types; there is no cycle.
+- **Exactness:** `types.Numeric` is TEXT on SQLite and MySQL, where `+` would
+  go through floating point. Arithmetic on it is PostgreSQL only: on any other
+  dialect the build fails with an error wrapping `momo.ErrUnsupported` that
+  names the operator.
+- **Other constrained functions:** `NullIf` takes `types.Numeric` and renders
+  the decimal as a numeric literal (`'0'::numeric`) on PostgreSQL, because
+  `momo.Lit` does not accept it; it is `ErrUnsupported` on SQLite and MySQL and
+  `ErrValidation` for an invalid decimal. No other function uses the constraint.
+- **Helpers:** `types.NumericFromInt64` and `types.NumericFromFloat64`. The
+  float helper writes the shortest round-trip decimal (`strconv.FormatFloat`
+  with 'f' and -1) and returns an error for NaN and the infinities; its doc
+  warns that a float64 is already binary.
+
+Decision (2026-11-13, integrator): as above.
