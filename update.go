@@ -268,6 +268,9 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 		}
 	}
 	if len(sets) == 0 && !u.versioned() && !u.touches() {
+		if ci := u.meta.UpdatedAt; ci >= 0 && ci < len(u.meta.Columns) {
+			return nil, nil, u.fail(ErrValidation, fmt.Errorf("no columns to update: the updated_at column %q cannot be written by UPDATE (generated or read-only), so there is nothing to touch", u.meta.Columns[ci].Name))
+		}
 		return nil, nil, u.fail(ErrValidation, errors.New("no columns to update"))
 	}
 	sets, err := u.applyFieldHooks(sets)

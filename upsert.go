@@ -5,6 +5,7 @@ package momo
 import (
 	"reflect"
 	"slices"
+	"time"
 )
 
 // Upsert starts an INSERT ... ON CONFLICT DO UPDATE for model T. Unless the
@@ -14,11 +15,18 @@ import (
 // SetExcluded. The primary key, version, soft-delete and created-at columns
 // are never part of DO UPDATE SET, and an explicit assignment to one (or to
 // updated-at) is refused with ErrValidation. When the model has an
-// updated-at column, DO UPDATE SET always ends with updated_at =
-// EXCLUDED.updated_at, also after an explicit DoUpdate list, so a conflict
-// refreshes the timestamp just as Update does; created_at is never
-// overwritten. The same holds for a plain Insert with OnConflict and
-// DoUpdate. A DoNothing conflict does not touch the row, so it bumps nothing.
+// updated-at column, the conflict branch always sets updated_at to the
+// statement clock, the value Update binds, as the last assignment of DO
+// UPDATE SET (also after an explicit DoUpdate list). It is a bound value and
+// not EXCLUDED.updated_at, so a struct that already carries an old UpdatedAt
+// still refreshes the row (before, such an upsert wrote the old value back).
+// The bump does not depend on the INSERT: Omit(updated_at) and a FromSelect
+// without an updated_at column affect only the insert branch, and an upsert
+// whose default set is empty renders a touch-only SET updated_at = <clock>.
+// created_at is never overwritten. The same holds for a plain Insert with
+// OnConflict and DoUpdate that has at least one assignment (DoUpdate() alone
+// stays an error there). A DoNothing conflict does not touch the row, so it
+// bumps nothing.
 //
 // The version column is neither advanced nor checked on conflict: an upsert
 // overwrites the existing row without optimistic-lock detection. Explicit
@@ -57,7 +65,12 @@ func (q InsertQuery[T]) resolveUpsert() (InsertQuery[T], error) {
 		if err := q.refuseUpdatedAtSet(); err != nil {
 			return q, err
 		}
-		q.i.set = q.withUpdatedAt(q.i.set)
+		if len(q.i.set) > 0 { // DoUpdate() alone stays "needs at least one assignment"
+			var err error
+			if q, err = q.bumpUpdatedAt(); err != nil {
+				return q, err
+			}
+		}
 		q.i.bumped = true
 		return q.resolveMySQLIdentity(), nil
 	}
@@ -92,7 +105,10 @@ func (q InsertQuery[T]) resolveUpsert() (InsertQuery[T], error) {
 	if len(q.i.set) == 0 {
 		q.i.set = q.defaultUpsertSet()
 	}
-	q.i.set = q.withUpdatedAt(q.i.set)
+	var err error
+	if q, err = q.bumpUpdatedAt(); err != nil {
+		return q, err
+	}
 	q.i.bumped = true
 	return q, nil
 }
@@ -112,29 +128,34 @@ func (q InsertQuery[T]) refuseUpdatedAtSet() error {
 	return nil
 }
 
-// withUpdatedAt appends updated_at = EXCLUDED.updated_at to a DO UPDATE list
-// so a conflict refreshes the timestamp the way Update always does. The
-// inserted row's updated_at comes from the clock, so EXCLUDED carries now.
-// It is skipped when the model has no updated-at column, the column is
-// omitted from the INSERT, or no other assignment exists to extend.
-func (q InsertQuery[T]) withUpdatedAt(set []Assignment) []Assignment {
+// bumpUpdatedAt appends updated_at = <clock> to the DO UPDATE list, the value
+// Update binds, so the conflict branch always refreshes the timestamp whatever
+// the INSERT carries: the struct's own (possibly old) UpdatedAt, an Omit, or a
+// FromSelect without the column. It reads the clock once into q.clock, which
+// the INSERT and every chunk then share. It does nothing when the model has
+// no updated-at column or the column is not assignable on UPDATE.
+func (q InsertQuery[T]) bumpUpdatedAt() (InsertQuery[T], error) {
 	ci := q.meta.UpdatedAt
-	if ci < 0 || ci >= len(q.meta.Columns) || !q.writable(ci) || len(set) == 0 {
-		return set
+	if ci < 0 || ci >= len(q.meta.Columns) || !columnAssignable(writeUpdate, q.meta.Columns[ci].Flags) {
+		return q, nil
 	}
-	name := q.meta.Columns[ci].Name
-	if q.i.sel != nil && !slices.Contains(q.i.selCols, name) {
-		return set // FromSelect writes only the listed columns
+	c := q.meta.Columns[ci]
+	if err := checkTimestampField(q.meta, ci); err != nil {
+		return q, q.verr(c.Name, "%v", err)
 	}
-	if slices.Contains(q.i.omit, name) {
-		return set
-	}
-	for _, a := range set {
-		if a.col == name {
-			return set
+	if q.clock.IsZero() {
+		if q.q != nil {
+			q.clock = q.q.conn().now()
+		} else {
+			q.clock = time.Now()
 		}
 	}
-	return append(set, Assignment{col: name, kind: setExcluded})
+	v, ok := autoTimestamp(q.meta, ci, q.clock)
+	if !ok {
+		return q, nil
+	}
+	q.i.set = append(slices.Clone(q.i.set), Assignment{col: c.Name, kind: setValue, val: v, flags: c.Flags})
+	return q, nil
 }
 
 // pkNames returns the primary-key column names.

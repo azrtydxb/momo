@@ -286,6 +286,14 @@ func (c ConflictQuery[T]) DoNothing() InsertQuery[T] {
 
 // DoUpdate updates the existing row on conflict. Use SetExcluded to take the
 // value proposed for insertion.
+//
+// When the model has an updated_at column the conflict branch also sets it to
+// the statement clock, as Update does, whatever the INSERT carries (Omit and a
+// FromSelect without the column affect only the insert branch). An explicit
+// assignment to updated_at is refused with ErrValidation ("cannot be set
+// directly"), as on Update. A plain Insert with DoUpdate() and no assignment
+// stays an error ("needs at least one assignment"); Upsert renders a
+// touch-only SET updated_at instead when its default set is empty.
 func (c ConflictQuery[T]) DoUpdate(assigns ...Assignment) InsertQuery[T] {
 	q := c.q
 	q.i.target, q.i.conflict, q.i.set = c.target, conflictUpdate, slices.Clone(assigns)

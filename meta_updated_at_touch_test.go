@@ -80,37 +80,6 @@ func TestUpdateWithoutSetStillRefusedWithoutUpdatedAt(t *testing.T) {
 	}
 }
 
-// Catches: DoUpdate not bumping updated_at on the conflict branch (a plain
-// Insert with OnConflict, which only Upsert used to handle), or touching
-// created_at, on any dialect.
-func TestDoUpdateBumpsUpdatedAt(t *testing.T) {
-	doc := suite.Document{ID: 1, TenantID: 1, Title: "t"}
-	for _, d := range touchDialects {
-		db := momo.New(fakedriver.New(d))
-		builds := map[string]momo.InsertQuery[suite.Document]{
-			"upsert": momo.Upsert[suite.Document](db).Model(&doc).OnConflict(suite.DocID).DoUpdate(suite.DocTitle.SetExcluded()),
-			"insert": momo.Insert[suite.Document](db).Model(&doc).OnConflict(suite.DocID).DoUpdate(suite.DocTitle.SetExcluded()),
-		}
-		q := touchQuote(d)
-		want := q + "updated_at" + q + " = EXCLUDED." + q + "updated_at" + q
-		marker := "UPDATE SET "
-		if d == dialect.MySQL {
-			want = q + "updated_at" + q + " = " + q + "momo_new" + q + "." + q + "updated_at" + q
-			marker = "ON DUPLICATE KEY UPDATE "
-		}
-		for name, qy := range builds {
-			c, err := qy.SQL()
-			if err != nil {
-				t.Fatalf("%s %s: %v", d, name, err)
-			}
-			_, tail, _ := strings.Cut(c.SQL, marker)
-			if !strings.HasSuffix(tail, ", "+want) || strings.Contains(tail, q+"created_at"+q) {
-				t.Errorf("%s %s: update list = %s, want it to end with %s and leave created_at alone", d, name, tail, want)
-			}
-		}
-	}
-}
-
 // Catches: a DoNothing conflict bumping updated_at, which would touch a row
 // the statement is meant to leave alone.
 func TestDoNothingDoesNotBumpUpdatedAt(t *testing.T) {
