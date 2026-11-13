@@ -196,8 +196,21 @@ except `NaN`, which SQLite does not have (see Floats).
   PostgreSQL only and need `jsonb`). A
   nullable column holds either SQL NULL or the JSON literal null; an extraction
   is NULL for both and for a missing key, so test the column itself with
-  `IsNull`. Grouping by an extraction works only for plain keys (letters,
+  `IsNull`.
+
+  Reading keeps the two apart when you scan into a `*types.JSON[T]` field (a
+  nullable column): SQL NULL gives a nil pointer, and the JSON literal null
+  gives a non-nil pointer whose `IsNull` method returns true. Writing it back
+  stores the JSON literal null, not SQL NULL; a nil pointer stores SQL NULL.
+  `types.JSONNull` builds a JSON null value to write. A scanned null keeps
+  `IsNull` true only while `V` is still the zero value of `T`; set `V` and it is
+  an ordinary value. This holds on PostgreSQL (`jsonb`, native and
+  `FromSQLDB` drivers), SQLite and MySQL, where the column is `TEXT` and any
+  stored text that is `null` (white space around it ignored) counts as the JSON
+  null. A plain, non-pointer `types.JSON[T]` field still errors on SQL NULL
+  and reads the JSON null as the zero `T` with `IsNull` true. Grouping by an extraction works only for plain keys (letters,
   digits, underscore) and not on a sensitive column; see the AI guide pitfalls.
+
 - `types.TimeOfDay`: nanoseconds since midnight, truncated to microseconds
   (PostgreSQL `time` precision); `86399999999000` is the last representable
   value, and a value outside one day is an error.

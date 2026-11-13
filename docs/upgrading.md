@@ -5,6 +5,38 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.11.0
+
+### A JSON null reads as a non-nil `*types.JSON[T]`, not as nil
+
+A nullable `jsonb` column read into a `*types.JSON[T]` used to give a nil
+pointer for both SQL NULL and the JSON literal `null`. The two are now apart:
+
+- SQL NULL gives a nil pointer, as before;
+- the JSON literal `null` gives a non-nil pointer whose `IsNull` method returns
+  true and whose `V` is the zero `T`.
+
+Writing a value read as JSON null stores `null` again, not SQL NULL. A nil
+pointer still writes SQL NULL. `types.JSONNull[T]()` builds a JSON null to
+write.
+
+Code that relied on a JSON null reading as nil breaks silently: a `meta == nil`
+test is now false for a row holding `null`. Test both cases:
+
+```text
+if meta == nil || meta.IsNull() {
+	// SQL NULL or JSON null
+}
+```
+
+The same rule holds on SQLite and MySQL, where the column is `TEXT` and any
+stored text that is `null` counts as the JSON null. A plain, non-pointer
+`types.JSON[T]` field is unchanged: SQL NULL is still a scan error and the JSON
+null reads as the zero `T` (with `IsNull` true).
+
+`types.JSON[T]` now has a private field, so an unkeyed literal
+`types.JSON[T]{v}` no longer compiles. Write `types.JSON[T]{V: v}`.
+
 ## Upgrading to 0.10.0
 
 No change is needed in your code, your generated models or your migration

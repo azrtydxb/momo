@@ -443,3 +443,28 @@ Decision (2026-11-13, integrator): as above.
   so a feat, 0.10.0.
 
 Decision (2026-11-13, integrator): as above.
+
+## Issue #118: JSON null vs SQL NULL (2026-11-13, integrator)
+
+- **Constraint:** a nullable JSON column read into `*types.JSON[T]` keeps SQL
+  NULL and the JSON literal null apart. SQL NULL gives a nil pointer; the JSON
+  null gives a non-nil `*types.JSON[T]` whose `IsNull` is true. This is the
+  issue's option 2; no `NullJSON` type is added.
+- **State:** `types.JSON[T]` gains a private marker set by `Scan` on a stored
+  `null` (surrounding white space ignored) and by `types.JSONNull`. `Value`
+  writes `null` while the marker is set and `V` is still the zero `T`, so a read
+  JSON null written back stays JSON null. A nil `*JSON[T]` still writes SQL NULL.
+- **Layer:** the cause was pgx, whose scan plan for a pointer to a pointer on
+  json and jsonb sets the pointer to nil for the JSON null. The pgx driver's
+  `Rows.Scan` (and the buffered rows of bulk mode) now scans a `**T` destination
+  through `sql.Scanner` when `*T` has `IsNull`. SQLite, MySQL and the
+  `FromSQLDB` path go through database/sql, which already scans a non-NULL value
+  into a new pointer, so they needed no change. Those columns are `TEXT`, and
+  any stored text that is `null` is the JSON null.
+- **Non-pointer fields:** unchanged. SQL NULL into a plain `types.JSON[T]` is
+  an error; the JSON null reads as the zero `T` with `IsNull` true.
+- **Breaking:** code that relied on a JSON null reading as a nil pointer must
+  test `IsNull`. Unkeyed `types.JSON[T]{v}` literals no longer compile (the
+  struct has a private field); use `types.JSON[T]{V: v}`.
+
+Decision (2026-11-13, integrator): as above.
