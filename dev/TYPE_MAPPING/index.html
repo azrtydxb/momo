@@ -1768,8 +1768,33 @@ agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
   PostgreSQL only and need <code>jsonb</code>). A
   nullable column holds either SQL NULL or the JSON literal null; an extraction
   is NULL for both and for a missing key, so test the column itself with
-  <code>IsNull</code>. Grouping by an extraction works only for plain keys (letters,
-  digits, underscore) and not on a sensitive column; see the AI guide pitfalls.</li>
+  <code>IsNull</code>.</li>
+</ul>
+<p>Reading keeps the two apart when you scan into a <code>*types.JSON[T]</code> field (a
+  nullable column): SQL NULL gives a nil pointer, and the JSON literal null
+  gives a non-nil pointer whose <code>IsNull</code> method returns true. Writing it back
+  stores the JSON literal null, not SQL NULL; a nil pointer stores SQL NULL.
+  <code>types.JSONNull</code> builds a JSON null value to write. This holds on PostgreSQL
+  (<code>jsonb</code>, native and <code>FromSQLDB</code> drivers), SQLite and MySQL, where the column
+  is <code>TEXT</code> and any stored text that is <code>null</code> (white space around it ignored)
+  counts as the JSON null. A plain, non-pointer <code>types.JSON[T]</code> field still
+  errors on SQL NULL and reads the JSON null as the zero <code>T</code> with <code>IsNull</code>
+  true.</p>
+<p><code>IsNull</code> stays true after a read while <code>V</code> is the zero value of <code>T</code> or still
+  encodes as <code>null</code> (a <code>json.RawMessage</code> holding <code>null</code>, the generated default
+  type, or a <code>T</code> with its own <code>UnmarshalJSON</code>). To give a value read as null
+  new contents, assign through <code>types.JSON.Set</code> or a fresh <code>types.JSON[T]{V: v}</code>.
+  Assigning <code>V</code> directly to its zero value (<code>false</code>, <code>0</code>, <code>""</code>) keeps the JSON
+  null, because the zero value cannot be told from an untouched <code>V</code>.</p>
+<p><code>types.JSON[T]</code> has a private field and no <code>MarshalJSON</code>. Two values compare
+  equal with <code>==</code> only when the null state matches, so a scanned null differs
+  from <code>types.JSON[T]{}</code>; go-cmp needs a comparison option that ignores the null state.
+  <code>encoding/json</code> renders any <code>types.JSON[T]</code> as <code>{"V":...}</code>, and
+  <code>types.JSONNull[T]()</code> as <code>{"V":null}</code>: the null state does not survive an API
+  round trip through <code>encoding/json</code>.</p>
+<p>Grouping by an extraction works only for plain keys (letters, digits,
+  underscore) and not on a sensitive column; see the AI guide pitfalls.</p>
+<ul>
 <li><code>types.TimeOfDay</code>: nanoseconds since midnight, truncated to microseconds
   (PostgreSQL <code>time</code> precision); <code>86399999999000</code> is the last representable
   value, and a value outside one day is an error.</li>

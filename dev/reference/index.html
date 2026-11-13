@@ -5351,6 +5351,11 @@
 <td>JSON[T] stores any JSON-encodable T: jsonb on PostgreSQL, TEXT on SQLite.</td>
 </tr>
 <tr>
+<td><code>types.JSON.IsNull</code></td>
+<td>method</td>
+<td>IsNull reports whether j is the JSON literal null: it was scanned from null, or built by JSONNull, and it has not been assigned through Set since.</td>
+</tr>
+<tr>
 <td><code>types.JSON.SQLType</code></td>
 <td>method</td>
 <td>SQLType returns the column type for d.</td>
@@ -5361,9 +5366,24 @@
 <td>Scan decodes JSON text (string or []byte) into V.</td>
 </tr>
 <tr>
+<td><code>types.JSON.Set</code></td>
+<td>method</td>
+<td>Set assigns v and clears the JSON null state.</td>
+</tr>
+<tr>
 <td><code>types.JSON.Value</code></td>
 <td>method</td>
 <td>Value encodes V as JSON text.</td>
+</tr>
+<tr>
+<td><code>types.JSONNull</code></td>
+<td>func</td>
+<td>JSONNull returns a JSON[T] that is the JSON literal null: it writes null, not SQL NULL (a nil *JSON[T] writes SQL NULL) and IsNull reports true.</td>
+</tr>
+<tr>
+<td><code>types.JSONNuller</code></td>
+<td>type</td>
+<td>JSONNuller is implemented by JSON[T] and by no other type.</td>
 </tr>
 <tr>
 <td><code>types.Numeric</code></td>

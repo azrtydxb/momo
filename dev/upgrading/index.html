@@ -1122,6 +1122,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-json-null-reads-as-a-non-nil-typesjsont-not-as-nil" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A JSON null reads as a non-nil *types.JSON[T], not as nil
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#an-update-with-nothing-to-set-touches-updated_at" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1932,6 +1943,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-json-null-reads-as-a-non-nil-typesjsont-not-as-nil" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A JSON null reads as a non-nil *types.JSON[T], not as nil
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#an-update-with-nothing-to-set-touches-updated_at" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2619,9 +2641,10 @@
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
 <h2 id="upgrading-to-0110">Upgrading to 0.11.0<a class="headerlink" href="#upgrading-to-0110" title="Permanent link">&para;</a></h2>
-<p>One change can need an edit in your code: an explicit <code>updated_at</code> in
-<code>DoUpdate</code> is refused (below). The rest fixes or adds behaviour, and two of
-those fixes change what your code writes.</p>
+<p>Two changes can need an edit in your code: an explicit <code>updated_at</code> in
+<code>DoUpdate</code> is refused, and on PostgreSQL a JSON null no longer reads as a nil
+pointer (both below). The rest fixes or adds behaviour, and two of those
+fixes change what your code writes.</p>
 <h3 id="doupdate-sets-updated_at-from-the-clock-and-refuses-an-explicit-one"><code>DoUpdate</code> sets <code>updated_at</code> from the clock and refuses an explicit one<a class="headerlink" href="#doupdate-sets-updated_at-from-the-clock-and-refuses-an-explicit-one" title="Permanent link">&para;</a></h3>
 <p><code>UpdateQuery.Set</code> has always refused the <code>updated_at</code> column ("cannot be set
 directly"), because Momo maintains it. <code>DoUpdate</code> now follows the same rule,
@@ -2658,6 +2681,43 @@ momo.Insert[Doc](db).Model(&amp;d).OnConflict(DocID).DoUpdate(DocTitle.SetExclud
 // after
 momo.Insert[Doc](db).Model(&amp;d).OnConflict(DocID).DoUpdate(DocTitle.SetExcluded())
 </code></pre></div>
+<h3 id="a-json-null-reads-as-a-non-nil-typesjsont-not-as-nil">A JSON null reads as a non-nil <code>*types.JSON[T]</code>, not as nil<a class="headerlink" href="#a-json-null-reads-as-a-non-nil-typesjsont-not-as-nil" title="Permanent link">&para;</a></h3>
+<p>On PostgreSQL, a nullable <code>jsonb</code> column read into a <code>*types.JSON[T]</code> used to
+give a nil pointer for both SQL NULL and the JSON literal <code>null</code>, because pgx
+sets a pointer to a pointer to nil for both. The two are now apart:</p>
+<ul>
+<li>SQL NULL gives a nil pointer, as before;</li>
+<li>the JSON literal <code>null</code> gives a non-nil pointer whose <code>IsNull</code> method returns
+  true and whose <code>V</code> is the zero <code>T</code> (or what <code>T</code>'s own decoder makes of
+  <code>null</code>, such as <code>json.RawMessage("null")</code>).</li>
+</ul>
+<p>Code on PostgreSQL that relied on a JSON null reading as nil breaks silently: a
+<code>meta == nil</code> test is now false for a row holding <code>null</code>. Test both cases:</p>
+<div class="highlight"><pre><span></span><code>if meta == nil || meta.IsNull() {
+    // SQL NULL or JSON null
+}
+</code></pre></div>
+<p>Writing a value read as JSON null stores <code>null</code> again, not SQL NULL. A nil
+pointer still writes SQL NULL. <code>types.JSONNull[T]()</code> builds a JSON null to
+write.</p>
+<p>On SQLite and MySQL, where the column is <code>TEXT</code>, database/sql already gave a
+non-nil pointer for a stored <code>null</code>, so nothing changes in what a read returns.
+What is new there is <code>IsNull</code> and the write-back: a value read from <code>null</code> is
+stored as <code>null</code>, where before a struct <code>T</code> was stored as the encoding of its
+zero value. A plain, non-pointer <code>types.JSON[T]</code> field is unchanged: SQL NULL
+is still a scan error and the JSON null reads as the zero <code>T</code> (with <code>IsNull</code>
+true).</p>
+<p>After reading a JSON null, give the value new contents with <code>types.JSON.Set</code> or a fresh
+<code>types.JSON[T]{V: v}</code>. Assigning <code>V</code> directly to its zero value (<code>false</code>, <code>0</code>,
+<code>""</code>) keeps the JSON null, because the zero value cannot be told from an
+untouched <code>V</code>.</p>
+<p><code>types.JSON[T]</code> now has a private field, so an unkeyed literal
+<code>types.JSON[T]{v}</code> no longer compiles; write <code>types.JSON[T]{V: v}</code>. Two values
+compare equal with <code>==</code> only when the null state matches, so a scanned null
+differs from <code>types.JSON[T]{}</code>, and go-cmp needs a comparison option that ignores the null state.
+<code>types.JSON[T]</code> has no <code>MarshalJSON</code>: <code>encoding/json</code> renders
+<code>types.JSONNull[T]()</code> as <code>{"V":null}</code>, and the null state does not survive an
+API round trip.</p>
 <h3 id="an-update-with-nothing-to-set-touches-updated_at">An <code>Update</code> with nothing to set touches <code>updated_at</code><a class="headerlink" href="#an-update-with-nothing-to-set-touches-updated_at" title="Permanent link">&para;</a></h3>
 <p>On a model with an <code>updated_at</code> column, an <code>Update</code> with a <code>Where</code> and no
 assignment is valid and sets only <code>updated_at</code>, like Prisma's
