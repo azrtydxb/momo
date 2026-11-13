@@ -5,6 +5,67 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.11.0
+
+One change can need an edit in your code: an explicit `updated_at` in
+`DoUpdate` is refused (below). The rest fixes or adds behaviour, and two of
+those fixes change what your code writes.
+
+### `DoUpdate` sets `updated_at` from the clock and refuses an explicit one
+
+`UpdateQuery.Set` has always refused the `updated_at` column ("cannot be set
+directly"), because Momo maintains it. `DoUpdate` now follows the same rule,
+and the conflict branch of an upsert always sets `updated_at` to the statement
+clock, the value `Update` binds:
+
+- **Bug fix, also for code that already used `Upsert`:** the conflict branch
+  used to copy the `EXCLUDED` value of `updated_at`, which is the `UpdatedAt` of the struct.
+  The clock replaces it only when the field is zero, so loading a row, changing
+  a field and calling `Upsert` with that struct wrote the old `updated_at` back
+  and the row was not bumped. The conflict branch now binds the clock value
+  itself, so the row is bumped whatever the struct carries. The insert branch
+  is unchanged and still keeps a non-zero `UpdatedAt` you set.
+- The bump applies to `Upsert` and to a plain `Insert` with
+  `OnConflict(...).DoUpdate(...)` (which did not touch `updated_at` before), on
+  PostgreSQL, SQLite, MySQL and MariaDB. It does not depend on the INSERT:
+  `Omit` of `updated_at` and a `FromSelect` without that column affect only the
+  insert branch. An `Upsert` whose default update set is empty renders a
+  touch-only `SET updated_at = <clock>` instead of failing. A plain `Insert`
+  with `DoUpdate()` and no assignment is still an error. `DoNothing` does not
+  change the row.
+- The bump is one more bound parameter in every statement. A bulk insert that
+  splits at the `WithMaxParams` limit fits one row less per statement when the row width
+  divides the limit exactly, and a limit smaller than one row plus the fixed
+  parameters is now `ErrLimitExceeded` one value sooner.
+- **Breaking:** an explicit assignment of `updated_at` inside `DoUpdate` (a
+  value or `SetExcluded`) now fails with `ErrValidation` ("cannot be set
+  directly"), for `Upsert` and for `Insert` alike. The `Upsert` message used to
+  read "cannot be set by an upsert", and a plain `Insert` accepted the column.
+
+Remove such an assignment; the clock value replaces it:
+
+```text
+// before (refused now)
+momo.Insert[Doc](db).Model(&d).OnConflict(DocID).DoUpdate(DocTitle.SetExcluded(), DocUpdatedAt.Set(t))
+// after
+momo.Insert[Doc](db).Model(&d).OnConflict(DocID).DoUpdate(DocTitle.SetExcluded())
+```
+
+### An `Update` with nothing to set touches `updated_at`
+
+On a model with an `updated_at` column, an `Update` with a `Where` and no
+assignment is valid and sets only `updated_at`, like Prisma's
+`update({ data: {} })`. It keeps every guard of an update: without `Where` or
+`AllRows` it still fails with `ErrUnfilteredMutation`. On a model without
+`updated_at` it still fails with `ErrValidation` ("no columns to update"), and
+so does a model whose `updated_at` cannot be written by UPDATE (the message
+now says so).
+
+This is a behaviour change for code that relied on the error. An empty `Update`
+used to fail and now writes the timestamp, and `UpdateQuery.Model` on a model with
+`updated_at` where every candidate column is a nil `dbdefault` pointer (so
+nothing else is set) now touches `updated_at` instead of failing.
+
 ## Upgrading to 0.10.0
 
 No change is needed in your code, your generated models or your migration

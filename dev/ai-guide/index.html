@@ -2418,9 +2418,10 @@ value. Tag the field <code>dbdefault</code> to leave it to the database instead:
   leaves the column out of <code>SET</code>, so the column keeps its stored value (writing
   NULL would fail on the NOT NULL column). A pointer to <code>false</code> or <code>0</code> is
   written. If that leaves nothing to set, the update fails with the usual
-  <code>ErrValidation</code> ("no columns to update"). <code>Upsert</code> is unaffected: its default
-  <code>DO UPDATE</code> set takes <code>EXCLUDED</code> values and already leaves out a <code>dbdefault</code>
-  column that any row leaves to the database.</li>
+  <code>ErrValidation</code> ("no columns to update"), unless the model has an
+  <code>updated_at</code> column: then it is a touch that sets only that column. <code>Upsert</code>
+  is unaffected: its default <code>DO UPDATE</code> set takes <code>EXCLUDED</code> values and
+  already leaves out a <code>dbdefault</code> column that any row leaves to the database.</li>
 <li>The pointer type that <code>--from-db</code> generates and the <code>momo generate</code> warning
   cover only plain <code>bool</code> and number fields (<code>bool</code>, <code>int</code>..<code>int64</code>,
   <code>uint</code>..<code>uint64</code>, <code>float32</code>, <code>float64</code>). A named type, a type override from
@@ -3025,6 +3026,20 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   <code>Rows</code> is not supported on a versioned <code>Model</code> update; use <code>Exec</code>.</li>
 <li><code>updated_at</code> is set automatically on <code>Update</code> (Set or Model), not on raw SQL
   and not on relation helpers.</li>
+<li>An <code>Update</code> with no assignment is a touch when the model has an <code>updated_at</code>
+  column: it sets only that column and keeps every guard (<code>ErrUnfilteredMutation</code>
+  without <code>Where</code> or <code>AllRows</code>). Without a writable <code>updated_at</code> column it still
+  fails with <code>ErrValidation</code> ("no columns to update").</li>
+<li>The conflict branch of a <code>DoUpdate</code> always sets <code>updated_at</code> to the statement
+  clock, as a bound value (not <code>EXCLUDED</code>), for <code>Upsert</code> and for a plain <code>Insert</code>
+  with <code>OnConflict</code>; <code>DoNothing</code> does not. It is independent of the INSERT:
+  <code>Omit</code> of <code>updated_at</code> and a <code>FromSelect</code> without that column affect only the
+  insert branch, and an <code>Upsert</code> with an empty default set renders a touch-only
+  <code>SET updated_at = &lt;clock&gt;</code>. A plain <code>Insert</code> with <code>DoUpdate()</code> and no
+  assignment stays an error.</li>
+<li>DON'T assign <code>updated_at</code> inside <code>DoUpdate</code> (a value or <code>SetExcluded</code>): it is
+  refused with the same <code>ErrValidation</code> ("cannot be set directly") as on
+  <code>Update</code>.</li>
 </ul>
 <p>Delete and soft delete:</p>
 <!-- docscheck:fragment -->

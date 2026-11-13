@@ -1099,6 +1099,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0110" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.11.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.11.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#doupdate-sets-updated_at-from-the-clock-and-refuses-an-explicit-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DoUpdate sets updated_at from the clock and refuses an explicit one
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-update-with-nothing-to-set-touches-updated_at" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An Update with nothing to set touches updated_at
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0100" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1870,6 +1909,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0110" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.11.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.11.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#doupdate-sets-updated_at-from-the-clock-and-refuses-an-explicit-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DoUpdate sets updated_at from the clock and refuses an explicit one
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-update-with-nothing-to-set-touches-updated_at" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An Update with nothing to set touches updated_at
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0100" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2540,6 +2618,58 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0110">Upgrading to 0.11.0<a class="headerlink" href="#upgrading-to-0110" title="Permanent link">&para;</a></h2>
+<p>One change can need an edit in your code: an explicit <code>updated_at</code> in
+<code>DoUpdate</code> is refused (below). The rest fixes or adds behaviour, and two of
+those fixes change what your code writes.</p>
+<h3 id="doupdate-sets-updated_at-from-the-clock-and-refuses-an-explicit-one"><code>DoUpdate</code> sets <code>updated_at</code> from the clock and refuses an explicit one<a class="headerlink" href="#doupdate-sets-updated_at-from-the-clock-and-refuses-an-explicit-one" title="Permanent link">&para;</a></h3>
+<p><code>UpdateQuery.Set</code> has always refused the <code>updated_at</code> column ("cannot be set
+directly"), because Momo maintains it. <code>DoUpdate</code> now follows the same rule,
+and the conflict branch of an upsert always sets <code>updated_at</code> to the statement
+clock, the value <code>Update</code> binds:</p>
+<ul>
+<li><strong>Bug fix, also for code that already used <code>Upsert</code>:</strong> the conflict branch
+  used to copy the <code>EXCLUDED</code> value of <code>updated_at</code>, which is the <code>UpdatedAt</code> of the struct.
+  The clock replaces it only when the field is zero, so loading a row, changing
+  a field and calling <code>Upsert</code> with that struct wrote the old <code>updated_at</code> back
+  and the row was not bumped. The conflict branch now binds the clock value
+  itself, so the row is bumped whatever the struct carries. The insert branch
+  is unchanged and still keeps a non-zero <code>UpdatedAt</code> you set.</li>
+<li>The bump applies to <code>Upsert</code> and to a plain <code>Insert</code> with
+  <code>OnConflict(...).DoUpdate(...)</code> (which did not touch <code>updated_at</code> before), on
+  PostgreSQL, SQLite, MySQL and MariaDB. It does not depend on the INSERT:
+  <code>Omit</code> of <code>updated_at</code> and a <code>FromSelect</code> without that column affect only the
+  insert branch. An <code>Upsert</code> whose default update set is empty renders a
+  touch-only <code>SET updated_at = &lt;clock&gt;</code> instead of failing. A plain <code>Insert</code>
+  with <code>DoUpdate()</code> and no assignment is still an error. <code>DoNothing</code> does not
+  change the row.</li>
+<li>The bump is one more bound parameter in every statement. A bulk insert that
+  splits at the <code>WithMaxParams</code> limit fits one row less per statement when the row width
+  divides the limit exactly, and a limit smaller than one row plus the fixed
+  parameters is now <code>ErrLimitExceeded</code> one value sooner.</li>
+<li><strong>Breaking:</strong> an explicit assignment of <code>updated_at</code> inside <code>DoUpdate</code> (a
+  value or <code>SetExcluded</code>) now fails with <code>ErrValidation</code> ("cannot be set
+  directly"), for <code>Upsert</code> and for <code>Insert</code> alike. The <code>Upsert</code> message used to
+  read "cannot be set by an upsert", and a plain <code>Insert</code> accepted the column.</li>
+</ul>
+<p>Remove such an assignment; the clock value replaces it:</p>
+<div class="highlight"><pre><span></span><code>// before (refused now)
+momo.Insert[Doc](db).Model(&amp;d).OnConflict(DocID).DoUpdate(DocTitle.SetExcluded(), DocUpdatedAt.Set(t))
+// after
+momo.Insert[Doc](db).Model(&amp;d).OnConflict(DocID).DoUpdate(DocTitle.SetExcluded())
+</code></pre></div>
+<h3 id="an-update-with-nothing-to-set-touches-updated_at">An <code>Update</code> with nothing to set touches <code>updated_at</code><a class="headerlink" href="#an-update-with-nothing-to-set-touches-updated_at" title="Permanent link">&para;</a></h3>
+<p>On a model with an <code>updated_at</code> column, an <code>Update</code> with a <code>Where</code> and no
+assignment is valid and sets only <code>updated_at</code>, like Prisma's
+<code>update({ data: {} })</code>. It keeps every guard of an update: without <code>Where</code> or
+<code>AllRows</code> it still fails with <code>ErrUnfilteredMutation</code>. On a model without
+<code>updated_at</code> it still fails with <code>ErrValidation</code> ("no columns to update"), and
+so does a model whose <code>updated_at</code> cannot be written by UPDATE (the message
+now says so).</p>
+<p>This is a behaviour change for code that relied on the error. An empty <code>Update</code>
+used to fail and now writes the timestamp, and <code>UpdateQuery.Model</code> on a model with
+<code>updated_at</code> where every candidate column is a nil <code>dbdefault</code> pointer (so
+nothing else is set) now touches <code>updated_at</code> instead of failing.</p>
 <h2 id="upgrading-to-0100">Upgrading to 0.10.0<a class="headerlink" href="#upgrading-to-0100" title="Permanent link">&para;</a></h2>
 <p>No change is needed in your code, your generated models or your migration
 snapshot. One compile-time change: <code>postgres.New</code> now takes options

@@ -1583,7 +1583,10 @@ no <code>RETURNING</code> at all.</p>
   the statement may update an existing row and <code>LAST_INSERT_ID</code> then does not
   name the row's key; read the row back with a query.</li>
 <li>Upserts render as <code>INSERT ... VALUES ... AS momo_new ON DUPLICATE KEY UPDATE</code>
-  on MySQL and with <code>VALUES(col)</code> on MariaDB. <code>DoNothing</code> renders a no-op
+  on MySQL and with <code>VALUES(col)</code> on MariaDB. A <code>FromSelect</code> upsert has no row
+  alias on either: MySQL and MariaDB both render <code>VALUES(col)</code> there. The
+  <code>updated_at</code> bump of a <code>DoUpdate</code> is a bound clock value, so it needs neither
+  form. <code>DoNothing</code> renders a no-op
   assignment of a key column. A <code>Where</code> on a conflict clause is
   <code>ErrUnsupported</code>.</li>
 <li><code>ON DUPLICATE KEY UPDATE</code> fires for a conflict on any unique key and cannot
