@@ -16,7 +16,7 @@ works.
 | [vector-search](vector-search/)                 | A vector column, an HNSW index in a migration, nearest-neighbour queries, filters, search settings.                                                |
 | [upgrade-database](upgrade-database/)           | change a model after production: add a column with a default, add an index, rename a column, apply with data kept, generate --check and drift.     |
 | [custom-sql-migration](custom-sql-migration/)   | hand-written SQL migrations beside generated ones: backfill, DO $$ splitting, -- momo:no-transaction, CONCURRENTLY workaround, momo.sum checksums. |
-| [adopt-existing-schema](adopt-existing-schema/) | put a plain-SQL database under Momo with migrate baseline (no model generation from a database in v0.10.0). <!-- x-release-please-version -->       |
+| [adopt-existing-schema](adopt-existing-schema/) | put a plain-SQL database under Momo with migrate baseline (no model generation from a database in v0.11.0). <!-- x-release-please-version -->       |
 
 ## Layout of an example
 

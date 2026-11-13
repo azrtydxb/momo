@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.11.0](https://github.com/azrtydxb/momo/compare/v0.10.0...v0.11.0) (2026-11-13)
+
+_JSON null and SQL NULL are now kept apart, `updated_at` behaves the same on every write path, and `timeop` gains typed date arithmetic. It fixes three issues from the NovaCRM and Owl ports. Upgrading can need code changes where a JSON null was read as nil on PostgreSQL, or where a `DoUpdate` set `updated_at` explicitly; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.11.0/docs/upgrading.md). [Changes since 0.10.0](https://github.com/azrtydxb/momo/compare/v0.10.0...v0.11.0)._
+
+### ⚠ BREAKING CHANGES
+
+- **types:** on PostgreSQL, a stored JSON `null` in a nullable column reads as a non-nil `*types.JSON[T]` with `IsNull()` true instead of a nil pointer; code that tested for nil must also test `IsNull()`. `types.JSON[T]` has a private field, so unkeyed literals such as `types.JSON[T]{v}` no longer compile ([#118](https://github.com/azrtydxb/momo/issues/118))
+- **upsert:** an explicit `updated_at` in `DoUpdate` (a value, an expression or `SetExcluded`) is refused with `ErrValidation`, on `Upsert` and on `Insert().OnConflict().DoUpdate()` alike ([#120](https://github.com/azrtydxb/momo/issues/120))
+- **update:** an `Update` with no assignments on a model with `updated_at`, including `Update.Model` with only nil `dbdefault` pointers, touches `updated_at` instead of failing with `ErrValidation` ([#120](https://github.com/azrtydxb/momo/issues/120))
+
+### Features
+
+- **types:** `JSON[T].IsNull`, `JSON[T].Set` and `types.JSONNull[T]()` tell a JSON null apart from SQL NULL, and a value read as JSON null is written back as JSON null on every dialect ([#118](https://github.com/azrtydxb/momo/issues/118))
+- **timeop:** `timeop.AddDays`, `timeop.AddDaysExpr` and `timeop.DaysBetween` do date arithmetic on `types.Date` with typed results on PostgreSQL, MySQL, MariaDB and SQLite ([#119](https://github.com/azrtydxb/momo/issues/119))
+- **update:** an empty `Update` on a model with `updated_at` is a touch, like Prisma's `update({ data: {} })` ([#120](https://github.com/azrtydxb/momo/issues/120))
+
+### Bug Fixes
+
+- **upsert:** the conflict branch of `Upsert` copied the struct's own `UpdatedAt`, so upserting a loaded record wrote its old timestamp back; every `DoUpdate` now sets `updated_at` to the statement clock, also with `Omit(updated_at)`, a `FromSelect` without the column, or an empty default set ([#120](https://github.com/azrtydxb/momo/issues/120))
+- **insert:** a plain `Insert().OnConflict().DoUpdate()` now bumps `updated_at` like `Upsert` ([#120](https://github.com/azrtydxb/momo/issues/120))
+
 ## [0.10.0](https://github.com/azrtydxb/momo/compare/v0.9.0...v0.10.0) (2026-11-13)
 
 _`momotest` now always migrates into the per-test schema, even when `public` of the same database is already migrated, so tests no longer run on (or drop) the real tables. Upgrading needs a change only where `postgres.New` is used as a function value; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.10.0/docs/upgrading.md). [Changes since 0.9.0](https://github.com/azrtydxb/momo/compare/v0.9.0...v0.10.0)._
