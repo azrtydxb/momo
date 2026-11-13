@@ -442,4 +442,22 @@ Decision (2026-11-13, integrator): as above.
 - **Release:** exported API (`postgres.WithHistorySchema`, `New(opts ...Option)`),
   so a feat, 0.10.0.
 
+## Issue #119: typed date arithmetic in timeop (2026-11-13, integrator)
+
+- **API:** `timeop.AddDays(d, n int)` and `timeop.AddDaysExpr(d, n)` return a
+  `timeop.DateExpr` (an `Expression[types.Date]`); `timeop.DaysBetween(a, b)`
+  returns a `timeop.DaysExpr` (an `Expression[int32]`, a minus b in whole
+  days). Both carry the comparisons of their type, so `LeExpr` needs no
+  `momo.Typed`.
+- **Rendering:** PostgreSQL `(d + n)` and `(a - b)`, with a bound date cast to
+  `date` and a bound count cast to `integer` (an untyped parameter next to a
+  date is ambiguous between integer and interval). MySQL `DATE_ADD(d, INTERVAL
+  n DAY)` and `DATEDIFF(a, b)`. SQLite, which stores a date as `YYYY-MM-DD`
+  text, `date(d, '+n days')` and `CAST(julianday(a) - julianday(b) AS INTEGER)`.
+- **Infinity:** PostgreSQL keeps `infinity + n` and refuses `infinity - date`
+  with a database error. SQLite and MySQL have no special dates, so a bound
+  `types.Date` with Infinity or NegInfinity fails the build with
+  `ErrValidation` instead of returning NULL. A count outside int32 is
+  `ErrValidation`.
+
 Decision (2026-11-13, integrator): as above.

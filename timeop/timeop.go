@@ -3,7 +3,8 @@
 // Package timeop holds the typed date and time expressions: Extract,
 // AtTimeZone, intervals with AddInterval, SubInterval, AddDuration and
 // SubDuration (down to the microsecond), timestamp differences with Sub, Age
-// and EpochSeconds, Now,
+// and EpochSeconds, date arithmetic on a types.Date with AddDays, AddDaysExpr
+// and DaysBetween, Now,
 // CurrentTimestamp, ClockTimestamp, StatementTimestamp and Trunc. Every
 // keyword that reaches the SQL text (an extract field, an interval unit, a truncation unit) is looked up in a fixed
 // allowlist at build time and the canonical spelling from the table is what

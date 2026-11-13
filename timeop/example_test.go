@@ -10,6 +10,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/timeop"
+	"github.com/azrtydxb/momo/types"
 )
 
 // Extract reads one part of a timestamp. Every dialect renders its own
@@ -74,4 +75,31 @@ func ExampleAtTimeZone() {
 	// Output:
 	// ("docs"."created_at" AT TIME ZONE 'Europe/Brussels')
 	// true
+}
+
+// AddDays and DaysBetween do date arithmetic on a types.Date with typed
+// results, so the date is not retyped as an int32 to use a + or a -. This is
+// "respond_by <= today + 3" and "respond_by - today" of an appeals dashboard:
+//
+//	due := respondBy.LeExpr(timeop.AddDays(momo.Value(today), 3))
+//	left := timeop.DaysBetween(respondBy, momo.Value(today))
+func ExampleAddDays() {
+	respondBy := momo.NewColumn[types.Date]("appeals", "respond_by", 0)
+	today := momo.Value(types.Date{Time: time.Date(2028, 2, 26, 0, 0, 0, 0, time.UTC)})
+
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
+		b := momo.NewBuilder(dialect.For(d))
+		timeop.AddDays(today, 3).AppendSQL(b)
+		fmt.Println(b.String())
+		b = momo.NewBuilder(dialect.For(d))
+		timeop.DaysBetween(respondBy, today).AppendSQL(b)
+		fmt.Println(b.String())
+	}
+	// Output:
+	// (CAST($1 AS date) + CAST($2 AS integer))
+	// ("appeals"."respond_by" - CAST($1 AS date))
+	// date(?, '+3 days')
+	// CAST(julianday("appeals"."respond_by") - julianday(?) AS INTEGER)
+	// DATE_ADD(?, INTERVAL ? DAY)
+	// DATEDIFF(`appeals`.`respond_by`, ?)
 }
