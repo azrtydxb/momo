@@ -2,10 +2,17 @@
 
 ## [0.10.0](https://github.com/azrtydxb/momo/compare/v0.9.0...v0.10.0) (2026-11-13)
 
+_`momotest` now always migrates into the per-test schema, even when `public` of the same database is already migrated, so tests no longer run on (or drop) the real tables. Upgrading needs a change only where `postgres.New` is used as a function value; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.10.0/docs/upgrading.md). [Changes since 0.9.0](https://github.com/azrtydxb/momo/compare/v0.9.0...v0.10.0)._
 
 ### Features
 
-* **momotest:** keep migrations in the test schema ([#121](https://github.com/azrtydxb/momo/issues/121)) ([de31017](https://github.com/azrtydxb/momo/commit/de31017475c3bcd44389aa54c865ab3662e58b4d))
+- **migrate/postgres:** `postgres.WithHistorySchema` pins the `momo_migrations` history table to a schema instead of resolving it through the search path; `postgres.New` takes options ([#115](https://github.com/azrtydxb/momo/issues/115))
+
+### Bug Fixes
+
+- **momotest:** `WithMigrations` migrated nothing into the test schema when `public` already held `momo_migrations`, so tests ran on the real tables; the history table now lives in the test schema ([#115](https://github.com/azrtydxb/momo/issues/115))
+- **momotest:** migrations run with only the test schema on the search path (plus `public` when `WithExtensions` lists extensions), so `DROP TABLE IF EXISTS` or `ALTER TABLE IF EXISTS` in a migration can no longer reach a table in `public` ([#115](https://github.com/azrtydxb/momo/issues/115))
+- **momotest:** `New` fails with a clear error when migrations that create tables leave the test schema empty ([#115](https://github.com/azrtydxb/momo/issues/115))
 
 ## [0.9.0](https://github.com/azrtydxb/momo/compare/v0.8.0...v0.9.0) (2026-11-13)
 
