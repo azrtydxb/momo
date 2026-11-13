@@ -1764,8 +1764,8 @@
 
 
 <h1 id="momo-guide-for-ai-coding-agents">Momo guide for AI coding agents<a class="headerlink" href="#momo-guide-for-ai-coding-agents" title="Permanent link">&para;</a></h1>
-<p>Target: <code>github.com/azrtydxb/momo</code> v0.9.0. Read this file instead of the Momo <!-- x-release-please-version -->
-source. Every identifier below was checked against v0.9.0. Where the guide says <!-- x-release-please-version -->
+<p>Target: <code>github.com/azrtydxb/momo</code> v0.10.0. Read this file instead of the Momo <!-- x-release-please-version -->
+source. Every identifier below was checked against v0.10.0. Where the guide says <!-- x-release-please-version -->
 DON'T, the call either fails, silently does the wrong thing, or is a known bug.</p>
 <p>Imports used throughout:</p>
 <!-- docscheck:fragment -->
@@ -1785,7 +1785,7 @@ DON'T, the call either fails, silently does the wrong thing, or is a known bug.<
 <a href="../ARCHITECTURE/">architecture</a>, <a href="https://github.com/azrtydxb/momo/blob/main/examples/README.md">examples</a>.</p>
 <h2 id="1-scope">1. Scope<a class="headerlink" href="#1-scope" title="Permanent link">&para;</a></h2>
 <ul>
-<li>v0.9.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5; the other databases are in the status block below. <!-- x-release-please-version --></li>
+<li>v0.10.0 supports PostgreSQL 16 and 17 with pgvector 0.8.x, through pgx v5; the other databases are in the status block below. <!-- x-release-please-version --></li>
 </ul>
 <p>Database status:</p>
 <!-- generated:status -->
@@ -1816,8 +1816,8 @@ DON'T, the call either fails, silently does the wrong thing, or is a known bug.<
 <h2 id="2-install-and-tooling">2. Install and tooling<a class="headerlink" href="#2-install-and-tooling" title="Permanent link">&para;</a></h2>
 <!-- x-release-please-start-version -->
 
-<div class="highlight"><pre><span></span><code>go<span class="w"> </span>get<span class="w"> </span>github.com/azrtydxb/momo@v0.9.0<span class="w">                </span><span class="c1"># adds the library to go.mod and writes go.sum</span>
-go<span class="w"> </span>install<span class="w"> </span>github.com/azrtydxb/momo/cmd/momo@v0.9.0<span class="w">   </span><span class="c1"># the CLI: generate, migrate, import, viz, help</span>
+<div class="highlight"><pre><span></span><code>go<span class="w"> </span>get<span class="w"> </span>github.com/azrtydxb/momo@v0.10.0<span class="w">                </span><span class="c1"># adds the library to go.mod and writes go.sum</span>
+go<span class="w"> </span>install<span class="w"> </span>github.com/azrtydxb/momo/cmd/momo@v0.10.0<span class="w">   </span><span class="c1"># the CLI: generate, migrate, import, viz, help</span>
 </code></pre></div>
 <!-- x-release-please-end -->
 
@@ -2598,7 +2598,7 @@ momo<span class="w"> </span>migrate<span class="w"> </span>drift<span class="w">
 <p>CI (every change):</p>
 <!-- x-release-please-start-version -->
 
-<div class="highlight"><pre><span></span><code>go<span class="w"> </span>install<span class="w"> </span>github.com/azrtydxb/momo/cmd/momo@v0.9.0
+<div class="highlight"><pre><span></span><code>go<span class="w"> </span>install<span class="w"> </span>github.com/azrtydxb/momo/cmd/momo@v0.10.0
 momo<span class="w"> </span>generate<span class="w"> </span>--check<span class="w">                                   </span><span class="c1"># generated code is current</span>
 momo<span class="w"> </span>migrate<span class="w"> </span>validate<span class="w">                                   </span><span class="c1"># files vs momo.sum, version chain, forks, snapshots</span>
 momo<span class="w"> </span>migrate<span class="w"> </span>diff<span class="w"> </span>ci_probe<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-qx<span class="w"> </span><span class="s1">'no changes'</span><span class="w">      </span><span class="c1"># models have a migration</span>
@@ -4096,9 +4096,9 @@ report)</code>, a development hook that reports once per statement shape per sco
 </ul>
 <h2 id="12-rules-for-ai-agents">12. Rules for AI agents<a class="headerlink" href="#12-rules-for-ai-agents" title="Permanent link">&para;</a></h2>
 <ol>
-<li>v0.9.0 is PostgreSQL + pgvector via pgx first; the other databases, their drivers and the dialects <code>momo migrate</code> runs are in the generated status near the top of this guide and in docs/capabilities.md. <!-- x-release-please-version --></li>
+<li>v0.10.0 is PostgreSQL + pgvector via pgx first; the other databases, their drivers and the dialects <code>momo migrate</code> runs are in the generated status near the top of this guide and in docs/capabilities.md. <!-- x-release-please-version --></li>
 <li>Install the CLI at the same version as the library
-   (<code>go install github.com/azrtydxb/momo/cmd/momo@v0.9.0</code>). <!-- x-release-please-version --></li>
+   (<code>go install github.com/azrtydxb/momo/cmd/momo@v0.10.0</code>). <!-- x-release-please-version --></li>
 <li>Models embed <code>momo.Model</code> by value with <code>momo:"table:&lt;name&gt;"</code>; run
    <code>momo generate</code> after every model change and commit the generated files.</li>
 <li>Never edit <code>*_gen.go</code>. Never hand-write <code>MomoMeta</code> for a table model or a
