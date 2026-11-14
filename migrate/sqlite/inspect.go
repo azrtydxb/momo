@@ -190,6 +190,11 @@ func (in *inspector) table(m masterRow) (*schema.Table, []schema.Enum, error) {
 	if len(t.PrimaryKey) == 1 && !t.WithoutRowID && !def.pkDesc {
 		if col, ok := t.Column(t.PrimaryKey[0]); ok && strings.EqualFold(strings.TrimSpace(col.Type), "INTEGER") {
 			col.Identity = "by_default" // an INTEGER PRIMARY KEY is the rowid
+			// The pragma reports notnull = 0 for a rowid alias that is not
+			// declared NOT NULL, but the column can never hold NULL: an insert
+			// of NULL assigns the next rowid. Report what the column is, so a
+			// model that declares it NOT NULL matches the database.
+			col.Nullable = false
 		}
 	}
 

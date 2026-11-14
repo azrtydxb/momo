@@ -780,4 +780,47 @@ Decision (2026-11-14, integrator): as above.
 - **Upsert:** the explicit column is written by the INSERT only; a serial or
   identity column that is not the conflict key is never updated on conflict.
 
+## Parity: --from-db on SQLite (2026-11-14, integrator)
+
+- **Scope:** `momo generate --from-db` reads a SQLite database. The dialect
+  comes from `momo.yaml`; the value is a path, a `sqlite:` or `file:` URL, or an
+  environment variable name. The CLI opens it with `driver/sqlitepure`, so the
+  binary needs no cgo. The open is read-only (`sqlitepure.Config.ReadOnly`: no
+  WAL pragma, `mode=ro`, `PRAGMA query_only`), so `--from-db` and `--check`
+  never convert a rollback-journal file to WAL. A database already in WAL mode
+  needs its `-shm` and `-wal` files or a writable directory; no `immutable=1`
+  fallback, which would be unsafe on a live database. The file must exist,
+  because opening a missing one would create it, and `file:` URIs are parsed
+  for their path; `:memory:` and `mode=memory` are refused as empty.
+- **Reuse:** the inspection is `migrate/sqlite`'s, through `Engine.Inspect`, not
+  a second reader. `fromdb.Generate` takes `Options.Dialect` (PostgreSQL,
+  MySQL or SQLite). The CLI parses the value with `sqliteTarget`, the parser
+  of `momo migrate`, and opens the file through `openFromDBEngine`, which for
+  SQLite builds a read-only engine instead of `openDriver`'s read-write one.
+  `--schema` stays PostgreSQL only and is refused on SQLite.
+- **Inspection fix:** a rowid alias (`INTEGER PRIMARY KEY`) is reported NOT
+  NULL. The pragma says nullable for one that is not declared NOT NULL, but it
+  cannot hold NULL, and a model cannot declare a nullable key. Another primary
+  key column that allows NULL is written NOT NULL with a warning.
+- **Table options:** `AUTOINCREMENT`, `WITHOUT ROWID` and `STRICT` had no model
+  declaration, so a database that uses them could not round-trip. They are the
+  `autoincrement`, `without_rowid` and `strict` options of the `momo.Model`
+  marker tag, a diagnostic on any other dialect.
+- **Types:** a declared type maps by the SQLite affinity rules (INT, CHAR, CLOB,
+  TEXT, BLOB, REAL, FLOA, DOUB), plus BOOLEAN, DATETIME, TIMESTAMP and DATE. The
+  declared spelling is kept with a `type:` tag when the Go type alone would give
+  another. NUMERIC affinity by default (`DECIMAL(10,2)`, `JSON`) and a column
+  with no type stay unmapped errors: there is no one Go type to guess.
+- **dbdefault:** the PostgreSQL rule applies unchanged to SQLite, which reads the
+  value back with `RETURNING`: computed defaults are tagged, constant ones only
+  with `introspect.dbdefault: all`, where a non-zero `bool` or number becomes a
+  pointer. MySQL is still excluded.
+- **Indexes:** a unique index with no option is `c.Index(...).Unique()` on
+  SQLite. The PostgreSQL spelling `c.Unique(...).Method("btree")` would store a
+  method that SQLite inspection never reports.
+- **Skipped:** policies, extensions, schemas and functions do not exist on
+  SQLite and are never read. A SQLite CHECK of the form `col IN (...)` on a TEXT
+  column stays an enum column, which models and the SQLite renderer already
+  support.
+
 Decision (2026-11-14, integrator): as above.

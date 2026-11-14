@@ -399,10 +399,12 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	if !reflect.DeepEqual(fn.Partition, tn.Partition) || !reflect.DeepEqual(fn.PartitionOf, tn.PartitionOf) {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes its partitioning; this cannot be altered in place, write a custom migration", tn.Name))
 	}
-	// WITHOUT ROWID, STRICT and AUTOINCREMENT are properties of a SQLite table
-	// that a model cannot declare yet, so a table that has one in the database
-	// and not in the model keeps it (a rebuild writes it back). Asking for one
-	// the table lacks is a change that needs a custom migration.
+	// WITHOUT ROWID, STRICT and AUTOINCREMENT are SQLite table options that a
+	// model declares on the momo.Model tag and that CREATE TABLE writes. They
+	// are one-way after that: a table that has one in the database and not in
+	// the model keeps it (a rebuild writes it back, so removing the option from
+	// a model is not detected), and asking for one the table lacks is a change
+	// that needs a custom migration.
 	if tn.WithoutRowID && !fn.WithoutRowID {
 		d.errs = append(d.errs, fmt.Errorf("migrate: table %s changes WITHOUT ROWID; write a custom migration", tn.Name))
 	}

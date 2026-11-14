@@ -232,6 +232,10 @@ func tagValue(lit *ast.BasicLit) (string, bool) {
 
 // parseTags parses the momo tag of one ast.Field, once, however many names
 // it declares. label names the field in diagnostics.
+// markerLabel names the momo.Model marker tag in diagnostics, and tells
+// parseTags that the SQLite table options are allowed there.
+const markerLabel = "momo.Model marker"
+
 func (d *discovery) parseTags(lit *ast.BasicLit, label string) tags.Tags {
 	if lit == nil {
 		return tags.Tags{}
@@ -246,6 +250,9 @@ func (d *discovery) parseTags(lit *ast.BasicLit, label string) tags.Tags {
 	t, probs := tags.Parse(raw)
 	for _, p := range probs {
 		d.diag(lit.Pos(), label+": "+p.Msg)
+	}
+	if label != markerLabel && (t.Autoincrement || t.WithoutRowID || t.Strict) {
+		d.diag(lit.Pos(), label+": autoincrement, without_rowid and strict are options of the momo.Model tag, not of a field")
 	}
 	return t
 }
@@ -284,7 +291,7 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	for _, f := range d.st.Fields.List {
 		if len(f.Names) == 0 {
 			if idx == marker && !projection {
-				mt = d.parseTags(f.Tag, "momo.Model marker")
+				mt = d.parseTags(f.Tag, markerLabel)
 			}
 			if idx != marker && idx != d.viewIdx {
 				v := strct.Field(idx)
@@ -341,6 +348,7 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	m.IsView = d.viewIdx >= 0
 	m.Schema = mt.Schema
 	m.Table = mt.Table
+	m.Autoincrement, m.WithoutRowID, m.Strict = mt.Autoincrement, mt.WithoutRowID, mt.Strict
 	if m.Table == "" {
 		m.Table = d.namer.TableName(m.GoName)
 	}
