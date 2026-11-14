@@ -1,0 +1,2014 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.12/mysql/">
+      
+      
+        <link rel="prev" href="../fulltext/">
+      
+      
+        <link rel="next" href="../migrations/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>MySQL and MariaDB - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mysql-and-mariadb" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              MySQL and MariaDB
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#supported-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported servers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-runs-on-a-real-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What runs on a real server
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connecting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connecting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capabilities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#emulated-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emulated features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#locking-and-transactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Locking and transactions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vectors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#models-from-a-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Models from a database
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-rebuilt-database-matches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a rebuilt database matches
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#supported-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported servers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-runs-on-a-real-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What runs on a real server
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connecting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connecting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capabilities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#emulated-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emulated features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#locking-and-transactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Locking and transactions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vectors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#models-from-a-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Models from a database
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-rebuilt-database-matches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a rebuilt database matches
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mysql-and-mariadb">MySQL and MariaDB<a class="headerlink" href="#mysql-and-mariadb" title="Permanent link">&para;</a></h1>
+<p>What works on MySQL and MariaDB today, and what does not. The driver is
+<code>driver/mysqldriver</code> (database/sql on <code>github.com/go-sql-driver/mysql</code>).
+The migration dialect <code>migrate/mysql</code> runs from the <code>momo migrate</code> command
+with <code>--dialect mysql</code> (see <a href="#migrations">Migrations</a> and the generated status
+in <a href="../capabilities/">capabilities</a>).</p>
+<h2 id="supported-servers">Supported servers<a class="headerlink" href="#supported-servers" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Server</th>
+<th>Version</th>
+<th>Image used in CI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MySQL 8.4 LTS</td>
+<td>8.4.13</td>
+<td><code>mysql:8.4.13</code></td>
+</tr>
+<tr>
+<td>MySQL 9.7 LTS</td>
+<td>9.7.4</td>
+<td><code>mysql:9.7.4</code></td>
+</tr>
+<tr>
+<td>MariaDB 11.8 LTS</td>
+<td>11.8.9</td>
+<td><code>mariadb:11.8.9</code></td>
+</tr>
+</tbody>
+</table>
+<p>No innovation releases are supported. CI runs the shared suites against all
+three servers (the <code>integration-mysql</code> job), on every push.</p>
+<h2 id="what-runs-on-a-real-server">What runs on a real server<a class="headerlink" href="#what-runs-on-a-real-server" title="Permanent link">&para;</a></h2>
+<p>The <code>integration-mysql</code> CI job starts one server per row of the table above and
+runs the whole integration suite against it with <code>MOMO_REQUIRE_INTEGRATION=1</code>,
+so a server that is missing fails the job instead of skipping the tests.
+Tests that use <code>testopen.EachWithMySQL</code> or <code>testopen.EachMySQL</code> run on all
+three servers; the plain <code>testopen.Each</code> opens PostgreSQL and SQLite only.</p>
+<p>Run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8:</p>
+<ul>
+<li>the shared suites: transactions, errors, joins, aggregates, subqueries and
+  CTEs, RETURNING, raw SQL, locking, hints, keyset pagination, writes, soft
+  delete, optimistic lock, upserts and timestamps;</li>
+<li><code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code>, <code>jsonop.Contains</code>,
+  <code>jsonop.HasKey</code> and <code>jsonop.DeleteKey</code>, with the build error of
+  <code>jsonop.Concat</code> and <code>jsonop.Set</code>;</li>
+<li>window functions (ranking, <code>Lag</code>, <code>Lead</code>, <code>FirstValue</code>, <code>LastValue</code>, <code>Rows</code>
+  and <code>Range</code> frames), the build error for a <code>Groups</code> frame, the aggregate
+  <code>FILTER</code> clause (rewritten to <code>CASE WHEN</code>, with and without <code>Over</code> and in
+  <code>HAVING</code>), and <code>LoadPerParentLimit</code>;</li>
+<li>keyset pagination over string, descending and mixed keys, <code>Batches</code>, and
+  <code>SelectQuery.Each</code> and <code>SelectQuery.Iter</code>, including an early stop, a query
+  while the cursor is open, a canceled context and a stream inside a <code>Tx</code>;</li>
+<li>typed predicates, row-value comparison, projections, select-list aliases,
+  the <code>sqlfn</code> string, CASE, cast and arithmetic helpers, <code>sqlfn.CurrentDate</code>,
+  the <code>agg</code> aggregates and bulk-insert chunking with <code>WithMaxParams</code>;</li>
+<li>every <code>timeop</code> extract field, truncation unit and interval, <code>timeop.Now</code>,
+  <code>timeop.EpochSeconds</code> and the typed date arithmetic.</li>
+</ul>
+<p><code>LATERAL</code> runs on MySQL 8.4 and 9.7, and on MariaDB it is <code>ErrUnsupported</code>.
+<code>CreateGraph</code> and <code>FindOrCreate</code> work on all three (see below), and a test
+checks the stored keys and the found and created cases on each server.
+<code>SelectQuery.Explain</code>, the aggregate <code>FILTER</code> clause on <code>agg.JSONB</code>,
+<code>agg.Array</code>, an ordered or distinct <code>agg.JSONB</code>, <code>unnest</code> and <code>generate_series</code> sources and <code>DISTINCT ON</code> are <code>ErrUnsupported</code>;
+the tests check the error on each server.</p>
+<p>Differences the tests pin down:</p>
+<ul>
+<li>a JSON null member extracts as the text <code>null</code>, not as SQL NULL, because
+  <code>JSON_UNQUOTE</code> turns it into text;</li>
+<li><code>sqlfn.Cast</code> writes the type name as given, and MySQL and MariaDB cast to
+  <code>SIGNED</code>, not <code>bigint</code>;</li>
+<li><code>momo.MapRows</code> returns text columns as <code>[]byte</code>, the driver's own type;</li>
+<li>an aggregate over <code>JSON_ARRAYAGG</code> has no defined member order.</li>
+</ul>
+<p>Not run on MySQL or MariaDB: the one-million-row heap bound of streaming
+(its seed SQL is PostgreSQL and SQLite only), and the CreateGraph behaviour
+tests of the shared suite whose SQL is written for PostgreSQL alone. The graph writes
+have their own tests in <code>driver/mysqldriver</code> and <code>rel_mysql_integration_test.go</code>.</p>
+<h2 id="connecting">Connecting<a class="headerlink" href="#connecting" title="Permanent link">&para;</a></h2>
+<p>Open the pool with <code>mysqldriver.Open(dsn, flavor)</code>, or build the DSN with
+<code>mysqldriver.ConfigureDSN</code> and pass the <code>*sql.DB</code> to <code>mysqldriver.New</code>. The
+configured DSN always has:</p>
+<ul>
+<li><code>parseTime=true</code> and <code>loc=UTC</code>, and the session <code>time_zone</code> set to <code>+00:00</code>;</li>
+<li><code>clientFoundRows=true</code>, so an UPDATE reports the rows it matched;</li>
+<li><code>interpolateParams=false</code> and <code>multiStatements=false</code>: values always travel
+  as bound parameters of a prepared statement and never become SQL text. A DSN
+  that sets either is overridden. A <code>*sql.DB</code> handed to <code>New</code> directly must
+  already be configured this way.</li>
+</ul>
+<p><code>Open</code> pings the server, as the SQLite drivers do, so a bad DSN, a refused
+connection or bad credentials fail at <code>Open</code> and not on the first statement.
+An unknown flavor makes <code>Open</code> return <code>ErrUnsupported</code>; on any error the pool
+is closed and nothing is returned. (<code>New</code>, which takes an already opened
+<code>*sql.DB</code>, still returns a driver whose every call is <code>ErrUnsupported</code> for an
+unknown flavor, because it has no error to return.)</p>
+<p><code>ConfigureDSN</code> (and so <code>Open</code>) refuses two DSN settings with <code>ErrValidation</code>:</p>
+<ul>
+<li><code>allowAllFiles=true</code>, which lets the server read any client file through
+  <code>LOAD DATA LOCAL INFILE</code>;</li>
+<li><code>allowCleartextPasswords=true</code>, which sends the password unhashed.</li>
+</ul>
+<p>Remove them from the DSN. The error message never quotes the DSN.</p>
+<p>Transport security is the DSN's business and defaults to none: add <code>tls=true</code>
+(or a registered TLS config) for any server that is not on the same host.</p>
+<h2 id="capabilities">Capabilities<a class="headerlink" href="#capabilities" title="Permanent link">&para;</a></h2>
+<p>The rows below are checked against <code>dialect.MySQLFlavor</code> by
+<code>TestCapabilityMatrixMatchesDialect</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>mysql</th>
+<th>mariadb</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Returning</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>InsertReturning</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>OnConflict</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>OnDuplicateKey</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>NullsOrdering</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>TransactionalDDL</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Merge</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>ILike</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Locking</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>RowValues</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Savepoints</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Vector.Storage</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Vector.Metrics</td>
+<td>none</td>
+<td>l2, cosine</td>
+</tr>
+<tr>
+<td>Vector.Indexes</td>
+<td>none</td>
+<td>vector</td>
+</tr>
+</tbody>
+</table>
+<p><code>NullsOrdering</code> and <code>ILike</code> mean native syntax, not availability. Both
+features work on MySQL and MariaDB through emulation (see
+<a href="#emulated-features">Emulated features</a>), so the table says <code>no</code> while
+<code>momo.ILike</code>, <code>NullsFirst</code> and <code>NullsLast</code> run.</p>
+<p><code>Returning</code> is the UPDATE and DELETE form. MariaDB 11.8 can return rows from an
+INSERT only (<code>INSERT ... RETURNING</code>), which is why it has <code>InsertReturning</code>
+set while <code>Returning</code> stays false: <code>Returning</code> on an insert works on MariaDB,
+and on an update or delete it is <code>ErrUnsupported</code> on both servers. MySQL has
+no <code>RETURNING</code> at all.</p>
+<h2 id="emulated-features">Emulated features<a class="headerlink" href="#emulated-features" title="Permanent link">&para;</a></h2>
+<p>Three PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
+equivalent instead of returning <code>ErrUnsupported</code>.</p>
+<ul>
+<li><strong>ILIKE.</strong> <code>momo.ILike(col, pattern)</code> renders
+  <code>LOWER(col) LIKE LOWER(?) ESCAPE '!'</code>, and <code>momo.Not(momo.ILike(...))</code> negates
+  it. <code>LOWER</code> folds Unicode letters by the character set, but the <code>LIKE</code>
+  comparison follows the column collation. The default collations of MySQL 8.4
+  and 9.7 (<code>utf8mb4_0900_ai_ci</code>) and MariaDB 11.8 are accent-insensitive, so <code>a</code>
+  matches <code>ä</code>, which PostgreSQL <code>ILIKE</code> does not. Momo does not force a
+  collation, because the accent-insensitive <code>_ai_</code> family is the thing it must
+  not add. Because <code>LOWER</code> wraps the column, an index on the column is not
+  used. The column must be a character type: on <code>BINARY</code>, <code>VARBINARY</code> and <code>BLOB</code>
+  columns <code>LOWER</code> does nothing and <code>LIKE</code> is case-sensitive, so the match is
+  case-sensitive there (momo adds no <code>CONVERT</code>).</li>
+<li><strong>NULLS FIRST and NULLS LAST.</strong> <code>NullsFirst</code> renders
+  <code>(e IS NULL) DESC, e ASC|DESC</code> and <code>NullsLast</code> renders
+  <code>(e IS NULL) ASC, e ASC|DESC</code>, which orders exactly as PostgreSQL. <code>e</code> is
+  rendered twice, so values it binds appear twice among the arguments, in
+  order. <code>After</code> over a nullable key stays <code>ErrUnsupported</code>, and the outer
+  <code>OrderBy</code> of a union with a NULLS term is <code>ErrUnsupported</code>, and so is a window
+  with a <code>Range</code> frame that has an offset and a single <code>OrderBy</code> item with a
+  NULLS term (the emulation adds a second sort key, and the server rejects that
+  with error 3587).</li>
+<li><strong>Aggregate FILTER.</strong> <code>agg(x) FILTER (WHERE p)</code> renders
+  <code>agg(CASE WHEN p THEN x END)</code>, and <code>COUNT(*) FILTER (WHERE p)</code> renders
+  <code>COUNT(CASE WHEN p THEN 1 END)</code>. It is exact for <code>Sum</code>, <code>Avg</code>, <code>Min</code>, <code>Max</code>,
+  <code>CountOf</code>, <code>CountDistinct</code> and <code>agg.String</code>, and works with <code>Over</code>. A call
+  that keeps NULLs (<code>agg.JSONB</code>, any <code>agg.Func</code> outside <code>count</code>, <code>sum</code>, <code>avg</code>,
+  <code>min</code>, <code>max</code> and the <code>std</code> and <code>var</code> family, or one over a raw <code>*</code>) stays
+  <code>ErrUnsupported</code>; use <code>momo.CountAll().Filter(p)</code> for <code>COUNT(*)</code>.</li>
+</ul>
+<h2 id="writes">Writes<a class="headerlink" href="#writes" title="Permanent link">&para;</a></h2>
+<ul>
+<li>A single <code>Model</code> insert reads <code>LAST_INSERT_ID</code> and writes it into the
+  identity field of the model. A key generated on the Go side (an id
+  generator) always wins; <code>LAST_INSERT_ID</code> is read only for a key the database
+  generates. A plain multi-row <code>Models</code> insert through <code>Exec</code> returns and
+  writes back no keys, because the ids of a multi-row statement depend on
+  <code>innodb_autoinc_lock_mode</code>. On MariaDB, ask for them with <code>Returning</code>; on
+  MySQL that is <code>ErrUnsupported</code>. The <code>LAST_INSERT_ID</code> write-back does not
+  apply to an upsert or to any insert with a conflict clause
+  (<code>wantsGeneratedKey</code> in the core is false for them), because the statement
+  may update an existing row and <code>LAST_INSERT_ID</code> then does not name the row's
+  key; read the row back with a query.</li>
+<li><code>momo.CreateGraph</code> reads every generated key back on both servers. MariaDB
+  uses <code>INSERT ... RETURNING</code> (<code>InsertReturning</code>), also for the children of a
+  has-many or many-to-many relation, in one multi-row statement. MySQL has no
+  <code>RETURNING</code>, so it reads <code>LAST_INSERT_ID</code> after each statement and inserts
+  the children one row per statement inside the graph's transaction (a
+  savepoint on a <code>Tx</code>). The keys of one multi-row <code>INSERT</code> are consecutive only
+  when <code>innodb_autoinc_lock_mode</code> is 0 or 1; MySQL 8 and 9 default to 2, where
+  concurrent inserts can interleave, so momo never infers keys from a
+  multi-row statement and an <code>ON DUPLICATE KEY UPDATE</code> statement is never used
+  to read keys. The rows share one statement clock, so they get the same
+  automatic timestamps as a bulk insert. Children that mix zero and explicit
+  keys in one bulk insert fail with <code>ErrValidation</code> on MySQL, and a generated
+  key on a non-integer field is <code>ErrUnsupported</code>. CI runs this on MySQL 8.4 and
+  9.7 (mode 2) and MariaDB 11.8.</li>
+<li><code>momo.FindOrCreate</code> works on both servers inside a transaction (a savepoint
+  on a <code>Tx</code>): a plain <code>INSERT</code> (with <code>RETURNING</code> on MariaDB, <code>LAST_INSERT_ID</code>
+  on MySQL), and when it fails with a unique violation, a shared-lock select
+  by key (<code>FOR SHARE</code>, <code>LOCK IN SHARE MODE</code> on MariaDB) that returns the stored
+  row, so the Go-side key still wins for a new row. A no-op
+  <code>ON DUPLICATE KEY UPDATE</code> cannot be used: with <code>clientFoundRows</code> an inserted
+  row and an untouched existing row both report one affected row, and MariaDB's
+  <code>RETURNING</code> returns the row either way, so <code>created</code> could not be told. The
+  price is one failed <code>INSERT</code> plus one <code>SELECT</code> when the row exists, and the
+  failed insert uses up an auto-increment value. Shared locks do not conflict
+  with each other, but if the first inserter rolls back instead of committing,
+  the waiting callers can deadlock (error 1213, <code>ErrSerialization</code>) and one
+  retries. On a caller's <code>Tx</code>, InnoDB keeps the locks taken after a savepoint
+  until the outer transaction ends. A unique violation on another
+  key than the one given is still <code>ErrUniqueViolation</code>; a <code>DB</code> pinned with
+  <code>OnConn</code> is <code>ErrUnsupported</code> (it cannot open the transaction).</li>
+<li>Upserts render as <code>INSERT ... VALUES ... AS momo_new ON DUPLICATE KEY UPDATE</code>
+  on MySQL and with <code>VALUES(col)</code> on MariaDB. A <code>FromSelect</code> upsert has no row
+  alias on either: MySQL and MariaDB both render <code>VALUES(col)</code> there. The
+  <code>updated_at</code> bump of a <code>DoUpdate</code> is a bound clock value, so it needs neither
+  form. <code>DoNothing</code> renders a no-op
+  assignment of a key column. A <code>Where</code> on a conflict clause is
+  <code>ErrUnsupported</code>.</li>
+<li><code>ON DUPLICATE KEY UPDATE</code> fires for a conflict on any unique key and cannot
+  name one. Momo therefore accepts a conflict target only when it is a unique
+  key of the table and no other unique key can conflict. A second key is safe
+  when it is made only of auto-increment columns the insert leaves to the
+  database: the server gives such a column a fresh value, so the key cannot
+  match an existing row. The case this allows is an auto-increment primary key
+  next to <code>UNIQUE(email)</code>, upserting on <code>email</code> with the primary key left out
+  (judged from the columns the statement writes: the identity is not in the
+  model columns, the <code>InsertQuery.Values</code> assignments or the <code>FromSelect</code>
+  target list, and no Go-side id generator fills it). In every other case the call is <code>ErrUnsupported</code> and the message
+  names the reason: a second unique key the insert can reach (an ordinary
+  column, an expression, a composite key with an ordinary column, or the
+  primary key written explicitly), or a target that is not a unique key. The
+  unique keys come from the model's schema (its <code>pk</code> and <code>unique</code> tags and
+  unique indexes); without a schema (a hand-written model) only a primary-key
+  target is accepted.</li>
+<li>With <code>clientFoundRows</code>, an upsert reports 1 for an inserted row, 2 for an
+  existing row that changed, and 1 for an existing row set to its current
+  values. <code>DoNothing</code> also reports 1 for a skipped row. A count of 1 does not
+  tell an insert from a skip.</li>
+<li>A bare <code>OFFSET</code> gets <code>LIMIT 18446744073709551615</code> in front of it, because
+  MySQL and MariaDB reject an offset without a limit.</li>
+</ul>
+<h2 id="locking-and-transactions">Locking and transactions<a class="headerlink" href="#locking-and-transactions" title="Permanent link">&para;</a></h2>
+<p><code>ForUpdate</code> and <code>ForShare</code> render <code>FOR UPDATE</code> and <code>FOR SHARE</code>; <code>NOWAIT</code> and
+<code>SKIP LOCKED</code> are passed through. MariaDB 11.8 has no <code>FOR SHARE</code>, so it gets
+<code>LOCK IN SHARE MODE</code>. <code>LockOf</code> (<code>FOR UPDATE OF</code>) is MySQL only; on MariaDB it is
+<code>ErrUnsupported</code>. Savepoints and the four standard isolation levels work;
+read-only transactions use <code>START TRANSACTION READ ONLY</code>. Any other isolation
+level is <code>ErrUnsupported</code>. <code>ForNoKeyUpdate</code> and <code>ForKeyShare</code> are PostgreSQL
+only and return <code>ErrUnsupported</code> here. <code>timeop.ClockTimestamp</code> renders
+<code>SYSDATE(6)</code>; <code>timeop.StatementTimestamp</code> is <code>ErrUnsupported</code>.</p>
+<h2 id="errors">Errors<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
+<p>Server errors map by number: 1062 unique, 1451 and 1452 (and 1216, 1217)
+foreign key, 1048 and 1364 not null, 3819 (MySQL) and 4025 (MariaDB) check,
+1213 and MariaDB 1020 serialization (deadlock, and a row that changed under
+<code>innodb_snapshot_isolation</code>), 1205 and 3572 busy. <code>Error()</code> never shows the
+server text, which can quote a row value; <code>Detail()</code> returns it, and
+<code>errors.As</code> reaches the <code>*mysql.MySQLError</code>. The constraint name differs by
+server: MySQL 8 reports a unique key as <code>table.index</code>, MariaDB reports only the
+index name.</p>
+<h2 id="vectors">Vectors<a class="headerlink" href="#vectors" title="Permanent link">&para;</a></h2>
+<p>MySQL 8.4 has no vector columns. MySQL 9.7 stores <code>VECTOR</code> and reads it back,
+but offers no distance function in the Community edition (<code>DISTANCE()</code> is
+HeatWave and MySQL AI only), so every distance builder is <code>ErrUnsupported</code> on
+MySQL. MariaDB 11.8 renders <code>vecop.L2</code> as <code>VEC_DISTANCE_EUCLIDEAN</code> and
+<code>vecop.Cosine</code> as <code>VEC_DISTANCE_COSINE</code> on <code>vector.Vector</code> columns, and its
+driver reports <code>Vectors</code>. Inner product, L1, Hamming, Jaccard and the half,
+sparse and bit types return <code>ErrUnsupported</code> on MariaDB. Details and the
+<code>VECTOR INDEX</code> rules are in <a href="../vectors/#mariadb-and-mysql">vectors.md</a>.</p>
+<h2 id="migrations">Migrations<a class="headerlink" href="#migrations" title="Permanent link">&para;</a></h2>
+<p>The library dialect <code>migrate/mysql</code> inspects <code>information_schema</code>, renders DDL,
+locks with <code>GET_LOCK</code> and runs every migration, up and down, statement by
+statement, because DDL commits implicitly on these servers. Build the engine
+with <code>migrate.WithDialect</code> and the <code>mysqldriver</code> driver; the inspector, drift
+check and <code>-- momo:ddl</code> online DDL options work through it. The <code>momo migrate</code>
+command does the same for you: <code>--dialect mysql</code>, with a <code>mysql://</code> or
+<code>mariadb://</code> URL or a go-sql-driver DSN (one dialect for both servers; the
+server tells them apart). A string without <code>size:N</code> is <code>text</code>, and <code>text</code>,
+<code>blob</code> and <code>json</code> columns cannot be keyed: the generator refuses a model with
+one in a primary key, unique key, index or foreign key, naming the column, so a
+migration never fails half-way on error 1170. <code>types.Numeric</code> with a <code>precision</code>
+tag is <code>decimal(p,s)</code> (precision up to 65, scale up to 30, scale not above
+precision; no <code>NaN</code> or infinity), and a <code>vector.Vector</code> column is <code>vector(N)</code>,
+which needs MySQL 9.0 or MariaDB 11.7. What the dialect reports and renders is in
+<a href="../migrations/#9-mysql-and-mariadb">migrations.md</a>.</p>
+<h2 id="models-from-a-database">Models from a database<a class="headerlink" href="#models-from-a-database" title="Permanent link">&para;</a></h2>
+<p><code>momo generate --from-db</code> reads a MySQL 8.4, MySQL 9.7 or MariaDB 11.8
+database and writes the models and the init snapshot, as it does for
+PostgreSQL. Set <code>dialects: [mysql]</code> in <code>momo.yaml</code> (MariaDB is the same
+dialect; the flavor is read from the server). The command reuses the
+<code>migrate/mysql</code> inspector, so what <code>momo migrate drift</code> sees is what the models
+declare.</p>
+<p>The value of <code>--from-db</code> is <code>-</code> for standard input, the name of an environment
+variable that holds the connection, or the connection itself, in one of these
+forms:</p>
+<div class="highlight"><pre><span></span><code>user:pass@tcp(host:3306)/app          a go-sql-driver DSN
+tcp(host:3306)/app                    the same without credentials
+user:pass@unix(/run/mysqld.sock)/app  a unix socket (DSN only)
+mysql://user:pass@host:3306/app       a URL, also mariadb://
+</code></pre></div>
+<p>The DSN must name the database. A URL may carry only <code>tls</code>, <code>timeout</code>,
+<code>readTimeout</code>, <code>writeTimeout</code>, <code>charset</code>, <code>collation</code>, <code>maxAllowedPacket</code> and
+<code>allowNativePasswords</code>; any other parameter is refused, because the server
+would take it as a session variable. Use a DSN for sockets and every other
+driver option. A DSN or URL for a remote host with no <code>tls=</code> setting prints a
+warning, and the password, in either form, is redacted from every message.</p>
+<h2 id="what-a-rebuilt-database-matches">What a rebuilt database matches<a class="headerlink" href="#what-a-rebuilt-database-matches" title="Permanent link">&para;</a></h2>
+<p>A database rebuilt from the generated models (diff the models against an empty
+database and apply) has the same schema as far as <code>schema.Equal</code> compares it:
+columns, types, defaults, generated columns, keys, indexes, checks and foreign
+keys. The <code>integration-mysql</code> jobs check that on all three servers with a
+schema built from raw DDL. It is not byte for byte. These are known losses; the
+ones the command can see are reported, the others are not:</p>
+<div class="highlight"><pre><span></span><code>ON UPDATE CURRENT_TIMESTAMP   reported as a warning; the rebuilt column does not change on UPDATE
+INVISIBLE columns             reported as a warning (MySQL); the rebuilt column is visible
+prefix indexes, name(10)      reported as a warning; left out of the models and the snapshot
+prefix PRIMARY KEY            an error: nothing is written
+table charset and collation   not read; a column collation is read only where it differs from the table's
+ENGINE, ROW_FORMAT, table comment, AUTO_INCREMENT counter, partitions   not read
+triggers, views, stored routines                                         not read
+</code></pre></div>
+<p>Type mapping (the column type is always written as a <code>type:</code> tag, because the
+generator has no MySQL type table, except <code>varchar(N)</code>, which becomes <code>size:N</code>):</p>
+<div class="highlight"><pre><span></span><code>tinyint(1)                    bool (a pointer when nullable)
+tinyint, smallint, mediumint  int8, int16, int32 (uint8, uint16, uint32 when unsigned)
+int, bigint                   int32, int64 (uint32, uint64 when unsigned)
+float, double                 float32, float64
+decimal(p,s)                  types.Numeric
+char, varchar, *text          string
+binary, varbinary, *blob, bit []byte
+date                          types.Date
+datetime, timestamp           time.Time
+time                          string (the driver returns TIME as text)
+year                          int16
+json                          types.JSON[json.RawMessage]
+enum, set                     string
+</code></pre></div>
+<ul>
+<li><strong>tinyint(1) is a Go bool.</strong> MySQL stores any value from -128 to 127 in it,
+  and a stored value other than 0 or 1 (a 2 written by another program) fails
+  to scan, for the whole row. Every <code>tinyint(1)</code> column gets a note in the
+  report. If the column holds other values, add an <code>introspect.types</code> rule that
+  maps <code>tinyint(1)</code> to <code>int8</code>.</li>
+<li><strong>enum and set</strong> are Go strings. The exact column type, values included, is
+  written in the <code>type:</code> tag, so the database keeps the value list and a
+  rebuilt database matches. No check constraint is added and the values are not
+  checked in Go. The tag grammar reads a comma inside parentheses as part of
+  the option and skips a quoted value there, so <code>type:decimal(10,2)</code> and
+  <code>type:enum('a,b','it''s')</code> are one option each.</li>
+<li><strong>AUTO_INCREMENT</strong> keys get the <code>identity</code> tag.</li>
+<li><strong>Defaults:</strong> every default is written (<code>default:</code>). A NOT NULL <code>bool</code> or
+  number column whose constant default is <code>true</code> or non-zero is handled by
+  flavor, because only MariaDB has <code>INSERT ... RETURNING</code>. On MariaDB the field
+  gets <code>dbdefault</code> and a pointer type, so nil takes the default and an explicit
+  <code>false</code> or <code>0</code> is written. On MySQL 8.4 and 9.7 an insert that leaves a
+  <code>dbdefault</code> field nil is refused (nothing reads the stored value back), so the
+  field stays plain and the report has a note: a zero value is written instead
+  of the column default. A computed default such as <code>CURRENT_TIMESTAMP</code> gets no
+  <code>dbdefault</code> on either.</li>
+<li><strong>Generated columns</strong> become <code>read_only</code> fields with <code>generated:</code> (and
+  <code>virtual</code> for VIRTUAL).</li>
+<li><strong>Constraints:</strong> unique keys, plain, composite and <code>DESC</code> indexes, check
+  constraints and foreign keys are written as on PostgreSQL. A foreign key to a
+  primary key is a <code>belongs_to</code> field with <code>fk_name</code>, because MySQL names an
+  unnamed key <code>&lt;table&gt;_ibfk_&lt;n&gt;</code>; <code>introspect.inverse</code> adds <code>has_many</code> and
+  <code>has_one</code>. A foreign key to a unique column that is not the primary key is a
+  <code>c.ForeignKey(...)</code> statement in <code>MomoConfig</code>, with no relation field.</li>
+<li><strong>Left out with a warning</strong>, so the models and the snapshot agree and the
+  baseline reports them: prefix indexes, foreign keys to a table with no model,
+  and every object that PostgreSQL alone has (schemas, extensions, enum types,
+  functions, triggers, row-level security, partitions), which MySQL does not
+  have.</li>
+<li><strong>No Go mapping</strong> (geometry, <code>vector</code>): an error, and nothing is written; add
+  an <code>introspect.types</code> or <code>introspect.columns</code> rule.</li>
+<li>MariaDB stores <code>json</code> as <code>longtext</code> with a <code>json_valid</code> check; the inspector
+  folds that back into <code>json</code>. MariaDB reports a literal default quoted and
+  MySQL does not; both are written as the SQL literal.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
