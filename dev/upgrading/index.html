@@ -1143,6 +1143,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#advisory-session-locks-on-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory session locks on MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2185,6 +2196,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#advisory-session-locks-on-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory session locks on MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3085,9 +3107,10 @@ later releases can break more.</p>
 <h2 id="upgrading-to-0130">Upgrading to 0.13.0<a class="headerlink" href="#upgrading-to-0130" title="Permanent link">&para;</a></h2>
 <p>No edit is needed in your code. Several calls that returned <code>ErrUnsupported</code> on
 some dialects now return results (<code>DistinctOn</code> on SQLite, MySQL and MariaDB,
-<code>DELETE ... USING</code> and mixed <code>DEFAULT</code> rows in a multi-row insert on SQLite), so
-code that relied on the error (a fallback branch, a test that expects the
-refusal) now takes the success path.</p>
+<code>DELETE ... USING</code> and mixed <code>DEFAULT</code> rows in a multi-row insert on SQLite, and
+the <code>advisory</code> session functions on MySQL and MariaDB), so code that relied on
+the error (a fallback branch, a test that expects the refusal) now takes the
+success path.</p>
 <h3 id="delete-using-runs-on-sqlite"><code>DELETE ... USING</code> runs on SQLite<a class="headerlink" href="#delete-using-runs-on-sqlite" title="Permanent link">&para;</a></h3>
 <p><code>DeleteQuery.Using</code> on SQLite renders
 <code>DELETE FROM t WHERE EXISTS (SELECT 1 FROM src WHERE ...)</code>, because SQLite has
@@ -3164,6 +3187,31 @@ have window functions. PostgreSQL is unchanged.</p>
 <li>An <code>As</code> alias is checked as everywhere else: an empty, malformed or
   over-long alias is <code>ErrValidation</code> on every dialect.</li>
 </ul>
+<h3 id="advisory-session-locks-on-mysql-and-mariadb">Advisory session locks on MySQL and MariaDB<a class="headerlink" href="#advisory-session-locks-on-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
+<p>The <code>advisory</code> session functions (<code>advisory.Lock</code>, <code>advisory.TryLock</code>,
+<code>advisory.Unlock</code> and their text-key forms such as <code>advisory.LockString</code>) used
+to return <code>ErrUnsupported</code> on MySQL and MariaDB. They now run <code>GET_LOCK</code>, <code>GET_LOCK(name, 0)</code> and <code>RELEASE_LOCK</code> on
+a pinned connection (<code>db.OnConn(pc)</code>), as they do on PostgreSQL with
+<code>pg_advisory_lock</code>. Take the pinned <code>*momo.DB</code> from <code>momo.Pinner</code>, lock and
+unlock on it, and unlock before you release the connection to the pool; a pooled
+<code>*momo.DB</code> is <code>ErrValidation</code>. What differs from PostgreSQL:</p>
+<ul>
+<li>The lock name is <code>momo:advisory:&lt;db&gt;:&lt;key&gt;</code> and is scoped to the current
+  database, as a PostgreSQL advisory lock is (<code>GET_LOCK</code> names are otherwise
+  global to the server): <code>&lt;db&gt;</code> is 8 hex digits of <code>sha256(DATABASE())</code>, or
+  <code>nodb</code> without a default database. An <code>int64</code> key is <code>&lt;key&gt;</code> in decimal, and a
+  text key is <code>s:</code> plus 32 hex digits of its sha256. <code>advisory.Hash64</code> has no
+  effect, and a text key is a different lock than the one PostgreSQL takes for
+  the same string.</li>
+<li><code>advisory.Lock</code> waits in one-second <code>GET_LOCK</code> calls until the lock is granted
+  or the context ends. After it returns an error, <code>Discard</code> the pinned
+  connection instead of releasing it, because a granted lock may still be
+  attached to it.</li>
+<li>The transaction-scoped functions (<code>advisory.XactLock</code> and the rest) and the
+  shared functions (<code>advisory.LockShared</code> and the rest) stay <code>ErrUnsupported</code>: a
+  <code>GET_LOCK</code> lock is not released by a commit or rollback and has no shared mode.</li>
+</ul>
+<p>See <a href="../mysql/#advisory-locks">MySQL</a> for the details.</p>
 <h2 id="upgrading-to-0120">Upgrading to 0.12.0<a class="headerlink" href="#upgrading-to-0120" title="Permanent link">&para;</a></h2>
 <p>Two changes can need an edit. <code>momo.Avg</code> is now generic, so code that uses it
 as an uninstantiated function value must write <code>momo.Avg[float64]</code> (see

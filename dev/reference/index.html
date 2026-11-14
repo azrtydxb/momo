@@ -6813,7 +6813,7 @@
 <tr>
 <td><code>advisory.LockString</code></td>
 <td>func</td>
-<td>LockString is Lock with a text key, hashed on the server; see XactLockString for the hash and Hash64 for the 64-bit form.</td>
+<td>LockString is Lock with a text key.</td>
 </tr>
 <tr>
 <td><code>advisory.Option</code></td>
@@ -6838,7 +6838,7 @@
 <tr>
 <td><code>advisory.TryLockString</code></td>
 <td>func</td>
-<td>TryLockString is TryLock with a text key, hashed on the server.</td>
+<td>TryLockString is TryLock with a text key, hashed as LockString hashes it.</td>
 </tr>
 <tr>
 <td><code>advisory.TryXactLock</code></td>
@@ -6863,7 +6863,7 @@
 <tr>
 <td><code>advisory.Unlock</code></td>
 <td>func</td>
-<td>Unlock releases one hold of the session-scoped lock for key (pg_advisory_unlock) and reports whether the session held it.</td>
+<td>Unlock releases one hold of the session-scoped lock for key (pg_advisory_unlock, RELEASE_LOCK on MySQL and MariaDB) and reports whether the session held it.</td>
 </tr>
 <tr>
 <td><code>advisory.UnlockShared</code></td>
