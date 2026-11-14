@@ -58,19 +58,29 @@ func looksLikeSQLiteSource(src string) bool {
 }
 
 // sqliteTargetPath is the file path a sqliteTarget result names: the target
-// itself for a plain path, or a file: URI with the prefix, an empty authority
-// and the query dropped and the percent escapes decoded.
-func sqliteTargetPath(target string) string {
+// itself for a plain path, or a file: URI with the prefix, the query and an
+// empty or localhost authority dropped and the percent escapes decoded. Any
+// other authority names a host, which a local file cannot be on: an error.
+func sqliteTargetPath(target string) (string, error) {
 	p, _, _ := strings.Cut(target, "?")
 	rest, isURI := strings.CutPrefix(p, "file:")
 	if !isURI {
-		return p
+		return p, nil
 	}
-	rest = strings.TrimPrefix(rest, "//")
+	if auth, ok := strings.CutPrefix(rest, "//"); ok {
+		host, path, _ := strings.Cut(auth, "/")
+		if host != "" && !strings.EqualFold(host, "localhost") {
+			return "", errors.New("the file: URI names a host other than localhost; a SQLite file must be local")
+		}
+		rest = "/" + path
+		if path == "" {
+			rest = ""
+		}
+	}
 	if dec, err := url.PathUnescape(rest); err == nil {
 		rest = dec
 	}
-	return rest
+	return rest, nil
 }
 
 // requireSQLiteFile turns the --from-db value into the target sqlitepure opens
@@ -91,7 +101,10 @@ func requireSQLiteFile(src string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("--from-db: %w", err)
 	}
-	path := sqliteTargetPath(target)
+	path, err := sqliteTargetPath(target)
+	if err != nil {
+		return "", fmt.Errorf("--from-db: %w", err)
+	}
 	fi, err := os.Stat(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):

@@ -167,6 +167,20 @@ func TestGenerateFromDBSQLiteMissingFile(t *testing.T) {
 			t.Fatalf("%s: exit %d, %q", src, code, errb.String())
 		}
 	}
+	// An empty or localhost authority is the local machine.
+	for _, src := range []string{"file://localhost" + missing, "file://LOCALHOST" + missing, "file://" + missing} {
+		var out, errb bytes.Buffer
+		if code := Run([]string{"generate", "--from-db", src}, &out, &errb); code != exitUsage || !strings.Contains(errb.String(), "does not exist") {
+			t.Fatalf("%s: exit %d, %q", src, code, errb.String())
+		}
+	}
+	// Any other host is refused, and so is the file it would name.
+	for _, src := range []string{"file://example.com" + missing, "file://db.internal/x.db"} {
+		var out, errb bytes.Buffer
+		if code := Run([]string{"generate", "--from-db", src}, &out, &errb); code != exitUsage || !strings.Contains(errb.String(), "other than localhost") {
+			t.Fatalf("%s: exit %d, %q", src, code, errb.String())
+		}
+	}
 	for _, src := range []string{":memory:", "file::memory:", "file:x.db?mode=memory", "sqlite://:memory:"} {
 		var out, errb bytes.Buffer
 		if code := Run([]string{"generate", "--from-db", src}, &out, &errb); code != exitUsage || !strings.Contains(errb.String(), "in-memory") {

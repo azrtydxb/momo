@@ -253,9 +253,14 @@ for an edit:
   next `momo migrate diff` of an existing SQLite project can show one
   `SET NOT NULL` rebuild of each table whose rowid alias the model declares NOT
   NULL. It changes no data.
-- The `momo.Model` marker tag accepts the new options `autoincrement`,
-  `without_rowid` and `strict`, which declare the SQLite table options of the
-  same name. A model that does not use them is unchanged.
+
+The `momo.Model` marker tag also accepts the new options `autoincrement`,
+`without_rowid` and `strict`, which declare the SQLite table options of the same
+name. A model that does not use them is unchanged.
+
+`--schema` applies to PostgreSQL only. With MySQL, MariaDB or SQLite it is now
+a usage error (exit 2) that writes nothing; before, MySQL and MariaDB ignored
+it. Remove the flag from such a command.
 
 ## Upgrading to 0.11.0
 

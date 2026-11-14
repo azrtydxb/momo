@@ -230,12 +230,12 @@ func tagValue(lit *ast.BasicLit) (string, bool) {
 	return reflect.StructTag(s).Lookup("momo")
 }
 
-// parseTags parses the momo tag of one ast.Field, once, however many names
-// it declares. label names the field in diagnostics.
 // markerLabel names the momo.Model marker tag in diagnostics, and tells
 // parseTags that the SQLite table options are allowed there.
 const markerLabel = "momo.Model marker"
 
+// parseTags parses the momo tag of one ast.Field, once, however many names
+// it declares. label names the field in diagnostics.
 func (d *discovery) parseTags(lit *ast.BasicLit, label string) tags.Tags {
 	if lit == nil {
 		return tags.Tags{}
