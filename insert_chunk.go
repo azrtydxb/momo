@@ -156,6 +156,14 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		return nil, err
 	}
 	q.idsDone = true
+	if q.q != nil {
+		if err := q.checkExplicit(); err != nil {
+			return nil, err
+		}
+		if err := q.checkExplicitZero(q.q.Dialect()); err != nil { // every row, before the first chunk runs
+			return nil, err
+		}
+	}
 	q = q.withDBD() // after hooks and ids: the plan is computed once and sliced per chunk
 	one := []InsertQuery[T]{q}
 	if q.i.unnest {
