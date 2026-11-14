@@ -193,7 +193,7 @@ func TestInsertExplicitBindsStructValue(t *testing.T) {
 // or the OVERRIDING SYSTEM VALUE clause because only the first chunk was
 // planned with Explicit.
 func TestInsertExplicitChunkedBulk(t *testing.T) {
-	drv := newSmallLimit(6) // three columns per row: two rows per statement
+	drv := newSmallLimit(5) // two columns per row: two rows per statement
 	a := []explAlways{{ID: 1, Body: "a"}, {ID: 2, Body: "b"}, {ID: 3, Body: "c"}}
 	if _, err := momo.Insert[explAlways](momo.New(drv)).Models(a).Explicit(explAID).Exec(t.Context()); err != nil {
 		t.Fatal(err)
