@@ -600,8 +600,16 @@ Decision (2026-11-14, integrator): as above.
 - **Scope:** Model, Models, Values, ValuesRows, Unnest, chunked bulk, Upsert and
   OnConflict. A column that is not identity, serial or auto-increment, or not in
   the model, is `ErrValidation`; so are `FromSelect` and `Copy` with Explicit.
-- **Zero value:** written as-is, because the caller opted in.
-- **Sequence:** the caller advances it (`setval` on PostgreSQL); Momo never
-  calls it, as for the upsert identity path.
+- **Zero value:** per dialect. PostgreSQL and SQLite store 0 as written
+  because the caller opted in. MySQL and MariaDB refuse a zero in an explicit
+  AUTO_INCREMENT column with `ErrValidation`, because the server would generate
+  a value instead of storing 0; every row is checked before the first chunk.
+- **Sequence:** only PostgreSQL needs `setval`, which the caller runs; Momo
+  never calls it. MySQL, MariaDB and SQLite move past a larger explicit value
+  on their own.
+- **Checks:** a `ColumnRef` of another table, and the same column in both
+  `Explicit` and `Omit`, are `ErrValidation`.
+- **Upsert:** the explicit column is written by the INSERT only; a serial or
+  identity column that is not the conflict key is never updated on conflict.
 
 Decision (2026-11-14, integrator): as above.

@@ -102,9 +102,14 @@ momo.Insert[models.Receipt](q).Model(&r).Explicit(receipt.Seq).Exec(ctx)
 ```
 
 PostgreSQL renders `OVERRIDING SYSTEM VALUE` for a `GENERATED ALWAYS AS
-IDENTITY` column only. A zero value in an `Explicit` column is written as-is.
-An explicit value does not advance the sequence, so run `setval` yourself
-afterwards. See issue #127.
+IDENTITY` column only. A zero value in an `Explicit` column is stored as 0 on
+PostgreSQL and SQLite, and refused with `ErrValidation` on MySQL and MariaDB
+(the server would generate a value instead), before the first statement is
+sent. An explicit value does not advance a PostgreSQL sequence, so run `setval`
+yourself afterwards; MySQL, MariaDB and SQLite move past a larger explicit
+value on their own. With `Upsert` or `OnConflict` the explicit column is
+written by the INSERT only: a serial or identity column that is not the
+conflict key is never updated on conflict. See issue #127.
 
 ## Upgrading to 0.11.0
 
