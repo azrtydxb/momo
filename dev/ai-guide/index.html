@@ -2384,9 +2384,13 @@ value. Tag the field <code>dbdefault</code> to leave it to the database instead:
   passed (the slice element for <code>Models</code>) once the statement has committed. A
   non-zero value is written as given. A pointer to a zero value counts as set.</li>
 <li><code>Models</code> with a mix of zero and set rows writes <code>DEFAULT</code> for the zero rows
-  (PostgreSQL). SQLite cannot put <code>DEFAULT</code> in a multi-row VALUES list, and
-  <code>Unnest</code> and <code>Copy</code> have no per-row default, so they fail with <code>ErrUnsupported</code>
-  for such a mix: insert the rows separately or give every row a value. A
+  (PostgreSQL). SQLite cannot put <code>DEFAULT</code> in a multi-row VALUES
+  list, so <code>Exec</code> and <code>Rows</code> split the rows into runs of consecutive rows that
+  agree on which columns are unset and insert each run as its own statement, in
+  order, in one transaction (<code>SQL</code> fails with <code>ErrUnsupported</code>, as it renders a
+  single statement). <code>Unnest</code> and <code>Copy</code> have no per-row default, so they fail
+  with <code>ErrUnsupported</code> for such a mix: insert the rows separately or give every
+  row a value. A
   column that is zero in every row simply leaves the column list. <code>Copy</code> has
   no <code>RETURNING</code> to read the value back, so it refuses a zero dbdefault column
   with <code>ErrUnsupported</code>: set a value, or use <code>Models</code>.</li>
@@ -3271,8 +3275,9 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   model's columns, join it to the target in <code>Where</code>, and assign from it with <code>col.SetExpr(srcCol)</code>.
   The soft-delete filter and interceptors do not apply to <code>src</code>: add that predicate to <code>Where</code>.
   MySQL and MariaDB render the multi-table forms (<code>UPDATE t, src SET t.col = ...</code>,
-  <code>DELETE t FROM t, src WHERE ...</code>); SQLite has <code>UPDATE ... FROM</code> (3.33 or later) but no
-  <code>DELETE ... USING</code> (<code>ErrUnsupported</code>).</li>
+  <code>DELETE t FROM t, src WHERE ...</code>); SQLite has <code>UPDATE ... FROM</code> (3.33 or later) and renders
+  <code>Using</code> as <code>DELETE FROM t WHERE EXISTS (SELECT 1 FROM src WHERE ...)</code>, so <code>Returning</code> lists
+  columns of the target only there (a source column is <code>ErrUnsupported</code>).</li>
 <li>With <code>From</code> or <code>Using</code> the unfiltered-mutation guard is stricter: at least one <code>Where</code> predicate
   must reference a column of the target table, otherwise the statement joins every target row to
   the source and fails with <code>ErrUnfilteredMutation</code> unless <code>AllRows()</code> confirms it. A condition

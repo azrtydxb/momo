@@ -1909,7 +1909,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tr>
 <td>UPDATE ... FROM, DELETE ... USING, WITH on DML, DML as a CTE body</td>
 <td>yes: <code>UpdateQuery.From</code>, <code>DeleteQuery.Using</code>, <code>InsertQuery.With</code> / <code>InsertQuery.WithRecursive</code> on <code>InsertQuery</code>, <code>UpdateQuery</code> and <code>DeleteQuery</code>, and an INSERT, UPDATE or DELETE as a <code>SelectQuery.With</code> body (it needs <code>Returning</code> only when the outer statement reads the CTE; PostgreSQL reports the error otherwise)</td>
-<td>SQLite: <code>UPDATE ... FROM</code> and WITH before any DML yes, <code>DELETE ... USING</code> and a data-modifying CTE body <code>ErrUnsupported</code>. MySQL and MariaDB: multi-table <code>UPDATE t, src SET ...</code> and <code>DELETE t FROM t, src</code>; WITH before UPDATE and DELETE on MySQL only (MariaDB <code>ErrUnsupported</code>, not verified); WITH before INSERT and a data-modifying CTE body <code>ErrUnsupported</code></td>
+<td>SQLite: <code>UPDATE ... FROM</code>, <code>DELETE ... USING</code> (<code>WHERE EXISTS</code>) and WITH before any DML yes, a data-modifying CTE body <code>ErrUnsupported</code>. MySQL and MariaDB: <code>UPDATE t, src SET ...</code> and <code>DELETE t FROM t, src</code>; WITH before UPDATE and DELETE on MySQL only (MariaDB <code>ErrUnsupported</code>, unverified); WITH before INSERT and a data-modifying CTE body <code>ErrUnsupported</code></td>
 <td><code>From</code> / <code>Using</code> take a table, <code>momo.CTE</code> or <code>momo.FromSubquery</code>; the soft-delete filter and interceptors do not apply to that source. With <code>From</code> or <code>Using</code>, <code>Where</code> must reference the target table or the statement is <code>ErrUnfilteredMutation</code> unless <code>AllRows</code>. <code>From</code> and <code>Using</code> take several sources (comma list); with two or more, <code>Where</code> must reference every source too. <code>Returning</code> may list source or CTE columns (PostgreSQL only, rendered qualified), read with <code>ScanUpdate</code> / <code>ScanDelete</code>; <code>Rows</code> and <code>One</code> refuse them. A WITH on a chunked bulk insert or on <code>BulkUpdate</code> is <code>ErrValidation</code>; an INSERT CTE body over the parameter limit is <code>ErrLimitExceeded</code></td>
 </tr>
 <tr>
@@ -2066,8 +2066,8 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tr>
 <td><code>SET col = DEFAULT</code>, <code>VALUES (DEFAULT)</code></td>
 <td>yes</td>
-<td>SQLite: no <code>DEFAULT</code> in <code>VALUES</code></td>
-<td>a multi-row insert that is default in some rows only fails with <code>ErrUnsupported</code> where the dialect cannot express it</td>
+<td>SQLite: no <code>DEFAULT</code> in <code>VALUES</code>; <code>Exec</code> and <code>Rows</code> insert a multi-row insert that is default in some rows only as one statement per run of consecutive rows that agree, in one transaction</td>
+<td><code>SQL</code> of such a multi-row insert fails with <code>ErrUnsupported</code> on SQLite, which renders one statement; <code>Unnest</code> and <code>Copy</code> refuse a per-row default</td>
 </tr>
 </tbody>
 </table>

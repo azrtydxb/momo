@@ -1111,6 +1111,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#delete-using-runs-on-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE ... USING runs on SQLite
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mixed-default-rows-in-a-multi-row-insert-run-on-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mixed DEFAULT rows in a multi-row insert run on SQLite
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#distincton-on-sqlite-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2131,6 +2153,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#delete-using-runs-on-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE ... USING runs on SQLite
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mixed-default-rows-in-a-multi-row-insert-run-on-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mixed DEFAULT rows in a multi-row insert run on SQLite
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#distincton-on-sqlite-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3039,9 +3083,44 @@
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
 <h2 id="upgrading-to-0130">Upgrading to 0.13.0<a class="headerlink" href="#upgrading-to-0130" title="Permanent link">&para;</a></h2>
-<p>No edit is needed in your code. One call that returned <code>ErrUnsupported</code> on some
-dialects now returns rows, so code that relied on the error (a fallback branch,
-a test that expects the refusal) now takes the success path.</p>
+<p>No edit is needed in your code. Several calls that returned <code>ErrUnsupported</code> on
+some dialects now return results (<code>DistinctOn</code> on SQLite, MySQL and MariaDB,
+<code>DELETE ... USING</code> and mixed <code>DEFAULT</code> rows in a multi-row insert on SQLite), so
+code that relied on the error (a fallback branch, a test that expects the
+refusal) now takes the success path.</p>
+<h3 id="delete-using-runs-on-sqlite"><code>DELETE ... USING</code> runs on SQLite<a class="headerlink" href="#delete-using-runs-on-sqlite" title="Permanent link">&para;</a></h3>
+<p><code>DeleteQuery.Using</code> on SQLite renders
+<code>DELETE FROM t WHERE EXISTS (SELECT 1 FROM src WHERE ...)</code>, because SQLite has
+no <code>USING</code>. A target row is deleted once if at least one source row satisfies
+<code>Where</code>, which is what <code>USING</code> means on PostgreSQL, and it works with a
+composite primary key and a table without one. SQLite's <code>RETURNING</code> reads the
+deleted table only, so <code>Returning</code> accepts columns of the target; a column of a
+<code>Using</code> source is still <code>ErrUnsupported</code> there. A workaround that put a
+subquery in <code>Where</code> keeps working. Two rules apply on every dialect. A <code>Using</code>
+source with the target's own name is now <code>ErrValidation</code> (PostgreSQL already
+refused it; on SQLite it would have bound every column to the inner table):
+alias it with <code>TableRef.As</code> to join a table to itself. And qualify every column
+in a raw <code>Where</code> fragment and in interceptor predicates: on SQLite an
+unqualified column that the target and a source share binds to the source,
+where PostgreSQL reports it as ambiguous.</p>
+<h3 id="mixed-default-rows-in-a-multi-row-insert-run-on-sqlite">Mixed <code>DEFAULT</code> rows in a multi-row insert run on SQLite<a class="headerlink" href="#mixed-default-rows-in-a-multi-row-insert-run-on-sqlite" title="Permanent link">&para;</a></h3>
+<p><code>Models</code> with a <code>dbdefault</code> field that is zero in some rows and set in others,
+and <code>ValuesRows</code> with a column that is omitted or <code>SetDefault</code> in some rows and
+given in others, failed with <code>ErrUnsupported</code> on SQLite, which cannot put
+<code>DEFAULT</code> in a <code>VALUES</code> list. <code>Exec</code> and <code>Rows</code> now split the rows into runs of
+consecutive rows that leave the same columns to the database default and insert
+each run as its own statement, in order, inside one transaction (a savepoint
+inside a <code>Tx</code>). The stored defaults are read back into the models as before,
+and <code>Rows</code> returns the rows in the order you gave. An insert that alternates
+between patterns costs one statement per change. <code>SQL</code> renders one statement,
+so it still fails with <code>ErrUnsupported</code> for such a mix, as do <code>Unnest</code> and
+<code>Copy</code>; a <code>WITH</code> clause on a split insert is <code>ErrValidation</code>, and a split
+insert on a connection pinned with <code>OnConn</code>, which cannot open the transaction,
+fails with <code>ErrUnsupported</code> before any statement runs. Other dialects are
+unchanged. PostgreSQL and MariaDB still write <code>DEFAULT</code> inline in one statement
+for <code>Models</code>. MySQL has no <code>RETURNING</code>, so <code>Models</code> with a zero <code>dbdefault</code>
+field still fails there with <code>ErrUnsupported</code>, as before. <code>ValuesRows</code> writes
+<code>DEFAULT</code> inline on PostgreSQL, MySQL and MariaDB.</p>
 <h3 id="distincton-on-sqlite-mysql-and-mariadb"><code>DistinctOn</code> on SQLite, MySQL and MariaDB<a class="headerlink" href="#distincton-on-sqlite-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
 <p><code>SelectQuery.DistinctOn</code> returned <code>ErrUnsupported</code> on SQLite, MySQL and
 MariaDB. It now runs on all of them, emulated with a window function, and

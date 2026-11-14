@@ -3542,9 +3542,9 @@ file read-write and set WAL mode, as every momo SQLite connection does. The same
   column whose constant default is true or non-zero becomes a pointer, as on
   PostgreSQL; a computed default (<code>CURRENT_TIMESTAMP</code>, <code>datetime('now')</code>) is
   tagged without the option. SQLite reads the value back with <code>RETURNING</code>. A
-  bulk insert whose rows mix zero and set values of a <code>dbdefault</code> column returns
-  <code>ErrUnsupported</code> on SQLite, which has no per-row <code>DEFAULT</code> in a multi-row
-  <code>VALUES</code> list; insert such rows separately.</li>
+  bulk insert whose rows mix zero and set values of a <code>dbdefault</code> column is
+  split by <code>Exec</code> into one statement per run of consecutive rows that agree, as
+  SQLite has no per-row <code>DEFAULT</code> in a multi-row <code>VALUES</code> list.</li>
 <li>A unique constraint is <code>c.Unique</code>, a unique index is a <code>unique</code> tag or
   <code>c.Index(...).Unique()</code>, and partial and expression indexes keep their
   <code>WHERE</code> text and expressions (<code>c.Index(...).Where(...)</code>, <code>c.IndexExpr</code>).</li>
