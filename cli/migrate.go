@@ -569,7 +569,7 @@ func (l *cli) applyCmd(fs *flag.FlagSet) func([]string) int {
 	return l.withEngine(fs, extra, func(ctx context.Context, e *migrate.Engine, _ []string) int {
 		rep, err := e.Apply(ctx, migrate.ApplyOptions{To: to, LockWait: waitD})
 		if err != nil {
-			return l.failureWithHint(err)
+			return l.failureWithHint(err, rep, engineDirty(e))
 		}
 		if rep == nil || len(rep.Applied) == 0 {
 			l.say("no pending migrations")
@@ -1040,7 +1040,7 @@ func (l *cli) rollbackCmd(fs *flag.FlagSet) func([]string) int {
 	return l.withEngine(fs, extra, func(ctx context.Context, e *migrate.Engine, _ []string) int {
 		rep, err := e.Rollback(ctx, migrate.RollbackOptions{Group: group, LockWait: waitD})
 		if err != nil {
-			return l.failureWithHint(err)
+			return l.failureWithHint(err, rep, engineDirty(e))
 		}
 		if rep == nil || len(rep.Applied) == 0 {
 			l.say("nothing to roll back")

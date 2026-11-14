@@ -60,6 +60,29 @@ func TestMySQLRefusesUnsizedTextInKeys(t *testing.T) {
 	}
 }
 
+// Catches: a method:fulltext index on a text column being refused as an unkeyable
+// text index, although MySQL renders it as FULLTEXT and takes the column whole;
+// and, in the other direction, the exemption widening to a btree index, which
+// still fails with error 1170 on MySQL.
+func TestMySQLFulltextIndexTakesUnsizedText(t *testing.T) {
+	for _, method := range []string{"fulltext", "FULLTEXT", "spatial"} {
+		f := fld("Body", "string", "index,method:"+method)
+		if _, diags := build(t, mysqlCfg(), mdl("Doc", "docs", fld("ID", "int64", "pk,identity"), f)); len(diags) != 0 {
+			t.Errorf("method:%s on unsized text: unexpected diagnostics %v", method, diags)
+		}
+	}
+	for _, method := range []string{"btree", ""} {
+		tag := "index"
+		if method != "" {
+			tag += ",method:" + method
+		}
+		_, diags := build(t, mysqlCfg(), mdl("Doc", "docs", fld("ID", "int64", "pk,identity"), fld("Body", "string", tag)))
+		if got := diagText(diags); !strings.Contains(got, "column body") || !strings.Contains(got, "size:N") {
+			t.Errorf("method %q index on unsized text: diagnostics %q must still refuse it", method, got)
+		}
+	}
+}
+
 // Catches: a DECIMAL that MySQL cannot create (precision above 65, scale above
 // 30 or above the precision) passing the generator, and a valid one losing its
 // type; precision without scale is scale 0.

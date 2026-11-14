@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 
@@ -134,8 +135,13 @@ func sqliteTarget(raw string) (string, error) {
 				dec = dec[1:]
 			}
 			target = dec
-			if hasQuery {
-				target = "file:" + strings.ReplaceAll(dec, "?", "%3F") + "?" + query
+			// A path that holds a "?" would be cut there as a plain path, so
+			// it goes in a file: URI, where "%" and "?" are escaped.
+			if hasQuery || strings.Contains(dec, "?") {
+				target = "file:" + strings.ReplaceAll(strings.ReplaceAll(dec, "%", "%25"), "?", "%3F")
+				if hasQuery {
+					target += "?" + query
+				}
 			}
 		case "file":
 			target = raw
@@ -248,7 +254,7 @@ func mysqlConfig(raw string) (*mysql.Config, error) {
 // names the host only, never the URL.
 func mysqlTLSWarning(raw string) string {
 	cfg, err := mysqlConfig(raw)
-	if err != nil || cfg.Net != "tcp" {
+	if err != nil || !strings.HasPrefix(cfg.Net, "tcp") {
 		return ""
 	}
 	if cfg.TLS != nil && !cfg.AllowFallbackToPlaintext {
@@ -309,11 +315,36 @@ func primaryFirst(names []dialect.Name, first dialect.Name) []dialect.Name {
 }
 
 // failureWithHint is failure plus, on MySQL and MariaDB, the way out of a
-// migration that failed half-way: DDL there is not transactional.
-func (l *cli) failureWithHint(err error) int {
+// migration that failed half-way: DDL there is not transactional. The hint is
+// printed only when something may have run: rep lists a migration that was
+// applied, the error is ErrDirty, or dirty (asked last, as it reads the
+// history) says a migration is left running or failed. A connect error, a
+// refused lock or a failure before any statement prints none.
+func (l *cli) failureWithHint(err error, rep *migrate.Report, dirty func() bool) int {
 	code := l.failure(err)
-	if code == exitDatabase && l.dialectName == string(dialect.MySQL) && !errors.Is(err, migrate.ErrLocked) {
+	if code == exitDatabase && l.dialectName == string(dialect.MySQL) && !errors.Is(err, migrate.ErrLocked) &&
+		(errors.Is(err, migrate.ErrDirty) || rep != nil && len(rep.Applied) > 0 || dirty != nil && dirty()) {
 		_, _ = fmt.Fprintln(l.errOut, "momo: hint: MySQL and MariaDB do not roll back DDL: if statements of the failed migration ran before the error, they stay applied. Run momo migrate status; a dirty migration needs the database repaired by hand, then momo migrate resolve --version <version> --applied|--rolled-back")
 	}
 	return code
+}
+
+// engineDirty reports whether the history of e holds a running or failed
+// migration. It asks on a context of its own, since the one of the failed call
+// may be cancelled, and says false when the history cannot be read.
+func engineDirty(e *migrate.Engine) func() bool {
+	return func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		rows, err := e.Status(ctx)
+		if err != nil {
+			return false
+		}
+		for _, r := range rows {
+			if r.State == migrate.StateDirty {
+				return true
+			}
+		}
+		return false
+	}
 }

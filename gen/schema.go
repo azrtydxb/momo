@@ -518,6 +518,11 @@ func (b *schemaBuilder) checkMySQLKeys() {
 			report("unique key "+u.Name, u.Columns)
 		}
 		for _, ix := range t.Indexes {
+			// A fulltext or spatial index takes text and geometry columns
+			// whole; it renders as FULLTEXT or SPATIAL, not as a btree.
+			if m := strings.ToLower(ix.Method); m == "fulltext" || m == "spatial" {
+				continue
+			}
 			cols := make([]string, 0, len(ix.Parts))
 			for _, p := range ix.Parts {
 				cols = append(cols, p.Column)

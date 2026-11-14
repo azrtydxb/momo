@@ -4,6 +4,8 @@ package cli
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -145,8 +147,14 @@ func TestSQLiteTarget(t *testing.T) {
 		{`C:\data\app.db`, `C:\data\app.db`},
 		{"sqlite://data/my%20app.db", "data/my app.db"},
 		{"sqlite:///C:/data/app.db", "C:/data/app.db"},
-		{"sqlite:///tmp/a%3Fb.db", "/tmp/a?b.db"},
+		// A decoded "?" would be cut off as a query by the driver, so such a path
+		// becomes a file: URI with the "?" escaped, query or not.
+		{"sqlite:///tmp/a%3Fb.db", "file:/tmp/a%3Fb.db"},
 		{"sqlite:///tmp/a%3Fb.db?mode=ro", "file:/tmp/a%3Fb.db?mode=ro"},
+		// A literal "%" is escaped in a file: URI, so a%2541.db opens a%41.db.
+		{"sqlite:///a%2541.db?mode=rwc", "file:/a%2541.db?mode=rwc"},
+		{"sqlite:///a%2541%3F.db", "file:/a%2541%3F.db"},
+		{"sqlite:///a%2541.db", "/a%41.db"},
 		// A name that merely contains the words is not a memory database.
 		{"memory.db", "memory.db"},
 		{"sqlite:///tmp/mode=memory.db", "/tmp/mode=memory.db"},
@@ -223,6 +231,9 @@ func TestMySQLTLSWarning(t *testing.T) {
 		"mysql://app:secretpw@db.example.com/app?tls=preferred",
 		"app:secretpw@tcp(db.example.com:3306)/app",
 		"app:secretpw@tcp(db.example.com:3306)/app?tls=preferred",
+		"app:secretpw@tcp4(db.example.com:3306)/app",
+		"app:secretpw@tcp6(db.example.com:3306)/app",
+		"app:secretpw@tcp4(10.0.0.5:3306)/app?tls=false",
 	}
 	for _, u := range warn {
 		w := mysqlTLSWarning(u)
@@ -239,6 +250,9 @@ func TestMySQLTLSWarning(t *testing.T) {
 		"mysql://app:secretpw@db.example.com/app?tls=skip-verify",
 		"app:secretpw@tcp(db.example.com)/app?tls=true",
 		"app:secretpw@unix(/tmp/mysql.sock)/app",
+		"app:secretpw@tcp4(127.0.0.1:3306)/app",
+		"app:secretpw@tcp6([::1]:3306)/app",
+		"app:secretpw@tcp4(db.example.com)/app?tls=true",
 		"not a connection string",
 	}
 	for _, u := range quiet {
@@ -259,6 +273,42 @@ func TestMySQLTLSWarning(t *testing.T) {
 	l.dialectName = "mysql"
 	if w := l.connWarning("mysql://u:p@db.example.com/x"); w == "" {
 		t.Error("mysql connWarning has no warning for a remote plaintext host")
+	}
+}
+
+// Catches: the "DDL is not rolled back" repair hint printed for every database
+// failure on MySQL, including a refused connection or a failure before any
+// statement ran, where there is nothing to repair; and the hint going missing
+// when a migration was applied, the database is dirty or the engine said so.
+func TestFailureWithHint(t *testing.T) {
+	boom := errors.New("dial tcp 127.0.0.1:1: connect: connection refused")
+	applied := &migrate.Report{Applied: []migrate.Applied{{Version: "1"}}}
+	cases := []struct {
+		name    string
+		dialect string
+		err     error
+		rep     *migrate.Report
+		dirty   func() bool
+		want    bool
+	}{
+		{"connect error", "mysql", boom, nil, func() bool { return false }, false},
+		{"failed before any statement", "mysql", boom, &migrate.Report{}, func() bool { return false }, false},
+		{"no dirty probe", "mysql", boom, nil, nil, false},
+		{"an earlier migration applied", "mysql", boom, applied, func() bool { return false }, true},
+		{"history is dirty", "mysql", boom, &migrate.Report{}, func() bool { return true }, true},
+		{"engine refuses a dirty database", "mysql", fmt.Errorf("%w: version 1 is failed", migrate.ErrDirty), nil, nil, true},
+		{"lock is held", "mysql", migrate.ErrLocked, applied, func() bool { return true }, false},
+		{"sqlite", "sqlite", boom, applied, func() bool { return true }, false},
+	}
+	for _, c := range cases {
+		var errOut bytes.Buffer
+		l := &cli{errOut: &errOut, env: noEnv, dialectName: c.dialect}
+		if code := l.failureWithHint(c.err, c.rep, c.dirty); code != exitDatabase {
+			t.Errorf("%s: exit %d, want %d", c.name, code, exitDatabase)
+		}
+		if got := strings.Contains(errOut.String(), "do not roll back DDL"); got != c.want {
+			t.Errorf("%s: hint printed = %v, want %v (%s)", c.name, got, c.want, errOut.String())
+		}
 	}
 }
 
