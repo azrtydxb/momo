@@ -142,6 +142,7 @@ func TestIntervalGolden(t *testing.T) {
 		{dialect.MySQL, timeop.AddInterval(tmCreated, five), `DATE_ADD(` + tmC + `, INTERVAL 5 DAY)`, nil},
 		{dialect.MySQL, timeop.SubInterval(tmCreated, five), `DATE_SUB(` + tmC + `, INTERVAL 5 DAY)`, nil},
 		{dialect.MySQL, timeop.SubInterval(tmCreated, bound), `DATE_SUB(` + tmC + `, INTERVAL ? WEEK)`, []any{int64(3)}},
+		{dialect.MySQL, timeop.AddInterval(momo.Value(time.Unix(0, 0).UTC()), five), `DATE_ADD(CAST(? AS DATETIME(6)), INTERVAL 5 DAY)`, []any{time.Unix(0, 0).UTC()}},
 		{dialect.SQLite, timeop.AddInterval(tmCreated, five), `strftime(` + sqliteFmt + `, ` + tmC + `, '5 days')`, nil},
 		{dialect.SQLite, timeop.SubInterval(tmCreated, timeop.IntervalOf(2, timeop.IntervalWeek)), `strftime(` + sqliteFmt + `, ` + tmC + `, '-14 days')`, nil},
 		{dialect.SQLite, timeop.AddInterval(tmCreated, timeop.IntervalOf(1, timeop.IntervalYear)), `strftime(` + sqliteFmt + `, ` + tmC + `, '1 years')`, nil},
