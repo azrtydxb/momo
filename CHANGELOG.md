@@ -22,7 +22,7 @@ _The dialect parity release: `momo migrate` and `momo generate --from-db` now ru
 
 ### Bug Fixes
 
-- **fromdb:** `--check` compares the generated model body, not only the header hash, so a hand-edited model is reported as stale ([#128](https://github.com/azrtydxb/momo/issues/128))
+- **fromdb:** `--check` compares the generated model body, not only the header hash, so a hand-edited model whose body equals what the database regenerates is current instead of stale, and a plain run only refreshes its header ([#128](https://github.com/azrtydxb/momo/issues/128))
 - **jsonop:** `Contains` on MariaDB sent `CAST(? AS JSON)`, a syntax error there; it now passes the candidate as JSON text ([#142](https://github.com/azrtydxb/momo/pull/142))
 - **timeop:** `AddInterval` and `SubInterval` over a bound time on MariaDB returned text the driver could not read as a time ([#142](https://github.com/azrtydxb/momo/pull/142))
 
