@@ -5,6 +5,41 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.14.0
+
+No edit is needed in your code. `Merge` now runs on SQLite, MySQL and MariaDB,
+where it returned `ErrUnsupported`, so code that relied on the error (a
+fallback branch, a test that expects the refusal) now takes the success path.
+
+### `Merge` runs on SQLite, MySQL and MariaDB
+
+`Merge(...).Exec` on a dialect without `MERGE` runs the same clauses as one
+atomic sequence: a transaction on a `DB`, a savepoint on a `Tx`. It copies the
+source into a temporary table together with a flag that records, before any
+write, whether a target row satisfies `On`, then updates the matched rows and
+inserts the rest from that snapshot. The final table and the affected-row count
+(rows updated plus rows inserted) are those of PostgreSQL, also when the update
+changes a column that `On` reads. A `NULL` key matches nothing. A target row
+that two source rows match fails with `ErrTooManyRows` before anything is
+written when there is a `WhenMatchedUpdate` clause, where PostgreSQL reports a
+cardinality violation.
+
+Things that differ from PostgreSQL, and are refused or reported instead of
+guessed:
+
+- `Returning` (and `Rows`) is `ErrUnsupported`: the rows would come from a
+  snapshot, not from the statement.
+- `WhenMatchedUpdate` on a model without a primary key is `ErrUnsupported`,
+  because a target row matched twice could not be detected.
+- A `Merge` on a pinned `DB` is `ErrUnsupported`: it needs a transaction.
+- `MergeQuery.SQL` has no single text on these dialects and returns
+  `ErrUnsupported`; `MergeQuery.Statements` lists the statements `Exec` runs.
+- The server account needs the privilege to create temporary tables. On MySQL
+  and MariaDB the temporary table takes the types and collations the server
+  derives for it, so read the source from a table rather than from literals
+  when a text key is compared with a column of another collation; see
+  [MySQL and MariaDB](mysql.md#emulated-features).
+
 ## Upgrading to 0.13.0
 
 No edit is needed in your code. Several calls that returned `ErrUnsupported` on

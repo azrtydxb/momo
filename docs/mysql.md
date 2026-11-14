@@ -143,7 +143,7 @@ error for a delete names MariaDB as the alternative.
 
 ## Emulated features
 
-Three PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
+Four PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
 equivalent instead of returning `ErrUnsupported`.
 
 - **ILIKE.** `momo.ILike(col, pattern)` renders
@@ -173,6 +173,25 @@ equivalent instead of returning `ErrUnsupported`.
   that keeps NULLs (`agg.JSONB`, any `agg.Func` outside `count`, `sum`, `avg`,
   `min`, `max` and the `std` and `var` family, or one over a raw `*`) stays
   `ErrUnsupported`; use `momo.CountAll().Filter(p)` for `COUNT(*)`.
+- **MERGE.** `momo.Merge` has no MySQL or MariaDB spelling, so `Exec` runs a
+  sequence in one transaction (a savepoint inside a `Tx`). It creates a
+  temporary table that holds the source rows and a flag that says whether a
+  target row satisfies `On`, checks that no target row is matched by two source
+  rows (`ErrTooManyRows`), runs the multi-table
+  `UPDATE target, snapshot AS src SET ... WHERE <on>`, runs an
+  `INSERT ... SELECT` of the rows whose flag is 0, and drops the table. The
+  flag is computed before any write, so the result matches PostgreSQL even when
+  the update changes a column that `On` reads. `ON DUPLICATE KEY UPDATE` is not
+  used: it matches on any unique key, not on `On`. The account needs the
+  `CREATE TEMPORARY TABLES` privilege. The temporary table takes the column
+  types and collations the server derives for it, so a source built from
+  literals or bind parameters can meet a different collation than the target
+  column, and the comparison then fails with an error (read the source from a
+  table, or cast it). A server that enforces GTID consistency refuses
+  `CREATE TEMPORARY TABLE` inside a transaction; the error reaches you and
+  nothing is written. `Returning` is `ErrUnsupported`. Read the statements with
+  `MergeQuery.Statements`. MySQL does not roll a temporary table back, so the
+  sequence drops it itself, also after a failure.
 
 ## Writes
 
