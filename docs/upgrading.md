@@ -7,7 +7,10 @@ later releases can break more.
 
 ## Upgrading to 0.12.0
 
-Nothing needs an edit. Three calls that returned `ErrUnsupported` on some
+One change can need an edit: `momo.Avg` is now generic, so code that uses it
+as an uninstantiated function value must write `momo.Avg[float64]` (see
+"Aggregates over integer and `types.Numeric` columns" below). Otherwise nothing
+needs an edit. Three calls that returned `ErrUnsupported` on some
 dialects now return results, so code that relied on the error (a fallback
 branch, a test that expects the refusal) now takes the success path. Check the
 semantic differences below before you drop a workaround.
@@ -87,13 +90,13 @@ option. A tag with no parentheses, and one whose parentheses or quotes do not
 balance, is split at every comma as before. A tag that held a comma inside
 parentheses now reads as one option; check any such tag.
 
-### Aggregates over int16, int32 and `types.Numeric` columns
+### Aggregates over integer and `types.Numeric` columns
 
 `momo.Sum` still takes only an `int64` or `float64` column. New functions cover
 the rest, so wrapping the column in `sqlfn.Cast[int64]` with the type `bigint`
 is no longer needed:
 
-- `momo.SumInt(col)` sums an int16, int32 or int64 column and returns an
+- `momo.SumInt(col)` sums an int, int8, int16, int32 or int64 column and returns an
   `Agg[int64]` on every dialect. PostgreSQL returns numeric for `SUM` of a
   bigint, so Momo writes `CAST(SUM(x) AS bigint)` there; a sum past int64 is an
   error on every dialect.
@@ -102,11 +105,16 @@ is no longer needed:
   exact over a TEXT `types.Numeric` column, so `SumNumeric` over one and every
   `AvgNumeric` fail with `ErrUnsupported` there. MySQL and MariaDB cast a
   `types.Numeric` column to `DECIMAL(65,30)`, so the result has 30 decimal
-  places.
+  places. On MySQL and MariaDB a value or a sum beyond `DECIMAL(65,30)` (more
+  than 35 integer digits) saturates or warns rather than erroring, and NaN and
+  Infinity cannot be stored there. Numeric results differ in trailing zeros
+  across dialects, so compare them numerically, not as strings. The SQLite
+  `ErrUnsupported` message names the aggregate and suggests `momo.Avg`
+  (float64) or `momo.SumInt` (integers).
 - `momo.Avg` now takes an integer, float or `types.Numeric` column and still
   returns `float64`. The signature is generic (`Avg[T Averageable]`); a call
-  such as `momo.Avg(col)` compiles unchanged, but code that names `momo.Avg` as a
-  function value without type arguments needs `momo.Avg[float64]`. PostgreSQL
+  such as `momo.Avg(col)` compiles unchanged. Code that uses `momo.Avg` as an
+  uninstantiated function value must write `momo.Avg[float64]`. PostgreSQL
   gets `CAST(AVG(x) AS double precision)` for a non-float column.
 
 ```text

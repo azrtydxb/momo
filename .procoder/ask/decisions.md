@@ -585,7 +585,7 @@ Decision (2026-11-13, integrator): as above.
   `--from-db`, load the models, diff them against an empty database, apply and
   compare the two inspections.
 
-## Issue #129: Sum and Avg over int16, int32 and Numeric columns (2026-11-14, integrator)
+## Issue #129: Sum and Avg over integer and Numeric columns (2026-11-14, integrator)
 
 - **Shape:** `Sum[T Number]` is unchanged, because widening `Number` would make
   `Sum[int32]` return `Agg[int32]`, the wrong type, and a sum of int4 does not
@@ -611,6 +611,12 @@ Decision (2026-11-13, integrator): as above.
 - **Empty set:** all of them are NULL over zero rows, as `Sum` was; read into
   a pointer. `types.Numeric.Scan` already takes int64, float64, string and
   []byte, so no codec change.
+- **Widths:** `Integer`, `Averageable` and `Exact` also take `~int` and `~int8`.
+- **MySQL limits:** a value or sum beyond `DECIMAL(65,30)` (35 integer digits)
+  saturates or warns rather than erroring; NaN and Infinity cannot be stored.
+  Numeric results differ in trailing zeros across dialects: compare numerically.
+- **SQLite message:** the `ErrUnsupported` text names the aggregate and points
+  to `Avg` (float64) or `SumInt` (integers).
 - **API diff:** `Avg` turning generic is an apidiff incompatible change only for
   code that used `momo.Avg` as an uninstantiated function value.
 

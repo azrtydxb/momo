@@ -1024,7 +1024,7 @@ statement, so they keep a lock clause and lock the rows they count. Aggregates: 
 
 Pick the sum or average by the column type. `momo.Sum` keeps an `int64` or
 `float64` column's own type. For an int16 or int32 column (a Prisma `Int` is
-int4) use `momo.SumInt`, which takes int16, int32 or int64 and returns an
+int4) use `momo.SumInt`, which takes int, int8, int16, int32 or int64 and returns an
 `int64` on every dialect with no `sqlfn.Cast` (PostgreSQL gets
 `CAST(SUM(x) AS bigint)`; a sum past int64 is an error). For an exact result use
 `momo.SumNumeric` or `momo.AvgNumeric`, which return `types.Numeric` and take an
@@ -1032,6 +1032,12 @@ integer or `types.Numeric` column; SQLite cannot add a TEXT `types.Numeric`
 column exactly, so `SumNumeric` over one and every `AvgNumeric` are
 `ErrUnsupported` there. `momo.Avg` takes an integer, float or `types.Numeric`
 column and returns `float64` (PostgreSQL gets `CAST(AVG(x) AS double precision)`).
+On MySQL and MariaDB a value or sum beyond `DECIMAL(65,30)` (more than 35
+integer digits) saturates or warns rather than erroring, and NaN and Infinity
+cannot be stored in the TEXT column. Numeric results differ in trailing zeros
+across dialects (MySQL and MariaDB always give 30 decimal places), so compare
+them numerically, not as strings. The SQLite `ErrUnsupported` message names the
+aggregate and points to `momo.Avg` (float64) or `momo.SumInt` (integers).
 All of them are NULL over zero rows: read them into a pointer, as `Sum`.
 
 An aggregate takes `Filter(p)` (`momo.Agg.Filter`, `agg.Call.Filter`) on every
