@@ -68,7 +68,7 @@ func Parse(raw string) (Tags, []Problem) {
 	}
 	var probs []Problem
 	seen := map[string]bool{}
-	for _, part := range strings.Split(raw, ",") {
+	for _, part := range SplitOptions(raw) {
 		key, val, hasVal := strings.Cut(strings.TrimSpace(part), ":")
 		msg := ""
 		if seen[key] && key != "" {
@@ -82,6 +82,53 @@ func Parse(raw string) (Tags, []Problem) {
 		}
 	}
 	return t, probs
+}
+
+// SplitOptions splits a raw tag value into its options at the commas outside
+// parentheses, so type:decimal(10,2) and type:enum('a','b') are one option
+// each. Inside parentheses a single-quoted literal is skipped, with ” as its
+// escape, so a parenthesis or comma in an enum value does not count. A value
+// whose parentheses or quotes do not balance is split at every comma, as a tag
+// without parentheses always is.
+func SplitOptions(raw string) []string {
+	var out []string
+	depth, start := 0, 0
+	quoted := false
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if quoted {
+			if c == '\'' {
+				if i+1 < len(raw) && raw[i+1] == '\'' {
+					i++
+				} else {
+					quoted = false
+				}
+			}
+			continue
+		}
+		switch c {
+		case '(':
+			depth++
+		case ')':
+			if depth == 0 {
+				return strings.Split(raw, ",")
+			}
+			depth--
+		case '\'':
+			if depth > 0 {
+				quoted = true
+			}
+		case ',':
+			if depth == 0 {
+				out = append(out, raw[start:i])
+				start = i + 1
+			}
+		}
+	}
+	if depth != 0 || quoted {
+		return strings.Split(raw, ",")
+	}
+	return append(out, raw[start:])
 }
 
 // set applies one option and returns the problem message, or "" on success.

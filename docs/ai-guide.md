@@ -45,7 +45,7 @@ A database is usable when a driver package for it exists under `driver/`:
 - PostgreSQL is the reference database. Check the dialect columns of docs/capabilities.md before relying on a feature on another database. Keep `dialects:` at `[postgres]` for generated migrations. `momo migrate` exits 2 for a dialect it does not link; library migrations go through `migrate.NewEngine`.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - `diff` writes forward migrations only. `momo migrate rollback [--group]` runs a hand-written `.down.sql`, `momo migrate lint` reports risky operations, and `momo migrate rebase --onto <dir>` regenerates a branch's migrations on a target's.
-- `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
+- `momo generate --from-db DATABASE_URL` turns a live PostgreSQL, MySQL or MariaDB database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database) and [MySQL and MariaDB](mysql.md#models-from-a-database)). SQLite: write models by hand.
 - Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL only,
   see [vectors.md](vectors.md#hybrid-search)). Full-text search
   (`types.TSVector`, `fts.Match`, `fts.RankCD`, `fts.Headline`, the

@@ -188,3 +188,108 @@ check and `-- momo:ddl` online DDL options work through it. The
 `momo migrate` command still builds only the PostgreSQL dialect, so it rejects
 MySQL and MariaDB. What the dialect reports and renders is in
 [migrations.md](migrations.md#9-mysql-and-mariadb).
+
+## Models from a database
+
+`momo generate --from-db` reads a MySQL 8.4, MySQL 9.7 or MariaDB 11.8
+database and writes the models and the init snapshot, as it does for
+PostgreSQL. Set `dialects: [mysql]` in `momo.yaml` (MariaDB is the same
+dialect; the flavor is read from the server). The command reuses the
+`migrate/mysql` inspector, so what `momo migrate drift` sees is what the models
+declare.
+
+The value of `--from-db` is `-` for standard input, the name of an environment
+variable that holds the connection, or the connection itself, in one of these
+forms:
+
+```text
+user:pass@tcp(host:3306)/app          a go-sql-driver DSN
+tcp(host:3306)/app                    the same without credentials
+user:pass@unix(/run/mysqld.sock)/app  a unix socket (DSN only)
+mysql://user:pass@host:3306/app       a URL, also mariadb://
+```
+
+The DSN must name the database. A URL may carry only `tls`, `timeout`,
+`readTimeout`, `writeTimeout`, `charset`, `collation`, `maxAllowedPacket` and
+`allowNativePasswords`; any other parameter is refused, because the server
+would take it as a session variable. Use a DSN for sockets and every other
+driver option. A DSN or URL for a remote host with no `tls=` setting prints a
+warning, and the password, in either form, is redacted from every message.
+
+## What a rebuilt database matches
+
+A database rebuilt from the generated models (diff the models against an empty
+database and apply) has the same schema as far as `schema.Equal` compares it:
+columns, types, defaults, generated columns, keys, indexes, checks and foreign
+keys. The `integration-mysql` jobs check that on all three servers with a
+schema built from raw DDL. It is not byte for byte. These are known losses; the
+ones the command can see are reported, the others are not:
+
+```text
+ON UPDATE CURRENT_TIMESTAMP   reported as a warning; the rebuilt column does not change on UPDATE
+INVISIBLE columns             reported as a warning (MySQL); the rebuilt column is visible
+prefix indexes, name(10)      reported as a warning; left out of the models and the snapshot
+prefix PRIMARY KEY            an error: nothing is written
+table charset and collation   not read; a column collation is read only where it differs from the table's
+ENGINE, ROW_FORMAT, table comment, AUTO_INCREMENT counter, partitions   not read
+triggers, views, stored routines                                         not read
+```
+
+Type mapping (the column type is always written as a `type:` tag, because the
+generator has no MySQL type table, except `varchar(N)`, which becomes `size:N`):
+
+```text
+tinyint(1)                    bool (a pointer when nullable)
+tinyint, smallint, mediumint  int8, int16, int32 (uint8, uint16, uint32 when unsigned)
+int, bigint                   int32, int64 (uint32, uint64 when unsigned)
+float, double                 float32, float64
+decimal(p,s)                  types.Numeric
+char, varchar, *text          string
+binary, varbinary, *blob, bit []byte
+date                          types.Date
+datetime, timestamp           time.Time
+time                          string (the driver returns TIME as text)
+year                          int16
+json                          types.JSON[json.RawMessage]
+enum, set                     string
+```
+
+- **tinyint(1) is a Go bool.** MySQL stores any value from -128 to 127 in it,
+  and a stored value other than 0 or 1 (a 2 written by another program) fails
+  to scan, for the whole row. Every `tinyint(1)` column gets a note in the
+  report. If the column holds other values, add an `introspect.types` rule that
+  maps `tinyint(1)` to `int8`.
+- **enum and set** are Go strings. The exact column type, values included, is
+  written in the `type:` tag, so the database keeps the value list and a
+  rebuilt database matches. No check constraint is added and the values are not
+  checked in Go. The tag grammar reads a comma inside parentheses as part of
+  the option and skips a quoted value there, so `type:decimal(10,2)` and
+  `type:enum('a,b','it''s')` are one option each.
+- **AUTO_INCREMENT** keys get the `identity` tag.
+- **Defaults:** every default is written (`default:`). A NOT NULL `bool` or
+  number column whose constant default is `true` or non-zero is handled by
+  flavor, because only MariaDB has `INSERT ... RETURNING`. On MariaDB the field
+  gets `dbdefault` and a pointer type, so nil takes the default and an explicit
+  `false` or `0` is written. On MySQL 8.4 and 9.7 an insert that leaves a
+  `dbdefault` field nil is refused (nothing reads the stored value back), so the
+  field stays plain and the report has a note: a zero value is written instead
+  of the column default. A computed default such as `CURRENT_TIMESTAMP` gets no
+  `dbdefault` on either.
+- **Generated columns** become `read_only` fields with `generated:` (and
+  `virtual` for VIRTUAL).
+- **Constraints:** unique keys, plain, composite and `DESC` indexes, check
+  constraints and foreign keys are written as on PostgreSQL. A foreign key to a
+  primary key is a `belongs_to` field with `fk_name`, because MySQL names an
+  unnamed key `<table>_ibfk_<n>`; `introspect.inverse` adds `has_many` and
+  `has_one`. A foreign key to a unique column that is not the primary key is a
+  `c.ForeignKey(...)` statement in `MomoConfig`, with no relation field.
+- **Left out with a warning**, so the models and the snapshot agree and the
+  baseline reports them: prefix indexes, foreign keys to a table with no model,
+  and every object that PostgreSQL alone has (schemas, extensions, enum types,
+  functions, triggers, row-level security, partitions), which MySQL does not
+  have.
+- **No Go mapping** (geometry, `vector`): an error, and nothing is written; add
+  an `introspect.types` or `introspect.columns` rule.
+- MariaDB stores `json` as `longtext` with a `json_valid` check; the inspector
+  folds that back into `json`. MariaDB reports a literal default quoted and
+  MySQL does not; both are written as the SQL literal.

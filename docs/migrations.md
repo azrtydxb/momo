@@ -1015,8 +1015,10 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
 
 Worked example: `examples/adopt-existing-schema`.
 
-`momo generate --from-db` reads a live PostgreSQL database and writes the
-models and the init snapshot, so nothing has to be written by hand first.
+`momo generate --from-db` reads a live PostgreSQL, MySQL or MariaDB database
+and writes the models and the init snapshot, so nothing has to be written by
+hand first. The MySQL family has its own rules, listed in
+[MySQL and MariaDB](mysql.md#models-from-a-database).
 
 1. Run `momo generate --from-db DATABASE_URL`. The value is a database URL, `-`
    to read the URL from standard input, or the name of an environment variable

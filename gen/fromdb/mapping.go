@@ -115,6 +115,10 @@ func MapType(d dialect.Name, sqlType string) (GoType, error) {
 		if g, ok := mapPostgres(s); ok {
 			return g, nil
 		}
+	case dialect.MySQL:
+		if g, ok := mapMySQL(s); ok {
+			return g, nil
+		}
 	case dialect.SQLite:
 		if g, ok := sqliteTypes[s]; ok {
 			return g, nil
@@ -123,17 +127,38 @@ func MapType(d dialect.Name, sqlType string) (GoType, error) {
 	return GoType{}, fmt.Errorf("%w: %q on %s", ErrUnmapped, sqlType, d)
 }
 
-// splitType splits "base(args) rest" into its three parts.
+// splitType splits "base(args) rest" into its three parts. Single-quoted
+// literals inside the parentheses are skipped, with ” as their escape, so an
+// enum value that holds a parenthesis does not end the argument list.
 func splitType(s string) (base, args, rest string) {
 	i := strings.IndexByte(s, '(')
 	if i < 0 {
 		return strings.TrimSpace(s), "", ""
 	}
-	j := strings.IndexByte(s[i:], ')')
-	if j < 0 {
-		return strings.TrimSpace(s[:i]), "", ""
+	depth, quoted := 0, false
+	for j := i; j < len(s); j++ {
+		c := s[j]
+		switch {
+		case quoted:
+			if c == '\'' {
+				if j+1 < len(s) && s[j+1] == '\'' {
+					j++
+				} else {
+					quoted = false
+				}
+			}
+		case c == '\'':
+			quoted = true
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth == 0 {
+				return strings.TrimSpace(s[:i]), s[i+1 : j], strings.TrimSpace(s[j+1:])
+			}
+		}
 	}
-	return strings.TrimSpace(s[:i]), s[i+1 : i+j], strings.TrimSpace(s[i+j+1:])
+	return strings.TrimSpace(s[:i]), "", ""
 }
 
 func mapPostgres(s string) (GoType, bool) {

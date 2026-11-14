@@ -96,8 +96,15 @@ func (r *Result) Failed() bool {
 type Options struct {
 	// Package is the Go package name of the models.
 	Package string
-	// Dialect defaults to PostgreSQL, the only dialect with an inspector.
+	// Dialect defaults to PostgreSQL; MySQL covers MariaDB too.
 	Dialect dialect.Name
+	// Flavor tells MySQL from MariaDB when Dialect is MySQL. Only MariaDB has
+	// INSERT ... RETURNING, so only there does a non-zero constant default get
+	// the dbdefault tag.
+	Flavor dialect.Flavor
+	// Extra are findings the caller read from the server that the inspected
+	// schema cannot carry, for example an ON UPDATE clause.
+	Extra []Finding
 	// Namer derives the table and column names the generator will derive from
 	// the Go names; tags are written only where it would derive another name.
 	// Default: naming.Momo.
@@ -115,8 +122,8 @@ func Generate(s *schema.Schema, o Options) (*Result, error) {
 	if o.Dialect == "" {
 		o.Dialect = dialect.Postgres
 	}
-	if o.Dialect != dialect.Postgres {
-		return nil, fmt.Errorf("fromdb: dialect %s is not supported yet: only PostgreSQL has an inspector", o.Dialect)
+	if o.Dialect != dialect.Postgres && o.Dialect != dialect.MySQL {
+		return nil, fmt.Errorf("fromdb: dialect %s is not supported yet: only PostgreSQL, MySQL and MariaDB have an inspector", o.Dialect)
 	}
 	if !token.IsIdentifier(o.Package) {
 		return nil, fmt.Errorf("fromdb: %q is not a Go package name", o.Package)
@@ -202,6 +209,7 @@ func (g *generator) add(sev Severity, obj, format string, args ...any) {
 func tableKey(schemaName, table string) string { return schemaName + "\x00" + table }
 
 func (g *generator) run() error {
+	g.finds = append(g.finds, g.o.Extra...)
 	g.cleanGlobals()
 	g.collectTables()
 	for _, m := range g.models {
@@ -547,7 +555,11 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 		m.stmts = append(m.stmts, "c."+hook+"(&m."+name+", "+strconv.Quote(e.val)+")")
 	}
 	opts = mergeTags(opts, rule.Tags)
-	if dbDefaultFits(g.o.Dialect, col, opts) || (g.o.Config.DBDefault == "all" && dbDefaultAny(g.o.Dialect, col, opts)) {
+	mariaDefault := mysqlDBDefault(g.o.Dialect, g.o.Flavor, col, gt, opts)
+	if mysqlNonZeroDefault(g.o.Dialect, col, gt, opts) && !mariaDefault {
+		g.add(SevNote, m.t.Name+"."+col.Name, "the default %s is not tagged dbdefault: MySQL has no INSERT ... RETURNING, so a zero value is written instead of the column default", col.Default)
+	}
+	if dbDefaultFits(g.o.Dialect, col, opts) || (g.o.Config.DBDefault == "all" && dbDefaultAny(g.o.Dialect, col, opts)) || mariaDefault {
 		opts = append(opts, "dbdefault")
 	}
 	goType := gt.Expr
@@ -576,6 +588,9 @@ func (g *generator) field(m *model, col *schema.Column, inPK bool) (*field, erro
 // maps to it, size, dim, precision and scale where those give it, the enum
 // tag for an enum, and the type tag otherwise.
 func (g *generator) typeTags(col *schema.Column, gt GoType) ([]string, error) {
+	if g.o.Dialect == dialect.MySQL {
+		return g.mysqlTypeTags(col, gt)
+	}
 	if col.Enum != "" {
 		if !tagSafe(col.Enum) {
 			return nil, fmt.Errorf("the enum name %q cannot be written in a tag", col.Enum)
@@ -654,8 +669,10 @@ func mergeTags(generated, user []string) []string {
 // whose other tags already decide how it is written. A sequence default
 // (nextval(...)) on a column that is not identity or serial counts as
 // computed, so a zero id is no longer written over it. Only PostgreSQL
-// qualifies: the tag needs INSERT ... RETURNING to read the value back, which
-// plain MySQL lacks, and MariaDB and SQLite have no inspector here yet.
+// qualifies for a computed default: the tag needs INSERT ... RETURNING to read
+// the value back, which MySQL lacks and MariaDB has. MariaDB takes the tag for
+// a non-zero constant default only (mysqlDBDefault); a computed MariaDB
+// default such as CURRENT_TIMESTAMP stays untagged.
 func dbDefaultFits(d dialect.Name, col *schema.Column, opts []string) bool {
 	return computedDefault(col.Default) && dbDefaultAny(d, col, opts)
 }
@@ -666,16 +683,7 @@ func dbDefaultFits(d dialect.Name, col *schema.Column, opts []string) bool {
 // defaults (DEFAULT 1) included. A nullable column never qualifies, because a
 // nil pointer would stop meaning NULL.
 func dbDefaultAny(d dialect.Name, col *schema.Column, opts []string) bool {
-	if d != dialect.Postgres || col.Nullable || col.Identity != "" || strings.TrimSpace(col.Default) == "" {
-		return false
-	}
-	for _, o := range opts {
-		switch k, _, _ := strings.Cut(o, ":"); k {
-		case "identity", "serial", "read_only", "version", "soft_delete", "created_at", "updated_at", "idgen", "dbdefault":
-			return false
-		}
-	}
-	return true
+	return d == dialect.Postgres && dbDefaultFree(col, opts)
 }
 
 // computedDefault reports whether a default expression is evaluated by the
@@ -792,6 +800,11 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 		return g.compositeForeignKey(m, target, fk, drop)
 	}
 	if len(target.t.PrimaryKey) != 1 || target.t.PrimaryKey[0] != fk.RefColumns[0] {
+		if g.o.Dialect == dialect.MySQL {
+			// A MySQL key may reference any unique key: written with
+			// c.ForeignKey, which has no relation field.
+			return g.compositeForeignKey(m, target, fk, drop)
+		}
 		return drop("it does not reference the single-column primary key of " + fk.RefTable)
 	}
 	f := m.byCol[fk.Columns[0]]
