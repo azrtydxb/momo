@@ -6,12 +6,12 @@ necessarily broken.
 
 ## Module
 
-| Item        | Value                                                                      |
-| ----------- | -------------------------------------------------------------------------- |
-| Module path | `github.com/azrtydxb/momo`                                                 |
+| Item        | Value                                                                       |
+| ----------- | --------------------------------------------------------------------------- |
+| Module path | `github.com/azrtydxb/momo`                                                  |
 | Version     | v0.11.0 (tags use a `v` prefix) <!-- x-release-please-version -->           |
 | Install     | `go get github.com/azrtydxb/momo@v0.11.0` <!-- x-release-please-version --> |
-| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path) |
+| CLI         | `go run github.com/azrtydxb/momo/cmd/momo` (or `go install` the same path)  |
 
 ## Databases
 
@@ -22,7 +22,7 @@ necessarily broken.
 A database is usable when a driver package for it exists under `driver/`:
 
 - PostgreSQL: usable through `driver/pgxdriver` (vector builders: yes). Migrations: `migrate/postgres`, run by `momo migrate`.
-- SQLite: usable through `driver/sqlitedriver` (needs cgo, not on Windows, vector builders: yes) and `driver/sqlitepure` (vector builders: no). Migrations: `migrate/sqlite`, library only (`momo migrate` does not select it).
+- SQLite: usable through `driver/sqlitedriver` (needs cgo, not on Windows, vector builders: yes) and `driver/sqlitepure` (vector builders: no). Migrations: `migrate/sqlite`, run by `momo migrate`.
 - MySQL and MariaDB: usable through `driver/mysqldriver` (vector storage and builders depend on the server version). Migrations: `migrate/mysql`, library only (`momo migrate` does not select it).
 
 <!-- /generated:status -->
@@ -122,7 +122,7 @@ and the allocation gate (`make bench-gate`).
 
 | Item                | Statement                                                                                                                                                                                                                     |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pre-1.0             | the README states: "v0.11.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version -->                                                                                                         |
+| Pre-1.0             | the README states: "v0.11.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version -->                                                                                                        |
 | Versioning          | release-please with `bump-minor-pre-major: true` and Conventional Commits; breaking changes are marked `feat!:` or a `BREAKING CHANGE:` footer (CONTRIBUTING)                                                                 |
 | Deprecation process | none documented                                                                                                                                                                                                               |
 | Security fixes      | latest minor only (`SECURITY.md`)                                                                                                                                                                                             |

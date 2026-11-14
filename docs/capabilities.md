@@ -10,7 +10,7 @@ behind them.
 A database is usable when a driver package for it exists under `driver/`:
 
 - PostgreSQL: usable through `driver/pgxdriver` (vector builders: yes). Migrations: `migrate/postgres`, run by `momo migrate`.
-- SQLite: usable through `driver/sqlitedriver` (needs cgo, not on Windows, vector builders: yes) and `driver/sqlitepure` (vector builders: no). Migrations: `migrate/sqlite`, library only (`momo migrate` does not select it).
+- SQLite: usable through `driver/sqlitedriver` (needs cgo, not on Windows, vector builders: yes) and `driver/sqlitepure` (vector builders: no). Migrations: `migrate/sqlite`, run by `momo migrate`.
 - MySQL and MariaDB: usable through `driver/mysqldriver` (vector storage and builders depend on the server version). Migrations: `migrate/mysql`, library only (`momo migrate` does not select it).
 
 <!-- /generated:status -->
@@ -79,7 +79,7 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 | Usable (a driver package exists) | yes                                              | yes                                        | yes                  | yes                  |
 | Driver package                   | `driver/pgxdriver`                               | `driver/sqlitedriver`, `driver/sqlitepure` | `driver/mysqldriver` | `driver/mysqldriver` |
 | Migration dialect                | `migrate/postgres`                               | `migrate/sqlite`                           | `migrate/mysql`      | `migrate/mysql`      |
-| `momo migrate` runs it           | yes                                              | no                                         | no                   | no                   |
+| `momo migrate` runs it           | yes                                              | yes                                        | no                   | no                   |
 | `MaxParams`                      | 65535                                            | 32766                                      | 65535                | 65535                |
 | `Returning`                      | yes                                              | yes                                        | no                   | no                   |
 | `InsertReturning`                | no                                               | no                                         | no                   | yes                  |
