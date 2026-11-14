@@ -3066,9 +3066,10 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   <code>InsertQuery.One</code> is for a single-row insert: a multi-row <code>Models</code> insert is
   <code>ErrValidation</code> (use <code>Rows</code>). <code>AfterLoad</code> runs before the write commits, so an
   <code>AfterLoad</code> error rolls the write back, unlike <code>SelectQuery.One</code>. MySQL returns
-  <code>ErrUnsupported</code>; on MariaDB only insert has <code>RETURNING</code> in momo, so <code>UpdateQuery.One</code>
-  and <code>DeleteQuery.One</code> return <code>ErrUnsupported</code> (momo has no <code>RETURNING</code> form
-  for MariaDB <code>UPDATE</code> and <code>DELETE</code>).</li>
+  <code>ErrUnsupported</code>; on MariaDB insert and a single-table delete have <code>RETURNING</code>,
+  so <code>UpdateQuery.One</code> returns <code>ErrUnsupported</code> there (MariaDB has no
+  <code>UPDATE ... RETURNING</code>), and so does a <code>DeleteQuery</code> with <code>Using</code> (MariaDB
+  refuses <code>RETURNING</code> on a multi-table <code>DELETE</code>).</li>
 <li>A <code>ReadOnly</code> / <code>identity</code> / <code>serial</code> / auto-increment column is never written by
   <code>InsertQuery.Model</code>, and a non-zero value in its struct field is DROPPED SILENTLY: the
   database generates a new value. To keep the value (an import, a backfill, a receipt number

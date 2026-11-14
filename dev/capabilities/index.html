@@ -1705,6 +1705,13 @@ defaults to <code>CacheStatement</code> (not PgBouncer-safe), so set
 <td>yes</td>
 </tr>
 <tr>
+<td><code>DeleteReturning</code></td>
+<td>no</td>
+<td>no</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
 <td><code>OnConflict</code></td>
 <td>yes</td>
 <td>yes</td>
@@ -2013,8 +2020,8 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tr>
 <td><code>RETURNING</code></td>
 <td>yes (<code>Returning: true</code>)</td>
-<td>MySQL: no; MariaDB: <code>INSERT ... RETURNING</code> only (<code>InsertReturning</code>)</td>
-<td><code>.Returning(cols...)</code>, <code>.ReturningAll()</code> on insert, update, delete; read with <code>.Rows(ctx)</code>, or one row with <code>.One(ctx)</code> (<code>ErrNotFound</code> when none came back, <code>ErrTooManyRows</code> for several; every column without a list; <code>ErrUnsupported</code> where <code>RETURNING</code> is; a multi-row <code>Models</code> insert is <code>ErrValidation</code>; MariaDB has no update or delete form in momo). Identity read-back in <code>CreateGraph</code> uses it, and MySQL, which has none, reads <code>LAST_INSERT_ID</code> instead (see <a href="../mysql/">mysql.md</a>).</td>
+<td>MySQL: no; MariaDB: <code>INSERT ... RETURNING</code> (<code>InsertReturning</code>) and single-table <code>DELETE ... RETURNING</code> (<code>DeleteReturning</code>), not <code>UPDATE</code></td>
+<td><code>.Returning(cols...)</code>, <code>.ReturningAll()</code> on insert, update, delete; read with <code>.Rows(ctx)</code>, or one row with <code>.One(ctx)</code> (<code>ErrNotFound</code> when none came back, <code>ErrTooManyRows</code> for several; every column without a list; <code>ErrUnsupported</code> where <code>RETURNING</code> is; a multi-row <code>Models</code> insert is <code>ErrValidation</code>; MariaDB has no <code>UPDATE ... RETURNING</code>, and refuses <code>RETURNING</code> on a <code>Delete</code> with <code>Using</code>). Identity read-back in <code>CreateGraph</code> uses it, and MySQL, which has none, reads <code>LAST_INSERT_ID</code> instead (see <a href="../mysql/">mysql.md</a>).</td>
 </tr>
 <tr>
 <td><code>INSERT ... SELECT</code></td>

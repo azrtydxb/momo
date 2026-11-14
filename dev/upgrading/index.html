@@ -1144,6 +1144,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#delete-returning-on-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE ... RETURNING on MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#advisory-session-locks-on-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2197,6 +2208,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#delete-returning-on-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE ... RETURNING on MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#advisory-session-locks-on-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3107,10 +3129,10 @@ later releases can break more.</p>
 <h2 id="upgrading-to-0130">Upgrading to 0.13.0<a class="headerlink" href="#upgrading-to-0130" title="Permanent link">&para;</a></h2>
 <p>No edit is needed in your code. Several calls that returned <code>ErrUnsupported</code> on
 some dialects now return results (<code>DistinctOn</code> on SQLite, MySQL and MariaDB,
-<code>DELETE ... USING</code> and mixed <code>DEFAULT</code> rows in a multi-row insert on SQLite, and
-the <code>advisory</code> session functions on MySQL and MariaDB), so code that relied on
-the error (a fallback branch, a test that expects the refusal) now takes the
-success path.</p>
+<code>DELETE ... USING</code> and mixed <code>DEFAULT</code> rows in a multi-row insert on SQLite,
+<code>Delete(...).Returning(...)</code> on MariaDB, and the <code>advisory</code> session functions on
+MySQL and MariaDB), so code that relied on the error (a fallback branch, a test
+that expects the refusal) now takes the success path.</p>
 <h3 id="delete-using-runs-on-sqlite"><code>DELETE ... USING</code> runs on SQLite<a class="headerlink" href="#delete-using-runs-on-sqlite" title="Permanent link">&para;</a></h3>
 <p><code>DeleteQuery.Using</code> on SQLite renders
 <code>DELETE FROM t WHERE EXISTS (SELECT 1 FROM src WHERE ...)</code>, because SQLite has
@@ -3187,6 +3209,17 @@ have window functions. PostgreSQL is unchanged.</p>
 <li>An <code>As</code> alias is checked as everywhere else: an empty, malformed or
   over-long alias is <code>ErrValidation</code> on every dialect.</li>
 </ul>
+<h3 id="delete-returning-on-mariadb"><code>DELETE ... RETURNING</code> on MariaDB<a class="headerlink" href="#delete-returning-on-mariadb" title="Permanent link">&para;</a></h3>
+<p><code>Delete(...).Returning(...)</code>, <code>ReturningAll</code> and <code>DeleteQuery.One</code> on MariaDB
+now run <code>DELETE ... RETURNING</code> (MariaDB 10.0.5 or later), through the new
+<code>DeleteReturning</code> capability of the MariaDB dialect.</p>
+<p>Three cases keep the refusal. MySQL has no <code>DELETE ... RETURNING</code>, so a delete
+with <code>Returning</code> there is still <code>ErrUnsupported</code>, and the message names MariaDB
+as the alternative. A <code>Delete</code> with <code>Using</code> is a multi-table <code>DELETE</code>, which
+MariaDB refuses with <code>RETURNING</code>, so that combination is <code>ErrUnsupported</code> on
+the MySQL family. <code>UPDATE ... RETURNING</code> does not exist on MariaDB and stays
+<code>ErrUnsupported</code>. <code>INSERT ... RETURNING</code> on MariaDB is unchanged. See
+<a href="../mysql/#capabilities">MySQL and MariaDB</a>.</p>
 <h3 id="advisory-session-locks-on-mysql-and-mariadb">Advisory session locks on MySQL and MariaDB<a class="headerlink" href="#advisory-session-locks-on-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
 <p>The <code>advisory</code> session functions (<code>advisory.Lock</code>, <code>advisory.TryLock</code>,
 <code>advisory.Unlock</code> and their text-key forms such as <code>advisory.LockString</code>) used

@@ -1678,6 +1678,11 @@ unknown flavor, because it has no error to return.)</p>
 <td>yes</td>
 </tr>
 <tr>
+<td>DeleteReturning</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
 <td>OnConflict</td>
 <td>no</td>
 <td>no</td>
@@ -1743,11 +1748,14 @@ unknown flavor, because it has no error to return.)</p>
 features work on MySQL and MariaDB through emulation (see
 <a href="#emulated-features">Emulated features</a>), so the table says <code>no</code> while
 <code>momo.ILike</code>, <code>NullsFirst</code> and <code>NullsLast</code> run.</p>
-<p><code>Returning</code> is the UPDATE and DELETE form. MariaDB 11.8 can return rows from an
-INSERT only (<code>INSERT ... RETURNING</code>), which is why it has <code>InsertReturning</code>
-set while <code>Returning</code> stays false: <code>Returning</code> on an insert works on MariaDB,
-and on an update or delete it is <code>ErrUnsupported</code> on both servers. MySQL has
-no <code>RETURNING</code> at all.</p>
+<p><code>Returning</code> is the form every statement has. MariaDB returns rows from an
+INSERT (<code>InsertReturning</code>, 10.5 or later) and from a single-table DELETE
+(<code>DeleteReturning</code>, 10.0.5 or later), but not from an UPDATE, which is why
+<code>Returning</code> stays false: <code>Returning</code> on an insert or a delete works on MariaDB,
+and on an update it is <code>ErrUnsupported</code> on both servers. A <code>Delete</code> with
+<code>Using</code> is a multi-table DELETE, which MariaDB refuses with <code>RETURNING</code>, so
+that combination is <code>ErrUnsupported</code> too. MySQL has no <code>RETURNING</code> at all; the
+error for a delete names MariaDB as the alternative.</p>
 <h2 id="emulated-features">Emulated features<a class="headerlink" href="#emulated-features" title="Permanent link">&para;</a></h2>
 <p>Three PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
 equivalent instead of returning <code>ErrUnsupported</code>.</p>

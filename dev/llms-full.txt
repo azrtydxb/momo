@@ -1550,9 +1550,10 @@ return rows2.Err()
   `InsertQuery.One` is for a single-row insert: a multi-row `Models` insert is
   `ErrValidation` (use `Rows`). `AfterLoad` runs before the write commits, so an
   `AfterLoad` error rolls the write back, unlike `SelectQuery.One`. MySQL returns
-  `ErrUnsupported`; on MariaDB only insert has `RETURNING` in momo, so `UpdateQuery.One`
-  and `DeleteQuery.One` return `ErrUnsupported` (momo has no `RETURNING` form
-  for MariaDB `UPDATE` and `DELETE`).
+  `ErrUnsupported`; on MariaDB insert and a single-table delete have `RETURNING`,
+  so `UpdateQuery.One` returns `ErrUnsupported` there (MariaDB has no
+  `UPDATE ... RETURNING`), and so does a `DeleteQuery` with `Using` (MariaDB
+  refuses `RETURNING` on a multi-table `DELETE`).
 - A `ReadOnly` / `identity` / `serial` / auto-increment column is never written by
   `InsertQuery.Model`, and a non-zero value in its struct field is DROPPED SILENTLY: the
   database generates a new value. To keep the value (an import, a backfill, a receipt number
@@ -4790,6 +4791,7 @@ The rows below are checked against `dialect.MySQLFlavor` by
 | ---------------- | ----- | ---------- |
 | Returning        | no    | no         |
 | InsertReturning  | no    | yes        |
+| DeleteReturning  | no    | yes        |
 | OnConflict       | no    | no         |
 | OnDuplicateKey   | yes   | yes        |
 | NullsOrdering    | no    | no         |
@@ -4808,11 +4810,14 @@ features work on MySQL and MariaDB through emulation (see
 [Emulated features](#emulated-features)), so the table says `no` while
 `momo.ILike`, `NullsFirst` and `NullsLast` run.
 
-`Returning` is the UPDATE and DELETE form. MariaDB 11.8 can return rows from an
-INSERT only (`INSERT ... RETURNING`), which is why it has `InsertReturning`
-set while `Returning` stays false: `Returning` on an insert works on MariaDB,
-and on an update or delete it is `ErrUnsupported` on both servers. MySQL has
-no `RETURNING` at all.
+`Returning` is the form every statement has. MariaDB returns rows from an
+INSERT (`InsertReturning`, 10.5 or later) and from a single-table DELETE
+(`DeleteReturning`, 10.0.5 or later), but not from an UPDATE, which is why
+`Returning` stays false: `Returning` on an insert or a delete works on MariaDB,
+and on an update it is `ErrUnsupported` on both servers. A `Delete` with
+`Using` is a multi-table DELETE, which MariaDB refuses with `RETURNING`, so
+that combination is `ErrUnsupported` too. MySQL has no `RETURNING` at all; the
+error for a delete names MariaDB as the alternative.
 
 ## Emulated features
 
@@ -8739,6 +8744,7 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 | `MaxParams`                                                     | 65535                                            | 32766                                      | 65535                | 65535                |
 | `Returning`                                                     | yes                                              | yes                                        | no                   | no                   |
 | `InsertReturning`                                               | no                                               | no                                         | no                   | yes                  |
+| `DeleteReturning`                                               | no                                               | no                                         | no                   | yes                  |
 | `OnConflict`                                                    | yes                                              | yes                                        | no                   | no                   |
 | `OnDuplicateKey`                                                | no                                               | no                                         | yes                  | yes                  |
 | `Locking`                                                       | yes                                              | no                                         | yes                  | yes                  |
@@ -8806,7 +8812,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 
 | Feature                                    | PostgreSQL                                                                                                                                                                                                                                    | SQLite / MySQL                                                                                                                                                                                                                                                             | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RETURNING`                                | yes (`Returning: true`)                                                                                                                                                                                                                       | MySQL: no; MariaDB: `INSERT ... RETURNING` only (`InsertReturning`)                                                                                                                                                                                                        | `.Returning(cols...)`, `.ReturningAll()` on insert, update, delete; read with `.Rows(ctx)`, or one row with `.One(ctx)` (`ErrNotFound` when none came back, `ErrTooManyRows` for several; every column without a list; `ErrUnsupported` where `RETURNING` is; a multi-row `Models` insert is `ErrValidation`; MariaDB has no update or delete form in momo). Identity read-back in `CreateGraph` uses it, and MySQL, which has none, reads `LAST_INSERT_ID` instead (see [mysql.md](mysql.md)).                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `RETURNING`                                | yes (`Returning: true`)                                                                                                                                                                                                                       | MySQL: no; MariaDB: `INSERT ... RETURNING` (`InsertReturning`) and single-table `DELETE ... RETURNING` (`DeleteReturning`), not `UPDATE`                                                                                                                                   | `.Returning(cols...)`, `.ReturningAll()` on insert, update, delete; read with `.Rows(ctx)`, or one row with `.One(ctx)` (`ErrNotFound` when none came back, `ErrTooManyRows` for several; every column without a list; `ErrUnsupported` where `RETURNING` is; a multi-row `Models` insert is `ErrValidation`; MariaDB has no `UPDATE ... RETURNING`, and refuses `RETURNING` on a `Delete` with `Using`). Identity read-back in `CreateGraph` uses it, and MySQL, which has none, reads `LAST_INSERT_ID` instead (see [mysql.md](mysql.md)).                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `INSERT ... SELECT`                        | yes: `InsertQuery[T].FromSelect` with `SelectExprs` (FROM-less or one source, with `Where`, joins, `GroupBy`, `Having`, `OrderBy`) or `Select[T]` as the source; composes with `OnConflict`, `Returning`, `Upsert[T]`                         | SQLite yes (`WHERE true` is added to a `SelectExprs` or `Select[T]` source with FROM and no WHERE before `ON CONFLICT`); MySQL plain insert only (no `ON CONFLICT`; FROM-less with WHERE renders `FROM DUAL`)                                                              | Target columns are explicit typed columns of T; a select-list count mismatch is `ErrValidation`. No model hooks, automatic timestamps, Go-side defaults or validators are applied: list those columns yourself. The soft-delete filter on a `SelectExprs` source needs a `TableRef` that carries the soft-delete marker.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Upsert / `ON CONFLICT`                     | yes (`OnConflict: true`)                                                                                                                                                                                                                      | MySQL and MariaDB: `ON DUPLICATE KEY UPDATE` through the same calls, with the conflict target a unique key and no other unique key able to conflict (an auto-increment key left out of the insert does not count; otherwise `ErrUnsupported`); see [mysql.md](mysql.md)    | `Upsert[T]` (target = primary key) or `InsertQuery[T].OnConflict(cols...).DoNothing()` / `.DoUpdate(assigns...)` with `SetExcluded`. Upsert neither advances nor checks the version column. `OnConflict(...).Where(preds)` (partial-index target) and `.DoUpdate(...).Where(preds)` (conditional update, `col.Excluded()`): PostgreSQL yes; SQLite: bool, integer, finite float and string values in the target predicate render inline so they match the index expression (golden-tested and run against a real SQLite partial unique index written as `WHERE live = 1`; the values show up in logs and traces; write index literals as Momo renders them, integers as `2` and floats in plain decimal with `.0` for whole numbers for magnitudes from 1e-6 up to 1e21 and exponent form (`1e-07`, `1e+21`) outside that range, otherwise use `momo.SQL`), any other value or `Excluded()` there is `ErrValidation`; MySQL `ErrUnsupported`. |
 | Graph writes                               | yes                                                                                                                                                                                                                                           | SQLite: yes, covered by the integration tests that run on SQLite; MySQL 8.4, MySQL 9.7 and MariaDB 11.8: covered by the `integration-mysql` tests (MySQL reads keys with `LAST_INSERT_ID`, MariaDB with `INSERT ... RETURNING`)                                            | `CreateGraph`, `FindOrCreate` (`ON CONFLICT`; on MySQL and MariaDB a transaction with a plain insert and a shared-lock select), `UpsertByPK`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -9342,10 +9348,10 @@ later releases can break more.
 
 No edit is needed in your code. Several calls that returned `ErrUnsupported` on
 some dialects now return results (`DistinctOn` on SQLite, MySQL and MariaDB,
-`DELETE ... USING` and mixed `DEFAULT` rows in a multi-row insert on SQLite, and
-the `advisory` session functions on MySQL and MariaDB), so code that relied on
-the error (a fallback branch, a test that expects the refusal) now takes the
-success path.
+`DELETE ... USING` and mixed `DEFAULT` rows in a multi-row insert on SQLite,
+`Delete(...).Returning(...)` on MariaDB, and the `advisory` session functions on
+MySQL and MariaDB), so code that relied on the error (a fallback branch, a test
+that expects the refusal) now takes the success path.
 
 ### `DELETE ... USING` runs on SQLite
 
@@ -9428,6 +9434,20 @@ What to check:
   join that selects two columns of the same name works on MySQL too.
 - An `As` alias is checked as everywhere else: an empty, malformed or
   over-long alias is `ErrValidation` on every dialect.
+
+### `DELETE ... RETURNING` on MariaDB
+
+`Delete(...).Returning(...)`, `ReturningAll` and `DeleteQuery.One` on MariaDB
+now run `DELETE ... RETURNING` (MariaDB 10.0.5 or later), through the new
+`DeleteReturning` capability of the MariaDB dialect.
+
+Three cases keep the refusal. MySQL has no `DELETE ... RETURNING`, so a delete
+with `Returning` there is still `ErrUnsupported`, and the message names MariaDB
+as the alternative. A `Delete` with `Using` is a multi-table `DELETE`, which
+MariaDB refuses with `RETURNING`, so that combination is `ErrUnsupported` on
+the MySQL family. `UPDATE ... RETURNING` does not exist on MariaDB and stays
+`ErrUnsupported`. `INSERT ... RETURNING` on MariaDB is unchanged. See
+[MySQL and MariaDB](mysql.md#capabilities).
 
 ### Advisory session locks on MySQL and MariaDB
 
