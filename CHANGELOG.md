@@ -2,18 +2,14 @@
 
 ## [0.13.0](https://github.com/azrtydxb/momo/compare/v0.12.0...v0.13.0) (2026-11-14)
 
+_More dialect parity: `DistinctOn`, `DELETE ... USING`, mixed `DEFAULT` rows, `DELETE ... RETURNING` and advisory session locks now work beyond PostgreSQL, where the database allows it. No code change is needed to upgrade, but code that relied on `ErrUnsupported` from these calls now takes the success path; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.13.0/docs/upgrading.md). [Changes since 0.12.0](https://github.com/azrtydxb/momo/compare/v0.12.0...v0.13.0)._
 
 ### Features
 
-* DELETE RETURNING on MariaDB ([#151](https://github.com/azrtydxb/momo/issues/151)) ([e2e0c61](https://github.com/azrtydxb/momo/commit/e2e0c61128c8c72a47807554bb178e29725c56db))
-* DELETE USING and mixed DEFAULT rows on SQLite ([#156](https://github.com/azrtydxb/momo/issues/156)) ([46d2888](https://github.com/azrtydxb/momo/commit/46d2888b5110389b65a2bd95e491ecb2234dbb66))
-* DistinctOn on SQLite, MySQL and MariaDB ([#154](https://github.com/azrtydxb/momo/issues/154)) ([b47a76f](https://github.com/azrtydxb/momo/commit/b47a76fc214c639f6ce6e14bf2315c2b08fcc177))
-* take advisory session locks on MySQL and MariaDB ([#153](https://github.com/azrtydxb/momo/issues/153)) ([657c407](https://github.com/azrtydxb/momo/commit/657c40768eb1e976117afc8f11ff4829671ddb60))
-
-
-### Bug Fixes
-
-* the two tests that apply a CONCURRENTLY index through the engine (TestPostgresObjects and TestCreateIndexConcurrentlyApply) now run in a scratch database from testdb.ScratchDatabase, which has no other sessions. The engine and inspection helpers take the schema as a parameter (public in the scratch database). The timeout is not raised and library behaviour is unchanged. ([080005c](https://github.com/azrtydxb/momo/commit/080005ccfcbaa3c900e1bb004c2a4f9a597ca4bf))
+- `DistinctOn` runs on SQLite, MySQL and MariaDB through a `ROW_NUMBER()` window, with PostgreSQL's NULL placement written out for nullable sort columns; `ForUpdate` and `ForShare` with `DistinctOn` stay refused there ([#154](https://github.com/azrtydxb/momo/pull/154))
+- `Delete(...).Using(...)` runs on SQLite as `DELETE ... WHERE EXISTS (...)`, and a multi-row insert whose rows leave different `dbdefault` columns unset is split into consecutive statements in one transaction or savepoint. A `Using` source named like the delete target is now `ErrValidation` on every dialect; alias it to join a table to itself ([#156](https://github.com/azrtydxb/momo/pull/156))
+- `Delete(...).Returning(...)` runs on MariaDB 10.0.5 or later; MySQL keeps `ErrUnsupported` ([#151](https://github.com/azrtydxb/momo/pull/151))
+- **advisory:** `Lock`, `TryLock`, `Unlock` and the text-key forms run on MySQL and MariaDB with `GET_LOCK`, scoped to the current database like a PostgreSQL advisory lock; the transaction-scoped and shared forms stay `ErrUnsupported` there ([#153](https://github.com/azrtydxb/momo/pull/153))
 
 ## [0.12.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0) (2026-11-14)
 
