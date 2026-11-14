@@ -558,4 +558,42 @@ Decision (2026-11-13, integrator): as above.
 - **Not chosen:** refreshing the header from `momo generate` (the issue's
   alternative).
 
+## Parity: real MySQL and MariaDB integration coverage (2026-11-14, integrator)
+
+- **Gap:** many capability rows said "golden-tested only", "not covered by a
+  MySQL integration test yet" or "runs in the shared suite only where that
+  suite covers it", because `testopen.Each` opens PostgreSQL and SQLite only.
+- **Harness:** `testopen.EachWithMySQL` is `Each` plus the subtests `mysql84`,
+  `mysql97` and `mariadb118` (dialect `MySQL`, tell the servers apart with
+  `db.Dialect().Flavor`); `testopen.EachMySQL` runs the three alone, for a test
+  written in MySQL SQL. `Each` is unchanged, so a test opts in one at a time and
+  nothing unrelated starts failing. Each server skips when its URL is unset and
+  fails under `MOMO_REQUIRE_INTEGRATION=1` for the dialects the job requires
+  (`MOMO_INTEGRATION_DIALECTS`), which is what the `integration-mysql` jobs set,
+  so a run that passes ran those tests. `relfixture.EachWithMySQL` adds the
+  relation fixture, with a MySQL DDL (VARCHAR key columns, table-level foreign
+  keys, because MySQL ignores an inline `REFERENCES`).
+- **Audit result:** the shared suite already covered keyset pagination (mixed
+  directions, nullable key), joins, aggregates, subqueries, CTEs, locking and
+  writes on all three servers; the docs rows saying otherwise were stale. Not
+  run on a MySQL-family server before: JSON operators, windows, streaming,
+  `LATERAL`, the aggregate FILTER refusal, typed predicates beyond the suite,
+  projections, bulk-insert chunking, `LoadPerParentLimit`, graph writes, select
+  aliases, `sqlfn` helpers, `agg`, row values, `CURRENT_DATE` and the `timeop`
+  fields, truncations and intervals. Each now has a test that runs on MySQL 8.4,
+  MySQL 9.7 and MariaDB 11.8.
+- **Bugs found:** `jsonop.Contains` rendered `CAST(? AS JSON)`, which MariaDB
+  rejects (error 1064); MariaDB now gets `JSON_CONTAINS(col, ?)`.
+  `timeop.AddInterval` and `SubInterval` over a bound time returned text on
+  MariaDB; the operand is now `CAST(? AS DATETIME(6))`. Both are in
+  upgrading.md under 0.12.0.
+- **Unsupported, now documented and asserted:** `CreateGraph` (needs the
+  dialect's `RETURNING`, which neither server has for every statement) and
+  `FindOrCreate` return `ErrUnsupported`; `LATERAL` is MySQL only; `Explain`,
+  the aggregate FILTER clause, `agg.Array`, ordered or distinct JSON aggregates,
+  `unnest`, `generate_series` and `DISTINCT ON` are `ErrUnsupported`.
+- **Not covered:** the one-million-row streaming heap bound (its seed SQL is
+  PostgreSQL and SQLite only) and the CreateGraph behaviour tests (they need
+  `RETURNING`).
+
 Decision (2026-11-14, integrator): as above.
