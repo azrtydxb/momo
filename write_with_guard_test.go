@@ -155,11 +155,15 @@ func TestFromUsingReturning(t *testing.T) {
 	if _, err := q(dialect.MySQL).SQL(); !errors.Is(err, momo.ErrUnsupported) {
 		t.Errorf("mysql update err = %v, want ErrUnsupported", err)
 	}
-	for _, d := range []dialect.Name{dialect.MySQL, dialect.SQLite} {
-		_, err := momo.Delete[delNote](withDB(d)).Using(withSrc).Where(delNoteID.EqExpr(withSrcID)).Returning(delNoteID).SQL()
-		if !errors.Is(err, momo.ErrUnsupported) {
-			t.Errorf("%s delete using returning err = %v, want ErrUnsupported", d, err)
-		}
+	del := func(d dialect.Name) momo.DeleteQuery[delNote] {
+		return momo.Delete[delNote](withDB(d)).Using(withSrc).Where(delNoteID.EqExpr(withSrcID)).Returning(delNoteID)
+	}
+	if _, err := del(dialect.MySQL).SQL(); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("mysql delete using returning err = %v, want ErrUnsupported", err)
+	}
+	c, err = del(dialect.SQLite).SQL()
+	if want := `DELETE FROM "del_notes" WHERE EXISTS (SELECT 1 FROM "src" WHERE "del_notes"."id" = "src"."id") RETURNING "id"`; err != nil || c.SQL != want {
+		t.Errorf("sqlite delete using returning: got %q %v, want %q", c.SQL, err, want)
 	}
 }
 

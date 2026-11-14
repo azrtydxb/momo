@@ -165,8 +165,13 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 //
 // A dbdefault column that is zero in every row leaves the column list; when
 // some rows set it and others do not, the unset rows write DEFAULT. SQLite
-// and Unnest cannot put DEFAULT in a row and fail with ErrUnsupported for such
-// a mix; MySQL has no RETURNING to read the value back and fails with
+// cannot put DEFAULT in a row, so Exec and Rows split the rows into runs of
+// consecutive rows that agree on which dbdefault columns are unset and insert
+// each run as its own statement, in order, atomically (as for a bulk insert
+// over the bind-parameter limit); SQL, which renders one statement, fails with
+// ErrUnsupported for such a mix. A WITH clause fails with ErrValidation when it
+// would repeat. Unnest has no per-row default and fails with ErrUnsupported
+// for a mix; MySQL has no RETURNING to read the value back and fails with
 // ErrUnsupported when a dbdefault column is zero. Exec writes the stored
 // values of the unset rows back into the caller's elements after the
 // statement committed. A single Model that a conflict action skips reports 0
@@ -206,9 +211,11 @@ func (q InsertQuery[T]) Values(assigns ...InsertValue) InsertQuery[T] {
 // union of the columns the rows assign, in order of first appearance. A
 // column a row does not assign takes its database default for that row
 // (DEFAULT), and SetDefault renders DEFAULT inline. A dialect that cannot put
-// DEFAULT inside VALUES (SQLite) omits a column that is default in every row
-// and fails with ErrUnsupported when a column is default in some rows and
-// given in others. ValuesRows cannot be combined with Values, Model, Models
+// DEFAULT inside VALUES (SQLite) omits a column that is default in every row;
+// when a column is default in some rows and given in others, Exec and Rows
+// split the rows into runs of consecutive rows with the same default columns
+// and insert each run as its own statement, in order and atomically, while SQL
+// fails with ErrUnsupported. ValuesRows cannot be combined with Values, Model, Models
 // or Omit, and a statement over the dialect's bind-parameter limit fails with
 // ErrLimitExceeded (DEFAULT and NULL bind no parameter).
 func (q InsertQuery[T]) ValuesRows(rows ...[]Assignment) InsertQuery[T] {

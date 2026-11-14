@@ -40,6 +40,7 @@ func TestUpdateFromTwoSourcesSQL(t *testing.T) {
 	for d, want := range map[dialect.Name]string{
 		dialect.Postgres: `DELETE FROM "del_notes" USING "src", "other" WHERE ("del_notes"."id" = "src"."id") AND ("del_notes"."id" = "other"."id")`,
 		dialect.MySQL:    "DELETE `del_notes` FROM `del_notes`, `src`, `other` WHERE (`del_notes`.`id` = `src`.`id`) AND (`del_notes`.`id` = `other`.`id`)",
+		dialect.SQLite:   `DELETE FROM "del_notes" WHERE EXISTS (SELECT 1 FROM "src", "other" WHERE ("del_notes"."id" = "src"."id") AND ("del_notes"."id" = "other"."id"))`,
 	} {
 		c, err := momo.Delete[delNote](withDB(d)).Using(withSrc, withOther).
 			Where(delNoteID.EqExpr(withSrcID), delNoteID.EqExpr(withOtherID)).SQL()
@@ -98,6 +99,12 @@ func TestReturningSourceColumnsRefused(t *testing.T) {
 	if !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("delete Rows err = %v, want ErrValidation", err)
 	}
+	// The SQLite USING emulation keeps the target-only RETURNING of SQLite.
+	_, err = momo.Delete[delNote](withDB(dialect.SQLite)).Using(withSrc).Where(delNoteID.EqExpr(withSrcID)).
+		Returning(delNoteID, withSrcTitle).SQL()
+	if !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("sqlite delete using source RETURNING err = %v, want ErrUnsupported", err)
+	}
 	// A source column with no source at all names a table the statement lacks.
 	_, err = momo.Update[delNote](withDB(dialect.Postgres)).Set(delNoteTitle.Set("x")).Where(delNoteID.Eq(1)).Returning(withSrcTitle).SQL()
 	if !errors.Is(err, momo.ErrValidation) {
@@ -109,7 +116,7 @@ func TestReturningSourceColumnsRefused(t *testing.T) {
 // are several sources, so a source that no predicate references is silently
 // cross-joined to the statement. Each source must be constrained.
 func TestFromUsingGuardSeveralSources(t *testing.T) {
-	for _, d := range []dialect.Name{dialect.Postgres, dialect.MySQL} {
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
 		del := momo.Delete[delNote](withDB(d)).Using(withSrc, withOther)
 		if _, err := del.Where(delNoteID.EqExpr(withSrcID)).SQL(); !errors.Is(err, momo.ErrUnfilteredMutation) {
 			t.Errorf("%s using, second source unconstrained: err = %v, want ErrUnfilteredMutation", d, err)

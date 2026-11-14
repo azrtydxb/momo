@@ -184,8 +184,10 @@ func TestDBDefaultChunksShareOneColumnList(t *testing.T) {
 func TestDBDefaultMixedRowsRefusedWhereDEFAULTIsNotAvailable(t *testing.T) {
 	ms := []dbdRow{{Title: "a", At: dbdStamp}, {ID: "kept", Title: "b", At: dbdStamp}}
 
+	// SQL renders one statement, which SQLite cannot express for a mix; Exec
+	// and Rows split it into runs (TestSQLiteMixedModelsSplitIntoRuns).
 	db, _ := dbdSetup(dialect.SQLite, nil)
-	_, err := momo.Insert[dbdRow](db).Models(ms).Exec(context.Background())
+	_, err := momo.Insert[dbdRow](db).Models(ms).SQL()
 	if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), `"id"`) {
 		t.Fatalf("SQLite mixed rows: err = %v, want ErrUnsupported naming the column", err)
 	}
