@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.0](https://github.com/azrtydxb/momo/compare/v0.12.0...v0.13.0) (2026-11-14)
+
+
+### Features
+
+* DELETE RETURNING on MariaDB ([#151](https://github.com/azrtydxb/momo/issues/151)) ([e2e0c61](https://github.com/azrtydxb/momo/commit/e2e0c61128c8c72a47807554bb178e29725c56db))
+* DELETE USING and mixed DEFAULT rows on SQLite ([#156](https://github.com/azrtydxb/momo/issues/156)) ([46d2888](https://github.com/azrtydxb/momo/commit/46d2888b5110389b65a2bd95e491ecb2234dbb66))
+* DistinctOn on SQLite, MySQL and MariaDB ([#154](https://github.com/azrtydxb/momo/issues/154)) ([b47a76f](https://github.com/azrtydxb/momo/commit/b47a76fc214c639f6ce6e14bf2315c2b08fcc177))
+* take advisory session locks on MySQL and MariaDB ([#153](https://github.com/azrtydxb/momo/issues/153)) ([657c407](https://github.com/azrtydxb/momo/commit/657c40768eb1e976117afc8f11ff4829671ddb60))
+
+
+### Bug Fixes
+
+* the two tests that apply a CONCURRENTLY index through the engine (TestPostgresObjects and TestCreateIndexConcurrentlyApply) now run in a scratch database from testdb.ScratchDatabase, which has no other sessions. The engine and inspection helpers take the schema as a parameter (public in the scratch database). The timeout is not raised and library behaviour is unchanged. ([080005c](https://github.com/azrtydxb/momo/commit/080005ccfcbaa3c900e1bb004c2a4f9a597ca4bf))
+
 ## [0.12.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0) (2026-11-14)
 
 _The dialect parity release: `momo migrate` and `momo generate --from-db` now run on SQLite, MySQL and MariaDB as well as PostgreSQL, and query features that returned `ErrUnsupported` on some dialects now work on all of them. It also fixes four issues from the NovaCRM and Owl ports. Upgrading needs a code change only where `momo.Avg` is used as an uninstantiated function value, or where `--from-db --schema` is passed on MySQL or MariaDB; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.12.0/docs/upgrading.md). [Changes since 0.11.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0)._
