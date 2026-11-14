@@ -49,8 +49,16 @@ func TestResultHelpers(t *testing.T) {
 			t.Fatalf("Batches visited %d rows, err=%v", seen, err)
 		}
 		maps, err := momo.MapRows(ctx, db, "SELECT title FROM documents ORDER BY id LIMIT 1")
-		if err != nil || len(maps) != 1 || maps[0]["title"] != "a" {
+		if err != nil || len(maps) != 1 {
 			t.Fatalf("MapRows = %v %v", maps, err)
+		}
+		// Values have the driver's native types: the MySQL driver returns text as bytes.
+		title := maps[0]["title"]
+		if b, ok := title.([]byte); ok {
+			title = string(b)
+		}
+		if title != "a" {
+			t.Fatalf("MapRows title = %v, want a", maps[0]["title"])
 		}
 		vals, err := momo.Scalars[string](ctx, db, "SELECT title FROM documents WHERE tenant_id = ? ORDER BY id", 1)
 		if err != nil || len(vals) != 7 || vals[6] != "g" {
