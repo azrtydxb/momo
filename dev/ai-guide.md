@@ -1292,7 +1292,31 @@ return rows2.Err()
   `ErrUnsupported`; on MariaDB only insert has `RETURNING` in momo, so `UpdateQuery.One`
   and `DeleteQuery.One` return `ErrUnsupported` (momo has no `RETURNING` form
   for MariaDB `UPDATE` and `DELETE`).
-- A `ReadOnly` / `identity` column is never written by `InsertQuery.Model`.
+- A `ReadOnly` / `identity` / `serial` / auto-increment column is never written by
+  `InsertQuery.Model`, and a non-zero value in its struct field is DROPPED SILENTLY: the
+  database generates a new value. To keep the value (an import, a backfill, a receipt number
+  held in a non-key `serial` column) name the column in `momo.InsertQuery.Explicit`:
+
+  ```text
+  _, err := momo.Insert[models.Receipt](q).Model(&r).Explicit(receipt.Seq).Exec(ctx)
+  ```
+
+  `Explicit` takes the columns to write with the struct value (or the `momo.InsertQuery.Values` /
+  `momo.InsertQuery.ValuesRows` assignment), also for `Models`, chunked bulk inserts, `Unnest`, `Upsert` and `OnConflict`.
+  PostgreSQL renders `OVERRIDING SYSTEM VALUE` for a `GENERATED ALWAYS AS IDENTITY` column
+  only; serial and `BY DEFAULT` need no clause, and MySQL, MariaDB and SQLite write an ordinary
+  column. A zero value in an `Explicit` column depends on the dialect: PostgreSQL and SQLite
+  store 0 as written, while MySQL and MariaDB refuse it with `ErrValidation` (the server would
+  generate a value instead of storing 0), checking every row before the first statement is sent;
+  leave the column out of `Explicit` to get a generated value. A column that is not
+  identity, serial or auto-increment, a column the model does not map, a column of another
+  table, the same column in `momo.InsertQuery.Omit`, and `FromSelect` or `Copy` are
+  `ErrValidation`. An explicit value does not advance the sequence on PostgreSQL: run
+  `setval` yourself (Momo never does). MySQL, MariaDB and SQLite move past a larger explicit
+  value on their own, so they need no `setval`. With `Upsert` or `OnConflict` the explicit
+  column is written by the INSERT only: a serial or identity column that is not the conflict
+  key is never updated on conflict, and `DoUpdate(SetExcluded(col))` for it is `ErrValidation`.
+
 - `InsertQuery.Models([]T{})` (empty) is `ErrValidation`.
 
 Update:

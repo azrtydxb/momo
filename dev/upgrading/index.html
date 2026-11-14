@@ -1209,6 +1209,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#explicit-identity-values-on-insert-no-change-needed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicit identity values on Insert: no change needed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2157,6 +2168,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#explicit-identity-values-on-insert-no-change-needed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicit identity values on Insert: no change needed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3044,6 +3066,24 @@ Before, the comma split it in two and the second half was an error or a stray
 option. A tag with no parentheses, and one whose parentheses or quotes do not
 balance, is split at every comma as before. A tag that held a comma inside
 parentheses now reads as one option; check any such tag.</p>
+<h3 id="explicit-identity-values-on-insert-no-change-needed">Explicit identity values on <code>Insert</code>: no change needed<a class="headerlink" href="#explicit-identity-values-on-insert-no-change-needed" title="Permanent link">&para;</a></h3>
+<p><code>momo.InsertQuery.Explicit</code> is new and opt-in, so existing code needs no edit.
+An <code>Insert</code> still leaves identity, serial and auto-increment columns out of the
+statement, and it still drops a non-zero value in such a struct field silently
+(the database generates a new one). If you relied on that, nothing changes.</p>
+<p>If you need to keep the value (an import, a backfill, a receipt number in a
+non-key <code>serial</code> column), name the column:</p>
+<div class="highlight"><pre><span></span><code>momo.Insert[models.Receipt](q).Model(&amp;r).Explicit(receipt.Seq).Exec(ctx)
+</code></pre></div>
+<p>PostgreSQL renders <code>OVERRIDING SYSTEM VALUE</code> for a <code>GENERATED ALWAYS AS
+IDENTITY</code> column only. A zero value in an <code>Explicit</code> column is stored as 0 on
+PostgreSQL and SQLite, and refused with <code>ErrValidation</code> on MySQL and MariaDB
+(the server would generate a value instead), before the first statement is
+sent. An explicit value does not advance a PostgreSQL sequence, so run <code>setval</code>
+yourself afterwards; MySQL, MariaDB and SQLite move past a larger explicit
+value on their own. With <code>Upsert</code> or <code>OnConflict</code> the explicit column is
+written by the INSERT only: a serial or identity column that is not the
+conflict key is never updated on conflict. See issue #127.</p>
 <h2 id="upgrading-to-0110">Upgrading to 0.11.0<a class="headerlink" href="#upgrading-to-0110" title="Permanent link">&para;</a></h2>
 <p>Two changes can need an edit in your code: an explicit <code>updated_at</code> in
 <code>DoUpdate</code> is refused, and on PostgreSQL a JSON null no longer reads as a nil

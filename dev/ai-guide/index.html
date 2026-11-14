@@ -3039,7 +3039,29 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   <code>ErrUnsupported</code>; on MariaDB only insert has <code>RETURNING</code> in momo, so <code>UpdateQuery.One</code>
   and <code>DeleteQuery.One</code> return <code>ErrUnsupported</code> (momo has no <code>RETURNING</code> form
   for MariaDB <code>UPDATE</code> and <code>DELETE</code>).</li>
-<li>A <code>ReadOnly</code> / <code>identity</code> column is never written by <code>InsertQuery.Model</code>.</li>
+<li>A <code>ReadOnly</code> / <code>identity</code> / <code>serial</code> / auto-increment column is never written by
+  <code>InsertQuery.Model</code>, and a non-zero value in its struct field is DROPPED SILENTLY: the
+  database generates a new value. To keep the value (an import, a backfill, a receipt number
+  held in a non-key <code>serial</code> column) name the column in <code>momo.InsertQuery.Explicit</code>:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>_, err := momo.Insert[models.Receipt](q).Model(&amp;r).Explicit(receipt.Seq).Exec(ctx)
+</code></pre></div>
+<p><code>Explicit</code> takes the columns to write with the struct value (or the <code>momo.InsertQuery.Values</code> /
+  <code>momo.InsertQuery.ValuesRows</code> assignment), also for <code>Models</code>, chunked bulk inserts, <code>Unnest</code>, <code>Upsert</code> and <code>OnConflict</code>.
+  PostgreSQL renders <code>OVERRIDING SYSTEM VALUE</code> for a <code>GENERATED ALWAYS AS IDENTITY</code> column
+  only; serial and <code>BY DEFAULT</code> need no clause, and MySQL, MariaDB and SQLite write an ordinary
+  column. A zero value in an <code>Explicit</code> column depends on the dialect: PostgreSQL and SQLite
+  store 0 as written, while MySQL and MariaDB refuse it with <code>ErrValidation</code> (the server would
+  generate a value instead of storing 0), checking every row before the first statement is sent;
+  leave the column out of <code>Explicit</code> to get a generated value. A column that is not
+  identity, serial or auto-increment, a column the model does not map, a column of another
+  table, the same column in <code>momo.InsertQuery.Omit</code>, and <code>FromSelect</code> or <code>Copy</code> are
+  <code>ErrValidation</code>. An explicit value does not advance the sequence on PostgreSQL: run
+  <code>setval</code> yourself (Momo never does). MySQL, MariaDB and SQLite move past a larger explicit
+  value on their own, so they need no <code>setval</code>. With <code>Upsert</code> or <code>OnConflict</code> the explicit
+  column is written by the INSERT only: a serial or identity column that is not the conflict
+  key is never updated on conflict, and <code>DoUpdate(SetExcluded(col))</code> for it is <code>ErrValidation</code>.</p>
+<ul>
 <li><code>InsertQuery.Models([]T{})</code> (empty) is <code>ErrValidation</code>.</li>
 </ul>
 <p>Update:</p>

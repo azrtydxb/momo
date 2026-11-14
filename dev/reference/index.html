@@ -2987,6 +2987,11 @@
 <td>Exec runs the statement and reports the rows it inserted.</td>
 </tr>
 <tr>
+<td><code>momo.InsertQuery.Explicit</code></td>
+<td>method</td>
+<td>Explicit opts identity, serial and auto-increment columns into the INSERT: the named columns are written with the value the source carries (the struct field of Model and Models, the assignment of Values and ValuesRows) instead of being left to the database.</td>
+</tr>
+<tr>
 <td><code>momo.InsertQuery.FromSelect</code></td>
 <td>method</td>
 <td>FromSelect makes the rows of a SELECT the source of the INSERT, rendering INSERT INTO t (cols) SELECT ...</td>
