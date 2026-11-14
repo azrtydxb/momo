@@ -309,7 +309,7 @@ func renderWriteReturning[T any](b *Builder, m *Meta[T], r returningSet, hasSour
 	d := b.Dialect()
 	if !d.Returning && (!del || !d.DeleteReturning) {
 		if del && d.Name == dialect.MySQL {
-			b.unsupported("DELETE ... RETURNING (MySQL has none; MariaDB 10.0 or later supports it)")
+			b.unsupported("DELETE ... RETURNING (MySQL has none; MariaDB 10.0.5 or later supports it)")
 		} else {
 			b.unsupported("RETURNING")
 		}

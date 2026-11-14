@@ -925,7 +925,7 @@ Decision (2026-11-14, integrator): as above.
 - **Capability:** a new `dialect.Dialect.DeleteReturning` flag, set on the
   MariaDB flavor only, next to `InsertReturning`. `Returning` stays false there
   because UPDATE has no RETURNING on MariaDB. MariaDB supports
-  `DELETE ... RETURNING` from 10.0 and CI runs 11.8, so no version probe is
+  `DELETE ... RETURNING` from 10.0.5 and CI runs 11.8, so no version probe is
   needed (the dialect already assumes 10.5 or later for the insert form).
 - **Gate:** `renderWriteReturning` takes a delete flag and accepts the clause
   when `Returning` or, for a delete, `DeleteReturning` holds. MySQL keeps

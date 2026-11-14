@@ -57,6 +57,23 @@ func TestDeleteUsingReturningRefusedOnMariaDB(t *testing.T) {
 	if !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}
+	if !strings.Contains(err.Error(), "multi-table DELETE") {
+		t.Fatalf("err = %v, want it to name the multi-table DELETE", err)
+	}
+}
+
+// Catches: the source-column refusal winning over the multi-table one, so the
+// message blames a FROM or USING source instead of the statement shape. The
+// two checks must keep their order.
+func TestDeleteUsingSourceColumnReturningNamesMultiTableOnMariaDB(t *testing.T) {
+	ma := flavorDB(dialect.FlavorMariaDB)
+	_, err := momo.Delete[delNote](ma).Using(withSrc).Where(delNoteID.EqExpr(withSrcID)).Returning(delNoteID, withSrcTitle).SQL()
+	if !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("err = %v, want ErrUnsupported", err)
+	}
+	if !strings.Contains(err.Error(), "multi-table DELETE") {
+		t.Fatalf("err = %v, want it to name the multi-table DELETE", err)
+	}
 }
 
 // Catches: UPDATE ... RETURNING enabled on MariaDB by the delete change.

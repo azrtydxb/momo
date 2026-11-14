@@ -134,7 +134,7 @@ features work on MySQL and MariaDB through emulation (see
 
 `Returning` is the form every statement has. MariaDB returns rows from an
 INSERT (`InsertReturning`, 10.5 or later) and from a single-table DELETE
-(`DeleteReturning`, 10.0 or later), but not from an UPDATE, which is why
+(`DeleteReturning`, 10.0.5 or later), but not from an UPDATE, which is why
 `Returning` stays false: `Returning` on an insert or a delete works on MariaDB,
 and on an update it is `ErrUnsupported` on both servers. A `Delete` with
 `Using` is a multi-table DELETE, which MariaDB refuses with `RETURNING`, so

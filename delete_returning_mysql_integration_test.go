@@ -20,6 +20,16 @@ func TestDeleteReturningMySQLFamilyIntegration(t *testing.T) {
 	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
 		createDelNotes(t, db)
 		ctx := context.Background()
+		// A multi-table DELETE with RETURNING is refused on every server,
+		// before anything reaches the database: MariaDB rejects it, MySQL has
+		// no RETURNING.
+		_, err := momo.Delete[delNote](db).Using(delSrc).Where(delNoteID.EqExpr(delSrcID)).Returning(delNoteID).Rows(ctx)
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("DELETE USING RETURNING = %v, want ErrUnsupported", err)
+		}
+		if n, err := momo.Select[delNote](db).Count(ctx); err != nil || n != 2 {
+			t.Fatalf("rows after refused multi-table delete = %d, %v; want 2", n, err)
+		}
 		if db.Dialect().Flavor != dialect.FlavorMariaDB {
 			_, err := momo.Delete[delNote](db).Where(delNoteTitle.Eq("d2")).ReturningAll().Rows(ctx)
 			if !errors.Is(err, momo.ErrUnsupported) {
