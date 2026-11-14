@@ -188,3 +188,238 @@ introspect:
 		t.Fatalf("bad rule: err = %v", err)
 	}
 }
+
+// fromDBTree writes the generated models of shopSchema into a new directory
+// and returns it with the regenerated files. rewrite turns the content of the
+// file under test into what is on disk.
+func fromDBTree(t *testing.T, rewrite func(content string) string) (dir string, res *fromdb.Result) {
+	t.Helper()
+	res, err := fromdb.Generate(shopSchema(), fromdb.Options{Package: "models"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir = t.TempDir()
+	for _, f := range res.Files {
+		content := string(f.Content)
+		if f.Name == "users_model.go" {
+			content = rewrite(content)
+		}
+		writeFile(t, filepath.Join(dir, f.Name), content)
+	}
+	return dir, res
+}
+
+// staleHeader gives content a header hash that is not the hash of its body.
+func staleHeader(content string) string {
+	i := strings.Index(content, "\n")
+	return "// momo:fromdb sha256=" + strings.Repeat("0", 64) + content[i:]
+}
+
+// toCRLF is a checkout with core.autocrlf=true.
+func toCRLF(content string) string { return strings.ReplaceAll(content, "\n", "\r\n") }
+
+// runFromDBPlan is the file part of generate --from-db: plan, report, and for
+// a plain run apply.
+func runFromDBPlan(t *testing.T, dir string, res *fromdb.Result, check bool) (stale bool, out string) {
+	t.Helper()
+	var buf bytes.Buffer
+	l := &cli{out: &buf, errOut: &buf, cwd: dir}
+	actions, err := fromdb.Plan(dir, res.Files, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale = l.reportActions(dir, actions, check)
+	if !check {
+		if _, err := fromdb.Apply(dir, actions, writeModelFile); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return stale, buf.String()
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path) //nolint:gosec // test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// TestFromDBBodyEqualStaleHeader: a file whose body equals the regenerated
+// body but whose header hash is stale is current for --check (issue 128), and
+// a plain run rewrites only its first line, with no conflict and no .new file.
+// With CRLF line endings the same holds and the CRLF endings are kept.
+//
+// Catches: --check reporting "stale", or a plain run reporting a conflict and
+// writing a .new file, for a model whose body is already the regenerated one.
+func TestFromDBBodyEqualStaleHeader(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		eol  func(string) string
+	}{
+		{"lf", func(s string) string { return s }},
+		{"crlf", toCRLF},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var want string
+			dir, res := fromDBTree(t, func(c string) string {
+				want = tc.eol(c)
+				return tc.eol(staleHeader(c))
+			})
+			path := filepath.Join(dir, "users_model.go")
+			before := readTestFile(t, path)
+
+			if stale, out := runFromDBPlan(t, dir, res, true); stale || strings.Contains(out, "stale") {
+				t.Fatalf("--check must report the file as current, got:\n%s", out)
+			}
+			if readTestFile(t, path) != before {
+				t.Fatal("--check wrote the file")
+			}
+
+			if _, out := runFromDBPlan(t, dir, res, false); strings.Contains(out, "conflict") {
+				t.Fatalf("a plain run must not report a conflict:\n%s", out)
+			}
+			if _, err := os.Stat(path + ".new"); err == nil {
+				t.Fatal("a plain run wrote a .new file")
+			}
+			if got := readTestFile(t, path); got != want {
+				t.Fatalf("only the first line may change.\ngot:\n%q\nwant:\n%q", truncate(got, 120), truncate(want, 120))
+			}
+			if stale, out := runFromDBPlan(t, dir, res, true); stale {
+				t.Fatalf("--check after the rewrite: %s", out)
+			}
+		})
+	}
+}
+
+// TestFromDBHandEditStaysConflict: a body that differs from the regenerated
+// one is still stale for --check and a conflict with a .new file for a plain
+// run, in LF and in CRLF, and the file is not touched.
+//
+// Catches: the body comparison of issue 128 accepting a real hand edit, or
+// CRLF endings making the comparison differ for the wrong reason.
+func TestFromDBHandEditStaysConflict(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		eol  func(string) string
+	}{
+		{"lf", func(s string) string { return s }},
+		{"crlf", toCRLF},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, res := fromDBTree(t, func(c string) string {
+				return tc.eol(staleHeader(c) + "\n// hand written\n")
+			})
+			path := filepath.Join(dir, "users_model.go")
+			before := readTestFile(t, path)
+
+			if stale, out := runFromDBPlan(t, dir, res, true); !stale || !strings.Contains(out, "stale: users_model.go") {
+				t.Fatalf("--check must report the edited file as stale, got:\n%s", out)
+			}
+			if _, out := runFromDBPlan(t, dir, res, false); !strings.Contains(out, "conflict: users_model.go") {
+				t.Fatalf("a plain run must report a conflict:\n%s", out)
+			}
+			if readTestFile(t, path) != before {
+				t.Fatal("a conflicting file was changed")
+			}
+			if _, err := os.Stat(path + ".new"); err != nil {
+				t.Fatalf("the regenerated version is missing: %v", err)
+			}
+		})
+	}
+}
+
+// truncate shortens s to at most n bytes for a failure message.
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}
+
+// planKind plans the users model of dir and returns the kind of its action.
+func planKind(t *testing.T, dir string, res *fromdb.Result) string {
+	t.Helper()
+	actions, err := fromdb.Plan(dir, res.Files, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range actions {
+		if a.File == "users_model.go" {
+			return a.Kind
+		}
+	}
+	t.Fatal("no action for users_model.go")
+	return ""
+}
+
+// TestFromDBCRLFCurrentFileIsUnchanged: a CRLF copy of a file whose header and
+// body are both current is unchanged.
+//
+// Catches: a core.autocrlf checkout of an up-to-date model being reported as a
+// conflict or stale.
+func TestFromDBCRLFCurrentFileIsUnchanged(t *testing.T) {
+	dir, res := fromDBTree(t, toCRLF)
+	if got := planKind(t, dir, res); got != fromdb.ActionUnchanged {
+		t.Fatalf("kind = %q, want %q", got, fromdb.ActionUnchanged)
+	}
+	if stale, out := runFromDBPlan(t, dir, res, true); stale {
+		t.Fatalf("--check: %s", out)
+	}
+}
+
+// TestFromDBEditedDatabaseUnchanged: a hand-edited file whose header hash is
+// still the hash of the regenerated body stays quiet, in LF and in CRLF.
+//
+// Catches: the "edited, database did not change" rule comparing the header of a
+// CRLF file without normalising its line endings, so that CRLF conflicts where
+// LF is unchanged.
+func TestFromDBEditedDatabaseUnchanged(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		eol  func(string) string
+	}{
+		{"lf", func(s string) string { return s }},
+		{"crlf", toCRLF},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, res := fromDBTree(t, func(c string) string { return tc.eol(c + "\n// hand written\n") })
+			if got := planKind(t, dir, res); got != fromdb.ActionUnchanged {
+				t.Fatalf("kind = %q, want %q", got, fromdb.ActionUnchanged)
+			}
+			if stale, out := runFromDBPlan(t, dir, res, true); stale {
+				t.Fatalf("--check: %s", out)
+			}
+		})
+	}
+}
+
+// TestFromDBLineBelowHeaderIsAnEdit: a line added between the header comment
+// and the blank line that starts the body, with a stale hash, is a hand edit
+// and not a body-equal file, in LF and in CRLF.
+//
+// Catches: the body comparison ignoring text between the header and the first
+// blank line, such as a build constraint, and calling the file current.
+func TestFromDBLineBelowHeaderIsAnEdit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		eol  func(string) string
+	}{
+		{"lf", func(s string) string { return s }},
+		{"crlf", toCRLF},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, res := fromDBTree(t, func(c string) string {
+				lines := strings.SplitN(staleHeader(c), "\n", 3)
+				return tc.eol(lines[0] + "\n" + lines[1] + "\n//go:build integration\n" + lines[2])
+			})
+			if stale, out := runFromDBPlan(t, dir, res, true); !stale || !strings.Contains(out, "stale: users_model.go") {
+				t.Fatalf("--check must report the file as stale, got:\n%s", out)
+			}
+			if _, out := runFromDBPlan(t, dir, res, false); !strings.Contains(out, "conflict: users_model.go") {
+				t.Fatalf("a plain run must report a conflict:\n%s", out)
+			}
+		})
+	}
+}

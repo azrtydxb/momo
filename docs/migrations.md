@@ -58,11 +58,11 @@ set `migrate.dir.postgres` or `--dir`). `diff` writes exactly three files:
 ### Format versions
 
 | Artifact         | Field                                 | v0.11.0 value | Newer than this binary <!-- x-release-please-version --> |
-| ---------------- | ------------------------------------- | ------------ | -------------------------------------------------------- |
-| Snapshot wrapper | `format_version`                      | 1            | read error, "upgrade momo"                               |
-| Embedded schema  | `schema.format_version`               | 1            | read error, "upgrade momo"                               |
-| `momo.sum`       | header `# momo.sum format=N`          | 1            | read error                                               |
-| History table    | `checksum` of the row `__momo_meta__` | 1            | apply refuses, "upgrade momo"                            |
+| ---------------- | ------------------------------------- | ------------- | -------------------------------------------------------- |
+| Snapshot wrapper | `format_version`                      | 1             | read error, "upgrade momo"                               |
+| Embedded schema  | `schema.format_version`               | 1             | read error, "upgrade momo"                               |
+| `momo.sum`       | header `# momo.sum format=N`          | 1             | read error                                               |
+| History table    | `checksum` of the row `__momo_meta__` | 1             | apply refuses, "upgrade momo"                            |
 
 A snapshot without `format_version` is rejected.
 
@@ -1194,7 +1194,18 @@ file, or run again with `--overwrite` to take the regenerated one.
 `--overwrite` only replaces a conflicting file: an edited file whose model the
 database did not change stays as it is. A file whose
 table is gone is printed as `orphan` and never deleted. `--check` writes
-nothing, prints `stale: <file>` for each difference and exits 1. The init
+nothing, prints `stale: <file>` for each difference and exits 1.
+
+The header hash is only a guide to whether a file was edited; the body decides.
+When the regenerated body equals the file's body byte for byte (line endings
+aside, so a CRLF checkout counts), the file is current even though the hash in
+its header differs, which is the case after you edit a model by hand, run
+`momo generate` and `momo migrate diff`, and then check a database the
+migrations built. `--check` then reports nothing for that file. A plain run
+prints `header: <file>` and rewrites only the first line so the hash is right
+again; it writes no `.new` file and reports no conflict. A body that differs
+from the regenerated one is a conflict or stale as before. `momo generate`
+without `--from-db` never reads or writes this header. The init
 snapshot is written once: when the migration directory already has a snapshot,
 use `diff` for later schema changes. Put code of your own in other files and
 rules in the `introspect` section, and a re-run stays quiet.

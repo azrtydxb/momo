@@ -254,6 +254,12 @@ func (l *cli) reportActions(dir string, actions []fromdb.Action, check bool) (st
 		switch a.Kind {
 		case fromdb.ActionUnchanged:
 			continue
+		case fromdb.ActionHeader:
+			// The body equals the regenerated one: current for --check.
+			if check {
+				continue
+			}
+			l.say("header: %s: the body is current, the hash in the header line is refreshed", p)
 		case fromdb.ActionOrphan:
 			l.say("orphan: %s: %s", p, a.Detail)
 		case fromdb.ActionConflict:
