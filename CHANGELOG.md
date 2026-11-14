@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/azrtydxb/momo/compare/v0.12.0...v0.12.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* the two tests that apply a CONCURRENTLY index through the engine (TestPostgresObjects and TestCreateIndexConcurrentlyApply) now run in a scratch database from testdb.ScratchDatabase, which has no other sessions. The engine and inspection helpers take the schema as a parameter (public in the scratch database). The timeout is not raised and library behaviour is unchanged. ([080005c](https://github.com/azrtydxb/momo/commit/080005ccfcbaa3c900e1bb004c2a4f9a597ca4bf))
+
 ## [0.12.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0) (2026-11-14)
 
 _The dialect parity release: `momo migrate` and `momo generate --from-db` now run on SQLite, MySQL and MariaDB as well as PostgreSQL, and query features that returned `ErrUnsupported` on some dialects now work on all of them. It also fixes four issues from the NovaCRM and Owl ports. Upgrading needs a code change only where `momo.Avg` is used as an uninstantiated function value, or where `--from-db --schema` is passed on MySQL or MariaDB; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.12.0/docs/upgrading.md). [Changes since 0.11.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0)._
