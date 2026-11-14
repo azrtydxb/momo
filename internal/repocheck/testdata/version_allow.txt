@@ -8,4 +8,5 @@
 1.26.1 | PgBouncer version of the tested edoburu/pgbouncer image tag
 8.4.13 | MySQL 8.4 LTS image tag the integration matrix runs
 9.7.4 | MySQL 9.7 LTS image tag the integration matrix runs
+10.0.5 | MariaDB release that added DELETE ... RETURNING
 11.8.9 | MariaDB 11.8 LTS image tag the integration matrix runs

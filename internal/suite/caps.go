@@ -15,6 +15,7 @@ import (
 type Caps struct {
 	Dialect             dialect.Name
 	Returning           bool
+	DeleteReturning     bool
 	Locking             bool
 	DefaultInUpdate     bool // UPDATE ... SET col = DEFAULT
 	DefaultInValues     bool // INSERT ... VALUES (DEFAULT)
@@ -39,6 +40,7 @@ func CapabilitiesOf(d *dialect.Dialect) Caps {
 	return Caps{
 		Dialect:             d.Name,
 		Returning:           d.Returning,
+		DeleteReturning:     d.Returning || d.DeleteReturning,
 		Locking:             d.Locking,
 		DefaultInUpdate:     d.DefaultInUpdate,
 		DefaultInValues:     d.DefaultInValues,

@@ -74,13 +74,20 @@ func TestDeleteRefusesSoftDeleteModelIntegration(t *testing.T) {
 }
 
 func TestDeleteReturningRows(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		if !suite.CapsOf(db).Returning {
-			t.Skip("dialect has no RETURNING")
-		}
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		createDelNotes(t, db)
 		ctx := context.Background()
 		rows, err := momo.Delete[delNote](db).Where(delNoteTitle.Eq("d2")).ReturningAll().Rows(ctx)
+		if !suite.CapsOf(db).DeleteReturning {
+			// MySQL: the refusal, with both rows still there.
+			if !errors.Is(err, momo.ErrUnsupported) {
+				t.Fatalf("DELETE RETURNING without the capability = %v, want ErrUnsupported", err)
+			}
+			if n, err := momo.Select[delNote](db).Count(ctx); err != nil || n != 2 {
+				t.Fatalf("rows after refused delete = %d, %v; want 2", n, err)
+			}
+			return
+		}
 		if err != nil {
 			t.Fatal(err)
 		}

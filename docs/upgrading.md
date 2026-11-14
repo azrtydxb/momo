@@ -9,10 +9,10 @@ later releases can break more.
 
 No edit is needed in your code. Several calls that returned `ErrUnsupported` on
 some dialects now return results (`DistinctOn` on SQLite, MySQL and MariaDB,
-`DELETE ... USING` and mixed `DEFAULT` rows in a multi-row insert on SQLite, and
-the `advisory` session functions on MySQL and MariaDB), so code that relied on
-the error (a fallback branch, a test that expects the refusal) now takes the
-success path.
+`DELETE ... USING` and mixed `DEFAULT` rows in a multi-row insert on SQLite,
+`Delete(...).Returning(...)` on MariaDB, and the `advisory` session functions on
+MySQL and MariaDB), so code that relied on the error (a fallback branch, a test
+that expects the refusal) now takes the success path.
 
 ### `DELETE ... USING` runs on SQLite
 
@@ -95,6 +95,20 @@ What to check:
   join that selects two columns of the same name works on MySQL too.
 - An `As` alias is checked as everywhere else: an empty, malformed or
   over-long alias is `ErrValidation` on every dialect.
+
+### `DELETE ... RETURNING` on MariaDB
+
+`Delete(...).Returning(...)`, `ReturningAll` and `DeleteQuery.One` on MariaDB
+now run `DELETE ... RETURNING` (MariaDB 10.0.5 or later), through the new
+`DeleteReturning` capability of the MariaDB dialect.
+
+Three cases keep the refusal. MySQL has no `DELETE ... RETURNING`, so a delete
+with `Returning` there is still `ErrUnsupported`, and the message names MariaDB
+as the alternative. A `Delete` with `Using` is a multi-table `DELETE`, which
+MariaDB refuses with `RETURNING`, so that combination is `ErrUnsupported` on
+the MySQL family. `UPDATE ... RETURNING` does not exist on MariaDB and stays
+`ErrUnsupported`. `INSERT ... RETURNING` on MariaDB is unchanged. See
+[MySQL and MariaDB](mysql.md#capabilities).
 
 ### Advisory session locks on MySQL and MariaDB
 

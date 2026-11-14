@@ -41,6 +41,7 @@ func TestCapabilityMatrixMatchesDialect(t *testing.T) {
 	for name, v := range map[string][2]bool{
 		"Returning":        {my.Returning, ma.Returning},
 		"InsertReturning":  {my.InsertReturning, ma.InsertReturning},
+		"DeleteReturning":  {my.DeleteReturning, ma.DeleteReturning},
 		"OnConflict":       {my.OnConflict, ma.OnConflict},
 		"OnDuplicateKey":   {my.OnDuplicateKey, ma.OnDuplicateKey},
 		"NullsOrdering":    {my.NullsOrdering, ma.NullsOrdering},

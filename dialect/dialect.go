@@ -52,6 +52,7 @@ type Dialect struct {
 
 	Returning        bool // INSERT/UPDATE/DELETE ... RETURNING (SQLite >= 3.35)
 	InsertReturning  bool // INSERT ... RETURNING only (MariaDB >= 10.5); Returning stays false there
+	DeleteReturning  bool // DELETE ... RETURNING only (MariaDB >= 10.0.5, not with a multi-table DELETE); UPDATE has none there
 	OnConflict       bool // INSERT ... ON CONFLICT
 	OnDuplicateKey   bool // INSERT ... ON DUPLICATE KEY UPDATE
 	Locking          bool // SELECT ... FOR UPDATE / FOR SHARE / SKIP LOCKED / NOWAIT

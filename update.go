@@ -438,7 +438,7 @@ func (u UpdateQuery[T]) render(b *Builder) {
 			appendAnd(b, where)
 		}
 	})
-	renderWriteReturning(b, u.meta, u.returning, len(u.from) > 0, func(col string) error {
+	renderWriteReturning(b, u.meta, u.returning, len(u.from) > 0, false, func(col string) error {
 		return u.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, u.meta.Table))
 	})
 }

@@ -113,6 +113,7 @@ The rows below are checked against `dialect.MySQLFlavor` by
 | ---------------- | ----- | ---------- |
 | Returning        | no    | no         |
 | InsertReturning  | no    | yes        |
+| DeleteReturning  | no    | yes        |
 | OnConflict       | no    | no         |
 | OnDuplicateKey   | yes   | yes        |
 | NullsOrdering    | no    | no         |
@@ -131,11 +132,14 @@ features work on MySQL and MariaDB through emulation (see
 [Emulated features](#emulated-features)), so the table says `no` while
 `momo.ILike`, `NullsFirst` and `NullsLast` run.
 
-`Returning` is the UPDATE and DELETE form. MariaDB 11.8 can return rows from an
-INSERT only (`INSERT ... RETURNING`), which is why it has `InsertReturning`
-set while `Returning` stays false: `Returning` on an insert works on MariaDB,
-and on an update or delete it is `ErrUnsupported` on both servers. MySQL has
-no `RETURNING` at all.
+`Returning` is the form every statement has. MariaDB returns rows from an
+INSERT (`InsertReturning`, 10.5 or later) and from a single-table DELETE
+(`DeleteReturning`, 10.0.5 or later), but not from an UPDATE, which is why
+`Returning` stays false: `Returning` on an insert or a delete works on MariaDB,
+and on an update it is `ErrUnsupported` on both servers. A `Delete` with
+`Using` is a multi-table DELETE, which MariaDB refuses with `RETURNING`, so
+that combination is `ErrUnsupported` too. MySQL has no `RETURNING` at all; the
+error for a delete names MariaDB as the alternative.
 
 ## Emulated features
 

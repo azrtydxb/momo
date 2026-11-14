@@ -1317,9 +1317,10 @@ return rows2.Err()
   `InsertQuery.One` is for a single-row insert: a multi-row `Models` insert is
   `ErrValidation` (use `Rows`). `AfterLoad` runs before the write commits, so an
   `AfterLoad` error rolls the write back, unlike `SelectQuery.One`. MySQL returns
-  `ErrUnsupported`; on MariaDB only insert has `RETURNING` in momo, so `UpdateQuery.One`
-  and `DeleteQuery.One` return `ErrUnsupported` (momo has no `RETURNING` form
-  for MariaDB `UPDATE` and `DELETE`).
+  `ErrUnsupported`; on MariaDB insert and a single-table delete have `RETURNING`,
+  so `UpdateQuery.One` returns `ErrUnsupported` there (MariaDB has no
+  `UPDATE ... RETURNING`), and so does a `DeleteQuery` with `Using` (MariaDB
+  refuses `RETURNING` on a multi-table `DELETE`).
 - A `ReadOnly` / `identity` / `serial` / auto-increment column is never written by
   `InsertQuery.Model`, and a non-zero value in its struct field is DROPPED SILENTLY: the
   database generates a new value. To keep the value (an import, a backfill, a receipt number

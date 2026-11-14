@@ -977,6 +977,25 @@ Decision (2026-11-14, integrator): as above.
 
 Decision (2026-11-14, integrator): as above.
 
+## Parity: DELETE ... RETURNING on MariaDB (2026-11-14, integrator)
+
+- **Capability:** a new `dialect.Dialect.DeleteReturning` flag, set on the
+  MariaDB flavor only, next to `InsertReturning`. `Returning` stays false there
+  because UPDATE has no RETURNING on MariaDB. MariaDB supports
+  `DELETE ... RETURNING` from 10.0.5 and CI runs 11.8, so no version probe is
+  needed (the dialect already assumes 10.5 or later for the insert form).
+- **Gate:** `renderWriteReturning` takes a delete flag and accepts the clause
+  when `Returning` or, for a delete, `DeleteReturning` holds. MySQL keeps
+  `ErrUnsupported`, and the delete message names MariaDB as the alternative.
+- **Multi-table delete:** MariaDB rejects RETURNING on a multi-table DELETE, so
+  a `Delete` with `Using` and `Returning` is `ErrUnsupported` on the MySQL
+  family. A source column in the list was already refused outside PostgreSQL.
+- **INSERT ... RETURNING:** already enabled on MariaDB (`InsertReturning`, used
+  by the identity read-back), so this change leaves it alone.
+- **Tests:** golden SQL per flavor, the Using refusal and the UPDATE refusal as
+  unit tests; `testopen.EachMySQL` asserts the returned rows on mariadb118 and
+  the refusal, with the rows left in place, on mysql84 and mysql97.
+
 ## Parity: advisory session locks on MySQL and MariaDB (2026-11-14, integrator)
 
 - **API:** the existing `advisory` session functions (`Lock`, `TryLock`,
