@@ -302,6 +302,14 @@ func Contains[T any](c momo.Expression[types.JSON[T]], v any) momo.Predicate {
 		case dialect.MySQL:
 			b.WriteString("JSON_CONTAINS(")
 			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			if b.Dialect().Flavor == dialect.FlavorMariaDB {
+				// MariaDB has no JSON target in CAST (a syntax error), and its
+				// JSON_CONTAINS takes the candidate as JSON text.
+				b.WriteString(", ")
+				b.ArgFor(fl, string(enc))
+				b.WriteString(")")
+				break
+			}
 			b.WriteString(", CAST(")
 			b.ArgFor(fl, string(enc))
 			b.WriteString(" AS JSON))")
