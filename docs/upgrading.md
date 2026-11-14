@@ -70,6 +70,18 @@ passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and `momo generate` without `--from-db`
 is unchanged.
 
+### MariaDB fixes
+
+Two calls that failed on MariaDB now work.
+
+- `jsonop.Contains` on MariaDB sent `JSON_CONTAINS(col, CAST(? AS JSON))`,
+  which MariaDB rejects (error 1064). It now passes the candidate as JSON text,
+  `JSON_CONTAINS(col, ?)`. MySQL keeps the `CAST`, which it needs.
+- `timeop.AddInterval` and `timeop.SubInterval` over a bound time
+  (`momo.Value(t)`) on MariaDB returned text that the driver could not read as a
+  time. The bound operand is now `CAST(? AS DATETIME(6))` on MySQL and MariaDB,
+  so the call returns a `DATETIME`. Column operands render as before.
+
 ## Upgrading to 0.11.0
 
 Two changes can need an edit in your code: an explicit `updated_at` in
