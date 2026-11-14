@@ -86,7 +86,8 @@ func planFile(dir string, f File, overwrite bool) (Action, error) {
 	case err != nil:
 		return Action{}, err
 	}
-	if bytes.Equal(existing, f.Content) {
+	// A CRLF copy (core.autocrlf checkout) of the current file is current.
+	if bytes.Equal(existing, f.Content) || bytes.Equal(bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n")), f.Content) {
 		a.Kind, a.Content = ActionUnchanged, nil
 		return a, nil
 	}
