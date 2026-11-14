@@ -23,8 +23,11 @@ type FilteredAgg[T any] struct {
 }
 
 // Filter restricts the rows the aggregate sees: COUNT(*) FILTER (WHERE p).
-// PostgreSQL and SQLite support it; MySQL has no FILTER clause and fails the
-// build with ErrUnsupported (write SUM(CASE WHEN ...) there).
+// PostgreSQL and SQLite render the FILTER clause. MySQL and MariaDB have none,
+// so the predicate moves into the argument: SUM(CASE WHEN p THEN x END), and
+// COUNT(*) becomes COUNT(CASE WHEN p THEN 1 END). The result is the same,
+// because every aggregate of Agg skips NULLs. p is rendered once per argument
+// of the call, so a bound value in p appears there that many times, in order.
 func (a Agg[T]) Filter(p Predicate) FilteredAgg[T] {
 	f := FilteredAgg[T]{agg: a, where: p}
 	f.exprOps = selfOps[T](f)
@@ -43,13 +46,19 @@ func (FilteredAgg[T]) resultType() T { var z T; return z }
 
 // AppendSQL writes the aggregate and its FILTER clause to b.
 func (f FilteredAgg[T]) AppendSQL(b *Builder) {
+	if b.d.Name == dialect.MySQL && f.where != nil {
+		f.agg.fn.appendFiltered(b, f.where)
+		return
+	}
 	f.agg.AppendSQL(b)
 	appendFilter(b, f.where)
 }
 
 // appendFilter renders " FILTER (WHERE p)". A nil predicate fails the build
-// with ErrValidation instead of silently leaving the aggregate unfiltered;
-// MySQL has no FILTER clause.
+// with ErrValidation instead of silently leaving the aggregate unfiltered.
+// MySQL has no FILTER clause, so it fails there with ErrUnsupported; a caller
+// that can rewrite the aggregate arguments does so instead (FilteredAgg and
+// agg.Call.Filter render CASE WHEN p THEN x END).
 func appendFilter(b *Builder, p Predicate) {
 	if p == nil {
 		b.SetErr(newError(ErrValidation, "build", "", errors.New("Filter needs a predicate")))

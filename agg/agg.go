@@ -112,8 +112,14 @@ func (a Call[T]) WithinGroup(o ...momo.Order) Call[T] {
 
 // Filter restricts the rows the aggregate sees: agg(...) FILTER (WHERE p),
 // rendered after any WITHIN GROUP. It can be combined with OrderBy in either
-// order: String(...).OrderBy(...).Filter(p). PostgreSQL and SQLite support
-// it; MySQL fails the build with ErrUnsupported.
+// order: String(...).OrderBy(...).Filter(p). PostgreSQL and SQLite render the
+// FILTER clause. MySQL and MariaDB have none, so the predicate moves into the
+// arguments, agg(CASE WHEN p THEN x END), which is exact for the aggregates
+// that skip NULLs: String, and Func over COUNT, SUM, AVG, MIN, MAX and the
+// STD and VAR family. p is rendered once per argument, so a bound value in p
+// appears that many times, in order. The aggregates that keep NULLs (JSONB,
+// and any other Func) fail the build with ErrUnsupported there, because the
+// rewrite would add a NULL element per filtered-out row.
 func (a Call[T]) Filter(p momo.Predicate) Call[T] {
 	a.spec.filter, a.spec.filtered = p, true
 	return newCall[T](a.spec)
@@ -139,21 +145,70 @@ func appendOrders(b *momo.Builder, orders []momo.Order) {
 }
 
 func (s spec) appendArgs(b *momo.Builder) {
+	emulate := s.emulateFilter(b)
 	for i, a := range s.args {
 		if i > 0 {
 			b.WriteString(", ")
+		}
+		if emulate {
+			b.WriteString("CASE WHEN ")
+			s.filter.AppendSQL(b)
+			b.WriteString(" THEN ")
 		}
 		if e, ok := a.(momo.Expr); ok {
 			e.AppendSQL(b)
 		} else {
 			b.Arg(a)
 		}
+		if emulate {
+			b.WriteString(" END")
+		}
 	}
 }
 
+// emulateFilter reports whether the FILTER predicate is rewritten into the
+// arguments of the call, which is how MySQL and MariaDB, having no FILTER
+// clause, get the same result: agg(CASE WHEN p THEN x END).
+func (s spec) emulateFilter(b *momo.Builder) bool {
+	return s.filtered && s.filter != nil && b.Dialect().Name == dialect.MySQL
+}
+
+// filterSkipsNull names the generic aggregates that skip NULL inputs, for
+// which agg(CASE WHEN p THEN x END) equals agg(x) FILTER (WHERE p).
+var filterSkipsNull = map[string]bool{
+	"count": true, "sum": true, "avg": true, "min": true, "max": true,
+	"std": true, "stddev": true, "stddev_pop": true, "stddev_samp": true,
+	"variance": true, "var_pop": true, "var_samp": true,
+}
+
+// checkEmulatedFilter refuses the aggregates for which the CASE rewrite would
+// change the result, because they keep NULL inputs: JSON_ARRAYAGG would gain a
+// null element for every filtered-out row. A generic aggregate is refused
+// unless it is known to skip NULLs. It records the build error and reports
+// false when the filter cannot be emulated.
+func (s spec) checkEmulatedFilter(b *momo.Builder) bool {
+	switch {
+	case s.ordered || len(s.within) > 0 || s.kind == kindArray:
+		return true // appendCall reports these as unsupported on MySQL
+	case s.kind == kindJSON:
+		b.Unsupported("aggregate FILTER on a JSON array aggregate (JSON_ARRAYAGG keeps NULLs, so the CASE WHEN rewrite would add a null element per filtered-out row; filter in a subquery or WHERE instead)")
+		return false
+	case s.kind == kindGeneric && !filterSkipsNull[strings.ToLower(s.name)]:
+		b.Unsupported("aggregate FILTER on " + s.name + " (only COUNT, SUM, AVG, MIN, MAX and the STD and VAR family are known to skip NULLs, which the CASE WHEN rewrite needs; filter in a subquery or WHERE instead)")
+		return false
+	case len(s.args) == 0:
+		b.Unsupported("aggregate FILTER on a call with no argument")
+		return false
+	}
+	return true
+}
+
 func (s spec) appendSQL(b *momo.Builder) {
+	if s.emulateFilter(b) && !s.checkEmulatedFilter(b) {
+		return
+	}
 	s.appendCall(b)
-	if s.filtered {
+	if s.filtered && !s.emulateFilter(b) {
 		b.AppendFilter(s.filter)
 	}
 }

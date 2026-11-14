@@ -285,7 +285,9 @@ func (b *Builder) Unsupported(feature string) {
 // AppendFilter writes " FILTER (WHERE p)" for an aggregate call that was just
 // rendered. A nil predicate fails the build with ErrValidation instead of
 // silently leaving the aggregate unfiltered; MySQL has no FILTER clause and
-// fails with ErrUnsupported. AppendFilter is an extension point; see Ops.
+// fails with ErrUnsupported, so an aggregate that wants MySQL support rewrites
+// its own arguments to CASE WHEN p THEN x END instead of calling this.
+// AppendFilter is an extension point; see Ops.
 func (b *Builder) AppendFilter(p Predicate) { appendFilter(b, p) }
 
 // The unexported spellings below are the in-package names of the extension

@@ -973,6 +973,16 @@ PostgreSQL, pass `ILike` a pattern built as a percent sign, the user text run
 through `momo.EscapeLike`, and another percent sign. A user typing `%` then
 matches only a literal percent sign, never every row.
 
+`ILike` works on every dialect, but it is emulated off PostgreSQL: SQLite,
+MySQL and MariaDB render `LOWER(x) LIKE LOWER(?) ESCAPE '!'`. The results can
+differ from PostgreSQL on non-ASCII text. SQLite folds ASCII letters only, so
+`ILike` does not match `Ä` against `ä` there. MySQL and MariaDB fold with
+`LOWER`, but the comparison follows the column collation, and the default
+`_ai_ci` collations are also accent-insensitive (`a` matches `ä`), which
+PostgreSQL `ILIKE` is not. Momo forces no collation. The `LOWER` around the
+column means an index on the column is not used. `momo.Not(momo.ILike(...))`
+is NOT ILIKE.
+
 A backslash is not an escape character. Without an ESCAPE clause PostgreSQL
 and MySQL treat `\` as the LIKE escape; in momo a pattern such as `\%` means
 a literal backslash followed by a wildcard. Replace hand-escaped patterns with
@@ -1008,6 +1018,19 @@ SQLite), `SelectUnion[T]` (runs a union at the top level with an outer
 context; it returns `iter.Seq2[T, error]`). `Count` and `Exists` wrap the whole
 statement, so they keep a lock clause and lock the rows they count. Aggregates: `momo.CountAll`,
 `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
+
+An aggregate takes `Filter(p)` (`momo.Agg.Filter`, `agg.Call.Filter`) on every
+dialect. PostgreSQL and SQLite render `agg(x) FILTER (WHERE p)`. MySQL and
+MariaDB have no FILTER, so momo renders `agg(CASE WHEN p THEN x END)` and
+`COUNT(CASE WHEN p THEN 1 END)` for `CountAll`, which gives the same result for
+every aggregate that skips NULLs: `Sum`, `Avg`, `Min`, `Max`, `CountOf`,
+`CountDistinct`, `agg.String`, and `agg.Func` over `count`, `sum`, `avg`, `min`,
+`max` and the `std` and `var` family. It also works as a window function with
+`Over`. A value that `p` binds appears once per argument of the call. An
+aggregate that keeps NULLs (`agg.JSONB`, which is JSON_ARRAYAGG there, or any
+other `agg.Func`) is `ErrUnsupported` on MySQL and MariaDB with a message that
+names the reason, because the rewrite would add a NULL element per
+filtered-out row; filter in `Where` or a subquery.
 
 Advisory locks (PostgreSQL, inside a transaction), in the package
 `github.com/azrtydxb/momo/advisory`: `advisory.XactLock(ctx, tx, key)` waits
@@ -1059,11 +1082,22 @@ mismatch. Otherwise group by position or alias in an outer query. Keyset paginat
 an alias is not valid in WHERE or inside a window ORDER BY; order by the
 expression itself there.
 
+`NullsFirst` and `NullsLast` on any `Order` work on every dialect. MySQL and
+MariaDB have no NULLS clause, so momo renders `(e IS NULL) DESC, e ASC` for
+`NullsFirst` and `(e IS NULL) ASC, e ASC` for `NullsLast`, which orders exactly
+as PostgreSQL does. The expression `e` is rendered twice, so a value it binds
+appears twice among the arguments, in order. `After` over a nullable key is
+`ErrUnsupported` on every dialect, so an emulated NULLS term never meets a
+cursor over NULLs. The outer `OrderBy` of a `SelectUnion` with `NullsFirst` or
+`NullsLast` is `ErrUnsupported` on MySQL and MariaDB. A `Distinct` select that
+orders by an emulated expression missing from its select list can be rejected by
+MySQL (error 3065, with `ONLY_FULL_GROUP_BY`).
+
 A predicate orders through `momo.OrderByPredicate(p)`, which has `Asc()` and
 `Desc()` and renders `ORDER BY (p)`: `OrderBy(momo.OrderByPredicate(t.BuiltinKey.IsNull()).Asc(), t.Name.Asc())`
 lists rows with a `builtin_key` first. False sorts before true, so `(col IS NULL) ASC` puts NULLs
 last on every dialect. A predicate has no `Asc` method of its own, because `Predicate` is an interface.
-`NullsFirst` and `NullsLast` on it are `ErrUnsupported` on MySQL and MariaDB. `After` over a
+`NullsFirst` and `NullsLast` on it work on every dialect. `After` over a
 predicate key is `ErrValidation`, and so is a predicate in the outer `OrderBy` of a `SelectUnion`
 (unqualified result columns only). `OrderByPredicate(nil)` is `ErrValidation`; an `agg` call's
 `OrderBy` needs `.Asc()` or `.Desc()`.
@@ -1629,7 +1663,9 @@ values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQ
 - `Order.AppendOrder`: renders one ORDER BY item (`expr ASC|DESC [NULLS ...]`) for
   an expression that carries its own ordering, such as `agg.Call.OrderBy`.
 - `Builder.AppendFilter`: writes ` FILTER (WHERE p)` after an aggregate call
-  and fails the build for a nil predicate or on MySQL.
+  and fails the build for a nil predicate or on MySQL. MySQL has no FILTER, so an
+  aggregate that wants MySQL support rewrites its own arguments to
+  `CASE WHEN p THEN x END` instead, as `momo.Agg.Filter` and `agg.Call.Filter` do.
 - `momo.WindowOf[T]`: turns your aggregate call into a window function,
   `call OVER (...)`; `agg.Call.Over` is built on it.
 - `Builder.MarkSensitive`: call it from an expression that writes a sensitive

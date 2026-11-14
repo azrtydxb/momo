@@ -514,3 +514,34 @@ n DAY)` and `DATEDIFF(a, b)`. SQLite, which stores a date as `YYYY-MM-DD`
   `ErrValidation`.
 
 Decision (2026-11-13, integrator): as above.
+
+## Parity: ILIKE, NULLS ordering and FILTER emulation (2026-11-14, integrator)
+
+- **Question:** momo refused `ILike` on SQLite, MySQL and MariaDB, NULLS
+  FIRST/LAST on MySQL and MariaDB, and the aggregate FILTER on MySQL and
+  MariaDB with `ErrUnsupported`. Emulate them, or keep refusing?
+- **ILike:** the old refusal was a deliberate choice, made so as not to imply
+  Unicode case folding SQLite does not perform. Decided to implement it anyway
+  and document the difference prominently in the `momo.ILike` doc comment: SQLite,
+  MySQL and MariaDB render `LOWER(x) LIKE LOWER(?) ESCAPE '!'`. SQLite folds
+  ASCII only; MySQL follows the column collation; no `_ci` or `_ai` collation is
+  forced, because `_ai_` is accent-insensitive and PostgreSQL `ILIKE` is not; an
+  index on the column is not used.
+- **NULLS FIRST/LAST on MySQL:** `(e IS NULL) DESC|ASC, e ASC|DESC`, exact. `e`
+  renders twice, so its bound arguments appear twice, in order. `After` over a
+  nullable key stays `ErrUnsupported` (unchanged); the outer `OrderBy` of a
+  union with a NULLS term is `ErrUnsupported` on MySQL, because an expression
+  is not allowed there on every dialect.
+- **FILTER on MySQL:** `agg(CASE WHEN p THEN x END)` and
+  `COUNT(CASE WHEN p THEN 1 END)`, exact for aggregates that skip NULLs, also as
+  window functions. Aggregates that keep NULLs (`agg.JSONB`, array aggregates,
+  any `agg.Func` outside count, sum, avg, min, max and the std and var family)
+  stay `ErrUnsupported` with a message that gives the reason.
+- **Flags:** `dialect.Dialect.ILike` and `NullsOrdering` keep meaning native
+  syntax, not availability, so they stay false on MySQL (`ILike` also on
+  SQLite) while the features work. The generated capability table labels the two
+  rows as native, and the feature table says what is emulated.
+- **Breaking:** none in the type system. Code that relied on `ErrUnsupported`
+  from these calls now gets results.
+
+Decision (2026-11-14, integrator): as above.

@@ -70,11 +70,43 @@ The rows below are checked against `dialect.MySQLFlavor` by
 | Vector.Metrics   | none  | l2, cosine |
 | Vector.Indexes   | none  | vector     |
 
+`NullsOrdering` and `ILike` mean native syntax, not availability. Both
+features work on MySQL and MariaDB through emulation (see
+[Emulated features](#emulated-features)), so the table says `no` while
+`momo.ILike`, `NullsFirst` and `NullsLast` run.
+
 `Returning` is the UPDATE and DELETE form. MariaDB 11.8 can return rows from an
 INSERT only (`INSERT ... RETURNING`), which is why it has `InsertReturning`
 set while `Returning` stays false: `Returning` on an insert works on MariaDB,
 and on an update or delete it is `ErrUnsupported` on both servers. MySQL has
 no `RETURNING` at all.
+
+## Emulated features
+
+Three PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
+equivalent instead of returning `ErrUnsupported`.
+
+- **ILIKE.** `momo.ILike(col, pattern)` renders
+  `LOWER(col) LIKE LOWER(?) ESCAPE '!'`, and `momo.Not(momo.ILike(...))` negates
+  it. `LOWER` folds Unicode letters by the character set, but the `LIKE`
+  comparison follows the column collation. The default collations of MySQL 8.4
+  and 9.7 (`utf8mb4_0900_ai_ci`) and MariaDB 11.8 are accent-insensitive, so `a`
+  matches `ä`, which PostgreSQL `ILIKE` does not. Momo does not force a
+  collation, because the accent-insensitive `_ai_` family is the thing it must
+  not add. Because `LOWER` wraps the column, an index on the column is not
+  used.
+- **NULLS FIRST and NULLS LAST.** `NullsFirst` renders
+  `(e IS NULL) DESC, e ASC|DESC` and `NullsLast` renders
+  `(e IS NULL) ASC, e ASC|DESC`, which orders exactly as PostgreSQL. `e` is
+  rendered twice, so values it binds appear twice among the arguments, in
+  order. `After` over a nullable key stays `ErrUnsupported`, and the outer
+  `OrderBy` of a union with a NULLS term is `ErrUnsupported`.
+- **Aggregate FILTER.** `agg(x) FILTER (WHERE p)` renders
+  `agg(CASE WHEN p THEN x END)`, and `COUNT(*) FILTER (WHERE p)` renders
+  `COUNT(CASE WHEN p THEN 1 END)`. It is exact for `Sum`, `Avg`, `Min`, `Max`,
+  `CountOf`, `CountDistinct` and `agg.String`, and works with `Over`. A call
+  that keeps NULLs (`agg.JSONB`, any `agg.Func` outside `count`, `sum`, `avg`,
+  `min`, `max` and the `std` and `var` family) stays `ErrUnsupported`.
 
 ## Writes
 

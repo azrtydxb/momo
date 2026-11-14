@@ -5,6 +5,53 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.12.0
+
+Nothing needs an edit. Three calls that returned `ErrUnsupported` on some
+dialects now return results, so code that relied on the error (a fallback
+branch, a test that expects the refusal) now takes the success path. Check the
+semantic differences below before you drop a workaround.
+
+### `ILike` on SQLite, MySQL and MariaDB
+
+`momo.ILike` no longer fails on SQLite, MySQL and MariaDB. They render
+`LOWER(x) LIKE LOWER(?) ESCAPE '!'`; `momo.Not(momo.ILike(...))` is NOT ILIKE.
+PostgreSQL is unchanged. The results are not identical to PostgreSQL:
+
+- SQLite folds ASCII letters only, so `Ä` does not match `ä`. PostgreSQL folds
+  it. This is the reason the call was refused before.
+- MySQL and MariaDB fold with `LOWER`, but the comparison follows the column
+  collation. Momo does not add a `_ci` or `_ai` collation: the default
+  `_ai_ci` collations are accent-insensitive (`a` matches `ä`), which
+  PostgreSQL `ILIKE` is not.
+- An index on the column is not used, because the column is inside `LOWER`.
+
+The capability flags `dialect.Dialect.ILike` and `dialect.Dialect.NullsOrdering`
+keep meaning native syntax: they stay false on MySQL (and `ILike` on SQLite)
+while the features work.
+
+### `NullsFirst` and `NullsLast` on MySQL and MariaDB
+
+An explicit NULLS placement, on a column, an `Order` from `momo.Asc` or
+`momo.Desc`, or `momo.OrderByPredicate`, renders `(e IS NULL) DESC, e ASC` or
+`(e IS NULL) ASC, e ASC` (with the direction of the item), which orders exactly
+as PostgreSQL. The expression is rendered twice, so a value it binds appears
+twice among the arguments, in order. `After` over a nullable key was and is
+`ErrUnsupported`. The outer `OrderBy` of a `SelectUnion` with a NULLS term is
+`ErrUnsupported` on MySQL and MariaDB. If you wrote `OrderByPredicate` as a
+workaround, it still works and you can switch to `NullsLast`.
+
+### Aggregate `Filter` on MySQL and MariaDB
+
+`momo.Agg.Filter` and `agg.Call.Filter` render `agg(CASE WHEN p THEN x END)`,
+and `COUNT(*)` becomes `COUNT(CASE WHEN p THEN 1 END)`. This is exact for the
+aggregates that skip NULLs: `Sum`, `Avg`, `Min`, `Max`, `CountOf`,
+`CountDistinct`, `agg.String`, and `agg.Func` over `count`, `sum`, `avg`,
+`min`, `max` and the `std` and `var` family, also with `Over`. A call that
+keeps NULLs (`agg.JSONB`, any other `agg.Func`) is still `ErrUnsupported` there,
+with a message that says why. `Builder.AppendFilter` itself still fails on
+MySQL: a custom aggregate rewrites its own arguments.
+
 ## Upgrading to 0.11.0
 
 Two changes can need an edit in your code: an explicit `updated_at` in
@@ -709,8 +756,8 @@ interface, so it has no `Asc` method of its own: write
 `momo.OrderByPredicate(template.BuiltinKey.IsNotNull()).Desc()`. Nothing
 existing changes.
 
-Limits. `NullsFirst` and `NullsLast` on a predicate are `ErrUnsupported` on
-MySQL and MariaDB, as they are on a column, because momo does not emulate them.
+Limits. `NullsFirst` and `NullsLast` on a predicate were `ErrUnsupported` on
+MySQL and MariaDB in 0.11.0, as they were on a column; 0.12.0 emulates them.
 `After` over a predicate key is `ErrValidation`, because a cursor over a value
 that can be NULL skips or repeats rows. A predicate in the outer `OrderBy` of a
 `SelectUnion` is `ErrValidation`, because that clause allows unqualified result

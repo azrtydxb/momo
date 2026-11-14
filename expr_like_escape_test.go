@@ -25,6 +25,10 @@ func TestLikeFormsCarryEscapeClausePerDialect(t *testing.T) {
 		{"like sqlite", dialect.SQLite, momo.Like(DocTitle, `a!%b%`), `"documents"."title" LIKE ? ESCAPE '!'`},
 		{"like mysql", dialect.MySQL, momo.Like(DocTitle, `a!%b%`), "`documents`.`title` LIKE ? ESCAPE '!'"},
 		{"ilike pg", dialect.Postgres, momo.ILike(DocTitle, `a!%b%`), `"documents"."title" ILIKE $1 ESCAPE '!'`},
+		{"ilike sqlite", dialect.SQLite, momo.ILike(DocTitle, `a!%b%`), `LOWER("documents"."title") LIKE LOWER(?) ESCAPE '!'`},
+		{"ilike mysql", dialect.MySQL, momo.ILike(DocTitle, `a!%b%`), "LOWER(`documents`.`title`) LIKE LOWER(?) ESCAPE '!'"},
+		{"not ilike sqlite", dialect.SQLite, momo.Not(momo.ILike(DocTitle, `x`)), `NOT (LOWER("documents"."title") LIKE LOWER(?) ESCAPE '!')`},
+		{"not ilike mysql", dialect.MySQL, momo.Not(momo.ILike(DocTitle, `x`)), "NOT (LOWER(`documents`.`title`) LIKE LOWER(?) ESCAPE '!')"},
 		{"not like pg", dialect.Postgres, momo.Not(momo.Like(DocTitle, `x`)), `NOT ("documents"."title" LIKE $1 ESCAPE '!')`},
 		{"not ilike pg", dialect.Postgres, momo.Not(momo.ILike(DocTitle, `x`)), `NOT ("documents"."title" ILIKE $1 ESCAPE '!')`},
 	}
@@ -40,16 +44,6 @@ func TestLikeFormsCarryEscapeClausePerDialect(t *testing.T) {
 		if len(got.Args) != 1 {
 			t.Errorf("%s: args = %v, want the pattern bound once", c.name, got.Args)
 		}
-	}
-}
-
-// Catches: ILike silently dropping its guard on a dialect without ILIKE after
-// the ESCAPE change.
-func TestILikeStillUnsupportedOnSQLite(t *testing.T) {
-	db := momo.New(fakedriver.New(dialect.SQLite))
-	_, err := momo.Select[unitDocument](db).Where(momo.ILike(DocTitle, `x`)).SQL()
-	if !errors.Is(err, momo.ErrUnsupported) {
-		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}
 }
 

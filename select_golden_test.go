@@ -47,8 +47,9 @@ func TestSelectGolden(t *testing.T) {
 		}
 	}
 
-	if _, err := momo.Select[unitDocument](my).OrderBy(DocTitle.Asc().NullsFirst()).SQL(); !errors.Is(err, momo.ErrUnsupported) {
-		t.Errorf("NULLS FIRST on MySQL = %v, want ErrUnsupported", err)
+	got, err := momo.Select[unitDocument](my).OrderBy(DocTitle.Asc().NullsFirst()).SQL()
+	if err != nil || !strings.HasSuffix(got.SQL, "ORDER BY (`documents`.`title` IS NULL) DESC, `documents`.`title` ASC") {
+		t.Errorf("NULLS FIRST on MySQL = %q, %v, want the IS NULL sort key", got.SQL, err)
 	}
 	if _, err := momo.Select[unitDocument](sq).ForUpdate().SQL(); !errors.Is(err, momo.ErrUnsupported) {
 		t.Errorf("FOR UPDATE on SQLite = %v, want ErrUnsupported", err)
@@ -139,13 +140,18 @@ func TestOrderByPredicateLimits(t *testing.T) {
 		}
 	}
 
+	// NULLS placement on a predicate works on MySQL through the emulation.
 	my := momo.New(fakedriver.New(dialect.MySQL))
-	for name, o := range map[string]momo.Order{
-		"nulls first": momo.OrderByPredicate(DocTitle.IsNull()).Asc().NullsFirst(),
-		"nulls last":  momo.OrderByPredicate(DocTitle.IsNull()).Desc().NullsLast(),
+	for name, c := range map[string]struct {
+		o    momo.Order
+		want string
+	}{
+		"nulls first": {momo.OrderByPredicate(DocTitle.IsNull()).Asc().NullsFirst(), "ORDER BY ((`documents`.`title` IS NULL) IS NULL) DESC, (`documents`.`title` IS NULL) ASC"},
+		"nulls last":  {momo.OrderByPredicate(DocTitle.IsNull()).Desc().NullsLast(), "ORDER BY ((`documents`.`title` IS NULL) IS NULL) ASC, (`documents`.`title` IS NULL) DESC"},
 	} {
-		if _, err := momo.Select[unitDocument](my).OrderBy(o).SQL(); !errors.Is(err, momo.ErrUnsupported) {
-			t.Errorf("mysql %s on a predicate = %v, want ErrUnsupported", name, err)
+		got, err := momo.Select[unitDocument](my).OrderBy(c.o).SQL()
+		if err != nil || !strings.HasSuffix(got.SQL, c.want) {
+			t.Errorf("mysql %s on a predicate = %q, %v, want suffix %q", name, got.SQL, err, c.want)
 		}
 	}
 }

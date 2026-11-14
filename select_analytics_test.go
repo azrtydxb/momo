@@ -343,7 +343,6 @@ func TestAnalyticsErrors(t *testing.T) {
 		{"aliased partition expression", win(pg, momo.CountAll().Over(momo.Over().PartitionBy(momo.As[int64](DocTenantID, "x")))), momo.ErrValidation},
 		{"groups frame on mysql", win(my, momo.CountAll().Over(ord.Groups(momo.UnboundedPreceding(), momo.CurrentRow()))), momo.ErrUnsupported},
 		{"filter without predicate", win(pg, momo.CountAll().Filter(nil)), momo.ErrValidation},
-		{"filter on mysql", win(my, momo.CountAll().Filter(DocTitle.Eq("x"))), momo.ErrUnsupported},
 
 		{"distinct on without order by", func() error {
 			_, err := momo.Select[unitDocument](pg).DistinctOn(DocTenantID).SQL()

@@ -3,9 +3,10 @@
 package dialect
 
 // mysqlBase holds the capabilities shared by both flavors. RETURNING,
-// ON CONFLICT, NULLS FIRST/LAST, ILIKE, MERGE and transactional DDL are
-// absent: requesting NULLS FIRST or LAST fails with ErrUnsupported, and
-// callers that need case-insensitive matching write LOWER() themselves.
+// ON CONFLICT, MERGE and transactional DDL are absent. NULLS FIRST/LAST and
+// ILIKE are absent as native syntax, which is what NullsOrdering and ILike
+// mean: momo emulates them (an IS NULL sort key, LOWER(x) LIKE LOWER(?)), so
+// the flags stay false while the features work.
 var mysqlBase = Dialect{
 	Name: MySQL, MaxParams: 65535,
 	OnDuplicateKey: true, Locking: true, DefaultInUpdate: true, DefaultInValues: true,
