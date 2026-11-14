@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.13.0](https://github.com/azrtydxb/momo/compare/v0.12.0...v0.13.0) (2026-11-14)
+
+_More dialect parity: `DistinctOn`, `DELETE ... USING`, mixed `DEFAULT` rows, `DELETE ... RETURNING` and advisory session locks now work beyond PostgreSQL, where the database allows it. No code change is needed to upgrade, but code that relied on `ErrUnsupported` from these calls now takes the success path; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.13.0/docs/upgrading.md). [Changes since 0.12.0](https://github.com/azrtydxb/momo/compare/v0.12.0...v0.13.0)._
+
+### Features
+
+- `DistinctOn` runs on SQLite, MySQL and MariaDB through a `ROW_NUMBER()` window, with PostgreSQL's NULL placement written out for nullable sort columns; `ForUpdate` and `ForShare` with `DistinctOn` stay refused there ([#154](https://github.com/azrtydxb/momo/pull/154))
+- `Delete(...).Using(...)` runs on SQLite as `DELETE ... WHERE EXISTS (...)`, and a multi-row insert whose rows leave different `dbdefault` columns unset is split into consecutive statements in one transaction or savepoint. A `Using` source named like the delete target is now `ErrValidation` on every dialect; alias it to join a table to itself ([#156](https://github.com/azrtydxb/momo/pull/156))
+- `Delete(...).Returning(...)` runs on MariaDB 10.0.5 or later; MySQL keeps `ErrUnsupported` ([#151](https://github.com/azrtydxb/momo/pull/151))
+- **advisory:** `Lock`, `TryLock`, `Unlock` and the text-key forms run on MySQL and MariaDB with `GET_LOCK`, scoped to the current database like a PostgreSQL advisory lock; the transaction-scoped and shared forms stay `ErrUnsupported` there ([#153](https://github.com/azrtydxb/momo/pull/153))
+
 ## [0.12.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0) (2026-11-14)
 
 _The dialect parity release: `momo migrate` and `momo generate --from-db` now run on SQLite, MySQL and MariaDB as well as PostgreSQL, and query features that returned `ErrUnsupported` on some dialects now work on all of them. It also fixes four issues from the NovaCRM and Owl ports. Upgrading needs a code change only where `momo.Avg` is used as an uninstantiated function value, or where `--from-db --schema` is passed on MySQL or MariaDB; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.12.0/docs/upgrading.md). [Changes since 0.11.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0)._
