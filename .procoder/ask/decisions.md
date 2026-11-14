@@ -514,3 +514,22 @@ n DAY)` and `DATEDIFF(a, b)`. SQLite, which stores a date as `YYYY-MM-DD`
   `ErrValidation`.
 
 Decision (2026-11-13, integrator): as above.
+
+## Issue #127: explicit identity values on Insert (2026-11-14, integrator)
+
+- **API:** `InsertQuery.Explicit(cols ...ColumnRef)` is an opt-in that puts the
+  named identity, serial or auto-increment columns into the INSERT column list
+  with the value the source carries. Without it nothing changes: such columns
+  are left out and a non-zero struct value is dropped silently, which the
+  Insert docs now say prominently.
+- **Rendering:** PostgreSQL adds `OVERRIDING SYSTEM VALUE` only when an
+  explicit column is `GENERATED ALWAYS AS IDENTITY` (serial and BY DEFAULT need
+  none). MySQL, MariaDB and SQLite write an ordinary column.
+- **Scope:** Model, Models, Values, ValuesRows, Unnest, chunked bulk, Upsert and
+  OnConflict. A column that is not identity, serial or auto-increment, or not in
+  the model, is `ErrValidation`; so are `FromSelect` and `Copy` with Explicit.
+- **Zero value:** written as-is, because the caller opted in.
+- **Sequence:** the caller advances it (`setval` on PostgreSQL); Momo never
+  calls it, as for the upsert identity path.
+
+Decision (2026-11-14, integrator): as above.

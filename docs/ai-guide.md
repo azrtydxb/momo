@@ -1240,7 +1240,24 @@ return rows2.Err()
   `ErrUnsupported`; on MariaDB only insert has `RETURNING` in momo, so `UpdateQuery.One`
   and `DeleteQuery.One` return `ErrUnsupported` (momo has no `RETURNING` form
   for MariaDB `UPDATE` and `DELETE`).
-- A `ReadOnly` / `identity` column is never written by `InsertQuery.Model`.
+- A `ReadOnly` / `identity` / `serial` / auto-increment column is never written by
+  `InsertQuery.Model`, and a non-zero value in its struct field is DROPPED SILENTLY: the
+  database generates a new value. To keep the value (an import, a backfill, a receipt number
+  held in a non-key `serial` column) name the column in `momo.InsertQuery.Explicit`:
+
+  ```text
+  _, err := momo.Insert[models.Receipt](q).Model(&r).Explicit(receipt.Seq).Exec(ctx)
+  ```
+
+  `Explicit` takes the columns to write with the struct value (or the `Values` / `ValuesRows`
+  assignment), also for `Models`, chunked bulk inserts, `Unnest`, `Upsert` and `OnConflict`.
+  PostgreSQL renders `OVERRIDING SYSTEM VALUE` for a `GENERATED ALWAYS AS IDENTITY` column
+  only; serial and `BY DEFAULT` need no clause, and MySQL, MariaDB and SQLite write an ordinary
+  column. A zero value is written as-is (the caller opted in). A column that is not
+  identity, serial or auto-increment, a column the model does not map, and `FromSelect` or
+  `Copy` are `ErrValidation`. An explicit value does not advance the sequence: run `setval`
+  yourself (Momo never does).
+
 - `InsertQuery.Models([]T{})` (empty) is `ErrValidation`.
 
 Update:
