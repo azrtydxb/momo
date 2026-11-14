@@ -83,6 +83,7 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 | `MaxParams`                                                     | 65535                                            | 32766                                      | 65535                | 65535                |
 | `Returning`                                                     | yes                                              | yes                                        | no                   | no                   |
 | `InsertReturning`                                               | no                                               | no                                         | no                   | yes                  |
+| `DeleteReturning`                                               | no                                               | no                                         | no                   | yes                  |
 | `OnConflict`                                                    | yes                                              | yes                                        | no                   | no                   |
 | `OnDuplicateKey`                                                | no                                               | no                                         | yes                  | yes                  |
 | `Locking`                                                       | yes                                              | no                                         | yes                  | yes                  |
