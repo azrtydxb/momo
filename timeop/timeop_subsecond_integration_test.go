@@ -19,7 +19,7 @@ import (
 // Catches: a lease or TTL of 1500ms rounded to whole seconds, a millisecond
 // unit the server rejects, and a bound millisecond count that is scaled wrong.
 func TestSubSecondIntervalIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedTimeDocs(t, db)
 		at := time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)
 
@@ -70,7 +70,7 @@ func TestSubSecondIntervalIntegration(t *testing.T) {
 // Catches: a difference with its operands swapped, an epoch that loses the
 // fraction, and an interval value that cannot be scanned as seconds.
 func TestTimestampDifferenceIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedTimeDocs(t, db)
 		created := momo.Expression[time.Time](suite.DocCreatedAt)
 		later := timeop.AddDuration(suite.DocCreatedAt, 1500*time.Millisecond)

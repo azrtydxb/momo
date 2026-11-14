@@ -17,6 +17,56 @@ in [capabilities](capabilities.md)).
 No innovation releases are supported. CI runs the shared suites against all
 three servers (the `integration-mysql` job), on every push.
 
+## What runs on a real server
+
+The `integration-mysql` CI job starts one server per row of the table above and
+runs the whole integration suite against it with `MOMO_REQUIRE_INTEGRATION=1`,
+so a server that is missing fails the job instead of skipping the tests.
+Tests that use `testopen.EachWithMySQL` or `testopen.EachMySQL` run on all
+three servers; the plain `testopen.Each` opens PostgreSQL and SQLite only.
+
+Run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8:
+
+- the shared suites: transactions, errors, joins, aggregates, subqueries and
+  CTEs, RETURNING, raw SQL, locking, hints, keyset pagination, writes, soft
+  delete, optimistic lock, upserts and timestamps;
+- `jsonop.Text`, `jsonop.Path`, `jsonop.Root`, `jsonop.Contains`,
+  `jsonop.HasKey` and `jsonop.DeleteKey`, with the build error of
+  `jsonop.Concat` and `jsonop.Set`;
+- window functions (ranking, `Lag`, `Lead`, `FirstValue`, `LastValue`, `Rows`
+  and `Range` frames), the build error for a `Groups` frame, the aggregate
+  `FILTER` clause (rewritten to `CASE WHEN`, with and without `Over` and in
+  `HAVING`), and `LoadPerParentLimit`;
+- keyset pagination over string, descending and mixed keys, `Batches`, and
+  `SelectQuery.Each` and `SelectQuery.Iter`, including an early stop, a query
+  while the cursor is open, a canceled context and a stream inside a `Tx`;
+- typed predicates, row-value comparison, projections, select-list aliases,
+  the `sqlfn` string, CASE, cast and arithmetic helpers, `sqlfn.CurrentDate`,
+  the `agg` aggregates and bulk-insert chunking with `WithMaxParams`;
+- every `timeop` extract field, truncation unit and interval, `timeop.Now`,
+  `timeop.EpochSeconds` and the typed date arithmetic.
+
+`LATERAL` runs on MySQL 8.4 and 9.7, and on MariaDB it is `ErrUnsupported`.
+`CreateGraph` and `FindOrCreate` work on all three (see below), and a test
+checks the stored keys and the found and created cases on each server.
+`SelectQuery.Explain`, the aggregate `FILTER` clause on `agg.JSONB`,
+`agg.Array`, an ordered or distinct `agg.JSONB`, `unnest` and `generate_series` sources and `DISTINCT ON` are `ErrUnsupported`;
+the tests check the error on each server.
+
+Differences the tests pin down:
+
+- a JSON null member extracts as the text `null`, not as SQL NULL, because
+  `JSON_UNQUOTE` turns it into text;
+- `sqlfn.Cast` writes the type name as given, and MySQL and MariaDB cast to
+  `SIGNED`, not `bigint`;
+- `momo.MapRows` returns text columns as `[]byte`, the driver's own type;
+- an aggregate over `JSON_ARRAYAGG` has no defined member order.
+
+Not run on MySQL or MariaDB: the one-million-row heap bound of streaming
+(its seed SQL is PostgreSQL and SQLite only), and the CreateGraph behaviour
+tests of the shared suite whose SQL is written for PostgreSQL alone. The graph writes
+have their own tests in `driver/mysqldriver` and `rel_mysql_integration_test.go`.
+
 ## Connecting
 
 Open the pool with `mysqldriver.Open(dsn, flavor)`, or build the DSN with

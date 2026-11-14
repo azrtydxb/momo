@@ -17,7 +17,7 @@ import (
 // "!" plus a wildcard (PostgreSQL's default escape is a backslash), so an
 // escaped user value matched far more than itself.
 func TestLikeWithEscapedUserInputMatchesLiterally(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := t.Context()
 		seedTitles(t, db, "100%", "100 percent", "a_b", "axb", "wow!", "wow", "Plain")

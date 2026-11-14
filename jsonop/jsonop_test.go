@@ -230,3 +230,29 @@ func TestJSONOperatorsMaskSensitiveColumn(t *testing.T) {
 		}
 	}
 }
+
+// Catches: the MariaDB flavor rendering CAST(? AS JSON), which MariaDB does not
+// parse, or the MySQL flavor losing the cast it needs to treat the bound text
+// as JSON.
+func TestContainsGoldenPerMySQLFlavor(t *testing.T) {
+	for _, c := range []struct {
+		flavor dialect.Flavor
+		want   string
+	}{
+		{dialect.FlavorMySQL, "SELECT COUNT(*) FROM `events` WHERE JSON_CONTAINS(`events`.`after`, CAST(? AS JSON))"},
+		{dialect.FlavorMariaDB, "SELECT COUNT(*) FROM `events` WHERE JSON_CONTAINS(`events`.`after`, ?)"},
+	} {
+		got, err := momo.Select[exprtest.Tally](exprtest.DBFlavor(c.flavor)).
+			From(momo.TableRef{Name: "events"}).Columns(momo.CountAll()).
+			Where(jsonop.Contains(jsonDoc, []string{"a"})).SQL()
+		if err != nil {
+			t.Fatalf("%s: %v", c.flavor, err)
+		}
+		if got.SQL != c.want {
+			t.Errorf("%s:\n got %s\nwant %s", c.flavor, got.SQL, c.want)
+		}
+		if !reflect.DeepEqual(got.Args, []any{`["a"]`}) {
+			t.Errorf("%s: args = %#v", c.flavor, got.Args)
+		}
+	}
+}

@@ -75,6 +75,9 @@ func seedTimeDocs(t *testing.T, db *momo.DB) {
 	if db.Dialect().Name == dialect.SQLite {
 		old = "'2024-03-15 13:45:30.000'"
 	}
+	if db.Dialect().Name == dialect.MySQL {
+		old = "'2024-03-15 13:45:30'" // MariaDB has no UTC offset in a datetime literal
+	}
 	for _, s := range []string{
 		"INSERT INTO documents (tenant_id, title, created_at) VALUES (1, 'old', " + old + ")",
 		"INSERT INTO documents (tenant_id, title" + newCol + ") VALUES (2, 'new'" + newVal + ")",
@@ -108,7 +111,7 @@ func floatOf(t *testing.T, db *momo.DB, tenant int64, e momo.Expr) float64 {
 // Catches: Extract rendering SQL PostgreSQL rejects, numeric results the
 // driver cannot scan into float64, and a wrong field or EPOCH value.
 func TestExtractIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedTimeDocs(t, db)
 		at := time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)
 		// Read the wall clock in UTC explicitly, so the result does not
@@ -130,12 +133,12 @@ func TestExtractIntegration(t *testing.T) {
 				t.Errorf("Extract %s = %v, want %v", c.field, got, c.want)
 			}
 		}
-		if d == dialect.SQLite {
+		if d != dialect.Postgres {
 			_, err := momo.Select[tmFloat](db).From(momo.TableRef{Name: "documents"}).
 				Columns(timeop.Extract(timeop.ExtractHour, timeop.AtTimeZone(suite.DocCreatedAt, "Asia/Tokyo"))).
 				Where(suite.DocTenantID.Eq(1)).One(context.Background())
 			if !errors.Is(err, momo.ErrUnsupported) {
-				t.Errorf("AtTimeZone on SQLite = %v, want ErrUnsupported", err)
+				t.Errorf("AtTimeZone on %s = %v, want ErrUnsupported", d, err)
 			}
 		}
 		if d == dialect.Postgres {
@@ -152,7 +155,7 @@ func TestExtractIntegration(t *testing.T) {
 // Catches: a bound Go time that PostgreSQL cannot type inside EXTRACT,
 // date_trunc or AT TIME ZONE.
 func TestBoundTimeOperandIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedTimeDocs(t, db)
 		at := time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)
 		if got := floatOf(t, db, 1, timeop.Extract(timeop.ExtractYear, momo.Value(at))); got != 2024 {
@@ -198,7 +201,7 @@ func TestGroupByLocalDayIntegration(t *testing.T) {
 // quarter not on its first month) and the grouped expression differing from
 // the select-list one.
 func TestDateTruncIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedTimeDocs(t, db)
 		src := momo.Expression[time.Time](suite.DocCreatedAt)
 		if d == dialect.Postgres {
@@ -235,7 +238,7 @@ func TestDateTruncIntegration(t *testing.T) {
 // that PostgreSQL cannot type, and Now/CurrentTimestamp not usable in a
 // comparison with a stored timestamp.
 func TestIntervalAndNowIntegration(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedTimeDocs(t, db)
 		ctx := context.Background()
 		at := time.Date(2024, 3, 15, 13, 45, 30, 0, time.UTC)
@@ -259,6 +262,9 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 			lit := "'" + wall + "+00'"
 			if d == dialect.SQLite {
 				lit = "'" + wall + ".000'"
+			}
+			if d == dialect.MySQL {
+				lit = "'" + wall + "'"
 			}
 			if _, err := momo.Exec(ctx, db, "INSERT INTO documents (tenant_id, title, created_at) VALUES ("+strconv.FormatInt(tenant, 10)+", 'eom', "+lit+")"); err != nil {
 				t.Fatal(err)

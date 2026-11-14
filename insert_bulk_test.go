@@ -15,7 +15,7 @@ import (
 )
 
 func TestBulkInsertChunking(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		const n = 40000 // above the SQLite 32766 limit: forces chunking
@@ -76,7 +76,7 @@ func TestBulkInsertReturningAllChunksInOrder(t *testing.T) {
 }
 
 func TestBulkUpsertChunkingWithIdentity(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		const n = 40000
@@ -129,7 +129,7 @@ func TestBulkInsertChunkFailureRollsBackEarlierChunks(t *testing.T) {
 }
 
 func TestBulkInsertChunksInsideCallerTx(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		const n = 40000

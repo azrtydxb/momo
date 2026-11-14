@@ -29,12 +29,13 @@
 // objects, arrays inside arrays), so no partial emulation is offered. MySQL
 // renders JSON_UNQUOTE(JSON_EXTRACT), JSON_CONTAINS and JSON_CONTAINS_PATH.
 // SQLite runs against a real database through driver/sqlitedriver (cgo, not
-// Windows) and driver/sqlitepure. MySQL and MariaDB have a driver, but no
-// integration test runs these operators against a MySQL or MariaDB server
-// (testopen.Each covers PostgreSQL and SQLite), so their SQL is golden-tested
-// only. Extraction differs at the edges: SQLite casts json_extract to TEXT, so
-// a JSON boolean reads as 1 or 0 instead of true or false, and MySQL returns
-// the text null for a JSON null.
+// Windows) and driver/sqlitepure. MySQL and MariaDB run against MySQL 8.4,
+// MySQL 9.7 and MariaDB 11.8 in the integration tests (testopen.EachMySQL),
+// except Concat and Set, which are ErrUnsupported there. Extraction differs at
+// the edges: SQLite casts json_extract to TEXT, so a JSON boolean reads as 1
+// or 0 instead of true or false, and MySQL returns the text null for a JSON
+// null. MariaDB has no JSON type for CAST, so Contains passes the candidate as
+// JSON text there.
 //
 // Type names. TypeOf gives the JSON type of a value as one of the six names of
 // PostgreSQL's jsonb_typeof (object, array, string, number, boolean, null) on
@@ -308,6 +309,14 @@ func Contains[T any](c momo.Expression[types.JSON[T]], v any) momo.Predicate {
 		case dialect.MySQL:
 			b.WriteString("JSON_CONTAINS(")
 			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			if b.Dialect().Flavor == dialect.FlavorMariaDB {
+				// MariaDB has no JSON target in CAST (a syntax error), and its
+				// JSON_CONTAINS takes the candidate as JSON text.
+				b.WriteString(", ")
+				b.ArgFor(fl, string(enc))
+				b.WriteString(")")
+				break
+			}
 			b.WriteString(", CAST(")
 			b.ArgFor(fl, string(enc))
 			b.WriteString(" AS JSON))")

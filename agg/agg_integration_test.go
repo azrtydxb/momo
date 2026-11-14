@@ -95,7 +95,7 @@ func seedAggDocs(t *testing.T, db *momo.DB) {
 
 // Catches: String ignoring its ORDER BY or separator on a real server.
 func TestStringAggOrderExecutes(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		if d == dialect.SQLite {
 			t.Skip("aggregate ORDER BY needs SQLite 3.44; rendering is covered by goldens")
 		}

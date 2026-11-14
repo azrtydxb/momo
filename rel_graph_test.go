@@ -114,7 +114,7 @@ func TestFindOrCreateReturnsStoredRow(t *testing.T) {
 }
 
 func TestUpsertByPK(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 		if err := momo.UpsertByPK[models.Tag, *models.Tag](ctx, db, &models.Tag{ID: 1, Name: "golang"}); err != nil {

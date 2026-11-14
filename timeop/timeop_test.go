@@ -142,6 +142,7 @@ func TestIntervalGolden(t *testing.T) {
 		{dialect.MySQL, timeop.AddInterval(tmCreated, five), `DATE_ADD(` + tmC + `, INTERVAL 5 DAY)`, nil},
 		{dialect.MySQL, timeop.SubInterval(tmCreated, five), `DATE_SUB(` + tmC + `, INTERVAL 5 DAY)`, nil},
 		{dialect.MySQL, timeop.SubInterval(tmCreated, bound), `DATE_SUB(` + tmC + `, INTERVAL ? WEEK)`, []any{int64(3)}},
+		{dialect.MySQL, timeop.AddInterval(momo.Value(time.Unix(0, 0).UTC()), five), `DATE_ADD(CAST(? AS DATETIME(6)), INTERVAL 5 DAY)`, []any{time.Unix(0, 0).UTC()}},
 		{dialect.SQLite, timeop.AddInterval(tmCreated, five), `strftime(` + sqliteFmt + `, ` + tmC + `, '5 days')`, nil},
 		{dialect.SQLite, timeop.SubInterval(tmCreated, timeop.IntervalOf(2, timeop.IntervalWeek)), `strftime(` + sqliteFmt + `, ` + tmC + `, '-14 days')`, nil},
 		{dialect.SQLite, timeop.AddInterval(tmCreated, timeop.IntervalOf(1, timeop.IntervalYear)), `strftime(` + sqliteFmt + `, ` + tmC + `, '1 years')`, nil},
@@ -213,5 +214,37 @@ func TestTimeExprComposition(t *testing.T) {
 	}
 	if _, err := selectOne(dialect.Postgres, timeop.Extract(timeop.ExtractEpoch, day())); err != nil {
 		t.Errorf("extract over date_trunc: %v", err)
+	}
+}
+
+// Catches: a bound timestamp reaching DATE_ADD or DATE_SUB without the cast
+// that types it on MariaDB, for a literal and a bound interval count, on both
+// MySQL-family flavors.
+func TestBoundTimeIntervalGoldenPerMySQLFlavor(t *testing.T) {
+	at := time.Unix(0, 0).UTC()
+	bound := timeop.IntervalExpr(momo.Value(int64(3)), timeop.IntervalWeek)
+	for _, f := range []dialect.Flavor{dialect.FlavorMySQL, dialect.FlavorMariaDB} {
+		for _, c := range []struct {
+			e    momo.Expr
+			want string
+			args []any
+		}{
+			{timeop.SubInterval(momo.Value(at), timeop.IntervalOf(2, timeop.IntervalDay)), "DATE_SUB(CAST(? AS DATETIME(6)), INTERVAL 2 DAY)", []any{at}},
+			{timeop.AddInterval(momo.Value(at), timeop.IntervalOf(2, timeop.IntervalDay)), "DATE_ADD(CAST(? AS DATETIME(6)), INTERVAL 2 DAY)", []any{at}},
+			{timeop.AddInterval(momo.Value(at), bound), "DATE_ADD(CAST(? AS DATETIME(6)), INTERVAL ? WEEK)", []any{at, int64(3)}},
+			{timeop.SubInterval(momo.Value(at), bound), "DATE_SUB(CAST(? AS DATETIME(6)), INTERVAL ? WEEK)", []any{at, int64(3)}},
+		} {
+			got, err := momo.Select[exprtest.Tally](exprtest.DBFlavor(f)).From(momo.TableRef{Name: "documents"}).Columns(c.e).SQL()
+			if err != nil {
+				t.Errorf("%s %s: %v", f, c.want, err)
+				continue
+			}
+			if want := "SELECT " + c.want + " FROM `documents`"; got.SQL != want {
+				t.Errorf("%s:\n got %s\nwant %s", f, got.SQL, want)
+			}
+			if !reflect.DeepEqual(got.Args, c.args) {
+				t.Errorf("%s %s: args = %v, want %v", f, c.want, got.Args, c.args)
+			}
+		}
 	}
 }

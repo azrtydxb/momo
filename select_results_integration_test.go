@@ -16,7 +16,7 @@ import (
 )
 
 func TestResultHelpers(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		for i := 0; i < 7; i++ {
@@ -49,8 +49,16 @@ func TestResultHelpers(t *testing.T) {
 			t.Fatalf("Batches visited %d rows, err=%v", seen, err)
 		}
 		maps, err := momo.MapRows(ctx, db, "SELECT title FROM documents ORDER BY id LIMIT 1")
-		if err != nil || len(maps) != 1 || maps[0]["title"] != "a" {
+		if err != nil || len(maps) != 1 {
 			t.Fatalf("MapRows = %v %v", maps, err)
+		}
+		// Values have the driver's native types: the MySQL driver returns text as bytes.
+		title := maps[0]["title"]
+		if b, ok := title.([]byte); ok {
+			title = string(b)
+		}
+		if title != "a" {
+			t.Fatalf("MapRows title = %v, want a", maps[0]["title"])
 		}
 		vals, err := momo.Scalars[string](ctx, db, "SELECT title FROM documents WHERE tenant_id = ? ORDER BY id", 1)
 		if err != nil || len(vals) != 7 || vals[6] != "g" {
@@ -63,7 +71,7 @@ func TestResultHelpers(t *testing.T) {
 // once, and no row is skipped or repeated. OFFSET paging would repeat rows
 // after a delete or skip them; keyset paging on the primary key cannot.
 func TestBatchesUnderConcurrentInserts(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		for i := 0; i < 6; i++ {

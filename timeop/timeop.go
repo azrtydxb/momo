@@ -456,7 +456,16 @@ func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
 				fn = "DATE_SUB("
 			}
 			b.WriteString(fn)
-			ts.AppendSQL(b)
+			if momo.IsBound(ts) {
+				// DATE_ADD of a bare parameter returns text on MariaDB, which
+				// the driver cannot read as a time; the cast types the operand.
+				// It is applied on MySQL and MariaDB alike.
+				b.WriteString("CAST(")
+				ts.AppendSQL(b)
+				b.WriteString(" AS DATETIME(6))")
+			} else {
+				ts.AppendSQL(b)
+			}
 			b.WriteString(", INTERVAL ")
 			switch {
 			case !iv.isExpr:

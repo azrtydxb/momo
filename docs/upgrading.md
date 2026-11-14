@@ -233,6 +233,18 @@ value on their own. With `Upsert` or `OnConflict` the explicit column is
 written by the INSERT only: a serial or identity column that is not the
 conflict key is never updated on conflict. See issue #127.
 
+### MariaDB fixes
+
+Two calls that did not work on MariaDB now do.
+
+- `jsonop.Contains` on MariaDB sent `JSON_CONTAINS(col, CAST(? AS JSON))`,
+  which MariaDB rejects (error 1064). It now passes the candidate as JSON text,
+  `JSON_CONTAINS(col, ?)`. MySQL keeps the `CAST`, which it needs.
+- `timeop.AddInterval` and `timeop.SubInterval` over a bound time
+  (`momo.Value(t)`) on MariaDB returned a value that could not be read as a
+  time. The bound operand is now `CAST(? AS DATETIME(6))` on MySQL and MariaDB,
+  so the call returns a `DATETIME`. Column operands render as before.
+
 ### `momo generate --from-db` reads SQLite
 
 No change is needed. `momo generate --from-db` now also reads a SQLite
