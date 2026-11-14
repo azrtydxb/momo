@@ -67,7 +67,7 @@ func (q InsertQuery[T]) writeUnnest(b *Builder, d *dialect.Dialect, p insertPlan
 		b.Ident(q.meta.Columns[ci].Name)
 	}
 	b.writeByte(')')
-	if q.i.withIdentity && d.Name == dialect.Postgres {
+	if q.overriding(d, p.cols) {
 		b.WriteString(" OVERRIDING SYSTEM VALUE")
 	}
 	b.WriteString(" SELECT * FROM unnest(")

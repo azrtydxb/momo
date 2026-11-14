@@ -233,11 +233,11 @@ func (q InsertQuery[T]) wantsGeneratedKey() bool {
 
 // leavesKeyToServer reports whether the statement is a plain INSERT on MySQL
 // or MariaDB whose identity column the server generates (no conflict clause,
-// no Go-side id).
+// no Go-side id, not named in Explicit).
 func (q InsertQuery[T]) leavesKeyToServer() bool {
 	id := q.meta.Identity
 	return q.q != nil && q.q.Dialect().OnDuplicateKey &&
-		!q.i.upsert && q.i.conflict == conflictNone && id >= 0 && id < len(q.meta.Columns) &&
+		!q.i.upsert && q.i.conflict == conflictNone && !q.explicitCol(id) && id >= 0 && id < len(q.meta.Columns) &&
 		q.meta.Ptr != nil && q.meta.Columns[id].Flags&FlagIdentity != 0 && !q.isIDGenColumn(id)
 }
 

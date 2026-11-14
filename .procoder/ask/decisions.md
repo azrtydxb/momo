@@ -719,3 +719,30 @@ MODE` on MariaDB). A shared lock reads the latest committed row at any
   compare the two inspections.
 
 Decision (2026-11-14, integrator): as above.
+
+## Issue #127: explicit identity values on Insert (2026-11-14, integrator)
+
+- **API:** `InsertQuery.Explicit(cols ...ColumnRef)` is an opt-in that puts the
+  named identity, serial or auto-increment columns into the INSERT column list
+  with the value the source carries. Without it nothing changes: such columns
+  are left out and a non-zero struct value is dropped silently, which the
+  Insert docs now say prominently.
+- **Rendering:** PostgreSQL adds `OVERRIDING SYSTEM VALUE` only when an
+  explicit column is `GENERATED ALWAYS AS IDENTITY` (serial and BY DEFAULT need
+  none). MySQL, MariaDB and SQLite write an ordinary column.
+- **Scope:** Model, Models, Values, ValuesRows, Unnest, chunked bulk, Upsert and
+  OnConflict. A column that is not identity, serial or auto-increment, or not in
+  the model, is `ErrValidation`; so are `FromSelect` and `Copy` with Explicit.
+- **Zero value:** per dialect. PostgreSQL and SQLite store 0 as written
+  because the caller opted in. MySQL and MariaDB refuse a zero in an explicit
+  AUTO_INCREMENT column with `ErrValidation`, because the server would generate
+  a value instead of storing 0; every row is checked before the first chunk.
+- **Sequence:** only PostgreSQL needs `setval`, which the caller runs; Momo
+  never calls it. MySQL, MariaDB and SQLite move past a larger explicit value
+  on their own.
+- **Checks:** a `ColumnRef` of another table, and the same column in both
+  `Explicit` and `Omit`, are `ErrValidation`.
+- **Upsert:** the explicit column is written by the INSERT only; a serial or
+  identity column that is not the conflict key is never updated on conflict.
+
+Decision (2026-11-14, integrator): as above.

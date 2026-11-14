@@ -111,8 +111,15 @@ type insertPlan[T any] struct {
 func (q InsertQuery[T]) renderStatement(b *Builder) {
 	b.insertStmt = true
 	mode, err := q.mode()
+	if err == nil {
+		err = q.checkExplicit()
+	}
 	if err != nil {
 		b.SetErr(err)
+		return
+	}
+	if mode == modeFromSelect && len(q.i.explicit) > 0 {
+		b.SetErr(q.verr("", "Explicit cannot be combined with FromSelect: a select cannot supply identity values"))
 		return
 	}
 	if mode == modeFromSelect {
@@ -120,6 +127,10 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 		return
 	}
 	d := b.Dialect()
+	if err := q.checkExplicitZero(d); err != nil {
+		b.SetErr(err)
+		return
+	}
 	if q.i.unnest {
 		if err := q.unnestCheck(d, mode); err != nil {
 			b.SetErr(err)
@@ -221,7 +232,7 @@ func (q InsertQuery[T]) writeColumnsAndRows(b *Builder, d *dialect.Dialect, p in
 		b.Ident(q.meta.Columns[ci].Name)
 	}
 	b.writeByte(')')
-	if q.i.withIdentity && d.Name == dialect.Postgres {
+	if q.overriding(d, p.cols) {
 		b.WriteString(" OVERRIDING SYSTEM VALUE")
 	}
 	b.WriteString(" VALUES ")
