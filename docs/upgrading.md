@@ -9,11 +9,49 @@ later releases can break more.
 
 One change can need an edit: `momo.Avg` is now generic, so code that uses it
 as an uninstantiated function value must write `momo.Avg[float64]` (see
-"Aggregates over integer and `types.Numeric` columns" below). Otherwise nothing
-needs an edit. Three calls that returned `ErrUnsupported` on some
-dialects now return results, so code that relied on the error (a fallback
-branch, a test that expects the refusal) now takes the success path. Check the
-semantic differences below before you drop a workaround.
+"Aggregates over integer and `types.Numeric` columns" below). Otherwise no
+change is needed in your code. Two things can change what a command does,
+both below: a `momo.yaml` that lists several dialects, and a MySQL or MariaDB
+schema that the library generated earlier. Several calls that returned
+`ErrUnsupported` on some dialects now return results, so code that relied on
+the error (a fallback branch, a test that expects the refusal) now takes the
+success path. Check the semantic differences below before you drop a
+workaround.
+
+### `momo migrate` runs on SQLite, MySQL and MariaDB
+
+Before this release `momo migrate` ran the PostgreSQL dialect alone and exited 2
+for any other. It now runs every subcommand on SQLite (`--dialect sqlite`) and on MySQL and
+MariaDB (`--dialect mysql`; one dialect for both servers). A project with a
+single PostgreSQL dialect behaves as before. One thing does change: with
+`dialects: [sqlite, postgres]` in `momo.yaml`, `--dialect postgres` used to read
+the models for the first listed dialect (SQLite) and now reads them for the one
+you chose, so `diff` writes PostgreSQL column types. If you worked around the old
+behaviour by reordering `dialects`, you no longer need to; check the next
+`diff` of such a project. For the new dialects:
+
+- SQLite uses the pure-Go driver, so the `momo` binary still needs no cgo. The
+  URL is a file path, a `file:` URI or `sqlite:///path.db`.
+- MySQL and MariaDB take a `mysql://` or `mariadb://` URL, or a go-sql-driver
+  DSN, and the URL must name a database.
+- `momo generate` and `momo migrate diff` now map Go types to MySQL and
+  MariaDB column types (`gen/typemap`); before, every field failed with
+  `ErrUnsupported` there.
+- DDL is not transactional on MySQL and MariaDB: a failed `apply` leaves the
+  statements that ran, and `status` shows the migration as `dirty` until
+  `resolve` settles it.
+- On MySQL and MariaDB a string without `size:N` is `text`, which the servers
+  cannot use in a primary key, unique key or index (error 1170). The generator
+  refuses such a schema, naming the column and asking for `size:N`, before
+  anything is written. The same holds for a blob or json column in a key.
+- A `types.Numeric` with a `precision` tag is `decimal(p,s)` on MySQL and
+  MariaDB; before, the library generated `text` for it. A schema that an earlier
+  release generated for these servers gets an `ALTER ... text` to
+  `decimal(p,s)` on the next `diff`, which rewrites the column and fails on a
+  value that is not a number. `decimal` cannot hold `NaN` or an infinity,
+  so a `types.Numeric` that carries one is refused when it is written. A precision without a scale means scale 0. The generator checks
+  that the precision is at most 65, the scale at most 30 and the scale not
+  above the precision. Without a `precision` tag the column stays `text`.
 
 ### `ILike` on SQLite, MySQL and MariaDB
 
@@ -73,6 +111,55 @@ passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and `momo generate` without `--from-db`
 is unchanged.
 
+### `sqlfn.Greatest`, `sqlfn.Least`, `sqlfn.Floor`, `sqlfn.Ceil` and `jsonop.TypeOf`
+
+No change is needed; these are new functions. They replace the raw SQL or the
+untyped `momo.Func` calls that a per-row setting read from JSON needed
+(`GREATEST(1, CASE WHEN jsonb_typeof(v) = 'number' THEN floor(...) ELSE ... END)`):
+
+```text
+years := sqlfn.Greatest[float64](momo.Lit(1.0),
+    sqlfn.Case[float64]().WhenExpr(jsonop.TypeOf(v).Eq("number"), floored).Else(fallback))
+```
+
+- `sqlfn.Greatest` and `sqlfn.Least` ignore NULL arguments and are NULL only when
+  every argument is NULL, on every dialect. That is PostgreSQL's rule; MySQL,
+  MariaDB and SQLite return NULL for any NULL argument, so Momo rewrites each
+  argument `x` to `COALESCE(x, the other arguments)` there. The rewrite renders
+  every argument once per argument, so keep the list short. `types.Numeric` is
+  PostgreSQL only and fails with `momo.ErrUnsupported` elsewhere, as the
+  `sqlfn` arithmetic does.
+- `sqlfn.Floor` and `sqlfn.Ceil` take a float or a `types.Numeric` and return
+  the same type (an integer needs a `sqlfn.Cast` first, because PostgreSQL's
+  `floor` of an integer is `double precision`). SQLite is rendered with
+  `CAST` rather than `floor()`, which the mattn driver lacks without its
+  `sqlite_math_functions` build tag. `types.Numeric` is PostgreSQL only.
+- `jsonop.TypeOf` is `jsonb_typeof`. SQLite's `json_type` and MySQL and
+  MariaDB's `JSON_TYPE` are mapped to the same six names: `object`, `array`,
+  `string`, `number`, `boolean` and `null`. A SQL NULL column gives SQL NULL.
+
+### MySQL and MariaDB: graph writes, `FindOrCreate` and upsert targets
+
+Calls that returned `ErrUnsupported` on MySQL or MariaDB now work. No existing
+working code changes behaviour.
+
+- `momo.CreateGraph` works on MySQL and MariaDB. MariaDB reads the generated
+  keys with `INSERT ... RETURNING`. MySQL reads `LAST_INSERT_ID` after each
+  statement and inserts has-many and many-to-many children one row per
+  statement inside the graph's transaction, so every key is exact whatever
+  `innodb_autoinc_lock_mode` is. A bulk of children that mixes zero and explicit
+  keys is `ErrValidation` on MySQL.
+- `momo.FindOrCreate` works on MySQL and MariaDB. It runs in a transaction as a
+  plain insert and, on a unique violation, re-selects the row by key with a
+  shared-lock read, so a call that finds an existing row costs one failed
+  insert and one select.
+- An upsert on a unique key other than the primary key is accepted on MySQL and
+  MariaDB when every other unique key is made only of auto-increment columns
+  the insert leaves out: an auto-increment primary key next to `UNIQUE(email)`,
+  upserting on `email` with a zero identity. Every other case is still
+  `ErrUnsupported`, and the error now says which unique key is the problem.
+- A plain multi-row `Models` insert on MySQL still writes no keys back.
+
 ### `momo generate --from-db` reads MySQL and MariaDB
 
 Besides PostgreSQL, the command now inspects a MySQL 8.4, MySQL 9.7 or
@@ -121,6 +208,30 @@ is no longer needed:
 total, err := momo.Select[momo.Row1[*int64]](db).From(order.Table).
 	Columns(momo.SumInt(order.Cents)).One(ctx) // Cents is an int32 column
 ```
+
+### Explicit identity values on `Insert`: no change needed
+
+`momo.InsertQuery.Explicit` is new and opt-in, so existing code needs no edit.
+An `Insert` still leaves identity, serial and auto-increment columns out of the
+statement, and it still drops a non-zero value in such a struct field silently
+(the database generates a new one). If you relied on that, nothing changes.
+
+If you need to keep the value (an import, a backfill, a receipt number in a
+non-key `serial` column), name the column:
+
+```text
+momo.Insert[models.Receipt](q).Model(&r).Explicit(receipt.Seq).Exec(ctx)
+```
+
+PostgreSQL renders `OVERRIDING SYSTEM VALUE` for a `GENERATED ALWAYS AS
+IDENTITY` column only. A zero value in an `Explicit` column is stored as 0 on
+PostgreSQL and SQLite, and refused with `ErrValidation` on MySQL and MariaDB
+(the server would generate a value instead), before the first statement is
+sent. An explicit value does not advance a PostgreSQL sequence, so run `setval`
+yourself afterwards; MySQL, MariaDB and SQLite move past a larger explicit
+value on their own. With `Upsert` or `OnConflict` the explicit column is
+written by the INSERT only: a serial or identity column that is not the
+conflict key is never updated on conflict. See issue #127.
 
 ## Upgrading to 0.11.0
 

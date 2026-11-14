@@ -407,8 +407,11 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		if b.primary == dialect.SQLite {
 			return "TEXT"
 		}
+		if b.primary == dialect.MySQL {
+			return "text"
+		}
 		return tg.Enum
-	case kind != "":
+	case kind != "" && b.primary != dialect.MySQL:
 		typ := kind
 		if tg.Dim > 0 {
 			typ = fmt.Sprintf("%s(%d)", kind, tg.Dim)
@@ -417,15 +420,20 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		return typ
 	case isString && tg.Size > 0:
 		return fmt.Sprintf("varchar(%d)", tg.Size)
-	case inner == "types.Numeric" && tg.Precision > 0 && b.primary != dialect.Postgres:
-		// numeric(p,s) gives a SQLite or MySQL column NUMERIC affinity or a
-		// fixed scale, which would round the decimal text; keep it TEXT.
+	case inner == "types.Numeric" && tg.Precision > 0 && b.primary == dialect.SQLite:
+		// numeric(p,s) gives a SQLite column NUMERIC affinity, which would
+		// round the decimal text; keep it TEXT. MySQL has an exact DECIMAL.
 		return "TEXT"
 	case isFloat && tg.Precision > 0:
-		if tg.Scale > 0 {
-			return fmt.Sprintf("numeric(%d,%d)", tg.Precision, tg.Scale)
+		name := "numeric"
+		if b.primary == dialect.MySQL {
+			name = "decimal"
+			b.checkDecimal(f, tg)
 		}
-		return fmt.Sprintf("numeric(%d)", tg.Precision)
+		if tg.Scale > 0 {
+			return fmt.Sprintf("%s(%d,%d)", name, tg.Precision, tg.Scale)
+		}
+		return fmt.Sprintf("%s(%d)", name, tg.Precision)
 	}
 	// BaseType is the Go type with named types resolved; hand-built fields
 	// without it map by their spelled type.
@@ -452,6 +460,79 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		b.diag(f.Pos, fmt.Sprintf("field %s: %v; add a type tag", f.GoName, err))
 	}
 	return typ
+}
+
+// checkDecimal reports a precision or scale that MySQL and MariaDB cannot
+// store: DECIMAL(p,s) takes p up to 65, s up to 30 and s not above p. A
+// precision without a scale is a scale of 0.
+func (b *schemaBuilder) checkDecimal(f *Field, tg tags.Tags) {
+	switch {
+	case tg.Precision > 65:
+		b.diag(f.Pos, fmt.Sprintf("field %s: precision %d is above 65, the largest DECIMAL on MySQL and MariaDB", f.GoName, tg.Precision))
+	case tg.Scale > 30:
+		b.diag(f.Pos, fmt.Sprintf("field %s: scale %d is above 30, the largest DECIMAL scale on MySQL and MariaDB", f.GoName, tg.Scale))
+	case tg.Scale > tg.Precision:
+		b.diag(f.Pos, fmt.Sprintf("field %s: scale %d is above precision %d", f.GoName, tg.Scale, tg.Precision))
+	}
+}
+
+// mysqlUnkeyable are the column types MySQL and MariaDB cannot put in a key
+// or an index without a prefix length.
+var mysqlUnkeyable = map[string]bool{
+	"text": true, "tinytext": true, "mediumtext": true, "longtext": true,
+	"blob": true, "tinyblob": true, "mediumblob": true, "longblob": true,
+	"json": true,
+}
+
+// checkMySQLKeys refuses a primary key, unique key, index or foreign key over
+// a text, blob or json column. MySQL rejects it with error 1170 in the middle
+// of the migration, and DDL there does not roll back, which would leave a dirty
+// migration; so the schema is refused before anything is written. An index
+// part with a prefix length (name(20)) is allowed.
+func (b *schemaBuilder) checkMySQLKeys() {
+	for i := range b.s.Tables {
+		t := &b.s.Tables[i]
+		m := b.tableBy[t.Schema+"\x00"+t.Name]
+		if m == nil {
+			continue
+		}
+		bad := map[string]string{}
+		for _, c := range t.Columns {
+			base, _, _ := strings.Cut(schema.NormalizeType(dialect.MySQL, c.Type), "(")
+			if mysqlUnkeyable[strings.TrimSpace(base)] {
+				bad[c.Name] = base
+			}
+		}
+		if len(bad) == 0 {
+			continue
+		}
+		report := func(what string, cols []string) {
+			for _, col := range cols {
+				if typ, ok := bad[col]; ok {
+					b.diag(m.Pos, fmt.Sprintf("table %s: column %s is %s and is part of %s, which MySQL and MariaDB cannot key without a length; give a string field size:N (a varchar), or give another column type with a type tag", t.Name, col, typ, what))
+				}
+			}
+		}
+		report("the primary key", t.PrimaryKey)
+		for _, u := range t.Uniques {
+			report("unique key "+u.Name, u.Columns)
+		}
+		for _, ix := range t.Indexes {
+			// A fulltext or spatial index takes text and geometry columns
+			// whole; it renders as FULLTEXT or SPATIAL, not as a btree.
+			if m := strings.ToLower(ix.Method); m == "fulltext" || m == "spatial" {
+				continue
+			}
+			cols := make([]string, 0, len(ix.Parts))
+			for _, p := range ix.Parts {
+				cols = append(cols, p.Column)
+			}
+			report("index "+ix.Name, cols)
+		}
+		for _, fk := range t.ForeignKeys {
+			report("foreign key "+fk.Name, fk.Columns)
+		}
+	}
 }
 
 // noteType records the dialect-restricted types of a column.
@@ -1131,6 +1212,9 @@ func sameColumns(a, c schema.Table) bool {
 // finish adds what spans models: the enum types, the extensions the columns
 // and indexes need, and the check that every enum a column names exists.
 func (b *schemaBuilder) finish() {
+	if b.primary == dialect.MySQL {
+		b.checkMySQLKeys()
+	}
 	for _, u := range b.enumUses {
 		if _, ok := b.enums[u.name]; !ok {
 			b.diag(u.pos, fmt.Sprintf("enum %q is not declared in any MomoConfig", u.name))

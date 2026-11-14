@@ -34,15 +34,21 @@ import (
 // PostgreSQL identity sequence, and explicit serial ids do not advance the
 // serial sequence either, so later generated keys may collide with them; the
 // caller must setval the sequence. FromSelect cannot supply serial ids at all.
+// A serial or identity column that is not the conflict-target key is written
+// by naming it in InsertQuery.Explicit, which also works on Upsert.
 //
 // When the conflict target is the primary key and every model carries a
 // non-zero identity value, the identity column joins the INSERT column list
 // (PostgreSQL renders OVERRIDING SYSTEM VALUE), so the statement can hit an
 // existing row. A model whose identity is zero is inserted with a generated
 // identity. Mixing both in one Models call is refused with ErrValidation.
-// On MySQL and MariaDB the statement renders ON DUPLICATE KEY UPDATE, and a
-// conflict target that is not the table's only unique key fails with
-// ErrUnsupported; a dialect with neither form fails with ErrUnsupported.
+// On MySQL and MariaDB the statement renders ON DUPLICATE KEY UPDATE, which
+// cannot name a key, so the target must be a unique key of the table and no
+// other unique key may be able to conflict: another key is allowed only when it
+// is made of auto-increment columns the insert leaves out (an auto-increment
+// primary key next to UNIQUE(email), the key left zero). Any other target
+// fails with ErrUnsupported and the message names the reason; a dialect with
+// neither form fails with ErrUnsupported.
 func Upsert[T any, PT Modeler[T]](q Querier) InsertQuery[T] {
 	i := Insert[T, PT](q)
 	i.i.upsert = true
@@ -231,8 +237,8 @@ func (q InsertQuery[T]) defaultUpsertSet() []Assignment {
 // resolveIdentity decides whether the identity column joins the INSERT list.
 func (q *InsertQuery[T]) resolveIdentity() error {
 	id := q.meta.Identity
-	if len(q.models) == 0 || id < 0 || id >= len(q.meta.Columns) {
-		return nil
+	if len(q.models) == 0 || id < 0 || id >= len(q.meta.Columns) || q.explicitCol(id) {
+		return nil // Explicit already decides: the value is written as-is
 	}
 	if q.meta.Columns[id].Flags&FlagReadOnly != 0 || !slices.Contains(q.meta.PK, id) {
 		return nil

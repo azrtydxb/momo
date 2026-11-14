@@ -37,8 +37,8 @@ Database status:
 A database is usable when a driver package for it exists under `driver/`:
 
 - PostgreSQL: usable through `driver/pgxdriver` (vector builders: yes). Migrations: `migrate/postgres`, run by `momo migrate`.
-- SQLite: usable through `driver/sqlitedriver` (needs cgo, not on Windows, vector builders: yes) and `driver/sqlitepure` (vector builders: no). Migrations: `migrate/sqlite`, library only (`momo migrate` does not select it).
-- MySQL and MariaDB: usable through `driver/mysqldriver` (vector storage and builders depend on the server version). Migrations: `migrate/mysql`, library only (`momo migrate` does not select it).
+- SQLite: usable through `driver/sqlitedriver` (needs cgo, not on Windows, vector builders: yes) and `driver/sqlitepure` (vector builders: no). Migrations: `migrate/sqlite`, run by `momo migrate`.
+- MySQL and MariaDB: usable through `driver/mysqldriver` (vector storage and builders depend on the server version). Migrations: `migrate/mysql`, run by `momo migrate`.
 
 <!-- /generated:status -->
 
@@ -281,6 +281,16 @@ Nullability and column rules:
   elements made of digits can be array indexes. SQLite renders `json_extract`
   and `json_type` (`jsonop.Contains` is `ErrUnsupported` there); MySQL renders
   its JSON functions.
+- JSON type name: `jsonop.TypeOf(col)` is `jsonb_typeof` and gives one of
+  `object`, `array`, `string`, `number`, `boolean` or `null` on every dialect
+  (SQLite and MySQL names are mapped), SQL NULL for a SQL NULL column and the
+  text `null` for the JSON literal null. `sqlfn.Greatest` and `sqlfn.Least`
+  ignore NULL arguments on every dialect (MySQL and SQLite are rewritten, so
+  each argument renders once per argument); `sqlfn.Floor` and `sqlfn.Ceil` take
+  a float or a `types.Numeric` and return the same type, and `types.Numeric` is
+  PostgreSQL only. Together they replace the raw SQL of a per-row setting read
+  from JSON and floored, with a minimum of one: a `sqlfn.Case` that tests
+  `jsonop.TypeOf` against `number` inside `sqlfn.Greatest`.
 - JSON edits and scalars: `jsonop.Root(col)` reads a scalar stored at the
   root of the value (`col #>> '{}'`; cast it with `sqlfn.Cast` for a number).
   `jsonop.DeleteKey(expr, key)` is `expr - 'key'` (SQLite `json_remove`, MySQL
@@ -1091,7 +1101,8 @@ does not release a shared lock; use `advisory.UnlockShared`.
 Typed expressions (no `momo.SQL` needed). Computed values (`momo.Func` and, in the
 package `github.com/azrtydxb/momo/sqlfn`, `sqlfn.Substr`, `sqlfn.Lower`,
 `sqlfn.Upper`, `sqlfn.Length`, `sqlfn.Case`, `sqlfn.Add`/`sqlfn.Sub`/`sqlfn.Mul`,
-`sqlfn.Cast`, `sqlfn.Concat`, `sqlfn.CoalesceExpr`) work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr`, and carry
+`sqlfn.Cast`, `sqlfn.Concat`, `sqlfn.CoalesceExpr`, `sqlfn.Greatest`, `sqlfn.Least`,
+`sqlfn.Floor`, `sqlfn.Ceil`) work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr`, and carry
 the comparisons of a column for `Where` and `Having`: `Eq`, `Ne`, `Lt`, `Le`,
 `Gt`, `Ge`, `EqExpr` and the other `...Expr` forms, `In`, `NotIn`, `Between`,
 `IsNull`, `IsNotNull`; plus `Asc` and `Desc`. An `.As` alias belongs in the
@@ -1299,7 +1310,31 @@ return rows2.Err()
   `ErrUnsupported`; on MariaDB only insert has `RETURNING` in momo, so `UpdateQuery.One`
   and `DeleteQuery.One` return `ErrUnsupported` (momo has no `RETURNING` form
   for MariaDB `UPDATE` and `DELETE`).
-- A `ReadOnly` / `identity` column is never written by `InsertQuery.Model`.
+- A `ReadOnly` / `identity` / `serial` / auto-increment column is never written by
+  `InsertQuery.Model`, and a non-zero value in its struct field is DROPPED SILENTLY: the
+  database generates a new value. To keep the value (an import, a backfill, a receipt number
+  held in a non-key `serial` column) name the column in `momo.InsertQuery.Explicit`:
+
+  ```text
+  _, err := momo.Insert[models.Receipt](q).Model(&r).Explicit(receipt.Seq).Exec(ctx)
+  ```
+
+  `Explicit` takes the columns to write with the struct value (or the `momo.InsertQuery.Values` /
+  `momo.InsertQuery.ValuesRows` assignment), also for `Models`, chunked bulk inserts, `Unnest`, `Upsert` and `OnConflict`.
+  PostgreSQL renders `OVERRIDING SYSTEM VALUE` for a `GENERATED ALWAYS AS IDENTITY` column
+  only; serial and `BY DEFAULT` need no clause, and MySQL, MariaDB and SQLite write an ordinary
+  column. A zero value in an `Explicit` column depends on the dialect: PostgreSQL and SQLite
+  store 0 as written, while MySQL and MariaDB refuse it with `ErrValidation` (the server would
+  generate a value instead of storing 0), checking every row before the first statement is sent;
+  leave the column out of `Explicit` to get a generated value. A column that is not
+  identity, serial or auto-increment, a column the model does not map, a column of another
+  table, the same column in `momo.InsertQuery.Omit`, and `FromSelect` or `Copy` are
+  `ErrValidation`. An explicit value does not advance the sequence on PostgreSQL: run
+  `setval` yourself (Momo never does). MySQL, MariaDB and SQLite move past a larger explicit
+  value on their own, so they need no `setval`. With `Upsert` or `OnConflict` the explicit
+  column is written by the INSERT only: a serial or identity column that is not the conflict
+  key is never updated on conflict, and `DoUpdate(SetExcluded(col))` for it is `ErrValidation`.
+
 - `InsertQuery.Models([]T{})` (empty) is `ErrValidation`.
 
 Update:
@@ -1454,6 +1489,14 @@ res, err := momo.Insert[models.Meter](q).
   the type of a bound `Value` there.
 - MySQL has no `ON CONFLICT` (`ErrUnsupported`) but a plain `FromSelect` works; a FROM-less select with a
   `WHERE` renders `FROM DUAL`.
+- MySQL and MariaDB upsert with `ON DUPLICATE KEY UPDATE`, which cannot name a key,
+  so the conflict target must be a unique key and no other unique key may be able
+  to conflict. The one relaxation: every other unique key is made only of
+  auto-increment columns the insert leaves out, e.g. an auto-increment primary
+  key plus `UNIQUE(email)`, upserting on `email` with a zero identity. Anything
+  else (the primary key as target next to another unique key, a second ordinary
+  unique key, an explicit `InsertQuery.Values` key, a model without a schema) is
+  `ErrUnsupported` and the message says which key is the problem.
 
 - Upsert never overwrites pk, version, soft-delete or created_at columns, and does
   not advance or check the version (no optimistic-lock detection).
@@ -1936,15 +1979,26 @@ Rules and limits:
   children inserted then linked; hooks, timestamps and defaults run. On a `*Tx` it
   runs in a savepoint. Nil parent, a model as its own child, or a NULL key that
   must be copied: `ErrValidation`. Has-many and many-to-many children go in as
-  chunked bulk inserts (1000 children = one statement). A dialect without
-  `RETURNING` gives `ErrUnsupported` before a transaction opens. DON'T list a
+  chunked bulk inserts (1000 children = one statement). Keys are read back with
+  `RETURNING` (MariaDB: `INSERT ... RETURNING`); MySQL has none and reads
+  `LAST_INSERT_ID` after each statement, so its children go in one row per
+  statement inside the graph's transaction (never guessed consecutive keys:
+  `innodb_autoinc_lock_mode` 2, the MySQL 8 default, does not guarantee them);
+  children that mix zero and explicit keys are `ErrValidation` there and a
+  non-integer generated key is `ErrUnsupported`. A dialect with neither
+  `RETURNING` nor `LAST_INSERT_ID` gives `ErrUnsupported` before a transaction
+  opens. DON'T list a
   many-to-many relation whose children are already stored: they are inserted
   again and fail with `ErrUniqueViolation`; use `Link` for existing rows.
 - `FindOrCreate` needs a UNIQUE constraint on exactly the key columns. It
   overwrites your struct with the stored row when it exists; a soft-deleted
   row is not found, it fails with `ErrUniqueViolation`. Under REPEATABLE READ/SERIALIZABLE the re-select can return
   `ErrNotFound`: retry the transaction. Empty key or unmapped column:
-  `ErrValidation`.
+  `ErrValidation`. On MySQL and MariaDB it runs in a transaction as a plain
+  insert and, when that hits a unique violation, a shared-lock select by key
+  (a failed insert plus a select when the row exists; a no-op
+  `ON DUPLICATE KEY UPDATE` cannot tell created from found under
+  `clientFoundRows`).
 - Tag-declared relations: `belongs_to` needs a single-column primary key on its target (the referencing model may have a composite key containing the fk column); `has_one`/`has_many` need one on the parent; `many2many` on both.
 - A pipelined load buffers a whole level's child rows (about twice the memory of
   sequential). An unscoped load of a huge has-many is expensive: scope it.

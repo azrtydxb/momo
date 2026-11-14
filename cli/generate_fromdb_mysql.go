@@ -87,7 +87,7 @@ func mysqlDSN(raw string) (string, error) {
 }
 
 // noteMySQLURL registers the value, the DSN made of it and its password as
-// secrets to redact, and warns when a remote server is reached without tls.
+// secrets to redact. noteURL prints the TLS warning.
 func (l *cli) noteMySQLURL(u string) {
 	l.secrets = append(l.secrets, u)
 	conn, err := mysqlDSN(u)
@@ -107,30 +107,6 @@ func (l *cli) noteMySQLURL(u string) {
 	if len(cfg.Passwd) >= 4 {
 		l.secrets = append(l.secrets, cfg.Passwd)
 	}
-	if w := mysqlTLSWarning(cfg); w != "" {
-		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", w)
-	}
-}
-
-// mysqlTLSWarning names a remote host reached over tcp with no tls setting. It
-// never carries the credentials.
-func mysqlTLSWarning(cfg *mysql.Config) string {
-	if !strings.HasPrefix(cfg.Net, "tcp") {
-		return ""
-	}
-	host := cfg.Addr
-	if h, _, err := net.SplitHostPort(cfg.Addr); err == nil {
-		host = h
-	}
-	host = strings.Trim(host, "[]")
-	switch host {
-	case "", "localhost", "127.0.0.1", "::1":
-		return ""
-	}
-	if cfg.TLS != nil || (cfg.TLSConfig != "" && cfg.TLSConfig != "false") {
-		return ""
-	}
-	return "the MySQL connection to " + host + " sets no tls: the password and the rows cross the network in clear text; add tls=true (or skip-verify, preferred, or a registered config) to the DSN"
 }
 
 // What the inspector does not read. ON UPDATE and INVISIBLE live in EXTRA; a

@@ -200,11 +200,11 @@ type feature struct {
 var features = []feature{
 	{
 		Name: "JSON operators on `types.JSON[T]`",
-		API:  []string{"jsonop.Text", "jsonop.Path", "jsonop.Root", "jsonop.Contains", "jsonop.HasKey", "jsonop.DeleteKey", "jsonop.Concat", "jsonop.Set"},
+		API:  []string{"jsonop.Text", "jsonop.Path", "jsonop.Root", "jsonop.Contains", "jsonop.HasKey", "jsonop.DeleteKey", "jsonop.Concat", "jsonop.Set", "jsonop.TypeOf"},
 		PG:   "yes",
-		SQLite: "`jsonop.Text`, `jsonop.Path`, `jsonop.Root`, `jsonop.DeleteKey` and `jsonop.HasKey` run on both SQLite drivers; a JSON boolean extracts as `1` or `0`; " +
+		SQLite: "`jsonop.Text`, `jsonop.Path`, `jsonop.Root`, `jsonop.DeleteKey`, `jsonop.HasKey` and `jsonop.TypeOf` run on both SQLite drivers; a JSON boolean extracts as `1` or `0`; " +
 			"`jsonop.Contains`, `jsonop.Concat` and `jsonop.Set` are `ErrUnsupported`",
-		MySQL: "SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server",
+		MySQL: "SQL is golden-tested only, except `jsonop.TypeOf`, which has integration tests on MySQL 8.4, MySQL 9.7 and MariaDB 11.8",
 	},
 	{
 		Name: "Date and time expressions",

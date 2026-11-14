@@ -1,14 +1,13 @@
 # Migration safety and recovery
 
-Momo v0.11.0, PostgreSQL (SQLite and MySQL as libraries, sections 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
+Momo v0.11.0, PostgreSQL, SQLite, MySQL and MariaDB (sections 3, 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
 `migrate/`, `cli/`, `schema/` and `dialect/`; the tests that pin a
 behavior are named. For the first run see README, [Create and apply the
 migration](../README.md#3-create-and-apply-the-migration).
 
-With a dialect the `momo migrate` command does not link, it exits 2
-("migrations for dialect ... are not available yet"). The library migration
-dialects are described in section 3a (SQLite) and section 9 (MySQL and
-MariaDB):
+`momo migrate` runs the PostgreSQL, SQLite and MySQL/MariaDB migration dialects
+(`--dialect postgres`, `sqlite` or `mysql`). Apply semantics are in section 3
+(PostgreSQL), section 3a (SQLite) and section 9 (MySQL and MariaDB):
 
 <!-- generated:status -->
 
@@ -17,8 +16,8 @@ MariaDB):
 A database is usable when a driver package for it exists under `driver/`:
 
 - PostgreSQL: usable through `driver/pgxdriver` (vector builders: yes). Migrations: `migrate/postgres`, run by `momo migrate`.
-- SQLite: usable through `driver/sqlitedriver` (needs cgo, not on Windows, vector builders: yes) and `driver/sqlitepure` (vector builders: no). Migrations: `migrate/sqlite`, library only (`momo migrate` does not select it).
-- MySQL and MariaDB: usable through `driver/mysqldriver` (vector storage and builders depend on the server version). Migrations: `migrate/mysql`, library only (`momo migrate` does not select it).
+- SQLite: usable through `driver/sqlitedriver` (needs cgo, not on Windows, vector builders: yes) and `driver/sqlitepure` (vector builders: no). Migrations: `migrate/sqlite`, run by `momo migrate`.
+- MySQL and MariaDB: usable through `driver/mysqldriver` (vector storage and builders depend on the server version). Migrations: `migrate/mysql`, run by `momo migrate`.
 
 <!-- /generated:status -->
 
@@ -378,11 +377,42 @@ exists on `apply` only.
 `--lock-wait 0s` fails immediately when locked. `resolve` and `baseline` wait
 the default 30 s.
 
-Database URL: `--url`, else the variable named in `migrate.url_env.postgres`,
+Database URL: `--url`, else the variable named in `migrate.url_env.<dialect>`,
 else `MOMO_DATABASE_URL`. Prefer the environment, or `--url -`, which reads the
 URL from standard input (`printf '%s' "$URL" | momo migrate apply --url -`): a
 `--url` value shows in the process list of a shared host, and momo prints a
 warning on stderr when it sees one.
+
+The dialect is `--dialect`, else the only one named in `dialects:`; when
+`dialects:` is empty, the only one named in `migrate.dir` or `migrate.url_env`;
+else `postgres`. A project that lists several dialects
+needs `--dialect`, and the models are read for the chosen one: its column types
+are the ones `diff` writes. The URL forms:
+
+```text
+postgres  postgres://user:password@host:5432/db?sslmode=verify-full, or a libpq key=value string
+sqlite    app.db | /abs/app.db | file:app.db?cache=shared | sqlite:///abs/app.db | sqlite://rel/app.db
+mysql     mysql://user:password@host:3306/db?tls=true | mariadb://... | user:password@tcp(host:3306)/db
+```
+
+SQLite uses the pure-Go driver (`driver/sqlitepure`), so the `momo` binary needs
+no cgo and no C toolchain (`TestMomoBinaryNeedsNoCgo`); the file is created when
+it is missing, and an in-memory database is refused because each command would
+open its own empty one. The MySQL URL must name a database; `?socket=/path`
+selects a unix socket and the other options are go-sql-driver parameters
+(`tls=true`, `charset`, ...); a parameter given twice, or a host together with
+`?socket=`, is an error. Whatever the URL says, the driver forces
+`parseTime=true`, `loc=UTC`, `clientFoundRows=true`, `interpolateParams=false`
+and `multiStatements=false`, and refuses `allowAllFiles` and
+`allowCleartextPasswords`. A `sqlite://` path is percent-decoded
+(`sqlite:///C:/x.db` is a Windows drive path), and a plain path takes no `?`.
+MySQL and MariaDB are one dialect, `mysql`, and the
+server says which it is; `--dialect mariadb` is an error that says so. For a
+remote MySQL host without `tls=true` momo prints the same kind of TLS warning
+as for `sslmode` on PostgreSQL. `--lock-wait` works on every dialect. The
+`momo.yaml` keys that belong to one database (`migrate.external_extensions`,
+and on SQLite the two timeouts) draw a warning on the others and do nothing
+there.
 
 `momo.yaml` `migrate:` keys: `dir`, `url_env` (maps keyed by dialect),
 `schemas`, `lock_timeout`, `statement_timeout` (Go durations), `exclude`,
@@ -472,8 +502,9 @@ role or on a direct connection.
 
 `migrate/sqlite` is the SQLite migration dialect. It is a library API: pass it
 to the engine with `migrate.WithDialect(sqlite.New())` and a
-`driver/sqlitedriver` driver (cgo, not Windows). The `momo migrate` command does
-not select it yet, so there is no `--dialect sqlite`. The tests that pin the
+`driver/sqlitedriver` driver (cgo, not Windows). `momo migrate --dialect sqlite`
+runs it through the pure-Go `driver/sqlitepure` (no cgo; URL forms in section 2).
+The tests that pin the
 behavior below run on a real SQLite in the integration suite
 (`TestSQLiteInspectRoundTrip`, `TestSQLiteAlterDecision`,
 `TestSQLiteRebuild`, `TestSQLiteLockTable`, `TestSQLiteEngineLifecycle`,
@@ -571,7 +602,8 @@ created on first use. A second holder gets `ErrLocked` with
 `--lock-wait`. Unlock deletes the row only while it still carries this holder's
 text. A process that dies leaves the row behind: after checking that nothing is
 migrating, call `sqlite.ForceUnlock(ctx, conn)`, which returns the holder it
-removed (there is no CLI flag). The lock and statement timeouts of the session
+removed (there is no CLI flag: with the `sqlite3` shell, delete the row of
+`momo_migration_lock`). The lock and statement timeouts of the session
 options do nothing on SQLite; busy handling is the driver's `busy_timeout`.
 
 **Other differences.** DDL is transactional, so one migration is one
@@ -845,8 +877,8 @@ rules (the first six) run for the `postgres` dialect only; the destructive rule
 runs for every dialect. A statement built inside a `DO` block or a function is
 not seen, and a keyword inside a string literal can cause a false report.
 `SET NOT NULL` is a warning, not an error, because the staged flow (below) ends
-with it. The plan also sketches a `--db` row count rule for SQLite rebuilds;
-`momo migrate` does not select SQLite, so it is not built.
+with it. The plan also sketches a `--db` row count rule for SQLite rebuilds; it is not
+built.
 
 ### Other items
 
@@ -1391,8 +1423,31 @@ return to the state before step 7; nothing else changed.
 
 The `migrate/mysql` package is the migration dialect for MySQL 8.4, MySQL 9.7
 and MariaDB 11.8. It reads `information_schema`, renders DDL and locks with
-`GET_LOCK`. `momo migrate` does not select it yet; build the engine with
-`migrate.WithDialect(mmysql.New())` and the `mysqldriver` driver.
+`GET_LOCK`. `momo migrate --dialect mysql` runs it on both servers (URL forms in
+section 2): the CLI opens the server with `driver/mysqldriver` and reads the
+flavor from `VERSION()`. From Go, build the engine with
+`migrate.WithDialect(mmysql.New())` and the `mysqldriver` driver. A failed
+`apply` or `rollback` on these servers exits 3 and prints a hint to run
+`momo migrate status` (the migration is `dirty`, exit 1) and, after you repair
+the database, `momo migrate resolve` (`TestMigrateCLIFailedMigration`).
+`statement_timeout` is refused on MySQL, not on MariaDB, as the library does.
+`--lock-wait` on SQLite: a database whose write lock another connection holds
+longer than the driver's 5 s busy timeout counts as a held lock, so `apply`
+retries until `--lock-wait` is over and then exits 3 naming the busy database
+(`TestMigrateCLISQLiteLockWait`).
+
+A string field without `size:N` is `text` on these servers and cannot be part
+of a primary key, unique key, index or foreign key (error 1170, in the middle of
+a migration that cannot roll back). The generator refuses it at once, naming the
+column; the same holds for a blob or json column. Add `size:N`, or an index
+prefix in a hand-written migration. `vector(N)` needs MySQL 9.0 or MariaDB
+11.7; the generator does not know the server version, so on MySQL 8.4 the
+migration fails at the first vector column.
+
+The CLI is tested on SQLite and on MySQL 8.4, MySQL 9.7 and MariaDB 11.8
+(`TestMigrateCLILifecycleAllDialects`, `TestMigrateCLIDriftAllDialects`,
+`TestMigrateCLIFailedMigration`); a server the job does not provide skips its
+subtest.
 
 **Every migration is non-transactional.** DDL implies a commit on these
 servers, so a failure cannot be rolled back. The engine runs each statement on

@@ -270,8 +270,10 @@ func TestCLIDialectsComeFromTheDialectSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !real["postgres"] {
-		t.Errorf("cli dialectImpl dialects = %v, want postgres in it", real)
+	for _, name := range []string{"postgres", "sqlite", "mysql"} {
+		if !real[name] {
+			t.Errorf("cli dialectImpl dialects = %v, want %s in it", real, name)
+		}
 	}
 	empty := t.TempDir()
 	write(t, empty, "cli/m.go", "package cli\n")

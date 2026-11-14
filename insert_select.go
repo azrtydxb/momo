@@ -266,7 +266,7 @@ func (q InsertQuery[T]) renderFromSelect(b *Builder) {
 	} else {
 		q.i.sel.AppendSQL(b)
 	}
-	q.renderConflict(b)
+	q.renderConflict(b, q.i.selCols)
 	renderReturning(b, q.meta, q.i.returning, func(col string) error {
 		return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
 	})

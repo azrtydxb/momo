@@ -2,9 +2,9 @@
 
 What works on MySQL and MariaDB today, and what does not. The driver is
 `driver/mysqldriver` (database/sql on `github.com/go-sql-driver/mysql`).
-The migration dialect `migrate/mysql` exists as a library; the `momo
-migrate` command does not run it (see [Migrations](#migrations) and the
-generated status in [capabilities](capabilities.md)).
+The migration dialect `migrate/mysql` runs from the `momo migrate` command
+with `--dialect mysql` (see [Migrations](#migrations) and the generated status
+in [capabilities](capabilities.md)).
 
 ## Supported servers
 
@@ -119,13 +119,44 @@ equivalent instead of returning `ErrUnsupported`.
 - A single `Model` insert reads `LAST_INSERT_ID` and writes it into the
   identity field of the model. A key generated on the Go side (an id
   generator) always wins; `LAST_INSERT_ID` is read only for a key the database
-  generates. A multi-row insert returns and writes back no keys, because the
-  ids of a multi-row statement depend on `innodb_autoinc_lock_mode`. On MariaDB,
-  ask for them with `Returning`; on MySQL that is `ErrUnsupported`. The
-  `LAST_INSERT_ID` write-back does not apply to an upsert or to any insert with
-  a conflict clause (`wantsGeneratedKey` in the core is false for them), because
-  the statement may update an existing row and `LAST_INSERT_ID` then does not
-  name the row's key; read the row back with a query.
+  generates. A plain multi-row `Models` insert through `Exec` returns and
+  writes back no keys, because the ids of a multi-row statement depend on
+  `innodb_autoinc_lock_mode`. On MariaDB, ask for them with `Returning`; on
+  MySQL that is `ErrUnsupported`. The `LAST_INSERT_ID` write-back does not
+  apply to an upsert or to any insert with a conflict clause
+  (`wantsGeneratedKey` in the core is false for them), because the statement
+  may update an existing row and `LAST_INSERT_ID` then does not name the row's
+  key; read the row back with a query.
+- `momo.CreateGraph` reads every generated key back on both servers. MariaDB
+  uses `INSERT ... RETURNING` (`InsertReturning`), also for the children of a
+  has-many or many-to-many relation, in one multi-row statement. MySQL has no
+  `RETURNING`, so it reads `LAST_INSERT_ID` after each statement and inserts
+  the children one row per statement inside the graph's transaction (a
+  savepoint on a `Tx`). The keys of one multi-row `INSERT` are consecutive only
+  when `innodb_autoinc_lock_mode` is 0 or 1; MySQL 8 and 9 default to 2, where
+  concurrent inserts can interleave, so momo never infers keys from a
+  multi-row statement and an `ON DUPLICATE KEY UPDATE` statement is never used
+  to read keys. The rows share one statement clock, so they get the same
+  automatic timestamps as a bulk insert. Children that mix zero and explicit
+  keys in one bulk insert fail with `ErrValidation` on MySQL, and a generated
+  key on a non-integer field is `ErrUnsupported`. CI runs this on MySQL 8.4 and
+  9.7 (mode 2) and MariaDB 11.8.
+- `momo.FindOrCreate` works on both servers inside a transaction (a savepoint
+  on a `Tx`): a plain `INSERT` (with `RETURNING` on MariaDB, `LAST_INSERT_ID`
+  on MySQL), and when it fails with a unique violation, a shared-lock select
+  by key (`FOR SHARE`, `LOCK IN SHARE MODE` on MariaDB) that returns the stored
+  row, so the Go-side key still wins for a new row. A no-op
+  `ON DUPLICATE KEY UPDATE` cannot be used: with `clientFoundRows` an inserted
+  row and an untouched existing row both report one affected row, and MariaDB's
+  `RETURNING` returns the row either way, so `created` could not be told. The
+  price is one failed `INSERT` plus one `SELECT` when the row exists, and the
+  failed insert uses up an auto-increment value. Shared locks do not conflict
+  with each other, but if the first inserter rolls back instead of committing,
+  the waiting callers can deadlock (error 1213, `ErrSerialization`) and one
+  retries. On a caller's `Tx`, InnoDB keeps the locks taken after a savepoint
+  until the outer transaction ends. A unique violation on another
+  key than the one given is still `ErrUniqueViolation`; a `DB` pinned with
+  `OnConn` is `ErrUnsupported` (it cannot open the transaction).
 - Upserts render as `INSERT ... VALUES ... AS momo_new ON DUPLICATE KEY UPDATE`
   on MySQL and with `VALUES(col)` on MariaDB. A `FromSelect` upsert has no row
   alias on either: MySQL and MariaDB both render `VALUES(col)` there. The
@@ -134,9 +165,20 @@ equivalent instead of returning `ErrUnsupported`.
   assignment of a key column. A `Where` on a conflict clause is
   `ErrUnsupported`.
 - `ON DUPLICATE KEY UPDATE` fires for a conflict on any unique key and cannot
-  name one. Momo therefore accepts a conflict target only when it is the only
-  unique key of the table, the primary key included; otherwise the call is
-  `ErrUnsupported`. Without a schema (a hand-written model) only a primary-key
+  name one. Momo therefore accepts a conflict target only when it is a unique
+  key of the table and no other unique key can conflict. A second key is safe
+  when it is made only of auto-increment columns the insert leaves to the
+  database: the server gives such a column a fresh value, so the key cannot
+  match an existing row. The case this allows is an auto-increment primary key
+  next to `UNIQUE(email)`, upserting on `email` with the primary key left out
+  (judged from the columns the statement writes: the identity is not in the
+  model columns, the `InsertQuery.Values` assignments or the `FromSelect`
+  target list, and no Go-side id generator fills it). In every other case the call is `ErrUnsupported` and the message
+  names the reason: a second unique key the insert can reach (an ordinary
+  column, an expression, a composite key with an ordinary column, or the
+  primary key written explicitly), or a target that is not a unique key. The
+  unique keys come from the model's schema (its `pk` and `unique` tags and
+  unique indexes); without a schema (a hand-written model) only a primary-key
   target is accepted.
 - With `clientFoundRows`, an upsert reports 1 for an inserted row, 2 for an
   existing row that changed, and 1 for an existing row set to its current
@@ -184,9 +226,16 @@ The library dialect `migrate/mysql` inspects `information_schema`, renders DDL,
 locks with `GET_LOCK` and runs every migration, up and down, statement by
 statement, because DDL commits implicitly on these servers. Build the engine
 with `migrate.WithDialect` and the `mysqldriver` driver; the inspector, drift
-check and `-- momo:ddl` online DDL options work through it. The
-`momo migrate` command still builds only the PostgreSQL dialect, so it rejects
-MySQL and MariaDB. What the dialect reports and renders is in
+check and `-- momo:ddl` online DDL options work through it. The `momo migrate`
+command does the same for you: `--dialect mysql`, with a `mysql://` or
+`mariadb://` URL or a go-sql-driver DSN (one dialect for both servers; the
+server tells them apart). A string without `size:N` is `text`, and `text`,
+`blob` and `json` columns cannot be keyed: the generator refuses a model with
+one in a primary key, unique key, index or foreign key, naming the column, so a
+migration never fails half-way on error 1170. `types.Numeric` with a `precision`
+tag is `decimal(p,s)` (precision up to 65, scale up to 30, scale not above
+precision; no `NaN` or infinity), and a `vector.Vector` column is `vector(N)`,
+which needs MySQL 9.0 or MariaDB 11.7. What the dialect reports and renders is in
 [migrations.md](migrations.md#9-mysql-and-mariadb).
 
 ## Models from a database

@@ -515,6 +515,55 @@ n DAY)` and `DATEDIFF(a, b)`. SQLite, which stores a date as `YYYY-MM-DD`
 
 Decision (2026-11-13, integrator): as above.
 
+## Parity: momo migrate CLI on SQLite and MySQL (2026-11-14, integrator)
+
+- **Dialects:** `momo migrate --dialect sqlite|mysql` runs every subcommand
+  with `migrate/sqlite` and `migrate/mysql`. MySQL and MariaDB stay one dialect
+  name, `mysql` (the name `dialect.For` knows); `--dialect mariadb` is refused
+  with a message saying so. The server flavor comes from `VERSION()`: the CLI
+  opens as MySQL and rebuilds the driver as MariaDB when the server says so.
+- **Drivers:** SQLite uses `driver/sqlitepure` (modernc, no cgo), so `go
+install` of `cmd/momo` needs no C toolchain; it has no vector functions,
+  which a migration does not need. MySQL uses `driver/mysqldriver` with a pool
+  of at most 4 connections. No new root dependency: all three are already in
+  the root `go.mod`. The bench module, which imports the cli, gained their
+  indirect requirements in its `go.mod` and `go.sum`, taken from CI's
+  tidy-check output.
+- **URLs:** SQLite takes a file path, a `file:` URI (passed on) or
+  `sqlite:///abs.db` / `sqlite://rel.db` (a query string becomes a `file:`
+  URI); a memory database and other schemes are refused. MySQL takes
+  `mysql://` or `mariadb://` (`?socket=` for a unix socket, other options are
+  go-sql-driver parameters) or a go-sql-driver DSN; a URL without a database is
+  refused. Errors never quote the URL. The URL password is redacted as before.
+- **Dialect-specific behavior surfaced:** a failed apply or rollback on MySQL
+  exits 3 with a hint about the dirty state and `resolve`; SQLite stays
+  transactional. TLS warning for a remote MySQL host without `tls=true`;
+  none for SQLite. `migrate.external_extensions` (and the SQLite timeouts)
+  warn on a dialect they do not apply to instead of failing, because the keys
+  are shared by every dialect of one `momo.yaml`. `--lock-wait` works on all.
+  There is no CLI unlock for a SQLite lock row left by a dead process; the
+  docs say to delete the row.
+- **Models:** the desired schema is built with the chosen dialect first, so the
+  column types are that dialect's (before, `dialects[0]` or PostgreSQL). With
+  `dialects: [sqlite, postgres]` and `--dialect postgres` the diff now has
+  PostgreSQL types: a fix, noted in upgrading.md.
+- **SQLite lock wait:** a busy database (another connection's write lock held
+  past the driver's busy timeout) is `migrate.ErrLocked` in `migrate/sqlite`,
+  so `--lock-wait` retries.
+- **Type map:** `gen/typemap` gains a MySQL/MariaDB branch: integers (unsigned
+  too), `bool` as `tinyint(1)`, `varchar(n)` or `text`, `blob`, `datetime(6)`,
+  `char(36)` for UUID, `json` for `types.JSON`, `decimal(p,s)` for a
+  `types.Numeric` with a precision tag, `vector(N)` for `vector.Vector`.
+  `types.Date` and an untagged `types.Numeric` stay text, as their codecs
+  store them. One stored format does change on MySQL: a `types.Numeric` with a
+  precision tag is `decimal(p,s)` where the library produced text, so a schema
+  generated earlier gets an ALTER on its next diff (upgrading.md). A string
+  without `size:N`, or a blob or json column, in a key is refused at generate
+  time on MySQL (error 1170 would otherwise stop a migration half-way);
+  decimal precision and scale are validated (p <= 65, s <= 30, s <= p).
+- **Docs:** the capabilities row comes from the dialects named in the CLI's
+  `dialectImpl`, so it follows the switch.
+
 ## Parity: ILIKE, NULLS ordering and FILTER emulation (2026-11-14, integrator)
 
 - **Question:** momo refused `ILike` on SQLite, MySQL and MariaDB, NULLS
@@ -557,6 +606,90 @@ Decision (2026-11-13, integrator): as above.
   not read or write the header and is not changed.
 - **Not chosen:** refreshing the header from `momo generate` (the issue's
   alternative).
+
+## Issue #131: Greatest/Least, Floor/Ceil and jsonop.TypeOf (2026-11-14, integrator)
+
+- **API:** `sqlfn.Greatest` and `sqlfn.Least` over expressions
+  of an `Ordered` type (cmp.Ordered, time.Time, types.Date, types.Numeric);
+  `sqlfn.Floor` and `sqlfn.Ceil` over a `Fractional` type (floats and
+  types.Numeric); `jsonop.TypeOf` returning an `Expression[string]`.
+  Round and Trunc are not added: PostgreSQL's `round(double precision)` rounds
+  half to even and `round(numeric)` half away from zero, so one signature could
+  not give one result on every dialect. Floor and Ceil take no integer type
+  because PostgreSQL's `floor(integer)` is double precision and would not scan
+  into the same Go type. `jsonop.TypeOf` takes the same
+  `Expression[types.JSON[T]]` as the other `jsonop` functions, so a
+  `types.JSON[json.RawMessage]` column works with no separate overload.
+- **NULL semantics of Greatest and Least:** identical on every dialect, the
+  PostgreSQL rule (NULL arguments are ignored, the result is NULL only when all
+  are NULL). MySQL, MariaDB and SQLite return NULL for any NULL argument, so
+  there each argument `x` is rendered as `COALESCE(x, the other arguments)`
+  inside `GREATEST`/`LEAST` (MySQL, MariaDB) or the scalar `max()`/`min()`
+  (SQLite). Cost: n arguments render n*n operands, and a non-deterministic
+  argument is evaluated several times; documented in the doc comment.
+- **Floor and Ceil per dialect:** `floor`/`ceil` on PostgreSQL, MySQL and
+  MariaDB. SQLite is rendered without `floor()`: the mattn driver the CI uses
+  has no math functions without its `sqlite_math_functions` build tag
+  (checked in go-sqlite3 v1.14.53, the repository sets no such tag), while
+  modernc enables `SQLITE_ENABLE_MATH_FUNCTIONS`. The emulation is a CASE over
+  `CAST(x AS INTEGER)` and returns REAL; floats from 2^52 are whole and pass
+  through, which keeps the cast away from the int64 limits.
+- **types.Numeric:** Greatest, Least, Floor and Ceil over `types.Numeric` are
+  PostgreSQL only and fail with `ErrUnsupported` ("PostgreSQL only") on SQLite
+  and MySQL, as the `sqlfn` arithmetic does: it is TEXT there, which orders
+  lexically and would floor through floating point.
+- **TypeOf per dialect:** PostgreSQL `jsonb_typeof(c)`. SQLite
+  `CASE json_type(c) ...` (integer, real to number; text to string; true, false
+  to boolean). MySQL and MariaDB `CASE JSON_TYPE(c) ...` (INTEGER, UNSIGNED
+  INTEGER, DOUBLE, DECIMAL to number; BOOLEAN, STRING, OBJECT, ARRAY, NULL
+  lower-cased). All give the six PostgreSQL names; SQL NULL stays SQL NULL and
+  the JSON literal null is the text `null`. A MySQL type a stored document
+  cannot have (DATE, OPAQUE) maps to NULL.
+
+## Parity: MySQL and MariaDB write read-back and upsert targets (2026-11-14, integrator)
+
+- **MariaDB read-back:** `CreateGraph`, the identity read-back of a single
+  insert and `FindOrCreate` check `InsertReturning` as well as `Returning`, so
+  MariaDB reads generated keys with `INSERT ... RETURNING`. The bulk insert of
+  graph children uses one multi-row `RETURNING` statement.
+- **MySQL read-back:** `CreateGraph` is allowed on MySQL. Every row is inserted
+  one statement at a time inside the graph's transaction and its key is read
+  with `LAST_INSERT_ID`. A lock-mode 0 or 1 shortcut (one multi-row statement,
+  keys first + i*increment, read from `@@innodb_autoinc_lock_mode`) was built
+  and removed: CI's MySQL servers all run mode 2, so it never ran against a
+  real server, and the probe could fail behind proxies. Keys are never guessed,
+  `ON DUPLICATE KEY UPDATE` never reads keys, a plain multi-row `Exec` still
+  writes no keys back, children mixing zero and explicit keys are
+  `ErrValidation`, a non-integer generated key is `ErrUnsupported`, and the
+  rows share one statement clock.
+- **FindOrCreate on MySQL and MariaDB:** the brief proposed a no-op
+  `ON DUPLICATE KEY UPDATE` plus the affected-rows count to tell created from
+  found. The driver sets `clientFoundRows`, under which an inserted row and an
+  untouched existing row both report 1 (and MariaDB's `RETURNING` returns the
+  row either way), so that signal does not exist. `FindOrCreate` instead runs in
+  a transaction (a savepoint on a `Tx`) as a plain insert; on a unique violation
+  it re-selects by key with a shared-lock read (`FOR SHARE`, `LOCK IN SHARE
+MODE` on MariaDB). A shared lock reads the latest committed row at any
+  isolation level, and shared locks do not conflict with each other, so losers
+  of the same race do not block one another (`FOR UPDATE` would). If the first
+  inserter rolls back, the waiting losers can still deadlock (1213). On a
+  caller's `Tx` InnoDB keeps the locks taken after a savepoint until the outer
+  transaction ends. Cost: a failed insert plus a select when the row exists,
+  and one burned auto-increment value. A violation on another unique key stays
+  `ErrUniqueViolation`; the Go-side key still wins for a new row.
+- **Upsert target:** on MySQL and MariaDB a target is accepted when it is a unique
+  key of the table and every other unique key is made only of auto-increment
+  columns the insert leaves to the database (an auto-increment primary key plus
+  `UNIQUE(email)`, key omitted). Those keys take a fresh value, so
+  `ON DUPLICATE KEY UPDATE` can act only on the target. A Go-side id, an
+  identity written by the statement, an expression key, a composite key
+  with an ordinary column, and a model without a schema stay `ErrUnsupported`,
+  and the message says why.
+- **Upsert column list:** the conflict-target rule decides "the insert leaves
+  the auto-increment column out" from the column list the statement writes (the
+  resolved model columns, the `Values` columns or the `FromSelect` targets), not
+  from builder state.
+- **Not done:** a multi-row `Exec` on MySQL still returns no keys.
 
 ## Parity: --from-db on MySQL and MariaDB (2026-11-14, integrator)
 
@@ -619,5 +752,32 @@ Decision (2026-11-13, integrator): as above.
   to `Avg` (float64) or `SumInt` (integers).
 - **API diff:** `Avg` turning generic is an apidiff incompatible change only for
   code that used `momo.Avg` as an uninstantiated function value.
+
+Decision (2026-11-14, integrator): as above.
+
+## Issue #127: explicit identity values on Insert (2026-11-14, integrator)
+
+- **API:** `InsertQuery.Explicit(cols ...ColumnRef)` is an opt-in that puts the
+  named identity, serial or auto-increment columns into the INSERT column list
+  with the value the source carries. Without it nothing changes: such columns
+  are left out and a non-zero struct value is dropped silently, which the
+  Insert docs now say prominently.
+- **Rendering:** PostgreSQL adds `OVERRIDING SYSTEM VALUE` only when an
+  explicit column is `GENERATED ALWAYS AS IDENTITY` (serial and BY DEFAULT need
+  none). MySQL, MariaDB and SQLite write an ordinary column.
+- **Scope:** Model, Models, Values, ValuesRows, Unnest, chunked bulk, Upsert and
+  OnConflict. A column that is not identity, serial or auto-increment, or not in
+  the model, is `ErrValidation`; so are `FromSelect` and `Copy` with Explicit.
+- **Zero value:** per dialect. PostgreSQL and SQLite store 0 as written
+  because the caller opted in. MySQL and MariaDB refuse a zero in an explicit
+  AUTO_INCREMENT column with `ErrValidation`, because the server would generate
+  a value instead of storing 0; every row is checked before the first chunk.
+- **Sequence:** only PostgreSQL needs `setval`, which the caller runs; Momo
+  never calls it. MySQL, MariaDB and SQLite move past a larger explicit value
+  on their own.
+- **Checks:** a `ColumnRef` of another table, and the same column in both
+  `Explicit` and `Omit`, are `ErrValidation`.
+- **Upsert:** the explicit column is written by the INSERT only; a serial or
+  identity column that is not the conflict key is never updated on conflict.
 
 Decision (2026-11-14, integrator): as above.

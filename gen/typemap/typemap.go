@@ -50,6 +50,8 @@ func Map(goType string, d dialect.Name, tg tags.Tags) (string, error) {
 		sql = postgres(t, tg)
 	case dialect.SQLite:
 		sql = sqlite(t, tg)
+	case dialect.MySQL:
+		sql = mysql(t, tg)
 	}
 	if sql == "" {
 		return "", fmt.Errorf("%w: Go type %s has no SQL mapping on %s", momo.ErrUnsupported, goType, d)
@@ -134,6 +136,77 @@ func sqlite(t string, _ tags.Tags) string {
 	}
 	if strings.HasPrefix(t, "types.JSON[") && strings.HasSuffix(t, "]") {
 		return "TEXT"
+	}
+	return ""
+}
+
+// mysql maps to the column types of MySQL and MariaDB, which share the table.
+// Unsigned Go integers map to the unsigned column types; bool is tinyint(1);
+// time.Time is datetime(6), which the driver reads and writes in UTC. The
+// codecs store text: types.UUID is its canonical 36 characters (char(36)),
+// types.Date and a types.Numeric without a precision tag stay text, because
+// their Value is text that a DATE or a bare DECIMAL would reject or round, and
+// types.JSON[T] is json (MariaDB's alias of longtext with a json_valid check).
+// types.Numeric with a precision tag is decimal(p,s). Only vector.Vector with a
+// dim tag has a vector column; the others have no MySQL type. text and blob
+// hold 64 KiB; use a type tag for more. These are the column types the
+// generator writes: on MySQL they come from this table and not from the SQLType
+// method of the codec, which names the storage of the other dialects (text).
+// A text, blob or json column cannot be keyed: the schema builder refuses a
+// string without size:N in a key or an index.
+func mysql(t string, tg tags.Tags) string {
+	switch t {
+	case "int8":
+		return "tinyint"
+	case "int16":
+		return "smallint"
+	case "int32":
+		return "int"
+	case "int", "int64":
+		return "bigint"
+	case "uint8":
+		return "tinyint unsigned"
+	case "uint16":
+		return "smallint unsigned"
+	case "uint32":
+		return "int unsigned"
+	case "uint", "uint64":
+		return "bigint unsigned"
+	case "float32":
+		return "float"
+	case "float64":
+		return "double"
+	case "bool":
+		return "tinyint(1)"
+	case "string":
+		if tg.Size > 0 {
+			return fmt.Sprintf("varchar(%d)", tg.Size)
+		}
+		return "text"
+	case "[]byte":
+		return "blob"
+	case "time.Time":
+		return "datetime(6)"
+	case "types.UUID", googleUUID:
+		return "char(36)"
+	case "types.Date":
+		return "text"
+	case "types.Numeric":
+		if tg.Precision > 0 {
+			if tg.Scale > 0 {
+				return fmt.Sprintf("decimal(%d,%d)", tg.Precision, tg.Scale)
+			}
+			return fmt.Sprintf("decimal(%d)", tg.Precision)
+		}
+		return "text"
+	case "vector.Vector":
+		if tg.Dim > 0 {
+			return fmt.Sprintf("vector(%d)", tg.Dim)
+		}
+		return ""
+	}
+	if strings.HasPrefix(t, "types.JSON[") && strings.HasSuffix(t, "]") {
+		return "json"
 	}
 	return ""
 }
