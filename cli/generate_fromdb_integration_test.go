@@ -220,6 +220,64 @@ func TestGenerateFromDBRerun(t *testing.T) {
 	}
 }
 
+// TestGenerateFromDBCheckBodyEqualsDatabase is issue 128: a model edited by
+// hand to what the migrated database now holds. --check reports it as current
+// and a plain run refreshes only the hash in the header line.
+//
+// Catches: a hand edit that the database carries too being reported as stale
+// or as a conflict because the header hash is not the hash of the new body.
+func TestGenerateFromDBCheckBodyEqualsDatabase(t *testing.T) {
+	dsn := testdb.PostgresURL(t)
+	execAll(t, dsn, legacyDDL)
+	root := copyModule(t, t.TempDir())
+	writeFile(t, filepath.Join(root, "momo.yaml"), "version: 1\npackages:\n  - ./models\ndialects: [postgres]\nmigrate:\n  exclude: [vector, pgcrypto]\n")
+	chdir(t, root)
+	t.Setenv("MOMO_TEST_URL", dsn)
+	if code, out, errOut := fromDB(t, "--no-snapshot"); code != 0 {
+		t.Fatalf("first run: exit %d\n%s%s", code, out, errOut)
+	}
+	accounts := filepath.Join(root, "models", "accounts_model.go")
+	generated, err := os.ReadFile(accounts) //nolint:gosec // test path
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The schema changes, and the model is edited by hand to match: the body
+	// is what a database with the change generates.
+	execAll(t, dsn, []string{`ALTER TABLE accounts ADD COLUMN nickname text`})
+	if code, out, errOut := fromDB(t, "--no-snapshot", "--out", "regenerated", "--pkg", "models"); code != 0 {
+		t.Fatalf("regenerate: exit %d\n%s%s", code, out, errOut)
+	}
+	regenerated, err := os.ReadFile(filepath.Join(root, "regenerated", "accounts_model.go")) //nolint:gosec // test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "regenerated")); err != nil {
+		t.Fatal(err)
+	}
+	oldLine, _, _ := bytes.Cut(generated, []byte("\n"))
+	newLine, body, _ := bytes.Cut(regenerated, []byte("\n"))
+	edited := append(append(append([]byte{}, oldLine...), '\n'), body...)
+	if err := os.WriteFile(accounts, edited, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if code, out, errOut := fromDB(t, "--no-snapshot", "--check"); code != 0 || strings.Contains(out, "stale") {
+		t.Fatalf("--check: exit %d, want 0\n%s%s", code, out, errOut)
+	}
+	code, out, errOut := fromDB(t, "--no-snapshot")
+	if code != 0 || strings.Contains(out, "conflict") {
+		t.Fatalf("plain run: exit %d, want 0 and no conflict\n%s%s", code, out, errOut)
+	}
+	if _, err := os.Stat(accounts + ".new"); err == nil {
+		t.Fatal("a .new file was written")
+	}
+	got, _ := os.ReadFile(accounts) //nolint:gosec // test path
+	if gotLine, gotBody, _ := bytes.Cut(got, []byte("\n")); !bytes.Equal(gotLine, newLine) || !bytes.Equal(gotBody, body) {
+		t.Fatalf("only the header line may change:\n%s", got)
+	}
+}
+
 // TestGenerateFromDBSnapshotFailureWritesNoModels: a migration directory whose
 // snapshot cannot be read fails the init snapshot step; the model files must
 // not have been written by then.
