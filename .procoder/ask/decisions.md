@@ -558,4 +558,31 @@ Decision (2026-11-13, integrator): as above.
 - **Not chosen:** refreshing the header from `momo generate` (the issue's
   alternative).
 
+## Parity: --from-db on MySQL and MariaDB (2026-11-14, integrator)
+
+- **Scope:** `momo generate --from-db` reads MySQL 8.4, MySQL 9.7 and MariaDB
+  11.8 through the existing `migrate/mysql` inspector and the `mysqldriver`
+  package; `fromdb.Generate` accepts the MySQL dialect. The `momo migrate`
+  command is not touched: only `--from-db` opens a MySQL engine.
+- **Column types:** the exact column type goes in a `type:` tag (the generator
+  has no MySQL type table, which the `momo migrate` CLI story adds); a varchar
+  uses `size`. `tags.SplitOptions` keeps a comma inside parentheses in one
+  option so `decimal(p,s)` and enum and set value lists can be written.
+- **enum and set:** a Go `string` with the exact column type in the `type:` tag.
+  No check constraint and no skip: both would make a database rebuilt from the
+  models differ from the original. The value list stays in the database.
+- **Defaults:** `dbdefault` and a pointer field for a NOT NULL bool or number
+  column with a non-zero constant default on MariaDB only (it has INSERT
+  RETURNING); on MySQL 8.4 and 9.7 a plain field and a note, because an insert
+  with a nil `dbdefault` field is refused there. No `dbdefault` for a computed
+  default on either. `time` maps to `string`. Every `tinyint(1)` bool gets a
+  note: a stored value other than 0 or 1 fails to scan.
+- **Reported, not modeled:** ON UPDATE and INVISIBLE columns (warnings), a
+  prefix PRIMARY KEY (an error), prefix indexes (a warning). A foreign key to a
+  non-primary unique column is written as `c.ForeignKey`.
+- **Left out with a warning:** prefix indexes.
+- **Round trip:** the integration-mysql jobs build a schema with raw DDL, run
+  `--from-db`, load the models, diff them against an empty database, apply and
+  compare the two inspections.
+
 Decision (2026-11-14, integrator): as above.

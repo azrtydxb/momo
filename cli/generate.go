@@ -44,11 +44,14 @@ Models from a database:
     momo generate --from-db <url|-|ENVVAR> [--out dir] [--package name]
                   [--schema a,b] [--no-snapshot] [--overwrite] [--check]
 
-Inspects the PostgreSQL database and writes one model file per table into the
-model package (default: introspect.out, else the first local entry of
-packages, else ./models), plus the init migration and snapshot into the
-migration directory when it has none. Then run "momo generate" for the
-generated code and "momo migrate baseline --version <init version>".
+Inspects the PostgreSQL, MySQL or MariaDB database and writes one model file
+per table into the model package (default: introspect.out, else the first
+local entry of packages, else ./models), plus the init migration and snapshot
+into the migration directory when it has none. Then run "momo generate" for
+the generated code and "momo migrate baseline --version <init version>".
+For MySQL and MariaDB set dialects: [mysql] in momo.yaml; the value is a
+mysql:// or mariadb:// URL or a go-sql-driver DSN such as
+user:pass@tcp(host:3306)/app or user:pass@unix(/run/mysqld.sock)/app.
 
 The value of --from-db is a database URL, "-" to read the URL from standard
 input, or the name of an environment variable that holds it. Prefer the last
@@ -110,7 +113,7 @@ func runGenerate(args []string, stdout, stderr io.Writer, available ...gen.Plugi
 	fs.StringVar(&fromDB.src, "from-db", "", "generate models from this database: a URL, - for stdin, or an environment variable name")
 	fs.StringVar(&fromDB.out, "out", "", "with --from-db: the model package directory")
 	fs.StringVar(&fromDB.pkg, "package", "", "with --from-db: the Go package name")
-	fs.StringVar(&fromDB.schemas, "schema", "", "with --from-db: comma-separated PostgreSQL schemas to read")
+	fs.StringVar(&fromDB.schemas, "schema", "", "with --from-db: comma-separated schemas to read (PostgreSQL only: a MySQL database is the one the DSN names)")
 	fs.StringVar(&fromDB.name, "migration-name", "init", "with --from-db: name of the init migration")
 	fs.BoolVar(&fromDB.noSnapshot, "no-snapshot", false, "with --from-db: do not write the init migration and snapshot")
 	fs.BoolVar(&fromDB.overwrite, "overwrite", false, "with --from-db: replace model files that have hand edits")

@@ -142,17 +142,17 @@ func TestGenerateFromDBFlagErrors(t *testing.T) {
 	}
 }
 
-// TestGenerateFromDBRefusesOtherDialects: the inspector reads PostgreSQL only,
-// so a project configured for another dialect is refused with exit 2 before a
+// TestGenerateFromDBRefusesOtherDialects: the inspector reads PostgreSQL, MySQL and
+// MariaDB only, so a project configured for another dialect is refused with exit 2 before a
 // connection is opened or a file is written.
 func TestGenerateFromDBRefusesOtherDialects(t *testing.T) {
 	root := t.TempDir()
 	chdir(t, root)
-	writeFile(t, filepath.Join(root, "momo.yaml"), "version: 1\npackages:\n  - ./models\ndialects: [mysql]\n")
-	t.Setenv("MOMO_DIALECT_URL_TEST", "mysql://u:p@127.0.0.1:1/db")
+	writeFile(t, filepath.Join(root, "momo.yaml"), "version: 1\npackages:\n  - ./models\ndialects: [sqlite]\n")
+	t.Setenv("MOMO_DIALECT_URL_TEST", "file:x.db")
 	var out, errb bytes.Buffer
 	code := Run([]string{"generate", "--from-db", "MOMO_DIALECT_URL_TEST"}, &out, &errb)
-	if code != exitUsage || !strings.Contains(errb.String(), "PostgreSQL databases only, not mysql") {
+	if code != exitUsage || !strings.Contains(errb.String(), "databases only, not sqlite") {
 		t.Fatalf("exit %d, %q", code, errb.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, "models")); err == nil {

@@ -264,3 +264,15 @@ A column that can be NULL needs a Go type that can hold NULL: a pointer
 (`*int64`), a `sql.Null*` wrapper, or a type whose `Scan` accepts nil.
 Scanning NULL into a plain `int64` or into a codec from the `types` package is
 an error, never a silent zero value.
+
+## Models from a MySQL database
+
+`momo generate --from-db` on MySQL and MariaDB writes the exact column type in
+a `type:` tag, so the generator's own MySQL column is not needed for a model it
+wrote. The Go type chosen for each MySQL type is in
+[MySQL and MariaDB](mysql.md#models-from-a-database): unsigned integers are
+`uint8` to `uint64`, `tinyint(1)` is `bool`, `decimal` is `types.Numeric`,
+and `enum` and `set` are `string`. `tinyint(1)` is `bool`, and MySQL lets that
+column hold any value from -128 to 127: a stored value other than 0 or 1 fails
+to scan the whole row. Every such column gets a note in the report; map
+`tinyint(1)` to `int8` with an `introspect.types` rule if it holds other values.

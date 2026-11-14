@@ -126,6 +126,8 @@ type cli struct {
 	file        *config.File
 	cfgDir, cwd string
 	dialectName string
+	// fromMySQL is set when --from-db opens a MySQL or MariaDB server.
+	fromMySQL *mysqlSource
 }
 
 func (l *cli) say(format string, args ...any) {
@@ -387,6 +389,10 @@ func (l *cli) databaseURL() (string, error) {
 // noteURL registers the URL and its password as secrets to redact, and warns
 // when TLS is not enforced for a remote host.
 func (l *cli) noteURL(u string) {
+	if l.dialectName == string(dialect.MySQL) {
+		l.noteMySQLURL(u)
+		return
+	}
 	l.secrets = append(l.secrets, u)
 	if w := tlsWarning(u, l.env); w != "" {
 		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))

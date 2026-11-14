@@ -49,8 +49,8 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if l.dialectName, err = l.chooseDialect(); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
-	if l.dialectName != string(dialect.Postgres) {
-		return l.errf(exitUsage, "--from-db reads PostgreSQL databases only, not %s", l.dialectName)
+	if l.dialectName != string(dialect.Postgres) && l.dialectName != string(dialect.MySQL) {
+		return l.errf(exitUsage, "--from-db reads PostgreSQL, MySQL and MariaDB databases only, not %s", l.dialectName)
 	}
 	if a.schemas != "" {
 		l.file.Migrate.Schemas = strings.Split(a.schemas, ",")
@@ -82,7 +82,7 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	// reading them: one the schema model cannot represent must not fail the run.
 	savedExclude := l.file.Migrate.Exclude
 	l.file.Migrate.Exclude = append(slices.Clone(savedExclude), l.file.Introspect.Skip...)
-	e, closeFn, code := l.openEngineAt(ctx, dsn)
+	e, closeFn, code := l.openFromDBEngine(ctx, dsn)
 	l.file.Migrate.Exclude = savedExclude
 	if e == nil {
 		return code
@@ -95,7 +95,14 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if err := checkOnlyMatched(l.file.Introspect.Only, live.Tables, l.say); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
-	res, err := fromdb.Generate(live, fromdb.Options{Package: pkg, Namer: namer, Config: l.file.Introspect})
+	flavor, extra, err := l.mysqlExtras(ctx)
+	if err != nil {
+		return l.errf(exitDatabase, "inspect: %v", err)
+	}
+	res, err := fromdb.Generate(live, fromdb.Options{
+		Package: pkg, Dialect: dialect.Name(l.dialectName), Flavor: flavor, Extra: extra,
+		Namer: namer, Config: l.file.Introspect,
+	})
 	if err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
@@ -233,7 +240,7 @@ func (l *cli) fromDBURL(src string) (string, error) {
 		}
 		l.noteURL(u)
 		return u, nil
-	case strings.Contains(src, "://") || strings.Contains(src, "="):
+	case strings.Contains(src, "://") || strings.Contains(src, "=") || looksLikeMySQLDSN(src):
 		_, _ = fmt.Fprintln(l.errOut, "momo: warning: --from-db puts the database URL in the process list, where other users can read it; pass - to read it from standard input, or the name of an environment variable")
 		l.noteURL(src)
 		return src, nil
